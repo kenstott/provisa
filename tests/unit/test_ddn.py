@@ -16,7 +16,6 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-import pytest
 import yaml
 
 from provisa.core.models import ProvisaConfig
@@ -61,28 +60,32 @@ def _chinook_metadata() -> DDNMetadata:
         name="Artist",
         subgraph="chinook",
         fields={"artistId": "Int", "name": "String"},
-        type_mappings=[DDNTypeMapping(
-            connector_name="chinook_connector",
-            source_type="artist",
-            field_mappings=[
-                DDNFieldMapping(graphql_field="artistId", column="artist_id"),
-                DDNFieldMapping(graphql_field="name", column="name"),
-            ],
-        )],
+        type_mappings=[
+            DDNTypeMapping(
+                connector_name="chinook_connector",
+                source_type="artist",
+                field_mappings=[
+                    DDNFieldMapping(graphql_field="artistId", column="artist_id"),
+                    DDNFieldMapping(graphql_field="name", column="name"),
+                ],
+            )
+        ],
     )
     album_type = DDNObjectType(
         name="Album",
         subgraph="chinook",
         fields={"albumId": "Int", "title": "String", "artistId": "Int"},
-        type_mappings=[DDNTypeMapping(
-            connector_name="chinook_connector",
-            source_type="album",
-            field_mappings=[
-                DDNFieldMapping(graphql_field="albumId", column="album_id"),
-                DDNFieldMapping(graphql_field="title", column="title"),
-                DDNFieldMapping(graphql_field="artistId", column="artist_id"),
-            ],
-        )],
+        type_mappings=[
+            DDNTypeMapping(
+                connector_name="chinook_connector",
+                source_type="album",
+                field_mappings=[
+                    DDNFieldMapping(graphql_field="albumId", column="album_id"),
+                    DDNFieldMapping(graphql_field="title", column="title"),
+                    DDNFieldMapping(graphql_field="artistId", column="artist_id"),
+                ],
+            )
+        ],
     )
     artist_model = DDNModel(
         name="Artist",
@@ -110,15 +113,18 @@ def _chinook_metadata() -> DDNMetadata:
         field_mapping={"artistId": "artistId"},
     )
     tp_artist = DDNTypePermission(
-        type_name="Artist", role="viewer",
+        type_name="Artist",
+        role="viewer",
         allowed_fields=["artistId", "name"],
     )
     tp_album = DDNTypePermission(
-        type_name="Album", role="viewer",
+        type_name="Album",
+        role="viewer",
         allowed_fields=["albumId", "title", "artistId"],
     )
     mp = DDNModelPermission(
-        model_name="Album", role="viewer",
+        model_name="Album",
+        role="viewer",
         filter={"artistId": {"_eq": "1"}},
     )
     agg = DDNAggregateExpression(
@@ -164,8 +170,10 @@ class TestParser:
         assert len(md.connectors) == 0
 
     def test_parse_connector(self, tmp_path: Path) -> None:
-        hml = _make_hml_dir(tmp_path, {
-            "app/metadata/connector.hml": """\
+        hml = _make_hml_dir(
+            tmp_path,
+            {
+                "app/metadata/connector.hml": """\
                 kind: DataConnectorLink
                 version: v1
                 definition:
@@ -175,15 +183,18 @@ class TestParser:
                       value: http://localhost:8080/postgres
                   schema: {}
             """,
-        })
+            },
+        )
         md = parse_hml_dir(hml)
         assert len(md.connectors) == 1
         assert md.connectors[0].name == "my_pg"
         assert "postgres" in md.connectors[0].url
 
     def test_parse_object_type_with_field_mapping(self, tmp_path: Path) -> None:
-        hml = _make_hml_dir(tmp_path, {
-            "app/metadata/artist.hml": """\
+        hml = _make_hml_dir(
+            tmp_path,
+            {
+                "app/metadata/artist.hml": """\
                 kind: ObjectType
                 version: v1
                 definition:
@@ -204,7 +215,8 @@ class TestParser:
                           column:
                             name: name
             """,
-        })
+            },
+        )
         md = parse_hml_dir(hml)
         assert len(md.object_types) == 1
         ot = md.object_types[0]
@@ -217,8 +229,10 @@ class TestParser:
         assert fm_dict["name"] == "name"
 
     def test_parse_model(self, tmp_path: Path) -> None:
-        hml = _make_hml_dir(tmp_path, {
-            "app/metadata/artist_model.hml": """\
+        hml = _make_hml_dir(
+            tmp_path,
+            {
+                "app/metadata/artist_model.hml": """\
                 kind: Model
                 version: v1
                 definition:
@@ -232,7 +246,8 @@ class TestParser:
                     selectMany:
                       queryRootField: artists
             """,
-        })
+            },
+        )
         md = parse_hml_dir(hml)
         assert len(md.models) == 1
         m = md.models[0]
@@ -243,8 +258,10 @@ class TestParser:
         assert m.graphql_select_many == "artists"
 
     def test_parse_relationship(self, tmp_path: Path) -> None:
-        hml = _make_hml_dir(tmp_path, {
-            "app/metadata/album_artist_rel.hml": """\
+        hml = _make_hml_dir(
+            tmp_path,
+            {
+                "app/metadata/album_artist_rel.hml": """\
                 kind: Relationship
                 version: v1
                 definition:
@@ -262,7 +279,8 @@ class TestParser:
                         fieldPath:
                           - artistId
             """,
-        })
+            },
+        )
         md = parse_hml_dir(hml)
         assert len(md.relationships) == 1
         r = md.relationships[0]
@@ -273,8 +291,10 @@ class TestParser:
         assert r.field_mapping == {"artistId": "artistId"}
 
     def test_parse_type_permissions(self, tmp_path: Path) -> None:
-        hml = _make_hml_dir(tmp_path, {
-            "app/metadata/artist_perms.hml": """\
+        hml = _make_hml_dir(
+            tmp_path,
+            {
+                "app/metadata/artist_perms.hml": """\
                 kind: TypePermissions
                 version: v1
                 definition:
@@ -291,15 +311,18 @@ class TestParser:
                           - artistId
                           - name
             """,
-        })
+            },
+        )
         md = parse_hml_dir(hml)
         assert len(md.type_permissions) == 2
         assert md.type_permissions[0].role == "viewer"
         assert md.type_permissions[1].role == "admin"
 
     def test_parse_model_permissions(self, tmp_path: Path) -> None:
-        hml = _make_hml_dir(tmp_path, {
-            "app/metadata/album_model_perms.hml": """\
+        hml = _make_hml_dir(
+            tmp_path,
+            {
+                "app/metadata/album_model_perms.hml": """\
                 kind: ModelPermissions
                 version: v1
                 definition:
@@ -312,7 +335,8 @@ class TestParser:
                     - role: admin
                       filter: null
             """,
-        })
+            },
+        )
         md = parse_hml_dir(hml)
         assert len(md.model_permissions) == 2
         assert md.model_permissions[0].role == "viewer"
@@ -320,8 +344,10 @@ class TestParser:
         assert md.model_permissions[1].filter == {}
 
     def test_parse_command(self, tmp_path: Path) -> None:
-        hml = _make_hml_dir(tmp_path, {
-            "app/metadata/get_artist.hml": """\
+        hml = _make_hml_dir(
+            tmp_path,
+            {
+                "app/metadata/get_artist.hml": """\
                 kind: Command
                 version: v1
                 definition:
@@ -337,7 +363,8 @@ class TestParser:
                   graphql:
                     rootFieldName: getArtistById
             """,
-        })
+            },
+        )
         md = parse_hml_dir(hml)
         assert len(md.commands) == 1
         cmd = md.commands[0]
@@ -347,8 +374,10 @@ class TestParser:
         assert cmd.arguments == {"id": "Int"}
 
     def test_parse_command_procedure(self, tmp_path: Path) -> None:
-        hml = _make_hml_dir(tmp_path, {
-            "app/metadata/create_artist.hml": """\
+        hml = _make_hml_dir(
+            tmp_path,
+            {
+                "app/metadata/create_artist.hml": """\
                 kind: Command
                 version: v1
                 definition:
@@ -364,33 +393,37 @@ class TestParser:
                   graphql:
                     rootFieldName: createArtist
             """,
-        })
+            },
+        )
         md = parse_hml_dir(hml)
         assert md.commands[0].command_type == "procedure"
         assert md.commands[0].source_name == "create_artist"
 
     def test_parse_skipped_kinds(self, tmp_path: Path) -> None:
         collector = WarningCollector()
-        _make_hml_dir(tmp_path, {
-            "app/metadata/order_by.hml": """\
+        _make_hml_dir(
+            tmp_path,
+            {
+                "app/metadata/order_by.hml": """\
                 kind: OrderByExpression
                 version: v1
                 definition:
                   name: ArtistOrderBy
             """,
-            "app/metadata/bool_expr.hml": """\
+                "app/metadata/bool_expr.hml": """\
                 kind: BooleanExpressionType
                 version: v1
                 definition:
                   name: ArtistBoolExp
             """,
-            "app/metadata/auth.hml": """\
+                "app/metadata/auth.hml": """\
                 kind: AuthConfig
                 version: v1
                 definition:
                   mode: noAuth
             """,
-        })
+            },
+        )
         md = parse_hml_dir(tmp_path, collector)
         assert md.skipped_kinds["OrderByExpression"] == 1
         assert md.skipped_kinds["BooleanExpressionType"] == 1
@@ -402,8 +435,10 @@ class TestParser:
         assert "AuthConfig" in categories
 
     def test_parse_aggregate_expression(self, tmp_path: Path) -> None:
-        hml = _make_hml_dir(tmp_path, {
-            "app/metadata/agg.hml": """\
+        hml = _make_hml_dir(
+            tmp_path,
+            {
+                "app/metadata/agg.hml": """\
                 kind: AggregateExpression
                 version: v1
                 definition:
@@ -420,7 +455,8 @@ class TestParser:
                     enable: true
                     enableDistinct: true
             """,
-        })
+            },
+        )
         md = parse_hml_dir(hml)
         assert len(md.aggregate_expressions) == 1
         agg = md.aggregate_expressions[0]
@@ -431,8 +467,10 @@ class TestParser:
 
     def test_parse_multi_doc_file(self, tmp_path: Path) -> None:
         """Multiple YAML documents in one HML file."""
-        hml = _make_hml_dir(tmp_path, {
-            "app/metadata/combined.hml": """\
+        hml = _make_hml_dir(
+            tmp_path,
+            {
+                "app/metadata/combined.hml": """\
                 kind: DataConnectorLink
                 version: v1
                 definition:
@@ -457,14 +495,17 @@ class TestParser:
                           column:
                             name: track_id
             """,
-        })
+            },
+        )
         md = parse_hml_dir(hml)
         assert len(md.connectors) == 1
         assert len(md.object_types) == 1
 
     def test_subgraph_detection(self, tmp_path: Path) -> None:
-        hml = _make_hml_dir(tmp_path, {
-            "sales/metadata/order.hml": """\
+        hml = _make_hml_dir(
+            tmp_path,
+            {
+                "sales/metadata/order.hml": """\
                 kind: Model
                 version: v1
                 definition:
@@ -474,13 +515,14 @@ class TestParser:
                     dataConnectorName: pg
                     collection: orders
             """,
-            "globals/metadata/auth.hml": """\
+                "globals/metadata/auth.hml": """\
                 kind: AuthConfig
                 version: v1
                 definition:
                   mode: noAuth
             """,
-        })
+            },
+        )
         collector = WarningCollector()
         md = parse_hml_dir(hml, collector)
         assert "sales" in md.subgraphs
@@ -568,13 +610,20 @@ class TestMapper:
         assert len(fn.arguments) == 1
         assert fn.arguments[0].name == "id"
 
-    def test_aggregate_expression_annotation(self) -> None:
+    def test_aggregate_expression_sidecar(self) -> None:
+        md = _chinook_metadata()
+        agg_collector: dict = {}
+        convert_hml(md, agg_collector=agg_collector)
+        assert agg_collector, "agg_collector should be populated"
+        # At least one aggregate entry
+        entry = next(iter(agg_collector.values()))
+        assert entry.get("count") is True
+
+    def test_aggregate_not_in_table_description(self) -> None:
         md = _chinook_metadata()
         config = convert_hml(md)
         album_table = next(t for t in config.tables if t.table_name == "album")
-        assert album_table.description is not None
-        assert "aggregates" in album_table.description
-        assert "count" in album_table.description
+        assert album_table.description is None or "aggregates" not in album_table.description
 
     def test_config_validates(self) -> None:
         """Output passes ProvisaConfig.model_validate()."""
@@ -626,10 +675,14 @@ class TestMapper:
 
     def test_missing_object_type_warns(self) -> None:
         md = DDNMetadata(
-            models=[DDNModel(
-                name="Ghost", object_type="NonExistent",
-                connector_name="pg", collection="ghost",
-            )],
+            models=[
+                DDNModel(
+                    name="Ghost",
+                    object_type="NonExistent",
+                    connector_name="pg",
+                    collection="ghost",
+                )
+            ],
             connectors=[DDNConnector(name="pg")],
             subgraphs={"default"},
         )
@@ -646,8 +699,10 @@ class TestMapper:
 class TestIntegration:
     def test_parse_and_convert_chinook_project(self, tmp_path: Path) -> None:
         """Full round-trip: parse HML files -> convert -> validate."""
-        hml = _make_hml_dir(tmp_path, {
-            "chinook/metadata/connector.hml": """\
+        hml = _make_hml_dir(
+            tmp_path,
+            {
+                "chinook/metadata/connector.hml": """\
                 kind: DataConnectorLink
                 version: v1
                 definition:
@@ -657,7 +712,7 @@ class TestIntegration:
                       value: http://localhost:8080/postgres
                   schema: {}
             """,
-            "chinook/metadata/artist_type.hml": """\
+                "chinook/metadata/artist_type.hml": """\
                 kind: ObjectType
                 version: v1
                 definition:
@@ -678,7 +733,7 @@ class TestIntegration:
                           column:
                             name: name
             """,
-            "chinook/metadata/artist_model.hml": """\
+                "chinook/metadata/artist_model.hml": """\
                 kind: Model
                 version: v1
                 definition:
@@ -692,7 +747,7 @@ class TestIntegration:
                     selectMany:
                       queryRootField: artists
             """,
-            "chinook/metadata/artist_perms.hml": """\
+                "chinook/metadata/artist_perms.hml": """\
                 kind: TypePermissions
                 version: v1
                 definition:
@@ -704,7 +759,7 @@ class TestIntegration:
                           - artistId
                           - name
             """,
-            "chinook/metadata/artist_model_perms.hml": """\
+                "chinook/metadata/artist_model_perms.hml": """\
                 kind: ModelPermissions
                 version: v1
                 definition:
@@ -713,13 +768,14 @@ class TestIntegration:
                     - role: user
                       filter: null
             """,
-            "chinook/metadata/bool_expr.hml": """\
+                "chinook/metadata/bool_expr.hml": """\
                 kind: BooleanExpressionType
                 version: v1
                 definition:
                   name: ArtistBoolExp
             """,
-        })
+            },
+        )
         collector = WarningCollector()
         md = parse_hml_dir(hml, collector)
         config = convert_hml(md, collector=collector)
@@ -734,17 +790,13 @@ class TestIntegration:
         assert validated.tables[0].table_name == "artist"
 
         # Field resolution
-        id_col = next(
-            c for c in validated.tables[0].columns if c.name == "artist_id"
-        )
+        id_col = next(c for c in validated.tables[0].columns if c.name == "artist_id")
         assert id_col.alias == "artistId"
         assert "user" in id_col.visible_to
 
         # Warnings for BooleanExpressionType
         assert collector.has_warnings()
-        assert any(
-            w.category == "BooleanExpressionType" for w in collector.warnings
-        )
+        assert any(w.category == "BooleanExpressionType" for w in collector.warnings)
 
     def test_yaml_output_roundtrip(self, tmp_path: Path) -> None:
         """Config can be serialized to YAML and re-loaded."""

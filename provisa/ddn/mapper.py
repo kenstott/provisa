@@ -41,11 +41,14 @@ from provisa.ddn.models import (
     DDNRelationship,
     DDNTypePermission,
 )
+from provisa.import_shared.filters import _hasura_var_to_setting
 from provisa.import_shared.warnings import WarningCollector
 
 # DDN permission filters are recursive JSON: field->predicate or logical combinator.
 # Values are isinstance-narrowed at every access site in _ddn_filter_to_sql.
-DdnFilterNode = dict[str, object]  # object-ok: recursive parsed JSON; all access sites narrow with isinstance
+DdnFilterNode = dict[
+    str, object
+]  # object-ok: recursive parsed JSON; all access sites narrow with isinstance
 
 # Leaf operand from a DDN filter predicate: scalar, list, session-var dict, or None.
 DdnOperand = str | int | float | bool | list[str | int | float | bool] | dict[str, str] | None
@@ -252,16 +255,19 @@ def _map_rls_rules(
                 continue
             sql_filter = _ddn_filter_to_sql(mp.filter, field_col_map)
             if sql_filter and sql_filter != "TRUE":
-                rules.append(RLSRule(
-                    table_id=table_id,
-                    role_id=mp.role,
-                    filter=sql_filter,
-                ))
+                rules.append(
+                    RLSRule(
+                        table_id=table_id,
+                        role_id=mp.role,
+                        filter=sql_filter,
+                    )
+                )
     return rules
 
 
 def _ddn_filter_to_sql(
-    flt: DdnFilterNode, field_col_map: dict[str, str],
+    flt: DdnFilterNode,
+    field_col_map: dict[str, str],
 ) -> str:
     """Convert a DDN permission filter to a SQL WHERE clause.
 
@@ -317,13 +323,11 @@ def _ddn_op_to_sql(col: str, op: str, operand: DdnOperand) -> str:
     if isinstance(operand, dict) and len(operand) == 1:
         key = next(iter(operand))
         if key.startswith("x-hasura-") or key.startswith("X-Hasura-"):
-            return f"{col} {sql_op} ${{{key}}}"
+            return f"{col} {sql_op} current_setting('provisa.{_hasura_var_to_setting(key)}')"
     if isinstance(operand, str):
         return f"{col} {sql_op} '{operand}'"
     if isinstance(operand, list):
-        items = ", ".join(
-            f"'{v}'" if isinstance(v, str) else str(v) for v in operand
-        )
+        items = ", ".join(f"'{v}'" if isinstance(v, str) else str(v) for v in operand)
         return f"{col} {sql_op} ({items})"
     if operand is None:
         return f"{col} {sql_op} NULL"
@@ -361,22 +365,27 @@ def _map_relationships(
         src_col = _resolve_column(src_gql, src_field_map)
         tgt_col = _resolve_column(tgt_gql, tgt_field_map)
 
-        cardinality = Cardinality.many_to_one if rel.rel_type == "Object" else Cardinality.one_to_many
+        cardinality = (
+            Cardinality.many_to_one if rel.rel_type == "Object" else Cardinality.one_to_many
+        )
         rel_id = f"{source_tid}.{rel.name}"
 
-        result.append(Relationship(
-            id=rel_id,
-            source_table_id=source_tid,
-            target_table_id=target_tid,
-            source_column=src_col,
-            target_column=tgt_col,
-            cardinality=cardinality,
-        ))
+        result.append(
+            Relationship(
+                id=rel_id,
+                source_table_id=source_tid,
+                target_table_id=target_tid,
+                source_column=src_col,
+                target_column=tgt_col,
+                cardinality=cardinality,
+            )
+        )
     return result
 
 
 def _find_model_for_type(
-    type_name: str, model_index: dict[str, DDNModel],
+    type_name: str,
+    model_index: dict[str, DDNModel],
 ) -> DDNModel | None:
     """Find the model that uses the given ObjectType."""
     for m in model_index.values():
@@ -397,10 +406,7 @@ def _collect_roles(
     for mp in model_perms:
         if mp.role:
             role_ids.add(mp.role)
-    return [
-        Role(id=rid, capabilities=["read"], domain_access=["*"])
-        for rid in sorted(role_ids)
-    ]
+    return [Role(id=rid, capabilities=["read"], domain_access=["*"]) for rid in sorted(role_ids)]
 
 
 def _map_commands(
@@ -411,25 +417,24 @@ def _map_commands(
     functions: list[Function] = []
     for cmd in commands:
         source_id = _safe_id(cmd.connector_name)
-        args = [
-            FunctionArgument(name=aname, type=atype)
-            for aname, atype in cmd.arguments.items()
-        ]
+        args = [FunctionArgument(name=aname, type=atype) for aname, atype in cmd.arguments.items()]
         fn_name = cmd.graphql_root_field or cmd.name
         desc = f"DDN {cmd.command_type}" if cmd.command_type else None
         fn_kind = "query" if cmd.command_type == "query" else "mutation"
 
-        functions.append(Function(
-            name=fn_name,
-            source_id=source_id,
-            schema_name="public",
-            function_name=cmd.source_name or cmd.name,
-            returns=cmd.return_type or "void",
-            arguments=args,
-            domain_id=cmd.subgraph or "default",
-            description=desc,
-            kind=fn_kind,
-        ))
+        functions.append(
+            Function(
+                name=fn_name,
+                source_id=source_id,
+                schema_name="public",
+                function_name=cmd.source_name or cmd.name,
+                returns=cmd.return_type or "void",
+                arguments=args,
+                domain_id=cmd.subgraph or "default",
+                description=desc,
+                kind=fn_kind,
+            )
+        )
     return functions
 
 
@@ -456,6 +461,7 @@ def convert_hml(
     collector: WarningCollector | None = None,
     domain_map: dict[str, str] | None = None,
     source_overrides: SourceOverrides | None = None,
+    agg_collector: dict | None = None,
 ) -> ProvisaConfig:
     """Convert DDN HML metadata to a ProvisaConfig.
 
@@ -464,6 +470,8 @@ def convert_hml(
         collector: Warning collector for unsupported features.
         domain_map: Optional subgraph->domain mapping.
         source_overrides: Optional per-source connection overrides.
+        agg_collector: If provided, populated with {object_type: AggConfig} for
+            sidecar output. Aggregates are NOT written into table.description.
     """
     if collector is None:
         collector = WarningCollector()
@@ -495,24 +503,32 @@ def convert_hml(
         if not ot:
             collector.warn(
                 "missing_type",
-                f"Model '{model.name}' references unknown ObjectType "
-                f"'{model.object_type}'",
+                f"Model '{model.name}' references unknown ObjectType '{model.object_type}'",
             )
             continue
         table = _map_model_to_table(
-            model, ot, field_col_maps, type_perms_idx,
+            model,
+            ot,
+            field_col_maps,
+            type_perms_idx,
             domain_map,
         )
         tables.append(table)
 
     # RLS rules
     rls_rules = _map_rls_rules(
-        model_perms_idx, model_index, field_col_maps, ot_index,
+        model_perms_idx,
+        model_index,
+        field_col_maps,
+        ot_index,
     )
 
     # Relationships
     relationships = _map_relationships(
-        metadata.relationships, model_index, ot_index, field_col_maps,
+        metadata.relationships,
+        model_index,
+        ot_index,
+        field_col_maps,
     )
 
     # Roles
@@ -521,21 +537,10 @@ def convert_hml(
     # Functions from commands
     functions = _map_commands(metadata.commands, model_index)
 
-    # Aggregate expressions (stored as metadata on tables, not a first-class
-    # Provisa config field — attach as description annotations)
+    # Aggregate expressions — emit to sidecar if caller requests it
     agg_config = _map_aggregate_expressions(metadata.aggregate_expressions)
-    for table in tables:
-        model = _find_model_by_collection(table.table_name, metadata.models)
-        if model and model.aggregate_expression:
-            agg = agg_config.get(
-                model.object_type, agg_config.get(model.aggregate_expression),
-            )
-            if agg:
-                agg_desc = _format_agg_description(agg)
-                if table.description:
-                    table.description += f"\n{agg_desc}"
-                else:
-                    table.description = agg_desc
+    if agg_collector is not None:
+        agg_collector.update(agg_config)
 
     # Emit warnings for skipped kinds
     for kind, count in metadata.skipped_kinds.items():
@@ -558,7 +563,8 @@ def convert_hml(
 
 
 def _find_model_by_collection(
-    collection: str, models: list[DDNModel],
+    collection: str,
+    models: list[DDNModel],
 ) -> DDNModel | None:
     for m in models:
         if m.collection == collection or m.name == collection:
