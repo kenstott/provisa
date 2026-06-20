@@ -344,6 +344,7 @@ class LiveOutputConfig(BaseModel):
     type: str  # "sse" | "kafka"
     topic: str | None = None  # Kafka topic (required when type="kafka")
     key_column: str | None = None  # Kafka message key column
+    bootstrap_servers: str | None = None  # Kafka bootstrap (required when type="kafka")
 
 
 class LiveDeliveryConfig(BaseModel):

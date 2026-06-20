@@ -2515,11 +2515,15 @@ async def _start_servers(_log: logging.Logger) -> None:
                 continue
             _kafka_outs = []
             for _out in _table.live.outputs:
-                if _out.type == "kafka" and _out.topic:
+                if _out.type == "kafka" and _out.topic and _out.bootstrap_servers:
                     from provisa.live.outputs.kafka import KafkaSinkOutput
 
                     _kafka_outs.append(
-                        KafkaSinkOutput(topic=_out.topic, key_column=_out.key_column)
+                        KafkaSinkOutput(
+                            bootstrap_servers=_out.bootstrap_servers,
+                            topic=_out.topic,
+                            key_column=_out.key_column,
+                        )
                     )
             live_engine.register(
                 query_id=f"{_table.source_id}.{_table.table_name}",

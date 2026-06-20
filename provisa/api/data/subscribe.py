@@ -387,7 +387,8 @@ async def subscribe(
         # Route to live engine SSE output
         if state.live_engine is None or not state.live_engine.is_registered(query_id):
             raise HTTPException(status_code=404, detail=f"Live query {query_id!r} not registered")
-        queue = state.live_engine.subscribe(query_id)
+        _engine = state.live_engine
+        queue = _engine.subscribe(query_id)
 
         async def _live_event_stream():
             try:
@@ -400,7 +401,7 @@ async def subscribe(
             except asyncio.CancelledError:
                 pass
             finally:
-                state.live_engine.unsubscribe(query_id, queue)
+                _engine.unsubscribe(query_id, queue)
 
         return StreamingResponse(
             _live_event_stream(),
