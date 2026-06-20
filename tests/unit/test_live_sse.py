@@ -272,7 +272,7 @@ class TestEnginePollEdgeCases:
         ):
             await engine._poll("q1")
 
-        mock_set_wm.assert_called_once_with(conn, "q1", "2026-03-31")
+        mock_set_wm.assert_called_once_with(conn, "q1", "sse", "2026-03-31")
 
     async def test_poll_watermark_column_missing_from_row_uses_empty_string(self):
         raw_rows = [{"id": 1}, {"id": 2}]
@@ -296,7 +296,7 @@ class TestEnginePollEdgeCases:
             await engine._poll("q1")
 
         mock_set_wm.assert_called_once()
-        _, _, wm_value = mock_set_wm.call_args[0]
+        _, _, _, wm_value = mock_set_wm.call_args[0]
         assert isinstance(wm_value, str)
 
     async def test_poll_delivers_to_multiple_subscribers_simultaneously(self):

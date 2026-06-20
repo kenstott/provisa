@@ -20,6 +20,9 @@ import strawberry
 from strawberry.types.info import Info as StrawberryInfo
 
 from provisa.compiler.naming import source_to_catalog
+from provisa.otel_compat import get_tracer as _get_tracer
+
+_tracer = _get_tracer(__name__)
 from provisa.api.admin._config_io import config_path as _config_path, read_config
 from provisa.api.admin.db_queries import derive_graphql_alias as _derive_graphql_alias_fn
 from provisa.cypher.label_map import _to_rel_type as _to_cypher_rel_type
@@ -401,6 +404,7 @@ async def _fetch_table_with_columns(
         cache_ttl=row.get("cache_ttl"),
         gql_naming_convention=row.get("gql_naming_convention"),
         watermark_column=row.get("watermark_column"),
+        governance=row.get("governance"),
         columns=columns,
         column_presets=presets,
         api_endpoint=api_endpoint,
@@ -759,28 +763,29 @@ class Query:
 
     @strawberry.field
     async def tables(self, info: StrawberryInfo) -> list[RegisteredTableType]:
-        from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
-        from provisa.api.app import state as _state
+        with _tracer.start_as_current_span("admin.schema_introspect"):
+            from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
+            from provisa.api.app import state as _state
 
-        identity = _identity_from_info(info)
-        if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
-            user_can_deploy = True  # dev mode — no auth, allow all
-        else:
-            caps = _resolved_capabilities(identity, _state)
-            user_can_deploy = bool(caps & {"table_registration", "admin", "superadmin"})
+            identity = _identity_from_info(info)
+            if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
+                user_can_deploy = True  # dev mode — no auth, allow all
+            else:
+                caps = _resolved_capabilities(identity, _state)
+                user_can_deploy = bool(caps & {"table_registration", "admin", "superadmin"})
 
-        pool = await _get_pool()
-        async with pool.acquire() as conn:
-            rows = await conn.fetch("SELECT * FROM registered_tables ORDER BY id")
-            all_tables = await conn.fetch(
-                """SELECT rt.source_id, rt.domain_id, rt.schema_name, rt.table_name, rt.alias
-                   FROM registered_tables rt
-                   WHERE rt.source_id != '__provisa__'""",
-            )
-            return [
-                await _fetch_table_with_columns(conn, r, list(all_tables), user_can_deploy)
-                for r in rows
-            ]
+            pool = await _get_pool()
+            async with pool.acquire() as conn:
+                rows = await conn.fetch("SELECT * FROM registered_tables ORDER BY id")
+                all_tables = await conn.fetch(
+                    """SELECT rt.source_id, rt.domain_id, rt.schema_name, rt.table_name, rt.alias
+                       FROM registered_tables rt
+                       WHERE rt.source_id != '__provisa__'""",
+                )
+                return [
+                    await _fetch_table_with_columns(conn, r, list(all_tables), user_can_deploy)
+                    for r in rows
+                ]
 
     @strawberry.field
     async def relationships(self) -> list[RelationshipType]:

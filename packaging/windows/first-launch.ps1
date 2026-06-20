@@ -1,19 +1,18 @@
 # First-launch setup for Windows installer.
-# Installs VirtualBox if needed, imports and starts the Provisa VM,
-# loads bundled Docker images, and writes Provisa config.
+# Ensures WSL2 + nerdctl are available, loads bundled container images,
+# and writes Provisa config.
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$ScriptDir   = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
-$ImagesDir   = Join-Path $ScriptDir 'images'
-$ComposeDir  = Join-Path $ScriptDir 'compose'
-$SourceDir   = Join-Path $ScriptDir 'provisa-source'
-$OvaPath     = Join-Path $ScriptDir 'provisa-runtime.ova'
-$VBoxSetup   = Join-Path $ScriptDir 'redist\VirtualBox-setup.exe'
-$ProvisaHome = Join-Path $env:USERPROFILE '.provisa'
-$Sentinel    = Join-Path $ProvisaHome '.first-launch-complete'
-$VmName      = 'Provisa'
+$ScriptDir      = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
+$ImagesDir      = Join-Path $ScriptDir 'images'
+$ComposeDir     = Join-Path $ScriptDir 'compose'
+$SourceDir      = Join-Path $ScriptDir 'provisa-source'
+$RedistDir      = Join-Path $ScriptDir 'redist'
+$NerdctlBundle  = Join-Path $RedistDir 'nerdctl-full.tar.gz'
+$ProvisaHome    = Join-Path $env:USERPROFILE '.provisa'
+$Sentinel       = Join-Path $ProvisaHome '.first-launch-complete'
 
 function Write-Info  { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Cyan }
 function Write-Ok    { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Green }
@@ -61,130 +60,78 @@ function Ask-RamBudget {
   Write-Ok "RAM budget: $($script:BudgetGb)GB → Trino workers: $($script:TrinoWorkers)"
 }
 
-# ── Locate VBoxManage ─────────────────────────────────────────────────────────
-function Find-VBoxManage {
-  $cmd = Get-Command VBoxManage -ErrorAction SilentlyContinue
-  if ($cmd) { return $cmd.Source }
-  foreach ($p in @(
-    "$env:ProgramFiles\Oracle\VirtualBox\VBoxManage.exe",
-    "${env:ProgramFiles(x86)}\Oracle\VirtualBox\VBoxManage.exe"
-  )) {
-    if (Test-Path $p) { return $p }
-  }
-  return $null
-}
+# ── Ensure WSL2 is enabled and nerdctl-full is installed ─────────────────────
+function Ensure-WSL2 {
+  Write-Info 'Checking WSL2 status...'
+  $wslStatus = wsl --status 2>&1
+  $wslEnabled = ($LASTEXITCODE -eq 0) -and ($wslStatus -match 'Default Version: 2' -or $wslStatus -match 'WSL 2')
 
-# ── Install VirtualBox if needed ─────────────────────────────────────────────
-function Ensure-VirtualBox {
-  $script:VBoxManage = Find-VBoxManage
-  if ($script:VBoxManage) {
-    Write-Ok "VirtualBox found: $($script:VBoxManage)"
-    return
-  }
+  if (-not $wslEnabled) {
+    Write-Info 'WSL2 is not enabled. Elevation required to install WSL2.'
+    Write-Host ''
+    Write-Host 'Windows Subsystem for Linux 2 must be installed.' -ForegroundColor Yellow
+    Write-Host 'A UAC prompt will appear. Accept it to continue.' -ForegroundColor Yellow
+    Write-Host ''
 
-  if (-not (Test-Path $VBoxSetup)) {
-    Write-Err "VirtualBox installer not found at: $VBoxSetup"
-    Write-Err 'Reinstall Provisa to restore bundled components.'
-    exit 1
-  }
-
-  Write-Info 'Installing VirtualBox (~2 minutes)...'
-  $proc = Start-Process -FilePath $VBoxSetup `
-    -ArgumentList '--silent', '--ignore-reboot' `
-    -Wait -PassThru
-  if ($proc.ExitCode -ne 0) {
-    Write-Err "VirtualBox installation failed (exit code $($proc.ExitCode))."
-    exit 1
-  }
-
-  # Refresh PATH so VBoxManage is findable without rebooting
-  $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
-              [System.Environment]::GetEnvironmentVariable('PATH', 'User')
-
-  $script:VBoxManage = Find-VBoxManage
-  if (-not $script:VBoxManage) {
-    Write-Err 'VBoxManage not found after installation. A reboot may be required.'
-    exit 1
-  }
-  Write-Ok "VirtualBox installed: $($script:VBoxManage)"
-}
-
-# ── Import OVA if VM does not exist ──────────────────────────────────────────
-function Import-Vm {
-  $existing = & $script:VBoxManage list vms 2>&1
-  if ($existing -match "`"$VmName`"") {
-    Write-Info 'Provisa VM already imported.'
-    return
-  }
-
-  if (-not (Test-Path $OvaPath)) {
-    Write-Err "VM image not found: $OvaPath"
-    Write-Err 'Reinstall Provisa to restore bundled components.'
-    exit 1
-  }
-
-  Write-Info 'Importing Provisa VM...'
-  & $script:VBoxManage import $OvaPath --vsys 0 --vmname $VmName
-  if ($LASTEXITCODE -ne 0) { Write-Err 'VM import failed.'; exit 1 }
-
-  # Allocate RAM budget to the VM
-  $vmRamMb = $script:BudgetGb * 1024
-  & $script:VBoxManage modifyvm $VmName --memory $vmRamMb
-  Write-Info "VM RAM set to ${vmRamMb}MB."
-
-  # Port forwarding: Docker API + all service ports
-  Write-Info 'Configuring port forwarding...'
-  $rules = @(
-    'docker,tcp,127.0.0.1,2375,,2375',
-    'postgres,tcp,127.0.0.1,5432,,5432',
-    'pgbouncer,tcp,127.0.0.1,6432,,6432',
-    'redis,tcp,127.0.0.1,6379,,6379',
-    'minio-api,tcp,127.0.0.1,9000,,9000',
-    'minio-console,tcp,127.0.0.1,9001,,9001',
-    'trino,tcp,127.0.0.1,8080,,8080',
-    'kafka,tcp,127.0.0.1,9092,,9092',
-    'zaychik,tcp,127.0.0.1,8480,,8480',
-    'elasticsearch,tcp,127.0.0.1,9200,,9200',
-    'debezium,tcp,127.0.0.1,8083,,8083',
-    'schema-registry,tcp,127.0.0.1,8081,,8081',
-    'mongodb,tcp,127.0.0.1,27017,,27017',
-    'provisa-ui,tcp,127.0.0.1,3000,,3000',
-    'provisa-api,tcp,127.0.0.1,8000,,8000'
-  )
-  foreach ($rule in $rules) {
-    & $script:VBoxManage modifyvm $VmName --natpf1 $rule | Out-Null
-  }
-
-  Write-Ok 'VM imported and configured.'
-}
-
-# ── Start VM and wait for Docker API ─────────────────────────────────────────
-function Start-Vm {
-  $info  = & $script:VBoxManage showvminfo $VmName --machinereadable 2>&1
-  $state = ($info | Select-String 'VMState=').ToString() -replace '.*="(.*)".*', '$1'
-
-  if ($state -eq 'running') {
-    Write-Info 'Provisa VM is already running.'
+    $proc = Start-Process -FilePath 'wsl.exe' `
+      -ArgumentList '--install', '--no-distribution' `
+      -Verb RunAs -Wait -PassThru
+    if ($proc.ExitCode -ne 0) {
+      Write-Err "WSL2 installation failed (exit code $($proc.ExitCode)). Reboot may be required."
+      Write-Err 'After rebooting, re-run Provisa to complete setup.'
+      exit 1
+    }
+    Write-Ok 'WSL2 installed. A reboot may be required before continuing.'
   } else {
-    Write-Info 'Starting Provisa VM (headless)...'
-    & $script:VBoxManage startvm $VmName --type headless
-    if ($LASTEXITCODE -ne 0) { Write-Err 'Failed to start Provisa VM.'; exit 1 }
+    Write-Ok 'WSL2 is enabled.'
   }
 
-  $env:DOCKER_HOST = 'tcp://127.0.0.1:2375'
-  Write-Info 'Waiting for Docker API (up to 2 minutes)...'
-  $retries = 60
-  while ($retries -gt 0) {
-    $out = docker info 2>&1
-    if ($LASTEXITCODE -eq 0) { break }
-    Start-Sleep 2
-    $retries--
-  }
-  if ($retries -eq 0) {
-    Write-Err 'Docker API did not respond. Check the VM with VBoxManage showvminfo Provisa.'
+  # Verify WSL can execute commands
+  $wslTest = wsl echo ok 2>&1
+  if ($LASTEXITCODE -ne 0 -or $wslTest -notmatch 'ok') {
+    Write-Err 'WSL2 is installed but not responding. A reboot may be required.'
     exit 1
   }
-  Write-Ok 'VM started and Docker API ready.'
+
+  # Install nerdctl-full if not already present
+  $nerdctlCheck = wsl sh -c 'command -v nerdctl' 2>&1
+  if ($LASTEXITCODE -eq 0 -and $nerdctlCheck -match 'nerdctl') {
+    Write-Ok "nerdctl already installed: $nerdctlCheck"
+    return
+  }
+
+  if (-not (Test-Path $NerdctlBundle)) {
+    Write-Err "nerdctl-full bundle not found at: $NerdctlBundle"
+    Write-Err 'Reinstall Provisa to restore bundled components.'
+    exit 1
+  }
+
+  Write-Info 'Installing nerdctl-full into WSL2...'
+
+  # Convert Windows path to WSL path for the bundle
+  $wslBundle = wsl wslpath -u $NerdctlBundle 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    Write-Err "Failed to convert bundle path for WSL: $wslBundle"
+    exit 1
+  }
+  $wslBundle = $wslBundle.Trim()
+
+  # Extract nerdctl-full into /usr/local (requires root in WSL)
+  wsl sh -c "sudo tar -C /usr/local -xzf '$wslBundle'"
+  if ($LASTEXITCODE -ne 0) {
+    Write-Err 'Failed to install nerdctl-full into WSL2.'
+    exit 1
+  }
+
+  # Start containerd if not running
+  wsl sh -c 'sudo nohup containerd > /dev/null 2>&1 &'
+
+  $nerdctlVerify = wsl nerdctl version 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    Write-Err "nerdctl not functional after installation: $nerdctlVerify"
+    exit 1
+  }
+  Write-Ok 'nerdctl-full installed and containerd running.'
 }
 
 # ── Load images ────────────────────────────────────────────────────────────────
@@ -193,19 +140,14 @@ function Load-Images {
   $tars = Get-ChildItem -Path $ImagesDir -Filter '*.tar.gz' -ErrorAction Stop
   foreach ($tar in $tars) {
     Write-Info "  Loading: $($tar.Name)"
-    # Decompress to a temp .tar, then load — docker load does not accept .gz on Windows
-    $tmpTar = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetFileNameWithoutExtension($tar.Name))
-    try {
-      $inStream  = [System.IO.File]::OpenRead($tar.FullName)
-      $gzStream  = New-Object System.IO.Compression.GZipStream($inStream, [System.IO.Compression.CompressionMode]::Decompress)
-      $outStream = [System.IO.File]::Create($tmpTar)
-      $gzStream.CopyTo($outStream)
-      $outStream.Close(); $gzStream.Close(); $inStream.Close()
-      docker load -i $tmpTar
-      if ($LASTEXITCODE -ne 0) { Write-Err "Failed to load image: $($tar.Name)"; exit 1 }
-    } finally {
-      Remove-Item -Path $tmpTar -Force -ErrorAction SilentlyContinue
+    $wslTarPath = wsl wslpath -u $tar.FullName 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      Write-Err "Failed to convert path for WSL: $($tar.FullName)"
+      exit 1
     }
+    $wslTarPath = $wslTarPath.Trim()
+    wsl nerdctl load -i $wslTarPath
+    if ($LASTEXITCODE -ne 0) { Write-Err "Failed to load image: $($tar.Name)"; exit 1 }
   }
   Write-Ok "Loaded $($tars.Count) images."
 }
@@ -217,7 +159,13 @@ function Build-ProvisaImage {
     Write-Err "provisa-source not found at $SourceDir. Reinstall Provisa."
     exit 1
   }
-  docker build -t provisa/provisa:local $SourceDir
+  $wslSourceDir = wsl wslpath -u $SourceDir 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    Write-Err "Failed to convert source path for WSL: $wslSourceDir"
+    exit 1
+  }
+  $wslSourceDir = $wslSourceDir.Trim()
+  wsl nerdctl build -t provisa/provisa:local $wslSourceDir
   if ($LASTEXITCODE -ne 0) { Write-Err 'Failed to build provisa image.'; exit 1 }
   Write-Ok 'provisa/provisa:local built.'
 }
@@ -321,22 +269,22 @@ function Install-Extensions {
 
 # ── Ask hostname ─────────────────────────────────────────────────────────────
 function Ask-Hostname {
-  $input = Read-Host 'Hostname for Provisa [localhost]'
-  $input = $input.Trim()
-  if ([string]::IsNullOrEmpty($input)) { return 'localhost' }
-  return $input
+  $inputVal = Read-Host 'Hostname for Provisa [localhost]'
+  $inputVal = $inputVal.Trim()
+  if ([string]::IsNullOrEmpty($inputVal)) { return 'localhost' }
+  return $inputVal
 }
 
 # ── Ask UI port ───────────────────────────────────────────────────────────────
 function Ask-UiPort {
   do {
-    $input = Read-Host 'Web UI port [3000]'
-    $input = $input.Trim()
-    if ([string]::IsNullOrEmpty($input)) { $input = '3000' }
-    $valid = $input -match '^\d+$' -and [int]$input -ge 1024 -and [int]$input -le 65535
+    $inputVal = Read-Host 'Web UI port [3000]'
+    $inputVal = $inputVal.Trim()
+    if ([string]::IsNullOrEmpty($inputVal)) { $inputVal = '3000' }
+    $valid = $inputVal -match '^\d+$' -and [int]$inputVal -ge 1024 -and [int]$inputVal -le 65535
     if (-not $valid) { Write-Host 'Invalid port. Enter a number between 1024 and 65535.' }
   } while (-not $valid)
-  return [int]$input
+  return [int]$inputVal
 }
 
 # ── Write config ───────────────────────────────────────────────────────────────
@@ -360,21 +308,11 @@ hostname: $hostname
 ui_port: $uiPort
 api_port: $apiPort
 auto_open_browser: true
-runtime: virtualbox
-vm_name: $VmName
-docker_host: "tcp://127.0.0.1:2375"
+runtime: wsl2-nerdctl
 federation_workers: $($script:TrinoWorkers)
 "@
   Set-Content -Path $configPath -Value $content -Encoding UTF8
   Write-Ok "Config written to $configPath"
-}
-
-# ── Persist DOCKER_HOST in user environment ───────────────────────────────────
-function Set-DockerHostEnv {
-  [System.Environment]::SetEnvironmentVariable(
-    'DOCKER_HOST', 'tcp://127.0.0.1:2375', 'User')
-  $env:DOCKER_HOST = 'tcp://127.0.0.1:2375'
-  Write-Ok 'DOCKER_HOST set in user environment.'
 }
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -388,14 +326,11 @@ Write-Host ''
 Write-Info 'Setting up Provisa (no internet required)...'
 
 Ask-RamBudget
-Ensure-VirtualBox
-Import-Vm
-Start-Vm
+Ensure-WSL2
 Load-Images
 Build-ProvisaImage
 Install-Extensions
 Write-Config
-Set-DockerHostEnv
 
 if (-not (Test-Path $ProvisaHome)) {
   New-Item -ItemType Directory -Path $ProvisaHome -Force | Out-Null

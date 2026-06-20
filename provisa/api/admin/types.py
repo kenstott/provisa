@@ -60,6 +60,7 @@ class RegisteredTableType:
     cache_ttl: int | None
     gql_naming_convention: str | None
     watermark_column: str | None
+    governance: str | None = None
     columns: list[TableColumnType]
     column_presets: list[ColumnPresetType] = strawberry.field(default_factory=list)
     api_endpoint: str | None = None

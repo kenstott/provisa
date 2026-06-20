@@ -76,8 +76,8 @@ class TestAdminSourcesCRUD:
         data = await _gql(
             client,
             'mutation { createSource(input: {id: "ui-test-src", type: "postgresql", '
-            'host: "localhost", port: 5432, database: "testdb", '
-            'username: "testuser", password: "testpass"}) { success message } }',
+            'host: "localhost", port: 5432, database: "provisa", '
+            'username: "provisa", password: "provisa"}) { success message } }',
         )
         assert data["createSource"]["success"] is True
 
@@ -92,8 +92,8 @@ class TestAdminSourcesCRUD:
         await _gql(
             client,
             'mutation { createSource(input: {id: "ui-delete-me", type: "postgresql", '
-            'host: "localhost", port: 5432, database: "testdb", '
-            'username: "testuser", password: "testpass"}) { success } }',
+            'host: "localhost", port: 5432, database: "provisa", '
+            'username: "provisa", password: "provisa"}) { success } }',
         )
 
         # Delete

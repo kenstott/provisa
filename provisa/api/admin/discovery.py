@@ -25,6 +25,9 @@ from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import analyze
 from provisa.discovery.collector import collect_fk_candidates, collect_metadata
 from provisa.discovery.prompt import build_prompt
+from provisa.otel_compat import get_tracer as _get_tracer
+
+_tracer = _get_tracer(__name__)
 
 router = APIRouter(prefix="/admin/discover")
 
@@ -57,53 +60,55 @@ _log = _logging.getLogger(__name__)
 @router.post("/relationships")
 async def trigger_discovery(body: DiscoverRequest):
     """Trigger relationship discovery: FK constraints always, LLM inference if ANTHROPIC_API_KEY set."""
-    scope_id: str | int | None = None
-    if body.scope == "table":
-        if body.table_id is None:
-            raise HTTPException(status_code=400, detail="table_id required for table scope")
-        scope_id = body.table_id
-    elif body.scope == "domain":
-        if body.domain_id is None:
-            raise HTTPException(status_code=400, detail="domain_id required for domain scope")
-        scope_id = body.domain_id
+    with _tracer.start_as_current_span("admin.discovery") as span:
+        scope_id: str | int | None = None
+        if body.scope == "table":
+            if body.table_id is None:
+                raise HTTPException(status_code=400, detail="table_id required for table scope")
+            scope_id = body.table_id
+        elif body.scope == "domain":
+            if body.domain_id is None:
+                raise HTTPException(status_code=400, detail="domain_id required for domain scope")
+            scope_id = body.domain_id
 
-    all_candidates = []
-    pool = state.pg_pool
-    assert pool is not None
-    trino_conn = state.trino_conn
-    assert trino_conn is not None
-    async with pool.acquire() as _conn:
-        conn = cast(asyncpg.Connection, _conn)
-        fk_candidates = await collect_fk_candidates(
-            trino_conn,
-            conn,
-            body.scope,
-            scope_id,
-        )
-        _log.warning("FK introspection returned %d candidates", len(fk_candidates))
-        all_candidates.extend(fk_candidates)
-
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if api_key:
-            discovery_input = await collect_metadata(
+        all_candidates = []
+        pool = state.pg_pool
+        assert pool is not None
+        trino_conn = state.trino_conn
+        assert trino_conn is not None
+        async with pool.acquire() as _conn:
+            conn = cast(asyncpg.Connection, _conn)
+            fk_candidates = await collect_fk_candidates(
                 trino_conn,
                 conn,
                 body.scope,
                 scope_id,
             )
-            _log.warning(
-                "LLM discovery metadata: %d tables, columns per table: %s",
-                len(discovery_input.tables),
-                {t.table_name: len(t.columns) for t in discovery_input.tables},
-            )
-            prompt = build_prompt(discovery_input)
-            llm_candidates = analyze(prompt, api_key, discovery_input)
-            _log.warning("LLM returned %d candidates after validation", len(llm_candidates))
-            all_candidates.extend(llm_candidates)
+            _log.warning("FK introspection returned %d candidates", len(fk_candidates))
+            all_candidates.extend(fk_candidates)
 
-        stored_ids = await candidates_repo.store_candidates(conn, all_candidates, body.scope)
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if api_key:
+                discovery_input = await collect_metadata(
+                    trino_conn,
+                    conn,
+                    body.scope,
+                    scope_id,
+                )
+                _log.warning(
+                    "LLM discovery metadata: %d tables, columns per table: %s",
+                    len(discovery_input.tables),
+                    {t.table_name: len(t.columns) for t in discovery_input.tables},
+                )
+                prompt = build_prompt(discovery_input)
+                llm_candidates = analyze(prompt, api_key, discovery_input)
+                _log.warning("LLM returned %d candidates after validation", len(llm_candidates))
+                all_candidates.extend(llm_candidates)
 
-    return {"candidates_found": len(all_candidates), "stored_ids": stored_ids}
+            stored_ids = await candidates_repo.store_candidates(conn, all_candidates, body.scope)
+
+        span.set_attribute("admin.source_count", len(all_candidates))
+        return {"candidates_found": len(all_candidates), "stored_ids": stored_ids}
 
 
 @router.get("/candidates")
@@ -121,7 +126,9 @@ async def accept_candidate(candidate_id: int, body: AcceptRequest | None = None)
     pool = state.pg_pool
     assert pool is not None
     async with pool.acquire() as _conn:
-        return await candidates_repo.accept(cast(asyncpg.Connection, _conn), candidate_id, body.name if body else None)
+        return await candidates_repo.accept(
+            cast(asyncpg.Connection, _conn), candidate_id, body.name if body else None
+        )
 
 
 @router.post("/candidates/{candidate_id}/reject")

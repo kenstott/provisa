@@ -18,6 +18,9 @@ import re
 from dataclasses import dataclass
 
 from provisa.discovery.collector import DiscoveryInput
+from provisa.otel_compat import get_tracer as _get_tracer
+
+_tracer = _get_tracer(__name__)
 
 log = logging.getLogger(__name__)
 
@@ -50,8 +53,12 @@ def _extract_json(text: str) -> str:
 def _validate_candidate(raw: dict, discovery_input: DiscoveryInput) -> bool:
     """Check that referenced columns exist in the metadata."""
     required_keys = {
-        "source_table_id", "source_column", "target_table_id",
-        "target_column", "cardinality", "confidence",
+        "source_table_id",
+        "source_column",
+        "target_table_id",
+        "target_column",
+        "cardinality",
+        "confidence",
     }
     if not required_keys.issubset(raw.keys()):
         return False
@@ -85,42 +92,48 @@ def analyze(
     min_confidence: float = 0.7,
 ) -> list[RelationshipCandidate]:
     """Call LLM with prompt, parse and validate response."""
-    from provisa.llm.client import ProviasLLMClient
-    llm = ProviasLLMClient("relationship_inference")
-    response_text = llm.complete_sync(prompt, "You are a data analyst.", 4096)
-    log.warning("LLM raw response (%d chars): %s", len(response_text), response_text[:3000])
+    with _tracer.start_as_current_span("discovery.analyze"):
+        from provisa.llm.client import ProviasLLMClient
 
-    try:
-        raw_json = _extract_json(response_text)
-        candidates_raw = json.loads(raw_json)
-    except (json.JSONDecodeError, TypeError) as e:
-        log.warning("Malformed LLM response (%s). Raw text: %s", e, response_text[:500])
-        return []
+        llm = ProviasLLMClient("relationship_inference")
+        response_text = llm.complete_sync(prompt, "You are a data analyst.", 4096)
+        log.warning("LLM raw response (%d chars): %s", len(response_text), response_text[:3000])
 
-    if not isinstance(candidates_raw, list):
-        log.warning("LLM response is not a JSON array. Raw: %s", response_text[:500])
-        return []
+        try:
+            raw_json = _extract_json(response_text)
+            candidates_raw = json.loads(raw_json)
+        except (json.JSONDecodeError, TypeError) as e:
+            log.warning("Malformed LLM response (%s). Raw text: %s", e, response_text[:500])
+            return []
 
-    results: list[RelationshipCandidate] = []
-    for raw in candidates_raw:
-        if not isinstance(raw, dict):
-            continue
-        if not _validate_candidate(raw, discovery_input):
-            log.warning("Invalid candidate filtered: %s", raw)
-            continue
-        confidence = float(raw["confidence"])
-        if confidence < min_confidence:
-            log.warning("Candidate below threshold (%.2f < %.2f): %s", confidence, min_confidence, raw)
-            continue
-        results.append(RelationshipCandidate(
-            source_table_id=int(raw["source_table_id"]),
-            source_column=str(raw["source_column"]),
-            target_table_id=int(raw["target_table_id"]),
-            target_column=str(raw["target_column"]),
-            cardinality=str(raw["cardinality"]),
-            confidence=confidence,
-            reasoning=str(raw.get("reasoning", "")),
-            suggested_name=str(raw.get("suggested_name", "")),
-        ))
+        if not isinstance(candidates_raw, list):
+            log.warning("LLM response is not a JSON array. Raw: %s", response_text[:500])
+            return []
 
-    return results
+        results: list[RelationshipCandidate] = []
+        for raw in candidates_raw:
+            if not isinstance(raw, dict):
+                continue
+            if not _validate_candidate(raw, discovery_input):
+                log.warning("Invalid candidate filtered: %s", raw)
+                continue
+            confidence = float(raw["confidence"])
+            if confidence < min_confidence:
+                log.warning(
+                    "Candidate below threshold (%.2f < %.2f): %s", confidence, min_confidence, raw
+                )
+                continue
+            results.append(
+                RelationshipCandidate(
+                    source_table_id=int(raw["source_table_id"]),
+                    source_column=str(raw["source_column"]),
+                    target_table_id=int(raw["target_table_id"]),
+                    target_column=str(raw["target_column"]),
+                    cardinality=str(raw["cardinality"]),
+                    confidence=confidence,
+                    reasoning=str(raw.get("reasoning", "")),
+                    suggested_name=str(raw.get("suggested_name", "")),
+                )
+            )
+
+        return results
