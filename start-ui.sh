@@ -87,16 +87,21 @@ if [ "$OBSERVABILITY" = true ]; then
     JVM_CONFIG_PATCHED=true
   fi
 fi
-# Download Calcite Trino plugins (sharepoint, splunk) from kenstott/calcite releases
+# Download Calcite Trino plugins (sharepoint, splunk) and merge into a single
+# trino-calcite plugin dir so CalcitePlugin is registered only once.
 CALCITE_RELEASE="https://github.com/kenstott/calcite/releases/download/engine-v0.22.2"
 PLUGINS_DIR="$SCRIPT_DIR/trino/plugins"
+MERGED_DIR="$PLUGINS_DIR/trino-calcite"
+mkdir -p "$MERGED_DIR"
 for plugin in trino-sharepoint trino-splunk; do
-  if [ ! -d "$PLUGINS_DIR/$plugin" ] || [ -z "$(ls -A "$PLUGINS_DIR/$plugin" 2>/dev/null)" ]; then
+  STAGING="$PLUGINS_DIR/$plugin"
+  if [ ! -d "$STAGING" ] || [ -z "$(ls -A "$STAGING" 2>/dev/null)" ]; then
     echo "Downloading $plugin plugin..."
     curl -sL "$CALCITE_RELEASE/$plugin-plugin.zip" -o "$PLUGINS_DIR/$plugin-plugin.zip"
     unzip -q -o "$PLUGINS_DIR/$plugin-plugin.zip" -d "$PLUGINS_DIR"
     rm -f "$PLUGINS_DIR/$plugin-plugin.zip"
   fi
+  cp -n "$STAGING"/*.jar "$MERGED_DIR/" 2>/dev/null || true
 done
 
 # Run compose up; suppress exit code — Docker bug: a zombie "dead" postgres container
