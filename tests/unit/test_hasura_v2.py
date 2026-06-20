@@ -11,10 +11,8 @@
 
 """Unit tests for Hasura v2 metadata converter."""
 
-import textwrap
 from pathlib import Path
 
-import pytest
 import yaml
 
 from provisa.core.models import ProvisaConfig
@@ -56,20 +54,24 @@ class TestBoolExprToSQL:
         assert result == "age >= 18"
 
     def test_and_expression(self):
-        expr = {"_and": [
-            {"status": {"_eq": "active"}},
-            {"age": {"_gte": 18}},
-        ]}
+        expr = {
+            "_and": [
+                {"status": {"_eq": "active"}},
+                {"age": {"_gte": 18}},
+            ]
+        }
         result = bool_expr_to_sql(expr)
         assert "status = 'active'" in result
         assert "age >= 18" in result
         assert "AND" in result
 
     def test_or_expression(self):
-        expr = {"_or": [
-            {"role": {"_eq": "admin"}},
-            {"role": {"_eq": "editor"}},
-        ]}
+        expr = {
+            "_or": [
+                {"role": {"_eq": "admin"}},
+                {"role": {"_eq": "editor"}},
+            ]
+        }
         result = bool_expr_to_sql(expr)
         assert "role = 'admin'" in result
         assert "role = 'editor'" in result
@@ -104,25 +106,49 @@ class TestBoolExprToSQL:
         assert result == "t.id = 1"
 
     def test_nested_and_or(self):
-        expr = {"_and": [
-            {"_or": [
-                {"role": {"_eq": "admin"}},
-                {"role": {"_eq": "editor"}},
-            ]},
-            {"active": {"_eq": True}},
-        ]}
+        expr = {
+            "_and": [
+                {
+                    "_or": [
+                        {"role": {"_eq": "admin"}},
+                        {"role": {"_eq": "editor"}},
+                    ]
+                },
+                {"active": {"_eq": True}},
+            ]
+        }
         result = bool_expr_to_sql(expr)
         assert "OR" in result
         assert "AND" in result
 
     def test_exists_expression(self):
-        expr = {"_exists": {
-            "_table": {"schema": "public", "name": "users"},
-            "_where": {"id": {"_eq": 1}},
-        }}
+        expr = {
+            "_exists": {
+                "_table": {"schema": "public", "name": "users"},
+                "_where": {"id": {"_eq": 1}},
+            }
+        }
         result = bool_expr_to_sql(expr)
         assert "EXISTS" in result
         assert "public.users" in result
+
+    def test_regex_operator(self):
+        result = bool_expr_to_sql({"email": {"_regex": "^admin"}})
+        assert result == "email ~ '^admin'"
+
+    def test_iregex_operator(self):
+        result = bool_expr_to_sql({"name": {"_iregex": "^foo"}})
+        assert result == "name ~* '^foo'"
+
+    def test_session_var_emits_current_setting(self):
+        expr = {"user_id": {"_eq": {"X-Hasura-User-Id": "x-hasura-default-role"}}}
+        result = bool_expr_to_sql(expr)
+        assert "current_setting('provisa.user_id')" in result
+
+    def test_session_var_lowercase_prefix(self):
+        expr = {"org_id": {"_eq": {"x-hasura-org-id": "x-hasura-default-role"}}}
+        result = bool_expr_to_sql(expr)
+        assert "current_setting('provisa.org_id')" in result
 
 
 # ---------------------------------------------------------------------------
@@ -558,18 +584,14 @@ class TestMapper:
     def test_object_relationship_many_to_one(self):
         metadata = self._build_metadata()
         config = convert_metadata(metadata)
-        profile_rel = next(
-            (r for r in config.relationships if "profile" in r.id), None
-        )
+        profile_rel = next((r for r in config.relationships if "profile" in r.id), None)
         assert profile_rel is not None
         assert profile_rel.cardinality.value == "many-to-one"
 
     def test_array_relationship_one_to_many(self):
         metadata = self._build_metadata()
         config = convert_metadata(metadata)
-        orders_rel = next(
-            (r for r in config.relationships if "orders" in r.id), None
-        )
+        orders_rel = next((r for r in config.relationships if "orders" in r.id), None)
         assert orders_rel is not None
         assert orders_rel.cardinality.value == "one-to-many"
 
@@ -607,7 +629,8 @@ class TestMapper:
     def test_domain_map_applied(self):
         metadata = self._build_metadata()
         config = convert_metadata(
-            metadata, domain_map={"public": "core"},
+            metadata,
+            domain_map={"public": "core"},
         )
         for t in config.tables:
             assert t.domain_id == "core"
@@ -648,6 +671,63 @@ class TestMapper:
         config = convert_metadata(metadata)
         assert config.naming.relay_pagination is False
 
+    def test_auth_env_oauth_via_jwk_url(self):
+        metadata = self._build_metadata()
+        config = convert_metadata(
+            metadata,
+            auth_env={"JWK_URL": "https://auth.example.com/.well-known/jwks.json"},
+        )
+        assert config.auth.provider == "oauth"
+        assert config.auth.oauth is not None
+        assert config.auth.oauth["jwk_url"] == "https://auth.example.com/.well-known/jwks.json"
+
+    def test_auth_env_oauth_provider_explicit(self):
+        metadata = self._build_metadata()
+        config = convert_metadata(
+            metadata,
+            auth_env={
+                "AUTH_PROVIDER": "oauth",
+                "JWK_URL": "https://auth.example.com/.well-known/jwks.json",
+            },
+        )
+        assert config.auth.provider == "oauth"
+        assert config.auth.oauth is not None
+        assert config.auth.oauth["jwk_url"] == "https://auth.example.com/.well-known/jwks.json"
+
+    def test_auth_env_admin_secret_sets_superuser(self):
+        metadata = self._build_metadata()
+        config = convert_metadata(
+            metadata,
+            auth_env={"HASURA_GRAPHQL_ADMIN_SECRET": "s3cret"},
+        )
+        assert config.auth.superuser is not None
+        assert config.auth.superuser["secret"] == "s3cret"
+
+    def test_auth_env_claims_map_sets_role_mapping(self):
+        import json
+
+        metadata = self._build_metadata()
+        claims = {"x-hasura-role": "viewer", "x-hasura-org-id": "org_admin"}
+        config = convert_metadata(
+            metadata,
+            auth_env={"CLAIMS_MAP": json.dumps(claims)},
+        )
+        assert len(config.auth.role_mapping) == 2
+        keys = {e["claim"] for e in config.auth.role_mapping}
+        assert "x-hasura-role" in keys
+        assert "x-hasura-org-id" in keys
+
+    def test_auth_env_webhook_emits_warning(self):
+        metadata = self._build_metadata()
+        collector = WarningCollector()
+        convert_metadata(
+            metadata,
+            auth_env={"AUTH_PROVIDER": "webhook"},
+            collector=collector,
+        )
+        assert collector.has_warnings()
+        assert any("webhook" in w.lower() for w in [collector.summary()])
+
 
 # ---------------------------------------------------------------------------
 # CLI tests
@@ -670,6 +750,7 @@ class TestCLI:
         (tmp_path / "tables.yaml").write_text(yaml.dump(tables_yaml))
 
         from provisa.hasura_v2.cli import main
+
         ret = main([str(tmp_path), "--dry-run"])
         assert ret == 0
 
@@ -689,6 +770,7 @@ class TestCLI:
 
         out_file = tmp_path / "output.yaml"
         from provisa.hasura_v2.cli import main
+
         ret = main([str(tmp_path), "-o", str(out_file)])
         assert ret == 0
         assert out_file.exists()
@@ -700,5 +782,6 @@ class TestCLI:
 
     def test_missing_dir_returns_error(self, tmp_path: Path):
         from provisa.hasura_v2.cli import main
+
         ret = main([str(tmp_path / "nonexistent")])
         assert ret == 1

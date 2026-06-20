@@ -235,14 +235,18 @@ def _map_table(
             # Wildcard — we'll use a placeholder
             if "*" not in all_columns:
                 all_columns["*"] = Column(
-                    name="*", visible_to=[], writable_by=[],
+                    name="*",
+                    visible_to=[],
+                    writable_by=[],
                 )
             all_columns["*"].visible_to.append(perm.role)
         elif isinstance(cols, list):
             for col_name in cols:
                 if col_name not in all_columns:
                     all_columns[col_name] = Column(
-                        name=col_name, visible_to=[], writable_by=[],
+                        name=col_name,
+                        visible_to=[],
+                        writable_by=[],
                     )
                 all_columns[col_name].visible_to.append(perm.role)
 
@@ -253,7 +257,9 @@ def _map_table(
             for col_name in cols:
                 if col_name not in all_columns:
                     all_columns[col_name] = Column(
-                        name=col_name, visible_to=[], writable_by=[],
+                        name=col_name,
+                        visible_to=[],
+                        writable_by=[],
                     )
                 all_columns[col_name].writable_by.append(perm.role)
     for perm in ht.update_permissions:
@@ -262,7 +268,9 @@ def _map_table(
             for col_name in cols:
                 if col_name not in all_columns:
                     all_columns[col_name] = Column(
-                        name=col_name, visible_to=[], writable_by=[],
+                        name=col_name,
+                        visible_to=[],
+                        writable_by=[],
                     )
                 all_columns[col_name].writable_by.append(perm.role)
 
@@ -295,11 +303,13 @@ def _map_table(
         if perm.filter:
             sql_filter = bool_expr_to_sql(perm.filter)
             if sql_filter != "TRUE":
-                rls_rules.append(RLSRule(
-                    table_id=tid,
-                    role_id=perm.role,
-                    filter=sql_filter,
-                ))
+                rls_rules.append(
+                    RLSRule(
+                        table_id=tid,
+                        role_id=perm.role,
+                        filter=sql_filter,
+                    )
+                )
 
     # Relationships
     relationships: list[Relationship] = []
@@ -309,41 +319,47 @@ def _map_table(
         src_col = next(iter(rel.column_mapping.keys()))
         tgt_col = next(iter(rel.column_mapping.values()))
         target_tid = _table_id(source_name, rel.remote_schema, rel.remote_table)
-        relationships.append(Relationship(
-            id=f"{tid}.{rel.name}",
-            source_table_id=tid,
-            target_table_id=target_tid,
-            source_column=src_col,
-            target_column=tgt_col,
-            cardinality=Cardinality.many_to_one,
-        ))
+        relationships.append(
+            Relationship(
+                id=f"{tid}.{rel.name}",
+                source_table_id=tid,
+                target_table_id=target_tid,
+                source_column=src_col,
+                target_column=tgt_col,
+                cardinality=Cardinality.many_to_one,
+            )
+        )
     for rel in ht.array_relationships:
         if not rel.column_mapping:
             continue
         src_col = next(iter(rel.column_mapping.keys()))
         tgt_col = next(iter(rel.column_mapping.values()))
         target_tid = _table_id(source_name, rel.remote_schema, rel.remote_table)
-        relationships.append(Relationship(
-            id=f"{tid}.{rel.name}",
-            source_table_id=tid,
-            target_table_id=target_tid,
-            source_column=src_col,
-            target_column=tgt_col,
-            cardinality=Cardinality.one_to_many,
-        ))
+        relationships.append(
+            Relationship(
+                id=f"{tid}.{rel.name}",
+                source_table_id=tid,
+                target_table_id=target_tid,
+                source_column=src_col,
+                target_column=tgt_col,
+                cardinality=Cardinality.one_to_many,
+            )
+        )
 
     # Computed fields -> functions
     functions: list[Function] = []
     for cf in ht.computed_fields:
-        functions.append(Function(
-            name=cf.name,
-            source_id=source_name,
-            schema_name=cf.function_schema,
-            function_name=cf.function_name,
-            returns=tid,
-            kind="query",
-            domain_id=domain_policy.import_default(),
-        ))
+        functions.append(
+            Function(
+                name=cf.name,
+                source_id=source_name,
+                schema_name=cf.function_schema,
+                function_name=cf.function_name,
+                returns=tid,
+                kind="query",
+                domain_id=domain_policy.import_default(),
+            )
+        )
 
     # Event triggers -> warnings
     for et in ht.event_triggers:
@@ -356,23 +372,27 @@ def _map_table(
     return table, rls_rules, relationships, functions
 
 
-def _map_action(
-    action: HasuraAction, collector: WarningCollector
-) -> Function | Webhook | None:
+def _map_action(action: HasuraAction, collector: WarningCollector) -> Function | Webhook | None:
     """Map a Hasura action to either a Function or Webhook."""
     handler = action.definition.handler
     visible_to = [p.get("role", "") for p in action.permissions if p.get("role")]
 
-    action_kind = action.definition.action_type if action.definition.action_type in ("mutation", "query") else "mutation"
+    action_kind = (
+        action.definition.action_type
+        if action.definition.action_type in ("mutation", "query")
+        else "mutation"
+    )
 
     if handler.startswith("http://") or handler.startswith("https://"):
         # Webhook-backed action
         args = []
         for arg in action.definition.arguments:
-            args.append(FunctionArgument(
-                name=arg.get("name", ""),
-                type=arg.get("type", "String"),
-            ))
+            args.append(
+                FunctionArgument(
+                    name=arg.get("name", ""),
+                    type=arg.get("type", "String"),
+                )
+            )
         return Webhook(
             name=action.name,
             url=handler,
@@ -387,8 +407,7 @@ def _map_action(
     # DB-backed action — treat as function
     collector.warn(
         "actions",
-        f"Action '{action.name}' with non-HTTP handler '{handler}' "
-        "mapped as function placeholder",
+        f"Action '{action.name}' with non-HTTP handler '{handler}' mapped as function placeholder",
     )
     return Function(
         name=action.name,
@@ -454,7 +473,9 @@ def convert_metadata(
     for hs in metadata.sources:
         for ht in hs.tables:
             table, rls_rules, rels, fns = _map_table(
-                ht, hs.name, collector,
+                ht,
+                hs.name,
+                collector,
             )
             # Apply domain mapping
             dm_key = f"{ht.schema_name}"
@@ -467,24 +488,28 @@ def convert_metadata(
 
             # Event triggers
             for et in ht.event_triggers:
-                all_event_triggers.append(EventTrigger(
-                    table_id=_table_id(hs.name, ht.schema_name, ht.name),
-                    operations=et.operations,
-                    webhook_url=et.webhook,
-                    retry_max=et.retry_conf.get("num_retries", 3),
-                    retry_delay=et.retry_conf.get("interval_sec", 1.0),
-                ))
+                all_event_triggers.append(
+                    EventTrigger(
+                        table_id=_table_id(hs.name, ht.schema_name, ht.name),
+                        operations=et.operations,
+                        webhook_url=et.webhook,
+                        retry_max=et.retry_conf.get("num_retries", 3),
+                        retry_delay=et.retry_conf.get("interval_sec", 1.0),
+                    )
+                )
 
         # Tracked functions
         for hf in hs.functions:
-            all_functions.append(Function(
-                name=hf.name,
-                source_id=hs.name,
-                schema_name=hf.schema_name,
-                function_name=hf.name,
-                returns="void",
-                domain_id=domain_policy.import_default(),
-            ))
+            all_functions.append(
+                Function(
+                    name=hf.name,
+                    source_id=hs.name,
+                    schema_name=hf.schema_name,
+                    function_name=hf.name,
+                    returns="void",
+                    domain_id=domain_policy.import_default(),
+                )
+            )
 
     # Actions -> Functions or Webhooks
     webhooks: list[Webhook] = []
@@ -498,12 +523,14 @@ def convert_metadata(
     # Cron triggers -> Scheduled triggers
     scheduled: list[ScheduledTrigger] = []
     for ct in metadata.cron_triggers:
-        scheduled.append(ScheduledTrigger(
-            id=ct.name,
-            cron=ct.schedule,
-            url=ct.webhook,
-            enabled=ct.enabled,
-        ))
+        scheduled.append(
+            ScheduledTrigger(
+                id=ct.name,
+                cron=ct.schedule,
+                url=ct.webhook,
+                enabled=ct.enabled,
+            )
+        )
 
     # Remote schemas -> warnings (already emitted in parser)
 
@@ -511,6 +538,12 @@ def convert_metadata(
     auth = AuthConfig()
     if auth_env:
         provider = auth_env.get("AUTH_PROVIDER", "none")
+        if provider == "webhook":
+            collector.warn(
+                "webhook_auth",
+                "AUTH_PROVIDER=webhook is not supported by Provisa; "
+                "configure an explicit provider (firebase, keycloak, oauth, simple).",
+            )
         auth.provider = provider
         if provider == "firebase":
             auth.firebase = {
@@ -521,6 +554,26 @@ def convert_metadata(
                 "url": auth_env.get("KEYCLOAK_URL", ""),
                 "realm": auth_env.get("KEYCLOAK_REALM", ""),
             }
+        elif provider == "oauth" or auth_env.get("JWK_URL"):
+            auth.provider = "oauth"
+            auth.oauth = {"jwk_url": auth_env["JWK_URL"]}
+        # Admin secret -> superuser role
+        if auth_env.get("HASURA_GRAPHQL_ADMIN_SECRET"):
+            auth.superuser = {"secret": auth_env["HASURA_GRAPHQL_ADMIN_SECRET"]}
+        # Claims map -> role_mapping entries
+        claims_map_raw = auth_env.get("CLAIMS_MAP")
+        if claims_map_raw:
+            import json
+
+            try:
+                claims_map = json.loads(claims_map_raw)
+                if isinstance(claims_map, dict):
+                    auth.role_mapping = [{"claim": k, "role": v} for k, v in claims_map.items()]
+            except json.JSONDecodeError:
+                collector.warn(
+                    "claims_map_parse_error",
+                    f"CLAIMS_MAP is not valid JSON: {claims_map_raw!r}",
+                )
 
     # Naming config — read enable_relay from graphql_engine config
     enable_relay = bool(metadata.graphql_engine.get("enable_relay", False))
@@ -529,6 +582,7 @@ def convert_metadata(
     # Domains — collect unique domain_ids
     domain_ids = {t.domain_id for t in tables} | {"default"}
     from provisa.core.models import Domain
+
     domains = [Domain(id=did) for did in sorted(domain_ids)]
 
     return ProvisaConfig(

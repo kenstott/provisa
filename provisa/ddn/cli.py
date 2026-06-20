@@ -67,7 +67,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to DDN HML project directory",
     )
     parser.add_argument(
-        "-o", "--output",
+        "-o",
+        "--output",
         type=str,
         default=None,
         help="Output YAML file path (default: stdout)",
@@ -82,6 +83,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--domain-map",
         nargs="*",
         help="Subgraph-to-domain mappings as KEY=VAL pairs",
+    )
+    parser.add_argument(
+        "--aggregates-output",
+        type=str,
+        default=None,
+        help=(
+            "Output YAML file for aggregate expressions sidecar "
+            "(default: <output-stem>-aggregates.yaml or stdout)"
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -109,11 +119,13 @@ def main(argv: list[str] | None = None) -> int:
     domain_map = _parse_domain_map(args.domain_map)
     source_overrides = _load_source_overrides(args.source_overrides)
 
+    agg_collector: dict = {}
     config = convert_hml(
         metadata,
         collector=collector,
         domain_map=domain_map,
         source_overrides=source_overrides,
+        agg_collector=agg_collector,
     )
 
     # Validate
@@ -125,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             print(collector.summary(), file=sys.stderr)
         return 0
 
-    # Output
+    # Output main config
     output_data = config.model_dump(by_alias=True, exclude_none=True, mode="json")
     yaml_str = yaml.dump(output_data, default_flow_style=False, sort_keys=False)
 
@@ -135,6 +147,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Written to {out_path}", file=sys.stderr)
     else:
         print(yaml_str)
+
+    # Output aggregates sidecar
+    if agg_collector:
+        agg_yaml_str = yaml.dump(agg_collector, default_flow_style=False, sort_keys=False)
+        agg_out = getattr(args, "aggregates_output", None)
+        if agg_out:
+            agg_path = Path(agg_out)
+        elif args.output:
+            agg_path = Path(args.output).with_name(Path(args.output).stem + "-aggregates.yaml")
+        else:
+            agg_path = None
+        if agg_path:
+            agg_path.write_text(agg_yaml_str, encoding="utf-8")
+            print(f"Aggregates written to {agg_path}", file=sys.stderr)
+        else:
+            print(agg_yaml_str)
 
     if collector.has_warnings():
         print(collector.summary(), file=sys.stderr)

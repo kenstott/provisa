@@ -30,14 +30,28 @@ _OPERATORS: dict[str, str] = {
     "_in": "IN",
     "_nin": "NOT IN",
     "_is_null": "IS NULL",
+    "_regex": "~",
+    "_nregex": "!~",
+    "_iregex": "~*",
+    "_niregex": "!~*",
 }
+
+
+def _hasura_var_to_setting(header: str) -> str:
+    """Convert X-Hasura-Foo-Bar to provisa.foo_bar."""
+    name = header.lower()
+    for prefix in ("x-hasura-", "x_hasura_"):
+        if name.startswith(prefix):
+            name = name[len(prefix) :]
+            break
+    return name.replace("-", "_")
 
 
 def _format_value(val: Any) -> str:
     """Format a value for SQL embedding."""
     if isinstance(val, str):
         if val.startswith("x-hasura-") or val.startswith("X-Hasura-"):
-            return f"${{{val}}}"
+            return f"current_setting('provisa.{_hasura_var_to_setting(val)}')"
         return f"'{val}'"
     if isinstance(val, bool):
         return "TRUE" if val else "FALSE"
@@ -50,15 +64,13 @@ def _format_value(val: Any) -> str:
 
 
 def _convert_session_var(val: Any) -> str:
-    """Convert Hasura session variable references."""
+    """Convert Hasura session variable references to current_setting()."""
     if isinstance(val, dict) and len(val) == 1:
         key = next(iter(val))
         if not isinstance(key, str):
             return ""
-        if key in ("x-hasura-user-id", "X-Hasura-User-Id"):
-            return "${x-hasura-user-id}"
         if key.startswith("x-hasura-") or key.startswith("X-Hasura-"):
-            return f"${{{key}}}"
+            return f"current_setting('provisa.{_hasura_var_to_setting(key)}')"
     return ""
 
 
