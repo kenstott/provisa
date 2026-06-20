@@ -8,6 +8,7 @@ SEED_DATA=false
 OBSERVABILITY=true
 KEEP_DOCKER=false
 DEMO=false
+RESET_VOLUMES=false
 IDP=""
 for arg in "$@"; do
   case "$arg" in
@@ -15,8 +16,9 @@ for arg in "$@"; do
     --no-observability) OBSERVABILITY=false ;;
     --keep-docker) KEEP_DOCKER=true ;;
     --demo) DEMO=true ;;
+    --reset-volumes) RESET_VOLUMES=true ;;
     --idp=*) IDP="${arg#--idp=}" ;;
-    *) echo "Unknown option: $arg"; echo "Usage: $0 [--seed-data] [--no-observability] [--keep-docker] [--demo] [--idp=basic|firebase]"; exit 1 ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--seed-data] [--no-observability] [--keep-docker] [--demo] [--reset-volumes] [--idp=basic|firebase]"; exit 1 ;;
   esac
 done
 if [ -n "$IDP" ] && [ "$IDP" != "basic" ] && [ "$IDP" != "firebase" ]; then
@@ -60,6 +62,9 @@ if [ "$DEMO" = true ]; then
     echo "Generating demo files..."
     "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/demo/files/create_demo_files.py" 2>/dev/null || true
   fi
+elif [ "$RESET_VOLUMES" = true ]; then
+  echo "Resetting volumes for crash recovery..."
+  docker compose $COMPOSE_FILES down -v 2>/dev/null || true
 fi
 
 # Start infrastructure services via Docker Compose

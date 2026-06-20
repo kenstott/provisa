@@ -21,6 +21,9 @@ import trino
 
 from provisa.compiler.introspect import introspect_fk_candidates
 from provisa.compiler.naming import source_to_catalog
+from provisa.otel_compat import get_tracer as _get_tracer
+
+_tracer = _get_tracer(__name__)
 
 log = logging.getLogger(__name__)
 
@@ -110,61 +113,59 @@ async def collect_metadata(
     scope: "table", "domain", "cross-domain"
     scope_id: table_id (int) for "table", domain_id (str) for "domain"
     """
-    # Fetch all registered tables
-    all_tables = await pg_conn.fetch(
-        "SELECT id, source_id, domain_id, schema_name, table_name FROM registered_tables ORDER BY id"
-    )
-    all_tables = [dict(r) for r in all_tables]
-
-    # Filter tables by scope
-    if scope == "table":
-        target_table = next((t for t in all_tables if t["id"] == scope_id), None)
-        if target_table is None:
-            raise ValueError(f"Table {scope_id} not found")
-        # Include target table plus all others in same domain
-        domain_id = target_table["domain_id"]
-        tables = [t for t in all_tables if t["domain_id"] == domain_id]
-    elif scope == "domain":
-        tables = [t for t in all_tables if t["domain_id"] == scope_id]
-        if not tables:
-            raise ValueError(f"No tables found in domain {scope_id}")
-    elif scope == "cross-domain":
-        tables = all_tables
-    else:
-        raise ValueError(f"Invalid scope: {scope!r}")
-
-    # Collect metadata per table
-    table_metas: list[TableMeta] = []
-    for t in tables:
-        catalog = source_to_catalog(t["source_id"])
-        columns = _fetch_column_types(trino_conn, catalog, t["schema_name"], t["table_name"])
-        samples = _fetch_samples(
-            trino_conn, catalog, t["schema_name"], t["table_name"], columns, sample_size
+    with _tracer.start_as_current_span("discovery.collect_metadata") as span:
+        all_tables = await pg_conn.fetch(
+            "SELECT id, source_id, domain_id, schema_name, table_name FROM registered_tables ORDER BY id"
         )
-        table_metas.append(
-            TableMeta(
-                table_id=t["id"],
-                source_id=t["source_id"],
-                domain_id=t["domain_id"],
-                schema_name=t["schema_name"],
-                table_name=t["table_name"],
-                columns=columns,
-                sample_values=samples,
+        all_tables = [dict(r) for r in all_tables]
+
+        if scope == "table":
+            target_table = next((t for t in all_tables if t["id"] == scope_id), None)
+            if target_table is None:
+                raise ValueError(f"Table {scope_id} not found")
+            domain_id = target_table["domain_id"]
+            tables = [t for t in all_tables if t["domain_id"] == domain_id]
+        elif scope == "domain":
+            tables = [t for t in all_tables if t["domain_id"] == scope_id]
+            if not tables:
+                raise ValueError(f"No tables found in domain {scope_id}")
+        elif scope == "cross-domain":
+            tables = all_tables
+        else:
+            raise ValueError(f"Invalid scope: {scope!r}")
+
+        table_metas: list[TableMeta] = []
+        for t in tables:
+            catalog = source_to_catalog(t["source_id"])
+            columns = _fetch_column_types(trino_conn, catalog, t["schema_name"], t["table_name"])
+            samples = _fetch_samples(
+                trino_conn, catalog, t["schema_name"], t["table_name"], columns, sample_size
             )
+            table_metas.append(
+                TableMeta(
+                    table_id=t["id"],
+                    source_id=t["source_id"],
+                    domain_id=t["domain_id"],
+                    schema_name=t["schema_name"],
+                    table_name=t["table_name"],
+                    columns=columns,
+                    sample_values=samples,
+                )
+            )
+
+        existing = await pg_conn.fetch(
+            "SELECT source_table_id, target_table_id, source_column, target_column, cardinality "
+            "FROM relationships"
         )
+        existing_rels = [dict(r) for r in existing]
 
-    # Fetch existing relationships
-    existing = await pg_conn.fetch(
-        "SELECT source_table_id, target_table_id, source_column, target_column, cardinality "
-        "FROM relationships"
-    )
-    existing_rels = [dict(r) for r in existing]
-
-    return DiscoveryInput(
-        tables=table_metas,
-        existing_relationships=existing_rels,
-        rejected_pairs=[],
-    )
+        result = DiscoveryInput(
+            tables=table_metas,
+            existing_relationships=existing_rels,
+            rejected_pairs=[],
+        )
+        span.set_attribute("discovery.table_count", len(table_metas))
+        return result
 
 
 async def collect_fk_candidates(

@@ -29,6 +29,10 @@ from typing import TYPE_CHECKING, cast
 import pyarrow as pa
 import pyarrow.flight as flight
 
+from provisa.otel_compat import get_tracer as _get_tracer
+
+_tracer = _get_tracer(__name__)
+
 from provisa.api.flight.catalog import (
     CatalogTable,
     build_catalog_tables,
@@ -230,6 +234,15 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise flight.FlightServerError(f"Invalid ticket: {e}") from e  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
+        query_text = request.get("query", "")
+        ticket_type = "sql" if _is_sql(str(query_text)) else "graphql"
+        with _tracer.start_as_current_span("flight.do_get") as span:
+            span.set_attribute("flight.ticket_type", ticket_type)
+            if ticket_type == "sql":
+                span.set_attribute("flight.sql", str(query_text)[:200])
+            else:
+                span.set_attribute("flight.gql_query", str(query_text)[:200])
+
         if request.get("query"):
             # REQ-369: cap concurrent Arrow Flight query streams per role. The slot is
             # held for the execution window (results are materialized in _execute_query).
@@ -255,6 +268,26 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
             return self._execute_query(request)
 
         return self._do_get_catalog(ticket)
+
+    def do_action(
+        self,
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        action: flight.Action,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> list[flight.Result]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Handle a Flight action request."""
+        try:
+            body = json.loads(action.body.to_pybytes().decode("utf-8")) if action.body else {}
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            body = {}
+        query_text = body.get("query", "")
+        ticket_type = "sql" if _is_sql(str(query_text)) else "graphql"
+        with _tracer.start_as_current_span("flight.do_action") as span:
+            span.set_attribute("flight.ticket_type", ticket_type)
+            if ticket_type == "sql":
+                span.set_attribute("flight.sql", str(query_text)[:200])
+            else:
+                span.set_attribute("flight.gql_query", str(query_text)[:200])
+        return []
 
     # ------------------------------------------------------------------
     # Private helpers

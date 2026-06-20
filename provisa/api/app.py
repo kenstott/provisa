@@ -3104,6 +3104,11 @@ def create_app() -> FastAPI:
 
     app.include_router(billing_router, prefix="/billing", tags=["billing"])
 
+    if state.multitenancy:
+        from provisa.control_plane.router import router as control_plane_router
+
+        app.include_router(control_plane_router)
+
     @app.api_route("/health", methods=["GET", "HEAD"])
     async def health():  # noqa: F841  # FastAPI route
         return {"status": "ok"}

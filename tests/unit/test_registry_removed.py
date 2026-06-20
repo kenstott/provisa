@@ -49,11 +49,12 @@ class TestGpqExecutionPathsGone:
         assert "_route_approved_query" not in src
         assert "status_code=410" in src
 
-    def test_sse_query_id_returns_410(self):
+    def test_sse_query_id_routes_to_live_engine(self):
         src = (PROVISA / "api" / "data" / "subscribe.py").read_text()
         # The GPQ-by-stable-id subscription path is gone (no persisted_queries read).
+        # query_id now routes to the live engine, not the removed GPQ registry.
         assert "persisted_queries" not in src
-        assert "status_code=410" in src
+        assert "live_engine" in src
 
     def test_schema_builder_has_no_approved_query_fields(self):
         src = (PROVISA / "compiler" / "schema_gen.py").read_text()

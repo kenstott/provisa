@@ -86,10 +86,12 @@ compose_cmd() {
 
 # ── Observability flag ───────────────────────────────────────────────────────
 OBSERVABILITY=false
+RESET_VOLUMES=false
 _ARGS=()
 for _arg in "$@"; do
     case "$_arg" in
         --observability) OBSERVABILITY=true ;;
+        --reset-volumes) RESET_VOLUMES=true ;;
         *) _ARGS+=("$_arg") ;;
     esac
 done
@@ -270,6 +272,12 @@ cmd_start() {
     if [ "$OBSERVABILITY" = "true" ] || [ -f "$obs_ext" ]; then
         export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}"
         export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-provisa}"
+    fi
+
+    if [ "$RESET_VOLUMES" = "true" ]; then
+        printf "Resetting volumes for crash recovery...\n"
+        # shellcheck disable=SC2086
+        $(get_compose) $COMPOSE_FILES down -v >/dev/null 2>&1 || true
     fi
 
     # shellcheck disable=SC2086

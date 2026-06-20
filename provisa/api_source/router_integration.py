@@ -35,8 +35,10 @@ from provisa.api_source.trino_cache import (
     schedule_drop,
     table_exists,
 )
+from provisa.otel_compat import get_tracer as _get_tracer
 
 log = logging.getLogger(__name__)
+_tracer = _get_tracer(__name__)
 
 
 @dataclass
@@ -77,47 +79,55 @@ async def handle_api_query(
     2. If table exists in Trino: return cache reference (phase 2 SQL applied by caller)
     3. On miss: call API → flatten → materialize → schedule DROP after TTL
     """
-    ttl = resolve_ttl(endpoint.ttl, source_ttl, global_ttl)
-    tbl = cache_table_name(endpoint.source_id, endpoint.table_name, params)
+    with _tracer.start_as_current_span("api_source.handle_api_query") as span:
+        span.set_attribute("api_source.source_id", endpoint.source_id)
+        span.set_attribute("api_source.table", endpoint.table_name)
 
-    if loc is None:
-        _cc = getattr(source, "cache_catalog", None) if source else None
-        _cs = getattr(source, "cache_schema", "api_cache") if source else "api_cache"
-        loc = cache_location(endpoint.source_id, _cc, _cs)
+        ttl = resolve_ttl(endpoint.ttl, source_ttl, global_ttl)
+        tbl = cache_table_name(endpoint.source_id, endpoint.table_name, params)
 
-    if table_exists(conn, loc, tbl, ttl=ttl):
-        log.info("[API CACHE] hit — %s.%s.%s", loc.catalog, loc.schema, tbl)
-        return QueryResult(rows=[], from_cache=True, cache_table=tbl)
+        if loc is None:
+            _cc = getattr(source, "cache_catalog", None) if source else None
+            _cs = getattr(source, "cache_schema", "api_cache") if source else "api_cache"
+            loc = cache_location(endpoint.source_id, _cc, _cs)
 
-    # Cache miss: call API
-    base_url = source.base_url if source else ""
-    auth = source.auth if source else None
+        if table_exists(conn, loc, tbl, ttl=ttl):
+            log.info("[API CACHE] hit — %s.%s.%s", loc.catalog, loc.schema, tbl)
+            span.set_attribute("api_source.cache_hit", True)
+            return QueryResult(rows=[], from_cache=True, cache_table=tbl)
 
-    pages = await call_api(endpoint, params, base_url=base_url, auth=auth)
+        span.set_attribute("api_source.cache_hit", False)
 
-    all_rows: list[dict] = []
-    for page_data in pages:
-        rows = flatten_response(
-            page_data, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
+        # Cache miss: call API
+        base_url = source.base_url if source else ""
+        auth = source.auth if source else None
+
+        pages = await call_api(endpoint, params, base_url=base_url, auth=auth)
+
+        all_rows: list[dict] = []
+        for page_data in pages:
+            rows = flatten_response(
+                page_data, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
+            )
+            all_rows.extend(rows)
+
+        create_and_insert(conn, loc, tbl, all_rows, endpoint.columns)
+        log.info(
+            "[API CACHE] miss — %d rows materialized → %s.%s.%s (ttl=%ds)",
+            len(all_rows),
+            loc.catalog,
+            loc.schema,
+            tbl,
+            ttl,
         )
-        all_rows.extend(rows)
+        span.set_attribute("api_source.rows_materialized", len(all_rows))
 
-    create_and_insert(conn, loc, tbl, all_rows, endpoint.columns)
-    log.info(
-        "[API CACHE] miss — %d rows materialized → %s.%s.%s (ttl=%ds)",
-        len(all_rows),
-        loc.catalog,
-        loc.schema,
-        tbl,
-        ttl,
-    )
+        # REQ-119: promote JSONB fields to generated columns on the (PG-backed) cache table.
+        # The cache stores JSON as varchar, so cast the source column to jsonb. Iceberg
+        # tables have no PG generated columns and are skipped.
+        if endpoint.promotions and loc.backend != "iceberg":
+            await _apply_cache_promotions(loc, tbl, endpoint)
 
-    # REQ-119: promote JSONB fields to generated columns on the (PG-backed) cache table.
-    # The cache stores JSON as varchar, so cast the source column to jsonb. Iceberg
-    # tables have no PG generated columns and are skipped.
-    if endpoint.promotions and loc.backend != "iceberg":
-        await _apply_cache_promotions(loc, tbl, endpoint)
+        asyncio.ensure_future(schedule_drop(conn, loc, tbl, ttl))
 
-    asyncio.ensure_future(schedule_drop(conn, loc, tbl, ttl))
-
-    return QueryResult(rows=all_rows, from_cache=False, cache_table=tbl)
+        return QueryResult(rows=all_rows, from_cache=False, cache_table=tbl)

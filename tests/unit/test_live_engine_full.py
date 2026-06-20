@@ -381,7 +381,7 @@ class TestLiveEnginePoll:
 
         # max string comparison: "2026-02-10" > "2026-02-01"
         # conn is the mock returned directly by the pool's acquire() context manager
-        mock_set_wm.assert_called_once_with(conn, "q1", "2026-02-10")
+        mock_set_wm.assert_called_once_with(conn, "q1", "sse", "2026-02-10")
 
     async def test_poll_delivers_rows_to_kafka_outputs(self):
         raw_rows = [{"id": 1, "ts": "2026-02-01"}]
@@ -543,12 +543,13 @@ class TestWatermark:
         from provisa.live.watermark import get_watermark
 
         conn = _make_conn()
-        conn.fetchrow = AsyncMock(return_value={"watermark": "2026-01-15"})
-        result = await get_watermark(conn, "q1")
+        conn.fetchrow = AsyncMock(return_value={"last_watermark": "2026-01-15"})
+        result = await get_watermark(conn, "q1", "sse")
         assert result == "2026-01-15"
         conn.fetchrow.assert_called_once_with(
-            "SELECT watermark FROM live_query_state WHERE query_id = $1",
+            "SELECT last_watermark FROM live_query_state WHERE source = $1 AND output_type = $2",
             "q1",
+            "sse",
         )
 
     async def test_get_watermark_returns_none_when_no_row(self):
@@ -556,36 +557,37 @@ class TestWatermark:
 
         conn = _make_conn()
         conn.fetchrow = AsyncMock(return_value=None)
-        result = await get_watermark(conn, "q-missing")
+        result = await get_watermark(conn, "q-missing", "sse")
         assert result is None
 
     async def test_set_watermark_calls_execute_with_upsert(self):
         from provisa.live.watermark import set_watermark
 
         conn = _make_conn()
-        await set_watermark(conn, "q1", "2026-03-20")
+        await set_watermark(conn, "q1", "sse", "2026-03-20")
         conn.execute.assert_called_once()
         args = conn.execute.call_args[0]
-        # First arg is the SQL string; second and third are query_id and value
+        # First arg is the SQL string; second is source, third is output_type, fourth is value
         assert "INSERT INTO live_query_state" in args[0]
         assert "ON CONFLICT" in args[0]
         assert args[1] == "q1"
-        assert args[2] == "2026-03-20"
+        assert args[2] == "sse"
+        assert args[3] == "2026-03-20"
 
     async def test_set_watermark_upsert_sql_updates_on_conflict(self):
         from provisa.live.watermark import set_watermark
 
         conn = _make_conn()
-        await set_watermark(conn, "q1", "2026-03-20")
+        await set_watermark(conn, "q1", "sse", "2026-03-20")
         sql = conn.execute.call_args[0][0]
-        assert "DO UPDATE SET watermark" in sql
+        assert "DO UPDATE SET last_watermark" in sql
 
     async def test_get_watermark_query_uses_positional_param(self):
         from provisa.live.watermark import get_watermark
 
         conn = _make_conn()
         conn.fetchrow = AsyncMock(return_value=None)
-        await get_watermark(conn, "test-q")
+        await get_watermark(conn, "test-q", "sse")
         sql = conn.fetchrow.call_args[0][0]
         assert "$1" in sql
 

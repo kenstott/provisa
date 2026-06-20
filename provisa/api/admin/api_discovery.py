@@ -30,6 +30,9 @@ from provisa.api_source.introspect import (
     introspect_openapi,
 )
 from provisa.api_source.models import ApiSourceType
+from provisa.otel_compat import get_tracer as _get_tracer
+
+_tracer = _get_tracer(__name__)
 
 router = APIRouter(prefix="/admin/api-sources", tags=["api-sources"])
 
@@ -48,42 +51,46 @@ class AcceptRequest(BaseModel):
 @router.post("/discover")
 async def discover(req: DiscoverRequest):
     """Trigger introspection of an API source."""
-    from provisa.api.app import state
+    with _tracer.start_as_current_span("admin.api_discovery"):
+        from provisa.api.app import state
 
-    if state.pg_pool is None:
-        raise HTTPException(status_code=503, detail="Database not connected")
+        if state.pg_pool is None:
+            raise HTTPException(status_code=503, detail="Database not connected")
 
-    if req.type == ApiSourceType.openapi:
-        candidates = await introspect_openapi(req.spec_url)
-    elif req.type == ApiSourceType.graphql_api:
-        candidates = await introspect_graphql(req.spec_url)
-    elif req.type == ApiSourceType.grpc_api:
-        candidates = await introspect_grpc(req.spec_url)
-    else:
-        raise HTTPException(status_code=400, detail=f"Unknown source type: {req.type}")
+        if req.type == ApiSourceType.openapi:
+            candidates = await introspect_openapi(req.spec_url)
+        elif req.type == ApiSourceType.graphql_api:
+            candidates = await introspect_graphql(req.spec_url)
+        elif req.type == ApiSourceType.grpc_api:
+            candidates = await introspect_grpc(req.spec_url)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown source type: {req.type}")
 
-    for c in candidates:
-        c.source_id = req.source_id
+        for c in candidates:
+            c.source_id = req.source_id
 
-    parsed = urlparse(req.spec_url)
-    base_url = req.base_url or f"{parsed.scheme}://{parsed.netloc}"
+        parsed = urlparse(req.spec_url)
+        base_url = req.base_url or f"{parsed.scheme}://{parsed.netloc}"
 
-    pool = state.pg_pool
-    assert pool is not None
-    async with pool.acquire() as _conn:
-        conn = cast(asyncpg.Connection, _conn)
-        await conn.execute(
-            """
-            INSERT INTO api_sources (id, type, base_url, spec_url)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (id) DO UPDATE
-                SET type = EXCLUDED.type,
-                    base_url = EXCLUDED.base_url,
-                    spec_url = EXCLUDED.spec_url
-            """,
-            req.source_id, req.type.value, base_url, req.spec_url,
-        )
-        ids = await store_candidates(conn, req.source_id, candidates)
+        pool = state.pg_pool
+        assert pool is not None
+        async with pool.acquire() as _conn:
+            conn = cast(asyncpg.Connection, _conn)
+            await conn.execute(
+                """
+                INSERT INTO api_sources (id, type, base_url, spec_url)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (id) DO UPDATE
+                    SET type = EXCLUDED.type,
+                        base_url = EXCLUDED.base_url,
+                        spec_url = EXCLUDED.spec_url
+                """,
+                req.source_id,
+                req.type.value,
+                base_url,
+                req.spec_url,
+            )
+            ids = await store_candidates(conn, req.source_id, candidates)
 
     return {"candidates_stored": len(ids), "ids": ids}
 
@@ -117,7 +124,9 @@ async def accept(candidate_id: int, req: AcceptRequest | None = None):
     assert pool is not None
     try:
         async with pool.acquire() as _conn:
-            endpoint = await accept_candidate(cast(asyncpg.Connection, _conn), candidate_id, overrides)
+            endpoint = await accept_candidate(
+                cast(asyncpg.Connection, _conn), candidate_id, overrides
+            )
     except asyncpg.UniqueViolationError as e:
         raise HTTPException(status_code=400, detail=f"Endpoint already registered: {e}")
     except ValueError as e:
