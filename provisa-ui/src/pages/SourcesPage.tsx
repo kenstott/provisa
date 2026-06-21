@@ -86,6 +86,7 @@ const SOURCE_TYPES = [
   { value: "sqlite", label: "SQLite", category: "File", defaultPort: 0 },
   { value: "csv", label: "CSV File", category: "File", defaultPort: 0 },
   { value: "parquet", label: "Parquet File", category: "File", defaultPort: 0 },
+  { value: "files", label: "File Directory (CSV/Parquet/XLSX/JSON)", category: "File", defaultPort: 0 },
   // Other
   { value: "google_sheets", label: "Google Sheets", category: "Other", defaultPort: 0 },
   { value: "prometheus", label: "Prometheus", category: "Other", defaultPort: 9090 },
@@ -454,7 +455,7 @@ export function SourcesPage() {
           : undefined;
       const sourcePayload = {
         ...coreForm,
-        path: FILE_SOURCES.has(form.type) ? form.path || null : null,
+        path: FILE_SOURCES.has(form.type) || form.type === "files" ? form.path || null : null,
         database:
           form.type === "govdata"
             ? Array.from(
@@ -2011,6 +2012,19 @@ export function SourcesPage() {
             />
           </label>
         </>
+      )}
+      {form.type === "files" && (
+        <label style={{ gridColumn: "1 / -1" }}>
+          Directory Glob{" "}
+          <input
+            value={form.path}
+            onChange={(e) => setForm({ ...form, path: e.target.value })}
+            placeholder="/data/files/**"
+          />
+          <small style={{ color: "var(--text-muted, #888)" }}>
+            Glob pattern passed to the Trino file connector. Leave blank to use the catalog default.
+          </small>
+        </label>
       )}
       {editingSourceId && (
         <>
