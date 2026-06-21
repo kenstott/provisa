@@ -102,6 +102,7 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
             props["certificate-path"] = mapping["certificate_path"]
         if mapping.get("certificate_password"):
             props["certificate-password"] = mapping["certificate_password"]
+        props["case-insensitive-name-matching"] = "true"
         return props
 
     # Splunk connector (Apache Calcite, kenstott/calcite)
@@ -126,6 +127,7 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
             props["datamodel-filter"] = mapping["datamodel_filter"]
         if mapping.get("disable_ssl_validation"):
             props["disable-ssl-validation"] = "true"
+        props["case-insensitive-name-matching"] = "true"
         return props
 
     # Cassandra connector
