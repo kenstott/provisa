@@ -88,9 +88,8 @@ if [ "$OBSERVABILITY" = true ]; then
   fi
 fi
 # Download Calcite Trino plugins from kenstott/calcite releases.
-# engine-v0.24.0+ fixed duplicate CalcitePlugin registration — each plugin
-# dir registers only its own connector, so separate dirs are safe again.
-CALCITE_RELEASE="https://github.com/kenstott/calcite/releases/download/engine-v0.24.0"
+# engine-v0.25.0+ connectors fail fast at startup when case-insensitive-name-matching is missing.
+CALCITE_RELEASE="https://github.com/kenstott/calcite/releases/download/engine-v0.25.0"
 PLUGINS_DIR="$SCRIPT_DIR/trino/plugins"
 for plugin in trino-sharepoint trino-splunk trino-file; do
   if [ ! -d "$PLUGINS_DIR/$plugin" ] || [ -z "$(ls -A "$PLUGINS_DIR/$plugin" 2>/dev/null)" ]; then
