@@ -78,6 +78,8 @@ class SourceType(str, Enum):
     # Enterprise SaaS via Apache Calcite connectors
     sharepoint = "sharepoint"
     splunk = "splunk"
+    # File crawler — directory of CSV/Parquet/XLSX/JSON surfaced as tables
+    files = "files"
 
 
 class Cardinality(str, Enum):
@@ -116,6 +118,7 @@ SOURCE_TO_CONNECTOR: dict[str, str] = {
     # Apache Calcite-based connectors (kenstott/calcite)
     "sharepoint": "sharepoint",
     "splunk": "splunk",
+    "files": "file",
 }
 
 # Map source types to SQLGlot dialect names (enables direct-route single-source queries)

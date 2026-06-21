@@ -65,8 +65,11 @@ services:
       - trino_cache:/data/trino/cache
       - ./observability/trino-otel:/etc/trino/otel:ro
       - trino_logs:/var/log/trino
-      - ./trino/plugins/trino-calcite:/usr/lib/trino/plugin/trino-calcite:ro
+      - ./trino/plugins/trino-sharepoint:/usr/lib/trino/plugin/trino-sharepoint:ro
+      - ./trino/plugins/trino-splunk:/usr/lib/trino/plugin/trino-splunk:ro
+      - ./trino/plugins/trino-file:/usr/lib/trino/plugin/trino-file:ro
       - ./sharepoint.pfx:/certs/sharepoint.pfx:ro
+      - ./demo/files:/data/files:ro
     environment:
       JAVA_TOOL_OPTIONS: "-Dotel.javaagent.enabled=false"
     depends_on:
@@ -91,8 +94,11 @@ services:
       - trino_worker_cache:/data/trino/cache
       - ./observability/trino-otel:/etc/trino/otel:ro
       - trino_worker_logs:/var/log/trino
-      - ./trino/plugins/trino-calcite:/usr/lib/trino/plugin/trino-calcite:ro
+      - ./trino/plugins/trino-sharepoint:/usr/lib/trino/plugin/trino-sharepoint:ro
+      - ./trino/plugins/trino-splunk:/usr/lib/trino/plugin/trino-splunk:ro
+      - ./trino/plugins/trino-file:/usr/lib/trino/plugin/trino-file:ro
       - ./sharepoint.pfx:/certs/sharepoint.pfx:ro
+      - ./demo/files:/data/files:ro
     environment:
       JAVA_TOOL_OPTIONS: "-Dotel.javaagent.enabled=false"
     depends_on:

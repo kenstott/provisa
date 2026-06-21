@@ -1,4 +1,5 @@
 trino-sharepoint/
 trino-splunk/
+trino-file/
 trino-calcite/
 *.zip
