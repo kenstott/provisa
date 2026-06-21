@@ -89,7 +89,7 @@ if [ "$OBSERVABILITY" = true ]; then
 fi
 # Download Calcite Trino plugins (sharepoint, splunk) and merge into a single
 # trino-calcite plugin dir so CalcitePlugin is registered only once.
-CALCITE_RELEASE="https://github.com/kenstott/calcite/releases/download/engine-v0.22.2"
+CALCITE_RELEASE="https://github.com/kenstott/calcite/releases/download/engine-v0.24.0"
 PLUGINS_DIR="$SCRIPT_DIR/trino/plugins"
 MERGED_DIR="$PLUGINS_DIR/trino-calcite"
 mkdir -p "$MERGED_DIR"
