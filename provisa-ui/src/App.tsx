@@ -227,7 +227,6 @@ function App() {
                     "/admin/observability",
                     "/admin/local-users",
                     "/admin/orgs",
-                    "/admin/roles",
                   ].map((path) => (
                     <Route
                       key={path}

@@ -9,11 +9,13 @@
 // permission from the copyright holder.
 
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMVList, useRefreshMV, useToggleMV } from "../../hooks/useAdminQueries";
 
 const PAGE_SIZE = 50;
 
 export function MVManager() {
+  const navigate = useNavigate();
   const { mvList: mvs, loading } = useMVList();
   const { refreshMV } = useRefreshMV();
   const { toggleMV } = useToggleMV();
@@ -31,13 +33,23 @@ export function MVManager() {
   };
 
   if (loading) return <p>Loading materialized views...</p>;
-  if (mvs.length === 0) return <p>No materialized views configured.</p>;
+
+  if (mvs.length === 0)
+    return (
+      <div>
+        <p>No materialized views configured.</p>
+        <button onClick={() => navigate("/views")}>Create View</button>
+      </div>
+    );
 
   const totalPages = Math.max(1, Math.ceil(mvs.length / PAGE_SIZE));
   const paged = mvs.slice(mvPage * PAGE_SIZE, (mvPage + 1) * PAGE_SIZE);
 
   return (
     <div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
+        <button onClick={() => navigate("/views")}>Create View</button>
+      </div>
       <table className="data-table">
         <thead>
           <tr>

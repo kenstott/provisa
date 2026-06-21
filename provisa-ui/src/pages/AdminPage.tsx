@@ -38,7 +38,6 @@ import { ScheduledTasks } from "../components/admin/ScheduledTasks";
 import { ObservabilityTab } from "../components/admin/ObservabilityTab";
 import { LocalUsersTab } from "../components/admin/LocalUsersTab";
 import { OrgsTab } from "../components/admin/OrgsTab";
-import { RolesTab } from "../components/admin/RolesTab";
 
 const FORMAT_OPTIONS = ["parquet", "orc", "json", "ndjson", "csv", "arrow"];
 
@@ -52,7 +51,6 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/observability": "Observability",
   "/admin/local-users": "Local Users",
   "/admin/orgs": "Orgs",
-  "/admin/roles": "Roles",
 };
 
 /** Admin overview page — dashboard, config management, platform settings. */
@@ -241,7 +239,7 @@ export function AdminPage() {
 
   return (
     <div className="page">
-      <h2>Admin Dashboard</h2>
+      <h2>Admin Dashboard{activeTab !== "Overview" ? ` — ${activeTab}` : ""}</h2>
 
       <div className="admin-tab-content">
         {activeTab === "Overview" && (
@@ -621,7 +619,6 @@ export function AdminPage() {
           <LocalUsersTab allRoles={allRoles} allDomains={allDomains} />
         )}
         {activeTab === "Orgs" && isSuperAdmin && <OrgsTab />}
-        {activeTab === "Roles" && <RolesTab orgId={orgId} />}
       </div>
 
       {policyModalOpen && (
