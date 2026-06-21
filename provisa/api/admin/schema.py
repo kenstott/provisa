@@ -769,10 +769,23 @@ class Query:
             return _source_from_row(row) if row else None
 
     @strawberry.field
-    async def domains(self) -> list[DomainType]:
+    async def domains(self, info: StrawberryInfo) -> list[DomainType]:
+        request = info.context["request"]
+        active_org_id = getattr(request.state, "active_org_id", "root") or "root"
+        identity = getattr(request.state, "identity", None)
+        from provisa.api.admin.capabilities import _resolved_capabilities
+        from provisa.api.app import state as _state
+        caps = _resolved_capabilities(identity, _state) if identity else set()
+        is_admin = bool(caps & {"superadmin", "admin"})
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await conn.fetch("SELECT * FROM domains WHERE id != '' ORDER BY id")
+            if is_admin:
+                rows = await conn.fetch("SELECT * FROM domains WHERE id != '' ORDER BY id")
+            else:
+                rows = await conn.fetch(
+                    "SELECT * FROM domains WHERE id != '' AND org_id = $1 ORDER BY id",
+                    active_org_id,
+                )
             return [_domain_from_row(r) for r in rows]
 
     @strawberry.field
@@ -823,10 +836,23 @@ class Query:
             return [_rel_from_row(r, convention) for r in rows]
 
     @strawberry.field
-    async def roles(self) -> list[RoleType]:
+    async def roles(self, info: StrawberryInfo) -> list[RoleType]:
+        request = info.context["request"]
+        active_org_id = getattr(request.state, "active_org_id", "root") or "root"
+        identity = getattr(request.state, "identity", None)
+        from provisa.api.admin.capabilities import _resolved_capabilities
+        from provisa.api.app import state as _state
+        caps = _resolved_capabilities(identity, _state) if identity else set()
+        is_admin = bool(caps & {"superadmin", "admin"})
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await conn.fetch("SELECT * FROM roles ORDER BY id")
+            if is_admin:
+                rows = await conn.fetch("SELECT * FROM roles ORDER BY id")
+            else:
+                rows = await conn.fetch(
+                    "SELECT * FROM roles WHERE (org_id IS NULL OR org_id = $1) ORDER BY id",
+                    active_org_id,
+                )
             return [_role_from_row(r) for r in rows]
 
     @strawberry.field

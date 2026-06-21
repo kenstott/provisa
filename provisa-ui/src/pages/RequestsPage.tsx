@@ -9,8 +9,11 @@
 // permission from the copyright holder.
 
 import { useEffect, useState } from "react";
+import { FilterInput } from "../components/admin/FilterInput";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
+
+const PAGE_SIZE = 50;
 
 const TAB_LABELS: Record<string, string> = {
   pending: "Pending",
@@ -87,6 +90,8 @@ export function RequestsPage() {
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
 
   const load = (status: "pending" | "resolved") => {
     fetchRequests(status === "pending" ? "pending" : undefined)
@@ -144,155 +149,161 @@ export function RequestsPage() {
   };
 
   const displayRows =
-    tab === "pending" ? rows.filter((r) => r.status === "pending") : rows.filter((r) => r.status !== "pending");
+    tab === "pending"
+      ? rows.filter((r) => r.status === "pending")
+      : rows.filter((r) => r.status !== "pending");
+
+  const q = search.toLowerCase();
+  const filtered = displayRows.filter(
+    (r) =>
+      String(r.id).includes(q) ||
+      r.request_type.toLowerCase().includes(q) ||
+      (r.requested_by ?? "").toLowerCase().includes(q) ||
+      r.status.toLowerCase().includes(q),
+  );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const paged = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   return (
     <div className="page">
-      <h2>Creation Requests</h2>
-
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-        {(["pending", "resolved"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              padding: "0.35rem 0.75rem",
-              fontWeight: tab === t ? 600 : 400,
-              background: "none",
-              border: "none",
-              borderBottom: tab === t ? "2px solid var(--color-primary, #4f8ef7)" : "2px solid transparent",
-              cursor: "pointer",
-            }}
-          >
-            {TAB_LABELS[t]}
-          </button>
-        ))}
+      <div className="page-header">
+        <h2 style={{ margin: 0 }}>Creation Requests</h2>
+        <FilterInput
+          value={search}
+          onChange={(v) => { setSearch(v); setPage(0); }}
+          placeholder="Filter by ID, type, requester, status…"
+        />
+        <div className="page-actions">
+          <div style={{ display: "flex", gap: "0.25rem" }}>
+            {(["pending", "resolved"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => { setTab(t); setPage(0); }}
+                style={{
+                  fontWeight: tab === t ? 600 : 400,
+                  background: tab === t ? "var(--accent)" : "transparent",
+                  color: tab === t ? "#fff" : "var(--text)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                {TAB_LABELS[t]}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {error && (
-        <div style={{ color: "var(--color-error, red)", marginBottom: "1rem" }}>{error}</div>
+        <div style={{ color: "var(--error)", marginBottom: "1rem" }}>{error}</div>
       )}
 
       {rejectingId !== null && (
-        <div
-          style={{
-            marginBottom: "1rem",
-            padding: "1rem",
-            border: "1px solid var(--border)",
-            borderRadius: "4px",
-            background: "var(--surface)",
-          }}
-        >
+        <div className="form-card" style={{ marginBottom: "1rem" }}>
           <strong>Reject request #{rejectingId}</strong>
-          <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            <select
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              style={{ fontSize: "0.85rem", padding: "0.25rem 0.4rem" }}
-            >
+          <label>
+            Reason
+            <select value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}>
               <option value="">— select reason —</option>
               {(reasons[rows.find((r) => r.id === rejectingId)?.request_type ?? ""] ?? []).map((r) => (
-                <option key={r} value={r}>
-                  {REASON_LABELS[r] ?? r}
-                </option>
+                <option key={r} value={r}>{REASON_LABELS[r] ?? r}</option>
               ))}
             </select>
-            <button onClick={doReject} disabled={!rejectReason || busy}>
-              Confirm
-            </button>
-            <button
-              onClick={() => {
-                setRejectingId(null);
-                setRejectReason("");
-              }}
-            >
-              Cancel
-            </button>
+          </label>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button onClick={doReject} disabled={!rejectReason || busy}>Confirm</button>
+            <button onClick={() => { setRejectingId(null); setRejectReason(""); }}>Cancel</button>
           </div>
         </div>
       )}
 
-      {displayRows.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>No {TAB_LABELS[tab].toLowerCase()} requests.</p>
+      {filtered.length === 0 ? (
+        <p style={{ color: "var(--text-muted)" }}>
+          No {tab} requests{search ? " matching filter" : ""}.
+        </p>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-          <thead>
-            <tr>
-              {["ID", "Type", "Requester", "Submitted", "Payload", "Approvals", "Status", "Reason", "Actions"].map(
-                (h) => (
-                  <th
-                    key={h}
-                    style={{
-                      textAlign: "left",
-                      padding: "0.4rem 0.6rem",
-                      borderBottom: "1px solid var(--border)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {h}
-                  </th>
-                ),
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {displayRows.map((row) => (
-              <tr key={row.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                <td style={{ padding: "0.4rem 0.6rem" }}>{row.id}</td>
-                <td style={{ padding: "0.4rem 0.6rem" }}>{row.request_type}</td>
-                <td style={{ padding: "0.4rem 0.6rem" }}>{row.requested_by ?? "—"}</td>
-                <td style={{ padding: "0.4rem 0.6rem", whiteSpace: "nowrap" }}>
-                  {new Date(row.created_at).toLocaleString()}
-                </td>
-                <td style={{ padding: "0.4rem 0.6rem", maxWidth: "20rem" }}>
-                  <details>
-                    <summary style={{ cursor: "pointer" }}>view</summary>
-                    <pre style={{ fontSize: "0.75rem", whiteSpace: "pre-wrap" }}>
-                      {JSON.stringify(row.payload, null, 2)}
-                    </pre>
-                  </details>
-                </td>
-                <td style={{ padding: "0.4rem 0.6rem" }}>
-                  {row.approvals.length} / {row.required_approvals}
-                </td>
-                <td style={{ padding: "0.4rem 0.6rem" }}>{row.status}</td>
-                <td style={{ padding: "0.4rem 0.6rem" }}>{row.rejection_reason ?? "—"}</td>
-                <td style={{ padding: "0.4rem 0.6rem", whiteSpace: "nowrap" }}>
-                  {row.status === "pending" && (
-                    <div style={{ display: "flex", gap: "0.4rem" }}>
-                      <button
-                        onClick={() => doApprove(row.id)}
-                        disabled={busy}
-                        style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
-                      >
-                        Approve ({row.approvals.length + 1}/{row.required_approvals})
-                      </button>
-                      {row.required_approvals === 1 && (
+        <>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>Requester</th>
+                <th>Submitted</th>
+                <th>Payload</th>
+                <th>Approvals</th>
+                <th>Status</th>
+                <th>Reason</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {paged.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.id}</td>
+                  <td>{row.request_type}</td>
+                  <td>{row.requested_by ?? "—"}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {new Date(row.created_at).toLocaleString()}
+                  </td>
+                  <td style={{ maxWidth: "20rem" }}>
+                    <details>
+                      <summary style={{ cursor: "pointer" }}>view</summary>
+                      <pre style={{ fontSize: "0.75rem", whiteSpace: "pre-wrap" }}>
+                        {JSON.stringify(row.payload, null, 2)}
+                      </pre>
+                    </details>
+                  </td>
+                  <td>{row.approvals.length} / {row.required_approvals}</td>
+                  <td>
+                    <span className={`status-badge status-${row.status === "pending" ? "pending" : row.status === "approved" ? "active" : "disabled"}`}>
+                      {row.status}
+                    </span>
+                  </td>
+                  <td>{row.rejection_reason ?? "—"}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {row.status === "pending" && (
+                      <div style={{ display: "flex", gap: "0.4rem" }}>
                         <button
-                          onClick={() => doExecute(row.id)}
+                          onClick={() => doApprove(row.id)}
                           disabled={busy}
                           style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
                         >
-                          Execute
+                          Approve ({row.approvals.length + 1}/{row.required_approvals})
                         </button>
-                      )}
-                      <button
-                        onClick={() => {
-                          setRejectingId(row.id);
-                          setRejectReason("");
-                        }}
-                        disabled={busy}
-                        style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                        {row.required_approvals === 1 && (
+                          <button
+                            onClick={() => doExecute(row.id)}
+                            disabled={busy}
+                            style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                          >
+                            Execute
+                          </button>
+                        )}
+                        <button
+                          onClick={() => { setRejectingId(row.id); setRejectReason(""); }}
+                          disabled={busy}
+                          style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {totalPages > 1 && (
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
+              <button onClick={() => setPage(0)} disabled={safePage === 0}>«</button>
+              <button onClick={() => setPage((p) => p - 1)} disabled={safePage === 0}>‹</button>
+              <span>Page {safePage + 1} / {totalPages}</span>
+              <button onClick={() => setPage((p) => p + 1)} disabled={safePage >= totalPages - 1}>›</button>
+              <button onClick={() => setPage(totalPages - 1)} disabled={safePage >= totalPages - 1}>»</button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

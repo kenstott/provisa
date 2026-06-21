@@ -13,6 +13,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { User } from "lucide-react";
 import { CapabilityGate } from "./CapabilityGate";
 import { RoleSelector } from "./RoleSelector";
+import { OrgSwitcher } from "./OrgSwitcher";
 import { UserProfileModal } from "./UserProfileModal";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
@@ -218,6 +219,7 @@ export function NavBar() {
               )}
             </div>
           )}
+          <OrgSwitcher />
           <RoleSelector />
           <div className="navbar-user-wrapper" ref={userMenuRef}>
             <button

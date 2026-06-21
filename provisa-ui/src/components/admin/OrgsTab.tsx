@@ -22,6 +22,7 @@ import {
   revokeInvite,
 } from "../../api/admin";
 import type { Org, OrgMember, OrgInvite } from "../../api/admin";
+import { FilterInput } from "./FilterInput";
 
 const PAGE_SIZE = 50;
 
@@ -30,12 +31,16 @@ export function OrgsTab() {
   const [newOrgId, setNewOrgId] = useState("");
   const [newOrgName, setNewOrgName] = useState("");
   const [orgMsg, setOrgMsg] = useState("");
+  const [showCreateOrg, setShowCreateOrg] = useState(false);
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
   const [orgMembers, setOrgMembers] = useState<Record<string, OrgMember[]>>({});
   const [addMemberUserId, setAddMemberUserId] = useState("");
+  const [orgSearch, setOrgSearch] = useState("");
   const [orgPage, setOrgPage] = useState(0);
   const [orgInvites, setOrgInvites] = useState<OrgInvite[]>([]);
   const [inviteOrgId, setInviteOrgId] = useState("");
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteSearch, setInviteSearch] = useState("");
   const [inviteMsg, setInviteMsg] = useState("");
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [invitePage, setInvitePage] = useState(0);
@@ -55,6 +60,7 @@ export function OrgsTab() {
     setOrgs(await fetchOrgs());
     setNewOrgId("");
     setNewOrgName("");
+    setShowCreateOrg(false);
     setOrgMsg(`Created "${newOrgName.trim()}"`);
   };
 
@@ -100,6 +106,7 @@ export function OrgsTab() {
     await navigator.clipboard.writeText(url);
     setInviteMsg(`Invite created and copied: ${url}`);
     setInviteOrgId("");
+    setShowInviteForm(false);
   };
 
   const handleRevokeInvite = async (token: string) => {
@@ -114,236 +121,254 @@ export function OrgsTab() {
     setTimeout(() => setCopiedToken(null), 2000);
   };
 
+  const q = orgSearch.toLowerCase();
+  const filteredOrgs = orgs.filter(
+    (o) => o.id.toLowerCase().includes(q) || o.name.toLowerCase().includes(q),
+  );
+  const orgTotalPages = Math.max(1, Math.ceil(filteredOrgs.length / PAGE_SIZE));
+  const orgSafePage = Math.min(orgPage, orgTotalPages - 1);
+  const pagedOrgs = filteredOrgs.slice(orgSafePage * PAGE_SIZE, (orgSafePage + 1) * PAGE_SIZE);
+
+  const iq = inviteSearch.toLowerCase();
+  const filteredInvites = orgInvites.filter(
+    (i) =>
+      (i.org_name ?? "").toLowerCase().includes(iq) ||
+      i.token.toLowerCase().includes(iq) ||
+      (i.created_by ?? "").toLowerCase().includes(iq),
+  );
+  const invTotalPages = Math.max(1, Math.ceil(filteredInvites.length / PAGE_SIZE));
+  const invSafePage = Math.min(invitePage, invTotalPages - 1);
+  const pagedInvites = filteredInvites.slice(invSafePage * PAGE_SIZE, (invSafePage + 1) * PAGE_SIZE);
+
   return (
     <div>
-      <h3>Organizations</h3>
-      {orgMsg && <p className="form-msg">{orgMsg}</p>}
-      {(() => {
-        const totalPages = Math.max(1, Math.ceil(orgs.length / PAGE_SIZE));
-        const paged = orgs.slice(orgPage * PAGE_SIZE, (orgPage + 1) * PAGE_SIZE);
-        return (
-          <div>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Name</th>
-                  <th>Members</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {paged.map((org) => (
-                  <>
-                    <tr key={org.id}>
-                      <td>{org.id}</td>
-                      <td>{org.name}</td>
-                      <td>
-                        <button className="btn-secondary" onClick={() => handleExpandOrg(org.id)}>
-                          {expandedOrgId === org.id ? "Hide" : "Members"}
-                        </button>
-                      </td>
-                      <td>
-                        {org.id !== "root" && (
-                          <button className="btn-danger" onClick={() => handleDeleteOrg(org.id)}>
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                    {expandedOrgId === org.id && (
-                      <tr key={`${org.id}-members`}>
-                        <td colSpan={4}>
-                          <div className="assignment-panel">
-                            {(orgMembers[org.id] ?? []).map((m) => (
-                              <span key={m.user_id} className="assignment-chip">
-                                {m.display_name ?? m.email ?? m.user_id}
-                                <button onClick={() => handleRemoveOrgMember(org.id, m.user_id)}>
-                                  ×
-                                </button>
-                              </span>
-                            ))}
-                            <div className="assignment-add">
-                              <input
-                                placeholder="user_id"
-                                value={addMemberUserId}
-                                onChange={(e) => setAddMemberUserId(e.target.value)}
-                              />
-                              <button
-                                className="btn-primary"
-                                onClick={() => handleAddOrgMember(org.id)}
-                              >
-                                Add
-                              </button>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                ))}
-              </tbody>
-            </table>
-            {totalPages > 1 && (
-              <div
-                style={{
-                  display: "flex",
-                  gap: "0.5rem",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  padding: "0.5rem 0",
-                  marginBottom: "1rem",
-                }}
-              >
-                <button onClick={() => setOrgPage(0)} disabled={orgPage === 0}>
-                  «
-                </button>
-                <button onClick={() => setOrgPage((p) => p - 1)} disabled={orgPage === 0}>
-                  ‹
-                </button>
-                <span>
-                  Page {orgPage + 1} / {totalPages}
-                </span>
-                <button onClick={() => setOrgPage((p) => p + 1)} disabled={orgPage >= totalPages - 1}>
-                  ›
-                </button>
-                <button
-                  onClick={() => setOrgPage(totalPages - 1)}
-                  disabled={orgPage >= totalPages - 1}
-                >
-                  »
-                </button>
-              </div>
-            )}
+      {orgMsg && <div className="success" style={{ marginBottom: "0.5rem" }}>{orgMsg}</div>}
+
+      <div className="page-header">
+        <h3 style={{ margin: 0 }}>Organizations</h3>
+        <FilterInput
+          value={orgSearch}
+          onChange={(v) => { setOrgSearch(v); setOrgPage(0); }}
+          placeholder="Filter by ID or name…"
+        />
+        <div className="page-actions">
+          <button onClick={() => setShowCreateOrg((v) => !v)}>
+            {showCreateOrg ? "Cancel" : "+ Org"}
+          </button>
+        </div>
+      </div>
+
+      {showCreateOrg && (
+        <div className="form-card" style={{ marginBottom: "1rem" }}>
+          <label>
+            ID (slug)
+            <input value={newOrgId} onChange={(e) => setNewOrgId(e.target.value)} placeholder="my-org" />
+          </label>
+          <label>
+            Name
+            <input value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} placeholder="My Org" />
+          </label>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button onClick={handleCreateOrg} disabled={!newOrgId.trim() || !newOrgName.trim()}>
+              + Org
+            </button>
           </div>
-        );
-      })()}
-      <h4>Create Org</h4>
-      <div className="form-row">
-        <input placeholder="ID (slug)" value={newOrgId} onChange={(e) => setNewOrgId(e.target.value)} />
-        <input placeholder="Name" value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} />
-        <button className="btn-primary" onClick={handleCreateOrg}>
-          Create
-        </button>
-      </div>
-      <h3 style={{ marginTop: 24 }}>Invite Links</h3>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <select value={inviteOrgId} onChange={(e) => setInviteOrgId(e.target.value)}>
-          <option value="">Select org...</option>
-          {orgs.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name} ({o.id})
-            </option>
-          ))}
-        </select>
-        <button className="btn-primary" onClick={handleCreateInvite} disabled={!inviteOrgId}>
-          Generate Invite Link
-        </button>
-      </div>
-      {inviteMsg && (
-        <div style={{ marginBottom: 8, color: "var(--muted-foreground)", fontSize: 13 }}>
-          {inviteMsg}
         </div>
       )}
-      {(() => {
-        const totalPages = Math.max(1, Math.ceil(orgInvites.length / PAGE_SIZE));
-        const paged = orgInvites.slice(invitePage * PAGE_SIZE, (invitePage + 1) * PAGE_SIZE);
-        return (
-          <div>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr>
-                  {["Org", "Token", "Created By", "Expires", "Status", ""].map((h) => (
-                    <th
-                      key={h}
-                      style={{
-                        textAlign: "left",
-                        padding: "4px 8px",
-                        borderBottom: "1px solid var(--border)",
-                      }}
+
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Members</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredOrgs.length === 0 && (
+            <tr>
+              <td colSpan={4} style={{ color: "var(--text-muted)", textAlign: "center" }}>
+                No organizations
+              </td>
+            </tr>
+          )}
+          {pagedOrgs.map((org) => (
+            <>
+              <tr key={org.id}>
+                <td>{org.id}</td>
+                <td>{org.name}</td>
+                <td>
+                  <button
+                    style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                    onClick={() => handleExpandOrg(org.id)}
+                  >
+                    {expandedOrgId === org.id ? "Hide" : "Members"}
+                  </button>
+                </td>
+                <td>
+                  {org.id !== "root" && (
+                    <button
+                      className="btn-icon-danger"
+                      title="Delete"
+                      onClick={() => handleDeleteOrg(org.id)}
                     >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {paged.map((inv) => (
-                  <tr key={inv.token}>
-                    <td style={{ padding: "4px 8px" }}>{inv.org_name}</td>
-                    <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: 11 }}>
-                      {inv.token.slice(0, 8)}…
-                    </td>
-                    <td style={{ padding: "4px 8px" }}>{inv.created_by}</td>
-                    <td style={{ padding: "4px 8px" }}>
-                      {new Date(inv.expires_at).toLocaleDateString()}
-                    </td>
-                    <td style={{ padding: "4px 8px" }}>
-                      {inv.used_at ? `Used ${new Date(inv.used_at).toLocaleDateString()}` : "Active"}
-                    </td>
-                    <td style={{ padding: "4px 8px", display: "flex", gap: 4 }}>
-                      {!inv.used_at && (
-                        <button onClick={() => handleCopyInvite(inv.token)} style={{ fontSize: 12 }}>
-                          {copiedToken === inv.token ? "Copied!" : "Copy"}
-                        </button>
-                      )}
-                      {!inv.used_at && (
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </td>
+              </tr>
+              {expandedOrgId === org.id && (
+                <tr key={`${org.id}-members`}>
+                  <td colSpan={4} style={{ paddingLeft: "2rem", background: "var(--bg-alt, var(--bg))" }}>
+                    <div style={{ padding: "0.75rem 0" }}>
+                      <strong style={{ fontSize: "0.85rem" }}>Members</strong>
+                      <div style={{ marginTop: "0.5rem", display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                        {(orgMembers[org.id] ?? []).length === 0 && (
+                          <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>No members</span>
+                        )}
+                        {(orgMembers[org.id] ?? []).map((m) => (
+                          <span
+                            key={m.user_id}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.25rem",
+                              background: "var(--border)",
+                              borderRadius: "4px",
+                              padding: "0.2rem 0.5rem",
+                              fontSize: "0.8rem",
+                            }}
+                          >
+                            {m.display_name ?? m.email ?? m.user_id}
+                            <button
+                              style={{ background: "none", border: "none", color: "var(--danger, #e55)", cursor: "pointer", padding: 0, lineHeight: 1 }}
+                              onClick={() => handleRemoveOrgMember(org.id, m.user_id)}
+                              title="Remove"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                        <input
+                          placeholder="user_id"
+                          value={addMemberUserId}
+                          onChange={(e) => setAddMemberUserId(e.target.value)}
+                          style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.3rem", borderRadius: "4px", fontSize: "0.85rem" }}
+                        />
                         <button
-                          onClick={() => handleRevokeInvite(inv.token)}
-                          style={{ fontSize: 12, color: "var(--destructive)" }}
+                          style={{ fontSize: "0.8rem", padding: "0.3rem 0.7rem" }}
+                          onClick={() => handleAddOrgMember(org.id)}
+                          disabled={!addMemberUserId.trim()}
                         >
-                          Revoke
+                          Add
                         </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {orgInvites.length === 0 && (
-                  <tr>
-                    <td colSpan={6} style={{ padding: "8px", color: "var(--muted-foreground)" }}>
-                      No invites
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-            {totalPages > 1 && (
-              <div
-                style={{
-                  display: "flex",
-                  gap: "0.5rem",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  padding: "0.5rem 0",
-                  marginBottom: "1rem",
-                }}
-              >
-                <button onClick={() => setInvitePage(0)} disabled={invitePage === 0}>
-                  «
-                </button>
-                <button onClick={() => setInvitePage((p) => p - 1)} disabled={invitePage === 0}>
-                  ‹
-                </button>
-                <span>
-                  Page {invitePage + 1} / {totalPages}
-                </span>
-                <button
-                  onClick={() => setInvitePage((p) => p + 1)}
-                  disabled={invitePage >= totalPages - 1}
-                >
-                  ›
-                </button>
-                <button
-                  onClick={() => setInvitePage(totalPages - 1)}
-                  disabled={invitePage >= totalPages - 1}
-                >
-                  »
-                </button>
-              </div>
-            )}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </>
+          ))}
+        </tbody>
+      </table>
+      {orgTotalPages > 1 && (
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
+          <button onClick={() => setOrgPage(0)} disabled={orgSafePage === 0}>«</button>
+          <button onClick={() => setOrgPage((p) => p - 1)} disabled={orgSafePage === 0}>‹</button>
+          <span>Page {orgSafePage + 1} / {orgTotalPages}</span>
+          <button onClick={() => setOrgPage((p) => p + 1)} disabled={orgSafePage >= orgTotalPages - 1}>›</button>
+          <button onClick={() => setOrgPage(orgTotalPages - 1)} disabled={orgSafePage >= orgTotalPages - 1}>»</button>
+        </div>
+      )}
+
+      <div className="page-header" style={{ marginTop: "1.5rem" }}>
+        <h3 style={{ margin: 0 }}>Invite Links</h3>
+        <FilterInput
+          value={inviteSearch}
+          onChange={(v) => { setInviteSearch(v); setInvitePage(0); }}
+          placeholder="Filter by org, token, or creator…"
+        />
+        <div className="page-actions">
+          <button onClick={() => setShowInviteForm((v) => !v)}>
+            {showInviteForm ? "Cancel" : "+ Invite Link"}
+          </button>
+        </div>
+      </div>
+
+      {showInviteForm && (
+        <div className="form-card" style={{ marginBottom: "1rem" }}>
+          <label>
+            Organization
+            <select value={inviteOrgId} onChange={(e) => setInviteOrgId(e.target.value)}>
+              <option value="">Select org…</option>
+              {orgs.map((o) => (
+                <option key={o.id} value={o.id}>{o.name} ({o.id})</option>
+              ))}
+            </select>
+          </label>
+          {inviteMsg && <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{inviteMsg}</p>}
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button onClick={handleCreateInvite} disabled={!inviteOrgId}>
+              Generate Invite Link
+            </button>
           </div>
-        );
-      })()}
+        </div>
+      )}
+
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Org</th>
+            <th>Token</th>
+            <th>Created By</th>
+            <th>Expires</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredInvites.length === 0 && (
+            <tr>
+              <td colSpan={6} style={{ color: "var(--text-muted)", textAlign: "center" }}>No invites</td>
+            </tr>
+          )}
+          {pagedInvites.map((inv) => (
+            <tr key={inv.token}>
+              <td>{inv.org_name}</td>
+              <td><code>{inv.token.slice(0, 8)}…</code></td>
+              <td>{inv.created_by}</td>
+              <td>{new Date(inv.expires_at).toLocaleDateString()}</td>
+              <td>{inv.used_at ? `Used ${new Date(inv.used_at).toLocaleDateString()}` : "Active"}</td>
+              <td>
+                <div style={{ display: "flex", gap: "0.25rem" }}>
+                  {!inv.used_at && (
+                    <button style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }} onClick={() => handleCopyInvite(inv.token)}>
+                      {copiedToken === inv.token ? "Copied!" : "Copy"}
+                    </button>
+                  )}
+                  {!inv.used_at && (
+                    <button className="destructive" style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }} onClick={() => handleRevokeInvite(inv.token)}>
+                      Revoke
+                    </button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {invTotalPages > 1 && (
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
+          <button onClick={() => setInvitePage(0)} disabled={invSafePage === 0}>«</button>
+          <button onClick={() => setInvitePage((p) => p - 1)} disabled={invSafePage === 0}>‹</button>
+          <span>Page {invSafePage + 1} / {invTotalPages}</span>
+          <button onClick={() => setInvitePage((p) => p + 1)} disabled={invSafePage >= invTotalPages - 1}>›</button>
+          <button onClick={() => setInvitePage(invTotalPages - 1)} disabled={invSafePage >= invTotalPages - 1}>»</button>
+        </div>
+      )}
     </div>
   );
 }

@@ -20,12 +20,12 @@ const httpLink = new HttpLink({
 
 const authLink = new ApolloLink((operation, forward) => {
   const token = localStorage.getItem("provisa_token");
-  if (token) {
-    operation.setContext({
-      headers: {
-        authorization: `Bearer ${token}`,
-      },
-    });
+  const orgId = localStorage.getItem("provisa_org");
+  const headers: Record<string, string> = {};
+  if (token) headers["authorization"] = `Bearer ${token}`;
+  if (orgId) headers["X-Org-Id"] = orgId;
+  if (Object.keys(headers).length > 0) {
+    operation.setContext({ headers });
   }
   return forward(operation);
 });
