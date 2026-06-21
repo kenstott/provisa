@@ -2134,11 +2134,11 @@ class Mutation:
             return MutationResult(success=False, message=str(e))
 
         if req["request_type"] == "relationship":
-            result = await self.upsert_relationship(
+            result = await self.upsert_relationship(  # pyright: ignore[reportCallIssue]
                 info, _rebuild_relationship_input(req["payload"])
             )
         elif req["request_type"] == "view":
-            result = await self.register_table(info, _rebuild_table_input(req["payload"]))
+            result = await self.register_table(info, _rebuild_table_input(req["payload"]))  # pyright: ignore[reportCallIssue]
         elif req["request_type"] == "webhook":
             # REQ-209: approving a webhook only requires marking this request executed (done
             # below) — the schema-build gate then exposes the webhook whose latest request is

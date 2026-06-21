@@ -206,7 +206,7 @@ def _map_model_to_table(
         role_fields.setdefault(tp.role, set()).update(tp.allowed_fields)
 
     columns: list[Column] = []
-    for gql_field, gql_type in ot.fields.items():
+    for gql_field, _ in ot.fields.items():
         physical_col = _resolve_column(gql_field, field_col_map)
 
         # Determine which roles can see this column
@@ -239,7 +239,6 @@ def _map_rls_rules(
     model_perms_idx: dict[str, list[DDNModelPermission]],
     model_index: dict[str, DDNModel],
     field_col_maps: dict[str, dict[str, str]],
-    ot_index: dict[str, DDNObjectType],
 ) -> list[RLSRule]:
     """Map DDN ModelPermissions to Provisa RLS rules."""
     rules: list[RLSRule] = []
@@ -411,7 +410,6 @@ def _collect_roles(
 
 def _map_commands(
     commands: list[DDNCommand],
-    model_index: dict[str, DDNModel],
 ) -> list[Function]:
     """Map DDN Commands to Provisa Functions."""
     functions: list[Function] = []
@@ -520,7 +518,6 @@ def convert_hml(
         model_perms_idx,
         model_index,
         field_col_maps,
-        ot_index,
     )
 
     # Relationships
@@ -535,7 +532,7 @@ def convert_hml(
     roles = _collect_roles(metadata.type_permissions, metadata.model_permissions)
 
     # Functions from commands
-    functions = _map_commands(metadata.commands, model_index)
+    functions = _map_commands(metadata.commands)
 
     # Aggregate expressions — annotate table descriptions and emit to sidecar
     agg_config = _map_aggregate_expressions(metadata.aggregate_expressions)
@@ -569,16 +566,6 @@ def convert_hml(
         rls_rules=rls_rules,
         functions=functions,
     )
-
-
-def _find_model_by_collection(
-    collection: str,
-    models: list[DDNModel],
-) -> DDNModel | None:
-    for m in models:
-        if m.collection == collection or m.name == collection:
-            return m
-    return None
 
 
 def _format_agg_description(agg: AggConfig) -> str:

@@ -32,7 +32,7 @@ def _require_superadmin(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Superadmin required")
 
 
-def _pool(request: Request) -> asyncpg.Pool:
+def _pool() -> asyncpg.Pool:
     from provisa.api.app import state
 
     assert state.pg_pool is not None
@@ -55,7 +55,7 @@ class AddMemberBody(BaseModel):
 @router.get("/")
 async def list_orgs(request: Request):
     _require_superadmin(request)
-    pool = _pool(request)
+    pool = _pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT id, name, created_by, created_at FROM orgs ORDER BY id")
     return [dict(r) for r in rows]
@@ -64,7 +64,7 @@ async def list_orgs(request: Request):
 @router.post("/")
 async def create_org(body: CreateOrgBody, request: Request):
     _require_superadmin(request)
-    pool = _pool(request)
+    pool = _pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "INSERT INTO orgs (id, name) VALUES ($1, $2) RETURNING id, name, created_by, created_at",
@@ -77,7 +77,7 @@ async def create_org(body: CreateOrgBody, request: Request):
 @router.put("/{org_id}")
 async def rename_org(org_id: str, body: RenameOrgBody, request: Request):
     _require_superadmin(request)
-    pool = _pool(request)
+    pool = _pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "UPDATE orgs SET name = $1 WHERE id = $2 RETURNING id, name, created_by, created_at",
@@ -94,7 +94,7 @@ async def delete_org(org_id: str, request: Request):
     _require_superadmin(request)
     if org_id == "root":
         raise HTTPException(status_code=400, detail="Cannot delete the root org")
-    pool = _pool(request)
+    pool = _pool()
     async with pool.acquire() as conn:
         result = await conn.execute("DELETE FROM orgs WHERE id = $1", org_id)
     if result == "DELETE 0":
@@ -105,7 +105,7 @@ async def delete_org(org_id: str, request: Request):
 @router.get("/{org_id}/members")
 async def list_members(org_id: str, request: Request):
     _require_superadmin(request)
-    pool = _pool(request)
+    pool = _pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT m.user_id, p.email, p.display_name, p.provider, m.created_at "
@@ -120,7 +120,7 @@ async def list_members(org_id: str, request: Request):
 @router.post("/{org_id}/members")
 async def add_member(org_id: str, body: AddMemberBody, request: Request):
     _require_superadmin(request)
-    pool = _pool(request)
+    pool = _pool()
     async with pool.acquire() as conn:
         org_exists = await conn.fetchval("SELECT 1 FROM orgs WHERE id = $1", org_id)
         if not org_exists:
@@ -136,7 +136,7 @@ async def add_member(org_id: str, body: AddMemberBody, request: Request):
 @router.delete("/{org_id}/members/{user_id}")
 async def remove_member(org_id: str, user_id: str, request: Request):
     _require_superadmin(request)
-    pool = _pool(request)
+    pool = _pool()
     async with pool.acquire() as conn:
         result = await conn.execute(
             "DELETE FROM user_org_memberships WHERE user_id = $1 AND org_id = $2",
