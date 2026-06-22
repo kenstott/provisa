@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING
 from provisa.compiler.naming import (
     apply_cql_label as _apply_cql_label,
     apply_cql_property as _apply_cql_property,
-    apply_sql_name as _apply_sql_name_mod,
 )
 from provisa.core import domain_policy
 
@@ -43,7 +42,13 @@ class NodeMapping:
     catalog_name: str
     schema_name: str
     table_name: str  # logical name — domain initials prefix stripped (e.g. "orders")
-    properties: dict[str, str]  # cypher prop name → SQL column name
+    properties: dict[
+        str, str
+    ]  # cypher prop name → SQL alias name; used everywhere in generated SQL (WHERE/ON/SELECT)
+    physical_properties: dict[str, str] = field(
+        default_factory=dict
+    )  # cypher prop name → physical DB column name; used ONLY in _node_table_expr to build
+    # the SELECT *, phys AS sql_alias subquery wrapper — never in WHERE/ON conditions
     native_filter_columns: set[str] = field(
         default_factory=set
     )  # SQL column names that are native API params
@@ -209,7 +214,6 @@ class CypherLabelMap:
         cross-domain nodes reachable via registered relationships are included and
         marked traversal_only=True — they cannot be used as MATCH starting nodes.
         """
-        from provisa.compiler.sql_gen import CompilationContext
 
         nodes: dict[str, NodeMapping] = {}
         relationships: dict[str, RelationshipMapping] = {}
@@ -276,9 +280,14 @@ def _build_node_mappings(
         user_pks = ctx_typed.pk_columns.get(table_meta.table_id, [])
         _phys_id = _resolve_id_column(table_meta.type_name, col_names, target_pk, user_pks)
         id_col = ctx_typed.physical_to_sql.get((table_meta.table_id, _phys_id), _phys_id)
+        _gov_obj = ctx_typed.gql_governed_object_cols
         props: dict[str, str] = {
             _apply_cql_property(c): ctx_typed.physical_to_sql.get((table_meta.table_id, c), c)
             for c in col_names
+            if (table_meta.table_id, c) not in _gov_obj
+        }
+        phys_props: dict[str, str] = {
+            _apply_cql_property(c): c for c in col_names if (table_meta.table_id, c) not in _gov_obj
         }
 
         domain_id = getattr(table_meta, "domain_id", None) or None
@@ -307,6 +316,7 @@ def _build_node_mappings(
             schema_name=table_meta.schema_name,
             table_name=logical_table,
             properties=props,
+            physical_properties=phys_props,
             native_filter_columns=nf_cols,
             physical_table_name=physical_table_name,
         )
@@ -361,16 +371,20 @@ def _make_traversal_node(
     tgt_raw_name = tgt_table["table_name"]
     tgt_table_label = _apply_cql_label(_strip_domain_prefix(tgt_raw_name, tgt_domain_id))
     tgt_logical = _strip_domain_prefix(tgt_raw_name, tgt_domain_id)
-    tgt_type_name = (
-        f"{tgt_domain_label}_{tgt_table_label}" if tgt_domain_label else tgt_table_label
-    )
+    tgt_type_name = f"{tgt_domain_label}_{tgt_table_label}" if tgt_domain_label else tgt_table_label
     tgt_cypher_label = (
         f"{tgt_domain_label}:{tgt_table_label}" if tgt_domain_label else tgt_table_label
     )
     col_names = [c.column_name for c in col_metas]
-    props: dict[str, str] = {_apply_cql_property(c): _apply_sql_name(c) for c in col_names}
+    _col_alias: dict[str, str] = {
+        col["column_name"]: col["alias"] for col in tgt_table.get("columns", []) if col.get("alias")
+    }
+    props: dict[str, str] = {
+        _apply_cql_property(c): (_col_alias.get(c) or _apply_sql_name(c)) for c in col_names
+    }
+    phys_props: dict[str, str] = {_apply_cql_property(c): c for c in col_names}
     _phys_id = _resolve_id_column(tgt_type_name, col_names, {}, [])
-    id_col = _apply_sql_name(_phys_id)
+    id_col = _col_alias.get(_phys_id) or _apply_sql_name(_phys_id)
     tgt_source_id = tgt_table.get("source_id") or ""
     tgt_schema = tgt_table.get("schema_name") or ""
     tgt_catalog = (source_catalogs or {}).get(tgt_source_id) or (
@@ -390,6 +404,7 @@ def _make_traversal_node(
         schema_name=tgt_schema,
         table_name=tgt_logical,
         properties=props,
+        physical_properties=phys_props,
         traversal_only=True,
     )
 

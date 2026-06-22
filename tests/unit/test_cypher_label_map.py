@@ -11,15 +11,14 @@
 
 """Unit tests for provisa/cypher/label_map.py — focus on _resolve_id_column and cross-domain traversal."""
 
-import pytest
-
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping, _resolve_id_column
+from provisa.cypher.label_map import CypherLabelMap, NodeMapping, _resolve_id_column
 from provisa.compiler.introspect import ColumnMetadata
 
 
 # ---------------------------------------------------------------------------
 # _resolve_id_column
 # ---------------------------------------------------------------------------
+
 
 def test_join_target_wins_over_all():
     # target_pk explicitly says "user_id" — must win even if "id" is present
@@ -83,11 +82,20 @@ def test_join_target_overrides_exact_id():
 # NodeMapping.traversal_only default
 # ---------------------------------------------------------------------------
 
+
 def test_node_mapping_traversal_only_defaults_false():
     nm = NodeMapping(
-        label="Orders", type_name="Orders", domain_label=None, table_label="Orders",
-        table_id=1, source_id="pg", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="orders",
+        label="Orders",
+        type_name="Orders",
+        domain_label=None,
+        table_label="Orders",
+        table_id=1,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="orders",
         properties={},
     )
     assert nm.traversal_only is False
@@ -95,9 +103,17 @@ def test_node_mapping_traversal_only_defaults_false():
 
 def test_node_mapping_traversal_only_can_be_set():
     nm = NodeMapping(
-        label="Logistics:Shipments", type_name="Logistics_Shipments", domain_label="Logistics",
-        table_label="Shipments", table_id=99, source_id="pg2", id_column="shipment_id",
-        pk_columns=[], catalog_name="pg2", schema_name="logistics", table_name="shipments",
+        label="Logistics:Shipments",
+        type_name="Logistics_Shipments",
+        domain_label="Logistics",
+        table_label="Shipments",
+        table_id=99,
+        source_id="pg2",
+        id_column="shipment_id",
+        pk_columns=[],
+        catalog_name="pg2",
+        schema_name="logistics",
+        table_name="shipments",
         properties={"shipmentId": "shipment_id"},
         traversal_only=True,
     )
@@ -108,9 +124,11 @@ def test_node_mapping_traversal_only_can_be_set():
 # CypherLabelMap.from_schema — cross-domain traversal_only nodes (REQ-440–444)
 # ---------------------------------------------------------------------------
 
+
 def _make_ctx(owned_table_id: int = 1):
     """Minimal fake CompilationContext with one table in 'sales' domain."""
     from types import SimpleNamespace
+
     table = SimpleNamespace(
         type_name="Sales_Orders",
         table_id=owned_table_id,
@@ -127,6 +145,7 @@ def _make_ctx(owned_table_id: int = 1):
         pk_columns={},
         native_filter_columns={},
         physical_to_sql={},
+        gql_governed_object_cols=set(),
     )
     return ctx
 
@@ -147,9 +166,21 @@ def test_from_schema_cross_domain_adds_traversal_only_node():
     """
     ctx = _make_ctx(owned_table_id=1)
     all_tables = [
-        {"id": 1, "table_name": "sa_orders", "schema_name": "public", "source_id": "pg", "domain_id": "sales"},
+        {
+            "id": 1,
+            "table_name": "sa_orders",
+            "schema_name": "public",
+            "source_id": "pg",
+            "domain_id": "sales",
+        },
         # "l_" prefix matches domain initials for "logistics" (first letter = "l")
-        {"id": 2, "table_name": "l_shipments", "schema_name": "logistics_schema", "source_id": "pg2", "domain_id": "logistics"},
+        {
+            "id": 2,
+            "table_name": "l_shipments",
+            "schema_name": "logistics_schema",
+            "source_id": "pg2",
+            "domain_id": "logistics",
+        },
     ]
     all_relationships = [
         {
@@ -185,18 +216,85 @@ def test_from_schema_cross_domain_adds_traversal_only_node():
     assert any(r.rel_type == "SHIPPED_VIA" for r in lm.relationships.values())
 
 
+def test_traversal_node_properties_use_alias_not_inline_conversion():
+    """Cross-domain traversal node properties must use configured column alias, not apply_sql_name."""
+    ctx = _make_ctx(owned_table_id=1)
+    all_tables = [
+        {
+            "id": 1,
+            "table_name": "sa_orders",
+            "schema_name": "public",
+            "source_id": "pg",
+            "domain_id": "sales",
+        },
+        {
+            "id": 2,
+            "table_name": "l_shipments",
+            "schema_name": "logistics_schema",
+            "source_id": "pg2",
+            "domain_id": "logistics",
+            # Column with explicit alias that differs from apply_sql_name result
+            "columns": [
+                {"column_name": "id", "alias": None},
+                {"column_name": "breedName", "alias": "breed_label"},
+            ],
+        },
+    ]
+    all_relationships = [
+        {
+            "source_table_id": 1,
+            "target_table_id": 2,
+            "source_column": "shipment_id",
+            "target_column": "id",
+            "alias": "SHIPPED_VIA",
+            "computed_cypher_alias": None,
+            "graphql_alias": "l_shipments",
+            "disable_cypher": False,
+        }
+    ]
+    all_column_types = {
+        2: [ColumnMetadata("id", "integer", False), ColumnMetadata("breedName", "varchar", True)],
+    }
+    lm = CypherLabelMap.from_schema(
+        ctx,
+        domain_access=["sales"],
+        all_tables=all_tables,
+        all_relationships=all_relationships,
+        all_column_types=all_column_types,
+    )
+    xnode = lm.nodes["Logistics_Shipments"]
+    # breedName has alias "breed_label" — must NOT be converted inline to "breedName" snake
+    assert xnode.properties.get("breedName") == "breed_label"
+
+
 def test_from_schema_star_domain_access_skips_cross_domain():
     """domain_access=['*'] means all tables are owned; no traversal_only nodes added."""
     ctx = _make_ctx(owned_table_id=1)
     all_tables = [
-        {"id": 1, "table_name": "sa_orders", "schema_name": "public", "source_id": "pg", "domain_id": "sales"},
-        {"id": 2, "table_name": "l_shipments", "schema_name": "logistics_schema", "source_id": "pg2", "domain_id": "logistics"},
+        {
+            "id": 1,
+            "table_name": "sa_orders",
+            "schema_name": "public",
+            "source_id": "pg",
+            "domain_id": "sales",
+        },
+        {
+            "id": 2,
+            "table_name": "l_shipments",
+            "schema_name": "logistics_schema",
+            "source_id": "pg2",
+            "domain_id": "logistics",
+        },
     ]
     all_relationships = [
         {
-            "source_table_id": 1, "target_table_id": 2,
-            "source_column": "shipment_id", "target_column": "id",
-            "alias": "SHIPPED_VIA", "computed_cypher_alias": None, "graphql_alias": "l_shipments",
+            "source_table_id": 1,
+            "target_table_id": 2,
+            "source_column": "shipment_id",
+            "target_column": "id",
+            "alias": "SHIPPED_VIA",
+            "computed_cypher_alias": None,
+            "graphql_alias": "l_shipments",
             "disable_cypher": False,
         }
     ]
@@ -217,6 +315,7 @@ def test_from_schema_no_cross_domain_rel_when_target_already_owned():
     ctx = _make_ctx(owned_table_id=1)
     # Add a second owned table manually to ctx
     from types import SimpleNamespace
+
     table2 = SimpleNamespace(
         type_name="Sales_Products",
         table_id=2,
@@ -230,14 +329,30 @@ def test_from_schema_no_cross_domain_rel_when_target_already_owned():
     ctx.aggregate_columns[2] = [("id", "integer"), ("name", "varchar")]
 
     all_tables = [
-        {"id": 1, "table_name": "sa_orders", "schema_name": "public", "source_id": "pg", "domain_id": "sales"},
-        {"id": 2, "table_name": "sa_products", "schema_name": "public", "source_id": "pg", "domain_id": "sales"},
+        {
+            "id": 1,
+            "table_name": "sa_orders",
+            "schema_name": "public",
+            "source_id": "pg",
+            "domain_id": "sales",
+        },
+        {
+            "id": 2,
+            "table_name": "sa_products",
+            "schema_name": "public",
+            "source_id": "pg",
+            "domain_id": "sales",
+        },
     ]
     all_relationships = [
         {
-            "source_table_id": 1, "target_table_id": 2,
-            "source_column": "product_id", "target_column": "id",
-            "alias": "HAS_PRODUCT", "computed_cypher_alias": None, "graphql_alias": "sa_products",
+            "source_table_id": 1,
+            "target_table_id": 2,
+            "source_column": "product_id",
+            "target_column": "id",
+            "alias": "HAS_PRODUCT",
+            "computed_cypher_alias": None,
+            "graphql_alias": "sa_products",
             "disable_cypher": False,
         }
     ]

@@ -66,15 +66,30 @@ def _const_literal(v: int | str) -> exp.Expression:  # pyright: ignore[reportPri
 
 
 def _node_table_expr(nm: "NodeMapping", alias: str) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    """Build a aliased table expression for a NodeMapping."""
-    return exp.alias_(  # pyright: ignore[reportReturnType]
-        exp.Table(
-            this=exp.Identifier(this=nm.sql_table_name, quoted=True),
-            db=exp.Identifier(this=nm.schema_name, quoted=True),
-            catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
-        ),
-        alias=alias,
+    """Build an aliased table expression for a NodeMapping.
+
+    When physical column names differ from SQL aliases (e.g. breedName vs breed_name),
+    wraps the physical table in a subquery: SELECT *, "phys" AS "sql_alias" FROM table.
+    This keeps physical column names accessible for JOIN conditions while the outer SQL
+    can reference SQL aliases throughout — preserving governance on the outer query.
+    """
+    phys_table = exp.Table(
+        this=exp.Identifier(this=nm.sql_table_name, quoted=True),
+        db=exp.Identifier(this=nm.schema_name, quoted=True),
+        catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
     )
+    alias_exprs = [
+        exp.alias_(
+            exp.Column(this=exp.Identifier(this=phys, quoted=True)),
+            sql_al,
+        )
+        for cql, sql_al in nm.properties.items()
+        if (phys := nm.physical_properties.get(cql)) and phys != sql_al
+    ]
+    if not alias_exprs:
+        return exp.alias_(phys_table, alias=alias)  # pyright: ignore[reportReturnType]
+    subq = exp.Select(expressions=[exp.Star(), *alias_exprs]).from_(phys_table)
+    return exp.alias_(exp.Subquery(this=subq), alias=alias)  # pyright: ignore[reportReturnType]
 
 
 def _tgt_col_expr_for_rm(rm: "RelationshipMapping", alias: str) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -198,6 +213,13 @@ def _join_alias(table_expr: "exp.Expression") -> "str | None":  # pyright: ignor
     return str(alias) if alias else None
 
 
+def _split_and(expr: "exp.Expression") -> "list[exp.Expression]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Flatten top-level AND conjuncts into a list."""
+    if isinstance(expr, exp.And):
+        return _split_and(expr.this) + _split_and(expr.expression)
+    return [expr]
+
+
 def _fold_where_into_optional_joins(
     where_expr: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     optional_vars: "set[str]",
@@ -211,30 +233,62 @@ def _fold_where_into_optional_joins(
     a LEFT JOIN into an implicit INNER JOIN, filtering out rows where the optional
     variable is NULL and eliminating the base MATCH rows.
 
+    Each AND conjunct is assigned only to the LEFT JOIN that introduces its
+    last-referenced optional variable, so a condition on variable `c` is never
+    placed in an earlier join (e.g. `b`) where `c` is not yet in scope.
+
     Returns (modified_joins, remaining_where_or_None).
     """
     referenced = {v for v in optional_vars if re.search(rf"\b{re.escape(v)}\b", where_text)}
     if not referenced:
         return joins, where_expr
 
+    # Build position map for LEFT JOIN aliases so we can find the "last" one.
+    join_order: dict[str, int] = {}
+    for i, join in enumerate(joins):
+        alias = _join_alias(join["table"])
+        if alias:
+            join_order[alias] = i
+
+    # Split into individual AND conjuncts, route each to the appropriate join.
+    conjuncts = _split_and(where_expr)
+    alias_to_conjuncts: dict[str, list] = {}
+    remaining_conjuncts: list = []
+
+    for cond in conjuncts:
+        cond_text = cond.sql(dialect="trino")
+        refs = {v for v in optional_vars if re.search(rf"\b{re.escape(v)}\b", cond_text)}
+        refs_in_joins = refs & set(join_order.keys())
+        if refs_in_joins:
+            target = max(refs_in_joins, key=lambda v: join_order[v])
+            alias_to_conjuncts.setdefault(target, []).append(cond)
+        else:
+            remaining_conjuncts.append(cond)
+
     modified: list[dict] = []
     folded = False
     for join in joins:
         alias = _join_alias(join["table"])
-        if alias in referenced and join["join_type"] == "LEFT":
+        if alias in alias_to_conjuncts and join["join_type"] == "LEFT":
             existing_on = join["on"]
-            if existing_on is None or (
-                hasattr(existing_on, "sql") and existing_on.sql() in ("TRUE", "true", "1 = 1")
-            ):
-                new_on = where_expr
-            else:
-                new_on = exp.And(this=existing_on, expression=where_expr)
+            new_on = existing_on
+            for cond in alias_to_conjuncts[alias]:
+                if new_on is None or (
+                    hasattr(new_on, "sql") and new_on.sql() in ("TRUE", "true", "1 = 1")
+                ):
+                    new_on = cond
+                else:
+                    new_on = exp.And(this=new_on, expression=cond)
             modified.append({**join, "on": new_on})
             folded = True
         else:
             modified.append(join)
 
-    return modified, (None if folded else where_expr)
+    remaining: "exp.Expression | None" = None
+    for cond in remaining_conjuncts:
+        remaining = cond if remaining is None else exp.And(this=remaining, expression=cond)
+
+    return modified, remaining
 
 
 class GraphVarKind(str, Enum):
@@ -1190,15 +1244,15 @@ class _Translator(
         return from_expr, joins
 
     def _rewrite_cypher_props(self, text: str) -> str:
-        """Rewrite var.camelProp → var.sql_col using NodeMapping.properties."""
+        """Rewrite var.camelProp → var.sql_alias using NodeMapping.properties."""
 
         def _replace(m: re.Match) -> str:
             var, prop = m.group(1), m.group(2)
             info = self._var_table.get(var)
             if info and info[1]:
-                sql_col = info[1].properties.get(prop)
-                if sql_col:
-                    return f"{var}.{sql_col}"
+                sql_alias = info[1].properties.get(prop)
+                if sql_alias:
+                    return f"{var}.{sql_alias}"
             return m.group(0)
 
         return re.sub(r"\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\b", _replace, text)
@@ -1682,12 +1736,12 @@ class _Translator(
                 ),
             ]
             for prop in props:
-                sql_col = nm.properties.get(prop)
-                if sql_col:
+                phys_col = nm.physical_properties.get(prop)
+                if phys_col:
                     select_items.append(
                         exp.alias_(
                             exp.Cast(
-                                this=exp.Column(this=exp.Identifier(this=sql_col, quoted=True)),
+                                this=exp.Column(this=exp.Identifier(this=phys_col, quoted=True)),
                                 to=exp.DataType(this=exp.DataType.Type.VARCHAR),
                             ),
                             alias=exp.Identifier(this=prop, quoted=True),

@@ -305,7 +305,6 @@ async def _govern_and_route_compiled(
             from provisa.compiler.view_expand import expand_view_refs
 
             _exec_sql = expand_view_refs(_exec_sql, _view_map)
-        _exec_sql_base = _exec_sql
         _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_exec_sql, state)
         for _tn, _entry in _values_ctes.items():
             _exec_sql = build_values_cte_sql(_exec_sql, _tn, _entry)
@@ -342,7 +341,7 @@ async def _govern_and_route_compiled(
             source_id=_default_source,
             dialect="trino",
             exec_params=exec_params,
-            exec_sql=_exec_sql_base,
+            exec_sql=_exec_sql,
             trino_sql=trino_sql,
         )
     else:

@@ -16,33 +16,27 @@ end-to-end across the full conversion pipeline.
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 from typing import Any
 
-import pytest
 import yaml
 
 from provisa.core.models import ProvisaConfig, SourceType
 from provisa.hasura_v2.mapper import (
     _collect_roles,
     _extract_connection_info,
-    _map_source,
     _source_type_from_kind,
     convert_metadata,
 )
 from provisa.hasura_v2.models import (
     HasuraAction,
     HasuraActionDefinition,
-    HasuraComputedField,
     HasuraCronTrigger,
     HasuraEventTrigger,
-    HasuraFunction,
     HasuraInheritedRole,
     HasuraMetadata,
     HasuraPermission,
     HasuraRelationship,
-    HasuraRemoteSchema,
     HasuraSource,
     HasuraTable,
 )
@@ -1386,8 +1380,10 @@ class TestBoolExprToSql:
 
     def test_hasura_session_var_x_hasura_user_id(self):
         result = bool_expr_to_sql({"user_id": {"_eq": "X-Hasura-User-Id"}})
-        # Session variable should be rendered as placeholder, not quoted string
-        assert "'" not in result or "${" in result
+        # Session variable must not be rendered as a plain string literal 'X-Hasura-User-Id'
+        # but as a session variable reference: current_setting(...) or ${...} placeholder
+        assert "current_setting(" in result or "${" in result
+        assert "X-Hasura-User-Id" not in result
 
     def test_gt_operator(self):
         result = bool_expr_to_sql({"amount": {"_gt": 100}})

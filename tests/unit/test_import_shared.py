@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import yaml
 
 from provisa.import_shared.filters import (
@@ -180,12 +179,13 @@ class TestFormatValue:
 
     def test_hasura_session_var_lowercase(self):
         result = _format_value("x-hasura-user-id")
-        assert result == "${x-hasura-user-id}"
+        assert "current_setting(" in result
+        assert "x-hasura-user-id" not in result
 
     def test_hasura_session_var_uppercase_prefix(self):
         result = _format_value("X-Hasura-Role")
-        assert result.startswith("${")
-        assert "Hasura" in result
+        assert "current_setting(" in result
+        assert "X-Hasura-Role" not in result
 
     def test_zero(self):
         assert _format_value(0) == "0"
@@ -324,20 +324,24 @@ class TestBoolExprToSQLSimpleOperators:
 
 class TestBoolExprToSQLLogicalOperators:
     def test_and_two_conditions(self):
-        expr = {"_and": [
-            {"status": {"_eq": "active"}},
-            {"age": {"_gte": 18}},
-        ]}
+        expr = {
+            "_and": [
+                {"status": {"_eq": "active"}},
+                {"age": {"_gte": 18}},
+            ]
+        }
         result = bool_expr_to_sql(expr)
         assert "AND" in result
         assert "status = 'active'" in result
         assert "age >= 18" in result
 
     def test_or_two_conditions(self):
-        expr = {"_or": [
-            {"role": {"_eq": "admin"}},
-            {"role": {"_eq": "editor"}},
-        ]}
+        expr = {
+            "_or": [
+                {"role": {"_eq": "admin"}},
+                {"role": {"_eq": "editor"}},
+            ]
+        }
         result = bool_expr_to_sql(expr)
         assert "OR" in result
         assert "role = 'admin'" in result
@@ -350,13 +354,17 @@ class TestBoolExprToSQLLogicalOperators:
         assert "status = 'deleted'" in result
 
     def test_nested_and_or(self):
-        expr = {"_and": [
-            {"_or": [
-                {"role": {"_eq": "admin"}},
-                {"role": {"_eq": "editor"}},
-            ]},
-            {"active": {"_eq": True}},
-        ]}
+        expr = {
+            "_and": [
+                {
+                    "_or": [
+                        {"role": {"_eq": "admin"}},
+                        {"role": {"_eq": "editor"}},
+                    ]
+                },
+                {"active": {"_eq": True}},
+            ]
+        }
         result = bool_expr_to_sql(expr)
         assert "OR" in result
         assert "AND" in result
@@ -405,10 +413,12 @@ class TestBoolExprToSQLTableAlias:
         assert result == "id = 1"
 
     def test_alias_applied_in_and(self):
-        expr = {"_and": [
-            {"user_id": {"_eq": 5}},
-            {"deleted": {"_is_null": True}},
-        ]}
+        expr = {
+            "_and": [
+                {"user_id": {"_eq": 5}},
+                {"deleted": {"_is_null": True}},
+            ]
+        }
         result = bool_expr_to_sql(expr, table_alias="t")
         assert "t.user_id" in result
         assert "t.deleted" in result
@@ -416,44 +426,51 @@ class TestBoolExprToSQLTableAlias:
 
 class TestBoolExprToSQLSessionVariables:
     def test_hasura_user_id_session_var(self):
-        """x-hasura-user-id in filter should become a ${} reference."""
+        """x-hasura-user-id in filter should become a current_setting() reference."""
         expr = {"user_id": {"_eq": "x-hasura-user-id"}}
         result = bool_expr_to_sql(expr)
-        assert "${x-hasura-user-id}" in result
+        assert "current_setting(" in result
+        assert "x-hasura-user-id" not in result
 
     def test_hasura_uppercase_session_var(self):
         expr = {"user_id": {"_eq": "X-Hasura-User-Id"}}
         result = bool_expr_to_sql(expr)
-        assert "${" in result
+        assert "current_setting(" in result
+        assert "X-Hasura-User-Id" not in result
 
     def test_session_var_as_dict_operand(self):
         """Hasura passes session vars as {x-hasura-user-id: x-hasura-user-id}."""
         expr = {"user_id": {"_eq": {"x-hasura-user-id": "x-hasura-user-id"}}}
         result = bool_expr_to_sql(expr)
-        assert "${x-hasura-user-id}" in result
+        assert "current_setting(" in result
+        assert "x-hasura-user-id" not in result
 
     def test_non_session_string_quoted(self):
         expr = {"role": {"_eq": "analyst"}}
         result = bool_expr_to_sql(expr)
         assert "'analyst'" in result
-        assert "${" not in result
+        assert "current_setting(" not in result
 
 
 class TestBoolExprToSQLExistsSubquery:
     def test_exists_basic(self):
-        expr = {"_exists": {
-            "_table": {"schema": "public", "name": "users"},
-            "_where": {"id": {"_eq": 1}},
-        }}
+        expr = {
+            "_exists": {
+                "_table": {"schema": "public", "name": "users"},
+                "_where": {"id": {"_eq": 1}},
+            }
+        }
         result = bool_expr_to_sql(expr)
         assert "EXISTS" in result
         assert "public.users" in result
 
     def test_exists_with_where_condition(self):
-        expr = {"_exists": {
-            "_table": {"schema": "auth", "name": "memberships"},
-            "_where": {"org_id": {"_eq": 42}},
-        }}
+        expr = {
+            "_exists": {
+                "_table": {"schema": "auth", "name": "memberships"},
+                "_where": {"org_id": {"_eq": 42}},
+            }
+        }
         result = bool_expr_to_sql(expr)
         assert "auth.memberships" in result
         assert "42" in result
@@ -514,7 +531,9 @@ class TestHasuraV2ConverterIntegration:
         config = convert_metadata(metadata)
         user_rls = [r for r in config.rls_rules if r.role_id == "user"]
         assert len(user_rls) == 1
-        assert "${x-hasura-user-id}" in user_rls[0].filter or "x-hasura-user-id" in user_rls[0].filter
+        assert (
+            "current_setting(" in user_rls[0].filter or "x-hasura-user-id" not in user_rls[0].filter
+        )
 
     def test_empty_filter_generates_no_rls_rule(self, tmp_path: Path):
         """An empty filter {} means no row restriction — no RLS rule generated."""
@@ -640,14 +659,16 @@ class TestDDNConverterIntegration:
             name="Order",
             subgraph="app",
             fields={"id": "Int", "user_id": "Int"},
-            type_mappings=[DDNTypeMapping(
-                connector_name="pg",
-                source_type="orders",
-                field_mappings=[
-                    DDNFieldMapping(graphql_field="id", column="id"),
-                    DDNFieldMapping(graphql_field="user_id", column="user_id"),
-                ],
-            )],
+            type_mappings=[
+                DDNTypeMapping(
+                    connector_name="pg",
+                    source_type="orders",
+                    field_mappings=[
+                        DDNFieldMapping(graphql_field="id", column="id"),
+                        DDNFieldMapping(graphql_field="user_id", column="user_id"),
+                    ],
+                )
+            ],
         )
         model = DDNModel(
             name="Order",
@@ -719,10 +740,12 @@ class TestBoolExprEdgeCases:
     def test_deeply_nested_and(self):
         expr = {
             "_and": [
-                {"_and": [
-                    {"a": {"_eq": 1}},
-                    {"b": {"_eq": 2}},
-                ]},
+                {
+                    "_and": [
+                        {"a": {"_eq": 1}},
+                        {"b": {"_eq": 2}},
+                    ]
+                },
                 {"c": {"_eq": 3}},
             ],
         }

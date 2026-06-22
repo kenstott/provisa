@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type RefObject } from "react";
 import {
   updateSettings,
   reloadQueryEngineCatalog,
@@ -32,12 +32,84 @@ interface TraceEntry {
   attrs: Record<string, unknown>;
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8001";
+const API_BASE = import.meta.env.VITE_API_BASE || "";
+
+function TraceList({
+  traces,
+  filter,
+  selected,
+  setSelected,
+  listRef,
+}: {
+  traces: TraceEntry[];
+  filter: string;
+  selected: TraceEntry | null;
+  setSelected: (t: TraceEntry | null) => void;
+  listRef?: RefObject<HTMLDivElement>;
+}) {
+  const statusColor = (s: string) =>
+    s === "OK" ? "var(--success)" : s === "ERROR" ? "var(--error, #e55)" : "var(--text-muted)";
+
+  const needle = filter.toLowerCase();
+  const visible = needle
+    ? traces.filter(
+        (t) =>
+          t.name.toLowerCase().includes(needle) ||
+          t.status.toLowerCase().includes(needle) ||
+          t.trace_id.toLowerCase().includes(needle),
+      )
+    : traces;
+
+  return (
+    <div className="trace-feed-list" ref={listRef}>
+      {visible.length === 0 ? (
+        <div className="trace-empty">
+          {traces.length === 0 ? "No spans yet — make a request to see traces." : "No spans match filter."}
+        </div>
+      ) : (
+        visible.map((t) => (
+          <div
+            key={t.span_id}
+            className={`trace-row${selected?.span_id === t.span_id ? " trace-row--selected" : ""}`}
+            onClick={() => setSelected(selected?.span_id === t.span_id ? null : t)}
+          >
+            <span className="trace-ts">{new Date(t.ts * 1000).toLocaleTimeString()}</span>
+            <span className="trace-name">{t.name}</span>
+            <span className="trace-status" style={{ color: statusColor(t.status) }}>
+              {t.status}
+            </span>
+            <span className="trace-dur">
+              {t.duration_ms != null ? `${t.duration_ms}ms` : "—"}
+            </span>
+            {selected?.span_id === t.span_id && (
+              <div className="trace-detail" onClick={(e) => e.stopPropagation()}>
+                <div>
+                  <strong>Trace:</strong> <code>{t.trace_id}</code>
+                </div>
+                <div>
+                  <strong>Span:</strong> <code>{t.span_id}</code>
+                </div>
+                <div>
+                  <strong>Time:</strong> {new Date(t.ts * 1000).toLocaleTimeString()}
+                </div>
+                {Object.keys(t.attrs).length > 0 && (
+                  <pre className="trace-attrs">{JSON.stringify(t.attrs, null, 2)}</pre>
+                )}
+              </div>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
 
 function TraceFeed() {
   const [traces, setTraces] = useState<TraceEntry[]>([]);
   const [paused, setPaused] = useState(false);
+  const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<TraceEntry | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const pausedRef = useRef(paused);
   /* eslint-disable-next-line react-hooks/refs --
@@ -64,13 +136,17 @@ function TraceFeed() {
     };
   }, []);
 
-  const statusColor = (s: string) =>
-    s === "OK" ? "var(--success)" : s === "ERROR" ? "var(--error, #e55)" : "var(--text-muted)";
-
-  return (
-    <div className="trace-feed">
-      <div className="trace-feed-header">
-        <span>Live Traces</span>
+  const headerContent = (
+    <>
+      <span style={{ flex: 1 }}>Live Traces</span>
+      <input
+        className="trace-filter"
+        placeholder="Filter…"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+      />
+      <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "0.4rem" }}>
         <button
           className="trace-pause-btn"
           onClick={() => setPaused((p) => !p)}
@@ -78,45 +154,60 @@ function TraceFeed() {
         >
           {paused ? "▶ Resume" : "⏸ Pause"}
         </button>
+        <button
+          className="trace-expand-btn"
+          onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+          title={expanded ? "Collapse" : "Expand"}
+        >
+          {expanded ? "✕" : "⤢"}
+        </button>
       </div>
-      <div className="trace-feed-list" ref={listRef}>
-        {traces.length === 0 ? (
-          <div className="trace-empty">No spans yet — make a request to see traces.</div>
-        ) : (
-          traces.map((t) => (
-            <div
-              key={t.span_id}
-              className={`trace-row${selected?.span_id === t.span_id ? " trace-row--selected" : ""}`}
-              onClick={() => setSelected(selected?.span_id === t.span_id ? null : t)}
-            >
-              <span className="trace-name">{t.name}</span>
-              <span className="trace-status" style={{ color: statusColor(t.status) }}>
-                {t.status}
-              </span>
-              <span className="trace-dur">
-                {t.duration_ms != null ? `${t.duration_ms}ms` : "—"}
-              </span>
-              {selected?.span_id === t.span_id && (
-                <div className="trace-detail" onClick={(e) => e.stopPropagation()}>
-                  <div>
-                    <strong>Trace:</strong> <code>{t.trace_id}</code>
-                  </div>
-                  <div>
-                    <strong>Span:</strong> <code>{t.span_id}</code>
-                  </div>
-                  <div>
-                    <strong>Time:</strong> {new Date(t.ts * 1000).toLocaleTimeString()}
-                  </div>
-                  {Object.keys(t.attrs).length > 0 && (
-                    <pre className="trace-attrs">{JSON.stringify(t.attrs, null, 2)}</pre>
-                  )}
-                </div>
-              )}
+    </>
+  );
+
+  return (
+    <>
+      <div className="trace-feed">
+        <div className="trace-feed-header">
+          {headerContent}
+        </div>
+        <TraceList traces={traces} filter={filter} selected={selected} setSelected={setSelected} listRef={listRef} />
+      </div>
+      {expanded && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={() => setExpanded(false)}
+        >
+          <div
+            style={{
+              width: "90vw",
+              height: "90vh",
+              background: "var(--bg-surface, #1e1e2e)",
+              borderRadius: "8px",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="trace-feed-header">
+              {headerContent}
             </div>
-          ))
-        )}
-      </div>
-    </div>
+            <div style={{ flex: 1, overflow: "auto" }}>
+              <TraceList traces={traces} filter={filter} selected={selected} setSelected={setSelected} />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

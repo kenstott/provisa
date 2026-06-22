@@ -17,6 +17,7 @@ Five-stage pipeline:
   4. rewrite_semantic_to_trino_physical → catalog-qualified refs
   5. Federation executor → flat rows → assembler → typed response
 """
+
 from __future__ import annotations
 
 import logging
@@ -187,6 +188,7 @@ def _build_sql_from_ast(
         sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, body.params)
     except Exception as exc:
         from provisa.cypher.translator import CypherCrossSourceError, CypherTranslateError
+
         if isinstance(exc, (CypherCrossSourceError, CypherTranslateError)):
             return JSONResponse(status_code=400, content={"error": str(exc)})
         raise
@@ -272,7 +274,16 @@ async def _dispatch_execution(
     except Exception as exc:
         import httpx as _httpx
 
-        if isinstance(exc, (_httpx.ConnectError, _httpx.NetworkError, _httpx.TimeoutException, _httpx.InvalidURL, _httpx.UnsupportedProtocol)):
+        if isinstance(
+            exc,
+            (
+                _httpx.ConnectError,
+                _httpx.NetworkError,
+                _httpx.TimeoutException,
+                _httpx.InvalidURL,
+                _httpx.UnsupportedProtocol,
+            ),
+        ):
             log.warning("Cypher execution: HTTP network error: %s", exc)
             return JSONResponse(
                 status_code=503,
@@ -294,9 +305,27 @@ async def _dispatch_execution_direct(
 ) -> list[dict] | Response:
     """Execute SQL against a direct (non-Trino) source. Returns rows or error Response."""
     from provisa.executor.direct import execute_direct
+    from provisa.executor.trino import QueryResult
 
     try:
-        result = await execute_direct(state.source_pools, source_id, exec_sql, resolved_params or None)
+        if source_id == "provisa-admin" or not state.source_pools.has(source_id):
+            pg_pool = state.pg_pool
+            if pg_pool is None:
+                raise RuntimeError("Admin pg_pool not available")
+            async with pg_pool.acquire() as _conn:
+                _rows = await _conn.fetch(exec_sql)
+                if _rows:
+                    col_names = list(_rows[0].keys())
+                    rows = [tuple(r) for r in _rows]
+                else:
+                    stmt = await _conn.prepare(exec_sql)
+                    col_names = [a.name for a in stmt.get_attributes()]
+                    rows = []
+            result = QueryResult(rows=rows, column_names=col_names)
+        else:
+            result = await execute_direct(
+                state.source_pools, source_id, exec_sql, resolved_params or None
+            )
         return [dict(zip(result.column_names, row)) for row in result.rows]
     except Exception as exc:
         log.exception("Cypher direct execution failed: %s", exec_sql)
@@ -416,8 +445,14 @@ async def cypher_query(
     _non_corr_calls = [cs for cs in ast.call_subqueries if not cs.imported_vars]
     if _non_corr_calls and not ast.match_clauses:
         return await _execute_multi_call(
-            _non_corr_calls, label_map, body, state, role_id, ctx,
-            assemble_rows, to_serializable,
+            _non_corr_calls,
+            label_map,
+            body,
+            state,
+            role_id,
+            ctx,
+            assemble_rows,
+            to_serializable,
         )
 
     # Stages 1-2: Translate + graph rewrites
@@ -434,8 +469,13 @@ async def cypher_query(
         role_id, rls, state.masking_rules, ctx, getattr(state, "tables", []), role=_role_dict
     )
     _violations = _validate_sql(
-        semantic_sql, ctx, _gov_ctx_for_validate, _role_dict, getattr(state, "tables", []),
-        bypass_relationship_guard=True, bypass_uncovered_relationships=True,
+        semantic_sql,
+        ctx,
+        _gov_ctx_for_validate,
+        _role_dict,
+        getattr(state, "tables", []),
+        bypass_relationship_guard=True,
+        bypass_uncovered_relationships=True,
     )
     if _violations:
         return JSONResponse(
@@ -449,7 +489,9 @@ async def cypher_query(
     # Stage 4: Pipeline (governance + routing)
     try:
         plan = await _govern_and_route_compiled(
-            semantic_sql, role_id, exec_params=resolved_params or None,
+            semantic_sql,
+            role_id,
+            exec_params=resolved_params or None,
         )
     except PermissionError as exc:
         return JSONResponse(status_code=403, content={"error": str(exc)})
@@ -464,13 +506,18 @@ async def cypher_query(
 
     # Stage 5: Execute
     from provisa.transpiler.router import Route as _Route
+
     exec_sql = plan.exec_sql or ""
     trino_sql = plan.trino_sql or ""
     if plan.route != _Route.TRINO and plan.source_id:
         # Single-source direct route — cypher SQL rewritten to physical (no catalog)
-        _exec_result = await _dispatch_execution_direct(exec_sql, plan.source_id, resolved_params, state)
+        _exec_result = await _dispatch_execution_direct(
+            exec_sql, plan.source_id, resolved_params, state
+        )
     else:
-        _exec_result = await _dispatch_execution(exec_sql, trino_sql, resolved_params, state, span_attrs)
+        _exec_result = await _dispatch_execution(
+            exec_sql, trino_sql, resolved_params, state, span_attrs
+        )
     if isinstance(_exec_result, Response):
         return _exec_result
     rows = _exec_result
@@ -888,7 +935,9 @@ async def _execute_with_gql_remote(
                         for c in _info_columns
                     ]
                     _gql_to_sql = {c["name"]: _apply_sql_name(c["name"]) for c in _info_columns}
-                    fetch_rows = [{_gql_to_sql.get(k, k): v for k, v in row.items()} for row in fetch_rows]
+                    fetch_rows = [
+                        {_gql_to_sql.get(k, k): v for k, v in row.items()} for row in fetch_rows
+                    ]
                     create_and_insert(conn, cache_loc, cache_tbl, fetch_rows, col_objs)
                 return False
             finally:
@@ -973,7 +1022,9 @@ async def _execute_call_body(
     resolved_params = [params.get(name) for name in ordered_params]
 
     plan = await _govern_and_route_compiled(
-        semantic_sql, role_id, exec_params=resolved_params or None,
+        semantic_sql,
+        role_id,
+        exec_params=resolved_params or None,
     )
     exec_sql = plan.exec_sql or ""
     trino_sql = plan.trino_sql or ""

@@ -59,7 +59,11 @@ def apply_graph_rewrites(
         col_name = _get_col_name(inner)
 
         # Determine graph variable name
-        graph_var = alias_name if alias_name in graph_vars else (col_name if col_name in graph_vars else None)
+        graph_var = (
+            alias_name
+            if alias_name in graph_vars
+            else (col_name if col_name in graph_vars else None)
+        )
 
         if graph_var is None and table_ref and table_ref in graph_vars:
             graph_var = table_ref
@@ -71,7 +75,9 @@ def apply_graph_rewrites(
                 new_expressions.append(sel_expr)
                 continue
             # Find node meta: prefer alias_to_node lookup, then direct search
-            node_meta = alias_to_node.get(graph_var) or _find_node_meta(graph_var, table_ref, label_map)
+            node_meta = alias_to_node.get(graph_var) or _find_node_meta(
+                graph_var, table_ref, label_map
+            )
             out_alias = alias_name or graph_var
             tbl = table_ref or graph_var
             if node_meta is not None:
@@ -114,9 +120,7 @@ def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyri
             this=exp.Identifier(this=col_name, quoted=True),
             table=exp.Identifier(this=tbl),
         )
-        kv.append(exp.JSONKeyValue(
-            this=exp.Literal.string(prop_key), expression=col_expr
-        ))
+        kv.append(exp.JSONKeyValue(this=exp.Literal.string(prop_key), expression=col_expr))
     json_obj = exp.JSONObject(expressions=kv)
     return exp.Case(
         ifs=[exp.If(this=exp.Is(this=id_col_check, expression=exp.null()), true=exp.null())],
@@ -143,16 +147,18 @@ def _build_domain_json(var: str, props: list[str] | None = None) -> exp.Expressi
         ),
     ]
     _reserved = {"id", "label"}
-    for prop in (props or []):
+    for prop in props or []:
         if prop in _reserved:
             continue
-        kv.append(exp.JSONKeyValue(
-            this=exp.Literal.string(prop),
-            expression=exp.Column(
-                this=exp.Identifier(this=prop, quoted=True),
-                table=exp.Identifier(this=var),
-            ),
-        ))
+        kv.append(
+            exp.JSONKeyValue(
+                this=exp.Literal.string(prop),
+                expression=exp.Column(
+                    this=exp.Identifier(this=prop, quoted=True),
+                    table=exp.Identifier(this=var),
+                ),
+            )
+        )
     return exp.JSONObject(expressions=kv)
 
 
@@ -183,12 +189,18 @@ def _extract_domain_props_from_union(sql_ast: exp.Select, var_alias: str) -> lis
     return []
 
 
-def _extract_alias_mappings(sql_ast: exp.Select, label_map: CypherLabelMap) -> Mapping[str, NodeMapping]:
-    """Walk FROM/JOIN clauses and map SQL alias → NodeMapping."""
+def _extract_alias_mappings(
+    sql_ast: exp.Select, label_map: CypherLabelMap
+) -> Mapping[str, NodeMapping]:
+    """Walk FROM/JOIN clauses and map SQL alias → NodeMapping.
+
+    Handles both direct table refs (FROM table AS c) and subquery wrappers
+    ((SELECT *, phys AS alias FROM table) AS c) produced by _node_table_expr.
+    """
     alias_map: dict[str, NodeMapping] = {}
 
     for tbl in sql_ast.find_all(exp.Table):
-        alias = tbl.alias  # populated by SQLGlot from AS clause
+        alias = tbl.alias
         table_name = tbl.name
         if alias and table_name:
             for nm in label_map.nodes.values():
@@ -197,10 +209,30 @@ def _extract_alias_mappings(sql_ast: exp.Select, label_map: CypherLabelMap) -> M
                     alias_map[alias] = nm
                     break
 
+    # Subquery-wrapped tables: (SELECT *, "phys" AS sql_alias FROM phys_table) AS c
+    # Skip domain-union subqueries (UNION ALL of multiple tables) — they must be handled
+    # by _build_domain_json, not _build_row_cast with a single table's NodeMapping.
+    for subq in sql_ast.find_all(exp.Subquery):
+        sq_alias = subq.alias
+        if not sq_alias or sq_alias in alias_map:
+            continue
+        if isinstance(subq.this, exp.Union):
+            continue
+        inner_table = subq.find(exp.Table)
+        if inner_table:
+            table_name = inner_table.name
+            for nm in label_map.nodes.values():
+                phys = nm.physical_table_name or nm.table_name
+                if phys == table_name or nm.table_name == table_name:
+                    alias_map[sq_alias] = nm
+                    break
+
     return alias_map
 
 
-def _find_node_meta(var_name: str, table_ref: str | None, label_map: CypherLabelMap) -> NodeMapping | None:
+def _find_node_meta(
+    var_name: str, table_ref: str | None, label_map: CypherLabelMap
+) -> NodeMapping | None:
     """Fallback lookup: match by label name or table name."""
     for label, nm in label_map.nodes.items():
         if label.lower() == var_name.lower():

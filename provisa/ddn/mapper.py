@@ -534,17 +534,8 @@ def convert_hml(
     # Functions from commands
     functions = _map_commands(metadata.commands)
 
-    # Aggregate expressions — annotate table descriptions and emit to sidecar
+    # Aggregate expressions — emit to sidecar only (never written into table.description)
     agg_config = _map_aggregate_expressions(metadata.aggregate_expressions)
-    agg_by_name: dict[str, AggConfig] = {
-        agg.name: agg_config.get(agg.operand_type or agg.name, agg_config.get(agg.name, {}))
-        for agg in metadata.aggregate_expressions
-    }
-    for model, table in zip([m for m in metadata.models if ot_index.get(m.object_type)], tables):
-        if model.aggregate_expression and model.aggregate_expression in agg_by_name:
-            desc = _format_agg_description(agg_by_name[model.aggregate_expression])
-            if desc:
-                table.description = desc
     if agg_collector is not None:
         agg_collector.update(agg_config)
 

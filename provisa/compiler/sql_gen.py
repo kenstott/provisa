@@ -159,6 +159,9 @@ class CompilationContext:
     virtual_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     # (table_id, col_name) pairs where the column is a GQL OBJECT stored as JSON
     gql_json_columns: set[tuple[int, str]] = field(default_factory=set)
+    # (table_id, col_name) pairs where the GQL OBJECT type is itself a governed (registered) table —
+    # these columns are excluded from HOT materialization and must not appear in domain UNION branches
+    gql_governed_object_cols: set[tuple[int, str]] = field(default_factory=set)
     # table_name → {gql_field_name: gql_selection_string} for undeclared graphql_remote OBJECT fields
     gql_remote_extra_selections: dict[str, dict[str, str]] = field(default_factory=dict)
 
@@ -531,6 +534,8 @@ def build_context(
     meta_rt = _register_meta_synthetic_joins(si, ctx, tables, physical_map)
 
     _register_ops_synthetic_joins(si, ctx, tables, physical_map, meta_rt)
+
+    ctx.gql_governed_object_cols = si.gql_governed_object_cols or set()
 
     return ctx
 

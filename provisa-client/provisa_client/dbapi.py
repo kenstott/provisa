@@ -92,12 +92,11 @@ def connect(
     username: str,
     password: str,
     role: str | None = None,
-    mode: str | None = None,
 ) -> "Connection":
     """Create a DB-API 2.0 connection to a Provisa server."""
     token, auth_role = _auth_login(url, username, password)
-    resolved_role = role or auth_role or (username if token is None else None)
-    return Connection(base_url=url.rstrip("/"), token=token, role=resolved_role, mode=mode)
+    resolved_role = role or auth_role
+    return Connection(base_url=url.rstrip("/"), token=token, role=resolved_role)
 
 
 class Connection:
@@ -109,12 +108,10 @@ class Connection:
         base_url: str,
         token: str | None,
         role: str | None = None,
-        mode: str | None = None,
     ) -> None:
         self._base_url = base_url
         self._token = token
         self._role = role
-        self._mode = mode
         self._closed = False
 
     def _check_open(self) -> None:

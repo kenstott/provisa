@@ -86,7 +86,7 @@ const SOURCE_TYPES = [
   { value: "sqlite", label: "SQLite", category: "File", defaultPort: 0 },
   { value: "csv", label: "CSV File", category: "File", defaultPort: 0 },
   { value: "parquet", label: "Parquet File", category: "File", defaultPort: 0 },
-  { value: "files", label: "File Directory (CSV/Parquet/XLSX/JSON)", category: "File", defaultPort: 0 },
+  { value: "files", label: "File Directory (CSV/Parquet/XLSX/JSON, etc.)", category: "File", defaultPort: 0 },
   // Other
   { value: "google_sheets", label: "Google Sheets", category: "Other", defaultPort: 0 },
   { value: "prometheus", label: "Prometheus", category: "Other", defaultPort: 9090 },
@@ -240,6 +240,28 @@ export function SourcesPage() {
   const [spUsername, setSpUsername] = useState("");
   const [spPassword, setSpPassword] = useState("");
   const [splunkDisableSsl, setSplunkDisableSsl] = useState(false);
+  const [filesTransport, setFilesTransport] = useState("file://");
+  const [filesAuthMode, setFilesAuthMode] = useState<"userpass" | "certificate">("userpass");
+  const [filesCertPath, setFilesCertPath] = useState("");
+  const [filesCertPassword, setFilesCertPassword] = useState("");
+
+  const FILE_TRANSPORTS = [
+    { value: "file://", label: "file:// (file mount / local disk)", needsAuth: false as const },
+    { value: "ftp://", label: "ftp://", needsAuth: "userpass" as const },
+    { value: "sftp://", label: "sftp://", needsAuth: "cert-or-userpass" as const },
+    { value: "s3://", label: "s3://", needsAuth: "s3" as const },
+    { value: "s3a://", label: "s3a://", needsAuth: "s3" as const },
+    { value: "http://", label: "http://", needsAuth: "userpass" as const },
+    { value: "https://", label: "https://", needsAuth: "userpass" as const },
+    { value: "sharepoint://", label: "sharepoint://", needsAuth: "cert-or-userpass" as const },
+  ];
+
+  const parseFilesPath = (fullPath: string): { transport: string; path: string } => {
+    for (const t of ["ftp://", "sftp://", "s3a://", "s3://", "http://", "https://", "sharepoint://"]) {
+      if (fullPath.startsWith(t)) return { transport: t, path: fullPath.slice(t.length) };
+    }
+    return { transport: "file://", path: fullPath };
+  };
 
   const updateSearch = (v: string) => {
     setSourceSearch(v);
@@ -366,10 +388,11 @@ export function SourcesPage() {
       gqlNamingConvention: s.gqlNamingConvention ?? "",
       cacheTtl: s.cacheTtl != null ? String(s.cacheTtl) : "",
       cacheEnabled: s.cacheEnabled,
-      path: s.path ?? "",
+      path: s.type === "files" ? parseFilesPath(s.path ?? "").path : (s.path ?? ""),
       allowedDomains: (s.allowedDomains ?? []).join(", "),
       description: s.description ?? "",
     });
+    setFilesTransport(s.type === "files" ? parseFilesPath(s.path ?? "").transport : "file://");
     setAuthType("none");
     setAuthFields({});
     if (s.type === "sharepoint" && s.mappingJson) {
@@ -440,6 +463,10 @@ export function SourcesPage() {
       allowedDomains: "",
       description: "",
     });
+    setFilesTransport("file://");
+    setFilesAuthMode("userpass");
+    setFilesCertPath("");
+    setFilesCertPassword("");
     setAuthType("none");
     setAuthFields({});
     resetSpFields();
@@ -468,7 +495,11 @@ export function SourcesPage() {
             : undefined;
       const sourcePayload = {
         ...coreForm,
-        path: FILE_SOURCES.has(form.type) || form.type === "files" ? form.path || null : null,
+        path: FILE_SOURCES.has(form.type) || form.type === "files"
+          ? form.type === "files" && form.path
+            ? filesTransport === "file://" ? form.path : filesTransport + form.path
+            : form.path || null
+          : null,
         database:
           form.type === "govdata"
             ? Array.from(
@@ -2034,19 +2065,135 @@ export function SourcesPage() {
           </label>
         </>
       )}
-      {form.type === "files" && (
-        <label style={{ gridColumn: "1 / -1" }}>
-          Directory Glob{" "}
-          <input
-            value={form.path}
-            onChange={(e) => setForm({ ...form, path: e.target.value })}
-            placeholder="/data/files/**"
-          />
-          <small style={{ color: "var(--text-muted, #888)" }}>
-            Glob pattern passed to the Trino file connector. Leave blank to use the catalog default.
-          </small>
-        </label>
-      )}
+      {form.type === "files" && (() => {
+        const transportMeta = FILE_TRANSPORTS.find((t) => t.value === filesTransport)!;
+        return (
+          <>
+            <label>
+              Transport{" "}
+              <select
+                value={filesTransport}
+                onChange={(e) => {
+                  setFilesTransport(e.target.value);
+                  setForm({ ...form, username: "", password: "" });
+                }}
+              >
+                {FILE_TRANSPORTS.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Path / Glob{" "}
+              <input
+                required
+                value={form.path}
+                onChange={(e) => setForm({ ...form, path: e.target.value })}
+                placeholder={filesTransport === "file://" ? "/data/files/**" : "bucket/prefix/**"}
+              />
+              <small style={{ color: "var(--text-muted, #888)" }}>
+                Glob pattern relative to transport root. Supports csv, parquet, arrow, json, xlsx, docx, pptx, md, html, .gz, .zip.
+              </small>
+            </label>
+            {transportMeta.needsAuth === "s3" && (
+              <>
+                <label>
+                  Access Key ID{" "}
+                  <input
+                    value={form.username}
+                    onChange={(e) => setForm({ ...form, username: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Secret Access Key{" "}
+                  <input
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  />
+                </label>
+              </>
+            )}
+            {transportMeta.needsAuth === "userpass" && (
+              <>
+                <label>
+                  Username{" "}
+                  <input
+                    value={form.username}
+                    onChange={(e) => setForm({ ...form, username: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Password{" "}
+                  <input
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  />
+                </label>
+              </>
+            )}
+            {transportMeta.needsAuth === "cert-or-userpass" && (
+              <>
+                <label>
+                  Auth Method{" "}
+                  <select
+                    value={filesAuthMode}
+                    onChange={(e) => {
+                      setFilesAuthMode(e.target.value as "userpass" | "certificate");
+                      setForm({ ...form, username: "", password: "" });
+                      setFilesCertPath("");
+                      setFilesCertPassword("");
+                    }}
+                  >
+                    <option value="userpass">Username / Password</option>
+                    <option value="certificate">Certificate (PFX)</option>
+                  </select>
+                </label>
+                {filesAuthMode === "userpass" && (
+                  <>
+                    <label>
+                      Username{" "}
+                      <input
+                        value={form.username}
+                        onChange={(e) => setForm({ ...form, username: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Password{" "}
+                      <input
+                        type="password"
+                        value={form.password}
+                        onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      />
+                    </label>
+                  </>
+                )}
+                {filesAuthMode === "certificate" && (
+                  <>
+                    <label>
+                      PFX Certificate Path{" "}
+                      <input
+                        value={filesCertPath}
+                        onChange={(e) => setFilesCertPath(e.target.value)}
+                        placeholder="/path/to/cert.pfx"
+                      />
+                    </label>
+                    <label>
+                      Certificate Password{" "}
+                      <input
+                        type="password"
+                        value={filesCertPassword}
+                        onChange={(e) => setFilesCertPassword(e.target.value)}
+                      />
+                    </label>
+                  </>
+                )}
+              </>
+            )}
+          </>
+        );
+      })()}
       {editingSourceId && (
         <>
           <label>

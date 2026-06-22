@@ -88,6 +88,9 @@ class SchemaInput:
         default_factory=dict
     )  # {table_name: {col_name: [sub_fields]}}
     governed_gql_types: set[str] = field(default_factory=set)  # GQL type names backed by governed tables
+    gql_governed_object_cols: set[tuple[int, str]] = field(
+        default_factory=set
+    )  # (table_id, col_name) pairs where the GQL OBJECT type is a governed registered table
 
 
 @dataclass

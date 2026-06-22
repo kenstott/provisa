@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import io
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -28,7 +27,6 @@ from provisa.ddn.models import (
     DDNMetadata,
     DDNModel,
     DDNObjectType,
-    DDNRelationship,
     DDNTypeMapping,
     DDNTypePermission,
 )
@@ -201,6 +199,7 @@ def _build_ddn_dir(tmp_path: Path) -> Path:
 # Programmatic metadata builders
 # ---------------------------------------------------------------------------
 
+
 def _minimal_metadata() -> DDNMetadata:
     """Build a DDNMetadata object in-memory without touching the filesystem."""
     meta = DDNMetadata()
@@ -216,7 +215,8 @@ def _minimal_metadata() -> DDNMetadata:
                 field_mappings=[
                     DDNFieldMapping(graphql_field="customerId", column="customer_id"),
                     DDNFieldMapping(graphql_field="totalAmount", column="total_amount"),
-                    DDNFieldMapping(graphql_field="id", column="id")],
+                    DDNFieldMapping(graphql_field="id", column="id"),
+                ],
             )
         ],
     )
@@ -257,6 +257,7 @@ def _minimal_metadata() -> DDNMetadata:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestDDNConverter:
     async def test_converts_models_to_tables(self, tmp_path):
@@ -301,15 +302,15 @@ class TestDDNConverter:
         assert customer_col.alias == "customerId"
 
     async def test_aggregate_preserved(self):
-        """DDN aggregate annotations are preserved in table description."""
+        """DDN aggregate annotations are routed to agg_collector, not table.description."""
         meta = _minimal_metadata()
         collector = WarningCollector()
-        config = convert_hml(meta, collector)
+        agg_collector: dict = {}
+        convert_hml(meta, collector, agg_collector=agg_collector)
 
-        orders_table = next(t for t in config.tables if t.table_name == "orders")
-        assert orders_table.description is not None
-        desc = orders_table.description
-        assert "count" in desc or "aggregates" in desc
+        assert agg_collector, "agg_collector should be populated"
+        entry = next(iter(agg_collector.values()))
+        assert entry.get("count") is True
 
     async def test_output_valid_provisa_config(self, tmp_path):
         """Conversion output passes ProvisaConfig Pydantic validation."""

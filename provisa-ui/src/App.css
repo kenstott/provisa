@@ -1021,6 +1021,16 @@ main {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+.trace-expand-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.1rem 0.2rem;
+  line-height: 1;
+}
+.trace-expand-btn:hover { color: var(--text); }
 .trace-pause-btn {
   font-size: 0.75rem;
   padding: 0.2rem 0.6rem;
@@ -1054,9 +1064,26 @@ main {
 }
 .trace-row:hover { background: var(--bg); }
 .trace-row--selected { background: var(--bg); }
+.trace-ts { color: var(--text-muted); font-size: 0.72rem; white-space: nowrap; min-width: 6rem; }
 .trace-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .trace-status { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }
 .trace-dur { color: var(--text-muted); font-size: 0.75rem; white-space: nowrap; }
+.trace-feed-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.trace-filter {
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  width: 24rem;
+  outline: none;
+}
+.trace-filter:focus { border-color: var(--primary, #7c6af5); }
 .trace-detail {
   width: 100%;
   background: var(--bg);

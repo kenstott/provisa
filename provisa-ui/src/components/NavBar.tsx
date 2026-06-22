@@ -67,6 +67,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: "admin",
     label: "Admin",
     items: [
+      { to: "/admin/orgs", label: "Orgs", capability: "admin" },
       { to: "/admin/overview", label: "Overview", capability: "admin" },
       { to: "/admin/domains", label: "Domains", capability: "admin" },
       { to: "/admin/materialized-views", label: "Materialized Views", capability: "admin" },
@@ -75,7 +76,6 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/system-health", label: "System Health", capability: "admin" },
       { to: "/admin/observability", label: "Observability", capability: "admin" },
       { to: "/admin/local-users", label: "Local Users", capability: "admin" },
-      { to: "/admin/orgs", label: "Orgs", capability: "admin" },
       { to: "/admin/requests", label: "Requests", capability: "admin" },
     ],
   },
@@ -198,6 +198,7 @@ export function NavBar() {
           })}
         </div>
         <div className="navbar-role">
+          <OrgSwitcher />
           {domainsEnabled && onTablesPage && domains.length > 0 && (
             <div className="navbar-domain-wrapper" ref={domainRef}>
               <button className="navbar-domain-btn" onClick={() => setDomainOpen((o) => !o)}>
@@ -219,7 +220,6 @@ export function NavBar() {
               )}
             </div>
           )}
-          <OrgSwitcher />
           <RoleSelector />
           <div className="navbar-user-wrapper" ref={userMenuRef}>
             <button
