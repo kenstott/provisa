@@ -770,8 +770,9 @@ jobs:
           if (-not (Test-Path "$nsisDir\makensis64.exe")) {
             Write-Host "makensis64 not found — downloading official NSIS installer..."
             $installer = "$env:TEMP\nsis-setup.exe"
-            Invoke-WebRequest -Uri "https://prdownloads.sourceforge.net/nsis/nsis-3.11-setup.exe" `
-              -OutFile $installer -UseBasicParsing
+            # Use curl.exe (pre-installed on Windows runners) to follow all SourceForge redirects
+            curl.exe -fsSL -o $installer "https://prdownloads.sourceforge.net/nsis/nsis-3.11-setup.exe"
+            if ($LASTEXITCODE -ne 0) { throw "curl failed to download NSIS installer" }
             Start-Process -FilePath $installer -ArgumentList "/S" -Wait
           }
           if (-not (Test-Path "$nsisDir\makensis64.exe")) { exit 1 }
