@@ -21,6 +21,8 @@ RequestExecutionLevel user
 
 !insertmacro MUI_LANGUAGE "English"
 
+SetCompressor lzma
+
 ; ── Install ───────────────────────────────────────────────────────────────────
 Section "Provisa" SecMain
   SetOutPath "$INSTDIR"
