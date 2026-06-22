@@ -326,6 +326,79 @@ embed_scripts() {
   ok "Scripts embedded."
 }
 
+# ── Sign macOS native binaries embedded inside JARs ──────────────────────────
+# Apple notarization rejects unsigned .dylib/.jnilib/.so files even when they
+# are nested inside JARs inside the app bundle. We extract, sign, and repack.
+sign_jar_natives() {
+  if [ -z "${APPLE_DEVELOPER_ID:-}" ]; then
+    return
+  fi
+
+  local id="${APPLE_DEVELOPER_ID}"
+  local sign_flags=(--force --sign "$id" --options runtime --timestamp)
+  local plugins_dir="${APP_BUNDLE}/Contents/Resources/trino/plugins"
+
+  if [ ! -d "$plugins_dir" ]; then
+    info "No trino/plugins directory — skipping JAR native signing."
+    return
+  fi
+
+  info "Signing macOS native binaries inside Trino plugin JARs..."
+  local tmp_jar_dir
+  tmp_jar_dir=$(mktemp -d)
+
+  local jar_count=0
+  local signed_count=0
+
+  while IFS= read -r -d '' jar; do
+    local jar_tmp="${tmp_jar_dir}/$(basename "$jar" .jar)-$$"
+    mkdir -p "$jar_tmp"
+
+    # Extract only macOS native files
+    local natives
+    natives=$(unzip -l "$jar" 2>/dev/null \
+      | awk '{print $NF}' \
+      | grep -E '\.(dylib|jnilib)$|/osx[_/]|/mac[_/]|/darwin[_/]|/Mac[_/]|so_osx' \
+      | grep -v '^$' || true)
+
+    if [ -z "$natives" ]; then
+      rm -rf "$jar_tmp"
+      continue
+    fi
+
+    # Extract those files
+    local extracted=0
+    while IFS= read -r entry; do
+      [ -z "$entry" ] && continue
+      unzip -q "$jar" "$entry" -d "$jar_tmp" 2>/dev/null && extracted=$((extracted + 1))
+    done <<< "$natives"
+
+    if [ "$extracted" -eq 0 ]; then
+      rm -rf "$jar_tmp"
+      continue
+    fi
+
+    # Sign each extracted native binary
+    local jar_signed=0
+    while IFS= read -r -d '' native; do
+      codesign "${sign_flags[@]}" "$native" 2>/dev/null && jar_signed=$((jar_signed + 1))
+    done < <(find "$jar_tmp" -type f \( -name "*.dylib" -o -name "*.jnilib" -o -name "*.so_osx*" \) -print0)
+
+    if [ "$jar_signed" -gt 0 ]; then
+      # Repack — update jar in place with signed binaries
+      (cd "$jar_tmp" && zip -u "$jar" $(find . -type f \( -name "*.dylib" -o -name "*.jnilib" -o -name "*.so_osx*" \) | sed 's|^\./||') 2>/dev/null)
+      signed_count=$((signed_count + jar_signed))
+      jar_count=$((jar_count + 1))
+      info "  Signed ${jar_signed} native(s) in $(basename "$jar")"
+    fi
+
+    rm -rf "$jar_tmp"
+  done < <(find "$plugins_dir" -name "*.jar" -print0)
+
+  rm -rf "$tmp_jar_dir"
+  ok "JAR native signing complete: ${signed_count} binaries in ${jar_count} JARs."
+}
+
 # ── Code signing ──────────────────────────────────────────────────────────────
 sign_app() {
   if [ -z "${APPLE_DEVELOPER_ID:-}" ]; then
@@ -509,6 +582,7 @@ main() {
   download_otel_agent  # adds opentelemetry-javaagent.jar into Resources/observability/trino-otel/
   build_launcher       # compile SwiftUI launcher and embed binary
   embed_scripts
+  sign_jar_natives  # sign macOS natives inside Trino plugin JARs before outer bundle signing
   sign_app
   notarize_app   # notarize the small .app before images are added
   create_dmg     # DMG bundles Provisa.app (notarized) + images/ alongside
