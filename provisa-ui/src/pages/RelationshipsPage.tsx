@@ -10,7 +10,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Sparkles, Code2 } from "lucide-react";
+import { Sparkles, Code2, Network } from "lucide-react";
+import { ErdModal } from "../components/erd/ErdModal";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
@@ -26,6 +27,7 @@ import {
 import {
   useRelationships,
   useTables,
+  useDomains,
   useUpsertRelationship,
   useDeleteRelationship,
 } from "../hooks/useAdminQueries";
@@ -45,6 +47,8 @@ export function RelationshipsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { relationships: rels, loading: relsLoading, refetch: refetchRels } = useRelationships();
   const { tables, loading: tablesLoading } = useTables();
+  const { domains } = useDomains();
+  const [showErd, setShowErd] = useState(false);
   const { upsertRelationship } = useUpsertRelationship();
   const { deleteRelationship } = useDeleteRelationship();
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
@@ -366,6 +370,9 @@ export function RelationshipsPage() {
             onClick={() => setShowModelingModal(true)}
           >
             <Code2 size={14} />
+          </button>
+          <button className="btn-icon" title="View ERD" onClick={() => setShowErd(true)}>
+            <Network size={14} />
           </button>
           {canManage && (
             <button
@@ -731,6 +738,15 @@ export function RelationshipsPage() {
           tableNameById={tableNameById}
           onAccept={handleAccept}
           onReject={handleReject}
+        />
+      )}
+      {showErd && (
+        <ErdModal
+          tables={tables}
+          relationships={rels}
+          domains={domains}
+          activeDomain={selectedDomain !== "all" ? selectedDomain : null}
+          onClose={() => setShowErd(false)}
         />
       )}
     </div>
