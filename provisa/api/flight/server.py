@@ -44,7 +44,6 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import compile_query
 from provisa.executor.direct import execute_direct
 from provisa.executor.formats.arrow import rows_to_arrow_table
-from provisa.security.rights import Capability, has_capability
 from provisa.transpiler.router import Route, decide_route
 
 if TYPE_CHECKING:
@@ -577,12 +576,6 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
         from provisa.pgwire._pipeline import _govern_and_route_compiled
 
         role_id = str(request.get("role", ""))
-        _role = self._state.roles.get(role_id)
-        if _role and not has_capability(_role, Capability.AD_HOC_QUERY):
-            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                f"Role {role_id!r} lacks required capability: ad_hoc_query"
-            )
-
         ticket_bytes = json.dumps(request).encode("utf-8")
         document, ctx, _rls, _role_dict, compiled, _decision, variables = self._compile_query(ticket_bytes)
 

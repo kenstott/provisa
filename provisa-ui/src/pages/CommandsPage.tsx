@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useState, useEffect, useCallback, useContext } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Trash2, Pencil, Save, X } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -1305,7 +1305,7 @@ export function CommandsPage() {
               Close
             </button>
           </div>
-          {testResult.data && typeof testResult.data === "object" && "enforcement" in testResult.data && (
+          {!!(testResult.data && typeof testResult.data === "object" && "enforcement" in testResult.data) && (
             <div
               style={{
                 marginBottom: "0.75rem",

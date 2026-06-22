@@ -489,7 +489,7 @@ export function GraphPage() {
       ? `${node.domainLabel}:${node.tableLabel}`
       : node.tableLabel;
     pkMap[compoundLabel] =
-      node.pkColumns.length > 0 ? node.pkColumns : [node.idColumn];
+      node.pkColumns.length > 0 ? node.pkColumns : (node.idColumn ? [node.idColumn] : []);
     labelToTableLabel[compoundLabel] = node.tableLabel;
   }
 

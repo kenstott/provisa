@@ -36,6 +36,7 @@ class Capability(str, Enum):
     USER_MANAGEMENT = "user_management"
     MASKING_CONFIG = "masking_config"
     SUPERADMIN = "superadmin"
+    IGNORE_RELATIONSHIPS = "ignore_relationships"
 
 
 class InsufficientRightsError(Exception):

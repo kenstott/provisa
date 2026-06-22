@@ -738,6 +738,16 @@ jobs:
           Invoke-WebRequest -Uri $VBoxUrl -OutFile packaging/windows/redist/VirtualBox-setup.exe -UseBasicParsing
           Write-Host "VirtualBox installer downloaded."
 
+      - name: Download nerdctl-full
+        shell: pwsh
+        run: |
+          $NerdctlVersion = '2.2.2'
+          $NerdctlUrl = "https://github.com/containerd/nerdctl/releases/download/v${NerdctlVersion}/nerdctl-full-${NerdctlVersion}-linux-amd64.tar.gz"
+          New-Item -ItemType Directory -Path packaging/windows/redist -Force | Out-Null
+          Write-Host "Downloading nerdctl-full ${NerdctlVersion}..."
+          Invoke-WebRequest -Uri $NerdctlUrl -OutFile packaging/windows/redist/nerdctl-full.tar.gz -UseBasicParsing
+          Write-Host "nerdctl-full downloaded."
+
       - name: Install NSIS
         shell: pwsh
         run: |

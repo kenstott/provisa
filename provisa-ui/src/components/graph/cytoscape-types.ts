@@ -29,9 +29,11 @@ export interface CyElement {
   unselect(): CyElement;
   style(name: string, value: unknown): CyElement;
   style(props: Record<string, unknown>): CyElement;
+  removeStyle(names: string): CyElement;
   addClass(cls: string): CyElement;
   removeClass(cls: string): CyElement;
   position(): { x: number; y: number };
+  position(dimension: string): number;
   position(pos: { x: number; y: number }): CyElement;
   source(): CyElement;
   target(): CyElement;
@@ -39,6 +41,12 @@ export interface CyElement {
   children(): CyNodeCollection;
   renderedPosition(): { x: number; y: number };
   renderedWidth(): number;
+  width(): number;
+  height(): number;
+  boundingBox(opts?: object): { x1: number; x2: number; y1: number; y2: number; w: number; h: number };
+  renderedBoundingBox(opts?: object): { x1: number; x2: number; y1: number; y2: number; w: number; h: number };
+  degree(includeLoops: boolean): number;
+  empty(): boolean;
 }
 export interface CyCollection {
   length: number;
@@ -61,6 +69,15 @@ export interface CyCollection {
   children(): CyNodeCollection;
   data(key: string): unknown;
   id(): string;
+  style(name: string, value: unknown): this;
+  style(props: Record<string, unknown>): this;
+  removeStyle(names: string): this;
+  empty(): boolean;
+  boundingBox(opts?: object): { x1: number; x2: number; y1: number; y2: number; w: number; h: number };
+  renderedBoundingBox(opts?: object): { x1: number; x2: number; y1: number; y2: number; w: number; h: number };
+  degree(includeLoops: boolean): number;
+  width(): number;
+  height(): number;
 }
 export interface CyNodeCollection extends CyCollection {
   forEach(fn: (ele: CyElement, i: number) => void): this;
@@ -99,4 +116,5 @@ export interface CyInstance {
   style(sheet?: unknown): void;
   container(): HTMLElement;
   getElementById(id: string): CyCollection;
+  forceRender(): void;
 }

@@ -79,7 +79,7 @@ export function RelationshipRow({
                 FK
               </span>
             )}
-            <span>{r.id.replace(/([_\-:])/g, "$1​")}</span>
+            <span>{String(r.id).replace(/([_\-:])/g, "$1​")}</span>
           </div>
         </td>
         {domainsEnabled && <td>{r.sourceDomainId || "—"}</td>}

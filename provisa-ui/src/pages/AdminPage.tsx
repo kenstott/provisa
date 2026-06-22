@@ -57,9 +57,8 @@ const ROUTE_TO_SECTION: Record<string, string> = {
 export function AdminPage() {
   const location = useLocation();
   const activeTab = ROUTE_TO_SECTION[location.pathname] ?? "Overview";
-  const { capabilities, activeOrgId } = useAuth();
+  const { capabilities } = useAuth();
   const isSuperAdmin = capabilities.includes("superadmin") || capabilities.includes("admin");
-  const orgId = activeOrgId ?? "root";
   const [stats, setStats] = useState<Record<string, number>>({});
   const [newDomainId, setNewDomainId] = useState("");
   const [newDomainDesc, setNewDomainDesc] = useState("");

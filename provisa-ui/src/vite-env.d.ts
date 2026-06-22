@@ -18,6 +18,7 @@ declare module '*.graphql' {
   export const DomainsQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
   export const RelationshipsQuery: DocumentNode;
+  export const AllRelationshipsQuery: DocumentNode;
   export const RLSRulesQuery: DocumentNode;
   export const AvailableSchemas: DocumentNode;
   export const AvailableTables: DocumentNode;
@@ -71,6 +72,7 @@ declare module '*.gql' {
   export const DomainsQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
   export const RelationshipsQuery: DocumentNode;
+  export const AllRelationshipsQuery: DocumentNode;
   export const RLSRulesQuery: DocumentNode;
   export const AvailableSchemas: DocumentNode;
   export const AvailableTables: DocumentNode;

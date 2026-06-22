@@ -59,12 +59,6 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
     role = state.roles.get(role_id)
 
-    if role:
-        from provisa.security.rights import Capability, has_capability
-
-        if not has_capability(role, Capability.AD_HOC_QUERY):
-            raise PermissionError("Role lacks ad_hoc_query capability")
-
     raw_sql, embedded_params = extract_params_comment(sql)
     raw_sql, sql_opts_out = extract_relationship_guard_comment(raw_sql)
 
@@ -83,8 +77,12 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
         role=role,
     )
 
+    from provisa.security.rights import Capability, has_capability
+
     _role_guard = (role or {}).get("relationship_guard", True)
-    _bypass_guard = (not _role_guard) and sql_opts_out
+    _bypass_guard = has_capability(role or {}, Capability.IGNORE_RELATIONSHIPS) or (
+        (not _role_guard) and sql_opts_out
+    )
     violations = validate_sql(
         normalized_sql,
         ctx,

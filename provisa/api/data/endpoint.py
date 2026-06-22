@@ -431,9 +431,6 @@ async def graphql_endpoint(
         )
         return JSONResponse({"data": result.data})
 
-    # AD_HOC_QUERY required for actual data queries
-    _check_role_capability(role, Capability.AD_HOC_QUERY)
-
     from graphql.language.ast import OperationDefinitionNode as _ODN
 
     is_mut = any(

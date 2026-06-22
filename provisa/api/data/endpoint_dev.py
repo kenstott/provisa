@@ -204,8 +204,15 @@ async def sql_endpoint(
 
     # --- Step 3: Validate SQL against role-scoped GraphQL-equivalent rules ---
     violations = _validate_sql_governance(
-        normalized_sql, parsed_tree, ctx, gov_ctx, role, raw_tables,
-        request.discovery_mode, _sql_opts_out, role_id,
+        normalized_sql,
+        parsed_tree,
+        ctx,
+        gov_ctx,
+        role,
+        raw_tables,
+        request.discovery_mode,
+        _sql_opts_out,
+        role_id,
     )
 
     if violations:
@@ -266,8 +273,12 @@ def _validate_sql_governance(
 ) -> list:
     from provisa.compiler.sql_validator import validate_sql
 
+    from provisa.security.rights import Capability, has_capability
+
     _role_guard = (role or {}).get("relationship_guard", True)
-    _bypass_guard = (not _role_guard) and sql_opts_out
+    _bypass_guard = has_capability(role or {}, Capability.IGNORE_RELATIONSHIPS) or (
+        (not _role_guard) and sql_opts_out
+    )
     violations = validate_sql(
         normalized_sql,
         ctx,
@@ -296,11 +307,7 @@ async def _dispatch_sql_execution(
     embedded_params: list | None,
 ) -> "QueryResult":
     _govdata_sid = next(
-        (
-            sid
-            for sid in (sources or {default_source})
-            if state.source_types.get(sid) == "govdata"
-        ),
+        (sid for sid in (sources or {default_source}) if state.source_types.get(sid) == "govdata"),
         None,
     )
     if _govdata_sid:
@@ -370,10 +377,6 @@ def _check_sql_capabilities(role, discovery_mode: bool) -> None:
     if role and not discovery_mode:
         try:
             check_capability(role, Capability.QUERY_DEVELOPMENT)
-        except InsufficientRightsError as e:
-            raise HTTPException(status_code=403, detail=str(e))
-        try:
-            check_capability(role, Capability.AD_HOC_QUERY)
         except InsufficientRightsError as e:
             raise HTTPException(status_code=403, detail=str(e))
 
@@ -489,9 +492,7 @@ def _collect_nl_user_tables(ctx) -> tuple[list, dict, dict, "CypherLabelMap"]:
     _lm = _CLM.from_schema(ctx)
     if domain_policy.single_domain():
         # Single-domain mode: nodes carry no domain label — include all non-traversal nodes.
-        _user_nodes = {
-            tn: nm for tn, nm in _lm.nodes.items() if not nm.traversal_only
-        }
+        _user_nodes = {tn: nm for tn, nm in _lm.nodes.items() if not nm.traversal_only}
     else:
         _user_domains = {
             d for d in (n.domain_id for n in _lm.nodes.values()) if d not in (None, "ops", "meta")
@@ -598,8 +599,7 @@ def _build_schema_block(
             continue
         cols = ctx.aggregate_columns.get(tbl.table_id, [])
         col_list = ", ".join(
-            ctx.physical_to_sql.get((tbl.table_id, col_name), col_name)
-            for col_name, _ in cols
+            ctx.physical_to_sql.get((tbl.table_id, col_name), col_name) for col_name, _ in cols
         )
         tbl_sql = semantic_table_name(tbl)
         schema_lines.append(f"Table {sql_domain_fn(tbl.domain_id)}.{tbl_sql}")
@@ -742,7 +742,9 @@ async def nl_to_sql_endpoint(
 
     multihop_lines = _build_multihop_lines(selected_types, _lm, _sql_domain)
     relevant_type_names = _build_relevant_type_names(selected_types, _lm)
-    schema_block = _build_schema_block(all_tables, relevant_type_names, ctx, _sql_domain, multihop_lines)
+    schema_block = _build_schema_block(
+        all_tables, relevant_type_names, ctx, _sql_domain, multihop_lines
+    )
 
     last_sql, attempt, last_error = await _run_sql_generation_loop(
         request.question, schema_block, ctx, gov_ctx, role_obj, raw_tables

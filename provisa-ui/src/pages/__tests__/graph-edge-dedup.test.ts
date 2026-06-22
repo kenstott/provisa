@@ -25,8 +25,8 @@ function makeEdge(
     end: endId,
     type,
     properties: {},
-    startNode: { id: startId, label: startLabel, properties: {} },
-    endNode: { id: endId, label: endLabel, properties: {} },
+    startNode: { id: startId, label: startLabel, tableLabel: startLabel, properties: {} },
+    endNode: { id: endId, label: endLabel, tableLabel: endLabel, properties: {} },
   };
 }
 

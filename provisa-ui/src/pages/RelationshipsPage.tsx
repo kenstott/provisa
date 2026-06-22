@@ -69,7 +69,7 @@ export function RelationshipsPage() {
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
   const PAGE_SIZE = 50;
-  const [sortCol, setSortCol] = useState<"id" | "domain" | "source" | "target" | "cardinality">("id");
+  const [sortCol, setSortCol] = useState<"id" | "domain" | "source" | "target" | "cardinality" | "materialize">("id");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [groupBy, setGroupBy] = useState<Array<"domain" | "cardinality" | "materialize">>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());

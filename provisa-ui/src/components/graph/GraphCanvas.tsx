@@ -25,6 +25,7 @@ import type {
   CyLayoutOptions,
   CyElementDefinition,
   CyElement,
+  CyCollection,
   CyInstance,
 } from "./cytoscape-types";
 import cytoscape from "cytoscape";
@@ -259,7 +260,7 @@ export function GraphCanvas({
             _clusterLevel: clusterLevelRef.current,
           },
           position: { x: cx_g, y: cy_g },
-        }) as CyElement;
+        }) as unknown as CyCollection;
       } else {
         if (portNode.locked()) portNode.unlock();
         portNode.position({ x: cx_g, y: cy_g });

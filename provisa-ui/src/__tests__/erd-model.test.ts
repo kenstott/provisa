@@ -132,8 +132,8 @@ describe("buildErdElements", () => {
     const { nodes } = buildErdElements(tables, [intraRel], domains, new Set(), NO_HIDDEN, "none", null);
     const tableNodes = nodes.filter((n) => n.classes === "erd-table");
     expect(tableNodes).toHaveLength(3);
-    const ordersNode = tableNodes.find((n) => n.data.tableId === 1);
-    expect(ordersNode?.data.parent).toBe("d:sales");
+    const ordersNode = tableNodes.find((n) => n.data.type === "table" && n.data.tableId === 1);
+    expect(ordersNode?.data.type === "table" && ordersNode.data.parent).toBe("d:sales");
   });
 
   it("creates edges for visible table pairs", () => {
@@ -214,7 +214,7 @@ describe("buildErdElements", () => {
     const { nodes } = buildErdElements(tables, [], domains, new Set(), NO_HIDDEN, "none", "hr");
     const tableNodes = nodes.filter((n) => n.classes === "erd-table");
     expect(tableNodes).toHaveLength(1);
-    expect(tableNodes[0].data.tableId).toBe(3);
+    expect(tableNodes[0].data.type === "table" && tableNodes[0].data.tableId).toBe(3);
   });
 
   it("skips edges where targetTableId is null", () => {
@@ -232,7 +232,7 @@ describe("buildErdElements", () => {
   it("uses table alias when set", () => {
     const aliased = makeTable({ id: 4, domainId: "sales", tableName: "ord", alias: "Orders" });
     const { nodes } = buildErdElements([aliased], [], domains, new Set(), NO_HIDDEN, "none", null);
-    const tableNode = nodes.find((n) => n.classes === "erd-table" && n.data.tableId === 4);
-    expect(tableNode?.data.tableName).toBe("Orders");
+    const tableNode = nodes.find((n) => n.classes === "erd-table" && n.data.type === "table" && n.data.tableId === 4);
+    expect(tableNode?.data.type === "table" && tableNode.data.tableName).toBe("Orders");
   });
 });

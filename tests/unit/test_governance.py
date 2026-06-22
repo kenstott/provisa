@@ -29,7 +29,7 @@ NAMED_RIGHTS = {
     "security configuration": Capability.ACCESS_CONFIG,
     "query development": Capability.QUERY_DEVELOPMENT,
     "query authorization": Capability.APPROVE_VIEW,
-    "query execution": Capability.AD_HOC_QUERY,
+    "ignore relationships": Capability.IGNORE_RELATIONSHIPS,
 }
 
 

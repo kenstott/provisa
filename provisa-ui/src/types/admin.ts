@@ -24,6 +24,7 @@ export interface Source {
   path: string | null;
   allowedDomains: string[];
   description: string;
+  mappingJson?: string | null;
 }
 
 export interface Domain {

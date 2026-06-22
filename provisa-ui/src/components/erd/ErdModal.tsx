@@ -19,7 +19,7 @@ import type { ColumnDetail, ErdNodeDomain, ErdNodeTable } from "./erd-model";
 import type { RegisteredTable, Relationship, Domain, TableColumn } from "../../types/admin";
 import { labelColor, darkenColor } from "../graph/graph-model";
 import { downloadBlob } from "../graph/graph-export";
-import type { CyInstance, CyEvent } from "../graph/cytoscape-types";
+import type { CyInstance, CyEvent, CyLayoutOptions } from "../graph/cytoscape-types";
 
 // ── cytoscape plugin registration ────────────────────────────────────────────
 type CyExt = Parameters<typeof cytoscape.use>[0];
@@ -222,8 +222,8 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
       return;
     }
     const node = cyRef.current.$(`#d\\:${domainId}`);
-    if (!node || (node as { empty(): boolean }).empty()) { setResizeHandleBox(null); return; }
-    const bb = (node as { renderedBoundingBox(opts: object): { x1: number; y1: number; w: number; h: number } })
+    if (!node || (node as unknown as { empty(): boolean }).empty()) { setResizeHandleBox(null); return; }
+    const bb = (node as unknown as { renderedBoundingBox(opts: object): { x1: number; y1: number; w: number; h: number } })
       .renderedBoundingBox({ includeLabels: false });
     const rect = containerRef.current.getBoundingClientRect();
     setResizeHandleBox({ x: rect.left + bb.x1, y: rect.top + bb.y1, w: bb.w, h: bb.h });
@@ -289,10 +289,10 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
     // Compute grid cell size from actual node bounding boxes (width/height + gap).
     const gridSize = () => {
       const nodes = cy.nodes(".erd-table");
-      if ((nodes as { empty(): boolean }).empty()) return { gx: 190, gy: 60 };
+      if ((nodes as unknown as { empty(): boolean }).empty()) return { gx: 190, gy: 60 };
       let maxW = 0, maxH = 0;
       nodes.forEach((n) => {
-        const bb = (n as { boundingBox(o: object): { w: number; h: number } }).boundingBox({});
+        const bb = (n as unknown as { boundingBox(o: object): { w: number; h: number } }).boundingBox({});
         if (bb.w > maxW) maxW = bb.w;
         if (bb.h > maxH) maxH = bb.h;
       });
@@ -315,9 +315,9 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
       cy.nodes(".erd-domain").forEach((domainNode) => {
         const children = domainNode.children();
         const isolated = children.filter(
-          (n) => (n as { degree(includeLoops: boolean): number }).degree(false) === 0,
+          (n) => (n as unknown as { degree(includeLoops: boolean): number }).degree(false) === 0,
         );
-        if ((isolated as { empty(): boolean }).empty()) return;
+        if ((isolated as unknown as { empty(): boolean }).empty()) return;
 
         const { gx, gy } = gridSize();
         const stepX = snapToGridRef.current ? gx : gx;
@@ -326,17 +326,17 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
 
         // Place orphans below the connected nodes, or at the domain top-left if none.
         const connected = children.filter(
-          (n) => (n as { degree(includeLoops: boolean): number }).degree(false) > 0,
+          (n) => (n as unknown as { degree(includeLoops: boolean): number }).degree(false) > 0,
         );
         let startX: number;
         let startY: number;
-        if (!(connected as { empty(): boolean }).empty()) {
-          const cbb = (connected as { boundingBox(o: object): { x1: number; y2: number } })
+        if (!(connected as unknown as { empty(): boolean }).empty()) {
+          const cbb = (connected as unknown as { boundingBox(o: object): { x1: number; y2: number } })
             .boundingBox({});
           startX = cbb.x1;
           startY = cbb.y2 + stepY;
         } else {
-          const dbb = (domainNode as { boundingBox(o: object): { x1: number; y1: number } })
+          const dbb = (domainNode as unknown as { boundingBox(o: object): { x1: number; y1: number } })
             .boundingBox({ includeLabels: false });
           startX = dbb.x1 + stepX * 0.5;
           startY = dbb.y1 + stepY * 0.5;
@@ -359,11 +359,11 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
       // Collapsed domain leaf nodes placed inside an expanded compound by fCoSE render
       // behind its background and become invisible. Move them outside.
       cy.nodes(".erd-domain").forEach((leafDomain) => {
-        if (!(leafDomain.children() as { empty(): boolean }).empty()) return;
+        if (!(leafDomain.children() as unknown as { empty(): boolean }).empty()) return;
         cy.nodes(".erd-domain").forEach((compound) => {
           if (compound.id() === leafDomain.id()) return;
-          if ((compound.children() as { empty(): boolean }).empty()) return;
-          const cbb = (compound as { boundingBox(o: object): { x1: number; x2: number; y1: number; y2: number } })
+          if ((compound.children() as unknown as { empty(): boolean }).empty()) return;
+          const cbb = (compound as unknown as { boundingBox(o: object): { x1: number; x2: number; y1: number; y2: number } })
             .boundingBox({});
           const pos = (leafDomain as { position(): { x: number; y: number } }).position();
           if (pos.x > cbb.x1 && pos.x < cbb.x2 && pos.y > cbb.y1 && pos.y < cbb.y2) {
@@ -490,7 +490,7 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
       gravityCompound: 1.0,
       gravity: 0.5,
       ...(fixedNodeConstraint.length > 0 ? { fixedNodeConstraint } : {}),
-    } as Parameters<typeof cytoscape>[0]["layout"]).run();
+    } as CyLayoutOptions).run();
 
     return () => { cy.destroy(); cyRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

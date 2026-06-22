@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { toSnakeCase, toCamelCase, toPascalCase, applyConvention } from "../naming";
+import { toSnakeCase } from "../naming";
 import { useState, useEffect, Fragment, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Trash2, Pencil, Sparkles, Save, X, Loader2, Network } from "lucide-react";
@@ -192,6 +192,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [columns, setColumns] = useState<ColumnForm[]>([]);
   const [watermarkColumn, setWatermarkColumn] = useState<string>("");
   const [dataProduct, setDataProduct] = useState(false);
+  const [_governance, setGovernance] = useState("pre-approved");
 
   // Per-table profile state: tableId → profile result or "loading"
   const [tableProfiles, setTableProfiles] = useState<
@@ -954,7 +955,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               .filter(([col]) => domainsEnabled || col !== "domain")
               .map(([col, label]) => {
               const isGroupable = col === "source" || col === "domain";
-              const groupLevel = groupBy.indexOf(col);
+              const groupLevel = groupBy.indexOf(col as "source" | "domain");
               const isGrouped = groupLevel !== -1;
               return (
                 <th key={col} style={{ whiteSpace: "nowrap" }}>
