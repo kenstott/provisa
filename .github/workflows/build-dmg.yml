@@ -770,9 +770,10 @@ jobs:
           if (-not (Test-Path "$nsisDir\makensis64.exe")) {
             Write-Host "makensis64 not found — downloading official NSIS installer..."
             $installer = "$env:TEMP\nsis-setup.exe"
-            # Use curl.exe (pre-installed on Windows runners) to follow all SourceForge redirects
-            curl.exe -fsSL -o $installer "https://prdownloads.sourceforge.net/nsis/nsis-3.11-setup.exe"
-            if ($LASTEXITCODE -ne 0) { throw "curl failed to download NSIS installer" }
+            # -L follows redirects; no -f so SourceForge CDN redirects don't cause early exit
+            curl.exe -sSL --retry 3 -o $installer "https://prdownloads.sourceforge.net/nsis/nsis-3.11-setup.exe"
+            $nsisSize = (Get-Item $installer -ErrorAction SilentlyContinue).Length
+            if ($nsisSize -lt 500000) { throw "NSIS installer download too small ($nsisSize bytes) — likely HTML error page" }
             Start-Process -FilePath $installer -ArgumentList "/S" -Wait
           }
           if (-not (Test-Path "$nsisDir\makensis64.exe")) { exit 1 }
