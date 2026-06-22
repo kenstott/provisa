@@ -187,7 +187,10 @@ build_appdir() {
   cp "${REPO_ROOT}/docker-compose.observability.yml" "${APPDIR}/compose/"
   cp -r "${REPO_ROOT}/config"                      "${APPDIR}/compose/config"
   cp -r "${REPO_ROOT}/db"                          "${APPDIR}/compose/db"
-  cp -r "${REPO_ROOT}/trino"                       "${APPDIR}/compose/trino"
+  # Copy trino WITHOUT plugins/ — plugins ship as a separate release asset
+  # (provisa-trino-plugins-*.tar.gz) to keep the AppImage under the 2 GB limit.
+  mkdir -p "${APPDIR}/compose/trino"
+  rsync -a --exclude='plugins/' "${REPO_ROOT}/trino/" "${APPDIR}/compose/trino/"
   cp -r "${REPO_ROOT}/observability"               "${APPDIR}/compose/observability"
 
   # Copy CLI and launch scripts

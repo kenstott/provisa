@@ -30,7 +30,12 @@ Copy-Item (Join-Path $RepoRoot 'docker-compose.app.yml')    $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'docker-compose.airgap.yml') $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'config')  (Join-Path $BuildCompose 'config')  -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'db')      (Join-Path $BuildCompose 'db')      -Recurse -Force
-Copy-Item (Join-Path $RepoRoot 'trino')   (Join-Path $BuildCompose 'trino')   -Recurse -Force
+# Copy trino WITHOUT plugins/ — plugins ship as a separate release asset
+# (provisa-trino-plugins-*.tar.gz) to keep the installer under the 2 GB limit.
+$TrinoSrc = Join-Path $RepoRoot 'trino'
+$TrinoDst = Join-Path $BuildCompose 'trino'
+New-Item -ItemType Directory -Path $TrinoDst -Force | Out-Null
+Get-ChildItem -Path $TrinoSrc -Exclude 'plugins' | Copy-Item -Destination $TrinoDst -Recurse -Force
 
 $BuildSrc = Join-Path $BuildDir 'provisa-source'
 New-Item -ItemType Directory -Path $BuildSrc -Force | Out-Null

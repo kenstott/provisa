@@ -31,6 +31,7 @@ jobs:
       py_version: ${{ steps.meta.outputs.py_version }}
       obs_images_name: ${{ steps.meta.outputs.obs_images_name }}
       demo_images_name: ${{ steps.meta.outputs.demo_images_name }}
+      plugins_name: ${{ steps.meta.outputs.plugins_name }}
     steps:
       - name: Resolve channel and versions from tag
         id: meta
@@ -68,6 +69,7 @@ jobs:
           echo "py_version=$PY_VERSION"                                    >> "$GITHUB_OUTPUT"
           echo "obs_images_name=provisa-obs-images-${TAG}.tar.gz"         >> "$GITHUB_OUTPUT"
           echo "demo_images_name=provisa-demo-images-${TAG}.tar.gz"       >> "$GITHUB_OUTPUT"
+          echo "plugins_name=provisa-trino-plugins-${TAG}.tar.gz"         >> "$GITHUB_OUTPUT"
 
   build-vm-image:
     name: Build Provisa runtime VM (OVA)
@@ -238,6 +240,29 @@ jobs:
         with:
           name: trino-plugins
           path: trino/plugins/
+          retention-days: 1
+          compression-level: 0
+
+  package-plugins:
+    name: Package Trino plugins tarball for release
+    runs-on: ubuntu-latest
+    needs: [metadata, download-plugins]
+    steps:
+      - name: Download plugin directories
+        uses: actions/download-artifact@v4
+        with:
+          name: trino-plugins
+          path: trino-plugins/
+
+      - name: Package as single tarball
+        run: |
+          tar -czf "${{ needs.metadata.outputs.plugins_name }}" -C trino-plugins/ .
+
+      - name: Upload plugins tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugins-tarball
+          path: "${{ needs.metadata.outputs.plugins_name }}"
           retention-days: 1
           compression-level: 0
 
@@ -957,6 +982,7 @@ jobs:
       - rename-ova
       - package-obs-images
       - package-demo-images
+      - package-plugins
     permissions:
       contents: write
     steps:
@@ -991,6 +1017,12 @@ jobs:
           name: demo-images-tarball
           path: release-assets/
 
+      - name: Download Trino plugins tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: plugins-tarball
+          path: release-assets/
+
       - name: Delete existing release if present
         run: gh release delete "${{ github.ref_name }}" --yes || true
         env:
@@ -1014,6 +1046,7 @@ jobs:
             release-assets/${{ needs.metadata.outputs.jdbc_name }}
             release-assets/${{ needs.metadata.outputs.obs_images_name }}
             release-assets/${{ needs.metadata.outputs.demo_images_name }}
+            release-assets/${{ needs.metadata.outputs.plugins_name }}
             release-assets/*.whl
           body: |
             ## Channel: `${{ needs.metadata.outputs.channel }}`
@@ -1032,6 +1065,7 @@ jobs:
             | `provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl` | Python client |
             | `${{ needs.metadata.outputs.obs_images_name }}` | Observability Docker images (optional download) |
             | `${{ needs.metadata.outputs.demo_images_name }}` | Demo Docker images (optional download) |
+            | `${{ needs.metadata.outputs.plugins_name }}` | Trino connector plugins (SharePoint, Splunk, File) |
 
             ### macOS Install
             1. Download `${{ needs.metadata.outputs.dmg_name }}` — drag **Provisa.app** to `/Applications`

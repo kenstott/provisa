@@ -551,16 +551,6 @@ create_dmg() {
   cp "${VM_IMAGES_DIR}"/*.img "${tmp_dmg}/vm-image/"
   chflags hidden "${tmp_dmg}/vm-image"
 
-  # Trino plugins shipped as hidden DMG content (not inside .app) to keep
-  # the app bundle under the 2 GB GitHub release-asset limit.
-  # first-launch.sh stages them to ~/.provisa/trino/plugins/ on first run.
-  if [ -d "${REPO_ROOT}/trino/plugins" ] && [ "$(ls -A "${REPO_ROOT}/trino/plugins" 2>/dev/null)" ]; then
-    mkdir -p "${tmp_dmg}/trino-plugins"
-    cp -r "${REPO_ROOT}/trino/plugins/." "${tmp_dmg}/trino-plugins/"
-    chflags hidden "${tmp_dmg}/trino-plugins"
-    info "Trino plugins bundled in DMG ($(du -sh "${tmp_dmg}/trino-plugins" | cut -f1))."
-  fi
-
   # Remove any existing DMG so create-dmg doesn't complain
   rm -f "${DMG_PATH}"
 
