@@ -11,7 +11,8 @@
 import { toSnakeCase, toCamelCase, toPascalCase, applyConvention } from "../naming";
 import { useState, useEffect, Fragment, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Trash2, Pencil, Sparkles, Save, X, Loader2 } from "lucide-react";
+import { Trash2, Pencil, Sparkles, Save, X, Loader2, Network } from "lucide-react";
+import { ErdModal } from "../components/erd/ErdModal";
 import { CopyButton } from "../components/CopyButton";
 import { MultiSelect } from "../components/MultiSelect";
 import { fetchSettings, profileTable } from "../api/admin";
@@ -35,6 +36,7 @@ import {
   useInvalidateFileSource,
   useDeployViewToDb,
   useSuggestTableAlias,
+  useRelationships,
 } from "../hooks/useAdminQueries";
 import type { RegisteredTable } from "../types/admin";
 import { ColumnPresetsEditor } from "../components/admin/ColumnPresetsEditor";
@@ -148,6 +150,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
+  const { relationships } = useRelationships();
+  const [showErd, setShowErd] = useState(false);
   const { roles, refetch: refetchRoles } = useRoles();
   const domainHints = domains.map((d) => d.id);
   const getAvailableColumnsMetadata = useAvailableColumnsMetadataLazy();
@@ -642,6 +646,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           )}
           <button onClick={() => navigate("/sql")} title="Create a new view in the SQL Explorer">
             + View
+          </button>
+          <button className="btn-icon" title="View ERD" onClick={() => setShowErd(true)}>
+            <Network size={14} />
           </button>
         </div>
       </div>
@@ -2219,6 +2226,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           </div>
         );
       })()}
+      {showErd && (
+        <ErdModal
+          tables={tables}
+          relationships={relationships}
+          domains={domains}
+          activeDomain={checkedDomains.size === 1 ? [...checkedDomains][0] : null}
+          onClose={() => setShowErd(false)}
+        />
+      )}
     </div>
   );
 }
