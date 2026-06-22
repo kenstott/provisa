@@ -53,8 +53,8 @@ def _is_graphql(query: str) -> bool:
 _TIMEOUT = 10.0
 
 
-def _auth_login(base_url: str, username: str, password: str) -> str | None:
-    """POST /auth/login and return token, or None on failure."""
+def _auth_login(base_url: str, username: str, password: str) -> tuple[str | None, str | None]:
+    """POST /auth/login and return (token, role), or (None, None) on failure."""
     try:
         r = httpx.post(
             f"{base_url}/auth/login",
@@ -62,10 +62,11 @@ def _auth_login(base_url: str, username: str, password: str) -> str | None:
             timeout=_TIMEOUT,
         )
         if r.status_code == 200:
-            return r.json().get("token")
+            body = r.json()
+            return body.get("token"), body.get("role")
     except (httpx.HTTPError, httpx.TimeoutException):
         pass
-    return None
+    return None, None
 
 
 def _apply_parameters(query: str, parameters: dict | None) -> str:
@@ -99,8 +100,9 @@ def connect(
     the authenticated user holds that role (otherwise rejects). It cannot assume an arbitrary
     role — there is no client-trusted identity.
     """
-    token = _auth_login(url, username, password)
-    return Connection(base_url=url.rstrip("/"), token=token, role=role)
+    token, auth_role = _auth_login(url, username, password)
+    resolved_role = role or auth_role or (username if token is None else None)
+    return Connection(base_url=url.rstrip("/"), token=token, role=resolved_role)
 
 
 class Connection:
