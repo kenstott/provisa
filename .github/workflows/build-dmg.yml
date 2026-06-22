@@ -766,6 +766,15 @@ jobs:
             Start-Process -FilePath $installer -ArgumentList "/S" -Wait
           }
           if (-not (Test-Path "$nsisDir\makensis.exe")) { exit 1 }
+          # Choco NSIS package omits makensis64.exe — download official installer to get it
+          if (-not (Test-Path "$nsisDir\makensis64.exe")) {
+            Write-Host "makensis64 not found — downloading official NSIS installer..."
+            $installer = "$env:TEMP\nsis-setup.exe"
+            Invoke-WebRequest -Uri "https://prdownloads.sourceforge.net/nsis/nsis-3.11-setup.exe" `
+              -OutFile $installer -UseBasicParsing
+            Start-Process -FilePath $installer -ArgumentList "/S" -Wait
+          }
+          if (-not (Test-Path "$nsisDir\makensis64.exe")) { exit 1 }
           $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Build installer
