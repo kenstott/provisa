@@ -748,62 +748,14 @@ jobs:
           Invoke-WebRequest -Uri $NerdctlUrl -OutFile packaging/windows/redist/nerdctl-full.tar.gz -UseBasicParsing
           Write-Host "nerdctl-full downloaded."
 
-      - name: Install NSIS
-        shell: pwsh
-        run: |
-          $nsisDir = "C:\Program Files (x86)\NSIS"
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            choco install nsis --no-progress -y
-            if ($LASTEXITCODE -eq 0) { break }
-            Write-Host "choco attempt $attempt failed — retrying in 15s..."
-            Start-Sleep 15
-          }
-          if (-not (Test-Path "$nsisDir\makensis.exe")) {
-            Write-Host "choco unavailable — downloading NSIS directly..."
-            $installer = "$env:TEMP\nsis-setup.exe"
-            Invoke-WebRequest -Uri "https://prdownloads.sourceforge.net/nsis/nsis-3.11-setup.exe" `
-              -OutFile $installer -UseBasicParsing
-            Start-Process -FilePath $installer -ArgumentList "/S" -Wait
-          }
-          if (-not (Test-Path "$nsisDir\makensis.exe")) { exit 1 }
-          # Choco silent install omits makensis64.exe (minimum install).
-          # Re-run the NSIS setup from the choco nupkg with all components to get makensis64.
-          if (-not (Test-Path "$nsisDir\makensis64.exe")) {
-            Write-Host "makensis64 not found — downloading nsis.install nupkg and re-running with full components..."
-            $nupkg    = "$env:TEMP\nsis.install.nupkg"
-            $nsisExe  = "$env:TEMP\nsis-3.12-setup.exe"
-            # Chocolatey CDN is reliable; the nupkg contains the NSIS installer binary
-            Invoke-WebRequest -Uri "https://packages.chocolatey.org/nsis.install.3.12.0.nupkg" `
-              -OutFile $nupkg -UseBasicParsing
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            $zip = [System.IO.Compression.ZipFile]::OpenRead($nupkg)
-            $entry = $zip.Entries | Where-Object { $_.FullName -eq 'tools/nsis-3.12-setup.exe' }
-            $stream = $entry.Open()
-            $fs = [System.IO.File]::Create($nsisExe)
-            $stream.CopyTo($fs); $fs.Close(); $stream.Close(); $zip.Dispose()
-            # Run with full component selection to include makensis64.exe
-            Start-Process -FilePath $nsisExe -ArgumentList '/S' -Wait
-            # If still missing, try with additional component flags (NSIS 3.x extended syntax)
-            if (-not (Test-Path "$nsisDir\makensis64.exe")) {
-              Write-Host "Still missing after /S — retrying with /COMPONENTS flag..."
-              Start-Process -FilePath $nsisExe -ArgumentList '/S /COMPONENTS=Compiler64' -Wait
-            }
-          }
-          if (-not (Test-Path "$nsisDir\makensis64.exe")) {
-            Write-Host "ERROR: makensis64.exe not found after all attempts. Listing NSIS dir:"
-            Get-ChildItem $nsisDir | ForEach-Object { Write-Host "  $($_.Name)" }
-            exit 1
-          }
-          $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Append
-
-      - name: Build installer
+      - name: Build installer (7-Zip SFX)
         shell: pwsh
         env:
           VERSION: ${{ github.ref_name }}
           WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
           WINDOWS_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CERT_PFX_PASSWORD }}
           WINDOWS_CERT_TIMESTAMP_URL: ${{ secrets.WINDOWS_CERT_TIMESTAMP_URL }}
-        run: packaging/windows/build-installer.ps1
+        run: packaging/windows/build-sfx.ps1
 
       - name: Rename installer
         shell: pwsh
