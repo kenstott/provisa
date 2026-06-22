@@ -100,4 +100,7 @@ identifier.sqlite
 /trino/catalog-install/tmp_src_*.properties
 /trino/catalog-install/e2e_*.properties
 /trino/catalog-install/test_*.properties
+/trino/catalog/e2e_*.properties
+/trino/catalog/test_*.properties
+/trino/catalog/ui_*.properties
 sharepoint.pfx
