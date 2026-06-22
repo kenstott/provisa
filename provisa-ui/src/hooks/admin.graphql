@@ -120,6 +120,29 @@ query RelationshipsQuery {
   }
 }
 
+query AllRelationshipsQuery {
+  allRelationships {
+    id
+    sourceTableId
+    targetTableId
+    sourceTableName
+    sourceDomainId
+    targetTableName
+    sourceColumn
+    targetColumn
+    cardinality
+    materialize
+    refreshInterval
+    targetFunctionName
+    functionArg
+    alias
+    graphqlAlias
+    computedCypherAlias
+    autoSuggested
+    disableCypher
+  }
+}
+
 query RLSRulesQuery {
   rlsRules {
     id
@@ -400,6 +423,12 @@ mutation ToggleMv($mvId: String!, $enabled: Boolean!) {
 
 mutation ToggleScheduledTask($taskId: String!, $enabled: Boolean!) {
   toggleScheduledTask(taskId: $taskId, enabled: $enabled) {
+    ...MutationResult
+  }
+}
+
+mutation CreateScheduledTask($id: String!, $name: String!, $cron: String!, $webhookName: String!, $argsJson: String) {
+  createScheduledTask(id: $id, name: $name, cron: $cron, webhookName: $webhookName, argsJson: $argsJson) {
     ...MutationResult
   }
 }

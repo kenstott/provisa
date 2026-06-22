@@ -836,6 +836,27 @@ class Query:
             return [_rel_from_row(r, convention) for r in rows]
 
     @strawberry.field
+    async def all_relationships(self) -> list[RelationshipType]:
+        """All relationships including system-generated meta:% entries (used by ERD)."""
+        from provisa.api.app import state
+
+        convention = state.global_gql_naming_convention
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT r.*, "
+                "st.table_name AS source_table_name, "
+                "st.domain_id AS source_domain_id, "
+                "tt.table_name AS target_table_name "
+                "FROM relationships r "
+                "JOIN registered_tables st ON r.source_table_id = st.id "
+                "LEFT JOIN registered_tables tt ON r.target_table_id = tt.id "
+                "WHERE r.id NOT LIKE 'gql_auto__%' "
+                "ORDER BY r.id"
+            )
+            return [_rel_from_row(r, convention) for r in rows]
+
+    @strawberry.field
     async def roles(self, info: StrawberryInfo) -> list[RoleType]:
         request = info.context["request"]
         active_org_id = getattr(request.state, "active_org_id", "root") or "root"

@@ -2508,7 +2508,7 @@ export function SqlPage() {
                       setViewModal(true);
                     }}
                   >
-                    {canCreateView ? "Create View" : "Request View"}
+                    {canCreateView ? "+ View" : "Request View"}
                   </button>
                 )}
               </div>
@@ -3228,7 +3228,7 @@ export function SqlPage() {
               }}
             >
               <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>
-                {canCreateView ? "Create View" : "Request View"}
+                {canCreateView ? "+ View" : "Request View"}
               </span>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 {viewMsg && (

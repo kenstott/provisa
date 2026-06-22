@@ -26,6 +26,7 @@ import {
 } from "../api/admin";
 import {
   useRelationships,
+  useAllRelationships,
   useTables,
   useDomains,
   useUpsertRelationship,
@@ -46,6 +47,7 @@ import { CandidatesTable } from "../components/relationships/CandidatesTable";
 export function RelationshipsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { relationships: rels, loading: relsLoading, refetch: refetchRels } = useRelationships();
+  const { relationships: allRels } = useAllRelationships();
   const { tables, loading: tablesLoading } = useTables();
   const { domains } = useDomains();
   const [showErd, setShowErd] = useState(false);
@@ -743,7 +745,7 @@ export function RelationshipsPage() {
       {showErd && (
         <ErdModal
           tables={tables}
-          relationships={rels}
+          relationships={allRels}
           domains={domains}
           activeDomain={selectedDomain !== "all" ? selectedDomain : null}
           onClose={() => setShowErd(false)}

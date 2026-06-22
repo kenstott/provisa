@@ -41,7 +41,7 @@ export function SystemHealth() {
       </thead>
       <tbody>
         <tr>
-          <td>Trino</td>
+          <td>Federation Engine</td>
           <td><StatusDot ok={health.trinoConnected} /> {health.trinoConnected ? "Connected" : "Disconnected"}</td>
           <td>{health.trinoConnected ? `${health.trinoWorkerCount} worker${health.trinoWorkerCount !== 1 ? "s" : ""} (${health.trinoActiveWorkers} active)` : ""}</td>
         </tr>

@@ -701,16 +701,18 @@ export function CommandsPage() {
           }}
           placeholder="Filter by name…"
         />
-        {!editingName && (
-          <button
-            onClick={() => {
-              setShowForm(!showForm);
-              if (showForm) handleCancel();
-            }}
-          >
-            {showForm ? "Cancel" : "+ Command"}
-          </button>
-        )}
+        <div className="page-actions">
+          {!editingName && (
+            <button
+              onClick={() => {
+                setShowForm(!showForm);
+                if (showForm) handleCancel();
+              }}
+            >
+              {showForm ? "Cancel" : "+ Command"}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -1256,14 +1258,19 @@ export function CommandsPage() {
         );
       })()}
 
-      <div style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-        <label style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-          Test as role:
-        </label>
+      <div style={{ marginTop: "1rem", display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+        <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Test as role:</span>
         <select
           value={testRoleId}
           onChange={(e) => setTestRoleId(e.target.value)}
-          style={{ fontSize: "0.85rem", padding: "0.2rem 0.4rem" }}
+          style={{
+            background: "var(--bg-card)",
+            color: "var(--text)",
+            border: "1px solid var(--border)",
+            borderRadius: "4px",
+            padding: "0.2rem 0.5rem",
+            fontSize: "0.85rem",
+          }}
         >
           <option value="">(no governance)</option>
           {roles.map((r) => (

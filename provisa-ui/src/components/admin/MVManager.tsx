@@ -38,7 +38,7 @@ export function MVManager() {
     return (
       <div>
         <p>No materialized views configured.</p>
-        <button onClick={() => navigate("/views")}>Create View</button>
+        <button onClick={() => navigate("/sql")}>+ View</button>
       </div>
     );
 
@@ -48,7 +48,7 @@ export function MVManager() {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
-        <button onClick={() => navigate("/views")}>Create View</button>
+        <button onClick={() => navigate("/sql")}>+ View</button>
       </div>
       <table className="data-table">
         <thead>

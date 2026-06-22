@@ -171,19 +171,21 @@ export function buildErdElements(
     if (!src || !tgt || src === tgt) continue;
 
     const isProxy = src.startsWith("d:") || tgt.startsWith("d:");
-    // Deduplicate proxy edges that collapse multiple table-level rels to same pair.
-    const key = `${src}→${tgt}`;
-    if (isProxy && seenEdges.has(key)) continue;
+    const label = r.alias || r.computedCypherAlias || cardinalityLabel(r.cardinality);
+    // Deduplicate by pair + label — allows multiple distinct relationships between the same
+    // collapsed-domain proxy pair to show as separate dashed edges.
+    const key = `${src}→${tgt}:${label}`;
+    if (seenEdges.has(key)) continue;
     seenEdges.add(key);
 
     edges.push({
       data: {
         type: "rel",
-        id: isProxy ? `rp:${key}` : `r:${r.id}`,
+        id: isProxy ? `rp:${src}→${tgt}:${label}` : `r:${r.id}`,
         source: src,
         target: tgt,
         cardinality: r.cardinality,
-        label: cardinalityLabel(r.cardinality),
+        label,
         proxy: isProxy,
       } as ErdEdge,
       classes: isProxy ? "erd-rel erd-rel--proxy" : "erd-rel",

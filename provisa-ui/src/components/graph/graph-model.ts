@@ -141,7 +141,7 @@ export function darkenColor(hex: string, factor = 0.5): string {
   const g = parseInt(c.slice(2, 4), 16);
   const b = parseInt(c.slice(4, 6), 16);
   const d = (v: number) =>
-    Math.round(v * factor)
+    Math.min(255, Math.round(v * factor))
       .toString(16)
       .padStart(2, "0");
   return `#${d(r)}${d(g)}${d(b)}`;

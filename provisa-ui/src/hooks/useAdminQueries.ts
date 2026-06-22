@@ -34,6 +34,7 @@ import {
   DomainsQuery as DOMAINS_QUERY,
   TablesQuery as TABLES_QUERY,
   RelationshipsQuery as RELATIONSHIPS_QUERY,
+  AllRelationshipsQuery as ALL_RELATIONSHIPS_QUERY,
   RLSRulesQuery as RLS_RULES_QUERY,
   MVList as MV_LIST_QUERY,
   CacheStats as CACHE_STATS_QUERY,
@@ -65,6 +66,7 @@ import {
   RefreshMv,
   ToggleMv,
   ToggleScheduledTask,
+  CreateScheduledTask,
   PurgeCacheByTable,
   InvalidateFileSource,
   PurgeCache,
@@ -125,6 +127,19 @@ export function useRelationships() {
   );
   return {
     relationships: data?.relationships ?? NO_RELATIONSHIPS,
+    loading,
+    error,
+    refetch,
+  };
+}
+
+export function useAllRelationships() {
+  const { data, loading, error, refetch } = useQuery<{ allRelationships: Relationship[] }>(
+    ALL_RELATIONSHIPS_QUERY,
+    { fetchPolicy: "cache-and-network" },
+  );
+  return {
+    relationships: data?.allRelationships ?? NO_RELATIONSHIPS,
     loading,
     error,
     refetch,
@@ -679,6 +694,23 @@ export function useToggleScheduledTask() {
     toggleScheduledTask: async (taskId: string, enabled: boolean) => {
       const result = await toggleScheduledTask({ variables: { taskId, enabled } });
       return (result.data?.toggleScheduledTask ?? {
+        success: false,
+        message: "",
+      }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useCreateScheduledTask() {
+  const [createScheduledTask, { loading }] = useMutation<{ createScheduledTask: MutationResult }>(
+    CreateScheduledTask,
+    { refetchQueries: [{ query: SCHEDULED_TASKS_QUERY }] },
+  );
+  return {
+    createScheduledTask: async (id: string, name: string, cron: string, webhookName: string, argsJson?: string) => {
+      const result = await createScheduledTask({ variables: { id, name, cron, webhookName, argsJson } });
+      return (result.data?.createScheduledTask ?? {
         success: false,
         message: "",
       }) as MutationResult;

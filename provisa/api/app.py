@@ -452,6 +452,123 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:
     )
 
 
+async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
+    """Seed FK relationships between meta and ops tables (idempotent, runs after both seeds)."""
+    _REL_INSERT = """
+        INSERT INTO relationships (id, source_table_id, target_table_id,
+                                   source_column, target_column, cardinality,
+                                   materialize, refresh_interval,
+                                   target_function_name, function_arg,
+                                   alias, graphql_alias, disable_cypher, source_json_key)
+        SELECT $1, src.id, tgt.id,
+               $4, $5, $6,
+               false, 300, null, null, null, null, false, null
+        FROM registered_tables src, registered_tables tgt
+        WHERE src.source_id = $2 AND src.table_name = $3
+          AND tgt.source_id = $7 AND tgt.table_name = $8
+        ON CONFLICT (id) DO NOTHING
+    """
+    _ADMIN = "provisa-admin"
+    _OTEL = "provisa-otel"
+
+    static: list[tuple[str, str, str, str, str, str, str, str]] = [
+        # (id, src_source, src_table, src_col, tgt_col, cardinality, tgt_source, tgt_table)
+        (
+            "meta:registered_tables:domains",
+            _ADMIN,
+            "registered_tables",
+            "domain_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "domains",
+        ),
+        (
+            "meta:rls_rules:roles",
+            _ADMIN,
+            "rls_rules",
+            "role_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "roles",
+        ),
+        (
+            "meta:rls_rules:registered_tables",
+            _ADMIN,
+            "rls_rules",
+            "table_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "registered_tables",
+        ),
+        (
+            "meta:rls_rules:domains",
+            _ADMIN,
+            "rls_rules",
+            "domain_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "domains",
+        ),
+        (
+            "meta:relationships:source_table",
+            _ADMIN,
+            "relationships",
+            "source_table_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "registered_tables",
+        ),
+        (
+            "meta:relationships:target_table",
+            _ADMIN,
+            "relationships",
+            "target_table_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "registered_tables",
+        ),
+        (
+            "meta:roles:parent_role",
+            _ADMIN,
+            "roles",
+            "parent_role_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "roles",
+        ),
+        (
+            "meta:traces:registered_tables",
+            _OTEL,
+            "traces",
+            "table_name",
+            "table_name",
+            "many-to-one",
+            _ADMIN,
+            "registered_tables",
+        ),
+        (
+            "meta:queries:registered_tables",
+            _OTEL,
+            "queries",
+            "table_name",
+            "table_name",
+            "many-to-one",
+            _ADMIN,
+            "registered_tables",
+        ),
+    ]
+
+    for row in static:
+        await conn.execute(_REL_INSERT, *row)
+
+
 async def _compute_and_store_clusters(conn: asyncpg.Connection) -> int:
     """Run Louvain on the schema graph and write l1/l2/l3_cluster onto registered_tables.
 
@@ -757,6 +874,7 @@ async def _seed_built_in_sources(
         _pg_conn = cast(asyncpg.Connection, _conn)
         await _seed_meta_domain(_pg_conn)
         await _seed_ops_pg(_pg_conn)
+        await _seed_meta_relationships(_pg_conn)
         needs_clusters = await _conn.fetchval(
             "SELECT COUNT(*) FROM registered_tables WHERE l1_cluster IS NULL"
         )

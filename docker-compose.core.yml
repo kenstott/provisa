@@ -50,7 +50,7 @@ services:
       start_period: 60s
 
   trino:
-    image: trinodb/trino:480
+    image: trinodb/trino:481
     mem_limit: 10g
     ports:
       - "8080:8080"
@@ -83,7 +83,7 @@ services:
       start_period: 120s
 
   trino-worker:
-    image: trinodb/trino:480
+    image: trinodb/trino:481
     entrypoint: ["/etc/trino/worker/entrypoint.sh"]
     volumes:
       - ./trino/etc/worker/config.properties:/etc/trino/config.properties:ro

@@ -32,11 +32,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-async def _execute_webhook(url: str, trigger_id: str) -> None:
+async def _execute_webhook(url: str, trigger_id: str, args: dict | None = None) -> None:
     """Fire a webhook for a scheduled trigger."""
     try:
+        payload: dict = {"trigger_id": trigger_id}
+        if args:
+            payload.update(args)
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(url, json={"trigger_id": trigger_id})
+            resp = await client.post(url, json=payload)
             resp.raise_for_status()
             logger.info("Trigger %s: webhook %s returned %s", trigger_id, url, resp.status_code)
     except Exception:
@@ -336,9 +339,7 @@ def _build_row(
             attrs = json.loads(raw)
         except Exception:
             pass
-    return base + tuple(
-        attrs.get(_ATTR_KEYS[ec]) for ec in extra_cols if ec.lower() in trino_cols
-    )
+    return base + tuple(attrs.get(_ATTR_KEYS[ec]) for ec in extra_cols if ec.lower() in trino_cols)
 
 
 def _resolve_batch_size(signal: str) -> int:
@@ -413,7 +414,15 @@ def _insert_otel_iceberg(
 
     table_has_table_name = "table_name" in table.schema.names
     rows = [
-        _build_row(r, parquet_cols, date_val, extract_trace_attrs, table_has_table_name, extra_cols, trino_cols)
+        _build_row(
+            r,
+            parquet_cols,
+            date_val,
+            extract_trace_attrs,
+            table_has_table_name,
+            extra_cols,
+            trino_cols,
+        )
         for r in table.to_pylist()
     ]
     if not rows:
@@ -503,7 +512,7 @@ def build_scheduler(triggers: list[ScheduledTrigger]) -> AsyncIOScheduler | None
             scheduler.add_job(
                 _execute_webhook,
                 trigger=cron,
-                args=[trigger.url, trigger.id],
+                args=[trigger.url, trigger.id, trigger.args or None],
                 id=trigger.id,
                 name=f"trigger:{trigger.id}",
                 replace_existing=True,

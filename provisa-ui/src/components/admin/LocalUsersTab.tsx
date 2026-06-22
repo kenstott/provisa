@@ -380,7 +380,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
           disabled={!newUsername.trim() || !newPassword.trim()}
           style={{ alignSelf: "flex-start" }}
         >
-          Create User
+          + User
         </button>
       </div>
     </>

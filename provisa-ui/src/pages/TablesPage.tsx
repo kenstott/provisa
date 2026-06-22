@@ -36,7 +36,7 @@ import {
   useInvalidateFileSource,
   useDeployViewToDb,
   useSuggestTableAlias,
-  useRelationships,
+  useAllRelationships,
 } from "../hooks/useAdminQueries";
 import type { RegisteredTable } from "../types/admin";
 import { ColumnPresetsEditor } from "../components/admin/ColumnPresetsEditor";
@@ -150,7 +150,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
-  const { relationships } = useRelationships();
+  const { relationships } = useAllRelationships();
   const [showErd, setShowErd] = useState(false);
   const { roles, refetch: refetchRoles } = useRoles();
   const domainHints = domains.map((d) => d.id);

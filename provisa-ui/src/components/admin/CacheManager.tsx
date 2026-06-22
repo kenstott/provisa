@@ -15,6 +15,7 @@ import {
   usePurgeCacheByTable,
   useTables,
 } from "../../hooks/useAdminQueries";
+import { FilterInput } from "./FilterInput";
 
 const PAGE_SIZE = 50;
 
@@ -25,6 +26,7 @@ export function CacheManager() {
   const { purgeCacheByTable } = usePurgeCacheByTable();
   const [purging, setPurging] = useState(false);
   const [msg, setMsg] = useState("");
+  const [tableSearch, setTableSearch] = useState("");
   const [tablePage, setTablePage] = useState(0);
 
   const handlePurgeAll = async () => {
@@ -74,18 +76,29 @@ export function CacheManager() {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "1rem" }}>
-        <button className="destructive" onClick={handlePurgeAll} disabled={purging}>
-          {purging ? "Purging..." : "Purge All Cache"}
-        </button>
-        {msg && <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{msg}</span>}
-      </div>
-
       {tables.length > 0 && (() => {
-        const totalPages = Math.max(1, Math.ceil(tables.length / PAGE_SIZE));
-        const paged = tables.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
+        const q = tableSearch.toLowerCase();
+        const filtered = tables.filter(
+          (t) =>
+            (t.alias || t.tableName).toLowerCase().includes(q) ||
+            (t.domainId ?? "").toLowerCase().includes(q),
+        );
+        const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+        const safePage = Math.min(tablePage, totalPages - 1);
+        const paged = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
         return (
           <div>
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.5rem" }}>
+              <FilterInput
+                value={tableSearch}
+                onChange={(v) => { setTableSearch(v); setTablePage(0); }}
+                placeholder="Filter by table or domain…"
+              />
+              {msg && <span style={{ color: "var(--text-muted)", fontSize: "0.85rem", whiteSpace: "nowrap" }}>{msg}</span>}
+              <button className="destructive" onClick={handlePurgeAll} disabled={purging} style={{ whiteSpace: "nowrap" }}>
+                {purging ? "Purging..." : "Purge All Cache"}
+              </button>
+            </div>
             <table className="data-table">
               <thead>
                 <tr><th>Table</th><th>Domain</th><th></th></tr>
@@ -109,11 +122,11 @@ export function CacheManager() {
             </table>
             {totalPages > 1 && (
               <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
-                <button onClick={() => setTablePage(0)} disabled={tablePage === 0}>«</button>
-                <button onClick={() => setTablePage(p => p - 1)} disabled={tablePage === 0}>‹</button>
-                <span>Page {tablePage + 1} / {totalPages}</span>
-                <button onClick={() => setTablePage(p => p + 1)} disabled={tablePage >= totalPages - 1}>›</button>
-                <button onClick={() => setTablePage(totalPages - 1)} disabled={tablePage >= totalPages - 1}>»</button>
+                <button onClick={() => setTablePage(0)} disabled={safePage === 0}>«</button>
+                <button onClick={() => setTablePage(p => p - 1)} disabled={safePage === 0}>‹</button>
+                <span>Page {safePage + 1} / {totalPages}</span>
+                <button onClick={() => setTablePage(p => p + 1)} disabled={safePage >= totalPages - 1}>›</button>
+                <button onClick={() => setTablePage(totalPages - 1)} disabled={safePage >= totalPages - 1}>»</button>
               </div>
             )}
           </div>
