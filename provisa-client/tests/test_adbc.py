@@ -30,7 +30,7 @@ BASE = "http://localhost:8001"
 @respx.mock
 def test_adbc_connect_authenticates():
     respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "flight-tok"})
+        return_value=httpx.Response(200, json={"token": "flight-tok", "role": "admin"})
     )
     mock_flight = MagicMock()
     with patch("pyarrow.flight.connect", return_value=mock_flight):

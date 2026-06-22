@@ -21,18 +21,19 @@ import pyarrow as pa
 import pyarrow.flight as fl
 
 
-def _auth_login(base_url: str, user: str, password: str) -> str | None:
-    """POST /auth/login and return token, or None on failure."""
+def _auth_login(base_url: str, user: str, password: str) -> tuple[str | None, str | None]:
+    """POST /auth/login and return (token, role), or (None, None) on failure."""
     try:
         r = httpx.post(
             f"{base_url}/auth/login",
             json={"username": user, "password": password},
         )
         if r.status_code == 200:
-            return r.json().get("token")
+            body = r.json()
+            return body.get("token"), body.get("role")
     except httpx.HTTPError:
         pass
-    return None
+    return None, None
 
 
 def adbc_connect(
@@ -48,7 +49,8 @@ def adbc_connect(
     not a client-assumed identity.
     """
     base_url = url.rstrip("/")
-    token = _auth_login(base_url, user, password)
+    token, auth_role = _auth_login(base_url, user, password)
+    resolved_role = role or auth_role or (user if token is None else None)
 
     parsed = urlparse(base_url)
     host = parsed.hostname or "localhost"
@@ -56,7 +58,7 @@ def adbc_connect(
 
     return AdbcConnection(
         flight_client=flight_client,
-        role=role,
+        role=resolved_role,
         token=token,
         base_url=base_url,
     )
