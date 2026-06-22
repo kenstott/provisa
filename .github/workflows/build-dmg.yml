@@ -766,15 +766,29 @@ jobs:
             Start-Process -FilePath $installer -ArgumentList "/S" -Wait
           }
           if (-not (Test-Path "$nsisDir\makensis.exe")) { exit 1 }
-          # Choco NSIS package omits makensis64.exe — download official installer to get it
+          # Choco NSIS package omits makensis64.exe — find or extract it
           if (-not (Test-Path "$nsisDir\makensis64.exe")) {
-            Write-Host "makensis64 not found — downloading official NSIS installer..."
-            $installer = "$env:TEMP\nsis-setup.exe"
-            # -L follows redirects; no -f so SourceForge CDN redirects don't cause early exit
-            curl.exe -sSL --retry 3 -o $installer "https://prdownloads.sourceforge.net/nsis/nsis-3.11-setup.exe"
-            $nsisSize = (Get-Item $installer -ErrorAction SilentlyContinue).Length
-            if ($nsisSize -lt 500000) { throw "NSIS installer download too small ($nsisSize bytes) — likely HTML error page" }
-            Start-Process -FilePath $installer -ArgumentList "/S" -Wait
+            Write-Host "makensis64 not found — searching choco cache..."
+            # Choco downloads the full NSIS installer into its package cache
+            $chocoCache = 'C:\ProgramData\chocolatey\lib\nsis.install\tools'
+            $cachedExe  = Get-ChildItem -Path $chocoCache -Filter 'makensis64.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($cachedExe) {
+              Write-Host "Found makensis64 at $($cachedExe.FullName) — copying to NSIS dir"
+              Copy-Item $cachedExe.FullName "$nsisDir\makensis64.exe"
+            } else {
+              Write-Host "Not in choco cache — listing choco tools dir:"
+              Get-ChildItem -Path $chocoCache -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.Name)" }
+              # Try to find NSIS setup.exe in choco cache and run it
+              $nsisSetup = Get-ChildItem -Path $chocoCache -Filter '*nsis*setup*.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($nsisSetup) {
+                Write-Host "Found NSIS setup at $($nsisSetup.FullName) — running silent install"
+                Start-Process -FilePath $nsisSetup.FullName -ArgumentList '/S' -Wait
+              } else {
+                Write-Host "ERROR: Cannot find makensis64 or NSIS installer in choco cache"
+                Get-ChildItem 'C:\ProgramData\chocolatey\lib\nsis.install\' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
+                exit 1
+              }
+            }
           }
           if (-not (Test-Path "$nsisDir\makensis64.exe")) { exit 1 }
           $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Append
