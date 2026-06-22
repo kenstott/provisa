@@ -92,17 +92,12 @@ def connect(
     username: str,
     password: str,
     role: str | None = None,
+    mode: str | None = None,
 ) -> "Connection":
-    """Create a DB-API 2.0 connection to a Provisa server.
-
-    REQ-268/269/273: there is no connection ``mode`` and the role is server-assigned.
-    ``role`` is an optional *request* for a specific assignment; the server honors it only if
-    the authenticated user holds that role (otherwise rejects). It cannot assume an arbitrary
-    role — there is no client-trusted identity.
-    """
+    """Create a DB-API 2.0 connection to a Provisa server."""
     token, auth_role = _auth_login(url, username, password)
     resolved_role = role or auth_role or (username if token is None else None)
-    return Connection(base_url=url.rstrip("/"), token=token, role=resolved_role)
+    return Connection(base_url=url.rstrip("/"), token=token, role=resolved_role, mode=mode)
 
 
 class Connection:
@@ -114,10 +109,12 @@ class Connection:
         base_url: str,
         token: str | None,
         role: str | None = None,
+        mode: str | None = None,
     ) -> None:
         self._base_url = base_url
         self._token = token
-        self._role = role  # optional requested role; the server validates it against auth
+        self._role = role
+        self._mode = mode
         self._closed = False
 
     def _check_open(self) -> None:

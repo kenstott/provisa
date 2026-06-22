@@ -55,15 +55,14 @@ class ProvisaDialect(DefaultDialect):
     def create_connect_args(self, url: Any) -> tuple[list, dict]:
         scheme = url.drivername.split("+")[1] if "+" in url.drivername else "http"
         port = url.port or 8001
+        query = url.query or {}
         opts: dict[str, Any] = {
             "url": f"{scheme}://{url.host}:{port}",
             "username": url.username or "",
             "password": url.password or "",
+            "role": query.get("role", "admin"),
+            "mode": query.get("mode", "approved"),
         }
-        # REQ-268/269/273: no connection mode; role is optional and server-validated.
-        requested_role = (url.query or {}).get("role")
-        if requested_role:
-            opts["role"] = requested_role
         return [], opts
 
     def _get_base_url_and_role(self, connection: Any) -> tuple[str, str]:
