@@ -60,9 +60,10 @@ if (-not (Test-Path $SevenZip)) { throw "7z.exe not found at $SevenZip" }
 # Download it from 7-zip.org (small file, ~800KB, reliable server).
 $SfxModule = Join-Path $env:TEMP '7zSD.sfx'
 if (-not (Test-Path $SfxModule)) {
-  Write-Host '[build-sfx] Downloading 7zSD.sfx from 7-zip.org extra package...' -ForegroundColor Cyan
+  Write-Host '[build-sfx] Downloading 7zSD.sfx from github.com/ip7z/7zip releases...' -ForegroundColor Cyan
   $ExtraArchive = Join-Path $env:TEMP '7z-extra.7z'
-  Invoke-WebRequest -Uri 'https://www.7-zip.org/a/7z2409-extra.7z' `
+  # Use GitHub releases (reachable from Actions) instead of 7-zip.org which is blocked
+  Invoke-WebRequest -Uri 'https://github.com/ip7z/7zip/releases/download/26.01/7z2601-extra.7z' `
     -OutFile $ExtraArchive -UseBasicParsing
   & $SevenZip e "$ExtraArchive" -o"$env:TEMP" '7zSD.sfx' -y
   if ($LASTEXITCODE -ne 0) { throw "Failed to extract 7zSD.sfx from 7z-extra" }
