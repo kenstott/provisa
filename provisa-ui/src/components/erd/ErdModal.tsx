@@ -10,7 +10,7 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { X, Download, ChevronDown, ChevronRight } from "lucide-react";
+import { X, Download, ChevronDown, ChevronRight, Layers } from "lucide-react";
 import cytoscape from "cytoscape";
 import fcoseRaw from "cytoscape-fcose";
 import cytoscapeSvgRaw from "cytoscape-svg";
@@ -25,18 +25,10 @@ import type { CyInstance, CyEvent } from "../graph/cytoscape-types";
 type CyExt = Parameters<typeof cytoscape.use>[0];
 type CyExtModule = { default?: CyExt } | CyExt;
 const _interop = (m: CyExtModule): CyExt => (m as { default?: CyExt }).default ?? (m as CyExt);
-try {
-  cytoscape.use(_interop(fcoseRaw as CyExtModule));
-} catch {
-  /* already registered */
-}
-try {
-  cytoscape.use(_interop(cytoscapeSvgRaw as CyExtModule));
-} catch {
-  /* already registered */
-}
+try { cytoscape.use(_interop(fcoseRaw as CyExtModule)); } catch { /* already registered */ }
+try { cytoscape.use(_interop(cytoscapeSvgRaw as CyExtModule)); } catch { /* already registered */ }
 
-// ── stylesheet ───────────────────────────────────────────────────────────────
+// ── stylesheet ────────────────────────────────────────────────────────────────
 function buildErdStylesheet() {
   return [
     {
@@ -84,10 +76,7 @@ function buildErdStylesheet() {
     },
     {
       selector: ".erd-table:selected",
-      style: {
-        "border-color": "#60a5fa",
-        "border-width": 2,
-      },
+      style: { "border-color": "#60a5fa", "border-width": 2 },
     },
     {
       selector: ".erd-rel",
@@ -112,7 +101,50 @@ function buildErdStylesheet() {
         "text-background-padding": "2px",
       },
     },
+    {
+      // proxy edges (collapsed-domain → table/domain) rendered dashed
+      selector: ".erd-rel--proxy",
+      style: {
+        "line-style": "dashed",
+        "line-dash-pattern": [6, 3],
+        "line-color": "#334155",
+        "target-arrow-color": "#334155",
+        "source-arrow-color": "#334155",
+        color: "#475569",
+      },
+    },
   ];
+}
+
+// ── small toolbar-button helper ───────────────────────────────────────────────
+function TBtn({
+  onClick, title, active, children,
+}: {
+  onClick: () => void;
+  title?: string;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      style={{
+        padding: "2px 8px",
+        fontSize: 11,
+        background: active ? "#334155" : "transparent",
+        color: active ? "#e2e8f0" : "#64748b",
+        border: "1px solid #334155",
+        borderRadius: 4,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+      }}
+    >
+      {children}
+    </button>
+  );
 }
 
 // ── types ─────────────────────────────────────────────────────────────────────
@@ -136,26 +168,43 @@ interface ErdModalProps {
 export function ErdModal({ tables, relationships, domains, activeDomain, onClose }: ErdModalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
+  const domainPickerRef = useRef<HTMLDivElement>(null);
+
   const [columnDetail, setColumnDetail] = useState<ColumnDetail>("key");
   const [collapsedDomains, setCollapsedDomains] = useState<Set<string>>(new Set());
+  const [hiddenDomains, setHiddenDomains] = useState<Set<string>>(new Set());
+  const [showDomainPicker, setShowDomainPicker] = useState(false);
   const [tooltip, setTooltip] = useState<TooltipState>({
-    visible: false,
-    x: 0,
-    y: 0,
-    title: "",
-    body: "",
+    visible: false, x: 0, y: 0, title: "", body: "",
   });
 
-  // ── initialise / rebuild on structural changes ───────────────────────────
+  // All domain IDs present in the scoped table list (before hiding).
+  const allDomainIds = [
+    ...new Set(
+      (activeDomain ? tables.filter((t) => t.domainId === activeDomain) : tables).map(
+        (t) => t.domainId,
+      ),
+    ),
+  ];
+
+  // Close picker on outside click.
+  useEffect(() => {
+    if (!showDomainPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (domainPickerRef.current && !domainPickerRef.current.contains(e.target as Node)) {
+        setShowDomainPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showDomainPicker]);
+
+  // ── initialise / rebuild on structural changes ────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return;
     const elements = buildErdElements(
-      tables,
-      relationships,
-      domains,
-      collapsedDomains,
-      columnDetail,
-      activeDomain,
+      tables, relationships, domains,
+      collapsedDomains, hiddenDomains, columnDetail, activeDomain,
     );
     const allEls = [...elements.nodes, ...elements.edges] as unknown[];
 
@@ -182,8 +231,7 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
       const domainId = evt.target.data("domainId") as string;
       setCollapsedDomains((prev) => {
         const next = new Set(prev);
-        if (next.has(domainId)) next.delete(domainId);
-        else next.add(domainId);
+        if (next.has(domainId)) next.delete(domainId); else next.add(domainId);
         return next;
       });
     });
@@ -193,13 +241,11 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
       let title = "";
       let body = "";
       if (type === "domain") {
-        const d = evt.target.data as unknown as (k: string) => unknown;
-        title = d("label") as string;
-        body = (d("description") as string) || "";
+        title = evt.target.data("label") as string;
+        body = (evt.target.data("description") as string) || "";
       } else if (type === "table") {
-        const d = evt.target.data as unknown as (k: string) => unknown;
-        title = d("tableName") as string;
-        body = (d("description") as string) || "";
+        title = evt.target.data("tableName") as string;
+        body = (evt.target.data("description") as string) || "";
       }
       if (title) {
         const pos = evt.renderedPosition ?? evt.position;
@@ -214,18 +260,13 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
       }
     });
 
-    cy.on("mouseout", "node", () =>
-      setTooltip((t) => ({ ...t, visible: false })),
-    );
+    cy.on("mouseout", "node", () => setTooltip((t) => ({ ...t, visible: false })));
 
-    return () => {
-      cy.destroy();
-      cyRef.current = null;
-    };
+    return () => { cy.destroy(); cyRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tables, relationships, domains, collapsedDomains, activeDomain]);
+  }, [tables, relationships, domains, collapsedDomains, hiddenDomains, activeDomain]);
 
-  // ── update labels only when columnDetail changes (no re-layout) ──────────
+  // ── label-only update when columnDetail changes (no re-layout) ──────────
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
@@ -241,181 +282,141 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
     cy.style(buildErdStylesheet() as unknown as Parameters<CyInstance["style"]>[0]);
   }, [columnDetail]);
 
-  // ── export helpers ────────────────────────────────────────────────────────
+  // ── exports ───────────────────────────────────────────────────────────────
   const exportSvg = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    const svg = cy.svg({ full: true, bg: "#0f172a" }) as string;
-    downloadBlob(new Blob([svg], { type: "image/svg+xml" }), "erd.svg");
+    downloadBlob(new Blob([cy.svg({ full: true, bg: "#0f172a" }) as string], { type: "image/svg+xml" }), "erd.svg");
   }, []);
 
   const exportPng = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    const blob = cy.png({ output: "blob", full: true, bg: "#0f172a" }) as unknown as Blob;
-    downloadBlob(blob, "erd.png");
+    downloadBlob(cy.png({ output: "blob", full: true, bg: "#0f172a" }) as unknown as Blob, "erd.png");
   }, []);
 
   const exportJson = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    const json = JSON.stringify(
-      (cy as unknown as { json(): unknown }).json(),
-      null,
-      2,
+    downloadBlob(
+      new Blob([JSON.stringify((cy as unknown as { json(): unknown }).json(), null, 2)], { type: "application/json" }),
+      "erd.json",
     );
-    downloadBlob(new Blob([json], { type: "application/json" }), "erd.json");
   }, []);
 
-  // ── domain list for collapse-all / expand-all ─────────────────────────────
-  const allDomainIds = [
-    ...new Set(
-      (activeDomain ? tables.filter((t) => t.domainId === activeDomain) : tables).map(
-        (t) => t.domainId,
-      ),
-    ),
-  ];
-
-  const allCollapsed = allDomainIds.every((id) => collapsedDomains.has(id));
+  // ── collapse all / expand all (visible domains only) ─────────────────────
+  const visibleDomainIds = allDomainIds.filter((id) => !hiddenDomains.has(id));
+  const allCollapsed = visibleDomainIds.length > 0 && visibleDomainIds.every((id) => collapsedDomains.has(id));
   const toggleAll = () =>
-    setCollapsedDomains(allCollapsed ? new Set() : new Set(allDomainIds));
+    setCollapsedDomains(allCollapsed ? new Set() : new Set(visibleDomainIds));
+
+  const toggleHidden = (domainId: string) =>
+    setHiddenDomains((prev) => {
+      const next = new Set(prev);
+      if (next.has(domainId)) next.delete(domainId); else next.add(domainId);
+      return next;
+    });
+
+  const hiddenCount = hiddenDomains.size;
 
   return createPortal(
     <div
       className="modal-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
         className="modal modal--erd"
         style={{
-          width: "92vw",
-          height: "88vh",
-          maxWidth: "92vw",
-          display: "flex",
-          flexDirection: "column",
-          background: "#0f172a",
-          padding: "0",
-          overflow: "hidden",
+          width: "92vw", height: "88vh", maxWidth: "92vw",
+          display: "flex", flexDirection: "column",
+          background: "#0f172a", padding: 0, overflow: "hidden",
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── header ── */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            padding: "0.6rem 0.75rem",
-            borderBottom: "1px solid #1e293b",
-            flexShrink: 0,
-            flexWrap: "wrap",
-          }}
-        >
-          <span style={{ fontWeight: 600, color: "#e2e8f0", marginRight: "0.5rem" }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: "0.5rem",
+          padding: "0.6rem 0.75rem", borderBottom: "1px solid #1e293b",
+          flexShrink: 0, flexWrap: "wrap",
+        }}>
+          <span style={{ fontWeight: 600, color: "#e2e8f0", marginRight: "0.25rem" }}>
             Entity Relationship Diagram
           </span>
 
+          {/* domain picker */}
+          <div ref={domainPickerRef} style={{ position: "relative" }}>
+            <TBtn
+              onClick={() => setShowDomainPicker((v) => !v)}
+              active={showDomainPicker || hiddenCount > 0}
+              title="Show / hide domains"
+            >
+              <Layers size={11} />
+              Domains
+              {hiddenCount > 0 && (
+                <span style={{
+                  background: "#ef4444", color: "#fff",
+                  borderRadius: 8, padding: "0 4px", fontSize: 10, lineHeight: "14px",
+                }}>
+                  -{hiddenCount}
+                </span>
+              )}
+            </TBtn>
+            {showDomainPicker && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 4px)", left: 0,
+                background: "#1e293b", border: "1px solid #334155",
+                borderRadius: 6, padding: "6px 0", zIndex: 100,
+                minWidth: 180, boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+              }}>
+                {allDomainIds.map((id) => (
+                  <label
+                    key={id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "4px 12px", cursor: "pointer", fontSize: 12,
+                      color: hiddenDomains.has(id) ? "#475569" : "#e2e8f0",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!hiddenDomains.has(id)}
+                      onChange={() => toggleHidden(id)}
+                      style={{ accentColor: labelColor(id) }}
+                    />
+                    <span
+                      style={{
+                        display: "inline-block", width: 8, height: 8,
+                        borderRadius: "50%", background: labelColor(id), flexShrink: 0,
+                      }}
+                    />
+                    {id}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* column detail toggle */}
-          <div style={{ display: "flex", gap: "2px", marginRight: "0.5rem" }}>
+          <div style={{ display: "flex", gap: "2px" }}>
             {(["all", "key", "none"] as ColumnDetail[]).map((d) => (
-              <button
-                key={d}
-                onClick={() => setColumnDetail(d)}
-                style={{
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  background: columnDetail === d ? "#334155" : "transparent",
-                  color: columnDetail === d ? "#e2e8f0" : "#64748b",
-                  border: "1px solid #334155",
-                  borderRadius: 4,
-                  cursor: "pointer",
-                }}
-              >
+              <TBtn key={d} onClick={() => setColumnDetail(d)} active={columnDetail === d}>
                 {d === "all" ? "All cols" : d === "key" ? "Keys" : "No cols"}
-              </button>
+              </TBtn>
             ))}
           </div>
 
           {/* collapse/expand all */}
-          <button
-            onClick={toggleAll}
-            title={allCollapsed ? "Expand all domains" : "Collapse all domains"}
-            style={{
-              padding: "2px 8px",
-              fontSize: 11,
-              background: "transparent",
-              color: "#64748b",
-              border: "1px solid #334155",
-              borderRadius: 4,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
+          <TBtn onClick={toggleAll} title={allCollapsed ? "Expand all domains" : "Collapse all domains"}>
             {allCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
             {allCollapsed ? "Expand all" : "Collapse all"}
-          </button>
+          </TBtn>
 
           <div style={{ flex: 1 }} />
 
-          {/* export buttons */}
-          <button
-            onClick={exportSvg}
-            title="Download SVG"
-            style={{
-              padding: "2px 8px",
-              fontSize: 11,
-              background: "transparent",
-              color: "#64748b",
-              border: "1px solid #334155",
-              borderRadius: 4,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <Download size={11} /> SVG
-          </button>
-          <button
-            onClick={exportPng}
-            title="Download PNG"
-            style={{
-              padding: "2px 8px",
-              fontSize: 11,
-              background: "transparent",
-              color: "#64748b",
-              border: "1px solid #334155",
-              borderRadius: 4,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <Download size={11} /> PNG
-          </button>
-          <button
-            onClick={exportJson}
-            title="Download JSON"
-            style={{
-              padding: "2px 8px",
-              fontSize: 11,
-              background: "transparent",
-              color: "#64748b",
-              border: "1px solid #334155",
-              borderRadius: 4,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <Download size={11} /> JSON
-          </button>
+          {/* exports */}
+          <TBtn onClick={exportSvg} title="Download SVG"><Download size={11} /> SVG</TBtn>
+          <TBtn onClick={exportPng} title="Download PNG"><Download size={11} /> PNG</TBtn>
+          <TBtn onClick={exportJson} title="Download JSON"><Download size={11} /> JSON</TBtn>
 
           <button
             className="modal-close"
@@ -426,18 +427,13 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
           </button>
         </div>
 
-        {/* ── domain collapse sidebar hint ── */}
+        {/* ── hint bar ── */}
         {allDomainIds.length > 0 && (
-          <div
-            style={{
-              fontSize: 10,
-              color: "#475569",
-              padding: "3px 12px",
-              borderBottom: "1px solid #1e293b",
-              flexShrink: 0,
-            }}
-          >
-            Click a domain group to collapse / expand it
+          <div style={{
+            fontSize: 10, color: "#475569",
+            padding: "3px 12px", borderBottom: "1px solid #1e293b", flexShrink: 0,
+          }}>
+            Click a domain group to collapse / expand · dashed lines connect collapsed domains
           </div>
         )}
 
@@ -447,23 +443,13 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
 
       {/* ── tooltip ── */}
       {tooltip.visible && (
-        <div
-          style={{
-            position: "fixed",
-            left: tooltip.x,
-            top: tooltip.y,
-            background: "#1e293b",
-            border: "1px solid #334155",
-            borderRadius: 6,
-            padding: "6px 10px",
-            fontSize: 11,
-            color: "#e2e8f0",
-            maxWidth: 260,
-            pointerEvents: "none",
-            zIndex: 2000,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
-          }}
-        >
+        <div style={{
+          position: "fixed", left: tooltip.x, top: tooltip.y,
+          background: "#1e293b", border: "1px solid #334155",
+          borderRadius: 6, padding: "6px 10px", fontSize: 11,
+          color: "#e2e8f0", maxWidth: 260, pointerEvents: "none",
+          zIndex: 2000, boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+        }}>
           <div style={{ fontWeight: 600, marginBottom: tooltip.body ? 4 : 0 }}>{tooltip.title}</div>
           {tooltip.body && <div style={{ color: "#94a3b8", lineHeight: 1.4 }}>{tooltip.body}</div>}
         </div>
@@ -473,5 +459,4 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
   );
 }
 
-// ── re-export types consumed by callers ───────────────────────────────────────
 export type { ErdNodeDomain, ErdNodeTable };

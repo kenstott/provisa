@@ -40,6 +40,7 @@ export interface ErdEdge {
   target: string;
   cardinality: string;
   label: string;
+  proxy: boolean;
 }
 
 export interface ErdElements {
@@ -50,8 +51,8 @@ export interface ErdElements {
 const SEPARATOR = "─".repeat(18);
 
 function colPrefix(col: TableColumn): string {
-  if (col.isPrimaryKey) return "🔑 "; // 🔑
-  if (col.isForeignKey) return "⇝ "; // ↝
+  if (col.isPrimaryKey) return "🔑 ";
+  if (col.isForeignKey) return "⇝ ";
   return "  ";
 }
 
@@ -74,17 +75,29 @@ export function buildTableLabel(
 
 function cardinalityLabel(cardinality: string): string {
   switch (cardinality) {
-    case "one_to_many":
-      return "1:N";
-    case "many_to_one":
-      return "N:1";
-    case "many_to_many":
-      return "N:M";
-    case "one_to_one":
-      return "1:1";
-    default:
-      return cardinality;
+    case "one_to_many":  return "1:N";
+    case "many_to_one":  return "N:1";
+    case "many_to_many": return "N:M";
+    case "one_to_one":   return "1:1";
+    default:             return cardinality;
   }
+}
+
+// Resolve which Cytoscape node id an endpoint maps to, given the collapsed/hidden state.
+// Returns null if the table's domain is hidden (not rendered at all).
+function resolveEndpoint(
+  tableId: number,
+  tableMap: Map<number, RegisteredTable>,
+  visibleTableIds: Set<number>,
+  collapsedDomains: Set<string>,
+  hiddenDomains: Set<string>,
+): string | null {
+  if (visibleTableIds.has(tableId)) return `t:${tableId}`;
+  const table = tableMap.get(tableId);
+  if (!table) return null;
+  if (hiddenDomains.has(table.domainId)) return null;
+  if (collapsedDomains.has(table.domainId)) return `d:${table.domainId}`;
+  return null;
 }
 
 export function buildErdElements(
@@ -92,12 +105,18 @@ export function buildErdElements(
   relationships: Relationship[],
   domains: Domain[],
   collapsedDomains: Set<string>,
+  hiddenDomains: Set<string>,
   columnDetail: ColumnDetail,
   activeDomain: string | null,
 ): ErdElements {
   const domainMap = new Map(domains.map((d) => [d.id, d]));
+  const tableMap = new Map(tables.map((t) => [t.id, t]));
 
-  const filteredTables = activeDomain ? tables.filter((t) => t.domainId === activeDomain) : tables;
+  const scopedTables = activeDomain
+    ? tables.filter((t) => t.domainId === activeDomain)
+    : tables;
+
+  const filteredTables = scopedTables.filter((t) => !hiddenDomains.has(t.domainId));
 
   const usedDomainIds = new Set(filteredTables.map((t) => t.domainId));
 
@@ -137,28 +156,39 @@ export function buildErdElements(
       };
     });
 
-  const visibleTableIds = new Set(
-    tableNodes.map((n) => (n.data as ErdNodeTable).tableId),
-  );
+  const visibleTableIds = new Set(tableNodes.map((n) => (n.data as ErdNodeTable).tableId));
 
-  const edges: ErdElements["edges"] = relationships
-    .filter(
-      (r) =>
-        r.targetTableId != null &&
-        visibleTableIds.has(r.sourceTableId) &&
-        visibleTableIds.has(r.targetTableId!),
-    )
-    .map((r) => ({
+  // Build edges, routing through domain proxy nodes when a table is collapsed.
+  const seenEdges = new Set<string>();
+  const edges: ErdElements["edges"] = [];
+
+  for (const r of relationships) {
+    if (r.targetTableId == null) continue;
+
+    const src = resolveEndpoint(r.sourceTableId, tableMap, visibleTableIds, collapsedDomains, hiddenDomains);
+    const tgt = resolveEndpoint(r.targetTableId, tableMap, visibleTableIds, collapsedDomains, hiddenDomains);
+
+    if (!src || !tgt || src === tgt) continue;
+
+    const isProxy = src.startsWith("d:") || tgt.startsWith("d:");
+    // Deduplicate proxy edges that collapse multiple table-level rels to same pair.
+    const key = `${src}→${tgt}`;
+    if (isProxy && seenEdges.has(key)) continue;
+    seenEdges.add(key);
+
+    edges.push({
       data: {
         type: "rel",
-        id: `r:${r.id}`,
-        source: `t:${r.sourceTableId}`,
-        target: `t:${r.targetTableId}`,
+        id: isProxy ? `rp:${key}` : `r:${r.id}`,
+        source: src,
+        target: tgt,
         cardinality: r.cardinality,
         label: cardinalityLabel(r.cardinality),
+        proxy: isProxy,
       } as ErdEdge,
-      classes: "erd-rel",
-    }));
+      classes: isProxy ? "erd-rel erd-rel--proxy" : "erd-rel",
+    });
+  }
 
   return { nodes: [...domainNodes, ...tableNodes], edges };
 }
