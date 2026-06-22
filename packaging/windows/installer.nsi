@@ -1,6 +1,9 @@
 ; Provisa Windows NSIS Installer
 ; Build: makensis /DVERSION=<tag> installer.nsi
 
+; SetCompressor must appear before any !include or !insertmacro that touches data
+SetCompressor lzma
+
 !ifndef VERSION
   !define VERSION "dev"
 !endif
@@ -20,8 +23,6 @@ RequestExecutionLevel user
 !insertmacro MUI_UNPAGE_INSTFILES
 
 !insertmacro MUI_LANGUAGE "English"
-
-SetCompressor lzma
 
 ; ── Install ───────────────────────────────────────────────────────────────────
 Section "Provisa" SecMain
