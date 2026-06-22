@@ -239,6 +239,7 @@ export function SourcesPage() {
   const [spCertPassword, setSpCertPassword] = useState("");
   const [spUsername, setSpUsername] = useState("");
   const [spPassword, setSpPassword] = useState("");
+  const [splunkDisableSsl, setSplunkDisableSsl] = useState(false);
 
   const updateSearch = (v: string) => {
     setSourceSearch(v);
@@ -393,6 +394,16 @@ export function SourcesPage() {
       setSpUsername("");
       setSpPassword("");
     }
+    if (s.type === "splunk" && s.mappingJson) {
+      try {
+        const m = JSON.parse(s.mappingJson) as Record<string, unknown>;
+        setSplunkDisableSsl(!!m.disable_ssl_validation);
+      } catch {
+        setSplunkDisableSsl(false);
+      }
+    } else {
+      setSplunkDisableSsl(false);
+    }
     if (s.type === "govdata" && s.database) {
       const storedSchemas = s.database
         .split(",")
@@ -452,7 +463,9 @@ export function SourcesPage() {
                 ? { sp_username: spUsername, sp_password: spPassword }
                 : {}),
             })
-          : undefined;
+          : form.type === "splunk" && splunkDisableSsl
+            ? JSON.stringify({ disable_ssl_validation: true })
+            : undefined;
       const sourcePayload = {
         ...coreForm,
         path: FILE_SOURCES.has(form.type) || form.type === "files" ? form.path || null : null,
@@ -2010,6 +2023,14 @@ export function SourcesPage() {
               onChange={(e) => setForm({ ...form, database: e.target.value })}
               placeholder="Splunk_SA_CIM"
             />
+          </label>
+          <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
+            <input
+              type="checkbox"
+              checked={splunkDisableSsl}
+              onChange={(e) => setSplunkDisableSsl(e.target.checked)}
+            />
+            Disable SSL Validation
           </label>
         </>
       )}
