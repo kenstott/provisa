@@ -59,12 +59,13 @@ $DistDir = Join-Path $ScriptDir 'dist'
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 
 # ── Run NSIS ───────────────────────────────────────────────────────────────────
-Write-Host '[build-installer] Running makensis...' -ForegroundColor Cyan
+Write-Host '[build-installer] Running makensis64...' -ForegroundColor Cyan
 $NsiScript = Join-Path $ScriptDir 'installer.nsi'
 $Version   = if ($env:VERSION) { $env:VERSION } else { 'dev' }
-& makensis /DVERSION=$Version $NsiScript
+# Use 64-bit makensis to avoid 32-bit mmap limits on multi-GB payloads
+& makensis64 /DVERSION=$Version $NsiScript
 if ($LASTEXITCODE -ne 0) {
-  throw "makensis failed with exit code $LASTEXITCODE"
+  throw "makensis64 failed with exit code $LASTEXITCODE"
 }
 
 Write-Host '[build-installer] Installer created.' -ForegroundColor Green
