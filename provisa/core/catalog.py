@@ -130,6 +130,23 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
         props["case-insensitive-name-matching"] = "true"
         return props
 
+    # File connector (Apache Calcite, kenstott/calcite).
+    # LINQ4J workaround: DuckDB engine resolves CSV as .parquet regardless of format
+    # (kenstott/calcite#229). LINQ4J reads CSV/XLSX/JSON/etc. directly via Calcite.
+    if stype == "files":
+        if source.path is None:
+            raise ValueError(
+                f"Source {source.id!r}: 'path' (glob pattern) is required for files connector"
+            )
+        glob = resolve_secrets(source.path)
+        return {
+            "glob": glob,
+            "recursive": "true",
+            "schema-name": source.id.replace("-", "_"),
+            "execution-engine": "LINQ4J",
+            "case-insensitive-name-matching": "true",
+        }
+
     # Cassandra connector
     if stype == "cassandra":
         return {

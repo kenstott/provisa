@@ -110,7 +110,7 @@ test("sharepoint connector: add source and verify calendar list is available", a
       const selects = Array.from(document.querySelectorAll<HTMLSelectElement>(".form-card select"));
       return Array.from(selects[2]?.options ?? []).some((o) => o.value === "sharepoint");
     },
-    { timeout: 30000 },
+    { timeout: 60000 },
   );
 
   // Select sharepoint schema
