@@ -1,5 +1,6 @@
-# Build Provisa Windows installer as 7-Zip SFX. Run from repo root.
-# Uses 7-Zip SFX instead of NSIS to handle multi-GB payloads without 32-bit limits.
+# Build Provisa Windows installer using Inno Setup.
+# Inno Setup uses sequential file I/O (not mmap) so handles multi-GB output.
+# Replaces NSIS which fails with 32-bit mmap limits on large payloads.
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -52,54 +53,76 @@ if (-not (Test-Path $NerdctlSrc)) {
 }
 Copy-Item $NerdctlSrc $BuildRedist
 
-# ── Find 7-Zip (pre-installed on GitHub Actions windows-latest) ───────────────
-$SevenZip = 'C:\Program Files\7-Zip\7z.exe'
-if (-not (Test-Path $SevenZip)) { throw "7z.exe not found at $SevenZip" }
+# ── Install Inno Setup via chocolatey ─────────────────────────────────────────
+Write-Host '[build-sfx] Installing Inno Setup...' -ForegroundColor Cyan
+choco install innosetup --no-progress -y
+if ($LASTEXITCODE -ne 0) { throw "choco install innosetup failed" }
 
-# 7zSD.sfx is in the 7z-extra package, not the base 7-Zip install.
-# Download it from 7-zip.org (small file, ~800KB, reliable server).
-$SfxModule = Join-Path $env:TEMP '7zSD.sfx'
-if (-not (Test-Path $SfxModule)) {
-  Write-Host '[build-sfx] Downloading 7zSD.sfx from github.com/ip7z/7zip releases...' -ForegroundColor Cyan
-  $ExtraArchive = Join-Path $env:TEMP '7z-extra.7z'
-  # Use GitHub releases (reachable from Actions) instead of 7-zip.org which is blocked
-  Invoke-WebRequest -Uri 'https://github.com/ip7z/7zip/releases/download/26.01/7z2601-extra.7z' `
-    -OutFile $ExtraArchive -UseBasicParsing
-  & $SevenZip e "$ExtraArchive" -o"$env:TEMP" '7zSD.sfx' -y
-  if ($LASTEXITCODE -ne 0) { throw "Failed to extract 7zSD.sfx from 7z-extra" }
+# Find ISCC.exe
+$IsccCandidates = @(
+  'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+  'C:\Program Files\Inno Setup 6\ISCC.exe',
+  'C:\Program Files (x86)\Inno Setup 7\ISCC.exe',
+  'C:\Program Files\Inno Setup 7\ISCC.exe'
+)
+$Iscc = $IsccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $Iscc) {
+  $Iscc = Get-ChildItem 'C:\Program Files (x86)' -Filter 'ISCC.exe' -Recurse -ErrorAction SilentlyContinue |
+          Select-Object -First 1 -ExpandProperty FullName
 }
-if (-not (Test-Path $SfxModule)) { throw "7zSD.sfx not found after download" }
+if (-not $Iscc) { throw "ISCC.exe not found after installing Inno Setup" }
+Write-Host "[build-sfx] Found ISCC.exe: $Iscc" -ForegroundColor Cyan
 
 # ── Create dist dir ───────────────────────────────────────────────────────────
 $DistDir = Join-Path $ScriptDir 'dist'
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 
-$Version     = if ($env:VERSION) { $env:VERSION } else { 'dev' }
-$ArchivePath = Join-Path $env:TEMP 'provisa-core.7z'
+$Version      = if ($env:VERSION) { $env:VERSION } else { 'dev' }
 $InstallerPath = Join-Path $DistDir 'Provisa-Setup.exe'
 
-# ── SFX config — RunProgram executes install.ps1 after extraction ─────────────
-$SfxConfig = ";!@Install@!UTF-8!`nTitle=`"Provisa $Version`"`nRunProgram=`"powershell.exe -ExecutionPolicy Bypass -File install.ps1`"`n;!@InstallEnd@!"
-$ConfigPath = Join-Path $env:TEMP 'provisa-sfx-config.txt'
-[System.IO.File]::WriteAllText($ConfigPath, $SfxConfig, [System.Text.Encoding]::UTF8)
+# ── Generate Inno Setup script ────────────────────────────────────────────────
+$IssPath = Join-Path $env:TEMP 'provisa-installer.iss'
 
-# ── Create 7z archive ─────────────────────────────────────────────────────────
-Write-Host '[build-sfx] Creating 7z archive (LZMA2, this may take several minutes)...' -ForegroundColor Cyan
-& $SevenZip a -t7z -m0=lzma2 -mx=5 -mmt=on "$ArchivePath" "$BuildDir\*"
-if ($LASTEXITCODE -ne 0) { throw "7z a failed with exit code $LASTEXITCODE" }
+# Inno Setup uses ; for comments, not //
+# {src} = source directory of the .iss file (we pass /D switches for paths)
+$IssContent = @"
+[Setup]
+AppName=Provisa
+AppVersion=$Version
+AppPublisher=Provisa
+DefaultDirName={userappdata}\Programs\Provisa
+DefaultGroupName=Provisa
+OutputDir=$DistDir
+OutputBaseFilename=Provisa-Setup
+Compression=lzma2/ultra64
+SolidCompression=yes
+PrivilegesRequired=lowest
+UninstallDisplayName=Provisa
+UninstallDisplayIcon={app}\uninstall.ps1
 
-# ── Combine SFX module + config + archive into .exe ───────────────────────────
-Write-Host '[build-sfx] Combining SFX module, config, and archive...' -ForegroundColor Cyan
-$sfxBytes     = [System.IO.File]::ReadAllBytes($SfxModule)
-$configBytes  = [System.IO.File]::ReadAllBytes($ConfigPath)
-$archiveBytes = [System.IO.File]::ReadAllBytes($ArchivePath)
+[Files]
+Source: "$BuildDir\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 
-$outStream = [System.IO.File]::Create($InstallerPath)
-$outStream.Write($sfxBytes,    0, $sfxBytes.Length)
-$outStream.Write($configBytes, 0, $configBytes.Length)
-$outStream.Write($archiveBytes,0, $archiveBytes.Length)
-$outStream.Close()
+[Icons]
+Name: "{group}\Provisa First Launch"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\first-launch.ps1"""
 
+[Registry]
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa"; ValueType: string; ValueName: "DisplayName"; ValueData: "Provisa $Version"
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa"; ValueType: string; ValueName: "DisplayVersion"; ValueData: "$Version"
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa"; ValueType: string; ValueName: "Publisher"; ValueData: "Provisa"
+
+[UninstallRun]
+Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\uninstall.ps1"""; RunOnceId: "ProvUninstall"
+"@
+
+[System.IO.File]::WriteAllText($IssPath, $IssContent, [System.Text.Encoding]::UTF8)
+
+# ── Run Inno Setup compiler ────────────────────────────────────────────────────
+Write-Host '[build-sfx] Compiling installer with Inno Setup...' -ForegroundColor Cyan
+& $Iscc $IssPath
+if ($LASTEXITCODE -ne 0) { throw "ISCC.exe failed with exit code $LASTEXITCODE" }
+
+if (-not (Test-Path $InstallerPath)) { throw "Expected output $InstallerPath not found" }
 Write-Host "[build-sfx] Installer created: $InstallerPath" -ForegroundColor Green
 
 # ── Code signing ───────────────────────────────────────────────────────────────
