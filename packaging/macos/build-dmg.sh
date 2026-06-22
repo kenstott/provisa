@@ -275,7 +275,10 @@ embed_compose() {
   cp "${REPO_ROOT}/docker-compose.airgap.yml" "${res}/docker-compose.airgap.yml"
   cp -r "${REPO_ROOT}/config" "${res}/config"
   cp -r "${REPO_ROOT}/db" "${res}/db"
-  cp -r "${REPO_ROOT}/trino" "${res}/trino"
+  # Copy trino WITHOUT plugins/ — plugins ship as hidden DMG content (trino-plugins/)
+  # to avoid pushing the app bundle over the 2 GB GitHub release-asset limit.
+  mkdir -p "${res}/trino"
+  rsync -a --exclude='plugins/' "${REPO_ROOT}/trino/" "${res}/trino/"
   cp -r "${REPO_ROOT}/observability" "${res}/observability"
   cp "${REPO_ROOT}/scripts/provisa" "${res}/provisa-cli"
   chmod +x "${res}/provisa-cli"
@@ -336,6 +339,12 @@ sign_jar_natives() {
 
   local id="${APPLE_DEVELOPER_ID}"
   local sign_flags=(--force --sign "$id" --options runtime --timestamp)
+  # Plugins are now in REPO_ROOT/trino/plugins (not inside app bundle)
+  # They are bundled as hidden DMG content, outside the notarized .app,
+  # so Apple notarytool will not scan them. Signing is skipped.
+  info "Trino plugins are outside the app bundle (hidden DMG content) — JAR native signing not required."
+  return
+  # (unreachable — kept for reference if plugins are moved back inside bundle)
   local plugins_dir="${APP_BUNDLE}/Contents/Resources/trino/plugins"
 
   if [ ! -d "$plugins_dir" ]; then
@@ -542,6 +551,15 @@ create_dmg() {
   cp "${VM_IMAGES_DIR}"/*.img "${tmp_dmg}/vm-image/"
   chflags hidden "${tmp_dmg}/vm-image"
 
+  # Trino plugins shipped as hidden DMG content (not inside .app) to keep
+  # the app bundle under the 2 GB GitHub release-asset limit.
+  # first-launch.sh stages them to ~/.provisa/trino/plugins/ on first run.
+  if [ -d "${REPO_ROOT}/trino/plugins" ] && [ "$(ls -A "${REPO_ROOT}/trino/plugins" 2>/dev/null)" ]; then
+    mkdir -p "${tmp_dmg}/trino-plugins"
+    cp -r "${REPO_ROOT}/trino/plugins/." "${tmp_dmg}/trino-plugins/"
+    chflags hidden "${tmp_dmg}/trino-plugins"
+    info "Trino plugins bundled in DMG ($(du -sh "${tmp_dmg}/trino-plugins" | cut -f1))."
+  fi
 
   # Remove any existing DMG so create-dmg doesn't complain
   rm -f "${DMG_PATH}"

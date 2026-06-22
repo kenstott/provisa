@@ -413,6 +413,43 @@ stage_nerdctl() {
   cp "${src}/${archive}" "${staged}/"
 }
 
+# ── Stage Trino plugins from DMG to ~/.provisa/trino/plugins/ ────────────────
+# Plugins ship as hidden DMG content (trino-plugins/) alongside Provisa.app,
+# not inside the app bundle, to keep the .app under the 2 GB GitHub limit.
+stage_trino_plugins() {
+  local staged="${PROVISA_HOME}/trino/plugins"
+  if [ -d "$staged" ] && [ "$(ls -A "$staged" 2>/dev/null)" ]; then
+    return 0
+  fi
+  mkdir -p "$staged"
+
+  local bundle_parent
+  bundle_parent="$(dirname "$BUNDLE_DIR")"
+  local src=""
+  for candidate in "${bundle_parent}/trino-plugins" "${bundle_parent}/.trino-plugins"; do
+    if [ -d "$candidate" ] && [ "$(ls -A "$candidate" 2>/dev/null)" ]; then
+      src="$candidate"; break
+    fi
+  done
+
+  if [ -z "$src" ]; then
+    for vol_p in /Volumes/*/trino-plugins /Volumes/*/.trino-plugins; do
+      if [ -d "$vol_p" ] && [ "$(ls -A "$vol_p" 2>/dev/null)" ]; then
+        src="$vol_p"; break
+      fi
+    done
+  fi
+
+  if [ -z "$src" ]; then
+    info "Trino plugins not found on DMG — skipping (plugins optional)."
+    return 0
+  fi
+
+  info "Staging Trino plugins to ${staged}..."
+  cp -r "$src/." "$staged/"
+  ok "Trino plugins staged."
+}
+
 # ── Self-install to /Applications when running from DMG ──────────────────────
 install_to_applications() {
   local app_dst="/Applications/Provisa.app"
@@ -768,6 +805,7 @@ main() {
   stage_vm_image          # copies base VM image from DMG → ~/.provisa/vm-image
   stage_images            # copies container images from DMG → ~/.provisa/images
   stage_nerdctl           # copies nerdctl-full archive from DMG → ~/.provisa/nerdctl/
+  stage_trino_plugins     # copies Trino plugins from DMG hidden content → ~/.provisa/trino/plugins/
   stage_provisa_source    # copies Dockerfile + source → ~/.provisa/provisa-source/ (VM-accessible)
   stage_compose           # copies compose files from bundle → ~/.provisa/compose/ (VM-accessible)
   install_to_applications # self-installs to /Applications if running from DMG
