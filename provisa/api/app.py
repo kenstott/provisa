@@ -462,17 +462,19 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
                                    alias, graphql_alias, disable_cypher, source_json_key)
         SELECT $1, src.id, tgt.id,
                $4, $5, $6,
-               false, 300, null, null, null, null, false, null
+               false, 300, null, null, $9, $10, false, null
         FROM registered_tables src, registered_tables tgt
         WHERE src.source_id = $2 AND src.table_name = $3
           AND tgt.source_id = $7 AND tgt.table_name = $8
-        ON CONFLICT (id) DO NOTHING
+        ON CONFLICT (id) DO UPDATE
+            SET alias = EXCLUDED.alias,
+                graphql_alias = EXCLUDED.graphql_alias
     """
     _ADMIN = "provisa-admin"
     _OTEL = "provisa-otel"
 
-    static: list[tuple[str, str, str, str, str, str, str, str]] = [
-        # (id, src_source, src_table, src_col, tgt_col, cardinality, tgt_source, tgt_table)
+    static: list[tuple[str, str, str, str, str, str, str, str, str | None, str | None]] = [
+        # (id, src_source, src_table, src_col, tgt_col, cardinality, tgt_source, tgt_table, alias, graphql_alias)
         (
             "meta:registered_tables:domains",
             _ADMIN,
@@ -482,6 +484,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "many-to-one",
             _ADMIN,
             "domains",
+            None,
+            None,
         ),
         (
             "meta:rls_rules:roles",
@@ -492,6 +496,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "many-to-one",
             _ADMIN,
             "roles",
+            None,
+            None,
         ),
         (
             "meta:rls_rules:registered_tables",
@@ -502,6 +508,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "many-to-one",
             _ADMIN,
             "registered_tables",
+            None,
+            None,
         ),
         (
             "meta:rls_rules:domains",
@@ -512,6 +520,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "many-to-one",
             _ADMIN,
             "domains",
+            None,
+            None,
         ),
         (
             "meta:relationships:source_table",
@@ -522,6 +532,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "many-to-one",
             _ADMIN,
             "registered_tables",
+            "SOURCE_TABLE",
+            "sourceTable",
         ),
         (
             "meta:relationships:target_table",
@@ -532,6 +544,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "many-to-one",
             _ADMIN,
             "registered_tables",
+            "TARGET_TABLE",
+            "targetTable",
         ),
         (
             "meta:roles:parent_role",
@@ -542,6 +556,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "many-to-one",
             _ADMIN,
             "roles",
+            "PARENT_ROLE",
+            "parentRole",
         ),
         (
             "meta:traces:registered_tables",
@@ -552,6 +568,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "many-to-one",
             _ADMIN,
             "registered_tables",
+            None,
+            None,
         ),
         (
             "meta:queries:registered_tables",
@@ -562,6 +580,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "many-to-one",
             _ADMIN,
             "registered_tables",
+            None,
+            None,
         ),
         (
             "meta:registered_tables:relationships_source",
@@ -572,6 +592,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "one-to-many",
             _ADMIN,
             "relationships",
+            "SOURCE_RELATIONSHIPS",
+            "sourceRelationships",
         ),
         (
             "meta:registered_tables:relationships_target",
@@ -582,6 +604,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "one-to-many",
             _ADMIN,
             "relationships",
+            "TARGET_RELATIONSHIPS",
+            "targetRelationships",
         ),
         (
             "meta:registered_tables:rls_rules",
@@ -592,6 +616,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "one-to-many",
             _ADMIN,
             "rls_rules",
+            None,
+            None,
         ),
         (
             "meta:domains:registered_tables",
@@ -602,6 +628,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "one-to-many",
             _ADMIN,
             "registered_tables",
+            None,
+            None,
         ),
         (
             "meta:domains:rls_rules",
@@ -612,6 +640,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "one-to-many",
             _ADMIN,
             "rls_rules",
+            None,
+            None,
         ),
         (
             "meta:roles:rls_rules",
@@ -622,6 +652,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "one-to-many",
             _ADMIN,
             "rls_rules",
+            None,
+            None,
         ),
     ]
 
