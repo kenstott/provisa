@@ -55,8 +55,19 @@ Copy-Item $NerdctlSrc $BuildRedist
 # ── Find 7-Zip (pre-installed on GitHub Actions windows-latest) ───────────────
 $SevenZip = 'C:\Program Files\7-Zip\7z.exe'
 if (-not (Test-Path $SevenZip)) { throw "7z.exe not found at $SevenZip" }
-$SfxModule = 'C:\Program Files\7-Zip\7zSD.sfx'
-if (-not (Test-Path $SfxModule)) { throw "7zSD.sfx not found at $SfxModule" }
+
+# 7zSD.sfx is in the 7z-extra package, not the base 7-Zip install.
+# Download it from 7-zip.org (small file, ~800KB, reliable server).
+$SfxModule = Join-Path $env:TEMP '7zSD.sfx'
+if (-not (Test-Path $SfxModule)) {
+  Write-Host '[build-sfx] Downloading 7zSD.sfx from 7-zip.org extra package...' -ForegroundColor Cyan
+  $ExtraArchive = Join-Path $env:TEMP '7z-extra.7z'
+  Invoke-WebRequest -Uri 'https://www.7-zip.org/a/7z2409-extra.7z' `
+    -OutFile $ExtraArchive -UseBasicParsing
+  & $SevenZip e "$ExtraArchive" -o"$env:TEMP" '7zSD.sfx' -y
+  if ($LASTEXITCODE -ne 0) { throw "Failed to extract 7zSD.sfx from 7z-extra" }
+}
+if (-not (Test-Path $SfxModule)) { throw "7zSD.sfx not found after download" }
 
 # ── Create dist dir ───────────────────────────────────────────────────────────
 $DistDir = Join-Path $ScriptDir 'dist'
