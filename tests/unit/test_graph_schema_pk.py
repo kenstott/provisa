@@ -28,7 +28,7 @@ def _node(label: str, pk_columns: list[str]):
         properties={"id": "id"},
         pk_columns=pk_columns,
         id_column="id",
-        native_filter_columns=set(),
+        native_filter_columns={},
         traversal_only=False,
     )
 
@@ -41,8 +41,8 @@ async def test_graph_schema_includes_singular_pk(monkeypatch):
         },
         relationships={},
     )
-    monkeypatch.setattr(cr, "_resolve_role_id", lambda request, state: "admin")
-    monkeypatch.setattr(cr, "_build_label_map", lambda ctx, role_id, state: label_map)
+    monkeypatch.setattr(cr, "_resolve_role_id", lambda *_: "admin")
+    monkeypatch.setattr(cr, "_build_label_map", lambda *_: label_map)
     monkeypatch.setattr(appmod.state, "contexts", {"admin": object()})
     monkeypatch.setattr(appmod.state, "schema_build_cache", {"tables": []})
 

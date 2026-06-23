@@ -29,6 +29,7 @@ from provisa.cypher.translator import GraphVarKind
 # Node deserialization
 # ---------------------------------------------------------------------------
 
+
 def test_node_json_column_deserialized():
     node_data = {"id": "1", "label": "Person", "name": "Alice", "age": 30}
     rows = [{"n": json.dumps(node_data), "age": 30}]
@@ -59,6 +60,7 @@ def test_mixed_node_and_scalar():
 # ---------------------------------------------------------------------------
 # Edge deserialization
 # ---------------------------------------------------------------------------
+
 
 def test_edge_json_column_deserialized_legacy():
     """Legacy format: id/startNode/endNode."""
@@ -111,10 +113,31 @@ def test_edge_json_column_deserialized_neo4j():
 # Path assembly
 # ---------------------------------------------------------------------------
 
+
 def test_path_rows_collapsed_into_path():
     rows = [
-        {"_path_id": "p1", "_depth": 1, "path": json.dumps({"nodes": [{"id": "1", "label": "Person"}], "edges": []})},
-        {"_path_id": "p1", "_depth": 2, "path": json.dumps({"nodes": [{"id": "2", "label": "Company"}], "edges": [{"id": "e1", "type": "WORKS_AT", "startNode": {"id": "1", "label": "Person"}, "endNode": {"id": "2", "label": "Company"}}]})},
+        {
+            "_path_id": "p1",
+            "_depth": 1,
+            "path": json.dumps({"nodes": [{"id": "1", "label": "Person"}], "edges": []}),
+        },
+        {
+            "_path_id": "p1",
+            "_depth": 2,
+            "path": json.dumps(
+                {
+                    "nodes": [{"id": "2", "label": "Company"}],
+                    "edges": [
+                        {
+                            "id": "e1",
+                            "type": "WORKS_AT",
+                            "startNode": {"id": "1", "label": "Person"},
+                            "endNode": {"id": "2", "label": "Company"},
+                        }
+                    ],
+                }
+            ),
+        },
     ]
     result = assemble_rows(rows, {"path": GraphVarKind.PATH})
     assert len(result) == 1
@@ -125,8 +148,16 @@ def test_path_rows_collapsed_into_path():
 
 def test_multiple_paths_produce_separate_path_objects():
     rows = [
-        {"_path_id": "p1", "_depth": 1, "path": json.dumps({"nodes": [{"id": "1", "label": "A"}], "edges": []})},
-        {"_path_id": "p2", "_depth": 1, "path": json.dumps({"nodes": [{"id": "3", "label": "B"}], "edges": []})},
+        {
+            "_path_id": "p1",
+            "_depth": 1,
+            "path": json.dumps({"nodes": [{"id": "1", "label": "A"}], "edges": []}),
+        },
+        {
+            "_path_id": "p2",
+            "_depth": 1,
+            "path": json.dumps({"nodes": [{"id": "3", "label": "B"}], "edges": []}),
+        },
     ]
     result = assemble_rows(rows, {"path": GraphVarKind.PATH})
     assert len(result) == 2
@@ -135,7 +166,11 @@ def test_multiple_paths_produce_separate_path_objects():
 
 def test_empty_path_no_hops():
     rows = [
-        {"_path_id": "p1", "_depth": 0, "path": json.dumps({"nodes": [{"id": "1", "label": "Start"}], "edges": []})},
+        {
+            "_path_id": "p1",
+            "_depth": 0,
+            "path": json.dumps({"nodes": [{"id": "1", "label": "Start"}], "edges": []}),
+        },
     ]
     result = assemble_rows(rows, {"path": GraphVarKind.PATH})
     assert len(result) == 1
@@ -146,6 +181,7 @@ def test_empty_path_no_hops():
 # ---------------------------------------------------------------------------
 # Error cases
 # ---------------------------------------------------------------------------
+
 
 def test_malformed_json_raises():
     rows = [{"n": "not-valid-json"}]
@@ -162,16 +198,24 @@ def test_empty_rows_returns_empty():
 # Serialization
 # ---------------------------------------------------------------------------
 
+
 def test_to_serializable_node():
     node = Node(id="1", label="Person", table_label="Person", properties={"name": "Alice"})
     s = to_serializable(node)
-    assert s == {"id": "1", "label": "Person", "tableLabel": "Person", "properties": {"name": "Alice"}}
+    assert s == {
+        "id": "1",
+        "label": "Person",
+        "tableLabel": "Person",
+        "properties": {"name": "Alice"},
+    }
 
 
 def test_to_serializable_edge():
     start = Node(id="1", label="Person", table_label="Person", properties={})
     end = Node(id="2", label="Company", table_label="Company", properties={})
-    edge = Edge(id="1-2", type="WORKS_AT", start_node=start, end_node=end, properties={"since": 2020})
+    edge = Edge(
+        id="1-2", type="WORKS_AT", start_node=start, end_node=end, properties={"since": 2020}
+    )
     s = to_serializable(edge)
     assert s["identity"] == "1-2"
     assert s["start"] == "1"
@@ -190,3 +234,45 @@ def test_to_serializable_path():
     s = to_serializable(path)
     assert "nodes" in s
     assert "edges" in s
+
+
+# ---------------------------------------------------------------------------
+# Varlen rel variable — EDGE column that is a JSON array of edges
+# ---------------------------------------------------------------------------
+
+
+def test_varlen_edge_column_deserialized_as_list():
+    """c from [c*..5] returns JSON_ARRAY — assembler deserializes to list[Edge]."""
+    e1 = {
+        "identity": "WORKS_AT:1-2",
+        "start": "1",
+        "end": "2",
+        "type": "WORKS_AT",
+        "properties": {},
+        "startNode": {"id": "1", "label": "Person", "tableLabel": "Person", "properties": {}},
+        "endNode": {"id": "2", "label": "Company", "tableLabel": "Company", "properties": {}},
+    }
+    e2 = {
+        "identity": "MANAGES:2-3",
+        "start": "2",
+        "end": "3",
+        "type": "MANAGES",
+        "properties": {},
+        "startNode": {"id": "2", "label": "Company", "tableLabel": "Company", "properties": {}},
+        "endNode": {"id": "3", "label": "Dept", "tableLabel": "Dept", "properties": {}},
+    }
+    rows = [{"c": json.dumps([e1, e2])}]
+    result = assemble_rows(rows, {"c": GraphVarKind.EDGE})
+    edges = result[0]["c"]
+    assert isinstance(edges, list)
+    assert len(edges) == 2
+    assert all(isinstance(e, Edge) for e in edges)
+    assert edges[0].type == "WORKS_AT"
+    assert edges[1].type == "MANAGES"
+
+
+def test_varlen_edge_column_null_returns_none():
+    """NULL from recursive CTE path → None."""
+    rows = [{"c": None}]
+    result = assemble_rows(rows, {"c": GraphVarKind.EDGE})
+    assert result[0]["c"] is None

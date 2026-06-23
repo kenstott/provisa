@@ -492,6 +492,18 @@ def test_id_function():
     assert '"id"' in sql
 
 
+def test_id_function_on_domain_node():
+    lm = _make_label_map(with_domains=True)
+    # domain __id is now 'Label|pk' — string comparison, no integer cast needed
+    ast = parse_cypher("MATCH (n:Sales) WHERE NOT id(n) IN ['Person|1', 'Company|2'] RETURN n")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert '"__id"' in sql
+    assert "id(n)" not in sql
+    # __id emitted as label || '|' || CAST(pk AS VARCHAR)
+    assert "||" in sql or "CONCAT" in sql.upper() or "||" in sql
+
+
 def test_labels_function():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) RETURN labels(n)")

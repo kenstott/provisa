@@ -10,38 +10,62 @@
 
 """Unit tests for provisa/cypher/translator.py — recursive CTEs, CASE, UNWIND, paths."""
 
-import pytest
-
 from provisa.cypher.parser import parse_cypher
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
-from provisa.cypher.translator import cypher_to_sql, cypher_calls_to_sql_list
+from provisa.cypher.translator import cypher_to_sql
 
 
 def _make_label_map_multi_path() -> CypherLabelMap:
     """Label map with two 1-hop paths from Person to Company: WORKS_AT and MANAGES."""
     person_meta = NodeMapping(
-        label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="persons",
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
         properties={"name": "name", "age": "age"},
     )
     company_meta = NodeMapping(
-        label="Company", type_name="Company", domain_label=None, table_label="Company",
-        table_id=2, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="companies",
+        label="Company",
+        type_name="Company",
+        domain_label=None,
+        table_label="Company",
+        table_id=2,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="companies",
         properties={"name": "name"},
     )
     rels = {
         "WORKS_AT": RelationshipMapping(
-            rel_type="WORKS_AT", source_label="Person", target_label="Company",
-            join_source_column="company_id", join_target_column="id", field_name="works_at",
+            rel_type="WORKS_AT",
+            source_label="Person",
+            target_label="Company",
+            join_source_column="company_id",
+            join_target_column="id",
+            field_name="works_at",
         ),
         "MANAGES": RelationshipMapping(
-            rel_type="MANAGES", source_label="Person", target_label="Company",
-            join_source_column="managed_company_id", join_target_column="id", field_name="manages",
+            rel_type="MANAGES",
+            source_label="Person",
+            target_label="Company",
+            join_source_column="managed_company_id",
+            join_target_column="id",
+            field_name="manages",
         ),
     }
-    return CypherLabelMap(nodes={"Person": person_meta, "Company": company_meta}, relationships=rels)
+    return CypherLabelMap(
+        nodes={"Person": person_meta, "Company": company_meta}, relationships=rels
+    )
 
 
 def _make_label_map(multi_source: bool = False, with_domains: bool = False) -> CypherLabelMap:
@@ -98,41 +122,79 @@ def _make_label_map(multi_source: bool = False, with_domains: bool = False) -> C
 def _make_label_map_indirect_cycle() -> CypherLabelMap:
     """Label map: Person -[WORKS_AT]-> Company -[EMPLOYS]-> Person (indirect cycle)."""
     person_meta = NodeMapping(
-        label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="persons",
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
         properties={"name": "name"},
     )
     company_meta = NodeMapping(
-        label="Company", type_name="Company", domain_label=None, table_label="Company",
-        table_id=2, source_id="pg", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="companies",
+        label="Company",
+        type_name="Company",
+        domain_label=None,
+        table_label="Company",
+        table_id=2,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="companies",
         properties={"name": "name"},
     )
     rels = {
         "WORKS_AT": RelationshipMapping(
-            rel_type="WORKS_AT", source_label="Person", target_label="Company",
-            join_source_column="company_id", join_target_column="id", field_name="works_at",
+            rel_type="WORKS_AT",
+            source_label="Person",
+            target_label="Company",
+            join_source_column="company_id",
+            join_target_column="id",
+            field_name="works_at",
         ),
         "EMPLOYS": RelationshipMapping(
-            rel_type="EMPLOYS", source_label="Company", target_label="Person",
-            join_source_column="id", join_target_column="company_id", field_name="employs",
+            rel_type="EMPLOYS",
+            source_label="Company",
+            target_label="Person",
+            join_source_column="id",
+            join_target_column="company_id",
+            field_name="employs",
         ),
     }
-    return CypherLabelMap(nodes={"Person": person_meta, "Company": company_meta}, relationships=rels)
+    return CypherLabelMap(
+        nodes={"Person": person_meta, "Company": company_meta}, relationships=rels
+    )
 
 
 def _make_label_map_self_ref() -> CypherLabelMap:
     """Label map with a self-referential KNOWS relationship for recursive path tests."""
     person_meta = NodeMapping(
-        label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="persons",
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
         properties={"name": "name", "age": "age"},
     )
     knows_rel = RelationshipMapping(
-        rel_type="KNOWS", source_label="Person", target_label="Person",
-        join_source_column="person_id", join_target_column="id", field_name="knows",
+        rel_type="KNOWS",
+        source_label="Person",
+        target_label="Person",
+        join_source_column="person_id",
+        join_target_column="id",
+        field_name="knows",
     )
     return CypherLabelMap(nodes={"Person": person_meta}, relationships={"KNOWS": knows_rel})
 
@@ -140,6 +202,7 @@ def _make_label_map_self_ref() -> CypherLabelMap:
 # ---------------------------------------------------------------------------
 # Recursive CTE (self-referential variable-length paths)
 # ---------------------------------------------------------------------------
+
 
 def test_shortestpath_recursive_emits_with_recursive():
     # Person-[:KNOWS*..5]->Person: same src/tgt type → WITH RECURSIVE
@@ -212,6 +275,7 @@ def test_shortestpath_recursive_cte_contains_hop_guard():
 # CASE expression tests
 # ---------------------------------------------------------------------------
 
+
 def test_case_searched_in_return():
     lm = _make_label_map()
     ast = parse_cypher(
@@ -230,9 +294,7 @@ def test_case_searched_in_return():
 
 def test_case_simple_in_return():
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (n:Person) RETURN CASE n.name WHEN 'Alice' THEN 1 ELSE 0 END AS flag"
-    )
+    ast = parse_cypher("MATCH (n:Person) RETURN CASE n.name WHEN 'Alice' THEN 1 ELSE 0 END AS flag")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     sql_upper = sql.upper()
@@ -260,9 +322,7 @@ def test_case_multiple_when_branches():
 
 def test_case_no_else():
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (n:Person) RETURN CASE WHEN n.age > 18 THEN 'adult' END AS category"
-    )
+    ast = parse_cypher("MATCH (n:Person) RETURN CASE WHEN n.age > 18 THEN 'adult' END AS category")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "CASE" in sql.upper()
@@ -286,8 +346,7 @@ def test_case_in_where():
 def test_case_with_property_access():
     lm = _make_label_map()
     ast = parse_cypher(
-        "MATCH (n:Person) "
-        "RETURN n.name, CASE WHEN n.age > 30 THEN n.name ELSE 'young' END AS label"
+        "MATCH (n:Person) RETURN n.name, CASE WHEN n.age > 30 THEN n.name ELSE 'young' END AS label"
     )
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
@@ -298,6 +357,7 @@ def test_case_with_property_access():
 # ---------------------------------------------------------------------------
 # UNWIND tests
 # ---------------------------------------------------------------------------
+
 
 def test_unwind_integer_list():
     lm = _make_label_map()
@@ -369,6 +429,7 @@ def test_unwind_alias_in_return():
 # Gap #11 — IN list predicate
 # ---------------------------------------------------------------------------
 
+
 def test_in_list_literal():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) WHERE n.name IN ['Alice', 'Bob'] RETURN n.name")
@@ -400,6 +461,7 @@ def test_in_list_return_expression():
 # ---------------------------------------------------------------------------
 # Gap #3 — Backward traversal
 # ---------------------------------------------------------------------------
+
 
 def test_backward_traversal_basic():
     lm = _make_label_map()
@@ -435,6 +497,7 @@ def test_backward_traversal_join_condition():
 # Gap #6 — length(p) for shortestPath recursive CTE
 # ---------------------------------------------------------------------------
 
+
 def test_length_p_shortestpath_recursive():
     lm = _make_label_map_self_ref()
     ast = parse_cypher(
@@ -462,6 +525,7 @@ def test_length_p_flat_join_returns_1():
 # Gap #9 — Pattern comprehensions
 # ---------------------------------------------------------------------------
 
+
 def test_pattern_comprehension_basic():
     lm = _make_label_map()
     ast = parse_cypher(
@@ -485,3 +549,37 @@ def test_pattern_comprehension_in_where():
     sql_upper = sql.upper()
     assert "ARRAY" in sql_upper
     assert "SELECT" in sql_upper
+
+
+# ---------------------------------------------------------------------------
+# Varlen rel variable projection — RETURN c from [c*..5]
+# ---------------------------------------------------------------------------
+
+
+def test_varlen_rel_var_flat_join_projects_json_array():
+    """MATCH r = (a:Person)-[c*..3]->(b:Company) RETURN a,b,c — c projects JSON_ARRAY of edges.
+
+    Uses _make_label_map_multi_path (only cross-type rels) so the path stays flat-join.
+    _make_label_map includes KNOWS (Person→Person) which triggers recursive CTE.
+    """
+    lm = _make_label_map_multi_path()
+    ast = parse_cypher("MATCH r = (a:Person)-[c*..3]->(b:Company) RETURN a, b, c")
+    sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    sql_upper = sql.upper()
+    # c should be projected as a JSON_ARRAY of edge objects
+    assert "JSON_ARRAY" in sql_upper
+    assert "JSON_OBJECT" in sql_upper
+    # c should be registered as an edge graph var
+    assert "c" in graph_vars
+
+
+def test_varlen_rel_var_recursive_projects_null():
+    """[c*..5] on a recursive CTE path — c should project NULL (intermediate edges not in CTE)."""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH r = (a:Person)-[c*..3]->(b:Person) RETURN a, b, c")
+    sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    # recursive CTE path: c → NULL
+    assert "NULL" in sql.upper()
+    assert "c" in graph_vars
