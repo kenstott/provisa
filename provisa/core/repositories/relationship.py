@@ -39,7 +39,8 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
                                        source_column, target_column, cardinality,
                                        materialize, refresh_interval,
                                        target_function_name, function_arg, alias, graphql_alias,
-                                       disable_cypher, source_json_key, owner, version, needs_review)
+                                       disable_cypher, source_json_key,
+                                       owner, version, needs_review)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             ON CONFLICT (id) DO UPDATE SET
                 source_table_id = EXCLUDED.source_table_id,
@@ -89,27 +90,32 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
     if rel.source_column:
         await conn.execute(
             "UPDATE table_columns SET is_foreign_key = TRUE WHERE table_id = $1 AND column_name = $2",
-            source_tbl["id"], rel.source_column,
+            source_tbl["id"],
+            rel.source_column,
         )
 
     # Mark target_column as PK (or AK if another PK already exists) on target table.
     # Only applies for many-to-one: target_column is the PK of the target table.
     # For one-to-many, target_column is a FK in the target — do not mark as PK.
     from provisa.core.models import Cardinality
+
     if target_tbl_id and rel.target_column and rel.cardinality == Cardinality.many_to_one:
         conflicting_pk = await conn.fetchval(
             "SELECT COUNT(*) FROM table_columns WHERE table_id = $1 AND is_primary_key = TRUE AND column_name != $2",
-            target_tbl_id, rel.target_column,
+            target_tbl_id,
+            rel.target_column,
         )
         if conflicting_pk:
             await conn.execute(
                 "UPDATE table_columns SET is_alternate_key = TRUE WHERE table_id = $1 AND column_name = $2",
-                target_tbl_id, rel.target_column,
+                target_tbl_id,
+                rel.target_column,
             )
         else:
             await conn.execute(
                 "UPDATE table_columns SET is_primary_key = TRUE WHERE table_id = $1 AND column_name = $2",
-                target_tbl_id, rel.target_column,
+                target_tbl_id,
+                rel.target_column,
             )
 
 

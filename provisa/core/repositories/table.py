@@ -97,7 +97,7 @@ async def get(conn: asyncpg.Connection, table_id: int) -> dict | None:
         return None
     result = dict(row)
     cols = await conn.fetch(
-        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields, scope FROM table_columns WHERE table_id = $1 ORDER BY id",
+        "SELECT column_name, data_type, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields, scope FROM table_columns WHERE table_id = $1 ORDER BY id",
         table_id,
     )
     result["columns"] = [dict(c) for c in cols]
@@ -120,7 +120,7 @@ async def get_by_name(
         return None
     result = dict(row)
     cols = await conn.fetch(
-        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields, scope FROM table_columns WHERE table_id = $1 ORDER BY id",
+        "SELECT column_name, data_type, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields, scope FROM table_columns WHERE table_id = $1 ORDER BY id",
         result["id"],
     )
     result["columns"] = [dict(c) for c in cols]
