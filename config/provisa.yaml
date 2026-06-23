@@ -1,210 +1,834 @@
-# Provisa config — demo environment pointing at Docker Compose PG.
-sources:
-  - id: sales-pg
-    type: postgresql
-    host: ${env:POSTGRES_HOST:-postgres}
-    port: 5432
-    database: provisa
-    username: provisa
-    password: ${env:PG_PASSWORD:-provisa}
-    description: Operational sales database — orders placed by customers, regional revenue tracking, and the product catalog managed by the sales and operations teams
-  - id: kafka-support
-    type: kafka
-    host: ${env:KAFKA_HOST:-kafka}
-    port: 9092
-    database: support_kafka
-    description: Live support ticket stream from the customer helpdesk — captures issue submissions and status changes in real time for support operations and SLA tracking
-  - id: sharepoint
-    type: sharepoint
-    base_url: ${env:SP_SITE_URL:-}
-    username: ${env:SP_CLIENT_ID:-}
-    password: ${env:SP_CLIENT_SECRET:-}
-    database: ${env:SP_TENANT_ID:-}
-    mapping:
-      auth_type: ${env:SP_AUTH_TYPE:-CLIENT_CREDENTIALS}
-      certificate_path: ${env:SP_CERT_PATH:-/certs/sharepoint.pfx}
-      certificate_password: ${env:SP_CERT_PASSWORD:-}
-    description: SharePoint site — lists and document libraries accessible via Microsoft Graph
-
-domains:
-  - id: sales-analytics
-    description: Sales operational and analytical data
-  - id: product-catalog
-    description: Product catalog data
-  - id: pet-store
-    description: Pet store inventory — animals available for adoption or purchase
-
-naming:
-  domain_prefix: true
-  rules:
-    - pattern: "^prod_pg_"
-      replace: ""
-
-tables:
-  - source_id: sales-pg
-    domain_id: sales-analytics
-    schema: public
-    table: orders
-    governance: pre-approved
-    description: Customer purchase orders — records every transaction placed through the sales channel, including amount, region, and fulfillment status
-    columns:
-      - name: id
-        visible_to: [admin, analyst]
-        is_primary_key: true
-      - name: customer_id
-        visible_to: [admin, analyst]
-      - name: product_id
-        visible_to: [admin]
-      - name: amount
-        visible_to: [admin]
-      - name: region
-        visible_to: [admin, analyst]
-      - name: status
-        visible_to: [admin, analyst]
-      - name: created_at
-        visible_to: [admin, analyst]
-  - source_id: sales-pg
-    domain_id: sales-analytics
-    schema: public
-    table: customers
-    governance: pre-approved
-    description: Customer master — accounts registered with the business, including contact details and regional assignment used for sales territory reporting
-    columns:
-      - name: id
-        is_primary_key: true
-        visible_to: [admin, analyst]
-      - name: name
-        visible_to: [admin, analyst]
-      - name: email
-        visible_to: [admin]
-      - name: region
-        visible_to: [admin, analyst]
-  - source_id: sales-pg
-    domain_id: product-catalog
-    schema: public
-    table: products
-    governance: registry-required
-    description: Product catalog — all SKUs offered for sale, with pricing and category classification maintained by the product management team
-    columns:
-      - name: id
-        is_primary_key: true
-        visible_to: [admin, analyst]
-      - name: name
-        visible_to: [admin, analyst]
-      - name: price
-        visible_to: [admin]
-      - name: category
-        visible_to: [admin, analyst]
-relationships:
-  - id: orders-to-customers
-    source_table_id: orders
-    target_table_id: customers
-    source_column: customer_id
-    target_column: id
-    cardinality: many-to-one
-
-roles:
-  - id: admin
-    capabilities:
-      - source_registration
-      - table_registration
-      - create_relationship
-      - access_config
-      - query_development
-      - approve_view
-      - admin
-    domain_access: ["*"]
-  - id: analyst
-    capabilities:
-      - query_development
-      - ad_hoc_query
-    domain_access:
-      - sales-analytics
-
-rls_rules:
-  - table_id: orders
-    role_id: analyst
-    filter: "region = current_setting('provisa.user_region')"
-
-cache:
-  enabled: true
-  redis_url: redis://${env:REDIS_HOST:-localhost}:6379
-  default_ttl: 300
-
-kafka_sources:
-  - id: kafka-support
-    topics:
-      - id: tickets
-        topic: support.tickets
-        domain_id: sales-analytics
-        description: Inbound support tickets — real-time issue submissions from customers routed through the helpdesk platform for triage and resolution tracking
-        default_window: 1h
-        columns:
-          - name: id
-          - name: subject
-          - name: status
-          - name: created_at
-
-functions:
-  - name: get_customers_by_region
-    source_id: sales-pg
-    schema: public
-    function_name: get_customers_by_region
-    returns: customers
-    domain_id: sales-analytics
-    description: "Returns customers filtered by region — pass no argument to return all"
-    visible_to: [admin, analyst]
-    kind: query
-    arguments:
-      - name: p_region
-        type: String
-
-webhooks:
-  - name: notify_support
-    url: http://localhost:9999/notify
-    method: POST
-    timeout_ms: 3000
-    domain_id: sales-analytics
-    description: "Send a support notification (example webhook)"
-    visible_to: [admin]
-    kind: mutation
-    arguments:
-      - name: message
-        type: String
-
 auth:
-  provider: firebase
   assignments_source: provisa
   default_assignments:
-    - role_id: analyst
-      domain_id: "*"
-  firebase:
-    project_id: ${env:FIREBASE_PROJECT_ID:-provisa-dev}
-    service_account_key: ${env:FIREBASE_SERVICE_ACCOUNT_KEY:-}
-
+  - domain_id: '*'
+    role_id: admin
+  provider: basic
+cache:
+  default_ttl: 300
+  enabled: true
+  redis_url: redis://${env:REDIS_HOST:-localhost}:6379
+discovery:
+  api_key: ${env:ANTHROPIC_API_KEY}
+  min_confidence: 0.7
+  sample_size: 20
+domains:
+- description: "Pet store \u2014 Petstore public API (OpenAPI), internal inventory\
+    \ (PG), and customer inquiries (SQLite) federated into one virtual database"
+  id: pet-store
+- description: "Animal shelter staff and breed management \u2014 employees, assignments,\
+    \ schedules from GraphQL demo server"
+  id: shelter
+graphql_remote:
+  max_list_depth: 2
+  max_list_items: 100
+  max_object_depth: 5
+naming:
+  domain_prefix: true
+  rules: []
+observability:
+  endpoint: http://localhost:4319
+  ops_snapshot_retention_hours: 1
+  sample_rate: 1.0
+  service_name: provisa
+relationships:
+- alias: LISTED_AS
+  cardinality: many-to-one
+  id: pets-to-find-pets-by-status
+  source_column: name
+  source_table_id: pets
+  target_column: name
+  target_table_id: pet_by_status
+- alias: HAS_INQUIRY
+  cardinality: one-to-many
+  id: pets-to-inquiries
+  source_column: id
+  source_table_id: pets
+  target_column: pet_id
+  target_table_id: inquiries
+- alias: SUBMITTED
+  cardinality: one-to-many
+  id: users-to-inquiries
+  source_column: id
+  source_table_id: users
+  target_column: user_id
+  target_table_id: inquiries
+- alias: SUBMITTED_BY
+  cardinality: many-to-one
+  id: inquiries-to-users
+  source_column: user_id
+  source_table_id: inquiries
+  target_column: id
+  target_table_id: users
+- alias: HAS_PETS
+  cardinality: many-to-one
+  id: inquiries-to-pets
+  source_column: pet_id
+  source_table_id: inquiries
+  target_column: id
+  target_table_id: pets
+- alias: FOR_PET
+  cardinality: many-to-one
+  id: order-to-find-pets-by-status
+  source_column: petId
+  source_table_id: order_by_id
+  target_column: id
+  target_table_id: pet_by_status
+- alias: DETAIL
+  cardinality: many-to-one
+  id: find-pets-by-status-to-get-pet-by-id
+  source_column: id
+  source_table_id: pet_by_status
+  target_column: id
+  target_table_id: pet_by_id
+- alias: BREED_INFO
+  cardinality: many-to-one
+  id: pets-to-shelter-breed
+  source_column: breed_name
+  source_table_id: pets
+  target_column: name
+  target_table_id: animal_breeds
+- alias: PETS_OF_BREED
+  cardinality: one-to-many
+  id: shelter-breed-to-pets
+  source_column: name
+  source_table_id: animal_breeds
+  target_column: breed_name
+  target_table_id: pets
+- cardinality: many-to-one
+  id: pets-to-shelter-assignments
+  source_column: breed_name
+  source_table_id: pets
+  target_column: breed_name
+  target_table_id: assignments
+- cardinality: one-to-many
+  id: shelter-assignments-to-pets
+  source_column: breed_name
+  source_table_id: assignments
+  target_column: breed_name
+  target_table_id: pets
+- alias: ASSIGNMENT_EMPLOYEE
+  cardinality: many-to-one
+  id: shelter-assignments-to-employees
+  source_column: employee_id
+  source_table_id: assignments
+  target_column: id
+  target_table_id: employees
+- alias: ASSIGNMENT_BREED
+  cardinality: many-to-one
+  graphql_alias: breed
+  id: shelter-assignments-to-breeds
+  source_column: breed_name
+  source_table_id: assignments
+  target_column: name
+  target_table_id: animal_breeds
+roles:
+- capabilities:
+  - source_registration
+  - table_registration
+  - create_relationship
+  - access_config
+  - query_development
+  - approve_view
+  - admin
+  domain_access:
+  - '*'
+  id: admin
+- capabilities:
+  - query_development
+  domain_access:
+  - pet-store
+  - shelter
+  id: analyst
 server:
   limits:
-    default_row_limit: 10000    # rows returned when no LIMIT specified; env PROVISA_DEFAULT_ROW_LIMIT overrides
-    trino_query_timeout: 120    # seconds before Trino kills a query; env PROVISA_TRINO_QUERY_TIMEOUT overrides
-    request_timeout: 120        # seconds before the API returns 504; env PROVISA_REQUEST_TIMEOUT overrides
-
-graphql_remote:
-  max_object_depth: 5  # max nesting depth for OBJECT column sub-selection at introspection time
-  max_list_depth: 2    # nesting depth at which LIST sub-fields are excluded from selection (prevents explosion)
-  max_list_items: 100  # max items fetched per LIST field; injected as first: N in the GQL selection
-
-observability:
-  endpoint: "http://localhost:4319"
-  service_name: provisa
-  sample_rate: 1.0
-  log_level: WARNING
-  compact_cron: "* * * * *"
-  compact_batch_size: 1000
-  s3_endpoint: "http://localhost:9000"
-  telemetry_filter:
-    redact_sql_literals: false       # strip literal values from db.statement before export to internal endpoint
-    redact_attributes: []            # attribute names to drop entirely before export to internal endpoint
-  # support_endpoint: ""            # Provisa support OTLP endpoint — off by default
-  support_telemetry_filter:
-    redact_sql_literals: true        # strip literal values from db.statement (default on for support)
-    redact_attributes: []            # additional attributes to drop before sending to Provisa support
+    default_row_limit: 10000
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- database: provisa
+  description: "Internal pet store inventory \u2014 tracks animals available for sale,\
+    \ pricing, species, and breed assignments managed by the inventory department"
+  host: ${env:POSTGRES_HOST:-postgres}
+  id: pet-store-pg
+  password: ${env:PG_PASSWORD:-provisa}
+  port: 5432
+  type: postgresql
+  username: provisa
+- auth_config:
+    type: none
+  base_url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}
+  cache_ttl: 300
+  description: "Petstore e-commerce API \u2014 browse available animals, check inventory\
+    \ levels, retrieve purchase orders, and manage customer accounts through the public\
+    \ storefront"
+  id: petstore-api
+  path: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/openapi.json
+  type: openapi
+- description: "Customer adoption inquiry records \u2014 prospective pet owner interest\
+    \ submissions tracked by the front-desk team, including inquiry type, message,\
+    \ and resolution status"
+  id: inquiries-sqlite
+  path: ./demo/files/inquiries.sqlite
+  type: sqlite
+- description: "Animal shelter GraphQL API \u2014 staff schedules, breed catalogue,\
+    \ and animal assignment records managed by shelter operations"
+  id: graphql-demo
+  path: ${env:GRAPHQL_DEMO_URL:-http://graphql-demo:4000/graphql}
+  type: graphql_remote
+tables:
+- columns:
+  - description: Unique identifier for the pet record
+    name: id
+    visible_to:
+    - admin
+    - analyst
+  - description: Name of the pet
+    name: name
+    visible_to:
+    - admin
+    - analyst
+  - description: Species of the pet (e.g. dog, cat, bird)
+    name: species
+    visible_to:
+    - admin
+    - analyst
+  - description: Breed of the pet
+    name: breed_name
+    visible_to:
+    - admin
+    - analyst
+  - description: Sale price of the pet in USD
+    name: price
+    visible_to:
+    - admin
+  - description: Whether the pet is currently available for purchase
+    name: available
+    visible_to:
+    - admin
+    - analyst
+  description: "Pet inventory \u2014 managed by the inventory department"
+  domain_id: pet-store
+  governance: pre-approved
+  schema: pet_store
+  source_id: pet-store-pg
+  table: pets
+- alias: pet_by_status
+  columns:
+  - name: _nf_status
+    native_filter_type: query_param
+    visible_to: []
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: name
+    visible_to:
+    - admin
+    - analyst
+  - name: status
+    visible_to:
+    - admin
+    - analyst
+  - name: photoUrls
+    visible_to:
+    - admin
+    - analyst
+  - name: tags
+    visible_to:
+    - admin
+    - analyst
+  - name: category
+    visible_to:
+    - admin
+    - analyst
+  description: "Pets available for purchase \u2014 filtered by status from Petstore\
+    \ API"
+  domain_id: pet-store
+  governance: pre-approved
+  schema: default
+  source_id: petstore-api
+  table: find_pets_by_status
+- alias: pet_by_tags
+  columns:
+  - name: _nf_tags
+    native_filter_type: query_param
+    visible_to: []
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: name
+    visible_to:
+    - admin
+    - analyst
+  - name: status
+    visible_to:
+    - admin
+    - analyst
+  - name: photoUrls
+    visible_to:
+    - admin
+    - analyst
+  - name: tags
+    visible_to:
+    - admin
+    - analyst
+  - name: category
+    visible_to:
+    - admin
+    - analyst
+  description: Pets filtered by tag from Petstore API
+  domain_id: pet-store
+  governance: pre-approved
+  schema: default
+  source_id: petstore-api
+  table: find_pets_by_tags
+- alias: pet_by_id
+  columns:
+  - name: _nf_petId
+    native_filter_type: path_param
+    visible_to: []
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: name
+    visible_to:
+    - admin
+    - analyst
+  - name: status
+    visible_to:
+    - admin
+    - analyst
+  - name: photoUrls
+    visible_to:
+    - admin
+    - analyst
+  - name: tags
+    visible_to:
+    - admin
+    - analyst
+  - name: category
+    visible_to:
+    - admin
+    - analyst
+  description: Individual pet record by ID from Petstore API
+  domain_id: pet-store
+  governance: pre-approved
+  schema: default
+  source_id: petstore-api
+  table: get_pet_by_id
+- alias: inventory
+  columns:
+  - name: status
+    visible_to:
+    - admin
+    - analyst
+  - name: count
+    visible_to:
+    - admin
+    - analyst
+  description: Pet inventory counts by status from Petstore API
+  domain_id: pet-store
+  governance: pre-approved
+  schema: default
+  source_id: petstore-api
+  table: get_inventory
+- alias: order_by_id
+  columns:
+  - name: orderId
+    native_filter_type: path_param
+    visible_to: []
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: petId
+    visible_to:
+    - admin
+    - analyst
+  - name: quantity
+    visible_to:
+    - admin
+    - analyst
+  - name: shipDate
+    visible_to:
+    - admin
+    - analyst
+  - name: status
+    visible_to:
+    - admin
+    - analyst
+  - name: complete
+    visible_to:
+    - admin
+    - analyst
+  description: Individual purchase order by ID from Petstore API
+  domain_id: pet-store
+  governance: pre-approved
+  schema: default
+  source_id: petstore-api
+  table: get_order_by_id
+- alias: user_by_name
+  columns:
+  - name: id
+    visible_to:
+    - admin
+  - name: username
+    native_filter_type: path_param
+    visible_to:
+    - admin
+    - analyst
+  - name: firstName
+    visible_to:
+    - admin
+    - analyst
+  - name: lastName
+    visible_to:
+    - admin
+    - analyst
+  - name: email
+    visible_to:
+    - admin
+  - name: phone
+    visible_to:
+    - admin
+  - name: userStatus
+    visible_to:
+    - admin
+  description: User account by username from Petstore API
+  domain_id: pet-store
+  governance: pre-approved
+  schema: default
+  source_id: petstore-api
+  table: get_user_by_name
+- columns:
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: name
+    visible_to:
+    - admin
+    - analyst
+  - name: email
+    visible_to:
+    - admin
+  - name: phone
+    visible_to:
+    - admin
+  - name: created_at
+    visible_to:
+    - admin
+    - analyst
+  description: Prospective adopters who have submitted inquiries
+  domain_id: pet-store
+  governance: pre-approved
+  schema: default
+  source_id: inquiries-sqlite
+  table: users
+- columns:
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: pet_id
+    visible_to:
+    - admin
+    - analyst
+  - name: user_id
+    visible_to:
+    - admin
+    - analyst
+  - name: inquiry_type
+    visible_to:
+    - admin
+    - analyst
+  - name: message
+    visible_to:
+    - admin
+    - analyst
+  - name: status
+    visible_to:
+    - admin
+    - analyst
+  - name: submitted_at
+    visible_to:
+    - admin
+    - analyst
+  description: "Customer adoption inquiries \u2014 managed by the front-desk/CRM team"
+  domain_id: pet-store
+  governance: pre-approved
+  schema: default
+  source_id: inquiries-sqlite
+  table: inquiries
+- columns:
+  - name: name
+    visible_to:
+    - admin
+    - analyst
+  - name: species
+    visible_to:
+    - admin
+    - analyst
+  - name: care_level
+    visible_to:
+    - admin
+    - analyst
+  - name: avg_lifespan_years
+    visible_to:
+    - admin
+    - analyst
+  - name: typical_habitat
+    visible_to:
+    - admin
+    - analyst
+  - name: description
+    visible_to:
+    - admin
+    - analyst
+  alias: animal_breeds
+  description: "Full breed catalog \u2014 use to answer what care protocols apply\
+    \ and which adopter profiles match each species in custody"
+  domain_id: shelter
+  governance: pre-approved
+  schema: graphql
+  source_id: graphql-demo
+  table: animalBreeds
+- columns:
+  - name: _nf_name
+    native_filter_type: query_param
+    visible_to: []
+  - name: name
+    visible_to:
+    - admin
+    - analyst
+  - name: species
+    visible_to:
+    - admin
+    - analyst
+  - name: care_level
+    visible_to:
+    - admin
+    - analyst
+  - name: avg_lifespan_years
+    visible_to:
+    - admin
+    - analyst
+  - name: typical_habitat
+    visible_to:
+    - admin
+    - analyst
+  - name: description
+    visible_to:
+    - admin
+    - analyst
+  alias: animal_breed
+  description: "Care requirements and placement context for a single breed \u2014\
+    \ use before making a staffing assignment or adoption decision"
+  domain_id: shelter
+  governance: pre-approved
+  schema: graphql
+  source_id: graphql-demo
+  table: animalBreed
+- columns:
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: first_name
+    visible_to:
+    - admin
+    - analyst
+  - name: last_name
+    visible_to:
+    - admin
+    - analyst
+  - name: hire_date
+    visible_to:
+    - admin
+    - analyst
+  - name: department
+    visible_to:
+    - admin
+    - analyst
+  - name: contact
+    data_type: jsonb
+    visible_to:
+    - admin
+    - analyst
+    object_fields:
+    - name: phone
+      type: string
+      visible_to:
+      - admin
+      - analyst
+    - name: email
+      type: string
+      visible_to:
+      - admin
+      - analyst
+    - name: ssn
+      type: string
+      visible_to:
+      - admin
+  description: "All staff eligible for breed assignments \u2014 use to identify who\
+    \ can be assigned or scheduled"
+  domain_id: shelter
+  governance: pre-approved
+  schema: graphql
+  source_id: graphql-demo
+  table: employees
+- columns:
+  - name: _nf_id
+    native_filter_type: query_param
+    visible_to: []
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: first_name
+    visible_to:
+    - admin
+    - analyst
+  - name: last_name
+    visible_to:
+    - admin
+    - analyst
+  - name: hire_date
+    visible_to:
+    - admin
+    - analyst
+  - name: department
+    visible_to:
+    - admin
+    - analyst
+  - name: contact
+    data_type: jsonb
+    visible_to:
+    - admin
+    - analyst
+    object_fields:
+    - name: phone
+      type: string
+      visible_to:
+      - admin
+      - analyst
+    - name: email
+      type: string
+      visible_to:
+      - admin
+      - analyst
+    - name: ssn
+      type: string
+      visible_to:
+      - admin
+  description: "Contact details and department for a single staff member \u2014 use\
+    \ to route assignment requests or resolve scheduling conflicts"
+  domain_id: shelter
+  governance: pre-approved
+  schema: graphql
+  source_id: graphql-demo
+  table: employee
+- columns:
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: employee_id
+    visible_to:
+    - admin
+    - analyst
+  - name: breed_name
+    visible_to:
+    - admin
+    - analyst
+  - name: role
+    visible_to:
+    - admin
+    - analyst
+  - name: start_date
+    visible_to:
+    - admin
+    - analyst
+  - name: end_date
+    visible_to:
+    - admin
+    - analyst
+  description: "Complete accountability map of staff to breeds \u2014 use to spot\
+    \ coverage gaps or single-keeper risk across all species"
+  domain_id: shelter
+  governance: pre-approved
+  schema: graphql
+  source_id: graphql-demo
+  table: assignments
+- columns:
+  - name: _nf_employee_id
+    native_filter_type: query_param
+    visible_to: []
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: employee_id
+    visible_to:
+    - admin
+    - analyst
+  - name: breed_name
+    visible_to:
+    - admin
+    - analyst
+  - name: role
+    visible_to:
+    - admin
+    - analyst
+  - name: start_date
+    visible_to:
+    - admin
+    - analyst
+  - name: end_date
+    visible_to:
+    - admin
+    - analyst
+  alias: assignments_by_employee
+  description: "All breeds a given staff member is accountable for \u2014 use to assess\
+    \ workload before adding a new assignment"
+  domain_id: shelter
+  governance: pre-approved
+  schema: graphql
+  source_id: graphql-demo
+  table: assignmentsByEmployee
+- columns:
+  - name: _nf_breed_name
+    native_filter_type: query_param
+    visible_to: []
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: employee_id
+    visible_to:
+    - admin
+    - analyst
+  - name: breed_name
+    visible_to:
+    - admin
+    - analyst
+  - name: role
+    visible_to:
+    - admin
+    - analyst
+  - name: start_date
+    visible_to:
+    - admin
+    - analyst
+  - name: end_date
+    visible_to:
+    - admin
+    - analyst
+  alias: assignments_by_breed
+  description: "All staff responsible for a breed \u2014 use to verify minimum keeper\
+    \ coverage and identify backup gaps"
+  domain_id: shelter
+  governance: pre-approved
+  schema: graphql
+  source_id: graphql-demo
+  table: assignmentsByBreed
+- columns:
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: employee_id
+    visible_to:
+    - admin
+    - analyst
+  - name: day_of_week
+    visible_to:
+    - admin
+    - analyst
+  - name: shift_start
+    visible_to:
+    - admin
+    - analyst
+  - name: shift_end
+    visible_to:
+    - admin
+    - analyst
+  - name: location
+    visible_to:
+    - admin
+    - analyst
+  description: "Full weekly shift roster \u2014 use for shelter-wide coverage analysis\
+    \ and to surface days where any location is understaffed"
+  domain_id: shelter
+  governance: pre-approved
+  schema: graphql
+  source_id: graphql-demo
+  table: schedules
+- columns:
+  - name: _nf_employee_id
+    native_filter_type: query_param
+    visible_to: []
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: employee_id
+    visible_to:
+    - admin
+    - analyst
+  - name: day_of_week
+    visible_to:
+    - admin
+    - analyst
+  - name: shift_start
+    visible_to:
+    - admin
+    - analyst
+  - name: shift_end
+    visible_to:
+    - admin
+    - analyst
+  - name: location
+    visible_to:
+    - admin
+    - analyst
+  alias: schedule_by_employee
+  description: "A staff member's shift coverage for the week \u2014 use for availability\
+    \ checks before scheduling a new assignment or event"
+  domain_id: shelter
+  governance: pre-approved
+  schema: graphql
+  source_id: graphql-demo
+  table: scheduleByEmployee
+webhooks:
+- arguments:
+  - name: name
+    type: String
+  - name: status
+    type: String
+  description: Add a new pet to the store via Petstore API
+  domain_id: pet-store
+  kind: mutation
+  method: POST
+  name: add_pet
+  timeout_ms: 5000
+  url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/pet
+  visible_to:
+  - admin
+- arguments:
+  - name: petId
+    type: Int
+  - name: quantity
+    type: Int
+  description: Place a purchase order for a pet via Petstore API
+  domain_id: pet-store
+  kind: mutation
+  method: POST
+  name: place_order
+  timeout_ms: 5000
+  url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/store/order
+  visible_to:
+  - admin
