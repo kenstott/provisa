@@ -63,8 +63,8 @@ export function GraphPage() {
   const { upsertRelationship } = useUpsertRelationship();
   const [nfModal, setNfModal] = useState<{
     label: string;
-    compoundLabel: string;
-    filterColumns: string[];
+    filterColumns: { name: string; type: string }[];
+    onConfirm: (params: Record<string, string>) => void;
   } | null>(null);
   const clusterMapRef = useRef<
     Record<string, { scl1: number | null; scl2: number | null; scl3: number | null }>
@@ -87,7 +87,7 @@ export function GraphPage() {
             properties: string[];
             pk_columns: string[];
             id_column?: string;
-            native_filter_columns?: string[];
+            native_filter_columns?: { name: string; type: string }[];
             scl1?: number | null;
             scl2?: number | null;
             scl3?: number | null;
@@ -345,6 +345,23 @@ export function GraphPage() {
   const framesRef = useRef(frames);
   framesRef.current = frames;
 
+  const NUMERIC_TYPES = new Set(["integer", "bigint", "int", "int4", "int8", "smallint", "float", "double precision", "numeric", "decimal", "real", "float4", "float8"]);
+
+  const buildNfWhereClauses = useCallback(
+    (varName: string, filterColumns: { name: string; type: string }[], params: Record<string, string>) =>
+      filterColumns
+        .filter((col) => params[col.name] !== "")
+        .map(({ name, type }) => {
+          const v = params[name];
+          const lit = NUMERIC_TYPES.has((type ?? "").toLowerCase())
+            ? v
+            : `'${v.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+          return `${varName}._nf_${name} = ${lit}`;
+        }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   const onTableDrop = useCallback(
     (frameId: string, compoundLabel: string) => {
       const frame = framesRef.current.find((fr) => fr.id === frameId);
@@ -406,20 +423,77 @@ export function GraphPage() {
         targetVar = `m${suffix}${counter}`;
         counter++;
       }
-      const relTypeStr = relAlias ? `[${relVar}:${relAlias}]` : `[${relVar}]`;
+      const optMatchPattern = relAlias
+        ? `(${sourceVar})-[${relVar}:${relAlias}]-(${targetVar}:${compoundLabel})`
+        : `(${targetVar}:${compoundLabel})`;
+      const extraReturn = relAlias ? `, ${relVar}, ${targetVar}` : `, ${targetVar}`;
+      const returnMatches = [...trimmed.matchAll(/\bRETURN\b/gi)];
+      const lastReturn = returnMatches.pop();
+      let newQueryBase: string;
+      if (!lastReturn || lastReturn.index === undefined) {
+        newQueryBase = `${trimmed}\nOPTIONAL MATCH ${optMatchPattern}\nRETURN ${sourceVar}${extraReturn}`;
+      } else {
+        const beforeReturn = trimmed.slice(0, lastReturn.index).trimEnd();
+        const returnClause = trimmed.slice(lastReturn.index + 6).trim();
+        newQueryBase = `${beforeReturn}\nOPTIONAL MATCH ${optMatchPattern}\nRETURN ${returnClause}${extraReturn}`;
+      }
+
+      const droppedNode = schemaNodeLabels.find((n) => {
+        const cl = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
+        return cl === compoundLabel;
+      });
+      if (droppedNode && droppedNode.nativeFilterColumns.length > 0) {
+        const tv = targetVar;
+        const nfc = droppedNode.nativeFilterColumns;
+        setNfModal({
+          label: droppedNode.tableLabel,
+          filterColumns: nfc,
+          onConfirm: (params) => {
+            setNfModal(null);
+            const clauses = buildNfWhereClauses(tv, nfc, params);
+            const whereStr = clauses.length > 0 ? `\nWHERE ${clauses.join(" AND ")}` : "";
+            const finalQuery = newQueryBase.replace(/(\nRETURN )/, `${whereStr}$1`);
+            rerunFrame(frameId, finalQuery);
+          },
+        });
+      } else {
+        rerunFrame(frameId, newQueryBase);
+      }
+    },
+    [rerunFrame, adminRels, schemaNodeLabels, buildNfWhereClauses],
+  );
+
+  const onDomainDrop = useCallback(
+    (frameId: string, domainLabel: string) => {
+      const frame = framesRef.current.find((fr) => fr.id === frameId);
+      if (!frame) return;
+
+      const nodeVarMatch = frame.query.match(/\bMATCH\s*\(\s*(\w+)/i);
+      const firstVar = nodeVarMatch?.[1] ?? "n";
+
+      const suffix = domainLabel.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
+      let targetVar = `z${suffix}`;
+      const trimmed = frame.query.replace(/\s+LIMIT\s+\d+\s*$/i, "").trim();
+      let counter = 2;
+      while (trimmed.includes(` ${targetVar}`) || trimmed.includes(`(${targetVar}`)) {
+        targetVar = `z${suffix}${counter}`;
+        counter++;
+      }
+
+      const optMatchPattern = `(${firstVar})-[]-(${targetVar}:${domainLabel})`;
       const returnMatches = [...trimmed.matchAll(/\bRETURN\b/gi)];
       const lastReturn = returnMatches.pop();
       let newQuery: string;
       if (!lastReturn || lastReturn.index === undefined) {
-        newQuery = `${trimmed}\nOPTIONAL MATCH (${sourceVar})-${relTypeStr}-(${targetVar}:${compoundLabel})\nRETURN ${sourceVar}, ${relVar}, ${targetVar}`;
+        newQuery = `${trimmed}\nOPTIONAL MATCH ${optMatchPattern}\nRETURN ${firstVar}, ${targetVar}`;
       } else {
         const beforeReturn = trimmed.slice(0, lastReturn.index).trimEnd();
         const returnClause = trimmed.slice(lastReturn.index + 6).trim();
-        newQuery = `${beforeReturn}\nOPTIONAL MATCH (${sourceVar})-${relTypeStr}-(${targetVar}:${compoundLabel})\nRETURN ${returnClause}, ${relVar}, ${targetVar}`;
+        newQuery = `${beforeReturn}\nOPTIONAL MATCH ${optMatchPattern}\nRETURN ${returnClause}, ${targetVar}`;
       }
       rerunFrame(frameId, newQuery);
     },
-    [rerunFrame, adminRels],
+    [rerunFrame],
   );
 
   const handleColorChange = useCallback(
@@ -503,7 +577,7 @@ export function GraphPage() {
       .filter((v, i, a) => a.indexOf(v) === i),
     relationshipTypes: schemaRels.map((r) => r.type),
     propertyKeys: [
-      ...new Set(visibleNodeLabels.flatMap((n) => [...n.properties, ...n.nativeFilterColumns])),
+      ...new Set(visibleNodeLabels.flatMap((n) => [...n.properties, ...n.nativeFilterColumns.map((c) => c.name)])),
     ],
   };
 
@@ -523,14 +597,19 @@ export function GraphPage() {
       if (node && node.nativeFilterColumns.length > 0) {
         setNfModal({
           label: node.tableLabel,
-          compoundLabel,
           filterColumns: node.nativeFilterColumns,
+          onConfirm: (params) => {
+            setNfModal(null);
+            const clauses = buildNfWhereClauses("n", node.nativeFilterColumns, params);
+            const whereStr = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+            runQuery(`MATCH (n:${compoundLabel})${whereStr} RETURN n LIMIT 25`);
+          },
         });
       } else {
         runQuery(`MATCH (n:${compoundLabel}) RETURN n LIMIT 25`);
       }
     },
-    [runQuery, schemaNodeLabels],
+    [runQuery, schemaNodeLabels, buildNfWhereClauses],
   );
 
   const handleRelClick = useCallback(
@@ -542,18 +621,9 @@ export function GraphPage() {
 
   const handleNfConfirm = useCallback(
     (params: Record<string, string>) => {
-      if (!nfModal) return;
-      const { compoundLabel, filterColumns } = nfModal;
-      const whereClauses = filterColumns
-        .filter((col) => params[col] !== "")
-        .map(
-          (col) => `n._nf_${col} = '${params[col].replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`,
-        );
-      const whereStr = whereClauses.length > 0 ? ` WHERE ${whereClauses.join(" AND ")}` : "";
-      setNfModal(null);
-      runQuery(`MATCH (n:${compoundLabel})${whereStr} RETURN n LIMIT 25`);
+      nfModal?.onConfirm(params);
     },
-    [nfModal, runQuery],
+    [nfModal],
   );
 
   return (
@@ -617,6 +687,7 @@ export function GraphPage() {
               onClose={closeFrame}
               onRerun={rerunFrame}
               onTableDrop={onTableDrop}
+              onDomainDrop={onDomainDrop}
               colorOverrides={colorOverrides}
               sizeOverrides={sizeOverrides}
               labelProperty={labelProperty}

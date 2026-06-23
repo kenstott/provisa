@@ -48,6 +48,7 @@ interface GraphFrameProps {
   onClose: (id: string) => void;
   onRerun: (id: string, query: string) => void;
   onTableDrop?: (frameId: string, compoundLabel: string) => void;
+  onDomainDrop?: (frameId: string, domainLabel: string) => void;
   colorOverrides: Record<string, string>;
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;
@@ -66,6 +67,7 @@ export function GraphFrame({
   onClose,
   onRerun,
   onTableDrop,
+  onDomainDrop,
   colorOverrides,
   sizeOverrides,
   labelProperty,
@@ -618,7 +620,7 @@ export function GraphFrame({
   // followed by any scalar property with more than one distinct value.
   const groupableAttrs = useMemo(() => {
     if (frame.nodes.size === 0) return [];
-    const SKIP = new Set(["scl1", "scl2", "scl3"]);
+    const SKIP = new Set(["scl1", "scl2", "scl3", "l1Cluster", "l2Cluster", "l3Cluster"]);
     const schemaVirtuals: string[] = [];
     for (const [virtName, prop] of [
       ["schema_L1", "scl1"],
@@ -643,9 +645,8 @@ export function GraphFrame({
     });
     const regularAttrs = [...counts.entries()]
       .filter(([, vals]) => vals.size > 1)
-      .sort((a, b) => b[1].size - a[1].size)
       .map(([k]) => k);
-    return [...schemaVirtuals, ...regularAttrs];
+    return [...schemaVirtuals, ...regularAttrs].sort((a, b) => a.localeCompare(b));
   }, [frame.nodes]);
   const activeView: "graph" | "table" | "json" = hasGraph
     ? view
@@ -992,7 +993,10 @@ export function GraphFrame({
         className={`gf-frame${expanded ? " gf-expanded" : ""}${dragOver ? " gf-frame--drag-over" : ""}`}
         style={expanded ? { top: `calc(5vh + ${modalHeaderHeight}px)`, height: `calc(90vh - ${modalHeaderHeight}px)` } : undefined}
         onDragOver={(e) => {
-          if (e.dataTransfer.types.includes("text/x-provisa-label")) {
+          if (
+            e.dataTransfer.types.includes("text/x-provisa-label") ||
+            e.dataTransfer.types.includes("text/x-provisa-domain")
+          ) {
             e.preventDefault();
             setDragOver(true);
           }
@@ -1004,6 +1008,12 @@ export function GraphFrame({
           if (label && onTableDrop) {
             e.preventDefault();
             onTableDrop(frame.id, label);
+            return;
+          }
+          const domain = e.dataTransfer.getData("text/x-provisa-domain");
+          if (domain && onDomainDrop) {
+            e.preventDefault();
+            onDomainDrop(frame.id, domain);
           }
         }}
       >

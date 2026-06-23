@@ -153,6 +153,10 @@ export function Sidebar({
                             <span
                               className={`graph-label-pill${highlightedLabel === lbl ? " graph-label-pill--highlight" : ""}`}
                               style={{ background: color }}
+                              draggable
+                              onDragStart={(e) =>
+                                e.dataTransfer.setData("text/x-provisa-domain", lbl)
+                              }
                               onClick={() => onDomainClick(lbl)}
                               onContextMenu={(e) => {
                                 e.preventDefault();
