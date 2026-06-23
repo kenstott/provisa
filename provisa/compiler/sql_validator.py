@@ -9,7 +9,7 @@ Rules:
   V002 – Every JOIN ON condition must match an approved relationship (source_col = target_col).
           Exception: JOINs to 'meta' or 'ops' domain tables are implicitly authorized (traversal only).
   V003 – Referenced columns must be visible to this role.
-  V004 – Join graph must be a DAG (no cycles).
+  V004 – (retired) Cyclic join graphs are pruned in-place; back-edges are dropped silently.
   V005 – Masked columns must not appear in WHERE or HAVING clauses (prevents plaintext inference).
 
 Security model / layer responsibilities:
@@ -386,7 +386,7 @@ def _collect_columns(expr: exp.Expr) -> list[exp.Column]:
 
 
 # --------------------------------------------------------------------------- #
-# V004 – DAG (no cycles in join graph)                                        #
+# V004 – Cycle pruning (back-edges removed in-place, no violation raised)     #
 # --------------------------------------------------------------------------- #
 
 
@@ -396,58 +396,111 @@ def _check_dag(
     valid_joins: set[tuple[int, int, str, str]],
     cte_names_set: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
-    violations = []
+    """Prune back-edges from cyclic join graphs rather than rejecting them.
+
+    When a cycle is detected the join(s) that close it are removed in-place and
+    any SELECT-list columns that referenced the pruned table are replaced with
+    NULL so the rest of the query remains valid.
+    """
     for select in tree.find_all(exp.Select):
         am = _alias_map(select, gov_ctx, cte_names_set)
-        edges: list[tuple[int, int]] = []
-        for tbl, on_expr in _join_tables(select, cte_names_set):
+        joins = select.args.get("joins") or []
+
+        # Build (src_id, tgt_id) → join-node mapping alongside the flat edge list.
+        edge_join: list[tuple[int, int, exp.Join]] = []
+        for join in joins:
+            on_expr = join.args.get("on")
             if on_expr is None:
                 continue
-            tgt_tid = _resolve_table_id(tbl, gov_ctx)
-            if tgt_tid is None:
-                continue
-            pairs = _extract_eq_pairs(on_expr)
-            for lt, lc, rt, rc in pairs:
-                lt_id = am.get(lt)
-                rt_id = am.get(rt)
-                if lt_id is None or rt_id is None:
+            for tbl in join.find_all(exp.Table):
+                if _inside_subquery(tbl, select) or tbl.name in cte_names_set:
                     continue
-                src_id = lt_id if rt_id == tgt_tid else rt_id
-                edges.append((src_id, tgt_tid))
+                tgt_tid = _resolve_table_id(tbl, gov_ctx)
+                if tgt_tid is None:
+                    continue
+                for lt, _lc, rt, _rc in _extract_eq_pairs(on_expr):
+                    lt_id = am.get(lt)
+                    rt_id = am.get(rt)
+                    if lt_id is None or rt_id is None:
+                        continue
+                    src_id = lt_id if rt_id == tgt_tid else rt_id
+                    edge_join.append((src_id, tgt_tid, join))
 
-        if _has_cycle(edges):
-            violations.append(
-                ValidationViolation(
-                    "V004",
-                    "JOIN graph contains a cycle — queries must form a directed acyclic graph (parent → child)",
-                )
-            )
-    return violations
+        edges = [(s, t) for s, t, _ in edge_join]
+        back = _back_edges(edges)
+        if not back:
+            continue
+
+        # Collect join nodes that correspond to back-edges and remove them.
+        pruned_joins: set[int] = set()
+        for src_id, tgt_id, join_node in edge_join:
+            if (src_id, tgt_id) in back:
+                pruned_joins.add(id(join_node))
+
+        pruned_tids: set[int] = set()
+        for src_id, tgt_id, join_node in edge_join:
+            if id(join_node) in pruned_joins:
+                pruned_tids.add(tgt_id)
+
+        select.set("joins", [j for j in joins if id(j) not in pruned_joins])
+
+        # Replace SELECT-list columns that reference pruned tables with NULL.
+        tid_to_alias: dict[int, str] = {v: k for k, v in am.items()}
+        pruned_aliases = {tid_to_alias[t] for t in pruned_tids if t in tid_to_alias}
+        if pruned_aliases:
+            new_exprs = []
+            for expr in select.expressions:
+                col = expr.this if isinstance(expr, exp.Alias) else expr
+                if isinstance(col, exp.Column) and (col.table or "") in pruned_aliases:
+                    alias = expr.alias if isinstance(expr, exp.Alias) else col.name
+                    new_exprs.append(exp.alias_(exp.null(), alias))
+                else:
+                    new_exprs.append(expr)
+            select.set("expressions", new_exprs)
+
+    return []
 
 
-def _has_cycle(edges: list[tuple[int, int]]) -> bool:
-    from collections import defaultdict, deque
+def _back_edges(edges: list[tuple[int, int]]) -> set[tuple[int, int]]:
+    """Return the set of back-edges that form cycles (iterative DFS)."""
+    from collections import defaultdict
 
     if not edges:
-        return False
+        return set()
+
     children: dict[int, list[int]] = defaultdict(list)
-    in_degree: dict[int, int] = defaultdict(int)
     nodes: set[int] = set()
     for src, tgt in edges:
         children[src].append(tgt)
-        in_degree[tgt] += 1
         nodes.add(src)
         nodes.add(tgt)
-    queue = deque(n for n in nodes if in_degree[n] == 0)
-    visited = 0
-    while queue:
-        node = queue.popleft()
-        visited += 1
-        for child in children[node]:
-            in_degree[child] -= 1
-            if in_degree[child] == 0:
-                queue.append(child)
-    return visited != len(nodes)
+
+    visited: set[int] = set()
+    in_stack: set[int] = set()
+    back: set[tuple[int, int]] = set()
+
+    for start in nodes:
+        if start in visited:
+            continue
+        # Iterative DFS: stack holds (node, iterator-over-children, entered-stack)
+        stack: list[tuple[int, object, bool]] = [(start, iter(children[start]), True)]
+        while stack:
+            node, it, entering = stack[-1]
+            if entering:
+                visited.add(node)
+                in_stack.add(node)
+                stack[-1] = (node, it, False)
+            try:
+                child = next(it)  # type: ignore[call-overload]
+                if child not in visited:
+                    stack.append((child, iter(children[child]), True))
+                elif child in in_stack:
+                    back.add((node, child))
+            except StopIteration:
+                in_stack.discard(node)
+                stack.pop()
+
+    return back
 
 
 # --------------------------------------------------------------------------- #

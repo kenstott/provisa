@@ -143,3 +143,123 @@ def find_api_table_names(sql: str) -> list[str]:
     except Exception:
         return []
     return [tbl.name for tbl in ast.find_all(exp.Table) if tbl.name]
+
+
+def left_join_table_names(sql: str) -> set[str]:
+    """Return table names that appear in LEFT JOIN clauses."""
+    try:
+        ast = sqlglot.parse_one(sql, dialect="postgres")
+    except Exception:
+        return set()
+    names: set[str] = set()
+    for join in ast.find_all(exp.Join):
+        if join.side and join.side.upper() == "LEFT":
+            for tbl in join.find_all(exp.Table):
+                if tbl.name:
+                    names.add(tbl.name)
+    return names
+
+
+def drop_joined_table(sql: str, table_name: str) -> str:
+    """Remove any JOIN for *table_name* (any join type) and NULL-out its SELECT-list columns."""
+    try:
+        tree = sqlglot.parse_one(sql, dialect="postgres")
+    except Exception:
+        return sql
+
+    for select in tree.find_all(exp.Select):
+        joins = select.args.get("joins") or []
+        pruned_aliases: set[str] = set()
+
+        kept: list[exp.Join] = []
+        for join in joins:
+            has_target = any(tbl.name == table_name for tbl in join.find_all(exp.Table))
+            if not has_target:
+                kept.append(join)
+                continue
+            for tbl in join.find_all(exp.Table):
+                alias = tbl.alias or tbl.name
+                if alias:
+                    pruned_aliases.add(alias)
+
+        if len(kept) == len(joins):
+            continue
+
+        select.set("joins", kept)
+
+        if pruned_aliases:
+            new_exprs = []
+            for expr in select.expressions:
+                col = expr.this if isinstance(expr, exp.Alias) else expr
+                tbl_ref = col.table if isinstance(col, exp.Column) else ""
+                if tbl_ref in pruned_aliases:
+                    alias = (
+                        expr.alias
+                        if isinstance(expr, exp.Alias)
+                        else (col.name if isinstance(col, exp.Column) else "")
+                    )
+                    new_exprs.append(exp.alias_(exp.null(), alias) if alias else expr)
+                else:
+                    new_exprs.append(expr)
+            select.set("expressions", new_exprs)
+
+    return tree.sql(dialect="postgres")
+
+
+# Keep old name as alias for callers that imported it before the rename.
+drop_left_join_table = drop_joined_table
+
+
+def drop_union_branches_for_table(sql: str, table_name: str) -> str:
+    """Remove every UNION branch whose FROM clause references *table_name*.
+
+    Works at any nesting depth (including inside CTEs).  Used when a GQL-remote
+    table with unsatisfied required_args cannot be dropped as a JOIN.
+    """
+    try:
+        tree = sqlglot.parse_one(sql, dialect="postgres")
+    except Exception:
+        return sql
+
+    def _has_from_table(select: exp.Select) -> bool:  # pyright: ignore[reportPrivateImportUsage]
+        from_clause = select.args.get("from_") or select.args.get("from")
+        if from_clause is None:
+            return False
+        return any(t.name == table_name for t in from_clause.find_all(exp.Table))
+
+    root = tree
+    modified = False
+    for union in list(tree.find_all(exp.Union)):
+        left, right = union.this, union.expression
+        left_match = isinstance(left, exp.Select) and _has_from_table(left)
+        right_match = isinstance(right, exp.Select) and _has_from_table(right)
+        if left_match and not right_match:
+            replacement = right
+        elif right_match and not left_match:
+            replacement = left
+        else:
+            continue
+        modified = True
+        if union.parent is None:
+            root = replacement
+        else:
+            union.replace(replacement)
+
+    if not modified:
+        return sql
+    return root.sql(dialect="postgres")
+
+
+def where_referenced_tables(sql: str) -> set[str]:
+    """Return table names (or aliases) that appear in WHERE predicates (not JOIN ON conditions)."""
+    try:
+        ast = sqlglot.parse_one(sql, dialect="postgres")
+    except Exception:
+        return set()
+    names: set[str] = set()
+    for where in ast.find_all(exp.Where):
+        for col in where.find_all(exp.Column):
+            tbl = col.table
+            if tbl:
+                names.add(tbl)
+    return names

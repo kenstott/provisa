@@ -154,7 +154,7 @@ class CompilationContext:
     # (table_id, physical_column_name) → sql_exposed_name (alias direct, or apply_sql_name(phys))
     physical_to_sql: dict[tuple[int, str], str] = field(default_factory=dict)
     # table_id → set of column names that require native API params (_nf_ prefix)
-    native_filter_columns: dict[int, set[str]] = field(default_factory=dict)
+    native_filter_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     # table_id → {virtual_col_name → literal_value}
     virtual_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     # (table_id, col_name) pairs where the column is a GQL OBJECT stored as JSON
@@ -289,17 +289,11 @@ def _register_table_in_ctx(
     ctx.tables[f"{t.field_name}_aggregate"] = meta
     ctx.tables[f"{t.field_name}_connection"] = meta
 
-    # Aggregate columns — exclude GQL object blob columns covered by a FK relationship
+    # Aggregate columns — exclude GQL object columns that have no physical DB column.
+    # Virtual GQL fields (e.g. FK-resolved "pet" on inquiries) are not real columns in Trino.
     _gql_obj_cols = si.gql_object_columns.get(t.table_name, {})
-    _src_rels = [
-        r
-        for r in si.relationships
-        if r.get("source_table_id") == t.table_id and r.get("source_column")
-    ]
     _covered_blobs = {
-        blob_col
-        for blob_col in _gql_obj_cols
-        if any(r["source_column"].lower().startswith(blob_col.lower()) for r in _src_rels)
+        blob_col for blob_col in _gql_obj_cols if blob_col.lower() not in t.column_metadata
     }
     col_info = []
     for col in t.visible_columns:
@@ -314,7 +308,20 @@ def _register_table_in_ctx(
     ctx.pk_columns[t.table_id] = [
         col["column_name"] for col in t.visible_columns if col.get("is_primary_key")
     ]
-    ctx.native_filter_columns[t.table_id] = {nfc["column_name"] for nfc in t.native_filter_columns}
+
+    def _nfc_type(nfc: dict) -> str:
+        if nfc.get("data_type"):
+            return nfc["data_type"]
+        if nfc.get("type"):
+            return nfc["type"]
+        col_key = nfc["column_name"].lower()
+        bare_key = col_key[4:] if col_key.startswith("_nf_") else col_key
+        meta = t.column_metadata.get(col_key) or t.column_metadata.get(bare_key)
+        return meta.data_type if meta else "text"
+
+    ctx.native_filter_columns[t.table_id] = {
+        nfc["column_name"]: _nfc_type(nfc) for nfc in t.native_filter_columns
+    }
 
     for col in t.visible_columns:
         col_path = col.get("path")
@@ -1207,9 +1214,10 @@ def _emit_agg_subqueries(
                     sub_join_meta.target_column_type,
                     sub_join_meta.source_column_type,
                 )
+            _on_cond = f"{sub_tgt} = {sub_src}"
             new_join = (
                 f"JOIN {_table_ref(sub_join_meta.target, use_catalog)} {_q(sub_alias)}"
-                f" ON {sub_tgt} = {sub_src}"
+                f" ON {_on_cond}"
             )
             new_extra = f"{extra_joins} {new_join}".strip() if extra_joins else new_join
             sub_limit = _explicit_limit(sel, variables) or sub_join_meta.default_limit
@@ -1863,10 +1871,11 @@ def _compile_root_field(
                     )
                 )
             else:
+                _join_on = f"{src_expr} = {tgt_expr}"
                 join_clauses.append(
                     f"LEFT JOIN {_table_ref(join_meta.target, use_catalog)}"
                     f" {_q(join_alias)}"
-                    f" ON {src_expr} = {tgt_expr}"
+                    f" ON {_join_on}"
                 )
                 if sel.selection_set:
                     alias_counter, _child_lateral = _collect_nested_columns(

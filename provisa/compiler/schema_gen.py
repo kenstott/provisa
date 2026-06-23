@@ -340,7 +340,12 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
         # Native filter cols are API parameters (path/query params), not data columns.
         # They are always exposed as query args regardless of visible_to — the role
         # only needs access to the table itself.
-        native_filter_cols = [c for c in table["columns"] if c.get("native_filter_type")]
+        _raw_nfc = [c for c in table["columns"] if c.get("native_filter_type")]
+        _base_names = {c["column_name"] for c in _raw_nfc if not c["column_name"].startswith("_nf_")}
+        native_filter_cols = [
+            c for c in _raw_nfc
+            if not c["column_name"].startswith("_nf_") or c["column_name"][4:] not in _base_names
+        ]
 
         if not visible_cols and not native_filter_cols:
             if not col_meta:
