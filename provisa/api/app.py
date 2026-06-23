@@ -205,7 +205,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     "registered_tables": """
         DROP VIEW IF EXISTS public.registered_tables_meta CASCADE;
         CREATE VIEW public.registered_tables_meta AS
-        SELECT id, source_id, domain_id, schema_name, table_name, governance,
+        SELECT id, source_id, domain_id, schema_name, table_name,
                alias, description, cache_ttl, gql_naming_convention, watermark_column,
                column_presets::text AS column_presets,
                view_sql, data_product, materialize, mv_refresh_interval,
@@ -231,10 +231,40 @@ _META_TABLE_VIEWS: dict[str, str] = {
         DROP VIEW IF EXISTS public.roles_meta CASCADE;
         CREATE VIEW public.roles_meta AS
         SELECT id, parent_role_id, org_id,
-               array_to_json(capabilities)::text  AS capabilities,
-               array_to_json(domain_access)::text AS domain_access,
-               tenant_id
+               array_to_json(capabilities)::text AS capabilities,
+               tenant_id,
+               'meta'::text AS domain_id
         FROM public.roles
+    """,
+    "roles_domain_access": """
+        DROP VIEW IF EXISTS public.roles_domain_access CASCADE;
+        CREATE VIEW public.roles_domain_access AS
+        SELECT r.id || ':' || d.id AS id,
+               r.id AS role_id, 'meta'::text AS domain_id, d.id AS accessed_domain_id
+        FROM public.roles r
+        CROSS JOIN public.domains d
+        WHERE d.id <> ''
+    """,
+    "tracked_webhooks": """
+        DROP VIEW IF EXISTS public.tracked_webhooks_meta CASCADE;
+        CREATE VIEW public.tracked_webhooks_meta AS
+        SELECT id, name, url, method, timeout_ms, returns, kind,
+               inline_return_type::text AS inline_return_type,
+               arguments::text AS arguments,
+               array_to_json(visible_to)::text AS visible_to,
+               domain_id, description, created_at, updated_at
+        FROM public.tracked_webhooks
+    """,
+    "tracked_functions": """
+        DROP VIEW IF EXISTS public.tracked_functions_meta CASCADE;
+        CREATE VIEW public.tracked_functions_meta AS
+        SELECT id, name, source_id, schema_name, function_name, returns, kind,
+               arguments::text AS arguments,
+               return_schema::text AS return_schema,
+               array_to_json(visible_to)::text AS visible_to,
+               array_to_json(writable_by)::text AS writable_by,
+               domain_id, description, created_at, updated_at
+        FROM public.tracked_functions
     """,
 }
 # Maps original table name → view name (or itself if no view needed).
@@ -242,6 +272,8 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "registered_tables": "registered_tables_meta",
     "table_columns": "table_columns_meta",
     "roles": "roles_meta",
+    "tracked_webhooks": "tracked_webhooks_meta",
+    "tracked_functions": "tracked_functions_meta",
 }
 _META_TABLES = [
     "registered_tables",
@@ -250,6 +282,9 @@ _META_TABLES = [
     "relationships",
     "rls_rules",
     "roles",
+    "roles_domain_access",
+    "tracked_webhooks",
+    "tracked_functions",
 ]
 
 _OPS_PG_TO_TRINO: dict[str, str] = {
@@ -408,7 +443,8 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:
                 tbl,
             )
         }
-        # Query the view (or table) for its column list; arrays and jsonb appear as 'text' after view casting.
+        # Use the view name when available so column list reflects the exposed schema.
+        view_name = _META_TABLE_ALIAS.get(tbl, tbl)
         cols = await conn.fetch(
             """
             SELECT column_name,
@@ -417,7 +453,14 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:
             WHERE table_schema = 'public' AND table_name = $1
             ORDER BY ordinal_position
             """,
-            tbl,
+            view_name,
+        )
+        col_names = {col["column_name"] for col in cols}
+        # Remove stale columns that no longer appear in the view.
+        await conn.execute(
+            "DELETE FROM table_columns WHERE table_id = $1 AND column_name != ALL($2::text[])",
+            table_id,
+            list(col_names),
         )
         for col in cols:
             await conn.execute(
@@ -467,8 +510,13 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
         WHERE src.source_id = $2 AND src.table_name = $3
           AND tgt.source_id = $7 AND tgt.table_name = $8
         ON CONFLICT (id) DO UPDATE
-            SET alias = EXCLUDED.alias,
-                graphql_alias = EXCLUDED.graphql_alias
+            SET source_table_id = EXCLUDED.source_table_id,
+                target_table_id = EXCLUDED.target_table_id,
+                source_column   = EXCLUDED.source_column,
+                target_column   = EXCLUDED.target_column,
+                cardinality     = EXCLUDED.cardinality,
+                alias           = EXCLUDED.alias,
+                graphql_alias   = EXCLUDED.graphql_alias
     """
     _ADMIN = "provisa-admin"
     _OTEL = "provisa-otel"
@@ -608,6 +656,18 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "targetRelationships",
         ),
         (
+            "meta:registered_tables:table_columns",
+            _ADMIN,
+            "registered_tables",
+            "id",
+            "table_id",
+            "one-to-many",
+            _ADMIN,
+            "table_columns",
+            None,
+            None,
+        ),
+        (
             "meta:registered_tables:rls_rules",
             _ADMIN,
             "registered_tables",
@@ -652,6 +712,102 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
             "one-to-many",
             _ADMIN,
             "rls_rules",
+            None,
+            None,
+        ),
+        (
+            "meta:roles:domains",
+            _ADMIN,
+            "roles",
+            "domain_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "domains",
+            None,
+            None,
+        ),
+        (
+            "meta:roles_domain_access:domains",
+            _ADMIN,
+            "roles_domain_access",
+            "domain_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "domains",
+            None,
+            None,
+        ),
+        (
+            "meta:roles_domain_access:roles",
+            _ADMIN,
+            "roles_domain_access",
+            "role_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "roles",
+            None,
+            None,
+        ),
+        (
+            "meta:roles_domain_access:accessed_domains",
+            _ADMIN,
+            "roles_domain_access",
+            "accessed_domain_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "domains",
+            "ACCESSED_DOMAIN",
+            "accessedDomain",
+        ),
+        (
+            "meta:tracked_webhooks:domains",
+            _ADMIN,
+            "tracked_webhooks",
+            "domain_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "domains",
+            None,
+            None,
+        ),
+        (
+            "meta:domains:tracked_webhooks",
+            _ADMIN,
+            "domains",
+            "id",
+            "domain_id",
+            "one-to-many",
+            _ADMIN,
+            "tracked_webhooks",
+            None,
+            None,
+        ),
+        (
+            "meta:tracked_functions:domains",
+            _ADMIN,
+            "tracked_functions",
+            "domain_id",
+            "id",
+            "many-to-one",
+            _ADMIN,
+            "domains",
+            None,
+            None,
+        ),
+        (
+            "meta:domains:tracked_functions",
+            _ADMIN,
+            "domains",
+            "id",
+            "domain_id",
+            "one-to-many",
+            _ADMIN,
+            "tracked_functions",
             None,
             None,
         ),
@@ -2192,7 +2348,9 @@ def _build_and_register_schemas(
                 if _tbl_id is None:
                     continue
                 for _col in _tbl.get("columns", []):
-                    if _col.get("gql_object_type") in _governed_gql_types:
+                    if _col.get("gql_object_type") in _governed_gql_types or _col.get(
+                        "gql_object_fields"
+                    ):
                         _gov_obj_cols.add((_tbl_id, _col["name"]))
         si = SchemaInput(
             tables=tables,

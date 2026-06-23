@@ -567,7 +567,16 @@ async def graph_schema(request: Request) -> JSONResponse:
                     "pk": _cql_prop(n.pk_columns[0]) if n.pk_columns else None,
                     "pk_columns": [_cql_prop(c) for c in n.pk_columns],
                     "id_column": _cql_prop(n.id_column),
-                    "native_filter_columns": sorted(n.native_filter_columns),
+                    "native_filter_columns": sorted(
+                        (
+                            {"name": k[4:] if k.startswith("_nf_") else k, "type": v}
+                            for k, v in {
+                                (kk[4:] if kk.startswith("_nf_") else kk): vv
+                                for kk, vv in n.native_filter_columns.items()
+                            }.items()
+                        ),
+                        key=lambda x: x["name"],
+                    ),
                     "traversal_only": n.traversal_only,
                     **cluster_by_name.get(
                         n.table_label, {"scl1": None, "scl2": None, "scl3": None}
@@ -610,12 +619,16 @@ async def impute_relationships(request: Request, body: ImputeRequest) -> JSONRes
 
     label_map = _build_label_map(ctx, role_id, state)
 
-    # Group ids by canonical label
+    # Group ids by canonical label.
+    # Frontend ids are compound: "{label}|{pk_value}" (built by the SQL translator).
+    # Strip the label prefix to recover the raw PK value used in WHERE clauses.
     by_label: dict[str, list[str]] = {}
     for node in body.nodes:
         lbl = str(node.get("label", ""))
         nid = str(node.get("id", ""))
         if lbl and nid:
+            if "|" in nid:
+                nid = nid.split("|", 1)[1]
             by_label.setdefault(lbl, []).append(nid)
 
     visible_labels = set(by_label.keys())
@@ -637,7 +650,8 @@ async def impute_relationships(request: Request, body: ImputeRequest) -> JSONRes
                 int(v)
                 return v
             except ValueError:
-                return f'"{v}"'
+                escaped = v.replace("'", "\\'")
+                return f"'{escaped}'"
 
         src_ids = ", ".join(_fmt(i) for i in by_label[src_label])
         tgt_ids = ", ".join(_fmt(i) for i in by_label[tgt_label])
@@ -877,7 +891,12 @@ async def _execute_with_gql_remote(
     )
     from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
-    from provisa.compiler.nf_extractor import find_api_table_names
+    from provisa.compiler.nf_extractor import (
+        find_api_table_names,
+        drop_joined_table,
+        drop_union_branches_for_table,
+        where_referenced_tables,
+    )
     from provisa.compiler.naming import apply_sql_name as _apply_sql_name
 
     @dataclass
@@ -894,6 +913,7 @@ async def _execute_with_gql_remote(
     }
 
     table_names = find_api_table_names(exec_sql)
+    where_tables = where_referenced_tables(exec_sql)
     cache_rewrites: dict[str, tuple] = {}
 
     for tn in table_names:
@@ -906,6 +926,11 @@ async def _execute_with_gql_remote(
         gql_vars = {a["name"]: nf_args[a["name"]] for a in required_args if a["name"] in nf_args}
         missing = [a["name"] for a in required_args if a["name"] not in nf_args]
         if missing:
+            if tn not in where_tables:
+                # Not explicitly filtered — drop JOIN or UNION branch.
+                exec_sql = drop_joined_table(exec_sql, tn)
+                exec_sql = drop_union_branches_for_table(exec_sql, tn)
+                continue
             raise ValueError(
                 f"Table '{tn}' requires argument(s) {missing} — "
                 f"add a WHERE clause, e.g. WHERE n.{missing[0]} = <value>"
@@ -961,10 +986,7 @@ async def _execute_with_gql_remote(
         else:
             log.info("[GQL CACHE] hit — %s", cache_tbl)
 
-    if not cache_rewrites:
-        raise RuntimeError(f"No graphql_remote table found for: {table_names}")
-
-    rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
+    rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites) if cache_rewrites else exec_sql
     trino_sql = transpile_to_trino(rewritten_sql)
 
     def _run_query() -> list[dict]:
@@ -1040,7 +1062,12 @@ async def _execute_call_body(
         rows = await _execute_with_gql_remote(
             exec_sql, resolved_params, nf_args, state, _cb_span_attrs
         )
-    else:
+    elif trino_sql:
         rows = await _execute(trino_sql, resolved_params, state, _cb_span_attrs)
+    else:
+        from provisa.pgwire._pipeline import _execute_plan as _exec_plan
+
+        qr = await _exec_plan(plan, state)
+        rows = [dict(zip(qr.column_names, row)) for row in qr.rows]
 
     return rows, graph_vars

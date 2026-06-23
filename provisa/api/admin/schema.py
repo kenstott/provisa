@@ -418,7 +418,6 @@ async def _fetch_table_with_columns(
         cache_ttl=row.get("cache_ttl"),
         gql_naming_convention=row.get("gql_naming_convention"),
         watermark_column=row.get("watermark_column"),
-        governance=row.get("governance"),
         columns=columns,
         column_presets=presets,
         api_endpoint=api_endpoint,
@@ -2155,8 +2154,8 @@ class Mutation:
             return MutationResult(success=False, message=str(e))
 
         if req["request_type"] == "relationship":
-            result = await self.upsert_relationship(  # pyright: ignore[reportCallIssue]
-                info, _rebuild_relationship_input(req["payload"])
+            result = await self.upsert_relationship(
+                info, _rebuild_relationship_input(req["payload"])  # pyright: ignore[reportCallIssue]
             )
         elif req["request_type"] == "view":
             result = await self.register_table(info, _rebuild_table_input(req["payload"]))  # pyright: ignore[reportCallIssue]

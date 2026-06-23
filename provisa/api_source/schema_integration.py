@@ -59,32 +59,42 @@ def _endpoint_to_table_dict(
         col_dict: dict = {
             "column_name": col.name,
             "visible_to": role_ids,
+            "data_type": trino_type,
         }
         if col.object_fields:
             col_dict["object_fields"] = col.object_fields
         if col.param_type is not None:
             from provisa.api_source.models import ParamType
-            col_dict["native_filter_type"] = "path_param" if col.param_type == ParamType.path else "query_param"
+
+            col_dict["native_filter_type"] = (
+                "path_param" if col.param_type == ParamType.path else "query_param"
+            )
         columns_for_table.append(col_dict)
-        column_metadata.append(ColumnMetadata(
-            column_name=col.name,
-            data_type=trino_type,
-            is_nullable=True,
-        ))
+        column_metadata.append(
+            ColumnMetadata(
+                column_name=col.name,
+                data_type=trino_type,
+                is_nullable=True,
+            )
+        )
 
     # Add promoted columns
     if promotions:
         for p in promotions:
             trino_type = _PROMOTION_TYPE_TO_TRINO.get(p.target_type, "varchar")
-            columns_for_table.append({
-                "column_name": p.target_column,
-                "visible_to": role_ids,
-            })
-            column_metadata.append(ColumnMetadata(
-                column_name=p.target_column,
-                data_type=trino_type,
-                is_nullable=True,
-            ))
+            columns_for_table.append(
+                {
+                    "column_name": p.target_column,
+                    "visible_to": role_ids,
+                }
+            )
+            column_metadata.append(
+                ColumnMetadata(
+                    column_name=p.target_column,
+                    data_type=trino_type,
+                    is_nullable=True,
+                )
+            )
 
     table_dict = {
         "id": table_id,
@@ -121,7 +131,10 @@ def register_api_columns(
     for endpoint in api_endpoints:
         promotions = promotions_map.get(endpoint.table_name, [])
         table_dict, col_meta = _endpoint_to_table_dict(
-            endpoint, domain_id, role_ids, promotions,
+            endpoint,
+            domain_id,
+            role_ids,
+            promotions,
         )
         tables.append(table_dict)
         column_types[table_dict["id"]] = col_meta
