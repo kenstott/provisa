@@ -45,9 +45,10 @@ class SelectBuilderMixin:
     _rel_var_types: dict
     _rel_var_endpoints: dict
     _domain_nodes: dict[str, str]
+    _varlen_rel_vars: dict  # varlen rel variable → outer path variable
 
     def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        ...
+        raise NotImplementedError(text)
 
     def _build_edge_object(
         self,
@@ -121,14 +122,37 @@ class SelectBuilderMixin:
                 )
             return exp.Anonymous(this="JSON_OBJECT", expressions=exprs)
 
+        src_compound_id = exp.DPipe(
+            this=exp.DPipe(
+                this=exp.Literal.string(src_nm.label),
+                expression=exp.Literal.string("|"),
+            ),
+            expression=exp.Cast(
+                this=exp.Column(
+                    this=exp.Identifier(this=src_nm.id_column, quoted=True),
+                    table=exp.Identifier(this=src_alias),
+                ),
+                to=exp.DataType.build("VARCHAR"),
+            ),
+        )
+        tgt_compound_id = exp.DPipe(
+            this=exp.DPipe(
+                this=exp.Literal.string(tgt_nm.label),
+                expression=exp.Literal.string("|"),
+            ),
+            expression=exp.Cast(
+                this=exp.Column(
+                    this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
+                    table=exp.Identifier(this=tgt_alias),
+                ),
+                to=exp.DataType.build("VARCHAR"),
+            ),
+        )
         start_node = exp.Anonymous(
             this="JSON_OBJECT",
             expressions=[
                 exp.Literal.string("id"),
-                exp.Column(
-                    this=exp.Identifier(this=src_nm.id_column, quoted=True),
-                    table=exp.Identifier(this=src_alias),
-                ),
+                src_compound_id,
                 exp.Literal.string("label"),
                 exp.Literal.string(src_nm.label),
                 exp.Literal.string("tableLabel"),
@@ -141,10 +165,7 @@ class SelectBuilderMixin:
             this="JSON_OBJECT",
             expressions=[
                 exp.Literal.string("id"),
-                exp.Column(
-                    this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
-                    table=exp.Identifier(this=tgt_alias),
-                ),
+                tgt_compound_id,
                 exp.Literal.string("label"),
                 exp.Literal.string(tgt_nm.label),
                 exp.Literal.string("tableLabel"),
@@ -430,6 +451,61 @@ class SelectBuilderMixin:
             return exp.alias_(parsed, _cypher_alias)
         return parsed
 
+    def _select_varlen_rel_var(
+        self,
+        expr_text: str,
+        alias: str | None,
+        graph_var_kind_edge: "GraphVarKind",
+    ) -> exp.Expr:
+        """Emit SELECT expression for a variable-length relationship variable (e.g. c from [c*..5]).
+
+        Flat-join paths: JSON_ARRAY of edge objects from the resolved schema path steps.
+        Recursive CTE paths: NULL (intermediate edges are not projected by the recursive CTE).
+        """
+        path_var = self._varlen_rel_vars[expr_text]
+        path_step_info = getattr(self, "_path_steps", {}).get(path_var)
+        self._graph_vars[alias or expr_text] = graph_var_kind_edge
+        if path_step_info is not None:
+            _, step_edges = path_step_info
+            edges_array = exp.Anonymous(
+                this="JSON_ARRAY",
+                expressions=[
+                    self._build_edge_object(rt, sa, snm, ta, tnm, rev)
+                    for rt, sa, snm, ta, tnm, rev in step_edges
+                ],
+            )
+            return exp.alias_(edges_array, alias or expr_text)
+        return exp.alias_(exp.Null(), alias or expr_text)
+
+    def _build_node_object_expr(self, alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        props_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        for prop_name, col_name in nm.properties.items():
+            props_exprs.append(exp.Literal.string(prop_name))
+            props_exprs.append(
+                exp.Column(
+                    this=exp.Identifier(this=col_name, quoted=True),
+                    table=exp.Identifier(this=alias),
+                )
+            )
+        props = exp.Anonymous(this="JSON_OBJECT", expressions=props_exprs)
+        id_col = exp.Column(
+            this=exp.Identifier(this=nm.id_column, quoted=True),
+            table=exp.Identifier(this=alias),
+        )
+        return exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[
+                exp.Literal.string("id"),
+                exp.Cast(this=id_col, to=exp.DataType.build("VARCHAR")),
+                exp.Literal.string("label"),
+                exp.Literal.string(nm.label),
+                exp.Literal.string("tableLabel"),
+                exp.Literal.string(nm.table_label),
+                exp.Literal.string("properties"),
+                props,
+            ],
+        )
+
     def _build_select(self, return_clause: ReturnClause) -> list[exp.Expr]:
         from provisa.cypher.translator import GraphVarKind  # avoid circular at module level
 
@@ -450,6 +526,12 @@ class SelectBuilderMixin:
                 )
                 continue
 
+            # Varlen relationship variable: RETURN c where c is from [c*..5]
+            varlen_rel_vars = getattr(self, "_varlen_rel_vars", {})
+            if is_bare and expr_text in varlen_rel_vars:
+                exprs.append(self._select_varlen_rel_var(expr_text, alias, GraphVarKind.EDGE))
+                continue
+
             # Path variable: RETURN p where p = shortestPath(...)
             if is_bare and expr_text in self._path_vars:
                 exprs.append(self._select_path_var(expr_text, alias, GraphVarKind.PATH))
@@ -466,6 +548,19 @@ class SelectBuilderMixin:
                 if node_expr is not None:
                     exprs.append(node_expr)
                     continue
+
+            # Graph function expression: register alias kind for assembler deserialization
+            import re as _re
+
+            for _pat, _kind in (
+                (r"^relationship(?:s)?\s*\(", GraphVarKind.EDGE),
+                (r"^nodes\s*\(", GraphVarKind.NODE),
+                (r"^startNode\s*\(", GraphVarKind.NODE),
+                (r"^endNode\s*\(", GraphVarKind.NODE),
+            ):
+                if _re.match(_pat, expr_text, _re.IGNORECASE) and alias:
+                    self._graph_vars[alias.lower()] = _kind
+                    break
 
             # Property access or expression
             exprs.append(self._select_prop_expr(expr_text, alias))

@@ -98,7 +98,8 @@ def path_to_recursive_sql(
     tgt_pk = tgt_meta.id_column
 
     if rel_mapping.source_constant is not None:
-        src_join_expr = str(rel_mapping.source_constant)
+        escaped = str(rel_mapping.source_constant).replace("'", "''")
+        src_join_expr = f"'{escaped}'"
     else:
         src_join_expr = f'src."{rel_mapping.join_source_column}"'
 

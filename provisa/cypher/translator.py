@@ -156,7 +156,8 @@ def _make_rel_join(
             )
     else:
         src_col = _src_col_expr_for_rm(rm, src_table_ref, src_nm)
-        cond = exp.EQ(this=src_col, expression=_tgt_col_expr_for_rm(rm, tgt_alias))
+        tgt_col = _tgt_col_expr_for_rm(rm, tgt_alias)
+        cond = exp.EQ(this=src_col, expression=tgt_col)
     return {"table": jt, "on": cond, "join_type": join_type}
 
 
@@ -257,6 +258,10 @@ def _fold_where_into_optional_joins(
 
     for cond in conjuncts:
         cond_text = cond.sql(dialect="trino")
+        # _nf_ conditions must stay in WHERE so nf_extractor can strip them before SQL execution.
+        if "_nf_" in cond_text:
+            remaining_conjuncts.append(cond)
+            continue
         refs = {v for v in optional_vars if re.search(rf"\b{re.escape(v)}\b", cond_text)}
         refs_in_joins = refs & set(join_order.keys())
         if refs_in_joins:
@@ -266,7 +271,6 @@ def _fold_where_into_optional_joins(
             remaining_conjuncts.append(cond)
 
     modified: list[dict] = []
-    folded = False
     for join in joins:
         alias = _join_alias(join["table"])
         if alias in alias_to_conjuncts and join["join_type"] == "LEFT":
@@ -280,11 +284,10 @@ def _fold_where_into_optional_joins(
                 else:
                     new_on = exp.And(this=new_on, expression=cond)
             modified.append({**join, "on": new_on})
-            folded = True
         else:
             modified.append(join)
 
-    remaining: "exp.Expression | None" = None
+    remaining: "exp.Expression | None" = None  # pyright: ignore[reportPrivateImportUsage]
     for cond in remaining_conjuncts:
         remaining = cond if remaining is None else exp.And(this=remaining, expression=cond)
 
@@ -391,6 +394,8 @@ class _Translator(
         self._passthrough_vars: set[str] = set()
         # alias of the all-rels union subquery (when built)
         self._all_rels_alias: str | None = None
+        # varlen rel variable → outer path variable (e.g. c from [c*..5] → r from MATCH r = ...)
+        self._varlen_rel_vars: dict[str, str] = {}
 
     def _build_cte_segment(
         self,
@@ -426,7 +431,9 @@ class _Translator(
 
         stage_query = exp.select(*select_exprs).from_(from_clause)
         for join in joins:
-            stage_query = stage_query.join(join["table"], on=join["on"], join_type=join["join_type"])
+            stage_query = stage_query.join(
+                join["table"], on=join["on"], join_type=join["join_type"]
+            )
         if where_expr:
             stage_query = stage_query.where(where_expr)
         with_group_exprs = self._build_group_by_for_with(with_clause.items)
@@ -533,7 +540,9 @@ class _Translator(
             query = query.where(where_expr)
         for lat_cond in self._lateral_conditions:
             query = query.where(lat_cond)
-        group_exprs = self._build_group_by(self._ast.return_clause) if self._ast.return_clause else []
+        group_exprs = (
+            self._build_group_by(self._ast.return_clause) if self._ast.return_clause else []
+        )
         if group_exprs:
             query = query.group_by(*group_exprs)
         return query
@@ -566,9 +575,7 @@ class _Translator(
             result = exp.Union(this=result, expression=branch, distinct=False)
         return result
 
-    def _fold_union_parts(
-        self, result: "exp.Select | exp.Union"
-    ) -> "exp.Select | exp.Union":
+    def _fold_union_parts(self, result: "exp.Select | exp.Union") -> "exp.Select | exp.Union":
         """Fold UNION / UNION ALL parts into result."""
         for sub_ast, is_all in self._ast.union_parts:
             sub_sql, sub_params, sub_graph_vars = cypher_to_sql(sub_ast, self._lm, self._params)
@@ -746,9 +753,7 @@ class _Translator(
             self._domain_nodes[node.variable] = "__all__"
             self._var_table[node.variable] = (node.variable, None)
 
-    def _build_first_node_from(
-        self, first_node: "NodePattern"
-    ) -> "exp.Expression | None":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def _build_first_node_from(self, first_node: "NodePattern") -> "exp.Expression | None":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM expr for the first node; None if lateral-bound or not resolvable."""
         fv = first_node.variable
         if fv and fv in self._lateral_bound:
@@ -777,13 +782,11 @@ class _Translator(
                         f"Start the pattern from a node in your own domain and traverse to '{nm.label}' via a relationship."
                     )
                 assert type_label is not None
-                alias = fv or type_label.lower()
+                alias = fv or nm.table_name
                 return _node_table_expr(nm, alias)
         return None
 
-    def _build_standalone_node_join(
-        self, fv: "str | None", clause: MatchClause
-    ) -> "dict | None":
+    def _build_standalone_node_join(self, fv: "str | None", clause: MatchClause) -> "dict | None":
         """Build a JOIN dict for a standalone node (no relationships) in a non-first clause."""
         if not fv or fv in self._cte_sources:
             return None
@@ -799,9 +802,7 @@ class _Translator(
             return {"table": join_table, "on": on_clause, "join_type": join_type}
         return None
 
-    def _resolve_early_rel_mapping(
-        self, rel: "RelPattern"
-    ) -> "RelationshipMapping | None":
+    def _resolve_early_rel_mapping(self, rel: "RelPattern") -> "RelationshipMapping | None":
         """Resolve early rel_mapping for domain-node path and anonymous node inference."""
         if not rel.types:
             return None
@@ -852,9 +853,7 @@ class _Translator(
         tgt_alias = tgt_var
         join_table = self._build_domain_union(tgt_var, self._domain_nodes[tgt_var])
         src_table_ref = (
-            self._var_table.get(src_var, (src_var, None))[0]
-            if src_var
-            else src_nm.table_name  # type: ignore[union-attr]
+            self._var_table.get(src_var, (src_var, None))[0] if src_var else src_nm.table_name  # type: ignore[union-attr]
         )
         src_col_expr = _src_col_expr_for_rm(rel_mapping, src_table_ref, src_nm)
         tgt_col_expr = _tgt_col_expr_for_rm(rel_mapping, tgt_alias)
@@ -920,11 +919,7 @@ class _Translator(
         return [
             (m, bwd)
             for m in alias_matches
-            if (
-                bwd := _is_bwd_for_candidate(
-                    m, bidir, backward, src_nm, tgt_nm, tgt_nm_explicit
-                )
-            )
+            if (bwd := _is_bwd_for_candidate(m, bidir, backward, src_nm, tgt_nm, tgt_nm_explicit))
             is not None
         ]
 
@@ -992,8 +987,6 @@ class _Translator(
     ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Apply primary and extra JOIN candidates to joins/from_expr."""
         join_type = "LEFT" if clause.optional else "INNER"
-        tgt_var = None
-        # tgt_nm is resolved; tgt_alias comes from the last rel's tgt
         tgt_alias = tgt_nm.table_name
         if src_var and src_var in self._cte_sources:
             src_table_ref = self._var_table.get(src_var, (src_var, None))[0]
@@ -1006,7 +999,11 @@ class _Translator(
             _src_alias = src_var or src_nm.table_name
             if _src_alias and src_nm and tgt_nm:
                 self._rel_var_endpoints[rel.variable] = (
-                    _src_alias, src_nm, tgt_alias, tgt_nm, primary_bwd,
+                    _src_alias,
+                    src_nm,
+                    tgt_alias,
+                    tgt_nm,
+                    primary_bwd,
                 )
 
         primary_join = _make_rel_join(
@@ -1055,7 +1052,11 @@ class _Translator(
             _tgt_alias = tgt_var or tgt_nm.table_name
             if _src_alias and _tgt_alias:
                 self._rel_var_endpoints[rel.variable] = (
-                    _src_alias, src_nm, _tgt_alias, tgt_nm, primary_bwd,
+                    _src_alias,
+                    src_nm,
+                    _tgt_alias,
+                    tgt_nm,
+                    primary_bwd,
                 )
 
         primary_join = _make_rel_join(
@@ -1097,8 +1098,8 @@ class _Translator(
         tgt_var = tgt_node.variable
 
         rel_mapping = self._resolve_early_rel_mapping(rel)
-        src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr = (
-            self._resolve_rel_node_types(src_node, tgt_node, rel_mapping, from_expr)
+        src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr = self._resolve_rel_node_types(
+            src_node, tgt_node, rel_mapping, from_expr
         )
 
         if from_expr is None and src_nm is not None:
@@ -1189,6 +1190,8 @@ class _Translator(
                         variable=clause.variable,
                         optional=clause.optional,
                     )
+                    if rel.variable and clause.variable:
+                        self._varlen_rel_vars[rel.variable] = clause.variable
                     pf_from, pf_joins = self._translate_path_function(pf_clause)
                     if from_expr is None:
                         from_expr = pf_from
@@ -1220,6 +1223,45 @@ class _Translator(
                 else:
                     _path_tgt_alias = ""
                 self._path_vars[clause.variable] = (_path_src_alias, _path_tgt_alias, False)
+                if (
+                    rels
+                    and clause.variable not in self._path_steps
+                    and not any(r.variable_length for r in rels)
+                ):
+                    _step_nodes: list[tuple[str, NodeMapping]] = []
+                    _step_edges: list[tuple] = []
+                    for _node in nodes:
+                        if _node.variable:
+                            _node_info = self._var_table.get(_node.variable)
+                            if _node_info and _node_info[1]:
+                                _step_nodes.append((_node_info[0], _node_info[1]))
+                    for _rel in rels:
+                        if _rel.variable and _rel.variable in self._rel_var_endpoints:
+                            _ep = self._rel_var_endpoints[_rel.variable]
+                            _sa, _snm, _ta, _tnm, _rev = _ep
+                            _rt = self._rel_var_types.get(_rel.variable, "")
+                            _step_edges.append((_rt, _sa, _snm, _ta, _tnm, _rev))
+                        elif _rel.types:
+                            _si = rels.index(_rel)
+                            _src_node = nodes[_si]
+                            _tgt_node = nodes[_si + 1] if _si + 1 < len(nodes) else None
+                            if _src_node.variable and _tgt_node and _tgt_node.variable:
+                                _src_info = self._var_table.get(_src_node.variable)
+                                _tgt_info = self._var_table.get(_tgt_node.variable)
+                                if _src_info and _src_info[1] and _tgt_info and _tgt_info[1]:
+                                    _rt = _rel.types[0].upper()
+                                    _step_edges.append(
+                                        (
+                                            _rt,
+                                            _src_info[0],
+                                            _src_info[1],
+                                            _tgt_info[0],
+                                            _tgt_info[1],
+                                            False,
+                                        )
+                                    )
+                    if _step_nodes:
+                        self._path_steps[clause.variable] = (_step_nodes, _step_edges)
 
         if from_expr is None:
             raise CypherTranslateError("No MATCH clause produced a FROM table")
@@ -1235,8 +1277,7 @@ class _Translator(
             for extra_from, extra_joins, extra_path_steps_map in self._extra_path_branches:
                 branch_aliases = {_join_alias(j["table"]) for j in extra_joins}
                 supplement = [
-                    pj for alias, pj in primary_aliases.items()
-                    if alias not in branch_aliases
+                    pj for alias, pj in primary_aliases.items() if alias not in branch_aliases
                 ]
                 patched.append((extra_from, extra_joins + supplement, extra_path_steps_map))
             self._extra_path_branches = patched
@@ -1317,11 +1358,25 @@ class _Translator(
     def _rewrite_graph_fns(self, text: str) -> str:
         """Rewrite graph-aware functions using var_table context."""
 
+        def _id_in_list_repl(m: re.Match) -> str:
+            var = m.group(1).strip()
+            items_text = m.group(2)
+            info = self._var_table.get(var)
+            if info and info[1]:
+                id_ref = f'{var}."{info[1].id_column}"'
+            elif var in self._domain_nodes:
+                id_ref = f'{var}."__id"'
+            else:
+                return m.group(0)
+            return f"{id_ref} IN ({items_text})"
+
         def _id_repl(m: re.Match) -> str:
             var = m.group(1).strip()
             info = self._var_table.get(var)
             if info and info[1]:
                 return f'{var}."{info[1].id_column}"'
+            if var in self._domain_nodes:
+                return f'{var}."__id"'
             return m.group(0)
 
         def _labels_repl(m: re.Match) -> str:
@@ -1350,6 +1405,13 @@ class _Translator(
         text = re.sub(r"\btype\s*\(\s*([A-Za-z_]\w*)\s*\)", _type_repl, text, flags=re.IGNORECASE)
         # exists(n.prop) → (n.prop) IS NOT NULL
         text = re.sub(r"\bexists\s*\(([^()]+)\)", r"(\1) IS NOT NULL", text, flags=re.IGNORECASE)
+        # id(var) IN [...] — must run before plain id() so domain nodes cast integer literals to VARCHAR
+        text = re.sub(
+            r"\bid\s*\(\s*([A-Za-z_]\w*)\s*\)\s+IN\s+\[([^\]]*)\]",
+            _id_in_list_repl,
+            text,
+            flags=re.IGNORECASE,
+        )
         # id(var) → var."id_col"
         text = re.sub(r"\bid\s*\(\s*([A-Za-z_]\w*)\s*\)", _id_repl, text)
         # labels(var) → ARRAY['Label']
@@ -1366,6 +1428,109 @@ class _Translator(
         else:
             # flat path: length is always 1 (single hop or variable-length flat join)
             text = re.sub(r"\blength\s*\(\s*[A-Za-z_]\w*\s*\)", "1", text, flags=re.IGNORECASE)
+
+        def _relationships_repl(m: re.Match) -> str:
+            var = m.group(1).strip()
+            path_step_info = getattr(self, "_path_steps", {}).get(var)
+            if path_step_info is None:
+                _vr = getattr(self, "_varlen_rel_vars", {})
+                if var in _vr:
+                    path_step_info = getattr(self, "_path_steps", {}).get(_vr[var])
+            if path_step_info is not None:
+                _, step_edges = path_step_info
+                arr = exp.Anonymous(
+                    this="JSON_ARRAY",
+                    expressions=[
+                        self._build_edge_object(rt, sa, snm, ta, tnm, rev)
+                        for rt, sa, snm, ta, tnm, rev in step_edges
+                    ],
+                )
+                return arr.sql(dialect="trino")
+            return "NULL"
+
+        def _nodes_repl(m: re.Match) -> str:
+            var = m.group(1).strip()
+            if var not in self._path_vars:
+                return m.group(0)
+            path_step_info = getattr(self, "_path_steps", {}).get(var)
+            if path_step_info is not None:
+                step_nodes, _ = path_step_info
+                arr = exp.Anonymous(
+                    this="JSON_ARRAY",
+                    expressions=[
+                        self._build_node_object_expr(node_alias, nm)
+                        for node_alias, nm in step_nodes
+                    ],
+                )
+                return arr.sql(dialect="trino")
+            return "NULL"
+
+        def _startnode_repl(m: re.Match) -> str:
+            var = m.group(1).strip()
+            endpoints = self._rel_var_endpoints.get(var)
+            if endpoints:
+                src_alias, src_nm, _, _, _ = endpoints
+                return self._build_node_object_expr(src_alias, src_nm).sql(dialect="trino")
+            path_info = self._path_vars.get(var)
+            if path_info:
+                src_alias, _, _ = path_info
+                src_info = self._var_table.get(src_alias)
+                if src_info and src_info[1]:
+                    return self._build_node_object_expr(src_alias, src_info[1]).sql(dialect="trino")
+                return f"{src_alias}.*"
+            return m.group(0)
+
+        def _endnode_repl(m: re.Match) -> str:
+            var = m.group(1).strip()
+            endpoints = self._rel_var_endpoints.get(var)
+            if endpoints:
+                _, _, tgt_alias, tgt_nm, _ = endpoints
+                return self._build_node_object_expr(tgt_alias, tgt_nm).sql(dialect="trino")
+            path_info = self._path_vars.get(var)
+            if path_info:
+                _, tgt_alias, _ = path_info
+                tgt_info = self._var_table.get(tgt_alias)
+                if tgt_info and tgt_info[1]:
+                    return self._build_node_object_expr(tgt_alias, tgt_info[1]).sql(dialect="trino")
+                return f"{tgt_alias}.*"
+            return m.group(0)
+
+        def _properties_repl(m: re.Match) -> str:
+            var = m.group(1).strip()
+            info = self._var_table.get(var)
+            if info and info[1]:
+                nm = info[1]
+                sql_alias = info[0]
+                exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                for prop_name, col_name in nm.properties.items():
+                    exprs.append(exp.Literal.string(prop_name))
+                    exprs.append(
+                        exp.Column(
+                            this=exp.Identifier(this=col_name, quoted=True),
+                            table=exp.Identifier(this=sql_alias),
+                        )
+                    )
+                return exp.Anonymous(this="JSON_OBJECT", expressions=exprs).sql(dialect="trino")
+            if var in self._rel_var_types:
+                return "JSON_OBJECT()"
+            return m.group(0)
+
+        text = re.sub(
+            r"\brelationship(?:s)?\s*\(\s*([A-Za-z_]\w*)\s*\)",
+            _relationships_repl,
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(r"\bnodes\s*\(\s*([A-Za-z_]\w*)\s*\)", _nodes_repl, text, flags=re.IGNORECASE)
+        text = re.sub(
+            r"\bstartNode\s*\(\s*([A-Za-z_]\w*)\s*\)", _startnode_repl, text, flags=re.IGNORECASE
+        )
+        text = re.sub(
+            r"\bendNode\s*\(\s*([A-Za-z_]\w*)\s*\)", _endnode_repl, text, flags=re.IGNORECASE
+        )
+        text = re.sub(
+            r"\bproperties\s*\(\s*([A-Za-z_]\w*)\s*\)", _properties_repl, text, flags=re.IGNORECASE
+        )
         return text
 
     def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -1601,11 +1766,18 @@ class _Translator(
                 this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
                 table=exp.Identifier(this=ta),
             )
+            src_compound_id = exp.DPipe(
+                this=exp.DPipe(
+                    this=exp.Literal.string(src_nm.label),
+                    expression=exp.Literal.string("|"),
+                ),
+                expression=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
+            )
             src_json = exp.JSONObject(
                 expressions=[
                     exp.JSONKeyValue(
                         this=exp.Literal.string("id"),
-                        expression=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
+                        expression=src_compound_id,
                     ),
                     exp.JSONKeyValue(
                         this=exp.Literal.string("label"),
@@ -1613,11 +1785,18 @@ class _Translator(
                     ),
                 ]
             )
+            tgt_compound_id = exp.DPipe(
+                this=exp.DPipe(
+                    this=exp.Literal.string(tgt_nm.label),
+                    expression=exp.Literal.string("|"),
+                ),
+                expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),
+            )
             tgt_json = exp.JSONObject(
                 expressions=[
                     exp.JSONKeyValue(
                         this=exp.Literal.string("id"),
-                        expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),
+                        expression=tgt_compound_id,
                     ),
                     exp.JSONKeyValue(
                         this=exp.Literal.string("label"),
@@ -1728,9 +1907,15 @@ class _Translator(
             select_items: list[exp.Expr] = [
                 exp.alias_(exp.Literal.string(nm.label), alias="__label"),
                 exp.alias_(
-                    exp.Cast(
-                        this=exp.Column(this=exp.Identifier(this=nm.id_column, quoted=True)),
-                        to=exp.DataType(this=exp.DataType.Type.VARCHAR),
+                    exp.DPipe(
+                        this=exp.DPipe(
+                            this=exp.Literal.string(nm.label),
+                            expression=exp.Literal.string("|"),
+                        ),
+                        expression=exp.Cast(
+                            this=exp.Column(this=exp.Identifier(this=nm.id_column, quoted=True)),
+                            to=exp.DataType(this=exp.DataType.Type.VARCHAR),
+                        ),
                     ),
                     alias="__id",
                 ),

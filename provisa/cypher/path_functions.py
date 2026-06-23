@@ -17,12 +17,17 @@ _recursive_ctes, _shortestpath_hops_col, _shortestpath_is_all.
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
+import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.parser import MatchClause, NodePattern, PathFunction, RelPattern
+
+
+def _parse_sql_expr(sql: str) -> Any:
+    return sqlglot.parse_one(sql, dialect="trino")
 
 
 # ---------------------------------------------------------------------------
@@ -80,10 +85,20 @@ def _filter_allowed_rels(
     lm: CypherLabelMap,
     rel_types: list[str] | None,
 ) -> list[RelationshipMapping]:
-    """Return schema rels matching the given rel_types filter (None = all)."""
+    """Return schema rels matching the given rel_types filter (None = all).
+
+    Relationships with source_constant are synthetic meta-navigation joins
+    (e.g. HAS_TABLE).  They anchor every data row to a single registered_tables
+    entry via a constant, not a real FK column, so they cannot be traversed as
+    intermediate hops in a variable-length path without producing impossible
+    contradictory join conditions.  Exclude them unless the caller explicitly
+    names them.
+    """
     return [
-        r for r in lm.relationships.values()
-        if rel_types is None or r.rel_type in rel_types
+        r
+        for r in lm.relationships.values()
+        if (rel_types is None or r.rel_type in rel_types)
+        and (rel_types is not None or r.source_constant is None)
     ]
 
 
@@ -99,9 +114,10 @@ def _needs_recursive_cte(
     Recursive is needed when src==tgt label (same-type start/end) OR any
     allowed rel loops back to the same node type (e.g. KNOWS: Person→Person).
     """
-    return variable_length and not is_undirected and (
-        src_type == tgt_type
-        or any(r.source_label == r.target_label for r in allowed_rels)
+    return (
+        variable_length
+        and not is_undirected
+        and (src_type == tgt_type or any(r.source_label == r.target_label for r in allowed_rels))
     )
 
 
@@ -124,14 +140,12 @@ class PathFunctionsMixin:
     _lm: CypherLabelMap
     _var_table: dict
     _extra_path_branches: list
-    _recursive_ctes: list          # list[(cte_name, exp.Expression)]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    _recursive_ctes: list  # list[(cte_name, exp.Expression)]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     _shortestpath_hops_col: exp.Expression | None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     _shortestpath_is_all: bool
-    _path_vars: dict               # path_var → (src_var, tgt_var, is_recursive)
+    _path_vars: dict  # path_var → (src_var, tgt_var, is_recursive)
 
-    def _translate_path_function(
-        self, clause: MatchClause
-    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def _translate_path_function(self, clause: MatchClause) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Entry point: route to flat-JOIN or recursive-CTE path."""
         from provisa.cypher.translator import CypherTranslateError  # avoid circular at module level
 
@@ -146,7 +160,9 @@ class PathFunctionsMixin:
 
         rel_types, variable_length, is_undirected, max_hops = _extract_rel_attrs(rel)
         allowed_rels = _filter_allowed_rels(self._lm, rel_types)
-        needs_recursive = _needs_recursive_cte(variable_length, is_undirected, src_type, tgt_type, allowed_rels)
+        needs_recursive = _needs_recursive_cte(
+            variable_length, is_undirected, src_type, tgt_type, allowed_rels
+        )
 
         if clause.variable and src_var and tgt_var:
             self._path_vars[clause.variable] = (src_var, tgt_var, needs_recursive)
@@ -155,14 +171,32 @@ class PathFunctionsMixin:
 
         if needs_recursive:
             return self._translate_path_recursive_branch(
-                clause, pf, src_var, tgt_var, src_nm, tgt_nm,
-                src_type, tgt_type, allowed_rels, max_hops, is_all_paths,
+                clause,
+                pf,
+                src_var,
+                tgt_var,
+                src_nm,
+                tgt_nm,
+                src_type,
+                tgt_type,
+                allowed_rels,
+                max_hops,
+                is_all_paths,
                 CypherTranslateError,
             )
 
         return self._translate_path_flat_branch(
-            clause, src_var, tgt_var, src_nm, tgt_nm,
-            src_type, tgt_type, rel_types, max_hops, is_undirected, is_all_paths,
+            clause,
+            src_var,
+            tgt_var,
+            src_nm,
+            tgt_nm,
+            src_type,
+            tgt_type,
+            rel_types,
+            max_hops,
+            is_undirected,
+            is_all_paths,
             CypherTranslateError,
         )
 
@@ -185,12 +219,18 @@ class PathFunctionsMixin:
         base_rels = [r for r in allowed_rels if r.source_label == src_type]
         if not base_rels:
             raise CypherTranslateError(
-                f"No schema path found from {src_type!r} to {tgt_type!r} "
-                f"within {max_hops} hops"
+                f"No schema path found from {src_type!r} to {tgt_type!r} within {max_hops} hops"
             )
         return self._translate_path_function_recursive(
-            clause, src_var, tgt_var, src_nm, tgt_nm,
-            src_type, tgt_type, allowed_rels, max_hops,
+            clause,
+            src_var,
+            tgt_var,
+            src_nm,
+            tgt_nm,
+            src_type,
+            tgt_type,
+            allowed_rels,
+            max_hops,
             is_all=pf.func_name.lower() in ("allshortestpaths", "allpaths"),
             suppress_hops_order=is_all_paths,
         )
@@ -211,7 +251,9 @@ class PathFunctionsMixin:
         CypherTranslateError: type,
     ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build flat JOIN path for non-self-referential variable-length or fixed-length."""
-        all_paths = self._lm.find_paths(src_type, tgt_type, rel_types, max_hops, bidirectional=is_undirected)
+        all_paths = self._lm.find_paths(
+            src_type, tgt_type, rel_types, max_hops, bidirectional=is_undirected
+        )
         if not all_paths:
             direction_hint = " (undirected — both directions searched)" if is_undirected else ""
             raise CypherTranslateError(
@@ -220,7 +262,9 @@ class PathFunctionsMixin:
             )
 
         candidate_paths = _select_candidate_paths(all_paths, is_all_paths, is_undirected)
-        return self._build_flat_join_result(clause, candidate_paths, src_var, tgt_var, src_nm, tgt_nm)
+        return self._build_flat_join_result(
+            clause, candidate_paths, src_var, tgt_var, src_nm, tgt_nm
+        )
 
     def _build_flat_join_result(
         self,
@@ -288,7 +332,12 @@ class PathFunctionsMixin:
         src_nm: NodeMapping,
         tgt_nm: NodeMapping,
         optional: bool,
-    ) -> tuple[exp.Expression, list[dict], list[tuple[str, NodeMapping]], list[tuple[str, str, NodeMapping, str, NodeMapping, bool]]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> tuple[
+        exp.Expression,
+        list[dict],
+        list[tuple[str, NodeMapping]],
+        list[tuple[str, str, NodeMapping, str, NodeMapping, bool]],
+    ]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM + JOIN list for a single flat schema path."""
         src_alias = src_var or src_nm.table_name
         from_expr = exp.alias_(
@@ -312,16 +361,26 @@ class PathFunctionsMixin:
             nxt_alias = (tgt_var or nxt_nm.table_name) if is_last else f"_hop{i + 1}"
             on_cond = exp.EQ(
                 this=(
-                    exp.Literal.number(rel_mapping.source_constant)
+                    exp.Literal.string(str(rel_mapping.source_constant))
                     if rel_mapping.source_constant is not None
-                    else exp.Column(
-                        this=exp.Identifier(this=rel_mapping.join_source_column, quoted=True),
-                        table=exp.Identifier(this=prev_alias),
+                    else (
+                        _parse_sql_expr(
+                            rel_mapping.source_expr.replace("{alias}", f'"{prev_alias}"')
+                        )
+                        if rel_mapping.source_expr is not None
+                        else exp.Column(
+                            this=exp.Identifier(this=rel_mapping.join_source_column, quoted=True),
+                            table=exp.Identifier(this=prev_alias),
+                        )
                     )
                 ),
-                expression=exp.Column(
-                    this=exp.Identifier(this=rel_mapping.join_target_column, quoted=True),
-                    table=exp.Identifier(this=nxt_alias),
+                expression=(
+                    _parse_sql_expr(rel_mapping.target_expr.replace("{alias}", f'"{nxt_alias}"'))
+                    if rel_mapping.target_expr is not None
+                    else exp.Column(
+                        this=exp.Identifier(this=rel_mapping.join_target_column, quoted=True),
+                        table=exp.Identifier(this=nxt_alias),
+                    )
                 ),
             )
             join_table = exp.alias_(
@@ -338,10 +397,11 @@ class PathFunctionsMixin:
             # Canonical source_label is stored on the original RelationshipMapping in self._lm.
             canonical_rel = self._lm.relationships.get(rel_mapping.rel_type)
             is_reversed = (
-                canonical_rel is not None
-                and canonical_rel.source_label != rel_mapping.source_label
+                canonical_rel is not None and canonical_rel.source_label != rel_mapping.source_label
             )
-            step_edges.append((rel_mapping.rel_type, prev_alias, prev_nm, nxt_alias, nxt_nm, is_reversed))
+            step_edges.append(
+                (rel_mapping.rel_type, prev_alias, prev_nm, nxt_alias, nxt_nm, is_reversed)
+            )
             prev_alias = nxt_alias
             prev_nm = nxt_nm
 
@@ -468,14 +528,17 @@ class PathFunctionsMixin:
         """
 
         def _tbl(nm: NodeMapping, alias: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            return cast(exp.Expression, exp.alias_(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                exp.Table(
-                    this=exp.Identifier(this=nm.sql_table_name, quoted=True),
-                    db=exp.Identifier(this=nm.schema_name, quoted=True),
-                    catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
+            return cast(
+                exp.Expression,
+                exp.alias_(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                    exp.Table(
+                        this=exp.Identifier(this=nm.sql_table_name, quoted=True),
+                        db=exp.Identifier(this=nm.schema_name, quoted=True),
+                        catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
+                    ),
+                    alias=alias,
                 ),
-                alias=alias,
-            ))
+            )
 
         # ------------------------------------------------------------------
         # Base case: seed with 1-hop expansions from the source type
@@ -513,16 +576,24 @@ class PathFunctionsMixin:
                     _tbl(tgt_node_m, "_nxt"),
                     on=exp.EQ(
                         this=(
-                            exp.Literal.number(rel.source_constant)
+                            exp.Literal.string(str(rel.source_constant))
                             if rel.source_constant is not None
-                            else exp.Column(
-                                this=exp.Identifier(this=rel.join_source_column, quoted=True),
-                                table=exp.Identifier(this="_seed"),
+                            else (
+                                _parse_sql_expr(rel.source_expr.replace("{alias}", '"_seed"'))
+                                if rel.source_expr is not None
+                                else exp.Column(
+                                    this=exp.Identifier(this=rel.join_source_column, quoted=True),
+                                    table=exp.Identifier(this="_seed"),
+                                )
                             )
                         ),
-                        expression=exp.Column(
-                            this=exp.Identifier(this=rel.join_target_column, quoted=True),
-                            table=exp.Identifier(this="_nxt"),
+                        expression=(
+                            _parse_sql_expr(rel.target_expr.replace("{alias}", '"_nxt"'))
+                            if rel.target_expr is not None
+                            else exp.Column(
+                                this=exp.Identifier(this=rel.join_target_column, quoted=True),
+                                table=exp.Identifier(this="_nxt"),
+                            )
                         ),
                     ),
                     join_type="INNER",
@@ -600,16 +671,24 @@ class PathFunctionsMixin:
                     _tbl(tgt_node_m, "_nxt"),
                     on=exp.EQ(
                         this=(
-                            exp.Literal.number(rel.source_constant)
+                            exp.Literal.string(str(rel.source_constant))
                             if rel.source_constant is not None
-                            else exp.Column(
-                                this=exp.Identifier(this=rel.join_source_column, quoted=True),
-                                table=exp.Identifier(this="_cur"),
+                            else (
+                                _parse_sql_expr(rel.source_expr.replace("{alias}", '"_cur"'))
+                                if rel.source_expr is not None
+                                else exp.Column(
+                                    this=exp.Identifier(this=rel.join_source_column, quoted=True),
+                                    table=exp.Identifier(this="_cur"),
+                                )
                             )
                         ),
-                        expression=exp.Column(
-                            this=exp.Identifier(this=rel.join_target_column, quoted=True),
-                            table=exp.Identifier(this="_nxt"),
+                        expression=(
+                            _parse_sql_expr(rel.target_expr.replace("{alias}", '"_nxt"'))
+                            if rel.target_expr is not None
+                            else exp.Column(
+                                this=exp.Identifier(this=rel.join_target_column, quoted=True),
+                                table=exp.Identifier(this="_nxt"),
+                            )
                         ),
                     ),
                     join_type="INNER",

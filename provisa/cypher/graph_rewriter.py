@@ -47,6 +47,16 @@ def apply_graph_rewrites(
         result.set("expression", right)
         return result
 
+    # Recurse into FROM subqueries that wrap a Union or Select (e.g. SELECT * FROM (UNION) AS
+    # _union produced by _apply_order_limit when LIMIT is applied to a variable-length path).
+    # Without this, a.*  /  b.*  inside the inner branches are never rewritten to JSON_OBJECT.
+    for _subq in sql_ast.find_all(exp.Subquery):
+        _inner = _subq.this
+        if isinstance(_inner, (exp.Union, exp.Select)):
+            _inner_rw = apply_graph_rewrites(_inner, graph_vars, label_map)
+            if _inner_rw is not _inner:
+                _subq.set("this", _inner_rw)
+
     # Build alias → NodeMapping from the FROM/JOIN clauses
     alias_to_node = _extract_alias_mappings(sql_ast, label_map)
 
@@ -72,6 +82,19 @@ def apply_graph_rewrites(
             kind = graph_vars[graph_var]
             # EDGE, PATH, and PASSTHROUGH expressions are pre-built; pass through.
             if kind in (GraphVarKind.EDGE, GraphVarKind.PATH, GraphVarKind.PASSTHROUGH):
+                new_expressions.append(sel_expr)
+                continue
+            # NODE expressions already containing pre-built JSON (from _rewrite_graph_fns for
+            # startNode/endNode/nodes) pass through — they must not be rebuilt from raw columns.
+            # JSON_OBJECT parses to exp.JSONObject; JSON_ARRAY parses to exp.Anonymous("JSON_ARRAY").
+            if kind == GraphVarKind.NODE and isinstance(inner, (exp.JSONObject, exp.JSONArray)):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                new_expressions.append(sel_expr)
+                continue
+            if (  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                kind == GraphVarKind.NODE
+                and isinstance(inner, exp.Anonymous)
+                and inner.this.upper() == "JSON_ARRAY"
+            ):
                 new_expressions.append(sel_expr)
                 continue
             # Find node meta: prefer alias_to_node lookup, then direct search
@@ -100,16 +123,24 @@ def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyri
     """
     nm = node_meta
 
-    id_col = exp.Column(
-        this=exp.Identifier(this=nm.id_column, quoted=True),
-        table=exp.Identifier(this=tbl),
-    )
     id_col_check = exp.Column(
         this=exp.Identifier(this=nm.id_column, quoted=True),
         table=exp.Identifier(this=tbl),
     )
+    raw_id_col = exp.Column(
+        this=exp.Identifier(this=nm.id_column, quoted=True),
+        table=exp.Identifier(this=tbl),
+    )
+    # Compound id matches domain-union __id format: "Label|rawPk"
+    compound_id = exp.DPipe(
+        this=exp.DPipe(
+            this=exp.Literal.string(nm.label),
+            expression=exp.Literal.string("|"),
+        ),
+        expression=exp.Cast(this=raw_id_col, to=exp.DataType.build("VARCHAR")),
+    )
     kv: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        exp.JSONKeyValue(this=exp.Literal.string("id"), expression=id_col),
+        exp.JSONKeyValue(this=exp.Literal.string("id"), expression=compound_id),
         exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
     ]
     reserved = {"id", "label"}

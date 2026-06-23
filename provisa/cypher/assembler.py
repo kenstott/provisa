@@ -64,6 +64,9 @@ def assemble_rows(
     if not raw_rows:
         return []
 
+    # Trino lowercases unquoted column aliases; normalize graph_vars to match.
+    graph_vars = {k.lower(): v for k, v in graph_vars.items()}
+
     path_cols = {k for k, v in graph_vars.items() if v == GraphVarKind.PATH}
 
     if path_cols:
@@ -73,10 +76,11 @@ def assemble_rows(
 
 
 def _assemble_row(row: dict, graph_vars: dict[str, GraphVarKind]) -> dict:
+    # graph_vars keys are already lowercased by assemble_rows; match row keys case-insensitively.
     result: dict = {}
     for key, value in row.items():
-        if key in graph_vars:
-            kind = graph_vars[key]
+        kind = graph_vars.get(key.lower())
+        if kind is not None:
             result[key] = _deserialize_graph_value(key, value, kind)
         else:
             result[key] = value
@@ -92,13 +96,19 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
         elif isinstance(value, dict):
             data = value
         else:
-            raise CypherAssemblyError(f"Unexpected graph column value type for {col!r}: {type(value)}")
+            raise CypherAssemblyError(
+                f"Unexpected graph column value type for {col!r}: {type(value)}"
+            )
     except (json.JSONDecodeError, TypeError) as exc:
         raise CypherAssemblyError(f"Malformed JSON in graph column {col!r}: {exc}") from exc
 
     if kind == GraphVarKind.NODE:
+        if isinstance(data, list):
+            return [_parse_node(n) for n in data if isinstance(n, dict)]
         return _parse_node(data)
     if kind == GraphVarKind.EDGE:
+        if isinstance(data, list):
+            return [_parse_edge(e) for e in data if isinstance(e, dict)]
         return _parse_edge(data)
     if kind == GraphVarKind.PASSTHROUGH:
         # Auto-detect: edge JSON has 'type' + ('identity' or 'startNode'); node JSON has 'label'
@@ -117,7 +127,6 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
         start_node = Node(id=start_id, label="", table_label="", properties={})
         end_node = Node(id=end_id, label="", table_label="", properties={})
         return Path(nodes=[start_node, end_node], edges=[])
-    raise CypherAssemblyError(f"Unknown GraphVarKind {kind!r} for column {col!r}")
 
 
 def _parse_node(data: dict) -> Node:
@@ -125,8 +134,11 @@ def _parse_node(data: dict) -> Node:
         id=str(data.get("id", "")),
         label=str(data.get("label", "")),
         table_label=str(data.get("tableLabel", "")),
-        properties=data["properties"] if "properties" in data and isinstance(data["properties"], dict)
-        else {k: v for k, v in data.items() if k not in ("id", "label", "tableLabel", "properties")},
+        properties=data["properties"]
+        if "properties" in data and isinstance(data["properties"], dict)
+        else {
+            k: v for k, v in data.items() if k not in ("id", "label", "tableLabel", "properties")
+        },
     )
 
 
@@ -154,8 +166,25 @@ def _parse_edge(data: dict) -> Edge:
         type=str(data.get("type", "")),
         start_node=_parse_node(start_raw),
         end_node=_parse_node(end_raw),
-        properties=data["properties"] if "properties" in data and isinstance(data["properties"], dict)
-        else {k: v for k, v in data.items() if k not in ("id", "identity", "type", "start", "end", "startNode", "endNode", "start_node", "end_node", "properties")},
+        properties=data["properties"]
+        if "properties" in data and isinstance(data["properties"], dict)
+        else {
+            k: v
+            for k, v in data.items()
+            if k
+            not in (
+                "id",
+                "identity",
+                "type",
+                "start",
+                "end",
+                "startNode",
+                "endNode",
+                "start_node",
+                "end_node",
+                "properties",
+            )
+        },
     )
 
 
@@ -200,7 +229,9 @@ def _assemble_with_paths(
                         try:
                             data = json.loads(val)
                         except json.JSONDecodeError as exc:
-                            raise CypherAssemblyError(f"Malformed JSON in path column {col!r}: {exc}") from exc
+                            raise CypherAssemblyError(
+                                f"Malformed JSON in path column {col!r}: {exc}"
+                            ) from exc
                     elif isinstance(val, dict):
                         data = val
                     else:
@@ -220,7 +251,11 @@ def _assemble_with_paths(
         # Include scalar columns from first row
         first_row = group[0]
         for key, value in first_row.items():
-            if key.startswith("_path_id") or key.startswith("_depth") or key.startswith("_direction"):
+            if (
+                key.startswith("_path_id")
+                or key.startswith("_depth")
+                or key.startswith("_direction")
+            ):
                 continue
             if key not in path_cols and key not in path_result:
                 path_result[key] = value
@@ -235,8 +270,14 @@ def to_serializable(obj: Any) -> Any:
     """Recursively convert Node/Edge/Path to JSON-serializable dicts."""
     import datetime
     from decimal import Decimal
+
     if isinstance(obj, Node):
-        return {"id": obj.id, "label": obj.label, "tableLabel": obj.table_label, "properties": obj.properties}
+        return {
+            "id": obj.id,
+            "label": obj.label,
+            "tableLabel": obj.table_label,
+            "properties": obj.properties,
+        }
     if isinstance(obj, Edge):
         return {
             "identity": obj.id,

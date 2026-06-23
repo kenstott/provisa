@@ -49,9 +49,9 @@ class NodeMapping:
         default_factory=dict
     )  # cypher prop name → physical DB column name; used ONLY in _node_table_expr to build
     # the SELECT *, phys AS sql_alias subquery wrapper — never in WHERE/ON conditions
-    native_filter_columns: set[str] = field(
-        default_factory=set
-    )  # SQL column names that are native API params
+    native_filter_columns: dict[str, str] = field(
+        default_factory=dict
+    )  # SQL column name → data_type for native API params
     physical_table_name: str = ""  # physical DB table name; "" means same as table_name
     traversal_only: bool = False  # True = cross-domain node; may not be a MATCH starting node
     domain_id: str | None = None  # raw domain id, e.g. "pet-store"; None if no domain
@@ -167,24 +167,53 @@ class CypherLabelMap:
             for rel in self.relationships.values():
                 if rel_types is not None and rel.rel_type not in rel_types:
                     continue
+                # Exclude synthetic constant-join rels (e.g. HAS_TABLE) from
+                # implicit traversal — they anchor every data row to a single
+                # meta row via a constant, not a real FK, so they cannot serve
+                # as intermediate hops without contradictory join conditions.
+                if rel_types is None and rel.source_constant is not None:
+                    continue
                 # Forward edge
                 if rel.source_label == cur_label:
                     key = f"{rel.rel_type}:fwd"
                     if key not in used_rel_keys:
+                        tgt_nm = self.nodes.get(rel.target_label)
+                        if tgt_nm and tgt_nm.native_filter_columns:
+                            continue
                         queue.append((rel.target_label, path + [rel], used_rel_keys | {key}))
                 # Reverse edge (only when bidirectional)
                 if bidirectional and rel.target_label == cur_label:
                     key = f"{rel.rel_type}:rev"
                     if key not in used_rel_keys:
-                        rev = RelationshipMapping(
-                            rel_type=rel.rel_type,
-                            source_label=rel.target_label,
-                            target_label=rel.source_label,
-                            join_source_column=rel.join_target_column,
-                            join_target_column=rel.join_source_column,
-                            field_name=rel.field_name,
-                            alias=rel.alias,
-                        )
+                        src_nm = self.nodes.get(rel.source_label)
+                        if src_nm and src_nm.native_filter_columns:
+                            continue
+                        # When forward uses source_constant + target_expr, the reverse
+                        # must express: target_expr(source) = source_constant, not
+                        # join_target_column = join_source_column (which is synthetic).
+                        if rel.source_constant is not None and rel.target_expr is not None:
+                            escaped = str(rel.source_constant).replace("'", "''")
+                            rev = RelationshipMapping(
+                                rel_type=rel.rel_type,
+                                source_label=rel.target_label,
+                                target_label=rel.source_label,
+                                join_source_column=rel.join_target_column,
+                                join_target_column=rel.join_source_column,
+                                field_name=rel.field_name,
+                                alias=rel.alias,
+                                source_expr=rel.target_expr,
+                                target_expr=f"'{escaped}'",
+                            )
+                        else:
+                            rev = RelationshipMapping(
+                                rel_type=rel.rel_type,
+                                source_label=rel.target_label,
+                                target_label=rel.source_label,
+                                join_source_column=rel.join_target_column,
+                                join_target_column=rel.join_source_column,
+                                field_name=rel.field_name,
+                                alias=rel.alias,
+                            )
                         queue.append((rel.source_label, path + [rev], used_rel_keys | {key}))
         return results
 
@@ -301,7 +330,7 @@ def _build_node_mappings(
         physical_table = table_meta.table_name
         physical_table_name = physical_table if physical_table != logical_table else ""
 
-        nf_cols = ctx_typed.native_filter_columns.get(table_meta.table_id, set())
+        nf_cols = ctx_typed.native_filter_columns.get(table_meta.table_id, {})
         nodes[table_meta.type_name] = NodeMapping(
             label=cypher_label,
             type_name=table_meta.type_name,
