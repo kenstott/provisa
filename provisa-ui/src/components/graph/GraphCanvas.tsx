@@ -155,6 +155,8 @@ export function GraphCanvas({
   const edgeDistanceRef = useRef(edgeDistance);
   const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nudgeHeldRef = useRef(false);
+  const pendingNudgesRef = useRef(0);
+  const pendingNudgeFreeNodesRef = useRef<Set<string> | undefined>(undefined);
   const circularChildParentsRef = useRef(showingChildrenCircular);
   circularChildParentsRef.current = showingChildrenCircular;
   const circularParentNodesRef = useRef(showingParentsCircular);
@@ -311,7 +313,18 @@ export function GraphCanvas({
       if (!drag) return;
       hullDragRef.current = null;
       const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
-      if (dist < 5) toggleCollapse(drag.cid);
+      if (dist < 5) {
+        toggleCollapse(drag.cid);
+      } else {
+        const cy = cyRef.current;
+        if (cy) {
+          const clusterId = `__cluster_${clusterLevelRef.current}_${cidToId(drag.cid)}`;
+          cy.getElementById(clusterId).children().forEach((n) => n.lock());
+          pendingNudgesRef.current = 2;
+          pendingNudgeFreeNodesRef.current = undefined;
+          nudgeLayoutRef.current();
+        }
+      }
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
@@ -366,7 +379,18 @@ export function GraphCanvas({
     } else if (m === "hierarchy") {
       opts = LAYOUT_OPTIONS.hierarchy;
     } else if (cy.edges().length === 0) {
-      // No relationships — grid fills the container rectangle by auto-sizing rows/cols
+      // No relationships — grid sorted by label so same-type nodes occupy the same rows.
+      const labelOrder: string[] = [];
+      const labelCount: Record<string, number> = {};
+      cy.nodes().forEach((n) => {
+        const lbl = n.data("label") as string;
+        if (!(lbl in labelCount)) { labelOrder.push(lbl); labelCount[lbl] = 0; }
+        labelCount[lbl]++;
+      });
+      const maxPerLabel = Math.max(...Object.values(labelCount), 1);
+      const totalNodes = cy.nodes().length;
+      const sqrtCols = Math.ceil(Math.sqrt(totalNodes));
+      const cols = Math.min(maxPerLabel, sqrtCols);
       opts = {
         name: "grid",
         animate: false,
@@ -374,6 +398,12 @@ export function GraphCanvas({
         padding: 30,
         avoidOverlap: true,
         avoidOverlapPadding: 12,
+        cols,
+        sort: (a: { data: (k: string) => string }, b: { data: (k: string) => string }) => {
+          const ai = labelOrder.indexOf(a.data("label"));
+          const bi = labelOrder.indexOf(b.data("label"));
+          return ai - bi;
+        },
       } as CyLayoutOptions;
     } else {
       const inCluster = clusterLevelRef.current !== "none";
@@ -476,6 +506,32 @@ export function GraphCanvas({
           portEdgesAddedRef.current = false;
         }
         const anchored = anchoredRef.current;
+        // Shift coords so anchored centroid = (0,0) before running layout.
+        // fcose gravity always pulls toward (0,0), so this makes gravity attract
+        // toward the pinned group rather than fighting it toward the canvas center.
+        let gravityValue = anchored.size > 0 ? 0 : 0.25;
+        if (anchored.size > 0) {
+          let cx = 0, cY = 0, cnt = 0;
+          cy.nodes().forEach((n) => {
+            if (anchored.has(n.id() as string)) {
+              const p = n.position();
+              cx += p.x; cY += p.y; cnt++;
+            }
+          });
+          if (cnt > 0) {
+            cx /= cnt; cY /= cnt;
+            if (Math.abs(cx) > 0.5 || Math.abs(cY) > 0.5) {
+              cy.nodes().forEach((n) => {
+                const p = n.position();
+                n.position({ x: p.x - cx, y: p.y - cY });
+              });
+              const z = cy.zoom();
+              const pan = cy.pan();
+              cy.pan({ x: pan.x + cx * z, y: pan.y + cY * z });
+            }
+            gravityValue = 0.15;
+          }
+        }
         // When freeNodes is provided, lock everything except those nodes (and unlock anchored after)
         const tempLocked = new Set<string>();
         cy.nodes().forEach((n) => {
@@ -497,6 +553,7 @@ export function GraphCanvas({
           animationDuration: aggressive ? 2000 : 600,
           animationEasing: "ease-out" as const,
           numIter: aggressive ? 2000 : 300,
+          gravity: gravityValue,
           fit: false,
         } as CyLayoutOptions;
         const layout = cy.layout(opts);
@@ -547,6 +604,9 @@ export function GraphCanvas({
           layoutRunningRef.current = false;
           if (nudgeHeldRef.current) {
             nudgeLayoutRef.current(undefined, true);
+          } else if (pendingNudgesRef.current > 0) {
+            pendingNudgesRef.current -= 1;
+            nudgeLayoutRef.current(pendingNudgeFreeNodesRef.current);
           } else {
             // layoutstop may fire before animation finishes; final realign after animation settles
             setTimeout(() => { if (!layoutRunningRef.current) computeHulls(); }, animDuration + 50);
@@ -680,6 +740,8 @@ export function GraphCanvas({
       if (!before || (Math.abs(after.x - before.x) < 1 && Math.abs(after.y - before.y) < 1)) return;
       anchoredRef.current.add(id);
       evt.target.addClass("pinned");
+      pendingNudgesRef.current = 2;
+      pendingNudgeFreeNodesRef.current = undefined;
       nudgeLayoutRef.current();
     });
 
@@ -703,8 +765,11 @@ export function GraphCanvas({
       prevOverlayEdgesRef.current = new Map();
     };
     /* eslint-disable-next-line react-hooks/exhaustive-deps --
-       rebuild the cytoscape instance only when graph data or clustering changes; the latest-value style refs and imperative layout helpers are intentionally excluded so the graph is not torn down and rebuilt on unrelated renders */
-  }, [nodes, edges, overlayEdges, clusterLevel, collapsedClusters]);
+       rebuild the cytoscape instance only when base graph data or clustering changes; overlayEdges
+       is intentionally excluded — it is handled by the incremental overlay effect below, which adds
+       imputed edges without destroying/recreating cy (avoiding a race where the full rebuild starts
+       a layout with layoutRunningRef=true before the incremental effect can call nudgeLayout) */
+  }, [nodes, edges, clusterLevel, collapsedClusters]);
 
   // Incremental overlay update — adds/removes overlay nodes+edges without full re-layout
   const prevOverlayNodesRef = useRef<Map<string, GNode>>(new Map());

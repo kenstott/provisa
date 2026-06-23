@@ -106,12 +106,13 @@ export function Inspector({
   const pkEntry: Record<string, unknown> =
     isN && idColName && !(idColName in props) ? { [idColName]: (selected.data as GNode).id } : {};
 
+  const HIDDEN_PROPS = new Set(["l1Cluster", "l2Cluster", "l3Cluster", "scl1", "scl2", "scl3"]);
   const allFields: Record<string, unknown> = isN
     ? {
         ...(domain ? { domain } : {}),
         label: typeName || nodeLabel,
         ...pkEntry,
-        ...props,
+        ...Object.fromEntries(Object.entries(props).filter(([k]) => !HIDDEN_PROPS.has(k))),
       }
     : (() => {
         const e = selected.data as GEdge;
@@ -258,7 +259,7 @@ export function Inspector({
       {inspView === "details" && (
         <table className="gf-inspector-table">
           <tbody>
-            {Object.entries(allFields).map(([k, v]) => (
+            {Object.entries(allFields).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
               <tr key={k}>
                 <td className="gf-prop-key">{k}</td>
                 <td className="gf-prop-val">

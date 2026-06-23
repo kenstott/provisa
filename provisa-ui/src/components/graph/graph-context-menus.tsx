@@ -191,7 +191,7 @@ export function RelContextMenu({
 // ── Native filter modal ───────────────────────────────────────────────────────
 interface NativeFilterModalProps {
   label: string;
-  filterColumns: string[];
+  filterColumns: { name: string; type: string }[];
   onConfirm: (params: Record<string, string>) => void;
   onCancel: () => void;
 }
@@ -203,7 +203,7 @@ export function NativeFilterModal({
   onCancel,
 }: NativeFilterModalProps) {
   const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(filterColumns.map((c) => [c, ""])),
+    Object.fromEntries(filterColumns.map((c) => [c.name, ""])),
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -217,14 +217,14 @@ export function NativeFilterModal({
         <div className="nf-modal-title">Parameters for {label}</div>
         <form onSubmit={handleSubmit}>
           {filterColumns.map((col) => (
-            <div key={col} className="nf-modal-field">
-              <label className="nf-modal-label">{col}</label>
+            <div key={col.name} className="nf-modal-field">
+              <label className="nf-modal-label">{col.name}</label>
               <input
                 className="nf-modal-input"
-                value={values[col]}
-                onChange={(e) => setValues((v) => ({ ...v, [col]: e.target.value }))}
-                placeholder={col}
-                autoFocus={filterColumns[0] === col}
+                value={values[col.name]}
+                onChange={(e) => setValues((v) => ({ ...v, [col.name]: e.target.value }))}
+                placeholder={col.name}
+                autoFocus={filterColumns[0].name === col.name}
               />
             </div>
           ))}

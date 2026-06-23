@@ -192,7 +192,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [columns, setColumns] = useState<ColumnForm[]>([]);
   const [watermarkColumn, setWatermarkColumn] = useState<string>("");
   const [dataProduct, setDataProduct] = useState(false);
-  const [_governance, setGovernance] = useState("pre-approved");
 
   // Per-table profile state: tableId → profile result or "loading"
   const [tableProfiles, setTableProfiles] = useState<
@@ -478,7 +477,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       setTableName("");
       setTableAlias("");
       setTableDescription("");
-      setGovernance("pre-approved");
       setColumns([]);
       setWatermarkColumn("");
       setDataProduct(false);
