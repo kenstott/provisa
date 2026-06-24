@@ -15,6 +15,8 @@ import {
   extractElements,
   type FrameData,
   type RelLineOverride,
+  type GNode,
+  type GEdge,
 } from "../components/graph/graph-model";
 import { useRelationships, useUpsertRelationship } from "../hooks/useAdminQueries";
 import { useAuth } from "../context/AuthContext";
@@ -28,6 +30,7 @@ import type {
 import { Sidebar } from "../components/graph/GraphSidebar";
 import { QueryBar } from "../components/graph/QueryBar";
 import { NativeFilterModal } from "../components/graph/graph-context-menus";
+import { Neo4jExportModal } from "../components/graph/Neo4jExportModal";
 import { tableLabel as dbTableLabel } from "../naming";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -70,6 +73,26 @@ export function GraphPage() {
     filterColumns: { name: string; type: string }[];
     onConfirm: (params: Record<string, string>) => void;
   } | null>(null);
+  const [showNeo4jModal, setShowNeo4jModal] = useState(false);
+  const effectiveDataRef = useRef<Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>>(new Map());
+  const [numericPropsByLabel, setNumericPropsByLabel] = useState<Record<string, string[]>>({});
+  const onEffectiveDataChange = useCallback(
+    (frameId: string, nodes: Map<string, GNode>, edges: Map<string, GEdge>) => {
+      effectiveDataRef.current.set(frameId, { nodes, edges });
+      const acc: Record<string, Set<string>> = {};
+      effectiveDataRef.current.forEach((frame) => {
+        frame.nodes.forEach((n) => {
+          const label = n.tableLabel;
+          if (!acc[label]) acc[label] = new Set();
+          Object.entries(n.properties).forEach(([k, v]) => {
+            if (typeof v === "number") acc[label].add(k);
+          });
+        });
+      });
+      setNumericPropsByLabel(Object.fromEntries(Object.entries(acc).map(([k, v]) => [k, [...v]])));
+    },
+    [],
+  );
   const clusterMapRef = useRef<
     Record<string, { scl1: number | null; scl2: number | null; scl3: number | null }>
   >({});
@@ -92,6 +115,7 @@ export function GraphPage() {
             pk_columns: string[];
             id_column?: string;
             native_filter_columns?: { name: string; type: string }[];
+            property_types?: Record<string, string>;
             scl1?: number | null;
             scl2?: number | null;
             scl3?: number | null;
@@ -103,6 +127,7 @@ export function GraphPage() {
             pkColumns: n.pk_columns ?? [],
             idColumn: n.id_column ?? null,
             nativeFilterColumns: n.native_filter_columns ?? [],
+            propertyTypes: n.property_types ?? {},
             scl1: n.scl1 ?? null,
             scl2: n.scl2 ?? null,
             scl3: n.scl3 ?? null,
@@ -558,12 +583,23 @@ export function GraphPage() {
     [adminRels, upsertRelationship, refetchRelationships],
   );
 
-  const SYSTEM_DOMAINS = new Set(["meta", "ops"]);
   const visibleNodeLabels =
     checkedDomains.size === 0
       ? schemaNodeLabels
       : schemaNodeLabels.filter(
-          (n) => !n.domainId || checkedDomains.has(n.domainId) || SYSTEM_DOMAINS.has(n.domainId),
+          (n) => !n.domainId || checkedDomains.has(n.domainId),
+        );
+
+  const visibleLabelSet = new Set(
+    visibleNodeLabels.map((n) =>
+      n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel,
+    ),
+  );
+  const visibleSchemaRels =
+    checkedDomains.size === 0
+      ? schemaRels
+      : schemaRels.filter(
+          (r) => visibleLabelSet.has(r.source) && visibleLabelSet.has(r.target),
         );
 
   // pkMap covers ALL schema nodes — pk lookup is independent of the domain visibility filter
@@ -586,7 +622,7 @@ export function GraphPage() {
           : [n.tableLabel],
       )
       .filter((v, i, a) => a.indexOf(v) === i),
-    relationshipTypes: schemaRels.map((r) => r.type),
+    relationshipTypes: visibleSchemaRels.map((r) => r.type),
     propertyKeys: [
       ...new Set(visibleNodeLabels.flatMap((n) => [...n.properties, ...n.nativeFilterColumns.map((c) => c.name)])),
     ],
@@ -647,9 +683,30 @@ export function GraphPage() {
           onCancel={() => setNfModal(null)}
         />
       )}
+      {showNeo4jModal && (() => {
+        const allNodes = new Map<string, GNode>();
+        const allEdges = new Map<string, GEdge>();
+        for (const f of frames) {
+          const effective = effectiveDataRef.current.get(f.id);
+          if (effective) {
+            effective.nodes.forEach((n, k) => allNodes.set(k, n));
+            effective.edges.forEach((e, k) => allEdges.set(k, e));
+          } else {
+            f.nodes.forEach((n, k) => allNodes.set(k, n));
+            f.edges.forEach((e, k) => allEdges.set(k, e));
+          }
+        }
+        return (
+          <Neo4jExportModal
+            nodes={[...allNodes.values()]}
+            edges={[...allEdges.values()]}
+            onClose={() => setShowNeo4jModal(false)}
+          />
+        );
+      })()}
       <Sidebar
         schemaNodeLabels={visibleNodeLabels}
-        schemaRels={schemaRels}
+        schemaRels={visibleSchemaRels}
         schemaLoading={schemaLoading}
         history={history}
         colorOverrides={colorOverrides}
@@ -666,6 +723,8 @@ export function GraphPage() {
         onLabelPropertyChange={handleLabelPropertyChange}
         onSizeByPropertyChange={handleSizeByPropertyChange}
         onRelLineChange={handleRelLineChange}
+        numericPropsByLabel={numericPropsByLabel}
+        onNeo4jExport={() => setShowNeo4jModal(true)}
         width={sidebarWidth}
         onWidthChange={setSidebarWidth}
         highlightedLabel={activeLabel}
@@ -713,6 +772,7 @@ export function GraphPage() {
               autoImpute={autoImpute}
               onSaveEdgeAlias={handleSaveEdgeAlias}
               onSelectedLabelChange={setActiveLabel}
+              onEffectiveDataChange={onEffectiveDataChange}
             />
           ))}
         </div>

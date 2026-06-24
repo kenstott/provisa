@@ -16,6 +16,7 @@ export interface SchemaNodeLabel {
   pkColumns: string[];
   idColumn: string | null;
   nativeFilterColumns: { name: string; type: string }[];
+  propertyTypes: Record<string, string>;
   scl1: number | null;
   scl2: number | null;
   scl3: number | null;

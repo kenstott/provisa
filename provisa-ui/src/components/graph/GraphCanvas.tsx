@@ -113,8 +113,8 @@ const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
 function computeLabelSizeRanges(
   cy: CyInstance,
   sizeByProp: Record<string, string>,
-): Map<string, { min: number; max: number }> {
-  const ranges = new Map<string, { min: number; max: number }>();
+): Map<string, number> {
+  const maxes = new Map<string, number>();
   cy.nodes().forEach((nd) => {
     if (nd.data("_cluster") || nd.data("_port")) return;
     const lbl = nd.data("label") as string;
@@ -123,12 +123,10 @@ function computeLabelSizeRanges(
     const gn = nd.data("_node") as GNode | undefined;
     if (!gn) return;
     const v = Number(gn.properties[sby]);
-    if (isNaN(v)) return;
-    const existing = ranges.get(lbl);
-    if (existing) { existing.min = Math.min(existing.min, v); existing.max = Math.max(existing.max, v); }
-    else ranges.set(lbl, { min: v, max: v });
+    if (isNaN(v) || v <= 0) return;
+    maxes.set(sby, Math.max(maxes.get(sby) ?? 0, v));
   });
-  return ranges;
+  return maxes;
 }
 
 function applyNodeSize(
@@ -137,18 +135,17 @@ function applyNodeSize(
   gn: GNode | undefined,
   sizeByProp: Record<string, string>,
   sizeOverrides: Record<string, number>,
-  ranges: Map<string, { min: number; max: number }>,
+  ranges: Map<string, number>,
 ): void {
   const base = sizeOverrides[lbl] ?? 44;
   const sby = sizeByProp[lbl];
   const inCluster = node.data("_inCluster") as boolean;
   let sz: number;
   if (sby && gn) {
-    const range = ranges.get(lbl);
+    const max = ranges.get(sby);
     const v = Number(gn.properties[sby]);
-    if (range && range.max > range.min && !isNaN(v)) {
-      const t = (v - range.min) / (range.max - range.min);
-      sz = (base * 0.4 + t * base * 1.6) * (inCluster ? 0.5 : 1);
+    if (max && max > 0 && !isNaN(v)) {
+      sz = base * (1 + v / max) * (inCluster ? 0.5 : 1);
     } else {
       sz = inCluster ? base / 2 : base;
     }

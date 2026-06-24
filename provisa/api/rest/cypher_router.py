@@ -54,10 +54,11 @@ _ID_IN_LIST_RE = _re.compile(
 )
 
 
-async def _resolve_id_references(query: str, pg_pool: Any) -> str:
-    """Resolve id(var) IN [int1, int2, ...] to id(var) IN ['pk1', 'pk2', ...]
-    by looking up the node_ids table so the translator produces a type-safe
-    comparison against the raw PK column (which may be VARCHAR, not integer)."""
+async def _resolve_id_references(query: str, pg_pool: Any, label_map: "CypherLabelMap") -> str:
+    """Rewrite id(var) IN [int1, int2, ...] replacing stable node ids with the
+    id-column value looked up from node_ids.properties via the label_map."""
+    import json as _json
+
     all_ints: set[int] = set()
     for m in _ID_IN_LIST_RE.finditer(query):
         for item in m.group(2).split(","):
@@ -67,30 +68,34 @@ async def _resolve_id_references(query: str, pg_pool: Any) -> str:
                 pass
     if not all_ints:
         return query
+
     async with pg_pool.acquire() as _conn:
         rows = await _conn.fetch(
-            "SELECT id, composite_id FROM node_ids WHERE id = ANY($1::int[])",
+            "SELECT id, label, properties FROM node_ids WHERE id = ANY($1::int[])",
             sorted(all_ints),
         )
-    id_to_pk: dict[int, str] = {}
+
+    nm_by_label = {nm.label: nm for nm in label_map.nodes.values()}
+    id_to_val: dict[int, int] = {}
     for r in rows:
-        composite = r["composite_id"]
-        id_to_pk[int(r["id"])] = composite.split("|", 1)[1] if "|" in composite else composite
+        nm = nm_by_label.get(r["label"])
+        if nm is None:
+            continue
+        id_cypher_prop = next((k for k, v in nm.properties.items() if v == nm.id_column), None)
+        if id_cypher_prop is None:
+            continue
+        props = (
+            r["properties"] if isinstance(r["properties"], dict) else _json.loads(r["properties"])
+        )
+        id_to_val[int(r["id"])] = int(props[id_cypher_prop])
 
     def _replace(m: _re.Match) -> str:
         new_items: list[str] = []
         for item in m.group(2).split(","):
             item = item.strip()
             try:
-                raw_pk = id_to_pk.get(int(item))
-                if raw_pk is not None:
-                    try:
-                        int(raw_pk)
-                        new_items.append(raw_pk)
-                    except ValueError:
-                        new_items.append(f"'{raw_pk.replace(chr(39), chr(92) + chr(39))}'")
-                else:
-                    new_items.append(item)
+                val = id_to_val.get(int(item))
+                new_items.append(str(val) if val is not None else item)
             except ValueError:
                 new_items.append(item)
         return f"id({m.group(1)}) IN [{', '.join(new_items)}]"
@@ -469,26 +474,23 @@ async def cypher_query(
     if ctx is None:
         return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
 
+    label_map = _build_label_map(ctx, role_id, state)
+
     # Intercept Neo4j-compatible schema procedures before parse
     _proc = _detect_procedure(body.query)
     if _proc is not None:
-        label_map = _build_label_map(ctx, role_id, state)
         return _handle_procedure(_proc, label_map)
 
-    # Resolve integer node IDs to raw PKs before parse: id(n) IN [int, ...]
-    # becomes id(n) IN ['pk', ...] so the translator emits a type-safe comparison
-    # against the raw PK column (which may be VARCHAR, not integer).
+    # Resolve stable node ids in id(var) IN [...] to id-column values
     query_text = body.query
     if state.pg_pool is not None:
-        query_text = await _resolve_id_references(query_text, state.pg_pool)
+        query_text = await _resolve_id_references(query_text, state.pg_pool, label_map)
 
     # Stage 1: Parse
     try:
         ast = parse_cypher(query_text)
     except CypherParseError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
-
-    label_map = _build_label_map(ctx, role_id, state)
 
     # Validate and bind params
     param_names = collect_param_names(query_text)
@@ -605,6 +607,7 @@ async def graph_schema(request: Request) -> JSONResponse:
 
     label_map = _build_label_map(ctx, role_id, state)
     all_tables: list[dict] = getattr(state, "schema_build_cache", {}).get("tables", [])
+    col_types: dict = getattr(state, "schema_build_cache", {}).get("column_types", {})
     from provisa.cypher.label_map import _table_label_from_table_name
 
     cluster_by_name: dict[str, dict] = {
@@ -615,6 +618,16 @@ async def graph_schema(request: Request) -> JSONResponse:
         }
         for t in all_tables
     }
+
+    def _property_types(n: Any) -> dict[str, str]:
+        col_metas = col_types.get(n.table_id, [])
+        col_type_map = {cm.column_name: cm.data_type for cm in col_metas}
+        return {
+            cypher_prop: col_type_map[phys_col]
+            for cypher_prop, phys_col in n.physical_properties.items()
+            if phys_col in col_type_map
+        }
+
     return JSONResponse(
         content={
             "node_labels": [
@@ -638,6 +651,7 @@ async def graph_schema(request: Request) -> JSONResponse:
                         ),
                         key=lambda x: x["name"],
                     ),
+                    "property_types": _property_types(n),
                     "traversal_only": n.traversal_only,
                     **cluster_by_name.get(
                         n.table_label, {"scl1": None, "scl2": None, "scl3": None}
@@ -678,46 +692,56 @@ async def impute_relationships(request: Request, body: ImputeRequest) -> JSONRes
     if ctx is None:
         return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
 
-    label_map = _build_label_map(ctx, role_id, state)
+    import json as _json
 
-    # Group ids by canonical label, resolving frontend node IDs to raw PKs.
-    # After register_node_ids, frontend sends integer IDs from the node_ids table.
-    # We look these up to recover the composite_id ("{label}|{pk}"), then strip
-    # the label prefix. For non-registered nodes the id is already the raw PK string.
-    raw_entries: list[tuple[str, str]] = []
+    label_map = _build_label_map(ctx, role_id, state)
+    nm_by_label = {nm.label: nm for nm in label_map.nodes.values()}
+
+    # Collect stable node ids per label from request
     int_ids: list[int] = []
+    id_to_label: dict[int, str] = {}
     for node in body.nodes:
         lbl = str(node.get("label", ""))
-        nid = str(node.get("id", ""))
-        if lbl and nid:
-            raw_entries.append((lbl, nid))
+        nid = node.get("id")
+        if lbl and nid is not None:
             try:
-                int_ids.append(int(nid))
-            except ValueError:
+                i = int(nid)
+                int_ids.append(i)
+                id_to_label[i] = lbl
+            except (ValueError, TypeError):
                 pass
 
-    int_to_pk: dict[int, str] = {}
+    def _cql_literal(v: Any) -> str:
+        if isinstance(v, bool):
+            return "true" if v else "false"
+        if isinstance(v, (int, float)):
+            return str(v)
+        return "'" + str(v).replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+    # Resolve stable ids to id-column values via node_ids.properties
+    by_label: dict[str, list[Any]] = {}
     if int_ids and state.pg_pool:
         async with state.pg_pool.acquire() as _pg_conn:
             _pg_rows = await _pg_conn.fetch(
-                "SELECT id, composite_id FROM node_ids WHERE id = ANY($1::int[])",
+                "SELECT id, label, properties FROM node_ids WHERE id = ANY($1::int[])",
                 int_ids,
             )
         for _r in _pg_rows:
-            _composite = _r["composite_id"]
-            int_to_pk[_r["id"]] = _composite.split("|", 1)[1] if "|" in _composite else _composite
-
-    by_label: dict[str, list[str]] = {}
-    for lbl, nid in raw_entries:
-        try:
-            pk = int_to_pk.get(int(nid))
-            if pk is not None:
-                by_label.setdefault(lbl, []).append(pk)
+            _nm = nm_by_label.get(_r["label"])
+            if _nm is None:
                 continue
-        except ValueError:
-            pass
-        raw_pk = nid.split("|", 1)[1] if "|" in nid else nid
-        by_label.setdefault(lbl, []).append(raw_pk)
+            _id_prop = next((k for k, v in _nm.properties.items() if v == _nm.id_column), None)
+            if _id_prop is None:
+                continue
+            _props = (
+                _r["properties"]
+                if isinstance(_r["properties"], dict)
+                else _json.loads(_r["properties"])
+            )
+            _val = _props.get(_id_prop)
+            if _val is None:
+                continue
+            by_label.setdefault(_r["label"], []).append(_val)
 
     visible_labels = set(by_label.keys())
 
@@ -730,22 +754,13 @@ async def impute_relationships(request: Request, body: ImputeRequest) -> JSONRes
             continue
         src_nm = label_map.nodes[rel.source_label]
         tgt_nm = label_map.nodes[rel.target_label]
-        src_pk = _cql_prop(src_nm.id_column)
-        tgt_pk = _cql_prop(tgt_nm.id_column)
-
-        def _fmt(v: str) -> str:
-            try:
-                int(v)
-                return v
-            except ValueError:
-                escaped = v.replace("'", "\\'")
-                return f"'{escaped}'"
-
-        src_ids = ", ".join(_fmt(i) for i in by_label[src_label])
-        tgt_ids = ", ".join(_fmt(i) for i in by_label[tgt_label])
+        src_prop = _cql_prop(src_nm.id_column)
+        tgt_prop = _cql_prop(tgt_nm.id_column)
+        src_ids = ", ".join(_cql_literal(i) for i in by_label[src_label])
+        tgt_ids = ", ".join(_cql_literal(i) for i in by_label[tgt_label])
         queries.append(
             f"MATCH (a:{src_label})-[r:{rel.rel_type}]->(b:{tgt_label})"
-            f" WHERE a.{src_pk} IN [{src_ids}] AND b.{tgt_pk} IN [{tgt_ids}]"
+            f" WHERE a.{src_prop} IN [{src_ids}] AND b.{tgt_prop} IN [{tgt_ids}]"
             f" RETURN a, r, b"
         )
 
@@ -777,6 +792,95 @@ async def impute_relationships(request: Request, body: ImputeRequest) -> JSONRes
     serializable_merged = [{"node": r} for r in list(all_nodes.values()) + list(all_edges.values())]
     await register_node_ids(serializable_merged, state.pg_pool)
     return JSONResponse(content={"columns": ["node"], "rows": serializable_merged})
+
+
+class Neo4jExportRequest(BaseModel):
+    url: str
+    username: str
+    password: str
+    database: str = "neo4j"
+    nodes: list[dict]
+    edges: list[dict]
+
+
+def _neo4j_cypher_literal(v: Any) -> str:
+    """Render a Python value as a Cypher literal."""
+    import json as _json
+
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, str):
+        return _json.dumps(v)
+    return _json.dumps(_json.dumps(v))
+
+
+@router.post("/data/neo4j-export")
+async def neo4j_export(body: Neo4jExportRequest) -> JSONResponse:
+    """Forward graph nodes/edges to a Neo4j server via its HTTP transactional API."""
+    import base64 as _base64
+    import httpx as _httpx
+
+    statements: list[str] = []
+
+    for n in body.nodes:
+        table_label = n.get("tableLabel", "Node")
+        node_id = n.get("id")
+        props: dict = n.get("properties", {})
+        set_parts = ", ".join(f"{k}: {_neo4j_cypher_literal(v)}" for k, v in props.items())
+        set_str = f" SET n += {{{set_parts}}}" if set_parts else ""
+        statements.append(f"MERGE (n:`{table_label}` {{_provisa_id: {node_id}}}){set_str}")
+
+    for e in body.edges:
+        start = e.get("start")
+        end = e.get("end")
+        rel_type = e.get("type", "REL")
+        src_label = e.get("startNodeLabel", "Node")
+        tgt_label = e.get("endNodeLabel", "Node")
+        statements.append(
+            f"MATCH (a:`{src_label}` {{_provisa_id: {start}}}), "
+            f"(b:`{tgt_label}` {{_provisa_id: {end}}}) "
+            f"MERGE (a)-[:`{rel_type}`]->(b)"
+        )
+
+    http_url = body.url.rstrip("/") + f"/db/{body.database}/tx/commit"
+    token = _base64.b64encode(f"{body.username}:{body.password}".encode()).decode()
+
+    errors: list[str] = []
+    try:
+        async with _httpx.AsyncClient() as client:
+            resp = await client.post(
+                http_url,
+                json={"statements": [{"statement": s} for s in statements]},
+                headers={
+                    "Authorization": f"Basic {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                timeout=30.0,
+            )
+    except _httpx.ConnectError as exc:
+        return JSONResponse(status_code=502, content={"error": f"Cannot connect to Neo4j: {exc}"})
+    except _httpx.TimeoutException:
+        return JSONResponse(status_code=504, content={"error": "Neo4j request timed out"})
+
+    if resp.status_code == 401:
+        return JSONResponse(status_code=401, content={"error": "Neo4j authentication failed"})
+    if resp.status_code // 100 != 2:
+        return JSONResponse(
+            status_code=resp.status_code,
+            content={"error": f"Neo4j HTTP {resp.status_code}: {resp.text[:200]}"},
+        )
+
+    data = resp.json()
+    for err in data.get("errors", []):
+        errors.append(err.get("message", str(err)))
+
+    imported = len(statements) - len(errors)
+    return JSONResponse(content={"imported": imported, "errors": errors})
 
 
 def _resolve_role_id(request: Request, state: AppState) -> str:

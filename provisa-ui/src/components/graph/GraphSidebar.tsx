@@ -38,12 +38,19 @@ interface SidebarProps {
   onLabelPropertyChange: (label: string, prop: string) => void;
   onSizeByPropertyChange: (label: string, prop: string) => void;
   onRelLineChange: (type: string, override: RelLineOverride) => void;
+  numericPropsByLabel: Record<string, string[]>;
+  onNeo4jExport?: () => void;
   width: number;
   onWidthChange: (w: number) => void;
   highlightedLabel?: string | null;
 }
 
 const NUMERIC_TYPES = new Set(["int", "integer", "bigint", "float", "double", "decimal", "numeric", "real", "number"]);
+const isNumericType = (t: string) => {
+  const lower = t.toLowerCase();
+  for (const nt of NUMERIC_TYPES) if (lower === nt || lower.startsWith(nt + "(") || lower.startsWith(nt + " ")) return true;
+  return false;
+};
 
 export function Sidebar({
   schemaNodeLabels,
@@ -64,6 +71,8 @@ export function Sidebar({
   onLabelPropertyChange,
   onSizeByPropertyChange,
   onRelLineChange,
+  numericPropsByLabel,
+  onNeo4jExport,
   width,
   onWidthChange,
   highlightedLabel,
@@ -106,9 +115,13 @@ export function Sidebar({
       ? `${node.domainLabel}:${node.tableLabel}`
       : node.tableLabel;
     const numericFromSchema = node.nativeFilterColumns
-      .filter(c => NUMERIC_TYPES.has(c.type.toLowerCase()))
+      .filter(c => isNumericType(c.type))
       .map(c => c.name);
-    const numericProperties = [...new Set([...numericFromSchema, "deg_in", "deg_out", "deg_total"])];
+    const numericFromPropertyTypes = Object.entries(node.propertyTypes)
+      .filter(([, t]) => isNumericType(t))
+      .map(([k]) => k);
+    const numericFromData = numericPropsByLabel[node.tableLabel] ?? [];
+    const numericProperties = [...new Set([...numericFromSchema, ...numericFromPropertyTypes, ...numericFromData, "deg_in", "deg_out", "deg_total", "degree_centrality"])];
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
@@ -117,7 +130,7 @@ export function Sidebar({
       properties: node.properties,
       numericProperties,
     });
-  }, []);
+  }, [numericPropsByLabel]);
 
   const handleRelRightClick = useCallback((e: React.MouseEvent, type: string) => {
     e.preventDefault();
@@ -141,6 +154,22 @@ export function Sidebar({
         >
           ⏱
         </button>
+        {onNeo4jExport && (
+          <button
+            className="graph-sidebar-tab"
+            onClick={onNeo4jExport}
+            title="Export to Neo4j"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="8" cy="2.5" r="2"/>
+              <circle cx="2.5" cy="13" r="2"/>
+              <circle cx="13.5" cy="13" r="2"/>
+              <line x1="8" y1="4.5" x2="2.5" y2="11" stroke="currentColor" strokeWidth="1.5"/>
+              <line x1="8" y1="4.5" x2="13.5" y2="11" stroke="currentColor" strokeWidth="1.5"/>
+              <line x1="4.5" y1="13" x2="11.5" y2="13" stroke="currentColor" strokeWidth="1.5"/>
+            </svg>
+          </button>
+        )}
       </div>
 
       <div className="graph-sidebar-body">
@@ -171,13 +200,24 @@ export function Sidebar({
                               onClick={() => onDomainClick(lbl)}
                               onContextMenu={(e) => {
                                 e.preventDefault();
+                                const domainNumeric = [
+                                  ...new Set([
+                                    ...schemaNodeLabels
+                                      .filter((n) => n.domainLabel === lbl)
+                                      .flatMap((n) => numericPropsByLabel[n.tableLabel] ?? []),
+                                    "deg_in",
+                                    "deg_out",
+                                    "deg_total",
+                                    "degree_centrality",
+                                  ]),
+                                ];
                                 setContextMenu({
                                   x: e.clientX,
                                   y: e.clientY,
                                   compoundLabel: lbl,
                                   tableLabel: lbl,
                                   properties: [],
-                                  numericProperties: ["deg_in", "deg_out", "deg_total"],
+                                  numericProperties: domainNumeric,
                                 });
                               }}
                               title={`MATCH (n:${lbl}) RETURN n LIMIT 25`}

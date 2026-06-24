@@ -61,6 +61,11 @@ interface GraphFrameProps {
   autoImpute?: boolean;
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<void>;
   onSelectedLabelChange?: (label: string | null) => void;
+  onEffectiveDataChange?: (
+    frameId: string,
+    nodes: Map<string, GNode>,
+    edges: Map<string, GEdge>,
+  ) => void;
 }
 
 export function GraphFrame({
@@ -81,6 +86,7 @@ export function GraphFrame({
   autoImpute: autoImputeProp = false,
   onSaveEdgeAlias,
   onSelectedLabelChange,
+  onEffectiveDataChange,
 }: GraphFrameProps) {
   const [view, setView] = useState<"graph" | "table" | "json">("graph");
   const [selected, setSelectedRaw] = useState<
@@ -544,14 +550,26 @@ export function GraphFrame({
       degOut.set(srcKey, (degOut.get(srcKey) ?? 0) + 1);
       degIn.set(tgtKey, (degIn.get(tgtKey) ?? 0) + 1);
     });
+    const totalNodes = frame.nodes.size;
     const result = new Map<string, GNode>();
     frame.nodes.forEach((n, k) => {
       const i = degIn.get(k) ?? 0;
       const o = degOut.get(k) ?? 0;
-      result.set(k, { ...n, properties: { ...n.properties, deg_in: i, deg_out: o, deg_total: i + o } });
+      const deg = i + o;
+      const degree_centrality = totalNodes > 1 ? parseFloat((deg / (totalNodes - 1)).toFixed(4)) : 0;
+      result.set(k, { ...n, properties: { ...n.properties, deg_in: i, deg_out: o, deg_total: deg, degree_centrality } });
     });
     return result;
   }, [frame.nodes, frame.edges, overlayEdges]);
+
+  useEffect(() => {
+    if (!onEffectiveDataChange) return;
+    const allNodes =
+      overlayNodes.size > 0 ? new Map([...augmentedNodes, ...overlayNodes]) : augmentedNodes;
+    const allEdges =
+      overlayEdges.size > 0 ? new Map([...frame.edges, ...overlayEdges]) : frame.edges;
+    onEffectiveDataChange(frame.id, allNodes, allEdges);
+  }, [frame.id, augmentedNodes, frame.edges, overlayNodes, overlayEdges, onEffectiveDataChange]);
 
   const showingChildrenNatural = useMemo(
     () =>

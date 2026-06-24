@@ -9,6 +9,85 @@
 // permission from the copyright holder.
 
 import type { CyInstance } from "./cytoscape-types";
+import type { GNode, GEdge } from "./graph-model";
+
+const _INTERNAL_NODE_PROPS = new Set([
+  "deg_in", "deg_out", "deg_total",
+  "scl1", "scl2", "scl3",
+  "l1Cluster", "l2Cluster", "l3Cluster",
+]);
+
+function _toCypherLiteral(v: unknown): string {
+  if (v === null || v === undefined) return "null";
+  if (typeof v === "boolean") return String(v);
+  if (typeof v === "number") return String(v);
+  if (typeof v === "string") return JSON.stringify(v);
+  return JSON.stringify(JSON.stringify(v));
+}
+
+function _exportableProps(props: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(props).filter(([k]) => !_INTERNAL_NODE_PROPS.has(k)));
+}
+
+export function buildCypherScript(nodes: GNode[], edges: GEdge[]): string {
+  const lines: string[] = ["// Provisa Neo4j export", "// Nodes"];
+  for (const n of nodes) {
+    const props = _exportableProps(n.properties);
+    const setParts = Object.entries(props).map(([k, v]) => `${k}: ${_toCypherLiteral(v)}`).join(", ");
+    const setStr = setParts ? ` SET n += {${setParts}}` : "";
+    lines.push(`MERGE (n:\`${n.tableLabel}\` {_provisa_id: ${n.id}})${setStr};`);
+  }
+  lines.push("", "// Relationships");
+  for (const e of edges) {
+    lines.push(
+      `MATCH (a:\`${e.startNode.tableLabel}\` {_provisa_id: ${e.start}}), ` +
+      `(b:\`${e.endNode.tableLabel}\` {_provisa_id: ${e.end}}) ` +
+      `MERGE (a)-[:\`${e.type}\`]->(b);`,
+    );
+  }
+  return lines.join("\n");
+}
+
+export interface Neo4jConnection {
+  url: string;
+  username: string;
+  password: string;
+  database: string;
+}
+
+export async function exportToNeo4j(
+  nodes: GNode[],
+  edges: GEdge[],
+  conn: Neo4jConnection,
+): Promise<{ imported: number; errors: string[] }> {
+  const res = await fetch("/data/neo4j-export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: conn.url,
+      username: conn.username,
+      password: conn.password,
+      database: conn.database,
+      nodes: nodes.map((n) => ({
+        id: n.id,
+        tableLabel: n.tableLabel,
+        properties: _exportableProps(n.properties),
+      })),
+      edges: edges.map((e) => ({
+        start: e.start,
+        end: e.end,
+        type: e.type,
+        startNodeLabel: e.startNode.tableLabel,
+        endNodeLabel: e.endNode.tableLabel,
+      })),
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<{ imported: number; errors: string[] }>;
+}
 
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
