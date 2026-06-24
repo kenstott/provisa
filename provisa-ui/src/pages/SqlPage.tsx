@@ -43,7 +43,7 @@ import {
 import type { Relationship, RegisteredTable } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
 
-type ResultTab = "results" | "profile" | "errors" | "history";
+type ResultTab = "results" | "profile" | "errors" | "history" | "stats";
 type TopTab = "sql" | "canvas";
 
 interface HistoryEntry {
@@ -997,6 +997,8 @@ export function SqlPage() {
   const [resultRows, setResultRows] = useState<Record<string, unknown>[]>(active0.resultRows);
   const [resultError, setResultError] = useState(active0.resultError);
   const [execMs, setExecMs] = useState<number | null>(active0.execMs);
+  const [statsEnabled, setStatsEnabled] = useState(() => localStorage.getItem("sql:statsEnabled") === "true");
+  const [queryStats, setQueryStats] = useState<unknown>(null);
   const [errors, _setErrors] = useState<string[]>([]);
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
@@ -1240,6 +1242,7 @@ export function SqlPage() {
     setResultRows(t.resultRows);
     setResultError(t.resultError);
     setExecMs(t.execMs);
+    setQueryStats(null);
     setNlError("");
     setSorts([]);
     setFilters({});
@@ -1516,19 +1519,22 @@ export function SqlPage() {
 
   const handleRun = useCallback(async () => {
     if (!sqlText.trim()) return;
+    const aliased = autoAliasConflicts(sqlText);
+    if (aliased !== sqlText) setSqlText(aliased);
     setRunning(true);
     setResultError("");
     const t0 = performance.now();
-    const inner = sqlText.trim().replace(/;+$/, "");
+    const inner = aliased.trim().replace(/;+$/, "");
     const sampledSql =
       sampleMode === "first"
         ? `SELECT * FROM (\n${inner}\n) _sample LIMIT ${sampleSize}`
         : sampleMode === "last"
           ? `SELECT * FROM (\n${inner}\n) _sample ORDER BY 1 DESC LIMIT ${sampleSize}`
           : `SELECT * FROM (\n${inner}\n) _sample ORDER BY random() LIMIT ${sampleSize}`;
-    const result = await runSql(sampledSql, role);
+    const result = await runSql(sampledSql, role, false, statsEnabled);
     const durationMs = Math.round(performance.now() - t0);
     setExecMs(durationMs);
+    setQueryStats(result.provisa_stats ?? null);
     if (result.error) {
       setResultError(result.error);
       setResultColumns([]);
@@ -1546,7 +1552,7 @@ export function SqlPage() {
     setResultTab("results");
     setRunning(false);
     const entry: HistoryEntry = {
-      sql: sqlText.trim(),
+      sql: aliased.trim(),
       role,
       executedAt: Date.now(),
       durationMs,
@@ -1558,7 +1564,7 @@ export function SqlPage() {
       saveHistory(next);
       return next;
     });
-  }, [sqlText, role, sampleMode, sampleSize, activeTabId]);
+  }, [sqlText, role, sampleMode, sampleSize, activeTabId, statsEnabled]);
 
   useEffect(() => {
     if (pendingAutoRunRef.current && sqlText.trim()) {
@@ -1623,6 +1629,25 @@ export function SqlPage() {
               </button>
             ))}
           </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginLeft: "auto" }}>
+          {execMs !== null && (
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+              {execMs} ms
+            </span>
+          )}
+          <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={statsEnabled}
+              onChange={(e) => {
+                setStatsEnabled(e.target.checked);
+                localStorage.setItem("sql:statsEnabled", String(e.target.checked));
+              }}
+              style={{ marginRight: 2 }}
+            />
+            Query Stats
+          </label>
         </div>
       </div>
 
@@ -2382,17 +2407,6 @@ export function SqlPage() {
                   <Play size={11} />
                   {running ? "Running…" : "Sample >"}
                 </button>
-                <button
-                  className="btn-secondary"
-                  style={{ fontSize: "0.8rem", padding: "0.25rem 0.6rem" }}
-                  title="Add table_col aliases where column names conflict across tables"
-                  onClick={() =>
-                    setSqlText((prev) => autoAliasConflicts(prev))
-                  }
-                  disabled={!sqlText.trim()}
-                >
-                  Auto-alias
-                </button>
                 {viewTable && (
                   <button
                     className="btn-primary"
@@ -2452,7 +2466,7 @@ export function SqlPage() {
                   max={10000}
                   onChange={(e) => setSampleSize(Math.max(1, parseInt(e.target.value) || 100))}
                   className="toolbar-input"
-                  style={{ width: "60px" }}
+                  style={{ width: "90px" }}
                   title="Row count"
                 />
                 <select
@@ -2527,7 +2541,7 @@ export function SqlPage() {
                     background: "var(--surface)",
                   }}
                 >
-                  {(["results", "profile", "errors", "history"] as ResultTab[]).map((tab) => {
+                  {(["results", "profile", "errors", "history", "stats"] as ResultTab[]).map((tab) => {
                     const count =
                       tab === "results"
                         ? resultRows.length
@@ -2535,8 +2549,11 @@ export function SqlPage() {
                           ? profile.length
                           : tab === "errors"
                             ? errors.length
-                            : history.length;
+                            : tab === "stats"
+                              ? 0
+                              : history.length;
                     const active = resultTab === tab;
+                    if (tab === "stats" && !queryStats) return null;
                     return (
                       <button
                         key={tab}
@@ -2581,18 +2598,6 @@ export function SqlPage() {
                       </button>
                     );
                   })}
-                  {execMs !== null && (
-                    <span
-                      style={{
-                        marginLeft: "auto",
-                        paddingRight: "0.75rem",
-                        fontSize: "0.7rem",
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      {execMs}ms
-                    </span>
-                  )}
                 </div>
 
                 <div style={{ flex: 1, overflow: "auto" }}>
@@ -2947,20 +2952,47 @@ export function SqlPage() {
                                     <td style={{ fontFamily: "monospace", fontWeight: 600 }}>
                                       {p.col}
                                     </td>
-                                    <td
-                                      style={{
-                                        color: isHighNull
-                                          ? "var(--destructive)"
-                                          : p.nullCount > 0
-                                            ? "var(--text)"
-                                            : "var(--text-muted)",
-                                      }}
-                                    >
-                                      {p.nullCount > 0 ? (
-                                        `${p.nullCount} (${nullPct}%)`
-                                      ) : (
-                                        <span style={{ color: "var(--text-muted)" }}>—</span>
-                                      )}
+                                    <td>
+                                      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                                        <div
+                                          style={{
+                                            width: 52,
+                                            height: 5,
+                                            borderRadius: 3,
+                                            background: "var(--border)",
+                                            position: "relative",
+                                            flexShrink: 0,
+                                          }}
+                                        >
+                                          {p.nullCount > 0 && (
+                                            <div
+                                              style={{
+                                                position: "absolute",
+                                                left: 0,
+                                                top: 0,
+                                                bottom: 0,
+                                                width: `${nullPct}%`,
+                                                borderRadius: 3,
+                                                background: isHighNull
+                                                  ? "var(--destructive)"
+                                                  : "var(--text-muted)",
+                                              }}
+                                            />
+                                          )}
+                                        </div>
+                                        <span
+                                          style={{
+                                            color: isHighNull
+                                              ? "var(--destructive)"
+                                              : p.nullCount > 0
+                                                ? "var(--text)"
+                                                : "var(--text-muted)",
+                                            fontSize: "0.7rem",
+                                          }}
+                                        >
+                                          {p.nullCount > 0 ? `${nullPct}%` : "—"}
+                                        </span>
+                                      </div>
                                     </td>
                                     <td
                                       style={{
@@ -3018,28 +3050,54 @@ export function SqlPage() {
                                       )}
                                     </td>
                                     <td>
-                                      <div
-                                        style={{ display: "flex", flexWrap: "wrap", gap: "0.2rem" }}
-                                      >
-                                        {p.topValues.map(({ value, count }) => (
-                                          <span
-                                            key={value}
-                                            style={{
-                                              background: "var(--surface)",
-                                              border: "1px solid var(--border)",
-                                              borderRadius: "3px",
-                                              padding: "0 0.3rem",
-                                              fontSize: "0.7rem",
-                                              fontFamily: "monospace",
-                                              whiteSpace: "nowrap",
-                                            }}
-                                          >
-                                            {value.slice(0, 20)}
-                                            <span style={{ color: "var(--text-muted)" }}>
-                                              ×{count}
-                                            </span>
-                                          </span>
-                                        ))}
+                                      <div style={{ display: "flex", flexDirection: "column", gap: "0.18rem", minWidth: 140 }}>
+                                        {p.topValues.map(({ value, count }) => {
+                                          const barPct = p.topValues[0].count > 0
+                                            ? (count / p.topValues[0].count) * 100
+                                            : 0;
+                                          return (
+                                            <div key={value} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                                              <div
+                                                style={{
+                                                  width: 52,
+                                                  height: 5,
+                                                  borderRadius: 2,
+                                                  background: "var(--border)",
+                                                  position: "relative",
+                                                  flexShrink: 0,
+                                                }}
+                                              >
+                                                <div
+                                                  style={{
+                                                    position: "absolute",
+                                                    left: 0,
+                                                    top: 0,
+                                                    bottom: 0,
+                                                    width: `${barPct}%`,
+                                                    borderRadius: 2,
+                                                    background: "var(--primary)",
+                                                  }}
+                                                />
+                                              </div>
+                                              <span
+                                                style={{
+                                                  fontFamily: "monospace",
+                                                  fontSize: "0.68rem",
+                                                  whiteSpace: "nowrap",
+                                                  overflow: "hidden",
+                                                  maxWidth: 110,
+                                                  textOverflow: "ellipsis",
+                                                }}
+                                                title={value}
+                                              >
+                                                {value.slice(0, 22)}
+                                              </span>
+                                              <span style={{ color: "var(--text-muted)", fontSize: "0.65rem", marginLeft: "auto", flexShrink: 0 }}>
+                                                ×{count}
+                                              </span>
+                                            </div>
+                                          );
+                                        })}
                                       </div>
                                     </td>
                                   </tr>
@@ -3198,6 +3256,93 @@ export function SqlPage() {
                         </tbody>
                       </table>
                     ))}
+                  {resultTab === "stats" &&
+                    (() => {
+                      type StatsSource = {
+                        field: string;
+                        source: string;
+                        strategy: string;
+                        elapsed_ms: number;
+                        rows: number;
+                        cache_hit?: boolean;
+                        physical_sql?: string;
+                      };
+                      const stats = queryStats as {
+                        total_elapsed_ms?: number;
+                        sources?: StatsSource[];
+                      } | null;
+                      if (!stats) return null;
+                      return (
+                        <div style={{ padding: "0.75rem 1rem", fontSize: "0.8rem" }}>
+                          <div style={{ marginBottom: "0.5rem", color: "var(--text-muted)" }}>
+                            Total:{" "}
+                            <strong style={{ color: "var(--text)" }}>
+                              {stats.total_elapsed_ms} ms
+                            </strong>
+                          </div>
+                          {(stats.sources ?? []).map((s, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                marginBottom: "0.75rem",
+                                borderLeft: "2px solid var(--primary)",
+                                paddingLeft: "0.75rem",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: "1rem",
+                                  flexWrap: "wrap",
+                                  marginBottom: "0.25rem",
+                                }}
+                              >
+                                <span>
+                                  <span style={{ color: "var(--text-muted)" }}>field:</span>{" "}
+                                  {s.field}
+                                </span>
+                                <span>
+                                  <span style={{ color: "var(--text-muted)" }}>source:</span>{" "}
+                                  {s.source}
+                                </span>
+                                <span>
+                                  <span style={{ color: "var(--text-muted)" }}>strategy:</span>{" "}
+                                  {s.strategy}
+                                </span>
+                                <span>
+                                  <span style={{ color: "var(--text-muted)" }}>elapsed:</span>{" "}
+                                  {s.elapsed_ms} ms
+                                </span>
+                                <span>
+                                  <span style={{ color: "var(--text-muted)" }}>rows:</span> {s.rows}
+                                </span>
+                                {s.cache_hit && (
+                                  <span style={{ color: "#4ade80" }}>cache hit</span>
+                                )}
+                              </div>
+                              {s.physical_sql && (
+                                <pre
+                                  style={{
+                                    margin: "0.25rem 0 0",
+                                    fontSize: "0.72rem",
+                                    color: "var(--text-muted)",
+                                    whiteSpace: "pre-wrap",
+                                    wordBreak: "break-all",
+                                    maxHeight: "6em",
+                                    overflow: "auto",
+                                    background: "var(--surface)",
+                                    padding: "0.4rem",
+                                    borderRadius: "4px",
+                                  }}
+                                >
+                                  {s.physical_sql}
+                                </pre>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                 </div>
               </div>
             </>

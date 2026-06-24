@@ -388,11 +388,14 @@ export async function runSql(
   sqlText: string,
   role: string = "admin",
   discoveryMode: boolean = false,
-): Promise<{ columns: string[]; rows: Record<string, unknown>[]; error?: string }> {
+  statsEnabled: boolean = false,
+): Promise<{ columns: string[]; rows: Record<string, unknown>[]; error?: string; provisa_stats?: unknown }> {
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
+    if (statsEnabled) headers["X-Provisa-Stats"] = "true";
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers,
       body: JSON.stringify({ sql: sqlText, role, ...(discoveryMode && { discovery_mode: true }) }),
     });
     if (!resp.ok) {
@@ -402,7 +405,7 @@ export async function runSql(
     const json = await resp.json();
     const rows: Record<string, unknown>[] = json?.data?.sql ?? [];
     const columns = rows.length > 0 && rows[0] != null ? Object.keys(rows[0] as object) : [];
-    return { columns, rows };
+    return { columns, rows, provisa_stats: json?.provisa_stats };
   } catch (e) {
     return { columns: [], rows: [], error: e instanceof Error ? e.message : String(e) };
   }
