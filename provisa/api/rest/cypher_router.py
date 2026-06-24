@@ -712,8 +712,11 @@ async def impute_relationships(request: Request, body: ImputeRequest) -> JSONRes
                         key = f"{ser['label']}:{ser['id']}"
                         all_nodes[key] = ser
 
-    merged_rows = list(all_nodes.values()) + list(all_edges.values())
-    return JSONResponse(content={"columns": ["node"], "rows": [{"node": r} for r in merged_rows]})
+    from provisa.cypher.assembler import register_node_ids
+
+    serializable_merged = [{"node": r} for r in list(all_nodes.values()) + list(all_edges.values())]
+    await register_node_ids(serializable_merged, state.pg_pool)
+    return JSONResponse(content={"columns": ["node"], "rows": serializable_merged})
 
 
 def _resolve_role_id(request: Request, state: AppState) -> str:
