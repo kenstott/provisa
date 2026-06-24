@@ -105,3 +105,4 @@ identifier.sqlite
 /trino/catalog/ui_*.properties
 sharepoint.pfx
 Volumes/
+coverage.xml
