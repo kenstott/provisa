@@ -177,7 +177,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const toggleGroupBy = (col: "source" | "domain") =>
     setGroupBy((prev) => (prev.includes(col) ? prev.filter((g) => g !== col) : [...prev, col]));
-  const [sortCol, setSortCol] = useState<"source" | "domain" | "table" | "cols">("source");
+  const [sortCol, setSortCol] = useState<"source" | "domain" | "table" | "cols" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { checkedDomains, domainsEnabled } = useDomainFilter();
   const { domainAccess } = useAuth();
@@ -959,8 +959,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 <th key={col} style={{ whiteSpace: "nowrap" }}>
                   <span
                     onClick={() => {
-                      if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                      else { setSortCol(col); setSortDir("asc"); }
+                      if (sortCol !== col) { setSortCol(col); setSortDir("asc"); }
+                      else if (sortDir === "asc") setSortDir("desc");
+                      else { setSortCol(null); setSortDir("asc"); }
                     }}
                     style={{ cursor: "pointer", userSelect: "none" }}
                   >
@@ -993,8 +994,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             <th>Effective TTL</th>
             <th
               onClick={() => {
-                if (sortCol === "cols") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                else { setSortCol("cols"); setSortDir("asc"); }
+                if (sortCol !== "cols") { setSortCol("cols"); setSortDir("asc"); }
+                else if (sortDir === "asc") setSortDir("desc");
+                else { setSortCol(null); setSortDir("asc"); }
               }}
               style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
             >
@@ -1019,14 +1021,16 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               return terms.every((term) => haystack.includes(term));
             });
 
-            filtered.sort((a, b) => {
-              let cmp = 0;
-              if (sortCol === "source") cmp = a.sourceId.localeCompare(b.sourceId);
-              else if (sortCol === "domain") cmp = (a.domainId ?? "").localeCompare(b.domainId ?? "");
-              else if (sortCol === "table") cmp = (a.alias || a.tableName).localeCompare(b.alias || b.tableName);
-              else if (sortCol === "cols") cmp = a.columns.length - b.columns.length;
-              return sortDir === "asc" ? cmp : -cmp;
-            });
+            if (sortCol) {
+              filtered.sort((a, b) => {
+                let cmp = 0;
+                if (sortCol === "source") cmp = a.sourceId.localeCompare(b.sourceId);
+                else if (sortCol === "domain") cmp = (a.domainId ?? "").localeCompare(b.domainId ?? "");
+                else if (sortCol === "table") cmp = (a.alias || a.tableName).localeCompare(b.alias || b.tableName);
+                else if (sortCol === "cols") cmp = a.columns.length - b.columns.length;
+                return sortDir === "asc" ? cmp : -cmp;
+              });
+            }
 
             const getGroupKey = (t: RegisteredTable, col: "source" | "domain") =>
               col === "source" ? t.sourceId : (t.domainId ? normalizeDomain(t.domainId) : "(none)");
@@ -1122,23 +1126,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     {domainsEnabled && (
                       <td>{t.domainId ? normalizeDomain(t.domainId) : ""}</td>
                     )}
-                    <td style={{ fontFamily: "monospace", fontSize: "0.9rem" }}>
-                      {(() => {
-                        const ns = domainsEnabled && t.domainId ? normalizeDomain(t.domainId) : "";
-                        return [ns, t.alias || t.tableName].filter(Boolean).join(".");
-                      })()}
-                      {t.description && (
-                        <div
-                          style={{
-                            fontFamily: "inherit",
-                            fontSize: "0.8rem",
-                            color: "var(--text-muted)",
-                            marginTop: "0.2rem",
-                          }}
-                        >
-                          {t.description}
-                        </div>
-                      )}
+                    <td
+                      style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
+                      title={t.description || undefined}
+                    >
+                      {t.alias || t.tableName}
                     </td>
                     <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                       {NAMING_CONVENTIONS.find((nc) => nc.value === (t.gqlNamingConvention ?? ""))
@@ -1193,6 +1185,18 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       <td colSpan={domainsEnabled ? 12 : 11} style={{ padding: 0 }}>
                         {!isEditing ? (
                           <>
+                            {t.description && (
+                              <div
+                                style={{
+                                  padding: "0.5rem 0.75rem",
+                                  fontSize: "0.85rem",
+                                  color: "var(--text-muted)",
+                                  borderBottom: "1px solid var(--border)",
+                                }}
+                              >
+                                {t.description}
+                              </div>
+                            )}
                             <table className="data-table" style={{ margin: 0 }}>
                               <thead>
                                 <tr>
@@ -1532,18 +1536,47 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                               >
                                                 {c.col}
                                               </td>
-                                              <td
-                                                style={{
-                                                  color: isHighNull
-                                                    ? "var(--destructive)"
-                                                    : c.nullCount > 0
-                                                      ? "var(--text)"
-                                                      : "var(--text-muted)",
-                                                }}
-                                              >
-                                                {c.nullCount > 0
-                                                  ? `${c.nullCount} (${nullPct}%)`
-                                                  : "—"}
+                                              <td>
+                                                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                                                  <div
+                                                    style={{
+                                                      width: 52,
+                                                      height: 5,
+                                                      borderRadius: 3,
+                                                      background: "var(--border)",
+                                                      position: "relative",
+                                                      flexShrink: 0,
+                                                    }}
+                                                  >
+                                                    {c.nullCount > 0 && (
+                                                      <div
+                                                        style={{
+                                                          position: "absolute",
+                                                          left: 0,
+                                                          top: 0,
+                                                          bottom: 0,
+                                                          width: `${nullPct}%`,
+                                                          borderRadius: 3,
+                                                          background: isHighNull
+                                                            ? "var(--destructive)"
+                                                            : "var(--text-muted)",
+                                                        }}
+                                                      />
+                                                    )}
+                                                  </div>
+                                                  <span
+                                                    style={{
+                                                      color: isHighNull
+                                                        ? "var(--destructive)"
+                                                        : c.nullCount > 0
+                                                          ? "var(--text)"
+                                                          : "var(--text-muted)",
+                                                      fontSize: "0.7rem",
+                                                    }}
+                                                  >
+                                                    {c.nullCount > 0 ? `${nullPct}%` : "—"}
+                                                  </span>
+                                                </div>
                                               </td>
                                               <td
                                                 style={{
@@ -1566,32 +1599,54 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                                 {c.mean !== null ? c.mean.toFixed(2) : "—"}
                                               </td>
                                               <td>
-                                                <div
-                                                  style={{
-                                                    display: "flex",
-                                                    flexWrap: "wrap",
-                                                    gap: "0.2rem",
-                                                  }}
-                                                >
-                                                  {c.topValues.map(({ value, count }) => (
-                                                    <span
-                                                      key={value}
-                                                      style={{
-                                                        background: "var(--surface)",
-                                                        border: "1px solid var(--border)",
-                                                        borderRadius: "3px",
-                                                        padding: "0 0.3rem",
-                                                        fontSize: "0.68rem",
-                                                        fontFamily: "monospace",
-                                                        whiteSpace: "nowrap",
-                                                      }}
-                                                    >
-                                                      {value.slice(0, 20)}
-                                                      <span style={{ color: "var(--text-muted)" }}>
-                                                        ×{count}
-                                                      </span>
-                                                    </span>
-                                                  ))}
+                                                <div style={{ display: "flex", flexDirection: "column", gap: "0.18rem", minWidth: 140 }}>
+                                                  {c.topValues.map(({ value, count }) => {
+                                                    const barPct = c.topValues[0].count > 0
+                                                      ? (count / c.topValues[0].count) * 100
+                                                      : 0;
+                                                    return (
+                                                      <div key={value} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                                                        <div
+                                                          style={{
+                                                            width: 52,
+                                                            height: 5,
+                                                            borderRadius: 2,
+                                                            background: "var(--border)",
+                                                            position: "relative",
+                                                            flexShrink: 0,
+                                                          }}
+                                                        >
+                                                          <div
+                                                            style={{
+                                                              position: "absolute",
+                                                              left: 0,
+                                                              top: 0,
+                                                              bottom: 0,
+                                                              width: `${barPct}%`,
+                                                              borderRadius: 2,
+                                                              background: "var(--primary)",
+                                                            }}
+                                                          />
+                                                        </div>
+                                                        <span
+                                                          style={{
+                                                            fontFamily: "monospace",
+                                                            fontSize: "0.68rem",
+                                                            whiteSpace: "nowrap",
+                                                            overflow: "hidden",
+                                                            maxWidth: 110,
+                                                            textOverflow: "ellipsis",
+                                                          }}
+                                                          title={value}
+                                                        >
+                                                          {value.slice(0, 22)}
+                                                        </span>
+                                                        <span style={{ color: "var(--text-muted)", fontSize: "0.65rem", marginLeft: "auto", flexShrink: 0 }}>
+                                                          ×{count}
+                                                        </span>
+                                                      </div>
+                                                    );
+                                                  })}
                                                 </div>
                                               </td>
                                             </tr>
