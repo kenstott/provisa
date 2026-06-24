@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import * as monaco from "monaco-editor";
 import { GraphiQL } from "graphiql";
 import { createGraphiQLFetcher, type Fetcher } from "@graphiql/toolkit";
@@ -495,12 +496,39 @@ function createProvisaFetch(
   };
 }
 
+/** Opens a new GraphiQL tab, populates it, and executes — triggered by navigation from NL page. */
+function AutoRunFromNav({ query }: { query: string }) {
+  const { addTab, updateActiveTabValues, run } = useGraphiQLActions();
+  const queryEditor = useGraphiQL((s) => s.queryEditor);
+  const didRun = useRef(false);
+
+  // Wait for queryEditor to become available (it's set asynchronously by GraphiQL).
+  // Once it's ready, add a tab, populate, and execute exactly once.
+  useEffect(() => {
+    if (!queryEditor || didRun.current) return;
+    didRun.current = true;
+    addTab();
+    updateActiveTabValues({ query });
+    queryEditor.setValue(query);
+    const t = setTimeout(() => run(), 100);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryEditor]);
+  return null;
+}
+
 /** Query development page — embeds GraphiQL with Explorer (REQ-062). */
 export function QueryPage() {
   const { role } = useAuth();
   const { checkedDomains } = useDomainFilter();
+  const location = useLocation();
   const [domainSchema, setDomainSchema] = useState<GraphQLSchema | null>(null);
   // Frozen initial values — never updated so GraphiQL owns these states after mount.
+  const locationState = (location.state as { query?: string; autoRun?: boolean } | null);
+  const [initialQuery] = useState<string | undefined>(() => locationState?.query ?? undefined);
+  const [autoRunQuery] = useState<string | undefined>(
+    () => locationState?.autoRun && locationState.query ? locationState.query : undefined,
+  );
   const [initialVisiblePlugin] = useState<string | undefined>(
     () => localStorage.getItem("query:visiblePlugin") ?? undefined,
   );
@@ -856,8 +884,10 @@ export function QueryPage() {
         visiblePlugin={initialVisiblePlugin}
         onTogglePluginVisibility={onPluginVisibilityChange}
         defaultEditorToolsVisibility={initialEditorTab}
+        defaultQuery={initialQuery}
         shouldPersistHeaders
       >
+        {autoRunQuery && <AutoRunFromNav query={autoRunQuery} />}
         <GraphiQL.Footer>
           <ResponseTableOverlay />
           <HeadersQuickInsert />

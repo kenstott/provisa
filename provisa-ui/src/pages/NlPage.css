@@ -182,14 +182,20 @@
 }
 
 .nl-branch-header {
-  padding: 8px 12px;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: hsl(224, 20%, 13%);
+  border-bottom: 1px solid hsl(224, 15%, 24%);
+}
+
+.nl-branch-label {
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: hsl(239, 84%, 75%);
-  background: hsl(224, 20%, 13%);
-  border-bottom: 1px solid hsl(224, 15%, 24%);
 }
 
 .nl-branch-body {
@@ -273,4 +279,28 @@
   white-space: pre-wrap;
   word-break: break-word;
   color: hsl(224, 10%, 70%);
+}
+
+.nl-branch-na {
+  color: hsl(224, 10%, 45%);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.nl-open-btn {
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  background: hsl(224, 20%, 22%);
+  color: hsl(239, 84%, 75%);
+  border: 1px solid hsl(239, 50%, 40%);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.nl-open-btn:hover {
+  background: hsl(239, 50%, 28%);
+  border-color: hsl(239, 84%, 67%);
+  color: #fff;
 }

@@ -970,9 +970,11 @@ export function SqlPage() {
     const loaded = loadTabsMeta();
     const locSql = (location.state as { sql?: string } | null)?.sql;
     if (locSql != null) {
-      loaded.tabs = loaded.tabs.map((t) =>
-        t.id === loaded.activeId ? { ...t, sqlText: locSql } : t,
-      );
+      const id = newTabId();
+      const title = nextTabTitle(loaded.tabs);
+      const newTab = emptyTab(id, title, locSql);
+      loaded.tabs = [...loaded.tabs, newTab];
+      loaded.activeId = id;
     }
     return loaded;
     // eslint-disable-next-line react-hooks/exhaustive-deps

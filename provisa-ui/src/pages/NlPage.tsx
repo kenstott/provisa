@@ -9,9 +9,16 @@
 // permission from the copyright holder.
 
 import { useState, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { submitNlQuery, streamNlResult, type NlBranchEvent } from "../api/admin";
 import "./NlPage.css";
+
+const EXPLORER_ROUTES: Record<string, { path: string; stateKey: string }> = {
+  sql: { path: "/sql", stateKey: "sql" },
+  graphql: { path: "/query", stateKey: "query" },
+  cypher: { path: "/graph", stateKey: "query" },
+};
 
 const GUIDE_KEY = "provisa.nl.guide.collapsed";
 
@@ -78,16 +85,29 @@ const LABELS: Record<Target, string> = { sql: "SQL", graphql: "GraphQL", cypher:
 
 export function NlPage() {
   const { role } = useAuth();
-  const [question, setQuestion] = useState("");
+  const navigate = useNavigate();
+  const NL_QUESTION_KEY = "nl-question";
+  const NL_BRANCHES_KEY = "nl-branches";
+  const [question, setQuestion] = useState(() => localStorage.getItem(NL_QUESTION_KEY) ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
-  const [branches, setBranches] = useState<Record<Target, BranchState>>({
-    sql: EMPTY_BRANCH,
-    graphql: EMPTY_BRANCH,
-    cypher: EMPTY_BRANCH,
+  const [branches, setBranches] = useState<Record<Target, BranchState>>(() => {
+    try {
+      const saved = localStorage.getItem(NL_BRANCHES_KEY);
+      return saved ? JSON.parse(saved) : { sql: EMPTY_BRANCH, graphql: EMPTY_BRANCH, cypher: EMPTY_BRANCH };
+    } catch {
+      return { sql: EMPTY_BRANCH, graphql: EMPTY_BRANCH, cypher: EMPTY_BRANCH };
+    }
   });
-  const [hasResults, setHasResults] = useState(false);
+  const [hasResults, setHasResults] = useState(
+    () => localStorage.getItem(NL_BRANCHES_KEY) !== null,
+  );
   const cancelRef = useRef<(() => void) | null>(null);
+
+  const saveBranches = useCallback((next: Record<Target, BranchState>) => {
+    localStorage.setItem(NL_BRANCHES_KEY, JSON.stringify(next));
+    setBranches(next);
+  }, []);
 
   const handleSubmit = useCallback(async () => {
     const q = question.trim();
@@ -100,7 +120,7 @@ export function NlPage() {
     setGlobalError(null);
     setHasResults(true);
     setSubmitting(true);
-    setBranches({
+    saveBranches({
       sql: { ...EMPTY_BRANCH, loading: true },
       graphql: { ...EMPTY_BRANCH, loading: true },
       cypher: { ...EMPTY_BRANCH, loading: true },
@@ -113,7 +133,7 @@ export function NlPage() {
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : String(e));
       setSubmitting(false);
-      setBranches({ sql: EMPTY_BRANCH, graphql: EMPTY_BRANCH, cypher: EMPTY_BRANCH });
+      saveBranches({ sql: EMPTY_BRANCH, graphql: EMPTY_BRANCH, cypher: EMPTY_BRANCH });
       return;
     }
 
@@ -121,10 +141,11 @@ export function NlPage() {
       jobId,
       (event: NlBranchEvent) => {
         const t = event.target as Target;
-        setBranches((prev) => ({
-          ...prev,
-          [t]: { query: event.query, result: event.result, error: event.error, loading: false },
-        }));
+        setBranches((prev) => {
+          const next = { ...prev, [t]: { query: event.query, result: event.result, error: event.error, loading: false } };
+          localStorage.setItem(NL_BRANCHES_KEY, JSON.stringify(next));
+          return next;
+        });
       },
       (_state) => {
         setSubmitting(false);
@@ -133,6 +154,7 @@ export function NlPage() {
           for (const t of TARGETS) {
             if (next[t].loading) next[t] = { ...EMPTY_BRANCH };
           }
+          localStorage.setItem(NL_BRANCHES_KEY, JSON.stringify(next));
           return next;
         });
       },
@@ -144,12 +166,18 @@ export function NlPage() {
           for (const t of TARGETS) {
             if (next[t].loading) next[t] = { ...EMPTY_BRANCH, error: msg };
           }
+          localStorage.setItem(NL_BRANCHES_KEY, JSON.stringify(next));
           return next;
         });
       },
     );
     cancelRef.current = stop;
   }, [question, submitting, role]);
+
+  const openInExplorer = useCallback((target: Target, query: string) => {
+    const route = EXPLORER_ROUTES[target];
+    navigate(route.path, { state: { [route.stateKey]: query, autoRun: true } });
+  }, [navigate]);
 
   return (
     <div className="nl-page">
@@ -160,7 +188,7 @@ export function NlPage() {
           placeholder="Ask a question in plain English…"
           value={question}
           rows={2}
-          onChange={(e) => setQuestion(e.target.value)}
+          onChange={(e) => { setQuestion(e.target.value); localStorage.setItem(NL_QUESTION_KEY, e.target.value); }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -182,7 +210,7 @@ export function NlPage() {
       {hasResults && (
         <div className="nl-panels">
           {TARGETS.map((t) => (
-            <BranchPanel key={t} label={LABELS[t]} branch={branches[t]} />
+            <BranchPanel key={t} label={LABELS[t]} target={t} branch={branches[t]} onOpen={openInExplorer} />
           ))}
         </div>
       )}
@@ -190,19 +218,44 @@ export function NlPage() {
   );
 }
 
-function BranchPanel({ label, branch }: { label: string; branch: BranchState }) {
+function BranchPanel({
+  label,
+  target,
+  branch,
+  onOpen,
+}: {
+  label: string;
+  target: Target;
+  branch: BranchState;
+  onOpen: (target: Target, query: string) => void;
+}) {
+  const notApplicable = branch.error === "NOT_APPLICABLE";
   return (
     <div className="nl-branch-panel">
-      <div className="nl-branch-header">{label}</div>
+      <div className="nl-branch-header">
+        <span className="nl-branch-label">{label}</span>
+        {!branch.loading && branch.query && (
+          <button
+            className="nl-open-btn"
+            title={`Open in ${label} explorer`}
+            onClick={() => onOpen(target, branch.query!)}
+          >
+            Open in {label}
+          </button>
+        )}
+      </div>
       <div className="nl-branch-body">
         {branch.loading && <div className="nl-branch-loading">Generating…</div>}
-        {!branch.loading && branch.error && (
+        {!branch.loading && notApplicable && (
+          <div className="nl-branch-na">Not applicable for this query type</div>
+        )}
+        {!branch.loading && !notApplicable && branch.error && (
           <div className="nl-branch-error">{branch.error}</div>
         )}
         {!branch.loading && branch.query && (
           <pre className="nl-branch-query">{branch.query}</pre>
         )}
-        {!branch.loading && !branch.query && !branch.error && branch.query === null && (
+        {!branch.loading && !branch.query && !branch.error && (
           <div className="nl-branch-empty">No query generated</div>
         )}
         {!branch.loading && branch.result != null && (
@@ -222,7 +275,7 @@ function ResultTable({ result }: { result: unknown }) {
     return <pre className="nl-branch-result-raw">{JSON.stringify(result, null, 2)}</pre>;
   }
 
-  const { columns, rows } = result as { columns: string[]; rows: unknown[][] };
+  const { columns, rows } = result as { columns: string[]; rows: Record<string, unknown>[] };
   if (!rows.length) return <div className="nl-branch-empty">No rows returned</div>;
 
   return (
@@ -238,8 +291,8 @@ function ResultTable({ result }: { result: unknown }) {
         <tbody>
           {rows.slice(0, 100).map((row, i) => (
             <tr key={i}>
-              {(row as unknown[]).map((cell, j) => (
-                <td key={j}>{cell == null ? "" : String(cell)}</td>
+              {columns.map((c, j) => (
+                <td key={j}>{row[c] == null ? "" : String(row[c])}</td>
               ))}
             </tr>
           ))}
