@@ -65,6 +65,7 @@ interface CanvasProps {
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;
   sizeByProperty: Record<string, string>;
+  sizeMultiplier: Record<string, number>;
   relLineOverrides: Record<string, RelLineOverride>;
   onExcludeNode: (nodeKeys: string[]) => void;
   pkMap: Record<string, string[]>;
@@ -113,8 +114,8 @@ const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
 function computeLabelSizeRanges(
   cy: CyInstance,
   sizeByProp: Record<string, string>,
-): Map<string, number> {
-  const maxes = new Map<string, number>();
+): Map<string, { min: number; max: number }> {
+  const ranges = new Map<string, { min: number; max: number }>();
   cy.nodes().forEach((nd) => {
     if (nd.data("_cluster") || nd.data("_port")) return;
     const lbl = nd.data("label") as string;
@@ -123,10 +124,15 @@ function computeLabelSizeRanges(
     const gn = nd.data("_node") as GNode | undefined;
     if (!gn) return;
     const v = Number(gn.properties[sby]);
-    if (isNaN(v) || v <= 0) return;
-    maxes.set(sby, Math.max(maxes.get(sby) ?? 0, v));
+    if (isNaN(v)) return;
+    const cur = ranges.get(sby);
+    if (!cur) {
+      ranges.set(sby, { min: v, max: v });
+    } else {
+      ranges.set(sby, { min: Math.min(cur.min, v), max: Math.max(cur.max, v) });
+    }
   });
-  return maxes;
+  return ranges;
 }
 
 function applyNodeSize(
@@ -135,17 +141,20 @@ function applyNodeSize(
   gn: GNode | undefined,
   sizeByProp: Record<string, string>,
   sizeOverrides: Record<string, number>,
-  ranges: Map<string, number>,
+  sizeMultiplier: Record<string, number>,
+  ranges: Map<string, { min: number; max: number }>,
 ): void {
   const base = sizeOverrides[lbl] ?? 44;
   const sby = sizeByProp[lbl];
+  const multiplier = sizeMultiplier[lbl] ?? 3;
   const inCluster = node.data("_inCluster") as boolean;
   let sz: number;
   if (sby && gn) {
-    const max = ranges.get(sby);
+    const range = ranges.get(sby);
     const v = Number(gn.properties[sby]);
-    if (max && max > 0 && !isNaN(v)) {
-      sz = base * (1 + v / max) * (inCluster ? 0.5 : 1);
+    if (range && !isNaN(v) && range.max > range.min) {
+      const t = (v - range.min) / (range.max - range.min);
+      sz = base * (1 + t * (multiplier - 1)) * (inCluster ? 0.5 : 1);
     } else {
       sz = inCluster ? base / 2 : base;
     }
@@ -165,6 +174,7 @@ export function GraphCanvas({
   sizeOverrides,
   labelProperty,
   sizeByProperty,
+  sizeMultiplier,
   relLineOverrides,
   onExcludeNode,
   pkMap,
@@ -193,6 +203,8 @@ export function GraphCanvas({
   labelPropertyRef.current = labelProperty;
   const sizeByPropertyRef = useRef(sizeByProperty);
   sizeByPropertyRef.current = sizeByProperty;
+  const sizeMultiplierRef = useRef(sizeMultiplier);
+  sizeMultiplierRef.current = sizeMultiplier;
   const relLineOverridesRef = useRef(relLineOverrides);
   relLineOverridesRef.current = relLineOverrides;
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("force");
@@ -511,7 +523,7 @@ export function GraphCanvas({
             const n = node.data("_node") as GNode | undefined;
             const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
             node.style("background-color", base);
-            applyNodeSize(node, lbl, n, sizeByPropertyRef.current, sizeOverridesRef.current, labelSizeRange);
+            applyNodeSize(node, lbl, n, sizeByPropertyRef.current, sizeOverridesRef.current, sizeMultiplierRef.current, labelSizeRange);
             if (n) {
               const prop = labelPropertyRef.current[n.label];
               node.style(
@@ -632,7 +644,7 @@ export function GraphCanvas({
                 const n = node.data("_node") as GNode | undefined;
                 const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
                 node.style("background-color", base);
-                applyNodeSize(node, lbl, n, sizeByPropertyRef.current, sizeOverridesRef.current, labelSizeRange);
+                applyNodeSize(node, lbl, n, sizeByPropertyRef.current, sizeOverridesRef.current, sizeMultiplierRef.current, labelSizeRange);
                 if (n) {
                   const prop = labelPropertyRef.current[n.label];
                   node.style(
@@ -1010,10 +1022,10 @@ export function GraphCanvas({
       cy.nodes().forEach((node) => {
         const lbl = node.data("label") as string;
         const gn = node.data("_node") as GNode | undefined;
-        applyNodeSize(node, lbl, gn, sizeByPropertyRef.current, sizeOverridesRef.current, labelSizeRange);
+        applyNodeSize(node, lbl, gn, sizeByPropertyRef.current, sizeOverridesRef.current, sizeMultiplierRef.current, labelSizeRange);
       });
     });
-  }, [sizeOverrides, sizeByProperty]);
+  }, [sizeOverrides, sizeByProperty, sizeMultiplier]);
 
   // Update node display labels without rebuilding
   useEffect(() => {

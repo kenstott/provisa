@@ -28,6 +28,7 @@ interface SidebarProps {
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;
   sizeByProperty: Record<string, string>;
+  sizeMultiplier: Record<string, number>;
   relLineOverrides: Record<string, RelLineOverride>;
   onHistorySelect: (q: string) => void;
   onLabelClick: (label: string) => void;
@@ -37,6 +38,7 @@ interface SidebarProps {
   onSizeChange: (label: string, size: number) => void;
   onLabelPropertyChange: (label: string, prop: string) => void;
   onSizeByPropertyChange: (label: string, prop: string) => void;
+  onSizeMultiplierChange: (label: string, multiplier: number) => void;
   onRelLineChange: (type: string, override: RelLineOverride) => void;
   numericPropsByLabel: Record<string, string[]>;
   onNeo4jExport?: () => void;
@@ -61,6 +63,7 @@ export function Sidebar({
   sizeOverrides,
   labelProperty,
   sizeByProperty,
+  sizeMultiplier,
   relLineOverrides,
   onHistorySelect,
   onLabelClick,
@@ -70,6 +73,7 @@ export function Sidebar({
   onSizeChange,
   onLabelPropertyChange,
   onSizeByPropertyChange,
+  onSizeMultiplierChange,
   onRelLineChange,
   numericPropsByLabel,
   onNeo4jExport,
@@ -541,10 +545,12 @@ export function Sidebar({
           sizeOverrides={sizeOverrides}
           labelProperty={labelProperty}
           sizeByProperty={sizeByProperty}
+          sizeMultiplier={sizeMultiplier}
           onColorChange={onColorChange}
           onSizeChange={onSizeChange}
           onLabelPropertyChange={onLabelPropertyChange}
           onSizeByPropertyChange={onSizeByPropertyChange}
+          onSizeMultiplierChange={onSizeMultiplierChange}
           onClose={() => setContextMenu(null)}
         />
       )}

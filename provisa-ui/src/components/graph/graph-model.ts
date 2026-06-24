@@ -374,4 +374,5 @@ export interface FrameData {
   columns: string[];
   error?: string;
   elapsed?: number;
+  queryStats?: unknown;
 }

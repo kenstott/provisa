@@ -73,25 +73,25 @@ monaco.languages.registerCompletionItemProvider("graphql", {
           label: "@route",
           insertText: "route(engine: ${1|FEDERATED,DIRECT|})",
           detail: "Force execution engine",
-          documentation: "FEDERATED = Trino federation, DIRECT = native driver.",
+          documentation: "FEDERATED = federated execution, DIRECT = native driver.",
         },
         {
           label: "@join",
           insertText: "join(strategy: ${1|BROADCAST,PARTITIONED|})",
-          detail: "Trino join strategy",
+          detail: "Federated join strategy",
           documentation: "BROADCAST: small dimension table. PARTITIONED: large fact-to-fact join.",
         },
         {
           label: "@reorder",
           insertText: "reorder(enabled: ${1|false,true|})",
-          detail: "Trino join reordering",
-          documentation: "enabled: false disables Trino's cost-based join reordering.",
+          detail: "Federated join reordering",
+          documentation: "enabled: false disables the federation engine's cost-based join reordering.",
         },
         {
           label: "@broadcastSize",
           insertText: 'broadcastSize(size: "${1:512MB}")',
           detail: "Max broadcast table size",
-          documentation: "Sets Trino join_max_broadcast_table_size session property.",
+          documentation: "Sets the federation engine join_max_broadcast_table_size session property.",
         },
         {
           label: "@redirect",
@@ -150,7 +150,7 @@ monaco.languages.registerCompletionItemProvider("graphql", {
             kind: monaco.languages.CompletionItemKind.EnumMember,
             detail: "Force federated execution",
             documentation:
-              "Route this query through the federation engine (Trino) even if a direct driver is available.",
+              "Route this query through the federation engine even if a direct driver is available.",
             insertText: "route=federated",
             range: mkRange(cmdStart),
           },
@@ -168,7 +168,7 @@ monaco.languages.registerCompletionItemProvider("graphql", {
             kind: monaco.languages.CompletionItemKind.EnumMember,
             detail: "Broadcast join strategy",
             documentation:
-              "Sets Trino session join_distribution_type=BROADCAST. Broadcasts the smaller table to all nodes — best for small dimension tables.",
+              "Sets federated engine join_distribution_type=BROADCAST. Broadcasts the smaller table to all nodes — best for small dimension tables.",
             insertText: "join=broadcast",
             range: mkRange(cmdStart),
           },
@@ -177,7 +177,7 @@ monaco.languages.registerCompletionItemProvider("graphql", {
             kind: monaco.languages.CompletionItemKind.EnumMember,
             detail: "Partitioned join strategy",
             documentation:
-              "Sets Trino session join_distribution_type=PARTITIONED. Hash-partitions both sides — best for large fact-to-fact joins.",
+              "Sets federated engine join_distribution_type=PARTITIONED. Hash-partitions both sides — best for large fact-to-fact joins.",
             insertText: "join=partitioned",
             range: mkRange(cmdStart),
           },
@@ -186,7 +186,7 @@ monaco.languages.registerCompletionItemProvider("graphql", {
             kind: monaco.languages.CompletionItemKind.EnumMember,
             detail: "Disable join reordering",
             documentation:
-              "Sets Trino session join_reordering_strategy=NONE. Use when Trino's cost-based reordering produces a bad plan.",
+              "Sets federated engine join_reordering_strategy=NONE. Use when the federation engine's cost-based reordering produces a bad plan.",
             insertText: "reorder=off",
             range: mkRange(cmdStart),
           },
@@ -195,7 +195,7 @@ monaco.languages.registerCompletionItemProvider("graphql", {
             kind: monaco.languages.CompletionItemKind.EnumMember,
             detail: "Max broadcast table size",
             documentation:
-              "Sets Trino session join_max_broadcast_table_size. E.g. broadcast_size=512MB.",
+              "Sets federated engine join_max_broadcast_table_size. E.g. broadcast_size=512MB.",
             insertText: "broadcast_size=",
             range: mkRange(cmdStart),
           },
@@ -214,7 +214,7 @@ monaco.languages.registerCompletionItemProvider("graphql", {
             label: "@provisa",
             kind: monaco.languages.CompletionItemKind.Keyword,
             detail: "Provisa query hint",
-            documentation: "Add a Provisa execution hint, e.g. route=trino or route=direct.",
+            documentation: "Add a Provisa execution hint, e.g. route=federated or route=direct.",
             insertText: "@provisa ",
             range: mkRange(typedStart),
             command: { id: "editor.action.triggerSuggest", title: "Trigger suggest" },
@@ -373,10 +373,18 @@ const REDIRECT_FORMAT_OPTIONS = [
   { value: "json", label: "JSON", mime: "application/json" },
 ] as const;
 
+interface RedirectInfo {
+  url: string;
+  row_count: number;
+  expires_in: number;
+  content_type: string;
+}
+
 interface RedirectSettings {
   format: string;
   threshold: string;
   statsEnabled: boolean;
+  onRedirect: (result: RedirectInfo | null) => void;
 }
 
 function createProvisaFetch(
@@ -384,6 +392,7 @@ function createProvisaFetch(
 ): typeof globalThis.fetch {
   return async (input, init) => {
     const settings = settingsRef.current;
+    settings.onRedirect(null);
     const headers = new Headers(init?.headers);
     headers.set("Accept", "application/json");
     if (settings.format) {
@@ -414,6 +423,12 @@ function createProvisaFetch(
       const body = await res.json();
       // Single-field redirect
       if (body.redirect) {
+        settings.onRedirect({
+          url: body.redirect.redirect_url,
+          row_count: body.redirect.row_count,
+          expires_in: body.redirect.expires_in,
+          content_type: body.redirect.content_type,
+        });
         const synthetic = {
           data: {
             ...body.data,
@@ -500,6 +515,7 @@ export function QueryPage() {
   );
   const [statsEnabled, setStatsEnabled] = useState(() => localStorage.getItem("query:statsEnabled") === "true");
   const [queryElapsedMs, setQueryElapsedMs] = useState<number | null>(null);
+  const [redirectResult, setRedirectResult] = useState<RedirectInfo | null>(null);
   useEffect(() => subscribeQueryTiming(setQueryElapsedMs), []);
 
   // Persist which secondary editor tab (Variables/Headers) is active.
@@ -597,6 +613,7 @@ export function QueryPage() {
     format: redirectFormat,
     threshold: redirectThreshold,
     statsEnabled,
+    onRedirect: setRedirectResult,
   });
   /* eslint-disable-next-line react-hooks/refs --
      latest-value ref: createProvisaFetch reads current redirect settings at request time; the fetcher is memoized on role only and must not be recreated when settings change */
@@ -604,6 +621,7 @@ export function QueryPage() {
     format: REDIRECT_FORMAT_OPTIONS.find((o) => o.value === redirectFormat)?.mime ?? "",
     threshold: redirectThreshold,
     statsEnabled,
+    onRedirect: setRedirectResult,
   };
 
   const fetcher = useMemo((): Fetcher | null => {
@@ -784,6 +802,50 @@ export function QueryPage() {
           }}
         >
           Schema error: {schemaError}
+        </div>
+      )}
+      {redirectResult && (
+        <div
+          style={{
+            padding: "6px 12px",
+            background: "#0f2e1a",
+            color: "#4ade80",
+            fontSize: 12,
+            borderBottom: "1px solid #1a4a2a",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <span>
+            Redirect ready — {redirectResult.row_count} rows ({redirectResult.content_type})
+          </span>
+          <a
+            href={redirectResult.url}
+            download
+            style={{
+              color: "#4ade80",
+              fontWeight: 600,
+              textDecoration: "underline",
+              cursor: "pointer",
+            }}
+          >
+            Download
+          </a>
+          <button
+            onClick={() => setRedirectResult(null)}
+            style={{
+              marginLeft: "auto",
+              background: "none",
+              border: "none",
+              color: "#4ade80",
+              cursor: "pointer",
+              fontSize: 14,
+              padding: 0,
+            }}
+          >
+            ✕
+          </button>
         </div>
       )}
       <GraphiQL

@@ -29,6 +29,8 @@ interface QueryBarProps {
   cypherSchema?: CypherSchema;
   autoImpute: boolean;
   onToggleAutoImpute: () => void;
+  statsEnabled: boolean;
+  onToggleStats: () => void;
 }
 
 // Polyfill: @neo4j-cypher/codemirror 1.x calls view.newContentVersion() which doesn't exist on current @codemirror/view
@@ -51,6 +53,8 @@ export function QueryBar({
   cypherSchema,
   autoImpute,
   onToggleAutoImpute,
+  statsEnabled,
+  onToggleStats,
 }: QueryBarProps) {
   const [query, setQuery] = useState(initialQuery ?? "MATCH (n) RETURN n LIMIT 25");
   const viewRef = useRef<EditorView | null>(null);
@@ -140,6 +144,15 @@ export function QueryBar({
       >
         ⊕
       </button>
+      <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", cursor: "pointer", marginRight: 8 }}>
+        <input
+          type="checkbox"
+          checked={statsEnabled}
+          onChange={onToggleStats}
+          style={{ marginRight: 2 }}
+        />
+        Query Stats
+      </label>
       <button className="graph-run-btn" onClick={() => onRun(query.trim())} title="Run query (⌘↵)">
         ▶
       </button>

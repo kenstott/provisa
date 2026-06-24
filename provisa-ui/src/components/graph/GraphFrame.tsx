@@ -37,6 +37,7 @@ import type { CyInstance } from "./cytoscape-types";
 import type { ClusterLevel } from "./graph-clusters";
 import { downloadBlob, compositeGraphDownload, downloadGraphSvg, toCSV } from "./graph-export";
 import { GraphCanvas } from "./GraphCanvas";
+import { GraphStatsPanel } from "./GraphStatsModal";
 import { Inspector } from "./Inspector";
 import { TableView, JsonCopyButton } from "./TableView";
 import { tableLabel as dbTableLabel } from "../../naming";
@@ -53,6 +54,7 @@ interface GraphFrameProps {
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;
   sizeByProperty: Record<string, string>;
+  sizeMultiplier: Record<string, number>;
   relLineOverrides: Record<string, RelLineOverride>;
   onColorChange: (label: string, color: string) => void;
   pkMap: Record<string, string[]>;
@@ -78,6 +80,7 @@ export function GraphFrame({
   sizeOverrides,
   labelProperty,
   sizeByProperty,
+  sizeMultiplier,
   relLineOverrides,
   onColorChange,
   pkMap,
@@ -88,7 +91,7 @@ export function GraphFrame({
   onSelectedLabelChange,
   onEffectiveDataChange,
 }: GraphFrameProps) {
-  const [view, setView] = useState<"graph" | "table" | "json">("graph");
+  const [view, setView] = useState<"graph" | "table" | "json" | "graphstats">("graph");
   const [selected, setSelectedRaw] = useState<
     { kind: "node"; data: GNode; graphStats?: GraphStats } | { kind: "edge"; data: GEdge } | null
   >(null);
@@ -696,11 +699,13 @@ export function GraphFrame({
       .map(([k]) => k);
     return ["domain", ...schemaVirtuals, ...degreeVirtuals, ...regularAttrs].sort((a, b) => a.localeCompare(b));
   }, [augmentedNodes]);
-  const activeView: "graph" | "table" | "json" = hasGraph
+  const activeView: "graph" | "table" | "json" | "graphstats" = hasGraph
     ? view
     : view === "json"
       ? "json"
-      : "table";
+      : view === "graphstats"
+        ? "graphstats"
+        : "table";
 
   const renderHeader = (isModal: boolean) => (
     <div className="gf-header">
@@ -832,6 +837,15 @@ export function GraphFrame({
         >
           {"{}"}
         </button>
+        {hasGraph && (
+          <button
+            className={`gf-view-btn ${activeView === "graphstats" ? "active" : ""}`}
+            onClick={() => setView(activeView === "graphstats" ? "graph" : "graphstats")}
+            title="Graph statistics"
+          >
+            ∑
+          </button>
+        )}
         {activeView === "table" && frame.rows.length > 0 && (
           <button
             className={`gf-icon-btn${tableWrap ? " gf-icon-btn--on" : ""}`}
@@ -969,6 +983,7 @@ export function GraphFrame({
             sizeOverrides={sizeOverrides}
             labelProperty={labelProperty}
             sizeByProperty={sizeByProperty}
+            sizeMultiplier={sizeMultiplier}
             relLineOverrides={relLineOverrides}
             onExcludeNode={handleExcludeNode}
             pkMap={pkMap}
@@ -1034,6 +1049,14 @@ export function GraphFrame({
             </div>
           );
         })()}
+      {frame.status !== "error" && activeView === "graphstats" && hasGraph && (
+        <GraphStatsPanel
+          nodes={augmentedNodes}
+          edges={overlayEdges.size > 0 ? new Map([...frame.edges, ...overlayEdges]) : frame.edges}
+          queryStats={frame.queryStats}
+          height={graphAreaHeight}
+        />
+      )}
     </div>
   );
 

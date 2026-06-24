@@ -61,7 +61,12 @@ export function GraphPage() {
     "provisa.graph.sizeByProperty",
     {},
   );
+  const [sizeMultiplier, setSizeMultiplier] = useLocalStorage<Record<string, number>>(
+    "provisa.graph.sizeMultiplier",
+    {},
+  );
   const [autoImpute, setAutoImpute] = useLocalStorage<boolean>("provisa.graph.autoImpute", false);
+  const [statsEnabled, setStatsEnabled] = useLocalStorage<boolean>("provisa.graph.statsEnabled", false);
   const [relLineOverrides, setRelLineOverrides] = useLocalStorage<Record<string, RelLineOverride>>(
     "provisa.graph.relLineOverrides",
     {},
@@ -203,6 +208,7 @@ export function GraphPage() {
       try {
         const hdrs: Record<string, string> = { "Content-Type": "application/json" };
         if (role) hdrs["X-Provisa-Role"] = role.id;
+        if (statsEnabled) hdrs["X-Provisa-Stats"] = "true";
         const res = await fetch("/data/cypher", {
           method: "POST",
           headers: hdrs,
@@ -230,6 +236,7 @@ export function GraphPage() {
         const data = await res.json();
         const rows: Record<string, unknown>[] = data.rows ?? [];
         const columns: string[] = data.columns ?? [];
+        const queryStats: unknown = data.provisa_stats ?? undefined;
         const { nodes, edges } = extractElements(rows);
         nodes.forEach((node) => {
           const clusters = clusterMapRef.current[node.label];
@@ -243,7 +250,7 @@ export function GraphPage() {
         setFrames((f) => {
           const next = f.map((fr) =>
             fr.id === id
-              ? { ...fr, status: "done" as const, nodes, edges, rows, columns, elapsed }
+              ? { ...fr, status: "done" as const, nodes, edges, rows, columns, elapsed, queryStats }
               : fr,
           );
           graphState.frames = next;
@@ -261,7 +268,7 @@ export function GraphPage() {
         });
       }
     },
-    [role],
+    [role, statsEnabled],
   );
 
   // Auto-execute a query forwarded from another page (e.g. Cypher panel → Graph).
@@ -310,6 +317,7 @@ export function GraphPage() {
       try {
         const hdrs2: Record<string, string> = { "Content-Type": "application/json" };
         if (role) hdrs2["X-Provisa-Role"] = role.id;
+        if (statsEnabled) hdrs2["X-Provisa-Stats"] = "true";
         const res = await fetch("/data/cypher", {
           method: "POST",
           headers: hdrs2,
@@ -337,6 +345,7 @@ export function GraphPage() {
         const data = await res.json();
         const rows: Record<string, unknown>[] = data.rows ?? [];
         const columns: string[] = data.columns ?? [];
+        const queryStats: unknown = data.provisa_stats ?? undefined;
         const { nodes, edges } = extractElements(rows);
         nodes.forEach((node) => {
           const clusters = clusterMapRef.current[node.label];
@@ -350,7 +359,7 @@ export function GraphPage() {
         setFrames((f) => {
           const next = f.map((fr) =>
             fr.id === id
-              ? { ...fr, status: "done" as const, nodes, edges, rows, columns, elapsed }
+              ? { ...fr, status: "done" as const, nodes, edges, rows, columns, elapsed, queryStats }
               : fr,
           );
           graphState.frames = next;
@@ -368,7 +377,7 @@ export function GraphPage() {
         });
       }
     },
-    [role],
+    [role, statsEnabled],
   );
 
   const framesRef = useRef(frames);
@@ -553,6 +562,13 @@ export function GraphPage() {
     [setSizeByProperty],
   );
 
+  const handleSizeMultiplierChange = useCallback(
+    (label: string, multiplier: number) => {
+      setSizeMultiplier((prev) => ({ ...prev, [label]: multiplier }));
+    },
+    [setSizeMultiplier],
+  );
+
   const handleRelLineChange = useCallback(
     (type: string, override: RelLineOverride) => {
       setRelLineOverrides((prev) => ({ ...prev, [type]: override }));
@@ -713,6 +729,7 @@ export function GraphPage() {
         sizeOverrides={sizeOverrides}
         labelProperty={labelProperty}
         sizeByProperty={sizeByProperty}
+        sizeMultiplier={sizeMultiplier}
         relLineOverrides={relLineOverrides}
         onHistorySelect={handleHistorySelect}
         onLabelClick={handleLabelClick}
@@ -722,6 +739,7 @@ export function GraphPage() {
         onSizeChange={handleSizeChange}
         onLabelPropertyChange={handleLabelPropertyChange}
         onSizeByPropertyChange={handleSizeByPropertyChange}
+        onSizeMultiplierChange={handleSizeMultiplierChange}
         onRelLineChange={handleRelLineChange}
         numericPropsByLabel={numericPropsByLabel}
         onNeo4jExport={() => setShowNeo4jModal(true)}
@@ -741,6 +759,8 @@ export function GraphPage() {
           cypherSchema={schemaLoading ? undefined : cypherSchema}
           autoImpute={autoImpute}
           onToggleAutoImpute={() => setAutoImpute((v) => !v)}
+          statsEnabled={statsEnabled}
+          onToggleStats={() => setStatsEnabled((v) => !v)}
           key={historyQuery ?? "initial"}
         />
 
@@ -764,6 +784,7 @@ export function GraphPage() {
               sizeOverrides={sizeOverrides}
               labelProperty={labelProperty}
               sizeByProperty={sizeByProperty}
+              sizeMultiplier={sizeMultiplier}
               relLineOverrides={relLineOverrides}
               onColorChange={handleColorChange}
               pkMap={pkMap}

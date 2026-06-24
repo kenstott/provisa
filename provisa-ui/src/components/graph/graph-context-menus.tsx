@@ -35,10 +35,12 @@ interface NodeContextMenuProps {
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;
   sizeByProperty: Record<string, string>;
+  sizeMultiplier: Record<string, number>;
   onColorChange: (label: string, color: string) => void;
   onSizeChange: (label: string, size: number) => void;
   onLabelPropertyChange: (label: string, prop: string) => void;
   onSizeByPropertyChange: (label: string, prop: string) => void;
+  onSizeMultiplierChange: (label: string, multiplier: number) => void;
   onClose: () => void;
 }
 
@@ -48,10 +50,12 @@ export function NodeContextMenu({
   sizeOverrides,
   labelProperty,
   sizeByProperty,
+  sizeMultiplier,
   onColorChange,
   onSizeChange,
   onLabelPropertyChange,
   onSizeByPropertyChange,
+  onSizeMultiplierChange,
   onClose,
 }: NodeContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -59,6 +63,7 @@ export function NodeContextMenu({
   const currentSize = sizeOverrides[menu.compoundLabel] ?? 44;
   const currentProp = labelProperty[menu.compoundLabel] ?? "";
   const currentSizeByProp = sizeByProperty[menu.compoundLabel] ?? "";
+  const currentMultiplier = sizeMultiplier[menu.compoundLabel] ?? 3;
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -138,7 +143,27 @@ export function NodeContextMenu({
       )}
       {menu.numericProperties.length > 0 && (
         <>
-          <div className="node-ctx-section-label">Size by</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div className="node-ctx-section-label" style={{ margin: 0 }}>Size by</div>
+            {currentSizeByProp && (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>×</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  step={0.5}
+                  value={currentMultiplier}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (!isNaN(v) && v >= 1) onSizeMultiplierChange(menu.compoundLabel, v);
+                  }}
+                  className="node-ctx-select"
+                  style={{ width: 52 }}
+                />
+              </div>
+            )}
+          </div>
           <select
             className="node-ctx-select"
             value={currentSizeByProp}
