@@ -1032,15 +1032,15 @@ main {
 }
 .trace-expand-btn:hover { color: var(--text); }
 .trace-pause-btn {
-  font-size: 0.75rem;
-  padding: 0.2rem 0.6rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text);
+  font-size: 1rem;
+  padding: 0.1rem 0.2rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
   cursor: pointer;
+  line-height: 1;
 }
-.trace-pause-btn:hover { border-color: var(--primary, #7c6af5); }
+.trace-pause-btn:hover { color: var(--text); }
 .trace-feed-list {
   flex: 1;
   overflow-y: auto;

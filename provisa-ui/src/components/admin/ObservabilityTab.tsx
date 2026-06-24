@@ -138,7 +138,7 @@ function TraceFeed() {
 
   const headerContent = (
     <>
-      <span style={{ flex: 1 }}>Live Traces</span>
+      <span style={{ flex: 1 }}>Traces</span>
       <input
         className="trace-filter"
         placeholder="Filter…"
@@ -149,10 +149,11 @@ function TraceFeed() {
       <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "0.4rem" }}>
         <button
           className="trace-pause-btn"
+          style={{ marginLeft: "0.5rem" }}
           onClick={() => setPaused((p) => !p)}
           title={paused ? "Resume" : "Pause"}
         >
-          {paused ? "▶ Resume" : "⏸ Pause"}
+          {paused ? "▶" : "⏸"}
         </button>
         <button
           className="trace-expand-btn"
