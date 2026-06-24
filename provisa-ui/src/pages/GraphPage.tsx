@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { GraphFrame } from "../components/graph/GraphFrame";
 import {
@@ -37,9 +38,12 @@ import { tableLabel as dbTableLabel } from "../naming";
 export function GraphPage() {
   const { role } = useAuth();
   const { checkedDomains } = useDomainFilter();
+  const location = useLocation();
   const [frames, setFrames] = useState<FrameData[]>(graphState.frames);
   const [history, setHistory] = useState<string[]>(graphState.history);
-  const [historyQuery, setHistoryQuery] = useState<string | null>(null);
+  const [historyQuery, setHistoryQuery] = useState<string | null>(
+    () => (location.state as { query?: string } | null)?.query ?? null,
+  );
   const [schemaNodeLabels, setSchemaNodeLabels] = useState<SchemaNodeLabel[]>([]);
   const [schemaRels, setSchemaRels] = useState<SchemaRel[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(true);
