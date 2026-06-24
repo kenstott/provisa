@@ -1,6 +1,6 @@
 # Configuration Reference
 
-Provisa is configured via a YAML file (default: `config/provisa.yaml`).
+Provisa is configured via a YAML file (default: `config/provisa.yaml`). (REQ-528)
 
 ## Sources
 
@@ -23,7 +23,7 @@ Supported source types: `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlser
 
 ## GovData Sources
 
-Sources of type `govdata` expose U.S. government open data. Access is partitioned by subject grouping. [tool-verified: `provisa/core/models.py` lines 543–574]
+Sources of type `govdata` expose U.S. government open data. (REQ-540) Access is partitioned by subject grouping. [tool-verified: `provisa/core/models.py` lines 543–574]
 
 ```yaml
 sources:
@@ -35,12 +35,12 @@ sources:
 
 ### Subject Groupings [tool-verified]
 
-Each subject maps to one or more GovData schemas. Configuring a `govdata` source with a subject exposes all schemas for that subject automatically.
+Each subject maps to one or more GovData schemas. (REQ-540) Configuring a `govdata` source with a subject exposes all schemas for that subject automatically. (REQ-540)
 
 | Subject | Schemas |
 |---------|---------|
 | `COMMERCE` | `sec`, `patents` |
-| `ECONOMY` | `econ` |
+| `ECONOMY` | `econ`, `econ_reference` |
 | `EDUCATION` | `census`, `edu` |
 | `HEALTH` | `health` |
 | `CYBER` | `cyber_threat`, `cyber_vuln` |
@@ -49,7 +49,7 @@ Each subject maps to one or more GovData schemas. Configuring a `govdata` source
 | `WEATHER` | `weather` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-The `ref` and `geo` schemas are always included as linker schemas — not configurable and not listed above. Use subject `ALL` to grant access to every schema. [tool-verified: `provisa/core/models.py` lines 561–563]
+The `ref` and `geo` schemas are always included as linker schemas — not configurable and not listed above. (REQ-541) Use subject `ALL` to grant access to every schema. [tool-verified: `provisa/core/models.py` lines 561–563]
 
 
 ## Domains
@@ -73,7 +73,7 @@ naming:
 
 ### Naming Convention
 
-Controls how database column names are auto-aliased in the GraphQL schema. Configurable at three levels (most specific wins): table → source → global.
+Controls how database column names are auto-aliased in the GraphQL schema. (REQ-194) Configurable at three levels (most specific wins): table → source → global. (REQ-194)
 
 | Convention | DB Column `user_id` | DB Column `created_at` |
 |------------|--------------------|-----------------------|
@@ -82,7 +82,7 @@ Controls how database column names are auto-aliased in the GraphQL schema. Confi
 | `camelCase` | `userId` | `createdAt` |
 | `PascalCase` | `UserId` | `CreatedAt` |
 
-Explicit `column.alias` always takes precedence over convention.
+Explicit `column.alias` always takes precedence over convention. (REQ-194)
 
 Per-source override:
 ```yaml
@@ -101,7 +101,7 @@ tables:
 
 ### Domain Prefix
 
-When `domain_prefix: true`, all GraphQL field and type names are prefixed with the domain ID using a double underscore separator:
+When `domain_prefix: true`, all GraphQL field and type names are prefixed with the domain ID using a double underscore separator: (REQ-154)
 
 | Table | Domain | Field Name |
 |-------|--------|-----------|
@@ -112,7 +112,7 @@ This prevents name collisions when different domains have tables with the same n
 
 ### Naming Rules
 
-Regex rules applied to table names when generating GraphQL field names. Applied in order before uniqueness resolution.
+Regex rules applied to table names when generating GraphQL field names. Applied in order before uniqueness resolution. (REQ-542)
 
 ## Tables
 
@@ -160,18 +160,18 @@ tables:
 
 ### Aliases
 
-Table and column aliases override the default GraphQL name. Useful for:
+Table and column aliases override the default GraphQL name. (REQ-155) Useful for:
 - Renaming cryptic database names (e.g., `tbl_cust_seg` → `customer_segments`)
 - Avoiding abbreviations in the API layer
 - Creating a clean, domain-specific vocabulary
 
 ### Descriptions
 
-Table and column descriptions are included in the generated GraphQL SDL. They appear in GraphiQL's documentation explorer and introspection queries. Set them in config YAML or via the admin UI.
+Table and column descriptions are included in the generated GraphQL SDL. (REQ-156) They appear in GraphiQL's documentation explorer and introspection queries. Set them in config YAML or via the admin UI.
 
 ### Path (Computed JSON Extraction)
 
-Columns can extract values from a JSON/JSONB source column using a dot-notation `path`. This is useful for semi-structured data in Kafka messages, MongoDB documents, or PostgreSQL JSONB columns.
+Columns can extract values from a JSON/JSONB source column using a dot-notation `path`. (REQ-151) This is useful for semi-structured data in Kafka messages, MongoDB documents, or PostgreSQL JSONB columns.
 
 ```yaml
 columns:
@@ -188,9 +188,9 @@ columns:
     visible_to: [admin, analyst]
 ```
 
-The path format is `source_column.key1.key2...`. The compiler generates `json_extract_scalar(source_column, '$.key1.key2')` in the SQL.
+The path format is `source_column.key1.key2...`. The compiler generates `json_extract_scalar(source_column, '$.key1.key2')` in the SQL. (REQ-151)
 
-**Routing impact:** Path columns use PostgreSQL JSON operators (`->>`), which are natively supported by direct PG routing. For non-PostgreSQL sources (MySQL, SQL Server, etc.), queries with path columns are automatically routed through the federation engine, where SQLGlot transpiles `->>'key'` to `json_extract_scalar`. Mutations are unaffected since path columns are read-only computed fields.
+**Routing impact:** Path columns use PostgreSQL JSON operators (`->>`), which are natively supported by direct PG routing. (REQ-152) For non-PostgreSQL sources (MySQL, SQL Server, etc.), queries with path columns are automatically routed through the federation engine, where SQLGlot transpiles `->>'key'` to `json_extract_scalar`. (REQ-152) Mutations are unaffected since path columns are read-only computed fields. (REQ-153)
 
 ### Masking Types
 
@@ -223,12 +223,12 @@ relationships:
 
 ### Auto-Materialization
 
-Set `materialize: true` on a relationship to automatically generate a materialized view for cross-source JOINs. This avoids expensive federated queries by pre-computing the JOIN result.
+Set `materialize: true` on a relationship to automatically generate a materialized view for cross-source JOINs. (REQ-158) This avoids expensive federated queries by pre-computing the JOIN result.
 
-- Only cross-source relationships generate MVs (same-source JOINs are already fast)
-- The MV starts stale and is populated by the background refresh loop
-- Mutations to either source table mark the MV as stale for re-refresh
-- `refresh_interval` defaults to 300 seconds (5 minutes)
+- Only cross-source relationships generate MVs (same-source JOINs are already fast) (REQ-159)
+- The MV starts stale and is populated by the background refresh loop (REQ-160)
+- Mutations to either source table mark the MV as stale for re-refresh (REQ-543)
+- `refresh_interval` defaults to 300 seconds (5 minutes) (REQ-543)
 
 ## Roles
 
@@ -253,7 +253,7 @@ roles:
     parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
 
-Roles with `parent_role_id` inherit capabilities and domain access from the parent. The hierarchy is flattened at startup.
+Roles with `parent_role_id` inherit capabilities and domain access from the parent. (REQ-215) The hierarchy is flattened at startup. (REQ-215)
 
 ### Capabilities
 
@@ -296,7 +296,7 @@ materialized_views:
 
 ## Views (Governed Computed Datasets)
 
-Views are SQL-defined computed datasets with full column-level governance. They are the governed mechanism for adding aggregations, transformations, and derived metrics to the semantic layer.
+Views are SQL-defined computed datasets with full column-level governance. (REQ-133) They are the governed mechanism for adding aggregations, transformations, and derived metrics to the semantic layer. (REQ-136)
 
 ```yaml
 views:
@@ -338,10 +338,10 @@ views:
 
 ### Materialized vs Live
 
-- **`materialize: true`**: Provisa creates a table via CTAS and refreshes it on a schedule. Faster queries but data may be stale by up to `refresh_interval` seconds.
-- **`materialize: false`**: Provisa creates a federated view. Queries always return live data but may be slower for complex aggregations.
+- **`materialize: true`**: Provisa creates a table via CTAS and refreshes it on a schedule. (REQ-135) Faster queries but data may be stale by up to `refresh_interval` seconds.
+- **`materialize: false`**: Provisa creates a federated view. (REQ-135) Queries always return live data but may be slower for complex aggregations.
 
-Views go through the same governance pipeline as tables — RLS, masking, sampling, and role-based visibility. This ensures no new semantics can be added to the platform without steward oversight.
+Views go through the same governance pipeline as tables — RLS, masking, sampling, and role-based visibility. (REQ-134) This ensures no new semantics can be added to the platform without steward oversight. (REQ-136)
 
 ## Kafka Sources
 
@@ -385,13 +385,13 @@ kafka_sources:
 
 ### Time Window
 
-`default_window` bounds every query to a recent time period, preventing unbounded reads from high-volume topics. Format: `1h`, `30m`, `7d`, `60s`. Defaults to `1h`.
+`default_window` bounds every query to a recent time period, preventing unbounded reads from high-volume topics. (REQ-148) Format: `1h`, `30m`, `7d`, `60s`. Defaults to `1h`.
 
-The window is auto-injected as `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. Clients can override with their own `_timestamp` filter in the GraphQL `where` argument.
+The window is auto-injected as `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. (REQ-148) Clients can override with their own `_timestamp` filter in the GraphQL `where` argument.
 
 ### Discriminator
 
-Multiple topic configs can point to the same physical Kafka topic with different `discriminator` values, producing separate GraphQL types. The discriminator is auto-injected as a WHERE clause.
+Multiple topic configs can point to the same physical Kafka topic with different `discriminator` values, producing separate GraphQL types. (REQ-149) The discriminator is auto-injected as a WHERE clause.
 
 ### Schema Source
 
@@ -412,7 +412,7 @@ cache:
 
 ### Cache Hierarchy
 
-TTL resolution order (most specific wins): **table** > **source** > **global default**. First non-null value is used.
+TTL resolution order (most specific wins): **table** > **source** > **global default**. (REQ-544) First non-null value is used.
 
 ```yaml
 cache:
@@ -434,7 +434,7 @@ tables:
     # no cache_ttl → inherits source TTL (600s)
 ```
 
-Setting `cache_enabled: false` on a source disables caching for all tables in that source, regardless of table-level TTL. Cache keys always include `role_id` + RLS context values for security partitioning.
+Setting `cache_enabled: false` on a source disables caching for all tables in that source, regardless of table-level TTL. (REQ-544) Cache keys always include `role_id` + RLS context values for security partitioning. (REQ-544)
 
 ## Authentication
 
@@ -462,13 +462,12 @@ auth:
 
 | Provider | Use Case | Token Validation |
 |----------|----------|-----------------|
-| `none` | No auth (default). All requests treated as admin. | N/A |
 | `simple` | Local dev/testing. Users defined in YAML. | JWT signed with `PROVISA_JWT_SECRET` |
 | `firebase` | Firebase Authentication (all methods). | `firebase-admin` SDK `verify_id_token()` |
 | `keycloak` | Keycloak OIDC. Tenant + client roles mapped. | JWKS-based JWT validation |
 | `oauth` | Generic OIDC (Okta, Azure AD, Auth0, PingFederate). | JWKS from discovery URL |
 
-Superuser credentials (`superuser` block) work with any provider and always resolve to admin role with all capabilities. Used for initial setup before external auth is configured.
+Superuser credentials (`superuser` block) work with any provider and always resolve to admin role with all capabilities. (REQ-125) Used for initial setup before external auth is configured.
 
 ### Full Auth Config Example (commented out)
 
@@ -509,7 +508,7 @@ Superuser credentials (`superuser` block) work with any provider and always reso
 
 ## Upsert Mutations
 
-For tables with a primary key, Provisa auto-generates `upsert_<table>` mutation fields. These compile to `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`. SQLGlot transpiles to the target dialect (e.g., MySQL `ON DUPLICATE KEY UPDATE`).
+For tables with a primary key, Provisa auto-generates `upsert_<table>` mutation fields. (REQ-212) These compile to `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`. (REQ-212) SQLGlot transpiles to the target dialect (e.g., MySQL `ON DUPLICATE KEY UPDATE`). (REQ-212)
 
 ```graphql
 mutation {
@@ -519,11 +518,11 @@ mutation {
 }
 ```
 
-Conflict columns are derived from PK metadata. All column visibility and write permission rules apply.
+Conflict columns are derived from PK metadata. (REQ-212) All column visibility and write permission rules apply.
 
 ## Distinct On
 
-The `distinct_on` argument selects the first row for each distinct value of the specified columns. Available on root query fields.
+The `distinct_on` argument selects the first row for each distinct value of the specified columns. (REQ-213) Available on root query fields.
 
 ```graphql
 {
@@ -535,11 +534,11 @@ The `distinct_on` argument selects the first row for each distinct value of the 
 }
 ```
 
-Compiles to `SELECT DISTINCT ON (region) ...` in PostgreSQL. For non-PG dialects, SQLGlot provides a window function fallback.
+Compiles to `SELECT DISTINCT ON (region) ...` in PostgreSQL. (REQ-213) For non-PG dialects, SQLGlot provides a window function fallback. (REQ-213)
 
 ## Column Presets
 
-Auto-inject values into columns on insert/update. Defined per table in config.
+Auto-inject values into columns on insert/update. (REQ-214) Defined per table in config.
 
 ```yaml
 tables:
@@ -562,11 +561,11 @@ tables:
 | `now` | Injects `NOW()` (current timestamp) |
 | `literal` | Injects a constant value |
 
-Preset columns are injected during mutation compilation before SQL generation. They are not visible in the mutation input type.
+Preset columns are injected during mutation compilation before SQL generation. (REQ-214) They are not visible in the mutation input type. (REQ-214)
 
 ## Inherited Roles
 
-Roles can inherit capabilities and domain access from a parent role via `parent_role_id`. The hierarchy is flattened at startup.
+Roles can inherit capabilities and domain access from a parent role via `parent_role_id`. (REQ-215) The hierarchy is flattened at startup. (REQ-215)
 
 ```yaml
 roles:
@@ -586,11 +585,11 @@ roles:
     parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
 ```
 
-Multi-level inheritance is supported. Cycles are rejected at config load time. The child role's explicit capabilities and domain_access are merged with the parent's.
+Multi-level inheritance is supported. (REQ-215) The child role's explicit capabilities and domain_access are merged with the parent's. (REQ-215)
 
 ## Scheduled Triggers
 
-Cron-based triggers that call a webhook URL on schedule. Uses APScheduler.
+Cron-based triggers that call a webhook URL on schedule. (REQ-216) Uses APScheduler. (REQ-216)
 
 ```yaml
 scheduled_triggers:
@@ -604,11 +603,11 @@ scheduled_triggers:
     enabled: false
 ```
 
-Scheduled tasks are managed via the admin UI (enable/disable toggle) or the `toggle_scheduled_task` admin mutation.
+Scheduled tasks are managed via the admin UI (enable/disable toggle) or the `toggle_scheduled_task` admin mutation. (REQ-216)
 
 ## OrderBy Format
 
-OrderBy uses the `{column: direction}` format with a 6-value direction enum:
+OrderBy uses the `{column: direction}` format with a 6-value direction enum: (REQ-200, REQ-201)
 
 ```graphql
 {
@@ -629,7 +628,7 @@ OrderBy uses the `{column: direction}` format with a 6-value direction enum:
 | `desc_nulls_first` | `DESC NULLS FIRST` |
 | `desc_nulls_last` | `DESC NULLS LAST` |
 
-Relationship ordering is supported via nested objects:
+Relationship ordering is supported via nested objects: (REQ-202)
 
 ```graphql
 {
@@ -660,7 +659,7 @@ observability:
 
 ### Telemetry Filters [tool-verified]
 
-Provisa runs two independent OTLP export paths: your internal collector and the optional Provisa support endpoint. Each path has its own filter. Filters run inside a wrapping `_FilteringExporter` before spans leave the process — original span objects are never mutated. [tool-verified: `provisa/api/otel_setup.py` lines 156–207]
+Provisa runs two independent OTLP export paths: your internal collector and the optional Provisa support endpoint. (REQ-545) Each path has its own filter. Filters run inside a wrapping `_FilteringExporter` before spans leave the process — original span objects are never mutated. (REQ-546) [tool-verified: `provisa/api/otel_setup.py` lines 156–207]
 
 **`telemetry_filter`** — controls what reaches your internal collector.
 
@@ -669,7 +668,7 @@ Provisa runs two independent OTLP export paths: your internal collector and the 
 | `redact_sql_literals` | bool | `false` | Replaces string and numeric literals in `db.statement` with `?` |
 | `redact_attributes` | list[str] | `[]` | Attribute keys dropped entirely from every span |
 
-**`support_telemetry_filter`** — controls what reaches the Provisa support endpoint. SQL literal redaction defaults to `true` on this path, since query data belongs to you. [tool-verified: `provisa/api/otel_setup.py` line 240]
+**`support_telemetry_filter`** — controls what reaches the Provisa support endpoint. SQL literal redaction defaults to `true` on this path, since query data belongs to you. (REQ-547) [tool-verified: `provisa/api/otel_setup.py` line 240]
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -690,11 +689,11 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 ### Support Endpoint [tool-verified]
 
-`support_endpoint` (or env `PROVISA_SUPPORT_OTLP_ENDPOINT`) forwards telemetry to Provisa support for diagnostics. When unset, no data leaves your infrastructure via this path. The support filter applies independently of the internal filter — you can redact SQL literals from both exports while still sharing span timing and error data with support. [tool-verified: `provisa/api/otel_setup.py` lines 238–288]
+`support_endpoint` (or env `PROVISA_SUPPORT_OTLP_ENDPOINT`) forwards telemetry to Provisa support for diagnostics. (REQ-548) When unset, no data leaves your infrastructure via this path. (REQ-548) The support filter applies independently of the internal filter — you can redact SQL literals from both exports while still sharing span timing and error data with support. (REQ-545) [tool-verified: `provisa/api/otel_setup.py` lines 238–288]
 
 ### Endpoint Protocol Detection [tool-verified]
 
-Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. URLs starting with `http://` or `https://` use OTLP/HTTP, with `/v1/traces`, `/v1/metrics`, and `/v1/logs` appended automatically. Any other scheme uses OTLP/gRPC with `insecure=True`. [tool-verified: `provisa/api/otel_setup.py` lines 60–70]
+Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. (REQ-549) URLs starting with `http://` or `https://` use OTLP/HTTP, with `/v1/traces`, `/v1/metrics`, and `/v1/logs` appended automatically. (REQ-549) Any other scheme uses OTLP/gRPC with `insecure=True`. (REQ-549) [tool-verified: `provisa/api/otel_setup.py` lines 60–70]
 
 ## Environment Variables
 
@@ -710,7 +709,7 @@ Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. URLs starti
 | `TRINO_PORT` | `8080` | Federation engine HTTP port |
 | `REDIS_URL` | — | Redis connection URL |
 | `PROVISA_SAMPLE_SIZE` | `100` | Default sampling limit |
-| `TRINO_FLIGHT_PORT` | `8480` | Zaychik Flight SQL proxy port |
+| `ZAYCHIK_PORT` | `8480` | Zaychik Flight SQL proxy port |
 | `FLIGHT_PORT` | `8815` | Provisa Arrow Flight server port |
 | `GRPC_PORT` | `50051` | Provisa Protobuf gRPC server port |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Enable server-side threshold redirect |

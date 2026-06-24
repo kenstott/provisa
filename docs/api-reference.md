@@ -2,17 +2,17 @@
 
 ## Overview
 
-Provisa exposes REST endpoints under two prefixes: `/data` for query execution and schema introspection, and `/admin` for configuration management. Most data endpoints require a role identifier. Admin configuration operations use a Strawberry GraphQL API at `/admin/graphql`.
+Provisa exposes REST endpoints under two prefixes: `/data` for query execution and schema introspection, and `/admin` for configuration management. (REQ-043) Most data endpoints require a role identifier. Admin configuration operations use a Strawberry GraphQL API at `/admin/graphql`. (REQ-164)
 
 ---
 
 ## Authentication
 
-When `auth.provider` is configured in `provisa.yaml`, all endpoints except `/health` and `/setup/status` require an `Authorization: Bearer <token>` header. [tool-verified: `provisa/api/app.py`, `provisa/auth/wiring.py`]
+When `auth.provider` is configured in `provisa.yaml`, all endpoints except `/health` and `/setup/status` require an `Authorization: Bearer <token>` header. (REQ-120) [tool-verified: `provisa/api/app.py`, `provisa/auth/wiring.py`]
 
-Without auth configured, the server runs in dev mode. Any request is treated as the `anonymous` identity, which maps to all configured roles with wildcard domain access.
+Without auth configured, the server runs in dev mode. Any request is treated as the `anonymous` identity, which maps to all configured roles with wildcard domain access. (REQ-535)
 
-**Login (`POST /auth/login`)** is provided by the active auth provider when `provider: basic` is configured. Credential format and response depend on the provider.
+**Login (`POST /auth/login`)** is provided by the active auth provider when `provider: basic` is configured. (REQ-124) Credential format and response depend on the provider.
 
 **Identity introspection:**
 
@@ -34,7 +34,7 @@ Returns `{"provider": "<name>"}` or `{"provider": null}` when auth is unconfigur
 
 ### `POST /data/graphql`
 
-Execute a GraphQL query or mutation. [tool-verified: `provisa/api/data/endpoint.py:151`]
+Execute a GraphQL query or mutation. (REQ-043) [tool-verified: `provisa/api/data/endpoint.py:151`]
 
 **Request body:**
 ```json
@@ -48,7 +48,7 @@ Execute a GraphQL query or mutation. [tool-verified: `provisa/api/data/endpoint.
 
 The `role` field is used only in dev mode (no auth). When auth is active, the authenticated user's role is used and `role` in the body is ignored.
 
-The `extensions` field supports the Automatic Persisted Query (APQ) protocol:
+The `extensions` field supports the Automatic Persisted Query (APQ) protocol: (REQ-288)
 ```json
 {
   "extensions": {"persistedQuery": {"sha256Hash": "<sha256-of-query>"}}
@@ -59,9 +59,9 @@ The `extensions` field supports the Automatic Persisted Query (APQ) protocol:
 - `X-Provisa-Role` — override role (dev mode)
 - `Accept` — response format (see Content Negotiation)
 - `Authorization` — `Bearer <token>` when auth is enabled
-- `X-Provisa-Redirect-Format` — MIME type for S3 redirect output
-- `X-Provisa-Redirect-Threshold` — row count above which redirect triggers
-- `X-Provisa-Redirect` — `true` to force redirect unconditionally
+- `X-Provisa-Redirect-Format` — MIME type for S3 redirect output (REQ-137)
+- `X-Provisa-Redirect-Threshold` — row count above which redirect triggers (REQ-137)
+- `X-Provisa-Redirect` — `true` to force redirect unconditionally (REQ-029)
 
 **Response (JSON inline):**
 ```json
@@ -105,13 +105,14 @@ The `extensions` field supports the Automatic Persisted Query (APQ) protocol:
 }
 ```
 
-Multi-root queries run each root field independently. Fields below the redirect threshold return inline; fields above redirect. The `redirects` key (plural) maps field names to redirect info. [tool-verified: `provisa/api/data/endpoint.py`]
+Multi-root queries run each root field independently. Fields below the redirect threshold return inline; fields above redirect. The `redirects` key (plural) maps field names to redirect info. (REQ-029) [tool-verified: `provisa/api/data/endpoint.py`]
 
 **Cache headers:**
-- `X-Provisa-Cache: HIT|MISS`
-- `X-Provisa-Cache-Age: <seconds>` (on HIT)
 
-**Required capabilities:** `QUERY_DEVELOPMENT` for all requests including introspection. `AD_HOC_QUERY` for actual data queries. [tool-verified: `provisa/api/data/endpoint.py:186-283`]
+- `X-Provisa-Cache: HIT|MISS` (REQ-536)
+- `X-Provisa-Cache-Age: <seconds>` (on HIT) (REQ-536)
+
+**Required capabilities:** `QUERY_DEVELOPMENT` for all requests including introspection. [tool-verified: `provisa/api/data/endpoint.py:186-283`]
 
 ---
 
@@ -125,13 +126,13 @@ Multi-root queries run each root field independently. Fields below the redirect 
 | `application/vnd.apache.parquet` | Parquet |
 | `application/vnd.apache.arrow.stream` | Arrow IPC |
 
-[tool-verified: `provisa/api/data/endpoint.py:84-90`]
+(REQ-047, REQ-048, REQ-049, REQ-050) [tool-verified: `provisa/api/data/endpoint.py:84-90`]
 
 ---
 
 ### Redirect
 
-Results above a configured row threshold (or when `X-Provisa-Redirect: true`) are written to S3 and a presigned URL is returned.
+Results above a configured row threshold (or when `X-Provisa-Redirect: true`) are written to S3 and a presigned URL is returned. (REQ-029, REQ-044)
 
 | Redirect Format | Written by | Memory |
 |---|---|---|
@@ -142,7 +143,7 @@ Results above a configured row threshold (or when `X-Provisa-Redirect: true`) ar
 | `text/csv` | Provisa | Memory-bound |
 | `application/vnd.apache.arrow.stream` | Provisa | Memory-bound |
 
-For large analytical exports, use Parquet or ORC redirect. The federation engine writes directly to S3 in parallel — no data passes through Provisa.
+For large analytical exports, use Parquet or ORC redirect. The federation engine writes directly to S3 in parallel — no data passes through Provisa. (REQ-138)
 
 ```
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -153,7 +154,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `POST /data/sql`
 
-Execute raw SQL through the Stage 2 governance pipeline. [tool-verified: `provisa/api/data/endpoint_dev.py:62`]
+Execute raw SQL through the Stage 2 governance pipeline. (REQ-267) [tool-verified: `provisa/api/data/endpoint_dev.py:62`]
 
 **Request body:**
 ```json
@@ -166,7 +167,9 @@ Execute raw SQL through the Stage 2 governance pipeline. [tool-verified: `provis
 
 The `discovery_mode` flag widens the table visibility check to include all tables from all contexts. Only for internal tooling. [tool-verified: `provisa/api/data/endpoint_dev.py:148-152`]
 
-**Required capabilities:** `QUERY_DEVELOPMENT` and `AD_HOC_QUERY`.
+**Required capabilities:** `QUERY_DEVELOPMENT`.
+
+Governance violations on `POST /data/sql` return HTTP 403. (REQ-002, REQ-266)
 
 **Response:** Same format as `/data/graphql` (JSON rows by default, content-negotiated via `Accept`).
 
@@ -174,7 +177,7 @@ The `discovery_mode` flag widens the table visibility check to include all table
 
 ### `POST /data/query`
 
-Unified query endpoint. Accepts GraphQL, SQL, or Cypher — syntax is auto-detected. [tool-verified: `provisa/api/data/endpoint_dev.py:509`]
+Unified query endpoint. Accepts GraphQL, SQL, or Cypher — syntax is auto-detected. (REQ-345, REQ-267) [tool-verified: `provisa/api/data/endpoint_dev.py:509`]
 
 **Request body:**
 ```json
@@ -192,7 +195,7 @@ Returns `{"data": ...}` for GraphQL, `{"columns": [...], "rows": [...]}` for SQL
 
 ### `POST /data/nl-to-sql`
 
-Translate a natural-language question to semantic SQL using Claude. Requires `ANTHROPIC_API_KEY` to be set. [tool-verified: `provisa/api/data/endpoint_dev.py:266`]
+Translate a natural-language question to semantic SQL using Claude. Requires `ANTHROPIC_API_KEY` to be set. (REQ-354) [tool-verified: `provisa/api/data/endpoint_dev.py:266`]
 
 **Request body:**
 ```json
@@ -205,7 +208,7 @@ Returns the generated SQL string.
 
 ### `GET /data/sdl`
 
-Return the GraphQL SDL for a role's schema. [tool-verified: `provisa/api/data/sdl.py:137`]
+Return the GraphQL SDL for a role's schema. (REQ-008) [tool-verified: `provisa/api/data/sdl.py:137`]
 
 **Headers:** `X-Role: <role_id>` (required)
 
@@ -240,7 +243,7 @@ Return domain IDs accessible to the requesting role. [tool-verified: `provisa/ap
 
 ### `GET /data/schema-version`
 
-Return the current schema version string. Combines a per-boot nonce with a rebuild counter. Clients use this to invalidate schema caches after server restarts. [tool-verified: `provisa/api/data/sdl.py:102`]
+Return the current schema version string. Combines a per-boot nonce with a rebuild counter. Clients use this to invalidate schema caches after server restarts. (REQ-537) [tool-verified: `provisa/api/data/sdl.py:102`]
 
 **Response:** `{"version": "<boot-id>-<counter>"}`
 
@@ -252,15 +255,15 @@ Return the auto-generated `.proto` file for a role. [tool-verified: `provisa/api
 
 **Response:** `text/plain` protobuf schema.
 
-Each registered table produces a proto `message`. Relationships produce nested message fields. Type mapping: `integer → int32`, `bigint → int64`, `varchar → string`, `decimal → double`, `boolean → bool`, `timestamp → google.protobuf.Timestamp`.
+Each registered table produces a proto `message`. Relationships produce nested message fields. Type mapping: `integer → int32`, `bigint → int64`, `varchar → string`, `decimal → double`, `boolean → bool`, `timestamp → google.protobuf.Timestamp`. (REQ-538)
 
 ---
 
 ### `GET /subscribe/{table}`
 
-Server-Sent Events stream for real-time change notifications from a table. [tool-verified: `provisa/api/data/subscribe.py:239`]
+Server-Sent Events stream for real-time change notifications from a table. (REQ-219, REQ-258) [tool-verified: `provisa/api/data/subscribe.py:239`]
 
-Uses PostgreSQL `LISTEN/NOTIFY` for pre-approved PostgreSQL-backed tables. WebSocket and RSS sources are also supported. Requires the table to have a pg_notify trigger installed (automatic for pre-approved tables).
+Uses PostgreSQL `LISTEN/NOTIFY` for pre-approved PostgreSQL-backed tables. (REQ-258) WebSocket and RSS sources are also supported. (REQ-338, REQ-342) Requires the table to have a pg_notify trigger installed (automatic for pre-approved tables).
 
 ---
 
@@ -270,11 +273,11 @@ Uses PostgreSQL `LISTEN/NOTIFY` for pre-approved PostgreSQL-backed tables. WebSo
 
 #### `GET /admin/config`
 
-Download the current `provisa.yaml` as `application/x-yaml` with a `Content-Disposition: attachment` header. [tool-verified: `provisa/api/admin/settings_router.py:19`]
+Download the current `provisa.yaml` as `application/x-yaml` with a `Content-Disposition: attachment` header. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:19`]
 
 #### `PUT /admin/config`
 
-Upload a revised config YAML. The server writes a `.bak` backup, saves the new file, and reloads all schemas, sources, and materialized views. [tool-verified: `provisa/api/admin/settings_router.py:32`]
+Upload a revised config YAML. The server writes a `.bak` backup, saves the new file, and reloads all schemas, sources, and materialized views. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:32`]
 
 **Request body:** Raw YAML content.
 
@@ -291,7 +294,7 @@ On reload failure: `{"success": false, "message": "<error>"}`.
 
 #### `GET /admin/settings`
 
-Return current platform settings as JSON. [tool-verified: `provisa/api/admin/settings_router.py:50`]
+Return current platform settings as JSON. (REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:50`]
 
 **Response:**
 ```json
@@ -328,7 +331,7 @@ Return current platform settings as JSON. [tool-verified: `provisa/api/admin/set
 
 #### `PUT /admin/settings`
 
-Update platform settings at runtime. All fields are optional — only keys present in the body are updated. [tool-verified: `provisa/api/admin/settings_router.py:100`]
+Update platform settings at runtime. All fields are optional — only keys present in the body are updated. (REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:100`]
 
 **Request body (partial example):**
 ```json
@@ -347,7 +350,7 @@ Updatable fields per section:
 - `redirect`: `enabled`, `threshold`, `default_format`, `ttl`
 - `sampling`: `default_sample_size`
 - `cache`: `default_ttl`
-- `naming`: `domain_prefix`, `convention` — writes to config file and triggers schema reload
+- `naming`: `domain_prefix`, `convention` — writes to config file and triggers schema reload (REQ-253)
 - `relationships`: `auto_track_fk`
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
@@ -362,7 +365,7 @@ Updatable fields per section:
 
 #### `GET /admin/traces/recent`
 
-Return up to N recent completed spans from the in-memory span buffer. [tool-verified: `provisa/api/admin/settings_router.py:317`]
+Return up to N recent completed spans from the in-memory span buffer. (REQ-302) [tool-verified: `provisa/api/admin/settings_router.py:317`]
 
 **Query parameters:** `limit` (default 50, max 200)
 
@@ -391,7 +394,7 @@ Restart the federation engine container (single-node dev only). [tool-verified: 
 
 #### `POST /admin/discover/relationships`
 
-Trigger relationship discovery. Always runs FK introspection from the federation engine. Runs LLM inference if `ANTHROPIC_API_KEY` is set. [tool-verified: `provisa/api/admin/discovery.py:55`]
+Trigger relationship discovery. Always runs FK introspection from the federation engine. (REQ-018) Runs LLM inference if `ANTHROPIC_API_KEY` is set. (REQ-167) [tool-verified: `provisa/api/admin/discovery.py:55`]
 
 **Request body:**
 ```json
@@ -435,7 +438,7 @@ Delete all rejected candidates. [tool-verified: `provisa/api/admin/discovery.py:
 
 #### `POST /admin/sources/crawl`
 
-Crawl a data source to introspect its schema and register tables. [tool-verified: `provisa/api/admin/crawl_router.py:36`]
+Crawl a data source to introspect its schema and register tables. (REQ-012) [tool-verified: `provisa/api/admin/crawl_router.py:36`]
 
 ---
 
@@ -465,11 +468,11 @@ Generate LLM-assisted descriptions for a source's tables and columns. [tool-veri
 
 ### Actions (Functions and Webhooks)
 
-All endpoints are under the `/admin/actions` prefix. [tool-verified: `provisa/api/admin/actions_router.py:24`]
+All endpoints are under the `/admin/actions` prefix. (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
 
 #### `GET /admin/actions`
 
-Return all tracked DB functions and webhooks.
+Return all tracked DB functions and webhooks. (REQ-242)
 
 **Response:**
 ```json
@@ -495,7 +498,7 @@ Return all tracked DB functions and webhooks.
 
 #### `POST /admin/actions/functions`
 
-Register a tracked DB function.
+Register a tracked DB function. (REQ-205)
 
 **Request body fields:** `name`, `sourceId`, `schemaName`, `functionName`, `returns`, `arguments`, `visibleTo`, `writableBy`, `domainId`, `description`, `kind`, `returnSchema`. [tool-verified: `provisa/api/admin/actions_router.py:117`]
 
@@ -509,7 +512,7 @@ Delete a tracked function by name. [tool-verified: `provisa/api/admin/actions_ro
 
 #### `POST /admin/actions/webhooks`
 
-Register a tracked webhook. **Request body fields:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`. [tool-verified: `provisa/api/admin/actions_router.py:132`]
+Register a tracked webhook. (REQ-209) **Request body fields:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`. [tool-verified: `provisa/api/admin/actions_router.py:132`]
 
 #### `PUT /admin/actions/webhooks/{name}`
 
@@ -521,7 +524,7 @@ Delete a tracked webhook by name. [tool-verified: `provisa/api/admin/actions_rou
 
 #### `POST /admin/actions/test`
 
-Test an action (function or webhook) by name. [tool-verified: `provisa/api/admin/actions_router.py:384`]
+Test an action (function or webhook) by name. (REQ-245) [tool-verified: `provisa/api/admin/actions_router.py:384`]
 
 ---
 
@@ -590,7 +593,7 @@ All endpoints are under `/admin/invites`. [tool-verified: `provisa/api/admin/inv
 
 #### `POST /admin/graphql`
 
-Strawberry GraphQL endpoint for all admin operations: source and table CRUD, relationship management, domain configuration, RLS rules, cache control, naming conventions, scheduled task management, and query compilation. [tool-verified: `provisa/api/app.py:2171`]
+Strawberry GraphQL endpoint for all admin operations: source and table CRUD, relationship management, domain configuration, RLS rules, cache control, naming conventions, scheduled task management, and query compilation. (REQ-164) [tool-verified: `provisa/api/app.py:2171`]
 
 **Key mutations:**
 
@@ -623,7 +626,7 @@ mutation {
 
 #### `GET /setup/status`
 
-Return first-run setup status. Always unauthenticated. [tool-verified: `provisa/api/setup_router.py:100`]
+Return first-run setup status. Always unauthenticated. (REQ-539) [tool-verified: `provisa/api/setup_router.py:100`]
 
 #### `POST /setup/`
 
@@ -635,7 +638,7 @@ Complete first-run setup. [tool-verified: `provisa/api/setup_router.py:142`]
 
 #### `GET /health` or `HEAD /health`
 
-Returns `{"status": "ok"}`. Always unauthenticated. [tool-verified: `provisa/api/app.py:2258`]
+Returns `{"status": "ok"}`. Always unauthenticated. (REQ-539) [tool-verified: `provisa/api/app.py:2258`]
 
 ---
 
@@ -651,7 +654,7 @@ Returns `{"status": "ok"}`. Always unauthenticated. [tool-verified: `provisa/api
 | 503 | Database or source not connected; dependency unavailable |
 | 504 | Request timed out |
 
-Governance violations on `POST /data/sql` return HTTP 403 with a structured body: [tool-verified: `provisa/api/data/endpoint_dev.py:184-190`]
+Governance violations on `POST /data/sql` return HTTP 403 with a structured body: (REQ-002) [tool-verified: `provisa/api/data/endpoint_dev.py:184-190`]
 
 ```json
 {
@@ -669,9 +672,9 @@ All other errors use: `{"detail": "<message>"}`.
 
 ## Arrow Flight Endpoint
 
-Port `8815`. Native Arrow columnar transport over gRPC. [tool-verified: `provisa/api/flight/server.py`]
+Port `8815`. Native Arrow columnar transport over gRPC. (REQ-143, REQ-045) [tool-verified: `provisa/api/flight/server.py`]
 
-Queries and catalog discovery are both available on the same connection. The full governance pipeline (RLS, masking, sampling) is applied to every query.
+Queries and catalog discovery are both available on the same connection. The full governance pipeline (RLS, masking, sampling) is applied to every query. (REQ-130, REQ-143)
 
 **Ticket format** (JSON):
 ```json
@@ -691,17 +694,17 @@ for batch in client.do_get(ticket):
 table = client.do_get(ticket).read_all()
 ```
 
-When the Zaychik Flight SQL proxy is available (port 8480), record batches stream end-to-end without full materialization. Falls back to materializing via the federated query layer if Zaychik is unavailable.
+When the Zaychik Flight SQL proxy is available (port 8480), record batches stream end-to-end without full materialization. (REQ-144) Falls back to materializing via the federated query layer if Zaychik is unavailable. (REQ-146)
 
 ---
 
 ## Protobuf gRPC Endpoint
 
-Port `50051` (override with `GRPC_PORT` env var or `server.grpc_port` config). [tool-verified: `provisa/grpc/server.py`, `provisa/api/app.py`]
+Port `50051` (override with `GRPC_PORT` env var or `server.grpc_port` config). (REQ-529) [tool-verified: `provisa/grpc/server.py`, `provisa/api/app.py`]
 
 Pass the role in the `x-provisa-role` gRPC metadata key. If absent, the server aborts with `UNAUTHENTICATED`. [tool-verified: `provisa/grpc/server.py`]
 
-Download the role-specific proto from `GET /data/proto/{role_id}`. Only tables and columns visible to that role appear.
+Download the role-specific proto from `GET /data/proto/{role_id}`. Only tables and columns visible to that role appear. (REQ-039)
 
 ```proto
 service ProvisaService {
@@ -712,7 +715,7 @@ service ProvisaService {
 
 Each table produces a `Query{TypeName}` streaming RPC. `Insert{TypeName}` RPCs exist for schema symmetry but abort with `UNIMPLEMENTED`. [tool-verified: `provisa/grpc/server.py`]
 
-`grpc_reflection.v1alpha` is enabled for service discovery without a pre-compiled proto. [tool-verified: `provisa/grpc/reflection.py`]
+`grpc_reflection.v1alpha` is enabled for service discovery without a pre-compiled proto. (REQ-529) [tool-verified: `provisa/grpc/reflection.py`]
 
 ```bash
 grpcurl -plaintext localhost:50051 list
@@ -720,35 +723,27 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
   -d '{}' localhost:50051 ProvisaService/QueryOrders
 ```
 
-The gRPC server starts only when a valid proto can be compiled at startup. If schema build fails, the gRPC server does not start.
+The gRPC server starts only when a valid proto can be compiled at startup. If schema build fails, the gRPC server does not start. (REQ-529)
 
 ---
 
 ## JDBC Driver
 
-The Provisa JDBC driver (`provisa-jdbc-0.1.0.jar`) exposes the semantic catalog to BI tools (Tableau, PowerBI, DBeaver).
+The Provisa JDBC driver (`provisa-jdbc-0.1.0.jar`) exposes the semantic catalog to BI tools (Tableau, PowerBI, DBeaver). (REQ-126)
 
-**Connection URL:** `jdbc:provisa://host:port`
+**Connection URL:** `jdbc:provisa://host:port` (REQ-131)
 
-Domains map to JDBC schemas. Tables use their registered aliases. Columns use aliases and surface descriptions as `REMARKS`. Standard metadata methods (`getPrimaryKeys`, `getImportedKeys`, `getExportedKeys`) expose semantic relationships as PK/FK metadata.
+Domains map to JDBC schemas. (REQ-127) Tables use their registered aliases. Columns use aliases and surface descriptions as `REMARKS`. (REQ-128) Standard metadata methods (`getPrimaryKeys`, `getImportedKeys`, `getExportedKeys`) expose semantic relationships as PK/FK metadata.
 
-**SQL support:** `SELECT * FROM <alias> [WHERE col = 'value']`.
+**SQL support:** `SELECT * FROM <alias> [WHERE col = 'value']`. (REQ-129)
 
-The driver requests Arrow IPC redirect by default. Results stream batch-by-batch via `ArrowStreamReader`, bounded to one record batch in memory.
-
----
-
-## Query Approval (Governed Queries)
-
-Governed queries are managed through the admin GraphQL API (`POST /admin/graphql`). A governed query is a pre-approved GraphQL operation stored in the `persisted_queries` table with an approval workflow status.
-
-This is separate from APQ (Automatic Persisted Queries). APQ is a client-side caching protocol using SHA-256 hashes. Governed queries are a data governance control: queries submitted for human review, approved or rejected, and then executable by reference to their `queryId`. [inferred from `provisa/api/data/endpoint.py` APQ handling and `_rebuild_schemas` approved_queries loading]
+The driver requests Arrow IPC redirect by default. Results stream batch-by-batch via `ArrowStreamReader`, bounded to one record batch in memory. (REQ-293)
 
 ---
 
 ## `orderBy` Argument Format
 
-The `order_by` argument uses `{column: direction}` objects with a 6-value direction enum:
+The `order_by` argument uses `{column: direction}` objects with a 6-value direction enum: (REQ-200)
 
 ```json
 {
@@ -757,10 +752,10 @@ The `order_by` argument uses `{column: direction}` objects with a 6-value direct
 }
 ```
 
-Supported directions: `asc`, `desc`, `asc_nulls_first`, `asc_nulls_last`, `desc_nulls_first`, `desc_nulls_last`.
+Supported directions: `asc`, `desc`, `asc_nulls_first`, `asc_nulls_last`, `desc_nulls_first`, `desc_nulls_last`. (REQ-201)
 
 ---
 
 ## Subscriptions
 
-SSE subscriptions are available at `GET /subscribe/{table}` for tables with installed LISTEN/NOTIFY triggers (all pre-approved PostgreSQL-backed tables get these automatically at startup). WebSocket and RSS sources are also supported via the same endpoint. [tool-verified: `provisa/api/data/subscribe.py:239`, `provisa/api/app.py` `_rebuild_schemas`]
+SSE subscriptions are available at `GET /subscribe/{table}` for tables with installed LISTEN/NOTIFY triggers (all pre-approved PostgreSQL-backed tables get these automatically at startup). (REQ-219, REQ-258) WebSocket and RSS sources are also supported via the same endpoint. (REQ-338, REQ-342) [tool-verified: `provisa/api/data/subscribe.py:239`, `provisa/api/app.py` `_rebuild_schemas`]

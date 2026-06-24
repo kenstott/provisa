@@ -18,45 +18,92 @@
 
 ## Source Type Reference
 
-### Hierarchical sources — schema from Trino
+### Direct-route RDBMS — Trino connector + SQLGlot dialect
 
-These types are in `SOURCE_TO_CONNECTOR`. Trino is the preferred introspection path.
+These types are in both `SOURCE_TO_CONNECTOR` and `SOURCE_TO_DIALECT`. They support direct-route execution (single-source queries bypass Trino) and federated execution.
 
-| Source type | Physical schema concept | Trino catalog schema query |
-| --- | --- | --- |
-| `postgresql` | Schema | `information_schema.schemata` (filter system schemas) |
-| `mysql` / `mariadb` | Database | `information_schema.schemata` (filter system dbs) |
-| `sqlserver` | Schema | `information_schema.schemata` (filter system schemas) |
-| `duckdb` | Schema | `information_schema.schemata` |
-| `snowflake` | Schema | `information_schema.schemata` |
-| `bigquery` | Dataset | `information_schema.schemata` |
-| `redshift` | Schema | `information_schema.schemata` |
-| `databricks` | Schema | `information_schema.schemata` |
-| `clickhouse` | Database | `information_schema.schemata` |
-| `mongodb` | Database | `information_schema.schemata` |
-| `cassandra` | Keyspace | `information_schema.schemata` |
-| `iceberg` | Namespace | `information_schema.schemata` |
-| `hive` / `hive_s3` | Database | `information_schema.schemata` |
-| `delta_lake` | Schema | `information_schema.schemata` |
+| Source type | Trino connector | SQLGlot dialect | Physical schema concept | Trino catalog schema query |
+| --- | --- | --- | --- | --- |
+| `postgresql` | `postgresql` | `postgres` | Schema | `information_schema.schemata` (filter system schemas) |
+| `mysql` | `mysql` | `mysql` | Database | `information_schema.schemata` (filter system dbs) |
+| `mariadb` | `mariadb` | `mysql` | Database | `information_schema.schemata` (filter system dbs) |
+| `singlestore` | `singlestore` | `singlestore` | Database | `information_schema.schemata` |
+| `sqlserver` | `sqlserver` | `tsql` | Schema | `information_schema.schemata` (filter system schemas) |
+| `oracle` | `oracle` | `oracle` | Schema | `information_schema.schemata` |
+| `duckdb` | `memory` | `duckdb` | Schema | `information_schema.schemata` |
+| `snowflake` | `snowflake` | `snowflake` | Schema | `information_schema.schemata` |
+| `bigquery` | `bigquery` | `bigquery` | Dataset | `information_schema.schemata` |
+| `clickhouse` | `clickhouse` | `clickhouse` | Database | `information_schema.schemata` |
+| `redshift` | `redshift` | `redshift` | Schema | `information_schema.schemata` |
+| `databricks` | `delta_lake` | `databricks` | Schema | `information_schema.schemata` |
+| `hive` | `hive` | `hive` | Database | `information_schema.schemata` |
+| `druid` | `druid` | `druid` | Schema | `information_schema.schemata` |
+| `exasol` | `exasol` | `exasol` | Schema | `information_schema.schemata` |
 
 Tables: `information_schema.tables WHERE table_schema = ?`.
 
 ---
 
-### Flat sources — fixed schema constant
+### TRINO_ONLY lake sources — Trino connector, no direct driver
 
-These types have no Trino connector. Introspection uses the native source directly.
+These types are in `SOURCE_TO_CONNECTOR` and `TRINO_ONLY_SOURCES`. All queries route through Trino. No SQLGlot dialect; no direct driver. Time-travel (`as_of`) is supported on `iceberg` and `delta_lake` (REQ-372).
+
+| Source type | Trino connector | Physical schema concept | Trino catalog schema query |
+| --- | --- | --- | --- |
+| `iceberg` | `iceberg` | Namespace | `information_schema.schemata` |
+| `hive_s3` | `hive` | Database | `information_schema.schemata` |
+| `delta_lake` | `delta_lake` | Schema | `information_schema.schemata` |
+
+Tables: `information_schema.tables WHERE table_schema = ?`.
+
+---
+
+### NoSQL / non-relational — Trino connector, no direct driver
+
+These types are in `SOURCE_TO_CONNECTOR` but have no SQLGlot dialect and no direct driver. All queries route through Trino using the mapping DSL (REQ-251). Introspection falls back to Trino.
+
+| Source type | Trino connector | Physical schema concept | Trino catalog schema query |
+| --- | --- | --- | --- |
+| `mongodb` | `mongodb` | Database | `information_schema.schemata` |
+| `cassandra` | `cassandra` | Keyspace | `information_schema.schemata` |
+| `redis` | `redis` | Key-pattern namespace | `information_schema.schemata` |
+| `elasticsearch` | `elasticsearch` | Index | `information_schema.schemata` |
+| `prometheus` | `prometheus` | Metric namespace | `information_schema.schemata` |
+
+Tables: `information_schema.tables WHERE table_schema = ?`.
+
+---
+
+### Calcite-based connectors — Trino connector via Apache Calcite
+
+These types are in `SOURCE_TO_CONNECTOR` using the `kenstott/calcite` Trino plugin. All queries route through Trino.
+
+| Source type | Trino connector | Physical schema concept | Trino catalog schema query |
+| --- | --- | --- | --- |
+| `sharepoint` | `sharepoint` | Site/list hierarchy | `information_schema.schemata` |
+| `splunk` | `splunk` | Splunk index | `information_schema.schemata` |
+| `files` | `file` | Directory/path | `information_schema.schemata` |
+
+Tables: `information_schema.tables WHERE table_schema = ?`.
+
+---
+
+### Flat sources — fixed schema constant, native introspection
+
+These types have no Trino connector. `native_schemas` returns a fixed constant; `native_tables` queries the source directly.
 
 | Source type | Fixed schema constant | Table discovery method | Native endpoint |
 | --- | --- | --- | --- |
-| `sqlite` | `"main"` | `sqlite_master` in the `.db` file | Local file via `sqlite3` |
+| `kafka` | `"kafka"` | Topics from `kafka_topics` config table | Provisa config DB |
 | `openapi` | `"openapi"` | GET operations with non-null response schema | OpenAPI spec (stored in state) |
 | `graphql_remote` | `"graphql"` | Query-type fields returning LIST | GraphQL HTTP introspection endpoint |
 | `grpc_remote` | `"grpc"` | Server-streaming RPCs + non-streaming RPCs with repeated response | Remote gRPC server via proto reflection or proto file |
-| `kafka` | `"kafka"` | Topics from `kafka_topics` table | Provisa config DB |
-| `neo4j` | `"neo4j"` | No list introspection — user supplies a Cypher query that must return a JSON array | Bolt connection |
-| `sparql` | `"sparql"` | No list introspection — user supplies a SPARQL query that must return a JSON array | SPARQL HTTP endpoint |
+| `sqlite` | `"main"` | `sqlite_master WHERE type='table'` | Local file via `sqlite3` |
+| `neo4j` | `"neo4j"` | No list introspection — user supplies a Cypher query | Bolt connection |
+| `sparql` | `"sparql"` | No list introspection — user supplies a SPARQL query | SPARQL HTTP endpoint |
 | `govdata` | Category names from `sources.database` | `fetch_tables` per category | GovData JDBC adapter |
+
+Note: `kafka` is in `SOURCE_TO_CONNECTOR` (Trino `kafka` connector used for execution) but uses native config-DB introspection for schema/table discovery — it does not use Trino for introspection.
 
 For `graphql_remote`: introspection connects to the remote GraphQL HTTP endpoint directly. The PG cache holds previously-executed query results only — it is not the source and must not be used for introspection.
 
@@ -68,29 +115,47 @@ For `sparql`: datasets are user-supplied SPARQL queries that must return a JSON 
 
 ---
 
+### Event / embedded / file sources — no introspection (return `[]`)
+
+These types have no Trino connector and no native introspection path. Both `available_schemas` and `available_tables` return `[]`. Table definitions are supplied by config, user query, or file path.
+
+| Source type | Description |
+| --- | --- |
+| `websocket` | External WebSocket feed — schema is event-driven; no introspection |
+| `rss` | RSS 2.0 / Atom feed — schema fixed to feed fields; no introspection |
+| `csv` | Local or remote CSV file — schema from file headers at registration |
+| `parquet` | Local or remote Parquet file — schema from file metadata at registration |
+| `google_sheets` | Google Sheets API — schema from spreadsheet columns at registration |
+| `ingest` | HTTP push receiver — schema defined in config at registration (REQ-333) |
+| `kudu` | Apache Kudu — no Trino connector configured; no introspection |
+| `accumulo` | Apache Accumulo — no Trino connector configured; no introspection |
+| `pinot` | Apache Pinot — no Trino connector configured; no introspection |
+
+---
+
 ## Introspection Routing
 
 ```text
 native_schemas(source_id, source_type, pool, config_conn)
-  ├─ source_type in SOURCE_TO_CONNECTOR → return None  (available_schemas falls through to Trino)
-  ├─ "graphql_remote" → ["graphql"]
-  ├─ "grpc_remote"    → ["grpc"]
-  ├─ "kafka"          → ["kafka"]
-  ├─ "sqlite"         → ["main"]
-  ├─ "openapi"        → ["openapi"]
-  ├─ "neo4j"          → ["neo4j"]
-  ├─ "sparql"         → ["sparql"]
-  ├─ "govdata"        → [categories from sources.database]
-  └─ unknown          → []   (never None — avoids broken Trino fallback)
+  ├─ "graphql_remote"  → ["graphql"]
+  ├─ "grpc_remote"     → ["grpc"]
+  ├─ "kafka"           → ["kafka"]
+  ├─ "neo4j"           → ["neo4j"]
+  ├─ "sparql"          → ["sparql"]
+  ├─ "openapi"         → ["openapi"]
+  ├─ "sqlite"          → ["main"]
+  ├─ "govdata"         → [categories from sources.database]
+  ├─ source_type in SOURCE_TO_CONNECTOR → None  (available_schemas falls through to Trino)
+  └─ unknown           → []   (never None — avoids broken Trino fallback)
 
 native_tables(source_id, source_type, schema_name, pool, config_conn, state)
   ├─ "openapi"         → parse spec, filter by schema_name == "openapi"
   ├─ "graphql_remote"  → HTTP introspect remote endpoint, filter list fields
   ├─ "grpc_remote"     → parse proto from remote endpoint, filter streaming/repeated methods
   ├─ "kafka"           → query kafka_topics where source_id = ?
+  ├─ "neo4j"           → []  (no introspection)
+  ├─ "sparql"          → []  (no introspection)
   ├─ "sqlite"          → sqlite_master WHERE type='table', filter by schema_name == "main"
-  ├─ "neo4j"           → [] (no introspection)
-  ├─ "sparql"          → [] (no introspection)
   ├─ "govdata"         → fetch_tables per category
   ├─ source_type in SOURCE_TO_CONNECTOR → None  (available_tables falls through to Trino)
   └─ unknown           → []

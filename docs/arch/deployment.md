@@ -2,9 +2,9 @@
 
 ## Overview
 
-Provisa ships as three distinct packages per platform. The split is driven by
-GitHub Actions' 2 GB artifact limit — container image tarballs alone exceed it.
-The three packages map directly to the three docker-compose layers:
+Provisa ships as three distinct packages per platform. (REQ-630) The split is driven by
+GitHub Actions' 2 GB artifact limit — container image tarballs alone exceed it. (REQ-630)
+The three packages map directly to the three docker-compose layers: (REQ-630)
 
 | Package | Services | docker-compose file |
 |---------|----------|---------------------|
@@ -12,7 +12,7 @@ The three packages map directly to the three docker-compose layers:
 | **Observability (Obs)** | minio, otlp2parquet, otel-collector, prometheus, tempo, grafana | `docker-compose.observability.yml` |
 | **Demo** | petstore-mock, graphql-demo | `docker-compose.demo.yml` |
 
-**Dependency chain**: Core ← Obs ← Demo (demo requires obs; obs requires core).
+**Dependency chain**: Core ← Obs ← Demo (demo requires obs; obs requires core). (REQ-631)
 
 ---
 
@@ -24,18 +24,18 @@ The three packages map directly to the three docker-compose layers:
 | Obs | DMG (image load into Lima) | NSIS .exe (image load into VirtualBox VM) | **bundled into Core AppImage** |
 | Demo | DMG (image load into Lima) | NSIS .exe (image load into VirtualBox VM) | **not included** |
 
-Linux rationale: Linux users are typically server/technical installs. OTel
+Linux rationale: Linux users are typically server/technical installs. (REQ-227) OTel
 observability is useful in production; petstore/graphql demo services are not.
-One self-contained AppImage is simpler to distribute.
+One self-contained AppImage is simpler to distribute. (REQ-632)
 
 ---
 
 ## Extension Model (macOS + Windows)
 
-Core is the only installer that creates the VM runtime (Lima / VirtualBox).
+Core is the only installer that creates the VM runtime (Lima / VirtualBox). (REQ-633)
 Obs and Demo are **extension packages** — they load images into the existing VM
-and drop a compose file into a well-known extensions directory. Core's launcher
-detects installed extensions at startup and composes the service set dynamically.
+and drop a compose file into a well-known extensions directory. (REQ-633) Core's launcher
+detects installed extensions at startup and composes the service set dynamically. (REQ-633)
 
 ### Extension directory
 
@@ -57,7 +57,7 @@ extensions/
 
 ### Compose file assembly at launch
 
-The launcher builds the compose file list dynamically:
+The launcher builds the compose file list dynamically: (REQ-633)
 ```
 core:  docker-compose.core.yml + docker-compose.app.yml + docker-compose.airgap.yml
 + obs:  + extensions/observability/docker-compose.observability.yml
@@ -65,8 +65,8 @@ core:  docker-compose.core.yml + docker-compose.app.yml + docker-compose.airgap.
 ```
 
 When an extension is installed, the launcher restarts all services together with
-the expanded file list. Trino picks up the OTel `JAVA_TOOL_OPTIONS` override from
-`docker-compose.observability.yml` on that restart.
+the expanded file list. (REQ-633) Trino picks up the OTel `JAVA_TOOL_OPTIONS` override from
+`docker-compose.observability.yml` on that restart. (REQ-633)
 
 ---
 
@@ -80,7 +80,7 @@ everything into one DMG.
 **Target state**: Core only.
 
 **Contents of DMG**:
-- `Provisa.app` — signed + notarized SwiftUI launcher (ProvisaLauncher)
+- `Provisa.app` — signed + notarized SwiftUI launcher (ProvisaLauncher) (REQ-227)
 - `images/` — core image tarballs (hidden from Finder):
   - `python-3.12-slim.tar.gz`
   - `postgres-16.tar.gz`
@@ -88,10 +88,10 @@ everything into one DMG.
   - `redis-7-alpine.tar.gz`
   - `trino-480.tar.gz`
   - `zaychik-local.tar.gz`
-- `nerdctl/` — `nerdctl-full-2.2.2-linux-arm64.tar.gz` (hidden)
-- `vm-image/` — `provisa-vm.img` Ubuntu 24.04 arm64 (hidden)
+- `nerdctl/` — `nerdctl-full-2.2.2-linux-arm64.tar.gz` (hidden) (REQ-228)
+- `vm-image/` — `provisa-vm.img` Ubuntu 24.04 arm64 (hidden) (REQ-228)
 
-**`Provisa.app/Contents/Resources/` embeds**:
+**`Provisa.app/Contents/Resources/` embeds**: (REQ-294)
 - `docker-compose.core.yml`, `docker-compose.app.yml`, `docker-compose.airgap.yml`
 - `config/`, `db/`, `trino/`, `observability/` (trino-otel dir + OTel Java agent jar)
 - `provisa-source/` (Dockerfile, main.py, pyproject.toml, provisa/, static UI, wheels)
@@ -116,20 +116,20 @@ everything into one DMG.
   - `grafana-10.4.2.tar.gz`
 
 **`install-obs.sh` steps**:
-1. Check Lima VM `provisa` exists (core must be installed).
-2. Start Lima VM if not running.
-3. `limactl shell provisa sudo ctr images import` for each image tarball.
-4. Write `~/.provisa/extensions/observability/docker-compose.observability.yml`.
+1. Check Lima VM `provisa` exists (core must be installed). (REQ-633)
+2. Start Lima VM if not running. (REQ-228)
+3. `limactl shell provisa sudo ctr images import` for each image tarball. (REQ-294)
+4. Write `~/.provisa/extensions/observability/docker-compose.observability.yml`. (REQ-633)
 5. Print: "Observability installed. Restart Provisa to activate."
 
 **Build script**: `packaging/macos/build-dmg-obs.sh`
-- Pulls + saves obs images (`--platform linux/arm64`, gzip compressed)
+- Pulls + saves obs images (`--platform linux/arm64`, gzip compressed) (REQ-294)
 - Embeds `install-obs.sh` + images into a minimal DMG
-- Signs + notarizes `install-obs.sh`
+- Signs + notarizes `install-obs.sh` (REQ-227)
 
 ### Demo DMG (`Provisa-Demo-<version>.dmg`)
 
-**New package**. Requires Obs to be installed.
+**New package**. Requires Obs to be installed. (REQ-631)
 
 **Contents**:
 - `install-demo.sh`
@@ -138,10 +138,10 @@ everything into one DMG.
   - `graphql-demo-local.tar.gz`
 
 **`install-demo.sh` steps**:
-1. Check `~/.provisa/extensions/observability/` exists (obs must be installed).
-2. Start Lima VM if not running.
-3. Import demo image tarballs into Lima.
-4. Write `~/.provisa/extensions/demo/docker-compose.demo.yml`.
+1. Check `~/.provisa/extensions/observability/` exists (obs must be installed). (REQ-631)
+2. Start Lima VM if not running. (REQ-228)
+3. Import demo image tarballs into Lima. (REQ-294)
+4. Write `~/.provisa/extensions/demo/docker-compose.demo.yml`. (REQ-633)
 5. Print: "Demo installed. Restart Provisa to activate."
 
 **Build script**: `packaging/macos/build-dmg-demo.sh`
@@ -149,17 +149,17 @@ everything into one DMG.
 ### ProvisaLauncher changes (`ServiceStatus.swift` / `ScriptRunner.swift`)
 
 The launcher's `provisa start` path needs to:
-1. Enumerate `~/.provisa/extensions/*/docker-compose.*.yml` at startup.
-2. Append each found file to the compose file list.
+1. Enumerate `~/.provisa/extensions/*/docker-compose.*.yml` at startup. (REQ-633)
+2. Append each found file to the compose file list. (REQ-633)
 3. Set `PROVISA_REDIRECT_ENABLED`, MinIO, and OTel env vars only when obs
-   extension is present.
+   extension is present. (REQ-633)
 
 ---
 
 ## Windows Packages
 
-Container runtime: VirtualBox OVA (not Lima). Images are loaded into the OVA's
-Docker daemon by `first-launch.ps1` post-VM-boot.
+Container runtime: VirtualBox OVA (not Lima). (REQ-633) Images are loaded into the OVA's
+Docker daemon by `first-launch.ps1` post-VM-boot. (REQ-228)
 
 ### Core Installer (`Provisa-Setup-<version>.exe`)
 
@@ -173,18 +173,18 @@ builds one installer. Needs obs + demo images removed.
 **New package**.
 
 **`install-obs.ps1` steps**:
-1. Check VM `Provisa` exists and is running.
-2. `docker load` each obs image tarball inside the VM via `VBoxManage guestcontrol`.
-3. Write `%USERPROFILE%\.provisa\extensions\observability\docker-compose.observability.yml`.
+1. Check VM `Provisa` exists and is running. (REQ-633)
+2. `docker load` each obs image tarball inside the VM via `VBoxManage guestcontrol`. (REQ-633)
+3. Write `%USERPROFILE%\.provisa\extensions\observability\docker-compose.observability.yml`. (REQ-633)
 4. Prompt user to restart Provisa.
 
 **Build script**: `packaging/windows/build-installer-obs.ps1`
 
 ### Demo Installer (`Provisa-Demo-Setup-<version>.exe`)
 
-**New package**. Requires Obs installer.
+**New package**. Requires Obs installer. (REQ-631)
 
-Same pattern as obs — loads demo images, writes extension compose file.
+Same pattern as obs — loads demo images, writes extension compose file. (REQ-633)
 
 **Build script**: `packaging/windows/build-installer-demo.ps1`
 
@@ -192,7 +192,7 @@ Same pattern as obs — loads demo images, writes extension compose file.
 
 Same extension detection as ProvisaLauncher: enumerate
 `$env:USERPROFILE\.provisa\extensions\*/docker-compose.*.yml` and append to
-compose file list.
+compose file list. (REQ-633)
 
 ---
 
@@ -202,7 +202,7 @@ compose file list.
 only (postgres, pgbouncer, minio, redis, trino). Minio is currently in this
 list but should move to obs.
 
-**Target state**: Bundle core + obs images. No demo.
+**Target state**: Bundle core + obs images. No demo. (REQ-632)
 
 ### `save_images()` target list
 
@@ -227,8 +227,8 @@ list but should move to obs.
 
 - Copy `docker-compose.core.yml` + `docker-compose.observability.yml` into
   `${APPDIR}/compose/`
-- `AppRun` / `first-launch.sh` always starts core + obs (no flag needed)
-- Remove demo compose file from bundle entirely
+- `AppRun` / `first-launch.sh` always starts core + obs (no flag needed) (REQ-632)
+- Remove demo compose file from bundle entirely (REQ-632)
 
 ### `first-launch.sh` (Linux) changes
 
@@ -246,8 +246,8 @@ docker compose \
 
 ## CI / GitHub Actions
 
-Three parallel build jobs per platform. Each uploads its artifact separately,
-staying under the 2 GB GitHub artifact limit.
+Three parallel build jobs per platform. (REQ-630) Each uploads its artifact separately,
+staying under the 2 GB GitHub artifact limit. (REQ-630)
 
 ```yaml
 jobs:
@@ -273,9 +273,9 @@ jobs:
     outputs: Provisa-<version>.AppImage   # core + obs, no demo
 ```
 
-All jobs are independent and run in parallel. Demo jobs have a logical
+All jobs are independent and run in parallel. (REQ-630) Demo jobs have a logical
 dependency on obs (checked at install time by the installer script, not
-enforced by CI).
+enforced by CI). (REQ-631)
 
 ---
 
@@ -283,9 +283,9 @@ enforced by CI).
 
 The dev environment mirrors the packaged product's compose layers but with the
 Python backend and UI running on the **host** (uvicorn + vite), not in
-containers. This means `docker-compose.app.yml` is **never used in dev** — it
+containers. (REQ-634) This means `docker-compose.app.yml` is **never used in dev** — it
 would bind ports 8000 and 3000 to containerized services, conflicting with the
-local processes.
+local processes. (REQ-634)
 
 ### Compose stacks
 
@@ -296,13 +296,13 @@ local processes.
 | Core + Obs + Demo | `core.yml` + `dev-install.yml` + `observability.yml` + `demo.yml` |
 
 `docker-compose.app.yml` and `docker-compose.airgap.yml` are **packaged-product
-only** — never included in dev.
+only** — never included in dev. (REQ-634)
 
 ### Port map
 
 All service ports are exposed to the host by `dev-install.yml` (core services)
 or `observability.yml` (obs services). The local backend connects to everything
-via `localhost`.
+via `localhost`. (REQ-634)
 
 | Port | Service | Who binds it |
 |------|---------|--------------|
@@ -323,7 +323,7 @@ via `localhost`.
 | **8000** | **Python backend (uvicorn)** | **host process — never containerised in dev** |
 | **3000** | **UI (vite dev server)** | **host process — never containerised in dev** |
 
-Ports 8000 and 3000 must never appear in any dev compose file. Any future
+Ports 8000 and 3000 must never appear in any dev compose file. (REQ-634) Any future
 compose overlay that adds a service binding those ports would silently break the
 dev environment.
 
@@ -331,15 +331,15 @@ dev environment.
 
 `docker-compose.app.yml` points the containerised backend to
 `http://otel-collector:4317` (Docker-internal gRPC). The local backend cannot
-reach that hostname.
+reach that hostname. (REQ-634)
 
-When obs is active in dev, `start-ui-install.sh` sets:
+When obs is active in dev, `start-ui-install.sh` sets: (REQ-330)
 ```bash
-OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"   # OTLP HTTP, host-exposed
+OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4319"   # OTLP HTTP to otlp2parquet, host-exposed
 OTEL_SERVICE_NAME="provisa"
 ```
 
-When obs is not active, these vars are unset (spans are dropped).
+When obs is not active, these vars are unset (spans are dropped). (REQ-330)
 
 ### `start-ui-install.sh` modes
 
@@ -350,7 +350,7 @@ When obs is not active, these vars are unset (spans are dropped).
 
 There is intentionally no `--obs` flag without demo — in dev, running obs
 without demo data produces an empty Grafana/Tempo dashboard, which is not
-useful. The flag may be added later if needed.
+useful. (REQ-634) The flag may be added later if needed.
 
 ---
 
@@ -359,7 +359,7 @@ useful. The flag may be added later if needed.
 1. **`docker-compose.observability.yml`** — make self-contained (done)
 2. **`docker-compose.dev-install.yml`** — remove minio ports (done)
 3. **`start-ui-install.sh`** — dynamic compose assembly, demo-conditional env vars (done)
-3a. **`start-ui-install.sh`** — add `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` + `OTEL_SERVICE_NAME` to backend env when demo active
+3a. **`start-ui-install.sh`** — add `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4319` + `OTEL_SERVICE_NAME` to backend env when demo active
 4. **`build-dmg.sh`** — strip obs + demo images; obs/demo configs stay in Resources
 5. **`build-dmg-obs.sh`** — new script: pull obs images, build obs DMG
 6. **`build-dmg-demo.sh`** — new script: pull demo images, build demo DMG

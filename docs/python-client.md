@@ -5,9 +5,9 @@ Python client for Provisa. Provides four interfaces:
 | Interface | Use case |
 |-----------|----------|
 | `ProvisaClient` | GraphQL queries, Arrow Flight, DataFrame output |
-| DB-API 2.0 (`connect`) | Standard Python database interface (PEP 249) |
-| SQLAlchemy dialect | BI tools, ORM, Pandas `read_sql` |
-| ADBC | Arrow-native columnar streaming via Flight |
+| DB-API 2.0 (`connect`) | Standard Python database interface (PEP 249) (REQ-268) |
+| SQLAlchemy dialect | BI tools, ORM, Pandas `read_sql` (REQ-270) |
+| ADBC | Arrow-native columnar streaming via Flight (REQ-271) |
 
 ## Install
 
@@ -58,7 +58,7 @@ result = await client.aquery("{ orders { id amount } }")
 
 ### Arrow Flight (high-throughput columnar)
 
-Use Flight for large result sets — data streams as Arrow record batches without materializing on the server.
+Use Flight for large result sets — data streams as Arrow record batches without materializing on the server. (REQ-143, REQ-145)
 
 ```python
 import pyarrow as pa
@@ -67,7 +67,7 @@ table: pa.Table = client.flight("{ orders { id amount region } }")
 df = client.flight_df("{ orders { id amount region } }")
 ```
 
-Flight connects to port 8815 by default. Override with `flight_port=`:
+Flight connects to port 8815 by default. (REQ-143) Override with `flight_port=`:
 
 ```python
 client = ProvisaClient("http://prod.example.com", flight_port=8815)
@@ -85,20 +85,20 @@ approved_df = client.list_approved()
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `url` | `http://localhost:8001` | Provisa server base URL |
-| `token` | `None` | Bearer token; omit for password auth |
-| `role` | `"admin"` | Role sent with every request |
-| `flight_port` | `8815` | Arrow Flight gRPC port |
+| `token` | `None` | Bearer token; omit for password auth (REQ-606) |
+| `role` | `"admin"` | Role sent with every request (REQ-273) |
+| `flight_port` | `8815` | Arrow Flight gRPC port (REQ-143) |
 
 ### Error Handling
 
-`query()` raises `httpx.HTTPStatusError` on HTTP errors.  
-`query_df()` raises `RuntimeError` if the response contains GraphQL errors.
+`query()` raises `httpx.HTTPStatusError` on HTTP errors. (REQ-607)  
+`query_df()` raises `RuntimeError` if the response contains GraphQL errors. (REQ-607)
 
 ---
 
 ## DB-API 2.0
 
-Standard [PEP 249](https://peps.python.org/pep-0249/) interface. Works with any tool that accepts a DB-API connection.
+Standard [PEP 249](https://peps.python.org/pep-0249/) interface. (REQ-268) Works with any tool that accepts a DB-API connection.
 
 ```python
 from provisa_client import connect
@@ -113,7 +113,7 @@ conn = connect(
 
 ### Executing queries
 
-The cursor accepts either GraphQL or SQL — detected automatically.
+The cursor accepts either GraphQL or SQL — detected automatically. (REQ-268, REQ-274)
 
 ```python
 cur = conn.cursor()
@@ -164,7 +164,7 @@ with connect("http://localhost:8001", username="alice", password="secret") as co
 pip install "provisa-client[sqlalchemy]"
 ```
 
-URL scheme: `provisa+http://` or `provisa+https://`
+URL scheme: `provisa+http://` or `provisa+https://` (REQ-270)
 
 ```python
 from sqlalchemy import create_engine, text
@@ -199,13 +199,13 @@ engine = create_engine(
 
 ### Schema introspection
 
-The dialect implements `get_table_names()`, `get_columns()`, and `has_table()` — catalog tools (DBeaver, SQLAlchemy automap) can inspect the schema.
+The dialect implements `get_table_names()`, `get_columns()`, and `has_table()` — catalog tools (DBeaver, SQLAlchemy automap) can inspect the schema. (REQ-363, REQ-270)
 
 ---
 
 ## ADBC
 
-Arrow Database Connectivity backed by Arrow Flight. Returns `pyarrow.Table` directly — no JSON deserialization.
+Arrow Database Connectivity backed by Arrow Flight. (REQ-271) Returns `pyarrow.Table` directly — no JSON deserialization. (REQ-271)
 
 ```bash
 pip install "provisa-client[adbc]"
@@ -256,4 +256,4 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
         table = cur.fetch_arrow_table()
 ```
 
-ADBC connects to the Flight server on port 8815. The port is not configurable via `adbc_connect` — run Flight on 8815 or adjust the server config.
+ADBC connects to the Flight server on port 8815. (REQ-143) The port is not configurable via `adbc_connect` — run Flight on 8815 or adjust the server config. (REQ-608)

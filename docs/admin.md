@@ -1,39 +1,35 @@
 # Admin API
 
-The admin API is a Strawberry GraphQL endpoint at `POST /admin/graphql`. It requires a superuser or admin role and is separate from the data GraphQL endpoint.
+The admin API is a Strawberry GraphQL endpoint at `POST /admin/graphql` (REQ-533). It requires a superuser or admin role (REQ-125, REQ-060) and is separate from the data GraphQL endpoint (REQ-533).
 
 ## Authentication
 
-Pass the admin token in the `Authorization` header:
+Pass your credentials in the `Authorization` header using the standard Provisa auth provider (REQ-120):
 ```
-Authorization: Bearer <admin-token>
+Authorization: Bearer <token>
 ```
 
-Admin tokens are configured via the `admin_token` field in `config.yaml` or the `PROVISA_ADMIN_TOKEN` environment variable.
+Admin access is governed by the `admin` capability assigned to a role (REQ-060, REQ-042).
 
 ## Capabilities
 
 ### Config Management
 
-Download the current running config:
-```graphql
-query {
-  configDownload
-}
+Download the current running config (REQ-164):
+```
+GET /admin/config
 ```
 
-Returns the full `config.yaml` as a string. Upload a new config:
-```graphql
-mutation {
-  configUpload(yaml: "sources:\n  - id: ...")
-}
+Returns the full `config.yaml` as a YAML file. Upload a new config (REQ-164):
+```
+PUT /admin/config
 ```
 
-Provisa validates the YAML, reloads catalogs, and regenerates schemas. No restart required.
+Provisa validates the YAML, reloads catalogs, and regenerates schemas (REQ-012, REQ-253). No restart required.
 
 ### Relationship Editor
 
-List relationships:
+List relationships (REQ-166):
 ```graphql
 query {
   relationships {
@@ -48,96 +44,52 @@ query {
 }
 ```
 
-Create a relationship:
+Create a relationship (REQ-019):
 ```graphql
 mutation {
-  createRelationship(input: {
+  upsertRelationship(input: {
     id: "orders-to-customers"
     sourceTableId: "orders"
     targetTableId: "customers"
     sourceColumn: "customer_id"
     targetColumn: "id"
-    cardinality: MANY_TO_ONE
+    cardinality: "many_to_one"
   }) {
-    id
+    success
   }
 }
 ```
 
 ### AI Relationship Discovery
 
-Trigger Claude-powered FK analysis:
-```graphql
-mutation {
-  discoverRelationships(sourceIds: ["sales-pg", "crm-pg"]) {
-    sourceColumn
-    targetTable
-    targetColumn
-    confidence
-    rationale
-  }
-}
+Trigger Claude-powered FK analysis via REST (REQ-167, REQ-018):
+
+```bash
+curl -X POST http://localhost:8001/admin/discover/relationships \
+  -H "Content-Type: application/json" \
+  -d '{"scope": "domain", "domain_id": "sales"}'
 ```
 
 Returns FK candidates ranked by confidence. Accept a candidate:
-```graphql
-mutation {
-  acceptRelationshipCandidate(candidateId: "cand-42") {
-    id
-  }
-}
-```
 
-### Governed Query Approval
-
-List pending queries:
-```graphql
-query {
-  persistedQueries(status: PENDING) {
-    id
-    name
-    query
-    submittedBy
-    submittedAt
-  }
-}
-```
-
-Approve or reject:
-```graphql
-mutation {
-  approveQuery(id: "pq-101")
-}
-
-mutation {
-  rejectQuery(id: "pq-101", reason: "Missing RLS coverage")
-}
-```
-
-Deprecate (soft-remove without deletion):
-```graphql
-mutation {
-  deprecateQuery(id: "pq-101", message: "Use pq-102 instead")
-}
+```bash
+curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
+  -H "Content-Type: application/json" \
+  -d '{"name": "orders_to_customers"}'
 ```
 
 ### Schema Introspection
 
-Browse published tables across all sources:
+Browse published tables across all sources (REQ-008):
 ```graphql
 query {
   tables {
     id
     sourceId
     columns {
-      name
-      type
-      masked
+      columnName
+      unmaskedTo
       writableBy
-    }
-    roles {
-      id
-      hasRls
     }
   }
 }
@@ -145,30 +97,31 @@ query {
 
 ### View Management
 
-Register a materialized view:
+Register a materialized view (REQ-133, REQ-135):
 ```graphql
 mutation {
-  createView(input: {
-    id: "orders-with-customers"
-    sql: "SELECT o.id, o.amount, c.name FROM orders o JOIN customers c ON o.customer_id = c.id"
-    refreshInterval: 300
-    publish: true
+  registerTable(input: {
+    viewSql: "SELECT o.id, o.amount, c.name FROM orders o JOIN customers c ON o.customer_id = c.id"
+    mvRefreshInterval: 300
+    materialize: true
   }) {
-    id
+    success
   }
 }
 ```
 
-Trigger a manual refresh:
+Trigger a manual refresh (REQ-135):
 ```graphql
 mutation {
-  refreshView(id: "orders-with-customers")
+  refreshMv(mvId: "orders-with-customers") {
+    success
+  }
 }
 ```
 
 ### Graph Source Registration
 
-Neo4j and SPARQL sources are registered via REST endpoints (not the GraphQL admin API):
+Neo4j and SPARQL sources are registered via REST endpoints (not the GraphQL admin API) (REQ-295, REQ-297):
 
 **Neo4j:**
 ```bash
@@ -201,9 +154,8 @@ curl -X POST http://localhost:8001/admin/sources/sparql/kg/tables \
   -d '{"table_name": "products", "sparql_query": "SELECT ?name ?category WHERE { ?p a :Product ; :name ?name ; :category ?category . }", "ttl": 600}'
 ```
 
-Once registered, tables appear in the GraphQL schema and are queryable like any other source.
+Once registered, tables appear in the GraphQL schema and are queryable like any other source (REQ-016).
 
 ## GraphiQL
 
-The admin API ships with GraphiQL at `GET /admin/graphql` in the browser. Use it to explore the full admin schema interactively.
-
+The admin API ships with GraphiQL at `GET /admin/graphql` in the browser (REQ-622). Use it to explore the full admin schema interactively.

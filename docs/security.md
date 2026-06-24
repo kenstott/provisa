@@ -1,6 +1,6 @@
 # Security Model
 
-Provisa enforces a multi-layered security model across every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, WebSocket). Governance is applied uniformly — there is no query path that bypasses it.
+Provisa enforces a multi-layered security model across every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, WebSocket). (REQ-001, REQ-266) Governance is applied uniformly — there is no query path that bypasses it. (REQ-002, REQ-266)
 
 The layers apply in order. A request must clear each layer before the next is evaluated.
 
@@ -8,7 +8,7 @@ The layers apply in order. A request must clear each layer before the next is ev
 
 ### Layer 0 — Introspection filtering
 
-The schema and catalog presented to a role contain only the tables in its `domain_access` list and the columns that pass per-column `visible_to` rules. Objects outside a role's access are invisible at discovery time — they cannot be queried, autocompleted, or inferred to exist. This applies to the GraphQL schema, SQL catalog, and the query editor's schema browser.
+The schema and catalog presented to a role contain only the tables in its `domain_access` list and the columns that pass per-column `visible_to` rules. (REQ-039) Objects outside a role's access are invisible at discovery time — they cannot be queried, autocompleted, or inferred to exist. (REQ-039) This applies to the GraphQL schema, SQL catalog, and the query editor's schema browser. (REQ-039, REQ-363)
 
 See [Schema Visibility](#schema-visibility).
 
@@ -18,29 +18,29 @@ Tables in domains with no `domain_access` restriction are visible to all authent
 
 ### Layer 2 — Domain access
 
-Each role carries a `domain_access` list of domain IDs. A query that touches a table outside those domains is rejected before execution. This is the coarse ownership boundary — an HR role cannot reach finance tables regardless of how the SQL is written.
+Each role carries a `domain_access` list of domain IDs. A query that touches a table outside those domains is rejected before execution. (REQ-038, REQ-039) This is the coarse ownership boundary — an HR role cannot reach finance tables regardless of how the SQL is written. (REQ-002)
 
 See [Rights Model](#rights-model).
 
 ### Layer 3 — Row-level security
 
-After domain access is confirmed, per-table, per-role `WHERE` predicates are injected into every `SELECT` at execution time. The predicates evaluate against raw data. A regional manager querying a shared orders table sees only their region's rows even on a `SELECT *`.
+After domain access is confirmed, per-table, per-role `WHERE` predicates are injected into every `SELECT` at execution time. (REQ-041, REQ-263) The predicates evaluate against raw data. A regional manager querying a shared orders table sees only their region's rows even on a `SELECT *`. (REQ-264)
 
 See [Row-Level Security (RLS)](#row-level-security-rls).
 
 ### Layer 4 — Column visibility and masking
 
-Columns with a `visible_to` list that excludes the requesting role are stripped from query output. Columns with a masking rule have their values replaced — regex redaction, constant replacement, or truncation — before results leave the server. Masking applies in all query languages and output formats.
+Columns with a `visible_to` list that excludes the requesting role are stripped from query output. (REQ-040, REQ-263) Columns with a masking rule have their values replaced — regex redaction, constant replacement, or truncation — before results leave the server. (REQ-263) Masking applies in all query languages and output formats. (REQ-263)
 
 See [Column Permission Model](#column-permission-model) and [Column-Level Masking](#column-level-masking).
 
 ### Layer 5 — Predicate guard
 
-Masked columns are rejected from `WHERE` and `HAVING` clauses. Without this, a caller could infer the unmasked value by binary-searching it in a filter even though the output is masked. Rejection is enforced at query parse time, before execution.
+Masked columns are rejected from `WHERE` and `HAVING` clauses. (REQ-263) Without this, a caller could infer the unmasked value by binary-searching it in a filter even though the output is masked. Rejection is enforced at query parse time, before execution. (REQ-531)
 
 ### Relationship governance (V002)
 
-JOIN conditions in SQL must match a registered, approved relationship between tables. Unapproved joins are rejected. Each relationship carries a human-readable reason and description — guidance for both users and autonomous agents about why a traversal path exists. This is governance policy, not a hard security boundary: Layers 2–5 hold regardless of join structure, so a deliberate circumvention does not expose data the role could not reach through two separate approved queries. Circumvention attempts are logged and auditable.
+JOIN conditions in SQL must match a registered, approved relationship between tables. (REQ-001) Unapproved joins are rejected. Each relationship carries a human-readable reason and description — guidance for both users and autonomous agents about why a traversal path exists. This is governance policy, not a hard security boundary: Layers 2–5 hold regardless of join structure, so a deliberate circumvention does not expose data the role could not reach through two separate approved queries. Circumvention attempts are logged and auditable.
 
 **Bypass mechanisms** — V002 can be bypassed only when two independent conditions are both true:
 
@@ -63,7 +63,7 @@ These layers compose. A role with domain access, RLS, and masked columns has all
 
 ## Rights Model
 
-7 capabilities with optional role hierarchy via `parent_role_id`. `admin` grants all.
+7 capabilities with optional role hierarchy via `parent_role_id`. `admin` grants all. (REQ-042)
 
 | Capability | Description |
 |-----------|-------------|
@@ -77,7 +77,7 @@ These layers compose. A role with domain access, RLS, and masked columns has all
 
 ### Role Inheritance
 
-Roles can inherit capabilities and domain access from a parent role via `parent_role_id`. The hierarchy is flattened at startup — child roles merge their parent's capabilities and domain access with their own.
+Roles can inherit capabilities and domain access from a parent role via `parent_role_id`. (REQ-215) The hierarchy is flattened at startup — child roles merge their parent's capabilities and domain access with their own. (REQ-215)
 
 ```yaml
 roles:
@@ -92,7 +92,7 @@ roles:
 
 ## Column Permission Model
 
-Each column has a four-field permission model controlling read, write, and masking access per role.
+Each column has a four-field permission model controlling read, write, and masking access per role. (REQ-042, REQ-249)
 
 ### Three-Tier Visibility
 
@@ -110,7 +110,7 @@ Each column has a four-field permission model controlling read, write, and maski
 | `unmasked_to` | No role sees unmasked | Controls who bypasses masking |
 | `writable_by` | No role can write | Controls who can mutate (INSERT/UPDATE) |
 
-Write permission is enforced in the mutation pipeline. A role not in `writable_by` receives a 403 error when attempting to write to a restricted column.
+Write permission is enforced in the mutation pipeline. A role not in `writable_by` receives a 403 error when attempting to write to a restricted column. (REQ-033, REQ-034)
 
 ### Example
 
@@ -141,14 +141,15 @@ In this example:
 
 ## Schema Visibility
 
-Per-role GraphQL schemas hide unauthorized content:
-- **Domain access**: Role sees tables only in its `domain_access` domains (`"*"` = all)
-- **Column visibility**: Columns not in `visible_to` for a role are omitted from the SDL
-- Unauthorized tables/columns do not appear in the schema
+Per-role GraphQL schemas hide unauthorized content: (REQ-039)
+
+- **Domain access**: Role sees tables only in its `domain_access` domains (`"*"` = all) (REQ-039)
+- **Column visibility**: Columns not in `visible_to` for a role are omitted from the SDL (REQ-039)
+- Unauthorized tables/columns do not appear in the schema (REQ-039)
 
 ## Row-Level Security (RLS)
 
-Per-table, per-role SQL WHERE clause injection. Applied after compilation, before execution.
+Per-table, per-role SQL WHERE clause injection. Applied after compilation, before execution. (REQ-041, REQ-263)
 
 ```yaml
 rls_rules:
@@ -157,11 +158,11 @@ rls_rules:
     filter: "region = current_setting('provisa.user_region')"
 ```
 
-The filter is ANDed into the query's WHERE clause. Works for both queries and mutations (UPDATE/DELETE).
+The filter is ANDed into the query's WHERE clause. Works for both queries and mutations (UPDATE/DELETE). (REQ-035, REQ-041)
 
 ## Column-Level Masking
 
-Masking is defined once per column — it is a property of the column, not the role. The `unmasked_to` field controls which roles bypass it.
+Masking is defined once per column — it is a property of the column, not the role. The `unmasked_to` field controls which roles bypass it. (REQ-249)
 
 | Mask Type | Supported Types | SQL Expression |
 |-----------|----------------|----------------|
@@ -169,23 +170,15 @@ Masking is defined once per column — it is a property of the column, not the r
 | `constant` | Any | Literal value (NULL, 0, custom) |
 | `truncate` | Date/Timestamp | `DATE_TRUNC(precision, col)` |
 
-Masking is pushed into the SQL SELECT projection — the database returns masked data. Unmasked data never crosses the wire for masked roles. Masked columns are also blocked from `WHERE` and `HAVING` clauses (Layer 5 predicate guard) to prevent inference of the unmasked value through filtering.
+Masking is pushed into the SQL SELECT projection — the database returns masked data. (REQ-263) Unmasked data never crosses the wire for masked roles. (REQ-263) Masked columns are also blocked from `WHERE` and `HAVING` clauses (Layer 5 predicate guard) to prevent inference of the unmasked value through filtering. (REQ-263, REQ-531)
 
 ## Sampling
 
-All roles see sampled results (default: 100 rows) unless they have `full_results` capability. Controlled via `PROVISA_SAMPLE_SIZE` env var.
-
-## Governance
-
-- **Test mode**: All queries allowed
-- **Production mode**:
-  - `pre-approved` tables: user rights sufficient
-  - `registry-required` tables: query must have an approved `stable_id`
-- **Ceiling enforcement**: Client queries cannot exceed approved query scope
+All roles see sampled results (default: 100 rows) unless they have `full_results` capability. (REQ-554) Controlled via `PROVISA_SAMPLE_SIZE` env var. (REQ-554)
 
 ## Authentication
 
-Pluggable auth providers:
+Pluggable auth providers: (REQ-120)
 
 | Provider | Token Type | Use Case |
 |----------|-----------|----------|
@@ -195,15 +188,15 @@ Pluggable auth providers:
 | `oauth` | OIDC JWT | PingFed, Okta, Azure AD, Auth0 |
 | `simple` | bcrypt + JWT | Testing |
 
-Role mapping: identity claims → Provisa role via configurable rules.
+Role mapping: identity claims → Provisa role via configurable rules. (REQ-120)
 
 ## ABAC Approval Hook
 
-An optional external policy hook that fires before query execution. When configured, Provisa calls out to your policy engine with the user identity, roles, tables, columns, and operation. The response determines whether the query proceeds.
+An optional external policy hook that fires before query execution. (REQ-203) When configured, Provisa calls out to your policy engine with the user identity, roles, tables, columns, and operation. The response determines whether the query proceeds. (REQ-203)
 
 ### Scoping
 
-The hook only fires when the query touches a scoped table or source — zero overhead for everything else.
+The hook only fires when the query touches a scoped table or source — zero overhead for everything else. (REQ-204)
 
 | Config | Effect |
 |--------|--------|
@@ -213,7 +206,7 @@ The hook only fires when the query touches a scoped table or source — zero ove
 
 ### Protocols
 
-Three transports are supported:
+Three transports are supported: (REQ-246)
 
 | Type | Use case | Config field |
 |------|----------|-------------|
@@ -221,7 +214,7 @@ Three transports are supported:
 | `unix_socket` | OPA or policy sidecar on same machine | `socket_path` + `url` |
 | `grpc` | High-throughput co-located policy service | `url` (host:port) |
 
-The gRPC transport uses the `provisa.auth.ApprovalService` contract defined in `provisa/auth/approval.proto`. Implement this service in your policy engine:
+The gRPC transport uses the `provisa.auth.ApprovalService` contract defined in `provisa/auth/approval.proto`. Implement this service in your policy engine: (REQ-246)
 
 ```proto
 service ApprovalService {
@@ -242,11 +235,11 @@ message ApprovalResponse {
 }
 ```
 
-The gRPC channel is persistent — one channel per Provisa instance, reused across all calls to that hook endpoint.
+The gRPC channel is persistent — one channel per Provisa instance, reused across all calls to that hook endpoint. (REQ-555)
 
 ### Request / Response
 
-All three transports carry the same payload:
+All three transports carry the same payload: (REQ-246)
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -256,7 +249,7 @@ All three transports carry the same payload:
 | `columns` | string[] | Columns selected in the query |
 | `operation` | string | `"query"` or `"mutation"` |
 
-The webhook and Unix socket transports exchange JSON. Response must include `approved` (bool) and optionally `reason` (string).
+The webhook and Unix socket transports exchange JSON. Response must include `approved` (bool) and optionally `reason` (string). (REQ-246)
 
 ### Timeout and Fallback
 
@@ -270,7 +263,7 @@ auth:
     scope: ""           # "" = use per-table/per-source flags; "all" = every query
 ```
 
-On timeout or transport error, the `fallback` policy applies. A circuit breaker (default: open after 5 consecutive failures, half-open after 30s) prevents cascading failures from a slow hook endpoint.
+On timeout or transport error, the `fallback` policy applies. (REQ-247) A circuit breaker (default: open after 5 consecutive failures, half-open after 30s) prevents cascading failures from a slow hook endpoint. (REQ-556)
 
 ### Configuration Example
 
@@ -293,4 +286,4 @@ tables:
 
 ## Secrets
 
-Credentials use `${env:VAR_NAME}` syntax, resolved at runtime. Passwords are never stored in the config DB.
+Credentials use `${env:VAR_NAME}` syntax, resolved at runtime. (REQ-557) Passwords are never stored in the config DB. (REQ-557)
