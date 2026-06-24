@@ -48,6 +48,55 @@ _PROC_RE = _re.compile(
     r"^\s*CALL\s+(db\.labels|db\.relationshipTypes|db\.propertyKeys)\s*\(\s*\)\s*$", _re.IGNORECASE
 )
 
+_ID_IN_LIST_RE = _re.compile(
+    r"id\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)\s+IN\s+\[([^\]]+)\]",
+    _re.IGNORECASE,
+)
+
+
+async def _resolve_id_references(query: str, pg_pool: Any) -> str:
+    """Resolve id(var) IN [int1, int2, ...] to id(var) IN ['pk1', 'pk2', ...]
+    by looking up the node_ids table so the translator produces a type-safe
+    comparison against the raw PK column (which may be VARCHAR, not integer)."""
+    all_ints: set[int] = set()
+    for m in _ID_IN_LIST_RE.finditer(query):
+        for item in m.group(2).split(","):
+            try:
+                all_ints.add(int(item.strip()))
+            except ValueError:
+                pass
+    if not all_ints:
+        return query
+    async with pg_pool.acquire() as _conn:
+        rows = await _conn.fetch(
+            "SELECT id, composite_id FROM node_ids WHERE id = ANY($1::int[])",
+            sorted(all_ints),
+        )
+    id_to_pk: dict[int, str] = {}
+    for r in rows:
+        composite = r["composite_id"]
+        id_to_pk[int(r["id"])] = composite.split("|", 1)[1] if "|" in composite else composite
+
+    def _replace(m: _re.Match) -> str:
+        new_items: list[str] = []
+        for item in m.group(2).split(","):
+            item = item.strip()
+            try:
+                raw_pk = id_to_pk.get(int(item))
+                if raw_pk is not None:
+                    try:
+                        int(raw_pk)
+                        new_items.append(raw_pk)
+                    except ValueError:
+                        new_items.append(f"'{raw_pk.replace(chr(39), chr(92) + chr(39))}'")
+                else:
+                    new_items.append(item)
+            except ValueError:
+                new_items.append(item)
+        return f"id({m.group(1)}) IN [{', '.join(new_items)}]"
+
+    return _ID_IN_LIST_RE.sub(_replace, query)
+
 
 def _span_attrs_from_semantic_sql(
     semantic_sql: str,
@@ -426,16 +475,23 @@ async def cypher_query(
         label_map = _build_label_map(ctx, role_id, state)
         return _handle_procedure(_proc, label_map)
 
+    # Resolve integer node IDs to raw PKs before parse: id(n) IN [int, ...]
+    # becomes id(n) IN ['pk', ...] so the translator emits a type-safe comparison
+    # against the raw PK column (which may be VARCHAR, not integer).
+    query_text = body.query
+    if state.pg_pool is not None:
+        query_text = await _resolve_id_references(query_text, state.pg_pool)
+
     # Stage 1: Parse
     try:
-        ast = parse_cypher(body.query)
+        ast = parse_cypher(query_text)
     except CypherParseError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
     label_map = _build_label_map(ctx, role_id, state)
 
     # Validate and bind params
-    param_names = collect_param_names(body.query)
+    param_names = collect_param_names(query_text)
     try:
         bind_params(param_names, body.params)
     except CypherParamError as exc:
@@ -699,9 +755,13 @@ async def impute_relationships(request: Request, body: ImputeRequest) -> JSONRes
     all_nodes: dict[str, Any] = {}
     all_edges: dict[str, Any] = {}
     for cypher_query in queries:
-        ast = parse_cypher(cypher_query)
-        rows, graph_vars = await _execute_call_body(ast, label_map, {}, state, ctx, role_id)
-        assembled = assemble_rows(rows, graph_vars)
+        try:
+            ast = parse_cypher(cypher_query)
+            rows, graph_vars = await _execute_call_body(ast, label_map, {}, state, ctx, role_id)
+            assembled = assemble_rows(rows, graph_vars)
+        except Exception:
+            log.exception("Impute query failed: %s", cypher_query)
+            continue
         for row in assembled:
             for val in row.values():
                 ser = to_serializable(val)
