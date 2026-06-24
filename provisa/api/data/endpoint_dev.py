@@ -21,7 +21,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
@@ -138,6 +138,7 @@ async def sql_endpoint(
     request: SQLRequest,
     x_provisa_role: str | None = Header(None),
     accept: str | None = Header(None),
+    x_provisa_stats: str | None = Header(None),
 ):
     """Execute raw SQL through Stage 2 governance (REQ-264, REQ-266, REQ-267).
 
@@ -240,6 +241,14 @@ async def sql_endpoint(
     # --- Step 6: governed_semantic is already physical after Step 1b normalization ---
     governed_physical = governed_semantic
     output_format = _parse_accept(accept)
+    stats_enabled = (x_provisa_stats or "").lower() == "true"
+
+    import time as _time
+    from provisa.executor import stats as _qs_mod
+
+    if stats_enabled:
+        _qs_mod.begin()
+    _t0 = _time.perf_counter()
 
     # --- Step 7: Execute ---
     try:
@@ -250,6 +259,27 @@ async def sql_endpoint(
         raise HTTPException(status_code=400, detail=str(exc))
 
     rows_as_dicts = [dict(zip(result.column_names, row)) for row in result.rows]
+    if stats_enabled:
+        _qs_mod.record(
+            field="sql",
+            source=next(iter(sources), _default_source),
+            strategy=decision.route.value,
+            elapsed_ms=(_time.perf_counter() - _t0) * 1000,
+            rows=len(rows_as_dicts),
+            physical_sql=governed_physical,
+        )
+        qs = _qs_mod.current()
+        if qs is not None:
+            if output_format == "json":
+                from fastapi.encoders import jsonable_encoder
+
+                return JSONResponse(
+                    jsonable_encoder(
+                        {"data": {"sql": rows_as_dicts}, "provisa_stats": qs.to_dict()}
+                    )
+                )
+            # non-json formats fall through to standard response (no stats injection)
+
     if output_format == "json":
         return {"data": {"sql": rows_as_dicts}}
     from provisa.compiler.sql_gen import ColumnRef

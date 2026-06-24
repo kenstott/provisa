@@ -3129,6 +3129,28 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                             )
                         except Exception:
                             _log.warning("Failed to upsert %s", _rel_id, exc_info=True)
+                    # schedules.employee is a JSONB blob with no employee_id scalar exposed in
+                    # the GQL schema, so _infer_fk_columns returns ("", ""). Correct it here.
+                    try:
+                        await rel_repo.upsert(
+                            _pg_rel,
+                            Relationship(
+                                id="gql_remote__graphql-demo__schedules__employee",
+                                source_table_id="schedules",
+                                target_table_id="employees",
+                                source_column="employee",
+                                target_column="id",
+                                cardinality=Cardinality("many-to-one"),
+                                alias="IS_EMPLOYEE",
+                                graphql_alias="employee",
+                                source_json_key="id",
+                            ),
+                        )
+                    except Exception:
+                        _log.warning(
+                            "Failed to upsert gql_remote__graphql-demo__schedules__employee",
+                            exc_info=True,
+                        )
             _log.info(
                 "Auto-registered graphql-demo source (%d tables, %d functions)",
                 len(tables),
