@@ -46,6 +46,8 @@ export interface CyElement {
   boundingBox(opts?: object): { x1: number; x2: number; y1: number; y2: number; w: number; h: number };
   renderedBoundingBox(opts?: object): { x1: number; x2: number; y1: number; y2: number; w: number; h: number };
   degree(includeLoops: boolean): number;
+  indegree(includeLoops: boolean): number;
+  outdegree(includeLoops: boolean): number;
   empty(): boolean;
 }
 export interface CyCollection {

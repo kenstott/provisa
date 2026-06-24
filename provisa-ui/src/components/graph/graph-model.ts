@@ -352,6 +352,17 @@ export function injectExclusion(
   return `${before}${connector}${clause}\n${after}`;
 }
 
+// ── Graph stats ───────────────────────────────────────────────────────────────
+export interface GraphStats {
+  in_degree: number;
+  out_degree: number;
+  degree: number;
+  degree_centrality: number;
+  schema_L1?: string;
+  schema_L2?: string;
+  schema_L3?: string;
+}
+
 // ── Frame data ────────────────────────────────────────────────────────────────
 export interface FrameData {
   id: string;

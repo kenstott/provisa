@@ -15,13 +15,14 @@
 import { useRef, useState, useMemo } from "react";
 import type { Relationship } from "../../types/admin";
 import { PALETTE, labelColor, getStableNodeId } from "./graph-model";
-import type { GNode, GEdge } from "./graph-model";
+import type { GNode, GEdge, GraphStats } from "./graph-model";
 import CodeMirror from "@uiw/react-codemirror";
 import { json as jsonLang } from "@codemirror/lang-json";
 import { oneDark } from "@codemirror/theme-one-dark";
 
 interface InspectorProps {
   selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null;
+  graphStats?: GraphStats;
   colorOverrides: Record<string, string>;
   onColorChange: (label: string, color: string) => void;
   onClose: () => void;
@@ -34,6 +35,7 @@ interface InspectorProps {
 
 export function Inspector({
   selected,
+  graphStats,
   colorOverrides,
   onColorChange,
   onClose,
@@ -106,7 +108,7 @@ export function Inspector({
   const pkEntry: Record<string, unknown> =
     isN && idColName && !(idColName in props) ? { [idColName]: (selected.data as GNode).id } : {};
 
-  const HIDDEN_PROPS = new Set(["l1Cluster", "l2Cluster", "l3Cluster", "scl1", "scl2", "scl3"]);
+  const HIDDEN_PROPS = new Set(["l1Cluster", "l2Cluster", "l3Cluster", "scl1", "scl2", "scl3", "deg_in", "deg_out", "deg_total"]);
   const allFields: Record<string, unknown> = isN
     ? {
         ...(domain ? { domain } : {}),
@@ -255,6 +257,23 @@ export function Inspector({
             </div>
           )}
         </>
+      )}
+      {inspView === "details" && isN && graphStats && (
+        <table className="gf-inspector-table">
+          <tbody>
+            <tr>
+              <td className="gf-prop-key" colSpan={2} style={{ color: "var(--text-muted)", paddingTop: "0.5rem", fontStyle: "italic" }}>Graph Stats</td>
+            </tr>
+            {(Object.entries(graphStats) as [string, string | number][])
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([k, v]) => (
+                <tr key={k}>
+                  <td className="gf-prop-key">{k}</td>
+                  <td className="gf-prop-val">{String(v)}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
       )}
       {inspView === "details" && (
         <table className="gf-inspector-table">
