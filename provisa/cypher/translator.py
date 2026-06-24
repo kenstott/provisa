@@ -1286,6 +1286,26 @@ class _Translator(
 
         return from_expr, joins
 
+    def _rewrite_node_var_in_aggs(self, text: str) -> str:
+        """Rewrite COUNT(var)/COLLECT(var) where var is a node variable to use id_column.
+
+        Cypher COUNT(n) counts non-null node instances — translates to COUNT(n.id_col) in SQL.
+        Without this, the bare var reaches Trino as a table alias which cannot be resolved as a column.
+        """
+        _AGG_WITH_NODE_ARG = re.compile(
+            r"\b(COUNT|COLLECT|count|collect)\s*\(\s*([A-Za-z_]\w*)\s*\)",
+        )
+
+        def _replace(m: re.Match) -> str:
+            fn, var = m.group(1), m.group(2)
+            info = self._var_table.get(var)
+            if info and info[1]:
+                id_col = info[1].id_column
+                return f"{fn}({var}.{id_col})"
+            return m.group(0)
+
+        return _AGG_WITH_NODE_ARG.sub(_replace, text)
+
     def _rewrite_cypher_props(self, text: str) -> str:
         """Rewrite var.camelProp → var.sql_alias using NodeMapping.properties."""
 
@@ -1319,6 +1339,7 @@ class _Translator(
         expr_text = _rewrite_cypher_dquote_strings(self._rewrite_params_in_expr(where.expression))
         expr_text = self._rewrite_cte_vars(expr_text)
         expr_text = self._rewrite_call_bound_vars(expr_text)
+        expr_text = self._rewrite_node_var_in_aggs(expr_text)
         expr_text = self._rewrite_map_projections(expr_text)
         expr_text = rewrite_bare_map_literals(expr_text)
         expr_text = self._rewrite_graph_fns(expr_text)
@@ -1540,6 +1561,7 @@ class _Translator(
         text = self._rewrite_params_in_expr(text)
         text = self._rewrite_cte_vars(text)
         text = self._rewrite_call_bound_vars(text)
+        text = self._rewrite_node_var_in_aggs(text)
         text = self._rewrite_cypher_props(text)
         text = self._rewrite_map_projections(text)
         text = rewrite_bare_map_literals(text)
