@@ -29,6 +29,15 @@ function clusterKeyFor(level: Exclude<ClusterLevel, "none">): string {
         : level;
 }
 
+function nodeClusterId(n: GNode, clusterKey: string): string | null {
+  if (clusterKey === "domain") {
+    const colonIdx = n.label.indexOf(":");
+    return colonIdx > 0 ? n.label.slice(0, colonIdx) : n.label || null;
+  }
+  const raw = n.properties[clusterKey];
+  return raw !== null && raw !== undefined ? String(raw) : null;
+}
+
 // Returns compound nodes, child data nodes, intra-cluster edges, and free↔free edges.
 // Port nodes and meta-edges are deferred — call buildClusterMetaEdges after layout.
 export function buildClusterElements(
@@ -44,9 +53,8 @@ export function buildClusterElements(
   const clusterLabels = new Map<string, Set<string>>();
   const clusterSizes = new Map<string, number>();
   nodes.forEach((n) => {
-    const raw = n.properties[clusterKey];
-    if (raw === null || raw === undefined) return;
-    const cid = String(raw);
+    const cid = nodeClusterId(n, clusterKey);
+    if (cid === null) return;
     if (!clusterLabels.has(cid)) {
       clusterLabels.set(cid, new Set());
       clusterSizes.set(cid, 0);
@@ -89,8 +97,7 @@ export function buildClusterElements(
   // 2. Data child nodes — only for expanded clusters
   const nodeToCid = new Map<string, string | null>();
   nodes.forEach((n, k) => {
-    const raw = n.properties[clusterKey];
-    nodeToCid.set(k, raw !== null && raw !== undefined ? String(raw) : null);
+    nodeToCid.set(k, nodeClusterId(n, clusterKey));
   });
 
   nodes.forEach((n, k) => {
@@ -156,8 +163,7 @@ export function buildClusterMetaEdges(
 
   const nodeToCid = new Map<string, string | null>();
   nodes.forEach((n, k) => {
-    const raw = n.properties[clusterKey];
-    nodeToCid.set(k, raw !== null && raw !== undefined ? String(raw) : null);
+    nodeToCid.set(k, nodeClusterId(n, clusterKey));
   });
 
   const routingId = (cid: string | null): string | null => {
