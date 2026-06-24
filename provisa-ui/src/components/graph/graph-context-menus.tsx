@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { labelColor, PALETTE } from "./graph-model";
 import type { RelLineOverride } from "./graph-model";
 
@@ -19,6 +19,7 @@ export interface ContextMenuState {
   compoundLabel: string;
   tableLabel: string;
   properties: string[];
+  numericProperties: string[];
 }
 
 export interface RelContextMenuState {
@@ -33,9 +34,11 @@ interface NodeContextMenuProps {
   colorOverrides: Record<string, string>;
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;
+  sizeByProperty: Record<string, string>;
   onColorChange: (label: string, color: string) => void;
   onSizeChange: (label: string, size: number) => void;
   onLabelPropertyChange: (label: string, prop: string) => void;
+  onSizeByPropertyChange: (label: string, prop: string) => void;
   onClose: () => void;
 }
 
@@ -44,15 +47,18 @@ export function NodeContextMenu({
   colorOverrides,
   sizeOverrides,
   labelProperty,
+  sizeByProperty,
   onColorChange,
   onSizeChange,
   onLabelPropertyChange,
+  onSizeByPropertyChange,
   onClose,
 }: NodeContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const currentColor = colorOverrides[menu.compoundLabel] ?? labelColor(menu.compoundLabel);
   const currentSize = sizeOverrides[menu.compoundLabel] ?? 44;
   const currentProp = labelProperty[menu.compoundLabel] ?? "";
+  const currentSizeByProp = sizeByProperty[menu.compoundLabel] ?? "";
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -62,11 +68,26 @@ export function NodeContextMenu({
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    let left = menu.x;
+    let top = menu.y;
+    if (r.right > window.innerWidth) left -= r.right - window.innerWidth;
+    if (left < 0) left = 0;
+    if (r.bottom > window.innerHeight) top -= r.height;
+    if (top < 0) top = 0;
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    el.style.visibility = "visible";
+  }, [menu.x, menu.y]);
+
   return (
     <div
       ref={ref}
       className="node-ctx-menu"
-      style={{ left: menu.x, top: menu.y }}
+      style={{ left: menu.x, top: menu.y, visibility: "hidden" }}
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="node-ctx-title">{menu.tableLabel}</div>
@@ -115,6 +136,24 @@ export function NodeContextMenu({
           </select>
         </>
       )}
+      {menu.numericProperties.length > 0 && (
+        <>
+          <div className="node-ctx-section-label">Size by</div>
+          <select
+            className="node-ctx-select"
+            value={currentSizeByProp}
+            onChange={(e) => {
+              onSizeByPropertyChange(menu.compoundLabel, e.target.value);
+              onClose();
+            }}
+          >
+            <option value="">fixed size</option>
+            {menu.numericProperties.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </>
+      )}
     </div>
   );
 }
@@ -151,11 +190,26 @@ export function RelContextMenu({
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    let left = menu.x;
+    let top = menu.y;
+    if (r.right > window.innerWidth) left -= r.right - window.innerWidth;
+    if (left < 0) left = 0;
+    if (r.bottom > window.innerHeight) top -= r.height;
+    if (top < 0) top = 0;
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    el.style.visibility = "visible";
+  }, [menu.x, menu.y]);
+
   return (
     <div
       ref={ref}
       className="node-ctx-menu"
-      style={{ left: menu.x, top: menu.y }}
+      style={{ left: menu.x, top: menu.y, visibility: "hidden" }}
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="node-ctx-title">{menu.type}</div>

@@ -27,6 +27,7 @@ interface SidebarProps {
   colorOverrides: Record<string, string>;
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;
+  sizeByProperty: Record<string, string>;
   relLineOverrides: Record<string, RelLineOverride>;
   onHistorySelect: (q: string) => void;
   onLabelClick: (label: string) => void;
@@ -35,11 +36,14 @@ interface SidebarProps {
   onColorChange: (label: string, color: string) => void;
   onSizeChange: (label: string, size: number) => void;
   onLabelPropertyChange: (label: string, prop: string) => void;
+  onSizeByPropertyChange: (label: string, prop: string) => void;
   onRelLineChange: (type: string, override: RelLineOverride) => void;
   width: number;
   onWidthChange: (w: number) => void;
   highlightedLabel?: string | null;
 }
+
+const NUMERIC_TYPES = new Set(["int", "integer", "bigint", "float", "double", "decimal", "numeric", "real", "number"]);
 
 export function Sidebar({
   schemaNodeLabels,
@@ -49,6 +53,7 @@ export function Sidebar({
   colorOverrides,
   sizeOverrides,
   labelProperty,
+  sizeByProperty,
   relLineOverrides,
   onHistorySelect,
   onLabelClick,
@@ -57,6 +62,7 @@ export function Sidebar({
   onColorChange,
   onSizeChange,
   onLabelPropertyChange,
+  onSizeByPropertyChange,
   onRelLineChange,
   width,
   onWidthChange,
@@ -99,12 +105,17 @@ export function Sidebar({
     const compoundLabel = node.domainLabel
       ? `${node.domainLabel}:${node.tableLabel}`
       : node.tableLabel;
+    const numericFromSchema = node.nativeFilterColumns
+      .filter(c => NUMERIC_TYPES.has(c.type.toLowerCase()))
+      .map(c => c.name);
+    const numericProperties = [...new Set([...numericFromSchema, "deg_in", "deg_out", "deg_total"])];
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
       compoundLabel,
       tableLabel: node.tableLabel,
       properties: node.properties,
+      numericProperties,
     });
   }, []);
 
@@ -166,6 +177,7 @@ export function Sidebar({
                                   compoundLabel: lbl,
                                   tableLabel: lbl,
                                   properties: [],
+                                  numericProperties: ["deg_in", "deg_out", "deg_total"],
                                 });
                               }}
                               title={`MATCH (n:${lbl}) RETURN n LIMIT 25`}
@@ -488,9 +500,11 @@ export function Sidebar({
           colorOverrides={colorOverrides}
           sizeOverrides={sizeOverrides}
           labelProperty={labelProperty}
+          sizeByProperty={sizeByProperty}
           onColorChange={onColorChange}
           onSizeChange={onSizeChange}
           onLabelPropertyChange={onLabelPropertyChange}
+          onSizeByPropertyChange={onSizeByPropertyChange}
           onClose={() => setContextMenu(null)}
         />
       )}
