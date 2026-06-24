@@ -72,11 +72,15 @@ export function AddRelationshipForm({
         </label>
         <label>
           Source Column
-          <input
+          <select
             value={form.sourceColumn}
             onChange={(e) => setForm({ ...form, sourceColumn: e.target.value })}
-            placeholder="customer_id"
-          />
+          >
+            <option value="">Select...</option>
+            {(tables.find((t) => t.tableName === form.sourceTableId)?.columns ?? []).map((c) => (
+              <option key={c.columnName} value={c.columnName}>{c.columnName}</option>
+            ))}
+          </select>
         </label>
       </div>
       <div className="form-row">
@@ -117,11 +121,15 @@ export function AddRelationshipForm({
             </label>
             <label>
               Target Column
-              <input
+              <select
                 value={form.targetColumn}
                 onChange={(e) => setForm({ ...form, targetColumn: e.target.value })}
-                placeholder="id"
-              />
+              >
+                <option value="">Select...</option>
+                {(tables.find((t) => t.tableName === form.targetTableId)?.columns ?? []).map((c) => (
+                  <option key={c.columnName} value={c.columnName}>{c.columnName}</option>
+                ))}
+              </select>
             </label>
           </>
         ) : (

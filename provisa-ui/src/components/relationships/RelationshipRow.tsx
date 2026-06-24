@@ -85,7 +85,7 @@ export function RelationshipRow({
         {domainsEnabled && <td>{r.sourceDomainId || "—"}</td>}
         <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>
           {domainsEnabled && r.sourceDomainId
-            ? `${r.sourceDomainId}.${r.sourceTableName}.${r.sourceColumn}`
+            ? `${normalizeDomain(r.sourceDomainId)}.${r.sourceTableName}.${r.sourceColumn}`
             : `${r.sourceTableName}.${r.sourceColumn}`}
         </td>
         <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>
@@ -163,7 +163,7 @@ export function RelationshipRow({
                   </dt>
                   <dd style={{ color: "var(--text)", margin: 0 }}>
                     {domainsEnabled && r.sourceDomainId
-                      ? `${r.sourceDomainId}.${r.sourceTableName}.${r.sourceColumn}`
+                      ? `${normalizeDomain(r.sourceDomainId)}.${r.sourceTableName}.${r.sourceColumn}`
                       : `${r.sourceTableName}.${r.sourceColumn}`}
                   </dd>
                   <dt style={{ color: "var(--text-muted)" }}>
@@ -350,12 +350,17 @@ export function RelationshipRow({
                         </label>
                         <label>
                           Column
-                          <input
+                          <select
                             value={editingRel.sourceColumn}
                             onChange={(e) =>
                               setEditingRel({ ...editingRel, sourceColumn: e.target.value })
                             }
-                          />
+                          >
+                            <option value="">Select...</option>
+                            {(tables.find((t) => t.tableName === editingRel.sourceTableId)?.columns ?? []).map((c) => (
+                              <option key={c.columnName} value={c.columnName}>{c.columnName}</option>
+                            ))}
+                          </select>
                         </label>
                       </div>
                     );
@@ -451,12 +456,17 @@ export function RelationshipRow({
                             </label>
                             <label>
                               Column
-                              <input
+                              <select
                                 value={editingRel.targetColumn}
                                 onChange={(e) =>
                                   setEditingRel({ ...editingRel, targetColumn: e.target.value })
                                 }
-                              />
+                              >
+                                <option value="">Select...</option>
+                                {(tables.find((t) => t.tableName === editingRel.targetTableId)?.columns ?? []).map((c) => (
+                                  <option key={c.columnName} value={c.columnName}>{c.columnName}</option>
+                                ))}
+                              </select>
                             </label>
                           </>
                         );
