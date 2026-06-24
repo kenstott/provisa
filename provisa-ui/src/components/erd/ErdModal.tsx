@@ -12,7 +12,7 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X, Download, ChevronDown, ChevronRight, Layers, Maximize2 } from "lucide-react";
 import cytoscape from "cytoscape";
-import fcoseRaw from "cytoscape-fcose";
+import elkRaw from "cytoscape-elk";
 import cytoscapeSvgRaw from "cytoscape-svg";
 import { buildErdElements, buildTableLabel } from "./erd-model";
 import type { ColumnDetail, ErdNodeDomain, ErdNodeTable } from "./erd-model";
@@ -25,8 +25,315 @@ import type { CyInstance, CyEvent, CyLayoutOptions } from "../graph/cytoscape-ty
 type CyExt = Parameters<typeof cytoscape.use>[0];
 type CyExtModule = { default?: CyExt } | CyExt;
 const _interop = (m: CyExtModule): CyExt => (m as { default?: CyExt }).default ?? (m as CyExt);
-try { cytoscape.use(_interop(fcoseRaw as CyExtModule)); } catch { /* already registered */ }
+try { cytoscape.use(_interop(elkRaw as CyExtModule)); } catch { /* already registered */ }
 try { cytoscape.use(_interop(cytoscapeSvgRaw as CyExtModule)); } catch { /* already registered */ }
+
+// ── barycenter reorder (Sugiyama-style crossing reduction) ────────────────────
+type Pt = { x: number; y: number };
+
+// Returns the set of node IDs that have at least one cross-domain edge.
+// Used only for barycenter crossing-reduction ordering.
+function crossDomainNodeIds(cy: CyInstance): Set<string> {
+  const nodeDomain = new Map<string, string>();
+  cy.nodes(".erd-domain").forEach((d) => {
+    const domId = (d as { id(): string }).id();
+    d.children().forEach((n) => nodeDomain.set((n as { id(): string }).id(), domId));
+  });
+  const ids = new Set<string>();
+  cy.edges(".erd-rel").forEach((e) => {
+    const s = e.data("source") as string;
+    const t = e.data("target") as string;
+    if (nodeDomain.get(s) !== nodeDomain.get(t)) { ids.add(s); ids.add(t); }
+  });
+  return ids;
+}
+
+// Returns the set of node IDs that have at least one edge (any kind).
+// True orphans (no edges) are excluded from fCoSE and placed in a grid instead.
+function nodesWithEdges(cy: CyInstance): Set<string> {
+  const ids = new Set<string>();
+  cy.edges(".erd-rel").forEach((e) => {
+    ids.add(e.data("source") as string);
+    ids.add(e.data("target") as string);
+  });
+  return ids;
+}
+
+// Phase 1: reorder cross-domain-connected nodes within each domain using
+// barycenter scoring to minimise edge crossings.
+function barycenterReorder(cy: CyInstance, pinnedNodes: Map<string, Pt>, connected: Set<string>): void {
+  const crossNeighborPos = new Map<string, Pt[]>();
+  const nodeDomain = new Map<string, string>();
+  cy.nodes(".erd-domain").forEach((d) => {
+    const domId = (d as { id(): string }).id();
+    d.children().forEach((n) => nodeDomain.set((n as { id(): string }).id(), domId));
+  });
+  cy.edges(".erd-rel").forEach((e) => {
+    const s = e.data("source") as string;
+    const t = e.data("target") as string;
+    if (nodeDomain.get(s) === nodeDomain.get(t)) return;
+    const ps = (cy.getElementById(s) as unknown as { position(): Pt }).position();
+    const pt = (cy.getElementById(t) as unknown as { position(): Pt }).position();
+    if (!crossNeighborPos.has(s)) crossNeighborPos.set(s, []);
+    if (!crossNeighborPos.has(t)) crossNeighborPos.set(t, []);
+    crossNeighborPos.get(s)!.push(pt);
+    crossNeighborPos.get(t)!.push(ps);
+  });
+
+  cy.nodes(".erd-domain").forEach((domain) => {
+    const children = domain.children().filter((n) => connected.has((n as { id(): string }).id()));
+    if ((children as unknown as { length: number }).length < 2) return;
+    type Item = { id: string; pos: Pt; score: number };
+    const items: Item[] = [];
+    children.forEach((n) => {
+      const id = (n as { id(): string }).id();
+      const pos = { ...(n as { position(): Pt }).position() };
+      const neighbors = crossNeighborPos.get(id);
+      const score = neighbors && neighbors.length > 0
+        ? neighbors.reduce((s, p) => s + p.x + p.y, 0) / neighbors.length
+        : pos.x + pos.y;
+      items.push({ id, pos, score });
+    });
+    const slots = [...items.map((i) => i.pos)].sort((a, b) => (a.x + a.y) - (b.x + b.y));
+    const sorted = [...items].sort((a, b) => a.score - b.score);
+    cy.batch(() => {
+      sorted.forEach((item, i) => {
+        const newPos = slots[i];
+        (cy.getElementById(item.id) as unknown as { position(p: Pt): void }).position(newPos);
+        pinnedNodes.set(item.id, newPos);
+      });
+    });
+  });
+}
+
+// Post-layout: detect nodes whose bounding box is intersected by an edge they
+// are not part of, and nudge them perpendicular to that edge until clear.
+// Tries both perpendicular directions and picks the one that introduces fewer
+// edge crossings with this node's own edges.
+function resolveNodeEdgeOverlaps(cy: CyInstance): void {
+  const MARGIN = 8;
+  const MAX_ITER = 20;
+
+  type BB = { x1: number; y1: number; x2: number; y2: number; w: number; h: number };
+
+  // Liang-Barsky segment–AABB intersection test.
+  function segmentHitsBox(
+    p1: Pt, p2: Pt,
+    box: { x1: number; y1: number; x2: number; y2: number },
+  ): boolean {
+    const x1 = box.x1 - MARGIN, y1 = box.y1 - MARGIN;
+    const x2 = box.x2 + MARGIN, y2 = box.y2 + MARGIN;
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    let tMin = 0, tMax = 1;
+    const ps = [-dx, dx, -dy, dy];
+    const qs = [p1.x - x1, x2 - p1.x, p1.y - y1, y2 - p1.y];
+    for (let i = 0; i < 4; i++) {
+      if (ps[i] === 0) { if (qs[i] < 0) return false; }
+      else {
+        const t = qs[i] / ps[i];
+        if (ps[i] < 0) { if (t > tMin) tMin = t; }
+        else { if (t < tMax) tMax = t; }
+        if (tMin > tMax) return false;
+      }
+    }
+    return true;
+  }
+
+  // Segment–segment intersection (excluding shared endpoints).
+  function segmentsCross(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
+    const d1x = b.x - a.x, d1y = b.y - a.y;
+    const d2x = d.x - c.x, d2y = d.y - c.y;
+    const denom = d1x * d2y - d1y * d2x;
+    if (Math.abs(denom) < 1e-9) return false;
+    const t = ((c.x - a.x) * d2y - (c.y - a.y) * d2x) / denom;
+    const u = ((c.x - a.x) * d1y - (c.y - a.y) * d1x) / denom;
+    return t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9;
+  }
+
+  // Count how many OTHER edges cross the edges of nodeId when nodeId is at candidatePos.
+  function crossingCount(nodeId: string, candidatePos: Pt): number {
+    let count = 0;
+    cy.edges(".erd-rel").forEach((e1) => {
+      const s1 = e1.data("source") as string;
+      const t1 = e1.data("target") as string;
+      if (s1 !== nodeId && t1 !== nodeId) return;
+      const a = s1 === nodeId ? candidatePos : (cy.getElementById(s1) as unknown as { position(): Pt }).position();
+      const b = t1 === nodeId ? candidatePos : (cy.getElementById(t1) as unknown as { position(): Pt }).position();
+      cy.edges(".erd-rel").forEach((e2) => {
+        if (e1.id() === e2.id()) return;
+        const s2 = e2.data("source") as string;
+        const t2 = e2.data("target") as string;
+        if (s2 === nodeId || t2 === nodeId) return;
+        if (s2 === s1 || s2 === t1 || t2 === s1 || t2 === t1) return; // shared endpoint
+        const c = (cy.getElementById(s2) as unknown as { position(): Pt }).position();
+        const d = (cy.getElementById(t2) as unknown as { position(): Pt }).position();
+        if (segmentsCross(a, b, c, d)) count++;
+      });
+    });
+    return count;
+  }
+
+  const connectedIds = nodesWithEdges(cy);
+
+  for (let iter = 0; iter < MAX_ITER; iter++) {
+    let moved = false;
+    cy.nodes(".erd-table").forEach((node) => {
+      const id = (node as { id(): string }).id();
+      if (!connectedIds.has(id)) return;
+      const pos = { ...(node as { position(): Pt }).position() };
+      const bb: BB = { ...(node as unknown as { boundingBox(o: object): BB }).boundingBox({}) };
+
+      cy.edges(".erd-rel").forEach((edge) => {
+        const src = edge.data("source") as string;
+        const tgt = edge.data("target") as string;
+        if (src === id || tgt === id) return;
+
+        const p1 = (cy.getElementById(src) as unknown as { position(): Pt }).position();
+        const p2 = (cy.getElementById(tgt) as unknown as { position(): Pt }).position();
+        if (!segmentHitsBox(p1, p2, bb)) return;
+
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const nx = -dy / len, ny = dx / len;
+        const signedDist = (pos.x - p1.x) * nx + (pos.y - p1.y) * ny;
+        const clearance = (bb.w / 2) * Math.abs(dy / len) + (bb.h / 2) * Math.abs(dx / len);
+
+        // Compute candidate positions for both perpendicular directions.
+        const nudgePlus  = (clearance + MARGIN) - signedDist;
+        const nudgeMinus = -(clearance + MARGIN) - signedDist;
+        const posPlus  = { x: pos.x + nx * nudgePlus,  y: pos.y + ny * nudgePlus  };
+        const posMinus = { x: pos.x + nx * nudgeMinus, y: pos.y + ny * nudgeMinus };
+
+        // Pick the direction that introduces fewer crossings with this node's edges.
+        const crossPlus  = crossingCount(id, posPlus);
+        const crossMinus = crossingCount(id, posMinus);
+        const newPos = crossPlus <= crossMinus ? posPlus : posMinus;
+
+        pos.x = newPos.x; pos.y = newPos.y;
+        bb.x1 = pos.x - bb.w / 2; bb.y1 = pos.y - bb.h / 2;
+        bb.x2 = pos.x + bb.w / 2; bb.y2 = pos.y + bb.h / 2;
+        (node as unknown as { position(p: Pt): void }).position(pos);
+        moved = true;
+      });
+    });
+    if (!moved) break;
+  }
+}
+
+// Push overlapping compound (.erd-domain) nodes apart so they don't visually
+// overlap. Translates children of the "right/bottom" compound in each pair.
+// Must be called after all children have been positioned (including orphan grid).
+function resolveCompoundOverlaps(cy: CyInstance): void {
+  type BB = { x1: number; y1: number; x2: number; y2: number };
+  const PAD = 60;
+  const MAX_ITER = 20;
+
+  const domainArr: ReturnType<typeof cy.nodes>[number][] = [];
+  cy.nodes(".erd-domain").forEach((d) => {
+    if (!(d.children() as unknown as { empty(): boolean }).empty()) domainArr.push(d);
+  });
+  if (domainArr.length < 2) return;
+
+  for (let iter = 0; iter < MAX_ITER; iter++) {
+    const bbs = domainArr.map((d) =>
+      (d as unknown as { boundingBox(o: object): BB }).boundingBox({ includeLabels: true })
+    );
+    let moved = false;
+
+    for (let i = 0; i < domainArr.length; i++) {
+      for (let j = i + 1; j < domainArr.length; j++) {
+        const a = bbs[i];
+        const b = bbs[j];
+        const overlapX = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1) + PAD;
+        const overlapY = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1) + PAD;
+        if (overlapX <= 0 || overlapY <= 0) continue;
+
+        // Push j away from i along the axis with the smaller overlap.
+        let dx = 0, dy = 0;
+        if (overlapX <= overlapY) {
+          dx = b.x1 < a.x1 ? -overlapX : overlapX;
+        } else {
+          dy = b.y1 < a.y1 ? -overlapY : overlapY;
+        }
+        domainArr[j].children().forEach((child) => {
+          const p = (child as { position(): Pt }).position();
+          (child as { position(p: Pt): void }).position({ x: p.x + dx, y: p.y + dy });
+        });
+        // Update j's bbox in place for subsequent pairs this iteration.
+        bbs[j] = { x1: b.x1 + dx, y1: b.y1 + dy, x2: b.x2 + dx, y2: b.y2 + dy };
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+}
+
+// Phase 2: place isolated nodes (no cross-domain edges) in a compact grid
+// below each domain's post-layout bounding box. domainBboxes must be computed
+// BEFORE isolated nodes are shown (while only connected nodes are visible),
+// so the bbox reflects only the connected-node region.
+function placeIsolatedGrid(
+  cy: CyInstance,
+  isolatedIds: Set<string>,
+  domainBboxes: Map<string, { x1: number; x2: number; y2: number }>,
+): void {
+  const PAD = 20;
+  cy.nodes(".erd-domain").forEach((domain) => {
+    const domainId = (domain as { id(): string }).id();
+    const isolated: Array<{ id: string }> = [];
+    domain.children().forEach((n) => {
+      if (isolatedIds.has((n as { id(): string }).id())) isolated.push({ id: (n as { id(): string }).id() });
+    });
+    if (isolated.length === 0) return;
+
+    // Measure actual node sizes (nodes are visible at this point).
+    type NS = { w: number; h: number };
+    const sizes: NS[] = isolated.map(({ id }) => {
+      const n = cy.getElementById(id) as unknown as { width(): number; height(): number };
+      return { w: n.width(), h: n.height() };
+    });
+    const cols = Math.ceil(Math.sqrt(isolated.length));
+    const rows = Math.ceil(isolated.length / cols);
+    const colWidths = Array.from({ length: cols }, (_, c) =>
+      Math.max(...isolated.map((_, i) => i % cols === c ? sizes[i].w : 0))
+    );
+    const rowHeights = Array.from({ length: rows }, (_, r) =>
+      Math.max(...isolated.map((_, i) => Math.floor(i / cols) === r ? sizes[i].h : 0))
+    );
+    const colX = colWidths.reduce<number[]>((acc, w, i) => {
+      acc.push(i === 0 ? 0 : acc[i - 1] + colWidths[i - 1] + PAD); return acc;
+    }, []);
+    const rowY = rowHeights.reduce<number[]>((acc, h, i) => {
+      acc.push(i === 0 ? 0 : acc[i - 1] + rowHeights[i - 1] + PAD); return acc;
+    }, []);
+    const totalW = colX[cols - 1] + colWidths[cols - 1];
+
+    // Use the pre-captured connected-only bbox. If the domain had no connected
+    // nodes, fall back to the domain node's own position.
+    const dbb = domainBboxes.get(domainId);
+    let gridOriginX: number, gridOriginY: number;
+    if (dbb) {
+      gridOriginX = (dbb.x1 + dbb.x2) / 2 - totalW / 2;
+      gridOriginY = dbb.y2 + PAD * 2;
+    } else {
+      const dpos = (domain as unknown as { position(): Pt }).position();
+      gridOriginX = dpos.x - totalW / 2;
+      gridOriginY = dpos.y;
+    }
+
+    cy.batch(() => {
+      isolated.forEach(({ id }, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const newPos = {
+          x: gridOriginX + colX[col] + colWidths[col] / 2,
+          y: gridOriginY + rowY[row] + rowHeights[row] / 2,
+        };
+        (cy.getElementById(id) as unknown as { position(p: Pt): void }).position(newPos);
+      });
+    });
+  });
+}
 
 // ── stylesheet ────────────────────────────────────────────────────────────────
 function buildErdStylesheet() {
@@ -99,10 +406,15 @@ function buildErdStylesheet() {
         label: (ele: { data(k: string): unknown }) => ele.data("label") as string,
         "font-size": 9,
         color: "#94a3b8",
-        "text-rotation": "autorotate",
-        "text-background-color": "#0f172a",
-        "text-background-opacity": 0.75,
-        "text-background-padding": "2px",
+        "text-rotation": "none",
+        "text-margin-y": (ele: { data(k: string): unknown }) => {
+          const label = (ele.data("label") as string) ?? "";
+          const hash = label.split("").reduce((s: number, c: string) => s + c.charCodeAt(0), 0);
+          return (hash % 3 - 1) * 14;
+        },
+        "text-background-color": "#1e293b",
+        "text-background-opacity": 1,
+        "text-background-padding": "3px",
       },
     },
     {
@@ -185,13 +497,18 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
   const edgeRoutingRef = useRef<"bezier" | "taxi">(
     (localStorage.getItem("erd.edgeRouting") as "bezier" | "taxi" | null) ?? "bezier",
   );
-  const [snapToGrid, setSnapToGrid] = useState(
-    () => localStorage.getItem("erd.snapToGrid") === "true",
+  const [gridSnap, setGridSnap] = useState<number>(
+    () => parseInt(localStorage.getItem("erd.gridSnap") ?? "0", 10),
   );
-  const snapToGridRef = useRef(localStorage.getItem("erd.snapToGrid") === "true");
+  const gridSnapRef = useRef<number>(parseInt(localStorage.getItem("erd.gridSnap") ?? "0", 10));
   const [showOrphans, setShowOrphans] = useState(
     () => localStorage.getItem("erd.showOrphans") !== "false",
   );
+  const showOrphansRef = useRef(showOrphans);
+  useEffect(() => { showOrphansRef.current = showOrphans; }, [showOrphans]);
+  const isolatedIdsRef = useRef<Set<string>>(new Set());
+  const connectedDomainBboxesRef = useRef<Map<string, { x1: number; x2: number; y2: number }>>(new Map());
+  const isDraggingRef = useRef(false);
   const [collapsedDomains, setCollapsedDomains] = useState<Set<string>>(new Set());
   const [hiddenDomains, setHiddenDomains] = useState<Set<string>>(() => {
     const stored = localStorage.getItem("erd.hiddenDomains");
@@ -221,7 +538,7 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
       setResizeHandleBox(null);
       return;
     }
-    const node = cyRef.current.$(`#d\\:${domainId}`);
+    const node = cyRef.current.getElementById(`d:${domainId}`);
     if (!node || (node as unknown as { empty(): boolean }).empty()) { setResizeHandleBox(null); return; }
     const bb = (node as unknown as { renderedBoundingBox(opts: object): { x1: number; y1: number; w: number; h: number } })
       .renderedBoundingBox({ includeLabels: false });
@@ -230,13 +547,13 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
   }, []);
 
   // Keep refs in sync so Cytoscape event handlers always see current values.
-  useEffect(() => { snapToGridRef.current = snapToGrid; }, [snapToGrid]);
+  useEffect(() => { gridSnapRef.current = gridSnap; }, [gridSnap]);
   useEffect(() => { edgeRoutingRef.current = edgeRouting; }, [edgeRouting]);
 
   // Persist toolbar choices across sessions.
   useEffect(() => { localStorage.setItem("erd.columnDetail", columnDetail); }, [columnDetail]);
   useEffect(() => { localStorage.setItem("erd.edgeRouting", edgeRouting); }, [edgeRouting]);
-  useEffect(() => { localStorage.setItem("erd.snapToGrid", String(snapToGrid)); }, [snapToGrid]);
+  useEffect(() => { localStorage.setItem("erd.gridSnap", String(gridSnap)); }, [gridSnap]);
   useEffect(() => { localStorage.setItem("erd.showOrphans", String(showOrphans)); }, [showOrphans]);
   useEffect(() => {
     localStorage.setItem("erd.hiddenDomains", JSON.stringify([...hiddenDomains]));
@@ -266,10 +583,7 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
   // ── initialise / rebuild on structural changes ────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return;
-    const connectedTableIds = showOrphans ? null : new Set<number>(
-      relationships.flatMap((r) => [r.sourceTableId, ...(r.targetTableId != null ? [r.targetTableId] : [])]),
-    );
-    const visibleTables = showOrphans ? tables : tables.filter((t) => connectedTableIds!.has(t.id));
+    const visibleTables = tables;
     const elements = buildErdElements(
       visibleTables, relationships, domains,
       collapsedDomains, hiddenDomains, columnDetail, activeDomain,
@@ -299,62 +613,41 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
       return { gx: maxW + 20, gy: maxH + 20 };
     };
 
-    // After layout: snap to grid (if enabled) then stack isolated tables.
+    cy.on("grabon", "node", () => { isDraggingRef.current = true; });
+
+    // Two-phase post-layout: place orphan grid below each domain's connected bbox.
     cy.on("layoutstop", () => {
-      if (snapToGridRef.current) {
-        const { gx, gy } = gridSize();
+      if (isDraggingRef.current) return;
+      if (gridSnapRef.current > 0) {
+        const g = gridSnapRef.current;
         cy.nodes(".erd-table").forEach((n) => {
           const p = (n as { position(): { x: number; y: number } }).position();
           (n as { position(p: { x: number; y: number }): void }).position({
-            x: Math.round(p.x / gx) * gx,
-            y: Math.round(p.y / gy) * gy,
+            x: Math.round(p.x / g) * g,
+            y: Math.round(p.y / g) * g,
           });
+        });
+        // Align connected pairs that are within 1 grid step in x or y — eliminates
+        // unnecessary bends in right-angle edge routing after fCoSE snap jitter.
+        const ALIGN_THRESHOLD = g;
+        cy.edges(".erd-rel").forEach((edge) => {
+          const s = cy.getElementById(edge.data("source") as string) as unknown as { position(): Pt; position(p: Pt): void };
+          const t = cy.getElementById(edge.data("target") as string) as unknown as { position(): Pt; position(p: Pt): void };
+          const sp = s.position();
+          const tp = t.position();
+          const dx = Math.abs(sp.x - tp.x);
+          const dy = Math.abs(sp.y - tp.y);
+          if (dx <= ALIGN_THRESHOLD && dx < dy) {
+            const ax = Math.round(((sp.x + tp.x) / 2) / g) * g;
+            s.position({ ...sp, x: ax });
+            t.position({ ...tp, x: ax });
+          } else if (dy <= ALIGN_THRESHOLD && dy < dx) {
+            const ay = Math.round(((sp.y + tp.y) / 2) / g) * g;
+            s.position({ ...sp, y: ay });
+            t.position({ ...tp, y: ay });
+          }
         });
       }
-
-      cy.nodes(".erd-domain").forEach((domainNode) => {
-        const children = domainNode.children();
-        const isolated = children.filter(
-          (n) => (n as unknown as { degree(includeLoops: boolean): number }).degree(false) === 0,
-        );
-        if ((isolated as unknown as { empty(): boolean }).empty()) return;
-
-        const { gx, gy } = gridSize();
-        const stepX = snapToGridRef.current ? gx : gx;
-        const stepY = snapToGridRef.current ? gy : gy;
-        const cols = Math.max(1, Math.floor(4));
-
-        // Place orphans below the connected nodes, or at the domain top-left if none.
-        const connected = children.filter(
-          (n) => (n as unknown as { degree(includeLoops: boolean): number }).degree(false) > 0,
-        );
-        let startX: number;
-        let startY: number;
-        if (!(connected as unknown as { empty(): boolean }).empty()) {
-          const cbb = (connected as unknown as { boundingBox(o: object): { x1: number; y2: number } })
-            .boundingBox({});
-          startX = cbb.x1;
-          startY = cbb.y2 + stepY;
-        } else {
-          const dbb = (domainNode as unknown as { boundingBox(o: object): { x1: number; y1: number } })
-            .boundingBox({ includeLabels: false });
-          startX = dbb.x1 + stepX * 0.5;
-          startY = dbb.y1 + stepY * 0.5;
-        }
-        if (snapToGridRef.current) {
-          startX = Math.round(startX / gx) * gx;
-          startY = Math.round(startY / gy) * gy;
-        }
-
-        isolated.forEach((n, i) => {
-          const col = i % cols;
-          const row = Math.floor(i / cols);
-          (n as { position(p: { x: number; y: number }): void }).position({
-            x: startX + col * stepX,
-            y: startY + row * stepY,
-          });
-        });
-      });
 
       // Collapsed domain leaf nodes placed inside an expanded compound by fCoSE render
       // behind its background and become invisible. Move them outside.
@@ -372,6 +665,132 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
           }
         });
       });
+
+      // Capture per-domain bboxes NOW — true orphans are still hidden (display:none),
+      // so the compound bbox reflects only edge-connected nodes.
+      const edgeConnectedNow = nodesWithEdges(cy);
+      const domainBboxes = new Map<string, { x1: number; x2: number; y2: number }>();
+      cy.nodes(".erd-domain").forEach((domain) => {
+        let hasConnected = false;
+        domain.children().forEach((n) => {
+          if (edgeConnectedNow.has((n as { id(): string }).id())) hasConnected = true;
+        });
+        if (!hasConnected) return;
+        const bb = (domain as unknown as { boundingBox(o: object): { x1: number; x2: number; y2: number } })
+          .boundingBox({ includeLabels: false });
+        domainBboxes.set((domain as { id(): string }).id(), bb);
+      });
+
+      // Phase 2: place orphan grid, then apply showOrphans visibility.
+      const edgeConnected = nodesWithEdges(cy);
+      const isolatedIds = new Set(
+        cy.nodes(".erd-table")
+          .filter((n) => !edgeConnected.has((n as { id(): string }).id()))
+          .map((n) => (n as { id(): string }).id())
+      );
+      // Store for the showOrphans toggle effect (avoids re-running fCoSE on toggle).
+      isolatedIdsRef.current = isolatedIds;
+      connectedDomainBboxesRef.current = domainBboxes;
+
+      placeIsolatedGrid(cy, isolatedIds, domainBboxes);
+
+      // Re-snap all nodes to grid after post-processing moves.
+      if (gridSnapRef.current > 0) {
+        const g = gridSnapRef.current;
+        cy.nodes(".erd-table").forEach((n) => {
+          const p = (n as { position(): Pt }).position();
+          (n as { position(p: Pt): void }).position({
+            x: Math.round(p.x / g) * g,
+            y: Math.round(p.y / g) * g,
+          });
+        });
+      }
+
+      // Push connected nodes apart on each axis independently.
+      // Primary axis gets MIN_LABEL_GAP; secondary axis gets 0 (just clear overlap).
+      // Runs after re-snap so the re-snap cannot undo the push.
+      // Uses Math.ceil so tiny gaps always produce at least one grid step of movement.
+      {
+        type BB = { x1: number; x2: number; y1: number; y2: number };
+        const MIN_LABEL_GAP = 60;
+        const g = gridSnapRef.current > 0 ? gridSnapRef.current : 1;
+        cy.edges(".erd-rel").forEach((edge) => {
+          const s = cy.getElementById(edge.data("source") as string) as unknown as { position(): Pt; position(p: Pt): void; boundingBox(o: object): BB };
+          const t = cy.getElementById(edge.data("target") as string) as unknown as { position(): Pt; position(p: Pt): void; boundingBox(o: object): BB };
+          let sp = s.position();
+          let tp = t.position();
+          const sbb = s.boundingBox({});
+          const tbb = t.boundingBox({});
+          const xSep = tp.x > sp.x ? tbb.x1 - sbb.x2 : sbb.x1 - tbb.x2;
+          const ySep = tp.y > sp.y ? tbb.y1 - sbb.y2 : sbb.y1 - tbb.y2;
+          const primaryY = Math.abs(sp.x - tp.x) <= Math.abs(sp.y - tp.y);
+          // Secondary axis is only pushed when there is actual 2D overlap (both seps negative).
+          // This avoids splitting nodes that share a row/column but don't visually overlap.
+          const has2dOverlap = xSep < 0 && ySep < 0;
+
+          // Y axis: MIN_LABEL_GAP if primary; clear 2D overlap only on secondary.
+          if (primaryY ? ySep < MIN_LABEL_GAP : (has2dOverlap && ySep < 0)) {
+            const yNeeded = primaryY ? MIN_LABEL_GAP : 0;
+            const push = Math.ceil((yNeeded - ySep) / 2 / g) * g;
+            if (tp.y > sp.y) {
+              s.position({ ...sp, y: sp.y - push });
+              t.position({ ...tp, y: tp.y + push });
+            } else {
+              s.position({ ...sp, y: sp.y + push });
+              t.position({ ...tp, y: tp.y - push });
+            }
+            sp = s.position();
+            tp = t.position();
+          }
+
+          // X axis: MIN_LABEL_GAP if primary; clear 2D overlap only on secondary.
+          if (!primaryY ? xSep < MIN_LABEL_GAP : (has2dOverlap && xSep < 0)) {
+            const xNeeded = !primaryY ? MIN_LABEL_GAP : 0;
+            const push = Math.ceil((xNeeded - xSep) / 2 / g) * g;
+            if (tp.x > sp.x) {
+              s.position({ ...sp, x: sp.x - push });
+              t.position({ ...tp, x: tp.x + push });
+            } else {
+              s.position({ ...sp, x: sp.x + push });
+              t.position({ ...tp, x: tp.x - push });
+            }
+          }
+        });
+      }
+
+      // Refresh per-domain bboxes after gap enforcement moved connected nodes,
+      // then re-place orphan grid so it lands below the final connected positions.
+      {
+        type BBxy = { x1: number; x2: number; y2: number };
+        const freshBboxes = new Map<string, BBxy>();
+        cy.nodes(".erd-domain").forEach((domain) => {
+          let x1 = Infinity, x2 = -Infinity, y2 = -Infinity, hasConnected = false;
+          domain.children().forEach((child) => {
+            if (isolatedIds.has((child as { id(): string }).id())) return;
+            const bb = (child as unknown as { boundingBox(o: object): { x1: number; x2: number; y1: number; y2: number } }).boundingBox({});
+            x1 = Math.min(x1, bb.x1); x2 = Math.max(x2, bb.x2); y2 = Math.max(y2, bb.y2);
+            hasConnected = true;
+          });
+          if (hasConnected) freshBboxes.set((domain as { id(): string }).id(), { x1, x2, y2 });
+        });
+        connectedDomainBboxesRef.current = freshBboxes;
+        placeIsolatedGrid(cy, isolatedIds, freshBboxes);
+      }
+
+      // Apply final orphan visibility without triggering re-layout.
+      if (showOrphansRef.current) {
+        cy.nodes(".erd-table").style("display", "element");
+      } else {
+        isolatedIds.forEach((id) => {
+          (cy.getElementById(id) as unknown as { style(k: string, v: string): void }).style("display", "none");
+        });
+      }
+
+      // Resolve compound overlaps AFTER orphans are shown so compound bboxes
+      // include the full orphan grid area (hidden nodes are excluded from bbox).
+      resolveCompoundOverlaps(cy);
+
+      cy.fit(undefined, 10);
 
       // Apply current edge routing (handles rebuilds triggered by showOrphans etc.)
       cy.$(".erd-rel").style("curve-style", edgeRoutingRef.current);
@@ -443,6 +862,7 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
     });
 
     cy.on("dragfree", "node", (evt: CyEvent) => {
+      isDraggingRef.current = false;
       const id = evt.target.id() as string;
       // Only pin table nodes — compound domain nodes have unreliable positions
       // on fresh cy instances and corrupt fixedNodeConstraint on next rebuild.
@@ -450,9 +870,9 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
       const rawX = evt.target.position("x") as number;
       const rawY = evt.target.position("y") as number;
       let pos = { x: rawX, y: rawY };
-      if (snapToGridRef.current) {
-        const { gx, gy } = gridSize();
-        pos = { x: Math.round(rawX / gx) * gx, y: Math.round(rawY / gy) * gy };
+      if (gridSnapRef.current > 0) {
+        const g = gridSnapRef.current;
+        pos = { x: Math.round(rawX / g) * g, y: Math.round(rawY / g) * g };
         (evt.target as { position(p: { x: number; y: number }): void }).position(pos);
       }
       pinnedNodesRef.current.set(id, pos);
@@ -463,93 +883,84 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
       setHoveredDomainId((id) => { updateHandleBox(id); return id; });
     });
 
-    // Run layout AFTER registering handlers so layoutstop fires with the handler already attached.
-    const existingNodeIds = new Set(cy.nodes().map((n) => (n as { id(): string }).id()));
-    // Only pin leaf table nodes — compound parent nodes have unreliable positions in fresh cy
-    // instances and cause fCoSE to produce degenerate layouts when used as fixedNodeConstraint.
-    const fixedNodeConstraint = [...pinnedNodesRef.current.entries()]
-      .filter(([nodeId]) => nodeId.startsWith("t:") && existingNodeIds.has(nodeId))
-      .map(([nodeId, position]) => ({ nodeId, position }));
+    // Hide true orphans before layout so ELK only places connected nodes.
+    // layoutstop shows them and places them in a per-domain grid below.
+    const connectedBeforeLayout = nodesWithEdges(cy);
+    cy.nodes(".erd-table").forEach((n) => {
+      if (!connectedBeforeLayout.has((n as { id(): string }).id())) {
+        n.style("display", "none");
+      }
+    });
 
     cy.layout({
-      name: "fcose",
+      name: "elk",
       animate: false,
-      // Always randomize: fCoSE needs a non-degenerate starting config for fresh cy instances
-      // where all unset node positions are (0,0). fixedNodeConstraint is applied after randomize.
-      randomize: true,
-      quality: "proof",
-      numIter: 2500,
-      nodeSeparation: 60,
-      idealEdgeLength: () => 100,
-      nodeRepulsion: () => 8000,
-      nodeDimensionsIncludeLabels: true,
-      uniformNodeDimensions: false,
-      packComponents: false,
-      tile: false,
-      gravityRangeCompound: 1.5,
-      gravityCompound: 1.0,
-      gravity: 0.5,
-      ...(fixedNodeConstraint.length > 0 ? { fixedNodeConstraint } : {}),
+      elk: {
+        algorithm: "layered",
+        "elk.direction": "UP",
+        "elk.hierarchyHandling": "INCLUDE_CHILDREN",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "150",
+        "elk.spacing.nodeNode": "60",
+        "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+        "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+        "elk.padding": "[top=40,left=20,bottom=20,right=20]",
+      },
     } as CyLayoutOptions).run();
 
     return () => { cy.destroy(); cyRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tables, relationships, domains, collapsedDomains, hiddenDomains, activeDomain, showOrphans]);
+  }, [tables, relationships, domains, collapsedDomains, hiddenDomains, columnDetail, activeDomain]);
 
-  // ── label-only update when columnDetail changes (no re-layout) ──────────
+  // Toggle orphan visibility without re-running fCoSE.
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    cy.batch(() => {
-      cy.$(".erd-table").forEach((n) => {
-        const cols = n.data("columns") as TableColumn[];
-        const name = n.data("tableName") as string;
-        const { label, lineCount } = buildTableLabel(name, cols, columnDetail);
-        n.data("displayLabel", label);
-        n.data("lineCount", lineCount);
+    const isolatedIds = isolatedIdsRef.current;
+    if (showOrphans) {
+      // Recompute connected bbox from current positions so resolveCompoundOverlaps
+      // translations don't stale the ref.
+      type BBxy = { x1: number; x2: number; y2: number };
+      const liveBboxes = new Map<string, BBxy>();
+      cy.nodes(".erd-domain").forEach((domain) => {
+        let x1 = Infinity, x2 = -Infinity, y2 = -Infinity, hasConnected = false;
+        domain.children().forEach((child) => {
+          if (isolatedIds.has((child as { id(): string }).id())) return;
+          const bb = (child as unknown as { boundingBox(o: object): { x1: number; x2: number; y1: number; y2: number; w: number } }).boundingBox({});
+          if (!bb.w) return;
+          x1 = Math.min(x1, bb.x1); x2 = Math.max(x2, bb.x2); y2 = Math.max(y2, bb.y2);
+          hasConnected = true;
+        });
+        if (hasConnected) liveBboxes.set((domain as { id(): string }).id(), { x1, x2, y2 });
       });
-    });
-    cy.style(buildErdStylesheet() as unknown as Parameters<CyInstance["style"]>[0]);
-    // cy.style() resets curve-style to the stylesheet default ("bezier") — restore current routing.
-    cy.$(".erd-rel").style("curve-style", edgeRoutingRef.current);
-    if (edgeRoutingRef.current === "taxi") {
-      const seenPairs = new Set<string>();
-      cy.$(".erd-rel").forEach((edge) => {
-        const s = edge.data("source") as string;
-        const t = edge.data("target") as string;
-        const key = [s, t].sort().join("↔");
-        edge.style("display", seenPairs.has(key) ? "none" : "element");
-        seenPairs.add(key);
+      placeIsolatedGrid(cy, isolatedIds, liveBboxes);
+      isolatedIds.forEach((id) => {
+        (cy.getElementById(id) as unknown as { style(k: string, v: string): void }).style("display", "element");
       });
     } else {
-      cy.$(".erd-rel").style("display", "element");
+      isolatedIds.forEach((id) => {
+        (cy.getElementById(id) as unknown as { style(k: string, v: string): void }).style("display", "none");
+      });
     }
-  }, [columnDetail]);
+    cy.fit(undefined, 10);
+  }, [showOrphans]);
 
-  // ── snap-to-grid toggle: snap current positions in-place (no re-layout) ─
+  // ── snap-to-grid change: snap current positions in-place (no re-layout) ─
   useEffect(() => {
     const cy = cyRef.current;
-    if (!cy || !snapToGrid) return;
+    if (!cy || gridSnap === 0) return;
+    const g = gridSnap;
     const nodes = cy.nodes(".erd-table");
     if ((nodes as { empty(): boolean }).empty()) return;
-    let maxW = 0, maxH = 0;
-    nodes.forEach((n) => {
-      const bb = (n as { boundingBox(o: object): { w: number; h: number } }).boundingBox({});
-      if (bb.w > maxW) maxW = bb.w;
-      if (bb.h > maxH) maxH = bb.h;
-    });
-    const gx = maxW + 20;
-    const gy = maxH + 20;
     cy.batch(() => {
       nodes.forEach((n) => {
         const p = (n as { position(): { x: number; y: number } }).position();
         (n as { position(p: { x: number; y: number }): void }).position({
-          x: Math.round(p.x / gx) * gx,
-          y: Math.round(p.y / gy) * gy,
+          x: Math.round(p.x / g) * g,
+          y: Math.round(p.y / g) * g,
         });
       });
     });
-  }, [snapToGrid]);
+  }, [gridSnap]);
 
   // ── edge routing update (no rebuild) ────────────────────────────────────
   useEffect(() => {
@@ -630,82 +1041,88 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
     const modelW = resizeHandleBox.w / zoom;
     const modelH = resizeHandleBox.h / zoom;
 
-    // Spread children so outermost nodes sit at the edges of the target bounds.
-    // Compound nodes auto-size to fit children + their padding (32px from stylesheet).
-    // Node half-widths: width=170 → halfW=85. Height is variable; read from bbox.
-    const COMP_PAD = 32;
-    const NODE_HALF_W = 85;
-
-    const domainNode = cy.$(`#d\\:${hoveredDomainId}`);
-    // fCoSE sets explicit width/height bypasses on compound nodes after layout.
-    // Clearing them lets Cytoscape revert to auto-sizing from children's bounding box.
-    domainNode.removeStyle("width height");
-
+    const domainNode = cy.getElementById(`d:${hoveredDomainId}`);
     const children = cy.nodes(`[parent = "d:${hoveredDomainId}"]`);
-    const n = children.length;
-    if (n > 0) {
-      const cols = Math.max(1, Math.ceil(Math.sqrt(n * (modelW / modelH))));
-      const rows = Math.ceil(n / cols);
+    if (!(children as unknown as { empty(): boolean }).empty()) {
+      // Read current compound bounds (before removing fCoSE size bypass).
+      const oldBb = (domainNode as unknown as {
+        boundingBox(o: object): { x1: number; y1: number; x2: number; y2: number; w: number; h: number };
+      }).boundingBox({ includeLabels: false });
 
-      // Average node half-height from actual bounding boxes
-      let totalH = 0;
-      children.forEach((c) => {
-        totalH += (c as { boundingBox(o: object): { h: number } }).boundingBox({}).h;
-      });
-      const nodeHalfH = (totalH / n) / 2;
-
-      // Usable span for node centers inside the compound
-      const spanX = Math.max(0, modelW - 2 * (COMP_PAD + NODE_HALF_W));
-      const spanY = Math.max(0, modelH - 2 * (COMP_PAD + nodeHalfH));
-      const originX = modelX1 + COMP_PAD + NODE_HALF_W;
-      const originY = modelY1 + COMP_PAD + nodeHalfH;
-
+      // Scale each child's position proportionally from old compound bounds to
+      // new model bounds, preserving the two-phase layout structure.
       cy.batch(() => {
-        children.forEach((child, i) => {
-          const col = i % cols;
-          const row = Math.floor(i / cols);
-          const xFrac = cols > 1 ? col / (cols - 1) : 0.5;
-          const yFrac = rows > 1 ? row / (rows - 1) : 0.5;
+        (domainNode as unknown as { removeStyle(s: string): void }).removeStyle("width height");
+        children.forEach((child) => {
+          const childPos = (child as { position(): Pt }).position();
+          const relX = oldBb.w > 0 ? (childPos.x - oldBb.x1) / oldBb.w : 0.5;
+          const relY = oldBb.h > 0 ? (childPos.y - oldBb.y1) / oldBb.h : 0.5;
           const pos = {
-            x: originX + xFrac * spanX,
-            y: originY + yFrac * spanY,
+            x: modelX1 + relX * modelW,
+            y: modelY1 + relY * modelH,
           };
           const id = (child as { id(): string }).id();
           pinnedNodesRef.current.delete(id);
-          (child as { position(p: { x: number; y: number }): void }).position(pos);
+          (child as { position(p: Pt): void }).position(pos);
           pinnedNodesRef.current.set(id, pos);
         });
       });
     }
 
-    // One RAF: Cytoscape processes the batch, recomputes compound bounds, repaints.
-    // Second RAF reads the freshly painted bounds for the overlay.
-    requestAnimationFrame(() => {
-      (cy as { forceRender(): void }).forceRender();
-      requestAnimationFrame(() => updateHandleBox(hoveredDomainId));
-    });
+    // Read freshly computed compound bounds after Cytoscape finishes its render cycle.
+    requestAnimationFrame(() => updateHandleBox(hoveredDomainId));
   };
 
   // ── exports ───────────────────────────────────────────────────────────────
+  const EXPORT_BG = "#0f172a";
+  const EXPORT_PAD = 10;
+
+  const addRasterPadding = (blob: Blob, mimeType: string, quality: number, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width + EXPORT_PAD * 2;
+      canvas.height = img.height + EXPORT_PAD * 2;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = EXPORT_BG;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, EXPORT_PAD, EXPORT_PAD);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((b) => b && downloadBlob(b, filename), mimeType, quality);
+    };
+    img.src = url;
+  };
+
   const exportSvg = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    downloadBlob(new Blob([cy.svg({ full: true, bg: "#0f172a" }) as string], { type: "image/svg+xml" }), "erd.svg");
+    const raw = cy.svg({ full: true, bg: EXPORT_BG }) as string;
+    // Inject 10px padding by expanding width/height and wrapping content in a translate group
+    const padded = raw.replace(
+      /(<svg[^>]*\swidth="(\d+(?:\.\d+)?)"[^>]*\sheight="(\d+(?:\.\d+)?)"[^>]*>)/,
+      (_match: string, _tag: string, w: string, h: string) => {
+        const nw = parseFloat(w) + EXPORT_PAD * 2;
+        const nh = parseFloat(h) + EXPORT_PAD * 2;
+        return _tag
+          .replace(/width="[^"]*"/, `width="${nw}"`)
+          .replace(/height="[^"]*"/, `height="${nh}"`) +
+          `<rect width="${nw}" height="${nh}" fill="${EXPORT_BG}"/><g transform="translate(${EXPORT_PAD},${EXPORT_PAD})">`;
+      },
+    ).replace("</svg>", "</g></svg>");
+    downloadBlob(new Blob([padded], { type: "image/svg+xml" }), "erd.svg");
   }, []);
 
   const exportPng = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    downloadBlob(cy.png({ output: "blob", full: true, bg: "#0f172a" }) as unknown as Blob, "erd.png");
+    addRasterPadding(cy.png({ output: "blob", full: true, bg: EXPORT_BG }) as unknown as Blob, "image/png", 1, "erd.png");
   }, []);
 
-  const exportJson = useCallback(() => {
+  const exportJpeg = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    downloadBlob(
-      new Blob([JSON.stringify((cy as unknown as { json(): unknown }).json(), null, 2)], { type: "application/json" }),
-      "erd.json",
-    );
+    addRasterPadding(cy.jpg({ output: "blob", full: true, bg: EXPORT_BG, quality: 0.92 }) as unknown as Blob, "image/jpeg", 0.92, "erd.jpg");
   }, []);
 
   // ── collapse all / expand all (visible domains only) ─────────────────────
@@ -838,19 +1255,17 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
           </select>
 
           {/* snap to grid */}
-          <label style={{
-            display: "flex", alignItems: "center", gap: 4,
-            fontSize: 11, color: snapToGrid ? "#e2e8f0" : "#64748b",
-            cursor: "pointer", userSelect: "none",
-          }}>
-            <input
-              type="checkbox"
-              checked={snapToGrid}
-              onChange={(e) => setSnapToGrid(e.target.checked)}
-              style={{ accentColor: "#60a5fa" }}
-            />
-            Snap to grid
-          </label>
+          <select
+            value={gridSnap}
+            onChange={(e) => setGridSnap(parseInt(e.target.value, 10))}
+            style={{ fontSize: 11, background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "1px 4px" }}
+          >
+            <option value={0}>No snap</option>
+            <option value={5}>Snap 5px</option>
+            <option value={10}>Snap 10px</option>
+            <option value={15}>Snap 15px</option>
+            <option value={20}>Snap 20px</option>
+          </select>
 
           {/* show orphans */}
           <label style={{
@@ -876,10 +1291,10 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
           <div style={{ flex: 1 }} />
 
           {/* exports */}
-          <TBtn onClick={() => cyRef.current?.fit()} title="Fit all"><Maximize2 size={11} /></TBtn>
+          <TBtn onClick={() => cyRef.current?.fit(undefined, 10)} title="Fit all"><Maximize2 size={11} /></TBtn>
           <TBtn onClick={exportSvg} title="Download SVG"><Download size={11} /> SVG</TBtn>
           <TBtn onClick={exportPng} title="Download PNG"><Download size={11} /> PNG</TBtn>
-          <TBtn onClick={exportJson} title="Download JSON"><Download size={11} /> JSON</TBtn>
+          <TBtn onClick={exportJpeg} title="Download JPEG"><Download size={11} /> JPEG</TBtn>
 
           <button
             className="modal-close"
