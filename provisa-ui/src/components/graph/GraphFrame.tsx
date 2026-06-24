@@ -16,7 +16,7 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import type { Relationship } from "../../types/admin";
 import { extractElements, injectExclusion } from "./graph-model";
-import type { GNode, GEdge, RelLineOverride, FrameData } from "./graph-model";
+import type { GNode, GEdge, GraphStats, RelLineOverride, FrameData } from "./graph-model";
 import CodeMirror from "@uiw/react-codemirror";
 import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
 import "@neo4j-cypher/codemirror/css/cypher-codemirror.css";
@@ -52,6 +52,7 @@ interface GraphFrameProps {
   colorOverrides: Record<string, string>;
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;
+  sizeByProperty: Record<string, string>;
   relLineOverrides: Record<string, RelLineOverride>;
   onColorChange: (label: string, color: string) => void;
   pkMap: Record<string, string[]>;
@@ -71,6 +72,7 @@ export function GraphFrame({
   colorOverrides,
   sizeOverrides,
   labelProperty,
+  sizeByProperty,
   relLineOverrides,
   onColorChange,
   pkMap,
@@ -82,10 +84,10 @@ export function GraphFrame({
 }: GraphFrameProps) {
   const [view, setView] = useState<"graph" | "table" | "json">("graph");
   const [selected, setSelectedRaw] = useState<
-    { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null
+    { kind: "node"; data: GNode; graphStats?: GraphStats } | { kind: "edge"; data: GEdge } | null
   >(null);
   const setSelected = useCallback(
-    (s: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null) => {
+    (s: { kind: "node"; data: GNode; graphStats?: GraphStats } | { kind: "edge"; data: GEdge } | null) => {
       setSelectedRaw(s);
       onSelectedLabelChange?.(s?.kind === "node" ? s.data.label : null);
     },
@@ -532,6 +534,25 @@ export function GraphFrame({
     return m;
   }, [frame.edges, overlayData]);
 
+  const augmentedNodes = useMemo(() => {
+    const degIn = new Map<string, number>();
+    const degOut = new Map<string, number>();
+    const allEdges = overlayEdges.size > 0 ? new Map([...frame.edges, ...overlayEdges]) : frame.edges;
+    allEdges.forEach((e) => {
+      const srcKey = `${e.startNode.label}:${e.startNode.id}`;
+      const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
+      degOut.set(srcKey, (degOut.get(srcKey) ?? 0) + 1);
+      degIn.set(tgtKey, (degIn.get(tgtKey) ?? 0) + 1);
+    });
+    const result = new Map<string, GNode>();
+    frame.nodes.forEach((n, k) => {
+      const i = degIn.get(k) ?? 0;
+      const o = degOut.get(k) ?? 0;
+      result.set(k, { ...n, properties: { ...n.properties, deg_in: i, deg_out: o, deg_total: i + o } });
+    });
+    return result;
+  }, [frame.nodes, frame.edges, overlayEdges]);
+
   const showingChildrenNatural = useMemo(
     () =>
       new Set(
@@ -619,8 +640,8 @@ export function GraphFrame({
   // Properties available for grouping: virtual schema_L1/L2/L3 (mapped to scl1/scl2/scl3)
   // followed by any scalar property with more than one distinct value.
   const groupableAttrs = useMemo(() => {
-    if (frame.nodes.size === 0) return [];
-    const SKIP = new Set(["scl1", "scl2", "scl3", "l1Cluster", "l2Cluster", "l3Cluster"]);
+    if (augmentedNodes.size === 0) return [];
+    const SKIP = new Set(["scl1", "scl2", "scl3", "l1Cluster", "l2Cluster", "l3Cluster", "deg_in", "deg_out", "deg_total"]);
     const schemaVirtuals: string[] = [];
     for (const [virtName, prop] of [
       ["schema_L1", "scl1"],
@@ -628,14 +649,23 @@ export function GraphFrame({
       ["schema_L3", "scl3"],
     ] as const) {
       const vals = new Set<string>();
-      frame.nodes.forEach((n) => {
+      augmentedNodes.forEach((n) => {
         const v = n.properties[prop];
         if (v !== null && v !== undefined) vals.add(String(v));
       });
       if (vals.size > 1) schemaVirtuals.push(virtName);
     }
+    const degreeVirtuals: string[] = [];
+    for (const key of ["deg_in", "deg_out", "deg_total"] as const) {
+      const vals = new Set<string>();
+      augmentedNodes.forEach((n) => {
+        const v = n.properties[key];
+        if (v !== null && v !== undefined) vals.add(String(v));
+      });
+      if (vals.size > 1) degreeVirtuals.push(key);
+    }
     const counts = new Map<string, Set<string>>();
-    frame.nodes.forEach((n) => {
+    augmentedNodes.forEach((n) => {
       Object.entries(n.properties).forEach(([k, v]) => {
         if (SKIP.has(k) || v === null || v === undefined) return;
         if (typeof v === "object") return;
@@ -646,8 +676,8 @@ export function GraphFrame({
     const regularAttrs = [...counts.entries()]
       .filter(([, vals]) => vals.size > 1)
       .map(([k]) => k);
-    return [...schemaVirtuals, ...regularAttrs].sort((a, b) => a.localeCompare(b));
-  }, [frame.nodes]);
+    return ["domain", ...schemaVirtuals, ...degreeVirtuals, ...regularAttrs].sort((a, b) => a.localeCompare(b));
+  }, [augmentedNodes]);
   const activeView: "graph" | "table" | "json" = hasGraph
     ? view
     : view === "json"
@@ -912,7 +942,7 @@ export function GraphFrame({
           style={{ height: graphAreaHeight, display: activeView === "graph" ? undefined : "none" }}
         >
           <GraphCanvas
-            nodes={frame.nodes}
+            nodes={augmentedNodes}
             edges={frame.edges}
             overlayNodes={overlayNodes}
             overlayEdges={overlayEdges}
@@ -920,6 +950,7 @@ export function GraphFrame({
             colorOverrides={colorOverrides}
             sizeOverrides={sizeOverrides}
             labelProperty={labelProperty}
+            sizeByProperty={sizeByProperty}
             relLineOverrides={relLineOverrides}
             onExcludeNode={handleExcludeNode}
             pkMap={pkMap}
@@ -944,6 +975,7 @@ export function GraphFrame({
           />
           <Inspector
             selected={selected}
+            graphStats={selected?.kind === "node" ? selected.graphStats : undefined}
             colorOverrides={colorOverrides}
             onColorChange={onColorChange}
             onClose={() => setSelected(null)}
