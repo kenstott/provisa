@@ -54,6 +54,10 @@ export function GraphPage() {
     "provisa.graph.labelProperty",
     {},
   );
+  const [sizeByProperty, setSizeByProperty] = useLocalStorage<Record<string, string>>(
+    "provisa.graph.sizeByProperty",
+    {},
+  );
   const [autoImpute, setAutoImpute] = useLocalStorage<boolean>("provisa.graph.autoImpute", false);
   const [relLineOverrides, setRelLineOverrides] = useLocalStorage<Record<string, RelLineOverride>>(
     "provisa.graph.relLineOverrides",
@@ -517,6 +521,13 @@ export function GraphPage() {
     [setLabelProperty],
   );
 
+  const handleSizeByPropertyChange = useCallback(
+    (label: string, prop: string) => {
+      setSizeByProperty((prev) => ({ ...prev, [label]: prop }));
+    },
+    [setSizeByProperty],
+  );
+
   const handleRelLineChange = useCallback(
     (type: string, override: RelLineOverride) => {
       setRelLineOverrides((prev) => ({ ...prev, [type]: override }));
@@ -644,6 +655,7 @@ export function GraphPage() {
         colorOverrides={colorOverrides}
         sizeOverrides={sizeOverrides}
         labelProperty={labelProperty}
+        sizeByProperty={sizeByProperty}
         relLineOverrides={relLineOverrides}
         onHistorySelect={handleHistorySelect}
         onLabelClick={handleLabelClick}
@@ -652,6 +664,7 @@ export function GraphPage() {
         onColorChange={handleColorChange}
         onSizeChange={handleSizeChange}
         onLabelPropertyChange={handleLabelPropertyChange}
+        onSizeByPropertyChange={handleSizeByPropertyChange}
         onRelLineChange={handleRelLineChange}
         width={sidebarWidth}
         onWidthChange={setSidebarWidth}
@@ -691,6 +704,7 @@ export function GraphPage() {
               colorOverrides={colorOverrides}
               sizeOverrides={sizeOverrides}
               labelProperty={labelProperty}
+              sizeByProperty={sizeByProperty}
               relLineOverrides={relLineOverrides}
               onColorChange={handleColorChange}
               pkMap={pkMap}
