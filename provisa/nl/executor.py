@@ -19,11 +19,24 @@ SQL     → Stage 2 governance + Trino
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Literal
 
 log = logging.getLogger(__name__)
 
 NlTarget = Literal["cypher", "graphql", "sql"]
+
+
+class FederationError(RuntimeError):
+    """Wraps federation engine (Trino) errors with a clean message."""
+
+
+def _federation_error(exc: Exception) -> FederationError:
+    """Extract human-readable message from a Trino exception repr."""
+    raw = str(exc)
+    m = re.search(r'message="([^"]*)"', raw)
+    msg = m.group(1) if m else raw
+    return FederationError(msg)
 
 
 async def execute(query: str, target: NlTarget, role: str, app_state: Any) -> Any:
@@ -42,13 +55,15 @@ async def execute(query: str, target: NlTarget, role: str, app_state: Any) -> An
     Raises:
         RuntimeError on execution failure.
     """
-    if target == "cypher":
-        return await _execute_cypher(query, role, app_state)
-    if target == "graphql":
-        return await _execute_graphql(query, role, app_state)
-    if target == "sql":
-        return await _execute_sql(query, role, app_state)
-    raise ValueError(f"Unknown target: {target}")
+    dispatch = {
+        "cypher": _execute_cypher,
+        "graphql": _execute_graphql,
+        "sql": _execute_sql,
+    }
+    fn = dispatch.get(target)
+    if fn is None:
+        raise ValueError(f"Unknown target: {target}")
+    return await fn(query, role, app_state)
 
 
 async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
@@ -68,7 +83,7 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     label_map = CypherLabelMap.from_schema(ctx)
     param_names = collect_param_names(query)
     bind_params(param_names, {})
-    sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, {})
+    sql_ast, _, graph_vars = cypher_to_sql(ast, label_map, {})
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
     # Render to postgres SQL; make_semantic_sql handles catalog-qualified refs
     sql_str = sql_ast.sql(dialect="postgres")
@@ -143,7 +158,7 @@ async def _run_trino(sql: str, params: list, app_state: Any) -> list[dict]:
 
     trino_conn = getattr(app_state, "trino_conn", None)
     if trino_conn is None:
-        raise RuntimeError("Federation engine not connected")
+        raise FederationError("Federation engine not connected")
 
     def _run() -> list[dict]:
         cursor = trino_conn.cursor()
@@ -151,6 +166,8 @@ async def _run_trino(sql: str, params: list, app_state: Any) -> list[dict]:
             cursor.execute(sql, params or [])
             cols = [d[0] for d in (cursor.description or [])]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]
+        except Exception as exc:
+            raise _federation_error(exc) from exc
         finally:
             cursor.close()
 

@@ -680,7 +680,9 @@ async def _run_sql_generation_loop(
         "The domain prefix (pet_store., shelter.) is used ONLY in FROM/JOIN table refs, "
         "never in a column reference. A FROM/JOIN clause must not introduce an alias "
         "either (write 'JOIN pet_store.pets ON ...', never 'JOIN pet_store.pets p ON ...').\n"
-        "6. Output only the SQL statement."
+        "6. If the question requires a relationship between tables that does not appear in the "
+        "approved joins list above, respond with exactly the token: NOT_APPLICABLE\n"
+        "7. Output only the SQL statement or NOT_APPLICABLE."
     )
 
     _sql_gen = ProviasLLMClient("sql_generation")
@@ -701,6 +703,9 @@ async def _run_sql_generation_loop(
             system=sql_gen_system,
             max_tokens=1024,
         )
+        last_sql = last_sql.strip()
+        if last_sql == "NOT_APPLICABLE":
+            return "NOT_APPLICABLE", attempt, "NOT_APPLICABLE"
         if last_sql.startswith("```"):
             last_sql = "\n".join(
                 line for line in last_sql.splitlines() if not line.strip().startswith("```")

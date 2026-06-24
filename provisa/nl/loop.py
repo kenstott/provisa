@@ -61,6 +61,7 @@ async def generation_loop(
     compiler: Callable[[str], CompileResult],
     llm: LLMClient,
     max_iterations: int = MAX_ITERATIONS,
+    relevant_entities: str = "",
 ) -> tuple[str | None, str | None]:
     """Run a single generate→validate loop for one target language.
 
@@ -76,9 +77,10 @@ async def generation_loop(
         (valid_query, None) on success, or (None, last_error) on exhaustion.
     """
     prior_error: str | None = None
+    last_generated: str | None = None
 
     for iteration in range(max_iterations):
-        prompt = build_prompt(nl_query, target, schema_sdl, prior_error)
+        prompt = build_prompt(nl_query, target, schema_sdl, prior_error, relevant_entities)
         try:
             generated = await llm.complete(prompt)
         except Exception as exc:
@@ -87,6 +89,13 @@ async def generation_loop(
             continue
 
         generated = generated.strip()
+        # Cypher prompt forbids NOT_APPLICABLE — treat it as a generation failure and retry
+        if generated == "NOT_APPLICABLE" and target != "cypher":
+            return None, "NOT_APPLICABLE"
+        # Strip leading "cypher" keyword some LLMs emit for Cypher queries
+        if target == "cypher" and generated.lower().startswith("cypher "):
+            generated = generated[7:].lstrip()
+        last_generated = generated
         result = compiler(generated)
 
         if result.valid:
@@ -97,7 +106,7 @@ async def generation_loop(
             "Iteration %d/%d failed for %s: %s", iteration + 1, max_iterations, target, prior_error
         )
 
-    return None, prior_error
+    return last_generated, prior_error
 
 
 # ---------------------------------------------------------------------------
