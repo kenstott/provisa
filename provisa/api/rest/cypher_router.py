@@ -528,6 +528,11 @@ async def cypher_query(
         return _ser_result
     columns, serializable_rows = _ser_result
 
+    # Register nodes and replace composite string IDs with stable integers
+    from provisa.cypher.assembler import register_node_ids
+
+    await register_node_ids(serializable_rows, state.pg_pool)
+
     content = _build_stats_content(columns, serializable_rows, trino_sql, stats_enabled, _t0)
     return JSONResponse(content=content)
 
@@ -619,17 +624,44 @@ async def impute_relationships(request: Request, body: ImputeRequest) -> JSONRes
 
     label_map = _build_label_map(ctx, role_id, state)
 
-    # Group ids by canonical label.
-    # Frontend ids are compound: "{label}|{pk_value}" (built by the SQL translator).
-    # Strip the label prefix to recover the raw PK value used in WHERE clauses.
-    by_label: dict[str, list[str]] = {}
+    # Group ids by canonical label, resolving frontend node IDs to raw PKs.
+    # After register_node_ids, frontend sends integer IDs from the node_ids table.
+    # We look these up to recover the composite_id ("{label}|{pk}"), then strip
+    # the label prefix. For non-registered nodes the id is already the raw PK string.
+    raw_entries: list[tuple[str, str]] = []
+    int_ids: list[int] = []
     for node in body.nodes:
         lbl = str(node.get("label", ""))
         nid = str(node.get("id", ""))
         if lbl and nid:
-            if "|" in nid:
-                nid = nid.split("|", 1)[1]
-            by_label.setdefault(lbl, []).append(nid)
+            raw_entries.append((lbl, nid))
+            try:
+                int_ids.append(int(nid))
+            except ValueError:
+                pass
+
+    int_to_pk: dict[int, str] = {}
+    if int_ids and state.pg_pool:
+        async with state.pg_pool.acquire() as _pg_conn:
+            _pg_rows = await _pg_conn.fetch(
+                "SELECT id, composite_id FROM node_ids WHERE id = ANY($1::int[])",
+                int_ids,
+            )
+        for _r in _pg_rows:
+            _composite = _r["composite_id"]
+            int_to_pk[_r["id"]] = _composite.split("|", 1)[1] if "|" in _composite else _composite
+
+    by_label: dict[str, list[str]] = {}
+    for lbl, nid in raw_entries:
+        try:
+            pk = int_to_pk.get(int(nid))
+            if pk is not None:
+                by_label.setdefault(lbl, []).append(pk)
+                continue
+        except ValueError:
+            pass
+        raw_pk = nid.split("|", 1)[1] if "|" in nid else nid
+        by_label.setdefault(lbl, []).append(raw_pk)
 
     visible_labels = set(by_label.keys())
 
