@@ -17,7 +17,7 @@
 import { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
 import type { Relationship } from "../../types/admin";
 import { labelColor, darkenColor, clusterColor } from "./graph-model";
-import type { GNode, GEdge, RelLineOverride } from "./graph-model";
+import type { GNode, GEdge, GraphStats, RelLineOverride } from "./graph-model";
 import { buildClusterElements, buildClusterMetaEdges, cidToId, type ClusterLevel } from "./graph-clusters";
 import { buildGraphStylesheet } from "./graph-stylesheet";
 import { NodeContextMenu, type NodeCtxMenuState } from "./NodeContextMenu";
@@ -60,10 +60,11 @@ interface CanvasProps {
   edges: Map<string, GEdge>;
   overlayNodes: Map<string, GNode>;
   overlayEdges: Map<string, GEdge>;
-  onSelect: (item: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null) => void;
+  onSelect: (item: { kind: "node"; data: GNode; graphStats?: GraphStats } | { kind: "edge"; data: GEdge } | null) => void;
   colorOverrides: Record<string, string>;
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;
+  sizeByProperty: Record<string, string>;
   relLineOverrides: Record<string, RelLineOverride>;
   onExcludeNode: (nodeKeys: string[]) => void;
   pkMap: Record<string, string[]>;
@@ -109,6 +110,54 @@ const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
   } as CyLayoutOptions,
 };
 
+function computeLabelSizeRanges(
+  cy: CyInstance,
+  sizeByProp: Record<string, string>,
+): Map<string, { min: number; max: number }> {
+  const ranges = new Map<string, { min: number; max: number }>();
+  cy.nodes().forEach((nd) => {
+    if (nd.data("_cluster") || nd.data("_port")) return;
+    const lbl = nd.data("label") as string;
+    const sby = sizeByProp[lbl];
+    if (!sby) return;
+    const gn = nd.data("_node") as GNode | undefined;
+    if (!gn) return;
+    const v = Number(gn.properties[sby]);
+    if (isNaN(v)) return;
+    const existing = ranges.get(lbl);
+    if (existing) { existing.min = Math.min(existing.min, v); existing.max = Math.max(existing.max, v); }
+    else ranges.set(lbl, { min: v, max: v });
+  });
+  return ranges;
+}
+
+function applyNodeSize(
+  node: CyElement,
+  lbl: string,
+  gn: GNode | undefined,
+  sizeByProp: Record<string, string>,
+  sizeOverrides: Record<string, number>,
+  ranges: Map<string, { min: number; max: number }>,
+): void {
+  const base = sizeOverrides[lbl] ?? 44;
+  const sby = sizeByProp[lbl];
+  const inCluster = node.data("_inCluster") as boolean;
+  let sz: number;
+  if (sby && gn) {
+    const range = ranges.get(lbl);
+    const v = Number(gn.properties[sby]);
+    if (range && range.max > range.min && !isNaN(v)) {
+      const t = (v - range.min) / (range.max - range.min);
+      sz = (base * 0.4 + t * base * 1.6) * (inCluster ? 0.5 : 1);
+    } else {
+      sz = inCluster ? base / 2 : base;
+    }
+  } else {
+    sz = inCluster ? base / 2 : base;
+  }
+  node.style({ width: sz, height: sz, "text-max-width": `${sz - 4}px` });
+}
+
 export function GraphCanvas({
   nodes,
   edges,
@@ -118,6 +167,7 @@ export function GraphCanvas({
   colorOverrides,
   sizeOverrides,
   labelProperty,
+  sizeByProperty,
   relLineOverrides,
   onExcludeNode,
   pkMap,
@@ -144,6 +194,8 @@ export function GraphCanvas({
   sizeOverridesRef.current = sizeOverrides;
   const labelPropertyRef = useRef(labelProperty);
   labelPropertyRef.current = labelProperty;
+  const sizeByPropertyRef = useRef(sizeByProperty);
+  sizeByPropertyRef.current = sizeByProperty;
   const relLineOverridesRef = useRef(relLineOverrides);
   relLineOverridesRef.current = relLineOverrides;
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("force");
@@ -228,18 +280,35 @@ export function GraphCanvas({
       // Compute hull from children positions in graph coords.
       const children = cn.children();
       if (children.length === 0) return;
-      let sumX = 0, sumY = 0, count = 0;
-      children.forEach((c) => { const p = c.position(); sumX += p.x; sumY += p.y; count++; });
-      const cx_g = sumX / count;
-      const cy_g = sumY / count;
-      let maxRx_g = 0, maxRy_g = 0;
+      let minX_g = Infinity, maxX_g = -Infinity, minY_g = Infinity, maxY_g = -Infinity;
       children.forEach((c) => {
         const p = c.position();
-        maxRx_g = Math.max(maxRx_g, Math.abs(p.x - cx_g) + c.width() / 2 + 12);
-        maxRy_g = Math.max(maxRy_g, Math.abs(p.y - cy_g) + c.height() / 2 + 12);
+        const hw = c.width() / 2 + 6;
+        const hh = c.height() / 2 + 6;
+        minX_g = Math.min(minX_g, p.x - hw);
+        maxX_g = Math.max(maxX_g, p.x + hw);
+        minY_g = Math.min(minY_g, p.y - hh);
+        maxY_g = Math.max(maxY_g, p.y + hh);
       });
-      const rx_g = Math.max(30, maxRx_g * Math.SQRT2);
-      const ry_g = Math.max(30, maxRy_g * Math.SQRT2);
+      const cx_g = (minX_g + maxX_g) / 2;
+      const cy_g = (minY_g + maxY_g) / 2;
+      // raw half-extents from bounding box
+      const raw_rx = Math.max(1, (maxX_g - minX_g) / 2);
+      const raw_ry = Math.max(1, (maxY_g - minY_g) / 2);
+      // Scale so every node corner lies inside the ellipse: find max ellipse-distance across all corners
+      let maxScale = 1;
+      children.forEach((c) => {
+        const p = c.position();
+        const hw = c.width() / 2 + 6;
+        const hh = c.height() / 2 + 6;
+        for (const dx of [p.x - cx_g - hw, p.x - cx_g + hw]) {
+          for (const dy of [p.y - cy_g - hh, p.y - cy_g + hh]) {
+            maxScale = Math.max(maxScale, Math.sqrt((dx / raw_rx) ** 2 + (dy / raw_ry) ** 2));
+          }
+        }
+      });
+      const rx_g = Math.max(30, raw_rx * maxScale + 20);
+      const ry_g = Math.max(30, raw_ry * maxScale + 20);
 
       hulls.push({
         cid,
@@ -249,30 +318,38 @@ export function GraphCanvas({
         ry: ry_g * zoom,
       });
 
-      const portId = `__port_${clusterLevelRef.current}_${cidToId(cid)}`;
-      let portNode = cy.$id(portId);
-      if (portNode.length === 0) {
-        portNode = cy.add({
-          group: "nodes",
-          data: {
-            id: portId,
-            label: "",
-            _port: true,
-            _clusterId: cid,
-            _clusterLevel: clusterLevelRef.current,
-          },
-          position: { x: cx_g, y: cy_g },
-        }) as unknown as CyCollection;
-      } else {
-        if (portNode.locked()) portNode.unlock();
-        portNode.position({ x: cx_g, y: cy_g });
+      // Skip port node create/update while layout is running — nudge removes port nodes before
+      // fcose starts, and a viewport event fired by the centroid shift must not recreate them
+      // or they will participate in the layout as oversized virtual nodes.
+      if (!layoutRunningRef.current) {
+        const portId = `__port_${clusterLevelRef.current}_${cidToId(cid)}`;
+        let portNode = cy.$id(portId);
+        if (portNode.length === 0) {
+          portNode = cy.add({
+            group: "nodes",
+            data: {
+              id: portId,
+              label: "",
+              _port: true,
+              _clusterId: cid,
+              _clusterLevel: clusterLevelRef.current,
+            },
+            position: { x: cx_g, y: cy_g },
+          }) as unknown as CyCollection;
+        } else {
+          if (portNode.locked()) portNode.unlock();
+          portNode.position({ x: cx_g, y: cy_g });
+        }
+        portNode.style({ width: rx_g * 2, height: ry_g * 2 });
       }
-      portNode.style({ width: rx_g * 2, height: ry_g * 2 });
     });
     setHullCircles(hulls);
 
-    // Swap from layout meta-edges (compound AABB routing) to port meta-edges (ellipse routing)
-    if (!portEdgesAddedRef.current) {
+    // Swap from layout meta-edges (compound AABB routing) to port meta-edges (ellipse routing).
+    // Skip if layout is running — nudge removes ports and adds layout meta-edges just before
+    // running fcose; a viewport event fired by the centroid shift would otherwise re-add port
+    // meta-edges mid-setup and corrupt the nudge edge graph.
+    if (!portEdgesAddedRef.current && !layoutRunningRef.current) {
       cy.edges("[?_metaEdge]").remove();
       const metaEdges = buildClusterMetaEdges(
         nodesRef.current,
@@ -319,10 +396,18 @@ export function GraphCanvas({
         const cy = cyRef.current;
         if (cy) {
           const clusterId = `__cluster_${clusterLevelRef.current}_${cidToId(drag.cid)}`;
-          cy.getElementById(clusterId).children().forEach((n) => n.lock());
-          pendingNudgesRef.current = 2;
-          pendingNudgeFreeNodesRef.current = undefined;
-          nudgeLayoutRef.current();
+          cy.getElementById(clusterId).children().forEach((n) => {
+            anchoredRef.current.add(n.id() as string);
+            n.addClass("pinned");
+          });
+          // Skip gravity layout — it pulls surrounding clusters toward the dragged
+          // one and produces a skewed result. Directly recompute hull/port positions.
+          if (portEdgesAddedRef.current) {
+            cy.nodes("[?_port]").remove();
+            cy.edges("[?_metaEdge]").remove();
+            portEdgesAddedRef.current = false;
+          }
+          computeHulls();
         }
       }
     };
@@ -419,6 +504,7 @@ export function GraphCanvas({
     activeLayoutRef.current = layout;
     const applyStyles = () => {
       try {
+        const labelSizeRange = computeLabelSizeRanges(cy, sizeByPropertyRef.current);
         cy.batch(() => {
           cy.nodes().forEach((node) => {
             if (node.data("_cluster")) return;
@@ -428,9 +514,7 @@ export function GraphCanvas({
             const n = node.data("_node") as GNode | undefined;
             const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
             node.style("background-color", base);
-            const base_sz = sizeOverridesRef.current[lbl] ?? 44;
-            const sz = node.data("_inCluster") ? base_sz / 2 : base_sz;
-            node.style({ width: sz, height: sz, "text-max-width": `${sz - 4}px` });
+            applyNodeSize(node, lbl, n, sizeByPropertyRef.current, sizeOverridesRef.current, labelSizeRange);
             if (n) {
               const prop = labelPropertyRef.current[n.label];
               node.style(
@@ -506,32 +590,10 @@ export function GraphCanvas({
           portEdgesAddedRef.current = false;
         }
         const anchored = anchoredRef.current;
-        // Shift coords so anchored centroid = (0,0) before running layout.
-        // fcose gravity always pulls toward (0,0), so this makes gravity attract
-        // toward the pinned group rather than fighting it toward the canvas center.
-        let gravityValue = anchored.size > 0 ? 0 : 0.25;
-        if (anchored.size > 0) {
-          let cx = 0, cY = 0, cnt = 0;
-          cy.nodes().forEach((n) => {
-            if (anchored.has(n.id() as string)) {
-              const p = n.position();
-              cx += p.x; cY += p.y; cnt++;
-            }
-          });
-          if (cnt > 0) {
-            cx /= cnt; cY /= cnt;
-            if (Math.abs(cx) > 0.5 || Math.abs(cY) > 0.5) {
-              cy.nodes().forEach((n) => {
-                const p = n.position();
-                n.position({ x: p.x - cx, y: p.y - cY });
-              });
-              const z = cy.zoom();
-              const pan = cy.pan();
-              cy.pan({ x: pan.x + cx * z, y: pan.y + cY * z });
-            }
-            gravityValue = 0.15;
-          }
-        }
+        // When anchored nodes exist (user-dragged group), lock them in place and use
+        // gravity=0 so FCose doesn't pull them toward (0,0). Edge forces alone will
+        // attract connected clusters toward the pinned group.
+        const gravityValue = anchored.size > 0 ? 0 : 0.25;
         // When freeNodes is provided, lock everything except those nodes (and unlock anchored after)
         const tempLocked = new Set<string>();
         cy.nodes().forEach((n) => {
@@ -555,11 +617,16 @@ export function GraphCanvas({
           numIter: aggressive ? 2000 : 300,
           gravity: gravityValue,
           fit: false,
+          // Prevent FCose component packing from repositioning the entire component
+          // containing anchored (locked) nodes, which would override their locked positions
+          // and displace the dragged group off-screen after centroid shift.
+          packComponents: false,
         } as CyLayoutOptions;
         const layout = cy.layout(opts);
         activeLayoutRef.current = layout;
         const applyStylesNudge = () => {
           try {
+            const labelSizeRange = computeLabelSizeRanges(cy, sizeByPropertyRef.current);
             cy.batch(() => {
               cy.nodes().forEach((node) => {
                 if (node.data("_cluster")) return;
@@ -568,9 +635,7 @@ export function GraphCanvas({
                 const n = node.data("_node") as GNode | undefined;
                 const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
                 node.style("background-color", base);
-                const base_sz2 = sizeOverridesRef.current[lbl] ?? 44;
-                const sz = node.data("_inCluster") ? base_sz2 / 2 : base_sz2;
-                node.style({ width: sz, height: sz, "text-max-width": `${sz - 4}px` });
+                applyNodeSize(node, lbl, n, sizeByPropertyRef.current, sizeOverridesRef.current, labelSizeRange);
                 if (n) {
                   const prop = labelPropertyRef.current[n.label];
                   node.style(
@@ -698,8 +763,29 @@ export function GraphCanvas({
     });
     cy.on("tap", "node", (evt) => {
       setNodeCtxMenu(null);
-      if (!evt.target.data("_collapsed"))
-        onSelect({ kind: "node", data: evt.target.data("_node") as GNode });
+      if (!evt.target.data("_collapsed")) {
+        const gn = evt.target.data("_node") as GNode | undefined;
+        let graphStats: GraphStats | undefined;
+        if (gn) {
+          // Use pre-computed deg_in/out/total from augmentedNodes (computed before grouping)
+          // rather than Cytoscape's structural degree, which is wrong when grouped because
+          // cross-cluster edges are replaced by meta-edges on the compound node.
+          const totalReal = nodesRef.current.size;
+          const inDeg = Number(gn.properties.deg_in ?? 0);
+          const outDeg = Number(gn.properties.deg_out ?? 0);
+          const deg = inDeg + outDeg;
+          graphStats = {
+            in_degree: inDeg,
+            out_degree: outDeg,
+            degree: deg,
+            degree_centrality: totalReal > 1 ? parseFloat((deg / (totalReal - 1)).toFixed(4)) : 0,
+            ...(gn.properties.scl1 != null ? { schema_L1: String(gn.properties.scl1) } : {}),
+            ...(gn.properties.scl2 != null ? { schema_L2: String(gn.properties.scl2) } : {}),
+            ...(gn.properties.scl3 != null ? { schema_L3: String(gn.properties.scl3) } : {}),
+          };
+        }
+        onSelect({ kind: "node", data: evt.target.data("_node") as GNode, graphStats });
+      }
     });
     cy.on("tap", "edge", (evt) => {
       setNodeCtxMenu(null);
@@ -723,7 +809,7 @@ export function GraphCanvas({
     cy.on("cxttap", (evt) => {
       if (evt.target === cy) setNodeCtxMenu(null);
     });
-    cy.on("layoutstop", computeHulls);
+    cy.on("layoutstop", () => { if (pendingNudgesRef.current === 0) computeHulls(); });
     cy.on("viewport", computeHulls);
     // Track manually dragged nodes as anchored, then auto-nudge
     // "free" fires on every click too — only nudge if position actually changed
@@ -922,15 +1008,15 @@ export function GraphCanvas({
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
+    const labelSizeRange = computeLabelSizeRanges(cy, sizeByPropertyRef.current);
     cy.batch(() => {
       cy.nodes().forEach((node) => {
         const lbl = node.data("label") as string;
-        const base_sz3 = sizeOverridesRef.current[lbl] ?? 44;
-        const sz = node.data("_inCluster") ? base_sz3 / 2 : base_sz3;
-        node.style({ width: sz, height: sz, "text-max-width": `${sz - 4}px` });
+        const gn = node.data("_node") as GNode | undefined;
+        applyNodeSize(node, lbl, gn, sizeByPropertyRef.current, sizeOverridesRef.current, labelSizeRange);
       });
     });
-  }, [sizeOverrides]);
+  }, [sizeOverrides, sizeByProperty]);
 
   // Update node display labels without rebuilding
   useEffect(() => {
@@ -1003,6 +1089,11 @@ export function GraphCanvas({
                 style={{ pointerEvents: "stroke", cursor: "grab" }}
                 onMouseDown={(e) => {
                   e.preventDefault();
+                  const cy = cyRef.current;
+                  if (cy) {
+                    const clusterId = `__cluster_${clusterLevelRef.current}_${cidToId(cid)}`;
+                    cy.getElementById(clusterId).children().forEach((n) => n.unlock());
+                  }
                   hullDragRef.current = {
                     cid,
                     lastX: e.clientX,
