@@ -769,6 +769,89 @@ def test_fully_unlabeled_match_produces_all_rels_union():
     assert "LIMIT 50" in sql or "limit 50" in sql.lower()
 
 
+def test_domain_labeled_target_filters_rels_union():
+    """MATCH (n)-[]-(m:Sales) with two domains — only Sales rels appear, not cross-domain ones."""
+    # Two domains: Sales=[Person, Company], Other=[Company2].
+    # Rel KNOWS: Person→Person (Sales↔Sales), WORKS_AT: Person→Company (Sales→Sales)
+    # When m:Sales, the all-rels union must NOT include rels targeting non-Sales nodes.
+    person_meta = NodeMapping(
+        label="Sales:Person",
+        type_name="Sales_Person",
+        domain_label="Sales",
+        table_label="Person",
+        table_id=10,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="cat",
+        schema_name="s",
+        table_name="persons",
+        properties={},
+    )
+    company_meta = NodeMapping(
+        label="Sales:Company",
+        type_name="Sales_Company",
+        domain_label="Sales",
+        table_label="Company",
+        table_id=11,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="cat",
+        schema_name="s",
+        table_name="companies",
+        properties={},
+    )
+    other_meta = NodeMapping(
+        label="Other:Widget",
+        type_name="Other_Widget",
+        domain_label="Other",
+        table_label="Widget",
+        table_id=12,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="cat",
+        schema_name="s",
+        table_name="widgets",
+        properties={},
+    )
+    from provisa.cypher.label_map import RelationshipMapping as RM
+
+    knows_rel = RM(
+        rel_type="KNOWS",
+        source_label="Sales_Person",
+        target_label="Sales_Person",
+        join_source_column="person_id",
+        join_target_column="id",
+        field_name="knows",
+    )
+    owns_rel = RM(
+        rel_type="OWNS",
+        source_label="Sales_Person",
+        target_label="Other_Widget",
+        join_source_column="widget_id",
+        join_target_column="id",
+        field_name="owns",
+    )
+    lm = CypherLabelMap(
+        nodes={
+            "Sales_Person": person_meta,
+            "Sales_Company": company_meta,
+            "Other_Widget": other_meta,
+        },
+        relationships={"KNOWS": knows_rel, "OWNS": owns_rel},
+        domains={"Sales": ["Sales_Person", "Sales_Company"], "Other": ["Other_Widget"]},
+    )
+    ast = parse_cypher("MATCH (n)-[]-(m:Sales) RETURN n, m")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    # Sales rels should appear
+    assert "persons" in sql.lower()
+    # Other domain table must NOT appear — we constrained target to Sales
+    assert "widgets" not in sql.lower()
+
+
 def test_anonymous_nodes_relationship_return_r():
     """MATCH ()-[r:WORKS_AT]->() RETURN r — both endpoints anonymous; infer tables from rel type."""
     lm = _make_label_map()

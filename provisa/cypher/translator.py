@@ -867,7 +867,9 @@ class _Translator(
         tgt_var: "str | None",
     ) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Handle fully unlabeled rel pattern: UNION ALL over all relationship types."""
-        from_expr = self._build_all_rels_union(src_var, rel_var, tgt_var)
+        src_domain = self._domain_nodes.get(src_var) if src_var else None
+        tgt_domain = self._domain_nodes.get(tgt_var) if tgt_var else None
+        from_expr = self._build_all_rels_union(src_var, rel_var, tgt_var, src_domain, tgt_domain)
         if src_var:
             self._domain_nodes.pop(src_var, None)
             self._var_table[src_var] = (src_var, None)
@@ -1740,19 +1742,45 @@ class _Translator(
         src_var: str | None,
         rel_var: str | None,
         tgt_var: str | None,
+        src_domain: str | None = None,
+        tgt_domain: str | None = None,
     ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Build UNION ALL subquery over all relationship types for fully-unlabeled patterns."""
+        """Build UNION ALL subquery over all relationship types for fully-unlabeled patterns.
+
+        src_domain / tgt_domain constrain the union to only include rels whose
+        source / target node belongs to the named domain (PascalCase domain label).
+        Pass None or "__all__" to leave that side unconstrained.
+        """
         src_col = src_var or "n"
         rel_col = rel_var or "r"
         tgt_col = tgt_var or "m"
         alias = "_all_rels"
         self._all_rels_alias = alias
 
+        src_type_set = (
+            set(self._lm.domains.get(src_domain, []))
+            if src_domain and src_domain != "__all__"
+            else None
+        )
+        tgt_type_set = (
+            set(self._lm.domains.get(tgt_domain, []))
+            if tgt_domain and tgt_domain != "__all__"
+            else None
+        )
+
         branches: list[exp.Select] = []
         for rm in self._lm.relationships.values():
             src_nm = self._lm.nodes.get(rm.source_label)
             tgt_nm = self._lm.nodes.get(rm.target_label)
             if src_nm is None or tgt_nm is None:
+                continue
+            if src_type_set is not None and rm.source_label not in src_type_set:
+                continue
+            if tgt_type_set is not None and rm.target_label not in tgt_type_set:
+                continue
+            # Skip synthetic constant-join rels (e.g. HAS_TABLE to meta tables).
+            # These are not real FK traversals and would pull in unrelated domain nodes.
+            if rm.source_constant is not None:
                 continue
 
             sa = f"_s_{rm.rel_type.lower()[:20]}"
@@ -1773,17 +1801,29 @@ class _Translator(
                 ),
                 expression=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
             )
-            src_json = exp.JSONObject(
+            src_props_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]
+            for prop_name, col_name in src_nm.properties.items():
+                src_props_exprs.extend(
+                    [
+                        exp.Literal.string(prop_name),
+                        exp.Column(
+                            this=exp.Identifier(this=col_name, quoted=True),
+                            table=exp.Identifier(this=sa),
+                        ),
+                    ]
+                )
+            src_json = exp.Anonymous(
+                this="JSON_OBJECT",
                 expressions=[
-                    exp.JSONKeyValue(
-                        this=exp.Literal.string("id"),
-                        expression=src_compound_id,
-                    ),
-                    exp.JSONKeyValue(
-                        this=exp.Literal.string("label"),
-                        expression=exp.Literal.string(src_nm.label),
-                    ),
-                ]
+                    exp.Literal.string("id"),
+                    src_compound_id,
+                    exp.Literal.string("label"),
+                    exp.Literal.string(src_nm.label),
+                    exp.Literal.string("tableLabel"),
+                    exp.Literal.string(src_nm.table_label),
+                    exp.Literal.string("properties"),
+                    exp.Anonymous(this="JSON_OBJECT", expressions=src_props_exprs),
+                ],
             )
             tgt_compound_id = exp.DPipe(
                 this=exp.DPipe(
@@ -1792,17 +1832,29 @@ class _Translator(
                 ),
                 expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),
             )
-            tgt_json = exp.JSONObject(
+            tgt_props_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]
+            for prop_name, col_name in tgt_nm.properties.items():
+                tgt_props_exprs.extend(
+                    [
+                        exp.Literal.string(prop_name),
+                        exp.Column(
+                            this=exp.Identifier(this=col_name, quoted=True),
+                            table=exp.Identifier(this=ta),
+                        ),
+                    ]
+                )
+            tgt_json = exp.Anonymous(
+                this="JSON_OBJECT",
                 expressions=[
-                    exp.JSONKeyValue(
-                        this=exp.Literal.string("id"),
-                        expression=tgt_compound_id,
-                    ),
-                    exp.JSONKeyValue(
-                        this=exp.Literal.string("label"),
-                        expression=exp.Literal.string(tgt_nm.label),
-                    ),
-                ]
+                    exp.Literal.string("id"),
+                    tgt_compound_id,
+                    exp.Literal.string("label"),
+                    exp.Literal.string(tgt_nm.label),
+                    exp.Literal.string("tableLabel"),
+                    exp.Literal.string(tgt_nm.table_label),
+                    exp.Literal.string("properties"),
+                    exp.Anonymous(this="JSON_OBJECT", expressions=tgt_props_exprs),
+                ],
             )
             edge_id = exp.DPipe(
                 this=exp.DPipe(
