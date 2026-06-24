@@ -60,8 +60,9 @@ export function RelationshipRow({
           background: isExpanded ? "var(--surface)" : undefined,
         }}
       >
-        <td>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", overflowWrap: "anywhere" }}>
+        {domainsEnabled && <td style={{ whiteSpace: "nowrap" }}>{r.sourceDomainId || "—"}</td>}
+        <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
             {r.autoSuggested && (
               <span
                 title="Auto-tracked from FK constraint"
@@ -79,21 +80,19 @@ export function RelationshipRow({
                 FK
               </span>
             )}
-            <span>{String(r.id).replace(/([_\-:])/g, "$1​")}</span>
+            <span>{`${r.sourceTableName}.${r.sourceColumn}`}</span>
           </div>
-        </td>
-        {domainsEnabled && <td>{r.sourceDomainId || "—"}</td>}
-        <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>
-          {domainsEnabled && r.sourceDomainId
-            ? `${normalizeDomain(r.sourceDomainId)}.${r.sourceTableName}.${r.sourceColumn}`
-            : `${r.sourceTableName}.${r.sourceColumn}`}
         </td>
         <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>
           {r.targetFunctionName
             ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})`
-            : domainsEnabled && tableDomainById[r.targetTableId!]
-              ? `${tableDomainById[r.targetTableId!]}.${r.targetTableName}.${r.targetColumn}`
-              : `${r.targetTableName}.${r.targetColumn}`}
+            : (() => {
+                const tDomain = domainsEnabled ? tableDomainById[r.targetTableId!] : undefined;
+                const sDomain = domainsEnabled ? normalizeDomain(r.sourceDomainId ?? "") : undefined;
+                return tDomain && tDomain !== sDomain
+                  ? `${tDomain}.${r.targetTableName}.${r.targetColumn}`
+                  : `${r.targetTableName}.${r.targetColumn}`;
+              })()}
         </td>
         <td>
           <div style={{ fontSize: "0.8rem", lineHeight: 1.4 }}>
@@ -118,7 +117,7 @@ export function RelationshipRow({
       {isExpanded && (
         <tr>
           <td
-            colSpan={domainsEnabled ? 8 : 7}
+            colSpan={domainsEnabled ? 7 : 6}
             style={{
               padding: "0.75rem 1rem",
               background: "var(--bg)",
@@ -137,34 +136,10 @@ export function RelationshipRow({
                   }}
                 >
                   <dt style={{ color: "var(--text-muted)" }}>
-                    <strong>ID</strong>
-                  </dt>
-                  <dd style={{ color: "var(--text)", margin: 0 }}>
-                    {r.id}
-                    {r.autoSuggested && (
-                      <span
-                        title="Auto-tracked from FK constraint"
-                        style={{
-                          marginLeft: 6,
-                          fontSize: "0.65rem",
-                          fontWeight: 600,
-                          padding: "1px 5px",
-                          borderRadius: 3,
-                          background: "var(--text-muted)",
-                          color: "var(--bg)",
-                        }}
-                      >
-                        FK
-                      </span>
-                    )}
-                  </dd>
-                  <dt style={{ color: "var(--text-muted)" }}>
                     <strong>Source</strong>
                   </dt>
                   <dd style={{ color: "var(--text)", margin: 0 }}>
-                    {domainsEnabled && r.sourceDomainId
-                      ? `${normalizeDomain(r.sourceDomainId)}.${r.sourceTableName}.${r.sourceColumn}`
-                      : `${r.sourceTableName}.${r.sourceColumn}`}
+                    {`${r.sourceTableName}.${r.sourceColumn}`}
                   </dd>
                   <dt style={{ color: "var(--text-muted)" }}>
                     <strong>Target</strong>
@@ -172,9 +147,13 @@ export function RelationshipRow({
                   <dd style={{ color: "var(--text)", margin: 0 }}>
                     {r.targetFunctionName
                       ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})`
-                      : domainsEnabled && tableDomainById[r.targetTableId!]
-                        ? `${tableDomainById[r.targetTableId!]}.${r.targetTableName}.${r.targetColumn}`
-                        : `${r.targetTableName}.${r.targetColumn}`}
+                      : (() => {
+                          const tDomain = domainsEnabled ? tableDomainById[r.targetTableId!] : undefined;
+                          const sDomain = domainsEnabled ? normalizeDomain(r.sourceDomainId ?? "") : undefined;
+                          return tDomain && tDomain !== sDomain
+                            ? `${tDomain}.${r.targetTableName}.${r.targetColumn}`
+                            : `${r.targetTableName}.${r.targetColumn}`;
+                        })()}
                   </dd>
                   <dt style={{ color: "var(--text-muted)" }}>
                     <strong>GQL Alias</strong>
@@ -257,13 +236,6 @@ export function RelationshipRow({
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
                 <div className="form-row">
-                  <label>
-                    Name
-                    <input
-                      value={editingRel.id}
-                      onChange={(e) => setEditingRel({ ...editingRel, id: e.target.value })}
-                    />
-                  </label>
                   <label>
                     CQL Alias (UPPER_SNAKE)
                     <input

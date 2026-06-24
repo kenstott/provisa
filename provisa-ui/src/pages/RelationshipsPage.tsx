@@ -69,7 +69,7 @@ export function RelationshipsPage() {
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
   const PAGE_SIZE = 50;
-  const [sortCol, setSortCol] = useState<"id" | "domain" | "source" | "target" | "cardinality" | "materialize">("id");
+  const [sortCol, setSortCol] = useState<"domain" | "source" | "target" | "cardinality" | "materialize">("source");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [groupBy, setGroupBy] = useState<Array<"domain" | "cardinality" | "materialize">>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -418,10 +418,9 @@ export function RelationshipsPage() {
           <tr>
             {(
               [
-                ["id", "ID", "14%", false],
                 ["domain", "Domain", "7%", true],
-                ["source", "Source", "15%", false],
-                ["target", "Target", "15%", false],
+                ["source", "Source", "22%", false],
+                ["target", "Target", "22%", false],
               ] as const
             )
               .filter(([col]) => domainsEnabled || col !== "domain")
@@ -429,7 +428,7 @@ export function RelationshipsPage() {
               const groupLevel = isGroupable ? groupBy.indexOf(col as "domain" | "cardinality" | "materialize") : -1;
               const isGrouped = groupLevel !== -1;
               return (
-                <th key={col} style={{ width, whiteSpace: "nowrap" }}>
+                <th key={col} style={{ width, whiteSpace: "nowrap", ...(col === "source" ? { paddingLeft: "2rem" } : {}) }}>
                   <span
                     onClick={() => {
                       if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -511,7 +510,7 @@ export function RelationshipsPage() {
             if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
               return (
                 <tr>
-                  <td colSpan={domainsEnabled ? 8 : 7} style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
+                  <td colSpan={domainsEnabled ? 7 : 6} style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
                     {filtered.length} relationships — use the filter above to browse
                   </td>
                 </tr>
@@ -520,8 +519,7 @@ export function RelationshipsPage() {
 
             filtered.sort((a, b) => {
               let cmp = 0;
-              if (sortCol === "id") cmp = String(a.id).localeCompare(String(b.id));
-              else if (sortCol === "domain") cmp = (a.sourceDomainId ?? "").localeCompare(b.sourceDomainId ?? "");
+              if (sortCol === "domain") cmp = (a.sourceDomainId ?? "").localeCompare(b.sourceDomainId ?? "");
               else if (sortCol === "source") cmp = a.sourceTableName.localeCompare(b.sourceTableName);
               else if (sortCol === "target") cmp = (a.targetTableName ?? "").localeCompare(b.targetTableName ?? "");
               else if (sortCol === "cardinality") cmp = a.cardinality.localeCompare(b.cardinality);
@@ -597,7 +595,7 @@ export function RelationshipsPage() {
                 return (
                   <tr key={`grp-${item.key}`}>
                     <td
-                      colSpan={domainsEnabled ? 8 : 7}
+                      colSpan={domainsEnabled ? 7 : 6}
                       onClick={() =>
                         setCollapsedGroups((prev) => {
                           const next = new Set(prev);
