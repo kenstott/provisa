@@ -168,7 +168,7 @@ export function RequestsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h2 style={{ margin: 0 }}>Creation Requests</h2>
+        <h2 style={{ margin: 0 }}>Requests</h2>
         <FilterInput
           value={search}
           onChange={(v) => { setSearch(v); setPage(0); }}
