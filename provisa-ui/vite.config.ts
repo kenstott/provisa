@@ -189,6 +189,7 @@ export default defineConfig((config) => ({
           if (req.headers.accept?.includes("text/html")) return "/index.html";
         },
       },
+      "/query": "http://127.0.0.1:8000",
       "/health": "http://127.0.0.1:8000",
       "/setup": "http://127.0.0.1:8000",
       "/auth": "http://127.0.0.1:8000",
