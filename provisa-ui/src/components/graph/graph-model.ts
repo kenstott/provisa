@@ -181,15 +181,15 @@ export interface RelLineOverride {
 
 // ── Wire types ────────────────────────────────────────────────────────────────
 export interface GNode {
-  id: string;
+  id: number;
   label: string;
   tableLabel: string;
   properties: Record<string, unknown>;
 }
 export interface GEdge {
   identity: string;
-  start: string;
-  end: string;
+  start: number;
+  end: number;
   type: string;
   properties: Record<string, unknown>;
   startNode: GNode;

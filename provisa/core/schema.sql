@@ -518,3 +518,13 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- Stable integer node identity registry.
+-- Each unique graph node (label + primary key) gets a BIGSERIAL id on first sight.
+-- Properties are merged on update so the registry always reflects the latest attributes.
+CREATE TABLE IF NOT EXISTS node_ids (
+    id           BIGSERIAL PRIMARY KEY,
+    composite_id TEXT UNIQUE NOT NULL,   -- "Label|pkValue" — internal lookup key
+    label        TEXT NOT NULL,
+    properties   JSONB NOT NULL DEFAULT '{}'
+);
+

@@ -130,15 +130,16 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
 
 
 def _parse_node(data: dict) -> Node:
+    raw_props = (
+        data["properties"]
+        if "properties" in data and isinstance(data["properties"], dict)
+        else {k: v for k, v in data.items() if k not in ("id", "label", "tableLabel", "properties")}
+    )
     return Node(
         id=str(data.get("id", "")),
         label=str(data.get("label", "")),
         table_label=str(data.get("tableLabel", "")),
-        properties=data["properties"]
-        if "properties" in data and isinstance(data["properties"], dict)
-        else {
-            k: v for k, v in data.items() if k not in ("id", "label", "tableLabel", "properties")
-        },
+        properties={k: v for k, v in raw_props.items() if v is not None},
     )
 
 
@@ -264,6 +265,103 @@ def _assemble_with_paths(
 
     result.extend(non_path_rows)
     return result
+
+
+def _walk_for_nodes(v: Any, out: dict[str, tuple[str, dict]]) -> None:
+    """Recursively collect node dicts from serialized graph output.
+
+    A node dict has 'id' (composite string label|pk), 'label', 'properties',
+    and no 'startNode' key.
+    """
+    if isinstance(v, dict):
+        if (
+            "id" in v
+            and "label" in v
+            and "properties" in v
+            and "startNode" not in v
+            and isinstance(v["id"], str)
+            and "|" in v["id"]
+        ):
+            out[v["id"]] = (v["label"], v.get("properties") or {})
+        if "startNode" in v:
+            _walk_for_nodes(v["startNode"], out)
+        if "endNode" in v:
+            _walk_for_nodes(v["endNode"], out)
+        for val in v.values():
+            if isinstance(val, (dict, list)):
+                _walk_for_nodes(val, out)
+    elif isinstance(v, list):
+        for item in v:
+            _walk_for_nodes(item, out)
+
+
+def _apply_id_map(v: Any, id_map: dict[str, int]) -> Any:
+    """Replace composite string node IDs with integers from id_map."""
+    if isinstance(v, dict):
+        if "id" in v and isinstance(v["id"], str) and v["id"] in id_map and "startNode" not in v:
+            v = {**v, "id": id_map[v["id"]]}
+        if "startNode" in v or "endNode" in v:
+            new_v = dict(v)
+            if "startNode" in new_v:
+                new_v["startNode"] = _apply_id_map(new_v["startNode"], id_map)
+            if "endNode" in new_v:
+                new_v["endNode"] = _apply_id_map(new_v["endNode"], id_map)
+            # Update flat start/end to match integer IDs
+            if isinstance(new_v.get("start"), str) and new_v["start"] in id_map:
+                new_v["start"] = id_map[new_v["start"]]
+            if isinstance(new_v.get("end"), str) and new_v["end"] in id_map:
+                new_v["end"] = id_map[new_v["end"]]
+            return new_v
+        return v
+    if isinstance(v, list):
+        return [_apply_id_map(item, id_map) for item in v]
+    return v
+
+
+async def register_node_ids(serializable_rows: list[dict], pg_pool: Any) -> None:
+    """Upsert all graph nodes to node_ids table; replace composite string IDs with integers.
+
+    Mutates serializable_rows in place.  No-op if pg_pool is None or no nodes found.
+    """
+    import json as _json
+
+    if pg_pool is None:
+        return
+
+    nodes: dict[str, tuple[str, dict]] = {}
+    for row in serializable_rows:
+        for v in row.values():
+            _walk_for_nodes(v, nodes)
+
+    if not nodes:
+        return
+
+    composite_ids = list(nodes.keys())
+    labels = [nodes[c][0] for c in composite_ids]
+    props_json = [
+        _json.dumps({k: v for k, v in nodes[c][1].items() if v is not None}) for c in composite_ids
+    ]
+
+    async with pg_pool.acquire() as conn:
+        db_rows = await conn.fetch(
+            """
+            INSERT INTO node_ids (composite_id, label, properties)
+            SELECT t.cid, t.lbl, t.props::jsonb
+            FROM UNNEST($1::text[], $2::text[], $3::text[]) AS t(cid, lbl, props)
+            ON CONFLICT (composite_id) DO UPDATE
+                SET label      = EXCLUDED.label,
+                    properties = node_ids.properties || EXCLUDED.properties
+            RETURNING id, composite_id
+            """,
+            composite_ids,
+            labels,
+            props_json,
+        )
+
+    id_map: dict[str, int] = {row["composite_id"]: row["id"] for row in db_rows}
+
+    for i, row in enumerate(serializable_rows):
+        serializable_rows[i] = {k: _apply_id_map(v, id_map) for k, v in row.items()}
 
 
 def to_serializable(obj: Any) -> Any:
