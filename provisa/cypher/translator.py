@@ -1389,11 +1389,17 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             info = self._var_table.get(var)
             if info and info[1]:
                 id_ref = f'{var}."{info[1].id_column}"'
+                return f"{id_ref} IN ({items_text})"
             elif var in self._domain_nodes:
+                # __id is always CAST(id_column AS VARCHAR) — cast integer literals to match
                 id_ref = f'{var}."__id"'
+                items = [i.strip() for i in items_text.split(",")]
+                cast_items = [
+                    f"CAST({i} AS VARCHAR)" if i.lstrip("-+").isdigit() else i for i in items
+                ]
+                return f"{id_ref} IN ({', '.join(cast_items)})"
             else:
                 return m.group(0)
-            return f"{id_ref} IN ({items_text})"
 
         def _id_repl(m: re.Match) -> str:
             var = m.group(1).strip()

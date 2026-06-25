@@ -59,7 +59,6 @@ _ID_IN_LIST_RE = _re.compile(
 async def _resolve_id_references(query: str, pg_pool: Any, label_map: "CypherLabelMap") -> str:
     """Rewrite id(var) IN [int1, int2, ...] replacing stable node ids with the
     id-column value looked up from node_ids.properties via the label_map."""
-    import json as _json
 
     all_ints: set[int] = set()
     for m in _ID_IN_LIST_RE.finditer(query):
@@ -73,23 +72,26 @@ async def _resolve_id_references(query: str, pg_pool: Any, label_map: "CypherLab
 
     async with pg_pool.acquire() as _conn:
         rows = await _conn.fetch(
-            "SELECT id, label, properties FROM node_ids WHERE id = ANY($1::int[])",
+            "SELECT id, composite_id, label FROM node_ids WHERE id = ANY($1::int[])",
             sorted(all_ints),
         )
 
     nm_by_label = {nm.label: nm for nm in label_map.nodes.values()}
+    # Also index by table_label for nodes stored with just the table label
+    for nm in label_map.nodes.values():
+        nm_by_label.setdefault(nm.table_label, nm)
     id_to_val: dict[int, int] = {}
     for r in rows:
         nm = nm_by_label.get(r["label"])
         if nm is None:
             continue
-        id_cypher_prop = next((k for k, v in nm.properties.items() if v == nm.id_column), None)
-        if id_cypher_prop is None:
-            continue
-        props = (
-            r["properties"] if isinstance(r["properties"], dict) else _json.loads(r["properties"])
-        )
-        id_to_val[int(r["id"])] = int(props[id_cypher_prop])
+        # composite_id is stored as "Label|rawPk" — extract the physical PK from it
+        parts = r["composite_id"].split("|", 1)
+        if len(parts) == 2:
+            try:
+                id_to_val[int(r["id"])] = int(parts[1])
+            except ValueError:
+                pass
 
     def _replace(m: _re.Match) -> str:
         new_items: list[str] = []
