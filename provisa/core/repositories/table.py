@@ -39,7 +39,9 @@ async def upsert(
             view_sql = EXCLUDED.view_sql,
             data_product = EXCLUDED.data_product,
             materialize = EXCLUDED.materialize,
-            mv_refresh_interval = EXCLUDED.mv_refresh_interval
+            mv_refresh_interval = EXCLUDED.mv_refresh_interval,
+            enable_aggregates = EXCLUDED.enable_aggregates,
+            enable_group_by = EXCLUDED.enable_group_by
         RETURNING id
         """,
         table.source_id,
