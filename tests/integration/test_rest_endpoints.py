@@ -28,7 +28,7 @@ from provisa.api.rest.generator import (
     _parse_where_params,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
 # ---------------------------------------------------------------------------
 # Unit-style tests of the Python REST generator API (no HTTP, no PG needed)
@@ -179,9 +179,9 @@ class TestGetScalarFields:
         order_type = GraphQLObjectType(
             "Order",
             {
-                "id": GraphQLField(GraphQLInt),
-                "region": GraphQLField(GraphQLString),
-                "amount": GraphQLField(GraphQLInt),
+                "id": GraphQLField(GraphQLInt),  # type: ignore[arg-type]
+                "region": GraphQLField(GraphQLString),  # type: ignore[arg-type]
+                "amount": GraphQLField(GraphQLInt),  # type: ignore[arg-type]
             },
         )
         query_type = GraphQLObjectType(
@@ -190,7 +190,7 @@ class TestGetScalarFields:
                 "orders": GraphQLField(GraphQLList(order_type)),
             },
         )
-        return GraphQLSchema(query=query_type)
+        return GraphQLSchema(query=query_type)  # type: ignore[arg-type]
 
     async def test_scalar_fields_returned(self):
         schema = self._make_schema()
@@ -206,6 +206,7 @@ class TestGetScalarFields:
 
     async def test_no_query_type_returns_empty(self):
         from graphql import GraphQLSchema
+
         schema = GraphQLSchema()
         fields = _get_scalar_fields(schema, "orders")
         assert fields == []
@@ -250,19 +251,21 @@ class TestRestEndpointsHTTP:
             def _col(name, dtype="varchar(100)", nullable=True):
                 return ColumnMetadata(column_name=name, data_type=dtype, is_nullable=nullable)
 
-            tables = [{
-                "id": 1,
-                "source_id": "test-pg",
-                "domain_id": "default",
-                "schema_name": "public",
-                "table_name": "orders",
-                "governance": "pre-approved",
-                "columns": [
-                    {"column_name": "id", "visible_to": ["admin"]},
-                    {"column_name": "region", "visible_to": ["admin"]},
-                    {"column_name": "amount", "visible_to": ["admin"]},
-                ],
-            }]
+            tables = [
+                {
+                    "id": 1,
+                    "source_id": "test-pg",
+                    "domain_id": "default",
+                    "schema_name": "public",
+                    "table_name": "orders",
+                    "governance": "pre-approved",
+                    "columns": [
+                        {"column_name": "id", "visible_to": ["admin"]},
+                        {"column_name": "region", "visible_to": ["admin"]},
+                        {"column_name": "amount", "visible_to": ["admin"]},
+                    ],
+                }
+            ]
             column_types = {
                 1: [
                     _col("id", "integer", nullable=False),
@@ -416,11 +419,12 @@ class TestRestEndpointsHTTP:
         )
         from fastapi import FastAPI
 
-        order_type = GraphQLObjectType("Order", {"id": GraphQLField(GraphQLInt)})
+        order_type = GraphQLObjectType("Order", {"id": GraphQLField(GraphQLInt)})  # type: ignore[arg-type]
         query_type = GraphQLObjectType("Query", {"orders": GraphQLField(GraphQLList(order_type))})
-        schema = GraphQLSchema(query=query_type)
+        schema = GraphQLSchema(query=query_type)  # type: ignore[arg-type]
 
         from provisa.compiler.sql_gen import CompilationContext
+
         try:
             ctx = CompilationContext()
         except Exception:

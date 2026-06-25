@@ -29,7 +29,7 @@ import httpx
 import pytest
 import pytest_asyncio
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.e2e]
 
 TABLE_NAME = "pets"
 SERVICE_NAME = "provisa"
@@ -94,7 +94,7 @@ async def _ensure_pets_registered(trino_conn):
         pass
 
     if table_id is not None:
-        _admin_gql(f'mutation {{ deleteTable(id: {table_id}) {{ success }} }}')
+        _admin_gql(f"mutation {{ deleteTable(id: {table_id}) {{ success }} }}")
     if inserted_domain:
         _admin_gql('mutation { deleteDomain(id: "pet-store") { success } }')
     if inserted_source:
@@ -176,7 +176,9 @@ class TestOtelMetaTraces:
             f"trace_id {trace_id!r} not found in otel.signals.queries after insert"
         )
 
-    async def test_meta_traces_returns_rows_for_table(self, live_client, trino_conn, _ensure_pets_registered):
+    async def test_meta_traces_returns_rows_for_table(
+        self, live_client, trino_conn, _ensure_pets_registered
+    ):
         """_meta._traces returns at least one row after a trace is inserted for the table."""
         trace_id = uuid.uuid4().hex
         span_id = uuid.uuid4().hex[:16]
@@ -221,7 +223,9 @@ class TestOtelMetaTraces:
             f"Expected a provisa.query* span. Got: {span_names}"
         )
 
-    async def test_meta_queries_returns_rows_for_table(self, live_client, trino_conn, _ensure_pets_registered):
+    async def test_meta_queries_returns_rows_for_table(
+        self, live_client, trino_conn, _ensure_pets_registered
+    ):
         """_meta._queries returns at least one row via the queries view."""
         trace_id = uuid.uuid4().hex
         span_id = uuid.uuid4().hex[:16]

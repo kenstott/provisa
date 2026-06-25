@@ -29,7 +29,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
 _PG_HOST: str = os.environ.get("PG_HOST", "localhost")
 _PG_PORT: int = int(os.environ.get("PG_PORT", "5432"))
@@ -61,19 +61,21 @@ def _build_schema():
     from provisa.compiler.schema_gen import SchemaInput, generate_schema
     from provisa.compiler.sql_gen import build_context
 
-    tables = [{
-        "id": 1,
-        "source_id": "test-pg",
-        "domain_id": "default",
-        "schema_name": "public",
-        "table_name": "orders",
-        "governance": "pre-approved",
-        "columns": [
-            {"column_name": "id", "visible_to": ["admin"]},
-            {"column_name": "region", "visible_to": ["admin"]},
-            {"column_name": "amount", "visible_to": ["admin"]},
-        ],
-    }]
+    tables = [
+        {
+            "id": 1,
+            "source_id": "test-pg",
+            "domain_id": "default",
+            "schema_name": "public",
+            "table_name": "orders",
+            "governance": "pre-approved",
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "region", "visible_to": ["admin"]},
+                {"column_name": "amount", "visible_to": ["admin"]},
+            ],
+        }
+    ]
     column_types = {
         1: [
             ColumnMetadata(column_name="id", data_type="integer", is_nullable=False),
@@ -248,9 +250,7 @@ class TestApprovalHookEndpoint:
         from provisa.auth.approval_hook import ApprovalResponse
 
         client, field_name, st = client_field
-        hook = _make_hook(
-            ApprovalResponse(approved=True, additional_filter="region = 'us-east'")
-        )
+        hook = _make_hook(ApprovalResponse(approved=True, additional_filter="region = 'us-east'"))
         reset = _install_hook(st, hook)
         try:
             resp = await _query(client, field_name)

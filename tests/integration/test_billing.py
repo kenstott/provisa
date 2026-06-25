@@ -25,7 +25,7 @@ os.environ.setdefault("STRIPE_BASE_URL", "http://localhost:12111")
 os.environ.setdefault("STRIPE_API_KEY", "sk_test_any")
 os.environ.setdefault("STRIPE_WEBHOOK_SECRET", "whsec_test")
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
 
 def _make_app(pool: asyncpg.Pool) -> FastAPI:
