@@ -208,47 +208,15 @@ export function GraphFrame({
   const _fetchChildrenForNode = useCallback(
     async (nodeKey: string): Promise<MergedOverlay | null> => {
       const gNode = _resolveNodeForKey(nodeKey);
-      if (!gNode) return null;
+      if (!gNode || gNode.id == null) return null;
       const tableLabel = gNode.tableLabel;
-      const pkCols = pkMap[gNode.label] ?? [];
-      const pkCol = pkCols[0] ?? null;
-      const pkValue = gNode.properties[pkCol ?? ""] ?? gNode.id;
-      const pkLit =
-        pkValue === null || pkValue === undefined
-          ? null
-          : isNaN(Number(pkValue))
-            ? `'${String(pkValue).replace(/'/g, "\\'")}'`
-            : String(pkValue);
-      if (!pkLit || !pkCol) return null;
       const rels = (relationships ?? []).filter((r) => dbTableLabel(r.sourceTableName) === tableLabel);
-      const myPkKey = pkCols.join(",");
-      const siblingSourceRels =
-        rels.length === 0
-          ? (() => {
-              const siblingLabels = Object.entries(pkMap)
-                .filter(
-                  ([lbl, cols]) =>
-                    cols.join(",") === myPkKey && lbl !== gNode.label,
-                )
-                .map(([lbl]) => labelToTableLabel[lbl] ?? lbl);
-              return (relationships ?? []).filter((r) =>
-                siblingLabels.includes(dbTableLabel(r.sourceTableName)),
-              );
-            })()
-          : null;
-      const effectiveRels = rels.length > 0 ? rels : (siblingSourceRels ?? []);
-      const effectiveLabel =
-        rels.length > 0
-          ? tableLabel
-          : (siblingSourceRels && siblingSourceRels.length > 0
-              ? dbTableLabel(siblingSourceRels[0].sourceTableName)
-              : tableLabel);
-      if (effectiveRels.length === 0) return null;
+      if (rels.length === 0) return null;
       const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
       await Promise.all(
-        effectiveRels.map(async (r) => {
+        rels.map(async (r) => {
           const relType = (r.alias ?? r.computedCypherAlias ?? "").toUpperCase();
-          const q = `MATCH (n:${effectiveLabel})-[r:${relType}]->(child) WHERE n.${pkCol} = ${pkLit} RETURN n, r, child`;
+          const q = `MATCH (n:${gNode.label})-[r:${relType}]->(child) WHERE id(n) IN [${gNode.id}] RETURN n, r, child`;
           const result = await _fetchNeighbors(q);
           if (result) {
             result.nodes.forEach((n, k) => merged.nodes.set(k, n));
@@ -256,68 +224,23 @@ export function GraphFrame({
           }
         }),
       );
-      if (siblingSourceRels && siblingSourceRels.length > 0) {
-        const sibNodeKey = [...merged.nodes.keys()].find((k) => {
-          const n = merged.nodes.get(k)!;
-          return String(n.id) === String(pkValue) && n.label !== gNode.label;
-        });
-        if (sibNodeKey) {
-          merged.nodes.delete(sibNodeKey);
-          merged.edges.forEach((edge) => {
-            if (`${edge.startNode.label}:${edge.startNode.id}` === sibNodeKey)
-              edge.startNode = gNode;
-          });
-        }
-      }
       return merged.nodes.size > 0 || merged.edges.size > 0 ? merged : null;
     },
-    [pkMap, relationships, _resolveNodeForKey, _fetchNeighbors],
+    [relationships, _resolveNodeForKey, _fetchNeighbors],
   );
 
   const _fetchParentsForNode = useCallback(
     async (nodeKey: string): Promise<MergedOverlay | null> => {
       const gNode = _resolveNodeForKey(nodeKey);
-      if (!gNode) return null;
+      if (!gNode || gNode.id == null) return null;
       const tableLabel = gNode.tableLabel;
-      const pkCols = pkMap[gNode.label] ?? [];
-      const pkCol = pkCols[0] ?? null;
-      const pkValue = gNode.properties[pkCol ?? ""] ?? gNode.id;
-      const pkLit =
-        pkValue === null || pkValue === undefined
-          ? null
-          : isNaN(Number(pkValue))
-            ? `'${String(pkValue).replace(/'/g, "\\'")}'`
-            : String(pkValue);
-      if (!pkLit || !pkCol) return null;
       const rels = (relationships ?? []).filter((r) => dbTableLabel(r.targetTableName) === tableLabel);
-      const myPkKey = pkCols.join(",");
-      const siblingTargetRels =
-        rels.length === 0
-          ? (() => {
-              const siblingLabels = Object.entries(pkMap)
-                .filter(
-                  ([lbl, cols]) =>
-                    cols.join(",") === myPkKey && lbl !== gNode.label,
-                )
-                .map(([lbl]) => labelToTableLabel[lbl] ?? lbl);
-              return (relationships ?? []).filter((r) =>
-                siblingLabels.includes(dbTableLabel(r.targetTableName)),
-              );
-            })()
-          : null;
-      const effectiveRels = rels.length > 0 ? rels : (siblingTargetRels ?? []);
-      const effectiveLabel =
-        rels.length > 0
-          ? tableLabel
-          : (siblingTargetRels && siblingTargetRels.length > 0
-              ? dbTableLabel(siblingTargetRels[0].targetTableName)
-              : tableLabel);
-      if (effectiveRels.length === 0) return null;
+      if (rels.length === 0) return null;
       const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
       await Promise.all(
-        effectiveRels.map(async (r) => {
+        rels.map(async (r) => {
           const relType = (r.alias ?? r.computedCypherAlias ?? "").toUpperCase();
-          const q = `MATCH (parent)-[r:${relType}]->(n:${effectiveLabel}) WHERE n.${pkCol} = ${pkLit} RETURN n, r, parent`;
+          const q = `MATCH (parent)-[r:${relType}]->(n:${gNode.label}) WHERE id(n) IN [${gNode.id}] RETURN n, r, parent`;
           const result = await _fetchNeighbors(q);
           if (result) {
             result.nodes.forEach((n, k) => merged.nodes.set(k, n));
@@ -325,21 +248,9 @@ export function GraphFrame({
           }
         }),
       );
-      if (siblingTargetRels && siblingTargetRels.length > 0) {
-        const sibNodeKey = [...merged.nodes.keys()].find((k) => {
-          const n = merged.nodes.get(k)!;
-          return String(n.id) === String(pkValue) && n.label !== gNode.label;
-        });
-        if (sibNodeKey) {
-          merged.nodes.delete(sibNodeKey);
-          merged.edges.forEach((edge) => {
-            if (`${edge.endNode.label}:${edge.endNode.id}` === sibNodeKey) edge.endNode = gNode;
-          });
-        }
-      }
       return merged.nodes.size > 0 || merged.edges.size > 0 ? merged : null;
     },
-    [pkMap, relationships, _resolveNodeForKey, _fetchNeighbors],
+    [relationships, _resolveNodeForKey, _fetchNeighbors],
   );
 
   const handleToggleChildren = useCallback(
@@ -591,7 +502,7 @@ export function GraphFrame({
     const allEdges = overlayEdges.size > 0 ? new Map([...frame.edges, ...overlayEdges]) : frame.edges;
     const labelCounts = new Map<string, number>();
     allNodes.forEach((n) => {
-      n.label.split(":").forEach((lbl) => labelCounts.set(lbl, (labelCounts.get(lbl) ?? 0) + 1));
+      labelCounts.set(n.label, (labelCounts.get(n.label) ?? 0) + 1);
     });
     const typeCounts = new Map<string, number>();
     allEdges.forEach((e) => typeCounts.set(e.type, (typeCounts.get(e.type) ?? 0) + 1));
