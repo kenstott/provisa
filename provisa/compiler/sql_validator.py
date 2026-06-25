@@ -109,7 +109,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
                 bypass_uncovered=bypass_uncovered_relationships,
             )
     violations += _check_column_visibility(tree, gov_ctx, cte_names_set)
-    violations += _check_dag(tree, gov_ctx, valid_joins, cte_names_set)
+    violations += _check_dag(tree, gov_ctx, cte_names_set)
     violations += _check_masked_in_predicate(tree, gov_ctx, cte_names_set)
 
     return violations
@@ -395,7 +395,6 @@ def _collect_columns(expr: exp.Expr) -> list[exp.Column]:
 def _check_dag(
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
-    _valid_joins: set[tuple[int, int, str, str]],
     cte_names_set: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
     """Prune back-edges from cyclic join graphs rather than rejecting them.
@@ -420,7 +419,7 @@ def _check_dag(
                 tgt_tid = _resolve_table_id(tbl, gov_ctx)
                 if tgt_tid is None:
                     continue
-                for lt, _lc, rt, _rc in _extract_eq_pairs(on_expr):  # pyright: ignore[reportUnusedVariable]
+                for lt, rt in ((p[0], p[2]) for p in _extract_eq_pairs(on_expr)):
                     lt_id = am.get(lt)
                     rt_id = am.get(rt)
                     if lt_id is None or rt_id is None:

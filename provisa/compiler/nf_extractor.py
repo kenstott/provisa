@@ -226,10 +226,7 @@ def drop_union_branches_for_table(sql: str, table_name: str) -> str:  # REQ-599
         return sql
 
     def _has_from_table(select: exp.Select) -> bool:  # pyright: ignore[reportPrivateImportUsage]
-        from_clause = select.args.get("from_") or select.args.get("from")
-        if from_clause is None:
-            return False
-        return any(t.name == table_name for t in from_clause.find_all(exp.Table))
+        return any(t.name == table_name for t in select.find_all(exp.Table))
 
     root = tree
     modified = False
