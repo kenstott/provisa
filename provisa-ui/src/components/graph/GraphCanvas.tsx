@@ -14,7 +14,7 @@
    render-phase adjustments. Ref reads during render are intrinsic to driving the
    imperative graph engine and are intentional throughout this module */
 
-import { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useLayoutEffect, useState, useCallback, type ReactNode } from "react";
 import type { Relationship } from "../../types/admin";
 import { labelColor, darkenColor, clusterColor } from "./graph-model";
 import type { GNode, GEdge, GraphStats, RelLineOverride } from "./graph-model";
@@ -55,6 +55,14 @@ try {
   /* already registered */
 }
 
+function resolveNodeLabel(n: GNode): string {
+  if ("name" in n.properties) return String(n.properties["name"]);
+  const nameKey = Object.keys(n.properties).find((k) => k.toLowerCase().includes("name"));
+  if (nameKey) return String(n.properties[nameKey]);
+  if ("title" in n.properties) return String(n.properties["title"]);
+  return String(n.id);
+}
+
 interface CanvasProps {
   nodes: Map<string, GNode>;
   edges: Map<string, GEdge>;
@@ -85,6 +93,7 @@ interface CanvasProps {
   onCyReady?: (cy: CyInstance | null) => void;
   clusterLevel: ClusterLevel;
   hullSvgRef?: React.Ref<SVGSVGElement>;
+  isExpanded?: boolean;
 }
 
 type LayoutMode = "force" | "hierarchy";
@@ -189,6 +198,7 @@ export function GraphCanvas({
   onCyReady,
   clusterLevel,
   hullSvgRef,
+  isExpanded,
 }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
@@ -431,6 +441,32 @@ export function GraphCanvas({
   const [nodeCtxMenu, setNodeCtxMenu] = useState<NodeCtxMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Node left-click ring menu
+  type NodeRingMenuState = { x: number; y: number; nodeKey: string; node: GNode; graphStats?: GraphStats; isLocked: boolean };
+  const [nodeRingMenu, setNodeRingMenu] = useState<NodeRingMenuState | null>(null);
+  const ringMenuRef = useRef<HTMLDivElement>(null);
+
+  // Track node position as viewport changes (pan / zoom)
+  useEffect(() => {
+    if (!nodeRingMenu || !cyRef.current) return;
+    const cy = cyRef.current;
+    const update = () => {
+      if (!ringMenuRef.current) return;
+      const cyNode = cy.$id(nodeRingMenu.nodeKey);
+      if (!cyNode || (cyNode as unknown as { length: number }).length === 0) return;
+      const rp = (cyNode as unknown as { renderedPosition: () => { x: number; y: number } }).renderedPosition();
+      const zoom = cy.zoom();
+      const size = Math.round(Math.max(80, Math.min(240, 120 * zoom)));
+      ringMenuRef.current.style.left = `${rp.x}px`;
+      ringMenuRef.current.style.top = `${rp.y}px`;
+      const svg = ringMenuRef.current.querySelector<SVGSVGElement>("svg");
+      if (svg) { svg.setAttribute("width", String(size)); svg.setAttribute("height", String(size)); }
+    };
+    update();
+    cy.on("viewport", update);
+    return () => { cy.off("viewport", update); };
+  }, [nodeRingMenu]);
+
   // Clamp menu inside canvas-wrap after each render so it never gets clipped
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -530,7 +566,7 @@ export function GraphCanvas({
                 "label",
                 prop
                   ? String(n.properties[prop] ?? n.id)
-                  : String(n.properties["name"] ?? n.properties["title"] ?? n.id),
+                  : resolveNodeLabel(n),
               );
             }
             if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
@@ -651,7 +687,7 @@ export function GraphCanvas({
                     "label",
                     prop
                       ? String(n.properties[prop] ?? n.id)
-                      : String(n.properties["name"] ?? n.properties["title"] ?? n.id),
+                      : resolveNodeLabel(n),
                   );
                 }
                 if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
@@ -762,6 +798,7 @@ export function GraphCanvas({
       layout: { name: "null" } as CyLayoutOptions,
       minZoom: 0.05,
       maxZoom: 8,
+      userZoomingEnabled: false,
       /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
          cytoscape() returns the library's own Core type; we cast through any to our local CyInstance shim which models only the subset of the API this component uses */
     }) as any as CyInstance;
@@ -776,9 +813,6 @@ export function GraphCanvas({
         const gn = evt.target.data("_node") as GNode | undefined;
         let graphStats: GraphStats | undefined;
         if (gn) {
-          // Use pre-computed deg_in/out/total from augmentedNodes (computed before grouping)
-          // rather than Cytoscape's structural degree, which is wrong when grouped because
-          // cross-cluster edges are replaced by meta-edges on the compound node.
           const totalReal = nodesRef.current.size;
           const inDeg = Number(gn.properties.deg_in ?? 0);
           const outDeg = Number(gn.properties.deg_out ?? 0);
@@ -793,7 +827,11 @@ export function GraphCanvas({
             ...(gn.properties.scl3 != null ? { schema_L3: String(gn.properties.scl3) } : {}),
           };
         }
-        onSelect({ kind: "node", data: evt.target.data("_node") as GNode, graphStats });
+        if (gn) {
+          const pos = evt.renderedPosition ?? evt.position;
+          const isLocked = anchoredRef.current.has(evt.target.id() as string);
+          setNodeRingMenu({ x: pos.x, y: pos.y, nodeKey: evt.target.id() as string, node: gn, graphStats, isLocked });
+        }
       }
     });
     cy.on("tap", "edge", (evt) => {
@@ -805,6 +843,7 @@ export function GraphCanvas({
       if (evt.target === cy) {
         onSelect(null);
         setNodeCtxMenu(null);
+        setNodeRingMenu(null);
       }
     });
     cy.on("cxttap", "node", (evt) => {
@@ -818,6 +857,10 @@ export function GraphCanvas({
     cy.on("cxttap", (evt) => {
       if (evt.target === cy) setNodeCtxMenu(null);
     });
+    cy.on("mouseover", "node", (evt) => { evt.target.addClass("hovered"); });
+    cy.on("mouseout", "node", (evt) => { evt.target.removeClass("hovered"); });
+    cy.on("mouseover", "edge", (evt) => { evt.target.addClass("hovered"); });
+    cy.on("mouseout", "edge", (evt) => { evt.target.removeClass("hovered"); });
     cy.on("layoutstop", () => { if (pendingNudgesRef.current === 0) computeHulls(); });
     cy.on("viewport", computeHulls);
     // Track manually dragged nodes as anchored, then auto-nudge
@@ -1038,7 +1081,7 @@ export function GraphCanvas({
         const prop = labelPropertyRef.current[n.label];
         const txt = prop
           ? String(n.properties[prop] ?? n.id)
-          : String(n.properties["name"] ?? n.properties["title"] ?? n.id);
+          : resolveNodeLabel(n);
         node.style("label", txt);
       });
     });
@@ -1056,6 +1099,10 @@ export function GraphCanvas({
       });
     });
   }, [relLineOverrides]);
+
+  useEffect(() => {
+    cyRef.current?.userZoomingEnabled(!!isExpanded);
+  }, [isExpanded]);
 
   return (
     <div
@@ -1210,6 +1257,135 @@ export function GraphCanvas({
           title={`Edge length: ${edgeDistance}px`}
         />
       </div>
+      {nodeRingMenu && (() => {
+        const R1 = 26, R2 = 54;
+        // Full 120° sector, no gap — separator lines drawn on top
+        const arcSector = (centerDeg: number) => {
+          const a1 = ((centerDeg - 60) * Math.PI) / 180;
+          const a2 = ((centerDeg + 60) * Math.PI) / 180;
+          const ox1 = R2 * Math.cos(a1), oy1 = R2 * Math.sin(a1);
+          const ox2 = R2 * Math.cos(a2), oy2 = R2 * Math.sin(a2);
+          const ix1 = R1 * Math.cos(a2), iy1 = R1 * Math.sin(a2);
+          const ix2 = R1 * Math.cos(a1), iy2 = R1 * Math.sin(a1);
+          return `M ${ox1.toFixed(2)} ${oy1.toFixed(2)} A ${R2} ${R2} 0 0 1 ${ox2.toFixed(2)} ${oy2.toFixed(2)} L ${ix1.toFixed(2)} ${iy1.toFixed(2)} A ${R1} ${R1} 0 0 0 ${ix2.toFixed(2)} ${iy2.toFixed(2)} Z`;
+        };
+        // Boundary angles between the 3 sectors (at ±60° from each center)
+        const separatorLines = [90, 210, 330].map((deg) => {
+          const rad = (deg * Math.PI) / 180;
+          return { x1: R1 * Math.cos(rad), y1: R1 * Math.sin(rad), x2: R2 * Math.cos(rad), y2: R2 * Math.sin(rad) };
+        });
+        const midPos = (centerDeg: number) => {
+          const r = (R1 + R2) / 2;
+          const rad = (centerDeg * Math.PI) / 180;
+          return { x: r * Math.cos(rad), y: r * Math.sin(rad) };
+        };
+        const sectors: { angle: number; key: string; title: string; active: boolean; iconPath: ReactNode }[] = [
+          {
+            angle: 270, key: "lock", active: nodeRingMenu.isLocked,
+            title: nodeRingMenu.isLocked ? "Unlock position" : "Lock position",
+            iconPath: (
+              <>
+                <rect x="-4" y="-1" width="8" height="6" rx="1" fill="currentColor"/>
+                <path d="M-3-1 v-2 a3 3 0 0 1 6 0 v2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </>
+            ),
+          },
+          {
+            angle: 30, key: "children", active: showingChildrenNatural.has(nodeRingMenu.nodeKey),
+            title: showingChildrenNatural.has(nodeRingMenu.nodeKey) ? "Hide children" : "Show children",
+            iconPath: (
+              <>
+                <circle cx="0" cy="-3.5" r="1.8" fill="currentColor"/>
+                <circle cx="-3.5" cy="3" r="1.8" fill="currentColor"/>
+                <circle cx="3.5" cy="3" r="1.8" fill="currentColor"/>
+                <line x1="0" y1="-1.7" x2="-3.5" y2="1.2" stroke="currentColor" strokeWidth="1.1"/>
+                <line x1="0" y1="-1.7" x2="3.5" y2="1.2" stroke="currentColor" strokeWidth="1.1"/>
+              </>
+            ),
+          },
+          {
+            angle: 150, key: "exclude", active: false,
+            title: "Remove node",
+            iconPath: (
+              <>
+                <circle cx="0" cy="0" r="5" fill="none" stroke="currentColor" strokeWidth="1.5"/>
+                <line x1="-2.8" y1="-2.8" x2="2.8" y2="2.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <line x1="2.8" y1="-2.8" x2="-2.8" y2="2.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </>
+            ),
+          },
+        ];
+        return (
+          <>
+            <div
+              style={{ position: "absolute", inset: 0, zIndex: 899 }}
+              onClick={() => setNodeRingMenu(null)}
+            />
+          <div
+            ref={ringMenuRef}
+            className="gf-node-ring-menu"
+            style={{ left: nodeRingMenu.x, top: nodeRingMenu.y }}
+          >
+            <svg
+              viewBox="-60 -60 120 120"
+              width="120"
+              height="120"
+              style={{ overflow: "visible", display: "block", pointerEvents: "all" }}
+            >
+              {sectors.map(({ angle, key, title, active, iconPath }) => {
+                const mp = midPos(angle);
+                return (
+                  <g
+                    key={key}
+                    style={{ cursor: "pointer" }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (key === "lock") {
+                        const cy = cyRef.current;
+                        if (!cy) return;
+                        const cyNode = cy.$id(nodeRingMenu.nodeKey);
+                        if (nodeRingMenu.isLocked) {
+                          cyNode.unlock();
+                          anchoredRef.current.delete(nodeRingMenu.nodeKey);
+                          cyNode.removeClass("pinned");
+                        } else {
+                          cyNode.lock();
+                          anchoredRef.current.add(nodeRingMenu.nodeKey);
+                          cyNode.addClass("pinned");
+                        }
+                      } else if (key === "children") {
+                        onToggleChildren(nodeRingMenu.nodeKey);
+                      } else {
+                        onExcludeNode([nodeRingMenu.nodeKey]);
+                      }
+                      setNodeRingMenu(null);
+                    }}
+                  >
+                    <title>{title}</title>
+                    <path
+                      d={arcSector(angle)}
+                      fill={active ? "rgba(99,102,241,0.35)" : "rgba(17,19,24,0.92)"}
+                      stroke="#3a3d52"
+                      strokeWidth="1"
+                    />
+                    <path d={arcSector(angle)} fill="transparent" stroke="transparent" strokeWidth="10"/>
+                    <g
+                      transform={`translate(${mp.x.toFixed(2)},${mp.y.toFixed(2)})`}
+                      color={active ? "#a5b4fc" : "#9ca3af"}
+                    >
+                      {iconPath}
+                    </g>
+                  </g>
+                );
+              })}
+              {separatorLines.map(({ x1, y1, x2, y2 }, i) => (
+                <line key={i} x1={x1.toFixed(2)} y1={y1.toFixed(2)} x2={x2.toFixed(2)} y2={y2.toFixed(2)} stroke="#3a3d52" strokeWidth="1.5" style={{ pointerEvents: "none" }} />
+              ))}
+            </svg>
+          </div>
+          </>
+        );
+      })()}
       {nodeCtxMenu && (
         <NodeContextMenu
           menu={nodeCtxMenu}
