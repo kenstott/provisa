@@ -14,6 +14,7 @@
    ref reads/writes during render are intentional throughout this module. */
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { Network, Table2, Braces, BarChart2, Code2 } from "lucide-react";
 import type { Relationship } from "../../types/admin";
 import { extractElements, injectExclusion } from "./graph-model";
 import type { GNode, GEdge, GraphStats, RelLineOverride, FrameData } from "./graph-model";
@@ -63,6 +64,9 @@ interface GraphFrameProps {
   autoImpute?: boolean;
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<void>;
   onSelectedLabelChange?: (label: string | null) => void;
+  onAddFavorite?: (query: string) => void;
+  isFavorited?: (query: string) => boolean;
+  onPin?: (id: string) => void;
   onEffectiveDataChange?: (
     frameId: string,
     nodes: Map<string, GNode>,
@@ -89,15 +93,20 @@ export function GraphFrame({
   autoImpute: autoImputeProp = false,
   onSaveEdgeAlias,
   onSelectedLabelChange,
+  onAddFavorite,
+  isFavorited,
+  onPin,
   onEffectiveDataChange,
 }: GraphFrameProps) {
-  const [view, setView] = useState<"graph" | "table" | "json" | "graphstats">("graph");
+  const [view, setView] = useState<"graph" | "table" | "json" | "graphstats" | "code">("graph");
   const [selected, setSelectedRaw] = useState<
     { kind: "node"; data: GNode; graphStats?: GraphStats } | { kind: "edge"; data: GEdge } | null
   >(null);
+  const [inspectorVisible, setInspectorVisible] = useState(true);
   const setSelected = useCallback(
     (s: { kind: "node"; data: GNode; graphStats?: GraphStats } | { kind: "edge"; data: GEdge } | null) => {
       setSelectedRaw(s);
+      if (s !== null) setInspectorVisible(true);
       onSelectedLabelChange?.(s?.kind === "node" ? s.data.label : null);
     },
     [onSelectedLabelChange],
@@ -110,6 +119,9 @@ export function GraphFrame({
   const [editQuery, setEditQuery] = useState(frame.query);
   const editQueryRef = useRef(editQuery);
   editQueryRef.current = editQuery;
+  const [queryFocused, setQueryFocused] = useState(false);
+  const editorViewRef = useRef<import("@codemirror/view").EditorView | null>(null);
+  const pendingFocusRef = useRef(false);
   /* eslint-disable react-hooks/set-state-in-effect -- sync the editable query buffer to the frame.query prop when the frame is re-run or replaced externally */
   useEffect(() => {
     setEditQuery(frame.query);
@@ -699,42 +711,68 @@ export function GraphFrame({
       .map(([k]) => k);
     return ["domain", ...schemaVirtuals, ...degreeVirtuals, ...regularAttrs].sort((a, b) => a.localeCompare(b));
   }, [augmentedNodes]);
-  const activeView: "graph" | "table" | "json" | "graphstats" = hasGraph
+  const activeView: "graph" | "table" | "json" | "graphstats" | "code" = hasGraph
     ? view
     : view === "json"
       ? "json"
       : view === "graphstats"
         ? "graphstats"
-        : "table";
+        : view === "code"
+          ? "code"
+          : "table";
 
   const renderHeader = (isModal: boolean) => (
     <div className="gf-header">
       <div className="gf-query-editor-wrap">
-        <CodeMirror
-          className="gf-header-query-input"
-          value={editQuery}
-          theme={oneDark}
-          minHeight="2.8em"
-          extensions={[
-            ..._gfCypherLangExts,
-            _gfCypherLinter({ showErrors: false }),
-            EditorView.lineWrapping,
-            Prec.highest(
-              keymap.of([
-                {
-                  key: "Enter",
-                  run: () => {
-                    handleRerun(frame.id, editQuery.trim());
-                    return true;
+        {!queryFocused && (
+          <div
+            className="gf-header-query-collapsed"
+            onClick={() => {
+              setQueryFocused(true);
+              pendingFocusRef.current = true;
+            }}
+            title={editQuery}
+          >
+            {editQuery.replace(/\s*\n\s*/g, " ")}
+          </div>
+        )}
+        {queryFocused && (
+          <CodeMirror
+            className="gf-header-query-input"
+            value={editQuery}
+            theme={oneDark}
+            minHeight="2.8em"
+            extensions={[
+              ..._gfCypherLangExts,
+              _gfCypherLinter({ showErrors: false }),
+              EditorView.lineWrapping,
+              Prec.highest(
+                keymap.of([
+                  {
+                    key: "Enter",
+                    run: () => {
+                      handleRerun(frame.id, editQuery.trim());
+                      return true;
+                    },
                   },
-                },
-              ]),
-            ),
-          ]}
-          onChange={(val) => setEditQuery(val)}
-          onUpdate={(vu) => { if (vu.docChanged) vu.view.requestMeasure(); }}
-          basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
-        />
+                ]),
+              ),
+            ]}
+            onChange={(val) => setEditQuery(val)}
+            onCreateEditor={(view) => {
+              editorViewRef.current = view;
+              if (pendingFocusRef.current) {
+                pendingFocusRef.current = false;
+                view.focus();
+              }
+            }}
+            onUpdate={(vu) => {
+              if (vu.docChanged) vu.view.requestMeasure();
+              if (vu.focusChanged && !vu.view.hasFocus) setQueryFocused(false);
+            }}
+            basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
+          />
+        )}
         <CopySymbolButton text={editQuery} className="gf-copy-query-btn" title="Copy query" />
       </div>
       <div className="gf-header-right">
@@ -772,6 +810,15 @@ export function GraphFrame({
               {collapsed ? "▼" : "▲"}
             </button>
           )}
+          {!isModal && onPin && (
+            <button
+              className={`gf-icon-btn${frame.pinned ? " gf-icon-btn--on" : ""}`}
+              onClick={() => onPin(frame.id)}
+              title={frame.pinned ? "Unpin (unpin to allow sorting)" : "Pin to top"}
+            >
+              📌
+            </button>
+          )}
           {!isModal && (
             <button className="gf-icon-btn" onClick={() => onClose(frame.id)} title="Close">
               ✕
@@ -786,6 +833,15 @@ export function GraphFrame({
         >
           ▶
         </button>
+        {onAddFavorite && (
+          <button
+            className={`gf-icon-btn${isFavorited?.(editQuery.trim()) ? " gf-icon-btn--on" : ""}`}
+            title={isFavorited?.(editQuery.trim()) ? "Remove from favorites" : "Add to favorites"}
+            onClick={() => onAddFavorite(editQuery.trim())}
+          >
+            ★
+          </button>
+        )}
         {hasGraph && frame.status === "done" && (
           <button
             className={`gf-icon-btn${autoImpute ? " gf-icon-btn--on" : ""}`}
@@ -813,38 +869,6 @@ export function GraphFrame({
               </option>
             ))}
           </select>
-        )}
-        {hasGraph && (
-          <button
-            className={`gf-view-btn ${activeView === "graph" ? "active" : ""}`}
-            onClick={() => setView("graph")}
-            title="Graph"
-          >
-            ✦
-          </button>
-        )}
-        <button
-          className={`gf-view-btn ${activeView === "table" ? "active" : ""}`}
-          onClick={() => setView("table")}
-          title="Table"
-        >
-          ⊞
-        </button>
-        <button
-          className={`gf-view-btn ${activeView === "json" ? "active" : ""}`}
-          onClick={() => setView("json")}
-          title="JSON"
-        >
-          {"{}"}
-        </button>
-        {hasGraph && (
-          <button
-            className={`gf-view-btn ${activeView === "graphstats" ? "active" : ""}`}
-            onClick={() => setView(activeView === "graphstats" ? "graph" : "graphstats")}
-            title="Graph statistics"
-          >
-            ∑
-          </button>
         )}
         {activeView === "table" && frame.rows.length > 0 && (
           <button
@@ -958,6 +982,69 @@ export function GraphFrame({
 
   const frameBody = (
     <div className="gf-body">
+      <div className="gf-view-bar">
+        {hasGraph && (
+          <button
+            className={`gf-view-bar-btn ${activeView === "graph" ? "active" : ""}`}
+            onClick={() => setView("graph")}
+            title="Graph"
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+              <circle cx="3" cy="8" r="2"/>
+              <circle cx="13" cy="4" r="2"/>
+              <circle cx="13" cy="12" r="2"/>
+              <line x1="5" y1="7.1" x2="11" y2="4.9" stroke="currentColor" strokeWidth="1.3"/>
+              <line x1="5" y1="8.9" x2="11" y2="11.1" stroke="currentColor" strokeWidth="1.3"/>
+            </svg>
+          </button>
+        )}
+        <button
+          className={`gf-view-bar-btn ${activeView === "table" ? "active" : ""}`}
+          onClick={() => setView("table")}
+          title="Table"
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="1"/>
+            <line x1="1.5" y1="6" x2="14.5" y2="6"/>
+            <line x1="1.5" y1="9.5" x2="14.5" y2="9.5"/>
+            <line x1="6" y1="6" x2="6" y2="13.5"/>
+          </svg>
+        </button>
+        <button
+          className={`gf-view-bar-btn ${activeView === "json" ? "active" : ""}`}
+          onClick={() => setView("json")}
+          title="JSON"
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+            <text x="1" y="12" fontSize="10" fontFamily="monospace">{"{}"}</text>
+          </svg>
+        </button>
+        {hasGraph && (
+          <button
+            className={`gf-view-bar-btn ${activeView === "graphstats" ? "active" : ""}`}
+            onClick={() => setView(activeView === "graphstats" ? "graph" : "graphstats")}
+            title="Graph statistics"
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+              <rect x="1" y="9" width="3" height="5"/>
+              <rect x="5.5" y="5" width="3" height="9"/>
+              <rect x="10" y="2" width="3" height="12"/>
+            </svg>
+          </button>
+        )}
+        <button
+          className={`gf-view-bar-btn ${activeView === "code" ? "active" : ""}`}
+          onClick={() => setView("code")}
+          title="Code"
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+            <polyline points="5,4 1,8 5,12"/>
+            <polyline points="11,4 15,8 11,12"/>
+            <line x1="9" y1="3" x2="7" y2="13"/>
+          </svg>
+        </button>
+      </div>
+      <div className="gf-body-content">
       {frame.status === "error" && (
         <div className="gf-error gf-error--copyable">
           <span className="gf-error-text">{frame.error}</span>
@@ -1005,19 +1092,31 @@ export function GraphFrame({
             }}
             clusterLevel={clusterLevel}
             hullSvgRef={canvasHullSvgRef}
+            isExpanded={expanded}
           />
-          <Inspector
-            selected={selected}
-            graphStats={selected?.kind === "node" ? selected.graphStats : undefined}
-            colorOverrides={colorOverrides}
-            onColorChange={onColorChange}
-            onClose={() => setSelected(null)}
-            width={inspectorWidth}
-            onResizeStart={handleResizeStart}
-            relationships={relationships}
-            onSaveEdgeAlias={onSaveEdgeAlias}
-            pkMap={pkMap}
-          />
+          {!inspectorVisible && (
+            <button
+              className="gf-insp-show-btn"
+              onClick={() => setInspectorVisible(true)}
+              title="Show properties panel"
+            >
+              ‹
+            </button>
+          )}
+          {inspectorVisible && (
+            <Inspector
+              selected={selected}
+              graphStats={selected?.kind === "node" ? selected.graphStats : undefined}
+              colorOverrides={colorOverrides}
+              onColorChange={onColorChange}
+              onClose={() => setInspectorVisible(false)}
+              width={inspectorWidth}
+              onResizeStart={handleResizeStart}
+              relationships={relationships}
+              onSaveEdgeAlias={onSaveEdgeAlias}
+              pkMap={pkMap}
+            />
+          )}
         </div>
       )}
       {frame.status !== "error" && activeView === "table" && (
@@ -1057,6 +1156,49 @@ export function GraphFrame({
           height={graphAreaHeight}
         />
       )}
+      {frame.status !== "error" && activeView === "code" && (() => {
+        type SourceEntry = { field?: string; source?: string; strategy?: string; elapsed_ms?: number; rows?: number; physical_sql?: string; cache_hit?: boolean };
+        const stats = frame.queryStats as { total_elapsed_ms?: number; sources?: SourceEntry[]; mermaid?: string } | undefined;
+        const sqlQueries = (stats?.sources ?? [])
+          .filter((s) => s.physical_sql)
+          .map((s) => ({
+            field: s.field,
+            source: s.source,
+            strategy: s.strategy,
+            elapsed_ms: s.elapsed_ms,
+            rows: s.rows,
+            ...(s.cache_hit ? { cache_hit: true } : {}),
+            sql: s.physical_sql,
+          }));
+        const codeData: Record<string, unknown> = {
+          query: frame.query,
+          summary: {
+            nodes: frame.nodes.size,
+            relationships: frame.edges.size,
+            rows: frame.rows.length,
+            columns: frame.columns,
+            ...(frame.elapsed !== undefined ? { elapsed_ms: frame.elapsed } : {}),
+          },
+          ...(sqlQueries.length > 0 ? { sql: sqlQueries } : {}),
+          ...(stats ? { stats: { total_elapsed_ms: stats.total_elapsed_ms, sources: (stats.sources ?? []).map(({ physical_sql: _, ...rest }) => rest) } } : {}),
+        };
+        const jsonStr = JSON.stringify(codeData, null, 2);
+        return (
+          <div className="gf-json-wrap">
+            <CodeMirror
+              className="gf-json-view"
+              value={jsonStr}
+              theme={oneDark}
+              height={`${graphAreaHeight}px`}
+              readOnly
+              basicSetup={{ foldGutter: true, lineNumbers: true }}
+              extensions={[jsonLang(), EditorView.lineWrapping]}
+            />
+            <JsonCopyButton text={jsonStr} />
+          </div>
+        );
+      })()}
+      </div>
     </div>
   );
 

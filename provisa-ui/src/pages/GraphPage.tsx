@@ -23,6 +23,7 @@ import { useRelationships, useUpsertRelationship } from "../hooks/useAdminQuerie
 import { useAuth } from "../context/AuthContext";
 import "./GraphPage.css";
 import { useLocalStorage, graphState, saveGraphState } from "../components/graph/graph-persistence";
+import type { Favorite } from "../components/graph/graph-persistence";
 import type {
   SchemaNodeLabel,
   SchemaRel,
@@ -47,6 +48,7 @@ export function GraphPage() {
   const [schemaNodeLabels, setSchemaNodeLabels] = useState<SchemaNodeLabel[]>([]);
   const [schemaRels, setSchemaRels] = useState<SchemaRel[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(true);
+  const [totalNodeCount, setTotalNodeCount] = useState<number | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
   const [colorOverrides, setColorOverrides] = useLocalStorage<Record<string, string>>(
@@ -70,7 +72,7 @@ export function GraphPage() {
     {},
   );
   const [autoImpute, setAutoImpute] = useLocalStorage<boolean>("provisa.graph.autoImpute", false);
-  const [statsEnabled, setStatsEnabled] = useLocalStorage<boolean>("provisa.graph.statsEnabled", false);
+const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.favorites", []);
   const [relLineOverrides, setRelLineOverrides] = useLocalStorage<Record<string, RelLineOverride>>(
     "provisa.graph.relLineOverrides",
     {},
@@ -105,6 +107,25 @@ export function GraphPage() {
   const clusterMapRef = useRef<
     Record<string, { scl1: number | null; scl2: number | null; scl3: number | null }>
   >({});
+
+  const handleAddFavorite = useCallback((query: string) => {
+    const trimmed = query.trim();
+    setFavorites((prev) => {
+      const existing = prev.find((f) => f.query === trimmed);
+      if (existing) return prev.filter((f) => f.query !== trimmed);
+      const label = trimmed.split("\n")[0].slice(0, 50);
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      return [...prev, { id, query: trimmed, label, ts: Date.now() }];
+    });
+  }, [setFavorites]);
+
+  const handleFavoriteDelete = useCallback((id: string) => {
+    setFavorites((prev) => prev.filter((f) => f.id !== id));
+  }, [setFavorites]);
+
+  const isFavorited = useCallback((query: string) => {
+    return favorites.some((f) => f.query === query.trim());
+  }, [favorites]);
 
   // Fetch schema when role changes via dedicated graph-schema endpoint
   useEffect(() => {
@@ -181,6 +202,23 @@ export function GraphPage() {
        keyed on role.id only; the full role object identity changes on unrelated auth refreshes and must not refetch the graph schema */
   }, [role?.id]);
 
+  useEffect(() => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (role) headers["X-Provisa-Role"] = role.id;
+    fetch("/data/cypher", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ query: "MATCH (n) RETURN count(n) AS count" }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        const row = data?.rows?.[0];
+        if (row && typeof row.count === "number") setTotalNodeCount(row.count);
+      })
+      .catch(() => {});
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [role?.id]);
+
   const runQuery = useCallback(
     async (query: string) => {
       if (!query) return;
@@ -212,7 +250,7 @@ export function GraphPage() {
       try {
         const hdrs: Record<string, string> = { "Content-Type": "application/json" };
         if (role) hdrs["X-Provisa-Role"] = role.id;
-        if (statsEnabled) hdrs["X-Provisa-Stats"] = "true";
+        hdrs["X-Provisa-Stats"] = "true";
         const res = await fetch("/data/cypher", {
           method: "POST",
           headers: hdrs,
@@ -272,7 +310,7 @@ export function GraphPage() {
         });
       }
     },
-    [role, statsEnabled],
+    [role],
   );
 
   // Auto-execute a query forwarded from another page (e.g. Cypher panel → Graph).
@@ -288,6 +326,15 @@ export function GraphPage() {
   const closeFrame = useCallback((id: string) => {
     setFrames((f) => {
       const next = f.filter((fr) => fr.id !== id);
+      graphState.frames = next;
+      saveGraphState(graphState);
+      return next;
+    });
+  }, []);
+
+  const handlePin = useCallback((id: string) => {
+    setFrames((f) => {
+      const next = f.map((fr) => fr.id === id ? { ...fr, pinned: !fr.pinned } : fr);
       graphState.frames = next;
       saveGraphState(graphState);
       return next;
@@ -321,7 +368,7 @@ export function GraphPage() {
       try {
         const hdrs2: Record<string, string> = { "Content-Type": "application/json" };
         if (role) hdrs2["X-Provisa-Role"] = role.id;
-        if (statsEnabled) hdrs2["X-Provisa-Stats"] = "true";
+        hdrs2["X-Provisa-Stats"] = "true";
         const res = await fetch("/data/cypher", {
           method: "POST",
           headers: hdrs2,
@@ -381,7 +428,7 @@ export function GraphPage() {
         });
       }
     },
-    [role, statsEnabled],
+    [role],
   );
 
   const framesRef = useRef(frames);
@@ -657,6 +704,7 @@ export function GraphPage() {
   );
   const handleLabelClick = useCallback(
     (compoundLabel: string) => {
+      if (compoundLabel === "*") { runQuery("MATCH (n) RETURN n LIMIT 25"); return; }
       const node = schemaNodeLabels.find((n) => {
         const cl = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
         return cl === compoundLabel || n.domainLabel === compoundLabel;
@@ -681,7 +729,17 @@ export function GraphPage() {
 
   const handleRelClick = useCallback(
     (type: string) => {
+      if (type === "*") { runQuery("MATCH p=()-->() RETURN p LIMIT 25"); return; }
       runQuery(`MATCH ()-[r:${type}]->() RETURN r LIMIT 25`);
+    },
+    [runQuery],
+  );
+
+  const handlePropertyKeyClick = useCallback(
+    (key: string) => {
+      runQuery(
+        `MATCH (n) WHERE (n.${key}) IS NOT NULL RETURN DISTINCT "node" as entity, n.${key} AS ${key} LIMIT 25 UNION ALL MATCH ()-[r]-() WHERE (r.${key}) IS NOT NULL RETURN DISTINCT "relationship" AS entity, r.${key} AS ${key} LIMIT 25`,
+      );
     },
     [runQuery],
   );
@@ -736,6 +794,9 @@ export function GraphPage() {
         sizeMultiplier={sizeMultiplier}
         relLineOverrides={relLineOverrides}
         onHistorySelect={handleHistorySelect}
+        favorites={favorites}
+        onFavoriteSelect={(q) => setHistoryQuery(q)}
+        onFavoriteDelete={handleFavoriteDelete}
         onLabelClick={handleLabelClick}
         onDomainClick={handleDomainClick}
         onRelClick={handleRelClick}
@@ -750,6 +811,9 @@ export function GraphPage() {
         width={sidebarWidth}
         onWidthChange={setSidebarWidth}
         highlightedLabel={activeLabel}
+        propertyKeys={cypherSchema.propertyKeys}
+        onPropertyKeyClick={handlePropertyKeyClick}
+        totalNodeCount={totalNodeCount}
       />
 
       <div className="graph-content">
@@ -763,8 +827,6 @@ export function GraphPage() {
           cypherSchema={schemaLoading ? undefined : cypherSchema}
           autoImpute={autoImpute}
           onToggleAutoImpute={() => setAutoImpute((v) => !v)}
-          statsEnabled={statsEnabled}
-          onToggleStats={() => setStatsEnabled((v) => !v)}
           key={historyQuery ?? "initial"}
         />
 
@@ -776,7 +838,7 @@ export function GraphPage() {
               <div className="graph-stream-hint">⌘↵ to run</div>
             </div>
           )}
-          {frames.map((frame) => (
+          {[...frames].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).map((frame) => (
             <GraphFrame
               key={frame.id}
               frame={frame}
@@ -798,6 +860,9 @@ export function GraphPage() {
               onSaveEdgeAlias={handleSaveEdgeAlias}
               onSelectedLabelChange={setActiveLabel}
               onEffectiveDataChange={onEffectiveDataChange}
+              onAddFavorite={handleAddFavorite}
+              isFavorited={isFavorited}
+              onPin={handlePin}
             />
           ))}
         </div>
