@@ -583,3 +583,30 @@ def test_varlen_rel_var_recursive_projects_null():
     # recursive CTE path: c → NULL
     assert "NULL" in sql.upper()
     assert "c" in graph_vars
+
+
+# ---------------------------------------------------------------------------
+# Anonymous all-rels path — MATCH p=()-->() RETURN p
+# ---------------------------------------------------------------------------
+
+
+def test_anonymous_path_all_rels_no_empty_table_prefix():
+    """MATCH p=()-->() RETURN p must not generate ."id" (empty table alias).
+
+    Regression: _build_path_object fell through to the fallback branch with
+    src_var="" and tgt_var="", producing exp.Identifier(this="") as the table
+    prefix → SQL parse error from sqlglot.
+    """
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH p=()-->() RETURN p LIMIT 25")
+    sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    # No empty table-prefix column references (e.g. ."id" with no leading identifier)
+    import re
+
+    assert not re.search(r'(?<!["\w])\."id"', sql)
+    assert "p" in graph_vars
+    assert "JSON_OBJECT" in sql.upper()
+    assert "JSON_ARRAY" in sql.upper()
+    # Path built from _all_rels subquery columns, not bare invalid refs
+    assert "_all_rels" in sql

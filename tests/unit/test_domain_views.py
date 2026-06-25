@@ -45,7 +45,7 @@ def _role(*domains: str) -> dict:
 
 
 def _v001(sql, ctx, gov, role):
-    return [v for v in validate_sql(sql, ctx, gov, role, raw_tables=[]) if v.code == "V001"]
+    return [v for v in validate_sql(sql, ctx, gov, role, []) if v.code == "V001"]
 
 
 class TestDomainAccessEnforcement:

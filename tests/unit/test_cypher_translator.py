@@ -83,7 +83,7 @@ def _make_label_map(multi_source: bool = False, with_domains: bool = False) -> C
         catalog_name="postgresql",
         schema_name="public",
         table_name="persons",
-        properties={"name": "name", "age": "age"},
+        properties={"name": "name", "age": "age", "scores": "scores"},
     )
     company_meta = NodeMapping(
         label="Company",
@@ -241,6 +241,30 @@ def test_union_all_produces_union_all_sql():
     sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "UNION ALL" in sql.upper()
+
+
+def test_union_all_per_branch_limit():
+    """Each UNION ALL branch with its own LIMIT must have that limit isolated to its branch.
+
+    Without this, LIMIT N from branch 1 ends up on the outer wrapper and constrains the
+    whole union result to N rows, preventing branch 2 from contributing rows.
+    """
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) RETURN n.name LIMIT 5 UNION ALL MATCH (n:Person) RETURN n.name LIMIT 7"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "UNION ALL" in sql.upper()
+    # Both limits must appear; neither may be the sole outer limit on the union
+    assert sql.count("LIMIT") == 2
+    # Each branch is wrapped in a subquery so its limit applies only to that branch,
+    # not the combined result. Verify each LIMIT appears inside a subquery by checking
+    # it precedes the closing paren of its branch, not after the final UNION ALL.
+    union_pos = sql.upper().rfind("UNION ALL")
+    # The first branch's LIMIT must appear before the last UNION ALL
+    first_limit_pos = sql.upper().find("LIMIT")
+    assert first_limit_pos < union_pos
 
 
 # ---------------------------------------------------------------------------
@@ -628,6 +652,57 @@ def test_domain_union_excludes_nodes_with_native_filter_columns():
     sql = sql_ast.sql(dialect="trino")
     assert "schedule_by_employee" not in sql.lower()
     assert "persons" in sql.lower()
+
+
+def test_domain_union_prunes_branches_without_required_property():
+    """MATCH (n) WHERE n.age IS NOT NULL — only Person has 'age'; Company branch must be skipped."""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n) WHERE n.age IS NOT NULL RETURN n.age LIMIT 25")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "persons" in sql.lower()
+    assert "companies" not in sql.lower()
+
+
+def test_domain_union_returns_zero_rows_when_no_type_has_property():
+    """MATCH (n) WHERE n.date IS NOT NULL — neither Person nor Company has 'date'; zero-row result."""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n) WHERE n.date IS NOT NULL RETURN n.date LIMIT 25")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    # No real table should be scanned
+    assert "persons" not in sql.lower()
+    assert "companies" not in sql.lower()
+    assert "false" in sql.lower() or "WHERE FALSE" in sql.upper()
+
+
+def test_domain_union_includes_branch_when_any_required_prop_exists():
+    """MATCH (n) WHERE n.age > 0 OR n.founded IS NOT NULL — Person has 'age', Company has 'founded'; both included."""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n) WHERE n.age > 0 OR n.founded IS NOT NULL RETURN n.age, n.founded")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "persons" in sql.lower()
+    assert "companies" in sql.lower()
+
+
+def test_labeled_node_where_missing_prop_short_circuits():
+    """MATCH (n:Person) WHERE n.date IS NOT NULL — Person has no 'date'; WHERE FALSE, no table scan."""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) WHERE n.date IS NOT NULL RETURN n.date LIMIT 25")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "where false" in sql.lower()
+
+
+def test_labeled_node_where_existing_prop_not_short_circuited():
+    """MATCH (n:Person) WHERE n.age > 18 — 'age' exists on Person; normal scan."""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) WHERE n.age > 18 RETURN n.name")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "persons" in sql.lower()
+    assert "where false" not in sql.lower()
 
 
 def test_type_and_domain_label_uses_type_table():

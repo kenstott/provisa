@@ -121,7 +121,7 @@ class TestRemoteUncoveredPairs:
             ctx,
             gov,
             _ADMIN_ROLE,
-            raw_tables=[],
+            [],
             bypass_uncovered_relationships=True,
         )
         v002 = [v for v in violations if v.code == "V002"]
@@ -139,7 +139,7 @@ class TestRemoteUncoveredPairs:
             ctx,
             gov,
             _ADMIN_ROLE,
-            raw_tables=[],
+            [],
             bypass_uncovered_relationships=False,
         )
         v002 = [v for v in violations if v.code == "V002"]
@@ -165,7 +165,7 @@ class TestRemoteUncoveredPairs:
             ctx,
             gov,
             _ADMIN_ROLE,
-            raw_tables=[],
+            [],
             bypass_uncovered_relationships=True,
         )
         v002 = [v for v in violations if v.code == "V002"]
@@ -195,7 +195,7 @@ class TestRemoteUncoveredPairs:
             ctx,
             gov,
             _ADMIN_ROLE,
-            raw_tables=[],
+            [],
             bypass_uncovered_relationships=True,
         )
         v002 = [v for v in violations if v.code == "V002"]
@@ -230,7 +230,7 @@ class TestRemoteUncoveredPairs:
             ctx,
             gov,
             _ADMIN_ROLE,
-            raw_tables=[],
+            [],
             bypass_uncovered_relationships=True,
         )
         v002 = [v for v in violations if v.code == "V002"]
@@ -276,7 +276,7 @@ class TestCoveredPairsNotBypassed:
             'FROM "public"."orders" AS "o" '
             'LEFT JOIN "public"."customers" AS "c" ON "c"."id" = "o"."customer_id"'
         )
-        violations = validate_sql(sql, ctx, gov, _ADMIN_ROLE, raw_tables=[])
+        violations = validate_sql(sql, ctx, gov, _ADMIN_ROLE, [])
         v002 = [v for v in violations if v.code == "V002"]
         assert v002 == [], f"Expected no V002 for correct columns, got: {v002}"
 
@@ -293,7 +293,7 @@ class TestCoveredPairsNotBypassed:
             ctx,
             gov,
             _ADMIN_ROLE,
-            raw_tables=[],
+            [],
             bypass_uncovered_relationships=True,
         )
         v002 = [v for v in violations if v.code == "V002"]
@@ -309,7 +309,7 @@ class TestCoveredPairsNotBypassed:
             'FROM "public"."orders" AS "o" '
             'LEFT JOIN "public"."customers" AS "c" ON "c"."id" = "o"."wrong_col"'
         )
-        violations = validate_sql(sql, ctx, gov, _ADMIN_ROLE, raw_tables=[])
+        violations = validate_sql(sql, ctx, gov, _ADMIN_ROLE, [])
         v002 = [v for v in violations if v.code == "V002"]
         assert v002, "Expected V002 for wrong-column join on registered pair"
 
@@ -338,7 +338,7 @@ class TestNonRemoteUncoveredPairs:
             ctx,
             gov,
             _ADMIN_ROLE,
-            raw_tables=[],
+            [],
             bypass_uncovered_relationships=True,
         )
         v002 = [v for v in violations if v.code == "V002"]
