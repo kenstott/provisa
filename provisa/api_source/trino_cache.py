@@ -91,7 +91,7 @@ def cache_table_name(  # REQ-318, REQ-309, REQ-327
 ) -> str:
     """Stable table name for a given API call signature."""
     key = json.dumps(
-        {"s": source_id, "o": operation_id, "a": sorted(native_args.items())},
+        {"s": source_id, "o": operation_id, "a": sorted(native_args.items()), "v": 2},
         sort_keys=True,
     )
     h = hashlib.sha256(key.encode()).hexdigest()[:16]

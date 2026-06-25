@@ -957,7 +957,16 @@ def _mat_store_rows(
             _cache_loc.schema,
             cache_tbl,
         )
-        create_and_insert(_conn, _cache_loc, cache_tbl, rows, response_cols)
+        # Trino cache column names must match what the SQL compiler generates (snake_case).
+        # Remap both column objects and row keys from camelCase to snake_case.
+        from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+
+        _name_map = {c.name: _apply_sql_name(c.name) for c in response_cols}
+        _snake_cols = [
+            c.model_copy(update={"name": _apply_sql_name(c.name)}) for c in response_cols
+        ]
+        _snake_rows = [{_name_map.get(k, k): v for k, v in r.items()} for r in rows]
+        create_and_insert(_conn, _cache_loc, cache_tbl, _snake_rows, _snake_cols)
         asyncio.create_task(schedule_drop(_conn, _cache_loc, cache_tbl, ttl, redirect_config))
 
 
@@ -1164,6 +1173,9 @@ async def _materialize_api_to_trino_cache(
             cache_rewrites,
             values_cte_entries,
         )
+        if tn not in cache_rewrites and tn not in values_cte_entries:
+            log.warning("[MAT] %s could not be materialized — dropping union branch", tn)
+            dropped_tables.append(tn)
 
     return cache_rewrites, values_cte_entries, dropped_tables
 
@@ -3244,7 +3256,8 @@ async def _handle_mutation(
 @router.post("/touch/{table}", status_code=204)
 async def touch_table(  # REQ-174
     table: str,
-    _request: Request,
+    request: Request,
+    x_provisa_role: str | None = Header(None),
 ):
     """Emit a change event for a table without mutating any data (REQ-174).
 
