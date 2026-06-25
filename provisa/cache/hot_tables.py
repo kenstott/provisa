@@ -224,7 +224,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         log.info("Hot table %s loaded: %d rows, %d columns", table_name, len(rows), len(columns))
         return len(rows)
 
-    async def load_table(
+    async def load_table(  # REQ-544
         self,
         trino_conn,
         table_name: str,
@@ -249,7 +249,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         rows = [dict(zip(columns, row)) for row in rows_raw]
         return await self._store_rows(table_name, rows, pk_column, catalog, schema)
 
-    async def load_table_from_sqlite(
+    async def load_table_from_sqlite(  # REQ-544
         self,
         source_cfg: dict,
         table_name: str,
@@ -273,7 +273,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
 
         return await self._store_rows(table_name, rows, pk_column, source_cfg["id"], "default")
 
-    async def load_table_from_openapi(
+    async def load_table_from_openapi(  # REQ-544
         self,
         source_cfg: dict,
         table_name: str,
@@ -313,7 +313,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
 
         return await self._store_rows(table_name, rows, pk_column, source_cfg["id"], "default")
 
-    async def get_rows(self, table_name: str) -> list[dict]:
+    async def get_rows(self, table_name: str) -> list[dict]:  # REQ-544
         """Fetch all rows for a hot table from Redis."""
         await self._connect()
         assert self._redis is not None
@@ -331,7 +331,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             return []
         return json.loads(data)
 
-    async def invalidate(self, table_name: str) -> None:
+    async def invalidate(self, table_name: str) -> None:  # REQ-544
         """Delete all Redis keys for a hot table."""
         await self._connect()
         assert self._redis is not None
@@ -340,7 +340,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         self._hot_tables.pop(table_name, None)
         log.info("Hot table %s invalidated", table_name)
 
-    def is_hot(self, table_name: str) -> bool:
+    def is_hot(self, table_name: str) -> bool:  # REQ-544
         """Check if a table is currently hot-cached with at least one row."""
         entry = self._hot_tables.get(table_name)
         return entry is not None and len(entry.rows) > 0
@@ -353,7 +353,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         """
         return set(self._hot_tables) | set(self._candidates)
 
-    def get_entry(self, table_name: str) -> HotTableEntry | None:
+    def get_entry(self, table_name: str) -> HotTableEntry | None:  # REQ-544
         """Get the hot table entry with metadata."""
         return self._hot_tables.get(table_name)
 
@@ -545,7 +545,9 @@ async def _openapi_list_rows(
     return rows[: max_rows + 1]
 
 
-async def count_table_rows(trino_conn, table_name: str, schema: str, catalog: str) -> int:
+async def count_table_rows(
+    trino_conn, table_name: str, schema: str, catalog: str
+) -> int:  # REQ-544
     """SELECT COUNT(*) for auto-detection sizing."""
     fqn = f'"{catalog}"."{schema}"."{table_name}"'
     cur = trino_conn.cursor()

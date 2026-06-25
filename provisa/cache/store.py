@@ -31,7 +31,7 @@ _tracer = _get_tracer(__name__)
 
 
 @dataclass(frozen=True)
-class CachedResult:
+class CachedResult:  # REQ-544
     """A cached query result with metadata."""
 
     data: bytes
@@ -43,7 +43,7 @@ class CachedResult:
         return int(time.time() - self.cached_at)
 
 
-class CacheStore(ABC):
+class CacheStore(ABC):  # REQ-544
     """Abstract cache store interface."""
 
     @abstractmethod
@@ -143,7 +143,7 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
                 decode_responses=False,
             )
 
-    async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:
+    async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:  # REQ-544
         with _tracer.start_as_current_span("cache.get") as span:
             span.set_attribute("cache.key", key)
             try:
@@ -171,7 +171,7 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
                 span.set_attribute("cache.hit", False)
                 return None
 
-    async def set(
+    async def set(  # REQ-544
         self,
         key: str,
         data: bytes,
@@ -202,7 +202,9 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
             except Exception:
                 log.warning("Redis set failed, query result not cached", exc_info=True)
 
-    async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:
+    async def invalidate_by_pattern(
+        self, pattern: str, tenant_id: str | None = None
+    ) -> int:  # REQ-544
         try:
             await self._connect()
             assert self._redis is not None

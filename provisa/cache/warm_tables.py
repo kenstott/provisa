@@ -37,19 +37,19 @@ class QueryCounter:  # REQ-239
         self._counts: dict[str, int] = {}
         self._lock = threading.Lock()
 
-    def increment(self, table: str) -> None:
+    def increment(self, table: str) -> None:  # REQ-595
         with self._lock:
             self._counts[table] = self._counts.get(table, 0) + 1
 
-    def get_counts(self) -> dict[str, int]:
+    def get_counts(self) -> dict[str, int]:  # REQ-595
         with self._lock:
             return dict(self._counts)
 
-    def get_count(self, table: str) -> int:
+    def get_count(self, table: str) -> int:  # REQ-595
         with self._lock:
             return self._counts.get(table, 0)
 
-    def reset(self, table: str) -> None:
+    def reset(self, table: str) -> None:  # REQ-595
         with self._lock:
             self._counts.pop(table, None)
 
@@ -78,7 +78,7 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
             self._iceberg_schema = iceberg_schema
         self._lock = threading.Lock()
 
-    def get_warm_tables(self) -> set[str]:
+    def get_warm_tables(self) -> set[str]:  # REQ-544
         with self._lock:
             return set(self._warm_tables)
 

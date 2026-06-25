@@ -25,12 +25,12 @@ log = logging.getLogger(__name__)
 # Requirements: REQ-536
 
 
-async def check_cache(store: CacheStore, key: str) -> CachedResult | None:
+async def check_cache(store: CacheStore, key: str) -> CachedResult | None:  # REQ-544
     """Check for a cached result. Returns CachedResult on HIT, None on MISS."""
     return await store.get(key)
 
 
-async def store_result(
+async def store_result(  # REQ-544
     store: CacheStore,
     key: str,
     result_data: dict,

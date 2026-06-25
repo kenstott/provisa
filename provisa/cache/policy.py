@@ -21,12 +21,12 @@ from __future__ import annotations
 from enum import Enum
 
 
-class CachePolicy(str, Enum):
+class CachePolicy(str, Enum):  # REQ-544
     NONE = "none"  # no caching
     TTL = "ttl"  # cache with TTL
 
 
-def resolve_policy(
+def resolve_policy(  # REQ-544
     stable_id: str | None,
     cache_ttl: int | None,
     default_ttl: int = 300,

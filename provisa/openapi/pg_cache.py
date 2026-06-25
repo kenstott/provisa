@@ -45,7 +45,7 @@ def _hash_params(params: dict) -> str:
     return hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()[:16]
 
 
-def is_mem_fresh(pg_schema: str, pg_table: str, params: dict) -> bool:
+def is_mem_fresh(pg_schema: str, pg_table: str, params: dict) -> bool:  # REQ-544
     """Synchronous in-memory-only freshness check — no PG round-trip."""
     return _mem_fresh.get((pg_schema, pg_table, _hash_params(params)), 0) > _time.monotonic()
 
