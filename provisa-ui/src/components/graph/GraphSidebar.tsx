@@ -54,6 +54,7 @@ interface SidebarProps {
   onPropertyKeyClick?: (key: string) => void;
   totalNodeCount?: number | null;
   totalRelCount?: number | null;
+  labelCounts?: Record<string, number>;
 }
 
 const NUMERIC_TYPES = new Set(["int", "integer", "bigint", "float", "double", "decimal", "numeric", "real", "number"]);
@@ -96,6 +97,7 @@ export function Sidebar({
   onPropertyKeyClick,
   totalNodeCount = null,
   totalRelCount = null,
+  labelCounts = {},
 }: SidebarProps) {
   const [section, setSection] = useState<"db" | "history" | "favorites">("db");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -307,6 +309,11 @@ export function Sidebar({
                               title={`MATCH (n:${compoundLabel}) RETURN n LIMIT 25`}
                             >
                               {node.tableLabel}
+                              {labelCounts[compoundLabel] !== undefined && (
+                                <span style={{ opacity: 0.7, fontSize: "0.7em", marginLeft: "0.25em" }}>
+                                  ({labelCounts[compoundLabel].toLocaleString()})
+                                </span>
+                              )}
                             </span>
                           </div>
                         );

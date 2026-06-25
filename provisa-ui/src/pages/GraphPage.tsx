@@ -50,6 +50,7 @@ export function GraphPage() {
   const [schemaLoading, setSchemaLoading] = useState(true);
   const [totalNodeCount, setTotalNodeCount] = useState<number | null>(null);
   const [totalRelCount, setTotalRelCount] = useState<number | null>(null);
+  const [labelCounts, setLabelCounts] = useState<Record<string, number>>({});
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
   const [colorOverrides, setColorOverrides] = useLocalStorage<Record<string, string>>(
@@ -205,38 +206,22 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
 
   useEffect(() => {
     if (schemaNodeLabels.length === 0 && schemaRels.length === 0) return;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const headers: Record<string, string> = {};
     if (role) headers["X-Provisa-Role"] = role.id;
     setTotalNodeCount(null);
     setTotalRelCount(null);
-    const uniqueLabels = [...new Set(schemaNodeLabels.map((n) =>
-      n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel
-    ))];
-    Promise.all(uniqueLabels.map(async (lbl) => {
-      try {
-        const res = await fetch("/data/cypher", {
-          method: "POST", headers,
-          body: JSON.stringify({ query: `MATCH (n:${lbl}) RETURN count(n) AS count` }),
-        });
-        const data = await res.json();
-        const cnt = data?.rows?.[0]?.count;
-        return typeof cnt === "number" ? cnt : 0;
-      } catch { return 0; }
-    })).then((counts) => setTotalNodeCount(counts.reduce((s, c) => s + c, 0)));
-    const uniqueRelTypes = [...new Set(schemaRels.map((r) => r.type))];
-    Promise.all(uniqueRelTypes.map(async (type) => {
-      try {
-        const res = await fetch("/data/cypher", {
-          method: "POST", headers,
-          body: JSON.stringify({ query: `MATCH ()-[r:${type}]->() RETURN count(r) AS count` }),
-        });
-        const data = await res.json();
-        const cnt = data?.rows?.[0]?.count;
-        return typeof cnt === "number" ? cnt : 0;
-      } catch { return 0; }
-    })).then((counts) => setTotalRelCount(counts.reduce((s, c) => s + c, 0)));
+    const domainsParam =
+      checkedDomains.size > 0 ? `?domains=${[...checkedDomains].join(",")}` : "";
+    fetch(`/data/graph-counts${domainsParam}`, { headers })
+      .then((r) => r.json())
+      .then((data) => {
+        setTotalNodeCount(data.node_count ?? 0);
+        setTotalRelCount(data.rel_count ?? 0);
+        setLabelCounts(data.label_counts ?? {});
+      })
+      .catch(() => {});
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [schemaNodeLabels, schemaRels, role?.id]);
+  }, [schemaNodeLabels, schemaRels, role?.id, checkedDomains]);
 
 
   const runQuery = useCallback(
@@ -835,6 +820,7 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
         onPropertyKeyClick={handlePropertyKeyClick}
         totalNodeCount={totalNodeCount}
         totalRelCount={totalRelCount}
+        labelCounts={labelCounts}
       />
 
       <div className="graph-content">

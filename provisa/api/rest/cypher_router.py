@@ -686,6 +686,104 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
     )
 
 
+@router.get("/data/graph-counts")
+async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
+    """Count nodes and relationships using direct FK/PK queries, filtered by domain."""
+    import asyncio
+
+    from provisa.api.app import state
+
+    role_id = _resolve_role_id(request, state)
+    ctx = state.contexts.get(role_id)
+    if ctx is None:
+        return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
+
+    domains_param = request.query_params.get("domains", "")
+    filtered_domains: set[str] = (
+        set(d for d in domains_param.split(",") if d) if domains_param else set()
+    )
+
+    label_map = _build_label_map(ctx, role_id, state)
+
+    def _is_sql_backed(table_name: str) -> bool:
+        return (
+            _lookup_api_endpoint(state, table_name) is None
+            and _lookup_gql_remote_table(state, table_name) is None
+        )
+
+    def _table_ref(nm: Any) -> str:
+        parts = []
+        if nm.catalog_name:
+            parts.append(f'"{nm.catalog_name}"')
+        if nm.schema_name:
+            parts.append(f'"{nm.schema_name}"')
+        parts.append(f'"{nm.sql_table_name}"')
+        return ".".join(parts)
+
+    node_entries: list[tuple[str, str]] = []  # (label, sql)
+    for nm in label_map.nodes.values():
+        if filtered_domains and nm.domain_id not in filtered_domains:
+            continue
+        if not _is_sql_backed(nm.sql_table_name):
+            continue
+        node_entries.append((nm.label, f"SELECT COUNT(*) AS cnt FROM {_table_ref(nm)}"))
+
+    rel_sqls: list[str] = []
+    seen_rel_keys: set[tuple] = set()
+    for rel in label_map.relationships.values():
+        src_nm = label_map.nodes[rel.source_label]
+        tgt_nm = label_map.nodes[rel.target_label]
+        if filtered_domains and (
+            src_nm.domain_id not in filtered_domains or tgt_nm.domain_id not in filtered_domains
+        ):
+            continue
+        if not _is_sql_backed(src_nm.sql_table_name) or not _is_sql_backed(tgt_nm.sql_table_name):
+            continue
+        key = (
+            src_nm.sql_table_name,
+            rel.join_source_column,
+            tgt_nm.sql_table_name,
+            rel.join_target_column,
+        )
+        if key in seen_rel_keys:
+            continue
+        seen_rel_keys.add(key)
+        src_ref = _table_ref(src_nm)
+        tgt_ref = _table_ref(tgt_nm)
+        rel_sqls.append(
+            f"SELECT COUNT(*) AS cnt FROM {src_ref} AS _s"
+            f" JOIN {tgt_ref} AS _t"
+            f' ON _s."{rel.join_source_column}" = _t."{rel.join_target_column}"'
+        )
+
+    async def _count(sql: str) -> int:
+        try:
+            rows = await _execute(sql, [], state)
+            return int(rows[0]["cnt"]) if rows else 0
+        except Exception:
+            return 0
+
+    BATCH = 5
+
+    label_counts: dict[str, int] = {}
+    for i in range(0, len(node_entries), BATCH):
+        batch = node_entries[i : i + BATCH]
+        results = await asyncio.gather(*[_count(sql) for _, sql in batch])
+        for (label, _), cnt in zip(batch, results):
+            label_counts[label] = cnt
+
+    node_count = sum(label_counts.values())
+
+    rel_count = 0
+    for i in range(0, len(rel_sqls), BATCH):
+        results = await asyncio.gather(*[_count(s) for s in rel_sqls[i : i + BATCH]])
+        rel_count += sum(results)
+
+    return JSONResponse(
+        content={"node_count": node_count, "rel_count": rel_count, "label_counts": label_counts}
+    )
+
+
 class ImputeRequest(BaseModel):
     nodes: list[dict]  # [{label: str, id: str}, ...]
 
@@ -708,8 +806,6 @@ async def impute_relationships(
     ctx = state.contexts.get(role_id)
     if ctx is None:
         return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
-
-    import json as _json
 
     label_map = _build_label_map(ctx, role_id, state)
     nm_by_label = {nm.label: nm for nm in label_map.nodes.values()}
@@ -735,29 +831,20 @@ async def impute_relationships(
             return str(v)
         return "'" + str(v).replace("\\", "\\\\").replace("'", "\\'") + "'"
 
-    # Resolve stable ids to id-column values via node_ids.properties
+    # Resolve stable ids to id-column values via composite_id ("label|pk_value")
     by_label: dict[str, list[Any]] = {}
     if int_ids and state.pg_pool:
         async with state.pg_pool.acquire() as _pg_conn:
             _pg_rows = await _pg_conn.fetch(
-                "SELECT id, label, properties FROM node_ids WHERE id = ANY($1::int[])",
+                "SELECT id, label, composite_id FROM node_ids WHERE id = ANY($1::int[])",
                 int_ids,
             )
         for _r in _pg_rows:
             _nm = nm_by_label.get(_r["label"])
             if _nm is None:
                 continue
-            _id_prop = next((k for k, v in _nm.properties.items() if v == _nm.id_column), None)
-            if _id_prop is None:
-                continue
-            _props = (
-                _r["properties"]
-                if isinstance(_r["properties"], dict)
-                else _json.loads(_r["properties"])
-            )
-            _val = _props.get(_id_prop)
-            if _val is None:
-                continue
+            _pk_str = _r["composite_id"].rsplit("|", 1)[-1]
+            _val: Any = int(_pk_str) if _pk_str.lstrip("-").isdigit() else _pk_str
             by_label.setdefault(_r["label"], []).append(_val)
 
     visible_labels = set(by_label.keys())
@@ -1168,6 +1255,7 @@ async def _execute_with_gql_remote(
     table_names = find_api_table_names(exec_sql)
     where_tables = where_referenced_tables(exec_sql)
     cache_rewrites: dict[str, tuple] = {}
+    gql_remote_skipped: set[str] = set()
 
     for tn in table_names:
         info = _lookup_gql_remote_table(state, tn)
@@ -1183,6 +1271,7 @@ async def _execute_with_gql_remote(
                 # Not explicitly filtered — drop JOIN or UNION branch.
                 exec_sql = drop_joined_table(exec_sql, tn)
                 exec_sql = drop_union_branches_for_table(exec_sql, tn)
+                gql_remote_skipped.add(tn)
                 continue
             raise ValueError(
                 f"Table '{tn}' requires argument(s) {missing} — "
@@ -1238,6 +1327,13 @@ async def _execute_with_gql_remote(
             )
         else:
             log.info("[GQL CACHE] hit — %s", cache_tbl)
+
+    # If skipped gql_remote tables (missing required args) weren't dropped from the main FROM,
+    # they still reference an uncacheable catalog — return empty instead of failing in Trino.
+    if gql_remote_skipped and not cache_rewrites:
+        still_present = gql_remote_skipped & set(find_api_table_names(exec_sql))
+        if still_present:
+            return []
 
     rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites) if cache_rewrites else exec_sql
     trino_sql = transpile_to_trino(rewritten_sql)
