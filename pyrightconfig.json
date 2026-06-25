@@ -1,3 +1,4 @@
 {
-  "extraPaths": ["vendor/buenavista", "."]
+  "extraPaths": ["vendor/buenavista", "."],
+  "include": ["provisa"]
 }
