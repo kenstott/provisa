@@ -19,7 +19,6 @@ import httpx
 from provisa_client import connect
 from provisa_client.dbapi import (
     Connection,
-    Cursor,
     OperationalError,
     ProgrammingError,
     _is_graphql,
@@ -29,6 +28,7 @@ BASE = "http://localhost:8001"
 
 
 # ── _is_graphql() ─────────────────────────────────────────────────────────────
+
 
 def test_is_graphql_curly_brace():
     assert _is_graphql("{ orders { id } }") is True
@@ -56,6 +56,7 @@ def test_is_not_graphql_select_lower():
 
 # ── connect() authentication ──────────────────────────────────────────────────
 
+
 @respx.mock
 def test_connect_authenticates_and_stores_token():
     respx.post(f"{BASE}/auth/login").mock(
@@ -78,9 +79,7 @@ def test_connect_falls_back_to_username_as_role_when_auth_fails():
 
 @respx.mock
 def test_connect_context_manager():
-    respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "tok"})
-    )
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
     with connect(BASE, username="u", password="p") as conn:
         assert not conn._closed
     assert conn._closed
@@ -88,11 +87,10 @@ def test_connect_context_manager():
 
 # ── execute() GraphQL ─────────────────────────────────────────────────────────
 
+
 @respx.mock
 def test_execute_graphql_returns_rows():
-    respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "tok"})
-    )
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -108,9 +106,7 @@ def test_execute_graphql_returns_rows():
 
 @respx.mock
 def test_execute_graphql_sets_description():
-    respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "tok"})
-    )
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -127,9 +123,7 @@ def test_execute_graphql_sets_description():
 
 @respx.mock
 def test_execute_graphql_raises_on_errors():
-    respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "tok"})
-    )
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -144,11 +138,10 @@ def test_execute_graphql_raises_on_errors():
 
 # ── execute() SQL ─────────────────────────────────────────────────────────────
 
+
 @respx.mock
 def test_execute_sql_returns_rows():
-    respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "tok"})
-    )
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
     respx.post(f"{BASE}/data/sql").mock(
         return_value=httpx.Response(
             200,
@@ -164,9 +157,7 @@ def test_execute_sql_returns_rows():
 
 @respx.mock
 def test_execute_sql_list_response():
-    respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "tok"})
-    )
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
     respx.post(f"{BASE}/data/sql").mock(
         return_value=httpx.Response(
             200,
@@ -181,11 +172,10 @@ def test_execute_sql_list_response():
 
 # ── fetchone / fetchmany / fetchall ───────────────────────────────────────────
 
+
 @respx.mock
 def test_fetchone_returns_single_row():
-    respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "tok"})
-    )
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -203,9 +193,7 @@ def test_fetchone_returns_single_row():
 
 @respx.mock
 def test_fetchmany_respects_size():
-    respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "tok"})
-    )
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -223,9 +211,7 @@ def test_fetchmany_respects_size():
 
 @respx.mock
 def test_fetchmany_uses_arraysize_default():
-    respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "tok"})
-    )
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -241,11 +227,10 @@ def test_fetchmany_uses_arraysize_default():
 
 # ── rowcount ──────────────────────────────────────────────────────────────────
 
+
 @respx.mock
 def test_rowcount_set_after_execute():
-    respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "tok"})
-    )
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -260,8 +245,9 @@ def test_rowcount_set_after_execute():
 
 # ── closed cursor / connection ────────────────────────────────────────────────
 
+
 def test_closed_cursor_raises():
-    conn = Connection(base_url=BASE, token=None, role="admin", mode="approved")
+    conn = Connection(base_url=BASE, token=None, role="admin")
     cur = conn.cursor()
     cur.close()
     with pytest.raises(OperationalError):
@@ -269,7 +255,7 @@ def test_closed_cursor_raises():
 
 
 def test_closed_connection_raises_on_cursor():
-    conn = Connection(base_url=BASE, token=None, role="admin", mode="approved")
+    conn = Connection(base_url=BASE, token=None, role="admin")
     conn.close()
     with pytest.raises(OperationalError):
         conn.cursor()
@@ -277,11 +263,12 @@ def test_closed_connection_raises_on_cursor():
 
 # ── no-op commit / rollback ───────────────────────────────────────────────────
 
+
 def test_commit_is_noop():
-    conn = Connection(base_url=BASE, token=None, role="admin", mode="approved")
+    conn = Connection(base_url=BASE, token=None, role="admin")
     conn.commit()  # must not raise
 
 
 def test_rollback_is_noop():
-    conn = Connection(base_url=BASE, token=None, role="admin", mode="approved")
+    conn = Connection(base_url=BASE, token=None, role="admin")
     conn.rollback()  # must not raise

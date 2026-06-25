@@ -47,7 +47,7 @@ class ProvisaDialect(DefaultDialect):
         return _dbapi
 
     @classmethod
-    def import_dbapi(cls):
+    def import_dbapi(cls):  # pyright: ignore[reportIncompatibleMethodOverride]
         from provisa_client import dbapi as _dbapi
 
         return _dbapi
@@ -126,7 +126,7 @@ class ProvisaDialect(DefaultDialect):
         fields = self._fetch_schema(base_url, role).get("queryType", {}).get("fields", [])
         return [f["name"] for f in fields if f.get("name")]
 
-    def get_columns(
+    def get_columns(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         connection: Any,
         table_name: str,
@@ -200,7 +200,7 @@ class ProvisaDialect(DefaultDialect):
     ) -> list:
         return []
 
-    def get_pk_constraint(
+    def get_pk_constraint(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         connection: Any,
         table_name: str,

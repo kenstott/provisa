@@ -107,15 +107,15 @@ class ProvisaClient:
 
     # ── Arrow Flight ──────────────────────────────────────────────────────
 
-    def _flight_client(self) -> fl.FlightClient:
+    def _flight_client(self) -> fl.FlightClient:  # pyright: ignore[reportPrivateImportUsage]
         host = urlparse(self._base).hostname or "localhost"
-        return fl.connect(f"grpc://{host}:{self._flight_port}")
+        return fl.connect(f"grpc://{host}:{self._flight_port}")  # pyright: ignore[reportPrivateImportUsage]
 
-    def _flight_ticket(self, query: str, variables: dict[str, Any] | None) -> fl.Ticket:
+    def _flight_ticket(self, query: str, variables: dict[str, Any] | None) -> fl.Ticket:  # pyright: ignore[reportPrivateImportUsage]
         data: dict[str, Any] = {"query": query, "role": self._role}
         if variables:
             data["variables"] = variables
-        return fl.Ticket(json.dumps(data).encode())
+        return fl.Ticket(json.dumps(data).encode())  # pyright: ignore[reportPrivateImportUsage]
 
     def flight(
         self,
@@ -155,7 +155,7 @@ class ProvisaClient:
         }
         if variables:
             data["variables"] = variables
-        ticket = fl.Ticket(json.dumps(data).encode())
+        ticket = fl.Ticket(json.dumps(data).encode())  # pyright: ignore[reportPrivateImportUsage]
         reader = self._flight_client().do_get(ticket)
         return reader.read_all()
 
@@ -178,10 +178,12 @@ class ProvisaClient:
         rows = []
         for info in infos:
             path = [p.decode() if isinstance(p, bytes) else p for p in info.descriptor.path]
-            rows.append({
-                "schema_name": path[0] if len(path) > 0 else "",
-                "table_name": path[1] if len(path) > 1 else "",
-            })
+            rows.append(
+                {
+                    "schema_name": path[0] if len(path) > 0 else "",
+                    "table_name": path[1] if len(path) > 1 else "",
+                }
+            )
         return pd.DataFrame(rows, columns=["schema_name", "table_name"])
 
     def list_approved(self):
@@ -190,8 +192,10 @@ class ProvisaClient:
 
         criteria = json.dumps({"mode": "approved"}).encode()
         infos = list(self._flight_client().list_flights(criteria))
-        rows = [
-            {"stable_id": (p := [s.decode() if isinstance(s, bytes) else s for s in info.descriptor.path])[1] if len(p) > 1 else ""}
-            for info in infos
-        ]
+
+        def _stable_id(info: Any) -> str:
+            path = [s.decode() if isinstance(s, bytes) else s for s in info.descriptor.path]
+            return path[1] if len(path) > 1 else ""
+
+        rows = [{"stable_id": _stable_id(info)} for info in infos]
         return pd.DataFrame(rows, columns=["stable_id"])

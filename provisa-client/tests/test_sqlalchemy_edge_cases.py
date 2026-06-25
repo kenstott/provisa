@@ -48,14 +48,12 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 import respx
 import sqlalchemy.types as sqltypes
 from sqlalchemy.engine import URL
 
 from provisa_client.dbapi import (
     Connection,
-    Cursor,
     _apply_parameters,
 )
 from provisa_client.sqlalchemy_dialect import ProvisaDialect
@@ -69,11 +67,22 @@ _INTROSPECT_RESPONSE = {
         "__schema": {
             "queryType": {
                 "fields": [
-                    {"name": "orders", "type": {"name": None, "kind": "LIST", "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None}}},
+                    {
+                        "name": "orders",
+                        "type": {
+                            "name": None,
+                            "kind": "LIST",
+                            "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None},
+                        },
+                    },
                 ]
             },
             "types": [
-                {"name": "Orders", "kind": "OBJECT", "fields": [{"name": "id"}, {"name": "amount"}]},
+                {
+                    "name": "Orders",
+                    "kind": "OBJECT",
+                    "fields": [{"name": "id"}, {"name": "amount"}],
+                },
                 {"name": "String", "kind": "SCALAR", "fields": None},
             ],
         }
@@ -85,7 +94,14 @@ _SINGLE_COL_RESPONSE = {
         "__schema": {
             "queryType": {
                 "fields": [
-                    {"name": "orders", "type": {"name": None, "kind": "LIST", "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None}}},
+                    {
+                        "name": "orders",
+                        "type": {
+                            "name": None,
+                            "kind": "LIST",
+                            "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None},
+                        },
+                    },
                 ]
             },
             "types": [
@@ -151,9 +167,7 @@ class TestGetColumns:
     @respx.mock
     def test_returns_empty_list_on_http_error(self):
         """get_columns() returns [] gracefully when the server returns an error."""
-        respx.post(f"{BASE}/data/graphql").mock(
-            return_value=httpx.Response(500)
-        )
+        respx.post(f"{BASE}/data/graphql").mock(return_value=httpx.Response(500))
         dialect = ProvisaDialect()
         mock_conn = MagicMock()
         with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "admin")):
@@ -237,29 +251,31 @@ class TestConnectionStringParsing:
 
     def test_http_scheme_extracted(self):
         dialect = ProvisaDialect()
-        url = URL.create("provisa+http", username="user", password="pass",
-                         host="myhost", port=8001)
+        url = URL.create("provisa+http", username="user", password="pass", host="myhost", port=8001)
         _, kwargs = dialect.create_connect_args(url)
         assert kwargs["url"].startswith("http://")
 
     def test_https_scheme_extracted(self):
         dialect = ProvisaDialect()
-        url = URL.create("provisa+https", username="user", password="pass",
-                         host="secure.host", port=443)
+        url = URL.create(
+            "provisa+https", username="user", password="pass", host="secure.host", port=443
+        )
         _, kwargs = dialect.create_connect_args(url)
         assert kwargs["url"].startswith("https://")
 
     def test_host_and_port_in_url(self):
         dialect = ProvisaDialect()
-        url = URL.create("provisa+http", username="u", password="p",
-                         host="db.example.com", port=9090)
+        url = URL.create(
+            "provisa+http", username="u", password="p", host="db.example.com", port=9090
+        )
         _, kwargs = dialect.create_connect_args(url)
         assert "db.example.com:9090" in kwargs["url"]
 
     def test_username_and_password_forwarded(self):
         dialect = ProvisaDialect()
-        url = URL.create("provisa+http", username="alice", password="s3cret",
-                         host="localhost", port=8001)
+        url = URL.create(
+            "provisa+http", username="alice", password="s3cret", host="localhost", port=8001
+        )
         _, kwargs = dialect.create_connect_args(url)
         assert kwargs["username"] == "alice"
         assert kwargs["password"] == "s3cret"
@@ -267,32 +283,34 @@ class TestConnectionStringParsing:
     def test_default_role_is_admin(self):
         """When no role query param is given, role defaults to 'admin'."""
         dialect = ProvisaDialect()
-        url = URL.create("provisa+http", username="u", password="p",
-                         host="localhost", port=8001)
+        url = URL.create("provisa+http", username="u", password="p", host="localhost", port=8001)
         _, kwargs = dialect.create_connect_args(url)
         assert kwargs["role"] == "admin"
 
     def test_default_mode_is_approved(self):
         """When no mode query param is given, mode defaults to 'approved'."""
         dialect = ProvisaDialect()
-        url = URL.create("provisa+http", username="u", password="p",
-                         host="localhost", port=8001)
+        url = URL.create("provisa+http", username="u", password="p", host="localhost", port=8001)
         _, kwargs = dialect.create_connect_args(url)
         assert kwargs["mode"] == "approved"
 
     def test_role_from_query_string(self):
         dialect = ProvisaDialect()
-        url = URL.create("provisa+http", username="u", password="p",
-                         host="localhost", port=8001,
-                         query={"role": "viewer"})
+        url = URL.create(
+            "provisa+http",
+            username="u",
+            password="p",
+            host="localhost",
+            port=8001,
+            query={"role": "viewer"},
+        )
         _, kwargs = dialect.create_connect_args(url)
         assert kwargs["role"] == "viewer"
 
     def test_args_list_is_empty(self):
         """create_connect_args must return an empty positional args list."""
         dialect = ProvisaDialect()
-        url = URL.create("provisa+http", username="u", password="p",
-                         host="localhost", port=8001)
+        url = URL.create("provisa+http", username="u", password="p", host="localhost", port=8001)
         args, _ = dialect.create_connect_args(url)
         assert args == []
 
@@ -307,8 +325,7 @@ class TestApplyParameters:
 
     def test_string_value_quoted(self):
         """String parameters must be wrapped in single quotes."""
-        result = _apply_parameters("SELECT * FROM t WHERE region = :region",
-                                   {"region": "us-east"})
+        result = _apply_parameters("SELECT * FROM t WHERE region = :region", {"region": "us-east"})
         assert "region = 'us-east'" in result
 
     def test_numeric_value_unquoted(self):
@@ -340,8 +357,7 @@ class TestApplyParameters:
 
     def test_float_parameter_substituted(self):
         """Float values are substituted as their string representation."""
-        result = _apply_parameters("SELECT * FROM t WHERE price > :price",
-                                   {"price": 9.99})
+        result = _apply_parameters("SELECT * FROM t WHERE price > :price", {"price": 9.99})
         assert "9.99" in result
 
 
@@ -355,19 +371,19 @@ class TestCursorInitialState:
 
     def test_rowcount_is_negative_one_before_execute(self):
         """PEP 249 §.rowcount: -1 when no operation has been performed."""
-        conn = Connection(base_url=BASE, token=None, role="admin", mode="approved")
+        conn = Connection(base_url=BASE, token=None, role="admin")
         cur = conn.cursor()
         assert cur.rowcount == -1
 
     def test_description_is_none_before_execute(self):
         """PEP 249 §.description: None when no operation has been performed."""
-        conn = Connection(base_url=BASE, token=None, role="admin", mode="approved")
+        conn = Connection(base_url=BASE, token=None, role="admin")
         cur = conn.cursor()
         assert cur.description is None
 
     def test_arraysize_default_is_one(self):
         """PEP 249 §.arraysize: default value is 1."""
-        conn = Connection(base_url=BASE, token=None, role="admin", mode="approved")
+        conn = Connection(base_url=BASE, token=None, role="admin")
         cur = conn.cursor()
         assert cur.arraysize == 1
 

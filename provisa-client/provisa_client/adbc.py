@@ -54,7 +54,7 @@ def adbc_connect(
 
     parsed = urlparse(base_url)
     host = parsed.hostname or "localhost"
-    flight_client = fl.connect(f"grpc://{host}:8815")
+    flight_client = fl.connect(f"grpc://{host}:8815")  # pyright: ignore[reportPrivateImportUsage]
 
     return AdbcConnection(
         flight_client=flight_client,
@@ -69,7 +69,7 @@ class AdbcConnection:
 
     def __init__(
         self,
-        flight_client: fl.FlightClient,
+        flight_client: fl.FlightClient,  # pyright: ignore[reportPrivateImportUsage]
         role: str | None,
         token: str | None,
         base_url: str,
@@ -104,13 +104,13 @@ class AdbcCursor:
 
     def __init__(self, *, connection: AdbcConnection) -> None:
         self._conn = connection
-        self._stream: fl.FlightStreamReader | None = None
+        self._stream: fl.FlightStreamReader | None = None  # pyright: ignore[reportPrivateImportUsage]
         self._table: pa.Table | None = None
         self._rows: list[tuple] | None = None
         self._pos: int = 0
         self._closed = False
 
-    def _build_ticket(self, query: str) -> fl.Ticket:
+    def _build_ticket(self, query: str) -> fl.Ticket:  # pyright: ignore[reportPrivateImportUsage]
         # REQ-273: no mode; role sent only when requested and validated server-side against
         # the token's assignments.
         data: dict = {"query": query}
@@ -118,7 +118,7 @@ class AdbcCursor:
             data["role"] = self._conn._role
         if self._conn._token:
             data["token"] = self._conn._token
-        return fl.Ticket(json.dumps(data).encode())
+        return fl.Ticket(json.dumps(data).encode())  # pyright: ignore[reportPrivateImportUsage]
 
     def execute(self, query: str, parameters: Any = None) -> None:
         if self._closed:
