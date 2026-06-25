@@ -12,6 +12,7 @@ import { useState, useCallback, useRef } from "react";
 import { labelColor } from "./graph-model";
 import type { RelLineOverride } from "./graph-model";
 import type { SchemaNodeLabel, SchemaRel } from "./graph-schema-types";
+import type { Favorite } from "./graph-persistence";
 import {
   NodeContextMenu,
   RelContextMenu,
@@ -45,6 +46,12 @@ interface SidebarProps {
   width: number;
   onWidthChange: (w: number) => void;
   highlightedLabel?: string | null;
+  favorites?: Favorite[];
+  onFavoriteSelect?: (query: string) => void;
+  onFavoriteDelete?: (id: string) => void;
+  propertyKeys?: string[];
+  onPropertyKeyClick?: (key: string) => void;
+  totalNodeCount?: number | null;
 }
 
 const NUMERIC_TYPES = new Set(["int", "integer", "bigint", "float", "double", "decimal", "numeric", "real", "number"]);
@@ -80,12 +87,19 @@ export function Sidebar({
   width,
   onWidthChange,
   highlightedLabel,
+  favorites = [],
+  onFavoriteSelect,
+  onFavoriteDelete,
+  propertyKeys = [],
+  onPropertyKeyClick,
+  totalNodeCount = null,
 }: SidebarProps) {
-  const [section, setSection] = useState<"db" | "history">("db");
+  const [section, setSection] = useState<"db" | "history" | "favorites">("db");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [relContextMenu, setRelContextMenu] = useState<RelContextMenuState | null>(null);
   const [nodeLabelsCollapsed, setNodeLabelsCollapsed] = useState(false);
   const [relTypesCollapsed, setRelTypesCollapsed] = useState(false);
+  const [propKeysCollapsed, setPropKeysCollapsed] = useState(false);
   const [nodeLabelsPage, setNodeLabelsPage] = useState(0);
   const [relTypesPage, setRelTypesPage] = useState(0);
   const SCHEMA_PAGE_SIZE = 50;
@@ -157,6 +171,13 @@ export function Sidebar({
           title="History"
         >
           ⏱
+        </button>
+        <button
+          className={`graph-sidebar-tab ${section === "favorites" ? "active" : ""}`}
+          onClick={() => setSection("favorites")}
+          title="Favorites"
+        >
+          ★
         </button>
         {onNeo4jExport && (
           <button
@@ -254,6 +275,15 @@ export function Sidebar({
                   <div className="graph-schema-empty">No labels found</div>
                 ) : (
                   <div className="graph-label-list">
+                    <div className="graph-label-item">
+                      <span
+                        className="graph-label-pill graph-label-pill--all"
+                        onClick={() => onLabelClick("*")}
+                        title="MATCH (n) RETURN n LIMIT 25"
+                      >
+                        *({totalNodeCount !== null ? totalNodeCount.toLocaleString() : schemaNodeLabels.length})
+                      </span>
+                    </div>
                     {(() => {
                       const sorted = [...schemaNodeLabels].sort((a, b) =>
                         a.tableLabel.localeCompare(b.tableLabel),
@@ -387,45 +417,36 @@ export function Sidebar({
                 ) : schemaRels.length === 0 ? (
                   <div className="graph-schema-empty">No relationship types found</div>
                 ) : (
-                  <div className="graph-rel-list">
+                  <div className="graph-label-list">
                     {(() => {
                       const uniqueRels = [...new Map(schemaRels.map((r) => [r.type, r])).values()];
                       const paged = uniqueRels.slice(
                         relTypesPage * SCHEMA_PAGE_SIZE,
                         (relTypesPage + 1) * SCHEMA_PAGE_SIZE,
                       );
-                      return paged.map(({ type }) => {
-                        const ov = relLineOverrides[type];
-                        return (
-                          <div
-                            key={type}
-                            className="graph-rel-item graph-rel-item--clickable"
-                            title={`MATCH ()-[r:${type}]->() RETURN r LIMIT 25`}
-                            onClick={() => onRelClick(type)}
-                            onContextMenu={(e) => handleRelRightClick(e, type)}
+                      return [
+                        <div key="__all__" className="graph-label-item">
+                          <span
+                            className="graph-label-pill graph-label-pill--all"
+                            onClick={() => onRelClick("*")}
+                            title="MATCH p=()-->() RETURN p LIMIT 25"
                           >
+                            *({uniqueRels.length})
+                          </span>
+                        </div>,
+                        ...paged.map(({ type }) => (
+                          <div key={type} className="graph-label-item">
                             <span
-                              className="graph-rel-arrow"
-                              style={
-                                ov
-                                  ? {
-                                      borderBottomWidth: ov.width,
-                                      borderBottomStyle:
-                                        ov.style === "solid"
-                                          ? "solid"
-                                          : ov.style === "dashed"
-                                            ? "dashed"
-                                            : "dotted",
-                                    }
-                                  : {}
-                              }
+                              className="graph-rel-badge"
+                              title={`MATCH ()-[r:${type}]->() RETURN r LIMIT 25`}
+                              onClick={() => onRelClick(type)}
+                              onContextMenu={(e) => handleRelRightClick(e, type)}
                             >
-                              –
+                              {type}
                             </span>
-                            <span className="graph-rel-type">{type}</span>
                           </div>
-                        );
-                      });
+                        )),
+                      ];
                     })()}
                     {(() => {
                       const uniqueRels = [...new Map(schemaRels.map((r) => [r.type, r])).values()];
@@ -510,6 +531,36 @@ export function Sidebar({
                   </div>
                 ))}
             </div>
+
+            {propertyKeys.length > 0 && (
+              <div className="graph-schema-section">
+                <div
+                  className="graph-schema-heading graph-schema-heading--collapsible"
+                  onClick={() => setPropKeysCollapsed((c) => !c)}
+                >
+                  Property Keys
+                  <span
+                    className={`graph-schema-chevron ${propKeysCollapsed ? "graph-schema-chevron--collapsed" : ""}`}
+                  >
+                    ▾
+                  </span>
+                </div>
+                {!propKeysCollapsed && (
+                  <div className="graph-prop-key-list">
+                    {[...propertyKeys].sort().map((k) => (
+                      <span
+                        key={k}
+                        className={`graph-prop-key-tag${onPropertyKeyClick ? " graph-prop-key-tag--clickable" : ""}`}
+                        onClick={() => onPropertyKeyClick?.(k)}
+                        title={onPropertyKeyClick ? `MATCH (n) WHERE (n.${k}) IS NOT NULL RETURN DISTINCT "node" as entity, n.${k} AS ${k} LIMIT 25 UNION ALL MATCH ()-[r]-() WHERE (r.${k}) IS NOT NULL RETURN DISTINCT "relationship" AS entity, r.${k} AS ${k} LIMIT 25` : undefined}
+                      >
+                        {k}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -528,6 +579,36 @@ export function Sidebar({
                     title={q}
                   >
                     {q}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {section === "favorites" && (
+          <div className="graph-schema-section">
+            <div className="graph-schema-heading">Favorites</div>
+            {favorites.length === 0 ? (
+              <div className="graph-schema-empty">No favorites yet — click ★ in a result frame</div>
+            ) : (
+              <div className="graph-history-list">
+                {[...favorites].sort((a, b) => b.ts - a.ts).map((fav) => (
+                  <div key={fav.id} className="graph-fav-item">
+                    <span
+                      className="graph-fav-label"
+                      onClick={() => onFavoriteSelect?.(fav.query)}
+                      title={fav.query}
+                    >
+                      {fav.label}
+                    </span>
+                    <button
+                      className="graph-fav-del"
+                      title="Remove"
+                      onClick={() => onFavoriteDelete?.(fav.id)}
+                    >
+                      ✕
+                    </button>
                   </div>
                 ))}
               </div>
