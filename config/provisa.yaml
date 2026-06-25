@@ -426,8 +426,6 @@ tables:
     - analyst
   description: Prospective adopters who have submitted inquiries
   domain_id: pet-store
-  enable_aggregates: true
-  enable_group_by: true
   governance: pre-approved
   schema: default
   source_id: inquiries-sqlite
@@ -463,8 +461,6 @@ tables:
     - analyst
   description: "Customer adoption inquiries \u2014 managed by the front-desk/CRM team"
   domain_id: pet-store
-  enable_aggregates: true
-  enable_group_by: true
   governance: pre-approved
   schema: default
   source_id: inquiries-sqlite
@@ -498,8 +494,6 @@ tables:
   description: "Full breed catalog \u2014 use to answer what care protocols apply\
     \ and which adopter profiles match each species in custody"
   domain_id: shelter
-  enable_aggregates: true
-  enable_group_by: true
   governance: pre-approved
   schema: graphql
   source_id: graphql-demo

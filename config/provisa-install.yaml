@@ -209,6 +209,8 @@ tables:
     - analyst
   description: "Pet inventory \u2014 managed by the inventory department"
   domain_id: pet-store
+  enable_aggregates: true
+  enable_group_by: true
   governance: pre-approved
   schema: pet_store
   source_id: pet-store-pg
