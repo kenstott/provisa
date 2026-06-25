@@ -207,25 +207,66 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         if path_step_info is not None:
             step_nodes, step_edges = path_step_info
             return self._build_path_json(step_nodes, step_edges)
+        # All-rels union path (anonymous or unlabeled-rel): build from _all_rels subquery columns.
+        all_rels_alias = getattr(self, "_all_rels_alias", None)
+        all_rels_src_col = getattr(self, "_all_rels_src_col", None)
+        all_rels_rel_col = getattr(self, "_all_rels_rel_col", None)
+        all_rels_tgt_col = getattr(self, "_all_rels_tgt_col", None)
+        if (
+            (not src_var or not tgt_var)
+            and all_rels_alias
+            and all_rels_src_col
+            and all_rels_tgt_col
+            and all_rels_rel_col
+        ):
+            n_expr = exp.Column(
+                this=exp.Identifier(this=all_rels_src_col),
+                table=exp.Identifier(this=all_rels_alias),
+            )
+            m_expr = exp.Column(
+                this=exp.Identifier(this=all_rels_tgt_col),
+                table=exp.Identifier(this=all_rels_alias),
+            )
+            r_expr = exp.Column(
+                this=exp.Identifier(this=all_rels_rel_col),
+                table=exp.Identifier(this=all_rels_alias),
+            )
+            return exp.Anonymous(
+                this="JSON_OBJECT",
+                expressions=[
+                    exp.Literal.string("nodes"),
+                    exp.Anonymous(this="JSON_ARRAY", expressions=[n_expr, m_expr]),
+                    exp.Literal.string("edges"),
+                    exp.Anonymous(this="JSON_ARRAY", expressions=[r_expr]),
+                ],
+            )
         # Recursive CTE or fallback
         src_nm: NodeMapping | None = self._var_table.get(src_var, (src_var, None))[1]
         tgt_nm: NodeMapping | None = self._var_table.get(tgt_var, (tgt_var, None))[1]
         src_id_col_name = src_nm.id_column if src_nm else "id"
         tgt_id_col_name = tgt_nm.id_column if tgt_nm else "id"
-        src_id = exp.Column(
-            this=exp.Identifier(this=src_id_col_name, quoted=True),
-            table=exp.Identifier(this=src_var),
+        src_id: exp.Expression = (
+            exp.Column(
+                this=exp.Identifier(this=src_id_col_name, quoted=True),
+                table=exp.Identifier(this=src_var),
+            )
+            if src_var
+            else exp.Identifier(this=src_id_col_name, quoted=True)
         )
         if is_recursive and self._shortestpath_hops_col is not None:
-            tgt_id = exp.Column(
+            tgt_id: exp.Expression = exp.Column(
                 this=exp.Identifier(this="cur_id"),
                 table=exp.Identifier(this="_t"),
             )
             length_val: exp.Expression = self._shortestpath_hops_col  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         else:
-            tgt_id = exp.Column(
-                this=exp.Identifier(this=tgt_id_col_name, quoted=True),
-                table=exp.Identifier(this=tgt_var),
+            tgt_id = (
+                exp.Column(
+                    this=exp.Identifier(this=tgt_id_col_name, quoted=True),
+                    table=exp.Identifier(this=tgt_var),
+                )
+                if tgt_var
+                else exp.Identifier(this=tgt_id_col_name, quoted=True)
             )
             length_val = exp.Literal.number(1)
         return exp.Anonymous(

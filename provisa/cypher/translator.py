@@ -177,10 +177,19 @@ def _is_bwd_for_candidate(
     """
     if bidir:
         if src_nm is not None:
+            canonical_fwd = rm.source_label == src_nm.type_name
+            canonical_bwd = rm.target_label == src_nm.type_name
+            chains_from_tgt = tgt_nm is not None and rm.source_label == tgt_nm.type_name
+            if not canonical_fwd and not canonical_bwd and not chains_from_tgt:
+                return None
             return rm.source_label != src_nm.type_name
         return False
     if src_nm is not None:
         canonical_fwd = rm.source_label == src_nm.type_name
+        canonical_bwd = rm.target_label == src_nm.type_name
+        chains_from_tgt = tgt_nm is not None and rm.source_label == tgt_nm.type_name
+        if not canonical_fwd and not canonical_bwd and not chains_from_tgt:
+            return None
         if tgt_nm is not None and tgt_nm_explicit:
             if backward and canonical_fwd:
                 return None
@@ -394,8 +403,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
         # vars that are pre-built JSON from an all-rels union subquery
         self._passthrough_vars: set[str] = set()
+        # relationship variables whose value is JSON_OBJECT({id,type,startNode,endNode})
+        self._all_rels_rel_vars: set[str] = set()
+        # node variables whose value is JSON_OBJECT({id,label,tableLabel,properties:{...}})
+        self._all_rels_node_vars: set[str] = set()
         # alias of the all-rels union subquery (when built)
         self._all_rels_alias: str | None = None
+        # column names in the all-rels subquery for src node, rel, tgt node JSON objects
+        self._all_rels_src_col: str | None = None
+        self._all_rels_rel_col: str | None = None
+        self._all_rels_tgt_col: str | None = None
         # varlen rel variable → outer path variable (e.g. c from [c*..5] → r from MATCH r = ...)
         self._varlen_rel_vars: dict[str, str] = {}
 
@@ -579,13 +596,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _fold_union_parts(self, result: "exp.Select | exp.Union") -> "exp.Select | exp.Union":
         """Fold UNION / UNION ALL parts into result."""
-        for sub_ast, is_all in self._ast.union_parts:
+        for i, (sub_ast, is_all) in enumerate(self._ast.union_parts):
             sub_sql, sub_params, sub_graph_vars = cypher_to_sql(sub_ast, self._lm, self._params)
             for p in sub_params:
                 if p not in self._param_seen:
                     self._param_order.append(p)
                     self._param_seen.add(p)
             self._graph_vars.update(sub_graph_vars)
+            # If the sub-branch has a per-branch LIMIT/SKIP, wrap it in a subquery so
+            # the limit applies only to that branch, not the whole union.
+            if sub_ast.limit is not None or sub_ast.skip is not None:
+                sub_sql = exp.select(exp.Star()).from_(
+                    exp.alias_(exp.Subquery(this=sub_sql), alias=f"_ub{i}")
+                )
             result = exp.Union(this=result, expression=sub_sql, distinct=not is_all)
         return result
 
@@ -642,6 +665,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         select_exprs = self._build_select(self._ast.return_clause)
         where_expr, joins = self._apply_where_and_fold(stage_where, all_matches, joins)
+
+        # Short-circuit: if any resolved node's WHERE props are all absent from its schema,
+        # the WHERE is always non-true → force FALSE to avoid scanning any tables.
+        if self._where_is_impossible_for_resolved_nodes():
+            where_expr = exp.false()
         order_exprs = self._build_order_by(self._ast.order_by)
 
         query = self._build_main_query(from_clause, joins, where_expr, select_exprs)
@@ -651,6 +679,20 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             result = result.with_(cte_name, as_=cte_query)
         for cte_name, cte_expr in self._recursive_ctes:
             result = result.with_(cte_name, as_=cte_expr, recursive=True)
+
+        # If this is the first branch of a UNION ALL and has a per-branch LIMIT/SKIP,
+        # apply it to just this branch before folding the union. Without this the limit
+        # would be placed on the outer wrapper and constrain the whole union result.
+        if self._ast.union_parts and (self._ast.limit is not None or self._ast.skip is not None):
+            if self._ast.limit is not None:
+                result = result.limit(self._ast.limit)
+            if self._ast.skip is not None:
+                result = result.offset(self._ast.skip)
+            result = exp.select(exp.Star()).from_(
+                exp.alias_(exp.Subquery(this=result), alias="_ub_first")
+            )
+            self._ast.limit = None
+            self._ast.skip = None
 
         result = self._fold_union_parts(result)
 
@@ -876,12 +918,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             self._domain_nodes.pop(src_var, None)
             self._var_table[src_var] = (src_var, None)
             self._passthrough_vars.add(src_var)
+            self._all_rels_node_vars.add(src_var)
         if rel_var:
             self._passthrough_vars.add(rel_var)
+            self._all_rels_rel_vars.add(rel_var)
         if tgt_var:
             self._domain_nodes.pop(tgt_var, None)
             self._var_table[tgt_var] = (tgt_var, None)
             self._passthrough_vars.add(tgt_var)
+            self._all_rels_node_vars.add(tgt_var)
         return from_expr
 
     def _resolve_typed_rel_candidates(
@@ -1293,6 +1338,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         Cypher COUNT(n) counts non-null node instances — translates to COUNT(n.id_col) in SQL.
         Without this, the bare var reaches Trino as a table alias which cannot be resolved as a column.
+        Cypher COUNT(r) for a relationship variable translates to COUNT(*) — r is not a SQL column.
         """
         _AGG_WITH_NODE_ARG = re.compile(
             r"\b(COUNT|COLLECT|count|collect)\s*\(\s*([A-Za-z_]\w*)\s*\)",
@@ -1300,6 +1346,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         def _replace(m: re.Match) -> str:
             fn, var = m.group(1), m.group(2)
+            if var in self._rel_var_types or var in self._all_rels_rel_vars:
+                if fn.upper() == "COUNT":
+                    return "COUNT(*)"
+                return m.group(0)
             info = self._var_table.get(var)
             if info and info[1]:
                 id_col = info[1].id_column
@@ -1316,6 +1366,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         def _replace(m: re.Match) -> str:
             var, prop = m.group(1), m.group(2)
+            if var in self._all_rels_rel_vars:
+                return f"JSON_EXTRACT_SCALAR({var}, '$.{prop}')"
+            if var in self._all_rels_node_vars:
+                return f"JSON_EXTRACT_SCALAR({var}, '$.properties.{prop}')"
             info = self._var_table.get(var)
             if info and info[1]:
                 sql_alias = info[1].properties.get(prop)
@@ -1570,6 +1624,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Parse a Cypher expression fragment into a SQLGlot expression."""
         text = self._rewrite_params_in_expr(text)
+        text = _rewrite_cypher_dquote_strings(text)
         text = self._rewrite_cte_vars(text)
         text = self._rewrite_call_bound_vars(text)
         text = self._rewrite_node_var_in_aggs(text)
@@ -1770,6 +1825,47 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         return props
 
+    def _collect_where_only_props(self, var: str) -> list[str]:
+        """Return property names referenced as var.prop in WHERE clauses only (not RETURN/WITH)."""
+        pattern = re.compile(rf"\b{re.escape(var)}\s*\.\s*([A-Za-z_]\w*)")
+        seen: set[str] = set()
+        props: list[str] = []
+        for step in self._ast.pipeline:
+            if isinstance(step, MatchStep) and step.where:
+                for m in pattern.finditer(step.where.expression):
+                    p = m.group(1)
+                    if p not in seen:
+                        props.append(p)
+                        seen.add(p)
+            elif isinstance(step, WithClause) and step.where:
+                for m in pattern.finditer(step.where.expression):
+                    p = m.group(1)
+                    if p not in seen:
+                        props.append(p)
+                        seen.add(p)
+        return props
+
+    def _where_is_impossible_for_resolved_nodes(self) -> bool:
+        """Return True if any resolved node variable's WHERE props are ALL missing from its type.
+
+        When a property referenced in WHERE doesn't exist on the resolved node type, every
+        access returns NULL.  If *all* WHERE props for a variable are missing, the WHERE
+        condition on that variable is always non-true (NULL comparisons), so the result is
+        zero rows regardless of query structure — we can skip the Trino round-trip.
+
+        This check is skipped for domain-union / passthrough vars because those are already
+        pruned per-branch inside _build_domain_union.
+        """
+        for var, (_, nm) in self._var_table.items():
+            if nm is None:
+                continue
+            if var in self._domain_nodes or var in self._passthrough_vars:
+                continue
+            where_props = self._collect_where_only_props(var)
+            if where_props and not any(nm.properties.get(p) for p in where_props):
+                return True
+        return False
+
     def _build_all_rels_union(
         self,
         src_var: str | None,
@@ -1789,6 +1885,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         tgt_col = tgt_var or "m"
         alias = "_all_rels"
         self._all_rels_alias = alias
+        self._all_rels_src_col = src_col
+        self._all_rels_rel_col = rel_col
+        self._all_rels_tgt_col = tgt_col
 
         src_type_set = (
             set(self._lm.domains.get(src_domain, []))
@@ -1983,11 +2082,18 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         props = self._collect_var_props(var)
 
         branches: list[exp.Select] = []
+        had_resolvable = False
         for label in type_labels:
             nm = self._lm.nodes.get(label)
             if nm is None:
                 continue
             if nm.native_filter_columns:
+                continue
+            had_resolvable = True
+            # Metadata-based prune: skip branches where no required property exists.
+            # Those branches can only contribute NULL rows, which a WHERE filter would discard.
+            # This prevents full-table scans across all entity types on Trino.
+            if props and not any(nm.properties.get(p) for p in props):
                 continue
             select_items: list[exp.Expr] = [
                 exp.alias_(exp.Literal.string(nm.label), alias="__label"),
@@ -2034,7 +2140,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             branches.append(branch)
 
         if not branches:
-            raise CypherTranslateError(f"Domain {domain_name!r} has no resolvable types")
+            if not had_resolvable:
+                raise CypherTranslateError(f"Domain {domain_name!r} has no resolvable types")
+            # All types exist but none have the required properties — return zero rows without
+            # scanning any tables (metadata resolved this at translation time).
+            zero_items: list[exp.Expr] = [
+                exp.alias_(exp.null(), alias="__label"),
+                exp.alias_(exp.null(), alias="__id"),
+            ] + [exp.alias_(exp.null(), alias=exp.Identifier(this=p, quoted=True)) for p in props]
+            zero_row = exp.select(*zero_items).where(exp.false())
+            return exp.alias_(exp.Subquery(this=zero_row), alias=var)  # pyright: ignore[reportReturnType]
 
         union: exp.Expression = branches[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for branch in branches[1:]:

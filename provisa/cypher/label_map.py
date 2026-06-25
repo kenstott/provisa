@@ -375,6 +375,13 @@ def _build_relationship_mappings(
         cypher_alias = getattr(join_meta, "cypher_alias", None)
         cardinality = getattr(join_meta, "cardinality", None)
         rel_type = cypher_alias if cypher_alias else _to_rel_type(gql_field_name, cardinality)
+        src_json_key = getattr(join_meta, "source_json_key", None)
+        _base_source_expr = getattr(join_meta, "source_expr", None)
+        source_expr = (
+            f"JSON_EXTRACT_SCALAR({{alias}}.\"{join_meta.source_column}\", '$.{src_json_key}')"
+            if src_json_key and _base_source_expr is None
+            else _base_source_expr
+        )
         rm = RelationshipMapping(
             rel_type=rel_type,
             source_label=source_type_name,
@@ -384,7 +391,7 @@ def _build_relationship_mappings(
             field_name=gql_field_name,
             alias=cypher_alias,
             source_constant=getattr(join_meta, "source_constant", None),
-            source_expr=getattr(join_meta, "source_expr", None),
+            source_expr=source_expr,
             target_expr=getattr(join_meta, "target_expr", None),
             many=(cardinality == "one-to-many"),
         )
@@ -503,6 +510,12 @@ def _add_cross_domain_nodes(
         )
         rel_key = f"{rel_type}::{src_type}→{tgt_type_name}"
         if rel_key not in relationships:
+            _src_json_key = rel.get("source_json_key")
+            _xsource_expr = (
+                f"JSON_EXTRACT_SCALAR({{alias}}.\"{rel['source_column']}\", '$.{_src_json_key}')"
+                if _src_json_key
+                else None
+            )
             xrel = RelationshipMapping(
                 rel_type=rel_type,
                 source_label=src_type,
@@ -511,6 +524,7 @@ def _add_cross_domain_nodes(
                 join_target_column=rel["target_column"],
                 field_name=rel.get("graphql_alias") or "",
                 alias=cypher_alias,
+                source_expr=_xsource_expr,
                 many=(rel_cardinality == "one-to-many"),
             )
             relationships[rel_key] = xrel
