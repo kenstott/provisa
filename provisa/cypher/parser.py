@@ -868,7 +868,7 @@ def parse_cypher(query: str) -> CypherAST:  # REQ-345, REQ-346, REQ-571
     return parser.parse()
 
 
-def extract_parameters(query: str) -> list[str]:
+def extract_parameters(query: str) -> list[str]:  # REQ-571
     """Return ordered list of $param names from the query string."""
     seen: list[str] = []
     for m in re.finditer(r"\$([A-Za-z_]\w*)", query):

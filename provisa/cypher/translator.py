@@ -326,7 +326,7 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
     return translator.translate()
 
 
-def cypher_calls_to_sql_list(
+def cypher_calls_to_sql_list(  # REQ-571
     ast: CypherAST,
     label_map: CypherLabelMap,
     params: dict[str, Any],
@@ -1303,6 +1303,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             info = self._var_table.get(var)
             if info and info[1]:
                 id_col = info[1].id_column
+                # COUNT(n) must deduplicate — multiple SQL rows can map to one graph node via JOINs
+                if fn.upper() == "COUNT":
+                    return f"{fn}(DISTINCT {var}.{id_col})"
                 return f"{fn}({var}.{id_col})"
             return m.group(0)
 

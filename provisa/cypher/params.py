@@ -29,7 +29,7 @@ class CypherParamError(Exception):
 _PARAM_RE = re.compile(r"\$([A-Za-z_]\w*)")
 
 
-def collect_param_names(query: str) -> list[str]:
+def collect_param_names(query: str) -> list[str]:  # REQ-571
     """Return unique $param names in order of first appearance."""
     seen: list[str] = []
     for m in _PARAM_RE.finditer(query):
@@ -39,7 +39,7 @@ def collect_param_names(query: str) -> list[str]:
     return seen
 
 
-def bind_params(
+def bind_params(  # REQ-571
     param_names: list[str],
     provided: dict[str, Any],
 ) -> list[Any]:
@@ -58,7 +58,7 @@ def bind_params(
     return values
 
 
-def rewrite_params(query: str, param_names: list[str]) -> str:
+def rewrite_params(query: str, param_names: list[str]) -> str:  # REQ-571
     """Replace $name with positional $1, $2, ... in order of appearance."""
     idx: dict[str, int] = {name: i + 1 for i, name in enumerate(param_names)}
 

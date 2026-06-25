@@ -1242,7 +1242,7 @@ def _offset_aliases(cypher: str, offset: int) -> tuple[str, int]:
     return result, offset + len(defined)
 
 
-def combine_cypher_queries(cyphers: list[str]) -> str:
+def combine_cypher_queries(cyphers: list[str]) -> str:  # REQ-571
     """Combine independent per-root Cypher queries into a single CALL {} query.
 
     Each query is wrapped in a CALL {} subquery; the outer RETURN collects all

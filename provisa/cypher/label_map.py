@@ -109,7 +109,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         self._domains_ci: dict[str, str] = {k.lower(): k for k in self.domains}
         self._nodes_by_table_ci: dict[str, str] = {k.lower(): k for k in self.nodes_by_table}
 
-    def display_label(self, nm: "NodeMapping") -> str:
+    def display_label(self, nm: "NodeMapping") -> str:  # REQ-572
         """Return the shortest unambiguous label for a node.
 
         Uses just the table label unless multiple nodes share that table label
@@ -119,7 +119,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             return nm.label
         return nm.table_label
 
-    def canonical_label(self, label: str) -> str:
+    def canonical_label(self, label: str) -> str:  # REQ-572
         """Return the canonical-cased label, falling back to input if not found."""
         return (
             self._nodes_ci.get(label.lower())
@@ -128,13 +128,13 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             or label
         )
 
-    def node(self, label: str) -> NodeMapping:
+    def node(self, label: str) -> NodeMapping:  # REQ-572
         try:
             return self.nodes[label]
         except KeyError:
             raise KeyError(f"Unknown Cypher node label: {label!r}")
 
-    def find_paths(
+    def find_paths(  # REQ-572
         self,
         start_label: str,
         end_label: str,
@@ -219,7 +219,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                         queue.append((rel.source_label, path + [rev], used_rel_keys | {key}))
         return results
 
-    def relationships_for(
+    def relationships_for(  # REQ-572
         self, source_label: str, target_label: str | None = None
     ) -> list[RelationshipMapping]:
         result = []

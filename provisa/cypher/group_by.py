@@ -34,7 +34,7 @@ def _has_aggregate(text: str) -> bool:
     )
 
 
-class GroupByMixin:
+class GroupByMixin:  # REQ-653
     """Mixin for _Translator: builds implicit GROUP BY for aggregating queries."""
 
     def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]

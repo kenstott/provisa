@@ -78,7 +78,7 @@ def _expand_bare_map(m: re.Match) -> str:
     return f"MAP(ARRAY[{', '.join(keys)}], ARRAY[{', '.join(cast_vals)}])"
 
 
-def rewrite_bare_map_literals(text: str) -> str:
+def rewrite_bare_map_literals(text: str) -> str:  # REQ-571
     """Rewrite bare {key: val, ...} map literals to MAP(ARRAY[...], ARRAY[...]).
 
     Applies bottom-up to handle nested maps: innermost {key: val} blocks are
