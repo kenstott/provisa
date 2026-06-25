@@ -924,6 +924,7 @@ def _mat_store_rows(
     redirect_config,
     cache_rewrites: dict,
     values_cte_entries: dict,
+    all_ep_col_names: list | None = None,
 ) -> None:
     """Store materialized rows as hot VALUES CTE or in Trino cache."""
     from provisa.api_source.trino_cache import create_and_insert, schedule_drop
@@ -931,13 +932,16 @@ def _mat_store_rows(
     if 0 < len(rows) <= _hot_threshold:
         from provisa.cache.hot_tables import HotTableEntry
 
+        # Include all endpoint columns (response + params) in the hot CTE so that
+        # generated SQL referencing param columns (e.g. "status") resolves to NULL.
+        hot_col_names = all_ep_col_names if all_ep_col_names else col_names
         entry = HotTableEntry(
             table_name=tn,
             catalog=_cache_loc.catalog,
             schema=_cache_loc.schema,
             pk_column=col_names[0] if col_names else "id",
             rows=rows,
-            column_names=col_names,
+            column_names=hot_col_names,
             is_api=True,
         )
         if hot_mgr is not None:
@@ -991,9 +995,16 @@ async def _mat_api_ep_table(
         or getattr(state, "response_cache_default_ttl", None)
         or ep.ttl
     )
+    from provisa.compiler.naming import apply_sql_name
+
     response_cols = [c for c in ep.columns if c.param_type is None]
     col_names = [c.name for c in response_cols]
+    all_ep_col_names = [apply_sql_name(c.name) for c in ep.columns]
     redirect_config = RedirectConfig.from_env()
+
+    if not response_cols:
+        log.warning("[MAT] %s has no response columns — skipping", tn)
+        return
 
     # Priority 2: Trino cache hit
     if table_known_live(_cache_loc, cache_tbl):
@@ -1070,30 +1081,33 @@ async def _mat_api_ep_table(
         redirect_config,
         cache_rewrites,
         values_cte_entries,
+        all_ep_col_names=all_ep_col_names,
     )
 
 
 async def _materialize_api_to_trino_cache(
     exec_sql: str, state, gql_remote_extra_selections: dict | None = None
-) -> tuple[dict, dict]:
+) -> tuple[dict, dict, list[str]]:
     """Materialize API-backed tables into Trino cache (VARCHAR columns) before Trino SQL runs.
 
     Avoids INVALID_CAST_ARGUMENT: Trino's PG connector exposes JSONB as json type;
     cache tables store all columns as VARCHAR/scalar types instead.
 
     Reads from the PG cache populated by _hydrate_api_tables_before_trino — no HTTP call.
-    Returns (cache_rewrites, values_cte_entries):
+    Returns (cache_rewrites, values_cte_entries, dropped_tables):
       cache_rewrites: {physical_table_name: (CacheLocation, cache_tbl)}
       values_cte_entries: {physical_table_name: HotTableEntry} — inlined as VALUES CTEs
+      dropped_tables: table names whose UNION branches should be dropped (unreachable remotes)
     """
     from provisa.compiler.nf_extractor import find_api_table_names
 
     cache_rewrites: dict = {}
     values_cte_entries: dict = {}
+    dropped_tables: list[str] = []
     hot_mgr = getattr(state, "hot_manager", None)
     table_names = find_api_table_names(exec_sql)
     if not table_names:
-        return cache_rewrites, values_cte_entries
+        return cache_rewrites, values_cte_entries, dropped_tables
 
     _has_pg_pool = getattr(state, "pg_pool", None) is not None
     _META_COLS = {"_params_hash", "_cached_at"}
@@ -1115,17 +1129,25 @@ async def _materialize_api_to_trino_cache(
                 assert gql_tbl is not None
                 assert isinstance(gql_tbl, dict)
             if gql_reg is not None and gql_tbl is not None and not gql_tbl.get("required_args"):
-                await _mat_gql_remote_table(
-                    tn,
-                    gql_reg,
-                    gql_tbl,
-                    state,
-                    hot_mgr,
-                    _hot_threshold,
-                    cache_rewrites,
-                    values_cte_entries,
-                    extra_selections=(gql_remote_extra_selections or {}).get(tn),
-                )
+                try:
+                    await _mat_gql_remote_table(
+                        tn,
+                        gql_reg,
+                        gql_tbl,
+                        state,
+                        hot_mgr,
+                        _hot_threshold,
+                        cache_rewrites,
+                        values_cte_entries,
+                        extra_selections=(gql_remote_extra_selections or {}).get(tn),
+                    )
+                except RuntimeError as _gql_err:
+                    log.warning(
+                        "[MAT] GQL remote unreachable for %s — dropping union branch: %s",
+                        tn,
+                        _gql_err,
+                    )
+                    dropped_tables.append(tn)
             continue
 
         if not _has_pg_pool:
@@ -1143,7 +1165,7 @@ async def _materialize_api_to_trino_cache(
             values_cte_entries,
         )
 
-    return cache_rewrites, values_cte_entries
+    return cache_rewrites, values_cte_entries, dropped_tables
 
 
 async def _hydrate_dataloader(
@@ -1668,9 +1690,14 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
     assert cache_tbl is not None, "cache_tbl must be set before Phase 2"
     rewritten_sql = rewrite_from_cache(exec_sql, _cache_loc, cache_tbl)
     # Rewrite any joined API table refs → VALUES CTE (hot) or Trino cache
-    _join_rewrites, _join_values_ctes = await _materialize_api_to_trino_cache(
+    _join_rewrites, _join_values_ctes, _join_dropped = await _materialize_api_to_trino_cache(
         rewritten_sql, state, compiled.gql_remote_extra_selections
     )
+    if _join_dropped:
+        from provisa.compiler.nf_extractor import drop_union_branches_for_table
+
+        for _dtn in _join_dropped:
+            rewritten_sql = drop_union_branches_for_table(rewritten_sql, _dtn)
     if _join_values_ctes:
         from provisa.cache.hot_tables import build_values_cte_sql
 
@@ -1957,9 +1984,14 @@ async def _execute_trino_standard(
         exec_sql = _inject_probe_limit(exec_sql, probe_limit)
 
     # Materialize API-backed tables into Trino cache to avoid INVALID_CAST_ARGUMENT
-    _api_cache_rewrites, _api_values_ctes = await _materialize_api_to_trino_cache(
+    _api_cache_rewrites, _api_values_ctes, _api_dropped = await _materialize_api_to_trino_cache(
         exec_sql, state, compiled.gql_remote_extra_selections
     )
+    if _api_dropped:
+        from provisa.compiler.nf_extractor import drop_union_branches_for_table
+
+        for _dtn in _api_dropped:
+            exec_sql = drop_union_branches_for_table(exec_sql, _dtn)
     for _tn, _entry in _api_values_ctes.items():
         exec_sql = build_values_cte_sql(exec_sql, _tn, _entry)
     if _api_cache_rewrites:
@@ -2270,9 +2302,14 @@ async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redi
 
     _, _, _, _ = await _hydrate_api_tables_before_trino(compiled, ctx, state)
     _ctas_exec_sql = rewrite_semantic_to_trino_physical(compiled.sql, ctx)
-    _ctas_rewrites, _ctas_values_ctes = await _materialize_api_to_trino_cache(
+    _ctas_rewrites, _ctas_values_ctes, _ctas_dropped = await _materialize_api_to_trino_cache(
         _ctas_exec_sql, state, compiled.gql_remote_extra_selections
     )
+    if _ctas_dropped:
+        from provisa.compiler.nf_extractor import drop_union_branches_for_table
+
+        for _dtn in _ctas_dropped:
+            _ctas_exec_sql = drop_union_branches_for_table(_ctas_exec_sql, _dtn)
     if _ctas_values_ctes:
         from provisa.cache.hot_tables import build_values_cte_sql
 
