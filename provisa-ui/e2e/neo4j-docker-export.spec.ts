@@ -139,12 +139,16 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
     if (rows !== null) extractNodesAndEdges(rows, nodesById, edges);
   }
 
-  // ── 3. Query known relationships ───────────────────────────────────────────
-  const relRows = await tryCypherQuery(
-    BASE,
-    "MATCH (a:Inquiries)-[r:HAS_PETS]->(b:Pets) RETURN a, r, b",
-  );
-  if (relRows) extractNodesAndEdges(relRows, nodesById, edges);
+  // ── 3. Query all relationships from schema ────────────────────────────────
+  const relTypes: Array<{ type: string; source: string; target: string }> =
+    schema.relationship_types ?? [];
+  for (const rel of relTypes) {
+    const relRows = await tryCypherQuery(
+      BASE,
+      `MATCH (a:${rel.source})-[r:${rel.type}]->(b:${rel.target}) RETURN a, r, b`,
+    );
+    if (relRows) extractNodesAndEdges(relRows, nodesById, edges);
+  }
 
   const nodes = Array.from(nodesById.values());
   expect(nodes.length, "must have nodes to export").toBeGreaterThan(0);
