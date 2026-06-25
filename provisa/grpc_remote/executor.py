@@ -49,7 +49,7 @@ def _load_module(path: str, name: str):
     return mod
 
 
-def load_stubs(pb2_path: str, pb2_grpc_path: str):
+def load_stubs(pb2_path: str, pb2_grpc_path: str):  # REQ-617
     """Load compiled pb2 and pb2_grpc modules. Returns (pb2, pb2_grpc)."""
     import os
 

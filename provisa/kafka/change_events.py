@@ -93,7 +93,7 @@ def emit_change_event(  # REQ-172, REQ-173, REQ-174
         log.warning("Failed to emit change event for %s.%s", source_id, table_name, exc_info=True)
 
 
-def flush() -> None:
+def flush() -> None:  # REQ-172
     """Flush any buffered change events. Call on shutdown."""
     if _producer is not None:
         _producer.flush(timeout=5)

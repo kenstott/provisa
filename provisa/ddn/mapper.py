@@ -60,7 +60,7 @@ SourceFieldValue = str | int | bool | list[str]
 SourceOverrides = dict[str, dict[str, SourceFieldValue]]
 
 
-class AggConfig(TypedDict, total=False):
+class AggConfig(TypedDict, total=False):  # REQ-653
     """Aggregate expression config produced by _map_aggregate_expressions."""
 
     count: bool

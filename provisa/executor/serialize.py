@@ -392,9 +392,13 @@ def _serialize_flat(
     truncated_paths: set[str] = set()
 
     for row in rows:
-        root_key = tuple(
-            _to_hashable(_convert_value(row[idx])) for idx, col in root_cols if not col.is_agg
-        )
+        if root_cols:
+            root_key = tuple(
+                _to_hashable(_convert_value(row[idx])) for idx, col in root_cols if not col.is_agg
+            )
+        else:
+            # group_by: all columns are nested (groupKey/aggregates) — every row is distinct
+            root_key = tuple(_to_hashable(_convert_value(v)) for v in row)
         if root_key in seen_root_keys:
             truncated_paths |= _detect_truncated_paths(
                 result_rows, seen_root_keys, nested_groups, row, root_key
@@ -448,7 +452,7 @@ def serialize_rows(  # REQ-047, REQ-048, REQ-049, REQ-050
     root_cols, nested_groups = _group_columns(columns)
     one_to_many_paths, _agg_paths, absorbed_paths = _detect_path_sets(nested_groups)  # pyright: ignore[reportUnusedVariable]
 
-    if one_to_many_paths:
+    if one_to_many_paths and root_cols:
         return _serialize_with_one_to_many(
             rows,
             root_cols,
@@ -479,7 +483,7 @@ def _transform_row(obj: dict, m2o_paths: set[str], prefix: str) -> None:
             _transform_row(value, m2o_paths, path)
 
 
-def shape_transform(result: dict, columns: list[ColumnRef]) -> dict:
+def shape_transform(result: dict, columns: list[ColumnRef]) -> dict:  # REQ-484
     """Collapse many-to-one ARRAY_AGG arrays into single objects."""
     m2o_paths = {
         col.nested_in

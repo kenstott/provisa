@@ -57,7 +57,7 @@ class SSEFanout(LiveOutput):  # REQ-258, REQ-260, REQ-286
         )
         return q
 
-    def unsubscribe(self, queue: asyncio.Queue) -> None:
+    def unsubscribe(self, queue: asyncio.Queue) -> None:  # REQ-565
         """Remove a client queue when the client disconnects."""
         try:
             self._queues.remove(queue)
@@ -73,7 +73,7 @@ class SSEFanout(LiveOutput):  # REQ-258, REQ-260, REQ-286
     def subscriber_count(self) -> int:
         return len(self._queues)
 
-    async def send(self, rows: list[dict]) -> None:
+    async def send(self, rows: list[dict]) -> None:  # REQ-565
         """Push *rows* to every subscriber queue (non-blocking)."""
         if not rows:
             return
@@ -83,7 +83,7 @@ class SSEFanout(LiveOutput):  # REQ-258, REQ-260, REQ-286
             except asyncio.QueueFull:
                 log.warning("[SSE FANOUT] queue full for %s, dropping batch", self.query_id)
 
-    async def close(self) -> None:
+    async def close(self) -> None:  # REQ-565
         """Signal all subscribers that the stream ended (send sentinel None)."""
         for q in list(self._queues):
             try:

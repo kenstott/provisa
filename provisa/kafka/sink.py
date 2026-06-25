@@ -127,7 +127,7 @@ class KafkaProducer:  # REQ-176, REQ-181
         self._producer.poll(0)
         return count
 
-    def flush(self, timeout: float = 5.0) -> None:
+    def flush(self, timeout: float = 5.0) -> None:  # REQ-176
         """Flush all buffered messages. Call on shutdown."""
         if self._producer:
             self._producer.flush(timeout)

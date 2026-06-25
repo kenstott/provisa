@@ -84,7 +84,7 @@ def create_driver(source_type: str, **kwargs) -> DirectDriver:  # REQ-550
     return driver
 
 
-def has_driver(source_type: str) -> bool:
+def has_driver(source_type: str) -> bool:  # REQ-550
     """Check if a direct driver exists and its dependency is installed."""
     factory = _DRIVER_FACTORIES.get(source_type)
     if factory is None:
@@ -96,7 +96,7 @@ def has_driver(source_type: str) -> bool:
         return False
 
 
-def available_drivers() -> list[str]:
+def available_drivers() -> list[str]:  # REQ-550
     """List source types with registered direct drivers."""
     available = []
     for stype, factory in _DRIVER_FACTORIES.items():

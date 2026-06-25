@@ -49,7 +49,7 @@ async def list_pending(conn: asyncpg.Connection) -> list[dict]:  # REQ-063, REQ-
     return [_row_to_dict(r) for r in rows]
 
 
-async def get(conn: asyncpg.Connection, request_id: int) -> dict | None:
+async def get(conn: asyncpg.Connection, request_id: int) -> dict | None:  # REQ-480
     row = await conn.fetchrow("SELECT * FROM creation_requests WHERE id = $1", request_id)
     return _row_to_dict(row) if row else None
 
@@ -79,7 +79,9 @@ async def mark_rejected(  # REQ-063, REQ-434
     return result == "UPDATE 1"
 
 
-async def add_approval(conn: asyncpg.Connection, request_id: int, approver: str) -> dict | None:
+async def add_approval(
+    conn: asyncpg.Connection, request_id: int, approver: str
+) -> dict | None:  # REQ-480
     """Append an approval entry. Returns updated row or None if not found/already resolved."""
     entry = json.dumps({"approver": approver, "approved_at": "now"})
     row = await conn.fetchrow(
@@ -95,7 +97,7 @@ async def add_approval(conn: asyncpg.Connection, request_id: int, approver: str)
     return _row_to_dict(row) if row else None
 
 
-async def list_all(
+async def list_all(  # REQ-480
     conn: asyncpg.Connection,
     status: str | None = None,
     request_type: str | None = None,

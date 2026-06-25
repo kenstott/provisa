@@ -89,7 +89,7 @@ def generate_catalog_properties(
     return props
 
 
-def generate_table_definitions(config: CassandraSourceConfig) -> list[dict]:
+def generate_table_definitions(config: CassandraSourceConfig) -> list[dict]:  # REQ-494
     """Generate table definition entries for each configured Cassandra table."""
     definitions = []
     for table in config.tables:

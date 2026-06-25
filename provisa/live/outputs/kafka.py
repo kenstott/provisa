@@ -51,7 +51,7 @@ class KafkaSinkOutput(LiveOutput):  # REQ-176, REQ-181, REQ-286
         except ImportError:
             raise RuntimeError("confluent-kafka is required for Kafka live output")
 
-    async def send(self, rows: list[dict]) -> None:
+    async def send(self, rows: list[dict]) -> None:  # REQ-565
         if not rows:
             return
         self._ensure_producer()
@@ -65,7 +65,7 @@ class KafkaSinkOutput(LiveOutput):  # REQ-176, REQ-181, REQ-286
         self._producer.poll(0)
         log.debug("[KAFKA LIVE] produced %d rows to %s", len(rows), self._topic)
 
-    async def close(self) -> None:
+    async def close(self) -> None:  # REQ-565
         if self._producer:
             self._producer.flush()
             self._producer = None

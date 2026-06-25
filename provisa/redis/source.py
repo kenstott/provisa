@@ -114,7 +114,7 @@ def generate_table_definitions(config: RedisSourceConfig) -> list[dict]:  # REQ-
     return definitions
 
 
-def generate_table_json(config: RedisSourceConfig) -> dict[str, str]:
+def generate_table_json(config: RedisSourceConfig) -> dict[str, str]:  # REQ-497
     """Return mapping of filename -> JSON content for each table."""
     result = {}
     for table_def in generate_table_definitions(config):

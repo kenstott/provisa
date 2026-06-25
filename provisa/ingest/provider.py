@@ -46,7 +46,7 @@ class IngestPollingProvider(NotificationProvider):  # REQ-336
         self._engine = engine
         self._poll_interval = poll_interval
 
-    async def watch(
+    async def watch(  # REQ-565
         self, table: str, filter_expr: str | None = None
     ) -> AsyncGenerator[ChangeEvent, None]:
         watermark: datetime = datetime.now(tz=timezone.utc)

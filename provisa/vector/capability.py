@@ -31,7 +31,7 @@ def supports_native_vectors(source_type: str) -> bool:  # REQ-422
     return source_type in _VECTOR_CAPABILITY
 
 
-async def has_pgvector(conn) -> bool:
+async def has_pgvector(conn) -> bool:  # REQ-500
     """Probe a Postgres connection for the pgvector extension (REQ-422).
 
     ``conn`` is an asyncpg connection. Native pgvector search is only usable when the

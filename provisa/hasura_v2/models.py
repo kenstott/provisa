@@ -46,7 +46,7 @@ class HasuraComputedField:  # REQ-205
 
 
 @dataclass
-class HasuraEventTrigger:
+class HasuraEventTrigger:  # REQ-621
     name: str
     table_name: str
     table_schema: str
@@ -99,7 +99,7 @@ class HasuraAction:  # REQ-205, REQ-209
 
 
 @dataclass
-class HasuraCronTrigger:
+class HasuraCronTrigger:  # REQ-621
     name: str
     webhook: str
     schedule: str  # cron expression
@@ -108,7 +108,7 @@ class HasuraCronTrigger:
 
 
 @dataclass
-class HasuraInheritedRole:
+class HasuraInheritedRole:  # REQ-621
     role_name: str
     role_set: list[str] = field(default_factory=list)
 

@@ -67,15 +67,15 @@ class SourcePool:  # REQ-052, REQ-053
         self._drivers[source_id] = driver
         self._dialects[source_id] = _SOURCE_DIALECT.get(source_type, source_type)
 
-    def dialect_for(self, source_id: str) -> str | None:
+    def dialect_for(self, source_id: str) -> str | None:  # REQ-550
         """Return the sqlglot dialect string for a source, or None if unknown."""
         return self._dialects.get(source_id)
 
-    def get(self, source_id: str) -> DirectDriver:
+    def get(self, source_id: str) -> DirectDriver:  # REQ-550
         """Get driver for a source. Raises KeyError if not registered."""
         return self._drivers[source_id]
 
-    def has(self, source_id: str) -> bool:
+    def has(self, source_id: str) -> bool:  # REQ-550
         return source_id in self._drivers
 
     async def execute(  # REQ-027, REQ-031
@@ -92,7 +92,7 @@ class SourcePool:  # REQ-052, REQ-053
         driver = self._drivers[source_id]
         await driver.execute_ddl(sql)
 
-    async def remove(self, source_id: str) -> None:
+    async def remove(self, source_id: str) -> None:  # REQ-550
         """Close and remove a driver for a source."""
         driver = self._drivers.pop(source_id, None)
         if driver is not None:
@@ -111,5 +111,5 @@ class SourcePool:  # REQ-052, REQ-053
             await driver.close()
 
     @property
-    def source_ids(self) -> list[str]:
+    def source_ids(self) -> list[str]:  # REQ-550
         return list(self._drivers.keys())

@@ -74,7 +74,7 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
         self._jobs: dict[str, _LiveJob] = {}
         self._scheduler = None
 
-    async def start(self) -> None:
+    async def start(self) -> None:  # REQ-565
         """Start the APScheduler scheduler."""
         if AsyncIOScheduler is None:
             raise RuntimeError("apscheduler is required for the live query engine")
@@ -82,7 +82,7 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
         self._scheduler.start()
         log.info("[LIVE ENGINE] started")
 
-    async def stop(self) -> None:
+    async def stop(self) -> None:  # REQ-565
         """Stop the scheduler and close all outputs."""
         if self._scheduler:
             self._scheduler.shutdown(wait=False)
@@ -138,7 +138,7 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
             job.scheduler_job_id = sched_job.id
             log.info("[LIVE ENGINE] registered query %s (interval=%ds)", query_id, poll_interval)
 
-    def unregister(self, query_id: str) -> None:
+    def unregister(self, query_id: str) -> None:  # REQ-565
         """Remove a live query from the engine."""
         job = self._jobs.pop(query_id, None)
         if job is None:
@@ -156,13 +156,13 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
             raise KeyError(f"Live query {query_id!r} not registered")
         return job.fanout.subscribe()
 
-    def unsubscribe(self, query_id: str, queue: asyncio.Queue) -> None:
+    def unsubscribe(self, query_id: str, queue: asyncio.Queue) -> None:  # REQ-565
         """Remove a SSE subscriber queue."""
         job = self._jobs.get(query_id)
         if job:
             job.fanout.unsubscribe(queue)
 
-    def is_registered(self, query_id: str) -> bool:
+    def is_registered(self, query_id: str) -> bool:  # REQ-565
         return query_id in self._jobs
 
     async def _poll(self, query_id: str) -> None:  # REQ-260, REQ-283, REQ-286, REQ-287

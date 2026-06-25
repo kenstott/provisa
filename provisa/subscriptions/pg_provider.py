@@ -37,7 +37,7 @@ class PgNotificationProvider(NotificationProvider):  # REQ-258
         self._pool = pool
         self._conn: asyncpg.pool.PoolConnectionProxy | None = None
 
-    async def watch(
+    async def watch(  # REQ-565
         self, table: str, filter_expr: str | None = None
     ) -> AsyncGenerator[ChangeEvent, None]:
         channel = f"{CHANNEL_PREFIX}{table}"
@@ -81,7 +81,7 @@ class PgNotificationProvider(NotificationProvider):  # REQ-258
             await self._pool.release(self._conn)
             self._conn = None
 
-    async def watch_many(self, tables: list[str]) -> AsyncGenerator[ChangeEvent, None]:
+    async def watch_many(self, tables: list[str]) -> AsyncGenerator[ChangeEvent, None]:  # REQ-565
         """Listen on multiple table channels; any change event triggers a yield."""
         channels = [f"{CHANNEL_PREFIX}{t}" for t in tables]
         queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()

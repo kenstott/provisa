@@ -39,7 +39,7 @@ class VectorModelRegistry:  # REQ-419
     def __init__(self, models: list[VectorModel] | None = None) -> None:
         self._models: dict[str, VectorModel] = {m.id: m for m in (models or [])}
 
-    def get(self, model_id: str) -> VectorModel:
+    def get(self, model_id: str) -> VectorModel:  # REQ-500
         """Return the model, or raise if it is not allowlisted / is disabled."""
         model = self._models.get(model_id)
         if model is None:
@@ -48,11 +48,11 @@ class VectorModelRegistry:  # REQ-419
             raise VectorModelError(f"Vector model {model_id!r} is disabled.")
         return model
 
-    def is_allowed(self, model_id: str) -> bool:
+    def is_allowed(self, model_id: str) -> bool:  # REQ-500
         model = self._models.get(model_id)
         return model is not None and model.enabled
 
-    def list_enabled(self) -> list[VectorModel]:
+    def list_enabled(self) -> list[VectorModel]:  # REQ-500
         return [m for m in self._models.values() if m.enabled]
 
     @classmethod

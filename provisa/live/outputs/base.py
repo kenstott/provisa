@@ -21,9 +21,9 @@ class LiveOutput(ABC):  # REQ-282, REQ-286
     """Abstract output sink for live query rows."""
 
     @abstractmethod
-    async def send(self, rows: list[dict]) -> None:
+    async def send(self, rows: list[dict]) -> None:  # REQ-565
         """Deliver *rows* to the output destination."""
 
     @abstractmethod
-    async def close(self) -> None:
+    async def close(self) -> None:  # REQ-565
         """Release resources held by the output."""

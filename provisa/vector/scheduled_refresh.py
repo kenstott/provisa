@@ -24,7 +24,7 @@ class RefreshMode(str, Enum):
 
 
 @dataclass
-class RefreshPlan:
+class RefreshPlan:  # REQ-500
     mode: RefreshMode
     pks: list = field(default_factory=list)  # rows to re-embed (all for FULL is left to the caller)
     reason: str = ""
