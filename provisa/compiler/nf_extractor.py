@@ -19,6 +19,8 @@ Handles both literal values and $N positional params (postgres dialect).
 After extraction, remaining $N references are renumbered contiguously.
 """
 
+# Requirements: REQ-009, REQ-264, REQ-301
+
 from __future__ import annotations
 
 import re
@@ -66,7 +68,9 @@ def _resolve_value(val_expr: exp.Expr, params: list[Any]) -> tuple[Any, int | No
     return None, None
 
 
-def extract_nf_args(sql: str, params: list[Any]) -> tuple[str, list[Any], dict[str, Any]]:
+def extract_nf_args(
+    sql: str, params: list[Any]
+) -> tuple[str, list[Any], dict[str, Any]]:  # REQ-301
     """Extract _nf_* WHERE conditions from SQL (postgres dialect).
 
     Returns (clean_sql, clean_params, nf_args) where:
@@ -160,7 +164,7 @@ def left_join_table_names(sql: str) -> set[str]:
     return names
 
 
-def drop_joined_table(sql: str, table_name: str) -> str:
+def drop_joined_table(sql: str, table_name: str) -> str:  # REQ-264
     """Remove any JOIN for *table_name* (any join type) and NULL-out its SELECT-list columns."""
     try:
         tree = sqlglot.parse_one(sql, dialect="postgres")

@@ -5,6 +5,7 @@
 # found in the LICENSE file in the root directory of this source tree.
 
 """Cache OpenAPI endpoint responses into PostgreSQL for Trino federation."""
+
 from __future__ import annotations
 
 import hashlib
@@ -15,6 +16,8 @@ from datetime import UTC, datetime, timedelta
 
 import asyncpg
 import httpx
+
+# Requirements: REQ-318, REQ-319
 
 # In-memory freshness guard: (schema, table, phash) → monotonic expiry.
 # Avoids a PG round-trip on cache hits.
@@ -54,10 +57,15 @@ def _schema_to_pg_cols(schema: dict | None) -> list[tuple[str, str]]:
         schema = schema["items"]
     assert schema is not None
     props = schema.get("properties", {})
-    return [(name, _JSON_TO_PG.get(prop.get("type", "string"), "TEXT")) for name, prop in props.items()]
+    return [
+        (name, _JSON_TO_PG.get(prop.get("type", "string"), "TEXT")) for name, prop in props.items()
+    ]
 
 
-def _check_error_path(data: object, error_path: str | None) -> str | None:  # object-ok: httpx r.json() parsed JSON; isinstance-narrowed inside
+def _check_error_path(
+    data: object,  # object-ok: httpx r.json() parsed JSON; isinstance-narrowed inside
+    error_path: str | None,
+) -> str | None:
     """Return error message if error_path resolves to a truthy value in the response."""
     if not error_path or not isinstance(data, dict):
         return None
@@ -69,7 +77,10 @@ def _check_error_path(data: object, error_path: str | None) -> str | None:  # ob
     return str(val) if val else None
 
 
-def _normalize_rows(data: object, response_root: str | None = None) -> list[dict]:  # object-ok: httpx r.json() parsed JSON; isinstance-narrowed inside
+def _normalize_rows(
+    data: object,  # object-ok: httpx r.json() parsed JSON; isinstance-narrowed inside
+    response_root: str | None = None,
+) -> list[dict]:
     if response_root and isinstance(data, dict):
         data = data.get(response_root, data)
     if isinstance(data, list):
@@ -81,7 +92,9 @@ def _normalize_rows(data: object, response_root: str | None = None) -> list[dict
     return []
 
 
-def _to_row_tuple(row: dict, col_names: list[str], phash: str, text_cols: frozenset[str] = frozenset()) -> tuple:
+def _to_row_tuple(
+    row: dict, col_names: list[str], phash: str, text_cols: frozenset[str] = frozenset()
+) -> tuple:
     vals = []
     for name in col_names:
         v = row.get(name)
@@ -178,7 +191,7 @@ async def _is_fresh(
     return fresh
 
 
-async def cache_openapi_table(
+async def cache_openapi_table(  # REQ-318
     base_url: str,
     path: str,
     default_params: dict,
@@ -211,7 +224,9 @@ async def cache_openapi_table(
             r.raise_for_status()
             rows = _normalize_rows(r.json())
         except Exception as exc:
-            _is_client_err = isinstance(exc, httpx.HTTPStatusError) and 400 <= exc.response.status_code < 500
+            _is_client_err = (
+                isinstance(exc, httpx.HTTPStatusError) and 400 <= exc.response.status_code < 500
+            )
             (_log := log.debug if _is_client_err else log.warning)(
                 "OpenAPI fetch failed for %s: %s — creating empty table", url, exc
             )
@@ -234,7 +249,7 @@ async def cache_openapi_table(
     return n
 
 
-async def fill_api_table(
+async def fill_api_table(  # REQ-318
     base_url: str,
     path: str,
     params: dict,
@@ -268,7 +283,9 @@ async def fill_api_table(
             return 0
         rows = _normalize_rows(data, response_root)
     except Exception as exc:
-        _is_client_err = isinstance(exc, httpx.HTTPStatusError) and 400 <= exc.response.status_code < 500
+        _is_client_err = (
+            isinstance(exc, httpx.HTTPStatusError) and 400 <= exc.response.status_code < 500
+        )
         (_log := log.debug if _is_client_err else log.warning)(
             "fill_api_table fetch failed for %s: %s", url, exc
         )
@@ -283,9 +300,12 @@ async def fill_api_table(
         type_rows = await pg_conn.fetch(
             "SELECT column_name, data_type FROM information_schema.columns"
             " WHERE table_schema = $1 AND table_name = $2",
-            pg_schema, pg_table,
+            pg_schema,
+            pg_table,
         )
-        text_cols = frozenset(r["column_name"] for r in type_rows if r["data_type"] in ("text", "character varying"))
+        text_cols = frozenset(
+            r["column_name"] for r in type_rows if r["data_type"] in ("text", "character varying")
+        )
     except Exception:
         text_cols = frozenset()
     if pk_column and pk_column in col_names:
@@ -293,7 +313,9 @@ async def fill_api_table(
             f'CREATE UNIQUE INDEX IF NOT EXISTS "{pg_table}__pk_hash_uidx"'
             f' ON "{pg_schema}"."{pg_table}" ("{pk_column}", "_params_hash")'
         )
-        n = await _upsert_rows(pg_conn, pg_schema, pg_table, col_names, rows, phash, pk_column, text_cols)
+        n = await _upsert_rows(
+            pg_conn, pg_schema, pg_table, col_names, rows, phash, pk_column, text_cols
+        )
     else:
         await pg_conn.execute(
             f'DELETE FROM "{pg_schema}"."{pg_table}" WHERE _params_hash = $1', phash
@@ -304,7 +326,7 @@ async def fill_api_table(
     return n
 
 
-async def fetch_pk_row(
+async def fetch_pk_row(  # REQ-318
     base_url: str,
     path_template: str,
     path_param_name: str,
@@ -338,11 +360,21 @@ async def fetch_pk_row(
         data = r.json()
         err = _check_error_path(data, error_path)
         if err:
-            log.warning("fetch_pk_row API error at %s pk=%s (error_path=%s): %s", path_template, pk, error_path, err)
+            log.warning(
+                "fetch_pk_row API error at %s pk=%s (error_path=%s): %s",
+                path_template,
+                pk,
+                error_path,
+                err,
+            )
             return 0
         # Path-param endpoints return a single object — wrap directly.
         # _normalize_rows mangles flat dicts into status/count pairs, which is wrong here.
-        rows = [data] if isinstance(data, dict) and not response_root else _normalize_rows(data, response_root)
+        rows = (
+            [data]
+            if isinstance(data, dict) and not response_root
+            else _normalize_rows(data, response_root)
+        )
     except Exception as exc:
         log.warning("fetch_pk_row failed for %s: %s", url, exc)
         return 0
@@ -350,11 +382,17 @@ async def fetch_pk_row(
     if not rows:
         return 0
 
-    await pg_conn.execute(
-        f'DELETE FROM "{pg_schema}"."{pg_table}" WHERE _params_hash = $1', phash
-    )
+    await pg_conn.execute(f'DELETE FROM "{pg_schema}"."{pg_table}" WHERE _params_hash = $1', phash)
     col_names = list(rows[0].keys())
     n = await _insert_rows(pg_conn, pg_schema, pg_table, col_names, rows, phash)
     _mark_fresh(pg_schema, pg_table, phash, ttl)
-    log.info("fetch_pk_row %s pk=%s → PG %s.%s (%d rows, hash=%s)", path_template, pk, pg_schema, pg_table, n, phash)
+    log.info(
+        "fetch_pk_row %s pk=%s → PG %s.%s (%d rows, hash=%s)",
+        path_template,
+        pk,
+        pg_schema,
+        pg_table,
+        n,
+        phash,
+    )
     return n

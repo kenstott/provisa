@@ -13,6 +13,7 @@
 Mirrors schema_gen visibility logic: only visible tables/columns per role.
 """
 
+# Requirements: REQ-039, REQ-045, REQ-051
 from __future__ import annotations
 
 from provisa.compiler.schema_gen import (
@@ -64,33 +65,24 @@ def _trino_to_proto(trino_type: str) -> str:
 
 def _needs_timestamp_import(columns: list[tuple[str, str]]) -> bool:
     """Check if any column maps to google.protobuf.Timestamp."""
-    return any(
-        _trino_to_proto(dtype) == "google.protobuf.Timestamp"
-        for _, dtype in columns
-    )
+    return any(_trino_to_proto(dtype) == "google.protobuf.Timestamp" for _, dtype in columns)
 
 
 def _is_array_type(trino_type: str) -> bool:
     return trino_type.lower().strip().startswith("array(")
 
 
-def generate_proto(si: SchemaInput) -> str:
+def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
     """Generate a .proto file content string for a role's visible schema."""
     tables = _build_visible_tables(si)
     if not tables:
-        raise ValueError(
-            f"No tables visible to role {si.role['id']!r}. "
-            f"Cannot generate proto."
-        )
+        raise ValueError(f"No tables visible to role {si.role['id']!r}. Cannot generate proto.")
 
     _assign_names(tables, si.naming_rules)
     table_lookup = {t.table_id: t for t in tables}
 
     # Collect visible relationships
-    visible_rels = [
-        r for r in si.relationships
-        if _can_see_relationship(r, table_lookup)
-    ]
+    visible_rels = [r for r in si.relationships if _can_see_relationship(r, table_lookup)]
 
     # Check if timestamp import needed
     all_columns: list[tuple[str, str]] = []
@@ -123,8 +115,7 @@ def generate_proto(si: SchemaInput) -> str:
             meta = t.column_metadata.get(col["column_name"])
             if meta is None:
                 raise ValueError(
-                    f"Column {col['column_name']!r} on {t.table_name!r} "
-                    f"missing Trino metadata."
+                    f"Column {col['column_name']!r} on {t.table_name!r} missing Trino metadata."
                 )
             proto_type = _trino_to_proto(meta.data_type)
             repeated = "repeated " if _is_array_type(meta.data_type) else ""
@@ -201,16 +192,12 @@ def generate_proto(si: SchemaInput) -> str:
     lines.append("service ProvisaService {")
     for t in sorted(tables, key=lambda t: t.type_name):
         lines.append(
-            f"  rpc Query{t.type_name}({t.type_name}Request) "
-            f"returns (stream {t.type_name});"
+            f"  rpc Query{t.type_name}({t.type_name}Request) returns (stream {t.type_name});"
         )
     for t in sorted(tables, key=lambda t: t.type_name):
         if si.source_types and si.source_types.get(t.source_id, "") in nosql_types:
             continue
-        lines.append(
-            f"  rpc Insert{t.type_name}({t.type_name}Input) "
-            f"returns (MutationResponse);"
-        )
+        lines.append(f"  rpc Insert{t.type_name}({t.type_name}Input) returns (MutationResponse);")
     lines.append("}")
     lines.append("")
 

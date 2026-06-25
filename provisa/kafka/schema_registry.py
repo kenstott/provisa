@@ -29,6 +29,8 @@ from provisa.kafka.source import (
     map_json_schema_to_trino,
 )
 
+# Requirements: REQ-147, REQ-150
+
 log = logging.getLogger(__name__)
 
 
@@ -43,7 +45,7 @@ class SchemaInfo:
     schema_str: str
 
 
-class SchemaRegistryClient:
+class SchemaRegistryClient:  # REQ-147, REQ-150
     """Client for Confluent Schema Registry REST API."""
 
     def __init__(self, registry_url: str):
@@ -84,7 +86,7 @@ class SchemaRegistryClient:
             return False
 
 
-def columns_from_avro_schema(schema_str: str) -> list[KafkaColumn]:
+def columns_from_avro_schema(schema_str: str) -> list[KafkaColumn]:  # REQ-147, REQ-150
     """Extract column definitions from an Avro schema.
 
     Avro record fields → KafkaColumn list.
@@ -97,15 +99,17 @@ def columns_from_avro_schema(schema_str: str) -> list[KafkaColumn]:
     columns = []
     for field in schema.get("fields", []):
         trino_type, is_complex = map_avro_to_trino(field["type"])
-        columns.append(KafkaColumn(
-            name=field["name"],
-            data_type=trino_type,
-            is_complex=is_complex,
-        ))
+        columns.append(
+            KafkaColumn(
+                name=field["name"],
+                data_type=trino_type,
+                is_complex=is_complex,
+            )
+        )
     return columns
 
 
-def columns_from_json_schema(schema_str: str) -> list[KafkaColumn]:
+def columns_from_json_schema(schema_str: str) -> list[KafkaColumn]:  # REQ-147, REQ-150
     """Extract column definitions from a JSON Schema.
 
     Top-level properties → KafkaColumn list.
@@ -118,15 +122,17 @@ def columns_from_json_schema(schema_str: str) -> list[KafkaColumn]:
     for name, prop in schema.get("properties", {}).items():
         json_type = prop.get("type", "string")
         trino_type, is_complex = map_json_schema_to_trino(json_type)
-        columns.append(KafkaColumn(
-            name=name,
-            data_type=trino_type,
-            is_complex=is_complex,
-        ))
+        columns.append(
+            KafkaColumn(
+                name=name,
+                data_type=trino_type,
+                is_complex=is_complex,
+            )
+        )
     return columns
 
 
-async def discover_topic_columns(
+async def discover_topic_columns(  # REQ-147, REQ-150
     registry_url: str,
     topic: str,
     value_format: ValueFormat,
@@ -150,9 +156,7 @@ async def discover_topic_columns(
         schema_info = await client.get_latest_schema(subject)
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
-            raise ValueError(
-                f"No schema found for subject {subject!r} in Schema Registry"
-            )
+            raise ValueError(f"No schema found for subject {subject!r} in Schema Registry")
         raise
 
     if schema_info.schema_type == "AVRO" or value_format == ValueFormat.AVRO:

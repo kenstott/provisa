@@ -14,6 +14,8 @@ Mirrors the steps in endpoint_dev.sql_endpoint but without HTTP/FastAPI.
 Called from pgwire handler threads via asyncio.run_coroutine_threadsafe.
 """
 
+# Requirements: REQ-262, REQ-263, REQ-264, REQ-265, REQ-266, REQ-267, REQ-272
+
 from __future__ import annotations
 
 import asyncio
@@ -39,7 +41,9 @@ class _Plan:
     trino_sql: str | None = field(default=None)
 
 
-async def _govern_and_route(sql: str, role_id: str) -> _Plan:
+async def _govern_and_route(
+    sql: str, role_id: str
+) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272
     import sqlglot
     import sqlglot.expressions as exp
 
@@ -198,7 +202,7 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
         )
 
 
-async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:
+async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  # REQ-027, REQ-028
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
     from provisa.executor.direct import execute_direct
@@ -243,7 +247,7 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:
     return result
 
 
-async def _govern_and_route_compiled(
+async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # pyright: ignore[reportUnusedFunction]
     sql: str,
     role_id: str,
     *,
@@ -360,11 +364,11 @@ async def _govern_and_route_compiled(
         )
 
 
-async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:
+async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:  # REQ-267
     return await _govern_and_route(sql, role_id)
 
 
-async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:
+async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266, REQ-267, REQ-272
     """Run *sql* through governance and return rows + column names.
 
     Raises:

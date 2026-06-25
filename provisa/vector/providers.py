@@ -18,12 +18,14 @@ from abc import ABC, abstractmethod
 
 from provisa.vector.registry import VectorModel
 
+# Requirements: REQ-420, REQ-431
+
 
 class EmbeddingError(RuntimeError):
     """An embedding request failed or returned an unexpected shape."""
 
 
-class EmbeddingProvider(ABC):
+class EmbeddingProvider(ABC):  # REQ-420
     """Turn a batch of texts into embedding vectors for a model."""
 
     @abstractmethod
@@ -34,7 +36,7 @@ def _api_key(model: VectorModel) -> str | None:
     return os.environ.get(model.api_key_env) if model.api_key_env else None
 
 
-class OpenAICompatibleProvider(EmbeddingProvider):
+class OpenAICompatibleProvider(EmbeddingProvider):  # REQ-420
     """Any OpenAI-compatible POST {base_url}/embeddings endpoint."""
 
     async def embed(self, texts: list[str], model: VectorModel) -> list[list[float]]:
@@ -57,7 +59,7 @@ class OpenAICompatibleProvider(EmbeddingProvider):
             raise EmbeddingError(f"Unexpected embeddings response: {exc}") from exc
 
 
-class OllamaProvider(EmbeddingProvider):
+class OllamaProvider(EmbeddingProvider):  # REQ-420
     """Ollama embeddings — one POST {base_url}/api/embeddings per text."""
 
     async def embed(self, texts: list[str], model: VectorModel) -> list[list[float]]:
@@ -78,14 +80,14 @@ class OllamaProvider(EmbeddingProvider):
         return out
 
 
-class HuggingFaceLocalProvider(EmbeddingProvider):
+class HuggingFaceLocalProvider(EmbeddingProvider):  # REQ-420
     """Local sentence-transformers model — no network."""
 
     _cache: dict = {}
 
     async def embed(self, texts: list[str], model: VectorModel) -> list[list[float]]:
         try:
-            from sentence_transformers import SentenceTransformer
+            from sentence_transformers import SentenceTransformer  # pyright: ignore[reportMissingImports]
         except ImportError as exc:
             raise EmbeddingError(
                 "huggingface provider requires sentence-transformers: pip install provisa[vector]"
@@ -104,7 +106,7 @@ _PROVIDERS: dict[str, type[EmbeddingProvider]] = {
 }
 
 
-def get_provider(provider: str) -> EmbeddingProvider:
+def get_provider(provider: str) -> EmbeddingProvider:  # REQ-420
     """Return an embedding provider instance for the given name."""
     cls = _PROVIDERS.get(provider)
     if cls is None:

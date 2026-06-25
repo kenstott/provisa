@@ -20,28 +20,31 @@ Supported rewrites:
   single(x IN list WHERE p(x))             -> cardinality(filter(list, x -> p(x))) = 1
 """
 
+# Requirements: REQ-345, REQ-347
+
 from __future__ import annotations
 
 import re
 
 _REDUCE_RE = re.compile(
-    r'\breduce\s*\(\s*'
-    r'([A-Za-z_]\w*)'          # group 1: accumulator var
-    r'\s*=\s*'
-    r'([^,]+?)'                 # group 2: initial value
-    r'\s*,\s*'
-    r'([A-Za-z_]\w*)'          # group 3: element var
-    r'\s+IN\s+'
-    r'([^|]+?)'                 # group 4: list expression
-    r'\s*\|\s*'
-    r'([^)]+)'                  # group 5: body expression
-    r'\s*\)',
+    r"\breduce\s*\(\s*"
+    r"([A-Za-z_]\w*)"  # group 1: accumulator var
+    r"\s*=\s*"
+    r"([^,]+?)"  # group 2: initial value
+    r"\s*,\s*"
+    r"([A-Za-z_]\w*)"  # group 3: element var
+    r"\s+IN\s+"
+    r"([^|]+?)"  # group 4: list expression
+    r"\s*\|\s*"
+    r"([^)]+)"  # group 5: body expression
+    r"\s*\)",
     re.IGNORECASE,
 )
 
 
-def rewrite_reduce(text: str) -> str:
+def rewrite_reduce(text: str) -> str:  # REQ-345, REQ-347
     """Rewrite Cypher reduce(acc = init, x IN list | expr) → Trino reduce(list, init, (acc, x) -> expr, acc -> acc)."""
+
     def _replace(m: re.Match) -> str:
         acc = m.group(1).strip()
         init = m.group(2).strip()
@@ -49,6 +52,7 @@ def rewrite_reduce(text: str) -> str:
         lst = m.group(4).strip()
         body = m.group(5).strip()
         return f"reduce({lst}, {init}, ({acc}, {var}) -> {body}, {acc} -> {acc})"
+
     return _REDUCE_RE.sub(_replace, text)
 
 
@@ -61,21 +65,21 @@ class _ComprehensionParser:
         parts = []
         while self._pos < len(self._text):
             c = self._text[self._pos]
-            if c == '[':
+            if c == "[":
                 comp = self._try_list_comp()
                 if comp is not None:
                     parts.append(comp)
                 else:
-                    parts.append('[')
+                    parts.append("[")
                     self._pos += 1
             elif c in ('"', "'"):
                 parts.append(self._read_string())
-            elif c.isalpha() or c == '_':
+            elif c.isalpha() or c == "_":
                 word = self._read_ident()
-                if word.lower() in ('any', 'all', 'none', 'single'):
+                if word.lower() in ("any", "all", "none", "single"):
                     saved_pos = self._pos
                     self._skip_ws()
-                    if self._pos < len(self._text) and self._text[self._pos] == '(':
+                    if self._pos < len(self._text) and self._text[self._pos] == "(":
                         comp = self._try_pred_comp(word)
                         if comp is not None:
                             parts.append(comp)
@@ -89,13 +93,15 @@ class _ComprehensionParser:
             else:
                 parts.append(c)
                 self._pos += 1
-        return ''.join(parts)
+        return "".join(parts)
 
     def _read_ident(self) -> str:
         start = self._pos
-        while self._pos < len(self._text) and (self._text[self._pos].isalnum() or self._text[self._pos] == '_'):
+        while self._pos < len(self._text) and (
+            self._text[self._pos].isalnum() or self._text[self._pos] == "_"
+        ):
             self._pos += 1
-        return self._text[start:self._pos]
+        return self._text[start : self._pos]
 
     def _read_string(self) -> str:
         quote = self._text[self._pos]
@@ -105,23 +111,25 @@ class _ComprehensionParser:
             c = self._text[self._pos]
             parts.append(c)
             self._pos += 1
-            if c == '\\' and self._pos < len(self._text):
+            if c == "\\" and self._pos < len(self._text):
                 parts.append(self._text[self._pos])
                 self._pos += 1
             elif c == quote:
                 break
-        return ''.join(parts)
+        return "".join(parts)
 
     def _skip_ws(self) -> None:
-        while self._pos < len(self._text) and self._text[self._pos] in ' \t\n':
+        while self._pos < len(self._text) and self._text[self._pos] in " \t\n":
             self._pos += 1
 
     def _consume_keyword(self, kw: str) -> bool:
         self._skip_ws()
         end = self._pos + len(kw)
-        if self._text[self._pos:end].upper() == kw.upper():
+        if self._text[self._pos : end].upper() == kw.upper():
             after = end
-            if after >= len(self._text) or not (self._text[after].isalnum() or self._text[after] == '_'):
+            if after >= len(self._text) or not (
+                self._text[after].isalnum() or self._text[after] == "_"
+            ):
                 self._pos = end
                 return True
         return False
@@ -144,12 +152,12 @@ class _ComprehensionParser:
             if c in ('"', "'"):
                 parts.append(self._read_string())
                 continue
-            if c in '([{':
+            if c in "([{":
                 depth += 1
                 parts.append(c)
                 self._pos += 1
                 continue
-            if c in ')]}':
+            if c in ")]}":
                 if depth == 0:
                     break
                 depth -= 1
@@ -159,7 +167,7 @@ class _ComprehensionParser:
             if depth == 0:
                 if c in stops:
                     break
-                if c.isalpha() or c == '_':
+                if c.isalpha() or c == "_":
                     saved = self._pos
                     word = self._read_ident()
                     kw_stops = {s for s in stops if isinstance(s, str) and len(s) > 1}
@@ -170,38 +178,41 @@ class _ComprehensionParser:
                     continue
             parts.append(c)
             self._pos += 1
-        return ''.join(parts).strip()
+        return "".join(parts).strip()
 
     def _try_list_comp(self) -> str | None:
         """Try to parse [var IN list WHERE? pred? | map?] at current [."""
         saved = self._pos
         self._pos += 1  # consume [
         self._skip_ws()
-        if not (self._pos < len(self._text) and (self._text[self._pos].isalpha() or self._text[self._pos] == '_')):
+        if not (
+            self._pos < len(self._text)
+            and (self._text[self._pos].isalpha() or self._text[self._pos] == "_")
+        ):
             self._pos = saved
             return None
         var = self._read_ident()
-        if not self._consume_keyword('IN'):
+        if not self._consume_keyword("IN"):
             self._pos = saved
             return None
         self._skip_ws()
-        list_expr = self._read_expr_until({'WHERE', '|', ']'})
+        list_expr = self._read_expr_until({"WHERE", "|", "]"})
         if not list_expr:
             self._pos = saved
             return None
         where_pred = None
         map_expr = None
-        if self._peek_keyword('WHERE'):
-            self._consume_keyword('WHERE')
+        if self._peek_keyword("WHERE"):
+            self._consume_keyword("WHERE")
             self._skip_ws()
-            where_pred = self._read_expr_until({'|', ']'})
+            where_pred = self._read_expr_until({"|", "]"})
         self._skip_ws()
-        if self._pos < len(self._text) and self._text[self._pos] == '|':
+        if self._pos < len(self._text) and self._text[self._pos] == "|":
             self._pos += 1
             self._skip_ws()
-            map_expr = self._read_expr_until({']'})
+            map_expr = self._read_expr_until({"]"})
         self._skip_ws()
-        if self._pos >= len(self._text) or self._text[self._pos] != ']':
+        if self._pos >= len(self._text) or self._text[self._pos] != "]":
             self._pos = saved
             return None
         self._pos += 1  # consume ]
@@ -220,43 +231,46 @@ class _ComprehensionParser:
         saved = self._pos  # pos is at '('
         self._pos += 1  # consume (
         self._skip_ws()
-        if not (self._pos < len(self._text) and (self._text[self._pos].isalpha() or self._text[self._pos] == '_')):
+        if not (
+            self._pos < len(self._text)
+            and (self._text[self._pos].isalpha() or self._text[self._pos] == "_")
+        ):
             self._pos = saved
             return None
         var = self._read_ident()
-        if not self._consume_keyword('IN'):
+        if not self._consume_keyword("IN"):
             self._pos = saved
             return None
         self._skip_ws()
-        list_expr = self._read_expr_until({'WHERE', ')'})
+        list_expr = self._read_expr_until({"WHERE", ")"})
         if not list_expr:
             self._pos = saved
             return None
-        if not self._peek_keyword('WHERE'):
+        if not self._peek_keyword("WHERE"):
             self._pos = saved
             return None
-        self._consume_keyword('WHERE')
+        self._consume_keyword("WHERE")
         self._skip_ws()
-        where_pred = self._read_expr_until({')'})
+        where_pred = self._read_expr_until({")"})
         self._skip_ws()
-        if self._pos >= len(self._text) or self._text[self._pos] != ')':
+        if self._pos >= len(self._text) or self._text[self._pos] != ")":
             self._pos = saved
             return None
         self._pos += 1  # consume )
         fn = func_name.lower()
-        if fn == 'any':
+        if fn == "any":
             return f"any_match({list_expr}, {var} -> {where_pred})"
-        elif fn == 'all':
+        elif fn == "all":
             return f"all_match({list_expr}, {var} -> {where_pred})"
-        elif fn == 'none':
+        elif fn == "none":
             return f"none_match({list_expr}, {var} -> {where_pred})"
-        elif fn == 'single':
+        elif fn == "single":
             return f"cardinality(filter({list_expr}, {var} -> {where_pred})) = 1"
         self._pos = saved
         return None
 
 
-def rewrite_list_comprehensions(text: str) -> str:
+def rewrite_list_comprehensions(text: str) -> str:  # REQ-345, REQ-347
     """Rewrite Cypher list comprehensions and reduce() to SQLGlot-parseable lambda syntax."""
     text = _ComprehensionParser(text).rewrite()
     text = rewrite_reduce(text)

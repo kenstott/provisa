@@ -10,6 +10,8 @@
 
 """CRUD endpoints for local_users (basic auth user management)."""
 
+# Requirements: REQ-124, REQ-125, REQ-042
+
 from __future__ import annotations
 
 from typing import Any
@@ -58,14 +60,15 @@ def _strip_hash(row) -> dict:
     return d
 
 
-def _pool(request: Request) -> asyncpg.Pool:
+def _pool(_request: Request) -> asyncpg.Pool:  # pyright: ignore[reportUnusedParameter]
     from provisa.api.app import state
+
     assert state.pg_pool is not None
     return state.pg_pool
 
 
 @router.post("/")
-async def create_user(body: CreateUserBody, request: Request):
+async def create_user(body: CreateUserBody, request: Request):  # REQ-124, REQ-125
     pool = _pool(request)
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -143,7 +146,7 @@ async def update_user(user_id: str, body: UpdateUserBody, request: Request):
 
 
 @router.patch("/{user_id}/password")
-async def change_password(user_id: str, body: ChangePasswordBody, request: Request):
+async def change_password(user_id: str, body: ChangePasswordBody, request: Request):  # REQ-124
     pool = _pool(request)
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -160,9 +163,7 @@ async def change_password(user_id: str, body: ChangePasswordBody, request: Reque
 async def delete_user(user_id: str, request: Request):
     pool = _pool(request)
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "DELETE FROM local_users WHERE id = $1 RETURNING id", user_id
-        )
+        row = await conn.fetchrow("DELETE FROM local_users WHERE id = $1 RETURNING id", user_id)
     if row is None:
         raise HTTPException(status_code=404, detail="User not found")
     return {"deleted": row["id"]}
@@ -181,15 +182,21 @@ async def list_assignments(user_id: str, request: Request):
 
 
 @router.post("/{user_id}/assignments")
-async def add_assignment(user_id: str, body: AssignmentBody, request: Request):
+async def add_assignment(user_id: str, body: AssignmentBody, request: Request):  # REQ-042
     pool = _pool(request)
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "INSERT INTO user_role_assignments (user_id, role_id, domain_id) "
             "VALUES ($1, $2, $3) ON CONFLICT (user_id, role_id, domain_id) DO NOTHING RETURNING id, role_id, domain_id",
-            user_id, body.role_id, body.domain_id,
+            user_id,
+            body.role_id,
+            body.domain_id,
         )
-    return dict(row) if row else {"user_id": user_id, "role_id": body.role_id, "domain_id": body.domain_id}
+    return (
+        dict(row)
+        if row
+        else {"user_id": user_id, "role_id": body.role_id, "domain_id": body.domain_id}
+    )
 
 
 @router.delete("/{user_id}/assignments/{assignment_id}")
@@ -198,7 +205,8 @@ async def remove_assignment(user_id: str, assignment_id: int, request: Request):
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "DELETE FROM user_role_assignments WHERE id = $1 AND user_id = $2 RETURNING id",
-            assignment_id, user_id,
+            assignment_id,
+            user_id,
         )
     if row is None:
         raise HTTPException(status_code=404, detail="Assignment not found")

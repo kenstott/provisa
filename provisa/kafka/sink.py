@@ -20,11 +20,13 @@ import json
 import logging
 from dataclasses import dataclass
 
+# Requirements: REQ-176, REQ-177, REQ-178, REQ-180, REQ-181
+
 log = logging.getLogger(__name__)
 
 
 @dataclass
-class KafkaSinkConfig:
+class KafkaSinkConfig:  # REQ-176, REQ-177, REQ-178, REQ-180
     """Configuration for publishing query results to a Kafka topic."""
 
     query_stable_id: str  # approved query stable_id
@@ -33,7 +35,7 @@ class KafkaSinkConfig:
     value_format: str = "json"
 
 
-class KafkaProducer:
+class KafkaProducer:  # REQ-176, REQ-181
     """Async Kafka producer wrapper.
 
     Uses confluent-kafka producer under the hood.
@@ -47,7 +49,8 @@ class KafkaProducer:
     def _ensure_producer(self):
         if self._producer is None:
             try:
-                from confluent_kafka import Producer
+                from confluent_kafka import Producer  # pyright: ignore[reportMissingImports]
+
                 config = {
                     "bootstrap.servers": self._bootstrap_servers,
                     "client.id": "provisa-sink",
@@ -66,10 +69,12 @@ class KafkaProducer:
         else:
             log.debug(
                 "Kafka message delivered to %s [%d] @ %d",
-                msg.topic(), msg.partition(), msg.offset(),
+                msg.topic(),
+                msg.partition(),
+                msg.offset(),
             )
 
-    async def publish_rows(
+    async def publish_rows(  # REQ-181
         self,
         topic: str,
         rows: list[dict],

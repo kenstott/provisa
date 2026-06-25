@@ -8,6 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
+# Requirements: REQ-027, REQ-028, REQ-256
+
 from __future__ import annotations
 
 import logging
@@ -26,7 +28,7 @@ from graphql import (
 log = logging.getLogger(__name__)
 
 
-def get_scalar_fields(schema: GraphQLSchema, table: str) -> list[str]:
+def get_scalar_fields(schema: GraphQLSchema, table: str) -> list[str]:  # REQ-256
     """Get only scalar (non-object) field names for a root query type."""
     query_type = schema.query_type
     if query_type is None:
@@ -50,7 +52,7 @@ def get_scalar_fields(schema: GraphQLSchema, table: str) -> list[str]:
     return scalars
 
 
-def build_graphql_query(
+def build_graphql_query(  # REQ-256
     table: str,
     fields: list[str],
     where: dict[str, dict[str, Any]],
@@ -97,7 +99,7 @@ def build_graphql_query(
     return f"{{ {table}{args_str} {{ {fields_str} }} }}"
 
 
-async def route_and_execute(compiled, state) -> Any:
+async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
     """Route a compiled query to the correct executor and return the result.
 
     Args:

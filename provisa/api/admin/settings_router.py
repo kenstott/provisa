@@ -6,6 +6,8 @@
 
 """Admin config + platform settings REST endpoints."""
 
+# Requirements: REQ-164, REQ-165, REQ-194, REQ-253, REQ-302, REQ-303, REQ-416
+
 import os
 
 from fastapi import APIRouter, HTTPException, Request
@@ -17,7 +19,7 @@ router = APIRouter()
 
 
 @router.get("/admin/config")
-async def download_config():
+async def download_config():  # REQ-164
     """Download the current config YAML."""
     path = config_path()
     if not path.exists():
@@ -30,7 +32,7 @@ async def download_config():
 
 
 @router.put("/admin/config")
-async def upload_config(request: Request):
+async def upload_config(request: Request):  # REQ-164
     """Upload a revised config YAML and reload."""
     from provisa.api.app import _load_and_build  # lazy to avoid circular import
 
@@ -48,7 +50,7 @@ async def upload_config(request: Request):
 
 
 @router.get("/admin/settings")
-async def get_settings():
+async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
     """Return current platform settings."""
     from provisa.executor.redirect import RedirectConfig
     from provisa.compiler.sampling import get_sample_size
@@ -100,7 +102,7 @@ async def get_settings():
 
 
 @router.put("/admin/settings")
-async def update_settings(request: Request):
+async def update_settings(request: Request):  # REQ-165, REQ-194, REQ-253, REQ-302, REQ-303, REQ-416
     """Update platform settings at runtime."""
     from provisa.api.app import state, _load_and_build
 
@@ -212,7 +214,7 @@ async def update_settings(request: Request):
 
 
 @router.post("/admin/domain-policy")
-async def set_domain_policy(request: Request):
+async def set_domain_policy(request: Request):  # REQ-165
     """Change the domain policy (use_domains / default_domain).
 
     DESTRUCTIVE: the domain policy is a foundational decision — every registered table's
@@ -230,7 +232,9 @@ async def set_domain_policy(request: Request):
     if use_domains not in (None, True, False):
         raise HTTPException(status_code=400, detail="use_domains must be true, false, or null")
     if use_domains is False and not default_domain:
-        raise HTTPException(status_code=400, detail="default_domain required when use_domains=false")
+        raise HTTPException(
+            status_code=400, detail="default_domain required when use_domains=false"
+        )
 
     path = config_path()
     cfg = read_config()
@@ -396,7 +400,7 @@ async def recompute_schema_clusters():
 
 
 @router.get("/admin/traces/recent")
-async def get_recent_traces(limit: int = 50):
+async def get_recent_traces(limit: int = 50):  # REQ-302, REQ-303
     """Return the last N completed spans from the in-memory buffer."""
     try:
         from provisa.api.otel_setup import span_buffer

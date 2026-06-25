@@ -10,6 +10,8 @@
 
 """Superadmin CRUD endpoints for orgs and org membership."""
 
+# Requirements: REQ-042, REQ-059, REQ-060, REQ-125
+
 from __future__ import annotations
 
 import asyncpg
@@ -19,7 +21,7 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/admin/orgs", tags=["admin"])
 
 
-def _require_superadmin(request: Request) -> None:
+def _require_superadmin(request: Request) -> None:  # REQ-042, REQ-125
     """Raise 403 if the caller is not an admin/superadmin. Dev mode (anonymous) is allowed."""
     from provisa.api.app import state as _app_state
     from provisa.api.admin.capabilities import _resolved_capabilities
@@ -53,7 +55,7 @@ class AddMemberBody(BaseModel):
 
 
 @router.get("/")
-async def list_orgs(request: Request):
+async def list_orgs(request: Request):  # REQ-042, REQ-059
     _require_superadmin(request)
     pool = _pool()
     async with pool.acquire() as conn:
@@ -62,7 +64,7 @@ async def list_orgs(request: Request):
 
 
 @router.post("/")
-async def create_org(body: CreateOrgBody, request: Request):
+async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
     _require_superadmin(request)
     pool = _pool()
     async with pool.acquire() as conn:
@@ -75,7 +77,7 @@ async def create_org(body: CreateOrgBody, request: Request):
 
 
 @router.put("/{org_id}")
-async def rename_org(org_id: str, body: RenameOrgBody, request: Request):
+async def rename_org(org_id: str, body: RenameOrgBody, request: Request):  # REQ-042, REQ-059
     _require_superadmin(request)
     pool = _pool()
     async with pool.acquire() as conn:
@@ -90,7 +92,7 @@ async def rename_org(org_id: str, body: RenameOrgBody, request: Request):
 
 
 @router.delete("/{org_id}")
-async def delete_org(org_id: str, request: Request):
+async def delete_org(org_id: str, request: Request):  # REQ-042, REQ-059
     _require_superadmin(request)
     if org_id == "root":
         raise HTTPException(status_code=400, detail="Cannot delete the root org")
@@ -103,7 +105,7 @@ async def delete_org(org_id: str, request: Request):
 
 
 @router.get("/{org_id}/members")
-async def list_members(org_id: str, request: Request):
+async def list_members(org_id: str, request: Request):  # REQ-042, REQ-059
     _require_superadmin(request)
     pool = _pool()
     async with pool.acquire() as conn:
@@ -118,7 +120,7 @@ async def list_members(org_id: str, request: Request):
 
 
 @router.post("/{org_id}/members")
-async def add_member(org_id: str, body: AddMemberBody, request: Request):
+async def add_member(org_id: str, body: AddMemberBody, request: Request):  # REQ-042, REQ-059
     _require_superadmin(request)
     pool = _pool()
     async with pool.acquire() as conn:
@@ -134,7 +136,7 @@ async def add_member(org_id: str, body: AddMemberBody, request: Request):
 
 
 @router.delete("/{org_id}/members/{user_id}")
-async def remove_member(org_id: str, user_id: str, request: Request):
+async def remove_member(org_id: str, user_id: str, request: Request):  # REQ-042, REQ-059
     _require_superadmin(request)
     pool = _pool()
     async with pool.acquire() as conn:

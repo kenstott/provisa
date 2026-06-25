@@ -17,6 +17,8 @@ without materializing the full result in Provisa memory.
 The catalog path exposes the semantic layer as a read-only JDBC catalog.
 """
 
+# Requirements: REQ-045, REQ-051, REQ-126, REQ-143, REQ-144, REQ-145, REQ-146, REQ-267, REQ-345, REQ-369
+
 from __future__ import annotations
 
 import asyncio
@@ -56,11 +58,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _SQL_PREFIX = re.compile(r"^\s*(SELECT|WITH)\b", re.IGNORECASE)
-_SQL_FROM = re.compile(r"\bFROM\s+(\w+)", re.IGNORECASE)
-_SQL_LIMIT = re.compile(r"\bLIMIT\s+(\d+)", re.IGNORECASE)
-_GQL_OP_NAME = re.compile(r"\bquery\s+(\w+)")
-_WHERE_INT = re.compile(r"\b(\w+)\s*=\s*(-?\d+(?:\.\d+)?)\b")
-_WHERE_STR = re.compile(r"\b(\w+)\s*=\s*'([^']*)'")
 _CYPHER_PREFIX = re.compile(
     r"^\s*(MATCH|OPTIONAL\s+MATCH|CALL|WITH|MERGE|CREATE|RETURN)\b", re.IGNORECASE
 )
@@ -74,39 +71,8 @@ def _is_cypher(query: str) -> bool:
     return bool(_CYPHER_PREFIX.match(query))
 
 
-def _parse_where_variables(sql: str) -> dict:
-    """Extract key=value pairs from a SQL WHERE clause as a variables dict.
 
-    Supports integer/float literals and single-quoted string literals.
-    Used to map JDBC-style ``SELECT * FROM op WHERE k = v`` filters to
-    GraphQL variable values.
-    """
-    variables: dict[str, str | int | float] = {}
-    where_match = re.search(r"\bWHERE\b(.*?)(?:\bLIMIT\b|$)", sql, re.IGNORECASE | re.DOTALL)
-    if not where_match:
-        return variables
-    clause = where_match.group(1)
-    for m in _WHERE_STR.finditer(clause):
-        variables[m.group(1)] = m.group(2)
-    for m in _WHERE_INT.finditer(clause):
-        key = m.group(1)
-        if key not in variables:
-            raw = m.group(2)
-            variables[key] = float(raw) if "." in raw else int(raw)
-    return variables
-
-
-def _parse_limit_value(value: object) -> int | None:  # object-ok: value comes from a JSON-parsed dict with heterogeneous value types
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise flight.FlightServerError("limit must be a non-negative integer")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    if value < 0:
-        raise flight.FlightServerError("limit must be a non-negative integer")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    return value
-
-
-class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143, REQ-369  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Arrow Flight server that executes GraphQL queries and streams Arrow data."""
 
     def __init__(
@@ -130,7 +96,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
 
     def do_handshake(
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         payload: Iterable[bytes],
     ) -> tuple[bytes, list[object]]:
         """Parse role from handshake properties and return a session token."""
@@ -149,10 +115,10 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
     # list_flights — enumerate available data
     # ------------------------------------------------------------------
 
-    def list_flights(
+    def list_flights(  # REQ-126, REQ-127
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        criteria: bytes,  # noqa: ARG002  # required by Flight override signature
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
+        criteria: bytes,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportUnusedParameter]
     ) -> Iterator[flight.FlightInfo]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """List available flights (catalog tables)."""
         tables = build_catalog_tables(self._state)
@@ -165,7 +131,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
 
     def get_flight_info(
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Return FlightInfo for a catalog table descriptor.  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -191,7 +157,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
 
     def get_schema(
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> flight.SchemaResult:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Return the Arrow schema for a catalog table.
@@ -217,9 +183,9 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
     # do_get — execute query or return catalog data
     # ------------------------------------------------------------------
 
-    def do_get(
+    def do_get(  # REQ-051, REQ-143, REQ-145, REQ-267, REQ-345, REQ-369
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         ticket: flight.Ticket,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute a query from the ticket and return Arrow record batches.
@@ -270,7 +236,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
 
     def do_action(
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         action: flight.Action,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> list[flight.Result]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Handle a Flight action request."""
@@ -402,7 +368,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
 
         return document, ctx, rls, role, compiled, decision, variables
 
-    def _do_get_cypher(self, request: dict[str, object]) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def _do_get_cypher(self, request: dict[str, object]) -> flight.RecordBatchStream:  # REQ-345, REQ-347, REQ-352  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute a Cypher query ticket and return Arrow record batches."""
         import concurrent.futures
 
@@ -519,7 +485,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
             return self._do_get_sql_governed(request)
         return self._do_get_graphql(request)
 
-    def _do_get_sql_governed(self, request: dict[str, object]) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def _do_get_sql_governed(self, request: dict[str, object]) -> flight.RecordBatchStream:  # REQ-267, REQ-266  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute SQL through the shared governance pipeline and return Arrow record batches."""
         from provisa.compiler.sql_gen import ColumnRef
         from provisa.executor.direct import execute_direct
@@ -569,7 +535,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
                 f"Route {plan.route!r} is not supported for SQL via Flight"
             )
 
-    def _do_get_graphql(
+    def _do_get_graphql(  # REQ-143, REQ-144, REQ-145, REQ-146
         self, request: dict[str, object]
     ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute a GraphQL query ticket and return Arrow record batches."""
@@ -577,7 +543,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
 
         role_id = str(request.get("role", ""))
         ticket_bytes = json.dumps(request).encode("utf-8")
-        document, ctx, _rls, _role_dict, compiled, _decision, variables = self._compile_query(ticket_bytes)
+        _, _, _, _, compiled, _, _ = self._compile_query(ticket_bytes)
 
         try:
             plan = asyncio.run_coroutine_threadsafe(

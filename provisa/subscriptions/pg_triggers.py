@@ -10,6 +10,8 @@
 
 """Install LISTEN/NOTIFY triggers on pre-approved PostgreSQL subscription tables."""
 
+# Requirements: REQ-258
+
 from __future__ import annotations
 
 import logging
@@ -47,7 +49,7 @@ FOR EACH ROW EXECUTE FUNCTION {fn}();
 """
 
 
-async def ensure_pg_notify_triggers(
+async def ensure_pg_notify_triggers(  # REQ-258
     conn: Any,
     tables: list[dict],
     source_types: dict[str, str],
@@ -73,6 +75,8 @@ async def ensure_pg_notify_triggers(
             log.warning(
                 "Failed to install notify trigger on %s.%s: %s — "
                 "subscription will fall back to polling",
-                schema, table, exc,
+                schema,
+                table,
+                exc,
             )
     return installed

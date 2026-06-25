@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# Requirements: REQ-012, REQ-016, REQ-229, REQ-250, REQ-252
+
 log = logging.getLogger(__name__)
 
 # Python→SQL type string mapping for schema inference
@@ -49,7 +51,7 @@ _PYTHON_TO_SQL: dict[str, str] = {
 
 
 @dataclass
-class FileSourceConfig:
+class FileSourceConfig:  # REQ-012, REQ-250
     """File-based source connection configuration."""
 
     id: str
@@ -63,7 +65,7 @@ class FileSourceConfig:
 # ---------------------------------------------------------------------------
 
 
-def discover_schema(config: FileSourceConfig) -> list[dict]:
+def discover_schema(config: FileSourceConfig) -> list[dict]:  # REQ-252, REQ-016
     """Infer columns from a file-based source.
 
     Returns list of dicts: {"name": str, "type": str, "nullable": bool}.
@@ -182,7 +184,7 @@ def _arrow_type_to_sql(arrow_type: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
-def execute_query(config: FileSourceConfig, sql: str) -> list[dict]:
+def execute_query(config: FileSourceConfig, sql: str) -> list[dict]:  # REQ-229
     """Execute a SQL statement against a file-based source.
 
     For CSV/Parquet: uses DuckDB in-memory (auto-registered as a view).
@@ -234,12 +236,12 @@ def _execute_duckdb(config: FileSourceConfig, sql: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def generate_catalog_properties(config: FileSourceConfig) -> dict[str, str]:
+def generate_catalog_properties(config: FileSourceConfig) -> dict[str, str]:  # REQ-250
     """Not applicable for file sources — returns empty dict."""
     return {}
 
 
-def generate_table_definitions(config: FileSourceConfig) -> list[dict]:
+def generate_table_definitions(config: FileSourceConfig) -> list[dict]:  # REQ-250, REQ-016
     """Return table definitions inferred from the file schema."""
     columns = discover_schema(config)
     # Group by table (sqlite has multiple tables; csv/parquet have one)

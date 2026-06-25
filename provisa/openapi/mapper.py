@@ -14,9 +14,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import re
 
+# Requirements: REQ-314, REQ-316, REQ-317, REQ-408
+
 
 @dataclass
-class OpenAPIQuery:
+class OpenAPIQuery:  # REQ-316
     operation_id: str
     path: str
     method: str = "GET"
@@ -28,7 +30,7 @@ class OpenAPIQuery:
 
 
 @dataclass
-class OpenAPIMutation:
+class OpenAPIMutation:  # REQ-317
     operation_id: str
     path: str
     method: str
@@ -177,7 +179,7 @@ def _extract_params(spec: dict, params: list) -> tuple[list[dict], list[dict]]:
 def parse_spec(
     spec: dict,
     operation_overrides: dict[str, str] | None = None,
-) -> tuple[list[OpenAPIQuery], list[OpenAPIMutation]]:
+) -> tuple[list[OpenAPIQuery], list[OpenAPIMutation]]:  # REQ-314, REQ-316, REQ-317, REQ-408
     """Parse an OpenAPI 3.x or Swagger 2.0 spec into queries and mutations.
 
     operation_overrides: {operationId: "query" | "mutation"} — takes priority over x-provisa-kind.

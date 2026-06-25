@@ -13,6 +13,7 @@
 Generates Trino Redis connector catalog properties and JSON table
 definition files from YAML config.
 """
+# Requirements: REQ-250, REQ-251
 
 from __future__ import annotations
 
@@ -31,7 +32,7 @@ class ValueType:
 
 
 @dataclass
-class RedisColumn:
+class RedisColumn:  # REQ-251
     """Column mapped from a Redis hash field or value."""
 
     name: str
@@ -40,7 +41,7 @@ class RedisColumn:
 
 
 @dataclass
-class RedisTableConfig:
+class RedisTableConfig:  # REQ-251
     """Table definition derived from a Redis key pattern."""
 
     name: str
@@ -51,7 +52,7 @@ class RedisTableConfig:
 
 
 @dataclass
-class RedisSourceConfig:
+class RedisSourceConfig:  # REQ-250, REQ-251
     """Redis source connection + table mappings."""
 
     id: str
@@ -61,7 +62,7 @@ class RedisSourceConfig:
     tables: list[RedisTableConfig] = field(default_factory=list)
 
 
-def generate_catalog_properties(config: RedisSourceConfig) -> dict[str, str]:
+def generate_catalog_properties(config: RedisSourceConfig) -> dict[str, str]:  # REQ-250
     """Generate Trino Redis connector catalog properties."""
     props = {
         "connector.name": "redis",
@@ -75,7 +76,7 @@ def generate_catalog_properties(config: RedisSourceConfig) -> dict[str, str]:
     return props
 
 
-def generate_table_definitions(config: RedisSourceConfig) -> list[dict]:
+def generate_table_definitions(config: RedisSourceConfig) -> list[dict]:  # REQ-251
     """Generate JSON table definition files for the Redis connector.
 
     Each table config produces one JSON dict matching Trino's

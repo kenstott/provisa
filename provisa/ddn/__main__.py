@@ -11,6 +11,8 @@
 
 """Allow running as: python -m provisa.ddn"""
 
+# Requirements: REQ-183
+
 import sys
 
 from provisa.ddn.cli import main

@@ -10,6 +10,8 @@
 
 """JSON:API pagination helpers."""
 
+# Requirements: REQ-257
+
 from __future__ import annotations
 
 from urllib.parse import urlencode
@@ -19,7 +21,7 @@ DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 1000
 
 
-def parse_page_params(params: dict[str, str]) -> tuple[int, int]:
+def parse_page_params(params: dict[str, str]) -> tuple[int, int]:  # REQ-257
     """Parse page[number] and page[size] from query params.
 
     Returns (page_number, page_size). page_number is 1-based.
@@ -44,13 +46,13 @@ def parse_page_params(params: dict[str, str]) -> tuple[int, int]:
     return page_number, page_size
 
 
-def page_to_limit_offset(page_number: int, page_size: int) -> tuple[int, int]:
+def page_to_limit_offset(page_number: int, page_size: int) -> tuple[int, int]:  # REQ-257
     """Convert 1-based page number + size to limit/offset."""
     offset = (page_number - 1) * page_size
     return page_size, offset
 
 
-def build_pagination_links(
+def build_pagination_links(  # REQ-257
     base_path: str,
     page_number: int,
     page_size: int,

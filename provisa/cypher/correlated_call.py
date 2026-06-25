@@ -26,6 +26,8 @@ Translates correlated CALL subqueries to CROSS JOIN LATERAL expressions.
 Mixed into _Translator; relies on _lm, _var_table, _param_order, _param_seen.
 """
 
+# Requirements: REQ-573
+
 from __future__ import annotations
 
 
@@ -35,7 +37,7 @@ from provisa.cypher.label_map import CypherLabelMap
 from provisa.cypher.parser import CallSubquery
 
 
-class CorrelatedCallMixin:
+class CorrelatedCallMixin:  # REQ-573
     """Mixin for _Translator: translates correlated CALL { WITH x MATCH ... }."""
 
     _lm: CypherLabelMap

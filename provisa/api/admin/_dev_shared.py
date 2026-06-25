@@ -6,13 +6,15 @@
 
 """Shared helpers used by dev_queries.py and endpoint_dev.py."""
 
+# Requirements: REQ-274
+
 from __future__ import annotations
 
 import re
 from typing import Literal
 
 
-def detect_target(query: str) -> Literal["graphql", "sql", "cypher"]:
+def detect_target(query: str) -> Literal["graphql", "sql", "cypher"]:  # REQ-274
     stripped = query.strip()
     first = stripped.split()[0].lower() if stripped.split() else ""
     if first in ("query", "mutation", "subscription", "fragment") or stripped.startswith("{"):
@@ -25,6 +27,7 @@ def detect_target(query: str) -> Literal["graphql", "sql", "cypher"]:
 def extract_operation_name(query_text: str) -> str | None:
     from graphql import parse as gql_parse
     from graphql.language.ast import OperationDefinitionNode
+
     try:
         doc = gql_parse(query_text)
         for defn in doc.definitions:

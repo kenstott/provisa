@@ -14,6 +14,8 @@ Translates a Neo4j connection config into an ApiSource + ApiEndpoint
 that the existing API source pipeline can execute.
 """
 
+# Requirements: REQ-295, REQ-298, REQ-299
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,7 +31,7 @@ from provisa.core.auth_models import ApiAuth
 
 
 @dataclass
-class Neo4jSourceConfig:
+class Neo4jSourceConfig:  # REQ-295
     """User-supplied Neo4j connection parameters."""
 
     source_id: str
@@ -40,7 +42,7 @@ class Neo4jSourceConfig:
     use_https: bool = False
 
 
-def build_api_source(cfg: Neo4jSourceConfig) -> ApiSource:
+def build_api_source(cfg: Neo4jSourceConfig) -> ApiSource:  # REQ-295
     """Build an ApiSource record for a Neo4j instance."""
     scheme = "https" if cfg.use_https else "http"
     base_url = f"{scheme}://{cfg.host}:{cfg.port}"
@@ -52,7 +54,7 @@ def build_api_source(cfg: Neo4jSourceConfig) -> ApiSource:
     )
 
 
-def build_endpoint(
+def build_endpoint(  # REQ-295, REQ-298, REQ-299
     cfg: Neo4jSourceConfig,
     table_name: str,
     cypher: str,
@@ -89,9 +91,7 @@ def infer_columns(sample_rows: list[dict]) -> list[ApiColumn]:
     columns: list[ApiColumn] = []
     for field in fields:
         # Sample the first non-None value to guess type
-        sample_value = next(
-            (row[field] for row in sample_rows if row.get(field) is not None), None
-        )
+        sample_value = next((row[field] for row in sample_rows if row.get(field) is not None), None)
         if isinstance(sample_value, bool):
             col_type = ApiColumnType.boolean
         elif isinstance(sample_value, int):

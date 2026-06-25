@@ -10,6 +10,8 @@
 
 """Materialized view registry — tracks MV definitions and status (REQ-081)."""
 
+# Requirements: REQ-133, REQ-135, REQ-158, REQ-159, REQ-160, REQ-199, REQ-234, REQ-235
+
 from __future__ import annotations
 
 import logging
@@ -20,7 +22,7 @@ from provisa.mv.models import MVDefinition, MVStatus
 log = logging.getLogger(__name__)
 
 
-class MVRegistry:
+class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
     """In-memory registry of materialized view definitions.
 
     Loaded from config at startup. Status updates are tracked here
@@ -43,13 +45,13 @@ class MVRegistry:
     def register(self, mv: MVDefinition) -> None:
         self._mvs[self._key(mv.id)] = mv
 
-    def unregister(self, mv_id: str) -> None:
+    def unregister(self, mv_id: str) -> None:  # REQ-234
         self._mvs.pop(self._key(mv_id), None)
 
     def get(self, mv_id: str) -> MVDefinition | None:
         return self._mvs.get(self._key(mv_id))
 
-    def get_fresh(self) -> list[MVDefinition]:
+    def get_fresh(self) -> list[MVDefinition]:  # REQ-199
         """Return enabled MVs that are fresh and within their TTL (for the rewriter).
 
         REQ-199: an MV whose TTL has elapsed is excluded here, so the query falls back to
@@ -62,7 +64,7 @@ class MVRegistry:
         """Return all enabled MVs (for refresh scheduler)."""
         return [mv for mv in self._mvs.values() if mv.enabled]
 
-    def get_due_for_refresh(self) -> list[MVDefinition]:
+    def get_due_for_refresh(self) -> list[MVDefinition]:  # REQ-135, REQ-160
         """Return enabled MVs that are due for refresh."""
         now = time.time()
         result = []

@@ -10,6 +10,8 @@
 
 """Admin GraphQL schema — queries + mutations for all config entities."""
 
+# Requirements: REQ-012, REQ-013, REQ-016, REQ-019, REQ-020, REQ-021, REQ-041, REQ-042, REQ-063, REQ-133, REQ-155, REQ-156, REQ-158, REQ-215, REQ-252, REQ-253, REQ-276, REQ-304, REQ-305, REQ-306, REQ-366, REQ-393, REQ-399, REQ-400, REQ-402, REQ-413, REQ-416, REQ-432, REQ-433, REQ-434
+
 from __future__ import annotations
 
 import logging
@@ -135,7 +137,7 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         return False
 
 
-async def _govdata_columns(
+async def _govdata_columns(  # pyright: ignore[reportUnusedParameter]
     source_id: str,
     schema_name: str,
     table_name: str,
@@ -245,7 +247,7 @@ def _role_from_row(row) -> RoleType:
     )
 
 
-def _derive_graphql_alias(
+def _derive_graphql_alias(  # pyright: ignore[reportUnusedParameter]
     target_table_name: str, cardinality: str, _alias: str | None, convention: str = "apollo_graphql"
 ) -> str | None:
     return _derive_graphql_alias_fn(target_table_name, cardinality, convention)
@@ -544,7 +546,7 @@ async def _introspect_view_columns(conn, view_sql: str, default_roles: list[str]
     ]
 
 
-async def _domain_table_conflict(
+async def _domain_table_conflict(  # REQ-432
     conn,
     domain_id: str,
     table_name: str,
@@ -582,7 +584,7 @@ def _normalize_dataset_name(name: str) -> str:
     return apply_sql_name(name, "snake").lower()
 
 
-async def _dataset_ownership_conflict(
+async def _dataset_ownership_conflict(  # REQ-433
     conn, source_id: str, table_name: str, domain_id: str
 ) -> str | None:
     """Return an error if this dataset is already claimed by a DIFFERENT domain (REQ-433).
@@ -615,7 +617,7 @@ async def _dataset_ownership_conflict(
 
 
 @strawberry.type
-class CreationRequestType:
+class CreationRequestType:  # REQ-434, REQ-063
     id: int
     request_type: str
     capability: str
@@ -640,7 +642,7 @@ def _rebuild_table_input(payload: dict):
     return TableInput(**data)
 
 
-async def _queue_creation_request(
+async def _queue_creation_request(  # REQ-434
     info, request_type: str, capability: str, input
 ) -> MutationResult:
     """Persist a governed create the caller is not authorized to perform (REQ-434)."""
@@ -703,9 +705,9 @@ async def _ensure_view_column_types(conn, view_sql: str, columns: list) -> list:
 
 
 @strawberry.type
-class Query:
+class Query:  # REQ-021, REQ-042
     @strawberry.field
-    async def creation_requests(self, info: StrawberryInfo) -> list[CreationRequestType]:
+    async def creation_requests(self, info: StrawberryInfo) -> list[CreationRequestType]:  # REQ-434, REQ-063  # pyright: ignore[reportUnusedParameter]
         """REQ-434/063: pending creation requests, for users holding a create capability."""
         import json as _json
 
@@ -754,21 +756,21 @@ class Query:
         return version_hash
 
     @strawberry.field
-    async def sources(self) -> list[SourceType]:
+    async def sources(self) -> list[SourceType]:  # REQ-012, REQ-013
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT * FROM sources ORDER BY id")
             return [_source_from_row(r) for r in rows]
 
     @strawberry.field
-    async def source(self, id: str) -> Optional[SourceType]:
+    async def source(self, id: str) -> Optional[SourceType]:  # REQ-012, REQ-013
         pool = await _get_pool()
         async with pool.acquire() as conn:
             row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", id)
             return _source_from_row(row) if row else None
 
     @strawberry.field
-    async def domains(self, info: StrawberryInfo) -> list[DomainType]:
+    async def domains(self, info: StrawberryInfo) -> list[DomainType]:  # REQ-021, REQ-042
         request = info.context["request"]
         active_org_id = getattr(request.state, "active_org_id", "root") or "root"
         identity = getattr(request.state, "identity", None)
@@ -788,7 +790,7 @@ class Query:
             return [_domain_from_row(r) for r in rows]
 
     @strawberry.field
-    async def tables(self, info: StrawberryInfo) -> list[RegisteredTableType]:
+    async def tables(self, info: StrawberryInfo) -> list[RegisteredTableType]:  # REQ-016, REQ-021, REQ-042
         with _tracer.start_as_current_span("admin.schema_introspect"):
             from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
             from provisa.api.app import state as _state
@@ -814,7 +816,7 @@ class Query:
                 ]
 
     @strawberry.field
-    async def relationships(self) -> list[RelationshipType]:
+    async def relationships(self) -> list[RelationshipType]:  # REQ-019, REQ-020
         from provisa.api.app import state
 
         convention = state.global_gql_naming_convention
@@ -835,7 +837,7 @@ class Query:
             return [_rel_from_row(r, convention) for r in rows]
 
     @strawberry.field
-    async def all_relationships(self) -> list[RelationshipType]:
+    async def all_relationships(self) -> list[RelationshipType]:  # REQ-019, REQ-020
         """All relationships including system-generated meta:% entries (used by ERD)."""
         from provisa.api.app import state
 
@@ -856,7 +858,7 @@ class Query:
             return [_rel_from_row(r, convention) for r in rows]
 
     @strawberry.field
-    async def roles(self, info: StrawberryInfo) -> list[RoleType]:
+    async def roles(self, info: StrawberryInfo) -> list[RoleType]:  # REQ-042, REQ-059, REQ-060, REQ-215
         request = info.context["request"]
         active_org_id = getattr(request.state, "active_org_id", "root") or "root"
         identity = getattr(request.state, "identity", None)
@@ -876,7 +878,7 @@ class Query:
             return [_role_from_row(r) for r in rows]
 
     @strawberry.field
-    async def rls_rules(self) -> list[RLSRuleType]:
+    async def rls_rules(self) -> list[RLSRuleType]:  # REQ-041, REQ-402
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT * FROM rls_rules ORDER BY id")
@@ -886,7 +888,7 @@ class Query:
     async def available_schemas(self, source_id: str) -> list[str]:
         """List schemas available in a source."""
         from provisa.api.app import state
-        from provisa.api.admin.introspect import native_schemas, _PROVISA_INTERNAL_SCHEMAS
+        from provisa.api.admin.introspect import native_schemas, PROVISA_INTERNAL_SCHEMAS
         from provisa.core.models import SOURCE_TO_CONNECTOR
 
         source_type = state.source_types.get(source_id, "")
@@ -896,13 +898,13 @@ class Query:
         async with pool.acquire() as config_conn:
             result = await native_schemas(source_id, source_type, state.source_pools, config_conn)
         if result is not None:
-            return [s for s in result if s not in _PROVISA_INTERNAL_SCHEMAS]
+            return [s for s in result if s not in PROVISA_INTERNAL_SCHEMAS]
         # native_schemas returns None only for Trino-backed connector sources
         # that have no cheaper direct pool path. Use Trino for those.
         if source_type not in SOURCE_TO_CONNECTOR:
             return []
         catalog = source_to_catalog(source_id)
-        hidden = {"information_schema", "pg_catalog"} | _PROVISA_INTERNAL_SCHEMAS
+        hidden = {"information_schema", "pg_catalog"} | PROVISA_INTERNAL_SCHEMAS
         try:
             assert state.trino_conn is not None
             cursor = state.trino_conn.cursor()
@@ -948,10 +950,10 @@ class Query:
         if result is not None:
             return result
         # Trino fallback
-        from provisa.api.admin.introspect import _PROVISA_INTERNAL_TABLES
+        from provisa.api.admin.introspect import PROVISA_INTERNAL_TABLES
 
         catalog = source_to_catalog(source_id)
-        skip = _PROVISA_INTERNAL_TABLES if schema_name.lower() == "public" else frozenset()
+        skip = PROVISA_INTERNAL_TABLES if schema_name.lower() == "public" else frozenset()
         try:
             assert state.trino_conn is not None
             cursor = state.trino_conn.cursor()
@@ -1582,7 +1584,7 @@ def _remove_view_mv(table_name: str) -> None:
 
 
 @strawberry.type
-class Mutation:
+class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def rebuild_schemas(self) -> MutationResult:
         """Rebuild in-memory schema from DB state. Useful after external DB changes."""
@@ -1590,7 +1592,7 @@ class Mutation:
         return MutationResult(success=True, message="Schemas rebuilt")
 
     @strawberry.mutation
-    async def create_source(self, info: StrawberryInfo, input: SourceInput) -> MutationResult:
+    async def create_source(self, info: StrawberryInfo, input: SourceInput) -> MutationResult:  # REQ-012, REQ-013
         from provisa.api.admin.capabilities import require_capability
 
         require_capability(info, "source_registration")
@@ -1649,7 +1651,7 @@ class Mutation:
         return MutationResult(success=True, message=f"Source {input.id!r} created")
 
     @strawberry.mutation
-    async def update_source(self, info: StrawberryInfo, input: SourceInput) -> MutationResult:
+    async def update_source(self, info: StrawberryInfo, input: SourceInput) -> MutationResult:  # REQ-012
         from provisa.api.admin.capabilities import require_capability
 
         require_capability(info, "source_registration")
@@ -1771,7 +1773,7 @@ class Mutation:
         return MutationResult(success=False, message=f"Source {id!r} not found")
 
     @strawberry.mutation
-    async def create_domain(self, input: DomainInput) -> MutationResult:
+    async def create_domain(self, input: DomainInput) -> MutationResult:  # REQ-021
         from provisa.core.models import Domain as DomainModel
         from provisa.core.repositories import domain as domain_repo
 
@@ -1795,7 +1797,7 @@ class Mutation:
         return MutationResult(success=False, message=f"Domain {id!r} not found")
 
     @strawberry.mutation
-    async def create_role(self, input: RoleInput) -> MutationResult:
+    async def create_role(self, input: RoleInput) -> MutationResult:  # REQ-042, REQ-059, REQ-060, REQ-215
         from provisa.core.models import Role as RoleModel
         from provisa.core.repositories import role as role_repo
 
@@ -1810,7 +1812,7 @@ class Mutation:
         return MutationResult(success=True, message=f"Role {input.id!r} created")
 
     @strawberry.mutation
-    async def register_table(self, info: StrawberryInfo, input: TableInput) -> MutationResult:
+    async def register_table(self, info: StrawberryInfo, input: TableInput) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434
         import logging
 
         logging.getLogger(__name__).warning(
@@ -1981,7 +1983,7 @@ class Mutation:
         )
 
     @strawberry.mutation
-    async def update_table(self, info: StrawberryInfo, input: TableInput) -> MutationResult:
+    async def update_table(self, info: StrawberryInfo, input: TableInput) -> MutationResult:  # REQ-016, REQ-020, REQ-155, REQ-156
         """Update an existing table's alias, description, and column metadata."""
         from provisa.api.admin.capabilities import require_capability
 
@@ -2095,7 +2097,7 @@ class Mutation:
         return MutationResult(success=False, message=f"Role {id!r} not found")
 
     @strawberry.mutation
-    async def upsert_rls_rule(self, input: RLSRuleInput) -> MutationResult:
+    async def upsert_rls_rule(self, input: RLSRuleInput) -> MutationResult:  # REQ-041, REQ-402
         from provisa.core.models import RLSRule as RLSRuleModel
         from provisa.core.repositories import rls as rls_repo
 
@@ -2136,7 +2138,7 @@ class Mutation:
         return MutationResult(success=False, message="RLS rule not found")
 
     @strawberry.mutation
-    async def execute_creation_request(
+    async def execute_creation_request(  # REQ-434, REQ-063
         self, info: StrawberryInfo, request_id: int
     ) -> MutationResult:
         """REQ-434: a rights-holder executes a queued creation request."""
@@ -2188,7 +2190,7 @@ class Mutation:
         return MutationResult(success=True, message=f"Executed creation request #{request_id}")
 
     @strawberry.mutation
-    async def reject_creation_request(
+    async def reject_creation_request(  # REQ-434, REQ-063
         self, info: StrawberryInfo, request_id: int, reason: str
     ) -> MutationResult:
         """REQ-434/063: a rights-holder rejects a queued request with an actionable reason."""
@@ -2216,7 +2218,7 @@ class Mutation:
         return MutationResult(success=True, message=f"Rejected creation request #{request_id}")
 
     @strawberry.mutation
-    async def upsert_relationship(
+    async def upsert_relationship(  # REQ-019, REQ-020, REQ-366, REQ-434
         self, info: StrawberryInfo, input: RelationshipInput
     ) -> MutationResult:
         from provisa.api.admin.capabilities import has_capability
@@ -2339,7 +2341,7 @@ class Mutation:
     # ── Admin: Naming Convention ──
 
     @strawberry.mutation
-    async def update_gql_naming_convention(self, convention: str) -> MutationResult:
+    async def update_gql_naming_convention(self, convention: str) -> MutationResult:  # REQ-253, REQ-416
         """Set the global naming convention and rebuild schemas for all roles."""
         from provisa.api.app import state
 
@@ -2421,7 +2423,7 @@ class Mutation:
     # ── Admin: MV Management ──
 
     @strawberry.mutation
-    async def refresh_mv(self, mv_id: str) -> MutationResult:
+    async def refresh_mv(self, mv_id: str) -> MutationResult:  # REQ-133, REQ-158
         """Trigger a manual refresh of a materialized view."""
         from provisa.api.app import state
 
@@ -2545,7 +2547,7 @@ class Mutation:
             message=f"Task {task_id!r} {'enabled' if enabled else 'disabled'}",
         )
 
-    async def refresh_source_statistics(self, source_id: str) -> MutationResult:
+    async def refresh_source_statistics(self, source_id: str) -> MutationResult:  # REQ-276
         """Run ANALYZE on all registered tables for a source (Phase AL).
 
         Triggers Trino to collect fresh table statistics, which improves the
@@ -2596,7 +2598,7 @@ class Mutation:
         )
 
     @strawberry.mutation
-    async def compile_query(self, input: CompileQueryInput) -> list[CompileQueryResult]:
+    async def compile_query(self, input: CompileQueryInput) -> list[CompileQueryResult]:  # REQ-161
         from provisa.api.admin import dev_queries
 
         variables = cast(dict, input.variables) if input.variables else None

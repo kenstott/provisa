@@ -20,12 +20,14 @@ import base64
 import json
 from typing import Any, Protocol
 
+# Requirements: REQ-218
+
 
 class _HasAdd(Protocol):
     def add(self, value: Any) -> str: ...
 
 
-def encode_cursor(sort_values: list) -> str:
+def encode_cursor(sort_values: list) -> str:  # REQ-218
     """Encode sort key values into an opaque cursor string.
 
     Args:
@@ -38,7 +40,7 @@ def encode_cursor(sort_values: list) -> str:
     return base64.b64encode(payload.encode()).decode()
 
 
-def decode_cursor(cursor: str) -> list:
+def decode_cursor(cursor: str) -> list:  # REQ-218
     """Decode an opaque cursor string back to sort key values.
 
     Args:
@@ -57,7 +59,7 @@ def decode_cursor(cursor: str) -> list:
         raise ValueError(f"Invalid cursor: {cursor!r}") from exc
 
 
-def cursor_where_clause(
+def cursor_where_clause(  # REQ-218
     sort_columns: list[str],
     cursor_values: list,
     direction: str,
@@ -81,8 +83,7 @@ def cursor_where_clause(
     """
     if len(sort_columns) != len(cursor_values):
         raise ValueError(
-            f"Cursor has {len(cursor_values)} values but sort key has "
-            f"{len(sort_columns)} columns"
+            f"Cursor has {len(cursor_values)} values but sort key has {len(sort_columns)} columns"
         )
 
     def _q(name: str) -> str:
@@ -91,7 +92,7 @@ def cursor_where_clause(
     def _col_ref(col: str) -> str:
         if alias is None:
             return _q(col)
-        return f'{_q(alias)}.{_q(col)}'
+        return f"{_q(alias)}.{_q(col)}"
 
     op = ">" if direction == "forward" else "<"
 
@@ -105,7 +106,7 @@ def cursor_where_clause(
     return f"({col_tuple}) {op} ({param_tuple})"
 
 
-def apply_cursor_pagination(
+def apply_cursor_pagination(  # REQ-218
     args: dict,
     sort_columns: list[str],
     collector: _HasAdd,
@@ -142,7 +143,11 @@ def apply_cursor_pagination(
         if after is not None:
             cursor_values = decode_cursor(after)
             where_fragment = cursor_where_clause(
-                sort_columns, cursor_values, "forward", collector, alias,
+                sort_columns,
+                cursor_values,
+                "forward",
+                collector,
+                alias,
             )
 
     elif last is not None:
@@ -151,13 +156,17 @@ def apply_cursor_pagination(
         if before is not None:
             cursor_values = decode_cursor(before)
             where_fragment = cursor_where_clause(
-                sort_columns, cursor_values, "backward", collector, alias,
+                sort_columns,
+                cursor_values,
+                "backward",
+                collector,
+                alias,
             )
 
     return where_fragment, effective_limit, is_backward
 
 
-def extract_sort_columns(args: dict) -> list[str]:
+def extract_sort_columns(args: dict) -> list[str]:  # REQ-218
     """Extract sort column names from order_by args, defaulting to ["id"]."""
     if "order_by" not in args:
         return ["id"]
@@ -171,7 +180,7 @@ def extract_sort_columns(args: dict) -> list[str]:
     return cols if cols else ["id"]
 
 
-def reverse_order(order_sql: str) -> str:
+def reverse_order(order_sql: str) -> str:  # REQ-218
     """Reverse ASC/DESC in an ORDER BY clause for backward pagination."""
     import re as _re_local
 
@@ -186,9 +195,9 @@ def reverse_order(order_sql: str) -> str:
     for old, new in replacements:
         result = result.replace(old, new)
     # Replace remaining plain ASC/DESC with word-boundary awareness
-    result = _re_local.sub(r'\bASC\b', '__PLACEHOLDER_DESC__', result)
-    result = _re_local.sub(r'\bDESC\b', 'ASC', result)
-    result = result.replace('__PLACEHOLDER_DESC__', 'DESC')
+    result = _re_local.sub(r"\bASC\b", "__PLACEHOLDER_DESC__", result)
+    result = _re_local.sub(r"\bDESC\b", "ASC", result)
+    result = result.replace("__PLACEHOLDER_DESC__", "DESC")
     # Restore compound patterns
     result = result.replace("__DESC_NULLS_LAST__", "DESC NULLS LAST")
     result = result.replace("__DESC_NULLS_FIRST__", "DESC NULLS FIRST")

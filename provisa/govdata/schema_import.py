@@ -34,6 +34,8 @@ from provisa.core.models import (
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-492, REQ-540, REQ-018, REQ-413
+
 # All govdata columns default visible to these roles unless overridden.
 _DEFAULT_VISIBLE_TO = ["admin", "analyst"]
 
@@ -129,7 +131,7 @@ def _read_view_sql(conn, schema: str, table: str) -> str | None:
         return None
 
 
-def import_govdata_source(
+def import_govdata_source(  # REQ-492, REQ-540, REQ-018, REQ-413
     source: GovDataSource,
 ) -> tuple[list[Table], list[Relationship]]:
     """Connect to *source* via JDBC and return (tables, relationships).

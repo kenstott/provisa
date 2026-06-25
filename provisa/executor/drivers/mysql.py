@@ -10,26 +10,38 @@
 
 """MySQL direct driver using aiomysql."""
 
+# Requirements: REQ-052, REQ-068, REQ-229, REQ-550
+
 from __future__ import annotations
 
-import aiomysql
+import aiomysql  # pyright: ignore[reportMissingImports]
 
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.trino import QueryResult
 
 
-class MySQLDriver(DirectDriver):
+class MySQLDriver(DirectDriver):  # REQ-052, REQ-068, REQ-229, REQ-550
     def __init__(self) -> None:
         self._pool: aiomysql.Pool | None = None
 
     async def connect(
-        self, host: str, port: int, database: str,
-        user: str, password: str, min_pool: int = 1, max_pool: int = 5,
-    ) -> None:
+        self,
+        host: str,
+        port: int,
+        database: str,
+        user: str,
+        password: str,
+        min_pool: int = 1,
+        max_pool: int = 5,
+    ) -> None:  # REQ-052
         self._pool = await aiomysql.create_pool(
-            host=host, port=port, db=database,
-            user=user, password=password,
-            minsize=min_pool, maxsize=max_pool,
+            host=host,
+            port=port,
+            db=database,
+            user=user,
+            password=password,
+            minsize=min_pool,
+            maxsize=max_pool,
         )
 
     async def execute(self, sql: str, params: list | None = None) -> QueryResult:

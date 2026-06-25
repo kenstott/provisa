@@ -45,6 +45,8 @@ from provisa.live.outputs.kafka import KafkaSinkOutput
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-260, REQ-282, REQ-283, REQ-285, REQ-286, REQ-287
+
 
 @dataclass
 class _LiveJob:
@@ -59,7 +61,7 @@ class _LiveJob:
     scheduler_job_id: str = ""
 
 
-class LiveEngine:
+class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
     """APScheduler-backed live query engine.
 
     Args:
@@ -92,7 +94,7 @@ class LiveEngine:
         self._jobs.clear()
         log.info("[LIVE ENGINE] stopped")
 
-    def register(
+    def register(  # REQ-283, REQ-285, REQ-286
         self,
         query_id: str,
         sql: str,
@@ -147,7 +149,7 @@ class LiveEngine:
             except Exception:
                 pass
 
-    def subscribe(self, query_id: str) -> asyncio.Queue:
+    def subscribe(self, query_id: str) -> asyncio.Queue:  # REQ-260, REQ-286
         """Subscribe to SSE fan-out for *query_id*. Returns an asyncio.Queue."""
         job = self._jobs.get(query_id)
         if job is None:
@@ -163,7 +165,7 @@ class LiveEngine:
     def is_registered(self, query_id: str) -> bool:
         return query_id in self._jobs
 
-    async def _poll(self, query_id: str) -> None:
+    async def _poll(self, query_id: str) -> None:  # REQ-260, REQ-283, REQ-286, REQ-287
         """Poll for new rows and deliver to outputs."""
         job = self._jobs.get(query_id)
         if job is None:

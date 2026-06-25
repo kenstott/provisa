@@ -6,6 +6,8 @@
 
 """Control plane FastAPI router for REQ-073."""
 
+# Requirements: REQ-073
+
 from __future__ import annotations
 
 import datetime
@@ -42,7 +44,7 @@ class RegisterDataPlaneRequest(BaseModel):
 
 
 @router.post("/tenants")
-def register_tenant(body: RegisterTenantRequest) -> dict:
+def register_tenant(body: RegisterTenantRequest) -> dict:  # REQ-073
     _require_multitenancy()
     tenant = Tenant(
         id=body.id,
@@ -60,7 +62,7 @@ def register_tenant(body: RegisterTenantRequest) -> dict:
 
 
 @router.get("/tenants")
-def list_tenants() -> list[dict]:
+def list_tenants() -> list[dict]:  # REQ-073
     _require_multitenancy()
     return [
         {"id": t.id, "name": t.name, "data_plane_id": t.data_plane_id, "created_at": t.created_at}
@@ -69,7 +71,7 @@ def list_tenants() -> list[dict]:
 
 
 @router.get("/tenants/{tenant_id}/route")
-def route_tenant(tenant_id: str) -> dict:
+def route_tenant(tenant_id: str) -> dict:  # REQ-073
     _require_multitenancy()
     try:
         dp = _store.route_query(tenant_id)
@@ -81,7 +83,7 @@ def route_tenant(tenant_id: str) -> dict:
 
 
 @router.post("/data-planes")
-def register_data_plane(body: RegisterDataPlaneRequest) -> dict:
+def register_data_plane(body: RegisterDataPlaneRequest) -> dict:  # REQ-073
     _require_multitenancy()
     dp = DataPlane(
         id=body.id,
@@ -101,7 +103,7 @@ def register_data_plane(body: RegisterDataPlaneRequest) -> dict:
 
 
 @router.get("/data-planes")
-def list_data_planes() -> list[dict]:
+def list_data_planes() -> list[dict]:  # REQ-073
     _require_multitenancy()
     return [
         {

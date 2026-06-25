@@ -16,8 +16,10 @@ import pathlib
 import httpx
 import yaml
 
+# Requirements: REQ-314, REQ-315
 
-def parse_text(content: str) -> dict:
+
+def parse_text(content: str) -> dict:  # REQ-315, REQ-407
     """Parse an inline YAML or JSON spec string.
 
     Tries YAML first, falls back to JSON.
@@ -28,7 +30,7 @@ def parse_text(content: str) -> dict:
         return json.loads(content)
 
 
-def load_spec(spec_path: str) -> dict:
+def load_spec(spec_path: str) -> dict:  # REQ-314, REQ-315
     """Load OpenAPI spec from a local file path or remote URL (http/https).
 
     Raises FileNotFoundError for missing local paths.

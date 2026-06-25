@@ -23,6 +23,8 @@ falling back to the HTTP Query API.  No Bolt implementation required.
 
 from __future__ import annotations
 
+# Requirements: REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351, REQ-352
+
 import logging
 from typing import Any
 
@@ -45,25 +47,30 @@ def _federation_error(exc: Exception) -> str:
         return "FederationUserError(" + ", ".join(parts) + ")"
     return str(exc)
 
+
 _NEO4J_VERSION = "5.26.0"
 _NEO4J_EDITION = "community"
 
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
 
+
 @router.get("/")
-async def neo4j_discovery(request: Request) -> JSONResponse:
+async def neo4j_discovery(request: Request) -> JSONResponse:  # REQ-345
     """Neo4j discovery endpoint — tells Browser where to send queries."""
     base = str(request.base_url).rstrip("/")
-    return JSONResponse({
-        "neo4j_version": _NEO4J_VERSION,
-        "neo4j_edition": _NEO4J_EDITION,
-        "transaction": f"{base}/db/{{databaseName}}/tx",
-        "query": f"{base}/db/{{databaseName}}/query/v2",
-    })
+    return JSONResponse(
+        {
+            "neo4j_version": _NEO4J_VERSION,
+            "neo4j_edition": _NEO4J_EDITION,
+            "transaction": f"{base}/db/{{databaseName}}/tx",
+            "query": f"{base}/db/{{databaseName}}/query/v2",
+        }
+    )
 
 
 # ── Query API v2 ──────────────────────────────────────────────────────────────
+
 
 class QueryV2Request(BaseModel):
     statement: str
@@ -71,8 +78,8 @@ class QueryV2Request(BaseModel):
 
 
 @router.post("/db/{database}/query/v2")
-async def neo4j_query_v2(
-    database: str,
+async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351, REQ-352
+    database: str,  # pyright: ignore[reportUnusedParameter]
     body: QueryV2Request,
     request: Request,
 ) -> JSONResponse:
@@ -80,7 +87,11 @@ async def neo4j_query_v2(
     from provisa.api.app import state
     from provisa.cypher.parser import parse_cypher, CypherParseError
     from provisa.cypher.label_map import CypherLabelMap
-    from provisa.cypher.translator import cypher_to_sql, CypherCrossSourceError, CypherTranslateError
+    from provisa.cypher.translator import (
+        cypher_to_sql,
+        CypherCrossSourceError,
+        CypherTranslateError,
+    )
     from provisa.cypher.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
     from provisa.cypher.assembler import assemble_rows, to_serializable
@@ -113,7 +124,6 @@ async def neo4j_query_v2(
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
 
     try:
-        import sqlglot
         sql_str = sql_ast.sql(dialect="postgres")
     except Exception as exc:
         log.exception("Cypher SQL render failed")
@@ -124,7 +134,9 @@ async def neo4j_query_v2(
 
     try:
         plan = await _govern_and_route_compiled(
-            semantic_sql, role_id, exec_params=resolved_params or None,
+            semantic_sql,
+            role_id,
+            exec_params=resolved_params or None,
         )
     except PermissionError as exc:
         return _error_response(str(exc), "Forbidden")
@@ -147,16 +159,19 @@ async def neo4j_query_v2(
     columns = list(rows[0].keys()) if rows else []
     serializable_rows = [to_serializable(r) for r in assembled]
 
-    return JSONResponse({
-        "data": {
-            "fields": columns,
-            "values": [_to_query_v2_row(columns, r) for r in serializable_rows],
-        },
-        "bookmarks": [],
-    })
+    return JSONResponse(
+        {
+            "data": {
+                "fields": columns,
+                "values": [_to_query_v2_row(columns, r) for r in serializable_rows],
+            },
+            "bookmarks": [],
+        }
+    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _to_query_v2_row(columns: list[str], row: dict) -> list[Any]:
     """Convert an assembled row dict to a Query API v2 values array."""
@@ -205,27 +220,11 @@ def _error_response(message: str, code: str, status: int = 400) -> JSONResponse:
     )
 
 
-def _resolve_role_id(request: Request, state: object) -> str:  # object-ok: circular-import boundary
+def _resolve_role_id(
+    _request: Request,  # pyright: ignore[reportUnusedParameter]
+    state: object,
+) -> str:  # object-ok: circular-import boundary
     roles: dict = getattr(state, "roles", {})
     if roles:
         return next(iter(roles))
     return "default"
-
-
-async def _execute(sql: str, params: list, state: object) -> list[dict]:  # object-ok: circular-import boundary
-    import asyncio
-
-    trino_conn = getattr(state, "trino_conn", None)
-    if trino_conn is None:
-        raise RuntimeError("Federation engine not connected")
-
-    def _run() -> list[dict]:
-        cursor = trino_conn.cursor()
-        try:
-            cursor.execute(sql, params or [])
-            cols = [d[0] for d in (cursor.description or [])]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
-        finally:
-            cursor.close()
-
-    return await asyncio.get_event_loop().run_in_executor(None, _run)

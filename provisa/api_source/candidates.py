@@ -18,8 +18,10 @@ import asyncpg
 
 from provisa.api_source.models import ApiColumn, ApiEndpoint, ApiEndpointCandidate
 
+# Requirements: REQ-308, REQ-314, REQ-316
 
-async def store_candidates(
+
+async def store_candidates(  # REQ-314, REQ-316
     conn: asyncpg.Connection,
     source_id: str,
     candidates: list[ApiEndpointCandidate],
@@ -38,7 +40,11 @@ async def store_candidates(
                     status = CASE WHEN api_endpoint_candidates.status = 'registered' THEN 'registered' ELSE 'discovered' END
             RETURNING id
             """,
-            source_id, c.path, c.method, c.table_name, columns_json,
+            source_id,
+            c.path,
+            c.method,
+            c.table_name,
+            columns_json,
         )
         assert row is not None
         ids.append(row["id"])
@@ -59,6 +65,7 @@ async def list_candidates(
         rows = await conn.fetch(
             "SELECT * FROM api_endpoint_candidates WHERE status = 'discovered' ORDER BY id",
         )
+
     def _parse_columns(raw) -> list[ApiColumn]:
         data = raw if isinstance(raw, list) else json.loads(raw)
         return [ApiColumn(**c) for c in data]
@@ -77,14 +84,15 @@ async def list_candidates(
     ]
 
 
-async def accept_candidate(
+async def accept_candidate(  # REQ-308, REQ-314, REQ-316
     conn: asyncpg.Connection,
     candidate_id: int,
     overrides: dict | None = None,
 ) -> ApiEndpoint:
     """Accept a candidate: register it as an endpoint."""
     row = await conn.fetchrow(
-        "SELECT * FROM api_endpoint_candidates WHERE id = $1", candidate_id,
+        "SELECT * FROM api_endpoint_candidates WHERE id = $1",
+        candidate_id,
     )
     if row is None:
         raise ValueError(f"Candidate {candidate_id} not found")
@@ -115,8 +123,15 @@ async def accept_candidate(
                 pk_column = EXCLUDED.pk_column
         RETURNING id
         """,
-        row["source_id"], row["path"], row["method"],
-        table_name, columns, ttl, response_root, error_path, pk_column,
+        row["source_id"],
+        row["path"],
+        row["method"],
+        table_name,
+        columns,
+        ttl,
+        response_root,
+        error_path,
+        pk_column,
     )
 
     # Update candidate status

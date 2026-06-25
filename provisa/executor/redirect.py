@@ -15,6 +15,8 @@ and a presigned URL with TTL is returned instead of inline data.
 Pre-approved table queries cannot use redirect (REQ-006).
 """
 
+# Requirements: REQ-006, REQ-029, REQ-044, REQ-047, REQ-048, REQ-049, REQ-050, REQ-137, REQ-138, REQ-139, REQ-140, REQ-141, REQ-142
+
 from __future__ import annotations
 
 import io
@@ -43,7 +45,7 @@ class _Encoder(json.JSONEncoder):
 
 
 @dataclass
-class RedirectConfig:
+class RedirectConfig:  # REQ-029, REQ-137, REQ-142
     """Configuration for large result redirect."""
 
     enabled: bool
@@ -72,10 +74,10 @@ class RedirectConfig:
         )
 
 
-def should_redirect(
+def should_redirect(  # REQ-029, REQ-140
     result: QueryResult,
     config: RedirectConfig,
-    target_table_ids: list[int] | None = None,
+    _target_table_ids: list[int] | None = None,
     *,
     force: bool = False,
 ) -> bool:
@@ -106,7 +108,7 @@ _FORMAT_META: dict[str, tuple[str, str]] = {
 }
 
 
-def _serialize_for_redirect(
+def _serialize_for_redirect(  # REQ-047, REQ-048, REQ-049, REQ-050, REQ-139
     result: QueryResult,
     columns: list[ColumnRef] | None,
     output_format: str,
@@ -190,7 +192,7 @@ def _serialize_arrow_table(
     return body.encode("utf-8"), "application/x-ndjson", ".ndjson"
 
 
-async def ensure_results_bucket(config: RedirectConfig) -> None:
+async def ensure_results_bucket(config: RedirectConfig) -> None:  # REQ-141
     """Ensure the configured S3/MinIO results bucket exists, creating it if needed.
 
     Logs the outcome. Does not raise if MinIO is unavailable at startup.
@@ -228,10 +230,10 @@ async def ensure_results_bucket(config: RedirectConfig) -> None:
         )
 
 
-async def upload_and_presign(
+async def upload_and_presign(  # REQ-029, REQ-044, REQ-137, REQ-138, REQ-139, REQ-141
     result: QueryResult,
     config: RedirectConfig,
-    column_names: list[str] | None = None,
+    _column_names: list[str] | None = None,
     *,
     output_format: str = "ndjson",
     columns: list[ColumnRef] | None = None,

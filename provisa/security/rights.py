@@ -17,8 +17,10 @@ from __future__ import annotations
 
 from enum import Enum
 
+# Requirements: REQ-001, REQ-002, REQ-003, REQ-038, REQ-042, REQ-125, REQ-263
 
-class Capability(str, Enum):
+
+class Capability(str, Enum):  # REQ-042, REQ-060
     SOURCE_REGISTRATION = "source_registration"
     TABLE_REGISTRATION = "table_registration"
     CREATE_RELATIONSHIP = "create_relationship"
@@ -48,7 +50,7 @@ class InsufficientRightsError(Exception):
         super().__init__(f"Role {role_id!r} lacks required capability: {required.value}")
 
 
-def check_capability(
+def check_capability(  # REQ-002, REQ-003, REQ-042
     role: dict[str, object],
     required: Capability,
 ) -> None:
@@ -64,7 +66,9 @@ def check_capability(
         raise InsufficientRightsError(str(role_id), required)
 
 
-def has_capability(role: dict[str, object], capability: Capability) -> bool:
+def has_capability(
+    role: dict[str, object], capability: Capability
+) -> bool:  # REQ-001, REQ-002, REQ-042
     """Check without raising."""
     capabilities = role.get("capabilities", [])
     if not isinstance(capabilities, (list, tuple, set, frozenset)):

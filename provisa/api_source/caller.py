@@ -22,6 +22,8 @@ from provisa.api_source.models import (
     PaginationType,
 )
 
+# Requirements: REQ-295, REQ-297, REQ-298, REQ-316, REQ-320, REQ-322, REQ-325
+
 
 class ApiCallError(Exception):
     """Raised when an API call fails after retries."""
@@ -233,7 +235,7 @@ async def _paginate(
     return pages
 
 
-def _apply_auth(auth, headers: dict, query_params: dict) -> None:
+def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
     """Apply typed auth config to request headers/params, resolving secrets."""
     if auth is None:
         return
@@ -285,7 +287,7 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:
 _oauth2_cache: dict[str, tuple[str, float]] = {}
 
 
-def _fetch_oauth2_token(oauth) -> str:
+def _fetch_oauth2_token(oauth) -> str:  # REQ-320
     """Fetch and cache an OAuth2 client credentials token."""
     import time
     import httpx as _httpx
@@ -315,7 +317,7 @@ def _fetch_oauth2_token(oauth) -> str:
     return token
 
 
-async def call_api(
+async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
     endpoint: ApiEndpoint,
     resolved_params: dict,
     base_url: str = "",
@@ -372,7 +374,7 @@ async def call_api(
     return pages
 
 
-async def _call_grpc(
+async def _call_grpc(  # REQ-322, REQ-325
     endpoint: ApiEndpoint,
     resolved_params: dict,
     host_port: str,

@@ -16,6 +16,8 @@ a type (e.g. for dynamically registered tables or API-backed sources).
 Call `init(conn)` once at startup.  Then use `get_column_type(...)` anywhere.
 """
 
+# Requirements: REQ-008, REQ-252
+
 from __future__ import annotations
 
 import logging

@@ -9,19 +9,35 @@
 # permission from the copyright holder.
 
 """Auto-register OpenAPI operations as Provisa tables and tracked functions."""
+
 from __future__ import annotations
 import json
 import logging
 import re
 from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, parse_spec
 
+# Requirements: REQ-314, REQ-316, REQ-317, REQ-319, REQ-320, REQ-321
+
 log = logging.getLogger(__name__)
 
 _VERB_PREFIXES = (
-    "get", "list", "fetch", "search", "find", "query",
-    "create", "post", "add", "insert",
-    "update", "put", "patch", "edit",
-    "delete", "remove", "destroy",
+    "get",
+    "list",
+    "fetch",
+    "search",
+    "find",
+    "query",
+    "create",
+    "post",
+    "add",
+    "insert",
+    "update",
+    "put",
+    "patch",
+    "edit",
+    "delete",
+    "remove",
+    "destroy",
 )
 
 
@@ -47,7 +63,7 @@ def _operation_id_to_alias(op_id: str) -> str:
     # strip leading verb segment
     for verb in _VERB_PREFIXES:
         if s.startswith(verb + "_"):
-            s = s[len(verb) + 1:]
+            s = s[len(verb) + 1 :]
             break
         if s == verb:
             return s
@@ -89,7 +105,10 @@ def _schema_to_columns(schema: dict | None) -> list[dict]:
         if prop.get("type") == "object" and prop.get("properties"):
             sub_fields = []
             for sub_name, sub_prop in prop["properties"].items():
-                sf: dict = {"name": sub_name, "type": _openapi_to_provisa_type(sub_prop.get("type"))}
+                sf: dict = {
+                    "name": sub_name,
+                    "type": _openapi_to_provisa_type(sub_prop.get("type")),
+                }
                 sub_desc = sub_prop.get("description") or sub_prop.get("title")
                 if sub_desc:
                     sf["description"] = sub_desc
@@ -99,7 +118,7 @@ def _schema_to_columns(schema: dict | None) -> list[dict]:
     return cols
 
 
-async def upsert_table(
+async def upsert_table(  # REQ-316, REQ-320
     source_id: str,
     query: OpenAPIQuery,
     conn,
@@ -118,14 +137,27 @@ async def upsert_table(
     existing_names = {c["name"] for c in columns}
     for p in query.path_params:
         if p["name"] not in existing_names:
-            columns.append({"name": f"_nf_{p['name']}", "type": _openapi_to_provisa_type(p.get("type")), "native_filter_type": "path_param"})
+            columns.append(
+                {
+                    "name": f"_nf_{p['name']}",
+                    "type": _openapi_to_provisa_type(p.get("type")),
+                    "native_filter_type": "path_param",
+                }
+            )
     for p in query.query_params:
         if p["name"] not in existing_names:
-            columns.append({"name": f"_nf_{p['name']}", "type": _openapi_to_provisa_type(p.get("type")), "native_filter_type": "query_param"})
+            columns.append(
+                {
+                    "name": f"_nf_{p['name']}",
+                    "type": _openapi_to_provisa_type(p.get("type")),
+                    "native_filter_type": "query_param",
+                }
+            )
 
     table_name = _operation_id_to_alias(query.operation_id)
 
     from provisa.core.models import ObjectField
+
     tbl = Table(
         source_id=source_id,
         domain_id=domain_id or "",
@@ -178,13 +210,15 @@ async def upsert_table(
                     col["param_name"] = p["name"]
                     break
         else:
-            api_columns.append({
-                "name": p["name"],
-                "type": _openapi_to_provisa_type(p.get("type")),
-                "filterable": False,
-                "param_type": "path",
-                "param_name": p["name"],
-            })
+            api_columns.append(
+                {
+                    "name": p["name"],
+                    "type": _openapi_to_provisa_type(p.get("type")),
+                    "filterable": False,
+                    "param_type": "path",
+                    "param_name": p["name"],
+                }
+            )
     for p in query.query_params:
         if p["name"] in response_col_names:
             for col in api_columns:
@@ -193,13 +227,15 @@ async def upsert_table(
                     col["param_name"] = p["name"]
                     break
         else:
-            api_columns.append({
-                "name": p["name"],
-                "type": _openapi_to_provisa_type(p.get("type")),
-                "filterable": False,
-                "param_type": "query",
-                "param_name": p["name"],
-            })
+            api_columns.append(
+                {
+                    "name": p["name"],
+                    "type": _openapi_to_provisa_type(p.get("type")),
+                    "filterable": False,
+                    "param_type": "query",
+                    "param_name": p["name"],
+                }
+            )
 
     await conn.execute(
         """
@@ -219,7 +255,7 @@ async def upsert_table(
     )
 
 
-async def upsert_tracked_function(
+async def upsert_tracked_function(  # REQ-317
     source_id: str,
     mutation: OpenAPIMutation,
     conn,
@@ -252,7 +288,7 @@ async def upsert_tracked_function(
     log.debug("Upserted tracked function %s for operation %s", fn_name, mutation.operation_id)
 
 
-async def auto_register_openapi_source(
+async def auto_register_openapi_source(  # REQ-314, REQ-316, REQ-317, REQ-321
     source_id: str,
     spec: dict,
     conn,

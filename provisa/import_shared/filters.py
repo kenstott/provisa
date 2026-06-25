@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+# Requirements: REQ-041, REQ-040
+
 # Hasura operator -> SQL operator
 _OPERATORS: dict[str, str] = {
     "_eq": "=",
@@ -74,7 +76,7 @@ def _convert_session_var(val: Any) -> str:
     return ""
 
 
-def bool_expr_to_sql(expr: Mapping[str, Any], table_alias: str = "") -> str:
+def bool_expr_to_sql(expr: Mapping[str, Any], table_alias: str = "") -> str:  # REQ-041, REQ-040
     """Convert a Hasura boolean expression to a SQL WHERE clause.
 
     Args:

@@ -14,8 +14,10 @@ from __future__ import annotations
 
 from provisa.auth.models import AuthIdentity, RoleAssignment
 
+# Requirements: REQ-120, REQ-551
 
-def resolve_role(
+
+def resolve_role(  # REQ-120, REQ-551
     identity: AuthIdentity,
     mapping_rules: list[dict],
     default_role: str,
@@ -45,7 +47,7 @@ def resolve_role(
     return default_role
 
 
-def resolve_assignments(identity: AuthIdentity) -> list[RoleAssignment]:
+def resolve_assignments(identity: AuthIdentity) -> list[RoleAssignment]:  # REQ-120, REQ-551
     """Parse structured role claims into RoleAssignment pairs.
 
     Each claim in identity.roles can be:

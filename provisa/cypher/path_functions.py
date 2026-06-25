@@ -25,6 +25,8 @@ import sqlglot.expressions as exp
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.parser import MatchClause, NodePattern, PathFunction, RelPattern
 
+# Requirements: REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351
+
 
 def _parse_sql_expr(sql: str) -> Any:
     return sqlglot.parse_one(sql, dialect="trino")
@@ -133,7 +135,7 @@ def _select_candidate_paths(
     return [p for p in all_paths if len(p) == min_hops]
 
 
-class PathFunctionsMixin:
+class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
     """Mixin for _Translator: translates shortestPath and allShortestPaths."""
 
     # Injected by _Translator.__init__
@@ -330,14 +332,14 @@ class PathFunctionsMixin:
         src_var: str | None,
         tgt_var: str | None,
         src_nm: NodeMapping,
-        tgt_nm: NodeMapping,
+        _tgt_nm: NodeMapping,
         optional: bool,
     ) -> tuple[
-        exp.Expression,
+        exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
         list[dict],
         list[tuple[str, NodeMapping]],
         list[tuple[str, str, NodeMapping, str, NodeMapping, bool]],
-    ]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ]:
         """Build FROM + JOIN list for a single flat schema path."""
         src_alias = src_var or src_nm.table_name
         from_expr = exp.alias_(
@@ -529,7 +531,7 @@ class PathFunctionsMixin:
 
         def _tbl(nm: NodeMapping, alias: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             return cast(
-                exp.Expression,
+                exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 exp.alias_(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                     exp.Table(
                         this=exp.Identifier(this=nm.sql_table_name, quoted=True),

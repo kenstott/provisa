@@ -10,6 +10,8 @@
 
 """Pydantic models for API data sources (Phase U)."""
 
+# Requirements: REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-318
+
 from enum import Enum
 from typing import Literal
 
@@ -18,20 +20,20 @@ from pydantic import BaseModel, Field
 from provisa.core.auth_models import ApiAuth
 
 
-class ApiSourceType(str, Enum):
+class ApiSourceType(str, Enum):  # REQ-295, REQ-297, REQ-298
     openapi = "openapi"
     graphql_api = "graphql_api"
     grpc_api = "grpc_api"
 
 
-class PaginationType(str, Enum):
+class PaginationType(str, Enum):  # REQ-318
     link_header = "link_header"
     cursor = "cursor"
     offset = "offset"
     page_number = "page_number"
 
 
-class ParamType(str, Enum):
+class ParamType(str, Enum):  # REQ-299, REQ-599
     query = "query"
     path = "path"
     body = "body"
@@ -39,7 +41,7 @@ class ParamType(str, Enum):
     variable = "variable"  # GraphQL variable
 
 
-class ApiColumnType(str, Enum):
+class ApiColumnType(str, Enum):  # REQ-119, REQ-299
     string = "string"
     integer = "integer"
     number = "number"
@@ -47,7 +49,7 @@ class ApiColumnType(str, Enum):
     jsonb = "jsonb"
 
 
-class ApiSource(BaseModel):
+class ApiSource(BaseModel):  # REQ-295, REQ-297, REQ-298
     id: str
     type: ApiSourceType
     base_url: str
@@ -55,7 +57,7 @@ class ApiSource(BaseModel):
     auth: ApiAuth | None = None
 
 
-class ApiColumn(BaseModel):
+class ApiColumn(BaseModel):  # REQ-299, REQ-599
     name: str
     type: ApiColumnType
     filterable: bool = True
@@ -65,7 +67,7 @@ class ApiColumn(BaseModel):
     description: str | None = None
 
 
-class PaginationConfig(BaseModel):
+class PaginationConfig(BaseModel):  # REQ-318
     type: PaginationType
     cursor_field: str | None = None
     cursor_param: str | None = None
@@ -75,14 +77,14 @@ class PaginationConfig(BaseModel):
     max_pages: int = 10
 
 
-class PromotionConfig(BaseModel):
+class PromotionConfig(BaseModel):  # REQ-119
     jsonb_column: str
     field: str  # dot-path e.g. "address.city"
     target_column: str
     target_type: str  # integer, numeric, boolean, timestamptz, text
 
 
-class ApiEndpoint(BaseModel):
+class ApiEndpoint(BaseModel):  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-318
     id: int | None = None
     source_id: str
     path: str
@@ -95,7 +97,9 @@ class ApiEndpoint(BaseModel):
     pk_column: str | None = None
     pagination: PaginationConfig | None = None
     max_concurrency: int | None = None  # caps parallel path-param fetches; None = unlimited
-    default_params: dict = Field(default_factory=dict)  # query params used for initial cache population
+    default_params: dict = Field(
+        default_factory=dict
+    )  # query params used for initial cache population
     # REQ-119: JSONB field promotions → PG generated columns (registered + filterable).
     promotions: list[PromotionConfig] = Field(default_factory=list)
     # Phase AO: query-API sources (Neo4j, SPARQL)

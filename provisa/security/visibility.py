@@ -18,8 +18,10 @@ from __future__ import annotations
 
 from provisa.core import domain_policy
 
+# Requirements: REQ-001, REQ-038, REQ-039, REQ-042, REQ-263, REQ-363
 
-def visible_tables(tables: list[dict], role: dict) -> list[dict]:
+
+def visible_tables(tables: list[dict], role: dict) -> list[dict]:  # REQ-039, REQ-042, REQ-363
     """Filter tables to those visible to the role based on domain access."""
     accessible = set(role["domain_access"])
     # Single-domain mode: domain is not a gate — only column visibility applies.
@@ -30,17 +32,14 @@ def visible_tables(tables: list[dict], role: dict) -> list[dict]:
         if not all_access and table["domain_id"] not in accessible:
             continue
         # Filter columns by visibility
-        visible_cols = [
-            c for c in table["columns"]
-            if role["id"] in c["visible_to"]
-        ]
+        visible_cols = [c for c in table["columns"] if role["id"] in c["visible_to"]]
         if not visible_cols:
             continue
         result.append({**table, "columns": visible_cols})
     return result
 
 
-def is_column_visible(
+def is_column_visible(  # REQ-039, REQ-263
     table: dict,
     column_name: str,
     role_id: str,
@@ -52,10 +51,6 @@ def is_column_visible(
     return False
 
 
-def visible_column_names(table: dict, role_id: str) -> set[str]:
+def visible_column_names(table: dict, role_id: str) -> set[str]:  # REQ-039, REQ-263
     """Get the set of column names visible to a role for a table."""
-    return {
-        col["column_name"]
-        for col in table.get("columns", [])
-        if role_id in col["visible_to"]
-    }
+    return {col["column_name"] for col in table.get("columns", []) if role_id in col["visible_to"]}

@@ -26,6 +26,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from provisa.api.app import AppState
 
+# Requirements: REQ-176, REQ-177, REQ-181, REQ-282
+
 log = logging.getLogger(__name__)
 
 
@@ -38,7 +40,7 @@ class _Encoder(json.JSONEncoder):
         return str(o)
 
 
-async def trigger_sinks_for_table(table_name: str, state: AppState) -> int:
+async def trigger_sinks_for_table(table_name: str, state: AppState) -> int:  # REQ-176, REQ-177
     """Find and execute change_event-triggered sinks for the given table."""
 
     triggered = 0
@@ -54,7 +56,7 @@ async def trigger_sinks_for_table(table_name: str, state: AppState) -> int:
     return triggered
 
 
-async def _execute_and_publish_table_sink(table, state: AppState) -> None:
+async def _execute_and_publish_table_sink(table, state: AppState) -> None:  # REQ-176, REQ-181
     """Execute a SELECT on the table and publish rows to its Kafka sink."""
     if state.pg_pool is None:
         log.warning("No pg_pool for sink execution on %s", table.table_name)
@@ -76,7 +78,7 @@ async def _execute_and_publish_table_sink(table, state: AppState) -> None:
         )
     rows = [dict(r) for r in rows_raw]
 
-    from confluent_kafka import Producer
+    from confluent_kafka import Producer  # pyright: ignore[reportMissingImports]
 
     producer = Producer({"bootstrap.servers": bootstrap})
     for row in rows:
@@ -90,75 +92,3 @@ async def _execute_and_publish_table_sink(table, state: AppState) -> None:
         )
     producer.flush(timeout=10)
     log.info("Sink published %d rows to %s for table %s", len(rows), sink.topic, table.table_name)
-
-
-async def _execute_and_publish(
-    query_text: str,
-    sink_topic: str,
-    key_column: str | None,
-    stable_id: str,
-    state: AppState,
-) -> None:
-    """Execute a query and publish results to Kafka."""
-    from typing import cast
-
-    from graphql import GraphQLSchema
-
-    from provisa.compiler.parser import parse_query
-    from provisa.compiler.sql_gen import compile_query
-    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
-
-    # Execute as admin role (sink runs server-side)
-    role_id = "admin"
-    if role_id not in state.schemas:
-        log.warning("Admin role not available for sink execution")
-        return
-
-    schema = cast("GraphQLSchema", state.schemas[role_id])
-    ctx = state.contexts[role_id]
-
-    document = parse_query(schema, query_text)
-    compiled_queries = compile_query(document, ctx)
-    if not compiled_queries:
-        return
-
-    compiled = compiled_queries[0]
-
-    # Governance + routing via Stage 2 (REQ-266) — RLS/masking/visibility applied like
-    # every other transport (sink runs as admin, so governance is typically a no-op).
-    plan = await _govern_and_route_compiled(
-        compiled.sql, role_id, exec_params=compiled.params or None, state=state
-    )
-    result = await _execute_plan(plan, state)
-
-    # Publish to Kafka
-    bootstrap = os.environ.get(
-        "PROVISA_CHANGE_EVENT_BOOTSTRAP",
-        os.environ.get("KAFKA_BOOTSTRAP_SERVERS", ""),
-    )
-    if not bootstrap:
-        log.warning("No Kafka bootstrap servers for sink publishing")
-        return
-
-    from confluent_kafka import Producer
-
-    producer = Producer({"bootstrap.servers": bootstrap})
-
-    for row in result.rows:
-        obj = {result.column_names[i]: v for i, v in enumerate(row)}
-        key = None
-        if key_column and key_column in obj:
-            key = str(obj[key_column]).encode()
-        producer.produce(
-            sink_topic,
-            key=key,
-            value=json.dumps(obj, cls=_Encoder).encode(),
-        )
-
-    producer.flush(timeout=10)
-    log.info(
-        "Sink published %d rows to %s (query %s)",
-        len(result.rows),
-        sink_topic,
-        stable_id,
-    )

@@ -55,6 +55,8 @@ from graphql.language.ast import (
     StringValueNode,
 )
 
+# Requirements: REQ-137, REQ-176, REQ-277, REQ-278, REQ-279, REQ-281, REQ-283
+
 
 # ---------------------------------------------------------------------------
 # Result dataclass
@@ -62,7 +64,7 @@ from graphql.language.ast import (
 
 
 @dataclass
-class QueryDirectives:
+class QueryDirectives:  # REQ-277, REQ-279, REQ-281
     """Extracted directive values for a single GraphQL operation."""
 
     # @route
@@ -128,7 +130,7 @@ class QueryDirectives:
         return None
 
 
-def translate_federation_hints(hints: dict[str, str]) -> dict[str, str]:
+def translate_federation_hints(hints: dict[str, str]) -> dict[str, str]:  # REQ-278, REQ-281
     """REQ-281: map Provisa-branded source federation hints to Trino session props.
 
     Source-level ``federation_hints`` use the same vocabulary as the @provisa query
@@ -206,7 +208,7 @@ def _scan_watermark_fields(selection_set: SelectionSetNode) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-def extract_directives(document: DocumentNode) -> QueryDirectives:
+def extract_directives(document: DocumentNode) -> QueryDirectives:  # REQ-277, REQ-279, REQ-283
     """Extract all provisa directives from a parsed GraphQL ``DocumentNode``.
 
     Reads operation-level directives (``@route``, ``@join``, ``@reorder``,
@@ -270,7 +272,7 @@ _COMMENT_RE = re.compile(r"--\s*@provisa\s+(.*)")
 _KV_RE = re.compile(r"(\w+)=(\S+)")
 
 
-def extract_directives_from_sql_comments(sql: str) -> QueryDirectives:
+def extract_directives_from_sql_comments(sql: str) -> QueryDirectives:  # REQ-279, REQ-281
     """Parse ``-- @provisa key=value`` comment lines from a SQL string.
 
     This is the SQL counterpart to :func:`extract_directives`.  Both produce
@@ -338,7 +340,7 @@ def extract_directives_from_sql_comments(sql: str) -> QueryDirectives:
     return result
 
 
-def merge_directives(*sources: QueryDirectives) -> QueryDirectives:
+def merge_directives(*sources: QueryDirectives) -> QueryDirectives:  # REQ-277, REQ-278
     """Merge multiple :class:`QueryDirectives`, later sources taking precedence."""
     result = QueryDirectives()
     for src in sources:

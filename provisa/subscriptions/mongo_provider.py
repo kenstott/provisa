@@ -10,6 +10,8 @@
 
 """MongoDB Change Streams subscription provider."""
 
+# Requirements: REQ-258
+
 from __future__ import annotations
 
 import logging
@@ -32,7 +34,7 @@ _OP_MAP = {
 }
 
 
-class MongoNotificationProvider(NotificationProvider):
+class MongoNotificationProvider(NotificationProvider):  # REQ-258
     """Uses motor ``collection.watch()`` for MongoDB Change Streams."""
 
     def __init__(self, database: AsyncIOMotorDatabase) -> None:

@@ -22,6 +22,8 @@ import httpx
 
 from provisa.core.models import Webhook
 
+# Requirements: REQ-209, REQ-210, REQ-211, REQ-220
+
 
 @dataclass
 class WebhookResult:
@@ -32,7 +34,7 @@ class WebhookResult:
     headers: dict[str, str]
 
 
-async def execute_webhook(
+async def execute_webhook(  # REQ-209, REQ-211, REQ-220
     webhook: Webhook,
     arguments: dict[str, Any],
 ) -> WebhookResult:
@@ -69,7 +71,7 @@ async def execute_webhook(
     )
 
 
-def map_response_to_return_type(
+def map_response_to_return_type(  # REQ-210
     data: Any,
     inline_fields: list[dict[str, str]] | None = None,
 ) -> Any:

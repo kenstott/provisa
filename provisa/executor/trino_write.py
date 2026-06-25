@@ -22,6 +22,8 @@ import uuid
 
 import trino
 
+# Requirements: REQ-029, REQ-044, REQ-138, REQ-141
+
 log = logging.getLogger(__name__)
 
 # Formats Trino can write natively via Hive/Iceberg CTAS
@@ -32,7 +34,7 @@ RESULTS_SCHEMA = "provisa_results"
 RESULTS_BUCKET = "provisa-results"
 
 
-def is_trino_native_format(fmt: str) -> bool:
+def is_trino_native_format(fmt: str) -> bool:  # REQ-138
     """Check if a format can be written directly by Trino."""
     return fmt.lower() in TRINO_NATIVE_FORMATS
 
@@ -45,7 +47,7 @@ def _iceberg_format(fmt: str) -> str:
 def ensure_results_schema(conn: trino.dbapi.Connection) -> None:
     """Create the results schema if it doesn't exist."""
     sql = (
-        f'CREATE SCHEMA IF NOT EXISTS {RESULTS_CATALOG}.{RESULTS_SCHEMA} '
+        f"CREATE SCHEMA IF NOT EXISTS {RESULTS_CATALOG}.{RESULTS_SCHEMA} "
         f"WITH (location = 's3a://{RESULTS_BUCKET}/')"
     )
     cur = conn.cursor()
@@ -57,7 +59,7 @@ def ensure_results_schema(conn: trino.dbapi.Connection) -> None:
         log.debug("Results schema creation: %s", e)
 
 
-def execute_ctas_redirect(
+def execute_ctas_redirect(  # REQ-029, REQ-044, REQ-138
     conn: trino.dbapi.Connection,
     select_sql: str,
     output_format: str = "parquet",
@@ -103,7 +105,7 @@ def execute_ctas_redirect(
     }
 
 
-def cleanup_result_table(conn: trino.dbapi.Connection, table_name: str) -> None:
+def cleanup_result_table(conn: trino.dbapi.Connection, table_name: str) -> None:  # REQ-141
     """Drop a result table (metadata only — external table data stays on S3)."""
     sql = f'DROP TABLE IF EXISTS {RESULTS_CATALOG}.{RESULTS_SCHEMA}."{table_name}"'
     cur = conn.cursor()
@@ -111,7 +113,7 @@ def cleanup_result_table(conn: trino.dbapi.Connection, table_name: str) -> None:
     log.info("[CTAS CLEANUP] dropped table %s", table_name)
 
 
-async def schedule_s3_cleanup(
+async def schedule_s3_cleanup(  # REQ-141
     s3_prefix: str,
     redirect_config,
     delay_seconds: int | None = None,
@@ -152,7 +154,7 @@ async def schedule_s3_cleanup(
         log.info("[CTAS CLEANUP] deleted %d S3 objects at %s", len(contents), prefix)
 
 
-async def presign_ctas_result(
+async def presign_ctas_result(  # REQ-044, REQ-029
     s3_prefix: str,
     redirect_config,
 ) -> str:

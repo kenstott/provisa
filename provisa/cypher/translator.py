@@ -23,6 +23,8 @@ Mapping:
   WITH                   → CTE / subquery
 """
 
+# Requirements: REQ-345, REQ-346, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-397, REQ-409
+
 from __future__ import annotations
 
 import re
@@ -311,7 +313,7 @@ class CypherCrossSourceError(CypherTranslateError):
     pass
 
 
-def cypher_to_sql(
+def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
     ast: CypherAST,
     label_map: CypherLabelMap,
     params: dict[str, Any],
@@ -340,7 +342,7 @@ def cypher_calls_to_sql_list(
     return results
 
 
-class _Translator(
+class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
     PathFunctionsMixin,
     PathComprehensionMixin,
     SelectBuilderMixin,

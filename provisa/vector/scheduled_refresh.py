@@ -15,6 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+# Requirements: REQ-428, REQ-429
+
 
 class RefreshMode(str, Enum):
     INCREMENTAL = "incremental"
@@ -28,7 +30,7 @@ class RefreshPlan:
     reason: str = ""
 
 
-def needs_full_rebuild(
+def needs_full_rebuild(  # REQ-428, REQ-429
     old_model_id: str | None,
     new_model_id: str,
     old_dimensions: int | None,
@@ -45,7 +47,7 @@ def needs_full_rebuild(
     return False
 
 
-def plan_refresh(
+def plan_refresh(  # REQ-428
     changed_pks: list,
     new_model_id: str,
     new_dimensions: int,

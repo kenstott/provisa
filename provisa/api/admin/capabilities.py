@@ -10,6 +10,8 @@
 
 """Server-side capability enforcement for admin GraphQL mutations."""
 
+# Requirements: REQ-042, REQ-060, REQ-434
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -22,7 +24,11 @@ _ANONYMOUS = "anonymous"
 
 
 def _identity_from_info(info: "strawberry.types.Info") -> object | None:
-    request = info.context.get("request") if isinstance(info.context, dict) else getattr(info.context, "request", None)
+    request = (
+        info.context.get("request")
+        if isinstance(info.context, dict)
+        else getattr(info.context, "request", None)
+    )
     if request is None:
         return None
     return getattr(request.state, "identity", None)
@@ -38,12 +44,12 @@ def _resolved_capabilities(identity, state) -> set[str]:
         claim = assignment_claim.strip()
         role_id = claim.split(":")[0] if ":" in claim else claim
         role = roles.get(role_id) or {}
-        for c in (role.get("capabilities") or []):
+        for c in role.get("capabilities") or []:
             caps.add(c)
     return caps
 
 
-def _domain_access(identity, state) -> set[str]:
+def _domain_access(identity, _state) -> set[str]:  # pyright: ignore[reportUnusedParameter]
     """Return the set of domain IDs accessible to this identity (empty = none)."""
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
         return set()
@@ -55,7 +61,9 @@ def _domain_access(identity, state) -> set[str]:
     return domains
 
 
-def require_capability(info: "strawberry.types.Info", capability: str, domain_id: str | None = None) -> None:
+def require_capability(  # REQ-042, REQ-060
+    info: "strawberry.types.Info", capability: str, domain_id: str | None = None
+) -> None:
     """Raise PermissionError if the caller lacks the required capability.
 
     In dev mode (identity is None or anonymous) enforcement is skipped so
@@ -91,7 +99,7 @@ def require_capability(info: "strawberry.types.Info", capability: str, domain_id
             raise PermissionError(f"No access to domain {domain_id!r}")
 
 
-def has_capability(info: "strawberry.types.Info", capability: str) -> bool:
+def has_capability(info: "strawberry.types.Info", capability: str) -> bool:  # REQ-434
     """Non-raising capability check (REQ-434 gating).
 
     Returns True when the caller holds the capability — including dev/no-auth mode

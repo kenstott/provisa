@@ -10,6 +10,8 @@
 
 """Trino dynamic catalog management via SQL CREATE/DROP CATALOG."""
 
+# Requirements: REQ-012, REQ-017, REQ-250, REQ-251
+
 import logging
 import os
 import re
@@ -38,7 +40,9 @@ def _to_catalog_name(source_id: str) -> str:
     return _validate_identifier(source_id.replace("-", "_"))
 
 
-def _build_catalog_properties(source: Source, resolved_password: str) -> dict[str, str]:
+def _build_catalog_properties(
+    source: Source, resolved_password: str
+) -> dict[str, str]:  # REQ-250, REQ-251
     """Build Trino connector properties from a source definition."""
     from provisa.core.secrets import resolve_secrets
 
@@ -167,7 +171,9 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
     return props
 
 
-def create_catalog(conn: trino.dbapi.Connection, source: Source, resolved_password: str) -> None:
+def create_catalog(
+    conn: trino.dbapi.Connection, source: Source, resolved_password: str
+) -> None:  # REQ-012, REQ-250, REQ-251
     """Create a Trino dynamic catalog for a registered source.
 
     Skips creation if the catalog already exists (e.g., from static catalog properties).
@@ -243,7 +249,7 @@ def analyze_source_tables(
             log.debug("ANALYZE %s.%s.%s skipped: %s", catalog_name, schema, table, e)
 
 
-def drop_catalog(conn: trino.dbapi.Connection, source_id: str) -> None:
+def drop_catalog(conn: trino.dbapi.Connection, source_id: str) -> None:  # REQ-012
     """Drop a Trino dynamic catalog."""
     catalog_name = _to_catalog_name(source_id)
     sql = f"DROP CATALOG IF EXISTS {catalog_name}"

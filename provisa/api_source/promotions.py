@@ -10,6 +10,8 @@
 
 """JSONB field promotion: extract nested fields as generated columns (Phase U)."""
 
+# Requirements: REQ-119
+
 from __future__ import annotations
 
 from provisa.api_source.models import PromotionConfig
@@ -24,7 +26,7 @@ _PG_CAST_MAP: dict[str, str] = {
 }
 
 
-def dot_path_to_pg_expression(column: str, path: str, cast_source: bool = False) -> str:
+def dot_path_to_pg_expression(column: str, path: str, cast_source: bool = False) -> str:  # REQ-119
     """Convert a dot-path to a PG JSONB extraction expression.
 
     e.g. dot_path_to_pg_expression("data", "a.b.c")
@@ -45,7 +47,7 @@ def dot_path_to_pg_expression(column: str, path: str, cast_source: bool = False)
     return f"({base}->{arrows}->>'{parts[-1]}')"
 
 
-def generate_promotion_ddl(
+def generate_promotion_ddl(  # REQ-119
     table_name: str,
     promotions: list[PromotionConfig],
     cast_source: bool = False,
@@ -65,7 +67,7 @@ def generate_promotion_ddl(
     return stmts
 
 
-async def apply_promotions(
+async def apply_promotions(  # REQ-119
     conn,
     table_name: str,
     promotions: list[PromotionConfig],

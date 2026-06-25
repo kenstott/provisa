@@ -18,8 +18,10 @@ import bcrypt
 
 from provisa.auth.models import AuthIdentity, AuthProvider
 
+# Requirements: REQ-124
 
-class BasicAuthProvider(AuthProvider):
+
+class BasicAuthProvider(AuthProvider):  # REQ-124
     """Validates HTTP Basic credentials against the local_users DB table."""
 
     provider_name: str = "basic"
@@ -31,7 +33,7 @@ class BasicAuthProvider(AuthProvider):
     def __init__(self, db_pool) -> None:
         self._pool = db_pool
 
-    async def validate_token(self, token: str) -> AuthIdentity:
+    async def validate_token(self, token: str) -> AuthIdentity:  # REQ-124
         try:
             decoded = base64.b64decode(token).decode("utf-8")
             username, password = decoded.split(":", 1)

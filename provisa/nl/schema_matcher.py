@@ -32,13 +32,15 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-356, REQ-419, REQ-420
+
 # ---------------------------------------------------------------------------
 # Entity model
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class SchemaEntity:
+class SchemaEntity:  # REQ-356
     """A single schema entity extracted from a GraphQL SDL."""
 
     exact_name: str
@@ -52,7 +54,7 @@ class SchemaEntity:
 # ---------------------------------------------------------------------------
 
 
-def extract_entities(schema_sdl: str) -> list[SchemaEntity]:
+def extract_entities(schema_sdl: str) -> list[SchemaEntity]:  # REQ-356
     """Parse a GraphQL SDL string and return a flat list of schema entities."""
     try:
         from graphql import build_schema, GraphQLObjectType
@@ -157,7 +159,7 @@ EmbedFn = Callable[[list[str]], "list[list[float]]"]
 
 
 @dataclass
-class SchemaMatcher:
+class SchemaMatcher:  # REQ-356, REQ-419
     """In-process semantic index of schema entities for one role's SDL."""
 
     entities: list[SchemaEntity]
@@ -220,7 +222,7 @@ async def get_matcher(
     role: str,
     schema_sdl: str,
     embed_fn: EmbedFn | None,
-) -> SchemaMatcher:
+) -> SchemaMatcher:  # REQ-356
     """Return a cached SchemaMatcher, rebuilding only when the SDL changes."""
     h = hash(schema_sdl)
     entry = _CACHE.get(role)
@@ -236,7 +238,7 @@ async def get_matcher(
 # ---------------------------------------------------------------------------
 
 
-def make_embed_fn(app_state: AppState) -> EmbedFn | None:
+def make_embed_fn(app_state: AppState) -> EmbedFn | None:  # REQ-419, REQ-420
     """Return a synchronous embed function backed by the first enabled vector model.
 
     Returns None if no vector model is configured so callers can skip embedding.

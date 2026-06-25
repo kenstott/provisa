@@ -14,6 +14,8 @@ Applied every request after SQL compilation, before transpilation.
 RLS filter expressions are stored per (table_id, role_id) in the config DB.
 """
 
+# Requirements: REQ-038, REQ-039, REQ-040, REQ-041, REQ-402, REQ-403
+
 from __future__ import annotations
 
 import re
@@ -42,7 +44,7 @@ class RLSContext:
         return bool(self.rules) or bool(self.domain_rules)
 
 
-def build_rls_context(rls_rules: list[dict], role_id: str) -> RLSContext:
+def build_rls_context(rls_rules: list[dict], role_id: str) -> RLSContext:  # REQ-041, REQ-402
     """Build an RLSContext from DB rows for a specific role.
 
     Args:
@@ -61,7 +63,7 @@ def build_rls_context(rls_rules: list[dict], role_id: str) -> RLSContext:
     return RLSContext(rules=rules, domain_rules=domain_rules)
 
 
-def inject_rls(
+def inject_rls(  # REQ-038, REQ-040, REQ-041, REQ-402, REQ-403
     compiled: CompiledQuery,
     ctx: CompilationContext,
     rls: RLSContext,
@@ -99,7 +101,7 @@ def inject_rls(
                 filters.append(f"({filter_expr})")
 
         # Check joined tables — find their aliases from the SQL
-        for (type_name, field_name), join_meta in ctx.joins.items():
+        for (type_name, _), join_meta in ctx.joins.items():
             if root_table and type_name == root_table.type_name:
                 filter_expr = _rule_for_table(join_meta.target.table_id, join_meta.target.domain_id)
                 if filter_expr:
@@ -130,12 +132,45 @@ def _has_alias(sql: str) -> bool:
 
 
 _SQL_KEYWORDS = {
-    "and", "or", "not", "is", "null", "in", "like", "between",
-    "true", "false", "current_setting", "select", "from", "where",
-    "exists", "case", "when", "then", "else", "end", "as", "on",
-    "join", "left", "right", "inner", "outer", "cross", "full",
-    "group", "by", "order", "having", "limit", "offset", "union",
-    "all", "distinct", "with",
+    "and",
+    "or",
+    "not",
+    "is",
+    "null",
+    "in",
+    "like",
+    "between",
+    "true",
+    "false",
+    "current_setting",
+    "select",
+    "from",
+    "where",
+    "exists",
+    "case",
+    "when",
+    "then",
+    "else",
+    "end",
+    "as",
+    "on",
+    "join",
+    "left",
+    "right",
+    "inner",
+    "outer",
+    "cross",
+    "full",
+    "group",
+    "by",
+    "order",
+    "having",
+    "limit",
+    "offset",
+    "union",
+    "all",
+    "distinct",
+    "with",
 }
 
 
@@ -180,16 +215,16 @@ def _find_join_alias(sql: str, table_name: str) -> str | None:
 def _inject_where(sql: str, rls_clause: str) -> str:
     """Inject an RLS clause into SQL, merging with existing WHERE if present."""
     # Find WHERE position (case-insensitive, word boundary)
-    where_match = re.search(r'\bWHERE\b', sql, re.IGNORECASE)
+    where_match = re.search(r"\bWHERE\b", sql, re.IGNORECASE)
     if where_match:
         # Insert RLS after WHERE, before existing conditions
         pos = where_match.end()
         return f"{sql[:pos]} {rls_clause} AND{sql[pos:]}"
 
     # No WHERE — insert before ORDER BY, LIMIT, or end
-    for keyword in (r'\bORDER\s+BY\b', r'\bLIMIT\b', r'\bOFFSET\b'):
+    for keyword in (r"\bORDER\s+BY\b", r"\bLIMIT\b", r"\bOFFSET\b"):
         m = re.search(keyword, sql, re.IGNORECASE)
         if m:
-            return f"{sql[:m.start()]}WHERE {rls_clause} {sql[m.start():]}"
+            return f"{sql[: m.start()]}WHERE {rls_clause} {sql[m.start() :]}"
 
     return f"{sql} WHERE {rls_clause}"

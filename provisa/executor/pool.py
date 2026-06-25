@@ -20,6 +20,7 @@ from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.drivers.registry import create_driver
 from provisa.executor.trino import QueryResult
 
+# Requirements: REQ-027, REQ-031, REQ-052, REQ-053
 
 _SOURCE_DIALECT: dict[str, str] = {
     "postgresql": "postgres",
@@ -32,14 +33,14 @@ _SOURCE_DIALECT: dict[str, str] = {
 }
 
 
-class SourcePool:
+class SourcePool:  # REQ-052, REQ-053
     """Manages DirectDriver instances keyed by source_id."""
 
     def __init__(self) -> None:
         self._drivers: dict[str, DirectDriver] = {}
         self._dialects: dict[str, str] = {}
 
-    async def add(
+    async def add(  # REQ-052, REQ-053
         self,
         source_id: str,
         source_type: str,
@@ -77,7 +78,7 @@ class SourcePool:
     def has(self, source_id: str) -> bool:
         return source_id in self._drivers
 
-    async def execute(
+    async def execute(  # REQ-027, REQ-031
         self,
         source_id: str,
         sql: str,
@@ -87,7 +88,7 @@ class SourcePool:
         driver = self._drivers[source_id]
         return await driver.execute(sql, params)
 
-    async def execute_ddl(self, source_id: str, sql: str) -> None:
+    async def execute_ddl(self, source_id: str, sql: str) -> None:  # REQ-031
         driver = self._drivers[source_id]
         await driver.execute_ddl(sql)
 

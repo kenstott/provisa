@@ -20,12 +20,14 @@ Query params map to GraphQL arguments:
 
 from __future__ import annotations
 
+# Requirements: REQ-222, REQ-256, REQ-266, REQ-267
+
 import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from graphql import GraphQLObjectType, GraphQLSchema
+from graphql import GraphQLSchema
 
 from provisa.api._query_helpers import (
     build_graphql_query as _build_graphql_query_shared,
@@ -70,7 +72,7 @@ def _parse_order_by_params(params: dict[str, str]) -> list[dict[str, str]]:
     for key, value in params.items():
         if not key.startswith("order_by."):
             continue
-        col = key[len("order_by."):]
+        col = key[len("order_by.") :]
         direction = value.lower()
         if direction not in ("asc", "desc"):
             direction = "asc"
@@ -90,33 +92,12 @@ def _build_graphql_query(
     return _build_graphql_query_shared(table, fields, where, order_by, limit, offset)
 
 
-def _get_table_fields(schema: GraphQLSchema, table: str) -> list[str]:
-    """Get all scalar field names for a root query field from the schema."""
-    query_type = schema.query_type
-    if query_type is None:
-        return []
-    field_map = query_type.fields
-    if table not in field_map:
-        return []
-    gql_field = field_map[table]
-    return_type = gql_field.type
-    # Unwrap NonNull and List wrappers
-    while hasattr(return_type, "of_type"):
-        return_type = return_type.of_type
-    if not isinstance(return_type, GraphQLObjectType):
-        return []
-    return [
-        name for name, f in return_type.fields.items()
-        if not hasattr(f.type, "fields") or isinstance(f.type, GraphQLObjectType)
-    ]
-
-
 def _get_scalar_fields(schema: GraphQLSchema, table: str) -> list[str]:
     """Get only scalar (non-object) field names for a table."""
     return _get_scalar_fields_shared(schema, table)
 
 
-def create_rest_router(state: Any) -> APIRouter:
+def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, REQ-267
     """Create a REST router with auto-generated endpoints for each table.
 
     Args:
@@ -128,7 +109,7 @@ def create_rest_router(state: Any) -> APIRouter:
     rest_router = APIRouter(prefix="/data/rest", tags=["rest"])
 
     @rest_router.get("/{table}")
-    async def rest_table_endpoint(
+    async def rest_table_endpoint(  # pyright: ignore[reportUnusedFunction]
         request: Request,
         table: str,
         limit: int | None = Query(None, ge=1),
@@ -172,7 +153,12 @@ def create_rest_router(state: Any) -> APIRouter:
 
         # Build and execute GraphQL query
         gql_query = _build_graphql_query(
-            table, selected_fields, where, order_by, limit, offset,
+            table,
+            selected_fields,
+            where,
+            order_by,
+            limit,
+            offset,
         )
         log.debug("REST → GraphQL: %s", gql_query)
 
@@ -188,9 +174,11 @@ def create_rest_router(state: Any) -> APIRouter:
         compiled = compiled_queries[0]
 
         from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
+
         try:
             plan = await _govern_and_route_compiled(
-                compiled.sql, role_id,
+                compiled.sql,
+                role_id,
                 exec_params=compiled.params or None,
                 state=state,
             )
@@ -205,6 +193,7 @@ def create_rest_router(state: Any) -> APIRouter:
 
         # Serialize
         from provisa.executor.serialize import serialize_rows
+
         response_data = serialize_rows(result.rows, compiled.columns, table)
         rows = response_data.get("data", {}).get(table, [])
 

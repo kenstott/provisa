@@ -13,6 +13,8 @@
 Names must be valid GraphQL identifiers: [_A-Za-z][_0-9A-Za-z]*.
 """
 
+# Requirements: REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-195, REQ-411, REQ-412, REQ-416
+
 import re
 from typing import cast
 
@@ -41,7 +43,7 @@ _VERB_PREFIXES = frozenset(
 )
 
 
-def rel_field_name(target_field_name: str, cardinality: str) -> str:
+def rel_field_name(target_field_name: str, cardinality: str) -> str:  # REQ-194, REQ-415
     """Build {noun}_{modifiers} relationship field name with library-based pluralization.
 
     Handles camelCase (OpenAPI operation IDs) and strips leading verb prefixes
@@ -152,7 +154,7 @@ _CONVENTION_ALIASES = {
 }
 
 
-def normalize_convention(convention: str) -> str:
+def normalize_convention(convention: str) -> str:  # REQ-195, REQ-416
     """Resolve a Hasura/DDN literal convention name to its internal preset."""
     return _CONVENTION_ALIASES.get(convention, convention)
 
@@ -162,7 +164,7 @@ VALID_CONVENTIONS = frozenset(
 )
 
 
-def validation_error_for_convention(convention: str) -> str | None:
+def validation_error_for_convention(convention: str) -> str | None:  # REQ-416
     """REQ-416: return an error message if `convention` is not a valid preset, else None.
 
     Only the presets (and their literal aliases in VALID_CONVENTIONS) are accepted; free-form
@@ -183,7 +185,7 @@ def _canonical_convention(convention: str) -> str:
     return "camelCase"  # apollo_graphql
 
 
-def mutation_style(convention: str) -> str:
+def mutation_style(convention: str) -> str:  # REQ-411, REQ-412
     """Return 'snake' or 'camel' mutation prefix style for a given convention."""
     if normalize_convention(convention) in ("snake", "hasura_graphql"):
         return "snake"
@@ -204,11 +206,11 @@ def active_gql_convention() -> str:
     return _gql_convention
 
 
-def apply_gql_name(name: str, override: str | None = None) -> str:
+def apply_gql_name(name: str, override: str | None = None) -> str:  # REQ-194, REQ-411, REQ-412
     return apply_convention(name, override or _gql_convention)
 
 
-def apply_sql_name(name: str, override: str | None = None) -> str:
+def apply_sql_name(name: str, override: str | None = None) -> str:  # REQ-194
     return apply_convention(name, override or _sql_convention)
 
 
@@ -271,7 +273,7 @@ def _apply_table_convention(name: str, convention: str) -> str:
     return safe  # snake_case
 
 
-def generate_name(
+def generate_name(  # REQ-154, REQ-155, REQ-157, REQ-194
     table_name: str,
     schema_name: str,
     source_id: str,

@@ -10,6 +10,8 @@
 
 """Repository for relationship_candidates table."""
 
+# Requirements: REQ-018, REQ-019, REQ-020, REQ-167, REQ-612
+
 from __future__ import annotations
 
 import uuid
@@ -23,7 +25,7 @@ async def store_candidates(
     conn: asyncpg.Connection,
     candidates: list[RelationshipCandidate],
     scope: str,
-) -> list[int]:
+) -> list[int]:  # REQ-018, REQ-167, REQ-612
     """Store candidates with dedup via ON CONFLICT. Returns list of IDs."""
     ids: list[int] = []
     for c in candidates:
@@ -58,7 +60,7 @@ async def store_candidates(
     return ids
 
 
-async def list_pending(conn: asyncpg.Connection) -> list[dict]:
+async def list_pending(conn: asyncpg.Connection) -> list[dict]:  # REQ-018, REQ-167
     """List all candidates with status='suggested'."""
     rows = await conn.fetch(
         "SELECT * FROM relationship_candidates WHERE status = 'suggested' ORDER BY confidence DESC"
@@ -66,7 +68,9 @@ async def list_pending(conn: asyncpg.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def accept(conn: asyncpg.Connection, candidate_id: int, rel_id: str | None = None) -> dict:
+async def accept(
+    conn: asyncpg.Connection, candidate_id: int, rel_id: str | None = None
+) -> dict:  # REQ-019, REQ-020
     """Accept a candidate: mark accepted and create a relationship."""
     row = await conn.fetchrow(
         "UPDATE relationship_candidates SET status = 'accepted' "
@@ -101,15 +105,13 @@ async def accept(conn: asyncpg.Connection, candidate_id: int, rel_id: str | None
     }
 
 
-async def clear_rejections(conn: asyncpg.Connection) -> int:
+async def clear_rejections(conn: asyncpg.Connection) -> int:  # REQ-167
     """Delete all rejected candidates. Returns count deleted."""
-    result = await conn.execute(
-        "DELETE FROM relationship_candidates WHERE status = 'rejected'"
-    )
+    result = await conn.execute("DELETE FROM relationship_candidates WHERE status = 'rejected'")
     return int(result.split()[-1])
 
 
-async def reject(conn: asyncpg.Connection, candidate_id: int, reason: str) -> None:
+async def reject(conn: asyncpg.Connection, candidate_id: int, reason: str) -> None:  # REQ-167
     """Reject a candidate with a reason."""
     result = await conn.execute(
         "UPDATE relationship_candidates SET status = 'rejected', rejection_reason = $2 "

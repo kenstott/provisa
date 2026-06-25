@@ -35,6 +35,8 @@ from provisa.hasura_v2.models import (
 )
 from provisa.import_shared.warnings import WarningCollector
 
+# Requirements: REQ-041, REQ-019, REQ-205, REQ-209, REQ-417
+
 
 def _load_yaml(path: Path) -> Any:
     """Load a YAML file, returning None if it doesn't exist."""
@@ -44,7 +46,7 @@ def _load_yaml(path: Path) -> Any:
         return yaml.safe_load(f)
 
 
-def _parse_table(raw: dict[str, Any]) -> HasuraTable:
+def _parse_table(raw: dict[str, Any]) -> HasuraTable:  # REQ-041, REQ-019, REQ-155, REQ-205
     """Parse a single table entry from tables.yaml."""
     tbl_ref = raw.get("table", {})
     if isinstance(tbl_ref, str):
@@ -96,7 +98,7 @@ def _parse_table(raw: dict[str, Any]) -> HasuraTable:
     return table
 
 
-def _parse_permission(raw: dict[str, Any]) -> HasuraPermission:
+def _parse_permission(raw: dict[str, Any]) -> HasuraPermission:  # REQ-041, REQ-040
     role = raw.get("role", "")
     perm = raw.get("permission", {})
     return HasuraPermission(
@@ -108,7 +110,7 @@ def _parse_permission(raw: dict[str, Any]) -> HasuraPermission:
     )
 
 
-def _parse_relationship(raw: dict[str, Any], rel_type: str) -> HasuraRelationship:
+def _parse_relationship(raw: dict[str, Any], rel_type: str) -> HasuraRelationship:  # REQ-019
     name = raw.get("name", "")
     using = raw.get("using", {})
 
@@ -119,8 +121,10 @@ def _parse_relationship(raw: dict[str, Any], rel_type: str) -> HasuraRelationshi
     if rel_type == "object" and isinstance(fk, str):
         # object rel via FK column on this table
         return HasuraRelationship(
-            name=name, rel_type=rel_type,
-            remote_table="", remote_schema="public",
+            name=name,
+            rel_type=rel_type,
+            remote_table="",
+            remote_schema="public",
             column_mapping={fk: "id"},
         )
 
@@ -132,8 +136,10 @@ def _parse_relationship(raw: dict[str, Any], rel_type: str) -> HasuraRelationshi
             r_name = remote_tbl.get("name", "")
             r_schema = remote_tbl.get("schema", "public")
         return HasuraRelationship(
-            name=name, rel_type=rel_type,
-            remote_table=r_name, remote_schema=r_schema,
+            name=name,
+            rel_type=rel_type,
+            remote_table=r_name,
+            remote_schema=r_schema,
             column_mapping={fk.get("column", ""): "id"},
         )
 
@@ -146,8 +152,10 @@ def _parse_relationship(raw: dict[str, Any], rel_type: str) -> HasuraRelationshi
             r_schema = remote_tbl.get("schema", "public")
         col = fk.get("column", "")
         return HasuraRelationship(
-            name=name, rel_type=rel_type,
-            remote_table=r_name, remote_schema=r_schema,
+            name=name,
+            rel_type=rel_type,
+            remote_table=r_name,
+            remote_schema=r_schema,
             column_mapping={"id": col},
         )
 
@@ -160,16 +168,17 @@ def _parse_relationship(raw: dict[str, Any], rel_type: str) -> HasuraRelationshi
             r_schema = remote_tbl.get("schema", "public")
         col_map = manual.get("column_mapping", {})
         return HasuraRelationship(
-            name=name, rel_type=rel_type,
-            remote_table=r_name, remote_schema=r_schema,
+            name=name,
+            rel_type=rel_type,
+            remote_table=r_name,
+            remote_schema=r_schema,
             column_mapping=col_map,
         )
 
-    return HasuraRelationship(name=name, rel_type=rel_type,
-                              remote_table="", remote_schema="public")
+    return HasuraRelationship(name=name, rel_type=rel_type, remote_table="", remote_schema="public")
 
 
-def _parse_computed_field(raw: dict[str, Any]) -> HasuraComputedField:
+def _parse_computed_field(raw: dict[str, Any]) -> HasuraComputedField:  # REQ-205
     name = raw.get("name", "")
     defn = raw.get("definition", {})
     fn = defn.get("function", {})
@@ -179,7 +188,9 @@ def _parse_computed_field(raw: dict[str, Any]) -> HasuraComputedField:
         fn_name = fn.get("name", "")
         fn_schema = fn.get("schema", "public")
     return HasuraComputedField(
-        name=name, function_name=fn_name, function_schema=fn_schema,
+        name=name,
+        function_name=fn_name,
+        function_schema=fn_schema,
         table_argument=defn.get("table_argument"),
     )
 
@@ -204,7 +215,7 @@ def _parse_event_trigger(
     )
 
 
-def _parse_function(raw: dict[str, Any]) -> HasuraFunction:
+def _parse_function(raw: dict[str, Any]) -> HasuraFunction:  # REQ-205
     fn_ref = raw.get("function", {})
     if isinstance(fn_ref, str):
         name, schema = fn_ref, "public"
@@ -216,7 +227,7 @@ def _parse_function(raw: dict[str, Any]) -> HasuraFunction:
     return HasuraFunction(name=name, schema_name=schema, exposed_as=exposed)
 
 
-def _parse_action(raw: dict[str, Any]) -> HasuraAction:
+def _parse_action(raw: dict[str, Any]) -> HasuraAction:  # REQ-205, REQ-209
     name = raw.get("name", "")
     defn_raw = raw.get("definition", {})
     defn = HasuraActionDefinition(
@@ -249,7 +260,7 @@ def _parse_inherited_role(raw: dict[str, Any]) -> HasuraInheritedRole:
 
 def parse_metadata_dir(
     metadata_dir: Path, collector: WarningCollector | None = None
-) -> HasuraMetadata:
+) -> HasuraMetadata:  # REQ-417, REQ-041, REQ-019, REQ-205, REQ-209
     """Parse a Hasura v2 metadata directory into HasuraMetadata.
 
     Supports both flat layout (tables.yaml, actions.yaml at root)
@@ -308,17 +319,18 @@ def parse_metadata_dir(
     if isinstance(rs_data, list):
         for raw_rs in rs_data:
             name = raw_rs.get("name", "unknown")
-            metadata.remote_schemas.append(HasuraRemoteSchema(
-                name=name, definition=raw_rs.get("definition", {}),
-            ))
+            metadata.remote_schemas.append(
+                HasuraRemoteSchema(
+                    name=name,
+                    definition=raw_rs.get("definition", {}),
+                )
+            )
             # REQ-417: remote schemas are mapped to graphql_remote sources by the mapper.
 
     return metadata
 
 
-def _parse_database_dir(
-    db_dir: Path, collector: WarningCollector
-) -> HasuraSource:
+def _parse_database_dir(db_dir: Path, collector: WarningCollector) -> HasuraSource:  # REQ-417
     """Parse a databases/<name>/ directory."""
     source = HasuraSource(name=db_dir.name, kind="postgres")
 

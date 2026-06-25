@@ -28,6 +28,8 @@ from provisa.core import domain_policy
 if TYPE_CHECKING:
     from provisa.compiler.sql_gen import CompilationContext
 
+# Requirements: REQ-351, REQ-392, REQ-394, REQ-467, REQ-471, REQ-574
+
 
 @dataclass
 class NodeMapping:
@@ -82,7 +84,7 @@ class RelationshipMapping:
     many: bool = False  # True when cardinality is one-to-many (source is parent, target is array)
 
 
-class CypherLabelMap:
+class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
     """Graph schema derived from registered Provisa tables and relationships."""
 
     def __init__(
@@ -228,7 +230,7 @@ class CypherLabelMap:
         return result
 
     @classmethod
-    def from_schema(
+    def from_schema(  # REQ-351, REQ-471
         cls,
         ctx: object,  # object-ok: circular import boundary — CompilationContext imported inside method body
         domain_access: list[str] | None = None,
@@ -302,7 +304,13 @@ def _build_node_mappings(
 ) -> None:
     """Populate nodes/domains/nodes_by_table from ctx tables. Mutates all three dicts."""
     for field_name, table_meta in ctx_typed.tables.items():
-        if field_name.endswith("_connection") or field_name.endswith("_aggregate"):
+        if (
+            field_name.endswith("_connection")
+            or field_name.endswith("_aggregate")
+            or field_name.endswith("_group_by")
+            or field_name.endswith("GroupBy")
+            or field_name.endswith("Aggregate")
+        ):
             continue
         col_list = ctx_typed.aggregate_columns.get(table_meta.table_id, [])
         col_names = [c for c, _ in col_list]
@@ -514,7 +522,7 @@ _ID_SUFFIX = ("_id", "_pk", "_oid")
 _ID_PREFIX = ("id_",)
 
 
-def _resolve_id_column(
+def _resolve_id_column(  # REQ-392, REQ-394
     type_name: str,
     col_names: list[str],
     target_pk: dict[str, str],
@@ -597,7 +605,7 @@ def _strip_domain_prefix(table_name: str, domain_id: str | None) -> str:
     return table_name
 
 
-def _table_label_from_table_name(table_name: str, domain_id: str | None) -> str:
+def _table_label_from_table_name(table_name: str, domain_id: str | None) -> str:  # pyright: ignore[reportUnusedFunction]
     """Derive PascalCase table label by stripping domain initials prefix.
 
     "sa_orders"  (domain "sales_analytics", initials "sa") → "Orders"

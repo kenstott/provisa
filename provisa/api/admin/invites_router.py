@@ -10,6 +10,8 @@
 
 """Admin endpoints for org invite token management."""
 
+# Requirements: REQ-120, REQ-125
+
 from __future__ import annotations
 
 import asyncpg
@@ -19,8 +21,9 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/admin/invites", tags=["admin"])
 
 
-def _pool(request: Request) -> asyncpg.Pool:
+def _pool(_request: Request) -> asyncpg.Pool:  # pyright: ignore[reportUnusedParameter]
     from provisa.api.app import state
+
     assert state.pg_pool is not None
     return state.pg_pool
 
@@ -32,7 +35,7 @@ class CreateInviteBody(BaseModel):
 
 
 @router.post("/")
-async def create_invite(body: CreateInviteBody, request: Request):
+async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     pool = _pool(request)
     identity = getattr(request.state, "identity", None)
     created_by = identity.user_id if identity else "system"
@@ -46,7 +49,10 @@ async def create_invite(body: CreateInviteBody, request: Request):
             VALUES ($1, $2, $3, NOW() + ($4 || ' days')::INTERVAL)
             RETURNING token, org_id, role_id, created_by, expires_at
             """,
-            body.org_id, body.role_id, created_by, str(body.expires_in_days),
+            body.org_id,
+            body.role_id,
+            created_by,
+            str(body.expires_in_days),
         )
     return dict(row)
 

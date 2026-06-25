@@ -10,6 +10,8 @@
 
 """TTL resolution for API source caches (Phase U)."""
 
+# Requirements: REQ-309, REQ-318, REQ-327
+
 from __future__ import annotations
 
 # Global default TTL (seconds)
@@ -20,7 +22,7 @@ def resolve_ttl(
     endpoint_ttl: int | None = None,
     source_ttl: int | None = None,
     global_ttl: int | None = None,
-) -> int:
+) -> int:  # REQ-309, REQ-318, REQ-327
     """Resolve TTL: endpoint > source > global default (300s)."""
     if endpoint_ttl is not None:
         return endpoint_ttl

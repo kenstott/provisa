@@ -9,6 +9,8 @@
 Replaces table references to view tables with their defining SQL as subqueries.
 """
 
+# Requirements: REQ-133, REQ-134, REQ-135, REQ-136
+
 from __future__ import annotations
 
 import re
@@ -22,9 +24,7 @@ _KW_AFTER_TABLE = (
 )
 # Optional table alias: quoted ("t0", "ab") or a bare identifier that is not a
 # trailing SQL keyword. `AS` is optional.
-_ALIAS = (
-    rf'(?P<alias>\s+(?:AS\s+)?(?:"[^"]+"|(?!(?i:{_KW_AFTER_TABLE})\b)[A-Za-z_]\w*))?'
-)
+_ALIAS = rf'(?P<alias>\s+(?:AS\s+)?(?:"[^"]+"|(?!(?i:{_KW_AFTER_TABLE})\b)[A-Za-z_]\w*))?'
 
 
 def _expand_one(sql: str, view_table: str, view_sql: str) -> str:
@@ -49,7 +49,7 @@ def _expand_one(sql: str, view_table: str, view_sql: str) -> str:
     return sql
 
 
-def expand_view_refs(sql: str, view_sql_map: dict[str, str]) -> str:
+def expand_view_refs(sql: str, view_sql_map: dict[str, str]) -> str:  # REQ-135
     """Replace view-table references in a SQL string with inline subqueries.
 
     For each view table in view_sql_map, replaces a catalog- or schema-qualified
@@ -63,7 +63,7 @@ def expand_view_refs(sql: str, view_sql_map: dict[str, str]) -> str:
     return sql
 
 
-def expand_views(
+def expand_views(  # REQ-133, REQ-134, REQ-135, REQ-136
     compiled: CompiledQuery,
     view_sql_map: dict[str, str],
 ) -> CompiledQuery:

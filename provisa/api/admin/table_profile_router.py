@@ -9,6 +9,7 @@
 # permission from the copyright holder.
 
 """Admin route: profile a registered table with a sampled SELECT."""
+
 from __future__ import annotations
 import logging
 import os
@@ -21,12 +22,14 @@ from provisa.compiler.naming import source_to_catalog
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/tables", tags=["admin", "tables"])
 
+# Requirements: REQ-452
+
 _SAMPLE_LIMIT = 2000
 _TABLESAMPLE_PCT = 10  # BERNOULLI(10) — 10% of blocks
 
 
 @router.post("/{table_id}/profile")
-async def profile_table(table_id: int) -> dict:
+async def profile_table(table_id: int) -> dict:  # REQ-452
     if state.pg_pool is None:
         raise HTTPException(503, "Database unavailable")
     if state.trino_conn is None:
@@ -54,7 +57,9 @@ async def profile_table(table_id: int) -> dict:
         catalog = view_catalog if source_id == "__provisa__" else source_to_catalog(source_id)
         fqn = f'"{catalog}"."{schema_name}"."{table_name}"'
         # Try TABLESAMPLE first; fall back to plain LIMIT if unsupported
-        sql = f"SELECT * FROM {fqn} TABLESAMPLE BERNOULLI ({_TABLESAMPLE_PCT}) LIMIT {_SAMPLE_LIMIT}"
+        sql = (
+            f"SELECT * FROM {fqn} TABLESAMPLE BERNOULLI ({_TABLESAMPLE_PCT}) LIMIT {_SAMPLE_LIMIT}"
+        )
 
     try:
         cur = state.trino_conn.cursor()

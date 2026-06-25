@@ -15,6 +15,8 @@ COUNT { MATCH ... }         → (SELECT count(*) FROM (...) AS _cnt)
 COLLECT { MATCH ... RETURN expr } → ARRAY(SELECT ...)
 """
 
+# Requirements: REQ-345, REQ-347
+
 from __future__ import annotations
 
 import re
@@ -40,7 +42,7 @@ def _extract_brace_body(text: str, brace_pos: int) -> str:
 _SUBQUERY_RE = re.compile(r"\b(EXISTS|COUNT|COLLECT)\s*\{", re.IGNORECASE)
 
 
-class SubqueryExprsMixin:
+class SubqueryExprsMixin:  # REQ-345, REQ-347
     """Mixin that adds EXISTS/COUNT/COLLECT { } subquery expression rewriting."""
 
     def _rewrite_subquery_exprs(self, text: str) -> str:

@@ -8,6 +8,9 @@ Thin wrapper around sql_gen.compile_query that makes the two-stage
 pipeline explicit. Input: validated GraphQL AST + compilation context.
 Output: CompiledQuery objects (plain PG-style SQL, before governance).
 """
+
+# Requirements: REQ-262, REQ-265
+
 from __future__ import annotations
 
 from graphql import DocumentNode
@@ -15,7 +18,7 @@ from graphql import DocumentNode
 from provisa.compiler.sql_gen import CompiledQuery, CompilationContext, compile_query
 
 
-def compile_graphql(
+def compile_graphql(  # REQ-262, REQ-265
     document: DocumentNode,
     ctx: CompilationContext,
     variables: dict | None = None,

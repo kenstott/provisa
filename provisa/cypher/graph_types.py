@@ -13,6 +13,8 @@
 Registered into the schema at startup alongside the existing schema types.
 """
 
+# Requirements: REQ-350
+
 from graphql import (
     GraphQLField,
     GraphQLID,
@@ -27,10 +29,11 @@ try:
     from provisa.compiler.schema_gen import JSONScalar  # type: ignore[import]
 except ImportError:
     from graphql import GraphQLScalarType
+
     JSONScalar = GraphQLScalarType(name="JSON", description="Arbitrary JSON value")
 
 
-NodeType = GraphQLObjectType(
+NodeType = GraphQLObjectType(  # REQ-350
     name="Node",
     description="A graph node returned by a Cypher query.",
     fields=lambda: {
@@ -40,7 +43,7 @@ NodeType = GraphQLObjectType(
     },
 )
 
-EdgeType = GraphQLObjectType(
+EdgeType = GraphQLObjectType(  # REQ-350
     name="Edge",
     description="A graph edge returned by a Cypher query.",
     fields=lambda: {
@@ -52,7 +55,7 @@ EdgeType = GraphQLObjectType(
     },
 )
 
-PathType = GraphQLObjectType(
+PathType = GraphQLObjectType(  # REQ-350
     name="Path",
     description="A graph path (sequence of nodes and edges) returned by a Cypher query.",
     fields=lambda: {
@@ -67,7 +70,7 @@ PathType = GraphQLObjectType(
     },
 )
 
-CypherResultType = GraphQLObjectType(
+CypherResultType = GraphQLObjectType(  # REQ-350
     name="CypherResult",
     description="Result set from a Cypher query execution.",
     fields=lambda: {

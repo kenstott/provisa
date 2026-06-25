@@ -13,6 +13,8 @@
 Pure logic — no I/O, no grpcio dependency.
 """
 
+# Requirements: REQ-322, REQ-323, REQ-324, REQ-325, REQ-326
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -63,7 +65,7 @@ class ColumnDef:
 
 
 @dataclass
-class GrpcQuery:
+class GrpcQuery:  # REQ-325
     service: str
     method: str
     full_method_path: str  # e.g. "/orders.OrderService/GetOrder"
@@ -75,7 +77,7 @@ class GrpcQuery:
 
 
 @dataclass
-class GrpcMutation:
+class GrpcMutation:  # REQ-326
     service: str
     method: str
     full_method_path: str
@@ -149,7 +151,7 @@ def _full_method_path(package: str, service_name: str, method_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def map_proto(
+def map_proto(  # REQ-322, REQ-323, REQ-325, REQ-326
     proto_dict: dict,
     namespace: str,
     source_id: str,

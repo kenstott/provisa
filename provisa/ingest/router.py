@@ -18,11 +18,13 @@ applies type coercion, and writes one row to the ingest backing table per event.
 from __future__ import annotations
 
 import logging
-from typing import cast
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
+
+# Requirements: REQ-331, REQ-333, REQ-334, REQ-335
 
 log = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ router = APIRouter(prefix="/events/ingest", tags=["ingest"])
 
 
 @router.post("/{source_id}/{table}", status_code=202)
-async def ingest_event(
+async def ingest_event(  # REQ-331, REQ-333, REQ-335
     source_id: str,
     table: str,
     request: Request,
@@ -60,12 +62,12 @@ async def ingest_event(
         )
 
     try:
-        body: object = await request.json()
+        body: Any = await request.json()
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Request body must be valid JSON") from exc
 
     # Support both a single event dict and a list of events
-    events: list[object] = body if isinstance(body, list) else [body]
+    events: list[Any] = body if isinstance(body, list) else [body]
 
     inserted = 0
     for event in events:
@@ -81,7 +83,9 @@ async def ingest_event(
     return {"status": "accepted", "inserted": str(inserted)}
 
 
-def _extract_row(payload: dict[str, object], columns: list[dict[str, object]]) -> dict[str, object]:
+def _extract_row(
+    payload: dict[str, Any], columns: list[dict[str, Any]]
+) -> dict[str, Any]:  # REQ-334
     """Extract column values from *payload* using dot-notation paths.
 
     For columns without a ``path``, falls back to top-level key lookup by
@@ -89,7 +93,7 @@ def _extract_row(payload: dict[str, object], columns: list[dict[str, object]]) -
     """
     from provisa.ingest.ddl import extract_value
 
-    row: dict[str, object] = {}
+    row: dict[str, Any] = {}
     for col in columns:
         raw_name = col.get("column_name") or col.get("name", "")
         name = raw_name if isinstance(raw_name, str) else ""
@@ -101,7 +105,7 @@ def _extract_row(payload: dict[str, object], columns: list[dict[str, object]]) -
     return row
 
 
-async def _insert_row(engine: AsyncEngine, table: str, data: dict[str, object]) -> None:
+async def _insert_row(engine: AsyncEngine, table: str, data: dict[str, Any]) -> None:
     if not data:
         return
     cols = ", ".join(data.keys())

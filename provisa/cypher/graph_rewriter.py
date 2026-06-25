@@ -15,6 +15,8 @@ projected columns as CAST(ROW(...) AS JSON). Scalar property projections are
 not modified.
 """
 
+# Requirements: REQ-349, REQ-350
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -26,7 +28,7 @@ from provisa.cypher.translator import GraphVarKind
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping
 
 
-def apply_graph_rewrites(
+def apply_graph_rewrites(  # REQ-349, REQ-350
     sql_ast: exp.Select | exp.Union,
     graph_vars: dict[str, GraphVarKind],
     label_map: CypherLabelMap,
@@ -142,6 +144,9 @@ def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyri
     kv: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         exp.JSONKeyValue(this=exp.Literal.string("id"), expression=compound_id),
         exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
+        exp.JSONKeyValue(
+            this=exp.Literal.string("tableLabel"), expression=exp.Literal.string(nm.table_label)
+        ),
     ]
     reserved = {"id", "label"}
     for prop_key, col_name in nm.properties.items():

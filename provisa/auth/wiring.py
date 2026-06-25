@@ -19,9 +19,13 @@ from fastapi import FastAPI
 from provisa.auth.models import AuthProvider
 from provisa.auth.superuser import resolve_superuser_config
 
+# Requirements: REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125
+
 
 # auth.provider: basic — uses local_users table; db_pool injected at startup
-def build_auth_provider(auth_config: dict, db_pool=None) -> AuthProvider:
+def build_auth_provider(
+    auth_config: dict, db_pool=None
+) -> AuthProvider:  # REQ-120, REQ-121, REQ-122, REQ-123, REQ-124
     """Instantiate the configured auth provider from the auth config section."""
     provider_name = auth_config["provider"]
     if provider_name == "basic":
@@ -74,7 +78,7 @@ def build_auth_provider(auth_config: dict, db_pool=None) -> AuthProvider:
     raise ValueError(f"Unknown auth provider: {provider_name!r}")
 
 
-def wire_auth(app: FastAPI, auth_config: dict | None, db_pool=None) -> None:
+def wire_auth(app: FastAPI, auth_config: dict | None, db_pool=None) -> None:  # REQ-120, REQ-125
     """Conditionally register AuthMiddleware and auth routes based on config."""
     if auth_config is None:
         return

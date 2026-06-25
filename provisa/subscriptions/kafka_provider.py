@@ -10,6 +10,8 @@
 
 """Kafka subscription provider using aiokafka."""
 
+# Requirements: REQ-258, REQ-261
+
 from __future__ import annotations
 
 import json
@@ -40,7 +42,7 @@ class _KafkaConsumer(Protocol):
     async def stop(self) -> None: ...
 
 
-class KafkaNotificationProvider(NotificationProvider):
+class KafkaNotificationProvider(NotificationProvider):  # REQ-258, REQ-261
     """Consumes from a Kafka topic and maps messages to ChangeEvent."""
 
     def __init__(

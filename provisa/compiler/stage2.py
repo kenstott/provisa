@@ -8,6 +8,8 @@ Applies RLS, column visibility, masking, and LIMIT ceiling to raw SQL
 using SQLGlot. Input: plain SQL string. Output: governed SQL string.
 """
 
+# Requirements: REQ-002, REQ-005, REQ-038, REQ-040, REQ-262, REQ-263, REQ-264, REQ-265, REQ-266, REQ-267
+
 from __future__ import annotations
 
 import re
@@ -28,7 +30,7 @@ from provisa.security.masking import build_mask_expression
 
 
 @dataclass
-class GovernanceContext:
+class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     """Governance parameters for a single request/role."""
 
     # table_id → RLS filter expression (already role-filtered)
@@ -53,7 +55,9 @@ class GovernanceContext:
 # --------------------------------------------------------------------------- #
 
 
-def resolve_row_cap(role: dict | None, explicit: int | None = None) -> int | None:
+def resolve_row_cap(
+    role: dict | None, explicit: int | None = None
+) -> int | None:  # REQ-005, REQ-263
     """Resolve the row cap (REQ-005) — the single cap path for every transport.
 
     An explicit role/table ``max_rows`` always wins. A role holding the FULL_RESULTS
@@ -72,7 +76,7 @@ def resolve_row_cap(role: dict | None, explicit: int | None = None) -> int | Non
     return _get_default_row_limit()
 
 
-def build_governance_context(
+def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
     role_id: str,
     rls_context,
     masking_rules,
@@ -181,12 +185,6 @@ def _table_id_for_node(table_node: exp.Table, gov_ctx: GovernanceContext) -> int
     return gov_ctx.table_map.get(name)
 
 
-def _collect_alias_map(select_node: exp.Select) -> dict[str, int]:
-    """Return alias → table_id for FROM + JOIN tables in a SELECT."""
-    alias_map: dict[str, int] = {}
-    return alias_map  # populated by caller after _table_id_for_node calls
-
-
 def _get_tables_from_select(
     select_node: exp.Select,
     gov_ctx: GovernanceContext,
@@ -228,7 +226,9 @@ def _alias_for(table_node: exp.Table) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _govern_select(node: exp.Select, gov_ctx: GovernanceContext) -> exp.Select:
+def _govern_select(
+    node: exp.Select, gov_ctx: GovernanceContext
+) -> exp.Select:  # REQ-040, REQ-263, REQ-264
     """Apply visibility, masking, and RLS to one SELECT node."""
     table_refs = _get_tables_from_select(node, gov_ctx)
     if not table_refs:
@@ -360,7 +360,7 @@ def _expand_star(
     for alias, tid in alias_to_tid.items():
         cols = gov_ctx.all_columns.get(tid, [])
         vis = gov_ctx.visible_columns.get(tid)
-        for col_name, dtype in cols:
+        for col_name, _ in cols:
             if vis is not None and col_name not in vis:
                 continue
             col_expr = exp.Column(
@@ -389,7 +389,9 @@ def _expand_star(
 # --------------------------------------------------------------------------- #
 
 
-def apply_governance(sql: str, gov_ctx: GovernanceContext) -> str:
+def apply_governance(
+    sql: str, gov_ctx: GovernanceContext
+) -> str:  # REQ-002, REQ-038, REQ-263, REQ-264, REQ-266, REQ-267
     """Apply governance (RLS, masking, visibility, LIMIT) to raw SQL.
 
     Returns governed SQL string.
@@ -416,7 +418,7 @@ def apply_governance(sql: str, gov_ctx: GovernanceContext) -> str:
     return governed
 
 
-def _effective_ceiling(tree, gov_ctx: GovernanceContext) -> int | None:
+def _effective_ceiling(tree, gov_ctx: GovernanceContext) -> int | None:  # REQ-005, REQ-263
     """Smallest applicable row ceiling: role-level plus per-table for referenced tables."""
     candidates: list[int] = []
     if gov_ctx.limit_ceiling is not None:

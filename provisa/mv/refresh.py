@@ -14,6 +14,8 @@ Background asyncio task that refreshes stale MVs on schedule.
 Uses Trino CTAS for initial creation, DELETE+INSERT for refresh.
 """
 
+# Requirements: REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ-235
+
 from __future__ import annotations
 
 import asyncio
@@ -49,8 +51,7 @@ def _build_refresh_sql(mv: MVDefinition, trino_conn=None) -> str:
                 cursor.execute(f'SHOW COLUMNS FROM "{jp.right_table}"')
                 cols = [row[0] for row in cursor.fetchall()]
                 right_cols = ", ".join(
-                    f'"{jp.right_table}"."{c}" AS "{jp.right_table}__{c}"'
-                    for c in cols
+                    f'"{jp.right_table}"."{c}" AS "{jp.right_table}__{c}"' for c in cols
                 )
             except Exception:
                 log.warning(
@@ -79,7 +80,7 @@ def _target_ref(mv: MVDefinition) -> str:
     return f'"{mv.target_catalog}"."{mv.target_schema}"."{mv.target_table}"'
 
 
-def _probe_source_count(trino_conn: trino.dbapi.Connection, mv: MVDefinition) -> int:
+def _probe_source_count(trino_conn: trino.dbapi.Connection, mv: MVDefinition) -> int:  # REQ-235
     """Run a COUNT(*) probe against the MV's source query to estimate result size."""
     select_sql = _build_refresh_sql(mv, trino_conn)
     cursor = trino_conn.cursor()
@@ -87,7 +88,7 @@ def _probe_source_count(trino_conn: trino.dbapi.Connection, mv: MVDefinition) ->
     return cursor.fetchone()[0]
 
 
-async def refresh_mv(
+async def refresh_mv(  # REQ-135, REQ-160, REQ-235
     trino_conn: trino.dbapi.Connection,
     mv: MVDefinition,
     registry: MVRegistry,
@@ -108,12 +109,12 @@ async def refresh_mv(
         if source_count > mv.max_rows:
             log.warning(
                 "MV %s source has %d rows (max_rows=%d) — skipping materialization",
-                mv.id, source_count, mv.max_rows,
+                mv.id,
+                source_count,
+                mv.max_rows,
             )
             mv.status = MVStatus.SKIPPED_SIZE
-            mv.last_error = (
-                f"Source row count {source_count} exceeds max_rows {mv.max_rows}"
-            )
+            mv.last_error = f"Source row count {source_count} exceeds max_rows {mv.max_rows}"
             return
 
         select_sql = _build_refresh_sql(mv, trino_conn)
@@ -143,14 +144,17 @@ async def refresh_mv(
         duration = time.time() - start
         registry.mark_refreshed(mv.id, row_count)
         log.info(
-            "Refreshed MV %s: %d rows in %.1fs", mv.id, row_count, duration,
+            "Refreshed MV %s: %d rows in %.1fs",
+            mv.id,
+            row_count,
+            duration,
         )
     except Exception as e:
         registry.mark_refresh_failed(mv.id, str(e))
         log.exception("Failed to refresh MV %s", mv.id)
 
 
-def reclaim_removed_mvs(
+def reclaim_removed_mvs(  # REQ-234
     trino_conn: trino.dbapi.Connection,
     registry: MVRegistry,
     config_mv_ids: set[str],
@@ -184,7 +188,7 @@ def reclaim_removed_mvs(
     return reclaimed
 
 
-def detect_orphans(
+def detect_orphans(  # REQ-234
     trino_conn: trino.dbapi.Connection,
     registry: MVRegistry,
     schema_name: str,
@@ -203,12 +207,15 @@ def detect_orphans(
     if orphans:
         log.warning(
             "Detected %d orphan tables in %s.%s: %s",
-            len(orphans), catalog, schema_name, orphans,
+            len(orphans),
+            catalog,
+            schema_name,
+            orphans,
         )
     return sorted(orphans)
 
 
-def drop_expired_orphans(
+def drop_expired_orphans(  # REQ-234
     trino_conn: trino.dbapi.Connection,
     orphan_tracker: dict[str, float],
     orphan_tables: list[str],
@@ -258,7 +265,7 @@ def drop_expired_orphans(
     return dropped
 
 
-async def refresh_loop(
+async def refresh_loop(  # REQ-135, REQ-160, REQ-199, REQ-234
     trino_conn: trino.dbapi.Connection,
     registry: MVRegistry,
     check_interval: int = 30,
@@ -295,7 +302,12 @@ async def refresh_loop(
                     default=86400,
                 )
                 drop_expired_orphans(
-                    trino_conn, orphan_tracker, orphans, grace, schema, catalog,
+                    trino_conn,
+                    orphan_tracker,
+                    orphans,
+                    grace,
+                    schema,
+                    catalog,
                 )
 
             due = registry.get_due_for_refresh()

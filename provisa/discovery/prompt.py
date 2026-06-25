@@ -16,8 +16,10 @@ import json
 
 from provisa.discovery.collector import DiscoveryInput
 
+# Requirements: REQ-018, REQ-167
 
-def build_prompt(discovery_input: DiscoveryInput) -> str:
+
+def build_prompt(discovery_input: DiscoveryInput) -> str:  # REQ-018, REQ-167
     """Build a prompt requesting relationship suggestions as JSON."""
     sections: list[str] = []
 
@@ -29,9 +31,7 @@ def build_prompt(discovery_input: DiscoveryInput) -> str:
     # Table metadata
     sections.append("## Tables\n")
     for t in discovery_input.tables:
-        cols_desc = ", ".join(
-            f"{c['name']} ({c['type']})" for c in t.columns
-        )
+        cols_desc = ", ".join(f"{c['name']} ({c['type']})" for c in t.columns)
         sections.append(
             f"### {t.schema_name}.{t.table_name} (id={t.table_id}, domain={t.domain_id})\n"
             f"Columns: {cols_desc}\n"

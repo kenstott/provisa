@@ -23,10 +23,12 @@ from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment
 from provisa.auth.role_mapping import resolve_assignments, resolve_role
 from provisa.auth.superuser import check_superuser
 
+# Requirements: REQ-120, REQ-125, REQ-273
+
 _SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/auth/login"}
 
 
-class AuthMiddleware(BaseHTTPMiddleware):
+class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
     """Extract and validate Bearer tokens, resolve identity to role."""
 
     def __init__(

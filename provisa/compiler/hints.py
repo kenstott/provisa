@@ -27,6 +27,8 @@ Also parses GraphQL query comment hints of the form ``# @provisa key=value``:
   - ``# @provisa broadcast_size=N``→ Trino session: join_max_broadcast_table_size=N
 """
 
+# Requirements: REQ-277, REQ-278, REQ-279, REQ-281
+
 from __future__ import annotations
 
 import re
@@ -38,7 +40,7 @@ _HINT_BLOCK_RE = re.compile(r"/\*\+\s*(.*?)\s*\*/", re.DOTALL)
 _HINT_TOKEN_RE = re.compile(r"(\w+)(?:\s*\(([^)]*)\))?")
 
 
-def extract_hints(sql: str) -> tuple[str, dict[str, str]]:
+def extract_hints(sql: str) -> tuple[str, dict[str, str]]:  # REQ-279, REQ-281
     """Extract optimizer hints from SQL comment blocks.
 
     Removes the ``/*+ ... */`` hint comment from the SQL string and returns
@@ -115,7 +117,9 @@ def graphql_comments_to_sql(query: str) -> str:
     return "".join(f"-- {line}\n" for line in lines)
 
 
-def graphql_hints_to_session_props(hints: dict[str, str]) -> dict[str, str]:
+def graphql_hints_to_session_props(
+    hints: dict[str, str],
+) -> dict[str, str]:  # REQ-277, REQ-278, REQ-281
     """Convert ``# @provisa`` federation hints to Trino session properties.
 
     Handles the federation-specific keys; routing keys (``route``) are ignored
@@ -143,7 +147,7 @@ def graphql_hints_to_session_props(hints: dict[str, str]) -> dict[str, str]:
     return props
 
 
-def extract_graphql_hints(query: str) -> dict[str, str]:
+def extract_graphql_hints(query: str) -> dict[str, str]:  # REQ-277, REQ-278, REQ-279
     """Extract ``# @provisa key=value`` hints from GraphQL query comment lines.
 
     Lines beginning with ``#`` are GraphQL comments; this parser scans for
@@ -168,7 +172,7 @@ def extract_graphql_hints(query: str) -> dict[str, str]:
         comment = stripped[1:].strip()
         if not comment.startswith("@provisa"):
             continue
-        rest = comment[len("@provisa"):].strip()
+        rest = comment[len("@provisa") :].strip()
         for part in rest.split():
             if "=" in part:
                 k, _, v = part.partition("=")

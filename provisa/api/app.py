@@ -10,6 +10,10 @@
 
 """FastAPI app factory with startup hooks for config load and schema generation."""
 
+# Requirements: REQ-012, REQ-016, REQ-057, REQ-086, REQ-133, REQ-135, REQ-147, REQ-158, REQ-159,
+#               REQ-171, REQ-203, REQ-221, REQ-247, REQ-250, REQ-252, REQ-289, REQ-369, REQ-371,
+#               REQ-510
+
 from __future__ import annotations
 
 import asyncio
@@ -403,7 +407,7 @@ WHERE span_name LIKE 'provisa.query%'
 ]
 
 
-async def _seed_meta_domain(conn: asyncpg.Connection) -> None:
+async def _seed_meta_domain(conn: asyncpg.Connection) -> None:  # REQ-012, REQ-016
     """Register admin tables in the built-in meta domain (idempotent)."""
     for ddl in _META_TABLE_VIEWS.values():
         await conn.execute(ddl)
@@ -817,7 +821,7 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
         await conn.execute(_REL_INSERT, *row)
 
 
-async def _compute_and_store_clusters(conn: asyncpg.Connection) -> int:
+async def _compute_and_store_clusters(conn: asyncpg.Connection) -> int:  # REQ-510
     """Run Louvain on the schema graph and write l1/l2/l3_cluster onto registered_tables.
 
     Returns the number of tables clustered.
@@ -850,7 +854,7 @@ async def _compute_and_store_clusters(conn: asyncpg.Connection) -> int:
     return len(clusters)
 
 
-async def _seed_ops_pg(conn: asyncpg.Connection) -> None:
+async def _seed_ops_pg(conn: asyncpg.Connection) -> None:  # REQ-016
     """Register ops tables/views in PG registered_tables + table_columns (idempotent)."""
     for tbl_name, cols in _OPS_TABLES.items():
         table_id = await conn.fetchval(
@@ -904,7 +908,7 @@ async def _seed_ops_pg(conn: asyncpg.Connection) -> None:
             )
 
 
-def _seed_ops_trino(
+def _seed_ops_trino(  # REQ-016
     trino_conn: trino.dbapi.Connection, snapshot_retention_hours: int | None = None
 ) -> None:
     """Create Iceberg schema/tables/views in Trino for the ops domain (idempotent)."""
@@ -1027,7 +1031,7 @@ def _seed_ops_trino(
                     )
 
 
-async def _init_meta_rls(conn: asyncpg.Connection) -> None:
+async def _init_meta_rls(conn: asyncpg.Connection) -> None:  # REQ-041, REQ-402
     """Enable Postgres RLS on all _META_TABLES. Called only when multitenancy=True."""
     for tbl in _META_TABLES:
         await conn.execute(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY")
@@ -1048,7 +1052,7 @@ async def _init_meta_rls(conn: asyncpg.Connection) -> None:
         )
 
 
-async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:
+async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:  # REQ-057
     """Connect to PG, init schema, audit, and billing. Returns (pg_host, pg_port, pg_database, pg_user)."""
     pg_host = os.environ.get("PG_HOST", "localhost")
     pg_port = int(os.environ.get("PG_PORT", "5432"))
@@ -1084,7 +1088,7 @@ async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:
     return pg_host, pg_port, pg_database, pg_user
 
 
-async def _seed_built_in_sources(
+async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     pg_host: str, pg_port: int, pg_database: str, pg_user: str
 ) -> None:
     """Seed provisa-admin, provisa-otel, and __provisa__ source rows; seed meta domain and ops; compute clusters."""
@@ -1189,7 +1193,7 @@ def _apply_server_and_trino_config(raw_config: dict) -> None:
             state.trino_fte_hints.setdefault(_k, str(_v))
 
 
-async def _connect_flight_and_object_store() -> None:
+async def _connect_flight_and_object_store() -> None:  # REQ-143, REQ-171
     """Concurrently connect Arrow Flight (Zaychik) and set up MinIO/results-schema."""
 
     async def _connect_flight() -> None:
@@ -1250,7 +1254,7 @@ async def _connect_flight_and_object_store() -> None:
     await asyncio.gather(_connect_flight(), _setup_object_store())
 
 
-def _process_kafka_sources(raw_config: dict) -> None:
+def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
     """Register Kafka topics as virtual tables and populate state.kafka_table_configs/windows."""
     from provisa.kafka.window import KafkaTableConfig
     from provisa.core.trino_catalog_files import write_kafka_catalog_files
@@ -1303,7 +1307,7 @@ def _process_kafka_sources(raw_config: dict) -> None:
             state.kafka_table_physical[gql_table_name] = physical_table
 
 
-async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:
+async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-012, REQ-221
     """Build direct source connection pools, register websocket/rss sources, and fetch enum types."""
     from provisa.executor.drivers.registry import has_driver
     from provisa.cache.warm_tables import DEFAULT_ICEBERG_CATALOG as _DEFAULT_ICE_CAT
@@ -1489,7 +1493,9 @@ async def _load_openapi_specs() -> None:
             )
 
 
-def _load_mv_and_views_config(raw_config: dict) -> None:
+def _load_mv_and_views_config(
+    raw_config: dict,
+) -> None:  # REQ-086, REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
     """Load materialized_views, views, and auto-MV cross-source relationships into state."""
     from provisa.mv.models import MVDefinition, JoinPattern, SDLConfig
 
@@ -1697,7 +1703,9 @@ async def _init_ingest_engines() -> None:
         _logging.getLogger(__name__).warning("Ingest source init failed", exc_info=True)
 
 
-async def _load_and_build(config_path: str | None = None) -> None:
+async def _load_and_build(
+    config_path: str | None = None,
+) -> None:  # REQ-012, REQ-016, REQ-247, REQ-289, REQ-369, REQ-371
     """Load config, introspect Trino, build schemas for all roles."""
     if config_path is None:
         config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
@@ -2202,7 +2210,7 @@ def _synthesize_column_metadata(
         ]
 
 
-async def _load_masking_rules(
+async def _load_masking_rules(  # REQ-040, REQ-263
     conn: Any,
     col_types_converted: dict[int, list[ColumnMetadata]],
     roles: list[dict],
@@ -2244,7 +2252,7 @@ async def _load_masking_rules(
             state.masking_rules[key][col_name] = (mask_rule, data_type)
 
 
-async def _load_tracked_functions_and_webhooks(
+async def _load_tracked_functions_and_webhooks(  # REQ-042
     conn: Any, raw_config: dict | None
 ) -> tuple[list[dict], list[dict]]:
     """Load tracked functions and webhooks from DB; populate state.tracked_functions/webhooks."""
@@ -2316,7 +2324,7 @@ async def _load_tracked_functions_and_webhooks(
     return tracked_functions, tracked_webhooks
 
 
-def _build_and_register_schemas(
+def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221, REQ-262, REQ-263
     roles: list[dict],
     tables: list[dict],
     relationships: list[dict],
@@ -3167,7 +3175,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter]
     """App lifespan: load config and build schemas at startup."""
     import logging
 
@@ -3291,7 +3299,7 @@ def create_app() -> FastAPI:
     from fastapi.responses import JSONResponse as _JSONResponse
 
     @app.exception_handler(Exception)
-    async def _global_exception_handler(_req: _Request, exc: Exception):  # noqa: F841  # registered via app.exception_handler
+    async def _global_exception_handler(_req: _Request, exc: Exception):  # noqa: F841  # pyright: ignore[reportUnusedFunction]
         log.exception("Unhandled exception on %s %s", _req.method, _req.url.path)
         return _JSONResponse(
             status_code=500,
@@ -3299,7 +3307,7 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(asyncio.TimeoutError)
-    async def _timeout_handler(_req: _Request, _exc: asyncio.TimeoutError):  # noqa: F841  # registered via app.exception_handler
+    async def _timeout_handler(_req: _Request, _exc: asyncio.TimeoutError):  # noqa: F841  # pyright: ignore[reportUnusedFunction]
         log.error("Request timeout on %s %s", _req.method, _req.url.path)
         return _JSONResponse(status_code=504, content={"detail": "Request timed out"})
 
@@ -3389,7 +3397,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router, prefix="/admin/graphql")
 
     @app.middleware("http")
-    async def _admin_graphql_schema_version_header(request: Request, call_next):
+    async def _admin_graphql_schema_version_header(request: Request, call_next):  # pyright: ignore[reportUnusedFunction]
         response = await call_next(request)
         if request.url.path.startswith("/admin/graphql"):
             response.headers["X-Schema-Version"] = str(state.schema_version)
@@ -3513,7 +3521,7 @@ def create_app() -> FastAPI:
         app.include_router(control_plane_router)
 
     @app.api_route("/health", methods=["GET", "HEAD"])
-    async def health():  # noqa: F841  # FastAPI route
+    async def health():  # noqa: F841  # pyright: ignore[reportUnusedFunction]
         return {"status": "ok"}
 
     return app

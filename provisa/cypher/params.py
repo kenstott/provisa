@@ -19,6 +19,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+# Requirements: REQ-352
+
 
 class CypherParamError(Exception):
     """Raised for unbound or missing parameters."""
@@ -49,8 +51,7 @@ def bind_params(
     missing = [n for n in param_names if n not in provided]
     if missing:
         raise CypherParamError(
-            f"Unbound Cypher parameters: {missing!r}. "
-            "Provide values in the 'params' request field."
+            f"Unbound Cypher parameters: {missing!r}. Provide values in the 'params' request field."
         )
     for name in param_names:
         values.append(provided[name])

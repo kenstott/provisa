@@ -10,6 +10,8 @@
 
 """Base types and abstract provider for subscription notifications."""
 
+# Requirements: REQ-258, REQ-260, REQ-261, REQ-282, REQ-338
+
 from __future__ import annotations
 
 import abc
@@ -19,7 +21,7 @@ from typing import Any, AsyncGenerator
 
 
 @dataclass
-class ChangeEvent:
+class ChangeEvent:  # REQ-258, REQ-260, REQ-261, REQ-282, REQ-338
     """A single change notification."""
 
     operation: str  # "insert", "update", "delete"
@@ -28,7 +30,7 @@ class ChangeEvent:
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class NotificationProvider(abc.ABC):
+class NotificationProvider(abc.ABC):  # REQ-258, REQ-260, REQ-261, REQ-282, REQ-338
     """Abstract base for change-notification providers."""
 
     @abc.abstractmethod

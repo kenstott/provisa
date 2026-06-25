@@ -14,6 +14,8 @@ QueryCounter tracks per-table query frequency in memory.
 WarmTableManager promotes/demotes tables based on threshold and size limits.
 """
 
+# Requirements: REQ-238, REQ-239, REQ-240, REQ-241
+
 from __future__ import annotations
 
 import logging
@@ -28,7 +30,7 @@ DEFAULT_ICEBERG_CATALOG = "iceberg"
 DEFAULT_ICEBERG_SCHEMA = "warm_cache"
 
 
-class QueryCounter:
+class QueryCounter:  # REQ-239
     """Thread-safe in-memory counter for per-table query frequency."""
 
     def __init__(self) -> None:
@@ -52,7 +54,7 @@ class QueryCounter:
             self._counts.pop(table, None)
 
 
-class WarmTableManager:
+class WarmTableManager:  # REQ-238, REQ-240, REQ-241
     """Manages promotion/demotion of frequently queried tables to Iceberg.
 
     In multi-tenant mode, instantiate one WarmTableManager per tenant, passing
@@ -84,7 +86,7 @@ class WarmTableManager:
         safe = table.replace('"', '""')
         return f'"{self._iceberg_catalog}"."{self._iceberg_schema}"."{safe}"'
 
-    def check_promotions(
+    def check_promotions(  # REQ-239, REQ-240, REQ-241
         self,
         counter: QueryCounter,
         trino_conn: Any,
@@ -149,7 +151,7 @@ class WarmTableManager:
 
         return promoted
 
-    def check_demotions(
+    def check_demotions(  # REQ-239
         self,
         counter: QueryCounter,
         trino_conn: Any,

@@ -21,11 +21,13 @@ from pathlib import Path
 from provisa.core.models import Source
 from provisa.core.secrets import resolve_secrets
 
+# Requirements: REQ-017, REQ-250, REQ-251
+
 # Connector types whose catalog properties + table-defs come from the mapping DSL.
 _MAPPING_DSL_TYPES = frozenset({"redis", "elasticsearch", "prometheus"})
 
 
-def is_mapping_dsl_source(source: Source) -> bool:
+def is_mapping_dsl_source(source: Source) -> bool:  # REQ-251
     return source.type.value in _MAPPING_DSL_TYPES
 
 
@@ -50,7 +52,9 @@ def _redis_config(source: Source, resolved_password: str):
             key_column=t.get("key_column", "key"),
             value_type=t.get("value_type", ValueType.HASH),
             columns=[
-                RedisColumn(name=c["name"], data_type=c.get("data_type", "VARCHAR"), field=c.get("field"))
+                RedisColumn(
+                    name=c["name"], data_type=c.get("data_type", "VARCHAR"), field=c.get("field")
+                )
                 for c in t.get("columns", [])
             ],
         )
@@ -75,7 +79,9 @@ def _es_config(source: Source, resolved_password: str):
             index=t["index"],
             discover=t.get("discover", False),
             columns=[
-                ESColumn(name=c["name"], data_type=c.get("data_type", "VARCHAR"), path=c.get("path"))
+                ESColumn(
+                    name=c["name"], data_type=c.get("data_type", "VARCHAR"), path=c.get("path")
+                )
                 for c in t.get("columns", [])
             ],
         )
@@ -96,7 +102,9 @@ def _prometheus_config(source: Source):
     from provisa.prometheus.source import PrometheusSourceConfig, PrometheusTableConfig
 
     m = source.mapping
-    url = m.get("url") or (f"http://{source.host}:{source.port}" if source.host else "http://localhost:9090")
+    url = m.get("url") or (
+        f"http://{source.host}:{source.port}" if source.host else "http://localhost:9090"
+    )
     tables = [
         PrometheusTableConfig(
             name=t["name"],
@@ -113,7 +121,9 @@ def _prometheus_config(source: Source):
 # --- catalog properties routing (REQ-251) ---
 
 
-def catalog_properties_for(source: Source, resolved_password: str) -> dict[str, str] | None:
+def catalog_properties_for(
+    source: Source, resolved_password: str
+) -> dict[str, str] | None:  # REQ-251
     """Return connector catalog properties for a mapping-DSL source, else None.
 
     ``connector.name`` is stripped: a dynamic ``CREATE CATALOG ... USING <connector>``
@@ -160,7 +170,7 @@ def _table_definitions(source: Source, resolved_password: str) -> tuple[str, lis
 
 def write_table_definitions(
     source: Source, resolved_password: str, etc_dir: Path | None = None
-) -> list[Path]:
+) -> list[Path]:  # REQ-250, REQ-251
     """Write per-table JSON table-description files; return the paths written."""
     result = _table_definitions(source, resolved_password)
     if result is None:
@@ -180,7 +190,9 @@ def write_table_definitions(
 # --- Kafka catalog file generation (REQ-250) ---
 
 
-def write_kafka_catalog_files(kafka_source: dict, etc_dir: Path | None = None) -> list[Path]:
+def write_kafka_catalog_files(
+    kafka_source: dict, etc_dir: Path | None = None
+) -> list[Path]:  # REQ-147, REQ-250
     """Generate the Kafka catalog ``.properties`` (+ client props) from config.
 
     ``kafka_source`` is a raw ``kafka_sources[]`` config entry. Returns paths written.
@@ -209,8 +221,11 @@ def write_kafka_catalog_files(kafka_source: dict, etc_dir: Path | None = None) -
             schema_source=SchemaSource(t.get("schema_source", "registry")),
             value_format=ValueFormat(t.get("value_format", "json")),
             columns=[
-                KafkaColumn(name=c["name"], data_type=c.get("data_type", "VARCHAR"),
-                            is_complex=c.get("is_complex", False))
+                KafkaColumn(
+                    name=c["name"],
+                    data_type=c.get("data_type", "VARCHAR"),
+                    is_complex=c.get("is_complex", False),
+                )
                 for c in t.get("columns", [])
             ],
             table_name=t.get("table_name"),

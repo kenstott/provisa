@@ -15,6 +15,8 @@ to replace masked columns with their mask expression, preserving column aliases
 so serialization still works.
 """
 
+# Requirements: REQ-040, REQ-263, REQ-264
+
 from __future__ import annotations
 
 import re
@@ -30,7 +32,7 @@ _tracer = _get_tracer(__name__)
 MaskingRules = dict[tuple[int, str], dict[str, tuple[MaskingRule, str]]]
 
 
-def inject_masking(
+def inject_masking(  # REQ-040, REQ-263, REQ-264
     compiled: CompiledQuery,
     ctx: CompilationContext,
     masking_rules: MaskingRules,

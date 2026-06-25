@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import strawberry
 
+# Requirements: REQ-012, REQ-013, REQ-019, REQ-040, REQ-041, REQ-042, REQ-135, REQ-247, REQ-252, REQ-262, REQ-402
+
 
 @strawberry.type
-class SourceType:
+class SourceType:  # REQ-012
     id: str
     type: str
     host: str
@@ -50,7 +52,7 @@ class ColumnPresetType:
 
 
 @strawberry.type
-class RegisteredTableType:
+class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     id: int
     source_id: str
     domain_id: str
@@ -72,7 +74,7 @@ class RegisteredTableType:
 
 
 @strawberry.type
-class TableColumnType:
+class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     id: int
     column_name: str
     visible_to: list[str]
@@ -110,7 +112,7 @@ class AvailableColumnType:
 
 
 @strawberry.type
-class RelationshipType:
+class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     id: str
     source_table_id: int
     target_table_id: int | None
@@ -135,14 +137,14 @@ class RelationshipType:
 
 
 @strawberry.type
-class RoleType:
+class RoleType:  # REQ-042
     id: str
     capabilities: list[str]
     domain_access: list[str]
 
 
 @strawberry.type
-class RLSRuleType:
+class RLSRuleType:  # REQ-041, REQ-402
     id: int
     table_id: int | None
     domain_id: str | None
@@ -154,7 +156,7 @@ class RLSRuleType:
 
 
 @strawberry.input
-class SourceInput:
+class SourceInput:  # REQ-012
     id: str
     type: str
     host: str = ""
@@ -176,7 +178,7 @@ class DomainInput:
 
 
 @strawberry.input
-class ColumnInput:
+class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     name: str
     visible_to: list[str]
     writable_by: list[str] = strawberry.field(default_factory=list)
@@ -205,7 +207,7 @@ class ColumnPresetInput:
 
 
 @strawberry.input
-class TableInput:
+class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     source_id: str
     domain_id: str
     schema_name: str
@@ -223,7 +225,7 @@ class TableInput:
 
 
 @strawberry.input
-class RelationshipInput:
+class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     id: str
     source_table_id: str  # table name (resolved to ID)
     target_table_id: str = ""  # empty for computed relationships
@@ -241,14 +243,14 @@ class RelationshipInput:
 
 
 @strawberry.input
-class RoleInput:
+class RoleInput:  # REQ-042
     id: str
     capabilities: list[str]
     domain_access: list[str]
 
 
 @strawberry.input
-class RLSRuleInput:
+class RLSRuleInput:  # REQ-041, REQ-402
     table_id: str | None = None  # table name (resolved to ID); mutually exclusive with domain_id
     domain_id: str | None = None  # domain ID for domain-level rules
     role_id: str = ""
@@ -256,7 +258,7 @@ class RLSRuleInput:
 
 
 @strawberry.type
-class MVType:
+class MVType:  # REQ-135, REQ-158, REQ-159, REQ-160
     id: str
     source_tables: list[str]
     target_table: str
@@ -315,7 +317,7 @@ class ColumnAliasType:
 
 
 @strawberry.type
-class EnforcementType:
+class EnforcementType:  # REQ-038, REQ-040, REQ-041, REQ-263
     rls_filters_applied: list[str]
     columns_excluded: list[str]
     schema_scope: str
@@ -325,7 +327,7 @@ class EnforcementType:
 
 
 @strawberry.type
-class CompileQueryResult:
+class CompileQueryResult:  # REQ-262, REQ-263, REQ-267
     sql: str
     semantic_sql: str
     trino_sql: str | None

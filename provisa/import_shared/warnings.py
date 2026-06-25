@@ -15,9 +15,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+# Requirements: REQ-192, REQ-628
+
 
 @dataclass
-class ImportWarning:
+class ImportWarning:  # REQ-192, REQ-628
     """A single warning about an unsupported or partially-supported feature."""
 
     category: str  # e.g. "remote_schemas", "event_triggers"
@@ -26,17 +28,19 @@ class ImportWarning:
 
 
 @dataclass
-class WarningCollector:
+class WarningCollector:  # REQ-192, REQ-628
     """Accumulates warnings during an import conversion run."""
 
     warnings: list[ImportWarning] = field(default_factory=list)
 
     def warn(self, category: str, message: str, source_path: str = "") -> None:
-        self.warnings.append(ImportWarning(
-            category=category,
-            message=message,
-            source_path=source_path,
-        ))
+        self.warnings.append(
+            ImportWarning(
+                category=category,
+                message=message,
+                source_path=source_path,
+            )
+        )
 
     def has_warnings(self) -> bool:
         return len(self.warnings) > 0

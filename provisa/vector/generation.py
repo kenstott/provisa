@@ -18,13 +18,15 @@ from dataclasses import dataclass
 from provisa.vector.query import validate_vector_dimensions
 from provisa.vector.registry import VectorModel
 
+# Requirements: REQ-427, REQ-431
+
 
 class GenerationError(ValueError):
     """A generated embedding column is misconfigured or failed validation."""
 
 
 @dataclass
-class GeneratedEmbeddingSpec:
+class GeneratedEmbeddingSpec:  # REQ-427
     """An embedding column generated from a source text column (REQ-427)."""
 
     target_column: str  # the embedding column name
@@ -32,7 +34,7 @@ class GeneratedEmbeddingSpec:
     model_id: str  # registered model (REQ-419)
 
 
-def spec_from_column(column) -> GeneratedEmbeddingSpec | None:
+def spec_from_column(column) -> GeneratedEmbeddingSpec | None:  # REQ-427
     """Build a generation spec from a Column with embedding + embedding_source_column set."""
     if not getattr(column, "embedding", False) or not getattr(
         column, "embedding_source_column", None
@@ -49,7 +51,7 @@ def spec_from_column(column) -> GeneratedEmbeddingSpec | None:
     )
 
 
-async def validate_generation(
+async def validate_generation(  # REQ-427
     sample_rows: list[dict],
     spec: GeneratedEmbeddingSpec,
     model: VectorModel,

@@ -17,6 +17,7 @@ Builds on buenavista's socketserver-based handler, adding:
 - Full Provisa governance pipeline for user queries
 - Multi-statement simple-query support
 """
+# Requirements: REQ-001, REQ-002, REQ-120, REQ-124, REQ-125, REQ-266, REQ-273
 
 from __future__ import annotations
 
@@ -106,8 +107,15 @@ _DUCKDB_TYPE_TO_BVTYPE: dict[str, BVType] = {
     "TIME": BVType.TIME,
 }
 _DUCKDB_INT_TYPES = {
-    "INTEGER", "BIGINT", "HUGEINT", "SMALLINT", "TINYINT",
-    "UBIGINT", "UINTEGER", "USMALLINT", "UTINYINT",
+    "INTEGER",
+    "BIGINT",
+    "HUGEINT",
+    "SMALLINT",
+    "TINYINT",
+    "UBIGINT",
+    "UINTEGER",
+    "USMALLINT",
+    "UTINYINT",
 }
 
 
@@ -182,7 +190,7 @@ class ProvisaQueryResult(BVQueryResult):
         return self._status or "OK"
 
 
-class ProvisaSession(Session):
+class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
     def __init__(self) -> None:
         super().__init__()
         self.role_id: str | None = None
@@ -209,7 +217,11 @@ class ProvisaSession(Session):
             from provisa.api.app import state
 
             result = answer(stripped, self.role_id or "", state)
-            log.debug("[RESULT] cols=%r rows=%r", result.column_names, result.rows[:3] if result.rows else [])
+            log.debug(
+                "[RESULT] cols=%r rows=%r",
+                result.column_names,
+                result.rows[:3] if result.rows else [],
+            )
             return ProvisaQueryResult(result, stripped)
 
         if self.role_id is None:
@@ -254,7 +266,7 @@ class ProvisaConnection(Connection):
         }
 
 
-class ProvisaHandler(BuenaVistaHandler):
+class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     """Extends BuenaVistaHandler with TLS, cleartext auth, and catalog intercept."""
 
     def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
@@ -475,7 +487,7 @@ class ProvisaHandler(BuenaVistaHandler):
         self.send_ready_for_query(ctx)
 
 
-class ProvisaServer(BuenaVistaServer):
+class ProvisaServer(BuenaVistaServer):  # REQ-001, REQ-266
     allow_reuse_address = True
 
     def __init__(

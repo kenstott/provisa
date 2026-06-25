@@ -15,8 +15,10 @@ from __future__ import annotations
 from provisa.auth.models import AuthIdentity
 from provisa.core.secrets import resolve_secrets
 
+# Requirements: REQ-125
 
-def resolve_superuser_config(config: dict | None) -> dict | None:
+
+def resolve_superuser_config(config: dict | None) -> dict | None:  # REQ-125
     """Resolve ``${env:...}`` references in the superuser config at startup.
 
     Returns ``{"username", "password"}`` with secrets resolved, or ``None`` when no
@@ -33,7 +35,7 @@ def resolve_superuser_config(config: dict | None) -> dict | None:
     return {"username": resolve_secrets(username), "password": resolve_secrets(password)}
 
 
-def check_superuser(
+def check_superuser(  # REQ-125
     username: str, password: str, config: dict
 ) -> AuthIdentity | None:
     """Return an admin AuthIdentity if credentials match the (resolved) superuser config.

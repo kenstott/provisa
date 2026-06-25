@@ -10,6 +10,7 @@
 
 """Compile .proto content to Python stubs using grpc_tools.protoc."""
 
+# Requirements: REQ-045, REQ-051
 from __future__ import annotations
 
 import os
@@ -19,7 +20,7 @@ from pathlib import Path
 from grpc_tools import protoc
 
 
-def compile_proto(proto_content: str, output_dir: str) -> tuple[str, str]:
+def compile_proto(proto_content: str, output_dir: str) -> tuple[str, str]:  # REQ-045, REQ-051
     """Compile a .proto string to Python gRPC stubs.
 
     Args:
@@ -38,16 +39,19 @@ def compile_proto(proto_content: str, output_dir: str) -> tuple[str, str]:
 
         # Locate google protobuf includes
         import grpc_tools
+
         well_known = str(Path(grpc_tools.__file__).parent / "_proto")
 
-        result = protoc.main([
-            "grpc_tools.protoc",
-            f"--proto_path={tmpdir}",
-            f"--proto_path={well_known}",
-            f"--python_out={output_dir}",
-            f"--grpc_python_out={output_dir}",
-            "provisa_service.proto",
-        ])
+        result = protoc.main(
+            [
+                "grpc_tools.protoc",
+                f"--proto_path={tmpdir}",
+                f"--proto_path={well_known}",
+                f"--python_out={output_dir}",
+                f"--grpc_python_out={output_dir}",
+                "provisa_service.proto",
+            ]
+        )
 
         if result != 0:
             raise RuntimeError(f"protoc compilation failed with code {result}")

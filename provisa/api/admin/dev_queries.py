@@ -6,14 +6,14 @@
 
 """Business logic for compile and submit developer operations (admin GQL mutations)."""
 
+# Requirements: REQ-001, REQ-002, REQ-007, REQ-009, REQ-040, REQ-041, REQ-066, REQ-067, REQ-262, REQ-263, REQ-345, REQ-347, REQ-478, REQ-554
+
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
 from typing import Any
 
-from provisa.api.admin._dev_shared import extract_operation_name
 
 log = logging.getLogger(__name__)
 
@@ -33,31 +33,14 @@ class EnforcementMetadata:
 # ---------------------------------------------------------------------------
 
 
-def _extract_cypher_name(query: str) -> str:
-    import re
-
-    m = re.search(r"\([\w]*:(\w+)", query)
-    return m.group(1) if m else "CypherQuery"
-
-
-def _extract_sql_name(query: str) -> str:
-    import re
-
-    m = re.search(r'FROM\s+"?(\w+)"?\."?(\w+)"?', query, re.IGNORECASE)
-    if m:
-        return m.group(2)
-    m = re.search(r'FROM\s+"?(\w+)"?', query, re.IGNORECASE)
-    return m.group(1) if m else "SqlQuery"
-
-
-def _build_enforcement_metadata(
+def _build_enforcement_metadata(  # REQ-040, REQ-041, REQ-263
     compiled, ctx, rls, masking_rules: dict, role_id: str, route_value: str
 ) -> EnforcementMetadata:
     rls_filters: list[str] = []
     root_table = ctx.tables.get(compiled.root_field)
     if root_table and root_table.table_id in rls.rules:
         rls_filters.append(rls.rules[root_table.table_id])
-    for (type_name, _field_name), join_meta in ctx.joins.items():
+    for (type_name, _), join_meta in ctx.joins.items():
         if root_table and type_name == root_table.type_name:
             if join_meta.target.table_id in rls.rules:
                 rls_filters.append(rls.rules[join_meta.target.table_id])
@@ -78,7 +61,7 @@ def _build_enforcement_metadata(
             if meta.table_id == table_id:
                 table_name = meta.table_name
                 break
-        for col_name, (rule, _dtype) in col_map.items():
+        for col_name, (rule, _) in col_map.items():
             label = f"{table_name}.{col_name} -> {rule.mask_type.value}" if table_name else col_name
             masking_applied.append(label)
 
@@ -90,131 +73,6 @@ def _build_enforcement_metadata(
         ceiling_applied=None,
         route=route_value,
     )
-
-
-async def _compile_graphql(
-    query: str, variables: dict | None, role_id: str, ctx, rls, state
-) -> tuple[str, str, list[int], str | None]:
-    from graphql import GraphQLSyntaxError
-    from provisa.compiler.mask_inject import inject_masking
-    from provisa.compiler.parser import (
-        GraphQLValidationError,
-        coerce_variable_defaults,
-        parse_query,
-    )
-    from provisa.compiler.rls import inject_rls
-    from provisa.compiler.sql_gen import compile_query, make_semantic_sql
-    from provisa.cypher.label_map import CypherLabelMap
-    from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher, combine_cypher_queries
-
-    op_name = extract_operation_name(query)
-    if not op_name:
-        raise ValueError(
-            "GraphQL query must have a named operation (e.g., 'query MyReport { ... }')."
-        )
-    schema = state.schemas[role_id]
-    try:
-        document = parse_query(schema, query, variables)
-    except (GraphQLValidationError, GraphQLSyntaxError) as e:
-        raise ValueError(str(e))
-
-    effective_variables = coerce_variable_defaults(document, variables)
-    compiled_queries = compile_query(document, ctx, effective_variables)
-    if not compiled_queries:
-        raise ValueError("No query fields found")
-
-    masking_rules = getattr(state, "masking_rules", {})
-    target_tables: list[int] = []
-    sql_parts: list[str] = []
-
-    for cq in compiled_queries:
-        governed = inject_masking(inject_rls(cq, ctx, rls), ctx, masking_rules, role_id)
-        root_table = ctx.tables.get(governed.root_field)
-        if root_table:
-            target_tables.append(root_table.table_id)
-        from provisa.compiler.params import embed_params_comment
-
-        display_sql = embed_params_comment(governed.sql, governed.params)
-        sql_parts.append(make_semantic_sql(display_sql, ctx))
-
-    compiled_sql = sql_parts[0] if len(sql_parts) == 1 else json.dumps(sql_parts)
-
-    compiled_cypher: str | None = None
-    try:
-        label_map = CypherLabelMap.from_schema(ctx)
-        cypher_parts = [c for s in sql_parts if (c := semantic_sql_to_cypher(s, label_map, ctx))]
-        if cypher_parts:
-            compiled_cypher = combine_cypher_queries(cypher_parts)
-    except Exception:
-        pass
-
-    return op_name, compiled_sql, target_tables, compiled_cypher
-
-
-def _compile_cypher_submit(query: str, role_id: str, ctx) -> tuple[str, str, list[int], str | None]:
-    from provisa.cypher.parser import parse_cypher, CypherParseError
-    from provisa.cypher.label_map import CypherLabelMap
-    from provisa.cypher.translator import cypher_to_sql, CypherTranslateError
-    from provisa.cypher.graph_rewriter import apply_graph_rewrites
-    from provisa.cypher.params import collect_param_names, bind_params
-    from provisa.compiler.sql_gen import make_semantic_sql
-
-    try:
-        ast = parse_cypher(query)
-    except CypherParseError as e:
-        raise ValueError(str(e))
-
-    label_map = CypherLabelMap.from_schema(ctx)
-
-    if ast.call_subqueries:
-        from provisa.cypher.translator import cypher_calls_to_sql_list
-
-        try:
-            call_results = cypher_calls_to_sql_list(ast, label_map, {})
-        except CypherTranslateError as e:
-            raise ValueError(str(e))
-        sql_parts: list[str] = []
-        for sql_ast_part, _ordered_params, graph_vars in call_results:
-            sql_ast_part = apply_graph_rewrites(sql_ast_part, graph_vars, label_map)
-            sql_parts.append(make_semantic_sql(sql_ast_part.sql(dialect="postgres"), ctx))
-        compiled_sql = sql_parts[0] if len(sql_parts) == 1 else json.dumps(sql_parts)
-        op_name = _extract_cypher_name(query)
-        target_tables = [nm.table_id for label, nm in label_map.nodes.items() if label in query]
-        return op_name, compiled_sql, target_tables, query
-
-    collect_param_names(query)
-    bind_params(collect_param_names(query), {})
-
-    try:
-        sql_ast, _ordered_params, graph_vars = cypher_to_sql(ast, label_map, {})
-    except CypherTranslateError as e:
-        raise ValueError(str(e))
-
-    sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
-    compiled_sql = make_semantic_sql(sql_ast.sql(dialect="postgres"), ctx)
-    op_name = _extract_cypher_name(query)
-    target_tables = [nm.table_id for label, nm in label_map.nodes.items() if label in query]
-    return op_name, compiled_sql, target_tables, query
-
-
-def _compile_sql_submit(query: str, ctx) -> tuple[str, str, list[int], str | None]:
-    import sqlglot
-    import sqlglot.expressions as exp
-
-    op_name = _extract_sql_name(query)
-    target_tables: list[int] = []
-    try:
-        tree = sqlglot.parse_one(query, read="postgres")
-        for tbl in tree.find_all(exp.Table):
-            key = f"{tbl.db}.{tbl.name}" if tbl.db else tbl.name
-            for meta in ctx.tables.values():
-                domain_key = f"{meta.domain_id}.{meta.field_name}"
-                if key in (domain_key, meta.field_name, meta.table_name):
-                    target_tables.append(meta.table_id)
-                    break
-    except Exception:
-        pass
-    return op_name, query, target_tables, None
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +100,9 @@ def _parse_directives(query: str) -> tuple[Any, str]:
     return directives, sql_comment_prefix
 
 
-def _apply_pipeline_transforms(compiled, ctx, rls, role_id: str, role, fresh_mvs, state) -> tuple[Any, bool]:
+def _apply_pipeline_transforms(  # REQ-040, REQ-041, REQ-134, REQ-198, REQ-262, REQ-263, REQ-554
+    compiled, ctx, rls, role_id: str, role, fresh_mvs, state
+) -> tuple[Any, bool]:
     """Apply RLS, masking, MV rewrite, Kafka filters, and the row cap. Returns (compiled, mv_applied)."""
     from provisa.compiler.mask_inject import inject_masking
     from provisa.compiler.rls import inject_rls
@@ -268,7 +128,9 @@ def _apply_pipeline_transforms(compiled, ctx, rls, role_id: str, role, fresh_mvs
     return compiled, mv_applied
 
 
-def _decide_transpile(compiled, state, steward_hint: str | None) -> tuple[Any, str | None, str | None, str]:
+def _decide_transpile(  # REQ-066, REQ-067, REQ-068, REQ-152, REQ-229
+    compiled, state, steward_hint: str | None
+) -> tuple[Any, str | None, str | None, str]:
     """Return (decision, trino_sql, direct_sql, route_str)."""
     from provisa.transpiler.router import Route, decide_route
     from provisa.transpiler.transpile import transpile, transpile_to_trino
@@ -329,7 +191,7 @@ def _build_optimizations_and_warnings(
     return optimizations, warnings
 
 
-def _compile_cypher_for_result(
+def _compile_cypher_for_result(  # REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
     compiled,
     ctx,
     state,
@@ -397,7 +259,7 @@ def _combine_cypher_results(results: list[dict[str, Any]]) -> None:
             pass
 
 
-async def compile_query(
+async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039, REQ-262, REQ-263, REQ-266
     role_id: str,
     query: str,
     variables: dict | None,
@@ -449,7 +311,9 @@ async def compile_query(
         )
 
         sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
-        decision, trino_sql, direct_sql, route_str = _decide_transpile(compiled, state, steward_hint)
+        decision, trino_sql, direct_sql, route_str = _decide_transpile(
+            compiled, state, steward_hint
+        )
 
         enforcement = _build_enforcement_metadata(
             compiled=compiled,
@@ -470,8 +334,16 @@ async def compile_query(
         semantic_sql_str = sql_comment_prefix + raw_semantic_sql
 
         compiled_cypher, cypher_error = _compile_cypher_for_result(
-            compiled, ctx, state, role, document, effective_variables,
-            raw_semantic_sql, flat_sql, flat_cypher, node_only_cypher,
+            compiled,
+            ctx,
+            state,
+            role,
+            document,
+            effective_variables,
+            raw_semantic_sql,
+            flat_sql,
+            flat_cypher,
+            node_only_cypher,
         )
 
         results.append(

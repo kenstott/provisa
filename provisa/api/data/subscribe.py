@@ -17,6 +17,8 @@ NotificationProvider from the source type via the subscription registry.
 Falls back to PostgreSQL LISTEN/NOTIFY when source type is ``postgresql``.
 """
 
+# Requirements: REQ-258, REQ-260, REQ-336, REQ-338, REQ-342, REQ-369, REQ-371
+
 from __future__ import annotations
 
 import asyncio
@@ -88,7 +90,7 @@ def _build_rss_feed_url(rss_src, hints: dict) -> str:
     return f"{scheme}://{rss_src.host}:{rss_src.port}{path}"
 
 
-def _build_rss_config(state, source_id: str) -> dict:
+def _build_rss_config(state, source_id: str) -> dict:  # REQ-342, REQ-344
     rss_src = state.rss_sources.get(source_id) if state.rss_sources else None
     if not rss_src:
         return {}
@@ -108,7 +110,7 @@ def _parse_ws_subscribe_payload(raw_payload: str) -> dict | None:
         return None
 
 
-def _build_websocket_config(state, source_id: str) -> dict:
+def _build_websocket_config(state, source_id: str) -> dict:  # REQ-338, REQ-341
     ws_src = state.websocket_sources.get(source_id) if state.websocket_sources else None
     if not ws_src:
         return {}
@@ -136,7 +138,7 @@ def _build_fallback_config(state, tbl_meta) -> dict:
     return config
 
 
-def _build_provider_config(
+def _build_provider_config(  # REQ-258
     source_type: str,
     source_id: str,
     table: str,
@@ -166,7 +168,7 @@ def _resolve_tbl_meta(table: str, state):
     return None
 
 
-async def _stream_provider_events(
+async def _stream_provider_events(  # REQ-258, REQ-336
     provider,
     table: str,
     table_id: int | None,
@@ -192,7 +194,7 @@ async def _stream_provider_events(
         await provider.close()
 
 
-async def _provider_sse_generator(
+async def _provider_sse_generator(  # REQ-258, REQ-260
     table: str,
     source_id: str,
     source_type: str,
@@ -216,7 +218,7 @@ async def _provider_sse_generator(
         yield chunk
 
 
-async def _sse_generator(
+async def _sse_generator(  # REQ-219, REQ-258
     pool,
     table: str,
     table_id: int | None,
@@ -234,8 +236,8 @@ async def _sse_generator(
     channel = f"{CHANNEL_PREFIX}{table}"
     queue: asyncio.Queue[str] = asyncio.Queue()
 
-    def _on_notify(
-        conn: object,  # object-ok: asyncpg notify callback — connection type is opaque at this boundary
+    def _on_notify(  # pyright: ignore[reportUnusedParameter]
+        _conn: object,  # object-ok: asyncpg notify callback — connection type is opaque at this boundary
         _pid: int,
         _channel: str,
         payload: str,
@@ -315,7 +317,7 @@ def _mask_row(row: dict, table_id: int | None, role_id: str | None, masking_rule
     return masked
 
 
-def _rls_matches(row: dict, rls_ctx, _table: str) -> bool:
+def _rls_matches(row: dict, rls_ctx, _table: str) -> bool:  # pyright: ignore[reportUnusedParameter]
     """Best-effort RLS check on a notification row.
 
     Checks simple ``column = 'value'`` filters from the RLS context.
@@ -323,7 +325,7 @@ def _rls_matches(row: dict, rls_ctx, _table: str) -> bool:
     """
     import re
 
-    for _table_id, expr in rls_ctx.rules.items():
+    for _, expr in rls_ctx.rules.items():
         match = re.match(r"^(\w+)\s*=\s*'([^']*)'$", expr.strip())
         if match:
             col, val = match.group(1), match.group(2)
@@ -332,7 +334,7 @@ def _rls_matches(row: dict, rls_ctx, _table: str) -> bool:
     return True
 
 
-async def _acquire_sse_slot(state, role_id: str | None) -> str | None:
+async def _acquire_sse_slot(state, role_id: str | None) -> str | None:  # REQ-369, REQ-371
     """REQ-369: acquire a concurrent-SSE-subscription slot for the role.
 
     Returns the limiter key (to release later) or None when no cap applies.
@@ -361,7 +363,7 @@ async def _release_slot_when_done(gen, state, key: str | None):
             await state.rate_limiter.release(key)
 
 
-@router.get("/subscribe/{table}")
+@router.get("/subscribe/{table}")  # REQ-258, REQ-260, REQ-336, REQ-369
 async def subscribe(
     table: str,
     request: Request,

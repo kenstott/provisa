@@ -13,6 +13,8 @@
 Each RPC: extract role from metadata -> look up context -> build SQL -> execute -> stream rows.
 """
 
+# Requirements: REQ-045, REQ-051, REQ-143, REQ-145, REQ-266
+
 from __future__ import annotations
 
 import importlib.util
@@ -67,7 +69,7 @@ def _get_role(context: grpc.aio.ServicerContext) -> str:
     return role
 
 
-class ProvisaServicer:
+class ProvisaServicer:  # REQ-045, REQ-143
     """Dynamic gRPC servicer that handles query RPCs."""
 
     def __init__(self, state, pb2_module, pb2_grpc_module):
@@ -165,7 +167,9 @@ class ProvisaServicer:
             yield msg_cls(**kwargs)
 
 
-async def start_grpc_server(port: int, state, pb2_path: str, pb2_grpc_path: str) -> grpc.aio.Server:
+async def start_grpc_server(
+    port: int, state, pb2_path: str, pb2_grpc_path: str
+) -> grpc.aio.Server:  # REQ-045, REQ-143
     """Start a gRPC async server with the Provisa service.
 
     Args:

@@ -10,6 +10,7 @@
 
 """Map GraphQL introspection to Provisa tables + functions (REQ-308, REQ-312)."""
 
+# Requirements: REQ-307, REQ-308, REQ-309, REQ-310, REQ-311, REQ-312, REQ-313
 from __future__ import annotations
 
 _SCALAR_TO_PROVISA = {
@@ -230,7 +231,7 @@ def _infer_fk_columns(
     return "", ""
 
 
-def _detect_relationships(
+def _detect_relationships(  # REQ-313
     tables: list[dict],
     types: list[dict],
     queryable_type_names: set[str],
@@ -272,7 +273,7 @@ def _detect_relationships(
     return relationships
 
 
-def _qualify_name(namespace: str, field_name: str) -> str:
+def _qualify_name(namespace: str, field_name: str) -> str:  # REQ-312
     """Return namespace__field_name or field_name when namespace is empty."""
     return f"{namespace}__{field_name}" if namespace else field_name
 
@@ -339,7 +340,7 @@ def _map_query_field_as_function(
     return _make_function_entry(field, namespace, source_id, domain_id, return_schema)
 
 
-def _map_query_field_as_table(
+def _map_query_field_as_table(  # REQ-308
     field: dict,
     namespace: str,
     source_id: str,
@@ -376,7 +377,7 @@ def _map_query_field_as_table(
     }
 
 
-def _map_mutation_field(
+def _map_mutation_field(  # REQ-308
     field: dict,
     namespace: str,
     source_id: str,
@@ -464,7 +465,7 @@ def _process_mutation_fields(
     ]
 
 
-def map_schema(
+def map_schema(  # REQ-308, REQ-312, REQ-313
     schema: dict,
     namespace: str,
     source_id: str,

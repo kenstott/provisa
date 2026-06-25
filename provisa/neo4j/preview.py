@@ -6,13 +6,15 @@
 #
 # NOTICE: Use of this software for training artificial intelligence or
 # machine learning models is strictly prohibited without explicit written
-# permission from the copyright holder.
+# permission from the COPYRIGHT holder.
 
 """Neo4j query preview and shape validation (Phase AO).
 
 Before registering a Neo4j table, stewards preview the Cypher query to
 confirm it returns flat scalar projections. Node objects are rejected.
 """
+
+# Requirements: REQ-296
 
 from __future__ import annotations
 
@@ -37,7 +39,7 @@ def _ensure_limit(cypher: str, limit: int = 5) -> str:
     return cypher.rstrip().rstrip(";") + f" LIMIT {limit}"
 
 
-async def preview_query(
+async def preview_query(  # REQ-296
     base_url: str,
     database: str,
     cypher: str,
@@ -77,7 +79,7 @@ async def preview_query(
     return neo4j_tabular(resp.json())
 
 
-def validate_shape(rows: list[dict], columns: list[str] | None = None) -> None:
+def validate_shape(rows: list[dict], columns: list[str] | None = None) -> None:  # REQ-296
     """Validate that all values in the preview rows are scalars.
 
     Raises Neo4jNodeObjectError if any value is a dict or list, indicating

@@ -28,10 +28,12 @@ from __future__ import annotations
 
 import logging
 
+# Requirements: REQ-283, REQ-286, REQ-287
+
 log = logging.getLogger(__name__)
 
 
-async def get_watermark(conn, source: str, output_type: str) -> str | None:
+async def get_watermark(conn, source: str, output_type: str) -> str | None:  # REQ-287
     row = await conn.fetchrow(
         "SELECT last_watermark FROM live_query_state WHERE source = $1 AND output_type = $2",
         source,
@@ -40,7 +42,7 @@ async def get_watermark(conn, source: str, output_type: str) -> str | None:
     return row["last_watermark"] if row else None
 
 
-async def set_watermark(
+async def set_watermark(  # REQ-283, REQ-286, REQ-287
     conn, source: str, output_type: str, value: str, status: str = "active"
 ) -> None:
     await conn.execute(

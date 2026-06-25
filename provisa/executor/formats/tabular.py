@@ -21,12 +21,13 @@ import pyarrow.parquet as pq
 
 from provisa.compiler.sql_gen import ColumnRef
 
+# Requirements: REQ-049, REQ-050
+
 
 def _column_names(columns: list[ColumnRef]) -> list[str]:
     """Build flat column names, qualifying nested ones."""
     return [
-        f"{col.nested_in}.{col.field_name}" if col.nested_in else col.field_name
-        for col in columns
+        f"{col.nested_in}.{col.field_name}" if col.nested_in else col.field_name for col in columns
     ]
 
 
@@ -44,6 +45,7 @@ def _expand_cell(prefix: str, val, out: dict) -> None:
     elif isinstance(val, str) and val.startswith("{") and val.endswith("}"):
         try:
             import json as _json
+
             parsed = _json.loads(val)
             if isinstance(parsed, dict):
                 for k, v in parsed.items():
@@ -56,7 +58,7 @@ def _expand_cell(prefix: str, val, out: dict) -> None:
         out[prefix] = val
 
 
-def _flatten_dict_rows(
+def _flatten_dict_rows(  # REQ-049, REQ-050
     rows: list[tuple],
     col_names: list[str],
 ) -> tuple[list[str], list[tuple]]:
@@ -92,7 +94,7 @@ def _resolve_columns(
     return names, rows
 
 
-def rows_to_csv(
+def rows_to_csv(  # REQ-049, REQ-050
     rows: list[tuple],
     columns: list[ColumnRef],
 ) -> str:
@@ -106,7 +108,7 @@ def rows_to_csv(
     return buf.getvalue()
 
 
-def rows_to_parquet(
+def rows_to_parquet(  # REQ-049, REQ-050
     rows: list[tuple],
     columns: list[ColumnRef],
 ) -> bytes:

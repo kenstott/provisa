@@ -10,6 +10,8 @@
 
 """Compliance reporting for enterprise tier (REQ-074)."""
 
+# Requirements: REQ-074
+
 from __future__ import annotations
 
 import csv
@@ -49,7 +51,7 @@ def _row_to_dict(row: asyncpg.Record) -> dict:
     return d
 
 
-async def export_audit_log(
+async def export_audit_log(  # REQ-074
     conn: asyncpg.Connection,
     tenant_id: str | None,
     start_ts: datetime,

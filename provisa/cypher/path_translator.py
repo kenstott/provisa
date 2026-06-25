@@ -24,17 +24,19 @@ from __future__ import annotations
 from provisa.cypher.parser import CypherParseError, PathFunction
 from provisa.cypher.label_map import CypherLabelMap, RelationshipMapping
 
+# Requirements: REQ-345, REQ-346, REQ-348, REQ-351
+
 
 class PathTranslateError(Exception):
     pass
 
 
-def path_to_recursive_sql(
+def path_to_recursive_sql(  # REQ-345, REQ-346, REQ-348, REQ-351
     path_func: PathFunction,
     label_map: CypherLabelMap,
-    start_var: str,
-    end_var: str,
-    path_var: str,
+    _start_var: str,
+    _end_var: str,
+    _path_var: str,
     max_depth: int,
 ) -> tuple[str, str, str]:
     """Generate a WITH RECURSIVE SQL fragment for a path function.

@@ -22,9 +22,11 @@ from dataclasses import dataclass
 
 from provisa.compiler.sql_gen import CompiledQuery, CompilationContext
 
+# Requirements: REQ-147, REQ-148, REQ-149
+
 
 @dataclass(frozen=True)
-class KafkaTableConfig:
+class KafkaTableConfig:  # REQ-147, REQ-148, REQ-149
     """Per-table Kafka config for injection."""
 
     window: str | None = None  # e.g. "1h"
@@ -59,7 +61,7 @@ def _inject_filter(sql: str, filter_expr: str) -> str:
         return sql[:insert_pos] + f" WHERE {filter_expr} " + sql[insert_pos:]
 
 
-def inject_kafka_filters(
+def inject_kafka_filters(  # REQ-148, REQ-149
     compiled: CompiledQuery,
     ctx: CompilationContext,
     source_types: dict[str, str],
@@ -93,9 +95,7 @@ def inject_kafka_filters(
     # Inject discriminator filter
     if config.discriminator_field and config.discriminator_value:
         safe_value = config.discriminator_value.replace("'", "''")
-        discriminator_filter = (
-            f'"{config.discriminator_field}" = \'{safe_value}\''
-        )
+        discriminator_filter = f"\"{config.discriminator_field}\" = '{safe_value}'"
         sql = _inject_filter(sql, discriminator_filter)
 
     # Inject time-window filter (skip if client already filters on _timestamp)
@@ -117,7 +117,7 @@ def inject_kafka_filters(
 
 
 # Backward-compatible alias
-def inject_kafka_window(
+def inject_kafka_window(  # REQ-148
     compiled: CompiledQuery,
     ctx: CompilationContext,
     source_types: dict[str, str],

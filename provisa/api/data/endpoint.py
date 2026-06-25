@@ -16,6 +16,13 @@ Pipeline: parse -> compile -> MV rewrite -> sampling -> make_semantic_sql
 Mutations: parse -> compile_mutation -> RLS inject -> direct execute (never Trino).
 """
 
+# Requirements: REQ-001, REQ-002, REQ-027, REQ-028, REQ-029, REQ-032, REQ-033,
+#               REQ-034, REQ-035, REQ-036, REQ-038, REQ-040, REQ-043, REQ-047,
+#               REQ-049, REQ-137, REQ-140, REQ-161, REQ-172, REQ-173, REQ-174,
+#               REQ-176, REQ-196, REQ-203, REQ-204, REQ-205, REQ-208, REQ-209,
+#               REQ-262, REQ-263, REQ-288, REQ-289, REQ-290, REQ-291, REQ-300,
+#               REQ-360, REQ-361, REQ-362
+
 from __future__ import annotations
 
 import asyncio
@@ -280,7 +287,7 @@ class CompileRequest(BaseModel):
 
 
 @router.post("/compile")
-async def compile_endpoint(
+async def compile_endpoint(  # REQ-161, REQ-163
     raw_request: Request,
     request: CompileRequest,
     x_provisa_role: str | None = Header(None),
@@ -348,7 +355,7 @@ async def _handle_normalized(document, ctx, rls, state, variables, role_id, role
 
 
 @router.post("/graphql")
-async def graphql_endpoint(
+async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-288, REQ-289, REQ-290, REQ-291, REQ-300
     raw_request: Request,
     request: GraphQLRequest,
     x_provisa_role: str | None = Header(None),
@@ -517,7 +524,9 @@ async def graphql_endpoint(
     return response
 
 
-async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs):
+async def _prepare_compiled(
+    compiled, ctx, rls, state, role_id, role, fresh_mvs
+):  # REQ-002, REQ-038, REQ-040, REQ-203, REQ-204, REQ-262, REQ-263
     """Apply governance, MV rewrite, Kafka filters, and sampling to a compiled query."""
     from provisa.compiler.stage2 import apply_governance, build_governance_context
 
@@ -2425,7 +2434,7 @@ async def _execute_one_field(
     response_cache_ttl: int | None = None,
     no_cache: bool = False,
     query_text: str | None = None,
-):
+):  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, REQ-196
     """Execute a single compiled query field through the full pipeline.
 
     Returns (root_field, field_rows, redirect_info_or_None, cache_key, cached_entry_or_None).
@@ -2652,7 +2661,7 @@ async def _handle_query(
     cache_ttl: int | None = None,
     no_cache: bool = False,
     query_text: str | None = None,
-):
+):  # REQ-001, REQ-027, REQ-028, REQ-029, REQ-043, REQ-047, REQ-049, REQ-137, REQ-140, REQ-196
     """Handle a GraphQL query operation with content negotiation.
 
     Pipeline per root field: compile → RLS → masking → MV rewrite → sampling
@@ -2829,7 +2838,7 @@ def _check_writable_by(table_meta, columns: list[str], role_id: str):
 _ACTION_FILTER_ARGS = {"where", "order_by", "limit", "offset"}
 
 
-async def _resolve_action_relationships(
+async def _resolve_action_relationships(  # REQ-361, REQ-362
     rows: list[dict],
     selection_set,
     return_type_name: str,
@@ -2897,7 +2906,7 @@ async def _resolve_action_relationships(
     return rows
 
 
-def _apply_action_filters(rows: list[dict], args: dict) -> list[dict]:
+def _apply_action_filters(rows: list[dict], args: dict) -> list[dict]:  # REQ-360
     """Apply where/order_by/limit/offset post-processing to action result rows."""
     where = args.get("where")
     if where and isinstance(where, dict):
@@ -2970,7 +2979,7 @@ def _like_match(value: str, pattern: str) -> bool:
     return bool(re.fullmatch(regex, value, re.DOTALL))
 
 
-async def _execute_action_field(
+async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360
     field_name: str, field_node, state, variables: dict | None, *, ctx=None
 ) -> list:
     """Execute a tracked function or webhook field, return rows list."""
@@ -3065,7 +3074,9 @@ def _split_action_fields(document, state) -> tuple[list, list]:
     return action_sels, regular_names
 
 
-async def _handle_mutation(document, ctx, rls, state, variables, role_id, request=None):
+async def _handle_mutation(
+    document, ctx, rls, state, variables, role_id, request=None
+):  # REQ-032, REQ-033, REQ-034, REQ-035, REQ-036, REQ-172, REQ-173, REQ-176
     """Handle a GraphQL mutation operation."""
     action_sels, regular_names = _split_action_fields(document, state)
 
@@ -3194,10 +3205,9 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id, reques
 
 
 @router.post("/touch/{table}", status_code=204)
-async def touch_table(
+async def touch_table(  # REQ-174
     table: str,
-    request: Request,
-    x_provisa_role: str | None = Header(None),
+    _request: Request,
 ):
     """Emit a change event for a table without mutating any data (REQ-174).
 

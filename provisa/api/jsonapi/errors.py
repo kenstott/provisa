@@ -10,12 +10,14 @@
 
 """JSON:API error object formatting."""
 
+# Requirements: REQ-257
+
 from __future__ import annotations
 
 from typing import Any
 
 
-def jsonapi_error(
+def jsonapi_error(  # REQ-257
     status: int | str,
     title: str,
     detail: str | None = None,
@@ -39,6 +41,6 @@ def jsonapi_error(
     return err
 
 
-def error_response(errors: list[dict[str, Any]]) -> dict[str, Any]:
+def error_response(errors: list[dict[str, Any]]) -> dict[str, Any]:  # REQ-257
     """Wrap error objects in a JSON:API error response envelope."""
     return {"errors": errors}

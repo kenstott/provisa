@@ -44,6 +44,8 @@ from provisa.hasura_v2.models import (
 from provisa.import_shared.filters import bool_expr_to_sql
 from provisa.import_shared.warnings import WarningCollector
 
+# Requirements: REQ-041, REQ-019, REQ-040, REQ-155, REQ-195, REQ-205, REQ-209, REQ-417
+
 
 _HASURA_KIND_TO_SOURCE_TYPE: dict[str, str] = {
     "postgres": "postgresql",
@@ -107,7 +109,7 @@ def _extract_connection_info(
     return result
 
 
-def _map_source(hs: HasuraSource) -> Source:
+def _map_source(hs: HasuraSource) -> Source:  # REQ-417
     conn = _extract_connection_info(hs.connection_info)
     return Source(
         id=hs.name,
@@ -122,7 +124,7 @@ def _map_source(hs: HasuraSource) -> Source:
     )
 
 
-def _map_remote_schema(rs: HasuraRemoteSchema) -> Source:
+def _map_remote_schema(rs: HasuraRemoteSchema) -> Source:  # REQ-417
     """Map a Hasura Remote Schema to a Provisa graphql_remote source (REQ-417).
 
     Preserves the remote name, URL (or ${env:...} for url_from_env), headers, and
@@ -149,7 +151,7 @@ def _map_remote_schema(rs: HasuraRemoteSchema) -> Source:
     return Source(id=rs.name, type=SourceType.graphql_remote, base_url=url, mapping=mapping)
 
 
-def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:
+def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ-040
     """Collect all roles mentioned across permissions."""
     roles: dict[str, Role] = {}
 
@@ -223,7 +225,9 @@ def _map_table(
     ht: HasuraTable,
     source_name: str,
     collector: WarningCollector,
-) -> tuple[Table, list[RLSRule], list[Relationship], list[Function]]:
+) -> tuple[
+    Table, list[RLSRule], list[Relationship], list[Function]
+]:  # REQ-041, REQ-040, REQ-019, REQ-155, REQ-205
     """Map a Hasura table to Provisa Table + side-effects."""
     tid = _table_id(source_name, ht.schema_name, ht.name)
 
@@ -372,7 +376,9 @@ def _map_table(
     return table, rls_rules, relationships, functions
 
 
-def _map_action(action: HasuraAction, collector: WarningCollector) -> Function | Webhook | None:
+def _map_action(
+    action: HasuraAction, collector: WarningCollector
+) -> Function | Webhook | None:  # REQ-205, REQ-209
     """Map a Hasura action to either a Function or Webhook."""
     handler = action.definition.handler
     visible_to = [p.get("role", "") for p in action.permissions if p.get("role")]
@@ -427,7 +433,7 @@ def convert_metadata(
     domain_map: dict[str, str] | None = None,
     auth_env: dict[str, str] | None = None,
     source_overrides: dict[str, Any] | None = None,
-) -> ProvisaConfig:
+) -> ProvisaConfig:  # REQ-417, REQ-041, REQ-019, REQ-040, REQ-155, REQ-195, REQ-205, REQ-209
     """Convert Hasura v2 metadata to a ProvisaConfig.
 
     Args:

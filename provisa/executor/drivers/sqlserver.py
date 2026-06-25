@@ -13,22 +13,30 @@
 Requires ODBC Driver 17/18 for SQL Server installed on the host.
 """
 
+# Requirements: REQ-052, REQ-068, REQ-229, REQ-550
+
 from __future__ import annotations
 
-import aioodbc
+import aioodbc  # pyright: ignore[reportMissingImports]
 
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.trino import QueryResult
 
 
-class SQLServerDriver(DirectDriver):
+class SQLServerDriver(DirectDriver):  # REQ-052, REQ-068, REQ-229, REQ-550
     def __init__(self) -> None:
         self._pool: aioodbc.Pool | None = None
 
     async def connect(
-        self, host: str, port: int, database: str,
-        user: str, password: str, min_pool: int = 1, max_pool: int = 5,
-    ) -> None:
+        self,
+        host: str,
+        port: int,
+        database: str,
+        user: str,
+        password: str,
+        min_pool: int = 1,
+        max_pool: int = 5,
+    ) -> None:  # REQ-052
         dsn = (
             f"DRIVER={{ODBC Driver 18 for SQL Server}};"
             f"SERVER={host},{port};"
@@ -38,7 +46,9 @@ class SQLServerDriver(DirectDriver):
             f"TrustServerCertificate=yes"
         )
         self._pool = await aioodbc.create_pool(
-            dsn=dsn, minsize=min_pool, maxsize=max_pool,
+            dsn=dsn,
+            minsize=min_pool,
+            maxsize=max_pool,
         )
 
     async def execute(self, sql: str, params: list | None = None) -> QueryResult:

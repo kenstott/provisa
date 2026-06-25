@@ -18,6 +18,8 @@ semantic layer as a read-only JDBC catalog:
   - columns  -> columns with descriptions
 """
 
+# Requirements: REQ-126, REQ-127, REQ-128, REQ-143
+
 from __future__ import annotations
 
 import logging
@@ -82,7 +84,7 @@ class CatalogColumn:
     description: str
 
 
-def build_catalog_tables(state) -> list[CatalogTable]:
+def build_catalog_tables(state) -> list[CatalogTable]:  # REQ-127, REQ-128
     """Build the virtual catalog from AppState.
 
     Reads registered tables and introspected column metadata from the
@@ -120,13 +122,12 @@ async def _build_catalog_tables_async(state) -> list[CatalogTable]:
     # Get introspected column types from the broadest context
     # We look at whichever role context has the most tables
     best_count = -1
-    for role_id, ctx in state.contexts.items():
+    for _, ctx in state.contexts.items():
         count = len(getattr(ctx, "table_map", {}))
         if count > best_count:
             best_count = count
 
     # Build the column metadata lookup from introspection
-    from provisa.compiler.introspect import ColumnMetadata  # noqa: F401  # retained for type annotation reference
 
     if state.trino_conn:
         # Re-use the compilation context's column types if available
@@ -169,7 +170,7 @@ async def _build_catalog_tables_async(state) -> list[CatalogTable]:
     return tables
 
 
-def build_catalog_tables_from_context(state) -> list[CatalogTable]:
+def build_catalog_tables_from_context(state) -> list[CatalogTable]:  # REQ-127, REQ-128
     """Build catalog tables using in-memory compilation contexts.
 
     This is faster than querying PG and works in test scenarios.
@@ -220,7 +221,7 @@ def build_catalog_tables_from_context(state) -> list[CatalogTable]:
     return tables
 
 
-def catalog_table_to_arrow_schema(table: CatalogTable) -> pa.Schema:
+def catalog_table_to_arrow_schema(table: CatalogTable) -> pa.Schema:  # REQ-143
     """Convert a CatalogTable to an Arrow schema with metadata."""
     fields = []
     for col in table.columns:
@@ -246,7 +247,7 @@ def catalog_table_to_arrow_schema(table: CatalogTable) -> pa.Schema:
     return pa.schema(fields, metadata=schema_metadata)
 
 
-def catalog_table_to_flight_info(
+def catalog_table_to_flight_info(  # REQ-143
     table: CatalogTable,
     location: flight.Location | None = None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

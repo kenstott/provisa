@@ -5,6 +5,8 @@
 
 """Thin async wrappers around boto3 KMS and AES-256-GCM helpers."""
 
+# Requirements: REQ-073, REQ-074
+
 from __future__ import annotations
 
 import asyncio
@@ -19,7 +21,7 @@ def _kms_client():
     return boto3.client("kms", region_name=region)
 
 
-async def create_tenant_key(tenant_id: str) -> str:
+async def create_tenant_key(tenant_id: str) -> str:  # REQ-073, REQ-074
     """Create KMS CMK for tenant. Returns KeyArn."""
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(

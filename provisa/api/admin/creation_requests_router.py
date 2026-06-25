@@ -10,6 +10,8 @@
 
 """REST endpoints for the creation-request queue (REQ-063/434/480)."""
 
+# Requirements: REQ-042, REQ-060, REQ-063, REQ-366, REQ-434
+
 from __future__ import annotations
 
 import json
@@ -102,7 +104,7 @@ class RejectBody(BaseModel):
 
 
 @router.post("/")
-async def submit_request(body: SubmitBody, request: Request):
+async def submit_request(body: SubmitBody, request: Request):  # REQ-063, REQ-434
     if body.request_type not in _REJECTION_REASONS:
         raise HTTPException(
             status_code=400,
@@ -134,8 +136,8 @@ async def rejection_reasons():
 
 
 @router.get("/")
-async def list_requests(
-    request: Request,
+async def list_requests(  # REQ-063, REQ-434  # pyright: ignore[reportUnusedParameter]
+    _request: Request,
     status: str | None = Query(None),
     request_type: str | None = Query(None),
 ):
@@ -159,7 +161,7 @@ async def list_requests(
 
 
 @router.post("/{request_id}/approve")
-async def approve_request(request_id: int, request: Request):
+async def approve_request(request_id: int, request: Request):  # REQ-063, REQ-366, REQ-434
     user_id = _user_id(request)
     pool = _get_pool()
     async with pool.acquire() as _conn:
@@ -198,7 +200,9 @@ async def approve_request(request_id: int, request: Request):
 
 
 @router.post("/{request_id}/reject")
-async def reject_request(request_id: int, body: RejectBody, request: Request):
+async def reject_request(
+    request_id: int, body: RejectBody, request: Request
+):  # REQ-063, REQ-366, REQ-434
     pool = _get_pool()
     async with pool.acquire() as _conn:
         conn = cast(asyncpg.Connection, _conn)
@@ -227,7 +231,7 @@ async def reject_request(request_id: int, body: RejectBody, request: Request):
 
 
 @router.post("/{request_id}/execute")
-async def execute_request(request_id: int, request: Request):
+async def execute_request(request_id: int, request: Request):  # REQ-063, REQ-366, REQ-434
     pool = _get_pool()
     async with pool.acquire() as _conn:
         conn = cast(asyncpg.Connection, _conn)

@@ -19,21 +19,23 @@ import duckdb
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.trino import QueryResult
 
+# Requirements: REQ-027, REQ-068
 
-class DuckDBDriver(DirectDriver):
+
+class DuckDBDriver(DirectDriver):  # REQ-027, REQ-068
     def __init__(self) -> None:
         self._conn: duckdb.DuckDBPyConnection | None = None
         self._database: str = ":memory:"
 
-    async def connect(
+    async def connect(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
-        host: str,
-        port: int,
+        host: str,  # pyright: ignore[reportUnusedParameter]
+        port: int,  # pyright: ignore[reportUnusedParameter]
         database: str,
-        user: str,
-        password: str,
-        min_pool: int = 1,
-        max_pool: int = 5,
+        user: str,  # pyright: ignore[reportUnusedParameter]
+        password: str,  # pyright: ignore[reportUnusedParameter]
+        min_pool: int = 1,  # pyright: ignore[reportUnusedParameter]
+        max_pool: int = 5,  # pyright: ignore[reportUnusedParameter]
     ) -> None:
         # DuckDB: database is a file path or :memory:
         self._database = database

@@ -10,10 +10,14 @@
 
 """GraphQL variables to parameterized SQL. Never interpolates values."""
 
+# Requirements: REQ-301, REQ-211
+
 import re as _re
 
 
-def _sql_literal(val: object) -> str:
+def _sql_literal(
+    val: object,  # object-ok: accepts any SQL-serializable scalar (None, bool, int, float, str)
+) -> str:
     if val is None:
         return "NULL"
     if isinstance(val, bool):
@@ -103,7 +107,9 @@ class ParamCollector:
     def __init__(self) -> None:
         self._params: list = []
 
-    def add(self, value: object) -> str:
+    def add(
+        self, value: object
+    ) -> str:  # object-ok: accepts any SQL-serializable scalar (None, bool, int, float, str)
         """Add a parameter value and return its placeholder string."""
         self._params.append(value)
         return f"${len(self._params)}"

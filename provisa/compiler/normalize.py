@@ -3,6 +3,8 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
+# Requirements: REQ-049, REQ-009
+
 """Normalized (relational) result decomposition (REQ-049).
 
 A nested query is shredded back into one relational table per entity type it projects,
@@ -219,7 +221,7 @@ def _prune_document(pn: _PathNode, required_cols: set[str]) -> DocumentNode:
     return DocumentNode(definitions=(op,))
 
 
-def compile_normalized(
+def compile_normalized(  # REQ-049
     document: DocumentNode,
     ctx: CompilationContext,
     variables: dict | None = None,

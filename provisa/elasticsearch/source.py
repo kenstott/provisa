@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-017, REQ-250, REQ-251, REQ-252
 
 ES_TYPE_TO_TRINO = {
     "text": "VARCHAR",
@@ -44,7 +45,7 @@ ES_TYPE_TO_TRINO = {
 
 
 @dataclass
-class ESColumn:
+class ESColumn:  # REQ-251
     """Column definition with optional nested path mapping."""
 
     name: str
@@ -53,7 +54,7 @@ class ESColumn:
 
 
 @dataclass
-class ESTableConfig:
+class ESTableConfig:  # REQ-251
     """Table mapped from an Elasticsearch index or index pattern."""
 
     name: str
@@ -63,7 +64,7 @@ class ESTableConfig:
 
 
 @dataclass
-class ESSourceConfig:
+class ESSourceConfig:  # REQ-250, REQ-251
     """Elasticsearch source connection + table mappings."""
 
     id: str
@@ -75,7 +76,7 @@ class ESSourceConfig:
     tables: list[ESTableConfig] = field(default_factory=list)
 
 
-def generate_catalog_properties(config: ESSourceConfig) -> dict[str, str]:
+def generate_catalog_properties(config: ESSourceConfig) -> dict[str, str]:  # REQ-250
     """Generate Trino Elasticsearch connector catalog properties."""
     props = {
         "connector.name": "elasticsearch",
@@ -92,7 +93,7 @@ def generate_catalog_properties(config: ESSourceConfig) -> dict[str, str]:
     return props
 
 
-def generate_table_definitions(config: ESSourceConfig) -> list[dict]:
+def generate_table_definitions(config: ESSourceConfig) -> list[dict]:  # REQ-250, REQ-251
     """Generate table definition entries for each configured index."""
     definitions = []
     for table in config.tables:
@@ -113,7 +114,7 @@ def generate_table_definitions(config: ESSourceConfig) -> list[dict]:
     return definitions
 
 
-def discover_schema(index_mapping: dict) -> list[dict]:
+def discover_schema(index_mapping: dict) -> list[dict]:  # REQ-252
     """Infer columns from an Elasticsearch index mapping.
 
     Args:
@@ -128,7 +129,7 @@ def discover_schema(index_mapping: dict) -> list[dict]:
     return columns
 
 
-def extract_mapping_properties(mapping_response: dict, index: str) -> dict:
+def extract_mapping_properties(mapping_response: dict, index: str) -> dict:  # REQ-252
     """Extract ``mappings.properties`` from a GET /<index>/_mapping response (REQ-252).
 
     ES returns ``{<index>: {"mappings": {"properties": {...}}}}``. When the request used an
@@ -145,7 +146,7 @@ def extract_mapping_properties(mapping_response: dict, index: str) -> dict:
     return properties
 
 
-def fetch_index_mapping(host: str, port: int, index: str, use_ssl: bool = False) -> dict:
+def fetch_index_mapping(host: str, port: int, index: str, use_ssl: bool = False) -> dict:  # REQ-252
     """Fetch the live ``mappings.properties`` for an index via GET /<index>/_mapping (REQ-252).
 
     Raises on any transport/HTTP error — discovery must not silently produce empty columns.

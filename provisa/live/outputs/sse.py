@@ -38,15 +38,17 @@ from provisa.live.outputs.base import LiveOutput
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-258, REQ-260, REQ-286
 
-class SSEFanout(LiveOutput):
+
+class SSEFanout(LiveOutput):  # REQ-258, REQ-260, REQ-286
     """Fan-out new rows to all subscribed SSE client queues."""
 
     def __init__(self, query_id: str) -> None:
         self.query_id = query_id
         self._queues: list[asyncio.Queue] = []
 
-    def subscribe(self) -> asyncio.Queue:
+    def subscribe(self) -> asyncio.Queue:  # REQ-258, REQ-286
         """Register a new client queue and return it."""
         q: asyncio.Queue = asyncio.Queue()
         self._queues.append(q)

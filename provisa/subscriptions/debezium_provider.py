@@ -19,6 +19,8 @@ Debezium topic naming convention: {prefix}.{database}.{table}
 Debezium op codes: c=create, u=update, d=delete, r=read/snapshot
 """
 
+# Requirements: REQ-261, REQ-285
+
 from __future__ import annotations
 
 import json
@@ -35,6 +37,7 @@ class _KafkaConsumer(Protocol):
     async def stop(self) -> None: ...
     def __aiter__(self) -> AsyncIterator[object]: ...
 
+
 log = logging.getLogger(__name__)
 
 # Map Debezium op codes to internal operation names
@@ -46,7 +49,7 @@ _OP_MAP = {
 }
 
 
-class DebeziumNotificationProvider(NotificationProvider):
+class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
     """Consumes Debezium CDC events from Kafka and emits ChangeEvents.
 
     Supports JSON deserialization by default. When schema_registry_url is
@@ -98,7 +101,9 @@ class DebeziumNotificationProvider(NotificationProvider):
             log.warning("DebeziumProvider: invalid JSON message: %s", exc)
             return None
 
-    def _parse_avro_message(self, raw: bytes, deserializer: Callable[[bytes, None], dict | None]) -> dict | None:
+    def _parse_avro_message(
+        self, raw: bytes, deserializer: Callable[[bytes, None], dict | None]
+    ) -> dict | None:
         """Deserialize an Avro-encoded Debezium message using Schema Registry."""
         try:
             return deserializer(raw, None)
@@ -231,9 +236,7 @@ class DebeziumNotificationProvider(NotificationProvider):
                     yield event
 
         except Exception as exc:
-            log.exception(
-                "DebeziumProvider: error consuming topic %s: %s", topic, exc
-            )
+            log.exception("DebeziumProvider: error consuming topic %s: %s", topic, exc)
             raise
         finally:
             await self._consumer.stop()

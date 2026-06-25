@@ -14,6 +14,8 @@ Functions produce: `SELECT * FROM schema.func($1, $2)` style calls.
 Webhooks produce: HTTP POST mutations with inline or table-mapped return types.
 """
 
+# Requirements: REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-210, REQ-211, REQ-304, REQ-305, REQ-306, REQ-360, REQ-361, REQ-362
+
 from __future__ import annotations
 
 from typing import cast
@@ -81,7 +83,7 @@ def _build_inline_return_type(
     return cast(GraphQLObjectType, GraphQLObjectType(f"{name}Result", lambda fields=gql_fields: fields))
 
 
-def build_function_mutations(
+def build_function_mutations(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-210, REQ-211, REQ-304, REQ-305, REQ-306, REQ-360, REQ-361, REQ-362
     functions: list[Function],
     webhooks: list[Webhook],
     table_gql_types: dict[str, GraphQLObjectType] | None = None,
@@ -154,7 +156,7 @@ def build_function_mutations(
     return mutation_fields
 
 
-def build_function_sql(func: Function, arg_values: list) -> tuple[str, list]:
+def build_function_sql(func: Function, arg_values: list) -> tuple[str, list]:  # REQ-205, REQ-208, REQ-211
     """Build SQL for a tracked function call.
 
     Returns (sql, params) tuple.

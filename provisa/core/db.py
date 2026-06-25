@@ -10,6 +10,8 @@
 
 """asyncpg connection pool factory."""
 
+# Requirements: REQ-052, REQ-040
+
 import asyncio
 import json
 
@@ -29,7 +31,7 @@ async def _init_conn(conn: asyncpg.Connection) -> None:
     )
 
 
-async def create_pool(
+async def create_pool(  # REQ-052
     host: str,
     port: int,
     database: str,
@@ -63,7 +65,9 @@ async def init_schema(pool: asyncpg.Pool, schema_sql: str) -> None:
             await conn.execute("SELECT pg_advisory_unlock(7337)")
 
 
-async def set_tenant_context(conn: asyncpg.Connection, tenant_id: str | None) -> None:
+async def set_tenant_context(
+    conn: asyncpg.Connection, tenant_id: str | None
+) -> None:  # REQ-040, REQ-041
     """Set app.tenant_id session variable for RLS. Call at start of each transaction."""
     if tenant_id:
         await conn.execute(f"SET LOCAL app.tenant_id = '{tenant_id}'")

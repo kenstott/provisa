@@ -10,6 +10,8 @@
 
 """Per-tenant compiled state container and in-memory cache."""
 
+# Requirements: REQ-008, REQ-253
+
 from __future__ import annotations
 
 import time
@@ -21,7 +23,7 @@ from provisa.compiler.rls import RLSContext
 
 
 @dataclass
-class TenantContext:
+class TenantContext:  # REQ-008, REQ-253
     tenant_id: str
     config: ProvisaConfig
     compilation_contexts: dict[str, CompilationContext] = field(default_factory=dict)
@@ -33,7 +35,7 @@ class TenantContext:
         return (time.monotonic() - self.built_at) < ttl_seconds
 
 
-class TenantContextCache:
+class TenantContextCache:  # REQ-008, REQ-253
     """In-memory cache of per-tenant compiled contexts. TTL 5 min."""
 
     def __init__(self, ttl_seconds: int = 300) -> None:

@@ -10,6 +10,8 @@
 
 """Built-in value transforms for API source columns (Phase U)."""
 
+# Requirements: REQ-316, REQ-318
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -34,7 +36,9 @@ TRANSFORM_REGISTRY: dict[str, Callable] = {
 }
 
 
-def apply_transform(name: str, value: object) -> object:
+def apply_transform(
+    name: str, value: object, /
+) -> object:  # object-ok: registry holds heterogeneous transform functions; concrete type unknown at this boundary
     """Apply a named transform to a value."""
     fn = TRANSFORM_REGISTRY.get(name)
     if fn is None:

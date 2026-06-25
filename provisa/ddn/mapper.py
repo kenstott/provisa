@@ -11,6 +11,8 @@
 
 """Map DDN intermediate models to Provisa config objects."""
 
+# Requirements: REQ-183, REQ-184, REQ-185, REQ-187, REQ-188, REQ-189, REQ-196
+
 from __future__ import annotations
 
 from typing import TypedDict, cast
@@ -91,7 +93,7 @@ def _safe_id(name: str) -> str:
     return name.replace(" ", "_").replace(".", "_").replace("/", "_")
 
 
-def _map_connectors(
+def _map_connectors(  # REQ-183
     connectors: list[DDNConnector],
     source_overrides: SourceOverrides | None,
 ) -> list[Source]:
@@ -118,7 +120,7 @@ def _map_connectors(
     return sources
 
 
-def _build_field_to_column_map(
+def _build_field_to_column_map(  # REQ-189
     object_types: list[DDNObjectType],
 ) -> dict[str, dict[str, str]]:
     """Build mapping: object_type_name -> {graphql_field -> physical_column}.
@@ -184,7 +186,7 @@ def _model_table_id(model: DDNModel, connector_name: str) -> str:
     return f"{source_id}.public.{collection}"
 
 
-def _map_model_to_table(
+def _map_model_to_table(  # REQ-183, REQ-185, REQ-189
     model: DDNModel,
     ot: DDNObjectType,
     field_col_maps: dict[str, dict[str, str]],
@@ -235,7 +237,7 @@ def _map_model_to_table(
     )
 
 
-def _map_rls_rules(
+def _map_rls_rules(  # REQ-184, REQ-187
     model_perms_idx: dict[str, list[DDNModelPermission]],
     model_index: dict[str, DDNModel],
     field_col_maps: dict[str, dict[str, str]],
@@ -264,7 +266,7 @@ def _map_rls_rules(
     return rules
 
 
-def _ddn_filter_to_sql(
+def _ddn_filter_to_sql(  # REQ-184, REQ-187
     flt: DdnFilterNode,
     field_col_map: dict[str, str],
 ) -> str:
@@ -333,7 +335,7 @@ def _ddn_op_to_sql(col: str, op: str, operand: DdnOperand) -> str:
     return f"{col} {sql_op} {operand}"
 
 
-def _map_relationships(
+def _map_relationships(  # REQ-183, REQ-188, REQ-189
     ddn_rels: list[DDNRelationship],
     model_index: dict[str, DDNModel],
     ot_index: dict[str, DDNObjectType],
@@ -436,7 +438,7 @@ def _map_commands(
     return functions
 
 
-def _map_aggregate_expressions(
+def _map_aggregate_expressions(  # REQ-196
     agg_exprs: list[DDNAggregateExpression],
 ) -> dict[str, AggConfig]:
     """Map DDN AggregateExpressions to aggregate config dicts.
@@ -454,7 +456,7 @@ def _map_aggregate_expressions(
     return result
 
 
-def convert_hml(
+def convert_hml(  # REQ-183, REQ-184, REQ-185, REQ-187, REQ-188, REQ-189, REQ-196
     metadata: DDNMetadata,
     collector: WarningCollector | None = None,
     domain_map: dict[str, str] | None = None,

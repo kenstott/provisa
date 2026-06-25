@@ -27,6 +27,8 @@ Two execution paths:
 Requires role capability "ddl".
 """
 
+# Requirements: REQ-042, REQ-060
+
 from __future__ import annotations
 
 import asyncio
@@ -48,7 +50,6 @@ _VIEW_RE = re.compile(
 _CREATE_TABLE_OR_VIEW_RE = re.compile(
     r"^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW)\b", re.IGNORECASE
 )
-_TRINO_ONLY_CATALOGS = {"iceberg", "hive", "otel", "results"}
 
 
 def _ddl_kind(sql: str) -> str:
@@ -68,11 +69,11 @@ def _command_tag(sql: str) -> str:
     return kind if kind not in ("TABLE", "VIEW") else f"CREATE {kind}"
 
 
-class DdlHandler:
+class DdlHandler:  # REQ-042, REQ-060
     def __init__(self, handler):
         self._handler = handler
 
-    def handle(self, ctx, sql: str) -> str:
+    def handle(self, ctx, sql: str) -> str:  # REQ-042, REQ-060
         """Execute DDL and return the PG command-complete tag."""
         from provisa.api.app import state
 
@@ -114,7 +115,7 @@ class DdlHandler:
                 return target
         raise PermissionError(f"No ddl_catalog configured on domain for role {role_id!r}")
 
-    def _exec_trino(self, ctx, sql, write_catalog, write_schema, role_id, state):
+    def _exec_trino(self, _ctx, sql, write_catalog, write_schema, role_id, state):
         kind = _ddl_kind(sql)
         pattern = _VIEW_RE if kind == "VIEW" else _TABLE_RE
         m = pattern.match(sql)
@@ -136,7 +137,7 @@ class DdlHandler:
         future.result(timeout=60)
         _register_ddl_object(role_id, table_name, write_catalog, write_schema, kind)
 
-    def _exec_direct(self, ctx, sql, source_id, write_schema, role_id, state):
+    def _exec_direct(self, _ctx, sql, source_id, write_schema, role_id, state):
         # For CREATE TABLE/VIEW: qualify unqualified name with write_schema
         if _CREATE_TABLE_OR_VIEW_RE.match(sql):
             kind = _ddl_kind(sql)

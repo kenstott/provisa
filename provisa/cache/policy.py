@@ -14,6 +14,8 @@ Determines whether a query result should be cached and with what TTL.
 Supports hierarchical TTL: table → source → global default (most specific wins).
 """
 
+# Requirements: REQ-199, REQ-231
+
 from __future__ import annotations
 
 from enum import Enum
@@ -59,9 +61,12 @@ def resolve_policy(
     # Resolve TTL: table → query → source → global (first non-null wins)
     resolved_ttl = (
         table_cache_ttl
-        if table_cache_ttl is not None else cache_ttl
-        if cache_ttl is not None else source_cache_ttl
-        if source_cache_ttl is not None else default_ttl
+        if table_cache_ttl is not None
+        else cache_ttl
+        if cache_ttl is not None
+        else source_cache_ttl
+        if source_cache_ttl is not None
+        else default_ttl
     )
 
     # TTL ≤ 0 means caching disabled

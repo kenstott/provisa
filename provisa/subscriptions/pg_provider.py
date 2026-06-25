@@ -10,6 +10,8 @@
 
 """PostgreSQL LISTEN/NOTIFY subscription provider."""
 
+# Requirements: REQ-258
+
 from __future__ import annotations
 
 import asyncio
@@ -28,7 +30,7 @@ log = logging.getLogger(__name__)
 CHANNEL_PREFIX = "provisa_"
 
 
-class PgNotificationProvider(NotificationProvider):
+class PgNotificationProvider(NotificationProvider):  # REQ-258
     """Wraps asyncpg LISTEN/NOTIFY into the NotificationProvider interface."""
 
     def __init__(self, pool: asyncpg.Pool) -> None:
@@ -41,7 +43,9 @@ class PgNotificationProvider(NotificationProvider):
         channel = f"{CHANNEL_PREFIX}{table}"
         queue: asyncio.Queue[str] = asyncio.Queue()
 
-        def _on_notify(conn: asyncpg.pool.PoolConnectionProxy, pid: int, ch: str, payload: str) -> None:
+        def _on_notify(
+            conn: asyncpg.pool.PoolConnectionProxy, pid: int, ch: str, payload: str
+        ) -> None:
             queue.put_nowait(payload)
 
         self._conn = await self._pool.acquire()
@@ -77,14 +81,14 @@ class PgNotificationProvider(NotificationProvider):
             await self._pool.release(self._conn)
             self._conn = None
 
-    async def watch_many(
-        self, tables: list[str]
-    ) -> AsyncGenerator[ChangeEvent, None]:
+    async def watch_many(self, tables: list[str]) -> AsyncGenerator[ChangeEvent, None]:
         """Listen on multiple table channels; any change event triggers a yield."""
         channels = [f"{CHANNEL_PREFIX}{t}" for t in tables]
         queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
 
-        def _on_notify(conn: asyncpg.pool.PoolConnectionProxy, pid: int, ch: str, payload: str) -> None:
+        def _on_notify(
+            conn: asyncpg.pool.PoolConnectionProxy, pid: int, ch: str, payload: str
+        ) -> None:
             queue.put_nowait((ch, payload))
 
         self._conn = await self._pool.acquire()
@@ -105,7 +109,7 @@ class PgNotificationProvider(NotificationProvider):
                     log.warning("PgProvider: invalid JSON payload: %s", payload)
                     continue
 
-                table = ch[len(CHANNEL_PREFIX):]
+                table = ch[len(CHANNEL_PREFIX) :]
                 op = parsed.get("op", "unknown").lower()
                 row = parsed.get("row", {})
                 yield ChangeEvent(

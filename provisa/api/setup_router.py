@@ -10,6 +10,8 @@
 
 """First-run setup wizard endpoints."""
 
+# Requirements: REQ-120, REQ-121, REQ-124, REQ-125, REQ-471, REQ-472, REQ-539
+
 from __future__ import annotations
 
 import os
@@ -28,35 +30,6 @@ def _is_demo() -> bool:
 def _idp_override() -> str | None:
     v = os.environ.get("PROVISA_IDP", "").strip()
     return v if v else None
-
-
-async def _seed_demo_admin(pool) -> None:
-    import uuid
-    from provisa.api.admin._config_io import config_path, read_config, write_config
-
-    async with pool.acquire() as conn:
-        count = await conn.fetchval("SELECT COUNT(*) FROM local_users")
-        if count == 0:
-            pw_hash = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode("utf-8")
-            await conn.execute(
-                "INSERT INTO local_users (id, username, password_hash, display_name, is_active) "
-                "VALUES ($1, 'admin', $2, 'Admin', true) ON CONFLICT DO NOTHING",
-                str(uuid.uuid4()),
-                pw_hash,
-            )
-
-    cfg_path = config_path()
-    cfg = read_config()
-    if "auth" not in cfg:
-        cfg["auth"] = {
-            "provider": "basic",
-            "assignments_source": "provisa",
-            "default_assignments": [{"role_id": "admin", "domain_id": "*"}],
-        }
-        write_config(cfg_path, cfg)
-        from provisa.api.app import _load_and_build
-
-        await _load_and_build(str(cfg_path))
 
 
 async def _auto_configure_idp(provider: str, pool) -> None:
@@ -102,7 +75,7 @@ async def _auto_configure_idp(provider: str, pool) -> None:
 
 
 @router.get("/status")
-async def setup_status():
+async def setup_status():  # REQ-539
     from provisa.api.app import state
     from provisa.api.admin._config_io import read_config
 
@@ -150,7 +123,7 @@ class SetupRequest(BaseModel):
 
 
 @router.post("/")
-async def run_setup(body: SetupRequest):
+async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, REQ-471, REQ-472
     import uuid
     from provisa.api.app import state, _load_and_build
     from provisa.api.admin._config_io import config_path, read_config, write_config

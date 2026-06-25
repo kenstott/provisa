@@ -25,8 +25,14 @@ from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-338, REQ-339, REQ-340, REQ-341
 
-def _extract_path(data: object, path: str) -> object:  # object-ok: parsed JSON — isinstance-narrowed before every attribute access
+
+def _extract_path(
+    data: object, path: str
+) -> (
+    object
+):  # object-ok: parsed JSON — isinstance-narrowed before every attribute access  # REQ-340
     """Walk a dot-notation path into nested dicts/lists. Returns None on miss."""
     for segment in path.split("."):
         if isinstance(data, dict):
@@ -41,7 +47,7 @@ def _extract_path(data: object, path: str) -> object:  # object-ok: parsed JSON 
     return data
 
 
-class WebSocketNotificationProvider(NotificationProvider):
+class WebSocketNotificationProvider(NotificationProvider):  # REQ-338, REQ-339, REQ-340, REQ-341
     """Connects to an external WebSocket URL and yields ChangeEvents.
 
     Args:
@@ -69,7 +75,7 @@ class WebSocketNotificationProvider(NotificationProvider):
 
     async def watch(
         self, table: str, filter_expr: str | None = None
-    ) -> AsyncGenerator[ChangeEvent, None]:
+    ) -> AsyncGenerator[ChangeEvent, None]:  # REQ-338, REQ-339, REQ-340, REQ-341
         import websockets
 
         log.info("WebSocketProvider: connecting to %s", self._url)
@@ -95,7 +101,11 @@ class WebSocketNotificationProvider(NotificationProvider):
                         if not isinstance(data, dict):
                             data = {"value": data}
 
-                        op = cast(str, data.pop("op", "insert")).lower() if "op" in data else "insert"
+                        op = (
+                            cast(str, data.pop("op", "insert")).lower()
+                            if "op" in data
+                            else "insert"
+                        )
 
                         ts_raw = data.get("_ts") or data.get("timestamp")
                         if isinstance(ts_raw, str):

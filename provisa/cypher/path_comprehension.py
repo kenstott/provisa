@@ -23,6 +23,8 @@ import re
 
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 
+# Requirements: REQ-345, REQ-347, REQ-349, REQ-351
+
 
 def _prop(expr: str) -> str:
     """Rewrite ident.prop → ident."prop" for SQL."""
@@ -35,18 +37,18 @@ def _prop(expr: str) -> str:
 
 # Pattern: [(src_var:Label?)-[:REL_TYPE?]->( tgt_var:Label?) | expr]
 _PATH_COMP_RE = re.compile(
-    r'\[\s*'
-    r'\(\s*([A-Za-z_]\w*)\s*(?::[A-Za-z_]\w*)?\s*\)'  # (src_var[:Label]?)
-    r'\s*-\[(?::([A-Za-z_]\w+))?\s*\]->\s*'            # -[:REL_TYPE?]->
-    r'\(\s*([A-Za-z_]\w*)\s*(?::([A-Za-z_]\w+))?\s*\)' # (tgt_var[:Label]?)
-    r'\s*\|\s*'
-    r'([^\]]+?)'                                         # | expr
-    r'\s*\]',
+    r"\[\s*"
+    r"\(\s*([A-Za-z_]\w*)\s*(?::[A-Za-z_]\w*)?\s*\)"  # (src_var[:Label]?)
+    r"\s*-\[(?::([A-Za-z_]\w+))?\s*\]->\s*"  # -[:REL_TYPE?]->
+    r"\(\s*([A-Za-z_]\w*)\s*(?::([A-Za-z_]\w+))?\s*\)"  # (tgt_var[:Label]?)
+    r"\s*\|\s*"
+    r"([^\]]+?)"  # | expr
+    r"\s*\]",
     re.IGNORECASE,
 )
 
 
-class PathComprehensionMixin:
+class PathComprehensionMixin:  # REQ-345, REQ-347, REQ-349, REQ-351
     """Mixin for _Translator: translates pattern comprehensions."""
 
     _lm: CypherLabelMap
@@ -54,6 +56,7 @@ class PathComprehensionMixin:
 
     def _rewrite_path_comprehensions(self, text: str) -> str:
         """Rewrite Cypher path comprehensions to ARRAY(SELECT ...) subqueries."""
+
         def _replace(m: re.Match) -> str:
             src_var = m.group(1)
             rel_type = m.group(2).upper() if m.group(2) else None
@@ -72,7 +75,8 @@ class PathComprehensionMixin:
                 candidates = self._lm.relationships_for(src_nm.type_name, tgt_label or "")
                 if not candidates and tgt_label:
                     candidates = [
-                        r for r in self._lm.relationships.values()
+                        r
+                        for r in self._lm.relationships.values()
                         if r.source_label == (src_nm.type_name if src_nm else None)
                         and r.target_label == tgt_label
                     ]
@@ -87,9 +91,7 @@ class PathComprehensionMixin:
                 return m.group(0)
 
             # Resolve inner expression: tgt_var.prop → tgt_var."prop"
-            inner_sql = _prop(
-                re.sub(rf'\b{re.escape(tgt_var)}\s*\.\s*', f'{tgt_var}.', inner_expr)
-            )
+            inner_sql = _prop(re.sub(rf"\b{re.escape(tgt_var)}\s*\.\s*", f"{tgt_var}.", inner_expr))
 
             src_alias = self._var_table.get(src_var, (src_var, None))[0]
             if rel_mapping.source_constant is not None:
@@ -97,10 +99,10 @@ class PathComprehensionMixin:
             else:
                 src_ref = f'{src_alias}."{rel_mapping.join_source_column}"'
             subquery_sql = (
-                f'SELECT {inner_sql} '
+                f"SELECT {inner_sql} "
                 f'FROM "{tgt_nm.catalog_name}"."{tgt_nm.schema_name}"."{tgt_nm.sql_table_name}" AS {tgt_var} '
                 f'WHERE {src_ref} = {tgt_var}."{rel_mapping.join_target_column}"'
             )
-            return f'ARRAY({subquery_sql})'
+            return f"ARRAY({subquery_sql})"
 
         return _PATH_COMP_RE.sub(_replace, text)

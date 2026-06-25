@@ -10,6 +10,8 @@
 
 """Function/webhook repository — CRUD for tracked functions and webhooks in PG config DB."""
 
+# Requirements: REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-210, REQ-211, REQ-304, REQ-305, REQ-306, REQ-360, REQ-361, REQ-362
+
 from __future__ import annotations
 
 import json
@@ -20,7 +22,7 @@ from provisa.core import domain_policy
 from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
 
 
-async def upsert_function(
+async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-306
     conn: asyncpg.Connection,
     func: Function,
     return_schema: str | None = None,
@@ -64,11 +66,9 @@ async def upsert_function(
     return func_id
 
 
-async def get_function(conn: asyncpg.Connection, name: str) -> dict | None:
+async def get_function(conn: asyncpg.Connection, name: str) -> dict | None:  # REQ-205, REQ-304
     """Get a tracked function by name."""
-    row = await conn.fetchrow(
-        "SELECT * FROM tracked_functions WHERE name = $1", name
-    )
+    row = await conn.fetchrow("SELECT * FROM tracked_functions WHERE name = $1", name)
     if not row:
         return None
     result = dict(row)
@@ -76,7 +76,7 @@ async def get_function(conn: asyncpg.Connection, name: str) -> dict | None:
     return result
 
 
-async def list_functions(conn: asyncpg.Connection) -> list[dict]:
+async def list_functions(conn: asyncpg.Connection) -> list[dict]:  # REQ-205, REQ-360
     """List all tracked functions."""
     rows = await conn.fetch("SELECT * FROM tracked_functions ORDER BY id")
     result = []
@@ -87,15 +87,15 @@ async def list_functions(conn: asyncpg.Connection) -> list[dict]:
     return result
 
 
-async def delete_function(conn: asyncpg.Connection, name: str) -> bool:
+async def delete_function(conn: asyncpg.Connection, name: str) -> bool:  # REQ-205
     """Delete a tracked function by name."""
-    result = await conn.execute(
-        "DELETE FROM tracked_functions WHERE name = $1", name
-    )
+    result = await conn.execute("DELETE FROM tracked_functions WHERE name = $1", name)
     return result == "DELETE 1"
 
 
-async def upsert_webhook(conn: asyncpg.Connection, wh: Webhook) -> int | None:
+async def upsert_webhook(
+    conn: asyncpg.Connection, wh: Webhook
+) -> int | None:  # REQ-209, REQ-210, REQ-211
     """Upsert a tracked webhook. Returns the row id."""
     wh_id = await conn.fetchval(
         """
@@ -131,11 +131,9 @@ async def upsert_webhook(conn: asyncpg.Connection, wh: Webhook) -> int | None:
     return wh_id
 
 
-async def get_webhook(conn: asyncpg.Connection, name: str) -> dict | None:
+async def get_webhook(conn: asyncpg.Connection, name: str) -> dict | None:  # REQ-209, REQ-210
     """Get a tracked webhook by name."""
-    row = await conn.fetchrow(
-        "SELECT * FROM tracked_webhooks WHERE name = $1", name
-    )
+    row = await conn.fetchrow("SELECT * FROM tracked_webhooks WHERE name = $1", name)
     if not row:
         return None
     result = dict(row)
@@ -146,7 +144,7 @@ async def get_webhook(conn: asyncpg.Connection, name: str) -> dict | None:
     return result
 
 
-async def list_webhooks(conn: asyncpg.Connection) -> list[dict]:
+async def list_webhooks(conn: asyncpg.Connection) -> list[dict]:  # REQ-209, REQ-360
     """List all tracked webhooks."""
     rows = await conn.fetch("SELECT * FROM tracked_webhooks ORDER BY id")
     result = []
@@ -160,15 +158,13 @@ async def list_webhooks(conn: asyncpg.Connection) -> list[dict]:
     return result
 
 
-async def delete_webhook(conn: asyncpg.Connection, name: str) -> bool:
+async def delete_webhook(conn: asyncpg.Connection, name: str) -> bool:  # REQ-209
     """Delete a tracked webhook by name."""
-    result = await conn.execute(
-        "DELETE FROM tracked_webhooks WHERE name = $1", name
-    )
+    result = await conn.execute("DELETE FROM tracked_webhooks WHERE name = $1", name)
     return result == "DELETE 1"
 
 
-def function_from_dict(d: dict) -> Function:
+def function_from_dict(d: dict) -> Function:  # REQ-205, REQ-304
     """Reconstruct a Function model from a DB row dict."""
     return Function(
         name=d["name"],
@@ -185,7 +181,7 @@ def function_from_dict(d: dict) -> Function:
     )
 
 
-def webhook_from_dict(d: dict) -> Webhook:
+def webhook_from_dict(d: dict) -> Webhook:  # REQ-209, REQ-210
     """Reconstruct a Webhook model from a DB row dict."""
     return Webhook(
         name=d["name"],

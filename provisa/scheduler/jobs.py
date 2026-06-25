@@ -9,6 +9,7 @@
 Registers cron-based jobs from config. Supports webhook URLs and
 internal function names. Reuses existing async patterns.
 """
+# Requirements: REQ-216, REQ-177, REQ-302, REQ-303
 
 from __future__ import annotations
 
@@ -27,12 +28,14 @@ if TYPE_CHECKING:
 
     from provisa.core.models import ScheduledTrigger
 
-    _TrinoCursor = trino.dbapi.Cursor
+    _TrinoCursor = trino.dbapi.Cursor  # pyright: ignore[reportUnusedVariable]
 
 logger = logging.getLogger(__name__)
 
 
-async def _execute_webhook(url: str, trigger_id: str, args: dict | None = None) -> None:
+async def _execute_webhook(
+    url: str, trigger_id: str, args: dict | None = None
+) -> None:  # REQ-216, REQ-209
     """Fire a webhook for a scheduled trigger."""
     try:
         payload: dict = {"trigger_id": trigger_id}
@@ -46,7 +49,7 @@ async def _execute_webhook(url: str, trigger_id: str, args: dict | None = None) 
         logger.exception("Trigger %s: webhook %s failed", trigger_id, url)
 
 
-async def compact_otel_signals() -> None:
+async def compact_otel_signals() -> None:  # REQ-302, REQ-303
     """Compact today's OTEL Parquet from MinIO into Iceberg via Trino.
 
     Runs every minute. Deletes existing rows for today's partition before
@@ -292,7 +295,7 @@ def _cast_table_to_trino_schema(
 
 
 def _build_insert_columns(
-    signal: str,
+    _signal: str,
     table: pa.Table,
     trino_cols: dict[str, str],
     extract_trace_attrs: bool,
@@ -495,7 +498,9 @@ def _trino_ping(conn: trino.dbapi.Connection) -> None:
     cur.fetchone()
 
 
-def build_scheduler(triggers: list[ScheduledTrigger]) -> AsyncIOScheduler | None:
+def build_scheduler(
+    triggers: list[ScheduledTrigger],
+) -> AsyncIOScheduler | None:  # REQ-216, REQ-177
     """Build an APScheduler instance from config triggers.
 
     Returns None if no enabled triggers exist.

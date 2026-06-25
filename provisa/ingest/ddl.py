@@ -12,17 +12,35 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+# Requirements: REQ-332, REQ-333, REQ-334, REQ-337
+
 # Allowlisted SQL column types — any other value falls back to TEXT.
-_ALLOWED_TYPES: frozenset[str] = frozenset({
-    "text", "integer", "bigint", "real", "numeric", "boolean",
-    "timestamp", "timestamptz", "jsonb", "date", "uuid", "smallint",
-    "float", "double precision", "varchar",
-})
+_ALLOWED_TYPES: frozenset[str] = frozenset(
+    {
+        "text",
+        "integer",
+        "bigint",
+        "real",
+        "numeric",
+        "boolean",
+        "timestamp",
+        "timestamptz",
+        "jsonb",
+        "date",
+        "uuid",
+        "smallint",
+        "float",
+        "double precision",
+        "varchar",
+    }
+)
 
 _DEFAULT_TYPE = "text"
 
 
-def _safe_type(data_type: str | None) -> str:
+def _safe_type(data_type: str | None) -> str:  # REQ-337
     """Normalise and validate a steward-declared SQL type."""
     if not data_type:
         return _DEFAULT_TYPE
@@ -30,7 +48,7 @@ def _safe_type(data_type: str | None) -> str:
     return dt if dt in _ALLOWED_TYPES else _DEFAULT_TYPE
 
 
-def generate_create_table(table_name: str, columns: list[dict]) -> str:
+def generate_create_table(table_name: str, columns: list[dict]) -> str:  # REQ-332, REQ-333
     """Return CREATE TABLE IF NOT EXISTS DDL for an ingest backing table.
 
     Args:
@@ -57,7 +75,7 @@ def generate_create_table(table_name: str, columns: list[dict]) -> str:
     return f"CREATE TABLE IF NOT EXISTS {table_name} (\n    {joined}\n)"
 
 
-def extract_value(payload: dict, path: str | None) -> object:
+def extract_value(payload: dict, path: str | None) -> Any:  # REQ-334
     """Extract a value from a nested dict using dot-notation *path*.
 
     ``path`` of ``"resourceLogs.0.resource.attributes"`` walks into
@@ -67,7 +85,7 @@ def extract_value(payload: dict, path: str | None) -> object:
     """
     if not path:
         return None
-    cur: object = payload
+    cur: Any = payload
     for seg in path.split("."):
         if isinstance(cur, dict):
             cur = cur.get(seg)

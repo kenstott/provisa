@@ -36,12 +36,14 @@ GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
 
 from provisa.compiler.introspect import ColumnMetadata
 
+# Requirements: REQ-259, REQ-393, REQ-394
+
 FEDERATION_LINK_URL = "https://specs.apollo.dev/federation/v2.3"
 FEDERATION_IMPORTS = ["@key", "@shareable", "@external"]
 
 
 @dataclass
-class FederationConfig:
+class FederationConfig:  # REQ-259
     """Configuration for Apollo Federation v2 subgraph support."""
 
     enabled: bool = False
@@ -68,7 +70,7 @@ _AnyScalar = GraphQLScalarType(
 )
 
 
-def extract_pk_columns(
+def extract_pk_columns(  # REQ-393, REQ-394
     tables: list[dict],
     column_types: dict[int, list[ColumnMetadata]],
 ) -> dict[int, list[str]]:
@@ -110,7 +112,7 @@ def extract_pk_columns(
     return result
 
 
-def build_federation_schema(
+def build_federation_schema(  # REQ-259
     base_schema: GraphQLSchema,
     tables: list[dict],
     pk_columns: dict[int, list[str]],
@@ -213,7 +215,7 @@ def build_federation_schema(
     )
 
 
-def generate_federation_sdl(
+def generate_federation_sdl(  # REQ-259
     schema: GraphQLSchema,
     key_directives: dict[str, str] | None = None,
 ) -> str:

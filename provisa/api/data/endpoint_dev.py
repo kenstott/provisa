@@ -14,6 +14,9 @@ These endpoints are split from endpoint.py (which hit 1000+ lines) to keep
 each module under the project's 1000-line limit.
 """
 
+# Requirements: REQ-161, REQ-163, REQ-264, REQ-266, REQ-267, REQ-345,
+#               REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, REQ-359
+
 from __future__ import annotations
 
 import asyncio
@@ -133,7 +136,7 @@ async def _execute_govdata(source_id: str, sql: str, state) -> "QueryResult":
 
 
 @router.post("/sql")
-async def sql_endpoint(
+async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     raw_request: Request,
     request: SQLRequest,
     x_provisa_role: str | None = Header(None),
@@ -740,7 +743,7 @@ class NLToSQLRequest(BaseModel):
 
 
 @router.post("/nl-to-sql")
-async def nl_to_sql_endpoint(
+async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, REQ-359
     raw_request: Request,
     request: NLToSQLRequest,
     x_provisa_role: str | None = Header(None),
@@ -801,7 +804,7 @@ class QueryRequest(BaseModel):
 
 
 @router.post("/query")
-async def unified_query_endpoint(
+async def unified_query_endpoint(  # REQ-001, REQ-267, REQ-345
     raw_request: Request,
     request: QueryRequest,
     x_provisa_role: str | None = Header(None),

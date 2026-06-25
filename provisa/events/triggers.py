@@ -24,6 +24,8 @@ from provisa.core.models import EventTrigger
 
 logger = logging.getLogger(__name__)
 
+# Requirements: REQ-219, REQ-220, REQ-258
+
 # SQL templates for PG trigger + notify function
 _CREATE_NOTIFY_FUNCTION_SQL = """
 CREATE OR REPLACE FUNCTION provisa_notify_{safe_name}()
@@ -78,7 +80,7 @@ def _operations_clause(operations: list[str]) -> str:
     return " OR ".join(op.upper() for op in operations)
 
 
-class EventTriggerManager:
+class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
     """Manages PG event triggers and webhook dispatch.
 
     Lifecycle:
@@ -94,7 +96,7 @@ class EventTriggerManager:
         self._http_client: httpx.AsyncClient | None = None
         self._running = False
 
-    async def setup(self, pool: asyncpg.Pool) -> None:
+    async def setup(self, pool: asyncpg.Pool) -> None:  # REQ-219, REQ-220, REQ-258
         """Install PG triggers and start listening."""
         if not self._triggers:
             return
@@ -122,7 +124,7 @@ class EventTriggerManager:
 
         logger.info("EventTriggerManager started with %d triggers", len(self._triggers))
 
-    async def teardown(self, pool: asyncpg.Pool) -> None:
+    async def teardown(self, pool: asyncpg.Pool) -> None:  # REQ-220
         """Remove listeners and drop PG triggers."""
         self._running = False
 
@@ -147,8 +149,10 @@ class EventTriggerManager:
 
         logger.info("EventTriggerManager stopped")
 
-    async def _install_trigger(
-        self, conn: asyncpg.Connection, trigger: EventTrigger,
+    async def _install_trigger(  # REQ-220
+        self,
+        conn: asyncpg.Connection,
+        trigger: EventTrigger,
     ) -> None:
         safe = _safe_name(trigger.table_id)
         channel = _channel_name(trigger.table_id)
@@ -160,7 +164,8 @@ class EventTriggerManager:
             schema_table = f"public.{schema_table}"
 
         func_sql = _CREATE_NOTIFY_FUNCTION_SQL.format(
-            safe_name=safe, channel=channel,
+            safe_name=safe,
+            channel=channel,
         )
         trig_sql = _CREATE_TRIGGER_SQL.format(
             safe_name=safe,
@@ -171,19 +176,22 @@ class EventTriggerManager:
         await conn.execute(trig_sql)
         logger.info("Installed PG trigger for %s (%s)", trigger.table_id, ops_clause)
 
-    async def _drop_trigger(
-        self, conn: asyncpg.Connection, trigger: EventTrigger,
+    async def _drop_trigger(  # REQ-220
+        self,
+        conn: asyncpg.Connection,
+        trigger: EventTrigger,
     ) -> None:
         safe = _safe_name(trigger.table_id)
         schema_table = trigger.table_id
         if "." not in schema_table:
             schema_table = f"public.{schema_table}"
         drop_sql = _DROP_TRIGGER_SQL.format(
-            safe_name=safe, schema_table=schema_table,
+            safe_name=safe,
+            schema_table=schema_table,
         )
         await conn.execute(drop_sql)
 
-    def _on_notify(
+    def _on_notify(  # REQ-219, REQ-220, REQ-258
         self,
         connection: asyncpg.Connection,
         pid: int,
@@ -195,7 +203,7 @@ class EventTriggerManager:
             return
         asyncio.ensure_future(self._dispatch(channel, payload))
 
-    async def _dispatch(self, channel: str, payload: str) -> None:
+    async def _dispatch(self, channel: str, payload: str) -> None:  # REQ-220
         """Parse notification and POST to webhook URL with retry."""
         # Find matching trigger by channel
         trigger = None
@@ -221,8 +229,10 @@ class EventTriggerManager:
 
         await self._post_webhook(trigger, data)
 
-    async def _post_webhook(
-        self, trigger: EventTrigger, data: dict[str, Any],
+    async def _post_webhook(  # REQ-220
+        self,
+        trigger: EventTrigger,
+        data: dict[str, Any],
     ) -> None:
         """POST data to webhook URL with exponential backoff retry."""
         if self._http_client is None:
@@ -241,25 +251,34 @@ class EventTriggerManager:
                 if resp.status_code < 400:
                     logger.debug(
                         "Webhook delivered for %s (attempt %d): %d",
-                        trigger.table_id, attempt + 1, resp.status_code,
+                        trigger.table_id,
+                        attempt + 1,
+                        resp.status_code,
                     )
                     return
                 logger.warning(
                     "Webhook %s returned %d (attempt %d/%d)",
-                    trigger.webhook_url, resp.status_code,
-                    attempt + 1, max_retries + 1,
+                    trigger.webhook_url,
+                    resp.status_code,
+                    attempt + 1,
+                    max_retries + 1,
                 )
             except httpx.HTTPError as exc:
                 logger.warning(
                     "Webhook %s failed (attempt %d/%d): %s",
-                    trigger.webhook_url, attempt + 1, max_retries + 1, exc,
+                    trigger.webhook_url,
+                    attempt + 1,
+                    max_retries + 1,
+                    exc,
                 )
 
             if attempt < max_retries:
-                delay = base_delay * (2 ** attempt)
+                delay = base_delay * (2**attempt)
                 await asyncio.sleep(delay)
 
         logger.error(
             "Webhook delivery failed after %d attempts for %s → %s",
-            max_retries + 1, trigger.table_id, trigger.webhook_url,
+            max_retries + 1,
+            trigger.table_id,
+            trigger.webhook_url,
         )

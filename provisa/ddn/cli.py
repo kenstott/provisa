@@ -11,6 +11,8 @@
 
 """CLI entry point for DDN (Hasura v3) HML converter."""
 
+# Requirements: REQ-183
+
 from __future__ import annotations
 
 import argparse
@@ -56,7 +58,7 @@ def _load_source_overrides(path: str | None) -> dict | None:
         return yaml.safe_load(f)
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:  # REQ-183
     parser = argparse.ArgumentParser(
         prog="provisa.ddn",
         description="Convert DDN (Hasura v3) HML metadata to Provisa configuration.",
@@ -101,7 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # REQ-183
     parser = build_parser()
     args = parser.parse_args(argv)
 

@@ -16,6 +16,8 @@ at http://provisa:8000.  This lets the React SPA use relative URLs
 for all API requests regardless of the environment.
 """
 
+# Requirements: REQ-057, REQ-058, REQ-559
+
 import os
 from pathlib import Path
 
@@ -48,7 +50,7 @@ if monaco_dir.is_dir():
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     response_model=None,
 )
-async def handler(request: Request, full_path: str) -> Response:
+async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ-058, REQ-559
     # ── Static asset — serve from disk ───────────────────────────────────────
     if any(request.url.path.startswith(p) for p in _STATIC_PREFIXES):
         candidate = STATIC_DIR / full_path

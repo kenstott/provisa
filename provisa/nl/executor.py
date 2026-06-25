@@ -16,6 +16,8 @@ GraphQL → existing compiler pipeline
 SQL     → Stage 2 governance + Trino
 """
 
+# Requirements: REQ-357, REQ-359
+
 from __future__ import annotations
 
 import logging
@@ -39,7 +41,9 @@ def _federation_error(exc: Exception) -> FederationError:
     return FederationError(msg)
 
 
-async def execute(query: str, target: NlTarget, role: str, app_state: Any) -> Any:
+async def execute(
+    query: str, target: NlTarget, role: str, app_state: Any
+) -> Any:  # REQ-357, REQ-359
     """Execute a validated query and return raw result.
 
     Args:

@@ -14,6 +14,8 @@ Mutations always route direct to RDBMS (never Trino).
 No mutations for NoSQL sources.
 """
 
+# Requirements: REQ-031, REQ-032, REQ-033, REQ-034, REQ-035, REQ-036, REQ-037, REQ-212, REQ-214
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -49,7 +51,7 @@ def _coerce_preset_value(raw: str, data_type: str | None) -> object:
     return raw
 
 
-def apply_column_presets(
+def apply_column_presets(  # REQ-214
     input_data: dict,
     presets: list[dict],
     headers: dict[str, str] | None = None,
@@ -88,7 +90,8 @@ class MutationResult:
 
 
 def _get_mutation_meta(
-    field_name: str, ctx: CompilationContext,
+    field_name: str,
+    ctx: CompilationContext,
 ) -> tuple[str, str, TableMeta]:
     """Parse mutation field name and return (operation, table_field_name, TableMeta).
 
@@ -104,7 +107,7 @@ def _get_mutation_meta(
     for op in ("upsert", "insert", "update", "delete"):
         # camelCase style: insertOrders → op=insert, rest=Orders → orders
         if name.startswith(op) and len(name) > len(op):
-            rest = name[len(op):]
+            rest = name[len(op) :]
             if rest[0].isupper():
                 table_field = domain_prefix + rest[0].lower() + rest[1:]
                 if table_field in ctx.tables:
@@ -112,13 +115,13 @@ def _get_mutation_meta(
         # snake_case style: insert_orders → op=insert, rest=orders
         snake_prefix = op + "_"
         if name.startswith(snake_prefix) and len(name) > len(snake_prefix):
-            table_field = domain_prefix + name[len(snake_prefix):]
+            table_field = domain_prefix + name[len(snake_prefix) :]
             if table_field in ctx.tables:
                 return op, table_field, ctx.tables[table_field]
     raise ValueError(f"Unknown mutation field: {field_name!r}")
 
 
-def compile_upsert(
+def compile_upsert(  # REQ-212, REQ-036
     field_node: FieldNode,
     table: TableMeta,
     variables: dict | None,
@@ -139,7 +142,9 @@ def compile_upsert(
 
     on_conflict_cols = args.get("on_conflict", [])
     if not on_conflict_cols:
-        raise ValueError("upsert mutation requires 'on_conflict' argument (list of conflict columns)")
+        raise ValueError(
+            "upsert mutation requires 'on_conflict' argument (list of conflict columns)"
+        )
     if isinstance(on_conflict_cols, str):
         on_conflict_cols = [on_conflict_cols]
 
@@ -152,18 +157,18 @@ def compile_upsert(
     # UPDATE all non-conflict columns on conflict
     update_cols = [c for c in columns if c not in on_conflict_cols]
     if update_cols:
-        set_parts = [f'{_q(c)} = EXCLUDED.{_q(c)}' for c in update_cols]
-        do_clause = f'DO UPDATE SET {", ".join(set_parts)}'
+        set_parts = [f"{_q(c)} = EXCLUDED.{_q(c)}" for c in update_cols]
+        do_clause = f"DO UPDATE SET {', '.join(set_parts)}"
     else:
         do_clause = "DO NOTHING"
 
     returning = ", ".join(_q(c) for c in columns)
 
     sql = (
-        f'INSERT INTO {_q(table.schema_name)}.{_q(table.table_name)}'
-        f' ({cols_sql}) VALUES ({vals_sql})'
-        f' ON CONFLICT ({conflict_sql}) {do_clause}'
-        f' RETURNING {returning}'
+        f"INSERT INTO {_q(table.schema_name)}.{_q(table.table_name)}"
+        f" ({cols_sql}) VALUES ({vals_sql})"
+        f" ON CONFLICT ({conflict_sql}) {do_clause}"
+        f" RETURNING {returning}"
     )
 
     return MutationResult(
@@ -176,7 +181,7 @@ def compile_upsert(
     )
 
 
-def compile_insert(
+def compile_insert(  # REQ-032, REQ-033, REQ-034, REQ-036
     field_node: FieldNode,
     table: TableMeta,
     variables: dict | None,
@@ -204,9 +209,9 @@ def compile_insert(
     returning = ", ".join(_q(c) for c in columns)
 
     sql = (
-        f'INSERT INTO {_q(table.schema_name)}.{_q(table.table_name)}'
-        f' ({cols_sql}) VALUES ({vals_sql})'
-        f' RETURNING {returning}'
+        f"INSERT INTO {_q(table.schema_name)}.{_q(table.table_name)}"
+        f" ({cols_sql}) VALUES ({vals_sql})"
+        f" RETURNING {returning}"
     )
 
     return MutationResult(
@@ -219,7 +224,7 @@ def compile_insert(
     )
 
 
-def compile_update(
+def compile_update(  # REQ-032, REQ-033, REQ-034, REQ-035, REQ-036
     field_node: FieldNode,
     table: TableMeta,
     variables: dict | None,
@@ -242,7 +247,7 @@ def compile_update(
     set_parts = []
     for col, val in set_data.items():
         placeholder = collector.add(val)
-        set_parts.append(f'{_q(col)} = {placeholder}')
+        set_parts.append(f"{_q(col)} = {placeholder}")
     set_sql = ", ".join(set_parts)
 
     # WHERE clause (simple equality filters)
@@ -251,17 +256,17 @@ def compile_update(
         for op, val in filter_obj.items():
             placeholder = collector.add(val)
             if op == "eq":
-                where_parts.append(f'{_q(col)} = {placeholder}')
+                where_parts.append(f"{_q(col)} = {placeholder}")
     where_sql = " AND ".join(where_parts)
 
     updated_cols = list(set_data.keys())
     returning = ", ".join(_q(c) for c in updated_cols)
 
     sql = (
-        f'UPDATE {_q(table.schema_name)}.{_q(table.table_name)}'
-        f' SET {set_sql}'
-        f' WHERE {where_sql}'
-        f' RETURNING {returning}'
+        f"UPDATE {_q(table.schema_name)}.{_q(table.table_name)}"
+        f" SET {set_sql}"
+        f" WHERE {where_sql}"
+        f" RETURNING {returning}"
     )
 
     return MutationResult(
@@ -274,7 +279,7 @@ def compile_update(
     )
 
 
-def compile_delete(
+def compile_delete(  # REQ-032, REQ-033, REQ-035, REQ-036
     field_node: FieldNode,
     table: TableMeta,
     variables: dict | None,
@@ -295,13 +300,11 @@ def compile_delete(
         for op, val in filter_obj.items():
             placeholder = collector.add(val)
             if op == "eq":
-                where_parts.append(f'{_q(col)} = {placeholder}')
+                where_parts.append(f"{_q(col)} = {placeholder}")
     where_sql = " AND ".join(where_parts)
 
     sql = (
-        f'DELETE FROM {_q(table.schema_name)}.{_q(table.table_name)}'
-        f' WHERE {where_sql}'
-        f' RETURNING *'
+        f"DELETE FROM {_q(table.schema_name)}.{_q(table.table_name)} WHERE {where_sql} RETURNING *"
     )
 
     return MutationResult(
@@ -314,7 +317,7 @@ def compile_delete(
     )
 
 
-def compile_mutation(
+def compile_mutation(  # REQ-031, REQ-032, REQ-033, REQ-036, REQ-037
     document: DocumentNode,
     ctx: CompilationContext,
     source_types: dict[str, str],
@@ -337,14 +340,13 @@ def compile_mutation(
             if not isinstance(sel, FieldNode):
                 continue
 
-            op, table_field, table = _get_mutation_meta(sel.name.value, ctx)
+            op, _, table = _get_mutation_meta(sel.name.value, ctx)
 
             # Reject NoSQL mutations
             stype = source_types.get(table.source_id, "")
             if stype in NOSQL_TYPES:
                 raise ValueError(
-                    f"Mutations not supported for NoSQL source "
-                    f"{table.source_id!r} (type: {stype})"
+                    f"Mutations not supported for NoSQL source {table.source_id!r} (type: {stype})"
                 )
 
             if op == "upsert":
@@ -359,15 +361,12 @@ def compile_mutation(
     # Reject cross-source mutations
     source_ids = {r.source_id for r in results}
     if len(source_ids) > 1:
-        raise ValueError(
-            f"Cross-source mutations not supported. "
-            f"Sources involved: {source_ids}"
-        )
+        raise ValueError(f"Cross-source mutations not supported. Sources involved: {source_ids}")
 
     return results
 
 
-def inject_rls_into_mutation(
+def inject_rls_into_mutation(  # REQ-035, REQ-040
     mutation: MutationResult,
     table_id: int,
     rls_rules: dict[int, str],
@@ -383,7 +382,8 @@ def inject_rls_into_mutation(
     # AND the RLS filter into the existing WHERE
     sql = mutation.sql
     import re
-    where_match = re.search(r'\bWHERE\b', sql, re.IGNORECASE)
+
+    where_match = re.search(r"\bWHERE\b", sql, re.IGNORECASE)
     if where_match:
         pos = where_match.end()
         sql = f"{sql[:pos]} ({rls_filter}) AND{sql[pos:]}"

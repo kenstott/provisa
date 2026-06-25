@@ -20,6 +20,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+# Requirements: REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
+
 
 class CypherParseError(Exception):
     """Raised for invalid or unsupported Cypher syntax."""
@@ -28,6 +30,7 @@ class CypherParseError(Exception):
 # ---------------------------------------------------------------------------
 # AST dataclasses
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class NodePattern:
@@ -92,12 +95,13 @@ class WithClause:
 @dataclass
 class UnwindClause:
     expression: str  # raw expression text (list literal, param, or property)
-    variable: str    # AS variable name
+    variable: str  # AS variable name
 
 
 @dataclass
 class MatchStep:
     """One or more MATCH/OPTIONAL MATCH clauses and their associated WHERE."""
+
     matches: list[MatchClause]
     where: WhereClause | None = None
 
@@ -115,7 +119,7 @@ class OrderItem:
 
 
 @dataclass
-class CypherAST:
+class CypherAST:  # REQ-347, REQ-348, REQ-571
     pipeline: list["MatchStep | WithClause"]
     return_clause: ReturnClause | None
     order_by: list[OrderItem]
@@ -124,7 +128,9 @@ class CypherAST:
     call_subqueries: list[CallSubquery] = field(default_factory=list)
     # UNION / UNION ALL: list of (sub_ast, is_all)
     union_parts: list[tuple["CypherAST", bool]] = field(default_factory=list)
-    comments: list[str] = field(default_factory=list)  # // comment text (without //) in source order
+    comments: list[str] = field(
+        default_factory=list
+    )  # // comment text (without //) in source order
 
     @property
     def match_clauses(self) -> list[MatchClause]:
@@ -147,38 +153,38 @@ class CypherAST:
 # ---------------------------------------------------------------------------
 
 _TOKEN_SPEC = [
-    ("COMMENT",     r"//[^\n]*"),
-    ("STRING",      r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\""),
-    ("NUMBER",      r"\d+(?:\.\d+)?"),
-    ("PARAM",       r"\$[A-Za-z_]\w*"),
+    ("COMMENT", r"//[^\n]*"),
+    ("STRING", r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\""),
+    ("NUMBER", r"\d+(?:\.\d+)?"),
+    ("PARAM", r"\$[A-Za-z_]\w*"),
     ("ARROW_RIGHT", r"->"),
-    ("ARROW_LEFT",  r"<-"),
-    ("DOTDOT",      r"\.\."),
-    ("DOT",         r"\."),
-    ("COLON",       r":"),
-    ("LBRACE",      r"\{"),
-    ("RBRACE",      r"\}"),
-    ("LPAREN",      r"\("),
-    ("RPAREN",      r"\)"),
-    ("LBRACKET",    r"\["),
-    ("RBRACKET",    r"\]"),
-    ("COMMA",       r","),
-    ("STAR",        r"\*"),
-    ("PLUS",        r"\+"),
-    ("MINUS",       r"-"),
-    ("SLASH",       r"/"),
-    ("PERCENT",     r"%"),
+    ("ARROW_LEFT", r"<-"),
+    ("DOTDOT", r"\.\."),
+    ("DOT", r"\."),
+    ("COLON", r":"),
+    ("LBRACE", r"\{"),
+    ("RBRACE", r"\}"),
+    ("LPAREN", r"\("),
+    ("RPAREN", r"\)"),
+    ("LBRACKET", r"\["),
+    ("RBRACKET", r"\]"),
+    ("COMMA", r","),
+    ("STAR", r"\*"),
+    ("PLUS", r"\+"),
+    ("MINUS", r"-"),
+    ("SLASH", r"/"),
+    ("PERCENT", r"%"),
     ("REGEX_MATCH", r"=~"),
-    ("EQ",          r"="),
-    ("NEQ",         r"<>|!="),
-    ("LTE",         r"<="),
-    ("GTE",         r">="),
-    ("LT",          r"<"),
-    ("GT",          r">"),
-    ("PIPE",        r"\|"),
-    ("IDENT",       r"[A-Za-z_]\w*"),
-    ("NEWLINE",     r"\n"),
-    ("SKIP_WS",     r"[ \t]+"),
+    ("EQ", r"="),
+    ("NEQ", r"<>|!="),
+    ("LTE", r"<="),
+    ("GTE", r">="),
+    ("LT", r"<"),
+    ("GT", r">"),
+    ("PIPE", r"\|"),
+    ("IDENT", r"[A-Za-z_]\w*"),
+    ("NEWLINE", r"\n"),
+    ("SKIP_WS", r"[ \t]+"),
 ]
 
 _MASTER_RE = re.compile(
@@ -216,7 +222,8 @@ def _tokenize(text: str) -> tuple[list[Token], list[str]]:
 # Parser
 # ---------------------------------------------------------------------------
 
-class _Parser:
+
+class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
     def __init__(self, tokens: list[Token], raw: str, comments: list[str] | None = None) -> None:
         self._tokens = tokens
         self._pos = 0
@@ -244,7 +251,9 @@ class _Parser:
         if t is None:
             raise CypherParseError(f"Expected {ttype!r} but reached end of input")
         if t.type != ttype:
-            raise CypherParseError(f"Expected {ttype!r}, got {t.type!r} ({t.value!r}) at pos {t.pos}")
+            raise CypherParseError(
+                f"Expected {ttype!r}, got {t.type!r} ({t.value!r}) at pos {t.pos}"
+            )
         if value is not None and t.value.upper() != value.upper():
             raise CypherParseError(f"Expected {value!r}, got {t.value!r} at pos {t.pos}")
         return self._advance()
@@ -321,7 +330,7 @@ class _Parser:
                 self._advance()
                 _flush_match_step()
                 is_all = self._opt_keyword("ALL")
-                remaining = self._tokens[self._pos:]
+                remaining = self._tokens[self._pos :]
                 next_ast = _Parser(remaining, self._raw).parse()
                 union_parts.append((next_ast, is_all))
                 # consume remaining tokens so outer loop exits
@@ -350,7 +359,11 @@ class _Parser:
 
             else:
                 _bad = self._peek()
-                raise CypherParseError(f"Unexpected token {_bad.value!r} at pos {_bad.pos}" if _bad else "Unexpected end of input")
+                raise CypherParseError(
+                    f"Unexpected token {_bad.value!r} at pos {_bad.pos}"
+                    if _bad
+                    else "Unexpected end of input"
+                )
 
         # flush any remaining match clauses (e.g. no RETURN yet flushed them)
         _flush_match_step()
@@ -377,7 +390,8 @@ class _Parser:
         # Check for path variable assignment: p = shortestPath(...)
         _tok0 = self._peek()
         if (
-            _tok0 and _tok0.type == "IDENT"
+            _tok0
+            and _tok0.type == "IDENT"
             and self._pos + 1 < len(self._tokens)
             and self._tokens[self._pos + 1].type == "EQ"
         ):
@@ -440,9 +454,21 @@ class _Parser:
         props: dict[str, Any] = {}
 
         t = self._peek()
-        if t and t.type == "IDENT" and t.value.upper() not in {
-            "WHERE", "RETURN", "MATCH", "WITH", "ORDER", "SKIP", "LIMIT", "CALL",
-        }:
+        if (
+            t
+            and t.type == "IDENT"
+            and t.value.upper()
+            not in {
+                "WHERE",
+                "RETURN",
+                "MATCH",
+                "WITH",
+                "ORDER",
+                "SKIP",
+                "LIMIT",
+                "CALL",
+            }
+        ):
             # Could be variable or label
             next_t = self._tokens[self._pos + 1] if self._pos + 1 < len(self._tokens) else None
             if next_t and next_t.type in ("COLON", "RPAREN", "LBRACE", "COMMA"):
@@ -462,8 +488,9 @@ class _Parser:
             props = self._parse_map_literal()
 
         self._expect("RPAREN")
-        return NodePattern(variable=variable, labels=labels, properties=props,
-                           label_alternation=label_alternation)
+        return NodePattern(
+            variable=variable, labels=labels, properties=props, label_alternation=label_alternation
+        )
 
     def _parse_rel_and_node(self) -> tuple[RelPattern, NodePattern]:
         direction = "right"
@@ -495,11 +522,15 @@ class _Parser:
                     direction = "none"
             elif (_tar2 := self._peek()) and _tar2.type == "ARROW_RIGHT":
                 self._advance()
-                rel = RelPattern(variable=None, types=[], min_hops=None, max_hops=None, direction="right")
+                rel = RelPattern(
+                    variable=None, types=[], min_hops=None, max_hops=None, direction="right"
+                )
                 direction = "right"
             else:
                 # plain - means no direction
-                rel = RelPattern(variable=None, types=[], min_hops=None, max_hops=None, direction="none")
+                rel = RelPattern(
+                    variable=None, types=[], min_hops=None, max_hops=None, direction="none"
+                )
                 direction = "none"
 
         rel.direction = direction
@@ -593,12 +624,22 @@ class _Parser:
     # --- WHERE ---
 
     def _parse_where(self) -> WhereClause:
-        _clause_kws = {"RETURN", "WITH", "ORDER", "SKIP", "LIMIT", "MATCH", "OPTIONAL", "CALL", "UNWIND"}
+        _clause_kws = {
+            "RETURN",
+            "WITH",
+            "ORDER",
+            "SKIP",
+            "LIMIT",
+            "MATCH",
+            "OPTIONAL",
+            "CALL",
+            "UNWIND",
+        }
         # WITH is a stop keyword but must not stop STARTS WITH / ENDS WITH predicates
         _string_pred_prefixes = {"STARTS", "ENDS"}
         parts: list[str] = []
         depth = 0  # track { } depth for EXISTS/COUNT/COLLECT { } subqueries
-        while (t := self._peek()):
+        while t := self._peek():
             if t.type == "LBRACE":
                 depth += 1
             elif t.type == "RBRACE":
@@ -635,11 +676,22 @@ class _Parser:
 
     def _parse_return_items(self) -> list[ReturnItem]:
         items: list[ReturnItem] = []
-        _stop_kws = {"ORDER", "SKIP", "LIMIT", "WHERE", "MATCH", "RETURN", "WITH", "OPTIONAL", "UNION", "UNWIND"}
+        _stop_kws = {
+            "ORDER",
+            "SKIP",
+            "LIMIT",
+            "WHERE",
+            "MATCH",
+            "RETURN",
+            "WITH",
+            "OPTIONAL",
+            "UNION",
+            "UNWIND",
+        }
         while self._peek() and self._peek_val() not in _stop_kws:
             expr_parts: list[str] = []
             depth = 0
-            while (t := self._peek()):
+            while t := self._peek():
                 if t.type in ("LBRACKET", "LPAREN", "LBRACE"):
                     depth += 1
                     expr_parts.append(self._advance().value)
@@ -671,7 +723,7 @@ class _Parser:
         """Parse `UNWIND <expr> AS <var>`."""
         parts: list[str] = []
         depth = 0
-        while (t := self._peek()):
+        while t := self._peek():
             if t.type in ("LBRACKET", "LPAREN", "LBRACE"):
                 depth += 1
                 parts.append(self._advance().value)
@@ -712,9 +764,23 @@ class _Parser:
         # These bare identifiers are outer-scope variable imports, not a pipeline WITH.
         # Keywords are also tokenized as IDENT, so stop at any known Cypher keyword.
         _CYPHER_KEYWORDS = {
-            "MATCH", "OPTIONAL", "WHERE", "RETURN", "WITH", "UNWIND",
-            "ORDER", "SKIP", "LIMIT", "CALL", "UNION", "CREATE", "DELETE",
-            "SET", "REMOVE", "MERGE", "FOREACH",
+            "MATCH",
+            "OPTIONAL",
+            "WHERE",
+            "RETURN",
+            "WITH",
+            "UNWIND",
+            "ORDER",
+            "SKIP",
+            "LIMIT",
+            "CALL",
+            "UNION",
+            "CREATE",
+            "DELETE",
+            "SET",
+            "REMOVE",
+            "MERGE",
+            "FOREACH",
         }
         imported_vars: list[str] = []
         body_tokens = inner_tokens
@@ -731,7 +797,11 @@ class _Parser:
                     break
             # Only treat as correlated if followed by a statement-starting keyword
             _BODY_START = {"MATCH", "OPTIONAL", "UNWIND", "WITH", "CALL"}
-            if imported_vars and i < len(inner_tokens) and inner_tokens[i].value.upper() in _BODY_START:
+            if (
+                imported_vars
+                and i < len(inner_tokens)
+                and inner_tokens[i].value.upper() in _BODY_START
+            ):
                 body_tokens = inner_tokens[i:]  # strip the leading WITH <vars>
             else:
                 imported_vars = []  # not correlated — reset
@@ -747,10 +817,7 @@ class _Parser:
         _stop_kws = {"SKIP", "LIMIT", "RETURN", "MATCH", "WITH"}
         while self._peek() and self._peek_val() not in _stop_kws:
             expr_parts: list[str] = []
-            while (
-                self._peek()
-                and self._peek_val() not in (_stop_kws | {"COMMA", "ASC", "DESC"})
-            ):
+            while self._peek() and self._peek_val() not in (_stop_kws | {"COMMA", "ASC", "DESC"}):
                 expr_parts.append(self._advance().value)
             expr = " ".join(expr_parts)
             direction = "ASC"
@@ -768,12 +835,13 @@ class _Parser:
 # Public entry point
 # ---------------------------------------------------------------------------
 
+
 def _normalize_legacy_params(text: str) -> str:
     """Rewrite legacy {param} syntax to $param."""
-    return re.sub(r'\{([A-Za-z_]\w*)\}', r'$\1', text)
+    return re.sub(r"\{([A-Za-z_]\w*)\}", r"$\1", text)
 
 
-def parse_cypher(query: str) -> CypherAST:
+def parse_cypher(query: str) -> CypherAST:  # REQ-345, REQ-346, REQ-571
     """Parse a read-only Cypher query into a CypherAST.
 
     Raises CypherParseError for write clauses, APOC references, or unbounded

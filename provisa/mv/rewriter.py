@@ -14,6 +14,8 @@ After compilation, inspects FROM/JOIN clauses and rewrites to use MV target
 tables when a matching fresh MV is found. Supports full and partial matching.
 """
 
+# Requirements: REQ-198, REQ-199
+
 from __future__ import annotations
 
 import logging
@@ -25,19 +27,6 @@ from provisa.otel_compat import get_tracer as _get_tracer
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
-
-
-def _extract_tables_from_sql(sql: str) -> list[tuple[str, str | None]]:
-    """Extract (table_name, alias) pairs from FROM/JOIN clauses.
-
-    Handles patterns like:
-        FROM "schema"."table" "t0"
-        LEFT JOIN "schema"."table" "t1" ON ...
-    """
-    # Match: "schema"."table" "alias" or "schema"."table"
-    pattern = r'"[^"]+"\."([^"]+)"(?:\s+"(t\d+)")?'
-    matches = re.findall(pattern, sql)
-    return [(table, alias or None) for table, alias in matches]
 
 
 def _extract_join_info(sql: str) -> list[dict]:
@@ -55,7 +44,7 @@ def _extract_join_info(sql: str) -> list[dict]:
     )
     matches = re.findall(join_pattern, sql, re.IGNORECASE)
     result = []
-    for full_clause, right_table, right_alias, left_alias, left_col, ra2, right_col in matches:
+    for full_clause, right_table, right_alias, left_alias, left_col, _ra2, right_col in matches:
         join_type_match = re.match(r"(LEFT|INNER|RIGHT)", full_clause, re.IGNORECASE)
         result.append(
             {
@@ -103,7 +92,7 @@ def _match_join_to_mv(
     return cols_match
 
 
-def rewrite_if_mv_match(
+def rewrite_if_mv_match(  # REQ-198, REQ-199
     compiled: CompiledQuery,
     fresh_mvs: list[MVDefinition],
 ) -> CompiledQuery:

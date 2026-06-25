@@ -10,6 +10,8 @@
 
 """GovData watermark polling provider via Calcite JDBC adapter (JPype)."""
 
+# Requirements: REQ-260, REQ-283, REQ-285
+
 from __future__ import annotations
 
 import asyncio
@@ -26,7 +28,9 @@ class _JdbcResultSet(Protocol):
     """Structural interface for java.sql.ResultSet used in _fetch_new_rows."""
 
     def next(self) -> bool: ...
-    def getObject(self, column_index: int) -> object: ...  # object-ok: JPype returns opaque Java objects; narrowed via str(val) below
+    def getObject(
+        self, column_index: int
+    ) -> object: ...  # object-ok: JPype returns opaque Java objects; narrowed via str(val) below
     def getMetaData(self) -> _JdbcResultSetMetaData: ...
 
 
@@ -53,10 +57,11 @@ class _JdbcConnection(Protocol):
     def createStatement(self) -> _JdbcStatement: ...
     def close(self) -> None: ...
 
+
 log = logging.getLogger(__name__)
 
 
-class GovDataPollingProvider(NotificationProvider):
+class GovDataPollingProvider(NotificationProvider):  # REQ-260, REQ-283, REQ-285
     """Poll a GovData table using a watermark column.
 
     GovData has no native change feed so polling is the only option.

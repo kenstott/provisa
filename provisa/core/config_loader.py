@@ -10,6 +10,8 @@
 
 """Config loader: YAML → validate → resolve secrets → upsert PG → create Trino catalogs."""
 
+# Requirements: REQ-012, REQ-013, REQ-016, REQ-250, REQ-251, REQ-275, REQ-282, REQ-283, REQ-285
+
 import logging
 import re
 from pathlib import Path
@@ -134,14 +136,14 @@ def _default_params_from_spec(spec: dict, path: str) -> dict:
     return defaults
 
 
-def parse_config(path: str | Path) -> ProvisaConfig:
+def parse_config(path: str | Path) -> ProvisaConfig:  # REQ-250
     """Parse and validate a YAML config file. Does NOT resolve secrets."""
     with open(Path(path), encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     return ProvisaConfig.model_validate(raw)
 
 
-def parse_config_dict(data: dict) -> ProvisaConfig:
+def parse_config_dict(data: dict) -> ProvisaConfig:  # REQ-250
     """Parse and validate a config dict."""
     return ProvisaConfig.model_validate(data)
 
@@ -159,7 +161,9 @@ _OAPI_TRINO = {
 }
 
 
-async def _replace_mode_cleanup(conn: asyncpg.Connection, config: ProvisaConfig) -> None:
+async def _replace_mode_cleanup(
+    conn: asyncpg.Connection, config: ProvisaConfig
+) -> None:  # REQ-013, REQ-014
     """Delete all rows not present in the new config (full replace semantics)."""
     new_source_ids = list({src.id for src in config.sources} | set(_SYSTEM_SOURCE_IDS))
     new_domain_ids = list({d.id for d in config.domains} | set(domain_policy.system_domain_ids()))
@@ -190,7 +194,7 @@ async def _replace_mode_cleanup(conn: asyncpg.Connection, config: ProvisaConfig)
     await conn.execute("DELETE FROM tracked_webhooks")
 
 
-async def _upsert_sources(
+async def _upsert_sources(  # REQ-012, REQ-250
     conn: asyncpg.Connection,
     trino_conn: trino.dbapi.Connection | None,
     config: ProvisaConfig,
@@ -518,7 +522,9 @@ async def _purge_removed_tables(conn: asyncpg.Connection, config: ProvisaConfig)
         )
 
 
-async def _analyze_sources(trino_conn: trino.dbapi.Connection, config: ProvisaConfig) -> None:
+async def _analyze_sources(
+    trino_conn: trino.dbapi.Connection, config: ProvisaConfig
+) -> None:  # REQ-275
     """Prime federation CBO stats after tables are registered."""
     for src in config.sources:
         try:
@@ -527,7 +533,7 @@ async def _analyze_sources(trino_conn: trino.dbapi.Connection, config: ProvisaCo
             pass  # analyze_source_tables already logs per-table failures
 
 
-async def _upsert_tables(
+async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
     conn: asyncpg.Connection,
     trino_conn: trino.dbapi.Connection | None,
     config: ProvisaConfig,
@@ -545,7 +551,9 @@ async def _upsert_tables(
         await _analyze_sources(trino_conn, config)
 
 
-async def _upsert_relationships(conn: asyncpg.Connection, config: ProvisaConfig) -> None:
+async def _upsert_relationships(
+    conn: asyncpg.Connection, config: ProvisaConfig
+) -> None:  # REQ-018, REQ-019, REQ-020
     """Delete stale relationships and upsert config-declared ones."""
     current_rel_ids = [rel.id for rel in config.relationships]
     if current_rel_ids:
@@ -583,7 +591,7 @@ async def _upsert_relationships(conn: asyncpg.Connection, config: ProvisaConfig)
             pass  # referenced table not yet registered (dynamic source); retried after source registration
 
 
-async def _load_config_in_txn(
+async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250
     config: ProvisaConfig,
     conn: asyncpg.Connection,
     trino_conn: trino.dbapi.Connection | None,
@@ -708,7 +716,7 @@ async def _validate_existing_domains(conn: asyncpg.Connection, default_domain: s
         )
 
 
-async def load_config(
+async def load_config(  # REQ-012, REQ-016, REQ-250
     config: ProvisaConfig,
     pg_conn: asyncpg.Connection,
     trino_conn: trino.dbapi.Connection | None = None,
@@ -723,7 +731,7 @@ async def load_config(
         await _load_config_in_txn(config, pg_conn, trino_conn, replace=replace)
 
 
-async def load_config_from_yaml(
+async def load_config_from_yaml(  # REQ-012, REQ-016, REQ-250
     path: str | Path,
     pg_conn: asyncpg.Connection,
     trino_conn: trino.dbapi.Connection | None = None,

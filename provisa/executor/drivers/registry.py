@@ -13,6 +13,8 @@
 Drivers are lazily imported so missing optional dependencies don't break startup.
 """
 
+# Requirements: REQ-229, REQ-550
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -22,42 +24,47 @@ from provisa.executor.drivers.base import DirectDriver
 
 def _make_pg() -> DirectDriver:
     from provisa.executor.drivers.postgresql import PostgreSQLDriver
+
     return PostgreSQLDriver()
 
 
 def _make_mysql() -> DirectDriver:
     from provisa.executor.drivers.mysql import MySQLDriver
+
     return MySQLDriver()
 
 
 def _make_duckdb() -> DirectDriver:
     from provisa.executor.drivers.duckdb_driver import DuckDBDriver
+
     return DuckDBDriver()
 
 
 def _make_sqlserver() -> DirectDriver:
     from provisa.executor.drivers.sqlserver import SQLServerDriver
+
     return SQLServerDriver()
 
 
 def _make_oracle() -> DirectDriver:
     from provisa.executor.drivers.oracle import OracleDriver
+
     return OracleDriver()
 
 
 # source_type → factory function
-_DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {
+_DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     "postgresql": _make_pg,
     "mysql": _make_mysql,
-    "singlestore": _make_mysql,   # MySQL wire-compatible
-    "mariadb": _make_mysql,       # MySQL wire-compatible
+    "singlestore": _make_mysql,  # MySQL wire-compatible
+    "mariadb": _make_mysql,  # MySQL wire-compatible
     "duckdb": _make_duckdb,
     "sqlserver": _make_sqlserver,
     "oracle": _make_oracle,
 }
 
 
-def create_driver(source_type: str, **kwargs) -> DirectDriver:
+def create_driver(source_type: str, **kwargs) -> DirectDriver:  # REQ-550
     """Create a driver instance for a source type.
 
     Raises KeyError if no driver is registered for the type.

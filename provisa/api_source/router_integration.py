@@ -16,6 +16,8 @@ Flow: check Trino cache → hit? return cache reference → miss? call API
 Phase 2 SQL (WHERE/ORDER BY/LIMIT) is applied by the caller via rewrite_from_cache().
 """
 
+# Requirements: REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-318
+
 from __future__ import annotations
 
 import asyncio
@@ -42,29 +44,32 @@ _tracer = _get_tracer(__name__)
 
 
 @dataclass
-class QueryResult:
+class QueryResult:  # REQ-318
     rows: list[dict]
     from_cache: bool
     cache_table: str | None = field(default=None)
 
 
-async def _apply_cache_promotions(loc: CacheLocation, tbl: str, endpoint: ApiEndpoint) -> None:
+async def _apply_cache_promotions(
+    loc: CacheLocation, tbl: str, endpoint: ApiEndpoint
+) -> None:  # REQ-119
     """Run JSONB→generated-column promotion DDL on the PG-backed api-cache table (REQ-119)."""
     from provisa.api.app import state
     from provisa.api_source.promotions import apply_promotions
 
     target = f'{loc.schema}."{tbl}"'
+    assert state.pg_pool is not None
     async with state.pg_pool.acquire() as pgc:
         await apply_promotions(pgc, target, endpoint.promotions, cast_source=True)
 
 
-def is_api_source(source_id: str, source_types: dict[str, str]) -> bool:
+def is_api_source(source_id: str, source_types: dict[str, str]) -> bool:  # REQ-295, REQ-297
     """Check if a source_id corresponds to an API source type."""
     stype = source_types.get(source_id, "")
     return stype in {e.value for e in ApiSourceType}
 
 
-async def handle_api_query(
+async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-318
     endpoint: ApiEndpoint,
     params: dict,
     conn,

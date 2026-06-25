@@ -13,6 +13,9 @@
 Requires grpcio and grpcio-tools. Stubs are compiled at source-registration time
 and loaded dynamically via importlib (same pattern as provisa/grpc/server.py).
 """
+
+# Requirements: REQ-322, REQ-325, REQ-326, REQ-327
+
 from __future__ import annotations
 
 import importlib.util
@@ -28,6 +31,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Module loader (mirrors provisa/grpc/server.py:_load_module)
 # ---------------------------------------------------------------------------
+
 
 def _load_module(path: str, name: str):
     if name in sys.modules:
@@ -48,6 +52,7 @@ def _load_module(path: str, name: str):
 def load_stubs(pb2_path: str, pb2_grpc_path: str):
     """Load compiled pb2 and pb2_grpc modules. Returns (pb2, pb2_grpc)."""
     import os
+
     pb2_name = os.path.splitext(os.path.basename(pb2_path))[0]
     pb2_grpc_name = os.path.splitext(os.path.basename(pb2_grpc_path))[0]
     pb2 = _load_module(pb2_path, pb2_name)
@@ -59,8 +64,10 @@ def load_stubs(pb2_path: str, pb2_grpc_path: str):
 # Proto message → dict
 # ---------------------------------------------------------------------------
 
+
 def _msg_to_dict(msg) -> dict:
     from google.protobuf.json_format import MessageToDict  # type: ignore[import]
+
     return MessageToDict(
         msg,
         preserving_proto_field_name=True,
@@ -83,7 +90,8 @@ def _build_request(pb2, input_message_name: str, args: dict):
 # Execution
 # ---------------------------------------------------------------------------
 
-async def execute_query(
+
+async def execute_query(  # REQ-325, REQ-327
     channel: grpc.aio.Channel,
     full_method_path: str,
     pb2,
@@ -119,7 +127,7 @@ async def execute_query(
         return [_msg_to_dict(response)]
 
 
-async def execute_mutation(
+async def execute_mutation(  # REQ-326, REQ-327
     channel: grpc.aio.Channel,
     full_method_path: str,
     pb2,

@@ -24,8 +24,10 @@ from provisa.otel_compat import get_tracer as _get_tracer
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
 
+# Requirements: REQ-027, REQ-031, REQ-052
 
-async def execute_direct(
+
+async def execute_direct(  # REQ-027, REQ-031
     pool: SourcePool,
     source_id: str,
     sql: str,

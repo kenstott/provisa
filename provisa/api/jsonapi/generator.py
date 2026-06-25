@@ -15,6 +15,8 @@ JSON:API features: sparse fieldsets, filtering, sorting, pagination,
 inclusion, content negotiation, error objects.
 """
 
+# Requirements: REQ-256, REQ-257, REQ-266, REQ-001, REQ-002
+
 from __future__ import annotations
 
 import logging
@@ -52,7 +54,7 @@ JSONAPI_CONTENT_TYPE = "application/vnd.api+json"
 _FILTER_OPS = {"eq", "neq", "gt", "gte", "lt", "lte", "like", "in"}
 
 
-def _parse_filters(params: dict[str, str]) -> dict[str, dict[str, Any]]:
+def _parse_filters(params: dict[str, str]) -> dict[str, dict[str, Any]]:  # REQ-257
     """Parse JSON:API filter params.
 
     Supports:
@@ -83,7 +85,7 @@ def _parse_filters(params: dict[str, str]) -> dict[str, dict[str, Any]]:
     return filters
 
 
-def _parse_sort(sort_param: str | None) -> list[dict[str, str]]:
+def _parse_sort(sort_param: str | None) -> list[dict[str, str]]:  # REQ-257
     """Parse JSON:API sort param: ?sort=-created_at,amount
 
     Prefix '-' means descending.
@@ -103,7 +105,7 @@ def _parse_sort(sort_param: str | None) -> list[dict[str, str]]:
     return ordering
 
 
-def _parse_sparse_fieldsets(
+def _parse_sparse_fieldsets(  # REQ-257
     params: dict[str, str],
     table: str,
 ) -> list[str] | None:
@@ -227,7 +229,7 @@ def _jsonapi_error_response(status: int, title: str, detail: str | None = None, 
     )
 
 
-def create_jsonapi_router(state: Any) -> APIRouter:
+def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266, REQ-001, REQ-002
     """Create a JSON:API router with auto-generated endpoints for each table.
 
     Args:
@@ -239,7 +241,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:
     jsonapi_router = APIRouter(prefix="/data/jsonapi", tags=["jsonapi"])
 
     @jsonapi_router.get("/{table}")
-    async def jsonapi_table_endpoint(request: Request, table: str):
+    async def _jsonapi_table_endpoint(  # pyright: ignore[reportUnusedFunction]
+        request: Request, table: str
+    ):
         # Content negotiation
         accept = request.headers.get("accept", "")
         if accept and JSONAPI_CONTENT_TYPE not in accept and "*/*" not in accept:

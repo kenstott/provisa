@@ -6,13 +6,15 @@
 
 """Shared helpers for reading and writing the provisa config YAML."""
 
+# Requirements: REQ-164
+
 import os
 from pathlib import Path
 
 import yaml
 
 
-def read_config() -> dict:
+def read_config() -> dict:  # REQ-164
     config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
     try:
         with open(config_path) as f:
@@ -25,7 +27,7 @@ def config_path() -> Path:
     return Path(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml"))
 
 
-def write_config(path: Path, cfg: dict) -> None:
+def write_config(path: Path, cfg: dict) -> None:  # REQ-164
     backup = path.with_suffix(".yaml.bak")
     backup.write_text(path.read_text())
     with open(path, "w") as f:

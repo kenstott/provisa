@@ -11,6 +11,8 @@ Must run AFTER the auth middleware (which sets ``request.state.role``); in Starl
 that means it is added BEFORE ``wire_auth`` so auth ends up the outer layer.
 """
 
+# Requirements: REQ-369, REQ-371
+
 from __future__ import annotations
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -18,7 +20,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
+class RateLimitMiddleware(BaseHTTPMiddleware):  # REQ-369, REQ-371
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         from provisa.api.app import state
 

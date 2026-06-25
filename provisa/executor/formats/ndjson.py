@@ -17,6 +17,8 @@ from decimal import Decimal
 
 from provisa.compiler.sql_gen import ColumnRef
 
+# Requirements: REQ-048
+
 
 class _Encoder(json.JSONEncoder):
     def default(self, o):
@@ -28,7 +30,7 @@ class _Encoder(json.JSONEncoder):
         return super().default(o)
 
 
-def rows_to_ndjson(
+def rows_to_ndjson(  # REQ-048
     rows: list[tuple],
     columns: list[ColumnRef],
 ) -> str:

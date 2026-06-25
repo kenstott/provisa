@@ -14,6 +14,8 @@ POST /admin/discover/{source_id} — introspects the source via its adapter's
 discover_schema() and returns candidate columns.
 """
 
+# Requirements: REQ-017, REQ-252
+
 from __future__ import annotations
 
 import logging
@@ -35,9 +37,6 @@ router = APIRouter(prefix="/admin/schema-discovery", tags=["schema-discovery"])
 
 # Source types that do not support schema discovery
 _NO_DISCOVER = {"redis", "accumulo"}
-
-# Source types that require a live connection (in source_pools) for sampling
-_REQUIRES_LIVE_CONNECTION = {"mongodb"}
 
 
 def _get_source_pool():
@@ -73,7 +72,9 @@ class DiscoverRequest(BaseModel):
 
 
 @router.post("/discover/{source_id}", response_model=DiscoverResponse)
-async def discover_source_schema(source_id: str, body: DiscoverRequest | None = None):
+async def discover_source_schema(
+    source_id: str, body: DiscoverRequest | None = None
+):  # REQ-017, REQ-252
     """Look up source, call adapter.discover_schema(), return columns."""
     from provisa.api.app import state
 
@@ -133,7 +134,9 @@ async def discover_source_schema(source_id: str, body: DiscoverRequest | None = 
     )
 
 
-def _call_discover(adapter, source_type: str, row, hints: DiscoverRequest) -> list[dict]:
+def _call_discover(
+    adapter, source_type: str, row, hints: DiscoverRequest
+) -> list[dict]:  # REQ-017, REQ-252
     """Dispatch to the correct adapter.discover_schema() signature."""
     if source_type == "mongodb":
         # MongoDB discover_schema requires sample documents from a live connection.

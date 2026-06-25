@@ -10,6 +10,8 @@
 
 """Starlette middleware that resolves per-tenant context from JWT claims."""
 
+# Requirements: REQ-456, REQ-458, REQ-462
+
 from __future__ import annotations
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -23,7 +25,7 @@ _SKIP_PATHS = {"/billing/signup", "/billing/webhook", "/health", "/docs", "/open
 _cache = TenantContextCache()
 
 
-class TenantMiddleware(BaseHTTPMiddleware):
+class TenantMiddleware(BaseHTTPMiddleware):  # REQ-456, REQ-462
     async def dispatch(self, request: Request, call_next):
         if request.url.path in _SKIP_PATHS:
             return await call_next(request)
@@ -48,7 +50,9 @@ class TenantMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-async def _build_tenant_context(request: Request, tenant_id: str) -> TenantContext | None:
+async def _build_tenant_context(
+    request: Request, tenant_id: str
+) -> TenantContext | None:  # REQ-456, REQ-458
     from provisa.api.billing.tenant_db import fetch_config_entities
     from provisa.api.billing.kms import decrypt_data_key, aes_decrypt
     from provisa.core.config_loader import parse_config_dict

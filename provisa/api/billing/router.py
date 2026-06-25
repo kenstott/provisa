@@ -5,6 +5,8 @@
 
 """FastAPI billing router — /billing prefix."""
 
+# Requirements: REQ-073, REQ-074
+
 from __future__ import annotations
 
 import json
@@ -45,8 +47,8 @@ def _pool(request: Request):
     return request.app.state.pg_pool
 
 
-@router.post("/signup")
-async def signup(body: SignupBody, request: Request):
+@router.post("/signup")  # REQ-073
+async def signup(_body: SignupBody, request: Request):
     pool = _pool(request)
     temp_id = str(uuid.uuid4())
     key_arn = await create_tenant_key(temp_id)
@@ -58,14 +60,14 @@ async def signup(body: SignupBody, request: Request):
     }
 
 
-@router.post("/checkout")
+@router.post("/checkout")  # REQ-073
 async def checkout(body: CheckoutBody, request: Request):
     pool = _pool(request)
     tenant = await get_tenant(pool, body.tenant_id)
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
     client = get_stripe_client()
-    session = client.checkout.sessions.create(
+    session = client.v1.checkout.sessions.create(
         params={
             "mode": "subscription",
             "line_items": [{"price": body.price_id, "quantity": 1}],
@@ -77,7 +79,7 @@ async def checkout(body: CheckoutBody, request: Request):
     return {"checkout_url": session.url}
 
 
-@router.post("/webhook")
+@router.post("/webhook")  # REQ-073, REQ-074
 async def webhook(request: Request):
     payload = await request.body()
     sig = request.headers.get("Stripe-Signature", "")
@@ -124,7 +126,7 @@ async def webhook(request: Request):
     return JSONResponse(content={"received": True})
 
 
-@router.get("/portal")
+@router.get("/portal")  # REQ-073, REQ-074
 async def portal(tenant_id: str, request: Request):
     pool = _pool(request)
     tenant = await get_tenant(pool, tenant_id)
@@ -133,11 +135,13 @@ async def portal(tenant_id: str, request: Request):
     if not tenant.stripe_customer_id:
         raise HTTPException(status_code=400, detail="Tenant has no Stripe customer")
     client = get_stripe_client()
-    session = client.billing_portal.sessions.create(params={"customer": tenant.stripe_customer_id})
+    session = client.v1.billing_portal.sessions.create(
+        params={"customer": tenant.stripe_customer_id}
+    )
     return {"portal_url": session.url}
 
 
-@router.get("/status")
+@router.get("/status")  # REQ-073, REQ-074
 async def status(tenant_id: str, request: Request):
     pool = _pool(request)
     tenant = await get_tenant(pool, tenant_id)

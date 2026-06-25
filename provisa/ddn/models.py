@@ -11,6 +11,8 @@
 
 """Intermediate data models for DDN (Hasura v3) HML metadata."""
 
+# Requirements: REQ-183, REQ-189, REQ-191, REQ-192, REQ-193
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -18,7 +20,7 @@ from typing import Any
 
 
 @dataclass
-class DDNConnector:
+class DDNConnector:  # REQ-183
     """A DataConnectorLink definition."""
 
     name: str
@@ -31,7 +33,7 @@ class DDNConnector:
 
 
 @dataclass
-class DDNFieldMapping:
+class DDNFieldMapping:  # REQ-189
     """Maps a GraphQL field name to a physical column name."""
 
     graphql_field: str
@@ -39,7 +41,7 @@ class DDNFieldMapping:
 
 
 @dataclass
-class DDNTypeMapping:
+class DDNTypeMapping:  # REQ-189
     """Connector type mapping for an ObjectType."""
 
     connector_name: str
@@ -49,7 +51,7 @@ class DDNTypeMapping:
 
 
 @dataclass
-class DDNObjectType:
+class DDNObjectType:  # REQ-183, REQ-189
     """An ObjectType definition (schema for a model)."""
 
     name: str
@@ -61,7 +63,7 @@ class DDNObjectType:
 
 
 @dataclass
-class DDNModel:
+class DDNModel:  # REQ-183
     """A Model definition (exposes an ObjectType as queryable)."""
 
     name: str
@@ -82,7 +84,7 @@ class DDNModel:
 
 
 @dataclass
-class DDNRelationship:
+class DDNRelationship:  # REQ-183, REQ-188
     """A Relationship definition (Object or Array)."""
 
     name: str
@@ -95,7 +97,7 @@ class DDNRelationship:
 
 
 @dataclass
-class DDNTypePermission:
+class DDNTypePermission:  # REQ-183, REQ-185
     """TypePermissions — controls which fields a role can see."""
 
     type_name: str
@@ -105,7 +107,7 @@ class DDNTypePermission:
 
 
 @dataclass
-class DDNModelPermission:
+class DDNModelPermission:  # REQ-183, REQ-187
     """ModelPermissions — controls row-level access for a role."""
 
     model_name: str
@@ -115,7 +117,7 @@ class DDNModelPermission:
 
 
 @dataclass
-class DDNAggregateExpression:
+class DDNAggregateExpression:  # REQ-191
     """An AggregateExpression definition."""
 
     name: str
@@ -129,7 +131,7 @@ class DDNAggregateExpression:
 
 
 @dataclass
-class DDNCommand:
+class DDNCommand:  # REQ-192
     """A Command definition (function or procedure)."""
 
     name: str
@@ -148,7 +150,7 @@ class DDNCommand:
 
 
 @dataclass
-class DDNMetadata:
+class DDNMetadata:  # REQ-183, REQ-193
     """Aggregated DDN HML metadata from a project directory."""
 
     connectors: list[DDNConnector] = field(default_factory=list)

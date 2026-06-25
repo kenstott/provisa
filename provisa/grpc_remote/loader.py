@@ -16,6 +16,8 @@ Two distinct operations:
   compile_proto_stubs(...)   — compile proto → Python stubs via grpc_tools.protoc
 """
 
+# Requirements: REQ-322, REQ-329
+
 from __future__ import annotations
 
 import os
@@ -119,7 +121,7 @@ def _extract_package(text: str) -> str:
     return m.group(1) if m else ""
 
 
-def parse_proto_text(proto_text: str) -> dict:
+def parse_proto_text(proto_text: str) -> dict:  # REQ-322
     """Parse proto3 text into an intermediate schema dict.
 
     Returns:
@@ -156,7 +158,7 @@ def parse_proto_text(proto_text: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-async def load_proto(
+async def load_proto(  # REQ-322, REQ-329
     path_or_url: str,
     import_paths: list[str] | None = None,
 ) -> dict:
@@ -189,7 +191,7 @@ async def load_proto(
 # ---------------------------------------------------------------------------
 
 
-def compile_proto_stubs(
+def compile_proto_stubs(  # REQ-329
     proto_text: str,
     proto_name: str = "remote",
     import_paths: list[str] | None = None,
@@ -204,7 +206,7 @@ def compile_proto_stubs(
         ValueError — if protoc compilation fails.
     """
     from grpc_tools import protoc  # type: ignore[import]
-    import pkg_resources
+    import pkg_resources  # pyright: ignore[reportMissingImports]
 
     tmp = out_dir or tempfile.mkdtemp(prefix="grpc_remote_stubs_")
     proto_file = os.path.join(tmp, f"{proto_name}.proto")

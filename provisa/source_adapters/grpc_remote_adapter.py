@@ -21,6 +21,8 @@ import grpc.aio
 
 from provisa.grpc_remote.executor import execute_query, execute_mutation
 
+# Requirements: REQ-322, REQ-325, REQ-326, REQ-327, REQ-328
+
 log = logging.getLogger(__name__)
 
 
@@ -28,7 +30,7 @@ def _args_hash(args: dict) -> str:
     return hashlib.sha256(json.dumps(sorted(args.items()), default=str).encode()).hexdigest()[:12]
 
 
-def _get_channel(grpc_remote_sources: dict, source_id: str) -> grpc.aio.Channel:
+def _get_channel(grpc_remote_sources: dict, source_id: str) -> grpc.aio.Channel:  # REQ-327
     reg = grpc_remote_sources.get(source_id)
     if reg is None:
         raise KeyError(f"gRPC remote source {source_id!r} not registered")
@@ -38,7 +40,7 @@ def _get_channel(grpc_remote_sources: dict, source_id: str) -> grpc.aio.Channel:
     return channel
 
 
-async def fetch(
+async def fetch(  # REQ-325, REQ-327, REQ-328
     source_id: str,
     full_method_path: str,
     input_message_name: str,
@@ -74,7 +76,7 @@ async def fetch(
     return rows
 
 
-async def execute_rpc(
+async def execute_rpc(  # REQ-326
     source_id: str,
     full_method_path: str,
     input_message_name: str,

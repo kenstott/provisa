@@ -23,6 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+# Requirements: REQ-038, REQ-040, REQ-042, REQ-263
+
 
 class MaskType(str, Enum):
     regex = "regex"
@@ -52,7 +54,7 @@ def _base_type(trino_type: str) -> str:
 
 
 @dataclass(frozen=True)
-class MaskingRule:
+class MaskingRule:  # REQ-038, REQ-040, REQ-263
     """A masking rule for a specific column and role."""
 
     mask_type: MaskType
@@ -69,7 +71,7 @@ class MaskingValidationError(Exception):
     """Raised when masking config is invalid for the column type."""
 
 
-def validate_masking_rule(
+def validate_masking_rule(  # REQ-038, REQ-040, REQ-042
     rule: MaskingRule,
     column_name: str,
     data_type: str,
@@ -143,7 +145,7 @@ def _resolve_constant(value: int | float | str | None, data_type: str) -> str:
     return f"'{escaped}'"
 
 
-def build_mask_expression(
+def build_mask_expression(  # REQ-040, REQ-263
     rule: MaskingRule,
     column_ref: str,
     data_type: str,
@@ -253,7 +255,7 @@ def _truncate_temporal(value, precision: str):
     raise MaskingValidationError(f"Unknown truncate precision: {precision!r}")
 
 
-def apply_mask_to_value(rule: MaskingRule, value, data_type: str):
+def apply_mask_to_value(rule: MaskingRule, value, data_type: str):  # REQ-040, REQ-263, REQ-336
     """Apply a masking rule to a Python value (REQ-336).
 
     Mirrors build_mask_expression in Python for change-event subscription rows, which

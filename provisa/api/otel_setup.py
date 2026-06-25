@@ -6,6 +6,8 @@
 
 """OpenTelemetry tracing and metrics initialisation."""
 
+# Requirements: REQ-302, REQ-303, REQ-330, REQ-545, REQ-546, REQ-547, REQ-548, REQ-549
+
 from __future__ import annotations
 
 import os
@@ -49,7 +51,7 @@ def shutdown_otel() -> None:
         _log_provider = None
 
 
-class SpanBuffer:
+class SpanBuffer:  # REQ-302, REQ-303
     """Thread-safe circular buffer of the last N completed spans."""
 
     def __init__(self, maxlen: int = 100) -> None:
@@ -126,7 +128,9 @@ def _make_log_exporter(endpoint: str):
     return OTLPLogExporter(endpoint=endpoint, insecure=True)
 
 
-def attach_otlp_exporters(endpoint: str, service_name: str = "provisa") -> None:
+def attach_otlp_exporters(
+    endpoint: str, service_name: str = "provisa"
+) -> None:  # REQ-302, REQ-303, REQ-549
     """Attach OTLP exporters to existing providers when endpoint is set at runtime."""
     import logging
     import provisa.api.otel_setup as _self
@@ -203,7 +207,7 @@ def _write_otlp2parquet_toml(max_age_secs: int, config_path: str) -> None:
         _log.debug("Could not write otlp2parquet.toml: %s", exc)
 
 
-def _make_filtering_exporter(
+def _make_filtering_exporter(  # REQ-545, REQ-546, REQ-547, REQ-548
     inner: "Any",
     redact_sql_literals: bool,
     redact_attributes: list[str],
@@ -259,7 +263,9 @@ def _make_filtering_exporter(
         return inner
 
 
-def setup_otel(app: "Any") -> None:
+def setup_otel(
+    app: "Any",
+) -> None:  # REQ-302, REQ-303, REQ-330, REQ-545, REQ-546, REQ-547, REQ-548, REQ-549
     """Initialize OpenTelemetry tracing unconditionally.
 
     Always creates a TracerProvider so module-level tracers work everywhere.

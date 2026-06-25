@@ -13,12 +13,14 @@ masked vectors would leak the very data masking protects.
 
 from __future__ import annotations
 
+# Requirements: REQ-426, REQ-652
+
 
 class EmbeddingAccessError(PermissionError):
     """A role attempted a similarity search on an embedding column it cannot access."""
 
 
-def can_search_embedding(role_id: str, column) -> bool:
+def can_search_embedding(role_id: str, column) -> bool:  # REQ-426, REQ-652
     """Whether ``role_id`` may run a similarity search on this embedding column (REQ-426).
 
     Requires column visibility, and — for masked/sensitive columns — that the role is
@@ -35,7 +37,7 @@ def can_search_embedding(role_id: str, column) -> bool:
     return True
 
 
-def assert_search_allowed(role_id: str, column) -> None:
+def assert_search_allowed(role_id: str, column) -> None:  # REQ-426, REQ-652
     """Raise EmbeddingAccessError if the role may not search this embedding column."""
     if not can_search_embedding(role_id, column):
         raise EmbeddingAccessError(

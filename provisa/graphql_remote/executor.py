@@ -16,6 +16,8 @@ import re
 import httpx
 from provisa.graphql_remote.introspect import _build_headers
 
+# Requirements: REQ-307, REQ-309, REQ-310, REQ-313
+
 
 def _safe_json(resp: httpx.Response) -> dict:
     """Parse JSON response, fixing lone \\u escapes that aren't valid JSON."""
@@ -40,7 +42,7 @@ def _object_fields_from_errors(errors: list) -> set[str]:
     return found
 
 
-async def execute_remote(
+async def execute_remote(  # REQ-309, REQ-307, REQ-310, REQ-313
     url: str,
     auth: dict | None,
     field_name: str,

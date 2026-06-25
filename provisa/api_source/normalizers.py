@@ -22,17 +22,23 @@ neo4j_graph_rels    Transaction API graph format — relationships only
 neo4j_query_v2      Query API v2               (/db/{db}/query/v2, Neo4j 5.5+)
 """
 
+# Requirements: REQ-295, REQ-297, REQ-299
+
 from __future__ import annotations
 
 from collections.abc import Callable
 
 
-def _as_list(value: object) -> list[object]:
+def _as_list(
+    value: object,  # object-ok: raw API payload, shape unknown until runtime
+) -> list[object]:
     """Return value as a list, or an empty list if it is not a list."""
     return value if isinstance(value, list) else []
 
 
-def _as_dict(value: object) -> dict[str, object]:
+def _as_dict(
+    value: object,  # object-ok: raw API payload, shape unknown until runtime
+) -> dict[str, object]:
     """Return value as a dict, or an empty dict if it is not a dict."""
     return value if isinstance(value, dict) else {}
 
@@ -40,7 +46,9 @@ def _as_dict(value: object) -> dict[str, object]:
 # ── Neo4j: Transaction API row format ─────────────────────────────────────────
 
 
-def neo4j_tabular(response: object) -> list[dict]:
+def neo4j_tabular(
+    response: object,  # object-ok: opaque external API response
+) -> list[dict]:  # REQ-295, REQ-299
     """Normalize a Neo4j HTTP legacy transaction API response to flat row dicts.
 
     Endpoint: /db/{db}/tx/commit  (resultDataContents defaults to ["row"])
@@ -64,7 +72,9 @@ def neo4j_tabular(response: object) -> list[dict]:
 # ── Neo4j: Legacy cypher endpoint ─────────────────────────────────────────────
 
 
-def neo4j_legacy_cypher(response: object) -> list[dict]:
+def neo4j_legacy_cypher(
+    response: object,  # object-ok: opaque external API response
+) -> list[dict]:  # REQ-295, REQ-299
     """Normalize the deprecated /db/data/cypher endpoint response.
 
     Response shape:
@@ -84,7 +94,9 @@ def neo4j_legacy_cypher(response: object) -> list[dict]:
 # ── Neo4j: Transaction API graph format — nodes ───────────────────────────────
 
 
-def neo4j_graph_nodes(response: object) -> list[dict]:
+def neo4j_graph_nodes(
+    response: object,  # object-ok: opaque external API response
+) -> list[dict]:  # REQ-295, REQ-299
     """Normalize Neo4j graph-format response, emitting one row per node.
 
     Endpoint: /db/{db}/tx/commit  with resultDataContents=["graph"]
@@ -125,7 +137,9 @@ def neo4j_graph_nodes(response: object) -> list[dict]:
 # ── Neo4j: Transaction API graph format — relationships ───────────────────────
 
 
-def neo4j_graph_rels(response: object) -> list[dict]:
+def neo4j_graph_rels(
+    response: object,  # object-ok: opaque external API response
+) -> list[dict]:  # REQ-295, REQ-299
     """Normalize Neo4j graph-format response, emitting one row per relationship.
 
     Each relationship becomes a row:
@@ -158,7 +172,9 @@ def neo4j_graph_rels(response: object) -> list[dict]:
 # ── Neo4j: Query API v2 (Neo4j 5.5+) ─────────────────────────────────────────
 
 
-def neo4j_query_v2(response: object) -> list[dict]:
+def neo4j_query_v2(
+    response: object,  # object-ok: opaque external API response
+) -> list[dict]:  # REQ-295, REQ-299
     """Normalize a Neo4j Query API v2 response to flat row dicts.
 
     Endpoint: /db/{db}/query/v2  (Neo4j 5.5+)
@@ -190,7 +206,9 @@ def neo4j_query_v2(response: object) -> list[dict]:
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 
-def sparql_bindings(response: object) -> list[dict]:
+def sparql_bindings(
+    response: object,  # object-ok: opaque external API response
+) -> list[dict]:  # REQ-297, REQ-299
     """Normalize a SPARQL 1.1 SELECT response to flat row dicts.
 
     SPARQL JSON format:
@@ -211,7 +229,9 @@ def sparql_bindings(response: object) -> list[dict]:
 
 # ── Registry ──────────────────────────────────────────────────────────────────
 
-NORMALIZERS: dict[str, Callable[[object], list[dict]]] = {
+NORMALIZERS: dict[
+    str, Callable[[object], list[dict]]
+] = {  # object-ok: registry stores heterogeneous normalizer signatures
     "neo4j_tabular": neo4j_tabular,
     "neo4j_legacy_cypher": neo4j_legacy_cypher,
     "neo4j_graph_nodes": neo4j_graph_nodes,
@@ -221,7 +241,11 @@ NORMALIZERS: dict[str, Callable[[object], list[dict]]] = {
 }
 
 
-def get_normalizer(name: str) -> Callable[[object], list[dict]]:
+def get_normalizer(
+    name: str,
+) -> Callable[
+    [object], list[dict]
+]:  # REQ-299  # object-ok: registry return type mirrors normalizer signatures
     """Return a normalizer by name, raising ValueError for unknown names."""
     if name not in NORMALIZERS:
         raise ValueError(f"Unknown response_normalizer {name!r}. Available: {sorted(NORMALIZERS)}")

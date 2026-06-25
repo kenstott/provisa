@@ -5,6 +5,8 @@
 
 """Billing domain models."""
 
+# Requirements: REQ-073, REQ-074
+
 from __future__ import annotations
 
 import uuid
@@ -13,7 +15,7 @@ from datetime import datetime
 from enum import Enum
 
 
-class Plan(str, Enum):
+class Plan(str, Enum):  # REQ-073, REQ-074
     trial = "trial"
     starter = "starter"
     pro = "pro"
@@ -23,7 +25,7 @@ PLAN_LIMITS: dict[str, int] = {"trial": 2, "starter": 10, "pro": 100}
 
 
 @dataclass
-class Tenant:
+class Tenant:  # REQ-073, REQ-074
     id: uuid.UUID
     kms_key_arn: str
     stripe_customer_id: str | None

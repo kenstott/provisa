@@ -13,6 +13,8 @@
 from __future__ import annotations
 
 import asyncio
+
+# Requirements: REQ-336
 import logging
 from datetime import datetime, timezone
 from typing import AsyncGenerator
@@ -28,7 +30,7 @@ _BATCH_LIMIT = 100
 _DEFAULT_POLL_INTERVAL = 5.0
 
 
-class IngestPollingProvider(NotificationProvider):
+class IngestPollingProvider(NotificationProvider):  # REQ-336
     """Polls ``_updated_at`` on the ingest backing table via SQLAlchemy.
 
     Provisa owns the write path for ingest tables and guarantees that
@@ -44,7 +46,9 @@ class IngestPollingProvider(NotificationProvider):
         self._engine = engine
         self._poll_interval = poll_interval
 
-    async def watch(self, table: str, filter_expr: str | None = None) -> AsyncGenerator[ChangeEvent, None]:
+    async def watch(
+        self, table: str, filter_expr: str | None = None
+    ) -> AsyncGenerator[ChangeEvent, None]:
         watermark: datetime = datetime.now(tz=timezone.utc)
 
         while True:

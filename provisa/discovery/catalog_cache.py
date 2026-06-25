@@ -14,6 +14,8 @@ The cache is populated in the background after source registration.
 The search endpoint reads from cache; falls back to live Trino if cache is cold.
 """
 
+# Requirements: REQ-464
+
 from __future__ import annotations
 
 import logging
@@ -47,7 +49,7 @@ class CachedTable:
     comment: str | None
 
 
-async def read_cache(pool, source_id: str, schema_name: str) -> list[CachedTable] | None:
+async def read_cache(pool, source_id: str, schema_name: str) -> list[CachedTable] | None:  # REQ-464
     """Return cached tables for source+schema, or None if cache is cold."""
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -75,7 +77,7 @@ async def write_cache(
     source_id: str,
     schema_name: str,
     tables: list[CachedTable],
-) -> None:
+) -> None:  # REQ-464
     if not tables:
         return
     async with pool.acquire() as conn:
@@ -91,12 +93,14 @@ async def write_cache(
         )
 
 
-async def invalidate_source(pool, source_id: str) -> None:
+async def invalidate_source(pool, source_id: str) -> None:  # REQ-464
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM source_catalog_cache WHERE source_id = $1", source_id)
 
 
-async def index_source(source_id: str, pool, trino_conn, source_pools, source_types, state) -> None:
+async def index_source(
+    source_id: str, pool, trino_conn, source_pools, source_types, state
+) -> None:  # REQ-464
     """Background task: walk all schemas+tables for a source and populate cache.
 
     Errors are logged and swallowed — cache miss is always safe (live fallback).

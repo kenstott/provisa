@@ -10,6 +10,8 @@ can push similarity down to the source (native tier) or fall back to a pgvector 
 (fallback tier). Type-based capability + a runtime pgvector-extension probe.
 """
 
+# Requirements: REQ-422
+
 from __future__ import annotations
 
 # Source type → native vector capability. None elsewhere → fallback tier.
@@ -20,12 +22,12 @@ _VECTOR_CAPABILITY: dict[str, str] = {
 }
 
 
-def native_vector_capability(source_type: str) -> str | None:
+def native_vector_capability(source_type: str) -> str | None:  # REQ-422
     """Return the native vector capability name for a source type, or None."""
     return _VECTOR_CAPABILITY.get(source_type)
 
 
-def supports_native_vectors(source_type: str) -> bool:
+def supports_native_vectors(source_type: str) -> bool:  # REQ-422
     return source_type in _VECTOR_CAPABILITY
 
 

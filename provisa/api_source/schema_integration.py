@@ -15,6 +15,8 @@ JSONB columns: exposed as JSON scalar, NOT in WHERE input, NOT in relationships.
 Promoted columns: appear as regular filterable fields.
 """
 
+# Requirements: REQ-119, REQ-299, REQ-599, REQ-602
+
 from __future__ import annotations
 
 from provisa.api_source.models import ApiColumnType, ApiEndpoint, PromotionConfig
@@ -39,7 +41,7 @@ _PROMOTION_TYPE_TO_TRINO: dict[str, str] = {
 }
 
 
-def _endpoint_to_table_dict(
+def _endpoint_to_table_dict(  # REQ-119, REQ-599, REQ-602
     endpoint: ApiEndpoint,
     domain_id: str,
     role_ids: list[str],
@@ -108,7 +110,7 @@ def _endpoint_to_table_dict(
     return table_dict, column_metadata
 
 
-def register_api_columns(
+def register_api_columns(  # REQ-119, REQ-299, REQ-599, REQ-602
     tables: list[dict],
     column_types: dict[int, list[ColumnMetadata]],
     api_endpoints: list[ApiEndpoint],

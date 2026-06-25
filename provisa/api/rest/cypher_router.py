@@ -20,6 +20,8 @@ Five-stage pipeline:
 
 from __future__ import annotations
 
+# Requirements: REQ-345, REQ-346, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-392, REQ-398
+
 import logging
 import time as _time
 from typing import TYPE_CHECKING, Any
@@ -160,7 +162,7 @@ def _detect_procedure(query: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
-class CypherRequest(BaseModel):
+class CypherRequest(BaseModel):  # REQ-345
     query: str
     params: dict[str, Any] = {}
 
@@ -436,7 +438,7 @@ def _build_stats_content(
 
 
 @router.post("/data/cypher")
-async def cypher_query(
+async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351, REQ-352
     body: CypherRequest,
     request: Request,
     query_id: str | None = Query(None),
@@ -596,7 +598,7 @@ async def cypher_query(
 
 
 @router.get("/data/graph-schema")
-async def graph_schema(request: Request) -> JSONResponse:
+async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
     """Return node labels and relationship types for the current role."""
     from provisa.api.app import state
 
@@ -676,7 +678,9 @@ class ImputeRequest(BaseModel):
 
 
 @router.post("/data/impute-relationships")
-async def impute_relationships(request: Request, body: ImputeRequest) -> JSONResponse:
+async def impute_relationships(
+    request: Request, body: ImputeRequest
+) -> JSONResponse:  # REQ-345, REQ-351
     """Generate and execute all relationship queries for a set of visible graph nodes.
 
     Accepts the visible node set, uses label_map to determine pk columns and known

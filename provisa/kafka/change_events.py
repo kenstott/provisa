@@ -21,13 +21,15 @@ import logging
 import os
 from datetime import datetime, timezone
 
+# Requirements: REQ-172, REQ-173, REQ-174, REQ-175
+
 log = logging.getLogger(__name__)
 
 _producer = None
 _topic = None
 
 
-def _get_topic() -> str:
+def _get_topic() -> str:  # REQ-175
     return os.environ.get("PROVISA_CHANGE_EVENT_TOPIC", "provisa.change-events")
 
 
@@ -45,7 +47,8 @@ def _get_producer():
         return None
 
     try:
-        from confluent_kafka import Producer
+        from confluent_kafka import Producer  # pyright: ignore[reportMissingImports]
+
         _producer = Producer({"bootstrap.servers": bootstrap})
         log.info("Change event producer connected to %s", bootstrap)
         return _producer
@@ -54,7 +57,7 @@ def _get_producer():
         return None
 
 
-def emit_change_event(
+def emit_change_event(  # REQ-172, REQ-173, REQ-174
     table_name: str,
     source_id: str,
     mutation_type: str = "mutation",

@@ -20,6 +20,8 @@ would be wrong across instances.
 
 from __future__ import annotations
 
+# Requirements: REQ-369, REQ-370, REQ-371
+
 import time
 from typing import Any, Protocol, cast
 
@@ -43,7 +45,7 @@ class RateLimiter(Protocol):
     async def release(self, key: str) -> None: ...
 
 
-class NoopRateLimiter:
+class NoopRateLimiter:  # REQ-371
     """Allows everything — used when Redis is not configured."""
 
     async def allow(self, key: str, limit: int, window_s: float) -> tuple[bool, float]:
@@ -56,7 +58,7 @@ class NoopRateLimiter:
         return None
 
 
-class RedisRateLimiter:
+class RedisRateLimiter:  # REQ-369, REQ-371
     """Sliding-window + concurrency limiter over Redis.
 
     The redis client is injected so the implementation is testable without a server.
@@ -110,7 +112,7 @@ class RedisRateLimiter:
             await r.set(key, 0)
 
 
-def build_rate_limiter(redis_url: str | None) -> RateLimiter:
+def build_rate_limiter(redis_url: str | None) -> RateLimiter:  # REQ-369, REQ-371
     """Construct a RedisRateLimiter, or a no-op limiter when Redis is unavailable."""
     if not redis_url:
         return NoopRateLimiter()

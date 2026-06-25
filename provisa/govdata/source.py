@@ -21,6 +21,8 @@ from provisa.core.models import GovDataSource
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-492, REQ-540
+
 _jvm_lock = threading.Lock()
 
 # (source_id, schema) -> [table_name, ...]
@@ -33,8 +35,8 @@ _pk_cache: dict[tuple[str, str, str], set[str]] = {}
 _fk_cache: dict[tuple[str, str, str], list[dict[str, str]]] = {}
 
 
-def connect(source: GovDataSource):
-    from askamerica.engine import DEFAULT_SCHEMAS, get_connection
+def connect(source: GovDataSource):  # REQ-492, REQ-540
+    from askamerica.engine import DEFAULT_SCHEMAS, get_connection  # pyright: ignore[reportMissingImports]
 
     with _jvm_lock:
         if "ASKAMERICA_SCHEMAS" not in os.environ:
@@ -44,7 +46,7 @@ def connect(source: GovDataSource):
         return get_connection(source.api_key)
 
 
-def fetch_tables(source: GovDataSource, schema: str) -> list[str]:
+def fetch_tables(source: GovDataSource, schema: str) -> list[str]:  # REQ-492, REQ-540
     key = (source.id, schema)
     if key in _tables_cache:
         return _tables_cache[key]
@@ -59,7 +61,7 @@ def fetch_tables(source: GovDataSource, schema: str) -> list[str]:
     return names
 
 
-def fetch_columns(
+def fetch_columns(  # REQ-492, REQ-540
     source: GovDataSource, schema: str, table: str
 ) -> list[tuple[str, str, str | None]]:
     key = (source.id, schema, table)
@@ -82,7 +84,7 @@ def fetch_columns(
     return cols
 
 
-def fetch_primary_keys(source: GovDataSource, schema: str, table: str) -> set[str]:
+def fetch_primary_keys(source: GovDataSource, schema: str, table: str) -> set[str]:  # REQ-492
     key = (source.id, schema, table)
     if key in _pk_cache:
         return _pk_cache[key]
@@ -97,7 +99,9 @@ def fetch_primary_keys(source: GovDataSource, schema: str, table: str) -> set[st
     return pks
 
 
-def fetch_foreign_keys(source: GovDataSource, schema: str, table: str) -> list[dict[str, str]]:
+def fetch_foreign_keys(
+    source: GovDataSource, schema: str, table: str
+) -> list[dict[str, str]]:  # REQ-492, REQ-018
     """Return imported FK references for *table* via JDBC getImportedKeys().
 
     Each entry: {"fk_col", "ref_schema", "ref_table", "ref_col"}.
@@ -123,7 +127,7 @@ def fetch_foreign_keys(source: GovDataSource, schema: str, table: str) -> list[d
     return fks
 
 
-def prime_source(source: GovDataSource, schemas: list[str]) -> None:
+def prime_source(source: GovDataSource, schemas: list[str]) -> None:  # REQ-492, REQ-540
     """Fetch and cache tables (and columns) for all schemas. Called after source creation."""
     for schema in schemas:
         try:
@@ -139,8 +143,8 @@ def prime_source(source: GovDataSource, schemas: list[str]) -> None:
             log.warning("govdata prime_source: tables failed for schema %s", schema)
 
 
-def execute_query(source: GovDataSource, sql: str) -> list[dict[str, Any]]:
-    from askamerica.engine import execute_query as _execute
+def execute_query(source: GovDataSource, sql: str) -> list[dict[str, Any]]:  # REQ-492, REQ-540
+    from askamerica.engine import execute_query as _execute  # pyright: ignore[reportMissingImports]
 
     conn = connect(source)
     log.warning("GovData query: %s", sql[:300])

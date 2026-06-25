@@ -24,6 +24,8 @@ import sqlglot.expressions as exp
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping
 from provisa.cypher.parser import ReturnClause
 
+# Requirements: REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
+
 if TYPE_CHECKING:
     from provisa.cypher.translator import GraphVarKind
 
@@ -34,7 +36,7 @@ def _is_bare_variable(text: str) -> bool:
     return bool(re.match(r"^[A-Za-z_]\w*$", text))
 
 
-class SelectBuilderMixin:
+class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
     """Mixin for _Translator: builds SELECT expressions and path objects."""
 
     _var_table: dict

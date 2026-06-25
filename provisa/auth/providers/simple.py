@@ -21,6 +21,8 @@ from pydantic import BaseModel
 
 from provisa.auth.models import AuthIdentity, AuthProvider
 
+# Requirements: REQ-120, REQ-124
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Module-level reference set by app.py when provider=simple
@@ -33,34 +35,34 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login")
-async def login(request: LoginRequest):
+async def login(request: LoginRequest):  # REQ-124
     """Authenticate with username/password and receive a JWT."""
     if _provider_instance is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=503, detail="Simple auth provider not configured")
     try:
         token = _provider_instance.login(request.username, request.password)
     except ValueError as e:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=401, detail=str(e))
     return {"access_token": token, "token_type": "bearer"}
 
 
-class SimpleAuthProvider(AuthProvider):
+class SimpleAuthProvider(AuthProvider):  # REQ-120, REQ-124
     """Bcrypt password validation with JWT issuance for testing/simple deployments."""
 
     def __init__(self, users: list[dict], jwt_secret: str) -> None:
         self._users = {u["username"]: u for u in users}
         self._jwt_secret = jwt_secret
 
-    def login(self, username: str, password: str) -> str:
+    def login(self, username: str, password: str) -> str:  # REQ-124
         """Verify credentials and return a signed JWT."""
         user = self._users.get(username)
         if user is None:
             raise ValueError("Invalid credentials")
-        if not bcrypt.checkpw(
-            password.encode("utf-8"), user["password_hash"].encode("utf-8")
-        ):
+        if not bcrypt.checkpw(password.encode("utf-8"), user["password_hash"].encode("utf-8")):
             raise ValueError("Invalid credentials")
         now = datetime.datetime.now(datetime.timezone.utc)
         payload = {
@@ -71,7 +73,7 @@ class SimpleAuthProvider(AuthProvider):
         }
         return jwt.encode(payload, self._jwt_secret, algorithm="HS256")
 
-    async def validate_token(self, token: str) -> AuthIdentity:
+    async def validate_token(self, token: str) -> AuthIdentity:  # REQ-120, REQ-124
         decoded = jwt.decode(token, self._jwt_secret, algorithms=["HS256"])
         return AuthIdentity(
             user_id=decoded["sub"],

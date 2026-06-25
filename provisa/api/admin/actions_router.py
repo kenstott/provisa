@@ -10,6 +10,8 @@
 
 """Admin REST endpoints for tracked DB functions and webhooks (REQ-205-211)."""
 
+# Requirements: REQ-004, REQ-062, REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-210, REQ-211, REQ-245, REQ-253, REQ-304, REQ-305, REQ-306, REQ-434
+
 from __future__ import annotations
 
 import json
@@ -103,7 +105,7 @@ def _row_to_webhook(row: dict) -> dict:
 
 
 @router.get("")
-async def list_actions():
+async def list_actions():  # REQ-205, REQ-209
     """Return all tracked functions and webhooks."""
     from provisa.api.app import state
 
@@ -122,7 +124,7 @@ async def list_actions():
     }
 
 
-class FunctionInput(BaseModel):
+class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
     name: str
     sourceId: str = ""
     schemaName: str = "public"
@@ -137,7 +139,7 @@ class FunctionInput(BaseModel):
     returnSchema: dict | None = None
 
 
-class WebhookInput(BaseModel):
+class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
     name: str
     url: str = ""
     method: str = "POST"
@@ -152,7 +154,9 @@ class WebhookInput(BaseModel):
 
 
 @router.post("/functions")
-async def create_function(body: FunctionInput):
+async def create_function(
+    body: FunctionInput,
+):  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-253, REQ-304
     """Create a tracked DB function."""
     from provisa.api.app import state
     from provisa.core.models import Function, FunctionArgument
@@ -191,7 +195,7 @@ async def create_function(body: FunctionInput):
 
 
 @router.put("/functions/{name}")
-async def update_function(name: str, body: FunctionInput):
+async def update_function(name: str, body: FunctionInput):  # REQ-205, REQ-253, REQ-304
     """Update a tracked DB function by name."""
     from provisa.api.app import state
 
@@ -243,7 +247,7 @@ async def update_function(name: str, body: FunctionInput):
 
 
 @router.delete("/functions/{name}")
-async def delete_function(name: str):
+async def delete_function(name: str):  # REQ-205, REQ-253
     """Delete a tracked DB function by name."""
     from provisa.api.app import state
 
@@ -266,7 +270,7 @@ async def delete_function(name: str):
 
 
 @router.post("/webhooks")
-async def create_webhook(body: WebhookInput):
+async def create_webhook(body: WebhookInput):  # REQ-209, REQ-210, REQ-211, REQ-253, REQ-434
     """Create a tracked webhook."""
     from provisa.api.app import state
 
@@ -338,7 +342,7 @@ async def create_webhook(body: WebhookInput):
 
 
 @router.put("/webhooks/{name}")
-async def update_webhook(name: str, body: WebhookInput):
+async def update_webhook(name: str, body: WebhookInput):  # REQ-209, REQ-253
     """Update a tracked webhook by name."""
     from provisa.api.app import state
 
@@ -388,7 +392,7 @@ async def update_webhook(name: str, body: WebhookInput):
 
 
 @router.delete("/webhooks/{name}")
-async def delete_webhook(name: str):
+async def delete_webhook(name: str):  # REQ-209, REQ-253
     """Delete a tracked webhook by name."""
     from provisa.api.app import state
 
@@ -410,7 +414,7 @@ async def delete_webhook(name: str):
     return {"success": True, "name": name}
 
 
-class TestActionInput(BaseModel):
+class TestActionInput(BaseModel):  # REQ-004, REQ-062, REQ-245
     actionType: str  # "function" or "webhook"
     name: str
     role_id: str | None = None  # REQ-245: governance role selector
@@ -455,7 +459,7 @@ def _build_function_enforcement(
     }
 
 
-def _apply_row_governance(
+def _apply_row_governance(  # REQ-062, REQ-207, REQ-245
     rows: list[dict],
     table_id: int | None,
     role_id: str,
@@ -497,7 +501,7 @@ def _apply_row_governance(
 
 
 @router.post("/test")
-async def test_action(body: TestActionInput):
+async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
     """Run a no-arg test invocation of a tracked function or webhook."""
     if not _test_endpoints_enabled():
         raise HTTPException(

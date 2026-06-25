@@ -24,6 +24,8 @@ from typing import Any
 
 from provisa.file_source.source import FileSourceConfig, discover_schema
 
+# Requirements: REQ-012, REQ-016, REQ-250, REQ-252
+
 log = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS: dict[str, str] = {
@@ -74,7 +76,7 @@ def _walk_local_recursive(
 
 def _walk_fsspec(root: str, max_depth: int | None) -> list[str]:
     """Walk an fsspec URI and return matching file paths."""
-    import fsspec
+    import fsspec  # pyright: ignore[reportMissingImports]
 
     fs, base_path = fsspec.core.url_to_fs(root)
     all_files: list[str] = []
@@ -104,12 +106,10 @@ def _walk_fsspec_recursive(
             if suffix in SUPPORTED_EXTENSIONS:
                 results.append(f"{protocol}://{entry_path}")
         elif entry_type == "directory":
-            _walk_fsspec_recursive(
-                fs, base, entry_path, depth + 1, max_depth, results, uri_prefix
-            )
+            _walk_fsspec_recursive(fs, base, entry_path, depth + 1, max_depth, results, uri_prefix)
 
 
-def _introspect_file(file_path: str, source_type: str) -> list[dict]:
+def _introspect_file(file_path: str, source_type: str) -> list[dict]:  # REQ-252
     """Call discover_schema for the given file; return columns list."""
     cfg = FileSourceConfig(
         id=f"_crawl_{Path(file_path).stem}",
@@ -127,19 +127,18 @@ def _build_table_entry(file_path: str, source_type: str, columns: list[dict]) ->
         by_table: dict[str, list[dict]] = {}
         for col in columns:
             tbl = col.get("table", stem)
-            by_table.setdefault(tbl, []).append({
-                "name": col["name"],
-                "type": col["type"],
-                "nullable": col.get("nullable", True),
-            })
+            by_table.setdefault(tbl, []).append(
+                {
+                    "name": col["name"],
+                    "type": col["type"],
+                    "nullable": col.get("nullable", True),
+                }
+            )
         return {
             "name": stem,
             "path": file_path,
             "type": source_type,
-            "tables": [
-                {"name": tbl, "columns": cols}
-                for tbl, cols in by_table.items()
-            ],
+            "tables": [{"name": tbl, "columns": cols} for tbl, cols in by_table.items()],
         }
     else:
         return {
@@ -162,7 +161,7 @@ def _build_table_entry(file_path: str, source_type: str, columns: list[dict]) ->
         }
 
 
-def crawl_directory(root: str, depth: int | None = None) -> list[dict]:
+def crawl_directory(root: str, depth: int | None = None) -> list[dict]:  # REQ-012, REQ-016, REQ-250
     """Crawl *root* recursively and return discovered table descriptors.
 
     Parameters

@@ -19,8 +19,10 @@ import jwt
 
 from provisa.auth.models import AuthIdentity, AuthProvider
 
+# Requirements: REQ-120, REQ-123
 
-class OAuthProvider(AuthProvider):
+
+class OAuthProvider(AuthProvider):  # REQ-120, REQ-123
     """Validates JWTs via generic OIDC discovery."""
 
     def __init__(
@@ -55,7 +57,7 @@ class OAuthProvider(AuthProvider):
             self._jwks_fetched_at = now
         return self._jwks_client
 
-    async def validate_token(self, token: str) -> AuthIdentity:
+    async def validate_token(self, token: str) -> AuthIdentity:  # REQ-120, REQ-123
         client = self._get_jwks_client()
         signing_key = client.get_signing_key_from_jwt(token)
         decoded = jwt.decode(

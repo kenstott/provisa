@@ -22,6 +22,8 @@ from provisa.compiler.naming import source_to_catalog
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, REQ-241
+
 
 class _HotEncoder(json.JSONEncoder):
     """Handle Trino types that aren't natively JSON serializable."""
@@ -62,7 +64,9 @@ def _sql_literal(val) -> str:
     return f"'{escaped}'"
 
 
-def build_values_cte_sql(sql: str, table_name: str, entry: "HotTableEntry") -> str:
+def build_values_cte_sql(
+    sql: str, table_name: str, entry: "HotTableEntry"
+) -> str:  # REQ-232, REQ-233
     """Replace the first table reference matching table_name with a VALUES CTE.
 
     Works for both FROM and JOIN targets. Merges with any existing WITH clause.
@@ -125,7 +129,7 @@ def build_values_cte_sql(sql: str, table_name: str, entry: "HotTableEntry") -> s
 
 
 @dataclass
-class HotTableEntry:
+class HotTableEntry:  # REQ-230, REQ-232
     """Metadata for a single hot-cached table."""
 
     table_name: str
@@ -138,7 +142,7 @@ class HotTableEntry:
 
 
 @dataclass
-class HotTableCandidate:
+class HotTableCandidate:  # REQ-236, REQ-237
     """Metadata for a table that should be auto-promoted after its first small query."""
 
     table_name: str
@@ -147,7 +151,7 @@ class HotTableCandidate:
     schema: str
 
 
-class HotTableManager:
+class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, REQ-241
     """Manages small lookup tables cached in Redis for JOIN optimization."""
 
     def __init__(
@@ -353,7 +357,7 @@ class HotTableManager:
         """Get the hot table entry with metadata."""
         return self._hot_tables.get(table_name)
 
-    def register_candidate(self, candidate: HotTableCandidate) -> None:
+    def register_candidate(self, candidate: HotTableCandidate) -> None:  # REQ-236, REQ-237
         """Register a table as an auto-promotion candidate."""
         self._candidates[candidate.table_name] = candidate
 
@@ -362,7 +366,7 @@ class HotTableManager:
         table_name: str,
         rows: list[tuple],
         column_names: list[str],
-    ) -> None:
+    ) -> None:  # REQ-236
         """Promote table to hot cache if it's a candidate and result is small enough."""
         if self.is_hot(table_name):
             return
@@ -383,7 +387,7 @@ class HotTableManager:
         )
         log.info("Auto-promoted %s to hot cache after query (%d rows)", table_name, len(rows))
 
-    async def maybe_promote_dicts(self, table_name: str, rows: list[dict]) -> None:
+    async def maybe_promote_dicts(self, table_name: str, rows: list[dict]) -> None:  # REQ-236
         """Promote table to hot cache from already-fetched dict rows (API sources)."""
         if self.is_hot(table_name):
             return
@@ -413,7 +417,7 @@ class HotTableManager:
             self._redis = None
 
 
-def detect_hot_tables(
+def detect_hot_tables(  # REQ-236, REQ-237
     tables: list[dict],
     relationships: list[dict],
     hot_overrides: dict[str, bool | None],
@@ -550,7 +554,7 @@ async def count_table_rows(trino_conn, table_name: str, schema: str, catalog: st
     return row[0] if row else 0
 
 
-async def detect_hot_tables_by_count(
+async def detect_hot_tables_by_count(  # REQ-236
     trino_conn,
     candidates: list[tuple[str, str, str]],
     auto_threshold: int,
@@ -576,7 +580,7 @@ async def detect_hot_tables_by_count(
     return result
 
 
-async def init_hot_tables(
+async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
     raw_config: dict,
     trino_conn,
 ) -> HotTableManager | None:

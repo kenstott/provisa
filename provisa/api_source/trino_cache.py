@@ -25,6 +25,8 @@ Execution model for OpenAPI/REST sources:
              matches the source catalog (both PostgreSQL).
 """
 
+# Requirements: REQ-280, REQ-309, REQ-318, REQ-327
+
 from __future__ import annotations
 
 import asyncio
@@ -63,13 +65,13 @@ _API_TYPE_TO_TRINO: dict[str, str] = {
 
 
 @dataclass(frozen=True)
-class CacheLocation:
+class CacheLocation:  # REQ-318, REQ-309, REQ-327
     catalog: str
     schema: str
     backend: str  # "iceberg" or "postgresql" (any non-iceberg catalog)
 
 
-def cache_location(
+def cache_location(  # REQ-318, REQ-309, REQ-327
     source_id: str,
     cache_catalog: str | None = None,
     cache_schema: str = _DEFAULT_CACHE_SCHEMA,
@@ -84,7 +86,9 @@ def cache_location(
     return CacheLocation(catalog, cache_schema, backend)
 
 
-def cache_table_name(source_id: str, operation_id: str, native_args: dict) -> str:
+def cache_table_name(  # REQ-318, REQ-309, REQ-327
+    source_id: str, operation_id: str, native_args: dict
+) -> str:
     """Stable table name for a given API call signature."""
     key = json.dumps(
         {"s": source_id, "o": operation_id, "a": sorted(native_args.items())},
@@ -94,7 +98,7 @@ def cache_table_name(source_id: str, operation_id: str, native_args: dict) -> st
     return f"r_{h}"
 
 
-def ensure_cache_schema(conn, loc: CacheLocation) -> None:
+def ensure_cache_schema(conn, loc: CacheLocation) -> None:  # REQ-318, REQ-309, REQ-327
     key = (loc.catalog, loc.schema)
     if key in _SCHEMA_EXISTS_CACHE:
         return
@@ -115,14 +119,16 @@ def ensure_cache_schema(conn, loc: CacheLocation) -> None:
         log.debug("ensure_cache_schema: %s", exc)
 
 
-def table_known_live(loc: CacheLocation, table_name: str) -> bool:
+def table_known_live(loc: CacheLocation, table_name: str) -> bool:  # REQ-318, REQ-309, REQ-327
     """Return True if the in-process cache confirms this table is live — no Trino probe."""
     key = (loc.catalog, loc.schema, table_name)
     expiry = _TABLE_EXISTS_CACHE.get(key)
     return expiry is not None and time.monotonic() < expiry
 
 
-def table_exists(conn, loc: CacheLocation, table_name: str, ttl: int | None = None) -> bool:
+def table_exists(  # REQ-318, REQ-309, REQ-327
+    conn, loc: CacheLocation, table_name: str, ttl: int | None = None
+) -> bool:
     key = (loc.catalog, loc.schema, table_name)
     expiry = _TABLE_EXISTS_CACHE.get(key)
     if expiry is not None and time.monotonic() < expiry:
@@ -154,7 +160,7 @@ def table_exists(conn, loc: CacheLocation, table_name: str, ttl: int | None = No
         return False
 
 
-def create_and_insert(
+def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
     conn, loc: CacheLocation, table_name: str, rows: list[dict], columns: list
 ) -> None:
     """Create cache table and INSERT API response rows."""
@@ -249,7 +255,9 @@ def create_and_insert(
     )
 
 
-def rewrite_from_cache(sql: str, loc: CacheLocation, table_name: str) -> str:
+def rewrite_from_cache(
+    sql: str, loc: CacheLocation, table_name: str
+) -> str:  # REQ-318, REQ-309, REQ-327
     """Replace the root FROM table in SQL with the cache table."""
     try:
         tree = sqlglot.parse_one(sql, dialect="postgres")
@@ -273,7 +281,7 @@ def rewrite_from_cache(sql: str, loc: CacheLocation, table_name: str) -> str:
     )
 
 
-def rewrite_all_from_cache(
+def rewrite_all_from_cache(  # REQ-318, REQ-309, REQ-327
     sql: str,
     cache_rewrites: dict[str, tuple["CacheLocation", str]],
 ) -> str:
@@ -315,7 +323,7 @@ def rewrite_all_from_cache(
     return result
 
 
-async def schedule_drop(
+async def schedule_drop(  # REQ-318, REQ-309, REQ-327
     conn,
     loc: CacheLocation,
     table_name: str,

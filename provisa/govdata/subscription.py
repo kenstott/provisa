@@ -17,8 +17,10 @@ from fastapi import HTTPException
 from provisa.core.models import GovDataSource, GovDataSubject
 from provisa.govdata.subjects import subjects_cover_schema
 
+# Requirements: REQ-540, REQ-541
 
-def check_source_access(
+
+def check_source_access(  # REQ-540
     subscribed: list[GovDataSubject],
     source: GovDataSource,
 ) -> None:
@@ -45,7 +47,7 @@ def check_source_access(
     )
 
 
-def subjects_from_plan(plan: str) -> list[GovDataSubject]:
+def subjects_from_plan(plan: str) -> list[GovDataSubject]:  # REQ-540
     """Return the default GovData subjects granted for a billing plan.
 
     trial   → no GovData access

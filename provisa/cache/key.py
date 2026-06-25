@@ -19,8 +19,10 @@ from __future__ import annotations
 import hashlib
 import json
 
+# Requirements: REQ-544
 
-def cache_key(
+
+def cache_key(  # REQ-544
     sql: str,
     params: list,
     role_id: str,

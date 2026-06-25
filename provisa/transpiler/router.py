@@ -23,6 +23,8 @@ from enum import Enum
 
 from provisa.executor.drivers.registry import has_driver
 
+# Requirements: REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-151, REQ-152
+
 
 class Route(str, Enum):
     DIRECT = "direct"
@@ -62,7 +64,7 @@ class RouteDecision:
     reason: str
 
 
-def decide_route(
+def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-151, REQ-152
     sources: set[str],
     source_types: dict[str, str],
     source_dialects: dict[str, str],
@@ -86,7 +88,7 @@ def decide_route(
         RouteDecision with route, target source (if direct), and reason.
     """
     # Mutations always route direct — Trino doesn't support writes
-    if is_mutation and len(sources) >= 1:
+    if is_mutation and len(sources) >= 1:  # REQ-031
         sid = next(iter(sources))
         return RouteDecision(
             route=Route.DIRECT,
@@ -96,14 +98,14 @@ def decide_route(
         )
 
     # Steward override
-    if steward_hint in ("trino", "federated"):
+    if steward_hint in ("trino", "federated"):  # REQ-030
         return RouteDecision(
             route=Route.TRINO,
             source_id=None,
             dialect=None,
             reason="steward override: federated",
         )
-    if steward_hint == "direct" and len(sources) == 1:
+    if steward_hint == "direct" and len(sources) == 1:  # REQ-030
         sid = next(iter(sources))
         stype = source_types.get(sid, "")
         if has_driver(stype):
@@ -130,7 +132,7 @@ def decide_route(
                 )
 
     # Multi-source → Trino
-    if len(sources) > 1:
+    if len(sources) > 1:  # REQ-028
         return RouteDecision(
             route=Route.TRINO,
             source_id=None,
@@ -160,7 +162,7 @@ def decide_route(
         )
 
     # JSON path extraction — PG supports ->> natively; other dialects may not
-    if has_json_extract:
+    if has_json_extract:  # REQ-151, REQ-152
         _JSON_SAFE_DIALECTS = {"postgres", "postgresql"}
         dialect = source_dialects.get(sid, "")
         if dialect not in _JSON_SAFE_DIALECTS:
@@ -172,7 +174,7 @@ def decide_route(
             )
 
     # RDBMS with direct driver → direct
-    if has_driver(stype):
+    if has_driver(stype):  # REQ-027, REQ-066, REQ-067
         return RouteDecision(
             route=Route.DIRECT,
             source_id=sid,

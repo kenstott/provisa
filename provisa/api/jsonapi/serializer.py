@@ -10,12 +10,14 @@
 
 """Row data to JSON:API resource object serialization."""
 
+# Requirements: REQ-257
+
 from __future__ import annotations
 
 from typing import Any
 
 
-def row_to_resource(
+def row_to_resource(  # REQ-257
     row: dict[str, Any],
     resource_type: str,
     id_field: str = "id",
@@ -53,7 +55,9 @@ def row_to_resource(
                 "data": {
                     "type": related_type,
                     "id": str(value),
-                } if value is not None else None,
+                }
+                if value is not None
+                else None,
             }
         else:
             attributes[key] = value
@@ -68,7 +72,7 @@ def row_to_resource(
     return resource
 
 
-def rows_to_jsonapi(
+def rows_to_jsonapi(  # REQ-257
     rows: list[dict[str, Any]],
     resource_type: str,
     id_field: str = "id",
@@ -87,10 +91,7 @@ def rows_to_jsonapi(
     Returns:
         JSON:API document with data, included, meta.
     """
-    data = [
-        row_to_resource(row, resource_type, id_field, relationship_fields)
-        for row in rows
-    ]
+    data = [row_to_resource(row, resource_type, id_field, relationship_fields) for row in rows]
 
     doc: dict[str, Any] = {"data": data}
 
@@ -98,9 +99,7 @@ def rows_to_jsonapi(
         included = []
         for inc_type, inc_rows in included_rows.items():
             for inc_row in inc_rows:
-                included.append(
-                    row_to_resource(inc_row, inc_type, "id", None)
-                )
+                included.append(row_to_resource(inc_row, inc_type, "id", None))
         if included:
             doc["included"] = included
 

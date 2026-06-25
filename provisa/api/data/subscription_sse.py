@@ -10,13 +10,15 @@
 
 """SSE handler for GraphQL subscription operations over POST /data/graphql."""
 
+# Requirements: REQ-176, REQ-177, REQ-219, REQ-258, REQ-260, REQ-261, REQ-282, REQ-286
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import os
-from typing import TYPE_CHECKING, Any, AsyncGenerator, cast
+from typing import TYPE_CHECKING, AsyncGenerator, cast
 
 if TYPE_CHECKING:
     from provisa.subscriptions.pg_provider import PgNotificationProvider
@@ -47,7 +49,7 @@ def _collect_related_tables(selection_set: SelectionSetNode, type_name: str, ctx
     return tables
 
 
-async def handle_subscription_sse(
+async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
     document,
     ctx,
     rls,
@@ -267,7 +269,7 @@ async def handle_subscription_sse(
                     if use_many
                     else provider.watch(table_name)
                 )
-                async for _event in watcher:
+                async for _ in watcher:
                     if disconnect.is_set():
                         break
                     try:
@@ -325,7 +327,7 @@ def _parse_sink_uri(sink_header: str) -> tuple[str, str]:
     return broker, topic
 
 
-async def _launch_kafka_sink(
+async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
     sink_header: str,
     table_name: str,
     table_meta,
@@ -427,7 +429,7 @@ async def _launch_kafka_sink(
                 if use_many
                 else provider.watch(table_name)
             )
-            async for _event in watcher:
+            async for _ in watcher:
                 try:
                     data = await _run_query()
                     rows = data.get("data", data) if isinstance(data, dict) else data

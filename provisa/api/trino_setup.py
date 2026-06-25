@@ -6,6 +6,8 @@
 
 """Write Trino jvm.config and config.properties from provisa config."""
 
+# Requirements: REQ-054, REQ-055, REQ-250, REQ-461
+
 from __future__ import annotations
 
 import logging
@@ -68,7 +70,7 @@ resource-groups.config-file=/etc/trino/resource-groups.json
 #   - ./trino/etc/resource-groups.properties:/etc/trino/resource-groups.properties:ro
 
 
-def write_trino_config(config_path: str) -> None:
+def write_trino_config(config_path: str) -> None:  # REQ-055, REQ-250
     """Regenerate trino/etc/jvm.config and trino/etc/config.properties from provisa config."""
     cfg: dict = {}
     try:
@@ -118,7 +120,7 @@ def write_trino_config(config_path: str) -> None:
 def get_trino_connection(
     trino_conn_kwargs: dict[str, Any],
     tenant_id: str | None = None,
-) -> trino.dbapi.Connection:
+) -> trino.dbapi.Connection:  # REQ-054, REQ-461
     """Return a Trino connection scoped to tenant_id as the Trino user.
 
     In multi-tenant mode callers pass tenant_id; Trino resource groups use

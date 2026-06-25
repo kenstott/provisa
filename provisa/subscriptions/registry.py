@@ -19,6 +19,8 @@ from provisa.subscriptions.base import NotificationProvider
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-258, REQ-260, REQ-261, REQ-282, REQ-285, REQ-336, REQ-338, REQ-339, REQ-340, REQ-341, REQ-342, REQ-343, REQ-344
+
 # Source types that support native LISTEN/NOTIFY
 _PG_TYPES = {"postgresql"}
 
@@ -72,7 +74,9 @@ _POLLING_TYPES = {
 }
 
 
-def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvider:
+def get_provider(
+    source_type: str, config: dict[str, Any]
+) -> NotificationProvider:  # REQ-258, REQ-260, REQ-261, REQ-285
     """Instantiate the appropriate provider for *source_type*.
 
     ``config`` keys vary by provider:
@@ -102,7 +106,7 @@ def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvid
     if source_type in _INGEST_TYPES:
         from provisa.ingest.provider import IngestPollingProvider
 
-        return IngestPollingProvider(
+        return IngestPollingProvider(  # REQ-336
             engine=config["engine"],
             poll_interval=config.get("poll_interval", 5.0),
         )
@@ -110,7 +114,7 @@ def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvid
     if source_type in _WEBSOCKET_TYPES:
         from provisa.subscriptions.websocket_provider import WebSocketNotificationProvider
 
-        return WebSocketNotificationProvider(
+        return WebSocketNotificationProvider(  # REQ-338, REQ-339, REQ-340, REQ-341
             url=config["url"],
             subscribe_payload=config.get("subscribe_payload"),
             event_path=config.get("event_path"),
@@ -120,7 +124,7 @@ def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvid
     if source_type in _RSS_TYPES:
         from provisa.subscriptions.rss_provider import RSSNotificationProvider
 
-        return RSSNotificationProvider(
+        return RSSNotificationProvider(  # REQ-342, REQ-343, REQ-344
             url=config["url"],
             poll_interval=config.get("poll_interval", 300.0),
         )
@@ -128,7 +132,7 @@ def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvid
     if source_type in _DEBEZIUM_TYPES:
         from provisa.subscriptions.debezium_provider import DebeziumNotificationProvider
 
-        return DebeziumNotificationProvider(
+        return DebeziumNotificationProvider(  # REQ-261
             bootstrap_servers=config["bootstrap_servers"],
             topic_prefix=config["topic_prefix"],
             database=config["database"],
@@ -140,7 +144,7 @@ def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvid
     if source_type in _POLLING_TYPES:
         from provisa.subscriptions.polling_provider import PollingNotificationProvider
 
-        return PollingNotificationProvider(
+        return PollingNotificationProvider(  # REQ-260, REQ-282, REQ-283, REQ-285
             pool=config["pool"],
             poll_interval=config.get("poll_interval", 5.0),
             watermark_column=config.get("watermark_column", "updated_at"),

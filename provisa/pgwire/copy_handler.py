@@ -16,6 +16,8 @@ COPY FROM: receives PG COPY wire data, parses rows, inserts into writable
            SQL-backed sources only (postgresql / mysql / sqlite / mariadb).
 """
 
+# Requirements: REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
+
 from __future__ import annotations
 
 import asyncio
@@ -101,7 +103,9 @@ def is_copy_sql(sql: str) -> bool:
     return bool(_COPY_RE.match(sql))
 
 
-def _value_to_copy_text(v: object) -> str:
+def _value_to_copy_text(
+    v: object,  # object-ok: genuinely opaque cell value from query result rows (str/int/float/bool/bytes/None union from any source)
+) -> str:
     if v is None:
         return r"\N"
     if isinstance(v, bool):
@@ -207,7 +211,7 @@ def _find_table_meta(schema: str | None, table: str, role_id: str) -> tuple[Tabl
     table_lower = table.lower()
     schema_lower = schema.lower() if schema else None
 
-    for _type_name, tm in ctx.tables.items():
+    for _, tm in ctx.tables.items():
         tm_schema = domain_to_sql_name(tm.domain_id).lower()
         tm_table = (tm.table_name or tm.original_table_name or "").lower()
         if tm_table != table_lower:
@@ -246,7 +250,7 @@ async def _insert_rows(
     return inserted
 
 
-class CopyHandler:
+class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
     """Handles COPY TO STDOUT and COPY FROM STDIN for ProvisaHandler."""
 
     def __init__(self, handler: _CopyTransport) -> None:
@@ -284,7 +288,7 @@ class CopyHandler:
     # COPY TO STDOUT
     # ------------------------------------------------------------------
 
-    def _handle_copy_to_query(self, _ctx: BVContext, query: str, fmt: str, role_id: str) -> int:
+    def _handle_copy_to_query(self, _ctx: BVContext, query: str, fmt: str, role_id: str) -> int:  # pyright: ignore[reportUnusedParameter]
         from provisa.pgwire import server as _srv
         from provisa.pgwire._pipeline import plan_pgwire_sql
         from provisa.transpiler.router import Route
@@ -329,7 +333,7 @@ class CopyHandler:
         data_bytes = _queryresult_to_copy_bytes(result, fmt)
         return data_bytes, len(result.rows)
 
-    def _send_copy_out_response(self, _fmt: str) -> None:
+    def _send_copy_out_response(self, _fmt: str) -> None:  # pyright: ignore[reportUnusedParameter]
         # overall_format: 0=text, 1=binary; col_count 0 means unknown/variable
         overall = 0
         body = struct.pack("!bh", overall, 0)
@@ -352,7 +356,7 @@ class CopyHandler:
 
     def _handle_copy_from(
         self,
-        _ctx: BVContext,
+        _ctx: BVContext,  # pyright: ignore[reportUnusedParameter]
         schema: str | None,
         table: str,
         explicit_cols: list[str] | None,
@@ -415,7 +419,7 @@ class CopyHandler:
         )
         return future.result(timeout=120)
 
-    def _send_copy_in_response(self, _fmt: str) -> None:
+    def _send_copy_in_response(self, _fmt: str) -> None:  # pyright: ignore[reportUnusedParameter]
         overall = 0
         body = struct.pack("!bh", overall, 0)
         self._h.wfile.write(struct.pack("!ci", _COPY_IN_RESPONSE, len(body) + 4))

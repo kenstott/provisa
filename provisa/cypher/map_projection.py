@@ -26,13 +26,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from provisa.cypher.label_map import CypherLabelMap
 
+# Requirements: REQ-347, REQ-349
+
 # Matches: varname { ... }  — does NOT match bare { } blocks (no leading ident)
 _MAP_PROJ_RE = re.compile(
-    r'\b([A-Za-z_]\w*)\s*\{([^{}]+)\}',
+    r"\b([A-Za-z_]\w*)\s*\{([^{}]+)\}",
 )
 
 # Matches bare {key: val, ...} blocks — no leading identifier, innermost only (no nested {})
-_BARE_MAP_RE = re.compile(r'(?<![A-Za-z_\w])\{([^{}]+:[^{}]*)\}')
+_BARE_MAP_RE = re.compile(r"(?<![A-Za-z_\w])\{([^{}]+:[^{}]*)\}")
 
 
 def _split_top_level_commas(text: str) -> list[str]:
@@ -52,7 +54,7 @@ def _split_top_level_commas(text: str) -> list[str]:
     return parts
 
 
-_IDENT_RE = re.compile(r'^[A-Za-z_]\w*$')
+_IDENT_RE = re.compile(r"^[A-Za-z_]\w*$")
 
 
 def _expand_bare_map(m: re.Match) -> str:
@@ -65,7 +67,7 @@ def _expand_bare_map(m: re.Match) -> str:
         if colon < 0:
             return m.group(0)
         k = part[:colon].strip()
-        v = part[colon + 1:].strip()
+        v = part[colon + 1 :].strip()
         if not k or not v or not _IDENT_RE.match(k):
             return m.group(0)
         keys.append(f"'{k}'")
@@ -89,7 +91,7 @@ def rewrite_bare_map_literals(text: str) -> str:
     return text
 
 
-class MapProjectionMixin:
+class MapProjectionMixin:  # REQ-347, REQ-349
     """Mixin for _Translator: rewrites map projection expressions."""
 
     _var_table: dict
@@ -117,7 +119,7 @@ class MapProjectionMixin:
             if not item:
                 continue
             # Normalise: remove internal whitespace (parser may emit ". *" for ".*")
-            item_norm = re.sub(r'\s+', '', item)
+            item_norm = re.sub(r"\s+", "", item)
             if item_norm == ".*":
                 # Expand all known properties
                 if nm and nm.properties:

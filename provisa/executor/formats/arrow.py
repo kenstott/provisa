@@ -19,11 +19,12 @@ import pyarrow as pa
 
 from provisa.compiler.sql_gen import ColumnRef
 
+# Requirements: REQ-045, REQ-051
+
 
 def _column_names(columns: list[ColumnRef]) -> list[str]:
     return [
-        f"{col.nested_in}.{col.field_name}" if col.nested_in else col.field_name
-        for col in columns
+        f"{col.nested_in}.{col.field_name}" if col.nested_in else col.field_name for col in columns
     ]
 
 
@@ -33,7 +34,7 @@ def _convert(val):
     return val
 
 
-def rows_to_arrow_ipc(
+def rows_to_arrow_ipc(  # REQ-051
     rows: list[tuple],
     columns: list[ColumnRef],
 ) -> bytes:
@@ -52,7 +53,7 @@ def rows_to_arrow_ipc(
     return buf.getvalue()
 
 
-def rows_to_arrow_table(
+def rows_to_arrow_table(  # REQ-045, REQ-051
     rows: list[tuple],
     columns: list[ColumnRef],
 ) -> pa.Table:

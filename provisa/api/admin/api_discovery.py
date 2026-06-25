@@ -10,6 +10,8 @@
 
 """Admin router for API source discovery and candidate management (Phase U)."""
 
+# Requirements: REQ-307, REQ-308, REQ-311, REQ-314, REQ-316, REQ-317, REQ-321, REQ-322, REQ-329
+
 from __future__ import annotations
 
 import asyncpg
@@ -49,7 +51,7 @@ class AcceptRequest(BaseModel):
 
 
 @router.post("/discover")
-async def discover(req: DiscoverRequest):
+async def discover(req: DiscoverRequest):  # REQ-307, REQ-314, REQ-322
     """Trigger introspection of an API source."""
     with _tracer.start_as_current_span("admin.api_discovery"):
         from provisa.api.app import state
@@ -96,7 +98,7 @@ async def discover(req: DiscoverRequest):
 
 
 @router.get("/candidates")
-async def get_candidates(source_id: str | None = None):
+async def get_candidates(source_id: str | None = None):  # REQ-308, REQ-316, REQ-325
     """List discovered (pending) candidates."""
     from provisa.api.app import state
 
@@ -112,7 +114,7 @@ async def get_candidates(source_id: str | None = None):
 
 
 @router.post("/candidates/{candidate_id}/accept")
-async def accept(candidate_id: int, req: AcceptRequest | None = None):
+async def accept(candidate_id: int, req: AcceptRequest | None = None):  # REQ-311, REQ-321, REQ-329
     """Accept a candidate and register it as an endpoint."""
     from provisa.api.app import state
 
@@ -136,7 +138,7 @@ async def accept(candidate_id: int, req: AcceptRequest | None = None):
 
 
 @router.post("/candidates/{candidate_id}/reject")
-async def reject(candidate_id: int):
+async def reject(candidate_id: int):  # REQ-311, REQ-321, REQ-329
     """Reject a candidate."""
     from provisa.api.app import state
 

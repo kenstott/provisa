@@ -13,6 +13,8 @@
 Returns rows and column descriptions. Parameters substituted by Trino.
 """
 
+# Requirements: REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-303
+
 from __future__ import annotations
 
 import logging
@@ -38,7 +40,7 @@ def _trino_query_timeout() -> int:
 
 
 @dataclass
-class QueryResult:
+class QueryResult:  # REQ-028
     """Result of executing a SQL query against Trino."""
 
     rows: list[tuple]
@@ -57,7 +59,7 @@ def _alive(conn: trino.dbapi.Connection) -> bool:
         return False
 
 
-def execute_trino(
+def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-303
     conn: trino.dbapi.Connection,
     sql: str,
     params: list | None = None,

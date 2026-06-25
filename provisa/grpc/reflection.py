@@ -10,13 +10,16 @@
 
 """Enable gRPC server reflection for service discovery."""
 
+# Requirements: REQ-045, REQ-051
 from __future__ import annotations
 
 import grpc
 from grpc_reflection.v1alpha import reflection
 
 
-def enable_reflection(server: grpc.aio.Server, service_names: list[str]) -> None:
+def enable_reflection(
+    server: grpc.aio.Server, service_names: list[str]
+) -> None:  # REQ-045, REQ-051
     """Enable gRPC server reflection for the given service names.
 
     Args:

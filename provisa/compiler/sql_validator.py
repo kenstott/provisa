@@ -34,6 +34,8 @@ Security model / layer responsibilities:
   deliberate circumvention, not to be the last line of defence.
 """
 
+# Requirements: REQ-001, REQ-002, REQ-038, REQ-039, REQ-040, REQ-041, REQ-263, REQ-264, REQ-265, REQ-266
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -53,12 +55,12 @@ class ValidationViolation:
     message: str
 
 
-def validate_sql(
+def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     sql: str,
     ctx: CompilationContext,
     gov_ctx: GovernanceContext,
     role: dict,
-    raw_tables: list[dict],
+    _raw_tables: list[dict],  # pyright: ignore[reportUnusedParameter]
     discovery_mode: bool = False,
     *,
     bypass_relationship_guard: bool = False,
@@ -164,7 +166,7 @@ def _resolve_table_id(tbl: exp.Table, gov_ctx: GovernanceContext) -> int | None:
     return gov_ctx.table_map.get(name)
 
 
-def _check_domain_access(
+def _check_domain_access(  # REQ-039, REQ-263
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
     table_id_to_meta: dict[int, TableMeta],
@@ -262,7 +264,7 @@ def _alias_to_table_name(
 _REMOTE_SOURCE_TYPES: frozenset[str] = frozenset({"graphql_remote", "grpc_remote"})
 
 
-def _check_join_relationships(
+def _check_join_relationships(  # REQ-264
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
     valid_joins: set[tuple[int, int, str, str]],
@@ -336,7 +338,7 @@ def _check_join_relationships(
 # --------------------------------------------------------------------------- #
 
 
-def _check_column_visibility(
+def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
     cte_names_set: frozenset[str] = frozenset(),
@@ -393,7 +395,7 @@ def _collect_columns(expr: exp.Expr) -> list[exp.Column]:
 def _check_dag(
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
-    valid_joins: set[tuple[int, int, str, str]],
+    _valid_joins: set[tuple[int, int, str, str]],
     cte_names_set: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
     """Prune back-edges from cyclic join graphs rather than rejecting them.
@@ -418,7 +420,7 @@ def _check_dag(
                 tgt_tid = _resolve_table_id(tbl, gov_ctx)
                 if tgt_tid is None:
                     continue
-                for lt, _lc, rt, _rc in _extract_eq_pairs(on_expr):
+                for lt, _lc, rt, _rc in _extract_eq_pairs(on_expr):  # pyright: ignore[reportUnusedVariable]
                     lt_id = am.get(lt)
                     rt_id = am.get(rt)
                     if lt_id is None or rt_id is None:
@@ -508,7 +510,7 @@ def _back_edges(edges: list[tuple[int, int]]) -> set[tuple[int, int]]:
 # --------------------------------------------------------------------------- #
 
 
-def _check_masked_in_predicate(
+def _check_masked_in_predicate(  # REQ-040, REQ-263
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
     cte_names_set: frozenset[str] = frozenset(),

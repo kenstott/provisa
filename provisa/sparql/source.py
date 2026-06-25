@@ -14,6 +14,8 @@ Translates a SPARQL endpoint config into an ApiSource + ApiEndpoint
 that the existing API source pipeline can execute.
 """
 
+# Requirements: REQ-297, REQ-298, REQ-299
+
 from __future__ import annotations
 
 import re
@@ -33,7 +35,7 @@ from provisa.core.auth_models import ApiAuth
 
 
 @dataclass
-class SparqlSourceConfig:
+class SparqlSourceConfig:  # REQ-297
     """User-supplied SPARQL endpoint configuration."""
 
     source_id: str
@@ -43,7 +45,7 @@ class SparqlSourceConfig:
     extra_params: dict[str, str] = field(default_factory=dict)
 
 
-def build_api_source(cfg: SparqlSourceConfig) -> ApiSource:
+def build_api_source(cfg: SparqlSourceConfig) -> ApiSource:  # REQ-297
     """Build an ApiSource record for a SPARQL endpoint."""
     # Strip the path so base_url is just scheme://host:port
     from urllib.parse import urlparse
@@ -64,7 +66,7 @@ def build_endpoint(
     sparql_query: str,
     columns: list[ApiColumn],
     ttl: int = 300,
-) -> ApiEndpoint:
+) -> ApiEndpoint:  # REQ-297, REQ-298, REQ-299
     """Build an ApiEndpoint for a single SPARQL table.
 
     The endpoint POSTs the SPARQL query as form-encoded data following
@@ -123,7 +125,7 @@ async def probe_endpoint(
     cfg: SparqlSourceConfig,
     sparql_query: str,
     timeout: float = 10.0,
-) -> list[dict]:
+) -> list[dict]:  # REQ-297, REQ-298
     """Execute a SPARQL probe (LIMIT 5) to validate the endpoint and infer columns.
 
     Returns flat row dicts via sparql_bindings normalizer.
@@ -154,7 +156,7 @@ async def probe_endpoint(
     return sparql_bindings(resp.json())
 
 
-def infer_columns(rows: list[dict]) -> list[ApiColumn]:
+def infer_columns(rows: list[dict]) -> list[ApiColumn]:  # REQ-297
     """Infer column definitions from SPARQL probe results."""
     if not rows:
         return []

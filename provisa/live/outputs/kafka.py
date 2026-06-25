@@ -24,8 +24,10 @@ from provisa.live.outputs.base import LiveOutput
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-176, REQ-181, REQ-286
 
-class KafkaSinkOutput(LiveOutput):
+
+class KafkaSinkOutput(LiveOutput):  # REQ-176, REQ-181, REQ-286
     """Produce live query rows to a Kafka topic."""
 
     def __init__(
@@ -44,6 +46,7 @@ class KafkaSinkOutput(LiveOutput):
             return
         try:
             from confluent_kafka import Producer  # type: ignore[import-untyped]
+
             self._producer = Producer({"bootstrap.servers": self._bootstrap_servers})
         except ImportError:
             raise RuntimeError("confluent-kafka is required for Kafka live output")

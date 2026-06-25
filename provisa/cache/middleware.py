@@ -22,6 +22,8 @@ from provisa.cache.store import CacheStore, CachedResult
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-536
+
 
 async def check_cache(store: CacheStore, key: str) -> CachedResult | None:
     """Check for a cached result. Returns CachedResult on HIT, None on MISS."""
@@ -51,7 +53,7 @@ async def store_result(
         log.warning("Failed to store result in cache", exc_info=True)
 
 
-def build_cache_headers(cached: CachedResult | None) -> dict[str, str]:
+def build_cache_headers(cached: CachedResult | None) -> dict[str, str]:  # REQ-536
     """Build X-Provisa-Cache response headers.
 
     Returns headers dict with HIT/MISS status and age on HIT.

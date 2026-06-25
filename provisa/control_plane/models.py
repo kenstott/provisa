@@ -6,13 +6,15 @@
 
 """Control plane data models for REQ-073 hosted SaaS deployment."""
 
+# Requirements: REQ-073
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 
 @dataclass
-class DataPlane:
+class DataPlane:  # REQ-073
     id: str
     tenant_id: str
     endpoint: str
@@ -21,7 +23,7 @@ class DataPlane:
 
 
 @dataclass
-class Tenant:
+class Tenant:  # REQ-073
     id: str
     name: str
     data_plane_id: str

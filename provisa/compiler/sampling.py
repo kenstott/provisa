@@ -17,6 +17,8 @@ expose the configured default for the admin settings API. Real statistical sampl
 user query feature (GraphQL ``sample`` arg → ``TABLESAMPLE``), handled in the compiler.
 """
 
+# Requirements: REQ-005, REQ-263, REQ-478
+
 from __future__ import annotations
 
 import os
@@ -28,19 +30,21 @@ from provisa.compiler.stage2 import _apply_limit_ceiling, resolve_row_cap
 DEFAULT_SAMPLE_SIZE = 100
 
 
-def get_sample_size() -> int:
+def get_sample_size() -> int:  # REQ-005
     """Legacy admin-settings knob (deprecated). Distinct from the governance row cap
     (``resolve_row_cap`` → ``default_row_limit``) and from the large-result redirect
     threshold. Retained only for the admin `default_sample_size` surface."""
     return int(os.environ.get("PROVISA_SAMPLE_SIZE", str(DEFAULT_SAMPLE_SIZE)))
 
 
-def apply_sampling(compiled: CompiledQuery, sample_size: int) -> CompiledQuery:
+def apply_sampling(compiled: CompiledQuery, sample_size: int) -> CompiledQuery:  # REQ-263, REQ-478
     """Return a copy with the query's LIMIT injected/capped to ``sample_size``."""
     return replace(compiled, sql=_apply_limit_ceiling(compiled.sql, sample_size))
 
 
-def apply_sampling_if_needed(compiled: CompiledQuery, role) -> CompiledQuery:
+def apply_sampling_if_needed(compiled: CompiledQuery, role) -> CompiledQuery:  # REQ-005, REQ-263
     """Return a copy with the role's row cap applied (no cap for FULL_RESULTS roles)."""
     cap = resolve_row_cap(role)
-    return compiled if cap is None else replace(compiled, sql=_apply_limit_ceiling(compiled.sql, cap))
+    return (
+        compiled if cap is None else replace(compiled, sql=_apply_limit_ceiling(compiled.sql, cap))
+    )

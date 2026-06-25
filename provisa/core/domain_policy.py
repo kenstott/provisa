@@ -10,6 +10,8 @@ Set once at config load via :func:`configure`. ``core`` must not import ``api`` 
 this module is the shared policy that ``config_loader``, repositories, and compilers all read.
 """
 
+# Requirements: REQ-154, REQ-367, REQ-418, REQ-432, REQ-433
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,7 +28,7 @@ class _DomainPolicy:
 _policy = _DomainPolicy()
 
 
-def configure(use_domains: bool | None, default_domain: str) -> None:
+def configure(use_domains: bool | None, default_domain: str) -> None:  # REQ-154, REQ-432, REQ-433
     """Set the resolved policy. Called once at config load before any registration."""
     _policy.use_domains = use_domains
     _policy.default_domain = default_domain
@@ -55,7 +57,7 @@ def single_domain() -> bool:
     return _policy.use_domains is False
 
 
-def resolve_domain_id(requested: str | None) -> str:
+def resolve_domain_id(requested: str | None) -> str:  # REQ-367, REQ-418, REQ-432, REQ-433
     """Resolve the domain_id to store for a registration.
 
     Legacy (inert): returns ``requested or ""`` — identical to pre-feature behavior.

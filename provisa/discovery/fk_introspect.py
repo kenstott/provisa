@@ -37,6 +37,8 @@ from inflect import Word
 _log = logging.getLogger(__name__)
 _inflect = _inflect_mod.engine()
 
+# Requirements: REQ-018, REQ-399, REQ-413, REQ-414, REQ-415
+
 # ---------------------------------------------------------------------------
 # SQL templates per dialect
 # ---------------------------------------------------------------------------
@@ -82,7 +84,7 @@ async def _pg_fks(
     driver,
     schema_name: str,
     table_name: str,
-) -> list[dict]:
+) -> list[dict]:  # REQ-018, REQ-413
     """Return normalized FK rows from PostgreSQL information_schema.
 
     Each dict: fk_table, fk_column, ref_table, ref_column.
@@ -129,7 +131,7 @@ async def _sqlite_fks(
     driver,
     schema_name: str,
     table_name: str,
-) -> list[dict]:
+) -> list[dict]:  # REQ-018, REQ-413
     """Return FK rows from SQLite PRAGMA foreign_key_list."""
     results: list[dict] = []
     rows = await driver.execute(f'PRAGMA foreign_key_list("{table_name}")', [])
@@ -147,7 +149,7 @@ async def _sqlite_fks(
     return results
 
 
-def _m2o_alias(ref_table: str, hasura_v2_style: bool = False) -> str:
+def _m2o_alias(ref_table: str, hasura_v2_style: bool = False) -> str:  # REQ-415
     """Object relationship alias: ref table name.
 
     REQ-415: under Hasura V2 style the many-to-one (object) alias is singular.
@@ -157,7 +159,7 @@ def _m2o_alias(ref_table: str, hasura_v2_style: bool = False) -> str:
     return ref_table
 
 
-def _o2m_alias(fk_table: str, hasura_v2_style: bool = False) -> str:
+def _o2m_alias(fk_table: str, hasura_v2_style: bool = False) -> str:  # REQ-415
     """Array relationship alias: FK table name.
 
     REQ-415: under Hasura V2 style the one-to-many (array) alias is plural.
@@ -179,7 +181,7 @@ async def _insert_rel(
     tgt_col: str,
     cardinality: str,
     alias: str,
-) -> bool:
+) -> bool:  # REQ-399, REQ-413
     """Insert a relationship; return True if newly inserted."""
     result = await conn.execute(
         """
@@ -204,7 +206,7 @@ async def _govdata_fks(
     schema_name: str,
     table_name: str,
     config_conn: asyncpg.Connection,
-) -> list[dict]:
+) -> list[dict]:  # REQ-018, REQ-413
     from provisa.core.models import GovDataSource, GovDataSubject
     from provisa.core.secrets import resolve_secrets as _resolve_secrets
     from provisa.govdata.source import fetch_foreign_keys as _fetch_fks
@@ -239,7 +241,7 @@ async def _govdata_fks(
         return []
 
 
-async def auto_register_fk_relationships(
+async def auto_register_fk_relationships(  # REQ-018, REQ-399, REQ-413, REQ-415
     source_pools,
     source_type: str,
     source_id: str,

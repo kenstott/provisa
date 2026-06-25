@@ -23,10 +23,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from provisa.mv.models import MVDefinition
 
+# Requirements: REQ-198, REQ-199
+
 log = logging.getLogger(__name__)
 
 
-class AggregateMVCatalog:
+class AggregateMVCatalog:  # REQ-198, REQ-199
     """Maps aggregate query patterns to materialized views.
 
     An MV "covers" an aggregate query when:
@@ -51,7 +53,7 @@ class AggregateMVCatalog:
         for table, mvs in self._by_table.items():
             self._by_table[table] = [m for m in mvs if m.id != mv_id]
 
-    def find_aggregate_mv(
+    def find_aggregate_mv(  # REQ-198
         self,
         table: str,
         agg_columns: list[str],
@@ -87,7 +89,7 @@ class AggregateMVCatalog:
 
         return None
 
-    def rewrite_sql(
+    def rewrite_sql(  # REQ-198
         self,
         sql: str,
         mv: MVDefinition,

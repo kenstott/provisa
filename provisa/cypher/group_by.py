@@ -19,13 +19,19 @@ import sqlglot.expressions as exp
 
 from provisa.cypher.parser import ReturnClause, ReturnItem
 
+# Requirements: REQ-347
+
 
 def _has_aggregate(text: str) -> bool:
     import re
-    return bool(re.search(
-        r'\b(count|sum|avg|min|max|collect|stDev|stDevP|percentileCont|percentileDisc)\s*\(',
-        text, re.IGNORECASE,
-    ))
+
+    return bool(
+        re.search(
+            r"\b(count|sum|avg|min|max|collect|stDev|stDevP|percentileCont|percentileDisc)\s*\(",
+            text,
+            re.IGNORECASE,
+        )
+    )
 
 
 class GroupByMixin:
@@ -34,7 +40,7 @@ class GroupByMixin:
     def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         raise NotImplementedError
 
-    def _build_group_by(self, return_clause: ReturnClause) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def _build_group_by(self, return_clause: ReturnClause) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__  # REQ-347
         items = return_clause.items
         if not any(_has_aggregate(item.expression) for item in items):
             return []
@@ -44,7 +50,7 @@ class GroupByMixin:
             if not _has_aggregate(item.expression)
         ]
 
-    def _build_group_by_for_with(self, items: list[ReturnItem]) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def _build_group_by_for_with(self, items: list[ReturnItem]) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__  # REQ-347
         if not any(_has_aggregate(item.expression) for item in items):
             return []
         return [

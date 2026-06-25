@@ -16,6 +16,8 @@ GET  /query/nl/{id}   — poll for result
 GET  /query/nl/{id}/stream — SSE stream, one event per branch result
 """
 
+# Requirements: REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, REQ-359, REQ-369, REQ-370
+
 from __future__ import annotations
 
 import asyncio
@@ -46,7 +48,9 @@ class NlRequest(BaseModel):
 
 
 @router.post("/query/nl")
-async def submit_nl_query(body: NlRequest, request: Request) -> JSONResponse:
+async def submit_nl_query(
+    body: NlRequest, request: Request
+) -> JSONResponse:  # REQ-354, REQ-355, REQ-356, REQ-369, REQ-370
     """Submit an NL query. Returns job_id immediately; processing is async."""
     from provisa.api.app import state
 
@@ -74,7 +78,7 @@ async def submit_nl_query(body: NlRequest, request: Request) -> JSONResponse:
 
 
 @router.get("/query/nl/{job_id}")
-async def get_nl_result(job_id: str) -> JSONResponse:
+async def get_nl_result(job_id: str) -> JSONResponse:  # REQ-354, REQ-357
     """Poll for NL job result."""
     job = await _job_store.get(job_id)
     if job is None:
@@ -83,7 +87,7 @@ async def get_nl_result(job_id: str) -> JSONResponse:
 
 
 @router.get("/query/nl/{job_id}/stream")
-async def stream_nl_result(job_id: str) -> StreamingResponse:
+async def stream_nl_result(job_id: str) -> StreamingResponse:  # REQ-354, REQ-357, REQ-358
     """SSE stream: emits each branch result as it completes."""
     return StreamingResponse(
         _sse_generator(job_id),

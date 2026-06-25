@@ -10,13 +10,17 @@
 
 """Relationship repository — CRUD for relationships in PG config DB."""
 
+# Requirements: REQ-018, REQ-019, REQ-020, REQ-399, REQ-400
+
 import asyncpg
 
 from provisa.core.models import Relationship
 from provisa.core.repositories import table as table_repo
 
 
-async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
+async def upsert(
+    conn: asyncpg.Connection, rel: Relationship
+) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400
     """Upsert a relationship. Resolves table names to registered_tables IDs."""
     source_tbl = await table_repo.find_by_table_name(conn, rel.source_table_id)
     if source_tbl is None:
@@ -119,22 +123,22 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
             )
 
 
-async def get(conn: asyncpg.Connection, rel_id: str) -> dict | None:
+async def get(conn: asyncpg.Connection, rel_id: str) -> dict | None:  # REQ-018, REQ-019
     row = await conn.fetchrow("SELECT * FROM relationships WHERE id = $1", rel_id)
     return dict(row) if row else None
 
 
-async def list_all(conn: asyncpg.Connection) -> list[dict]:
+async def list_all(conn: asyncpg.Connection) -> list[dict]:  # REQ-018, REQ-019
     rows = await conn.fetch("SELECT * FROM relationships ORDER BY id")
     return [dict(r) for r in rows]
 
 
-async def delete(conn: asyncpg.Connection, rel_id: str) -> bool:
+async def delete(conn: asyncpg.Connection, rel_id: str) -> bool:  # REQ-019
     result = await conn.execute("DELETE FROM relationships WHERE id = $1", rel_id)
     return result == "DELETE 1"
 
 
-async def mark_relationships_for_review(
+async def mark_relationships_for_review(  # REQ-020
     conn: asyncpg.Connection, table_id: int, valid_columns: list[str]
 ) -> list[str]:
     """Flag relationships whose join column on ``table_id`` is no longer present (REQ-020).

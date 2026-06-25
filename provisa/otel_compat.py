@@ -16,6 +16,8 @@ Provides ``get_tracer(name)`` that returns the real OTel tracer when the
 Unit tests run without opentelemetry installed; production uses the real SDK.
 """
 
+# Requirements: REQ-302, REQ-303
+
 from __future__ import annotations
 
 from typing import Protocol, cast
@@ -51,10 +53,11 @@ class _NoopTracer:
         return _NoopSpan()
 
 
-def get_tracer(name: str) -> TracerProtocol:
+def get_tracer(name: str) -> TracerProtocol:  # REQ-302, REQ-303
     """Return the OTel tracer for *name*, or a no-op tracer if OTel is absent."""
     try:
         from opentelemetry import trace as _trace
+
         return cast(TracerProtocol, _trace.get_tracer(name))
     except ImportError:
         return _NoopTracer()

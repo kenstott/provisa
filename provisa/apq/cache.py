@@ -21,6 +21,8 @@ TLS: pass a ``rediss://`` URL — redis.asyncio handles TLS automatically.
 Set ``PROVISA_REQUIRE_REDIS_TLS=true`` to reject non-TLS URLs at startup.
 """
 
+# Requirements: REQ-288, REQ-289, REQ-290, REQ-291
+
 from __future__ import annotations
 
 import hashlib
@@ -33,12 +35,12 @@ log = logging.getLogger(__name__)
 _DEFAULT_TTL = int(os.environ.get("PROVISA_APQ_TTL", "86400"))
 
 
-def compute_apq_hash(query: str) -> str:
+def compute_apq_hash(query: str) -> str:  # REQ-288, REQ-291
     """Return the SHA-256 hex digest of *query* (Apollo APQ format)."""
     return hashlib.sha256(query.encode()).hexdigest()
 
 
-class APQCache(ABC):
+class APQCache(ABC):  # REQ-288, REQ-289, REQ-290, REQ-291
     """Abstract APQ cache interface."""
 
     @abstractmethod
@@ -54,7 +56,7 @@ class APQCache(ABC):
         """Release resources."""
 
 
-class NoopAPQCache(APQCache):
+class NoopAPQCache(APQCache):  # REQ-288, REQ-289
     """No-op APQ cache — always misses. Used when Redis is not configured."""
 
     async def get(self, sha256_hash: str, tenant_id: str | None = None) -> str | None:
@@ -67,7 +69,7 @@ class NoopAPQCache(APQCache):
         pass
 
 
-class RedisAPQCache(APQCache):
+class RedisAPQCache(APQCache):  # REQ-288, REQ-289, REQ-290, REQ-291
     """Redis-backed APQ cache.
 
     Args:

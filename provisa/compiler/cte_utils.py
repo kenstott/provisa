@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
+# Requirements: REQ-264, REQ-347
+
 
 def cte_names(tree: exp.Expr) -> frozenset[str]:
     """Return the set of user-defined CTE alias names in the WITH clause."""

@@ -18,6 +18,8 @@ Endpoints:
   PUT  /admin/grpc-remote/{id}/proto       — store new proto text + re-register
 """
 
+# Requirements: REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, REQ-327, REQ-328, REQ-329, REQ-598, REQ-599
+
 from __future__ import annotations
 
 import logging
@@ -47,7 +49,7 @@ class GrpcRemoteRegisterRequest(BaseModel):
     relationships: list[dict] = []
 
 
-async def _load_and_register(
+async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, REQ-327, REQ-329
     source_id: str,
     proto_path: str,
     server_address: str,
@@ -150,7 +152,7 @@ async def _load_and_register(
     return proto_text, n_tables, n_mutations
 
 
-async def _register_schema(
+async def _register_schema(  # REQ-325, REQ-326, REQ-599
     source_id: str,
     queries,
     mutations,
@@ -247,11 +249,13 @@ async def _register_schema(
 
 
 @router.post("/register")
-async def register_grpc_remote_source(body: GrpcRemoteRegisterRequest, request: Request):
+async def register_grpc_remote_source(
+    body: GrpcRemoteRegisterRequest, request: Request
+):  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, REQ-598
     """Compile proto stubs and auto-register virtual tables + tracked functions."""
     state = request.app.state
     try:
-        proto_text, n_tables, n_mutations = await _load_and_register(
+        _, n_tables, n_mutations = await _load_and_register(
             body.source_id,
             body.proto_path,
             body.server_address,
@@ -282,7 +286,7 @@ async def register_grpc_remote_source(body: GrpcRemoteRegisterRequest, request: 
 
 
 @router.post("/refresh/{source_id}")
-async def refresh_grpc_remote_source(source_id: str, request: Request):
+async def refresh_grpc_remote_source(source_id: str, request: Request):  # REQ-329
     """Re-compile proto stubs from stored path and re-run registration."""
     state = request.app.state
     sources = getattr(state, "grpc_remote_sources", {})
@@ -350,7 +354,7 @@ async def get_grpc_proto(source_id: str, request: Request):
 
 
 @router.put("/{source_id}/proto")
-async def put_grpc_proto(source_id: str, request: Request):
+async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
     """Store new proto text and re-run registration."""
     state = request.app.state
     sources = getattr(state, "grpc_remote_sources", {})

@@ -14,6 +14,8 @@ All secret-bearing string fields support the ${provider:reference} pattern
 (e.g. ${env:API_TOKEN}) and are resolved at call time via resolve_secrets().
 """
 
+# Requirements: REQ-147, REQ-229, REQ-320
+
 from __future__ import annotations
 
 from enum import Enum
@@ -30,29 +32,29 @@ class ApiKeyLocation(str, Enum):
     query = "query"
 
 
-class ApiAuthNone(BaseModel):
+class ApiAuthNone(BaseModel):  # REQ-320
     type: Literal["none"] = "none"
 
 
-class ApiAuthBearer(BaseModel):
+class ApiAuthBearer(BaseModel):  # REQ-320
     type: Literal["bearer"] = "bearer"
     token: str
 
 
-class ApiAuthBasic(BaseModel):
+class ApiAuthBasic(BaseModel):  # REQ-320
     type: Literal["basic"] = "basic"
     username: str
     password: str
 
 
-class ApiAuthApiKey(BaseModel):
+class ApiAuthApiKey(BaseModel):  # REQ-320
     type: Literal["api_key"] = "api_key"
     key: str
     name: str  # header name or query param name
     location: ApiKeyLocation = ApiKeyLocation.header
 
 
-class ApiAuthOAuth2ClientCredentials(BaseModel):
+class ApiAuthOAuth2ClientCredentials(BaseModel):  # REQ-320
     type: Literal["oauth2_client_credentials"] = "oauth2_client_credentials"
     client_id: str
     client_secret: str
@@ -60,7 +62,7 @@ class ApiAuthOAuth2ClientCredentials(BaseModel):
     scope: str | None = None
 
 
-class ApiAuthCustomHeaders(BaseModel):
+class ApiAuthCustomHeaders(BaseModel):  # REQ-320
     type: Literal["custom_headers"] = "custom_headers"
     headers: dict[str, str]
 
@@ -81,23 +83,23 @@ ApiAuth = Annotated[
 # ── Kafka Source Auth ────────────────────────────────────────────
 
 
-class KafkaAuthNone(BaseModel):
+class KafkaAuthNone(BaseModel):  # REQ-147
     type: Literal["none"] = "none"
 
 
-class KafkaAuthSaslPlain(BaseModel):
+class KafkaAuthSaslPlain(BaseModel):  # REQ-147
     type: Literal["sasl_plain"] = "sasl_plain"
     username: str
     password: str
 
 
-class KafkaAuthSaslScram256(BaseModel):
+class KafkaAuthSaslScram256(BaseModel):  # REQ-147
     type: Literal["sasl_scram_256"] = "sasl_scram_256"
     username: str
     password: str
 
 
-class KafkaAuthSaslScram512(BaseModel):
+class KafkaAuthSaslScram512(BaseModel):  # REQ-147
     type: Literal["sasl_scram_512"] = "sasl_scram_512"
     username: str
     password: str
@@ -117,20 +119,20 @@ KafkaAuth = Annotated[
 # ── Cloud DW Auth ────────────────────────────────────────────────
 
 
-class SnowflakeAuthPassword(BaseModel):
+class SnowflakeAuthPassword(BaseModel):  # REQ-229
     type: Literal["password"] = "password"
     username: str
     password: str
 
 
-class SnowflakeAuthKeyPair(BaseModel):
+class SnowflakeAuthKeyPair(BaseModel):  # REQ-229
     type: Literal["key_pair"] = "key_pair"
     username: str
     private_key_path: str
     private_key_passphrase: str | None = None
 
 
-class SnowflakeAuthOAuth(BaseModel):
+class SnowflakeAuthOAuth(BaseModel):  # REQ-229
     type: Literal["oauth"] = "oauth"
     token: str
 
@@ -145,12 +147,12 @@ SnowflakeAuth = Annotated[
 ]
 
 
-class BigQueryAuthServiceAccount(BaseModel):
+class BigQueryAuthServiceAccount(BaseModel):  # REQ-229
     type: Literal["service_account"] = "service_account"
     credentials_json: str  # path or ${env:GOOGLE_CREDENTIALS}
 
 
-class BigQueryAuthDefault(BaseModel):
+class BigQueryAuthDefault(BaseModel):  # REQ-229
     type: Literal["application_default"] = "application_default"
 
 
@@ -163,12 +165,12 @@ BigQueryAuth = Annotated[
 ]
 
 
-class DatabricksAuthToken(BaseModel):
+class DatabricksAuthToken(BaseModel):  # REQ-229
     type: Literal["token"] = "token"
     access_token: str  # personal access token or ${env:...}
 
 
-class DatabricksAuthOAuth(BaseModel):
+class DatabricksAuthOAuth(BaseModel):  # REQ-229
     type: Literal["oauth"] = "oauth"
     client_id: str
     client_secret: str
@@ -187,13 +189,13 @@ DatabricksAuth = Annotated[
 # ── Redshift Auth ────────────────────────────────────────────────
 
 
-class RedshiftAuthPassword(BaseModel):
+class RedshiftAuthPassword(BaseModel):  # REQ-229
     type: Literal["password"] = "password"
     username: str
     password: str
 
 
-class RedshiftAuthIAM(BaseModel):
+class RedshiftAuthIAM(BaseModel):  # REQ-229
     type: Literal["iam"] = "iam"
     access_key_id: str
     secret_access_key: str

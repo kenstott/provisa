@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import logging
 
+# Requirements: REQ-331, REQ-332
+
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 log = logging.getLogger(__name__)
@@ -22,7 +24,7 @@ log = logging.getLogger(__name__)
 _engines: dict[str, AsyncEngine] = {}
 
 
-def get_engine(
+def get_engine(  # REQ-331, REQ-332
     source_id: str,
     dialect: str,
     host: str,
@@ -69,5 +71,6 @@ def _build_url(
     if not port:
         port = 5432
     import urllib.parse
+
     pw = urllib.parse.quote_plus(password or "")
     return f"{dialect}://{username}:{pw}@{host}:{port}/{database}"

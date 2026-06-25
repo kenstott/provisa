@@ -14,6 +14,8 @@ Like Redis, Accumulo requires explicit column definitions. Each column
 maps to an Accumulo column family and qualifier.
 """
 
+# Requirements: REQ-250, REQ-251, REQ-252
+
 from __future__ import annotations
 
 import logging
@@ -23,7 +25,7 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
-class AccumuloColumn:
+class AccumuloColumn:  # REQ-251, REQ-252
     """Column mapped from an Accumulo column family/qualifier."""
 
     name: str
@@ -33,7 +35,7 @@ class AccumuloColumn:
 
 
 @dataclass
-class AccumuloTableConfig:
+class AccumuloTableConfig:  # REQ-251, REQ-252
     """Table mapped from an Accumulo table."""
 
     name: str
@@ -42,7 +44,7 @@ class AccumuloTableConfig:
 
 
 @dataclass
-class AccumuloSourceConfig:
+class AccumuloSourceConfig:  # REQ-250, REQ-251
     """Accumulo source connection + table mappings."""
 
     id: str
@@ -53,7 +55,7 @@ class AccumuloSourceConfig:
     tables: list[AccumuloTableConfig] = field(default_factory=list)
 
 
-def generate_catalog_properties(config: AccumuloSourceConfig) -> dict[str, str]:
+def generate_catalog_properties(config: AccumuloSourceConfig) -> dict[str, str]:  # REQ-250
     """Generate Trino Accumulo connector catalog properties."""
     props = {
         "connector.name": "accumulo",
@@ -67,18 +69,20 @@ def generate_catalog_properties(config: AccumuloSourceConfig) -> dict[str, str]:
     return props
 
 
-def generate_table_definitions(config: AccumuloSourceConfig) -> list[dict]:
+def generate_table_definitions(config: AccumuloSourceConfig) -> list[dict]:  # REQ-251, REQ-252
     """Generate table definition entries for each configured Accumulo table."""
     definitions = []
     for table in config.tables:
         columns = []
         for col in table.columns:
-            columns.append({
-                "name": col.name,
-                "type": col.data_type,
-                "family": col.family,
-                "qualifier": col.qualifier,
-            })
+            columns.append(
+                {
+                    "name": col.name,
+                    "type": col.data_type,
+                    "family": col.family,
+                    "qualifier": col.qualifier,
+                }
+            )
         entry = {
             "tableName": table.name,
             "accumuloTable": table.accumulo_table,

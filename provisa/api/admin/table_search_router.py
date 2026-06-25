@@ -18,8 +18,10 @@ from provisa.discovery.table_search import TableCandidate, search_tables
 
 router = APIRouter(prefix="/admin/sources", tags=["admin", "table-search"])
 
+# Requirements: REQ-464
 
-async def _candidates_from_cache(
+
+async def _candidates_from_cache(  # REQ-464
     source_id: str, schema_name: str, pool
 ) -> list[TableCandidate] | None:
     """Return TableCandidates from the cache, or None if cache is cold."""
@@ -39,7 +41,9 @@ async def _candidates_from_cache(
     ]
 
 
-async def _candidates_live(source_id: str, schema_name: str, state) -> list[TableCandidate]:
+async def _candidates_live(
+    source_id: str, schema_name: str, state
+) -> list[TableCandidate]:  # REQ-464
     """Fetch candidates live from native introspection + Trino (cache-miss path)."""
     from provisa.api.admin.introspect import native_tables
     from provisa.api.admin.schema import _get_pool, source_to_catalog
@@ -101,7 +105,7 @@ async def _candidates_live(source_id: str, schema_name: str, state) -> list[Tabl
 
 
 @router.get("/{source_id}/tables/search")
-async def search_source_tables(
+async def search_source_tables(  # REQ-464
     source_id: str,
     q: str = Query(..., description="Natural language search query"),
     schema_name: str = Query("public", description="Schema to search within"),

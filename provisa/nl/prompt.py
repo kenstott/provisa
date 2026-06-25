@@ -17,6 +17,8 @@ Each target language gets a distinct system prompt with:
   - Prior compiler error for self-correction on retry
 """
 
+# Requirements: REQ-355, REQ-356, REQ-358
+
 from __future__ import annotations
 
 from typing import Literal
@@ -85,7 +87,7 @@ def format_entities(entities: list) -> str:
     return "\n".join(lines)
 
 
-def build_prompt(
+def build_prompt(  # REQ-355, REQ-356
     nl_query: str,
     target: NlTarget,
     schema_sdl: str,

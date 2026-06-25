@@ -13,6 +13,8 @@
 Nullability preserved from INFORMATION_SCHEMA. Custom scalars for DateTime, JSON.
 """
 
+# Requirements: REQ-010, REQ-306
+
 from typing import cast
 
 from graphql import (
@@ -36,79 +38,94 @@ GraphQLBoolean: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLBoolean)
 
 # --- Custom scalars ---
 
-DateTime: GraphQLScalarType = cast(GraphQLScalarType, GraphQLScalarType(
-    "DateTime",
-    description="ISO 8601 datetime string",
-    serialize=str,
-    parse_value=str,
-))
+DateTime: GraphQLScalarType = cast(
+    GraphQLScalarType,
+    GraphQLScalarType(
+        "DateTime",
+        description="ISO 8601 datetime string",
+        serialize=str,
+        parse_value=str,
+    ),
+)
 
-Date: GraphQLScalarType = cast(GraphQLScalarType, GraphQLScalarType(
-    "Date",
-    description="ISO 8601 date string",
-    serialize=str,
-    parse_value=str,
-))
+Date: GraphQLScalarType = cast(
+    GraphQLScalarType,
+    GraphQLScalarType(
+        "Date",
+        description="ISO 8601 date string",
+        serialize=str,
+        parse_value=str,
+    ),
+)
 
-JSONScalar: GraphQLScalarType = cast(GraphQLScalarType, GraphQLScalarType(
-    "JSON",
-    description="Arbitrary JSON value",
-    serialize=lambda v: v,
-    parse_value=lambda v: v,
-))
+JSONScalar: GraphQLScalarType = cast(
+    GraphQLScalarType,
+    GraphQLScalarType(
+        "JSON",
+        description="Arbitrary JSON value",
+        serialize=lambda v: v,
+        parse_value=lambda v: v,
+    ),
+)
 
-BigInt: GraphQLScalarType = cast(GraphQLScalarType, GraphQLScalarType(
-    "BigInt",
-    description="64-bit integer as string",
-    serialize=str,
-    parse_value=int,
-))
+BigInt: GraphQLScalarType = cast(
+    GraphQLScalarType,
+    GraphQLScalarType(
+        "BigInt",
+        description="64-bit integer as string",
+        serialize=str,
+        parse_value=int,
+    ),
+)
 
 # --- Type mapping ---
 
-_TYPE_MAP: dict[str, GraphQLScalarType] = cast(dict[str, GraphQLScalarType], {
-    # String types
-    "varchar": GraphQLString,
-    "text": GraphQLString,  # views cast array/jsonb/json columns to text (see app.py)
-    "char": GraphQLString,
-    "bpchar": GraphQLString,  # postgres blank-padded char
-    "name": GraphQLString,  # postgres internal identifier type
-    "varbinary": GraphQLString,
-    "uuid": GraphQLString,
-    # Integer types
-    "tinyint": GraphQLInt,
-    "smallint": GraphQLInt,
-    "int2": GraphQLInt,  # postgres smallint alias
-    "integer": GraphQLInt,
-    "int": GraphQLInt,
-    "int4": GraphQLInt,  # postgres integer alias
-    # Large integer
-    "bigint": BigInt,
-    "int8": BigInt,  # postgres bigint alias
-    # Floating point
-    "real": GraphQLFloat,
-    "float4": GraphQLFloat,  # postgres real alias
-    "double": GraphQLFloat,
-    "float8": GraphQLFloat,  # postgres double precision alias
-    "decimal": GraphQLFloat,
-    "numeric": GraphQLFloat,
-    # Boolean
-    "boolean": GraphQLBoolean,
-    "bool": GraphQLBoolean,  # postgres boolean alias
-    # Date/time
-    "date": Date,
-    "time": GraphQLString,
-    "time with time zone": GraphQLString,
-    "timestamp": DateTime,
-    "timestamp with time zone": DateTime,
-    "timestamptz": DateTime,  # postgres timestamp with time zone alias
-    # JSON
-    "json": JSONScalar,
-    "jsonb": JSONScalar,
-})
+_TYPE_MAP: dict[str, GraphQLScalarType] = cast(
+    dict[str, GraphQLScalarType],
+    {
+        # String types
+        "varchar": GraphQLString,
+        "text": GraphQLString,  # views cast array/jsonb/json columns to text (see app.py)
+        "char": GraphQLString,
+        "bpchar": GraphQLString,  # postgres blank-padded char
+        "name": GraphQLString,  # postgres internal identifier type
+        "varbinary": GraphQLString,
+        "uuid": GraphQLString,
+        # Integer types
+        "tinyint": GraphQLInt,
+        "smallint": GraphQLInt,
+        "int2": GraphQLInt,  # postgres smallint alias
+        "integer": GraphQLInt,
+        "int": GraphQLInt,
+        "int4": GraphQLInt,  # postgres integer alias
+        # Large integer
+        "bigint": BigInt,
+        "int8": BigInt,  # postgres bigint alias
+        # Floating point
+        "real": GraphQLFloat,
+        "float4": GraphQLFloat,  # postgres real alias
+        "double": GraphQLFloat,
+        "float8": GraphQLFloat,  # postgres double precision alias
+        "decimal": GraphQLFloat,
+        "numeric": GraphQLFloat,
+        # Boolean
+        "boolean": GraphQLBoolean,
+        "bool": GraphQLBoolean,  # postgres boolean alias
+        # Date/time
+        "date": Date,
+        "time": GraphQLString,
+        "time with time zone": GraphQLString,
+        "timestamp": DateTime,
+        "timestamp with time zone": DateTime,
+        "timestamptz": DateTime,  # postgres timestamp with time zone alias
+        # JSON
+        "json": JSONScalar,
+        "jsonb": JSONScalar,
+    },
+)
 
 
-def trino_to_graphql(trino_type: str) -> GraphQLScalarType | GraphQLList:
+def trino_to_graphql(trino_type: str) -> GraphQLScalarType | GraphQLList:  # REQ-010, REQ-306
     """Map a Trino column type to a GraphQL scalar.
 
     Handles parameterized types like varchar(255), decimal(10,2), array(varchar).
@@ -136,6 +153,7 @@ def trino_to_graphql(trino_type: str) -> GraphQLScalarType | GraphQLList:
 
 # --- Filter input types (shared across all schemas) ---
 
+
 def _filter_fields(scalar: GraphQLScalarType) -> dict[str, GraphQLInputField]:
     """Base comparison fields for a scalar type."""
     return {
@@ -149,19 +167,24 @@ def _filter_fields(scalar: GraphQLScalarType) -> dict[str, GraphQLInputField]:
 def _ordered_filter_fields(scalar: GraphQLScalarType) -> dict[str, GraphQLInputField]:
     """Comparison fields for ordered types (adds gt/gte/lt/lte)."""
     fields = _filter_fields(scalar)
-    fields.update({
-        "gt": GraphQLInputField(scalar),
-        "gte": GraphQLInputField(scalar),
-        "lt": GraphQLInputField(scalar),
-        "lte": GraphQLInputField(scalar),
-    })
+    fields.update(
+        {
+            "gt": GraphQLInputField(scalar),
+            "gte": GraphQLInputField(scalar),
+            "lt": GraphQLInputField(scalar),
+            "lte": GraphQLInputField(scalar),
+        }
+    )
     return fields
 
 
-StringFilter = GraphQLInputObjectType("StringFilter", lambda: {
-    **_filter_fields(GraphQLString),
-    "like": GraphQLInputField(GraphQLString),
-})
+StringFilter = GraphQLInputObjectType(
+    "StringFilter",
+    lambda: {
+        **_filter_fields(GraphQLString),
+        "like": GraphQLInputField(GraphQLString),
+    },
+)
 
 IntFilter = GraphQLInputObjectType("IntFilter", lambda: _ordered_filter_fields(GraphQLInt))
 
@@ -169,18 +192,24 @@ BigIntFilter = GraphQLInputObjectType("BigIntFilter", lambda: _ordered_filter_fi
 
 FloatFilter = GraphQLInputObjectType("FloatFilter", lambda: _ordered_filter_fields(GraphQLFloat))
 
-BooleanFilter = GraphQLInputObjectType("BooleanFilter", lambda: {
-    "eq": GraphQLInputField(GraphQLBoolean),
-    "is_null": GraphQLInputField(GraphQLBoolean),
-})
+BooleanFilter = GraphQLInputObjectType(
+    "BooleanFilter",
+    lambda: {
+        "eq": GraphQLInputField(GraphQLBoolean),
+        "is_null": GraphQLInputField(GraphQLBoolean),
+    },
+)
 
 DateFilter = GraphQLInputObjectType("DateFilter", lambda: _ordered_filter_fields(Date))
 
 DateTimeFilter = GraphQLInputObjectType("DateTimeFilter", lambda: _ordered_filter_fields(DateTime))
 
-JSONFilter = GraphQLInputObjectType("JSONFilter", lambda: {
-    "is_null": GraphQLInputField(GraphQLBoolean),
-})
+JSONFilter = GraphQLInputObjectType(
+    "JSONFilter",
+    lambda: {
+        "is_null": GraphQLInputField(GraphQLBoolean),
+    },
+)
 
 # Map GraphQL scalar → filter input type
 FILTER_TYPE_MAP: dict[GraphQLScalarType, GraphQLInputObjectType] = cast(

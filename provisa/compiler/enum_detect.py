@@ -30,6 +30,8 @@ from graphql import (
 
 GraphQLBoolean: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLBoolean)
 
+# Requirements: REQ-221
+
 _GRAPHQL_NAME_RE = re.compile(r"[^a-zA-Z0-9_]")
 
 
@@ -56,7 +58,7 @@ def _sanitize_enum_value(pg_value: str) -> str:
     return cleaned.upper()
 
 
-async def fetch_enum_registry(conn) -> dict[str, list[str]]:
+async def fetch_enum_registry(conn) -> dict[str, list[str]]:  # REQ-221
     """Query pg_enum + pg_type via asyncpg to discover all enum types.
 
     Args:
@@ -80,7 +82,7 @@ async def fetch_enum_registry(conn) -> dict[str, list[str]]:
     return registry
 
 
-def build_enum_types(
+def build_enum_types(  # REQ-221
     registry: dict[str, list[str]],
 ) -> dict[str, GraphQLEnumType]:
     """Build GraphQLEnumType instances from the enum registry.
@@ -99,15 +101,18 @@ def build_enum_types(
         for v in values:
             gql_key = _sanitize_enum_value(v)
             gql_values[gql_key] = v
-        result[pg_name] = cast(GraphQLEnumType, GraphQLEnumType(
-            gql_name,
-            gql_values,
-            description=f"Auto-detected from PostgreSQL enum '{pg_name}'",
-        ))
+        result[pg_name] = cast(
+            GraphQLEnumType,
+            GraphQLEnumType(
+                gql_name,
+                gql_values,
+                description=f"Auto-detected from PostgreSQL enum '{pg_name}'",
+            ),
+        )
     return result
 
 
-def build_enum_filter_types(
+def build_enum_filter_types(  # REQ-221
     enum_types: dict[str, GraphQLEnumType],
 ) -> dict[str, GraphQLInputObjectType]:
     """Build filter input types for each enum GraphQL type.
@@ -124,7 +129,9 @@ def build_enum_filter_types(
 
         def _make_enum_filter_fields(_enum: GraphQLEnumType = gql_enum) -> dict:
             _e: GraphQLInputType = cast(GraphQLInputType, _enum)
-            _e_nn: GraphQLInputType = cast(GraphQLInputType, GraphQLNonNull(cast(GraphQLEnumType, _enum)))
+            _e_nn: GraphQLInputType = cast(
+                GraphQLInputType, GraphQLNonNull(cast(GraphQLEnumType, _enum))
+            )
             return {
                 "eq": GraphQLInputField(_e),
                 "neq": GraphQLInputField(_e),
@@ -132,13 +139,17 @@ def build_enum_filter_types(
                 "is_null": GraphQLInputField(GraphQLBoolean),
             }
 
-        result[pg_name] = cast(GraphQLInputObjectType, GraphQLInputObjectType(
-            filter_name, _make_enum_filter_fields,
-        ))
+        result[pg_name] = cast(
+            GraphQLInputObjectType,
+            GraphQLInputObjectType(
+                filter_name,
+                _make_enum_filter_fields,
+            ),
+        )
     return result
 
 
-def resolve_column_type(
+def resolve_column_type(  # REQ-221
     column_type: str,
     enum_types: dict[str, GraphQLEnumType],
 ) -> GraphQLEnumType | None:

@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import asyncpg
 
+# Requirements: REQ-074, REQ-506
+
 SLA_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS query_sla_log (
     id BIGSERIAL PRIMARY KEY,
@@ -31,7 +33,7 @@ _SLA_P99_LIMIT_MS = 5000
 _SLA_AVAILABILITY_MIN = 99.9
 
 
-async def record_query_sla(
+async def record_query_sla(  # REQ-074, REQ-506
     conn: asyncpg.Connection,
     duration_ms: int,
     status_code: int,
@@ -46,7 +48,7 @@ async def record_query_sla(
     )
 
 
-async def get_sla_summary(
+async def get_sla_summary(  # REQ-074, REQ-506
     conn: asyncpg.Connection,
     tenant_id: str | None,
     hours: int = 24,
@@ -67,10 +69,11 @@ async def get_sla_summary(
         tenant_id,
         hours,
     )
+    assert row is not None
     return dict(row)
 
 
-def check_sla_breach(summary: dict) -> bool:
+def check_sla_breach(summary: dict) -> bool:  # REQ-074, REQ-506
     p99 = summary["p99_ms"]
     availability = summary["availability_pct"]
     return p99 > _SLA_P99_LIMIT_MS or availability < _SLA_AVAILABILITY_MIN

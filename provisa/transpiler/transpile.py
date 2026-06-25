@@ -13,6 +13,8 @@
 Supports PG SQL → Trino, and PG SQL → any target dialect for direct execution.
 """
 
+# Requirements: REQ-066, REQ-068, REQ-229
+
 from collections.abc import Callable
 
 import sqlglot
@@ -31,7 +33,7 @@ SUPPORTED_DIALECTS: set[str] = {
 }
 
 
-def transpile_to_trino(pg_sql: str) -> str:
+def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to Trino SQL."""
     pg_sql = rewrite_correlated_subqueries_for_trino(pg_sql)
     result = transpile(pg_sql, "trino")
@@ -81,7 +83,7 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
     return tree.transform(_transform).sql(dialect="trino")
 
 
-def transpile(pg_sql: str, target_dialect: str) -> str:
+def transpile(pg_sql: str, target_dialect: str) -> str:  # REQ-066, REQ-068, REQ-229
     """Transpile PostgreSQL-dialect SQL to a target dialect.
 
     Args:
@@ -487,7 +489,7 @@ def _split_eq_condition(
 # The original _rewrite_correlated_json_to_ctes path is preserved unchanged.
 
 
-def rewrite_correlated_subqueries_for_trino(sql: str) -> str:
+def rewrite_correlated_subqueries_for_trino(sql: str) -> str:  # REQ-066, REQ-068
     """Rewrite all correlated scalar subqueries to CTEs for Trino compatibility.
 
     Handles: scalar subqueries, json_object, json_agg, multi-condition AND WHERE,
@@ -786,7 +788,10 @@ def _try_lift_subquery(
                     local_where = exp.And(this=local_where, expression=lc)
                 cte_sel = cte_sel.where(local_where)
             cte_sel = cte_sel.group_by(
-                *[exp.Literal(this=str(i + 1), is_string=False) for i in range(len(correlated_pairs))]
+                *[
+                    exp.Literal(this=str(i + 1), is_string=False)
+                    for i in range(len(correlated_pairs))
+                ]
             )
         else:
             # User specified LIMIT — select raw value, use ROW_NUMBER to pick top-N

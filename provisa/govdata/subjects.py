@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from provisa.core.models import GOVDATA_SUBJECT_SCHEMAS, GovDataSubject
 
+# Requirements: REQ-540, REQ-541
+
 # Reverse map: govdata schema name → subject
 _SCHEMA_TO_SUBJECT: dict[str, GovDataSubject] = {}
 for _subj, _schemas in GOVDATA_SUBJECT_SCHEMAS.items():
@@ -21,7 +23,7 @@ for _subj, _schemas in GOVDATA_SUBJECT_SCHEMAS.items():
         _SCHEMA_TO_SUBJECT[_schema] = GovDataSubject(_subj)
 
 
-def schemas_for_subject(subject: GovDataSubject) -> list[str]:
+def schemas_for_subject(subject: GovDataSubject) -> list[str]:  # REQ-540, REQ-541
     """Return govdata schema names covered by *subject*.
 
     GovDataSubject.all returns every known schema.
@@ -31,12 +33,12 @@ def schemas_for_subject(subject: GovDataSubject) -> list[str]:
     return GOVDATA_SUBJECT_SCHEMAS.get(subject.value, [])
 
 
-def subject_for_schema(schema: str) -> GovDataSubject | None:
+def subject_for_schema(schema: str) -> GovDataSubject | None:  # REQ-540
     """Return the subject that owns *schema*, or None if unknown."""
     return _SCHEMA_TO_SUBJECT.get(schema)
 
 
-def subjects_cover_schema(subjects: list[GovDataSubject], schema: str) -> bool:
+def subjects_cover_schema(subjects: list[GovDataSubject], schema: str) -> bool:  # REQ-540
     """Return True if *subjects* grants access to *schema*."""
     if GovDataSubject.all in subjects:
         return True

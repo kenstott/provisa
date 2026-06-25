@@ -13,6 +13,8 @@
 Uses graphql-core directly (REQ-007). No third-party GraphQL framework.
 """
 
+# Requirements: REQ-007, REQ-011, REQ-039, REQ-300
+
 from graphql import (
     DocumentNode,
     GraphQLSchema,
@@ -41,7 +43,7 @@ class GraphQLValidationError(Exception):
         super().__init__(f"GraphQL validation failed: {messages}")
 
 
-def parse_query(
+def parse_query(  # REQ-007, REQ-011, REQ-039
     schema: GraphQLSchema,
     query: str,
     variables: dict | None = None,
@@ -67,7 +69,9 @@ def parse_query(
     return document
 
 
-def _ast_default_to_python(node: object) -> object:
+def _ast_default_to_python(
+    node: object,  # object-ok: graphql-core AST value nodes share no common base type; return is a heterogeneous Python scalar
+) -> object:  # object-ok: heterogeneous Python scalar (str, int, float, bool, None, list, dict)
     """Convert an AST default value node to a Python value."""
     if isinstance(node, StringValueNode):
         return node.value
@@ -88,7 +92,7 @@ def _ast_default_to_python(node: object) -> object:
     return None
 
 
-def coerce_variable_defaults(
+def coerce_variable_defaults(  # REQ-300
     document: DocumentNode,
     variables: dict | None,
 ) -> dict:

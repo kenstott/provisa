@@ -11,6 +11,8 @@
 
 """Parse DDN HML files (YAML with ``kind`` field) into intermediate models."""
 
+# Requirements: REQ-183, REQ-189, REQ-192, REQ-193, REQ-628, REQ-629
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -44,7 +46,7 @@ def _load_yaml_docs(path: Path) -> list[dict[str, Any]]:
     return [d for d in docs if isinstance(d, dict)]
 
 
-def _subgraph_from_path(file_path: Path, root: Path) -> str:
+def _subgraph_from_path(file_path: Path, root: Path) -> str:  # REQ-629
     """Derive subgraph name from directory structure.
 
     DDN projects typically have: <root>/<subgraph>/metadata/*.hml
@@ -63,7 +65,7 @@ def _subgraph_from_path(file_path: Path, root: Path) -> str:
     return "default"
 
 
-def _parse_connector(doc: dict[str, Any], subgraph: str) -> DDNConnector:
+def _parse_connector(doc: dict[str, Any], subgraph: str) -> DDNConnector:  # REQ-183
     defn = doc.get("definition", {})
     name = defn.get("name", "")
     url_raw = defn.get("url", {})
@@ -75,9 +77,11 @@ def _parse_connector(doc: dict[str, Any], subgraph: str) -> DDNConnector:
         url = ""
 
     scalar_map: dict[str, str] = {}
-    for st in defn.get("schema", {}).get("scalar_types", {}).items() if isinstance(
-        defn.get("schema", {}).get("scalar_types"), dict
-    ) else []:
+    for st in (
+        defn.get("schema", {}).get("scalar_types", {}).items()
+        if isinstance(defn.get("schema", {}).get("scalar_types"), dict)
+        else []
+    ):
         scalar_map[st[0]] = st[0]
 
     return DDNConnector(
@@ -89,7 +93,7 @@ def _parse_connector(doc: dict[str, Any], subgraph: str) -> DDNConnector:
     )
 
 
-def _parse_object_type(doc: dict[str, Any], subgraph: str) -> DDNObjectType:
+def _parse_object_type(doc: dict[str, Any], subgraph: str) -> DDNObjectType:  # REQ-183, REQ-189
     defn = doc.get("definition", {})
     name = defn.get("name", "")
 
@@ -115,14 +119,19 @@ def _parse_object_type(doc: dict[str, Any], subgraph: str) -> DDNObjectType:
                 col_name = col_info
             else:
                 col_name = gql_field
-            fm_list.append(DDNFieldMapping(
-                graphql_field=gql_field, column=col_name,
-            ))
-        type_mappings.append(DDNTypeMapping(
-            connector_name=connector,
-            source_type=source_type,
-            field_mappings=fm_list,
-        ))
+            fm_list.append(
+                DDNFieldMapping(
+                    graphql_field=gql_field,
+                    column=col_name,
+                )
+            )
+        type_mappings.append(
+            DDNTypeMapping(
+                connector_name=connector,
+                source_type=source_type,
+                field_mappings=fm_list,
+            )
+        )
 
     return DDNObjectType(
         name=name,
@@ -132,7 +141,7 @@ def _parse_object_type(doc: dict[str, Any], subgraph: str) -> DDNObjectType:
     )
 
 
-def _parse_model(doc: dict[str, Any], subgraph: str) -> DDNModel:
+def _parse_model(doc: dict[str, Any], subgraph: str) -> DDNModel:  # REQ-183, REQ-628
     defn = doc.get("definition", {})
     name = defn.get("name", "")
     object_type = defn.get("objectType", "")
@@ -177,7 +186,9 @@ def _parse_model(doc: dict[str, Any], subgraph: str) -> DDNModel:
     )
 
 
-def _parse_relationship(doc: dict[str, Any], subgraph: str) -> DDNRelationship:
+def _parse_relationship(
+    doc: dict[str, Any], subgraph: str
+) -> DDNRelationship:  # REQ-183, REQ-188, REQ-189
     defn = doc.get("definition", {})
     name = defn.get("name", "")
     source_type = defn.get("sourceType", defn.get("source", ""))
@@ -191,9 +202,11 @@ def _parse_relationship(doc: dict[str, Any], subgraph: str) -> DDNRelationship:
         elif isinstance(model_info, str):
             target_model = model_info
 
-    rel_type = target_raw.get("model", {}).get("relationshipType", "") if isinstance(
-        target_raw.get("model"), dict
-    ) else ""
+    rel_type = (
+        target_raw.get("model", {}).get("relationshipType", "")
+        if isinstance(target_raw.get("model"), dict)
+        else ""
+    )
     if not rel_type:
         rel_type = defn.get("relationshipType", "")
 
@@ -225,7 +238,9 @@ def _parse_relationship(doc: dict[str, Any], subgraph: str) -> DDNRelationship:
     )
 
 
-def _parse_type_permission(doc: dict[str, Any], subgraph: str) -> DDNTypePermission:
+def _parse_type_permission(
+    doc: dict[str, Any], subgraph: str
+) -> DDNTypePermission:  # REQ-183, REQ-185
     defn = doc.get("definition", {})
     type_name = defn.get("typeName", "")
     perms = defn.get("permissions", [])
@@ -237,19 +252,29 @@ def _parse_type_permission(doc: dict[str, Any], subgraph: str) -> DDNTypePermiss
         role = p.get("role", "")
         output = p.get("output", {})
         allowed = output.get("allowedFields", [])
-        result_perms.append(DDNTypePermission(
-            type_name=type_name, subgraph=subgraph,
-            role=role, allowed_fields=allowed,
-        ))
+        result_perms.append(
+            DDNTypePermission(
+                type_name=type_name,
+                subgraph=subgraph,
+                role=role,
+                allowed_fields=allowed,
+            )
+        )
     # Return first; caller collects all from _parse_type_permissions_multi
-    return result_perms[0] if result_perms else DDNTypePermission(
-        type_name=type_name, subgraph=subgraph,
+    return (
+        result_perms[0]
+        if result_perms
+        else DDNTypePermission(
+            type_name=type_name,
+            subgraph=subgraph,
+        )
     )
 
 
 def _parse_type_permissions_multi(
-    doc: dict[str, Any], subgraph: str,
-) -> list[DDNTypePermission]:
+    doc: dict[str, Any],
+    subgraph: str,
+) -> list[DDNTypePermission]:  # REQ-183, REQ-185
     """Parse TypePermissions doc into multiple per-role entries."""
     defn = doc.get("definition", {})
     type_name = defn.get("typeName", "")
@@ -259,16 +284,21 @@ def _parse_type_permissions_multi(
         role = p.get("role", "")
         output = p.get("output", {})
         allowed = output.get("allowedFields", [])
-        result.append(DDNTypePermission(
-            type_name=type_name, subgraph=subgraph,
-            role=role, allowed_fields=allowed,
-        ))
+        result.append(
+            DDNTypePermission(
+                type_name=type_name,
+                subgraph=subgraph,
+                role=role,
+                allowed_fields=allowed,
+            )
+        )
     return result
 
 
 def _parse_model_permission(
-    doc: dict[str, Any], subgraph: str,
-) -> list[DDNModelPermission]:
+    doc: dict[str, Any],
+    subgraph: str,
+) -> list[DDNModelPermission]:  # REQ-183, REQ-187
     """Parse ModelPermissions doc into multiple per-role entries."""
     defn = doc.get("definition", {})
     model_name = defn.get("modelName", "")
@@ -279,16 +309,21 @@ def _parse_model_permission(
         flt = p.get("filter", {})
         if flt is None:
             flt = {}
-        result.append(DDNModelPermission(
-            model_name=model_name, subgraph=subgraph,
-            role=role, filter=flt,
-        ))
+        result.append(
+            DDNModelPermission(
+                model_name=model_name,
+                subgraph=subgraph,
+                role=role,
+                filter=flt,
+            )
+        )
     return result
 
 
 def _parse_aggregate_expression(
-    doc: dict[str, Any], subgraph: str,
-) -> DDNAggregateExpression:
+    doc: dict[str, Any],
+    subgraph: str,
+) -> DDNAggregateExpression:  # REQ-191
     defn = doc.get("definition", {})
     name = defn.get("name", "")
     operand = defn.get("operand", {})
@@ -303,9 +338,17 @@ def _parse_aggregate_expression(
             operand_type = obj_operand.get("aggregatedType", "")
             for af in obj_operand.get("aggregatableFields", []):
                 fname = af.get("fieldName", "")
-                fns = [e.get("name", "") for e in af.get("aggregateExpression", {}).get(
-                    "enabledAggregationFunctions", af.get("enableAggregationFunctions", []),
-                )] if isinstance(af.get("aggregateExpression"), dict) else []
+                fns = (
+                    [
+                        e.get("name", "")
+                        for e in af.get("aggregateExpression", {}).get(
+                            "enabledAggregationFunctions",
+                            af.get("enableAggregationFunctions", []),
+                        )
+                    ]
+                    if isinstance(af.get("aggregateExpression"), dict)
+                    else []
+                )
                 if not fns:
                     fns = af.get("enableAggregationFunctions", [])
                     if isinstance(fns, list) and fns and isinstance(fns[0], dict):
@@ -327,7 +370,7 @@ def _parse_aggregate_expression(
     )
 
 
-def _parse_command(doc: dict[str, Any], subgraph: str) -> DDNCommand:
+def _parse_command(doc: dict[str, Any], subgraph: str) -> DDNCommand:  # REQ-192
     defn = doc.get("definition", {})
     name = defn.get("name", "")
 
@@ -379,8 +422,9 @@ def _parse_command(doc: dict[str, Any], subgraph: str) -> DDNCommand:
 
 
 def parse_hml_dir(
-    hml_dir: Path, collector: WarningCollector | None = None,
-) -> DDNMetadata:
+    hml_dir: Path,
+    collector: WarningCollector | None = None,
+) -> DDNMetadata:  # REQ-183, REQ-629
     """Parse a DDN HML project directory into DDNMetadata.
 
     Recursively finds all .hml files (YAML with ``kind`` field) and

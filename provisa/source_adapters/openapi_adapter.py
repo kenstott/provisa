@@ -22,10 +22,12 @@ import httpx
 from provisa.cache.store import CacheStore
 from provisa.openapi.mapper import OpenAPIMutation, OpenAPIQuery
 
+# Requirements: REQ-314, REQ-316, REQ-317, REQ-318, REQ-319, REQ-320
+
 log = logging.getLogger(__name__)
 
 
-def _build_auth_headers(auth_config: dict[str, str] | None) -> dict[str, str]:
+def _build_auth_headers(auth_config: dict[str, str] | None) -> dict[str, str]:  # REQ-320
     if not auth_config:
         return {}
     auth_type = auth_config.get("type", "none")
@@ -44,7 +46,7 @@ def _build_auth_headers(auth_config: dict[str, str] | None) -> dict[str, str]:
     return {}
 
 
-async def fetch(
+async def fetch(  # REQ-316, REQ-318, REQ-319
     base_url: str,
     query: OpenAPIQuery,
     args: dict[str, object],
@@ -97,7 +99,7 @@ async def fetch(
     return rows
 
 
-async def execute(
+async def execute(  # REQ-317
     base_url: str,
     mutation: OpenAPIMutation,
     input_data: dict[str, object],

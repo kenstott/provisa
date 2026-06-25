@@ -15,6 +15,8 @@ Endpoints:
   POST /admin/sources/graphql-remote/{id}/refresh — re-introspect, update registrations
 """
 
+# Requirements: REQ-307, REQ-308, REQ-310, REQ-311, REQ-312, REQ-313, REQ-597, REQ-598, REQ-599, REQ-600, REQ-602
+
 from __future__ import annotations
 import logging
 
@@ -49,7 +51,7 @@ class GraphQLRemoteRegistration(BaseModel):
     relationships: list[dict] = []
 
 
-async def _introspect_and_map(
+async def _introspect_and_map(  # REQ-307, REQ-308, REQ-312, REQ-597, REQ-600
     source_id: str,
     url: str,
     namespace: str,
@@ -109,7 +111,7 @@ _PROVISA_TO_TRINO_TYPE = {
 }
 
 
-async def _upsert_tables_to_semantic_layer(
+async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
     source_id: str,
     domain_id: str,
     tables: list[dict],
@@ -147,7 +149,8 @@ async def _upsert_tables_to_semantic_layer(
                         object_fields=_build_object_fields(c.get("gql_object_fields") or []),
                     )
                     for c in t.get("columns", [])
-                ] + [
+                ]
+                + [
                     Column(
                         name=f"_nf_{apply_sql_name(a['name'])}",
                         visible_to=[],
@@ -159,7 +162,7 @@ async def _upsert_tables_to_semantic_layer(
             await table_repo.upsert(conn, tbl)
 
 
-async def _upsert_relationships_to_semantic_layer(
+async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
     relationships: list[dict],
     pg_pool,
     state=None,
@@ -196,7 +199,7 @@ async def _upsert_relationships_to_semantic_layer(
 
 
 @router.post("")
-async def register_graphql_remote_source(
+async def register_graphql_remote_source(  # REQ-307, REQ-308, REQ-311, REQ-312, REQ-597, REQ-598, REQ-599
     body: GraphQLRemoteSourceRequest,
 ):
     """Register a GraphQL remote source: introspect schema and auto-register tables/functions."""
@@ -283,9 +286,10 @@ async def register_graphql_remote_source(
 
 
 @router.post("/{source_id}/refresh")
-async def refresh_graphql_remote_source(source_id: str):
+async def refresh_graphql_remote_source(source_id: str):  # REQ-311, REQ-598
     """Re-introspect a registered remote source and update its table/function registrations."""
     from provisa.api.app import state
+
     sources = getattr(state, "graphql_remote_sources", {})
     if source_id not in sources:
         raise HTTPException(
@@ -345,5 +349,6 @@ async def refresh_graphql_remote_source(source_id: str):
 async def list_graphql_remote_sources():
     """List all registered GraphQL remote sources."""
     from provisa.api.app import state
+
     sources = getattr(state, "graphql_remote_sources", {})
     return list(sources.values())

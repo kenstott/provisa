@@ -14,6 +14,7 @@ Each Prometheus metric becomes a table. Labels become dimension columns.
 Value + timestamp are fixed columns. default_range injects a time window
 filter at query time.
 """
+# Requirements: REQ-250, REQ-251
 
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
-class PrometheusTableConfig:
+class PrometheusTableConfig:  # REQ-251
     """Table mapped from a Prometheus metric."""
 
     name: str
@@ -35,7 +36,7 @@ class PrometheusTableConfig:
 
 
 @dataclass
-class PrometheusSourceConfig:
+class PrometheusSourceConfig:  # REQ-250, REQ-251
     """Prometheus source connection + table mappings."""
 
     id: str
@@ -43,7 +44,7 @@ class PrometheusSourceConfig:
     tables: list[PrometheusTableConfig] = field(default_factory=list)
 
 
-def generate_catalog_properties(config: PrometheusSourceConfig) -> dict[str, str]:
+def generate_catalog_properties(config: PrometheusSourceConfig) -> dict[str, str]:  # REQ-250
     """Generate Trino Prometheus connector catalog properties."""
     return {
         "connector.name": "prometheus",
@@ -51,7 +52,7 @@ def generate_catalog_properties(config: PrometheusSourceConfig) -> dict[str, str
     }
 
 
-def generate_table_definitions(config: PrometheusSourceConfig) -> list[dict]:
+def generate_table_definitions(config: PrometheusSourceConfig) -> list[dict]:  # REQ-251
     """Generate table definition entries for each configured metric.
 
     Each metric produces a table with:
@@ -78,7 +79,7 @@ def generate_table_definitions(config: PrometheusSourceConfig) -> list[dict]:
     return definitions
 
 
-def discover_schema(metric_metadata: dict, metric_name: str) -> list[dict]:
+def discover_schema(metric_metadata: dict, metric_name: str) -> list[dict]:  # REQ-251, REQ-252
     """Infer columns from Prometheus metric metadata.
 
     Args:

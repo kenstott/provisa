@@ -19,6 +19,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+# Requirements: REQ-017, REQ-250, REQ-251, REQ-252
+
 log = logging.getLogger(__name__)
 
 
@@ -42,7 +44,7 @@ BSON_TO_TRINO = {
 
 
 @dataclass
-class MongoColumn:
+class MongoColumn:  # REQ-251
     """Column override or supplement for a MongoDB collection."""
 
     name: str
@@ -52,7 +54,7 @@ class MongoColumn:
 
 
 @dataclass
-class MongoTableConfig:
+class MongoTableConfig:  # REQ-251, REQ-252
     """Table mapped from a MongoDB collection."""
 
     name: str
@@ -62,7 +64,7 @@ class MongoTableConfig:
 
 
 @dataclass
-class MongoSourceConfig:
+class MongoSourceConfig:  # REQ-250, REQ-251
     """MongoDB source connection + table mappings."""
 
     id: str
@@ -71,7 +73,7 @@ class MongoSourceConfig:
     tables: list[MongoTableConfig] = field(default_factory=list)
 
 
-def generate_catalog_properties(config: MongoSourceConfig) -> dict[str, str]:
+def generate_catalog_properties(config: MongoSourceConfig) -> dict[str, str]:  # REQ-250
     """Generate Trino MongoDB connector catalog properties."""
     props = {
         "connector.name": "mongodb",
@@ -82,7 +84,7 @@ def generate_catalog_properties(config: MongoSourceConfig) -> dict[str, str]:
     return props
 
 
-def generate_table_definitions(config: MongoSourceConfig) -> list[dict]:
+def generate_table_definitions(config: MongoSourceConfig) -> list[dict]:  # REQ-251
     """Generate table definition entries for each configured collection."""
     definitions = []
     for table in config.tables:
@@ -103,9 +105,7 @@ def generate_table_definitions(config: MongoSourceConfig) -> list[dict]:
     return definitions
 
 
-def discover_schema(
-    sample_docs: list[dict], collection_name: str
-) -> list[dict]:
+def discover_schema(sample_docs: list[dict], collection_name: str) -> list[dict]:  # REQ-252
     """Infer column definitions from a list of sample MongoDB documents.
 
     Scans all documents to build a union of fields. Nested paths are
@@ -118,17 +118,17 @@ def discover_schema(
     columns = []
     for path, bson_type in sorted(field_types.items()):
         trino_type = BSON_TO_TRINO.get(bson_type, "VARCHAR")
-        columns.append({
-            "name": path.replace(".", "_"),
-            "type": trino_type,
-            "sourcePath": path,
-        })
+        columns.append(
+            {
+                "name": path.replace(".", "_"),
+                "type": trino_type,
+                "sourcePath": path,
+            }
+        )
     return columns
 
 
-def _extract_fields(
-    doc: dict, prefix: str, field_types: dict[str, str]
-) -> None:
+def _extract_fields(doc: dict, prefix: str, field_types: dict[str, str]) -> None:
     """Recursively extract field names and BSON-like types from a document."""
     for key, value in doc.items():
         if key == "_id":

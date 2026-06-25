@@ -19,6 +19,8 @@ Each iteration:
   5. After max_iterations: return (None, last_error)
 """
 
+# Requirements: REQ-355, REQ-356
+
 from __future__ import annotations
 
 import logging
@@ -54,7 +56,7 @@ class LLMClient:
         raise NotImplementedError
 
 
-async def generation_loop(
+async def generation_loop(  # REQ-355, REQ-356
     nl_query: str,
     target: NlTarget,
     schema_sdl: str,
@@ -77,7 +79,6 @@ async def generation_loop(
         (valid_query, None) on success, or (None, last_error) on exhaustion.
     """
     prior_error: str | None = None
-    last_generated: str | None = None
 
     for iteration in range(max_iterations):
         prompt = build_prompt(nl_query, target, schema_sdl, prior_error, relevant_entities)
@@ -95,7 +96,6 @@ async def generation_loop(
         # Strip leading "cypher" keyword some LLMs emit for Cypher queries
         if target == "cypher" and generated.lower().startswith("cypher "):
             generated = generated[7:].lstrip()
-        last_generated = generated
         result = compiler(generated)
 
         if result.valid:
@@ -106,7 +106,7 @@ async def generation_loop(
             "Iteration %d/%d failed for %s: %s", iteration + 1, max_iterations, target, prior_error
         )
 
-    return last_generated, prior_error
+    return None, prior_error
 
 
 # ---------------------------------------------------------------------------

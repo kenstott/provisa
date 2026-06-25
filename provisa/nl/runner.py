@@ -19,6 +19,8 @@ Pipeline:
   5. Mark job complete when all three finish
 """
 
+# Requirements: REQ-355, REQ-357, REQ-358, REQ-359
+
 from __future__ import annotations
 
 import asyncio
@@ -109,7 +111,7 @@ async def _generate_sql_from_nl(
     return physical_sql, None
 
 
-async def run_nl_job(
+async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     job_id: str, nl_query: str, role: str, app_state: AppState, job_store: JobStore, llm: LLMClient
 ) -> None:
     """Background coroutine: runs all three generation branches, writes results."""

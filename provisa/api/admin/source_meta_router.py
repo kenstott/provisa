@@ -13,6 +13,9 @@
 Endpoints:
   POST /admin/source-meta/db-description  — connect and return DB-level comment
 """
+
+# Requirements: REQ-012
+
 from __future__ import annotations
 import logging
 
@@ -36,23 +39,24 @@ WHERE SCHEMA_NAME = DATABASE()
 
 
 class DbDescriptionRequest(BaseModel):
-    type: str          # postgresql | mysql | sqlite | mssql
+    type: str  # postgresql | mysql | sqlite | mssql
     host: str = ""
     port: int = 5432
     database: str = ""
     username: str = ""
     password: str = ""
-    path: str = ""     # sqlite
+    path: str = ""  # sqlite
 
 
 @router.post("/db-description")
-async def get_db_description(body: DbDescriptionRequest) -> dict:
+async def get_db_description(body: DbDescriptionRequest) -> dict:  # REQ-012
     """Connect to the DB and return the database-level comment, if any."""
     description = ""
 
     if body.type == "postgresql":
         try:
             import asyncpg
+
             conn = await asyncpg.connect(
                 host=body.host,
                 port=body.port,
@@ -71,7 +75,8 @@ async def get_db_description(body: DbDescriptionRequest) -> dict:
 
     elif body.type in ("mysql", "mariadb"):
         try:
-            import aiomysql
+            import aiomysql  # pyright: ignore[reportMissingImports]
+
             conn = await aiomysql.connect(
                 host=body.host,
                 port=body.port,
@@ -96,7 +101,8 @@ async def get_db_description(body: DbDescriptionRequest) -> dict:
 
     elif body.type in ("mssql", "sqlserver"):
         try:
-            import aioodbc
+            import aioodbc  # pyright: ignore[reportMissingImports]
+
             dsn = (
                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
                 f"SERVER={body.host},{body.port};"

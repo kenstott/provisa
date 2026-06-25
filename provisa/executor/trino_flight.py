@@ -15,6 +15,8 @@ proxy, which translates Flight SQL requests to Trino JDBC queries and streams
 results back as Arrow record batches.
 """
 
+# Requirements: REQ-045, REQ-051, REQ-143, REQ-144, REQ-145, REQ-146, REQ-271
+
 from __future__ import annotations
 
 import logging
@@ -26,7 +28,7 @@ from provisa.executor.trino import QueryResult
 log = logging.getLogger(__name__)
 
 
-def create_flight_connection(
+def create_flight_connection(  # REQ-045, REQ-144, REQ-271
     host: str = "localhost",
     port: int = 8480,
     user: str = "provisa",
@@ -76,7 +78,7 @@ def _substitute_params(sql: str, params: list | None) -> str:
     return exec_sql
 
 
-def execute_trino_flight(
+def execute_trino_flight(  # REQ-144, REQ-146
     conn,
     sql: str,
     params: list | None = None,
@@ -96,7 +98,7 @@ def _skip_prepare(cursor) -> None:
     """Patch cursor to skip prepare() — Zaychik doesn't support it."""
     import types
 
-    def _prepare_execute_no_prepare(self, operation, parameters=None):
+    def _prepare_execute_no_prepare(self, operation, _parameters=None):
         self._results = None
         if operation != self._last_query:
             self._last_query = operation
@@ -108,7 +110,7 @@ def _skip_prepare(cursor) -> None:
     )
 
 
-def execute_trino_flight_arrow(
+def execute_trino_flight_arrow(  # REQ-051, REQ-143, REQ-144
     conn,
     sql: str,
     params: list | None = None,
@@ -131,7 +133,7 @@ def execute_trino_flight_arrow(
     return table
 
 
-def execute_trino_flight_stream(
+def execute_trino_flight_stream(  # REQ-145, REQ-271
     conn,
     sql: str,
     params: list | None = None,

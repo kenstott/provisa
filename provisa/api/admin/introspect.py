@@ -13,6 +13,8 @@
 Returns None when no native path exists — caller falls back to Trino.
 """
 
+# Requirements: REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314, REQ-322, REQ-147
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -38,30 +40,56 @@ _SQLSERVER_SYSTEM_SCHEMAS = {
 }
 _PG_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast", "mv_cache", "public"}
 
-_PROVISA_INTERNAL_SCHEMAS: frozenset[str] = frozenset({
-    "mv_cache",
-    "gql_cache",
-    "api_cache",
-    "default",
-})
+PROVISA_INTERNAL_SCHEMAS: frozenset[str] = frozenset(
+    {
+        "mv_cache",
+        "gql_cache",
+        "api_cache",
+        "default",
+    }
+)
 
-_PROVISA_INTERNAL_TABLES: frozenset[str] = frozenset({
-    "sources", "domains", "naming_rules", "registered_tables", "table_columns",
-    "relationships", "roles", "rls_rules", "materialized_views", "mv_refresh_log",
-    "relationship_candidates",
-    "kafka_sources", "kafka_topics", "kafka_sinks",
-    "api_sources", "api_endpoints", "api_endpoint_candidates",
-    "live_query_state", "tracked_functions", "tracked_webhooks",
-    "table_meta_links", "file_source_mtimes",
-    "orgs", "user_profiles", "user_org_memberships", "local_users",
-    "user_role_assignments", "org_invites",
-    "query_audit_log", "tenants", "tenant_config",
-    "source_catalog_cache",
-    "iceberg_tables", "iceberg_namespace_properties",
-})
+PROVISA_INTERNAL_TABLES: frozenset[str] = frozenset(
+    {
+        "sources",
+        "domains",
+        "naming_rules",
+        "registered_tables",
+        "table_columns",
+        "relationships",
+        "roles",
+        "rls_rules",
+        "materialized_views",
+        "mv_refresh_log",
+        "relationship_candidates",
+        "kafka_sources",
+        "kafka_topics",
+        "kafka_sinks",
+        "api_sources",
+        "api_endpoints",
+        "api_endpoint_candidates",
+        "live_query_state",
+        "tracked_functions",
+        "tracked_webhooks",
+        "table_meta_links",
+        "file_source_mtimes",
+        "orgs",
+        "user_profiles",
+        "user_org_memberships",
+        "local_users",
+        "user_role_assignments",
+        "org_invites",
+        "query_audit_log",
+        "tenants",
+        "tenant_config",
+        "source_catalog_cache",
+        "iceberg_tables",
+        "iceberg_namespace_properties",
+    }
+)
 
 
-async def native_schemas(
+async def native_schemas(  # REQ-012, REQ-250, REQ-252
     source_id: str,
     source_type: str,
     pool: "SourcePool",
@@ -103,11 +131,12 @@ async def native_schemas(
 
     try:
         if t == "postgresql":
+            pg_exclude = "','".join(sorted(_PG_SYSTEM_SCHEMAS))
             result = await pool.execute(
                 source_id,
-                "SELECT schema_name FROM information_schema.schemata "
-                "WHERE schema_name NOT IN ('information_schema','pg_catalog','pg_toast','mv_cache','public') "
-                "ORDER BY schema_name",
+                f"SELECT schema_name FROM information_schema.schemata "
+                f"WHERE schema_name NOT IN ('{pg_exclude}') "
+                f"ORDER BY schema_name",
             )
             return [row[0] for row in result.rows]
 
@@ -116,12 +145,10 @@ async def native_schemas(
             return [row[0] for row in result.rows if row[0] not in _MYSQL_SYSTEM_DBS]
 
         if t == "sqlserver":
+            ss_exclude = "','".join(sorted(_SQLSERVER_SYSTEM_SCHEMAS))
             result = await pool.execute(
                 source_id,
-                "SELECT name FROM sys.schemas WHERE name NOT IN ("
-                "'sys','INFORMATION_SCHEMA','guest','db_owner','db_accessadmin',"
-                "'db_securityadmin','db_ddladmin','db_backupoperator','db_datareader',"
-                "'db_datawriter','db_denydatareader','db_denydatawriter') ORDER BY name",
+                f"SELECT name FROM sys.schemas WHERE name NOT IN ('{ss_exclude}') ORDER BY name",
             )
             return [row[0] for row in result.rows]
 
@@ -161,7 +188,7 @@ def _gql_field_returns_list(field: dict) -> bool:
     return type_node.get("kind") == "LIST"
 
 
-async def _native_tables_openapi(
+async def _native_tables_openapi(  # REQ-314, REQ-316
     source_id: str,
     schema_name: str,
     state,
@@ -183,7 +210,7 @@ async def _native_tables_openapi(
     ]
 
 
-async def _native_tables_graphql(
+async def _native_tables_graphql(  # REQ-307, REQ-308
     source_id: str,
     schema_name: str,
     config_conn,
@@ -224,7 +251,7 @@ async def _native_tables_graphql(
     ]
 
 
-async def _native_tables_grpc(
+async def _native_tables_grpc(  # REQ-322, REQ-323, REQ-325
     source_id: str,
     schema_name: str,
     state,
@@ -261,7 +288,7 @@ async def _native_tables_grpc(
     return results
 
 
-async def _native_tables_kafka(
+async def _native_tables_kafka(  # REQ-147
     source_id: str,
     schema_name: str,
     config_conn,
@@ -321,9 +348,7 @@ async def _native_tables_govdata(
 
     schema_lower = schema_name.lower()
 
-    cred_row = await config_conn.fetchrow(
-        "SELECT username FROM sources WHERE id = $1", source_id
-    )
+    cred_row = await config_conn.fetchrow("SELECT username FROM sources WHERE id = $1", source_id)
     api_key = _resolve_secrets((cred_row["username"] or "") if cred_row else "")
 
     gds = GovDataSource(
@@ -339,13 +364,11 @@ async def _native_tables_govdata(
         names = await loop.run_in_executor(None, _fetch_tables, gds, schema_lower)
         return [AvailableTableType(name=n, comment=None) for n in names]
     except Exception as _e:
-        _logging.getLogger(__name__).warning(
-            "govdata native_tables FAILED: %s", _e, exc_info=True
-        )
+        _logging.getLogger(__name__).warning("govdata native_tables FAILED: %s", _e, exc_info=True)
         return None
 
 
-async def _native_tables_rdbms(
+async def _native_tables_rdbms(  # REQ-012, REQ-252
     source_id: str,
     source_type: str,
     schema_name: str,
@@ -402,7 +425,7 @@ async def _native_tables_rdbms(
     return None
 
 
-async def native_tables(
+async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314, REQ-322, REQ-147
     source_id: str,
     source_type: str,
     schema_name: str,

@@ -14,6 +14,8 @@ Generates Trino Cassandra connector catalog properties. Supports schema
 inference from keyspace metadata with partition/clustering key annotations.
 """
 
+# Requirements: REQ-250, REQ-251, REQ-252
+
 from __future__ import annotations
 
 import logging
@@ -71,7 +73,9 @@ class CassandraSourceConfig:
     tables: list[CassandraTableConfig] = field(default_factory=list)
 
 
-def generate_catalog_properties(config: CassandraSourceConfig) -> dict[str, str]:
+def generate_catalog_properties(
+    config: CassandraSourceConfig,
+) -> dict[str, str]:  # REQ-250, REQ-251
     """Generate Trino Cassandra connector catalog properties."""
     props = {
         "connector.name": "cassandra",
@@ -99,7 +103,7 @@ def generate_table_definitions(config: CassandraSourceConfig) -> list[dict]:
     return definitions
 
 
-def discover_schema(keyspace_metadata: dict) -> list[dict]:
+def discover_schema(keyspace_metadata: dict) -> list[dict]:  # REQ-252
     """Infer columns from Cassandra keyspace table metadata.
 
     Args:

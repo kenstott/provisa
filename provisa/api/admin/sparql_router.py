@@ -34,6 +34,8 @@ from provisa.sparql.source import (
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/sources/sparql", tags=["admin", "sparql"])
 
+# Requirements: REQ-297, REQ-298, REQ-299
+
 
 class SparqlSourceRequest(BaseModel):
     source_id: str
@@ -49,7 +51,7 @@ class SparqlTableRequest(BaseModel):
 
 
 @router.post("")
-async def register_sparql_source(body: SparqlSourceRequest, request: Request):
+async def register_sparql_source(body: SparqlSourceRequest, request: Request):  # REQ-297, REQ-298
     """Register a SPARQL source."""
     state = request.app.state
     cfg = SparqlSourceConfig(
@@ -66,7 +68,7 @@ async def register_sparql_source(body: SparqlSourceRequest, request: Request):
 
 
 @router.post("/{source_id}/tables")
-async def register_sparql_table(
+async def register_sparql_table(  # REQ-297, REQ-296, REQ-299
     source_id: str,
     body: SparqlTableRequest,
     request: Request,
@@ -96,9 +98,11 @@ async def register_sparql_table(
         ) from exc
 
     # Infer columns from probe results; fall back to SELECT variable names
-    columns = infer_columns(rows) if rows else [
-        _make_string_col(v) for v in extract_variables(body.sparql_query)
-    ]
+    columns = (
+        infer_columns(rows)
+        if rows
+        else [_make_string_col(v) for v in extract_variables(body.sparql_query)]
+    )
     if not columns:
         raise HTTPException(
             status_code=422,
@@ -120,4 +124,5 @@ async def register_sparql_table(
 
 def _make_string_col(name: str):
     from provisa.api_source.models import ApiColumn, ApiColumnType
+
     return ApiColumn(name=name, type=ApiColumnType.string)

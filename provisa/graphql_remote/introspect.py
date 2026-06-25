@@ -9,6 +9,8 @@
 # permission from the copyright holder.
 
 """GraphQL schema introspection (REQ-307)."""
+
+# Requirements: REQ-307, REQ-311
 from __future__ import annotations
 import httpx
 
@@ -32,6 +34,7 @@ query IntrospectionQuery {
 }
 """
 
+
 def _build_headers(auth: dict | None) -> dict:
     if not auth:
         return {}
@@ -40,11 +43,15 @@ def _build_headers(auth: dict | None) -> dict:
         return {"Authorization": f"Bearer {auth.get('token', '')}"}
     if auth_type == "basic":
         import base64
-        creds = base64.b64encode(f"{auth.get('username','')}:{auth.get('password','')}".encode()).decode()
+
+        creds = base64.b64encode(
+            f"{auth.get('username', '')}:{auth.get('password', '')}".encode()
+        ).decode()
         return {"Authorization": f"Basic {creds}"}
     return {}
 
-async def introspect_schema(url: str, auth: dict | None = None) -> dict:
+
+async def introspect_schema(url: str, auth: dict | None = None) -> dict:  # REQ-307, REQ-311
     """POST introspection query; return parsed __schema dict.
 
     Raises httpx.HTTPError on network/HTTP failure.

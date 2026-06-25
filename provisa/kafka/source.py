@@ -19,6 +19,8 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 
+# Requirements: REQ-147, REQ-148, REQ-149, REQ-150, REQ-250
+
 log = logging.getLogger(__name__)
 
 
@@ -44,7 +46,7 @@ class KafkaColumn:
 
 
 @dataclass
-class KafkaDiscriminator:
+class KafkaDiscriminator:  # REQ-149
     """Filter a shared topic to a single message type."""
 
     field: str  # column/field name containing the type discriminator
@@ -52,7 +54,7 @@ class KafkaDiscriminator:
 
 
 @dataclass
-class KafkaTopicConfig:
+class KafkaTopicConfig:  # REQ-147, REQ-148, REQ-149, REQ-150
     """Configuration for a Kafka topic registered as a table."""
 
     id: str
@@ -62,8 +64,8 @@ class KafkaTopicConfig:
     value_format: ValueFormat = ValueFormat.JSON
     columns: list[KafkaColumn] = field(default_factory=list)
     table_name: str | None = None  # defaults to topic name sanitized
-    default_window: str | None = "1h"  # auto-injected time bound
-    discriminator: KafkaDiscriminator | None = None  # filter by message type
+    default_window: str | None = "1h"  # auto-injected time bound  # REQ-148
+    discriminator: KafkaDiscriminator | None = None  # filter by message type  # REQ-149
 
     def __post_init__(self):
         if self.table_name is None:
@@ -71,7 +73,7 @@ class KafkaTopicConfig:
 
 
 @dataclass
-class KafkaSourceConfig:
+class KafkaSourceConfig:  # REQ-147
     """Configuration for a Kafka cluster source."""
 
     id: str
@@ -81,7 +83,7 @@ class KafkaSourceConfig:
     topics: list[KafkaTopicConfig] = field(default_factory=list)
 
 
-def generate_trino_kafka_properties(source: KafkaSourceConfig) -> str:
+def generate_trino_kafka_properties(source: KafkaSourceConfig) -> str:  # REQ-147, REQ-250
     """Generate Trino Kafka connector properties file content.
 
     Returns the content for a kafka.properties file to be placed
@@ -120,7 +122,9 @@ def generate_trino_kafka_properties(source: KafkaSourceConfig) -> str:
     return "\n".join(lines)
 
 
-def generate_kafka_table_definitions(source: "KafkaSourceConfig") -> list[dict]:
+def generate_kafka_table_definitions(
+    source: "KafkaSourceConfig",
+) -> list[dict]:  # REQ-147, REQ-150, REQ-250
     """Generate Trino Kafka FILE table-description dicts from each topic's columns.
 
     Used when no Confluent schema registry is configured: the record layout comes
@@ -252,7 +256,7 @@ def _json_type_of(value) -> str | None:
     return "string"
 
 
-def infer_columns_from_records(records: list[dict]) -> list[KafkaColumn]:
+def infer_columns_from_records(records: list[dict]) -> list[KafkaColumn]:  # REQ-150
     """Propose KafkaColumn types from sampled JSON records (SchemaSource.SAMPLE).
 
     Field order follows first appearance. When a field shows more than one type
@@ -291,7 +295,7 @@ def infer_columns_from_records(records: list[dict]) -> list[KafkaColumn]:
     return columns
 
 
-async def sample_topic_records(
+async def sample_topic_records(  # REQ-150
     bootstrap_servers: str, topic: str, max_records: int = 50, timeout_ms: int = 4000
 ) -> list[dict]:
     """Consume up to ``max_records`` JSON messages from ``topic`` (SchemaSource.SAMPLE).

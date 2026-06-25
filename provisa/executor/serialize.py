@@ -15,6 +15,8 @@ one-to-many  -> array of nested objects
 Null propagation for nullable relationships.
 """
 
+# Requirements: REQ-047, REQ-048, REQ-049, REQ-050, REQ-196, REQ-218
+
 from __future__ import annotations
 
 import json
@@ -24,7 +26,9 @@ from provisa.compiler.cursor import encode_cursor
 from provisa.compiler.sql_gen import ColumnRef, CompiledQuery
 
 
-def _recursive_json_convert(val: object) -> object:  # object-ok: arbitrary SQL column value — Decimal | date | str | int | dict | list | None
+def _recursive_json_convert(
+    val: object,  # object-ok: arbitrary SQL column value — Decimal | date | str | int | dict | list | None
+) -> object:
     """Recursively apply _convert_value to nested dicts/lists.
 
     Needed because json_format(...) embeds JSON arrays as VARCHAR strings inside
@@ -38,7 +42,9 @@ def _recursive_json_convert(val: object) -> object:  # object-ok: arbitrary SQL 
     return val
 
 
-def _convert_value(val: object) -> object:  # object-ok: arbitrary SQL column value — Decimal | date | str | int | dict | list | None
+def _convert_value(
+    val: object,  # object-ok: arbitrary SQL column value — Decimal | date | str | int | dict | list | None
+) -> object:
     """Convert database types to JSON-safe Python types."""
     if isinstance(val, Decimal):
         f = float(val)
@@ -48,6 +54,7 @@ def _convert_value(val: object) -> object:  # object-ok: arbitrary SQL column va
     if hasattr(val, "isoformat"):
         from datetime import date as _date
         from typing import cast as _cast
+
         return _cast(_date, val).isoformat()  # guarded by hasattr — any date/datetime-like type
     # Trino returns JSON columns as strings; parse so object sub-fields resolve correctly.
     # Recursively convert nested values so json_format(...)-wrapped arrays unpack correctly.
@@ -60,7 +67,9 @@ def _convert_value(val: object) -> object:  # object-ok: arbitrary SQL column va
     return val
 
 
-def _to_hashable(v: object) -> object:  # object-ok: arbitrary SQL column value — dict | list | scalar
+def _to_hashable(
+    v: object,  # object-ok: arbitrary SQL column value — dict | list | scalar
+) -> object:
     """Make a value safe to use as a dict key / tuple component."""
     if isinstance(v, (dict, list)):
         return json.dumps(v, sort_keys=True, default=str)
@@ -157,8 +166,7 @@ def _seed_nested_path(
             target[leaf] = None
         else:
             target[leaf] = {
-                col.field_name: _convert_value(row[idx])
-                for idx, col in nest_cols_for_path
+                col.field_name: _convert_value(row[idx]) for idx, col in nest_cols_for_path
             }
 
 
@@ -193,29 +201,22 @@ def _zip_absorbed_children(
     child_absorbed = [
         (
             cp,
-            {
-                col.field_name: _convert_value(row[idx])
-                for idx, col in nested_groups[cp]
-            },
+            {col.field_name: _convert_value(row[idx]) for idx, col in nested_groups[cp]},
         )
         for cp in sorted(absorbed_paths)
         if cp.startswith(prefix)
     ]
     for j in range(n):
-        elem = {
-            k: (v[j] if isinstance(v, list) and j < len(v) else v)
-            for k, v in child.items()
-        }
+        elem = {k: (v[j] if isinstance(v, list) and j < len(v) else v) for k, v in child.items()}
         for cp, cp_data in child_absorbed:
-            rel = cp[len(prefix):]
+            rel = cp[len(prefix) :]
             rel_parts = rel.split(".")
             sub_t: dict = elem
             for sub_part in rel_parts[:-1]:
                 sub_t = sub_t.setdefault(sub_part, {})
             leaf = rel_parts[-1]
             cp_elem = {
-                k: (v[j] if isinstance(v, list) and j < len(v) else v)
-                for k, v in cp_data.items()
+                k: (v[j] if isinstance(v, list) and j < len(v) else v) for k, v in cp_data.items()
             }
             if all(v is None for v in cp_elem.values()):
                 sub_t[leaf] = None
@@ -236,11 +237,9 @@ def _append_regular_child(
         return
     prefix = oto_path + "."
     for deeper_path in sorted(
-        p
-        for p in one_to_many_paths
-        if p.startswith(prefix) and p not in absorbed_paths
+        p for p in one_to_many_paths if p.startswith(prefix) and p not in absorbed_paths
     ):
-        rel_parts = deeper_path[len(prefix):].split(".")
+        rel_parts = deeper_path[len(prefix) :].split(".")
         sub_target = new_item
         for sub_part in rel_parts[:-1]:
             sub_target = sub_target.setdefault(sub_part, {})
@@ -260,9 +259,7 @@ def _accumulate_oto_path(
     """Accumulate one row into the one-to-many array at oto_path in parent_obj."""
     nest_cols_for_path = nested_groups[oto_path]
     all_none = all(row[idx] is None for idx, _ in nest_cols_for_path)
-    child: dict = {
-        col.field_name: _convert_value(row[idx]) for idx, col in nest_cols_for_path
-    }
+    child: dict = {col.field_name: _convert_value(row[idx]) for idx, col in nest_cols_for_path}
     parts = oto_path.split(".")
     target, skip = _navigate_path_into_lists(parent_obj, parts)
     if skip:
@@ -272,16 +269,12 @@ def _accumulate_oto_path(
         return
     if all_none:
         return
-    has_oto_parent = any(
-        oto_path.startswith(p + ".") for p in one_to_many_paths if p != oto_path
-    )
+    has_oto_parent = any(oto_path.startswith(p + ".") for p in one_to_many_paths if p != oto_path)
     if any(isinstance(v, list) for v in child.values()):
         if not is_first_visit and not has_oto_parent:
             return
         n = next((len(v) for v in child.values() if isinstance(v, list)), 0)
-        _zip_absorbed_children(
-            arr, oto_path, child, absorbed_paths, nested_groups, row, n
-        )
+        _zip_absorbed_children(arr, oto_path, child, absorbed_paths, nested_groups, row, n)
     else:
         _append_regular_child(arr, dict(child), oto_path, one_to_many_paths, absorbed_paths)
 
@@ -436,7 +429,7 @@ def _serialize_flat(
     return result
 
 
-def serialize_rows(
+def serialize_rows(  # REQ-047, REQ-048, REQ-049, REQ-050
     rows: list[tuple],
     columns: list[ColumnRef],
     root_field: str,
@@ -453,7 +446,7 @@ def serialize_rows(
         {"data": {root_field: [...]}}
     """
     root_cols, nested_groups = _group_columns(columns)
-    one_to_many_paths, _agg_paths, absorbed_paths = _detect_path_sets(nested_groups)
+    one_to_many_paths, _agg_paths, absorbed_paths = _detect_path_sets(nested_groups)  # pyright: ignore[reportUnusedVariable]
 
     if one_to_many_paths:
         return _serialize_with_one_to_many(
@@ -503,7 +496,7 @@ def shape_transform(result: dict, columns: list[ColumnRef]) -> dict:
     return result
 
 
-def serialize_aggregate(
+def serialize_aggregate(  # REQ-196, REQ-197
     agg_rows: list[tuple],
     agg_columns: list[ColumnRef],
     nodes_rows: list[tuple] | None,
@@ -533,7 +526,7 @@ def serialize_aggregate(
             if path == agg_alias:
                 sub_path: list[str] = []
             elif path.startswith(f"{agg_alias}."):
-                sub_path = path[len(f"{agg_alias}."):].split(".")
+                sub_path = path[len(f"{agg_alias}.") :].split(".")
             else:
                 sub_path = path.split(".")
 
@@ -558,7 +551,7 @@ def serialize_aggregate(
     return {"data": {root_field: payload}}
 
 
-def serialize_connection(
+def serialize_connection(  # REQ-218
     rows: list[tuple],
     compiled: CompiledQuery,
 ) -> dict:

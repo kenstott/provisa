@@ -10,13 +10,15 @@
 
 """RLS rule repository — CRUD for row-level security rules in PG config DB."""
 
+# Requirements: REQ-041, REQ-402, REQ-403
+
 import asyncpg
 
 from provisa.core.models import RLSRule
 from provisa.core.repositories import table as table_repo
 
 
-async def upsert(conn: asyncpg.Connection, rule: RLSRule) -> None:
+async def upsert(conn: asyncpg.Connection, rule: RLSRule) -> None:  # REQ-041, REQ-402
     """Upsert an RLS rule. Resolves table_id from table name for table-level rules."""
     if rule.domain_id:
         await conn.execute(
@@ -49,7 +51,7 @@ async def upsert(conn: asyncpg.Connection, rule: RLSRule) -> None:
         )
 
 
-async def get_for_table_role(
+async def get_for_table_role(  # REQ-041, REQ-403
     conn: asyncpg.Connection, table_id: int, role_id: str
 ) -> dict | None:
     row = await conn.fetchrow(
@@ -60,19 +62,19 @@ async def get_for_table_role(
     return dict(row) if row else None
 
 
-async def list_for_role(conn: asyncpg.Connection, role_id: str) -> list[dict]:
-    rows = await conn.fetch(
-        "SELECT * FROM rls_rules WHERE role_id = $1 ORDER BY id", role_id
-    )
+async def list_for_role(
+    conn: asyncpg.Connection, role_id: str
+) -> list[dict]:  # REQ-041, REQ-402, REQ-403
+    rows = await conn.fetch("SELECT * FROM rls_rules WHERE role_id = $1 ORDER BY id", role_id)
     return [dict(r) for r in rows]
 
 
-async def list_all(conn: asyncpg.Connection) -> list[dict]:
+async def list_all(conn: asyncpg.Connection) -> list[dict]:  # REQ-041, REQ-402
     rows = await conn.fetch("SELECT * FROM rls_rules ORDER BY id")
     return [dict(r) for r in rows]
 
 
-async def delete(
+async def delete(  # REQ-041, REQ-402
     conn: asyncpg.Connection,
     role_id: str,
     table_id: int | None = None,

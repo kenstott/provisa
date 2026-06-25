@@ -10,6 +10,8 @@
 
 """/data/sdl and /data/introspection endpoints — role-aware GraphQL SDL and introspection."""
 
+# Requirements: REQ-039, REQ-363
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
@@ -139,7 +141,7 @@ async def get_domains(request: Request, x_role: str = Header(None, alias="X-Role
 
 
 @router.get("/data/sdl", response_class=PlainTextResponse)
-async def get_sdl(
+async def get_sdl(  # REQ-039, REQ-363
     request: Request,
     x_role: str = Header(None, alias="X-Role"),
     domain: str | None = Query(None),
@@ -202,7 +204,7 @@ fragment TypeRef on __Type {
 
 
 @router.get("/data/introspection")
-async def get_introspection(
+async def get_introspection(  # REQ-039, REQ-363
     request: Request,
     x_role: str = Header(None, alias="X-Provisa-Role"),
     domain: str | None = Query(None),

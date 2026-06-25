@@ -30,6 +30,8 @@ from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-342, REQ-343, REQ-344
+
 
 def _strip_ns(tag: str) -> str:
     """Strip XML namespace prefix: {ns}local → local."""
@@ -71,7 +73,7 @@ def _child_text(el: ET.Element, *tags: str) -> str | None:
     return None
 
 
-def _parse_rss(root: ET.Element) -> list[dict]:
+def _parse_rss(root: ET.Element) -> list[dict]:  # REQ-343
     channel = root.find("channel")
     if channel is None:
         return []
@@ -89,7 +91,7 @@ def _parse_rss(root: ET.Element) -> list[dict]:
     return items
 
 
-def _parse_atom(root: ET.Element) -> list[dict]:
+def _parse_atom(root: ET.Element) -> list[dict]:  # REQ-343
     items = []
     for child in root:
         if _strip_ns(child.tag) != "entry":
@@ -110,7 +112,7 @@ def _parse_atom(root: ET.Element) -> list[dict]:
     return items
 
 
-def parse_feed(xml_bytes: bytes) -> list[dict]:
+def parse_feed(xml_bytes: bytes) -> list[dict]:  # REQ-343
     """Parse RSS 2.0 or Atom feed bytes into a list of item dicts."""
     root = _safe_fromstring(xml_bytes)
     tag = _strip_ns(root.tag).lower()
@@ -121,7 +123,7 @@ def parse_feed(xml_bytes: bytes) -> list[dict]:
     return []
 
 
-class RSSNotificationProvider(NotificationProvider):
+class RSSNotificationProvider(NotificationProvider):  # REQ-342, REQ-343, REQ-344
     """Polls an RSS 2.0 or Atom feed and yields ChangeEvents for new items.
 
     Args:

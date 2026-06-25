@@ -18,6 +18,8 @@ Endpoints:
   PUT  /admin/openapi/spec/{id}        — store spec JSON + run auto-register
 """
 
+# Requirements: REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, REQ-321, REQ-406, REQ-407, REQ-408
+
 from __future__ import annotations
 import logging
 from typing import cast
@@ -48,7 +50,7 @@ class OpenAPIPreviewRequest(BaseModel):
     spec_content: str = ""  # inline YAML or JSON; takes precedence over spec_path
 
 
-async def _load_and_register(
+async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, REQ-407
     source_id: str,
     spec_path: str,
     domain_id: str,
@@ -73,6 +75,7 @@ async def _load_and_register(
         spec = parse_text(spec_content)
     else:
         from provisa.core.secrets import resolve_secrets as _resolve_secrets
+
         spec = load_spec(_resolve_secrets(spec_path))
 
     # Resolve base_url: explicit override > spec servers[0].url
@@ -131,10 +134,12 @@ async def _load_and_register(
 
 
 @router.post("/register")
-async def register_openapi_source(body: OpenAPIRegisterRequest):
+async def register_openapi_source(
+    body: OpenAPIRegisterRequest,
+):  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, REQ-406, REQ-407, REQ-408
     """Load an OpenAPI spec and auto-register tables and tracked functions."""
     try:
-        spec, n_tables, n_mutations = await _load_and_register(
+        _, n_tables, n_mutations = await _load_and_register(
             body.source_id,
             body.spec_path,
             body.domain_id,
@@ -166,7 +171,7 @@ async def register_openapi_source(body: OpenAPIRegisterRequest):
 
 
 @router.post("/refresh/{source_id}")
-async def refresh_openapi_source(source_id: str):
+async def refresh_openapi_source(source_id: str):  # REQ-321
     """Re-load spec from stored path and re-run auto-registration."""
     from provisa.api.app import state
 
@@ -176,7 +181,7 @@ async def refresh_openapi_source(source_id: str):
 
     reg = specs[source_id]
     try:
-        spec, n_tables, n_mutations = await _load_and_register(
+        _, n_tables, n_mutations = await _load_and_register(
             source_id,
             reg.get("spec_path", ""),
             reg.get("domain_id", ""),
@@ -203,7 +208,7 @@ async def refresh_openapi_source(source_id: str):
 
 
 @router.post("/preview")
-async def preview_openapi_spec(body: OpenAPIPreviewRequest):
+async def preview_openapi_spec(body: OpenAPIPreviewRequest):  # REQ-315, REQ-407
     """Parse spec and return discovered queries/mutations without persisting."""
     from provisa.openapi.loader import load_spec, parse_text
     from provisa.openapi.mapper import parse_spec
@@ -258,7 +263,7 @@ async def get_openapi_spec(source_id: str):
 
 
 @router.put("/spec/{source_id}")
-async def put_openapi_spec(source_id: str, request: Request):
+async def put_openapi_spec(source_id: str, request: Request):  # REQ-316, REQ-317
     """Store raw spec JSON and run auto-registration."""
     from provisa.api.app import state
 

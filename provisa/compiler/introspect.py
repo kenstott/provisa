@@ -10,6 +10,8 @@
 
 """Query Trino INFORMATION_SCHEMA for registered table column metadata."""
 
+# Requirements: REQ-008, REQ-018, REQ-393, REQ-413, REQ-421
+
 import re
 from dataclasses import dataclass
 
@@ -35,7 +37,7 @@ class ColumnMetadata:
     is_nullable: bool
 
 
-def introspect_table_columns(
+def introspect_table_columns(  # REQ-008, REQ-393
     conn: trino.dbapi.Connection,
     catalog: str,
     schema: str,
@@ -63,7 +65,7 @@ def introspect_table_columns(
     ]
 
 
-def introspect_tables(
+def introspect_tables(  # REQ-008, REQ-393, REQ-421
     conn: trino.dbapi.Connection,
     registered_tables: list[dict],
     sources: dict[str, dict],
@@ -175,7 +177,7 @@ def introspect_column_types(
         return {}
 
 
-def introspect_pk_columns(
+def introspect_pk_columns(  # REQ-393, REQ-394
     conn: trino.dbapi.Connection,
     catalog: str,
     schema: str,
@@ -206,7 +208,7 @@ def introspect_pk_columns(
         return set()
 
 
-def introspect_fk_candidates(
+def introspect_fk_candidates(  # REQ-018, REQ-413, REQ-415
     conn: trino.dbapi.Connection,
     catalog: str,
     schema: str,

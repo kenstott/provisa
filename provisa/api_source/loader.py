@@ -29,6 +29,8 @@ from provisa.api_source.models import (
 from provisa.api_source.schema_integration import register_api_columns
 from provisa.compiler.introspect import ColumnMetadata
 
+# Requirements: REQ-119, REQ-314, REQ-316, REQ-322
+
 
 def _resolve_param_type(c: dict) -> str | None:
     """Read param_type from either 'param_type' or 'native_filter_type' key."""
@@ -43,7 +45,7 @@ def _resolve_param_type(c: dict) -> str | None:
     return None
 
 
-async def load_api_sources(
+async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
     conn: asyncpg.Connection,
     tables: list[dict],
     col_types: dict[int, list[ColumnMetadata]],
@@ -84,7 +86,9 @@ async def load_api_sources(
                 name=c["name"],
                 type=ApiColumnType(c.get("type", "string")),
                 filterable=c.get("filterable", True),
-                param_type=ParamType(_resolve_param_type(c)) if _resolve_param_type(c) is not None else None,
+                param_type=ParamType(_resolve_param_type(c))
+                if _resolve_param_type(c) is not None
+                else None,
                 param_name=c.get("param_name"),
                 object_fields=c.get("object_fields", []),
             )
@@ -92,17 +96,15 @@ async def load_api_sources(
         ]
         pagination = None
         if r["pagination"]:
-            pag_raw = json.loads(r["pagination"]) if isinstance(r["pagination"], str) else r["pagination"]
+            pag_raw = (
+                json.loads(r["pagination"]) if isinstance(r["pagination"], str) else r["pagination"]
+            )
             pagination = PaginationConfig(**pag_raw)
 
         dp_raw = r.get("default_params")
-        default_params = (
-            json.loads(dp_raw) if isinstance(dp_raw, str) else dp_raw
-        ) or {}
+        default_params = (json.loads(dp_raw) if isinstance(dp_raw, str) else dp_raw) or {}
         promo_raw = r.get("promotions")
-        promo_list = (
-            json.loads(promo_raw) if isinstance(promo_raw, str) else promo_raw
-        ) or []
+        promo_list = (json.loads(promo_raw) if isinstance(promo_raw, str) else promo_raw) or []
         promotions = [PromotionConfig(**p) for p in promo_list]
         ep = ApiEndpoint(
             id=r["id"],
@@ -129,12 +131,13 @@ async def load_api_sources(
         unregistered = [ep for ep in api_endpoint_list if ep.source_id not in registered_source_ids]
         if unregistered:
             # REQ-119: promoted JSONB columns are registered as first-class columns.
-            promotions_map = {
-                ep.table_name: ep.promotions for ep in unregistered if ep.promotions
-            }
+            promotions_map = {ep.table_name: ep.promotions for ep in unregistered if ep.promotions}
             register_api_columns(
-                tables, col_types, unregistered,
-                domain_id="api", role_ids=role_ids,
+                tables,
+                col_types,
+                unregistered,
+                domain_id="api",
+                role_ids=role_ids,
                 promotions_map=promotions_map,
             )
 

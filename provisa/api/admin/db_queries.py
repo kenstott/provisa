@@ -6,6 +6,8 @@
 
 """Shared asyncpg query helpers for schema rebuild."""
 
+# Requirements: REQ-155, REQ-194, REQ-351, REQ-393, REQ-399
+
 from __future__ import annotations
 
 import asyncpg
@@ -27,7 +29,7 @@ def _to_singular(camel: str) -> str:
     return camel
 
 
-def derive_graphql_alias(
+def derive_graphql_alias(  # REQ-155, REQ-194, REQ-351
     target_table_name: str, cardinality: str, convention: str = "apollo_graphql"
 ) -> str | None:
     """Derive GraphQL field name from target table name + cardinality.
@@ -43,7 +45,7 @@ def derive_graphql_alias(
     return apply_convention(name, convention)
 
 
-def derive_cypher_alias(source_column: str, cardinality: str) -> str:
+def derive_cypher_alias(source_column: str, cardinality: str) -> str:  # REQ-351
     """Derive Cypher relationship type from FK column + cardinality.
 
     Rules:
@@ -85,7 +87,7 @@ def parse_mask_value(raw: str | None) -> int | float | str | None:
     return raw
 
 
-async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:
+async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:  # REQ-155, REQ-393, REQ-399
     """Fetch registered tables with columns."""
     rows = await conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name, "
@@ -123,7 +125,9 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:
     return tables
 
 
-async def fetch_relationships(conn: asyncpg.Connection) -> list[dict]:
+async def fetch_relationships(
+    conn: asyncpg.Connection,
+) -> list[dict]:  # REQ-155, REQ-194, REQ-351, REQ-399
     """Fetch relationships, computing graphql_alias when not persisted."""
     rows = await conn.fetch(
         "SELECT r.id, r.source_table_id, r.target_table_id, r.source_column, "

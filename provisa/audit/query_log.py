@@ -10,6 +10,8 @@
 
 """SOC2 append-only query audit log."""
 
+# Requirements: REQ-074
+
 from __future__ import annotations
 
 import hashlib
@@ -45,12 +47,12 @@ CREATE INDEX IF NOT EXISTS idx_audit_user_time ON query_audit_log (user_id, logg
 """
 
 
-async def init_audit_schema(pool: asyncpg.Pool) -> None:
+async def init_audit_schema(pool: asyncpg.Pool) -> None:  # REQ-074
     async with pool.acquire() as conn:
         await conn.execute(AUDIT_SCHEMA_SQL)
 
 
-async def log_query(
+async def log_query(  # REQ-074
     pool: asyncpg.Pool,
     *,
     tenant_id: str | None,

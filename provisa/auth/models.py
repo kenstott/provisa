@@ -15,9 +15,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
+# Requirements: REQ-120
+
 
 @dataclass
-class AuthIdentity:
+class AuthIdentity:  # REQ-120
     """Authenticated user identity extracted from a token.
 
     roles: list of structured claims in 'role_id:domain_id' or plain 'role_id' format.
@@ -33,7 +35,7 @@ class AuthIdentity:
 
 
 @dataclass
-class RoleAssignment:
+class RoleAssignment:  # REQ-120
     """A resolved (role_id, domain_id) pair for a user.
 
     domain_id == '*' means the role applies across all domains.
@@ -43,7 +45,7 @@ class RoleAssignment:
     domain_id: str
 
 
-class AuthProvider(ABC):
+class AuthProvider(ABC):  # REQ-120
     """Abstract base for authentication providers."""
 
     @property

@@ -19,9 +19,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+# Requirements: REQ-012, REQ-250
+
 
 @dataclass
-class GoogleSheetsTableConfig:
+class GoogleSheetsTableConfig:  # REQ-012
     """Table mapped from a Google Sheets range."""
 
     name: str
@@ -30,7 +32,7 @@ class GoogleSheetsTableConfig:
 
 
 @dataclass
-class GoogleSheetsSourceConfig:
+class GoogleSheetsSourceConfig:  # REQ-012, REQ-250
     """Google Sheets source connection + table mappings."""
 
     id: str
@@ -39,7 +41,7 @@ class GoogleSheetsSourceConfig:
     tables: list[GoogleSheetsTableConfig] = field(default_factory=list)
 
 
-def generate_catalog_properties(config: GoogleSheetsSourceConfig) -> dict[str, str]:
+def generate_catalog_properties(config: GoogleSheetsSourceConfig) -> dict[str, str]:  # REQ-250
     """Generate Trino Google Sheets connector catalog properties."""
     return {
         "connector.name": "gsheets",
@@ -48,7 +50,7 @@ def generate_catalog_properties(config: GoogleSheetsSourceConfig) -> dict[str, s
     }
 
 
-def generate_table_definitions(config: GoogleSheetsSourceConfig) -> list[dict]:
+def generate_table_definitions(config: GoogleSheetsSourceConfig) -> list[dict]:  # REQ-250, REQ-012
     """Generate table definition entries for each configured sheet range.
 
     Each entry corresponds to one row in the Trino metadata sheet:

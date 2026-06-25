@@ -25,8 +25,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# Requirements: REQ-260, REQ-282, REQ-283, REQ-285
 
-class TrinoPollingProvider(NotificationProvider):
+
+class TrinoPollingProvider(NotificationProvider):  # REQ-260, REQ-282, REQ-283, REQ-285
     """Poll a Trino-accessible table/view using a watermark column.
 
     Creates its own dedicated Trino connection so polling does not contend
@@ -69,7 +71,9 @@ class TrinoPollingProvider(NotificationProvider):
             request_timeout=30,
         )
 
-    def _fetch_new_rows(self, conn: Connection, watermark: datetime) -> list[dict[str, object]]:
+    def _fetch_new_rows(
+        self, conn: Connection, watermark: datetime
+    ) -> list[dict[str, object]]:  # REQ-260, REQ-283
         wc = self._watermark_column
         fqt = f'"{self._catalog}"."{self._schema}"."{self._table}"'
         ts = watermark.strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -86,7 +90,7 @@ class TrinoPollingProvider(NotificationProvider):
 
     async def watch(
         self, table: str, filter_expr: str | None = None
-    ) -> AsyncGenerator[ChangeEvent, None]:
+    ) -> AsyncGenerator[ChangeEvent, None]:  # REQ-260, REQ-282, REQ-285
         loop = asyncio.get_running_loop()
         watermark = datetime.now(timezone.utc)
         conn = await loop.run_in_executor(None, self._connect)

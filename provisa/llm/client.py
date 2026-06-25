@@ -15,6 +15,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+# Requirements: REQ-355, REQ-356, REQ-358
+
 log = logging.getLogger(__name__)
 
 # Default config when operation key is absent from yaml
@@ -27,7 +29,7 @@ _DEFAULTS: dict[str, dict] = {
 }
 
 
-class ProviasLLMClient:
+class ProviasLLMClient:  # REQ-355, REQ-356, REQ-358
     """Vendor-agnostic LLM client backed by aisuite.
 
     Reads vendor/model from config `ai_models.<operation>` section.

@@ -16,8 +16,10 @@ from abc import ABC, abstractmethod
 
 from provisa.executor.trino import QueryResult
 
+# Requirements: REQ-027, REQ-052
 
-class DirectDriver(ABC):
+
+class DirectDriver(ABC):  # REQ-027, REQ-052
     """Abstract async driver for direct database execution."""
 
     @abstractmethod

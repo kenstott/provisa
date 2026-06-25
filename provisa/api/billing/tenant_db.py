@@ -5,6 +5,8 @@
 
 """Billing schema DDL and asyncpg CRUD for tenants and tenant_config."""
 
+# Requirements: REQ-052
+
 from __future__ import annotations
 
 import uuid

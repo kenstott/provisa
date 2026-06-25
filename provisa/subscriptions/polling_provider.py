@@ -10,6 +10,8 @@
 
 """Timestamp-watermark polling subscription provider."""
 
+# Requirements: REQ-260, REQ-283, REQ-336
+
 from __future__ import annotations
 
 import asyncio
@@ -24,7 +26,7 @@ from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 log = logging.getLogger(__name__)
 
 
-class PollingNotificationProvider(NotificationProvider):
+class PollingNotificationProvider(NotificationProvider):  # REQ-260, REQ-283, REQ-336
     """Polls a table for changes using a configurable watermark column (default: ``updated_at``)."""
 
     def __init__(

@@ -10,6 +10,8 @@
 
 """Source repository — CRUD for data sources in PG config DB."""
 
+# Requirements: REQ-012, REQ-013, REQ-014, REQ-250
+
 import json as _json
 
 import asyncpg
@@ -17,7 +19,7 @@ import asyncpg
 from provisa.core.models import Source
 
 
-async def upsert(conn: asyncpg.Connection, source: Source) -> None:
+async def upsert(conn: asyncpg.Connection, source: Source) -> None:  # REQ-012, REQ-250
     await conn.execute(
         """
         INSERT INTO sources (id, type, host, port, database, username, dialect, path, description, mapping)
@@ -46,22 +48,22 @@ async def upsert(conn: asyncpg.Connection, source: Source) -> None:
     )
 
 
-async def get(conn: asyncpg.Connection, source_id: str) -> dict | None:
+async def get(conn: asyncpg.Connection, source_id: str) -> dict | None:  # REQ-012
     row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", source_id)
     return dict(row) if row else None
 
 
-async def list_all(conn: asyncpg.Connection) -> list[dict]:
+async def list_all(conn: asyncpg.Connection) -> list[dict]:  # REQ-012
     rows = await conn.fetch("SELECT * FROM sources ORDER BY id")
     return [dict(r) for r in rows]
 
 
-async def delete(conn: asyncpg.Connection, source_id: str) -> bool:
+async def delete(conn: asyncpg.Connection, source_id: str) -> bool:  # REQ-014
     result = await conn.execute("DELETE FROM sources WHERE id = $1", source_id)
     return result == "DELETE 1"
 
 
-async def rename(conn: asyncpg.Connection, old_id: str, new_id: str) -> bool:
+async def rename(conn: asyncpg.Connection, old_id: str, new_id: str) -> bool:  # REQ-012
     """Rename a source: copy to new_id, retarget registered_tables, delete old_id."""
     async with conn.transaction():
         row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", old_id)

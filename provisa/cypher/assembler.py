@@ -14,6 +14,8 @@ Deserializes JSON columns from raw rows into typed Node, Edge, and Path objects.
 Groups path rows sharing the same _path_id into a single Path per group.
 """
 
+# Requirements: REQ-349, REQ-350, REQ-394
+
 from __future__ import annotations
 
 import json
@@ -28,7 +30,7 @@ class CypherAssemblyError(Exception):
 
 
 @dataclass
-class Node:
+class Node:  # REQ-350
     id: str
     label: str
     table_label: str
@@ -36,7 +38,7 @@ class Node:
 
 
 @dataclass
-class Edge:
+class Edge:  # REQ-350
     id: str
     type: str
     start_node: Node
@@ -45,12 +47,12 @@ class Edge:
 
 
 @dataclass
-class Path:
+class Path:  # REQ-350
     nodes: list[Node]
     edges: list[Edge]
 
 
-def assemble_rows(
+def assemble_rows(  # REQ-349, REQ-350
     raw_rows: list[dict],
     graph_vars: dict[str, GraphVarKind],
 ) -> list[dict]:
@@ -318,7 +320,7 @@ def _apply_id_map(v: Any, id_map: dict[str, int]) -> Any:
     return v
 
 
-async def register_node_ids(serializable_rows: list[dict], pg_pool: Any) -> None:
+async def register_node_ids(serializable_rows: list[dict], pg_pool: Any) -> None:  # REQ-394
     """Upsert all graph nodes to node_ids table; replace composite string IDs with integers.
 
     Mutates serializable_rows in place.  No-op if pg_pool is None or no nodes found.
@@ -364,7 +366,7 @@ async def register_node_ids(serializable_rows: list[dict], pg_pool: Any) -> None
         serializable_rows[i] = {k: _apply_id_map(v, id_map) for k, v in row.items()}
 
 
-def to_serializable(obj: Any) -> Any:
+def to_serializable(obj: Any) -> Any:  # REQ-349, REQ-350
     """Recursively convert Node/Edge/Path to JSON-serializable dicts."""
     import datetime
     from decimal import Decimal

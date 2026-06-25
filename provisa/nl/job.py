@@ -17,6 +17,8 @@ The job store is Redis-backed when REDIS_URL is set; falls back to an
 in-process dict otherwise (useful for tests and single-process dev).
 """
 
+# Requirements: REQ-354, REQ-371
+
 from __future__ import annotations
 
 import json
@@ -41,7 +43,7 @@ class BranchResult:
 
 
 @dataclass
-class NlJob:
+class NlJob:  # REQ-354
     """Represents a natural-language query job."""
 
     job_id: str
@@ -114,7 +116,7 @@ class InMemoryJobStore:
             job.state = state
 
 
-class RedisJobStore:
+class RedisJobStore:  # REQ-371
     """Redis-backed job store."""
 
     def __init__(self, redis_url: str) -> None:

@@ -10,6 +10,8 @@
 
 """Admin API router for LLM relationship discovery."""
 
+# Requirements: REQ-018, REQ-167, REQ-413, REQ-612
+
 from __future__ import annotations
 
 import logging as _logging
@@ -47,18 +49,11 @@ class AcceptRequest(BaseModel):
     name: str | None = None
 
 
-def _get_api_key() -> str:
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not set")
-    return key
-
-
 _log = _logging.getLogger(__name__)
 
 
 @router.post("/relationships")
-async def trigger_discovery(body: DiscoverRequest):
+async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413, REQ-612
     """Trigger relationship discovery: FK constraints always, LLM inference if ANTHROPIC_API_KEY set."""
     with _tracer.start_as_current_span("admin.discovery") as span:
         scope_id: str | int | None = None
@@ -112,7 +107,7 @@ async def trigger_discovery(body: DiscoverRequest):
 
 
 @router.get("/candidates")
-async def list_candidates():
+async def list_candidates():  # REQ-612
     """List pending relationship candidates."""
     pool = state.pg_pool
     assert pool is not None
@@ -121,7 +116,7 @@ async def list_candidates():
 
 
 @router.post("/candidates/{candidate_id}/accept")
-async def accept_candidate(candidate_id: int, body: AcceptRequest | None = None):
+async def accept_candidate(candidate_id: int, body: AcceptRequest | None = None):  # REQ-612
     """Accept a relationship candidate."""
     pool = state.pg_pool
     assert pool is not None
@@ -132,7 +127,7 @@ async def accept_candidate(candidate_id: int, body: AcceptRequest | None = None)
 
 
 @router.post("/candidates/{candidate_id}/reject")
-async def reject_candidate(candidate_id: int, body: RejectRequest):
+async def reject_candidate(candidate_id: int, body: RejectRequest):  # REQ-612
     """Reject a relationship candidate."""
     pool = state.pg_pool
     assert pool is not None

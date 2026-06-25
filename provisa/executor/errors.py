@@ -12,8 +12,10 @@ from __future__ import annotations
 
 from typing import Optional
 
+# Requirements: REQ-027, REQ-028, REQ-031
 
-class FederationError(Exception):
+
+class FederationError(Exception):  # REQ-027, REQ-028, REQ-031
     """Federation-layer query error — wraps underlying engine errors."""
 
     def __init__(
@@ -40,7 +42,7 @@ class FederationError(Exception):
         return repr(self)
 
     @classmethod
-    def from_trino(cls, exc: Exception) -> "FederationError":
+    def from_trino(cls, exc: Exception) -> "FederationError":  # REQ-028
         return cls(
             error_type=getattr(exc, "error_type", None),
             error_name=getattr(exc, "error_name", None),

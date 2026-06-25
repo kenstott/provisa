@@ -14,8 +14,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+# Requirements: REQ-282, REQ-286
 
-class LiveOutput(ABC):
+
+class LiveOutput(ABC):  # REQ-282, REQ-286
     """Abstract output sink for live query rows."""
 
     @abstractmethod

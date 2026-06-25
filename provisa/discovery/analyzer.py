@@ -10,6 +10,8 @@
 
 """Analyze prompt via Claude API and parse relationship candidates."""
 
+# Requirements: REQ-018, REQ-167, REQ-612
+
 from __future__ import annotations
 
 import json
@@ -26,7 +28,7 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
-class RelationshipCandidate:
+class RelationshipCandidate:  # REQ-018, REQ-612
     source_table_id: int
     source_column: str
     target_table_id: int
@@ -50,7 +52,7 @@ def _extract_json(text: str) -> str:
     return text
 
 
-def _validate_candidate(raw: dict, discovery_input: DiscoveryInput) -> bool:
+def _validate_candidate(raw: dict, discovery_input: DiscoveryInput) -> bool:  # REQ-612
     """Check that referenced columns exist in the metadata."""
     required_keys = {
         "source_table_id",
@@ -90,7 +92,7 @@ def analyze(
     api_key: str,
     discovery_input: DiscoveryInput,
     min_confidence: float = 0.7,
-) -> list[RelationshipCandidate]:
+) -> list[RelationshipCandidate]:  # REQ-018, REQ-167, REQ-612
     """Call LLM with prompt, parse and validate response."""
     with _tracer.start_as_current_span("discovery.analyze"):
         from provisa.llm.client import ProviasLLMClient

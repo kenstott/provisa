@@ -15,8 +15,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+# Requirements: REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ-235
 
-class MVStatus(str, Enum):
+
+class MVStatus(str, Enum):  # REQ-160, REQ-199, REQ-235
     FRESH = "fresh"
     STALE = "stale"
     REFRESHING = "refreshing"
@@ -25,7 +27,7 @@ class MVStatus(str, Enum):
 
 
 @dataclass(frozen=True)
-class JoinPattern:
+class JoinPattern:  # REQ-158
     """Defines a JOIN pattern that an MV covers."""
 
     left_table: str  # table name
@@ -44,7 +46,7 @@ class SDLConfig:
 
 
 @dataclass
-class MVDefinition:
+class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ-235
     """A materialized view definition."""
 
     id: str

@@ -22,9 +22,11 @@ log = logging.getLogger(__name__)
 _MAX_FUZZY_CANDIDATES = 40
 _MIN_FUZZY_SCORE = 30  # rapidfuzz WRatio threshold
 
+# Requirements: REQ-167
+
 
 @dataclass
-class TableCandidate:
+class TableCandidate:  # REQ-167
     name: str
     comment: str | None
     columns: list[str]
@@ -32,7 +34,7 @@ class TableCandidate:
 
 
 @dataclass
-class RankedTable:
+class RankedTable:  # REQ-167
     name: str
     schema_name: str
     comment: str | None
@@ -62,7 +64,7 @@ def _fuzzy_score(query_tokens: set[str], candidate: TableCandidate) -> int:
     return int(100 * len(matched) / len(query_tokens)) if query_tokens else 0
 
 
-def fuzzy_filter(
+def fuzzy_filter(  # REQ-167
     query: str,
     candidates: list[TableCandidate],
     max_results: int = _MAX_FUZZY_CANDIDATES,
@@ -78,7 +80,7 @@ def fuzzy_filter(
     return [c for c, _ in scored[:max_results]]
 
 
-def build_search_prompt(query: str, candidates: list[TableCandidate]) -> str:
+def build_search_prompt(query: str, candidates: list[TableCandidate]) -> str:  # REQ-167
     lines = [
         "You are a data catalog assistant. A user is searching for tables using natural language.",
         f'\nUser query: "{query}"\n',
@@ -115,7 +117,7 @@ def parse_llm_response(text: str) -> list[dict]:
     return json.loads(raw)
 
 
-async def llm_rank(
+async def llm_rank(  # REQ-167
     query: str,
     candidates: list[TableCandidate],
     api_key: str | None = None,
@@ -161,7 +163,7 @@ async def llm_rank(
     return results
 
 
-async def search_tables(
+async def search_tables(  # REQ-167
     query: str,
     candidates: list[TableCandidate],
     api_key: str | None = None,

@@ -10,6 +10,10 @@
 
 """Pydantic models for Provisa configuration."""
 
+# Requirements: REQ-003, REQ-005, REQ-019, REQ-020, REQ-041, REQ-042, REQ-052, REQ-053, REQ-119,
+# REQ-120, REQ-124, REQ-125, REQ-176, REQ-194, REQ-204, REQ-229, REQ-238, REQ-240, REQ-247,
+# REQ-250, REQ-251, REQ-281, REQ-369, REQ-370, REQ-393, REQ-399, REQ-400, REQ-415, REQ-419, REQ-421
+
 import re
 from enum import Enum
 
@@ -150,7 +154,7 @@ TIME_TRAVEL_SOURCES: set[str] = {"iceberg", "delta_lake"}
 _SAFE_ID_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 
 
-class Source(BaseModel):
+class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250, REQ-251, REQ-281
     model_config = ConfigDict(populate_by_name=True)
 
     id: str
@@ -248,7 +252,7 @@ class NamingRule(BaseModel):
     replace: str
 
 
-class NamingConfig(BaseModel):
+class NamingConfig(BaseModel):  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-415, REQ-416
     convention: str = "apollo_graphql"
     sql_convention: str = "snake"
     rules: list[NamingRule] = Field(default_factory=list)
@@ -297,7 +301,9 @@ class ObjectField(BaseModel):
     fields: list["ObjectField"] = []  # nested sub-fields when type == "object"
 
 
-class Column(BaseModel):
+class Column(
+    BaseModel
+):  # REQ-038, REQ-039, REQ-119, REQ-151, REQ-155, REQ-156, REQ-393, REQ-399, REQ-421
     name: str
     data_type: str | None = (
         None  # source column type (e.g. "varchar", "integer"); lets startup skip Trino introspection
@@ -366,7 +372,9 @@ class LiveDeliveryConfig(BaseModel):
     outputs: list[LiveOutputConfig] = Field(default_factory=list)
 
 
-class Table(BaseModel):
+class Table(
+    BaseModel
+):  # REQ-013, REQ-014, REQ-016, REQ-119, REQ-133, REQ-135, REQ-204, REQ-237, REQ-240, REQ-260, REQ-393
     model_config = ConfigDict(populate_by_name=True)
 
     source_id: str
@@ -428,7 +436,7 @@ class MaterializedViewsConfig(BaseModel):
     default_ttl: int = 300
 
 
-class Relationship(BaseModel):
+class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, REQ-400
     id: str
     source_table_id: str
     target_table_id: str = ""  # empty for computed (function-target) relationships
@@ -463,7 +471,7 @@ class RoleRateLimit(BaseModel):
     max_flight_streams: int | None = None
 
 
-class Role(BaseModel):
+class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     id: str
     capabilities: list[str]
     domain_access: list[str]
@@ -475,7 +483,7 @@ class Role(BaseModel):
     max_rows: int | None = None  # REQ-005: per-role result-size ceiling (LIMIT injected by Stage 2)
 
 
-def flatten_roles(roles: list[Role]) -> list[Role]:
+def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
     """Flatten inherited role hierarchy: merge parent capabilities + domain_access.
 
     Returns new Role objects with inherited permissions merged in.
@@ -519,7 +527,7 @@ def flatten_roles(roles: list[Role]) -> list[Role]:
     return result
 
 
-class RLSRule(BaseModel):
+class RLSRule(BaseModel):  # REQ-041, REQ-402
     table_id: str | None = None
     domain_id: str | None = None
     role_id: str
@@ -551,7 +559,7 @@ class InlineType(BaseModel):
     type: str  # GraphQL scalar type name
 
 
-class Function(BaseModel):
+class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     """Tracked DB function exposed as a GraphQL query or mutation."""
 
     name: str  # exposed field name
@@ -573,7 +581,7 @@ class Function(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class Webhook(BaseModel):
+class Webhook(BaseModel):  # REQ-209, REQ-210, REQ-211
     """External HTTP webhook exposed as a GraphQL query or mutation."""
 
     name: str  # exposed field name
@@ -601,7 +609,9 @@ class ScheduledTrigger(BaseModel):
     enabled: bool = True
 
 
-class AuthConfig(BaseModel):
+class AuthConfig(
+    BaseModel
+):  # REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125, REQ-203, REQ-247
     provider: str = "none"  # none, firebase, keycloak, oauth, simple
     firebase: dict | None = None
     keycloak: dict | None = None

@@ -20,6 +20,8 @@ from provisa.api_source.models import (
     ApiEndpointCandidate,
 )
 
+# Requirements: REQ-307, REQ-308, REQ-314, REQ-316, REQ-322, REQ-323, REQ-324, REQ-325
+
 
 _OPENAPI_TYPE_MAP: dict[str, ApiColumnType] = {
     "string": ApiColumnType.string,
@@ -71,7 +73,7 @@ def _path_to_table_name(path: str) -> str:
     return "_".join(parts).replace("-", "_")
 
 
-async def introspect_openapi(spec_url: str) -> list[ApiEndpointCandidate]:
+async def introspect_openapi(spec_url: str) -> list[ApiEndpointCandidate]:  # REQ-314, REQ-316
     """Parse OpenAPI spec and generate candidate tables for GET endpoints."""
     async with httpx.AsyncClient() as client:
         resp = await client.get(spec_url)
@@ -162,7 +164,7 @@ def _unwrap_type(type_info: dict) -> tuple[str | None, str]:
     return name, kind
 
 
-async def introspect_graphql(url: str) -> list[ApiEndpointCandidate]:
+async def introspect_graphql(url: str) -> list[ApiEndpointCandidate]:  # REQ-307, REQ-308
     """Introspect a GraphQL endpoint via __schema query."""
     async with httpx.AsyncClient() as client:
         resp = await client.post(url, json={"query": _INTROSPECTION_QUERY})
@@ -216,7 +218,9 @@ async def introspect_graphql(url: str) -> list[ApiEndpointCandidate]:
     return candidates
 
 
-async def introspect_grpc(host_port: str) -> list[ApiEndpointCandidate]:
+async def introspect_grpc(
+    host_port: str,
+) -> list[ApiEndpointCandidate]:  # REQ-322, REQ-323, REQ-324, REQ-325
     """Introspect a gRPC server via server reflection."""
     import grpc
     from grpc_reflection.v1alpha import reflection_pb2, reflection_pb2_grpc
@@ -267,7 +271,7 @@ async def introspect_grpc(host_port: str) -> list[ApiEndpointCandidate]:
     return candidates
 
 
-_PROTO_TYPE_MAP: dict[int, ApiColumnType] = {
+_PROTO_TYPE_MAP: dict[int, ApiColumnType] = {  # REQ-324
     1: ApiColumnType.number,  # double
     2: ApiColumnType.number,  # float
     3: ApiColumnType.integer,  # int64
@@ -281,7 +285,7 @@ _PROTO_TYPE_MAP: dict[int, ApiColumnType] = {
 }
 
 
-def _grpc_message_to_columns(fd, message_name: str) -> list[ApiColumn]:
+def _grpc_message_to_columns(fd, message_name: str) -> list[ApiColumn]:  # REQ-324, REQ-325
     """Convert a protobuf message descriptor to columns."""
     for msg in fd.message_type:
         if msg.name == message_name:

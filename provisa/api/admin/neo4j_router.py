@@ -16,6 +16,8 @@ Endpoints:
   POST /admin/sources/neo4j/{id}/tables  — register a table (runs preview+validate)
 """
 
+# Requirements: REQ-295, REQ-296, REQ-298, REQ-299
+
 from __future__ import annotations
 
 import logging
@@ -57,7 +59,7 @@ class Neo4jTableRequest(BaseModel):
 
 
 @router.post("")
-async def register_neo4j_source(body: Neo4jSourceRequest, request: Request):
+async def register_neo4j_source(body: Neo4jSourceRequest, request: Request):  # REQ-295
     """Register a Neo4j source."""
     state = request.app.state
     cfg = Neo4jSourceConfig(
@@ -79,7 +81,7 @@ async def register_neo4j_source(body: Neo4jSourceRequest, request: Request):
 
 
 @router.post("/{source_id}/preview")
-async def preview_neo4j_query(
+async def preview_neo4j_query(  # REQ-296, REQ-298, REQ-299
     source_id: str,
     body: Neo4jPreviewRequest,
     request: Request,
@@ -110,7 +112,7 @@ async def preview_neo4j_query(
 
 
 @router.post("/{source_id}/tables")
-async def register_neo4j_table(
+async def register_neo4j_table(  # REQ-295, REQ-296, REQ-299
     source_id: str,
     body: Neo4jTableRequest,
     request: Request,

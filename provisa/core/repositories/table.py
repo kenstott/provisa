@@ -10,6 +10,8 @@
 
 """Table repository — CRUD for registered tables and columns in PG config DB."""
 
+# Requirements: REQ-013, REQ-014, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
+
 import json
 
 import asyncpg
@@ -18,7 +20,9 @@ from provisa.core import domain_policy
 from provisa.core.models import Table
 
 
-async def upsert(conn: asyncpg.Connection, table: Table) -> int | None:
+async def upsert(
+    conn: asyncpg.Connection, table: Table
+) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
     """Upsert a registered table and its columns. Returns the table row id."""
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
     table_id = await conn.fetchval(
@@ -91,7 +95,7 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int | None:
     return table_id
 
 
-async def get(conn: asyncpg.Connection, table_id: int) -> dict | None:
+async def get(conn: asyncpg.Connection, table_id: int) -> dict | None:  # REQ-013, REQ-393, REQ-399
     row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", table_id)
     if not row:
         return None
@@ -106,7 +110,7 @@ async def get(conn: asyncpg.Connection, table_id: int) -> dict | None:
 
 async def get_by_name(
     conn: asyncpg.Connection, source_id: str, schema_name: str, table_name: str
-) -> dict | None:
+) -> dict | None:  # REQ-013, REQ-155
     row = await conn.fetchrow(
         """
         SELECT * FROM registered_tables
@@ -127,7 +131,9 @@ async def get_by_name(
     return result
 
 
-async def find_by_table_name(conn: asyncpg.Connection, table_name: str) -> dict | None:
+async def find_by_table_name(
+    conn: asyncpg.Connection, table_name: str
+) -> dict | None:  # REQ-014, REQ-155
     """Find a registered table by its virtual name.
 
     The virtual name is alias when set, otherwise table_name.
@@ -148,7 +154,7 @@ async def find_by_table_name(conn: asyncpg.Connection, table_name: str) -> dict 
     return dict(rows[0])
 
 
-async def list_all(conn: asyncpg.Connection) -> list[dict]:
+async def list_all(conn: asyncpg.Connection) -> list[dict]:  # REQ-013, REQ-016
     rows = await conn.fetch("SELECT * FROM registered_tables ORDER BY id")
     result = []
     for row in rows:
@@ -162,6 +168,6 @@ async def list_all(conn: asyncpg.Connection) -> list[dict]:
     return result
 
 
-async def delete(conn: asyncpg.Connection, table_id: int) -> bool:
+async def delete(conn: asyncpg.Connection, table_id: int) -> bool:  # REQ-014
     result = await conn.execute("DELETE FROM registered_tables WHERE id = $1", table_id)
     return result == "DELETE 1"

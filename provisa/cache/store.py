@@ -14,6 +14,8 @@ RedisCacheStore: production Redis-backed store.
 NoopCacheStore: used when Redis is not configured (caching disabled).
 """
 
+# Requirements: REQ-173, REQ-230, REQ-231, REQ-302, REQ-303
+
 from __future__ import annotations
 
 import logging
@@ -98,7 +100,7 @@ class NoopCacheStore(CacheStore):
         pass
 
 
-class RedisCacheStore(CacheStore):
+class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
     """Redis-backed cache store.
 
     Key format: provisa:cache:<sha256_key>
@@ -215,7 +217,9 @@ class RedisCacheStore(CacheStore):
             log.warning("Redis invalidate_by_pattern failed", exc_info=True)
             return 0
 
-    async def invalidate_by_table(self, table_id: int, tenant_id: str | None = None) -> int:
+    async def invalidate_by_table(
+        self, table_id: int, tenant_id: str | None = None
+    ) -> int:  # REQ-173, REQ-231
         try:
             await self._connect()
             assert self._redis is not None

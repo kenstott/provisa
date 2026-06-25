@@ -11,12 +11,14 @@ nearest-neighbour search against the cache, then joins the matched PKs back to t
 source so the full row is returned.
 """
 
+# Requirements: REQ-424
+
 from __future__ import annotations
 
 from provisa.vector.query import _vector_literal
 
 
-def cache_ddl(cache_table: str, dimensions: int, pk_type: str = "text") -> list[str]:
+def cache_ddl(cache_table: str, dimensions: int, pk_type: str = "text") -> list[str]:  # REQ-424
     """DDL to create the pgvector cache table and its HNSW cosine index."""
     index = f"{cache_table.replace('.', '_').strip('"')}_hnsw"
     return [
@@ -27,7 +29,7 @@ def cache_ddl(cache_table: str, dimensions: int, pk_type: str = "text") -> list[
     ]
 
 
-async def materialize(
+async def materialize(  # REQ-424
     conn,
     cache_table: str,
     rows: list[dict],
@@ -55,7 +57,7 @@ async def materialize(
     return len(rows)
 
 
-def fallback_similarity_sql(
+def fallback_similarity_sql(  # REQ-424
     source_table: str,
     source_pk: str,
     cache_table: str,

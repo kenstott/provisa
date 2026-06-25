@@ -15,19 +15,21 @@ from __future__ import annotations
 from provisa.auth.models import AuthIdentity, AuthProvider
 from provisa.core.secrets import resolve_secrets
 
+# Requirements: REQ-120, REQ-121
+
 firebase_admin = None
 credentials = None
 firebase_auth = None
 try:
-    import firebase_admin
-    from firebase_admin import credentials, auth as firebase_auth
+    import firebase_admin  # pyright: ignore[reportMissingImports]
+    from firebase_admin import credentials, auth as firebase_auth  # pyright: ignore[reportMissingImports]
 
     _HAS_FIREBASE = True
 except ImportError:
     _HAS_FIREBASE = False
 
 
-class FirebaseAuthProvider(AuthProvider):
+class FirebaseAuthProvider(AuthProvider):  # REQ-120, REQ-121
     """Validates Firebase ID tokens via firebase-admin SDK."""
 
     provider_name: str = "firebase"
@@ -48,7 +50,7 @@ class FirebaseAuthProvider(AuthProvider):
             )
             firebase_admin.initialize_app(cred, {"projectId": project_id})  # type: ignore[union-attr]
 
-    async def validate_token(self, token: str) -> AuthIdentity:
+    async def validate_token(self, token: str) -> AuthIdentity:  # REQ-120, REQ-121
         decoded = firebase_auth.verify_id_token(token)  # type: ignore[union-attr]
         return AuthIdentity(
             user_id=decoded["uid"],

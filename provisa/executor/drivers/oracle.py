@@ -10,16 +10,18 @@
 
 """Oracle direct driver using oracledb (python-oracledb thin mode — no Oracle Client needed)."""
 
+# Requirements: REQ-052, REQ-229, REQ-550
+
 from __future__ import annotations
 
 
-import oracledb
+import oracledb  # pyright: ignore[reportMissingImports]
 
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.trino import QueryResult
 
 
-class OracleDriver(DirectDriver):
+class OracleDriver(DirectDriver):  # REQ-052, REQ-229, REQ-550
     def __init__(self) -> None:
         self._pool: oracledb.AsyncConnectionPool | None = None
 
@@ -32,7 +34,7 @@ class OracleDriver(DirectDriver):
         password: str,
         min_pool: int = 1,
         max_pool: int = 5,
-    ) -> None:
+    ) -> None:  # REQ-052
         dsn = f"{host}:{port}/{database}"
         self._pool = oracledb.create_pool_async(
             user=user,

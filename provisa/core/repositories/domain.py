@@ -10,12 +10,14 @@
 
 """Domain repository — CRUD for domains in PG config DB."""
 
+# Requirements: REQ-021, REQ-154, REQ-367, REQ-402
+
 import asyncpg
 
 from provisa.core.models import Domain
 
 
-async def upsert(conn: asyncpg.Connection, domain: Domain) -> None:
+async def upsert(conn: asyncpg.Connection, domain: Domain) -> None:  # REQ-021, REQ-367
     await conn.execute(
         """
         INSERT INTO domains (id, description, graphql_alias)
@@ -30,16 +32,16 @@ async def upsert(conn: asyncpg.Connection, domain: Domain) -> None:
     )
 
 
-async def get(conn: asyncpg.Connection, domain_id: str) -> dict | None:
+async def get(conn: asyncpg.Connection, domain_id: str) -> dict | None:  # REQ-021, REQ-402
     row = await conn.fetchrow("SELECT * FROM domains WHERE id = $1", domain_id)
     return dict(row) if row else None
 
 
-async def list_all(conn: asyncpg.Connection) -> list[dict]:
+async def list_all(conn: asyncpg.Connection) -> list[dict]:  # REQ-021
     rows = await conn.fetch("SELECT * FROM domains ORDER BY id")
     return [dict(r) for r in rows]
 
 
-async def delete(conn: asyncpg.Connection, domain_id: str) -> bool:
+async def delete(conn: asyncpg.Connection, domain_id: str) -> bool:  # REQ-021
     result = await conn.execute("DELETE FROM domains WHERE id = $1", domain_id)
     return result == "DELETE 1"

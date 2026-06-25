@@ -26,8 +26,10 @@ import sqlglot.expressions as exp
 
 from provisa.cypher.label_map import CypherLabelMap, RelationshipMapping
 
+# Requirements: REQ-345, REQ-347, REQ-351, REQ-355
 
-def semantic_sql_to_cypher(
+
+def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
     semantic_sql: str,
     label_map: CypherLabelMap,
     ctx: object,  # object-ok: circular-import boundary — CompilationContext lives in provisa.compiler
@@ -84,8 +86,13 @@ def semantic_sql_to_cypher(
     label_to_rel, label_to_many, src_tgt_to_rel = _build_label_to_rel(label_map)
 
     join_segments, skipped_aliases = _resolve_join_segments(
-        tree, domain_to_label, join_to_rel, label_to_rel, label_to_many,
-        sql_base_alias, params,
+        tree,
+        domain_to_label,
+        join_to_rel,
+        label_to_rel,
+        label_to_many,
+        sql_base_alias,
+        params,
     )
 
     # Build short alias map: verbose SQL alias → a, b, c, …
@@ -99,7 +106,7 @@ def semantic_sql_to_cypher(
 
     # Build label lookup: sql_alias → display label (needed for src node in OPTIONAL MATCH)
     alias_label: dict[str, str] = {sql_base_alias: base_label}
-    for _is_opt, _rt, _src, tgt_a, tgt_lbl, _il, _many in join_segments:
+    for _, _, _, tgt_a, tgt_lbl, _, _ in join_segments:
         alias_label[tgt_a] = tgt_lbl
 
     def _prop_map_for_label(display_lbl: str) -> dict[str, str]:
@@ -135,7 +142,7 @@ def semantic_sql_to_cypher(
 
     # --- Build MATCH pattern ---
     required_path = _node(base_alias, base_label)
-    for is_optional, rel_type, src_sql_a, tgt_sql_a, label, _il, _many in join_segments:
+    for is_optional, rel_type, _, tgt_sql_a, label, _, _ in join_segments:
         if not is_optional:
             rel_str = f"[:{rel_type}]" if rel_type else "[]"
             required_path += f"-{rel_str}->{_node(alias_map[tgt_sql_a], label)}"
@@ -148,8 +155,17 @@ def semantic_sql_to_cypher(
 
     collected_aliases: dict[str, dict[str, str]] = {}
     _emit_optional_matches(
-        join_segments, alias_map, alias_label, base_alias, base_label,
-        alias_needed_props, collected_aliases, cypher_lines, flat, node_only, _node,
+        join_segments,
+        alias_map,
+        alias_label,
+        base_alias,
+        base_label,
+        alias_needed_props,
+        collected_aliases,
+        cypher_lines,
+        flat,
+        node_only,
+        _node,
     )
 
     array_agg_return: dict[str, str | list[str]] = {}
@@ -158,17 +174,45 @@ def semantic_sql_to_cypher(
     _agg_seen_label: dict[str, str] = {}
 
     _agg_alias_counter = _process_array_agg_subqueries(
-        select_exprs, domain_to_label, label_to_rel, src_tgt_to_rel, alias_map, alias_label,
-        base_alias, base_label, sql_base_alias, flat,
-        _agg_alias_counter, _agg_seen, _agg_seen_label,
-        array_agg_return, cypher_lines, _letters, _prop_map_for_label, _node,
+        select_exprs,
+        domain_to_label,
+        label_to_rel,
+        src_tgt_to_rel,
+        alias_map,
+        alias_label,
+        base_alias,
+        base_label,
+        sql_base_alias,
+        flat,
+        _agg_alias_counter,
+        _agg_seen,
+        _agg_seen_label,
+        array_agg_return,
+        cypher_lines,
+        _letters,
+        _prop_map_for_label,
+        _node,
     )
 
     _process_json_subqueries(
-        select_exprs, domain_to_label, label_to_rel, src_tgt_to_rel, alias_map, alias_label,
-        base_alias, base_label, sql_base_alias, flat,
-        _agg_alias_counter, _agg_seen, _agg_seen_label,
-        array_agg_return, cypher_lines, _letters, _prop_map_for_label, _node,
+        select_exprs,
+        domain_to_label,
+        label_to_rel,
+        src_tgt_to_rel,
+        alias_map,
+        alias_label,
+        base_alias,
+        base_label,
+        sql_base_alias,
+        flat,
+        _agg_alias_counter,
+        _agg_seen,
+        _agg_seen_label,
+        array_agg_return,
+        cypher_lines,
+        _letters,
+        _prop_map_for_label,
+        _node,
     )
 
     # --- WHERE ---
@@ -185,7 +229,10 @@ def semantic_sql_to_cypher(
 
     if node_only:
         node_aliases = _build_node_aliases(
-            base_alias, join_segments, alias_map, _agg_seen,
+            base_alias,
+            join_segments,
+            alias_map,
+            _agg_seen,
         )
         cypher_lines.append(f"RETURN {', '.join(node_aliases)}")
     else:
@@ -203,11 +250,18 @@ def semantic_sql_to_cypher(
 
     if not node_only:
         _append_order_by(
-            tree, alias_map, alias_prop_map, default_sql_alias, cypher_lines, _remap,
+            tree,
+            alias_map,
+            alias_prop_map,
+            default_sql_alias,
+            cypher_lines,
+            _remap,
         )
 
     _append_skip_limit(
-        tree, override_limit, node_only,
+        tree,
+        override_limit,
+        node_only,
         node_aliases if node_only else [],  # type: ignore[possibly-undefined]
         cypher_lines,
     )
@@ -225,7 +279,7 @@ def _build_domain_to_label(
 ) -> dict[tuple[str, str], str]:
     """Build reverse lookup: (sql_domain, field_name) → node display label."""
     domain_to_label: dict[tuple[str, str], str] = {}
-    for _fn, table_meta in ctx.tables.items():  # type: ignore[attr-defined]
+    for _fn, table_meta in ctx.tables.items():  # type: ignore[attr-defined]  # pyright: ignore[reportUnusedVariable]
         type_name = table_meta.type_name
         if type_name not in label_map.nodes:
             continue
@@ -240,7 +294,7 @@ def _build_domain_to_label(
         domain_to_label[(sql_domain, field_key)] = lbl
         domain_to_label[("", field_key)] = lbl
 
-    for _tn, nm in label_map.nodes.items():
+    for _tn, nm in label_map.nodes.items():  # pyright: ignore[reportUnusedVariable]
         lbl = label_map.display_label(nm)
         _sql_dom = domain_to_sql_name(nm.domain_id) if nm.domain_id else ""
         _tbl = nm.sql_table_name
@@ -290,9 +344,7 @@ def _unwrap_from_table(
     if isinstance(from_tbl, exp.Subquery):
         inner = from_tbl.this
         inner_from = inner.args.get("from_") if isinstance(inner, exp.Select) else None
-        inner_exprs = (
-            inner.args.get("expressions") or [] if isinstance(inner, exp.Select) else []
-        )
+        inner_exprs = inner.args.get("expressions") or [] if isinstance(inner, exp.Select) else []
         is_star = len(inner_exprs) == 1 and isinstance(inner_exprs[0], exp.Star)
         if inner_from and is_star and isinstance(inner_from.this, exp.Table):
             inner_tbl = inner_from.this
@@ -340,8 +392,14 @@ def _resolve_join_segments(
         join_tbl = join.this
         if not isinstance(join_tbl, exp.Table):
             _process_lateral_join(
-                join_tbl, domain_to_label, label_to_rel, label_to_many,
-                sql_base_alias, params, join_segments, skipped_aliases,
+                join_tbl,
+                domain_to_label,
+                label_to_rel,
+                label_to_many,
+                sql_base_alias,
+                params,
+                join_segments,
+                skipped_aliases,
             )
             continue
 
@@ -355,10 +413,17 @@ def _resolve_join_segments(
         rel_type = _rel_type_from_on(on_expr, join_to_rel, tgt_label) or label_to_rel.get(tgt_label)
         src_sql_alias = _src_alias_from_on(on_expr, tgt_sql_alias, sql_base_alias)
         is_optional = (join.side or "").upper() == "LEFT"
-        join_segments.append((
-            is_optional, rel_type, src_sql_alias, tgt_sql_alias, tgt_label,
-            None, label_to_many.get(tgt_label, False),
-        ))
+        join_segments.append(
+            (
+                is_optional,
+                rel_type,
+                src_sql_alias,
+                tgt_sql_alias,
+                tgt_label,
+                None,
+                label_to_many.get(tgt_label, False),
+            )
+        )
 
     return join_segments, skipped_aliases
 
@@ -392,10 +457,17 @@ def _process_lateral_join(
             inner_lim = _resolve_lateral_inner_lim(inner_select, params)
             inner_where = inner_select.args.get("where")
             lateral_src_alias = _src_alias_from_on(inner_where, lateral_alias, sql_base_alias)
-            join_segments.append((
-                True, rel_type, lateral_src_alias, lateral_alias, tgt_label,
-                inner_lim, label_to_many.get(tgt_label, False),
-            ))
+            join_segments.append(
+                (
+                    True,
+                    rel_type,
+                    lateral_src_alias,
+                    lateral_alias,
+                    tgt_label,
+                    inner_lim,
+                    label_to_many.get(tgt_label, False),
+                )
+            )
             return
 
     if lateral_alias:
@@ -447,7 +519,7 @@ def _emit_optional_matches(
             if props:
                 prop_map: dict[str, str] = {}
                 return_parts = []
-                for _sql_col, _cypher_prop in props:
+                for _, _cypher_prop in props:
                     prop_list_var = f"{tgt_short}_{_cypher_prop}_list"
                     prop_map[_cypher_prop] = prop_list_var
                     slice_suffix = f"[..{inner_lim}]" if inner_lim is not None else ""
@@ -533,7 +605,7 @@ def _process_array_agg_subqueries(
     flat: bool,
     agg_alias_counter: int,
     agg_seen: dict[str, str],
-    agg_seen_label: dict[str, str],
+    _agg_seen_label: dict[str, str],
     array_agg_return: dict[str, str | list[str]],
     cypher_lines: list[str],
     letters: list[str],
@@ -559,10 +631,29 @@ def _process_array_agg_subqueries(
 
         if _col_table and _col_table != _inner_sql_alias:
             agg_alias_counter = _process_array_agg_chained(
-                _inner, _agg_col_node, _inner_tbl, _tgt_lbl, _inner_sql_alias, _col_table,
-                _src_sql, domain_to_label, label_to_rel, src_tgt_to_rel, alias_map, alias_label,
-                base_alias, base_label, flat, agg_alias_counter, agg_seen,
-                cypher_lines, letters, prop_map_for_label, node_fn, array_agg_return, _expr,
+                _inner,
+                _agg_col_node,
+                _inner_tbl,
+                _tgt_lbl,
+                _inner_sql_alias,
+                _col_table,
+                _src_sql,
+                domain_to_label,
+                label_to_rel,
+                src_tgt_to_rel,
+                alias_map,
+                alias_label,
+                base_alias,
+                base_label,
+                flat,
+                agg_alias_counter,
+                agg_seen,
+                cypher_lines,
+                letters,
+                prop_map_for_label,
+                node_fn,
+                array_agg_return,
+                _expr,
             )
             continue
 
@@ -590,7 +681,7 @@ def _process_array_agg_subqueries(
 def _process_array_agg_chained(
     inner: exp.Select,
     agg_col_node: exp.Column,
-    inner_tbl: exp.Table,
+    _inner_tbl: exp.Table,
     tgt_lbl: str,
     inner_sql_alias: str,
     col_table: str,

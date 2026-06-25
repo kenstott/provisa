@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from provisa.vector.registry import VectorModel, VectorModelError
 
+# Requirements: REQ-423, REQ-429, REQ-430, REQ-431
+
 
 class VectorQueryError(ValueError):
     """A vector query is malformed, or has no native translation."""
@@ -30,7 +32,9 @@ def _vector_literal(query_vector: list[float]) -> str:
     return "[" + ",".join(_fmt(x) for x in query_vector) + "]"
 
 
-def cosine_similarity_sql(column: str, query_vector: list[float], capability: str | None) -> str:
+def cosine_similarity_sql(
+    column: str, query_vector: list[float], capability: str | None
+) -> str:  # REQ-423
     """Translate ``cosine_similarity(column, query_vector)`` to a native expression (REQ-423).
 
     Returns a SQL scalar in [-1, 1] (1 = identical). The fallback tier (B2) handles
@@ -53,7 +57,7 @@ def cosine_similarity_sql(column: str, query_vector: list[float], capability: st
     )
 
 
-def validate_vector_dimensions(vector: list[float], model: VectorModel) -> None:
+def validate_vector_dimensions(vector: list[float], model: VectorModel) -> None:  # REQ-429
     """Reject a query vector whose dimension does not match the model (REQ-429)."""
     if len(vector) != model.dimensions:
         raise VectorModelError(
@@ -62,7 +66,7 @@ def validate_vector_dimensions(vector: list[float], model: VectorModel) -> None:
         )
 
 
-async def vectorize_text(text: str, model: VectorModel, provider=None) -> list[float]:
+async def vectorize_text(text: str, model: VectorModel, provider=None) -> list[float]:  # REQ-430
     """Embed a text query into a vector using the model's provider (REQ-430)."""
     if provider is None:
         from provisa.vector.providers import get_provider
@@ -74,7 +78,9 @@ async def vectorize_text(text: str, model: VectorModel, provider=None) -> list[f
     return vecs[0]
 
 
-async def resolve_query_vector(query_input, model: VectorModel, provider=None) -> list[float]:
+async def resolve_query_vector(
+    query_input, model: VectorModel, provider=None
+) -> list[float]:  # REQ-429, REQ-430
     """Resolve a similarity query input to a validated vector (REQ-429/430).
 
     ``query_input`` is either text (embedded via the column's locked ``model``) or an

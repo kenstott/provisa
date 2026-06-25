@@ -12,6 +12,8 @@ takes precedence (the steward's type/governance choices are authoritative).
 
 from __future__ import annotations
 
+# Requirements: REQ-252
+
 
 def _column_name(col) -> str:
     """Read a column name from a dict (discovered) or a model with a name attr."""
@@ -20,7 +22,7 @@ def _column_name(col) -> str:
     return getattr(col, "name", None) or getattr(col, "column_name", "") or ""
 
 
-def merge_discovered_columns(explicit: list, discovered: list) -> list:
+def merge_discovered_columns(explicit: list, discovered: list) -> list:  # REQ-252
     """Return explicit columns plus any discovered column not already named explicitly.
 
     Explicit columns are kept verbatim and in order; discovered columns whose name

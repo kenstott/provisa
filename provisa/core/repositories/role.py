@@ -10,12 +10,14 @@
 
 """Role repository — CRUD for roles in PG config DB."""
 
+# Requirements: REQ-042, REQ-059, REQ-060, REQ-215
+
 import asyncpg
 
 from provisa.core.models import Role
 
 
-async def upsert(conn: asyncpg.Connection, role: Role) -> None:
+async def upsert(conn: asyncpg.Connection, role: Role) -> None:  # REQ-042, REQ-059, REQ-060
     await conn.execute(
         """
         INSERT INTO roles (id, capabilities, domain_access)
@@ -30,16 +32,16 @@ async def upsert(conn: asyncpg.Connection, role: Role) -> None:
     )
 
 
-async def get(conn: asyncpg.Connection, role_id: str) -> dict | None:
+async def get(conn: asyncpg.Connection, role_id: str) -> dict | None:  # REQ-042, REQ-215
     row = await conn.fetchrow("SELECT * FROM roles WHERE id = $1", role_id)
     return dict(row) if row else None
 
 
-async def list_all(conn: asyncpg.Connection) -> list[dict]:
+async def list_all(conn: asyncpg.Connection) -> list[dict]:  # REQ-042, REQ-059
     rows = await conn.fetch("SELECT * FROM roles ORDER BY id")
     return [dict(r) for r in rows]
 
 
-async def delete(conn: asyncpg.Connection, role_id: str) -> bool:
+async def delete(conn: asyncpg.Connection, role_id: str) -> bool:  # REQ-042
     result = await conn.execute("DELETE FROM roles WHERE id = $1", role_id)
     return result == "DELETE 1"

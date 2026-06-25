@@ -16,6 +16,8 @@ Each adapter module must expose:
 - discover_schema(...) -> list[dict]  (optional)
 """
 
+# Requirements: REQ-250, REQ-251, REQ-252
+
 from __future__ import annotations
 
 import importlib
@@ -40,7 +42,7 @@ _ADAPTER_MAP: dict[str, str] = {
 _loaded: dict[str, ModuleType] = {}
 
 
-def get_adapter(source_type: str) -> ModuleType:
+def get_adapter(source_type: str) -> ModuleType:  # REQ-250, REQ-251, REQ-252
     """Look up and return the adapter module for a source type.
 
     Raises KeyError if the source type is not registered.
@@ -57,12 +59,12 @@ def get_adapter(source_type: str) -> ModuleType:
     return module
 
 
-def registered_types() -> list[str]:
+def registered_types() -> list[str]:  # REQ-250, REQ-252
     """Return sorted list of registered source type names."""
     return sorted(_ADAPTER_MAP.keys())
 
 
-def register_adapter(source_type: str, module_path: str) -> None:
+def register_adapter(source_type: str, module_path: str) -> None:  # REQ-251
     """Register a custom adapter module for a source type."""
     _ADAPTER_MAP[source_type] = module_path
     _loaded.pop(source_type, None)

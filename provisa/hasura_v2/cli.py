@@ -23,6 +23,8 @@ from provisa.hasura_v2.mapper import convert_metadata
 from provisa.hasura_v2.parser import parse_metadata_dir
 from provisa.import_shared.warnings import WarningCollector
 
+# Requirements: REQ-417
+
 
 def _parse_domain_map(pairs: list[str] | None) -> dict[str, str]:
     """Parse KEY=VAL pairs into a dict."""
@@ -69,7 +71,7 @@ def _load_source_overrides(path: str | None) -> dict | None:
         return yaml.safe_load(f)
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:  # REQ-417
     parser = argparse.ArgumentParser(
         prog="provisa.hasura_v2",
         description="Convert Hasura v2 metadata to Provisa configuration.",
@@ -80,7 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to Hasura v2 metadata directory",
     )
     parser.add_argument(
-        "-o", "--output",
+        "-o",
+        "--output",
         type=str,
         default=None,
         help="Output YAML file path (default: stdout)",
@@ -110,7 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # REQ-417
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -139,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Validate
     from provisa.core.models import ProvisaConfig
+
     ProvisaConfig.model_validate(config.model_dump(by_alias=True))
 
     if args.dry_run:

@@ -10,6 +10,8 @@
 
 """POST /admin/sources/crawl — directory crawl endpoint (Issue #28)."""
 
+# Requirements: REQ-012, REQ-250
+
 from __future__ import annotations
 
 import logging
@@ -34,7 +36,7 @@ class CrawlResponse(BaseModel):
 
 
 @router.post("/crawl", response_model=CrawlResponse)
-async def crawl_directory_endpoint(body: CrawlRequest) -> CrawlResponse:
+async def crawl_directory_endpoint(body: CrawlRequest) -> CrawlResponse:  # REQ-012, REQ-250
     """Crawl *path* recursively and return discovered file-based tables.
 
     Supports local paths and fsspec URIs (``s3://``, ``ftp://``, etc.).

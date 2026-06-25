@@ -14,13 +14,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# Requirements: REQ-419, REQ-429, REQ-431
+
 
 class VectorModelError(ValueError):
     """A vector model is not registered, or is disabled."""
 
 
 @dataclass(frozen=True)
-class VectorModel:
+class VectorModel:  # REQ-419, REQ-429
     """A registered embedding model."""
 
     id: str  # the model identifier passed to the provider (e.g. "text-embedding-3-small")
@@ -31,7 +33,7 @@ class VectorModel:
     enabled: bool = True
 
 
-class VectorModelRegistry:
+class VectorModelRegistry:  # REQ-419
     """Allowlist of usable embedding models, keyed by model id."""
 
     def __init__(self, models: list[VectorModel] | None = None) -> None:
@@ -54,7 +56,7 @@ class VectorModelRegistry:
         return [m for m in self._models.values() if m.enabled]
 
     @classmethod
-    def from_config(cls, entries: list[dict]) -> VectorModelRegistry:
+    def from_config(cls, entries: list[dict]) -> VectorModelRegistry:  # REQ-419
         """Build a registry from raw ``vector_models`` config entries."""
         return cls(
             [

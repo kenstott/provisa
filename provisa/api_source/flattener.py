@@ -17,8 +17,13 @@ import json
 from provisa.api_source.models import ApiColumn, ApiColumnType
 from provisa.api_source.normalizers import get_normalizer
 
+# Requirements: REQ-295, REQ-297, REQ-299, REQ-316
 
-def _navigate_path(data: object, path: str | None) -> object:
+
+def _navigate_path(
+    data: object,  # object-ok: arbitrary JSON payload from API responses
+    path: str | None,
+) -> object:  # object-ok: arbitrary JSON payload from API responses
     """Navigate to a nested value via dot-notation path.
 
     e.g. "data.users" navigates data["data"]["users"].
@@ -33,7 +38,9 @@ def _navigate_path(data: object, path: str | None) -> object:
         elif isinstance(current, list) and part.isdigit():
             current = current[int(part)]
         else:
-            raise KeyError(f"Cannot navigate path {path!r}: {part!r} not found in {type(current).__name__}")
+            raise KeyError(
+                f"Cannot navigate path {path!r}: {part!r} not found in {type(current).__name__}"
+            )
     return current
 
 
@@ -56,8 +63,8 @@ def _extract_value(row: dict, col: ApiColumn) -> object:
     return str(value)
 
 
-def flatten_response(
-    data: object,
+def flatten_response(  # REQ-295, REQ-297, REQ-299, REQ-316
+    data: object,  # object-ok: arbitrary JSON payload from API responses
     root_path: str | None,
     columns: list[ApiColumn],
     response_normalizer: str | None = None,
@@ -88,7 +95,9 @@ def flatten_response(
     elif isinstance(root, list):
         items = root
     else:
-        raise ValueError(f"Expected dict or list at root path {root_path!r}, got {type(root).__name__}")
+        raise ValueError(
+            f"Expected dict or list at root path {root_path!r}, got {type(root).__name__}"
+        )
 
     rows: list[dict] = []
     for item in items:

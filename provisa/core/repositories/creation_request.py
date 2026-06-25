@@ -9,6 +9,8 @@ A governed create attempted by a user lacking the authority is persisted here as
 pending request; a rights-holder later executes or rejects it.
 """
 
+# Requirements: REQ-063, REQ-434
+
 from __future__ import annotations
 
 import json
@@ -16,7 +18,7 @@ import json
 import asyncpg
 
 
-async def create(
+async def create(  # REQ-063, REQ-434
     conn: asyncpg.Connection,
     request_type: str,
     capability: str,
@@ -39,7 +41,7 @@ async def create(
     return int(rid)
 
 
-async def list_pending(conn: asyncpg.Connection) -> list[dict]:
+async def list_pending(conn: asyncpg.Connection) -> list[dict]:  # REQ-063, REQ-434
     """Return all pending requests, oldest first."""
     rows = await conn.fetch(
         "SELECT * FROM creation_requests WHERE status = 'pending' ORDER BY created_at"
@@ -52,7 +54,9 @@ async def get(conn: asyncpg.Connection, request_id: int) -> dict | None:
     return _row_to_dict(row) if row else None
 
 
-async def mark_executed(conn: asyncpg.Connection, request_id: int, resolved_by: str | None) -> bool:
+async def mark_executed(
+    conn: asyncpg.Connection, request_id: int, resolved_by: str | None
+) -> bool:  # REQ-063, REQ-434
     result = await conn.execute(
         "UPDATE creation_requests SET status = 'executed', resolved_by = $2, resolved_at = NOW() "
         "WHERE id = $1 AND status = 'pending'",
@@ -62,7 +66,7 @@ async def mark_executed(conn: asyncpg.Connection, request_id: int, resolved_by: 
     return result == "UPDATE 1"
 
 
-async def mark_rejected(
+async def mark_rejected(  # REQ-063, REQ-434
     conn: asyncpg.Connection, request_id: int, reason: str, resolved_by: str | None
 ) -> bool:
     result = await conn.execute(

@@ -6,12 +6,14 @@
 
 """In-memory control plane store for REQ-073."""
 
+# Requirements: REQ-073
+
 from __future__ import annotations
 
 from provisa.control_plane.models import DataPlane, Tenant
 
 
-class ControlPlaneStore:
+class ControlPlaneStore:  # REQ-073
     """In-memory store for tenants and data planes. V1: no DB persistence."""
 
     def __init__(self) -> None:

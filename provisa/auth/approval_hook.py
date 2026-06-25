@@ -20,13 +20,15 @@ from typing import Any
 
 import httpx
 
+# Requirements: REQ-203, REQ-204, REQ-246, REQ-247
+
 
 class FallbackPolicy(str, Enum):
     ALLOW = "allow"
     DENY = "deny"
 
 
-class HookType(str, Enum):
+class HookType(str, Enum):  # REQ-246
     WEBHOOK = "webhook"
     GRPC = "grpc"
     UNIX_SOCKET = "unix_socket"
@@ -58,7 +60,7 @@ class ApprovalResponse:
 
 
 @dataclass
-class ApprovalHookConfig:
+class ApprovalHookConfig:  # REQ-247
     """Configuration for the approval hook."""
 
     type: HookType = HookType.WEBHOOK
@@ -109,14 +111,14 @@ class CircuitBreaker:
             self._opened_at = time.monotonic()
 
 
-class ApprovalHook(ABC):
+class ApprovalHook(ABC):  # REQ-203
     """Abstract base for approval hook implementations."""
 
     @abstractmethod
     async def evaluate(self, request: ApprovalRequest) -> ApprovalResponse: ...
 
 
-class WebhookApprovalHook(ApprovalHook):
+class WebhookApprovalHook(ApprovalHook):  # REQ-246
     """HTTP POST approval hook via httpx."""
 
     def __init__(self, config: ApprovalHookConfig) -> None:
@@ -153,7 +155,7 @@ class WebhookApprovalHook(ApprovalHook):
         return ApprovalResponse(approved=False, reason=f"fallback deny: {reason}")
 
 
-class GrpcApprovalHook(ApprovalHook):
+class GrpcApprovalHook(ApprovalHook):  # REQ-246
     """gRPC approval hook with persistent channel."""
 
     def __init__(self, config: ApprovalHookConfig) -> None:
@@ -211,7 +213,7 @@ class GrpcApprovalHook(ApprovalHook):
         return ApprovalResponse(approved=False, reason=f"fallback deny: {reason}")
 
 
-class UnixSocketApprovalHook(ApprovalHook):
+class UnixSocketApprovalHook(ApprovalHook):  # REQ-246
     """HTTP POST over Unix domain socket (for OPA / same-machine sidecars)."""
 
     def __init__(self, config: ApprovalHookConfig) -> None:
@@ -250,7 +252,7 @@ class UnixSocketApprovalHook(ApprovalHook):
         return ApprovalResponse(approved=False, reason=f"fallback deny: {reason}")
 
 
-def create_hook(config: ApprovalHookConfig) -> ApprovalHook:
+def create_hook(config: ApprovalHookConfig) -> ApprovalHook:  # REQ-246
     """Factory: create the appropriate hook from config."""
     if config.type == HookType.WEBHOOK:
         return WebhookApprovalHook(config)
@@ -261,7 +263,7 @@ def create_hook(config: ApprovalHookConfig) -> ApprovalHook:
     raise ValueError(f"Unknown hook type: {config.type}")
 
 
-def load_approval_hook_config(block: dict | None) -> ApprovalHookConfig | None:
+def load_approval_hook_config(block: dict | None) -> ApprovalHookConfig | None:  # REQ-247
     """Build an ApprovalHookConfig from the `auth.approval_hook` YAML block (REQ-247).
 
     Returns None when no block is configured (hook disabled).
@@ -280,7 +282,7 @@ def load_approval_hook_config(block: dict | None) -> ApprovalHookConfig | None:
     )
 
 
-def should_check(
+def should_check(  # REQ-204
     table_ids: list[str],
     source_ids: list[str],
     config: ApprovalHookConfig,

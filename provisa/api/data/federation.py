@@ -15,6 +15,8 @@ representations, grouping by type, and executing batched queries through
 the existing pipeline (RLS + masking applied).
 """
 
+# Requirements: REQ-259
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,7 +34,7 @@ class EntityResolutionPlan:
     positions: list[int]
 
 
-def group_representations(
+def group_representations(  # REQ-259
     representations: list[dict],
     type_to_table: dict[str, int],
     type_to_keys: dict[str, list[str]],
@@ -52,13 +54,9 @@ def group_representations(
     for idx, rep in enumerate(representations):
         type_name = rep.get("__typename")
         if not type_name:
-            raise ValueError(
-                f"Representation at index {idx} missing __typename"
-            )
+            raise ValueError(f"Representation at index {idx} missing __typename")
         if type_name not in type_to_table:
-            raise ValueError(
-                f"Unknown entity type: {type_name!r}"
-            )
+            raise ValueError(f"Unknown entity type: {type_name!r}")
 
         if type_name not in plans:
             plans[type_name] = EntityResolutionPlan(
@@ -73,9 +71,7 @@ def group_representations(
         key_vals = {}
         for col in plan.key_columns:
             if col not in rep:
-                raise ValueError(
-                    f"Representation for {type_name} missing key field: {col!r}"
-                )
+                raise ValueError(f"Representation for {type_name} missing key field: {col!r}")
             key_vals[col] = rep[col]
 
         plan.key_values.append(key_vals)
@@ -84,7 +80,7 @@ def group_representations(
     return list(plans.values())
 
 
-def compile_entity_query(
+def compile_entity_query(  # REQ-259
     catalog: str,
     schema_name: str,
     table_name: str,
@@ -133,7 +129,7 @@ def compile_entity_query(
     return sql, params
 
 
-async def resolve_entities(
+async def resolve_entities(  # REQ-259
     representations: list[dict],
     type_to_table: dict[str, int],
     type_to_keys: dict[str, list[str]],

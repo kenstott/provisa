@@ -29,9 +29,11 @@ log = logging.getLogger(__name__)
 
 _SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
+# Requirements: REQ-018, REQ-019, REQ-167, REQ-302, REQ-413
+
 
 @dataclass
-class TableMeta:
+class TableMeta:  # REQ-018, REQ-413
     table_id: int
     source_id: str
     domain_id: str
@@ -42,7 +44,7 @@ class TableMeta:
 
 
 @dataclass
-class DiscoveryInput:
+class DiscoveryInput:  # REQ-018, REQ-167, REQ-413
     tables: list[TableMeta]
     existing_relationships: list[dict]
     rejected_pairs: list[dict]
@@ -101,7 +103,7 @@ def _fetch_samples(
     ]
 
 
-async def collect_metadata(
+async def collect_metadata(  # REQ-018, REQ-019, REQ-167, REQ-302, REQ-413
     trino_conn: trino.dbapi.Connection,
     pg_conn: asyncpg.Connection,
     scope: str,
@@ -168,7 +170,7 @@ async def collect_metadata(
         return result
 
 
-async def collect_fk_candidates(
+async def collect_fk_candidates(  # REQ-018, REQ-413
     trino_conn: trino.dbapi.Connection,
     pg_conn: asyncpg.Connection,
     scope: str,

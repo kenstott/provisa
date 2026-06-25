@@ -10,6 +10,8 @@
 
 """Pluggable secrets provider. V1: env vars. Extensible to Vault, K8s, AWS."""
 
+# Requirements: REQ-125, REQ-251, REQ-320
+
 import os
 import re
 from abc import ABC, abstractmethod
@@ -17,12 +19,12 @@ from abc import ABC, abstractmethod
 _SECRET_PATTERN = re.compile(r"\$\{(\w+):([^}]+)\}")
 
 
-class SecretsProvider(ABC):
+class SecretsProvider(ABC):  # REQ-125, REQ-320
     @abstractmethod
     def resolve(self, reference: str) -> str: ...
 
 
-class EnvSecretsProvider(SecretsProvider):
+class EnvSecretsProvider(SecretsProvider):  # REQ-125
     def resolve(self, reference: str) -> str:
         if ":-" in reference:
             var, default = reference.split(":-", 1)
@@ -42,7 +44,7 @@ def register_provider(name: str, provider: SecretsProvider) -> None:
     _PROVIDERS[name] = provider
 
 
-def resolve_secrets(value: str) -> str:
+def resolve_secrets(value: str) -> str:  # REQ-125, REQ-251, REQ-320
     """Replace ${provider:reference} patterns with resolved secret values."""
 
     def _replace(match: re.Match) -> str:
@@ -56,7 +58,7 @@ def resolve_secrets(value: str) -> str:
     return _SECRET_PATTERN.sub(_replace, value)
 
 
-def resolve_secrets_in_dict(data: dict) -> dict:
+def resolve_secrets_in_dict(data: dict) -> dict:  # REQ-251, REQ-320
     """Recursively resolve secret references in a dict."""
     result = {}
     for key, value in data.items():
@@ -66,8 +68,10 @@ def resolve_secrets_in_dict(data: dict) -> dict:
             result[key] = resolve_secrets_in_dict(value)
         elif isinstance(value, list):
             result[key] = [
-                resolve_secrets_in_dict(item) if isinstance(item, dict)
-                else resolve_secrets(item) if isinstance(item, str)
+                resolve_secrets_in_dict(item)
+                if isinstance(item, dict)
+                else resolve_secrets(item)
+                if isinstance(item, str)
                 else item
                 for item in value
             ]

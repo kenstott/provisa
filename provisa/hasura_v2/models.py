@@ -16,9 +16,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+# Requirements: REQ-041, REQ-019, REQ-205, REQ-209, REQ-417
+
 
 @dataclass
-class HasuraPermission:
+class HasuraPermission:  # REQ-041, REQ-040
     role: str
     columns: list[str] = field(default_factory=list)
     filter: dict[str, Any] = field(default_factory=dict)
@@ -27,7 +29,7 @@ class HasuraPermission:
 
 
 @dataclass
-class HasuraRelationship:
+class HasuraRelationship:  # REQ-019
     name: str
     rel_type: str  # "object" or "array"
     remote_table: str
@@ -36,7 +38,7 @@ class HasuraRelationship:
 
 
 @dataclass
-class HasuraComputedField:
+class HasuraComputedField:  # REQ-205
     name: str
     function_name: str
     function_schema: str = "public"
@@ -54,7 +56,7 @@ class HasuraEventTrigger:
 
 
 @dataclass
-class HasuraTable:
+class HasuraTable:  # REQ-041, REQ-040, REQ-019, REQ-155, REQ-205
     name: str
     schema_name: str = "public"
     custom_name: str | None = None
@@ -73,7 +75,7 @@ class HasuraTable:
 
 
 @dataclass
-class HasuraFunction:
+class HasuraFunction:  # REQ-205
     name: str
     schema_name: str = "public"
     volatility: str = "VOLATILE"
@@ -81,7 +83,7 @@ class HasuraFunction:
 
 
 @dataclass
-class HasuraActionDefinition:
+class HasuraActionDefinition:  # REQ-205, REQ-209
     kind: str = "synchronous"  # synchronous or asynchronous
     handler: str = ""
     action_type: str = "mutation"  # mutation or query
@@ -90,7 +92,7 @@ class HasuraActionDefinition:
 
 
 @dataclass
-class HasuraAction:
+class HasuraAction:  # REQ-205, REQ-209
     name: str
     definition: HasuraActionDefinition = field(default_factory=HasuraActionDefinition)
     permissions: list[dict[str, Any]] = field(default_factory=list)
@@ -112,13 +114,13 @@ class HasuraInheritedRole:
 
 
 @dataclass
-class HasuraRemoteSchema:
+class HasuraRemoteSchema:  # REQ-417
     name: str
     definition: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
-class HasuraSource:
+class HasuraSource:  # REQ-417
     name: str
     kind: str = "postgres"
     connection_info: dict[str, Any] = field(default_factory=dict)
@@ -127,7 +129,7 @@ class HasuraSource:
 
 
 @dataclass
-class HasuraMetadata:
+class HasuraMetadata:  # REQ-417
     version: int = 3
     sources: list[HasuraSource] = field(default_factory=list)
     actions: list[HasuraAction] = field(default_factory=list)
