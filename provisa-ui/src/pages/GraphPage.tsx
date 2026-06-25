@@ -208,16 +208,37 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
     if (schemaNodeLabels.length === 0 && schemaRels.length === 0) return;
     const headers: Record<string, string> = {};
     if (role) headers["X-Provisa-Role"] = role.id;
-    setTotalNodeCount(null);
-    setTotalRelCount(null);
+    const domainsKey = [...checkedDomains].sort().join(",");
+    const countsKey = `provisa.graph.counts.${role?.id ?? "default"}.${domainsKey}`;
+    try {
+      const cached = localStorage.getItem(countsKey);
+      if (cached) {
+        const c = JSON.parse(cached) as { node_count: number; rel_count: number; label_counts: Record<string, number> };
+        setTotalNodeCount(c.node_count);
+        setTotalRelCount(c.rel_count);
+        setLabelCounts(c.label_counts);
+      } else {
+        setTotalNodeCount(null);
+        setTotalRelCount(null);
+      }
+    } catch {
+      setTotalNodeCount(null);
+      setTotalRelCount(null);
+    }
     const domainsParam =
       checkedDomains.size > 0 ? `?domains=${[...checkedDomains].join(",")}` : "";
     fetch(`/data/graph-counts${domainsParam}`, { headers })
       .then((r) => r.json())
       .then((data) => {
-        setTotalNodeCount(data.node_count ?? 0);
-        setTotalRelCount(data.rel_count ?? 0);
-        setLabelCounts(data.label_counts ?? {});
+        const node_count = data.node_count ?? 0;
+        const rel_count = data.rel_count ?? 0;
+        const label_counts = data.label_counts ?? {};
+        setTotalNodeCount(node_count);
+        setTotalRelCount(rel_count);
+        setLabelCounts(label_counts);
+        try {
+          localStorage.setItem(countsKey, JSON.stringify({ node_count, rel_count, label_counts }));
+        } catch { /* quota */ }
       })
       .catch(() => {});
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
