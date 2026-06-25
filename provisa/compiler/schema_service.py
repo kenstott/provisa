@@ -39,13 +39,13 @@ _cache: dict[tuple[str, str, str], _TableEntry] = {}
 _conn = None  # trino.dbapi.Connection
 
 
-def init(conn) -> None:
+def init(conn) -> None:  # REQ-636
     """Store the Trino connection for on-demand schema queries."""
     global _conn
     _conn = conn
 
 
-def get_column_type(catalog: str, schema: str, table: str, column: str) -> str:
+def get_column_type(catalog: str, schema: str, table: str, column: str) -> str:  # REQ-636
     """Return the Trino data type for catalog.schema.table.column.
 
     Returns 'varchar' if the column cannot be resolved.
@@ -61,7 +61,7 @@ def get_column_type(catalog: str, schema: str, table: str, column: str) -> str:
     return entry.columns.get(column, entry.columns.get(column.lower(), "varchar"))
 
 
-def preload(catalog: str, schema: str, table: str) -> None:
+def preload(catalog: str, schema: str, table: str) -> None:  # REQ-636
     """Eagerly populate the cache for a table (no-op if already fresh)."""
     key = (catalog, schema, table)
     entry = _cache.get(key)
@@ -69,7 +69,7 @@ def preload(catalog: str, schema: str, table: str) -> None:
         _fetch(catalog, schema, table)
 
 
-def invalidate(catalog: str, schema: str, table: str) -> None:
+def invalidate(catalog: str, schema: str, table: str) -> None:  # REQ-636
     """Remove a table from the cache (e.g. after schema change)."""
     _cache.pop((catalog, schema, table), None)
 

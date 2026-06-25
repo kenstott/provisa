@@ -140,7 +140,7 @@ def extract_nf_args(
     return clean_sql, clean_params, nf_args
 
 
-def find_api_table_names(sql: str) -> list[str]:
+def find_api_table_names(sql: str) -> list[str]:  # REQ-599
     """Return table names referenced in FROM/JOIN clauses of a SQL string."""
     try:
         ast = sqlglot.parse_one(sql, dialect="postgres")
@@ -149,7 +149,7 @@ def find_api_table_names(sql: str) -> list[str]:
     return [tbl.name for tbl in ast.find_all(exp.Table) if tbl.name]
 
 
-def left_join_table_names(sql: str) -> set[str]:
+def left_join_table_names(sql: str) -> set[str]:  # REQ-599
     """Return table names that appear in LEFT JOIN clauses."""
     try:
         ast = sqlglot.parse_one(sql, dialect="postgres")
@@ -214,7 +214,7 @@ def drop_joined_table(sql: str, table_name: str) -> str:  # REQ-264
 drop_left_join_table = drop_joined_table
 
 
-def drop_union_branches_for_table(sql: str, table_name: str) -> str:
+def drop_union_branches_for_table(sql: str, table_name: str) -> str:  # REQ-599
     """Remove every UNION branch whose FROM clause references *table_name*.
 
     Works at any nesting depth (including inside CTEs).  Used when a GQL-remote
@@ -254,7 +254,7 @@ def drop_union_branches_for_table(sql: str, table_name: str) -> str:
     return root.sql(dialect="postgres")
 
 
-def where_referenced_tables(sql: str) -> set[str]:
+def where_referenced_tables(sql: str) -> set[str]:  # REQ-599
     """Return table names (or aliases) that appear in WHERE predicates (not JOIN ON conditions)."""
     try:
         ast = sqlglot.parse_one(sql, dialect="postgres")

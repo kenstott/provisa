@@ -110,12 +110,12 @@ def _to_field_name(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]", "_", name).strip("_")
 
 
-def domain_to_sql_name(domain_id: str) -> str:
+def domain_to_sql_name(domain_id: str) -> str:  # REQ-471
     """Normalize a domain ID to a valid SQL identifier (non-alphanumeric → underscore)."""
     return re.sub(r"[^a-zA-Z0-9]", "_", domain_id).strip("_")
 
 
-def domain_gql_alias(domain_id: str, stored: str | None = None) -> str:
+def domain_gql_alias(domain_id: str, stored: str | None = None) -> str:  # REQ-471
     """Return stored alias, or compute first-letter acronym from domain id.
 
     Stored alias is used as-is (lowercase for ops, UPPER for type prefix).
@@ -139,7 +139,7 @@ def _to_snake_case(name: str) -> str:
     return name.lower()
 
 
-def source_to_catalog(source_id: str) -> str:
+def source_to_catalog(source_id: str) -> str:  # REQ-471
     """Convert a source ID to a Trino catalog name (hyphens → underscores)."""
     return source_id.replace("-", "_")
 
@@ -196,13 +196,13 @@ _gql_convention: str = "apollo_graphql"
 _sql_convention: str = "snake"
 
 
-def configure(gql: str = "apollo_graphql", sql: str = "snake") -> None:
+def configure(gql: str = "apollo_graphql", sql: str = "snake") -> None:  # REQ-471
     global _gql_convention, _sql_convention
     _gql_convention = normalize_convention(gql)
     _sql_convention = normalize_convention(sql)
 
 
-def active_gql_convention() -> str:
+def active_gql_convention() -> str:  # REQ-471
     return _gql_convention
 
 
@@ -214,17 +214,17 @@ def apply_sql_name(name: str, override: str | None = None) -> str:  # REQ-194
     return apply_convention(name, override or _sql_convention)
 
 
-def apply_cql_label(name: str) -> str:
+def apply_cql_label(name: str) -> str:  # REQ-471
     """Cypher node/relationship label — always PascalCase."""
     return _to_pascal_case(name)
 
 
-def apply_cql_property(name: str) -> str:
+def apply_cql_property(name: str) -> str:  # REQ-471
     """Cypher property key — follows the configured GQL convention."""
     return apply_gql_name(name)
 
 
-def apply_convention(name: str, convention: str) -> str:
+def apply_convention(name: str, convention: str) -> str:  # REQ-471
     """Apply a naming convention preset to a name. Returns name unchanged when already correct."""
     canon = _canonical_convention(convention)
     if canon == "snake_case":
@@ -306,7 +306,7 @@ def generate_name(  # REQ-154, REQ-155, REQ-157, REQ-194
     return result
 
 
-def to_type_name(field_name: str) -> str:
+def to_type_name(field_name: str) -> str:  # REQ-471
     """Convert a field name to a GraphQL type name (PascalCase).
 
     Handles camelCase input: capitalizes first letter only.

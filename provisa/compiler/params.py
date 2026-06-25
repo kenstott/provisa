@@ -61,7 +61,7 @@ def embed_params_comment(sql: str, params: list) -> str:
     return f"{_COMMENT_PREFIX} {parts}\n{sql}"
 
 
-def extract_params_comment(sql: str) -> tuple[str, list]:
+def extract_params_comment(sql: str) -> tuple[str, list]:  # REQ-603
     """Strip the provisa-params comment and return (sql, params_list).
 
     Searches all lines — the comment may be embedded inside a subquery wrapper
@@ -84,7 +84,7 @@ def extract_params_comment(sql: str) -> tuple[str, list]:
 _RELATIONSHIP_GUARD_RE = _re.compile(r"--\s*relationship-guard\s*=\s*false", _re.IGNORECASE)
 
 
-def extract_relationship_guard_comment(sql: str) -> tuple[str, bool]:
+def extract_relationship_guard_comment(sql: str) -> tuple[str, bool]:  # REQ-603
     """Strip --relationship-guard=false comment and return (sql, opted_out).
 
     opted_out is True only when the comment is present. Both the role flag

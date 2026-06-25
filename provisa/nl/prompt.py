@@ -70,7 +70,7 @@ _TARGET_INSTRUCTIONS: dict[NlTarget, str] = {
 }
 
 
-def format_entities(entities: list) -> str:
+def format_entities(entities: list) -> str:  # REQ-464
     """Render a list of SchemaEntity into a compact exact-name reference block."""
     if not entities:
         return ""

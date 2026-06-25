@@ -106,7 +106,7 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
 
 
 @router.get("/data/schema-version")
-async def get_schema_version():
+async def get_schema_version():  # REQ-537
     """Return the current schema version. Combines a per-boot nonce with the rebuild counter so
     sessionStorage cache entries are always invalidated after a server restart."""
     from provisa.api.app import state
@@ -120,7 +120,7 @@ async def get_schema_version():
 
 
 @router.get("/data/domains")
-async def get_domains(request: Request, x_role: str = Header(None, alias="X-Role")):
+async def get_domains(request: Request, x_role: str = Header(None, alias="X-Role")):  # REQ-471
     """Return domain IDs accessible to the requesting role."""
     from provisa.api.app import state
 

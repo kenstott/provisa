@@ -431,7 +431,7 @@ def _effective_ceiling(tree, gov_ctx: GovernanceContext) -> int | None:  # REQ-0
     return min(candidates) if candidates else None
 
 
-def apply_row_cap(sql: str, cap: int | None) -> str:
+def apply_row_cap(sql: str, cap: int | None) -> str:  # REQ-005
     """Inject or cap a query's LIMIT to ``cap`` (no-op when ``cap`` is None)."""
     return sql if cap is None else _apply_limit_ceiling(sql, cap)
 

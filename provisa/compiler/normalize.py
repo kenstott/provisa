@@ -85,7 +85,9 @@ def _field(name: str) -> FieldNode:
     return FieldNode(name=NameNode(value=name), arguments=(), directives=())
 
 
-def discover_entity_paths(document: DocumentNode, ctx: CompilationContext) -> list[_PathNode]:
+def discover_entity_paths(
+    document: DocumentNode, ctx: CompilationContext
+) -> list[_PathNode]:  # REQ-484
     """Walk the document and return one _PathNode per projected entity type."""
     paths: list[_PathNode] = []
 
@@ -137,7 +139,7 @@ def discover_entity_paths(document: DocumentNode, ctx: CompilationContext) -> li
     return paths
 
 
-def check_normalizable(document: DocumentNode, ctx: CompilationContext) -> None:
+def check_normalizable(document: DocumentNode, ctx: CompilationContext) -> None:  # REQ-484
     """Raise NormalizeError if any relationship on a path joins on a non-column expression."""
     for pn in discover_entity_paths(document, ctx):
         for depth in range(1, len(pn.field_chain)):

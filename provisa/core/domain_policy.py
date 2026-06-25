@@ -40,20 +40,20 @@ def reset() -> None:
     _policy.default_domain = "default"
 
 
-def use_domains() -> bool | None:
+def use_domains() -> bool | None:  # REQ-471
     return _policy.use_domains
 
 
-def default_domain() -> str:
+def default_domain() -> str:  # REQ-471
     return _policy.default_domain
 
 
-def active() -> bool:
+def active() -> bool:  # REQ-471
     """True when the feature is engaged; gates every new code path."""
     return _policy.use_domains is not None
 
 
-def single_domain() -> bool:
+def single_domain() -> bool:  # REQ-471
     return _policy.use_domains is False
 
 
@@ -79,7 +79,7 @@ def resolve_domain_id(requested: str | None) -> str:  # REQ-367, REQ-418, REQ-43
     return _policy.default_domain
 
 
-def import_default() -> str:
+def import_default() -> str:  # REQ-471
     """Domain id for dynamic importers (hasura/fk introspection) that carry no domain info.
 
     Legacy (inert) preserves the historical ``"default"`` literal these paths used; once the
@@ -90,7 +90,7 @@ def import_default() -> str:
     return _policy.default_domain
 
 
-def system_domain_ids() -> list[str]:
+def system_domain_ids() -> list[str]:  # REQ-471
     """Domain ids always preserved across replace-mode reloads."""
     ids = list(_SYSTEM_DOMAIN_IDS)
     if _policy.use_domains is False:

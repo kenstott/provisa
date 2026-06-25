@@ -46,7 +46,7 @@ class CompileResult:
     error: str | None = None
 
 
-class LLMClient:
+class LLMClient:  # REQ-464
     """Minimal LLM client interface.
 
     Concrete implementations wrap Anthropic SDK or any chat-completion API.
@@ -114,7 +114,7 @@ async def generation_loop(  # REQ-355, REQ-356
 # ---------------------------------------------------------------------------
 
 
-def make_cypher_compiler() -> Callable[[str], CompileResult]:
+def make_cypher_compiler() -> Callable[[str], CompileResult]:  # REQ-464
     """Return a compiler callable that validates Cypher syntax."""
     from provisa.cypher.parser import CypherParseError, parse_cypher
 
@@ -128,7 +128,7 @@ def make_cypher_compiler() -> Callable[[str], CompileResult]:
     return _compile
 
 
-def make_graphql_compiler(schema: GraphQLSchema) -> Callable[[str], CompileResult]:
+def make_graphql_compiler(schema: GraphQLSchema) -> Callable[[str], CompileResult]:  # REQ-464
     """Return a compiler callable that validates a GraphQL query against schema."""
     from graphql import parse as gql_parse
     from graphql import validate as gql_validate
@@ -146,7 +146,7 @@ def make_graphql_compiler(schema: GraphQLSchema) -> Callable[[str], CompileResul
     return _compile
 
 
-def make_sql_compiler() -> Callable[[str], CompileResult]:
+def make_sql_compiler() -> Callable[[str], CompileResult]:  # REQ-464
     """Return a compiler callable that validates SQL syntax via sqlglot."""
     import sqlglot
 

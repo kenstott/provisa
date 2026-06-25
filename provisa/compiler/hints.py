@@ -77,7 +77,7 @@ def extract_hints(sql: str) -> tuple[str, dict[str, str]]:  # REQ-279, REQ-281
     return cleaned.strip(), session_props
 
 
-def extract_graphql_comments(query: str) -> list[str]:
+def extract_graphql_comments(query: str) -> list[str]:  # REQ-464
     """Extract all ``#`` comment lines from a GraphQL query string.
 
     Returns each comment text (without the leading ``#``) as a list item,
@@ -99,7 +99,7 @@ def extract_graphql_comments(query: str) -> list[str]:
     return comments
 
 
-def graphql_comments_to_sql(query: str) -> str:
+def graphql_comments_to_sql(query: str) -> str:  # REQ-464
     """Convert GraphQL ``# @provisa`` directive lines to SQL ``--`` comment lines.
 
     Only emits lines that start with ``@provisa`` — commented-out field names

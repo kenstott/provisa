@@ -843,7 +843,7 @@ def _table_ref(meta: TableMeta, use_catalog: bool) -> str:
     return f"{_q(meta.schema_name)}.{_q(meta.table_name)}"
 
 
-def semantic_table_name(meta: TableMeta) -> str:
+def semantic_table_name(meta: TableMeta) -> str:  # REQ-641
     """Bare (unquoted) semantic table name — central naming authority always."""
     from provisa.compiler.naming import apply_sql_name
 
@@ -873,7 +873,7 @@ def _apply_replacements(sql: str, replacements: dict[str, str]) -> str:
     return pattern.sub(lambda m: replacements[m.group(0)], sql)
 
 
-def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:
+def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     """Replace physical table refs with semantic (domain.field_name) refs."""
     replacements: dict[str, str] = {}
     seen: set[tuple[str, str]] = set()
@@ -887,7 +887,7 @@ def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:
     return _apply_replacements(sql, replacements)
 
 
-def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:
+def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     """Qualify and quote all table references using CompilationContext.
 
     For each exp.Table node in the parsed SQL:
@@ -968,7 +968,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:
     return tree.sql(dialect="postgres")
 
 
-def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
+def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     """Replace semantic (domain.field_name) refs with physical (schema.table) refs."""
     from provisa.compiler.naming import domain_to_sql_name
 
@@ -1002,7 +1002,7 @@ def _all_table_metas(ctx: CompilationContext) -> list[TableMeta]:
     return metas
 
 
-def rewrite_semantic_to_trino_physical(sql: str, ctx: CompilationContext) -> str:
+def rewrite_semantic_to_trino_physical(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     """Replace semantic and physical table refs with Trino catalog-qualified refs.
 
     Handles both semantic refs (domain.field_name, produced by make_semantic_sql for root
@@ -1027,7 +1027,7 @@ def rewrite_semantic_to_trino_physical(sql: str, ctx: CompilationContext) -> str
     return _apply_replacements(sql, replacements)
 
 
-def qualify_with_catalogs(sql: str, ctx: CompilationContext) -> str:
+def qualify_with_catalogs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     """Add catalog prefix to physical table refs: "schema"."table" → "catalog"."schema"."table"."""
     replacements: dict[str, str] = {}
     seen: set[tuple[str, str]] = set()

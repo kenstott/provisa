@@ -106,7 +106,7 @@ def build_search_prompt(query: str, candidates: list[TableCandidate]) -> str:  #
     return "\n".join(lines)
 
 
-def parse_llm_response(text: str) -> list[dict]:
+def parse_llm_response(text: str) -> list[dict]:  # REQ-464
     """Extract JSON array from LLM response text."""
     match = re.search(r"```(?:json)?\s*(\[.*?])\s*```", text, re.DOTALL)
     if match:

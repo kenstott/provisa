@@ -148,7 +148,7 @@ def introspect_tables(  # REQ-008, REQ-393, REQ-421
     return result
 
 
-def introspect_column_types(
+def introspect_column_types(  # REQ-636
     conn: trino.dbapi.Connection,
     catalog: str,
     schema: str,

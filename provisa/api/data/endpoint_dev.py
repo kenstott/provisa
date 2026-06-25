@@ -56,7 +56,7 @@ def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, request_r
 
 
 @router.get("/proto/{role_id}")
-async def proto_endpoint(role_id: str):
+async def proto_endpoint(role_id: str):  # REQ-525
     """Return the .proto file content for a role as text/plain."""
     from provisa.api.app import state
 

@@ -51,7 +51,7 @@ async def store_candidates(  # REQ-314, REQ-316
     return ids
 
 
-async def list_candidates(
+async def list_candidates(  # REQ-599
     conn: asyncpg.Connection,
     source_id: str | None = None,
 ) -> list[ApiEndpointCandidate]:
