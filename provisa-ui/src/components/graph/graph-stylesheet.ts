@@ -84,6 +84,20 @@ export function buildGraphStylesheet({
       },
     },
     {
+      selector: "node:active",
+      style: {
+        "overlay-opacity": 0,
+      },
+    },
+    {
+      selector: "node.hovered",
+      style: {
+        "border-width": 4,
+        "border-color": "rgba(255,255,255,0.6)",
+        "border-opacity": 1,
+      },
+    },
+    {
       selector: "node.pinned",
       style: {
         "background-image": PIN_SVG,
@@ -120,6 +134,14 @@ export function buildGraphStylesheet({
       style: {
         "line-color": "#6366f1",
         "target-arrow-color": "#6366f1",
+        width: 2.5,
+      },
+    },
+    {
+      selector: "edge.hovered",
+      style: {
+        "line-color": "#818cf8",
+        "target-arrow-color": "#818cf8",
         width: 2.5,
       },
     },
