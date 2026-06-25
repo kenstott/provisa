@@ -239,7 +239,7 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         return f"{p}://{h}:{po}/{self.database}"
 
 
-class Domain(BaseModel):
+class Domain(BaseModel):  # REQ-471
     id: str
     description: str = ""
     graphql_alias: str | None = None
@@ -345,7 +345,7 @@ class ColumnPreset(BaseModel):
     data_type: str | None = None  # Trino data type of the column (for coercion)
 
 
-class KafkaSinkAttachment(BaseModel):
+class KafkaSinkAttachment(BaseModel):  # REQ-565
     """Per-table opt-in Kafka sink config (REQ-176–180)."""
 
     topic: str
@@ -353,7 +353,7 @@ class KafkaSinkAttachment(BaseModel):
     triggers: list[str] = Field(default_factory=lambda: ["change_event"])
 
 
-class LiveOutputConfig(BaseModel):
+class LiveOutputConfig(BaseModel):  # REQ-565
     """Single output destination for a live query (SSE fanout or Kafka sink)."""
 
     type: str  # "sse" | "kafka"
@@ -362,7 +362,7 @@ class LiveOutputConfig(BaseModel):
     bootstrap_servers: str | None = None  # Kafka bootstrap (required when type="kafka")
 
 
-class LiveDeliveryConfig(BaseModel):
+class LiveDeliveryConfig(BaseModel):  # REQ-565
     """Live query delivery configuration attached to a table."""
 
     query_id: str  # stable_id of the approved persisted query to run
@@ -408,18 +408,20 @@ class Table(
     materialize: bool = False  # when True, view_sql is materialized as a physical CTAS in mv_cache
     mv_refresh_interval: int = 300  # seconds between MV refreshes (only used when materialize=True)
     data_product: bool = False  # publish as a Data Product (catalog export)
+    enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
+    enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this table
     kafka_sink: KafkaSinkAttachment | None = None  # REQ-176: per-table Kafka sink config
 
 
-class HotTablesConfig(BaseModel):
+class HotTablesConfig(BaseModel):  # REQ-544
     auto_threshold: int = 1_000  # max rows for auto-detection
     refresh_interval: int = 300  # seconds between refreshes
     max_rows: int | None = None  # REQ-230: own ceiling; None = fall back to auto_threshold
     max_bytes: int = 10 * 1024 * 1024  # REQ-230: serialized-blob ceiling (10 MB)
 
 
-class WarmTablesConfig(BaseModel):
+class WarmTablesConfig(BaseModel):  # REQ-544
     # REQ-240: tier promotion thresholds + the Trino filesystem (SSD) read-cache settings.
     query_threshold: int = 100  # promote a table after this many queries
     max_rows: int = 10_000_000  # do not promote tables larger than this
@@ -429,7 +431,7 @@ class WarmTablesConfig(BaseModel):
     fs_cache_max_sizes: str = "10GB"
 
 
-class MaterializedViewsConfig(BaseModel):
+class MaterializedViewsConfig(BaseModel):  # REQ-543
     # REQ-199: default TTL / refresh interval (seconds) for materialized views that do not
     # specify their own. Materialization is opt-in (per-table/relationship materialize flag);
     # there is no cost-based auto-materialization.
@@ -534,7 +536,7 @@ class RLSRule(BaseModel):  # REQ-041, REQ-402
     filter: str
 
 
-class EventTrigger(BaseModel):
+class EventTrigger(BaseModel):  # REQ-565
     """Database event trigger: PG LISTEN/NOTIFY → webhook POST."""
 
     table_id: str  # table name or schema.table
@@ -627,7 +629,7 @@ class AuthConfig(
     approval_hook: dict | None = None  # REQ-247: ABAC approval hook config block
 
 
-class OtelConfig(BaseModel):
+class OtelConfig(BaseModel):  # REQ-545
     """OpenTelemetry tracing configuration.
 
     endpoint: OTLP gRPC collector address (e.g. http://otel-collector:4317).
@@ -673,7 +675,7 @@ class GraphQLRemoteConfig(BaseModel):
     max_list_items: int = 100
 
 
-class VectorModelConfig(BaseModel):
+class VectorModelConfig(BaseModel):  # REQ-500
     """A registered embedding model (REQ-419). The registry is an allowlist."""
 
     id: str  # provider model id, e.g. "text-embedding-3-small"
@@ -684,7 +686,7 @@ class VectorModelConfig(BaseModel):
     enabled: bool = True
 
 
-class AIModelsConfig(BaseModel):
+class AIModelsConfig(BaseModel):  # REQ-464
     """AI model configuration for various operations.
 
     Each field accepts either:
@@ -699,7 +701,7 @@ class AIModelsConfig(BaseModel):
     table_selection: str | dict = "claude-haiku-4-5-20251001"
 
 
-class NlConfig(BaseModel):
+class NlConfig(BaseModel):  # REQ-464
     """Natural-language query service config."""
 
     rate_limit: int | None = None  # REQ-370: requests per minute per role (None = unlimited)
@@ -762,7 +764,7 @@ GOVDATA_SUBJECT_SCHEMAS: dict[str, list[str]] = {
 }
 
 
-class GovDataSource(BaseModel):
+class GovDataSource(BaseModel):  # REQ-540
     """A GovData dataset group exposed via the askamerica JDBC adapter.
 
     Each entry corresponds to one set of GovData schemas sharing a subject tag.
@@ -780,7 +782,7 @@ class GovDataSource(BaseModel):
     ciks: str | None = None
 
 
-class GovDataSubscription(BaseModel):
+class GovDataSubscription(BaseModel):  # REQ-540
     """Per-tenant list of allowed GovData subjects.
 
     ``subjects`` containing GovDataSubject.all grants access to every subject.
