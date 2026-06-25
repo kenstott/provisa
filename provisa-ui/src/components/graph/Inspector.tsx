@@ -12,7 +12,7 @@
    A prev-value ref gates the documented render-phase setState that resyncs the
    alias inputs when the selected edge changes; this is intentional. */
 
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, useCallback } from "react";
 import type { Relationship } from "../../types/admin";
 import { PALETTE, labelColor, getStableNodeId } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
@@ -33,6 +33,17 @@ interface InspectorProps {
   pkMap: Record<string, string[]>;
 }
 
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+      <path d="M4 4h7v1H4zM4 6h7v1H4zM4 8h5v1H4z" opacity="0.6"/>
+      <rect x="1" y="2" width="9" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.2"/>
+      <rect x="5" y="5" width="9" height="9" rx="1" fill="#111318" stroke="currentColor" strokeWidth="1.2"/>
+      <path d="M7 7h5v1H7zM7 9h5v1H7zM7 11h3v1H7z"/>
+    </svg>
+  );
+}
+
 export function Inspector({
   selected,
   graphStats,
@@ -47,21 +58,17 @@ export function Inspector({
 }: InspectorProps) {
   const [inspView, setInspView] = useState<"details" | "json">("details");
   const [showPalette, setShowPalette] = useState(false);
-  const [hovered, setHovered] = useState(false);
   const [edgeCql, setEdgeCql] = useState("");
   const [edgeGql, setEdgeGql] = useState("");
   const [savingAlias, setSavingAlias] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Find matching relationship when an edge is selected
   const matchedRel = useMemo(() => {
     if (!selected || selected.kind !== "edge" || !relationships) return null;
     const edgeType = (selected.data as GEdge).type;
     return relationships.find((r) => (r.alias ?? r.computedCypherAlias) === edgeType) ?? null;
   }, [selected, relationships]);
 
-  // Sync alias inputs when selection changes — React's documented "adjust state
-  // while rendering on prop change" pattern: a prev-value ref gates a render-phase
-  // setState so the inputs reset synchronously without an extra effect pass.
   const prevRelId = useRef<number | null>(null);
   if (matchedRel && matchedRel.id !== prevRelId.current) {
     prevRelId.current = matchedRel.id;
@@ -74,22 +81,26 @@ export function Inspector({
     setEdgeGql("");
   }
 
-  if (!selected) return null;
+  const handleCopy = useCallback((key: string, value: string) => {
+    navigator.clipboard.writeText(value).catch(() => {});
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1200);
+  }, []);
 
-  const viewSel = hovered && (
-    <div className="gf-insp-viewsel">
-      {(["details", "json"] as const).map((v) => (
-        <button
-          key={v}
-          className={`gf-insp-viewbtn ${inspView === v ? "active" : ""}`}
-          onClick={() => setInspView(v)}
-          title={v}
-        >
-          {v === "details" ? "⊡" : "{}"}
-        </button>
-      ))}
-    </div>
-  );
+  if (!selected) {
+    return (
+      <div className="gf-inspector" style={{ width, flexShrink: 0 }}>
+        <div className="gf-inspector-resize-handle" onMouseDown={onResizeStart} />
+        <div className="gf-insp-header">
+          <span className="gf-insp-header-title">Node properties</span>
+          <div className="gf-insp-header-actions">
+            <button className="gf-insp-close" onClick={onClose} title="Hide panel">›</button>
+          </div>
+        </div>
+        <div className="gf-inspector-hint">Click a node or edge to inspect its properties.</div>
+      </div>
+    );
+  }
 
   const isN = selected.kind === "node";
   const label = isN ? selected.data.label : (selected.data as GEdge).type;
@@ -98,7 +109,6 @@ export function Inspector({
 
   const nodeLabel = isN ? (selected.data as GNode).label : "";
   const colonIdx = nodeLabel.indexOf(":");
-  const domain = colonIdx > 0 ? nodeLabel.slice(0, colonIdx) : null;
   const typeName = colonIdx > 0 ? nodeLabel.slice(colonIdx + 1) : nodeLabel;
 
   const stableId = isN ? getStableNodeId(selected.data as GNode, pkMap) : null;
@@ -109,72 +119,82 @@ export function Inspector({
     isN && idColName && !(idColName in props) ? { [idColName]: (selected.data as GNode).id } : {};
 
   const HIDDEN_PROPS = new Set(["l1Cluster", "l2Cluster", "l3Cluster", "scl1", "scl2", "scl3", "deg_in", "deg_out", "deg_total"]);
-  const allFields: Record<string, unknown> = isN
-    ? {
-        ...(domain ? { domain } : {}),
-        label: typeName || nodeLabel,
-        ...pkEntry,
-        ...Object.fromEntries(Object.entries(props).filter(([k]) => !HIDDEN_PROPS.has(k))),
-      }
+
+  const idRow: [string, unknown][] = stableId ? [["<id>", stableId]] : [];
+
+  const propRows: [string, unknown][] = isN
+    ? [
+        ...idRow,
+        ...Object.entries(props).filter(([k]) => !HIDDEN_PROPS.has(k)).sort(([a], [b]) => a.localeCompare(b)),
+        ...Object.entries(pkEntry),
+      ]
     : (() => {
         const e = selected.data as GEdge;
-        const srcLabel = e.startNode.label;
-        const srcColon = srcLabel.indexOf(":");
-        const edgeDomain = srcColon > 0 ? srcLabel.slice(0, srcColon) : srcLabel || null;
-        return {
-          ...(edgeDomain ? { domain: edgeDomain } : {}),
-          identity: e.identity,
-          start: e.start,
-          end: e.end,
-          type: e.type,
-          ...props,
-        };
+        return [
+          ["<id>", e.identity],
+          ["start", e.start],
+          ["end", e.end],
+          ...Object.entries(props).sort(([a], [b]) => a.localeCompare(b)),
+        ] as [string, unknown][];
       })();
 
+  const headerLabel = isN ? "Node properties" : "Relationship properties";
+  const chipLabel = isN ? (typeName || label) : label;
+
   return (
-    <div
-      className="gf-inspector"
-      style={{ width }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => {
-        setHovered(false);
-        setShowPalette(false);
-      }}
-    >
+    <div className="gf-inspector" style={{ width }}>
       <div className="gf-inspector-resize-handle" onMouseDown={onResizeStart} />
-      <button className="gf-insp-close" onClick={onClose} title="Close">
-        ✕
-      </button>
-      {viewSel}
-      <div style={{ position: "relative", alignSelf: "flex-start" }}>
-        <div
-          className="gf-inspector-badge"
-          style={{ background: color, cursor: "pointer" }}
-          title="Click to change color"
-          onClick={() => setShowPalette((p) => !p)}
-        >
-          {isN ? typeName || label : label}
+      <div className="gf-insp-header">
+        <span className="gf-insp-header-title">{headerLabel}</span>
+        <div className="gf-insp-header-actions">
+          <button
+            className={`gf-insp-viewbtn ${inspView === "details" ? "active" : ""}`}
+            onClick={() => setInspView("details")}
+            title="Details"
+          >
+            ⊡
+          </button>
+          <button
+            className={`gf-insp-viewbtn ${inspView === "json" ? "active" : ""}`}
+            onClick={() => setInspView("json")}
+            title="JSON"
+          >
+            {}
+          </button>
+          <button className="gf-insp-close" onClick={onClose} title="Close">
+            ✕
+          </button>
         </div>
-        {showPalette && (
-          <div className="gf-color-palette">
-            {PALETTE.map((c) => (
-              <button
-                key={c}
-                className="gf-color-swatch"
-                style={{ background: c, outline: color === c ? "2px solid #fff" : "none" }}
-                onClick={() => {
-                  onColorChange(label, c);
-                  setShowPalette(false);
-                }}
-              />
-            ))}
+      </div>
+
+      <div className="gf-insp-chip-row">
+        <div style={{ position: "relative" }}>
+          <div
+            className="gf-inspector-badge"
+            style={{ background: color, cursor: "pointer" }}
+            title="Click to change color"
+            onClick={() => setShowPalette((p) => !p)}
+          >
+            {chipLabel}
           </div>
-        )}
+          {showPalette && (
+            <div className="gf-color-palette">
+              {PALETTE.map((c) => (
+                <button
+                  key={c}
+                  className="gf-color-swatch"
+                  style={{ background: c, outline: color === c ? "2px solid #fff" : "none" }}
+                  onClick={() => {
+                    onColorChange(label, c);
+                    setShowPalette(false);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-      <div className="gf-inspector-kind">{isN ? "Node" : "Relationship"}</div>
-      <div className="gf-inspector-id">
-        &lt;id&gt;: {isN ? stableId : (selected.data as GEdge).identity}
-      </div>
+
       {!isN && (
         <>
           <div className="gf-inspector-endpoints">
@@ -199,25 +219,8 @@ export function Inspector({
             </span>
           </div>
           {matchedRel && onSaveEdgeAlias && (
-            <div
-              style={{
-                padding: "0.5rem 0",
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.4rem",
-                borderTop: "1px solid var(--border)",
-                marginTop: "0.25rem",
-              }}
-            >
-              <label
-                style={{
-                  fontSize: "0.75rem",
-                  color: "var(--text-muted)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.2rem",
-                }}
-              >
+            <div className="gf-insp-alias-form">
+              <label className="gf-insp-alias-label">
                 CQL Alias (UPPER_SNAKE)
                 <input
                   value={edgeCql}
@@ -226,15 +229,7 @@ export function Inspector({
                   style={{ fontSize: "0.8rem", padding: "0.2rem 0.4rem" }}
                 />
               </label>
-              <label
-                style={{
-                  fontSize: "0.75rem",
-                  color: "var(--text-muted)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.2rem",
-                }}
-              >
+              <label className="gf-insp-alias-label">
                 GQL Alias (camelCase)
                 <input
                   value={edgeGql}
@@ -258,41 +253,63 @@ export function Inspector({
           )}
         </>
       )}
-      {inspView === "details" && isN && graphStats && (
-        <table className="gf-inspector-table">
-          <tbody>
-            <tr>
-              <td className="gf-prop-key" colSpan={2} style={{ color: "var(--text-muted)", paddingTop: "0.5rem", fontStyle: "italic" }}>Graph Stats</td>
-            </tr>
-            {(Object.entries(graphStats) as [string, string | number][])
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([k, v]) => (
-                <tr key={k}>
-                  <td className="gf-prop-key">{k}</td>
-                  <td className="gf-prop-val">{String(v)}</td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      )}
+
       {inspView === "details" && (
-        <table className="gf-inspector-table">
-          <tbody>
-            {Object.entries(allFields).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
-              <tr key={k}>
-                <td className="gf-prop-key">{k}</td>
-                <td className="gf-prop-val">
-                  {v === null || v === undefined
-                    ? ""
-                    : typeof v === "object"
-                      ? JSON.stringify(v)
-                      : String(v)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="gf-insp-props-section">
+          {isN && graphStats && (
+            <>
+              <div className="gf-insp-section-label">Graph stats</div>
+              <table className="gf-inspector-table">
+                <tbody>
+                  {(Object.entries(graphStats) as [string, string | number][])
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([k, v]) => {
+                      const vs = String(v);
+                      return (
+                        <tr key={k} className="gf-prop-row">
+                          <td className="gf-prop-key">{k}</td>
+                          <td className="gf-prop-val">{vs}</td>
+                          <td className="gf-prop-copy-cell">
+                            <button
+                              className={`gf-prop-copy${copiedKey === `stats:${k}` ? " copied" : ""}`}
+                              title="Copy value"
+                              onClick={() => handleCopy(`stats:${k}`, vs)}
+                            >
+                              <CopyIcon />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </>
+          )}
+          <table className="gf-inspector-table">
+            <tbody>
+              {propRows.map(([k, v]) => {
+                const vs = v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+                return (
+                  <tr key={k} className="gf-prop-row">
+                    <td className="gf-prop-key">{k}</td>
+                    <td className="gf-prop-val">{vs}</td>
+                    <td className="gf-prop-copy-cell">
+                      <button
+                        className={`gf-prop-copy${copiedKey === k ? " copied" : ""}`}
+                        title="Copy value"
+                        onClick={() => handleCopy(k, vs)}
+                      >
+                        <CopyIcon />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
+
       {inspView === "json" && (
         <CodeMirror
           value={JSON.stringify(selected.data, null, 2)}
