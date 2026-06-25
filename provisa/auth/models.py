@@ -53,6 +53,6 @@ class AuthProvider(ABC):  # REQ-120
         return "bearer"
 
     @abstractmethod
-    async def validate_token(self, token: str) -> AuthIdentity:
+    async def validate_token(self, token: str) -> AuthIdentity:  # REQ-486
         """Validate a bearer token and return the identity."""
         ...

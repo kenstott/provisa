@@ -58,7 +58,7 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
 
 
 @router.get("/")
-async def list_invites(request: Request):
+async def list_invites(request: Request):  # REQ-516
     pool = _pool(request)
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -74,7 +74,7 @@ async def list_invites(request: Request):
 
 
 @router.delete("/{token}")
-async def revoke_invite(token: str, request: Request):
+async def revoke_invite(token: str, request: Request):  # REQ-516
     pool = _pool(request)
     async with pool.acquire() as conn:
         row = await conn.fetchrow(

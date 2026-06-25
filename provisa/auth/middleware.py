@@ -55,7 +55,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         self._default_org_id = default_org_id
         self._superuser = superuser
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next):  # REQ-486
         if request.url.path in _SKIP_PATHS:
             return await call_next(request)
 

@@ -86,7 +86,7 @@ async def provider_type():
 
 
 @router.get("/invite/{token}")
-async def get_invite(token: str):
+async def get_invite(token: str):  # REQ-516
     from provisa.api.app import state
 
     pg_pool = state.pg_pool

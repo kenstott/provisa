@@ -23,7 +23,7 @@ import httpx
 # Requirements: REQ-203, REQ-204, REQ-246, REQ-247
 
 
-class FallbackPolicy(str, Enum):
+class FallbackPolicy(str, Enum):  # REQ-556
     ALLOW = "allow"
     DENY = "deny"
 
@@ -35,7 +35,7 @@ class HookType(str, Enum):  # REQ-246
 
 
 @dataclass
-class ApprovalRequest:
+class ApprovalRequest:  # REQ-555
     """Payload sent to the approval hook (REQ-203)."""
 
     user: str
@@ -47,7 +47,7 @@ class ApprovalRequest:
 
 
 @dataclass
-class ApprovalResponse:
+class ApprovalResponse:  # REQ-555
     """Result from the approval hook (REQ-203).
 
     ``additional_filter`` is an optional raw SQL predicate that the caller ANDs into
@@ -73,7 +73,7 @@ class ApprovalHookConfig:  # REQ-247
     circuit_breaker_cooldown_s: float = 30.0
 
 
-class CircuitBreaker:
+class CircuitBreaker:  # REQ-556
     """Track consecutive failures; open after threshold, half-open after cooldown."""
 
     def __init__(self, threshold: int = 5, cooldown_s: float = 30.0) -> None:
