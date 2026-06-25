@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
 import "@neo4j-cypher/codemirror/css/cypher-codemirror.css";
@@ -29,8 +29,6 @@ interface QueryBarProps {
   cypherSchema?: CypherSchema;
   autoImpute: boolean;
   onToggleAutoImpute: () => void;
-  statsEnabled: boolean;
-  onToggleStats: () => void;
 }
 
 // Polyfill: @neo4j-cypher/codemirror 1.x calls view.newContentVersion() which doesn't exist on current @codemirror/view
@@ -53,11 +51,16 @@ export function QueryBar({
   cypherSchema,
   autoImpute,
   onToggleAutoImpute,
-  statsEnabled,
-  onToggleStats,
 }: QueryBarProps) {
   const [query, setQuery] = useState(initialQuery ?? "MATCH (n) RETURN n LIMIT 25");
   const viewRef = useRef<EditorView | null>(null);
+  const [focused, setFocused] = useState(false);
+  const pendingFocusRef = useRef(false);
+
+  const handleCollapsedClick = useCallback(() => {
+    setFocused(true);
+    pendingFocusRef.current = true;
+  }, []);
 
   useEffect(() => {
     if (!cypherSchema || !viewRef.current) return;
@@ -90,46 +93,64 @@ export function QueryBar({
     <div className="graph-query-bar">
       <div className="graph-query-prompt">$</div>
       <div className="graph-query-editor-wrap">
-        <CodeMirror
-          className="graph-query-input"
-          value={query}
-          theme={oneDark}
-          extensions={[
-            ..._cypherLangExts,
-            cypherLinter({ showErrors: false }),
-            useAutocompleteExtensions,
-            EditorView.lineWrapping,
-            Prec.highest(
-              keymap.of([
-                {
-                  key: "Mod-Enter",
-                  run: () => {
-                    onRun(query.trim());
-                    return true;
+        {!focused && (
+          <div
+            className="gf-header-query-collapsed"
+            onClick={handleCollapsedClick}
+            title={query}
+          >
+            {query.replace(/\s*\n\s*/g, " ") || "MATCH (n) RETURN n LIMIT 25"}
+          </div>
+        )}
+        {focused && (
+          <CodeMirror
+            className="graph-query-input"
+            value={query}
+            theme={oneDark}
+            extensions={[
+              ..._cypherLangExts,
+              cypherLinter({ showErrors: false }),
+              useAutocompleteExtensions,
+              EditorView.lineWrapping,
+              Prec.highest(
+                keymap.of([
+                  {
+                    key: "Mod-Enter",
+                    run: () => {
+                      onRun(query.trim());
+                      return true;
+                    },
                   },
-                },
-                {
-                  key: "Enter",
-                  run: () => {
-                    onRun(query.trim());
-                    return true;
+                  {
+                    key: "Enter",
+                    run: () => {
+                      onRun(query.trim());
+                      return true;
+                    },
                   },
-                },
-              ]),
-            ),
-          ]}
-          onCreateEditor={(view) => {
-            viewRef.current = view;
-          }}
-          onChange={handleChange}
-          basicSetup={{
-            lineNumbers: false,
-            foldGutter: false,
-            highlightActiveLine: false,
-            completionKeymap: false,
-          }}
-          placeholder="MATCH (n) RETURN n LIMIT 25"
-        />
+                ]),
+              ),
+            ]}
+            onCreateEditor={(view) => {
+              viewRef.current = view;
+              if (pendingFocusRef.current) {
+                pendingFocusRef.current = false;
+                view.focus();
+              }
+            }}
+            onUpdate={(vu) => {
+              if (vu.focusChanged && !vu.view.hasFocus) setFocused(false);
+            }}
+            onChange={handleChange}
+            basicSetup={{
+              lineNumbers: false,
+              foldGutter: false,
+              highlightActiveLine: false,
+              completionKeymap: false,
+            }}
+            placeholder="MATCH (n) RETURN n LIMIT 25"
+          />
+        )}
         <CopySymbolButton text={query} className="gf-copy-query-btn" title="Copy query" />
       </div>
       <button
@@ -144,15 +165,6 @@ export function QueryBar({
       >
         ⊕
       </button>
-      <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", cursor: "pointer", marginRight: 8 }}>
-        <input
-          type="checkbox"
-          checked={statsEnabled}
-          onChange={onToggleStats}
-          style={{ marginRight: 2 }}
-        />
-        Query Stats
-      </label>
       <button className="graph-run-btn" onClick={() => onRun(query.trim())} title="Run query (⌘↵)">
         ▶
       </button>
