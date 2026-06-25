@@ -1,4 +1,5 @@
 {
   "extraPaths": ["vendor/buenavista", "."],
-  "include": ["provisa"]
+  "include": ["provisa"],
+  "reportPrivateImportUsage": "none"
 }
