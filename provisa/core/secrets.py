@@ -40,7 +40,7 @@ _PROVIDERS: dict[str, SecretsProvider] = {
 }
 
 
-def register_provider(name: str, provider: SecretsProvider) -> None:
+def register_provider(name: str, provider: SecretsProvider) -> None:  # REQ-557
     _PROVIDERS[name] = provider
 
 

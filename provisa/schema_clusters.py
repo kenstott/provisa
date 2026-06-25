@@ -14,7 +14,7 @@ import networkx as nx
 from networkx.algorithms.community import louvain_communities
 
 
-def compute_clusters(
+def compute_clusters(  # REQ-510
     table_ids: list[int],
     edges: list[tuple[int, int]],
 ) -> dict[int, tuple[int, int, int]]:

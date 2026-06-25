@@ -36,7 +36,7 @@ class SourceType:  # REQ-012
 
 
 @strawberry.type
-class DomainType:
+class DomainType:  # REQ-533
     id: str
     description: str
     graphql_alias: str | None = None
@@ -70,6 +70,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     materialize: bool = False
     mv_refresh_interval: int = 300
     data_product: bool = False
+    enable_aggregates: bool = False
+    enable_group_by: bool = False
     can_deploy_to_db: bool = False
 
 
@@ -97,13 +99,13 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
 
 
 @strawberry.type
-class AvailableTableType:
+class AvailableTableType:  # REQ-533
     name: str
     comment: str | None
 
 
 @strawberry.type
-class AvailableColumnType:
+class AvailableColumnType:  # REQ-533
     name: str
     data_type: str
     comment: str | None
@@ -171,7 +173,7 @@ class SourceInput:  # REQ-012
 
 
 @strawberry.input
-class DomainInput:
+class DomainInput:  # REQ-533
     id: str
     description: str = ""
     graphql_alias: str | None = None
@@ -198,7 +200,7 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
 
 
 @strawberry.input
-class ColumnPresetInput:
+class ColumnPresetInput:  # REQ-533
     column: str
     source: str
     name: str | None = None
@@ -221,6 +223,8 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     materialize: bool = False
     mv_refresh_interval: int = 300
     data_product: bool = False
+    enable_aggregates: bool = False
+    enable_group_by: bool = False
     discover: bool = False  # REQ-252: infer columns from the live NoSQL source at registration
 
 
@@ -291,7 +295,7 @@ class SystemHealthType:
 
 
 @strawberry.type
-class ScheduledTaskType:
+class ScheduledTaskType:  # REQ-533
     id: str
     name: str
     cron_expression: str
@@ -302,7 +306,7 @@ class ScheduledTaskType:
 
 
 @strawberry.type
-class MutationResult:
+class MutationResult:  # REQ-533
     success: bool
     message: str
 

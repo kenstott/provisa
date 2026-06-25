@@ -25,7 +25,7 @@ _SQL_LITERAL_RE = re.compile(r"'[^']*'|\"[^\"]*\"|\b\d+(\.\d+)?\b")
 _log_provider: "object | None" = None
 
 
-def shutdown_otel() -> None:
+def shutdown_otel() -> None:  # REQ-545
     """Flush and shut down OTel log provider before interpreter teardown."""
     global _log_provider
     # Detach the OTLP LoggingHandler from the root logger first. Otherwise Python's

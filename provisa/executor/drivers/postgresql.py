@@ -107,7 +107,7 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
         async with pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
             await conn.execute(sql)
 
-    async def fetch_enums(self) -> dict[str, list[str]]:
+    async def fetch_enums(self) -> dict[str, list[str]]:  # REQ-636
         from provisa.compiler.enum_detect import fetch_enum_registry
 
         pool = self._pool

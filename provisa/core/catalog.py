@@ -223,7 +223,7 @@ def create_catalog(
         )
 
 
-def analyze_source_tables(
+def analyze_source_tables(  # REQ-636
     conn: trino.dbapi.Connection,
     source: "Source",
     tables: list,
@@ -258,7 +258,7 @@ def drop_catalog(conn: trino.dbapi.Connection, source_id: str) -> None:  # REQ-0
     cur.fetchall()
 
 
-def catalog_exists(conn: trino.dbapi.Connection, source_id: str) -> bool:
+def catalog_exists(conn: trino.dbapi.Connection, source_id: str) -> bool:  # REQ-636
     """Check if a Trino catalog exists."""
     catalog_name = _to_catalog_name(source_id)
     cur = conn.cursor()

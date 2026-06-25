@@ -324,7 +324,7 @@ async def refresh_grpc_remote_source(source_id: str, request: Request):  # REQ-3
 
 
 @router.get("/list")
-async def list_grpc_remote_sources(request: Request):
+async def list_grpc_remote_sources(request: Request):  # REQ-598
     """Return all registered gRPC remote sources (without channel/pb2 objects)."""
     sources = getattr(request.app.state, "grpc_remote_sources", {})
     result = []
@@ -345,7 +345,7 @@ async def list_grpc_remote_sources(request: Request):
 
 
 @router.get("/{source_id}/proto")
-async def get_grpc_proto(source_id: str, request: Request):
+async def get_grpc_proto(source_id: str, request: Request):  # REQ-525
     """Return stored proto text for a registered gRPC source."""
     sources = getattr(request.app.state, "grpc_remote_sources", {})
     if source_id not in sources:

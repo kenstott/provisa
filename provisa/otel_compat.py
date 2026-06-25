@@ -40,7 +40,7 @@ class _NoopSpan:
         pass
 
 
-class TracerProtocol(Protocol):
+class TracerProtocol(Protocol):  # REQ-545
     def start_as_current_span(self, name: str, **kwargs) -> _NoopSpan: ...
     def start_span(self, name: str, **kwargs) -> _NoopSpan: ...
 

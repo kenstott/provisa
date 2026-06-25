@@ -346,7 +346,7 @@ async def refresh_graphql_remote_source(source_id: str):  # REQ-311, REQ-598
 
 
 @router.get("")
-async def list_graphql_remote_sources():
+async def list_graphql_remote_sources():  # REQ-598
     """List all registered GraphQL remote sources."""
     from provisa.api.app import state
 

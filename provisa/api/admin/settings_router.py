@@ -388,7 +388,7 @@ async def restart_query_engine(container: str | None = None):
 
 
 @router.post("/admin/schema-clusters/recompute")
-async def recompute_schema_clusters():
+async def recompute_schema_clusters():  # REQ-510
     """Rerun Louvain clustering on the schema graph and refresh schema_clusters."""
     from provisa.api.app import state, _compute_and_store_clusters
 
