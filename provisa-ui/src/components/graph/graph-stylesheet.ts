@@ -48,7 +48,7 @@ export function buildGraphStylesheet({
           if (!n) return String(ele.data("label") ?? "");
           const prop = labelPropertyRef.current[n.label];
           if (prop) return String(n.properties[prop] ?? n.id);
-          return String(n.properties["name"] ?? n.properties["title"] ?? n.id);
+          return String(n.properties["name"] ?? n.id);
         },
         color: "#fff",
         "font-size": 10,
