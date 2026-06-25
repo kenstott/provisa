@@ -148,7 +148,12 @@ async def _govern_and_route(
         from provisa.api_source.trino_cache import rewrite_all_from_cache
 
         _qualified = qualify_with_catalogs(governed_semantic, ctx)
-        _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_qualified, state)
+        _rewrites, _values_ctes, _dropped = await _materialize_api_to_trino_cache(_qualified, state)
+        if _dropped:
+            from provisa.compiler.nf_extractor import drop_union_branches_for_table
+
+            for _dtn in _dropped:
+                _qualified = drop_union_branches_for_table(_qualified, _dtn)
         for _tn, _entry in _values_ctes.items():
             _qualified = build_values_cte_sql(_qualified, _tn, _entry)
         if _rewrites:
@@ -309,7 +314,12 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             from provisa.compiler.view_expand import expand_view_refs
 
             _exec_sql = expand_view_refs(_exec_sql, _view_map)
-        _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_exec_sql, state)
+        _rewrites, _values_ctes, _dropped = await _materialize_api_to_trino_cache(_exec_sql, state)
+        if _dropped:
+            from provisa.compiler.nf_extractor import drop_union_branches_for_table
+
+            for _dtn in _dropped:
+                _exec_sql = drop_union_branches_for_table(_exec_sql, _dtn)
         for _tn, _entry in _values_ctes.items():
             _exec_sql = build_values_cte_sql(_exec_sql, _tn, _entry)
         if _rewrites:
