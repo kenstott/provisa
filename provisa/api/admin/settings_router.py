@@ -38,10 +38,11 @@ async def upload_config(request: Request):  # REQ-164
 
     body = await request.body()
     path = config_path()
-    if path.exists():
-        backup = path.with_suffix(".yaml.bak")
-        backup.write_text(path.read_text())
-    path.write_bytes(body)
+    if not path.exists() or path.read_bytes() != body:
+        if path.exists():
+            backup = path.with_suffix(".yaml.bak")
+            backup.write_text(path.read_text())
+        path.write_bytes(body)
     try:
         await _load_and_build(str(path))
         return {"success": True, "message": "Config uploaded and reloaded"}

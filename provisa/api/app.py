@@ -3152,6 +3152,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                                 alias="IS_EMPLOYEE",
                                 graphql_alias="employee",
                                 source_json_key="id",
+                                disable_cypher=True,
                             ),
                         )
                     except Exception:
