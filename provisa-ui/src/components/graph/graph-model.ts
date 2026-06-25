@@ -17,64 +17,64 @@ import type { Relationship } from "../../types/admin";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 export const PALETTE = [
-  "#6366f1",
-  "#22c55e",
-  "#f59e0b",
-  "#ec4899",
-  "#14b8a6",
-  "#f97316",
-  "#8b5cf6",
-  "#06b6d4",
-  "#d946ef",
-  "#10b981",
-  "#e11d48",
-  "#0ea5e9",
-  "#84cc16",
-  "#a855f7",
-  "#f43f5e",
-  "#3b82f6",
-  "#eab308",
-  "#d97706",
-  "#7c3aed",
-  "#059669",
-  "#dc2626",
-  "#2563eb",
-  "#ca8a04",
-  "#9333ea",
-  "#16a34a",
-  "#db2777",
-  "#0891b2",
-  "#65a30d",
-  "#7c2d12",
-  "#1d4ed8",
-  "#be185d",
-  "#0369a1",
-  "#4d7c0f",
-  "#6d28d9",
-  "#047857",
-  "#c2410c",
-  "#1e40af",
-  "#a16207",
-  "#86198f",
-  "#064e3b",
-  "#b91c1c",
-  "#1e3a8a",
-  "#92400e",
-  "#581c87",
-  "#14532d",
-  "#831843",
-  "#164e63",
-  "#365314",
-  "#3b0764",
-  "#052e16",
-  "#ff6b6b",
-  "#ffd93d",
-  "#6bcb77",
-  "#4d96ff",
-  "#ff922b",
-  "#cc5de8",
-  "#74c0fc",
-  "#a9e34b",
+  "#4C8EDA",
+  "#6DCE9E",
+  "#FFC454",
+  "#DA7194",
+  "#57C7E3",
+  "#F16667",
+  "#9575CD",
+  "#569480",
+  "#BDB76B",
+  "#77A6D8",
+  "#FF8C69",
+  "#82C9B0",
+  "#C9A85C",
+  "#B07CC6",
+  "#5BAED6",
+  "#D4876A",
+  "#6BAD8C",
+  "#E8B84B",
+  "#A87FC0",
+  "#5CA5C9",
+  "#D98B7A",
+  "#72B89E",
+  "#DFB95A",
+  "#9B85BE",
+  "#67A8CF",
+  "#CF8C74",
+  "#63A88C",
+  "#D4AA53",
+  "#9480B7",
+  "#5BA3C5",
+  "#CA8E7E",
+  "#6BA88D",
+  "#D4A94E",
+  "#8E7AAD",
+  "#609DC1",
+  "#C58E80",
+  "#68A47F",
+  "#CBA349",
+  "#8A73A4",
+  "#5A99BC",
+  "#C28B83",
+  "#66A078",
+  "#C49E44",
+  "#856C9A",
+  "#5895B7",
+  "#BC8886",
+  "#64A073",
+  "#BF9840",
+  "#806591",
+  "#5691B3",
+  "#B98589",
+  "#629C6F",
+  "#BA933C",
+  "#7B5E88",
+  "#548DAF",
+  "#B6828C",
+  "#60986B",
+  "#B58E38",
   "#ff8787",
   "#63e6be",
 ];
@@ -312,9 +312,28 @@ export function injectExclusion(
         found = { varN: assignedVar, newQuery: patched };
         break;
       }
-      if (!found) return null;
-      varName = found.varN;
-      workingQuery = found.newQuery;
+      if (!found) {
+        // Last resort: bare variable in MATCH with no label — use id() predicate.
+        // Matches patterns like `(n)` or `(a)` that have no colon/type annotation.
+        const bareRe = /\(([a-zA-Z_][a-zA-Z0-9_]*)\s*\)/g;
+        const matchSection = workingQuery.slice(0, workingQuery.search(/\bRETURN\b/i));
+        let bareVar: string | null = null;
+        let bm: RegExpExecArray | null;
+        while ((bm = bareRe.exec(matchSection)) !== null) {
+          const candidate = bm[1];
+          if (!["WHERE", "WITH", "MATCH", "OPTIONAL", "RETURN", "ORDER", "LIMIT", "SKIP", "NOT", "AND", "OR"].includes(candidate.toUpperCase())) {
+            bareVar = candidate;
+            break;
+          }
+        }
+        if (!bareVar) return null;
+        varName = bareVar;
+        // Force id() usage — bare variable has no label so pk-based filter could match wrong table
+        pkCol = null;
+      } else {
+        varName = found.varN;
+        workingQuery = found.newQuery;
+      }
     }
   }
 
@@ -375,4 +394,5 @@ export interface FrameData {
   error?: string;
   elapsed?: number;
   queryStats?: unknown;
+  pinned?: boolean;
 }
