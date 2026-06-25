@@ -28,8 +28,8 @@ async def upsert(
     table_id = await conn.fetchval(
         """
         INSERT INTO registered_tables
-            (source_id, domain_id, schema_name, table_name, alias, description, watermark_column, column_presets, view_sql, data_product, materialize, mv_refresh_interval)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            (source_id, domain_id, schema_name, table_name, alias, description, watermark_column, column_presets, view_sql, data_product, materialize, mv_refresh_interval, enable_aggregates, enable_group_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         ON CONFLICT (source_id, schema_name, table_name) DO UPDATE SET
             domain_id = EXCLUDED.domain_id,
             alias = EXCLUDED.alias,
@@ -54,6 +54,8 @@ async def upsert(
         getattr(table, "data_product", False),
         getattr(table, "materialize", False),
         getattr(table, "mv_refresh_interval", 300),
+        getattr(table, "enable_aggregates", False),
+        getattr(table, "enable_group_by", False),
     )
 
     # Replace columns: delete existing, insert new

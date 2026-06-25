@@ -427,6 +427,8 @@ async def _fetch_table_with_columns(
         materialize=bool(row.get("materialize", False)),
         mv_refresh_interval=int(row.get("mv_refresh_interval") or 300),
         data_product=bool(row.get("data_product", False)),
+        enable_aggregates=bool(row.get("enable_aggregates", False)),
+        enable_group_by=bool(row.get("enable_group_by", False)),
         can_deploy_to_db=can_deploy,
     )
 
@@ -1906,6 +1908,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             materialize=input.materialize,
             mv_refresh_interval=input.mv_refresh_interval,
             data_product=input.data_product,
+            enable_aggregates=input.enable_aggregates,
+            enable_group_by=input.enable_group_by,
         )
         async with pool.acquire() as conn:
             _conn = cast(asyncpg.Connection, conn)
@@ -2030,6 +2034,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             materialize=input.materialize,
             mv_refresh_interval=input.mv_refresh_interval,
             data_product=input.data_product,
+            enable_aggregates=input.enable_aggregates,
+            enable_group_by=input.enable_group_by,
         )
         async with pool.acquire() as conn:
             _conn = cast(asyncpg.Connection, conn)
@@ -2049,6 +2055,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if _owner_conflict:
                 return MutationResult(success=False, message=_owner_conflict)
             table_id = await table_repo.upsert(_conn, model)
+            if table_id is not None:
+                await _conn.execute(
+                    "UPDATE registered_tables SET enable_aggregates=$1, enable_group_by=$2 WHERE id=$3",
+                    input.enable_aggregates,
+                    input.enable_group_by,
+                    table_id,
+                )
             # REQ-020: a column change may invalidate a relationship's join field — flag
             # any relationship whose join column on this table is no longer present.
             from provisa.core.repositories import relationship as _rel_repo
