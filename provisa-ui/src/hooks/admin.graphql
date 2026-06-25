@@ -87,6 +87,8 @@ query TablesQuery {
     materialize
     mvRefreshInterval
     dataProduct
+    enableAggregates
+    enableGroupBy
     canDeployToDb
     columns {
       ...ColumnFields

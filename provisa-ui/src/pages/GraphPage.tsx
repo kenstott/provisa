@@ -49,6 +49,7 @@ export function GraphPage() {
   const [schemaRels, setSchemaRels] = useState<SchemaRel[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(true);
   const [totalNodeCount, setTotalNodeCount] = useState<number | null>(null);
+  const [totalRelCount, setTotalRelCount] = useState<number | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
   const [colorOverrides, setColorOverrides] = useLocalStorage<Record<string, string>>(
@@ -203,21 +204,40 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
   }, [role?.id]);
 
   useEffect(() => {
+    if (schemaNodeLabels.length === 0 && schemaRels.length === 0) return;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (role) headers["X-Provisa-Role"] = role.id;
-    fetch("/data/cypher", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ query: "MATCH (n) RETURN count(n) AS count" }),
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        const row = data?.rows?.[0];
-        if (row && typeof row.count === "number") setTotalNodeCount(row.count);
-      })
-      .catch(() => {});
+    setTotalNodeCount(null);
+    setTotalRelCount(null);
+    const uniqueLabels = [...new Set(schemaNodeLabels.map((n) =>
+      n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel
+    ))];
+    Promise.all(uniqueLabels.map(async (lbl) => {
+      try {
+        const res = await fetch("/data/cypher", {
+          method: "POST", headers,
+          body: JSON.stringify({ query: `MATCH (n:${lbl}) RETURN count(n) AS count` }),
+        });
+        const data = await res.json();
+        const cnt = data?.rows?.[0]?.count;
+        return typeof cnt === "number" ? cnt : 0;
+      } catch { return 0; }
+    })).then((counts) => setTotalNodeCount(counts.reduce((s, c) => s + c, 0)));
+    const uniqueRelTypes = [...new Set(schemaRels.map((r) => r.type))];
+    Promise.all(uniqueRelTypes.map(async (type) => {
+      try {
+        const res = await fetch("/data/cypher", {
+          method: "POST", headers,
+          body: JSON.stringify({ query: `MATCH ()-[r:${type}]->() RETURN count(r) AS count` }),
+        });
+        const data = await res.json();
+        const cnt = data?.rows?.[0]?.count;
+        return typeof cnt === "number" ? cnt : 0;
+      } catch { return 0; }
+    })).then((counts) => setTotalRelCount(counts.reduce((s, c) => s + c, 0)));
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [role?.id]);
+  }, [schemaNodeLabels, schemaRels, role?.id]);
+
 
   const runQuery = useCallback(
     async (query: string) => {
@@ -738,7 +758,7 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
   const handlePropertyKeyClick = useCallback(
     (key: string) => {
       runQuery(
-        `MATCH (n) WHERE (n.${key}) IS NOT NULL RETURN DISTINCT "node" as entity, n.${key} AS ${key} LIMIT 25 UNION ALL MATCH ()-[r]-() WHERE (r.${key}) IS NOT NULL RETURN DISTINCT "relationship" AS entity, r.${key} AS ${key} LIMIT 25`,
+        `MATCH (n)\nWHERE n.${key} IS NOT NULL\nRETURN DISTINCT "node" AS entity, n.${key} AS ${key}\nLIMIT 25\nUNION ALL\nMATCH ()-[r]-()\nWHERE r.${key} IS NOT NULL\nRETURN DISTINCT "relationship" AS entity, r.${key} AS ${key}\nLIMIT 25`,
       );
     },
     [runQuery],
@@ -814,6 +834,7 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
         propertyKeys={cypherSchema.propertyKeys}
         onPropertyKeyClick={handlePropertyKeyClick}
         totalNodeCount={totalNodeCount}
+        totalRelCount={totalRelCount}
       />
 
       <div className="graph-content">

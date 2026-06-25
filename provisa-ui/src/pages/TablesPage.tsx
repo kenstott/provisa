@@ -592,6 +592,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         materialize: editingTable.materialize,
         mvRefreshInterval: editingTable.mvRefreshInterval,
         dataProduct: editingTable.dataProduct,
+        enableAggregates: editingTable.enableAggregates,
+        enableGroupBy: editingTable.enableGroupBy,
         columnPresets: editingTable.columnPresets,
         columns: editingTable.columns.map((c) => ({
           name: c.columnName,
@@ -1865,6 +1867,54 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                 Data Product
                                 <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
                                   (publish to catalog / export to Atlas, Atlan, etc.)
+                                </span>
+                              </label>
+                              <label
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: "0.5rem",
+                                  gridColumn: "1 / -1",
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={editingTable.enableAggregates}
+                                  onChange={(e) =>
+                                    setEditingTable({
+                                      ...editingTable,
+                                      enableAggregates: e.target.checked,
+                                    })
+                                  }
+                                  style={{ width: "auto" }}
+                                />
+                                Enable Aggregates
+                                <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
+                                  (expose <code>_aggregate</code> root field in GraphQL)
+                                </span>
+                              </label>
+                              <label
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: "0.5rem",
+                                  gridColumn: "1 / -1",
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={editingTable.enableGroupBy}
+                                  onChange={(e) =>
+                                    setEditingTable({
+                                      ...editingTable,
+                                      enableGroupBy: e.target.checked,
+                                    })
+                                  }
+                                  style={{ width: "auto" }}
+                                />
+                                Enable Group By
+                                <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
+                                  (expose <code>_group_by</code> root field in GraphQL)
                                 </span>
                               </label>
                               {editingTable.apiEndpoint && (

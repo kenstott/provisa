@@ -93,6 +93,8 @@ export interface RegisteredTable {
   materialize: boolean;
   mvRefreshInterval: number;
   dataProduct: boolean;
+  enableAggregates: boolean;
+  enableGroupBy: boolean;
   canDeployToDb: boolean;
 }
 

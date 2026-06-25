@@ -14,7 +14,6 @@
    ref reads/writes during render are intentional throughout this module. */
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
-import { Network, Table2, Braces, BarChart2, Code2 } from "lucide-react";
 import type { Relationship } from "../../types/admin";
 import { extractElements, injectExclusion } from "./graph-model";
 import type { GNode, GEdge, GraphStats, RelLineOverride, FrameData } from "./graph-model";
@@ -43,6 +42,7 @@ import { Inspector } from "./Inspector";
 import { TableView, JsonCopyButton } from "./TableView";
 import { tableLabel as dbTableLabel } from "../../naming";
 import { useLocalStorage } from "./graph-persistence";
+import { GraphViewIcon, TableViewIcon, JsonViewIcon, StatsViewIcon, CodeViewIcon, ExpandModalIcon, CollapseModalIcon, CollapseQueryIcon, ExpandQueryIcon, PushPinIcon } from "./GraphIcons";
 
 // ── Frame component ───────────────────────────────────────────────────────────
 interface GraphFrameProps {
@@ -586,6 +586,23 @@ export function GraphFrame({
     onEffectiveDataChange(frame.id, allNodes, allEdges);
   }, [frame.id, augmentedNodes, frame.edges, overlayNodes, overlayEdges, onEffectiveDataChange]);
 
+  const overviewData = useMemo(() => {
+    const allNodes = overlayNodes.size > 0 ? new Map([...augmentedNodes, ...overlayNodes]) : augmentedNodes;
+    const allEdges = overlayEdges.size > 0 ? new Map([...frame.edges, ...overlayEdges]) : frame.edges;
+    const labelCounts = new Map<string, number>();
+    allNodes.forEach((n) => {
+      n.label.split(":").forEach((lbl) => labelCounts.set(lbl, (labelCounts.get(lbl) ?? 0) + 1));
+    });
+    const typeCounts = new Map<string, number>();
+    allEdges.forEach((e) => typeCounts.set(e.type, (typeCounts.get(e.type) ?? 0) + 1));
+    return {
+      nodesByLabel: [...labelCounts.entries()].sort((a, b) => b[1] - a[1]),
+      edgesByType: [...typeCounts.entries()].sort((a, b) => b[1] - a[1]),
+      nodeCount: allNodes.size,
+      edgeCount: allEdges.size,
+    };
+  }, [augmentedNodes, overlayNodes, frame.edges, overlayEdges]);
+
   const showingChildrenNatural = useMemo(
     () =>
       new Set(
@@ -789,7 +806,7 @@ export function GraphFrame({
           </div>
           {!isModal && (
             <button className="gf-icon-btn" onClick={() => setExpanded(true)} title="Expand">
-              ⤢
+              <ExpandModalIcon size={14} />
             </button>
           )}
           {isModal && (
@@ -798,7 +815,7 @@ export function GraphFrame({
               onClick={() => setExpanded(false)}
               title="Exit full screen"
             >
-              ⤡
+              <CollapseModalIcon size={14} />
             </button>
           )}
           {!isModal && (
@@ -807,7 +824,7 @@ export function GraphFrame({
               onClick={() => setCollapsed((c) => !c)}
               title={collapsed ? "Expand" : "Collapse"}
             >
-              {collapsed ? "▼" : "▲"}
+              {collapsed ? <ExpandQueryIcon size={14} /> : <CollapseQueryIcon size={14} />}
             </button>
           )}
           {!isModal && onPin && (
@@ -816,7 +833,7 @@ export function GraphFrame({
               onClick={() => onPin(frame.id)}
               title={frame.pinned ? "Unpin (unpin to allow sorting)" : "Pin to top"}
             >
-              📌
+              <PushPinIcon size={14} />
             </button>
           )}
           {!isModal && (
@@ -844,7 +861,7 @@ export function GraphFrame({
         )}
         {hasGraph && frame.status === "done" && (
           <button
-            className={`gf-icon-btn${autoImpute ? " gf-icon-btn--on" : ""}`}
+            className={`gf-run-inline-btn${autoImpute ? " gf-run-inline-btn--on" : ""}`}
             onClick={() => setAutoImpute((v) => !v)}
             title={
               autoImpute
@@ -989,13 +1006,7 @@ export function GraphFrame({
             onClick={() => setView("graph")}
             title="Graph"
           >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
-              <circle cx="3" cy="8" r="2"/>
-              <circle cx="13" cy="4" r="2"/>
-              <circle cx="13" cy="12" r="2"/>
-              <line x1="5" y1="7.1" x2="11" y2="4.9" stroke="currentColor" strokeWidth="1.3"/>
-              <line x1="5" y1="8.9" x2="11" y2="11.1" stroke="currentColor" strokeWidth="1.3"/>
-            </svg>
+            <GraphViewIcon size={15} />
           </button>
         )}
         <button
@@ -1003,21 +1014,14 @@ export function GraphFrame({
           onClick={() => setView("table")}
           title="Table"
         >
-          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.2">
-            <rect x="1.5" y="2.5" width="13" height="11" rx="1"/>
-            <line x1="1.5" y1="6" x2="14.5" y2="6"/>
-            <line x1="1.5" y1="9.5" x2="14.5" y2="9.5"/>
-            <line x1="6" y1="6" x2="6" y2="13.5"/>
-          </svg>
+          <TableViewIcon size={15} />
         </button>
         <button
           className={`gf-view-bar-btn ${activeView === "json" ? "active" : ""}`}
           onClick={() => setView("json")}
           title="JSON"
         >
-          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
-            <text x="1" y="12" fontSize="10" fontFamily="monospace">{"{}"}</text>
-          </svg>
+          <JsonViewIcon size={15} />
         </button>
         {hasGraph && (
           <button
@@ -1025,11 +1029,7 @@ export function GraphFrame({
             onClick={() => setView(activeView === "graphstats" ? "graph" : "graphstats")}
             title="Graph statistics"
           >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
-              <rect x="1" y="9" width="3" height="5"/>
-              <rect x="5.5" y="5" width="3" height="9"/>
-              <rect x="10" y="2" width="3" height="12"/>
-            </svg>
+            <StatsViewIcon size={15} />
           </button>
         )}
         <button
@@ -1037,11 +1037,7 @@ export function GraphFrame({
           onClick={() => setView("code")}
           title="Code"
         >
-          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-            <polyline points="5,4 1,8 5,12"/>
-            <polyline points="11,4 15,8 11,12"/>
-            <line x1="9" y1="3" x2="7" y2="13"/>
-          </svg>
+          <CodeViewIcon size={15} />
         </button>
       </div>
       <div className="gf-body-content">
@@ -1107,6 +1103,7 @@ export function GraphFrame({
             <Inspector
               selected={selected}
               graphStats={selected?.kind === "node" ? selected.graphStats : undefined}
+              overviewData={overviewData}
               colorOverrides={colorOverrides}
               onColorChange={onColorChange}
               onClose={() => setInspectorVisible(false)}

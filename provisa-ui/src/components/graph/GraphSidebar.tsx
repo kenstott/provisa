@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { labelColor } from "./graph-model";
+import { DatabaseIcon, HistoryIcon, StarIcon, ExportIcon } from "./GraphIcons";
 import type { RelLineOverride } from "./graph-model";
 import type { SchemaNodeLabel, SchemaRel } from "./graph-schema-types";
 import type { Favorite } from "./graph-persistence";
@@ -52,6 +53,7 @@ interface SidebarProps {
   propertyKeys?: string[];
   onPropertyKeyClick?: (key: string) => void;
   totalNodeCount?: number | null;
+  totalRelCount?: number | null;
 }
 
 const NUMERIC_TYPES = new Set(["int", "integer", "bigint", "float", "double", "decimal", "numeric", "real", "number"]);
@@ -93,6 +95,7 @@ export function Sidebar({
   propertyKeys = [],
   onPropertyKeyClick,
   totalNodeCount = null,
+  totalRelCount = null,
 }: SidebarProps) {
   const [section, setSection] = useState<"db" | "history" | "favorites">("db");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -163,21 +166,21 @@ export function Sidebar({
           onClick={() => setSection("db")}
           title="Database"
         >
-          ◉
+          <DatabaseIcon size={15} />
         </button>
         <button
           className={`graph-sidebar-tab ${section === "history" ? "active" : ""}`}
           onClick={() => setSection("history")}
           title="History"
         >
-          ⏱
+          <HistoryIcon size={15} />
         </button>
         <button
           className={`graph-sidebar-tab ${section === "favorites" ? "active" : ""}`}
           onClick={() => setSection("favorites")}
           title="Favorites"
         >
-          ★
+          <StarIcon size={15} />
         </button>
         {onNeo4jExport && (
           <button
@@ -185,14 +188,7 @@ export function Sidebar({
             onClick={onNeo4jExport}
             title="Export to Neo4j"
           >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="8" cy="2.5" r="2"/>
-              <circle cx="2.5" cy="13" r="2"/>
-              <circle cx="13.5" cy="13" r="2"/>
-              <line x1="8" y1="4.5" x2="2.5" y2="11" stroke="currentColor" strokeWidth="1.5"/>
-              <line x1="8" y1="4.5" x2="13.5" y2="11" stroke="currentColor" strokeWidth="1.5"/>
-              <line x1="4.5" y1="13" x2="11.5" y2="13" stroke="currentColor" strokeWidth="1.5"/>
-            </svg>
+            <ExportIcon size={15} />
           </button>
         )}
       </div>
@@ -285,17 +281,17 @@ export function Sidebar({
                       </span>
                     </div>
                     {(() => {
-                      const sorted = [...schemaNodeLabels].sort((a, b) =>
-                        a.tableLabel.localeCompare(b.tableLabel),
-                      );
+                      const sorted = [...schemaNodeLabels]
+                        .map((n) => ({
+                          node: n,
+                          compoundLabel: n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel,
+                        }))
+                        .sort((a, b) => a.node.tableLabel.localeCompare(b.node.tableLabel));
                       const paged = sorted.slice(
                         nodeLabelsPage * SCHEMA_PAGE_SIZE,
                         (nodeLabelsPage + 1) * SCHEMA_PAGE_SIZE,
                       );
-                      return paged.map((node) => {
-                        const compoundLabel = node.domainLabel
-                          ? `${node.domainLabel}:${node.tableLabel}`
-                          : node.tableLabel;
+                      return paged.map(({ node, compoundLabel }) => {
                         const color = colorOverrides[compoundLabel] ?? labelColor(compoundLabel);
                         return (
                           <div key={compoundLabel} className="graph-label-item">
@@ -317,9 +313,8 @@ export function Sidebar({
                       });
                     })()}
                     {(() => {
-                      const sorted = [...schemaNodeLabels].sort((a, b) =>
-                        a.tableLabel.localeCompare(b.tableLabel),
-                      );
+                      const sorted = [...schemaNodeLabels]
+                        .sort((a, b) => a.tableLabel.localeCompare(b.tableLabel));
                       const totalPages = Math.max(1, Math.ceil(sorted.length / SCHEMA_PAGE_SIZE));
                       if (totalPages === 1) return null;
                       return (
@@ -431,7 +426,7 @@ export function Sidebar({
                             onClick={() => onRelClick("*")}
                             title="MATCH p=()-->() RETURN p LIMIT 25"
                           >
-                            *({uniqueRels.length})
+                            *({totalRelCount !== null ? totalRelCount.toLocaleString() : uniqueRels.length})
                           </span>
                         </div>,
                         ...paged.map(({ type }) => (
@@ -552,7 +547,7 @@ export function Sidebar({
                         key={k}
                         className={`graph-prop-key-tag${onPropertyKeyClick ? " graph-prop-key-tag--clickable" : ""}`}
                         onClick={() => onPropertyKeyClick?.(k)}
-                        title={onPropertyKeyClick ? `MATCH (n) WHERE (n.${k}) IS NOT NULL RETURN DISTINCT "node" as entity, n.${k} AS ${k} LIMIT 25 UNION ALL MATCH ()-[r]-() WHERE (r.${k}) IS NOT NULL RETURN DISTINCT "relationship" AS entity, r.${k} AS ${k} LIMIT 25` : undefined}
+                        title={onPropertyKeyClick ? `MATCH (n)\nWHERE n.${k} IS NOT NULL\nRETURN DISTINCT "node" AS entity, n.${k} AS ${k}\nLIMIT 25\nUNION ALL\nMATCH ()-[r]-()\nWHERE r.${k} IS NOT NULL\nRETURN DISTINCT "relationship" AS entity, r.${k} AS ${k}\nLIMIT 25` : undefined}
                       >
                         {k}
                       </span>

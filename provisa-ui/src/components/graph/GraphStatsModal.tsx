@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { GNode, GEdge } from "./graph-model";
 
 interface GraphWideStats {

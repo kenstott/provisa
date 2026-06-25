@@ -14,9 +14,9 @@ import { X, Download, ChevronDown, ChevronRight, Layers, Maximize2 } from "lucid
 import cytoscape from "cytoscape";
 import elkRaw from "cytoscape-elk";
 import cytoscapeSvgRaw from "cytoscape-svg";
-import { buildErdElements, buildTableLabel } from "./erd-model";
+import { buildErdElements } from "./erd-model";
 import type { ColumnDetail, ErdNodeDomain, ErdNodeTable } from "./erd-model";
-import type { RegisteredTable, Relationship, Domain, TableColumn } from "../../types/admin";
+import type { RegisteredTable, Relationship, Domain } from "../../types/admin";
 import { labelColor, darkenColor } from "../graph/graph-model";
 import { downloadBlob } from "../graph/graph-export";
 import type { CyInstance, CyEvent, CyLayoutOptions } from "../graph/cytoscape-types";
@@ -28,25 +28,7 @@ const _interop = (m: CyExtModule): CyExt => (m as { default?: CyExt }).default ?
 try { cytoscape.use(_interop(elkRaw as CyExtModule)); } catch { /* already registered */ }
 try { cytoscape.use(_interop(cytoscapeSvgRaw as CyExtModule)); } catch { /* already registered */ }
 
-// ── barycenter reorder (Sugiyama-style crossing reduction) ────────────────────
 type Pt = { x: number; y: number };
-
-// Returns the set of node IDs that have at least one cross-domain edge.
-// Used only for barycenter crossing-reduction ordering.
-function crossDomainNodeIds(cy: CyInstance): Set<string> {
-  const nodeDomain = new Map<string, string>();
-  cy.nodes(".erd-domain").forEach((d) => {
-    const domId = (d as { id(): string }).id();
-    d.children().forEach((n) => nodeDomain.set((n as { id(): string }).id(), domId));
-  });
-  const ids = new Set<string>();
-  cy.edges(".erd-rel").forEach((e) => {
-    const s = e.data("source") as string;
-    const t = e.data("target") as string;
-    if (nodeDomain.get(s) !== nodeDomain.get(t)) { ids.add(s); ids.add(t); }
-  });
-  return ids;
-}
 
 // Returns the set of node IDs that have at least one edge (any kind).
 // True orphans (no edges) are excluded from fCoSE and placed in a grid instead.
@@ -57,167 +39,6 @@ function nodesWithEdges(cy: CyInstance): Set<string> {
     ids.add(e.data("target") as string);
   });
   return ids;
-}
-
-// Phase 1: reorder cross-domain-connected nodes within each domain using
-// barycenter scoring to minimise edge crossings.
-function barycenterReorder(cy: CyInstance, pinnedNodes: Map<string, Pt>, connected: Set<string>): void {
-  const crossNeighborPos = new Map<string, Pt[]>();
-  const nodeDomain = new Map<string, string>();
-  cy.nodes(".erd-domain").forEach((d) => {
-    const domId = (d as { id(): string }).id();
-    d.children().forEach((n) => nodeDomain.set((n as { id(): string }).id(), domId));
-  });
-  cy.edges(".erd-rel").forEach((e) => {
-    const s = e.data("source") as string;
-    const t = e.data("target") as string;
-    if (nodeDomain.get(s) === nodeDomain.get(t)) return;
-    const ps = (cy.getElementById(s) as unknown as { position(): Pt }).position();
-    const pt = (cy.getElementById(t) as unknown as { position(): Pt }).position();
-    if (!crossNeighborPos.has(s)) crossNeighborPos.set(s, []);
-    if (!crossNeighborPos.has(t)) crossNeighborPos.set(t, []);
-    crossNeighborPos.get(s)!.push(pt);
-    crossNeighborPos.get(t)!.push(ps);
-  });
-
-  cy.nodes(".erd-domain").forEach((domain) => {
-    const children = domain.children().filter((n) => connected.has((n as { id(): string }).id()));
-    if ((children as unknown as { length: number }).length < 2) return;
-    type Item = { id: string; pos: Pt; score: number };
-    const items: Item[] = [];
-    children.forEach((n) => {
-      const id = (n as { id(): string }).id();
-      const pos = { ...(n as { position(): Pt }).position() };
-      const neighbors = crossNeighborPos.get(id);
-      const score = neighbors && neighbors.length > 0
-        ? neighbors.reduce((s, p) => s + p.x + p.y, 0) / neighbors.length
-        : pos.x + pos.y;
-      items.push({ id, pos, score });
-    });
-    const slots = [...items.map((i) => i.pos)].sort((a, b) => (a.x + a.y) - (b.x + b.y));
-    const sorted = [...items].sort((a, b) => a.score - b.score);
-    cy.batch(() => {
-      sorted.forEach((item, i) => {
-        const newPos = slots[i];
-        (cy.getElementById(item.id) as unknown as { position(p: Pt): void }).position(newPos);
-        pinnedNodes.set(item.id, newPos);
-      });
-    });
-  });
-}
-
-// Post-layout: detect nodes whose bounding box is intersected by an edge they
-// are not part of, and nudge them perpendicular to that edge until clear.
-// Tries both perpendicular directions and picks the one that introduces fewer
-// edge crossings with this node's own edges.
-function resolveNodeEdgeOverlaps(cy: CyInstance): void {
-  const MARGIN = 8;
-  const MAX_ITER = 20;
-
-  type BB = { x1: number; y1: number; x2: number; y2: number; w: number; h: number };
-
-  // Liang-Barsky segment–AABB intersection test.
-  function segmentHitsBox(
-    p1: Pt, p2: Pt,
-    box: { x1: number; y1: number; x2: number; y2: number },
-  ): boolean {
-    const x1 = box.x1 - MARGIN, y1 = box.y1 - MARGIN;
-    const x2 = box.x2 + MARGIN, y2 = box.y2 + MARGIN;
-    const dx = p2.x - p1.x, dy = p2.y - p1.y;
-    let tMin = 0, tMax = 1;
-    const ps = [-dx, dx, -dy, dy];
-    const qs = [p1.x - x1, x2 - p1.x, p1.y - y1, y2 - p1.y];
-    for (let i = 0; i < 4; i++) {
-      if (ps[i] === 0) { if (qs[i] < 0) return false; }
-      else {
-        const t = qs[i] / ps[i];
-        if (ps[i] < 0) { if (t > tMin) tMin = t; }
-        else { if (t < tMax) tMax = t; }
-        if (tMin > tMax) return false;
-      }
-    }
-    return true;
-  }
-
-  // Segment–segment intersection (excluding shared endpoints).
-  function segmentsCross(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
-    const d1x = b.x - a.x, d1y = b.y - a.y;
-    const d2x = d.x - c.x, d2y = d.y - c.y;
-    const denom = d1x * d2y - d1y * d2x;
-    if (Math.abs(denom) < 1e-9) return false;
-    const t = ((c.x - a.x) * d2y - (c.y - a.y) * d2x) / denom;
-    const u = ((c.x - a.x) * d1y - (c.y - a.y) * d1x) / denom;
-    return t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9;
-  }
-
-  // Count how many OTHER edges cross the edges of nodeId when nodeId is at candidatePos.
-  function crossingCount(nodeId: string, candidatePos: Pt): number {
-    let count = 0;
-    cy.edges(".erd-rel").forEach((e1) => {
-      const s1 = e1.data("source") as string;
-      const t1 = e1.data("target") as string;
-      if (s1 !== nodeId && t1 !== nodeId) return;
-      const a = s1 === nodeId ? candidatePos : (cy.getElementById(s1) as unknown as { position(): Pt }).position();
-      const b = t1 === nodeId ? candidatePos : (cy.getElementById(t1) as unknown as { position(): Pt }).position();
-      cy.edges(".erd-rel").forEach((e2) => {
-        if (e1.id() === e2.id()) return;
-        const s2 = e2.data("source") as string;
-        const t2 = e2.data("target") as string;
-        if (s2 === nodeId || t2 === nodeId) return;
-        if (s2 === s1 || s2 === t1 || t2 === s1 || t2 === t1) return; // shared endpoint
-        const c = (cy.getElementById(s2) as unknown as { position(): Pt }).position();
-        const d = (cy.getElementById(t2) as unknown as { position(): Pt }).position();
-        if (segmentsCross(a, b, c, d)) count++;
-      });
-    });
-    return count;
-  }
-
-  const connectedIds = nodesWithEdges(cy);
-
-  for (let iter = 0; iter < MAX_ITER; iter++) {
-    let moved = false;
-    cy.nodes(".erd-table").forEach((node) => {
-      const id = (node as { id(): string }).id();
-      if (!connectedIds.has(id)) return;
-      const pos = { ...(node as { position(): Pt }).position() };
-      const bb: BB = { ...(node as unknown as { boundingBox(o: object): BB }).boundingBox({}) };
-
-      cy.edges(".erd-rel").forEach((edge) => {
-        const src = edge.data("source") as string;
-        const tgt = edge.data("target") as string;
-        if (src === id || tgt === id) return;
-
-        const p1 = (cy.getElementById(src) as unknown as { position(): Pt }).position();
-        const p2 = (cy.getElementById(tgt) as unknown as { position(): Pt }).position();
-        if (!segmentHitsBox(p1, p2, bb)) return;
-
-        const dx = p2.x - p1.x, dy = p2.y - p1.y;
-        const len = Math.sqrt(dx * dx + dy * dy) || 1;
-        const nx = -dy / len, ny = dx / len;
-        const signedDist = (pos.x - p1.x) * nx + (pos.y - p1.y) * ny;
-        const clearance = (bb.w / 2) * Math.abs(dy / len) + (bb.h / 2) * Math.abs(dx / len);
-
-        // Compute candidate positions for both perpendicular directions.
-        const nudgePlus  = (clearance + MARGIN) - signedDist;
-        const nudgeMinus = -(clearance + MARGIN) - signedDist;
-        const posPlus  = { x: pos.x + nx * nudgePlus,  y: pos.y + ny * nudgePlus  };
-        const posMinus = { x: pos.x + nx * nudgeMinus, y: pos.y + ny * nudgeMinus };
-
-        // Pick the direction that introduces fewer crossings with this node's edges.
-        const crossPlus  = crossingCount(id, posPlus);
-        const crossMinus = crossingCount(id, posMinus);
-        const newPos = crossPlus <= crossMinus ? posPlus : posMinus;
-
-        pos.x = newPos.x; pos.y = newPos.y;
-        bb.x1 = pos.x - bb.w / 2; bb.y1 = pos.y - bb.h / 2;
-        bb.x2 = pos.x + bb.w / 2; bb.y2 = pos.y + bb.h / 2;
-        (node as unknown as { position(p: Pt): void }).position(pos);
-        moved = true;
-      });
-    });
-    if (!moved) break;
-  }
 }
 
 // Push overlapping compound (.erd-domain) nodes apart so they don't visually
@@ -300,10 +121,10 @@ function placeIsolatedGrid(
     const rowHeights = Array.from({ length: rows }, (_, r) =>
       Math.max(...isolated.map((_, i) => Math.floor(i / cols) === r ? sizes[i].h : 0))
     );
-    const colX = colWidths.reduce<number[]>((acc, w, i) => {
+    const colX = colWidths.reduce<number[]>((acc, _w, i) => {
       acc.push(i === 0 ? 0 : acc[i - 1] + colWidths[i - 1] + PAD); return acc;
     }, []);
-    const rowY = rowHeights.reduce<number[]>((acc, h, i) => {
+    const rowY = rowHeights.reduce<number[]>((acc, _h, i) => {
       acc.push(i === 0 ? 0 : acc[i - 1] + rowHeights[i - 1] + PAD); return acc;
     }, []);
     const totalW = colX[cols - 1] + colWidths[cols - 1];
@@ -599,19 +420,6 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
     }) as unknown as CyInstance;
 
     cyRef.current = cy;
-
-    // Compute grid cell size from actual node bounding boxes (width/height + gap).
-    const gridSize = () => {
-      const nodes = cy.nodes(".erd-table");
-      if ((nodes as unknown as { empty(): boolean }).empty()) return { gx: 190, gy: 60 };
-      let maxW = 0, maxH = 0;
-      nodes.forEach((n) => {
-        const bb = (n as unknown as { boundingBox(o: object): { w: number; h: number } }).boundingBox({});
-        if (bb.w > maxW) maxW = bb.w;
-        if (bb.h > maxH) maxH = bb.h;
-      });
-      return { gx: maxW + 20, gy: maxH + 20 };
-    };
 
     cy.on("grabon", "node", () => { isDraggingRef.current = true; });
 

@@ -45,7 +45,7 @@ function TraceList({
   filter: string;
   selected: TraceEntry | null;
   setSelected: (t: TraceEntry | null) => void;
-  listRef?: RefObject<HTMLDivElement>;
+  listRef?: RefObject<HTMLDivElement | null>;
 }) {
   const statusColor = (s: string) =>
     s === "OK" ? "var(--success)" : s === "ERROR" ? "var(--error, #e55)" : "var(--text-muted)";

@@ -89,6 +89,22 @@ export function QueryBar({
     onQueryChange(val);
   };
 
+  const handleCollapsedClickWithFormat = useCallback(() => {
+    const formatted = query
+      .replace(/\s*\n\s*/g, " ")
+      .replace(
+        /\s+\b(MATCH|OPTIONAL MATCH|WHERE|WITH|RETURN|ORDER BY|LIMIT|SKIP|UNION ALL|UNION|CREATE|SET|DELETE|DETACH DELETE|MERGE|CALL|UNWIND)\b/gi,
+        "\n$1",
+      )
+      .trimStart();
+    if (formatted !== query) {
+      setQuery(formatted);
+      onQueryChange(formatted);
+    }
+    setFocused(true);
+    pendingFocusRef.current = true;
+  }, [query, onQueryChange]);
+
   return (
     <div className="graph-query-bar">
       <div className="graph-query-prompt">$</div>
@@ -96,7 +112,7 @@ export function QueryBar({
         {!focused && (
           <div
             className="gf-header-query-collapsed"
-            onClick={handleCollapsedClick}
+            onClick={handleCollapsedClickWithFormat}
             title={query}
           >
             {query.replace(/\s*\n\s*/g, " ") || "MATCH (n) RETURN n LIMIT 25"}
@@ -161,7 +177,7 @@ export function QueryBar({
             ? "Auto-impute relationships ON — click to disable"
             : "Auto-impute relationships between visible nodes"
         }
-        style={{ marginRight: 4 }}
+        style={{ marginRight: 4, alignSelf: "stretch", height: "auto", width: 38 }}
       >
         ⊕
       </button>

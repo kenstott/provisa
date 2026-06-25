@@ -20,9 +20,17 @@ import CodeMirror from "@uiw/react-codemirror";
 import { json as jsonLang } from "@codemirror/lang-json";
 import { oneDark } from "@codemirror/theme-one-dark";
 
+interface OverviewData {
+  nodesByLabel: [string, number][];
+  edgesByType: [string, number][];
+  nodeCount: number;
+  edgeCount: number;
+}
+
 interface InspectorProps {
   selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null;
   graphStats?: GraphStats;
+  overviewData?: OverviewData;
   colorOverrides: Record<string, string>;
   onColorChange: (label: string, color: string) => void;
   onClose: () => void;
@@ -47,6 +55,7 @@ function CopyIcon() {
 export function Inspector({
   selected,
   graphStats,
+  overviewData,
   colorOverrides,
   onColorChange,
   onClose,
@@ -87,56 +96,98 @@ export function Inspector({
     setTimeout(() => setCopiedKey(null), 1200);
   }, []);
 
+  const isN = selected !== null && selected.kind === "node";
+  const label = selected ? (isN ? selected.data.label : (selected.data as GEdge).type) : "";
+  const color = colorOverrides[label] ?? labelColor(label);
+  const props = selected?.data.properties ?? {};
+
+  const nodeLabel = selected && isN ? (selected.data as GNode).label : "";
+  const colonIdx = nodeLabel.indexOf(":");
+  const typeName = colonIdx > 0 ? nodeLabel.slice(colonIdx + 1) : nodeLabel;
+  const domainPrefix = colonIdx > 0 ? nodeLabel.slice(0, colonIdx) : null;
+
+  const stableId = selected && isN ? getStableNodeId(selected.data as GNode, pkMap) : null;
+  const pkCols = selected && isN ? (pkMap[(selected.data as GNode).label] ?? []) : [];
+  const idColName = pkCols[0] ?? null;
+  const pkEntry: Record<string, unknown> =
+    selected && isN && idColName && !(idColName in props) ? { [idColName]: (selected.data as GNode).id } : {};
+
+  const HIDDEN_PROPS = new Set(["l1Cluster", "l2Cluster", "l3Cluster", "scl1", "scl2", "scl3", "deg_in", "deg_out", "deg_total"]);
+  const idRow: [string, unknown][] = stableId ? [["<id>", stableId]] : [];
+
+  const propRows: [string, unknown][] = !selected
+    ? []
+    : isN
+      ? [
+          ...idRow,
+          ...Object.entries(props).filter(([k]) => !HIDDEN_PROPS.has(k)).sort(([a], [b]) => a.localeCompare(b)),
+          ...Object.entries(pkEntry),
+        ]
+      : (() => {
+          const e = selected.data as GEdge;
+          return [
+            ["<id>", e.identity],
+            ["start", e.start],
+            ["end", e.end],
+            ...Object.entries(props).sort(([a], [b]) => a.localeCompare(b)),
+          ] as [string, unknown][];
+        })();
+
+  const handleCopyAll = useCallback(() => {
+    const obj = Object.fromEntries(propRows);
+    navigator.clipboard.writeText(JSON.stringify(obj, null, 2)).catch(() => {});
+    setCopiedKey("__all__");
+    setTimeout(() => setCopiedKey(null), 1200);
+  }, [propRows]);
+
   if (!selected) {
     return (
       <div className="gf-inspector" style={{ width, flexShrink: 0 }}>
         <div className="gf-inspector-resize-handle" onMouseDown={onResizeStart} />
         <div className="gf-insp-header">
-          <span className="gf-insp-header-title">Node properties</span>
+          <span className="gf-insp-header-title">Overview</span>
           <div className="gf-insp-header-actions">
             <button className="gf-insp-close" onClick={onClose} title="Hide panel">›</button>
           </div>
         </div>
-        <div className="gf-inspector-hint">Click a node or edge to inspect its properties.</div>
+        {overviewData && overviewData.nodeCount > 0 ? (
+          <div className="gf-overview">
+            <div className="gf-overview-section-label">Node labels</div>
+            <div className="gf-overview-chips">
+              <span className="gf-overview-chip gf-overview-chip--all">
+                *({overviewData.nodeCount.toLocaleString()})
+              </span>
+              {overviewData.nodesByLabel.map(([lbl, cnt]) => (
+                <span
+                  key={lbl}
+                  className="gf-overview-chip"
+                  style={{ background: colorOverrides[lbl] ?? labelColor(lbl) }}
+                >
+                  {lbl} ({cnt.toLocaleString()})
+                </span>
+              ))}
+            </div>
+            <div className="gf-overview-section-label">Relationship types</div>
+            <div className="gf-overview-chips">
+              <span className="gf-overview-chip gf-overview-chip--all">
+                *({overviewData.edgeCount.toLocaleString()})
+              </span>
+              {overviewData.edgesByType.map(([type, cnt]) => (
+                <span key={type} className="gf-overview-chip gf-overview-chip--rel">
+                  {type} ({cnt.toLocaleString()})
+                </span>
+              ))}
+            </div>
+            <div className="gf-overview-summary">
+              Displaying {overviewData.nodeCount.toLocaleString()} nodes, {overviewData.edgeCount.toLocaleString()} relationships.
+            </div>
+          </div>
+        ) : (
+          <div className="gf-inspector-hint">Click a node or edge to inspect its properties.</div>
+        )}
       </div>
     );
   }
-
-  const isN = selected.kind === "node";
-  const label = isN ? selected.data.label : (selected.data as GEdge).type;
-  const color = colorOverrides[label] ?? labelColor(label);
-  const props = selected.data.properties;
-
-  const nodeLabel = isN ? (selected.data as GNode).label : "";
-  const colonIdx = nodeLabel.indexOf(":");
-  const typeName = colonIdx > 0 ? nodeLabel.slice(colonIdx + 1) : nodeLabel;
-
-  const stableId = isN ? getStableNodeId(selected.data as GNode, pkMap) : null;
-
-  const pkCols = isN ? (pkMap[(selected.data as GNode).label] ?? []) : [];
-  const idColName = pkCols[0] ?? null;
-  const pkEntry: Record<string, unknown> =
-    isN && idColName && !(idColName in props) ? { [idColName]: (selected.data as GNode).id } : {};
-
-  const HIDDEN_PROPS = new Set(["l1Cluster", "l2Cluster", "l3Cluster", "scl1", "scl2", "scl3", "deg_in", "deg_out", "deg_total"]);
-
-  const idRow: [string, unknown][] = stableId ? [["<id>", stableId]] : [];
-
-  const propRows: [string, unknown][] = isN
-    ? [
-        ...idRow,
-        ...Object.entries(props).filter(([k]) => !HIDDEN_PROPS.has(k)).sort(([a], [b]) => a.localeCompare(b)),
-        ...Object.entries(pkEntry),
-      ]
-    : (() => {
-        const e = selected.data as GEdge;
-        return [
-          ["<id>", e.identity],
-          ["start", e.start],
-          ["end", e.end],
-          ...Object.entries(props).sort(([a], [b]) => a.localeCompare(b)),
-        ] as [string, unknown][];
-      })();
 
   const headerLabel = isN ? "Node properties" : "Relationship properties";
   const chipLabel = isN ? (typeName || label) : label;
@@ -148,16 +199,16 @@ export function Inspector({
         <span className="gf-insp-header-title">{headerLabel}</span>
         <div className="gf-insp-header-actions">
           <button
-            className={`gf-insp-viewbtn ${inspView === "details" ? "active" : ""}`}
-            onClick={() => setInspView("details")}
-            title="Details"
+            className={`gf-insp-viewbtn gf-insp-copy-all${copiedKey === "__all__" ? " active" : ""}`}
+            onClick={handleCopyAll}
+            title="Copy all properties as JSON"
           >
-            ⊡
+            <CopyIcon />
           </button>
           <button
             className={`gf-insp-viewbtn ${inspView === "json" ? "active" : ""}`}
-            onClick={() => setInspView("json")}
-            title="JSON"
+            onClick={() => setInspView(inspView === "json" ? "details" : "json")}
+            title={inspView === "json" ? "Show details" : "Show JSON"}
           >
             {}
           </button>
@@ -168,10 +219,19 @@ export function Inspector({
       </div>
 
       <div className="gf-insp-chip-row">
-        <div style={{ position: "relative" }}>
+        {isN && domainPrefix && (
           <div
             className="gf-inspector-badge"
-            style={{ background: color, cursor: "pointer" }}
+            style={{ background: colorOverrides[domainPrefix] ?? labelColor(domainPrefix) }}
+            title="Domain"
+          >
+            {domainPrefix}
+          </div>
+        )}
+        <div style={{ position: "relative" }}>
+          <div
+            className={isN ? "gf-inspector-badge" : "graph-rel-badge"}
+            style={isN ? { background: color, cursor: "pointer" } : { cursor: "pointer" }}
             title="Click to change color"
             onClick={() => setShowPalette((p) => !p)}
           >
@@ -223,23 +283,23 @@ export function Inspector({
               <label className="gf-insp-alias-label">
                 CQL Alias (UPPER_SNAKE)
                 <input
+                  className="gf-insp-alias-input"
                   value={edgeCql}
                   onChange={(e) => setEdgeCql(e.target.value)}
                   placeholder={matchedRel.computedCypherAlias ?? (selected.data as GEdge).type}
-                  style={{ fontSize: "0.8rem", padding: "0.2rem 0.4rem" }}
                 />
               </label>
               <label className="gf-insp-alias-label">
                 GQL Alias (camelCase)
                 <input
+                  className="gf-insp-alias-input"
                   value={edgeGql}
                   onChange={(e) => setEdgeGql(e.target.value)}
                   placeholder={matchedRel.graphqlAlias ?? ""}
-                  style={{ fontSize: "0.8rem", padding: "0.2rem 0.4rem" }}
                 />
               </label>
               <button
-                style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", alignSelf: "flex-end" }}
+                className="gf-insp-alias-save"
                 disabled={savingAlias}
                 onClick={async () => {
                   setSavingAlias(true);
@@ -285,6 +345,7 @@ export function Inspector({
               </table>
             </>
           )}
+          <div className="gf-insp-section-label">Properties</div>
           <table className="gf-inspector-table">
             <tbody>
               {propRows.map(([k, v]) => {

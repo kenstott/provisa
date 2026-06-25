@@ -32,6 +32,7 @@ import cytoscape from "cytoscape";
 import fcoseRaw from "cytoscape-fcose";
 import layoutUtilitiesRaw from "cytoscape-layout-utilities";
 import cytoscapeSvgRaw from "cytoscape-svg";
+import { ZoomInIcon, ZoomOutIcon, FitScreenIcon } from "./GraphIcons";
 // CJS bundles — .default may or may not be present depending on bundler
 type CyExt = Parameters<typeof cytoscape.use>[0];
 type CyExtModule = { default?: CyExt } | CyExt;
@@ -190,6 +191,7 @@ export function GraphCanvas({
   labelToTableLabel,
   relationships,
   showingChildrenNatural,
+  onToggleChildren,
   onToggleChildrenBatch,
   showingChildrenCircular,
   showingParents,
@@ -444,6 +446,7 @@ export function GraphCanvas({
   // Node left-click ring menu
   type NodeRingMenuState = { x: number; y: number; nodeKey: string; node: GNode; graphStats?: GraphStats; isLocked: boolean };
   const [nodeRingMenu, setNodeRingMenu] = useState<NodeRingMenuState | null>(null);
+  const [hoveredSector, setHoveredSector] = useState<string | null>(null);
   const ringMenuRef = useRef<HTMLDivElement>(null);
 
   // Track node position as viewport changes (pan / zoom)
@@ -455,8 +458,10 @@ export function GraphCanvas({
       const cyNode = cy.$id(nodeRingMenu.nodeKey);
       if (!cyNode || (cyNode as unknown as { length: number }).length === 0) return;
       const rp = (cyNode as unknown as { renderedPosition: () => { x: number; y: number } }).renderedPosition();
-      const zoom = cy.zoom();
-      const size = Math.round(Math.max(80, Math.min(240, 120 * zoom)));
+      const nodeW = (cyNode as unknown as { renderedWidth(): number }).renderedWidth();
+      // R1=26 inner radius in 120-unit viewBox must clear the node radius + 4px gap
+      const minFromNode = Math.ceil((nodeW / 2 + 4) * (120 / 26));
+      const size = Math.max(80, Math.min(400, minFromNode));
       ringMenuRef.current.style.left = `${rp.x}px`;
       ringMenuRef.current.style.top = `${rp.y}px`;
       const svg = ringMenuRef.current.querySelector<SVGSVGElement>("svg");
@@ -659,7 +664,7 @@ export function GraphCanvas({
           animate: true,
           animationDuration: aggressive ? 2000 : 600,
           animationEasing: "ease-out" as const,
-          numIter: aggressive ? 2000 : 300,
+          numIter: aggressive ? 6000 : 900,
           gravity: gravityValue,
           fit: false,
           // Prevent FCose component packing from repositioning the entire component
@@ -831,6 +836,7 @@ export function GraphCanvas({
           const pos = evt.renderedPosition ?? evt.position;
           const isLocked = anchoredRef.current.has(evt.target.id() as string);
           setNodeRingMenu({ x: pos.x, y: pos.y, nodeKey: evt.target.id() as string, node: gn, graphStats, isLocked });
+          onSelect({ kind: "node", data: gn, graphStats });
         }
       }
     });
@@ -1101,7 +1107,8 @@ export function GraphCanvas({
   }, [relLineOverrides]);
 
   useEffect(() => {
-    cyRef.current?.userZoomingEnabled(!!isExpanded);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (cyRef.current as any)?.userZoomingEnabled(!!isExpanded);
   }, [isExpanded]);
 
   return (
@@ -1194,17 +1201,17 @@ export function GraphCanvas({
           onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 1.3)}
           title="Zoom in"
         >
-          +
+          <ZoomInIcon size={15} />
         </button>
         <button
           className="gf-ctrl-btn"
           onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 0.77)}
           title="Zoom out"
         >
-          −
+          <ZoomOutIcon size={15} />
         </button>
         <button className="gf-ctrl-btn" onClick={fitView} title="Fit to screen">
-          ⤢
+          <FitScreenIcon size={15} />
         </button>
         <div className="gf-ctrl-divider" />
         <button
@@ -1285,8 +1292,13 @@ export function GraphCanvas({
             title: nodeRingMenu.isLocked ? "Unlock position" : "Lock position",
             iconPath: (
               <>
-                <rect x="-4" y="-1" width="8" height="6" rx="1" fill="currentColor"/>
-                <path d="M-3-1 v-2 a3 3 0 0 1 6 0 v2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                {/* padlock body */}
+                <rect x="-3.8" y="0" width="7.6" height="5.5" rx="1.2" fill="currentColor"/>
+                {/* shackle - open: left arm seated, right arm raised */}
+                <path d="M-2.5 0 v-2.5 a2.5 2.5 0 0 1 5 0" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+                {/* keyhole */}
+                <circle cx="0" cy="2.8" r="1.1" fill="#111318"/>
+                <rect x="-0.55" y="3.4" width="1.1" height="1.5" rx="0.3" fill="#111318"/>
               </>
             ),
           },
@@ -1295,11 +1307,18 @@ export function GraphCanvas({
             title: showingChildrenNatural.has(nodeRingMenu.nodeKey) ? "Hide children" : "Show children",
             iconPath: (
               <>
-                <circle cx="0" cy="-3.5" r="1.8" fill="currentColor"/>
-                <circle cx="-3.5" cy="3" r="1.8" fill="currentColor"/>
-                <circle cx="3.5" cy="3" r="1.8" fill="currentColor"/>
-                <line x1="0" y1="-1.7" x2="-3.5" y2="1.2" stroke="currentColor" strokeWidth="1.1"/>
-                <line x1="0" y1="-1.7" x2="3.5" y2="1.2" stroke="currentColor" strokeWidth="1.1"/>
+                {/* center hub */}
+                <circle cx="0" cy="0" r="1.5" fill="currentColor"/>
+                {/* satellites at varying angles and distances */}
+                <circle cx="0.66" cy="-3.74" r="1.2" fill="#111318" stroke="currentColor" strokeWidth="0.9"/>
+                <circle cx="4.33" cy="-2.5" r="1.2" fill="#111318" stroke="currentColor" strokeWidth="0.9"/>
+                <circle cx="3.72" cy="2.15" r="1.2" fill="#111318" stroke="currentColor" strokeWidth="0.9"/>
+                <circle cx="-4.17" cy="1.95" r="1.2" fill="#111318" stroke="currentColor" strokeWidth="0.9"/>
+                {/* spokes */}
+                <line x1="0.26" y1="-1.48" x2="0.45" y2="-2.56" stroke="currentColor" strokeWidth="0.9"/>
+                <line x1="1.3" y1="-0.75" x2="3.29" y2="-1.9" stroke="currentColor" strokeWidth="0.9"/>
+                <line x1="1.3" y1="0.75" x2="2.68" y2="1.55" stroke="currentColor" strokeWidth="0.9"/>
+                <line x1="-1.36" y1="0.63" x2="-3.08" y2="1.44" stroke="currentColor" strokeWidth="0.9"/>
               </>
             ),
           },
@@ -1308,9 +1327,12 @@ export function GraphCanvas({
             title: "Remove node",
             iconPath: (
               <>
-                <circle cx="0" cy="0" r="5" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-                <line x1="-2.8" y1="-2.8" x2="2.8" y2="2.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                <line x1="2.8" y1="-2.8" x2="-2.8" y2="2.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                {/* eye */}
+                <path d="M-5 0 C-3.5-3 3.5-3 5 0 C3.5 3-3.5 3-5 0 Z" fill="none" stroke="currentColor" strokeWidth="0.9"/>
+                <circle cx="0" cy="-0.3" r="1.4" fill="none" stroke="currentColor" strokeWidth="0.9"/>
+                {/* circle+minus badge offset lower-right */}
+                <circle cx="3.2" cy="3.2" r="2" fill="#111318" stroke="currentColor" strokeWidth="0.9"/>
+                <line x1="2.5" y1="3.2" x2="3.9" y2="3.2" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round"/>
               </>
             ),
           },
@@ -1338,6 +1360,8 @@ export function GraphCanvas({
                   <g
                     key={key}
                     style={{ cursor: "pointer" }}
+                    onMouseEnter={() => setHoveredSector(key)}
+                    onMouseLeave={() => setHoveredSector(null)}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (key === "lock") {
@@ -1348,6 +1372,7 @@ export function GraphCanvas({
                           cyNode.unlock();
                           anchoredRef.current.delete(nodeRingMenu.nodeKey);
                           cyNode.removeClass("pinned");
+                          nudgeLayoutRef.current();
                         } else {
                           cyNode.lock();
                           anchoredRef.current.add(nodeRingMenu.nodeKey);
@@ -1356,7 +1381,11 @@ export function GraphCanvas({
                       } else if (key === "children") {
                         onToggleChildren(nodeRingMenu.nodeKey);
                       } else {
-                        onExcludeNode([nodeRingMenu.nodeKey]);
+                        const cy = cyRef.current;
+                        if (cy) {
+                          anchoredRef.current.delete(nodeRingMenu.nodeKey);
+                          cy.remove(cy.$id(nodeRingMenu.nodeKey));
+                        }
                       }
                       setNodeRingMenu(null);
                     }}
@@ -1364,14 +1393,14 @@ export function GraphCanvas({
                     <title>{title}</title>
                     <path
                       d={arcSector(angle)}
-                      fill={active ? "rgba(99,102,241,0.35)" : "rgba(17,19,24,0.92)"}
-                      stroke="#3a3d52"
+                      fill={active ? "rgba(99,102,241,0.45)" : hoveredSector === key ? "rgba(99,102,241,0.2)" : "rgba(17,19,24,0.92)"}
+                      stroke={hoveredSector === key ? "#6366f1" : "#3a3d52"}
                       strokeWidth="1"
                     />
                     <path d={arcSector(angle)} fill="transparent" stroke="transparent" strokeWidth="10"/>
                     <g
                       transform={`translate(${mp.x.toFixed(2)},${mp.y.toFixed(2)})`}
-                      color={active ? "#a5b4fc" : "#9ca3af"}
+                      color={active || hoveredSector === key ? "#a5b4fc" : "#9ca3af"}
                     >
                       {iconPath}
                     </g>

@@ -33,7 +33,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     tableName: "orders", alias: null, description: null,
     cacheTtl: null, gqlNamingConvention: null, watermarkColumn: null,
     columns: [], columnPresets: [], apiEndpoint: null, viewSql: null,
-    materialize: false, mvRefreshInterval: 0, dataProduct: false, canDeployToDb: false,
+    materialize: false, mvRefreshInterval: 0, dataProduct: false, enableAggregates: false, enableGroupBy: false, canDeployToDb: false,
     ...overrides,
   };
 }

@@ -14,9 +14,9 @@ import type { GEdge } from '../../components/graph/graph-model';
 function makeEdge(
   identity: string,
   startLabel: string,
-  startId: string,
+  startId: number,
   endLabel: string,
-  endId: string,
+  endId: number,
   type: string
 ): GEdge {
   return {
@@ -58,9 +58,9 @@ function computeOverlayEdges(
 
 describe('overlayEdges deduplication', () => {
   it('excludes imputed edge when frame already has same identity', () => {
-    const edge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const edge = makeEdge('WORKS_AT:1-10', 'Person', 1, 'Company', 10, 'WORKS_AT');
     const frameEdges = new Map([['WORKS_AT:1-10', edge]]);
-    const imputedEdge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const imputedEdge = makeEdge('WORKS_AT:1-10', 'Person', 1, 'Company', 10, 'WORKS_AT');
     const overlayData = new Map([
       ['__remaining_rels', { edges: new Map([['WORKS_AT:1-10', imputedEdge]]) }],
     ]);
@@ -72,11 +72,11 @@ describe('overlayEdges deduplication', () => {
   it('excludes imputed edge when frame has same edge traversed backward (different identity key)', () => {
     // Frame edge: backward traversal query produced canonical identity WORKS_AT:1-10
     // (after backend fix, identity is canonical regardless of traversal direction)
-    const frameEdge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const frameEdge = makeEdge('WORKS_AT:1-10', 'Person', 1, 'Company', 10, 'WORKS_AT');
     const frameEdges = new Map([['WORKS_AT:1-10', frameEdge]]);
 
     // Imputed edge always uses forward canonical direction: same identity
-    const imputedEdge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const imputedEdge = makeEdge('WORKS_AT:1-10', 'Person', 1, 'Company', 10, 'WORKS_AT');
     const overlayData = new Map([
       ['__remaining_rels', { edges: new Map([['WORKS_AT:1-10', imputedEdge]]) }],
     ]);
@@ -87,11 +87,11 @@ describe('overlayEdges deduplication', () => {
 
   it('excludes imputed edge when frame edge has flipped start/end but same type (fingerprint match)', () => {
     // If for any reason frame has the edge stored with end/start swapped but same type
-    const frameEdge = makeEdge('WORKS_AT:1-10', 'Company', '10', 'Person', '1', 'WORKS_AT');
+    const frameEdge = makeEdge('WORKS_AT:1-10', 'Company', 10, 'Person', 1, 'WORKS_AT');
     const frameEdges = new Map([['WORKS_AT:1-10', frameEdge]]);
 
     // Imputed edge is canonical forward
-    const imputedEdge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const imputedEdge = makeEdge('WORKS_AT:1-10', 'Person', 1, 'Company', 10, 'WORKS_AT');
     const overlayData = new Map([
       ['__remaining_rels', { edges: new Map([['WORKS_AT:1-10', imputedEdge]]) }],
     ]);
@@ -101,10 +101,10 @@ describe('overlayEdges deduplication', () => {
   });
 
   it('includes imputed edge when no frame edge covers it', () => {
-    const frameEdge = makeEdge('OTHER:2-20', 'Person', '2', 'Company', '20', 'OTHER');
+    const frameEdge = makeEdge('OTHER:2-20', 'Person', 2, 'Company', 20, 'OTHER');
     const frameEdges = new Map([['OTHER:2-20', frameEdge]]);
 
-    const imputedEdge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const imputedEdge = makeEdge('WORKS_AT:1-10', 'Person', 1, 'Company', 10, 'WORKS_AT');
     const overlayData = new Map([
       ['__remaining_rels', { edges: new Map([['WORKS_AT:1-10', imputedEdge]]) }],
     ]);
@@ -115,7 +115,7 @@ describe('overlayEdges deduplication', () => {
   });
 
   it('returns empty map when overlayData is empty', () => {
-    const frameEdge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const frameEdge = makeEdge('WORKS_AT:1-10', 'Person', 1, 'Company', 10, 'WORKS_AT');
     const frameEdges = new Map([['WORKS_AT:1-10', frameEdge]]);
 
     const result = computeOverlayEdges(frameEdges, new Map());
