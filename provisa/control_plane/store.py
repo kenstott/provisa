@@ -23,24 +23,24 @@ class ControlPlaneStore:  # REQ-073
     def register_tenant(self, tenant: Tenant) -> None:
         self._tenants[tenant.id] = tenant
 
-    def get_tenant(self, tenant_id: str) -> Tenant:
+    def get_tenant(self, tenant_id: str) -> Tenant:  # REQ-592
         return self._tenants[tenant_id]
 
-    def register_data_plane(self, dp: DataPlane) -> None:
+    def register_data_plane(self, dp: DataPlane) -> None:  # REQ-506
         self._data_planes[dp.id] = dp
 
-    def get_data_plane(self, dp_id: str) -> DataPlane:
+    def get_data_plane(self, dp_id: str) -> DataPlane:  # REQ-506
         return self._data_planes[dp_id]
 
-    def route_query(self, tenant_id: str) -> DataPlane:
+    def route_query(self, tenant_id: str) -> DataPlane:  # REQ-506
         tenant = self._tenants[tenant_id]
         dp = self._data_planes[tenant.data_plane_id]
         if not dp.active:
             raise ValueError(f"DataPlane {dp.id!r} for tenant {tenant_id!r} is not active")
         return dp
 
-    def list_tenants(self) -> list[Tenant]:
+    def list_tenants(self) -> list[Tenant]:  # REQ-592
         return list(self._tenants.values())
 
-    def list_data_planes(self) -> list[DataPlane]:
+    def list_data_planes(self) -> list[DataPlane]:  # REQ-506
         return list(self._data_planes.values())

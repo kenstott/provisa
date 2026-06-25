@@ -30,13 +30,13 @@ def _require_multitenancy() -> None:
         raise HTTPException(status_code=403, detail="multitenancy is not enabled")
 
 
-class RegisterTenantRequest(BaseModel):
+class RegisterTenantRequest(BaseModel):  # REQ-457
     id: str
     name: str
     data_plane_id: str
 
 
-class RegisterDataPlaneRequest(BaseModel):
+class RegisterDataPlaneRequest(BaseModel):  # REQ-456
     id: str
     tenant_id: str
     endpoint: str
@@ -44,7 +44,7 @@ class RegisterDataPlaneRequest(BaseModel):
 
 
 @router.post("/tenants")
-def register_tenant(body: RegisterTenantRequest) -> dict:  # REQ-073
+def register_tenant(body: RegisterTenantRequest) -> dict:  # REQ-073, REQ-592
     _require_multitenancy()
     tenant = Tenant(
         id=body.id,
@@ -62,7 +62,7 @@ def register_tenant(body: RegisterTenantRequest) -> dict:  # REQ-073
 
 
 @router.get("/tenants")
-def list_tenants() -> list[dict]:  # REQ-073
+def list_tenants() -> list[dict]:  # REQ-073, REQ-592
     _require_multitenancy()
     return [
         {"id": t.id, "name": t.name, "data_plane_id": t.data_plane_id, "created_at": t.created_at}
@@ -83,7 +83,7 @@ def route_tenant(tenant_id: str) -> dict:  # REQ-073
 
 
 @router.post("/data-planes")
-def register_data_plane(body: RegisterDataPlaneRequest) -> dict:  # REQ-073
+def register_data_plane(body: RegisterDataPlaneRequest) -> dict:  # REQ-073, REQ-506
     _require_multitenancy()
     dp = DataPlane(
         id=body.id,
@@ -103,7 +103,7 @@ def register_data_plane(body: RegisterDataPlaneRequest) -> dict:  # REQ-073
 
 
 @router.get("/data-planes")
-def list_data_planes() -> list[dict]:  # REQ-073
+def list_data_planes() -> list[dict]:  # REQ-073, REQ-506
     _require_multitenancy()
     return [
         {

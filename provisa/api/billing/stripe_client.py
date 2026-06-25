@@ -13,7 +13,7 @@ import stripe
 from stripe._base_address import BaseAddresses
 
 
-def get_stripe_client() -> stripe.StripeClient:
+def get_stripe_client() -> stripe.StripeClient:  # REQ-460
     api_key = os.environ["STRIPE_API_KEY"]
     base_url = os.environ.get("STRIPE_BASE_URL")
     if base_url:

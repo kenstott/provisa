@@ -52,7 +52,7 @@ def _row_to_tenant(row) -> Tenant:
     )
 
 
-async def init_billing_schema(pool: asyncpg.Pool) -> None:
+async def init_billing_schema(pool: asyncpg.Pool) -> None:  # REQ-592
     async with pool.acquire() as conn:
         await conn.execute("SELECT pg_advisory_lock(7338)")
         try:
@@ -61,7 +61,7 @@ async def init_billing_schema(pool: asyncpg.Pool) -> None:
             await conn.execute("SELECT pg_advisory_unlock(7338)")
 
 
-async def create_tenant(pool: asyncpg.Pool, kms_key_arn: str) -> Tenant:
+async def create_tenant(pool: asyncpg.Pool, kms_key_arn: str) -> Tenant:  # REQ-592
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
@@ -74,7 +74,7 @@ async def create_tenant(pool: asyncpg.Pool, kms_key_arn: str) -> Tenant:
     return _row_to_tenant(row)
 
 
-async def get_tenant(pool: asyncpg.Pool, tenant_id: str) -> Tenant | None:
+async def get_tenant(pool: asyncpg.Pool, tenant_id: str) -> Tenant | None:  # REQ-592
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
@@ -88,7 +88,7 @@ async def get_tenant(pool: asyncpg.Pool, tenant_id: str) -> Tenant | None:
     return _row_to_tenant(row)
 
 
-async def get_tenant_by_stripe_customer(
+async def get_tenant_by_stripe_customer(  # REQ-592
     pool: asyncpg.Pool, stripe_customer_id: str
 ) -> Tenant | None:
     async with pool.acquire() as conn:
@@ -104,7 +104,7 @@ async def get_tenant_by_stripe_customer(
     return _row_to_tenant(row)
 
 
-async def update_tenant_plan(
+async def update_tenant_plan(  # REQ-592
     pool: asyncpg.Pool, tenant_id: str, plan: str, source_limit: int
 ) -> None:
     async with pool.acquire() as conn:
@@ -116,7 +116,7 @@ async def update_tenant_plan(
         )
 
 
-async def update_tenant_stripe_customer(
+async def update_tenant_stripe_customer(  # REQ-592
     pool: asyncpg.Pool, tenant_id: str, stripe_customer_id: str
 ) -> None:
     async with pool.acquire() as conn:
@@ -127,7 +127,7 @@ async def update_tenant_stripe_customer(
         )
 
 
-async def upsert_config_entity(
+async def upsert_config_entity(  # REQ-458
     pool: asyncpg.Pool,
     tenant_id: str,
     entity_type: str,
@@ -156,7 +156,9 @@ async def upsert_config_entity(
         )
 
 
-async def fetch_config_entities(pool: asyncpg.Pool, tenant_id: str, entity_type: str) -> list[dict]:
+async def fetch_config_entities(
+    pool: asyncpg.Pool, tenant_id: str, entity_type: str
+) -> list[dict]:  # REQ-458
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """

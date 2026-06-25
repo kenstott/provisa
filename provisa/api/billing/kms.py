@@ -34,7 +34,7 @@ async def create_tenant_key(tenant_id: str) -> str:  # REQ-073, REQ-074
     return response["KeyMetadata"]["Arn"]
 
 
-async def generate_data_key(key_arn: str) -> tuple[bytes, bytes]:
+async def generate_data_key(key_arn: str) -> tuple[bytes, bytes]:  # REQ-458
     """Returns (plaintext_dek, encrypted_dek). Caller must zero plaintext_dek immediately after use."""
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(
@@ -44,7 +44,7 @@ async def generate_data_key(key_arn: str) -> tuple[bytes, bytes]:
     return response["Plaintext"], response["CiphertextBlob"]
 
 
-async def decrypt_data_key(key_arn: str, encrypted_dek: bytes) -> bytes:
+async def decrypt_data_key(key_arn: str, encrypted_dek: bytes) -> bytes:  # REQ-458
     """Decrypt an encrypted DEK. Returns plaintext DEK."""
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(
@@ -54,7 +54,7 @@ async def decrypt_data_key(key_arn: str, encrypted_dek: bytes) -> bytes:
     return response["Plaintext"]
 
 
-def aes_encrypt(plaintext: bytes, dek: bytes) -> tuple[bytes, bytes]:
+def aes_encrypt(plaintext: bytes, dek: bytes) -> tuple[bytes, bytes]:  # REQ-458
     """Returns (iv, ciphertext)."""
     iv = os.urandom(12)
     aesgcm = AESGCM(dek)
@@ -62,7 +62,7 @@ def aes_encrypt(plaintext: bytes, dek: bytes) -> tuple[bytes, bytes]:
     return iv, ciphertext
 
 
-def aes_decrypt(iv: bytes, ciphertext: bytes, dek: bytes) -> bytes:
+def aes_decrypt(iv: bytes, ciphertext: bytes, dek: bytes) -> bytes:  # REQ-458
     """Returns plaintext."""
     aesgcm = AESGCM(dek)
     return aesgcm.decrypt(iv, ciphertext, None)
