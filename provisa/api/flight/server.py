@@ -94,7 +94,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143
     # Flight SQL handshake
     # ------------------------------------------------------------------
 
-    def do_handshake(
+    def do_handshake(  # REQ-608
         self,
         context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         payload: Iterable[bytes],
@@ -129,7 +129,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143
     # get_flight_info — metadata for a specific flight
     # ------------------------------------------------------------------
 
-    def get_flight_info(
+    def get_flight_info(  # REQ-608
         self,
         context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -155,7 +155,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143
     # get_schema — Arrow schema for a catalog table
     # ------------------------------------------------------------------
 
-    def get_schema(
+    def get_schema(  # REQ-608
         self,
         context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -234,7 +234,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143
 
         return self._do_get_catalog(ticket)
 
-    def do_action(
+    def do_action(  # REQ-608
         self,
         context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         action: flight.Action,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

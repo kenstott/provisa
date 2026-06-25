@@ -158,7 +158,7 @@ def _infer_bvtype(rows: list[tuple], col_idx: int) -> BVType:
     return BVType.TEXT
 
 
-class ProvisaQueryResult(BVQueryResult):
+class ProvisaQueryResult(BVQueryResult):  # REQ-529
     """Adapts TrinoResult (or DuckDB catalog result) to the buenavista QueryResult ABC."""
 
     def __init__(self, trino_result: TrinoResult, original_sql: str = ""):
@@ -249,7 +249,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         return ProvisaQueryResult(result, stripped)
 
 
-class ProvisaConnection(Connection):
+class ProvisaConnection(Connection):  # REQ-529
     def new_session(self) -> ProvisaSession:
         return ProvisaSession()
 
@@ -509,7 +509,7 @@ class ProvisaServer(BuenaVistaServer):  # REQ-001, REQ-266
         return True
 
 
-def start_pgwire_server(
+def start_pgwire_server(  # REQ-527
     host: str,
     port: int,
     ssl_ctx: ssl.SSLContext | None,

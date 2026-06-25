@@ -42,13 +42,13 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
             return f"{self._tenant_id}:{mv_id}"
         return mv_id
 
-    def register(self, mv: MVDefinition) -> None:
+    def register(self, mv: MVDefinition) -> None:  # REQ-543
         self._mvs[self._key(mv.id)] = mv
 
     def unregister(self, mv_id: str) -> None:  # REQ-234
         self._mvs.pop(self._key(mv_id), None)
 
-    def get(self, mv_id: str) -> MVDefinition | None:
+    def get(self, mv_id: str) -> MVDefinition | None:  # REQ-543
         return self._mvs.get(self._key(mv_id))
 
     def get_fresh(self) -> list[MVDefinition]:  # REQ-199
@@ -60,7 +60,7 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
         now = time.time()
         return [mv for mv in self._mvs.values() if mv.enabled and mv.is_fresh_at(now)]
 
-    def get_enabled(self) -> list[MVDefinition]:
+    def get_enabled(self) -> list[MVDefinition]:  # REQ-543
         """Return all enabled MVs (for refresh scheduler)."""
         return [mv for mv in self._mvs.values() if mv.enabled]
 
@@ -77,7 +77,7 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
                 result.append(mv)
         return result
 
-    def mark_stale(self, table_name: str) -> list[str]:
+    def mark_stale(self, table_name: str) -> list[str]:  # REQ-543
         """Mark all MVs referencing a table as stale. Returns list of affected MV IDs."""
         affected = []
         for mv in self._mvs.values():
@@ -86,12 +86,12 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
                 affected.append(mv.id)
         return affected
 
-    def mark_refreshing(self, mv_id: str) -> None:
+    def mark_refreshing(self, mv_id: str) -> None:  # REQ-543
         mv = self._mvs.get(self._key(mv_id))
         if mv:
             mv.status = MVStatus.REFRESHING
 
-    def mark_refreshed(self, mv_id: str, row_count: int) -> None:
+    def mark_refreshed(self, mv_id: str, row_count: int) -> None:  # REQ-543
         mv = self._mvs.get(self._key(mv_id))
         if mv:
             mv.status = MVStatus.FRESH
@@ -99,11 +99,11 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
             mv.row_count = row_count
             mv.last_error = None
 
-    def mark_refresh_failed(self, mv_id: str, error: str) -> None:
+    def mark_refresh_failed(self, mv_id: str, error: str) -> None:  # REQ-543
         mv = self._mvs.get(self._key(mv_id))
         if mv:
             mv.status = MVStatus.STALE
             mv.last_error = error
 
-    def all(self) -> list[MVDefinition]:
+    def all(self) -> list[MVDefinition]:  # REQ-543
         return list(self._mvs.values())

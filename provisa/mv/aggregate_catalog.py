@@ -41,14 +41,14 @@ class AggregateMVCatalog:  # REQ-198, REQ-199
         # {base_table: [MVDefinition]}
         self._by_table: dict[str, list[MVDefinition]] = {}
 
-    def register(self, mv: MVDefinition) -> None:
+    def register(self, mv: MVDefinition) -> None:  # REQ-483
         """Register an MV that serves aggregate queries."""
         if not mv.serves_aggregates:
             return
         for table in mv.source_tables:
             self._by_table.setdefault(table, []).append(mv)
 
-    def unregister(self, mv_id: str) -> None:
+    def unregister(self, mv_id: str) -> None:  # REQ-483
         """Remove an MV from the catalog by ID."""
         for table, mvs in self._by_table.items():
             self._by_table[table] = [m for m in mvs if m.id != mv_id]

@@ -1270,7 +1270,7 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
     return "PASS_THROUGH"
 
 
-class CatalogIndex:
+class CatalogIndex:  # REQ-532
     """Single source of truth for all OID/attnum/name mappings used by catalog populate functions."""
 
     __slots__ = (
@@ -2975,7 +2975,7 @@ def _handle_current_setting(sql: str):
     return QueryResult(rows=[(value,)], column_names=["current_setting"])
 
 
-def answer(sql: str, role_id: str, state):
+def answer(sql: str, role_id: str, state):  # REQ-532
     """Return a synthetic QueryResult for intercepted catalog/SET/SHOW queries."""
     from provisa.executor.trino import QueryResult
 

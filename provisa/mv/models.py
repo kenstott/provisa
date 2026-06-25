@@ -38,7 +38,7 @@ class JoinPattern:  # REQ-158
 
 
 @dataclass(frozen=True)
-class SDLConfig:
+class SDLConfig:  # REQ-653
     """Configuration for exposing an MV in the GraphQL SDL."""
 
     domain_id: str
@@ -87,7 +87,7 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
             self.target_schema = f"{self.tenant_id}_mv"
 
     @property
-    def is_fresh(self) -> bool:
+    def is_fresh(self) -> bool:  # REQ-483
         return self.status == MVStatus.FRESH
 
     def is_fresh_at(self, now: float) -> bool:
@@ -102,7 +102,7 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
         return (now - self.last_refresh_at) < self.refresh_interval
 
     @property
-    def is_join_pattern(self) -> bool:
+    def is_join_pattern(self) -> bool:  # REQ-653
         return self.join_pattern is not None
 
     @property

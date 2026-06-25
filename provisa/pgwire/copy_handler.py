@@ -99,7 +99,7 @@ _COPY_DONE = b"c"
 _COPY_FAIL = b"f"
 
 
-def is_copy_sql(sql: str) -> bool:
+def is_copy_sql(sql: str) -> bool:  # REQ-585
     return bool(_COPY_RE.match(sql))
 
 
