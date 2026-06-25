@@ -11,6 +11,8 @@
 import { useState, useCallback } from "react";
 import type { FrameData, GNode, GEdge } from "./graph-model";
 
+export type Favorite = { id: string; query: string; label: string; ts: number };
+
 // ── localStorage-backed state ─────────────────────────────────────────────────
 export function useLocalStorage<T>(
   key: string,
@@ -63,6 +65,7 @@ interface SerializedFrame {
   columns: string[];
   error?: string;
   elapsed?: number;
+  pinned?: boolean;
 }
 
 function serializeFrame(f: FrameData): SerializedFrame {
@@ -76,6 +79,7 @@ function serializeFrame(f: FrameData): SerializedFrame {
     rows: f.rows,
     columns: f.columns,
     elapsed: f.elapsed,
+    pinned: f.pinned,
   };
 }
 
