@@ -151,12 +151,21 @@ def _span_attrs_from_semantic_sql(
 
 def _federation_error(exc: Exception) -> str:
     """Format execution errors without leaking the Trino backend name."""
+    import re as _re_mod
+
+    def _scrub(s: str) -> str:
+        return _re_mod.sub(r"\bTrino\b", "the query engine", s, flags=_re_mod.IGNORECASE)
+
     if isinstance(exc, _trino_exc.TrinoQueryError):
-        parts = [f"type={exc.error_type}", f"name={exc.error_name}", f'message="{exc.message}"']
+        parts = [
+            f"type={exc.error_type}",
+            f"name={exc.error_name}",
+            f'message="{_scrub(exc.message)}"',
+        ]
         if exc.query_id:
             parts.append(f"query_id={exc.query_id}")
         return "FederationUserError(" + ", ".join(parts) + ")"
-    return str(exc)
+    return _scrub(str(exc))
 
 
 def _detect_procedure(query: str) -> str | None:
@@ -215,7 +224,9 @@ async def _execute_multi_call(
             merged_graph_vars.update(gvars_i)
         except Exception as exc:
             log.exception("Cypher multi-CALL execution failed")
-            return JSONResponse(status_code=500, content={"error": f"Execution failed: {exc}"})
+            return JSONResponse(
+                status_code=500, content={"error": f"Execution failed: {_federation_error(exc)}"}
+            )
 
     combined: list[dict] = [{}]
     for rs in all_rows:
@@ -647,7 +658,7 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     "id_column": _cql_prop(n.id_column),
                     "native_filter_columns": sorted(
                         (
-                            {"name": k[4:] if k.startswith("_nf_") else k, "type": v}
+                            {"name": _cql_prop(k[4:] if k.startswith("_nf_") else k), "type": v}
                             for k, v in {
                                 (kk[4:] if kk.startswith("_nf_") else kk): vv
                                 for kk, vv in n.native_filter_columns.items()
@@ -833,12 +844,22 @@ async def neo4j_export(body: Neo4jExportRequest) -> JSONResponse:
     statements: list[str] = []
 
     for n in body.nodes:
-        table_label = n.get("tableLabel", "Node")
+        table_label = n.get("tableLabel", "")
+        full_label = n.get("label", "")
+        # Domain-union nodes omit tableLabel; reconstruct from compound label "Domain:Table"
+        parts = full_label.split(":", 1) if ":" in full_label else [full_label]
+        effective_table = table_label or (parts[1] if len(parts) == 2 else full_label) or "Node"
+        effective_domain = parts[0] if len(parts) == 2 else ""
         node_id = n.get("id")
         props: dict = n.get("properties", {})
         set_parts = ", ".join(f"{k}: {_neo4j_cypher_literal(v)}" for k, v in props.items())
         set_str = f" SET n += {{{set_parts}}}" if set_parts else ""
-        statements.append(f"MERGE (n:`{table_label}` {{_provisa_id: {node_id}}}){set_str}")
+        label_str = (
+            f"`{effective_table}`:`{effective_domain}`"
+            if effective_domain and effective_domain != effective_table
+            else f"`{effective_table}`"
+        )
+        statements.append(f"MERGE (n:{label_str} {{_provisa_id: {node_id}}}){set_str}")
 
     for e in body.edges:
         start = e.get("start")
@@ -1001,6 +1022,15 @@ async def _execute_with_api(
     # Materialize every API-backed table into its Trino cache slot.
     cache_rewrites: dict[str, tuple] = {}  # physical table name → (CacheLocation, cache_tbl)
     for table_name, endpoint in api_endpoints_in_sql:
+        _response_cols = [c for c in endpoint.columns if c.param_type is None]
+        if not _response_cols:
+            from provisa.compiler.nf_extractor import drop_union_branches_for_table
+
+            exec_sql = drop_union_branches_for_table(exec_sql, table_name)
+            log.warning(
+                "[API CACHE] %s has no response columns — dropping union branch", table_name
+            )
+            continue
         source_id: Any = getattr(endpoint, "source_id", None)
         api_source = getattr(state, "api_sources", {}).get(source_id)
 
@@ -1014,6 +1044,24 @@ async def _execute_with_api(
                 valid_nf_keys.add(c.name)
                 valid_nf_keys.add(f"_{c.name}")
         url_params = {param_name_map.get(k, k): v for k, v in nf_args.items() if k in valid_nf_keys}
+
+        _unfilled_path_params = [
+            c.param_name or c.name
+            for c in endpoint.columns
+            if c.param_type is not None
+            and c.param_type.value == "path"
+            and (c.param_name or c.name) not in url_params
+        ]
+        if _unfilled_path_params:
+            from provisa.compiler.nf_extractor import drop_union_branches_for_table
+
+            exec_sql = drop_union_branches_for_table(exec_sql, table_name)
+            log.warning(
+                "[API CACHE] %s missing path params %s — dropping union branch",
+                table_name,
+                _unfilled_path_params,
+            )
+            continue
 
         _cc = getattr(api_source, "cache_catalog", None) if api_source else None
         _cs = getattr(api_source, "cache_schema", "api_cache") if api_source else "api_cache"
