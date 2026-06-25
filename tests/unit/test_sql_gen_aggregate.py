@@ -39,6 +39,7 @@ def _build_schema_and_ctx(
                 "schema_name": "public",
                 "table_name": "orders",
                 "governance": "pre-approved",
+                "enable_aggregates": True,
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "analyst"]},
                     {"column_name": "customer_id", "visible_to": ["admin", "analyst"]},
@@ -230,6 +231,7 @@ class TestAggregate:
                 "schema_name": "public",
                 "table_name": "orders",
                 "governance": "pre-approved",
+                "enable_aggregates": True,
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "limited"]},
                     {"column_name": "amount", "visible_to": ["admin"]},
@@ -284,6 +286,7 @@ class TestAggregate:
                 "schema_name": "public",
                 "table_name": "tags",
                 "governance": "pre-approved",
+                "enable_aggregates": True,
                 "columns": [
                     {"column_name": "name", "visible_to": ["admin"]},
                     {"column_name": "category", "visible_to": ["admin"]},
@@ -365,6 +368,7 @@ class TestAggregate:
                 "schema_name": "public",
                 "table_name": "orders",
                 "governance": "pre-approved",
+                "enable_aggregates": True,
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
                     {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -479,6 +483,7 @@ class TestAggregate:
                 "schema_name": "public",
                 "table_name": "orders",
                 "governance": "pre-approved",
+                "enable_aggregates": True,
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "analyst"]},
                     {"column_name": "amount", "visible_to": ["admin"]},

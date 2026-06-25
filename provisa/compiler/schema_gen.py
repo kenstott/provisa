@@ -14,6 +14,8 @@ No third-party GraphQL framework (REQ-007). Uses graphql-core directly.
 Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 """
 
+# Requirements: REQ-007, REQ-008, REQ-010, REQ-021, REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-039, REQ-133, REQ-134, REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-196, REQ-197, REQ-200, REQ-201, REQ-202, REQ-205, REQ-206, REQ-207, REQ-209, REQ-210, REQ-212, REQ-213, REQ-218, REQ-219, REQ-221, REQ-253, REQ-259, REQ-260, REQ-363
+
 import re
 from dataclasses import dataclass, field
 from typing import cast
@@ -40,7 +42,11 @@ from graphql import (
 )
 from graphql.language import DirectiveLocation
 
-from provisa.compiler.aggregate_gen import build_aggregate_types
+from provisa.compiler.aggregate_gen import (
+    build_agg_fields_type,
+    build_aggregate_types,
+    build_having_exp_type,
+)
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import (
@@ -114,6 +120,8 @@ class _TableInfo:
     gql_convention_override: str | None = None  # None = use naming.active_gql_convention()
     relay_pagination: bool = False  # resolved relay flag for this table
     gql_fields: dict[str, GraphQLField] = field(default_factory=dict)
+    enable_aggregates: bool = False  # REQ-653: table-level opt-in for _aggregate root field
+    enable_group_by: bool = False  # REQ-653: table-level opt-in for _group_by root field
 
 
 # --- GraphQL enum for ORDER BY direction ---
@@ -304,7 +312,7 @@ def _build_connection_types(
 _IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = frozenset({"meta", "ops"})
 
 
-def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
+def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-039, REQ-363
     """Filter tables by role's domain access. Build per-table metadata."""
     role = si.role
     accessible = set(role["domain_access"])
@@ -386,13 +394,15 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
                 description=table.get("description"),
                 gql_convention_override=resolved_conv,
                 relay_pagination=resolved_relay,
+                enable_aggregates=bool(table.get("enable_aggregates", False)),
+                enable_group_by=bool(table.get("enable_group_by", False)),
             )
         )
 
     return result
 
 
-def _assign_names(
+def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-416
     tables: list[_TableInfo],
     naming_rules: list[dict],
     domain_prefix: bool = False,
@@ -469,7 +479,7 @@ def _build_object_type(
     return obj_type
 
 
-def _build_column_fields(
+def _build_column_fields(  # REQ-008, REQ-010, REQ-039, REQ-155, REQ-156, REQ-221
     table: _TableInfo,
     override: str | None = None,
     enum_types: dict | None = None,
@@ -544,7 +554,7 @@ def _gql_col_name(col: dict, table: _TableInfo) -> str:
     return conv if conv else raw
 
 
-def _build_where_input(
+def _build_where_input(  # REQ-008, REQ-221
     table: _TableInfo,
     type_name: str,
     enum_types: dict | None = None,
@@ -597,7 +607,7 @@ def _build_where_input(
     return where_input
 
 
-def _build_order_by_inputs(
+def _build_order_by_inputs(  # REQ-200, REQ-201, REQ-202
     tables: list[_TableInfo],
     visible_rels: list[dict],
     table_lookup: dict[int, _TableInfo],
@@ -768,7 +778,7 @@ def _json_schema_to_gql_type(schema: dict, type_name: str):
     return obj
 
 
-def _build_action_fields(
+def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-210, REQ-304, REQ-305, REQ-360, REQ-361, REQ-362
     si: SchemaInput,
     obj_types: dict[int, GraphQLObjectType],
     tables: list["_TableInfo"],
@@ -920,7 +930,7 @@ def _build_action_fields(
 _CDC_SOURCES: frozenset[str] = frozenset({"postgresql", "mongodb", "kafka", "debezium"})
 
 
-def _build_subscription_fields(
+def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
     si: SchemaInput,
     tables: list[_TableInfo],
     gql_types: dict[int, GraphQLObjectType],
@@ -1146,8 +1156,11 @@ def _build_aggregate_query_field(
     t: _TableInfo,
     gql_type: GraphQLObjectType,
     enum_types: dict,
+    agg_fields_type: GraphQLObjectType | None = None,
 ) -> tuple[str, GraphQLField] | None:
-    agg_type = build_aggregate_types(t.type_name, t.visible_columns, t.column_metadata, gql_type)
+    agg_type = build_aggregate_types(
+        t.type_name, t.visible_columns, t.column_metadata, gql_type, agg_fields_type
+    )
     if not agg_type:
         return None
     agg_args: dict[str, GraphQLArgument] = {}
@@ -1159,6 +1172,74 @@ def _build_aggregate_query_field(
     else:
         agg_field_name = f"{t.field_name}_aggregate"
     return agg_field_name, GraphQLField(agg_type, args=agg_args)
+
+
+def _build_group_by_query_field(
+    t: _TableInfo,
+    gql_type: GraphQLObjectType,
+    where_type: GraphQLInputObjectType | None,
+    order_by_type: GraphQLInputObjectType | None,
+    distinct_enum: GraphQLEnumType | None,
+    enum_types: dict,
+    agg_fields_type: GraphQLObjectType | None = None,
+) -> tuple[str, GraphQLField] | None:
+    """Build {field_name}_group_by root query field (REQ-654, REQ-655)."""
+    by_enum = distinct_enum or _build_distinct_on_enum(t)
+    if not by_enum:
+        return None
+
+    if agg_fields_type is None:
+        agg_fields_type = build_agg_fields_type(t.type_name, t.visible_columns, t.column_metadata)
+
+    # REQ-655: aggregates field accepts where: arg for FILTER (WHERE ...) per function
+    agg_where = _build_where_input(t, f"{t.type_name}GroupByAgg", enum_types=enum_types)
+    agg_field_args: dict[str, GraphQLArgument] = {}
+    if agg_where:
+        agg_field_args["where"] = GraphQLArgument(agg_where)
+
+    aggregates_field = GraphQLField(
+        GraphQLNonNull(agg_fields_type),
+        args=agg_field_args,
+    )
+
+    group_by_row_type = cast(
+        GraphQLObjectType,
+        GraphQLObjectType(
+            f"{t.type_name}GroupByRow",
+            lambda agg=aggregates_field: {
+                "groupKey": GraphQLField(GraphQLNonNull(cast(GraphQLScalarType, JSONScalar))),
+                "aggregates": agg,
+            },
+        ),
+    )
+
+    # REQ-655: having: arg on root field for SQL HAVING
+    having_exp = build_having_exp_type(t.type_name, t.visible_columns, t.column_metadata)
+
+    gb_args: dict[str, GraphQLArgument] = {
+        "by": GraphQLArgument(GraphQLNonNull(GraphQLList(GraphQLNonNull(by_enum)))),
+        "limit": GraphQLArgument(GraphQLInt),
+        "offset": GraphQLArgument(GraphQLInt),
+    }
+    if where_type:
+        gb_args["where"] = GraphQLArgument(where_type)
+    if order_by_type:
+        gb_args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(order_by_type)))
+    if distinct_enum:
+        gb_args["distinct_on"] = GraphQLArgument(GraphQLList(GraphQLNonNull(distinct_enum)))
+    if having_exp:
+        gb_args["having"] = GraphQLArgument(having_exp)
+
+    conv = t.gql_convention_override or active_gql_convention()
+    if conv == "apollo_graphql":
+        gb_field_name = f"{t.field_name}GroupBy"
+    else:
+        gb_field_name = f"{t.field_name}_group_by"
+
+    return gb_field_name, GraphQLField(
+        GraphQLNonNull(GraphQLList(GraphQLNonNull(group_by_row_type))),
+        args=gb_args,
+    )
 
 
 def _build_connection_query_field(
@@ -1183,7 +1264,7 @@ def _build_connection_query_field(
     return f"{t.field_name}_connection", GraphQLField(conn_type, args=conn_args)
 
 
-def _build_mutation_fields_for_table(
+def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-212
     t: _TableInfo,
     enum_types: dict,
 ) -> dict[str, GraphQLField]:
@@ -1256,7 +1337,7 @@ def _build_mutation_fields_for_table(
     return result
 
 
-def generate_schema(si: SchemaInput) -> GraphQLSchema:
+def generate_schema(si: SchemaInput) -> GraphQLSchema:  # REQ-007, REQ-008, REQ-021, REQ-133, REQ-134, REQ-196, REQ-197, REQ-213, REQ-218, REQ-253
     """Generate a graphql-core schema for a specific role.
 
     The schema includes:
@@ -1355,13 +1436,35 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         _build_native_filter_args(t, args)
         query_fields[t.field_name] = GraphQLField(GraphQLList(GraphQLNonNull(gql_type)), args=args)
 
-        # REQ-197: per-role aggregate gating. Aggregations are allowed by default; a role
-        # carrying the "no_aggregations" capability has the <table>_aggregate root field
-        # suppressed entirely. Modeled on the existing capabilities array (no schema change).
-        if "no_aggregations" not in (si.role.get("capabilities") or []):
-            agg_result = _build_aggregate_query_field(t, gql_type, si.enum_types)
+        # Build agg_fields_type once to avoid duplicate GraphQL type names when both flags on.
+        shared_agg_fields_type = None
+        if t.enable_aggregates or t.enable_group_by:
+            shared_agg_fields_type = build_agg_fields_type(
+                t.type_name, t.visible_columns, t.column_metadata
+            )
+
+        # REQ-653: table-level enable_aggregates gates the _aggregate root field.
+        # REQ-197: role-level "no_aggregations" capability remains as an additional override.
+        if t.enable_aggregates and "no_aggregations" not in (si.role.get("capabilities") or []):
+            agg_result = _build_aggregate_query_field(
+                t, gql_type, si.enum_types, shared_agg_fields_type
+            )
             if agg_result:
                 query_fields[agg_result[0]] = agg_result[1]
+
+        # REQ-653/654: table-level enable_group_by gates the _group_by root field.
+        if t.enable_group_by:
+            gb_result = _build_group_by_query_field(
+                t,
+                gql_type,
+                where_types.get(t.table_id),
+                order_by_types.get(t.table_id),
+                distinct_enums.get(t.table_id),
+                si.enum_types,
+                shared_agg_fields_type,
+            )
+            if gb_result:
+                query_fields[gb_result[0]] = gb_result[1]
 
         if t.relay_pagination:
             conn_name, conn_field = _build_connection_query_field(

@@ -13,6 +13,8 @@
 Generates <Table>_aggregate root query fields with count, sum, avg, min, max.
 """
 
+# Requirements: REQ-196, REQ-197
+
 from __future__ import annotations
 
 from typing import cast
@@ -20,6 +22,8 @@ from typing import cast
 from graphql import (
     GraphQLField,
     GraphQLFloat as _GraphQLFloat,
+    GraphQLInputField,
+    GraphQLInputObjectType,
     GraphQLInt as _GraphQLInt,
     GraphQLList,
     GraphQLNonNull,
@@ -31,7 +35,7 @@ GraphQLFloat: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLFloat)
 GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
 
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.type_map import trino_to_graphql
+from provisa.compiler.type_map import FILTER_TYPE_MAP, trino_to_graphql
 
 # Trino types eligible for SUM/AVG (numeric only)
 NUMERIC_TRINO_TYPES = {
@@ -69,20 +73,13 @@ def _is_comparable(trino_type: str) -> bool:
     return _base_type(trino_type) in COMPARABLE_TRINO_TYPES
 
 
-def build_aggregate_types(
-    type_name: str,
+def _classify_columns(
     visible_columns: list[dict],
     column_metadata: dict[str, ColumnMetadata],
-    row_type: GraphQLObjectType,
-) -> GraphQLObjectType | None:
-    """Build <Table>Aggregate type with aggregate fields and nodes.
-
-    Returns None if no columns are eligible for aggregation.
-    """
-    # Classify columns
-    numeric_cols: list[tuple[str, str]] = []  # (col_name, trino_type)
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Return (numeric_cols, comparable_cols) as (col_name, trino_type) tuples."""
+    numeric_cols: list[tuple[str, str]] = []
     comparable_cols: list[tuple[str, str]] = []
-
     for col in visible_columns:
         col_name = col["column_name"]
         meta = column_metadata.get(col_name.lower())
@@ -92,24 +89,27 @@ def build_aggregate_types(
             numeric_cols.append((col_name, meta.data_type))
         if _is_comparable(meta.data_type):
             comparable_cols.append((col_name, meta.data_type))
+    return numeric_cols, comparable_cols
 
-    # Build sum fields type (numeric only)
+
+def build_agg_fields_type(  # REQ-196
+    type_name: str,
+    visible_columns: list[dict],
+    column_metadata: dict[str, ColumnMetadata],
+) -> GraphQLObjectType:
+    """Build {TypeName}AggregateFields type (count, sum, avg, stddev, variance, min, max)."""
+    numeric_cols, comparable_cols = _classify_columns(visible_columns, column_metadata)
+
     sum_type: GraphQLObjectType | None = None
     if numeric_cols:
-        sum_fields = {}
-        for col_name, trino_type in numeric_cols:
-            sum_fields[col_name] = GraphQLField(GraphQLFloat)
+        sum_fields = {col_name: GraphQLField(GraphQLFloat) for col_name, _ in numeric_cols}
         sum_type = cast(GraphQLObjectType, GraphQLObjectType(f"{type_name}SumFields", lambda f=sum_fields: f))
 
-    # Build avg fields type (numeric only)
     avg_type: GraphQLObjectType | None = None
     if numeric_cols:
-        avg_fields = {}
-        for col_name, trino_type in numeric_cols:
-            avg_fields[col_name] = GraphQLField(GraphQLFloat)
+        avg_fields = {col_name: GraphQLField(GraphQLFloat) for col_name, _ in numeric_cols}
         avg_type = cast(GraphQLObjectType, GraphQLObjectType(f"{type_name}AvgFields", lambda f=avg_fields: f))
 
-    # Build stddev/variance fields types (REQ-196, numeric only)
     stddev_type: GraphQLObjectType | None = None
     variance_type: GraphQLObjectType | None = None
     if numeric_cols:
@@ -124,7 +124,6 @@ def build_aggregate_types(
             GraphQLObjectType(f"{type_name}VarianceFields", lambda f=variance_fields: f),
         )
 
-    # Build min fields type (comparable)
     min_type: GraphQLObjectType | None = None
     if comparable_cols:
         min_fields = {}
@@ -133,7 +132,6 @@ def build_aggregate_types(
             min_fields[col_name] = GraphQLField(gql_type)  # type: ignore[arg-type]
         min_type = cast(GraphQLObjectType, GraphQLObjectType(f"{type_name}MinFields", lambda f=min_fields: f))
 
-    # Build max fields type (comparable)
     max_type: GraphQLObjectType | None = None
     if comparable_cols:
         max_fields = {}
@@ -142,7 +140,6 @@ def build_aggregate_types(
             max_fields[col_name] = GraphQLField(gql_type)  # type: ignore[arg-type]
         max_type = cast(GraphQLObjectType, GraphQLObjectType(f"{type_name}MaxFields", lambda f=max_fields: f))
 
-    # Build AggregateFields type
     agg_inner_fields: dict[str, GraphQLField] = {
         "count": GraphQLField(GraphQLNonNull(GraphQLInt)),
     }
@@ -159,12 +156,82 @@ def build_aggregate_types(
     if max_type:
         agg_inner_fields["max"] = GraphQLField(max_type)
 
-    agg_fields_type = cast(GraphQLObjectType, GraphQLObjectType(
+    return cast(GraphQLObjectType, GraphQLObjectType(
         f"{type_name}AggregateFields",
         lambda f=agg_inner_fields: f,
     ))
 
-    # Build top-level Aggregate type
+
+def build_having_exp_type(  # REQ-197
+    type_name: str,
+    visible_columns: list[dict],
+    column_metadata: dict[str, ColumnMetadata],
+) -> GraphQLInputObjectType | None:
+    """Build {TypeName}HavingExp input type for HAVING clause filtering.
+
+    Mirrors AggregateFields structure but uses comparison operator inputs.
+    """
+    numeric_cols, comparable_cols = _classify_columns(visible_columns, column_metadata)
+
+    int_filter = FILTER_TYPE_MAP.get(GraphQLInt)
+    float_filter = FILTER_TYPE_MAP.get(GraphQLFloat)
+
+    fields: dict[str, GraphQLInputField] = {}
+
+    if int_filter:
+        fields["count"] = GraphQLInputField(int_filter)
+
+    for fname in ("sum", "avg", "stddev", "variance"):
+        if numeric_cols and float_filter:
+            sub_fields = {col_name: GraphQLInputField(float_filter) for col_name, _ in numeric_cols}
+            sub_type = cast(
+                GraphQLInputObjectType,
+                GraphQLInputObjectType(
+                    f"{type_name}HavingExp{fname.capitalize()}",
+                    lambda f=sub_fields: f,
+                ),
+            )
+            fields[fname] = GraphQLInputField(sub_type)
+
+    for fname in ("min", "max"):
+        if comparable_cols:
+            sub_fields: dict[str, GraphQLInputField] = {}
+            for col_name, trino_type in comparable_cols:
+                gql_type = trino_to_graphql(trino_type)
+                scalar = gql_type.of_type if isinstance(gql_type, GraphQLList) else gql_type
+                filter_type = FILTER_TYPE_MAP.get(scalar)  # type: ignore[arg-type]
+                if filter_type:
+                    sub_fields[col_name] = GraphQLInputField(filter_type)
+            if sub_fields:
+                sub_type = cast(
+                    GraphQLInputObjectType,
+                    GraphQLInputObjectType(
+                        f"{type_name}HavingExp{fname.capitalize()}",
+                        lambda f=sub_fields: f,
+                    ),
+                )
+                fields[fname] = GraphQLInputField(sub_type)
+
+    if not fields:
+        return None
+
+    return cast(GraphQLInputObjectType, GraphQLInputObjectType(f"{type_name}HavingExp", lambda f=fields: f))
+
+
+def build_aggregate_types(  # REQ-196
+    type_name: str,
+    visible_columns: list[dict],
+    column_metadata: dict[str, ColumnMetadata],
+    row_type: GraphQLObjectType,
+    agg_fields_type: GraphQLObjectType | None = None,
+) -> GraphQLObjectType | None:
+    """Build <Table>Aggregate type with aggregate fields and nodes.
+
+    Returns None if no columns are eligible for aggregation.
+    """
+    if agg_fields_type is None:
+        agg_fields_type = build_agg_fields_type(type_name, visible_columns, column_metadata)
+
     aggregate_type = cast(GraphQLObjectType, GraphQLObjectType(
         f"{type_name}Aggregate",
         lambda: {

@@ -15,6 +15,8 @@ Double-quoted identifiers, $1-style positional parameters.
 Table aliases (t0, t1, ...) used when JOINs are present.
 """
 
+# Requirements: REQ-007, REQ-008, REQ-009, REQ-010, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035, REQ-036, REQ-037, REQ-066, REQ-151, REQ-152, REQ-153, REQ-196, REQ-197, REQ-198, REQ-199, REQ-252, REQ-253, REQ-259, REQ-262, REQ-263, REQ-264, REQ-265, REQ-301, REQ-367, REQ-372, REQ-393, REQ-403, REQ-411, REQ-412, REQ-416, REQ-423, REQ-426, REQ-429, REQ-478
+
 from __future__ import annotations
 
 import fnmatch as _fnmatch
@@ -212,6 +214,9 @@ class CompiledQuery:
     agg_columns: list[str] = field(default_factory=list)
     table: str = ""
     filters: list[str] = field(default_factory=list)
+    # Group-by query fields (REQ-654)
+    is_group_by: bool = False
+    group_by_columns: list[str] = field(default_factory=list)
     # table_name → {gql_field_name: gql_selection_string} for undeclared graphql_remote OBJECT fields
     gql_remote_extra_selections: dict[str, dict[str, str]] = field(default_factory=dict)
 
@@ -288,6 +293,8 @@ def _register_table_in_ctx(
     }
     ctx.tables[f"{t.field_name}_aggregate"] = meta
     ctx.tables[f"{t.field_name}_connection"] = meta
+    ctx.tables[f"{t.field_name}_group_by"] = meta
+    ctx.tables[f"{t.field_name}GroupBy"] = meta
 
     # Aggregate columns — exclude GQL object columns that have no physical DB column.
     # Virtual GQL fields (e.g. FK-resolved "pet" on inquiries) are not real columns in Trino.
@@ -500,7 +507,7 @@ def _register_ops_synthetic_joins(
             )
 
 
-def build_context(
+def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
 ) -> (
     CompilationContext
@@ -1050,10 +1057,6 @@ def _has_joins(field_node: FieldNode, ctx: CompilationContext, type_name: str) -
 _NESTED_DB_ARGS = frozenset({"where", "order_by", "limit", "offset", "distinct_on"})
 # Args that require LATERAL JOIN — limit is handled inside ARRAY_AGG subquery
 _LATERAL_FORCE_ARGS = frozenset({"where", "order_by", "offset", "distinct_on"})
-
-
-def _has_nested_db_args(field_node: FieldNode) -> bool:
-    return any(arg.name.value in _NESTED_DB_ARGS for arg in field_node.arguments)
 
 
 def _has_lateral_force_args(field_node: FieldNode) -> bool:
@@ -1720,7 +1723,7 @@ def _collect_nested_columns(
     return alias_counter, has_lateral
 
 
-def _compile_root_field(
+def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035, REQ-036, REQ-151, REQ-152, REQ-153, REQ-262, REQ-264, REQ-265, REQ-300, REQ-301, REQ-372, REQ-403, REQ-478
     field_node: FieldNode,
     ctx: CompilationContext,
     variables: dict | None,
@@ -2303,7 +2306,201 @@ def _build_nodes_sql(
     return nodes_sql, nodes_cols, nodes_params
 
 
-def _compile_aggregate_field(
+def _compile_having(
+    having_obj: dict,
+    collector: ParamCollector,
+    table_id: int | None,
+    exposed_to_physical: dict,
+) -> str:
+    """Compile a HavingExp input object to a SQL HAVING clause fragment.
+
+    Maps aggregate function expressions:
+      count: {gt: 3}         → COUNT(*) > $N
+      sum: {amount: {gte: 1000}} → SUM("amount") >= $N
+    """
+    _SQL_FUNC = {
+        "sum": "SUM",
+        "avg": "AVG",
+        "stddev": "STDDEV",
+        "variance": "VARIANCE",
+        "min": "MIN",
+        "max": "MAX",
+    }
+    parts: list[str] = []
+    for key, value in having_obj.items():
+        if key == "count":
+            parts.extend(_compile_column_filter("COUNT(*)", value, collector))
+        elif key in _SQL_FUNC and isinstance(value, dict):
+            sql_func = _SQL_FUNC[key]
+            for col_name, col_filter in value.items():
+                phys = (
+                    exposed_to_physical.get((table_id, col_name), col_name)
+                    if table_id is not None
+                    else col_name
+                )
+                expr = f"{sql_func}({_q(phys)})"
+                parts.extend(_compile_column_filter(expr, col_filter, collector))
+    return " AND ".join(parts) if parts else "TRUE"
+
+
+def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
+    field_node: FieldNode,
+    ctx: CompilationContext,
+    variables: dict | None,
+    use_catalog: bool = False,
+) -> CompiledQuery:
+    """Compile a _group_by root query field to SQL (REQ-654, REQ-655)."""
+    root_name = field_node.alias.value if field_node.alias else field_node.name.value
+    table = ctx.tables[field_node.name.value]
+    collector = ParamCollector()
+    sources: set[str] = {table.source_id}
+
+    args: dict = {}
+    if field_node.arguments:
+        for arg in field_node.arguments:
+            args[arg.name.value] = _extract_value(arg.value, variables)
+
+    by_cols: list[str] = args.get("by") or []
+    if isinstance(by_cols, str):
+        by_cols = [by_cols]
+    phys_by_cols = [ctx.exposed_to_physical.get((table.table_id, col), col) for col in by_cols]
+
+    # Parse aggregates sub-selection for requested functions and optional FILTER WHERE
+    agg_filter_where: dict | None = None
+    has_count = False
+    cols_by_func: dict[str, list[str]] = {
+        k: [] for k in ("sum", "avg", "stddev", "variance", "min", "max")
+    }
+
+    if field_node.selection_set:
+        for row_sel in field_node.selection_set.selections:
+            if not isinstance(row_sel, FieldNode):
+                continue
+            if row_sel.name.value == "aggregates":
+                if row_sel.arguments:
+                    for agg_arg in row_sel.arguments:
+                        if agg_arg.name.value == "where":
+                            agg_filter_where = _extract_value(agg_arg.value, variables) or None  # type: ignore[assignment]
+                if row_sel.selection_set:
+                    for agg_sel in row_sel.selection_set.selections:
+                        if not isinstance(agg_sel, FieldNode):
+                            continue
+                        agg_name = agg_sel.name.value
+                        if agg_name == "count":
+                            has_count = True
+                        elif agg_name in cols_by_func and agg_sel.selection_set:
+                            cols_by_func[agg_name] = [
+                                s.name.value
+                                for s in agg_sel.selection_set.selections
+                                if isinstance(s, FieldNode)
+                            ]
+
+    # Build FILTER (WHERE ...) SQL fragment from aggregates.where arg (REQ-655)
+    filter_sql = ""
+    if agg_filter_where:
+        _vvals = ctx.virtual_columns.get(table.table_id)
+        filter_where_sql = _compile_where(
+            agg_filter_where, collector, None, _vvals, table.table_id, ctx.exposed_to_physical
+        )
+        filter_sql = f" FILTER (WHERE {filter_where_sql})"
+
+    select_parts: list[str] = []
+    columns: list[ColumnRef] = []
+
+    for col, phys in zip(by_cols, phys_by_cols):
+        select_parts.append(_q(phys))
+        columns.append(ColumnRef(alias=None, column=phys, field_name=col, nested_in="groupKey"))
+
+    if has_count:
+        select_parts.append(f"COUNT(*){filter_sql}")
+        columns.append(
+            ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregates")
+        )
+
+    for func_name, sql_func in (
+        ("sum", "SUM"),
+        ("avg", "AVG"),
+        ("stddev", "STDDEV"),
+        ("variance", "VARIANCE"),
+        ("min", "MIN"),
+        ("max", "MAX"),
+    ):
+        for col_name in cols_by_func[func_name]:
+            phys = ctx.exposed_to_physical.get((table.table_id, col_name), col_name)
+            select_parts.append(f"{sql_func}({_q(phys)}){filter_sql}")
+            columns.append(
+                ColumnRef(
+                    alias=None,
+                    column=phys,
+                    field_name=col_name,
+                    nested_in=f"aggregates.{func_name}",
+                )
+            )
+
+    if not select_parts:
+        select_parts = [_q(phys_by_cols[0])] if phys_by_cols else ["1"]
+
+    ref = _table_ref(table, use_catalog)
+    sql = f"SELECT {', '.join(select_parts)} FROM {ref}"
+
+    _vvals = ctx.virtual_columns.get(table.table_id)
+    if "where" in args and not agg_filter_where:
+        where_sql = _compile_where(
+            args["where"], collector, None, _vvals, table.table_id, ctx.exposed_to_physical
+        )
+        sql += f" WHERE {where_sql}"
+    elif "where" in args and agg_filter_where:
+        # FILTER params already consumed above; need a fresh sub-collector for WHERE
+        where_collector = ParamCollector()
+        where_sql = _compile_where(
+            args["where"], where_collector, None, _vvals, table.table_id, ctx.exposed_to_physical
+        )
+        # Re-number params: append where params after filter params
+        _filter_count = len(collector.params)
+        renumbered = where_sql
+        for i in range(len(where_collector.params), 0, -1):
+            renumbered = renumbered.replace(f"${i}", f"${i + _filter_count}")
+        for p in where_collector.params:
+            collector._params.append(p)
+        sql += f" WHERE {renumbered}"
+
+    if phys_by_cols:
+        sql += f" GROUP BY {', '.join(_q(c) for c in phys_by_cols)}"
+
+    # REQ-655: HAVING clause
+    if "having" in args:
+        having_sql = _compile_having(
+            args["having"], collector, table.table_id, ctx.exposed_to_physical
+        )
+        if having_sql and having_sql != "TRUE":
+            sql += f" HAVING {having_sql}"
+
+    if "order_by" in args:
+        order_by_val = args["order_by"]
+        if isinstance(order_by_val, dict):
+            order_by_val = [order_by_val]
+        ob_sql = _compile_order_by(order_by_val, None, table.table_id, ctx.exposed_to_physical)
+        if ob_sql:
+            sql += f" ORDER BY {ob_sql}"
+
+    if "limit" in args:
+        sql += f" LIMIT {collector.add(int(args['limit']))}"
+    if "offset" in args:
+        sql += f" OFFSET {collector.add(int(args['offset']))}"
+
+    return CompiledQuery(
+        sql=sql,
+        params=collector.params,
+        root_field=root_name,
+        canonical_field=field_node.name.value,
+        columns=columns,
+        sources=sources,
+        is_group_by=True,
+        group_by_columns=list(by_cols),
+    )
+
+
+def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
     field_node: FieldNode,
     ctx: CompilationContext,
     variables: dict | None,
@@ -2409,7 +2606,7 @@ def _sql_literal(
     return f"'{val!s}'"
 
 
-def rewrite_hot_joins(
+def rewrite_hot_joins(  # REQ-230, REQ-232
     compiled: CompiledQuery, hot_manager: object
 ) -> (
     CompiledQuery
@@ -2503,7 +2700,7 @@ def _extract_node_selections(field_node: FieldNode) -> list:
     return []
 
 
-def _compile_connection_field(
+def _compile_connection_field(  # REQ-218
     field_node: FieldNode,
     ctx: CompilationContext,
     variables: dict | None,
@@ -2595,7 +2792,7 @@ def _compile_connection_field(
     )
 
 
-def compile_query(
+def compile_query(  # REQ-007, REQ-009, REQ-010, REQ-011, REQ-262, REQ-263, REQ-266, REQ-300
     document: DocumentNode,
     ctx: CompilationContext,
     variables: dict | None = None,
@@ -2624,8 +2821,15 @@ def compile_query(
                     raise ValueError(f"Unknown root query field: {field_name!r}")
                 with _tracer.start_as_current_span("compiler.compile_query") as span:
                     span.set_attribute("graphql.field", field_name)
-                    if field_name.endswith("_aggregate"):
+                    if field_name.endswith("_aggregate") or field_name.endswith("Aggregate"):
                         compiled = _compile_aggregate_field(
+                            sel,
+                            ctx,
+                            variables,
+                            use_catalog,
+                        )
+                    elif field_name.endswith("_group_by") or field_name.endswith("GroupBy"):
+                        compiled = _compile_group_by_field(
                             sel,
                             ctx,
                             variables,
