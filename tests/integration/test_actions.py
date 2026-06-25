@@ -33,6 +33,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest_asyncio.fixture(scope="module")
 async def source_pool():
     sp = SourcePool()
@@ -73,6 +74,7 @@ async def pg_func(source_pool):
 # DB Function: real execution
 # ---------------------------------------------------------------------------
 
+
 class TestFunctionExecution:
     async def test_function_executes_and_returns_rows(self, source_pool, pg_func):
         """Calling a tracked DB function returns rows from the function result set."""
@@ -81,7 +83,7 @@ class TestFunctionExecution:
         func = Function(
             name="provisa_test_action",
             source_id="test-pg",
-            schema="public",
+            schema_name="public",
             function_name="provisa_test_action",
             returns="test-pg.public.orders",
             arguments=[
@@ -104,7 +106,7 @@ class TestFunctionExecution:
         func = Function(
             name="provisa_test_action",
             source_id="test-pg",
-            schema="public",
+            schema_name="public",
             function_name="provisa_test_action",
             returns="test-pg.public.orders",
             arguments=[
@@ -123,7 +125,7 @@ class TestFunctionExecution:
         func = Function(
             name="provisa_test_action",
             source_id="test-pg",
-            schema="public",
+            schema_name="public",
             function_name="provisa_test_action",
             returns="test-pg.public.orders",
             arguments=[

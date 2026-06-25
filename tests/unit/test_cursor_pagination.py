@@ -18,7 +18,6 @@ from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import (
     ColumnRef,
-    CompilationContext,
     CompiledQuery,
     build_context,
     compile_query,
@@ -62,8 +61,13 @@ def _build_schema_and_ctx():
     role = {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
     domains = [{"id": "sales", "description": "Sales"}]
     si = SchemaInput(
-        tables=tables, relationships=[], column_types=column_types,
-        naming_rules=[], role=role, domains=domains, relay_pagination=True,
+        tables=tables,
+        relationships=[],
+        column_types=column_types,
+        naming_rules=[],
+        role=role,
+        domains=domains,
+        relay_pagination=True,
     )
     schema = generate_schema(si)
     ctx = build_context(si)
@@ -116,6 +120,7 @@ class TestCursorPagination:
     def test_connection_first_after_compiles(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
         from provisa.compiler.cursor import encode_cursor
+
         cursor = encode_cursor([42])
         doc = parse(f"""
             {{ orders_connection(first: 5, after: "{cursor}") {{
@@ -133,6 +138,7 @@ class TestCursorPagination:
     def test_connection_last_before_compiles(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
         from provisa.compiler.cursor import encode_cursor
+
         cursor = encode_cursor([100])
         doc = parse(f"""
             {{ orders_connection(last: 5, before: "{cursor}") {{
@@ -205,16 +211,19 @@ class TestCursorHelpers:
 
     def test_encode_decode_roundtrip(self):
         from provisa.compiler.cursor import encode_cursor, decode_cursor
+
         assert decode_cursor(encode_cursor([42, "hello"])) == [42, "hello"]
 
     def test_decode_invalid_cursor(self):
         from provisa.compiler.cursor import decode_cursor
+
         with pytest.raises(ValueError, match="Invalid cursor"):
             decode_cursor("not-valid-base64!!!")
 
     def test_cursor_where_single_column(self):
         from provisa.compiler.cursor import cursor_where_clause
         from provisa.compiler.params import ParamCollector
+
         c = ParamCollector()
         assert cursor_where_clause(["id"], [42], "forward", c, None) == '"id" > $1'
         assert c.params == [42]
@@ -222,32 +231,41 @@ class TestCursorHelpers:
     def test_cursor_where_multi_column(self):
         from provisa.compiler.cursor import cursor_where_clause
         from provisa.compiler.params import ParamCollector
+
         c = ParamCollector()
         result = cursor_where_clause(
-            ["created_at", "id"], ["2024-01-01", 5], "forward", c, None,
+            ["created_at", "id"],
+            ["2024-01-01", 5],
+            "forward",
+            c,
+            None,
         )
         assert result == '("created_at", "id") > ($1, $2)'
 
     def test_cursor_where_backward(self):
         from provisa.compiler.cursor import cursor_where_clause
         from provisa.compiler.params import ParamCollector
+
         c = ParamCollector()
         assert cursor_where_clause(["id"], [100], "backward", c, None) == '"id" < $1'
 
     def test_cursor_where_with_alias(self):
         from provisa.compiler.cursor import cursor_where_clause
         from provisa.compiler.params import ParamCollector
+
         c = ParamCollector()
         assert cursor_where_clause(["id"], [42], "forward", c, "t0") == '"t0"."id" > $1'
 
     def test_cursor_mismatch_raises(self):
         from provisa.compiler.cursor import cursor_where_clause
         from provisa.compiler.params import ParamCollector
+
         with pytest.raises(ValueError, match="Cursor has 1 values but sort key has 2"):
             cursor_where_clause(["a", "b"], [1], "forward", ParamCollector(), None)
 
     def test_reverse_order(self):
         from provisa.compiler.cursor import reverse_order
+
         assert reverse_order('"id" ASC') == '"id" DESC'
         assert reverse_order('"id" DESC') == '"id" ASC'
         assert reverse_order('"a" ASC NULLS FIRST') == '"a" DESC NULLS LAST'
@@ -256,9 +274,13 @@ class TestCursorHelpers:
     def test_first_and_last_raises(self):
         from provisa.compiler.cursor import apply_cursor_pagination
         from provisa.compiler.params import ParamCollector
+
         with pytest.raises(ValueError, match="Cannot use both"):
             apply_cursor_pagination(
-                {"first": 10, "last": 5}, ["id"], ParamCollector(), None,
+                {"first": 10, "last": 5},
+                ["id"],
+                ParamCollector(),
+                None,
             )
 
 
@@ -268,11 +290,18 @@ class TestConnectionSerialization:
     def test_serialize_forward_pagination(self):
         from provisa.compiler.cursor import encode_cursor
         from provisa.executor.serialize import serialize_connection
+
         compiled = CompiledQuery(
-            sql="SELECT ...", params=[], root_field="orders_connection",
+            sql="SELECT ...",
+            params=[],
+            root_field="orders_connection",
             columns=[ColumnRef(None, "id", "id", None), ColumnRef(None, "amount", "amount", None)],
-            sources={"pg"}, is_connection=True, is_backward=False,
-            sort_columns=["id"], page_size=2, has_cursor=False,
+            sources={"pg"},
+            is_connection=True,
+            is_backward=False,
+            sort_columns=["id"],
+            page_size=2,
+            has_cursor=False,
         )
         rows = [(1, 100), (2, 200), (3, 300)]
         result = serialize_connection(rows, compiled)
@@ -286,22 +315,36 @@ class TestConnectionSerialization:
 
     def test_serialize_no_more_pages(self):
         from provisa.executor.serialize import serialize_connection
+
         compiled = CompiledQuery(
-            sql="SELECT ...", params=[], root_field="orders_connection",
-            columns=[ColumnRef(None, "id", "id", None)], sources={"pg"},
-            is_connection=True, is_backward=False, sort_columns=["id"],
-            page_size=5, has_cursor=False,
+            sql="SELECT ...",
+            params=[],
+            root_field="orders_connection",
+            columns=[ColumnRef(None, "id", "id", None)],
+            sources={"pg"},
+            is_connection=True,
+            is_backward=False,
+            sort_columns=["id"],
+            page_size=5,
+            has_cursor=False,
         )
         result = serialize_connection([(1,), (2,)], compiled)
         assert result["data"]["orders_connection"]["pageInfo"]["hasNextPage"] is False
 
     def test_serialize_backward_reverses(self):
         from provisa.executor.serialize import serialize_connection
+
         compiled = CompiledQuery(
-            sql="SELECT ...", params=[100], root_field="orders_connection",
-            columns=[ColumnRef(None, "id", "id", None)], sources={"pg"},
-            is_connection=True, is_backward=True, sort_columns=["id"],
-            page_size=2, has_cursor=True,
+            sql="SELECT ...",
+            params=[100],
+            root_field="orders_connection",
+            columns=[ColumnRef(None, "id", "id", None)],
+            sources={"pg"},
+            is_connection=True,
+            is_backward=True,
+            sort_columns=["id"],
+            page_size=2,
+            has_cursor=True,
         )
         rows = [(99,), (98,), (97,)]
         result = serialize_connection(rows, compiled)
@@ -314,11 +357,18 @@ class TestConnectionSerialization:
 
     def test_serialize_empty_result(self):
         from provisa.executor.serialize import serialize_connection
+
         compiled = CompiledQuery(
-            sql="SELECT ...", params=[], root_field="orders_connection",
-            columns=[ColumnRef(None, "id", "id", None)], sources={"pg"},
-            is_connection=True, is_backward=False, sort_columns=["id"],
-            page_size=10, has_cursor=False,
+            sql="SELECT ...",
+            params=[],
+            root_field="orders_connection",
+            columns=[ColumnRef(None, "id", "id", None)],
+            sources={"pg"},
+            is_connection=True,
+            is_backward=False,
+            sort_columns=["id"],
+            page_size=10,
+            has_cursor=False,
         )
         result = serialize_connection([], compiled)
         data = result["data"]["orders_connection"]
@@ -336,6 +386,7 @@ def _base_tables():
             "schema_name": "public",
             "table_name": "orders",
             "governance": "pre-approved",
+            "enable_aggregates": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "amount", "visible_to": ["admin"]},
@@ -366,8 +417,12 @@ class TestRelayPaginationOptIn:
 
     def test_no_connection_field_by_default(self):
         si = SchemaInput(
-            tables=_base_tables(), relationships=[], column_types=_base_column_types(),
-            naming_rules=[], role=_base_role(), domains=_base_domains(),
+            tables=_base_tables(),
+            relationships=[],
+            column_types=_base_column_types(),
+            naming_rules=[],
+            role=_base_role(),
+            domains=_base_domains(),
             # relay_pagination defaults to False
         )
         schema = generate_schema(si)
@@ -375,8 +430,12 @@ class TestRelayPaginationOptIn:
 
     def test_no_connection_field_when_false(self):
         si = SchemaInput(
-            tables=_base_tables(), relationships=[], column_types=_base_column_types(),
-            naming_rules=[], role=_base_role(), domains=_base_domains(),
+            tables=_base_tables(),
+            relationships=[],
+            column_types=_base_column_types(),
+            naming_rules=[],
+            role=_base_role(),
+            domains=_base_domains(),
             relay_pagination=False,
         )
         schema = generate_schema(si)
@@ -384,8 +443,12 @@ class TestRelayPaginationOptIn:
 
     def test_connection_field_present_when_true(self):
         si = SchemaInput(
-            tables=_base_tables(), relationships=[], column_types=_base_column_types(),
-            naming_rules=[], role=_base_role(), domains=_base_domains(),
+            tables=_base_tables(),
+            relationships=[],
+            column_types=_base_column_types(),
+            naming_rules=[],
+            role=_base_role(),
+            domains=_base_domains(),
             relay_pagination=True,
         )
         schema = generate_schema(si)
@@ -395,8 +458,12 @@ class TestRelayPaginationOptIn:
         tables = _base_tables()
         tables[0]["relay_pagination"] = True  # table-level override
         si = SchemaInput(
-            tables=tables, relationships=[], column_types=_base_column_types(),
-            naming_rules=[], role=_base_role(), domains=_base_domains(),
+            tables=tables,
+            relationships=[],
+            column_types=_base_column_types(),
+            naming_rules=[],
+            role=_base_role(),
+            domains=_base_domains(),
             relay_pagination=False,  # global is False
         )
         schema = generate_schema(si)
@@ -406,8 +473,12 @@ class TestRelayPaginationOptIn:
         tables = _base_tables()
         tables[0]["relay_pagination"] = False  # table-level opt-out
         si = SchemaInput(
-            tables=tables, relationships=[], column_types=_base_column_types(),
-            naming_rules=[], role=_base_role(), domains=_base_domains(),
+            tables=tables,
+            relationships=[],
+            column_types=_base_column_types(),
+            naming_rules=[],
+            role=_base_role(),
+            domains=_base_domains(),
             relay_pagination=True,  # global is True
         )
         schema = generate_schema(si)
@@ -416,8 +487,12 @@ class TestRelayPaginationOptIn:
     def test_regular_fields_present_regardless_of_relay(self):
         _naming.configure(gql="snake")
         si = SchemaInput(
-            tables=_base_tables(), relationships=[], column_types=_base_column_types(),
-            naming_rules=[], role=_base_role(), domains=_base_domains(),
+            tables=_base_tables(),
+            relationships=[],
+            column_types=_base_column_types(),
+            naming_rules=[],
+            role=_base_role(),
+            domains=_base_domains(),
             relay_pagination=False,
         )
         schema = generate_schema(si)

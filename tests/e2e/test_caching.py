@@ -22,38 +22,47 @@ import pytest
 
 from provisa.cache.key import cache_key
 from provisa.cache.middleware import build_cache_headers, check_cache, store_result
-from provisa.cache.store import CachedResult, NoopCacheStore, RedisCacheStore
+from provisa.cache.store import CacheStore, CachedResult
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
 
-class FakeStore:
+class FakeStore(CacheStore):
     """In-memory cache store for testing without Redis."""
 
     def __init__(self):
         self._data: dict[str, tuple[bytes, dict]] = {}
+        self._table_index: dict[str, set[str]] = {}
 
-    async def get(self, key: str) -> CachedResult | None:
+    async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:
         if key not in self._data:
             return None
         data, meta = self._data[key]
         return CachedResult(data=data, cached_at=meta["cached_at"], ttl=meta["ttl"])
 
-    async def set(self, key: str, data: bytes, ttl: int, table_ids=None) -> None:
+    async def set(
+        self,
+        key: str,
+        data: bytes,
+        ttl: int,
+        tenant_id: str | None = None,
+        table_ids: set[int] | None = None,
+    ) -> None:
         import time
+
         self._data[key] = (data, {"cached_at": time.time(), "ttl": ttl})
         if table_ids:
             for tid in table_ids:
                 tkey = f"_table:{tid}"
-                if tkey not in self._data:
-                    self._data[tkey] = (set(), {})
-                self._data[tkey][0].add(key)
+                if tkey not in self._table_index:
+                    self._table_index[tkey] = set()
+                self._table_index[tkey].add(key)
 
-    async def invalidate_by_table(self, table_id: int) -> int:
+    async def invalidate_by_table(self, table_id: int, tenant_id: str | None = None) -> int:
         tkey = f"_table:{table_id}"
-        if tkey not in self._data:
+        if tkey not in self._table_index:
             return 0
-        keys = self._data.pop(tkey)[0]
+        keys = self._table_index.pop(tkey)
         count = 0
         for k in keys:
             if k in self._data:
@@ -61,7 +70,7 @@ class FakeStore:
                 count += 1
         return count
 
-    async def invalidate_by_pattern(self, pattern: str) -> int:
+    async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:
         return 0
 
     async def close(self) -> None:
@@ -76,6 +85,7 @@ class TestCacheHeaders:
 
     def test_hit_header(self):
         import time
+
         cached = CachedResult(data=b"data", cached_at=time.time() - 5, ttl=60)
         headers = build_cache_headers(cached)
         assert headers["X-Provisa-Cache"] == "HIT"

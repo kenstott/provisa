@@ -146,8 +146,11 @@ class TestRLSOnMVQueries:
             'WHERE "t0"."region" = $1'
         )
         compiled = CompiledQuery(
-            sql=sql, params=["us"], root_field="orders",
-            columns=[], sources={"pg"},
+            sql=sql,
+            params=["us"],
+            root_field="orders",
+            columns=[],
+            sources={"pg"},
         )
         mv = _mv_fresh()
         result = rewrite_if_mv_match(compiled, [mv])
@@ -175,7 +178,7 @@ class TestRLSOnMVQueries:
             'FROM "public"."orders" "t0" '
             'LEFT JOIN "public"."customers" "t1" '
             'ON "t0"."customer_id" = "t1"."id" '
-            'LIMIT 10 OFFSET 20'
+            "LIMIT 10 OFFSET 20"
         )
         compiled = _compiled(sql)
         mv = _mv_fresh()
@@ -197,8 +200,11 @@ class TestPartialMVMatch:
             'ON "t0"."product_id" = "t2"."id"'
         )
         compiled = CompiledQuery(
-            sql=sql, params=[], root_field="orders",
-            columns=[], sources={"pg"},
+            sql=sql,
+            params=[],
+            root_field="orders",
+            columns=[],
+            sources={"pg"},
         )
         mv = _mv_fresh()
         result = rewrite_if_mv_match(compiled, [mv])
@@ -221,8 +227,11 @@ class TestPartialMVMatch:
             'ON "t0"."product_id" = "t2"."id"'
         )
         compiled = CompiledQuery(
-            sql=sql, params=[], root_field="orders",
-            columns=[], sources={"pg"},
+            sql=sql,
+            params=[],
+            root_field="orders",
+            columns=[],
+            sources={"pg"},
         )
         mv = _mv_fresh()
         result = rewrite_if_mv_match(compiled, [mv])
@@ -245,7 +254,6 @@ class TestSDLExposure:
             expose_in_sdl=True,
             sdl_config=SDLConfig(
                 domain_id="sales-analytics",
-                governance="pre-approved",
                 columns=[
                     {"name": "customer_id", "visible_to": ["admin", "analyst"]},
                     {"name": "order_count", "visible_to": ["admin", "analyst"]},
@@ -254,7 +262,9 @@ class TestSDLExposure:
             ),
         )
         assert mv.expose_in_sdl is True
+        assert mv.sdl_config is not None
         assert mv.sdl_config.domain_id == "sales-analytics"
+        assert mv.sdl_config.columns is not None
         assert len(mv.sdl_config.columns) == 3
 
     def test_non_exposed_mv_no_sdl_config(self):
@@ -264,8 +274,10 @@ class TestSDLExposure:
             target_catalog="postgresql",
             target_schema="mv_cache",
             join_pattern=JoinPattern(
-                left_table="orders", left_column="customer_id",
-                right_table="customers", right_column="id",
+                left_table="orders",
+                left_column="customer_id",
+                right_table="customers",
+                right_column="id",
             ),
         )
         assert mv.expose_in_sdl is False

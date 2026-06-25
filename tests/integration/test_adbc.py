@@ -29,6 +29,7 @@ pytestmark = [pytest.mark.integration]
 # Live-server tests — require running Provisa Arrow Flight server (port 8815)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.requires_provisa_server
 class TestLiveAdbcExecution:
     """Require running Provisa + Arrow Flight service at localhost:8815.
@@ -43,9 +44,7 @@ class TestLiveAdbcExecution:
         "ActiveOrders": (
             "query ActiveOrders { sa__orders { id amount region status created_at } }"
         ),
-        "AnalystOrders": (
-            "query AnalystOrders { sa__orders { id region status created_at } }"
-        ),
+        "AnalystOrders": ("query AnalystOrders { sa__orders { id region status created_at } }"),
     }
 
     @pytest.fixture(scope="class", autouse=True)
@@ -104,7 +103,7 @@ class TestLiveAdbcExecution:
 
     @pytest.fixture
     def conn(self):
-        from provisa_client.adbc import adbc_connect
+        from provisa_client.adbc import adbc_connect  # pyright: ignore[reportMissingImports]
 
         c = adbc_connect(self.PROVISA_URL, user="admin", password="provisa")
         yield c
@@ -142,7 +141,7 @@ class TestLiveAdbcExecution:
         assert all(len(r) >= 1 for r in rows)
 
     def test_context_manager_closes_after_use(self):
-        from provisa_client.adbc import adbc_connect
+        from provisa_client.adbc import adbc_connect  # pyright: ignore[reportMissingImports]
 
         conn = adbc_connect(self.PROVISA_URL, user="admin", password="provisa")
         with conn as c:
