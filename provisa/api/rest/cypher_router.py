@@ -720,13 +720,16 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
         parts.append(f'"{nm.sql_table_name}"')
         return ".".join(parts)
 
-    node_entries: list[tuple[str, str]] = []  # (label, sql)
+    node_sql_entries: list[tuple[str, str]] = []  # (label, sql) — SQL-backed
+    node_gql_entries: list[tuple[str, str]] = []  # (label, table_name) — GQL-backed
+
     for nm in label_map.nodes.values():
         if filtered_domains and nm.domain_id not in filtered_domains:
             continue
-        if not _is_sql_backed(nm.sql_table_name):
-            continue
-        node_entries.append((nm.label, f"SELECT COUNT(*) AS cnt FROM {_table_ref(nm)}"))
+        if _is_sql_backed(nm.sql_table_name):
+            node_sql_entries.append((nm.label, f"SELECT COUNT(*) AS cnt FROM {_table_ref(nm)}"))
+        elif _lookup_gql_remote_table(state, nm.sql_table_name) is not None:
+            node_gql_entries.append((nm.label, nm.sql_table_name))
 
     rel_sqls: list[str] = []
     seen_rel_keys: set[tuple] = set()
@@ -756,9 +759,18 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             f' ON _s."{rel.join_source_column}" = _t."{rel.join_target_column}"'
         )
 
-    async def _count(sql: str) -> int:
+    async def _count_sql(sql: str) -> int:
         try:
             rows = await _execute(sql, [], state)
+            return int(rows[0]["cnt"]) if rows else 0
+        except Exception:
+            return 0
+
+    async def _count_gql(table_name: str) -> int:
+        try:
+            rows = await _execute_with_gql_remote(
+                f"SELECT COUNT(*) AS cnt FROM {table_name}", [], {}, state
+            )
             return int(rows[0]["cnt"]) if rows else 0
         except Exception:
             return 0
@@ -766,9 +778,15 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
     BATCH = 5
 
     label_counts: dict[str, int] = {}
-    for i in range(0, len(node_entries), BATCH):
-        batch = node_entries[i : i + BATCH]
-        results = await asyncio.gather(*[_count(sql) for _, sql in batch])
+    for i in range(0, len(node_sql_entries), BATCH):
+        batch = node_sql_entries[i : i + BATCH]
+        results = await asyncio.gather(*[_count_sql(sql) for _, sql in batch])
+        for (label, _), cnt in zip(batch, results):
+            label_counts[label] = cnt
+
+    for i in range(0, len(node_gql_entries), BATCH):
+        batch = node_gql_entries[i : i + BATCH]
+        results = await asyncio.gather(*[_count_gql(tbl) for _, tbl in batch])
         for (label, _), cnt in zip(batch, results):
             label_counts[label] = cnt
 
@@ -776,7 +794,7 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
 
     rel_count = 0
     for i in range(0, len(rel_sqls), BATCH):
-        results = await asyncio.gather(*[_count(s) for s in rel_sqls[i : i + BATCH]])
+        results = await asyncio.gather(*[_count_sql(s) for s in rel_sqls[i : i + BATCH]])
         rel_count += sum(results)
 
     return JSONResponse(
