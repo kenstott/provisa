@@ -8,10 +8,10 @@ import { test, expect } from "./coverage";
 
 /**
  * Verifies that auto-impute adds edges between nodes returned from a node-only query.
- * Regression for: imputed edge startNode/endNode ids using raw PK instead of compound
- * "{label}|{pk}" format, causing cy.$id(srcKey) lookups to fail and no edges to render.
+ * Regression for: imputed edge startNode/endNode ids using raw PK instead of stable
+ * integer ids (registered via node_ids table), causing canvas lookup failures.
  */
-test("auto-impute fires and returns compound-id edges for meta node query", async ({ page }) => {
+test("auto-impute fires and returns integer-id edges for meta node query", async ({ page }) => {
   await page.goto("http://localhost:3000/graph");
 
   // Intercept impute responses before anything fires
@@ -21,11 +21,21 @@ test("auto-impute fires and returns compound-id edges for meta node query", asyn
     { timeout: 30000 }
   );
 
-  // Enable auto-impute via the QueryBar toggle (always visible, no tab needed)
-  await page.locator('button[title="Auto-impute relationships between visible nodes"]').click();
+  // Enable auto-impute if not already active (button title changes based on state)
+  const imputeBtn = page.locator('button[title*="Auto-impute"]').first();
+  await imputeBtn.waitFor({ timeout: 10000 });
+  const isActive = await imputeBtn.evaluate((el) => el.classList.contains("gf-icon-btn--on"));
+  if (!isActive) {
+    await imputeBtn.click();
+  }
 
-  // Click into the CodeMirror editor, select all, replace with test query
+  // Expand the collapsed query bar first, then interact with CodeMirror
+  const collapsed = page.locator(".gf-header-query-collapsed").first();
+  if (await collapsed.isVisible()) {
+    await collapsed.click();
+  }
   const editor = page.locator(".cm-content").first();
+  await editor.waitFor({ timeout: 5000 });
   await editor.click();
   await page.keyboard.press("Meta+a");
   await page.keyboard.type("MATCH (n:Meta) RETURN n LIMIT 50");
@@ -49,20 +59,20 @@ test("auto-impute fires and returns compound-id edges for meta node query", asyn
   // Edges must be returned (meta schema has relationships between its tables)
   expect(edges.length, "impute returned 0 edges for Meta nodes").toBeGreaterThan(0);
 
-  // startNode/endNode ids must be compound "{label}|{pk}" so canvas lookup works
+  // startNode/endNode ids must be stable integers (registered via node_ids table)
   for (const e of edges) {
-    const sn = e.startNode as { id: string; label: string };
-    const en = e.endNode as { id: string; label: string };
-    expect(sn.id).toMatch(new RegExp(`^${sn.label}\\|`));
-    expect(en.id).toMatch(new RegExp(`^${en.label}\\|`));
+    const sn = e.startNode as { id: unknown; label: string };
+    const en = e.endNode as { id: unknown; label: string };
+    expect(typeof sn.id, `startNode.id should be number, got ${JSON.stringify(sn.id)}`).toBe("number");
+    expect(typeof en.id, `endNode.id should be number, got ${JSON.stringify(en.id)}`).toBe("number");
   }
 });
 
 /**
  * Verifies that the /data/impute-relationships endpoint returns edges with
- * compound startNode/endNode ids matching the canvas node id format.
+ * stable integer startNode/endNode ids (registered via node_ids table).
  */
-test("impute-relationships API returns compound startNode/endNode ids", async ({ request }) => {
+test("impute-relationships API returns integer startNode/endNode ids", async ({ request }) => {
   // Get a few Meta nodes from a real query first
   const queryResp = await request.post("http://localhost:8000/data/cypher", {
     data: { query: "MATCH (n:Meta) RETURN n LIMIT 10" },
@@ -70,17 +80,17 @@ test("impute-relationships API returns compound startNode/endNode ids", async ({
   });
   expect(queryResp.status()).toBe(200);
   const queryBody = await queryResp.json();
-  const nodes = (queryBody.rows as Array<{ n: { id: string; label: string } }>).map((r) => ({
+  const nodes = (queryBody.rows as Array<{ n: { id: number; label: string } }>).map((r) => ({
     id: r.n.id,
     label: r.n.label,
   }));
 
-  // All node ids should be in compound "{label}|{pk}" format
+  // All node ids should be stable integers (registered via node_ids table)
   for (const n of nodes) {
-    expect(n.id).toMatch(/^.+\|.+$/);
+    expect(typeof n.id, `node.id should be number, got ${JSON.stringify(n.id)}`).toBe("number");
   }
 
-  // Now impute with all 10 nodes (using compound ids as the frontend would send)
+  // Now impute with all 10 nodes (using stable integer ids as the frontend sends)
   const imputeResp = await request.post("http://localhost:8000/data/impute-relationships", {
     data: { nodes },
     headers: { "Content-Type": "application/json", "X-Role": "DEV" },
@@ -92,13 +102,11 @@ test("impute-relationships API returns compound startNode/endNode ids", async ({
     .map((r) => r.node)
     .filter((n) => "identity" in n && "startNode" in n);
 
-  // If any edges were returned, verify startNode/endNode ids are compound
+  // If any edges were returned, verify startNode/endNode ids are stable integers
   for (const e of edges) {
-    const sn = e.startNode as { id: string; label: string };
-    const en = e.endNode as { id: string; label: string };
-    expect(sn.id, `startNode.id should be compound for edge ${e.identity}`).toMatch(/^.+\|.+$/);
-    expect(en.id, `endNode.id should be compound for edge ${e.identity}`).toMatch(/^.+\|.+$/);
-    expect(sn.id).toMatch(new RegExp(`^${sn.label}\\|`));
-    expect(en.id).toMatch(new RegExp(`^${en.label}\\|`));
+    const sn = e.startNode as { id: unknown; label: string };
+    const en = e.endNode as { id: unknown; label: string };
+    expect(typeof sn.id, `startNode.id should be number for edge ${e.identity}, got ${JSON.stringify(sn.id)}`).toBe("number");
+    expect(typeof en.id, `endNode.id should be number for edge ${e.identity}, got ${JSON.stringify(en.id)}`).toBe("number");
   }
 });
