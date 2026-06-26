@@ -569,30 +569,6 @@ class TestMVLifecycle:
 
 
 # ---------------------------------------------------------------------------
-# REQ-238, REQ-239, REQ-240, REQ-241: Warm Tables (SSD file cache)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skip(reason="Requires SSD file cache infrastructure not available in CI")
-class TestWarmTables:
-    def test_warm_table_promotion(self):
-        # REQ-238, REQ-239: tables exceeding query_threshold auto-promote to warm tier
-        pass
-
-    def test_warm_table_demotion(self):
-        # REQ-239: tables falling below threshold are demoted on next refresh cycle
-        pass
-
-    def test_warm_table_config_max_rows(self):
-        # REQ-240: tables exceeding warm_tables.max_rows are not promoted
-        pass
-
-    def test_hot_wins_over_warm(self):
-        # REQ-241: hot tier takes priority; hot tables are skipped by WarmTableManager
-        pass
-
-
-# ---------------------------------------------------------------------------
 # REQ-275, REQ-276, REQ-277, REQ-278, REQ-279, REQ-280, REQ-281:
 # Federation Performance — session hints and ANALYZE
 # ---------------------------------------------------------------------------

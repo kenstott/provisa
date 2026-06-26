@@ -21,4 +21,6 @@ from pytest_bdd import scenarios  # type: ignore[import]
 import tests.steps.generated_stubs  # type: ignore[import]  # noqa: F401
 
 # Collect every .feature file in this directory
+import tests.steps.steps_query_governance  # type: ignore[import]  # noqa: F401
+
 scenarios(".")

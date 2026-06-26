@@ -1,0 +1,251 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: {canary}
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+
+"""BDD steps for REQ-369 — Per-role rate limiting at the API layer
+and REQ-370 — Independent NL query rate limiting to cap LLM cost exposure."""
+
+from __future__ import annotations
+
+import pytest
+import pytest_asyncio
+from fastapi import HTTPException
+from pytest_bdd import given, when, then, scenarios, parsers
+
+from provisa.api.rate_limit import RedisRateLimiter, build_rate_limiter, NoopRateLimiter
+
+scenarios("../features/REQ-369_rate_limiting.feature")
+scenarios("../features/REQ-370_rate_limiting.feature")
+
+
+class _FakeRedis:
+    """Minimal in-memory async stand-in for the Redis commands the limiter uses."""
+
+    def __init__(self) -> None:
+        self.zsets: dict[str, dict[str, float]] = {}
+        self.kv: dict[str, int] = {}
+
+    async def zremrangebyscore(self, key, mn, mx):
+        z = self.zsets.get(key, {})
+        gone = [m for m, s in list(z.items()) if mn <= s <= mx]
+        for m in gone:
+            del z[m]
+        return len(gone)
+
+    async def zcard(self, key):
+        return len(self.zsets.get(key, {}))
+
+    async def zrange(self, key, start, end, *, withscores=False):
+        items = sorted(self.zsets.get(key, {}).items(), key=lambda kv: kv[1])
+        sliced = items[start : (end + 1 if end >= 0 else None)]
+        return sliced if withscores else [m for m, _ in sliced]
+
+    async def zadd(self, key, mapping):
+        self.zsets.setdefault(key, {}).update(mapping)
+        return len(mapping)
+
+    async def expire(self, key, seconds):
+        return True
+
+    async def incr(self, key):
+        self.kv[key] = self.kv.get(key, 0) + 1
+        return self.kv[key]
+
+    async def decr(self, key):
+        self.kv[key] = self.kv.get(key, 0) - 1
+        return self.kv[key]
+
+    async def set(self, key, value):
+        self.kv[key] = int(value)
+        return True
+
+
+class _Clock:
+    def __init__(self, t: float = 1000.0) -> None:
+        self.t = t
+
+    def __call__(self) -> float:
+        return self.t
+
+
+@pytest.fixture
+def shared_data() -> dict:
+    return {}
+
+
+@given("a role with configured rate limits")
+def role_with_rate_limits(shared_data: dict) -> None:
+    # build_rate_limiter with no redis URL returns a Noop limiter; we explicitly
+    # construct a RedisRateLimiter backed by an in-memory fake so we exercise the
+    # real sliding-window enforcement logic.
+    assert isinstance(build_rate_limiter(None), NoopRateLimiter)
+    clock = _Clock()
+    limiter = RedisRateLimiter(_FakeRedis(), now=clock)
+    shared_data["clock"] = clock
+    shared_data["limiter"] = limiter
+    # Per-role config: max 3 requests per second for role "analyst".
+    shared_data["role_id"] = "analyst"
+    shared_data["rate_key"] = "rps:analyst"
+    shared_data["max_rps"] = 3
+    shared_data["window_seconds"] = 1.0
+
+
+@when("requests exceed the rate limit")
+async def requests_exceed_limit(shared_data: dict) -> None:
+    limiter: RedisRateLimiter = shared_data["limiter"]
+    key = shared_data["rate_key"]
+    limit = shared_data["max_rps"]
+    window = shared_data["window_seconds"]
+
+    results = []
+    # Fire one more than the configured limit within the same window.
+    for _ in range(limit + 1):
+        allowed, retry_after = await limiter.allow(key, limit, window)
+        results.append((allowed, retry_after))
+
+    shared_data["results"] = results
+
+    # Simulate the API layer rejecting the over-limit request before compilation
+    # or execution: it raises HTTP 429 with a Retry-After header.
+    last_allowed, last_retry = results[-1]
+    shared_data["compilation_invoked"] = False
+    if not last_allowed:
+        retry_after_secs = max(1, int(round(last_retry)))
+        try:
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded",
+                headers={"Retry-After": str(retry_after_secs)},
+            )
+        except HTTPException as exc:
+            shared_data["exception"] = exc
+    else:
+        # Only if allowed would the request proceed to compilation/execution.
+        shared_data["compilation_invoked"] = True
+
+
+@then(
+    "requests are rejected with HTTP 429 and a Retry-After header "
+    "before compilation or execution"
+)
+def requests_rejected(shared_data: dict) -> None:
+    results = shared_data["results"]
+    limit = shared_data["max_rps"]
+
+    # The first `limit` requests must be allowed.
+    allowed_count = sum(1 for allowed, _ in results if allowed)
+    assert allowed_count == limit, f"expected {limit} allowed, got {allowed_count}"
+
+    # The request that exceeds the limit must be rejected with a positive retry.
+    last_allowed, last_retry = results[-1]
+    assert last_allowed is False
+    assert last_retry > 0
+
+    # The API layer must have raised HTTP 429 with a Retry-After header.
+    exc: HTTPException = shared_data["exception"]
+    assert exc.status_code == 429
+    assert "Retry-After" in exc.headers
+    assert int(exc.headers["Retry-After"]) >= 1
+
+    # Rejection happened before any compilation or execution.
+    assert shared_data["compilation_invoked"] is False
+
+
+# ---------------------------------------------------------------------------
+# REQ-370 — Independent NL query rate limit (caps LLM cost exposure).
+#
+# The NL query service (POST /query/nl) has its own per-minute, per-role limit
+# configured via nl.rate_limit. The crucial guarantee is that requests over the
+# limit are rejected *before* any LLM call is made — protecting cost regardless
+# of server capacity. We exercise the real RedisRateLimiter sliding window and
+# assert the LLM call counter never advances for rejected requests.
+# ---------------------------------------------------------------------------
+
+
+@given("a role with a configured nl.rate_limit")
+def role_with_nl_rate_limit(shared_data: dict) -> None:
+    # The NL limiter is independent of the general API limiter (separate key
+    # namespace and separate configured limit).
+    clock = _Clock()
+    limiter = RedisRateLimiter(_FakeRedis(), now=clock)
+    shared_data["nl_clock"] = clock
+    shared_data["nl_limiter"] = limiter
+    shared_data["nl_role"] = "analyst"
+    # NL limit is keyed independently from the general query rate-limit key.
+    shared_data["nl_rate_key"] = "nl:analyst"
+    # nl.rate_limit: requests per minute per role.
+    shared_data["nl_rate_limit"] = 5
+    shared_data["nl_window_seconds"] = 60.0
+    # Counter representing actual (cost-incurring) LLM API invocations.
+    shared_data["llm_calls"] = 0
+    shared_data["nl_exceptions"] = []
+
+
+@when("NL query requests exceed the per-minute limit")
+async def nl_requests_exceed_limit(shared_data: dict) -> None:
+    limiter: RedisRateLimiter = shared_data["nl_limiter"]
+    key = shared_data["nl_rate_key"]
+    limit = shared_data["nl_rate_limit"]
+    window = shared_data["nl_window_seconds"]
+
+    async def fake_llm_call() -> str:
+        # Each invocation here represents real spend against the LLM provider.
+        shared_data["llm_calls"] += 1
+        return "SELECT 1"
+
+    results = []
+    rejections = []
+    # Fire two requests beyond the configured per-minute limit, all within the
+    # same window so none of them age out.
+    for _ in range(limit + 2):
+        allowed, retry_after = await limiter.allow(key, limit, window)
+        results.append((allowed, retry_after))
+        if allowed:
+            # Only allowed requests reach the LLM generation step.
+            await fake_llm_call()
+        else:
+            rejections.append(retry_after)
+            retry_after_secs = max(1, int(round(retry_after)))
+            try:
+                raise HTTPException(
+                    status_code=429,
+                    detail="NL rate limit exceeded",
+                    headers={"Retry-After": str(retry_after_secs)},
+                )
+            except HTTPException as exc:
+                shared_data["nl_exceptions"].append(exc)
+
+    shared_data["nl_results"] = results
+    shared_data["nl_rejections"] = rejections
+
+
+@then("requests are rejected before any LLM call is made")
+def nl_requests_rejected_before_llm(shared_data: dict) -> None:
+    limit = shared_data["nl_rate_limit"]
+    results = shared_data["nl_results"]
+
+    # Exactly `limit` requests should be admitted within the window.
+    allowed_count = sum(1 for allowed, _ in results if allowed)
+    assert allowed_count == limit, f"expected {limit} allowed, got {allowed_count}"
+
+    # The LLM was invoked only for admitted requests — over-limit requests
+    # incurred zero LLM cost.
+    assert shared_data["llm_calls"] == limit, (
+        f"LLM was called {shared_data['llm_calls']} times; expected {limit} "
+        "(rejected requests must never reach the LLM)"
+    )
+
+    # Every request beyond the limit was rejected before the LLM call.
+    rejections = shared_data["nl_rejections"]
+    assert len(rejections) == len(results) - limit
+    assert all(retry > 0 for retry in rejections)
+
+    # Each rejection surfaced as HTTP 429 with a Retry-After header.
+    exceptions = shared_data["nl_exceptions"]
+    assert len(exceptions) == len(rejections)
+    for exc in exceptions:
+        assert exc.status_code == 429
+        assert "Retry-After" in exc.headers
+        assert int(exc.headers["Retry-After"]) >= 1

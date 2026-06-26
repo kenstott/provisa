@@ -56,12 +56,15 @@ class TestReq527PgwireDisabledByDefault:
         mock_server = MagicMock()
         mock_thread = MagicMock()
 
-        with patch("provisa.pgwire.server.ProvisaServer") as MockServer, \
-             patch("threading.Thread", return_value=mock_thread):
+        with (
+            patch("provisa.pgwire.server.ProvisaServer") as MockServer,
+            patch("threading.Thread", return_value=mock_thread),
+        ):
             MockServer.return_value = mock_server
             loop = MagicMock(spec=asyncio.AbstractEventLoop)
 
             from provisa.pgwire.server import start_pgwire_server
+
             start_pgwire_server("0.0.0.0", 5439, None, loop)
 
             # Must be instantiated with host=0.0.0.0
@@ -92,6 +95,7 @@ class TestReq529AuthType3:
         handler.wfile.flush = MagicMock()
 
         from provisa.pgwire.server import ProvisaHandler
+
         # Call send_auth_request directly via unbound method on a mock instance
         instance = object.__new__(ProvisaHandler)
         instance.wfile = handler.wfile
@@ -191,9 +195,10 @@ class TestReq530TLS:
         # Simulate reading: first call yields msglen-4=8, second yields SSL_REQUEST code
         handler.r.read_uint32.side_effect = [12, 80877103]
 
-        # Mock the recursive call to handle_startup after SSL negotiation
-        with patch.object(ProvisaHandler, "handle_startup", return_value=None) as mock_startup:
-            handler.handle_startup(MagicMock())
+        # Call the real method while mocking only the recursive call it makes to itself
+        real = ProvisaHandler.handle_startup
+        with patch.object(ProvisaHandler, "handle_startup", return_value=None):
+            real(handler, MagicMock())
 
         assert b"N" in written, "Must reply 'N' when no TLS context"
 
@@ -219,8 +224,9 @@ class TestReq530TLS:
 
         handler.r.read_uint32.side_effect = [12, 80877103]
 
+        real = ProvisaHandler.handle_startup
         with patch.object(ProvisaHandler, "handle_startup", return_value=None):
-            handler.handle_startup(MagicMock())
+            real(handler, MagicMock())
 
         assert b"S" in written, "Must reply 'S' when TLS context is present"
 
@@ -236,66 +242,79 @@ class TestReq532CatalogIntercept:
     def test_information_schema_tables_intercepted(self):
         # REQ-532
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM information_schema.tables") == "INTERCEPT"
 
     def test_pg_catalog_pg_namespace_intercepted(self):
         # REQ-532
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM pg_catalog.pg_namespace") == "INTERCEPT"
 
     def test_pg_class_intercepted(self):
         # REQ-532
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM pg_catalog.pg_class") == "INTERCEPT"
 
     def test_pg_attribute_intercepted(self):
         # REQ-532
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM pg_catalog.pg_attribute") == "INTERCEPT"
 
     def test_pg_type_intercepted(self):
         # REQ-532
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM pg_catalog.pg_type") == "INTERCEPT"
 
     def test_pg_constraint_intercepted(self):
         # REQ-532
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM pg_catalog.pg_constraint") == "INTERCEPT"
 
     def test_pg_roles_intercepted(self):
         # REQ-532
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM pg_catalog.pg_roles") == "INTERCEPT"
 
     def test_pg_settings_intercepted(self):
         # REQ-532
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM pg_catalog.pg_settings") == "INTERCEPT"
 
     def test_pg_stat_activity_intercepted(self):
         # REQ-532
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM pg_catalog.pg_stat_activity") == "INTERCEPT"
 
     def test_information_schema_columns_intercepted(self):
         # REQ-532
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM information_schema.columns") == "INTERCEPT"
 
     def test_information_schema_key_column_usage_intercepted(self):
         # REQ-532
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM information_schema.key_column_usage") == "INTERCEPT"
 
     def test_information_schema_referential_constraints_intercepted(self):
         # REQ-532
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM information_schema.referential_constraints") == "INTERCEPT"
 
     def test_normal_select_not_intercepted(self):
         # REQ-532: Regular user queries must NOT be intercepted
         from provisa.pgwire.catalog import classify
+
         assert classify("SELECT * FROM orders") == "PASS_THROUGH"
 
 
@@ -310,6 +329,7 @@ class TestReq579ServerVersion:
     def test_connection_parameters_include_server_version(self):
         # REQ-579
         from provisa.pgwire.server import ProvisaConnection
+
         conn = ProvisaConnection()
         params = conn.parameters()
         assert params["server_version"] == "14.0.provisa"
@@ -317,6 +337,7 @@ class TestReq579ServerVersion:
     def test_catalog_settings_include_server_version(self):
         # REQ-579: pg_catalog.pg_settings must expose server_version = 14.0.provisa
         from provisa.pgwire.catalog import _KNOWN_SETTINGS
+
         assert _KNOWN_SETTINGS.get("server_version") == "14.0.provisa"
 
 
@@ -356,6 +377,7 @@ class TestReq581ParameterSubstitution:
     def test_string_parameter_substituted(self):
         # REQ-581
         from provisa.pgwire.server import _substitute_params
+
         result = _substitute_params("SELECT * FROM t WHERE name = $1", ["Alice"])
         assert "'Alice'" in result
         assert "$1" not in result
@@ -363,6 +385,7 @@ class TestReq581ParameterSubstitution:
     def test_integer_parameter_substituted(self):
         # REQ-581
         from provisa.pgwire.server import _substitute_params
+
         result = _substitute_params("SELECT * FROM t WHERE id = $1", [42])
         assert "42" in result
         assert "$1" not in result
@@ -370,6 +393,7 @@ class TestReq581ParameterSubstitution:
     def test_multiple_parameters_substituted(self):
         # REQ-581: Multiple positional params
         from provisa.pgwire.server import _substitute_params
+
         result = _substitute_params("SELECT $1, $2", ["foo", 99])
         assert "'foo'" in result
         assert "99" in result
@@ -379,18 +403,21 @@ class TestReq581ParameterSubstitution:
     def test_none_becomes_null(self):
         # REQ-581: None → NULL literal
         from provisa.pgwire.server import _substitute_params
+
         result = _substitute_params("SELECT $1", [None])
         assert "NULL" in result
 
     def test_no_params_returns_original_sql(self):
         # REQ-581: No substitution when params is None
         from provisa.pgwire.server import _substitute_params
+
         sql = "SELECT * FROM t"
         assert _substitute_params(sql, None) == sql
 
     def test_high_index_substituted_before_low_to_avoid_partial_match(self):
         # REQ-581: $10 must not be confused with $1 — highest index replaced first
         from provisa.pgwire.server import _substitute_params
+
         params = ["a"] * 10
         params[9] = "ten"
         result = _substitute_params("SELECT $10, $1", params)
@@ -409,6 +436,7 @@ class TestReq582DdlRouting:
     def test_trino_path_rejects_alter(self):
         # REQ-582: Trino path only supports CREATE TABLE/VIEW
         from provisa.pgwire.ddl_handler import _CREATE_TABLE_OR_VIEW_RE
+
         ddl_statements = [
             "ALTER TABLE foo ADD COLUMN bar INT",
             "DROP TABLE foo",
@@ -420,11 +448,13 @@ class TestReq582DdlRouting:
     def test_trino_path_accepts_create_table(self):
         # REQ-582
         from provisa.pgwire.ddl_handler import _CREATE_TABLE_OR_VIEW_RE
+
         assert _CREATE_TABLE_OR_VIEW_RE.match("CREATE TABLE foo (id INT)")
 
     def test_trino_path_accepts_create_view(self):
         # REQ-582
         from provisa.pgwire.ddl_handler import _CREATE_TABLE_OR_VIEW_RE
+
         assert _CREATE_TABLE_OR_VIEW_RE.match("CREATE VIEW v AS SELECT 1")
 
     def test_ddl_handler_raises_for_non_create_on_trino_path(self):
@@ -537,6 +567,7 @@ class TestReq585CopySupport:
     def test_is_copy_sql_recognises_copy_keyword(self):
         # REQ-585
         from provisa.pgwire.copy_handler import is_copy_sql
+
         assert is_copy_sql("COPY orders TO STDOUT")
         assert is_copy_sql("copy orders from stdin")
         assert not is_copy_sql("SELECT * FROM orders")
@@ -544,6 +575,7 @@ class TestReq585CopySupport:
     def test_copy_to_table_form_parsed(self):
         # REQ-585: Table reference form
         from provisa.pgwire.copy_handler import _PARSE_TO_RE
+
         m = _PARSE_TO_RE.match("COPY orders TO STDOUT")
         assert m is not None
         assert m.group("table") == "orders"
@@ -551,6 +583,7 @@ class TestReq585CopySupport:
     def test_copy_to_query_form_parsed(self):
         # REQ-585: Arbitrary subquery form
         from provisa.pgwire.copy_handler import _PARSE_QUERY_TO_RE
+
         m = _PARSE_QUERY_TO_RE.match("COPY (SELECT id FROM orders) TO STDOUT")
         assert m is not None
         assert "SELECT id FROM orders" in m.group("query")
@@ -558,6 +591,7 @@ class TestReq585CopySupport:
     def test_copy_to_csv_format_parsed(self):
         # REQ-585: CSV format spec parsed
         from provisa.pgwire.copy_handler import _PARSE_TO_RE
+
         m = _PARSE_TO_RE.match("COPY orders TO STDOUT WITH (FORMAT csv)")
         assert m is not None
         assert m.group("fmt") == "csv"
@@ -565,6 +599,7 @@ class TestReq585CopySupport:
     def test_copy_text_format_default(self):
         # REQ-585: Default format is text (tab-delimited)
         from provisa.pgwire.copy_handler import _PARSE_TO_RE
+
         m = _PARSE_TO_RE.match("COPY orders TO STDOUT")
         assert m is not None
         assert m.group("fmt") is None  # None means default (text)
@@ -572,6 +607,7 @@ class TestReq585CopySupport:
     def test_copy_from_stdin_parsed(self):
         # REQ-585
         from provisa.pgwire.copy_handler import _PARSE_FROM_RE
+
         m = _PARSE_FROM_RE.match("COPY orders FROM STDIN")
         assert m is not None
         assert m.group("table") == "orders"
@@ -579,6 +615,7 @@ class TestReq585CopySupport:
     def test_text_copy_output_tab_delimited(self):
         # REQ-585: text format uses tab delimiter
         from provisa.pgwire.copy_handler import _rows_to_copy_text
+
         rows = [("Alice", 42), ("Bob", 99)]
         result = _rows_to_copy_text(rows, 2).decode()
         lines = result.strip().split("\n")
@@ -587,6 +624,7 @@ class TestReq585CopySupport:
     def test_csv_copy_output_comma_delimited(self):
         # REQ-585: csv format uses comma delimiter
         from provisa.pgwire.copy_handler import _rows_to_copy_csv
+
         rows = [("Alice", 42)]
         result = _rows_to_copy_csv(rows, 2).decode()
         assert "," in result
@@ -603,6 +641,7 @@ class TestReq586CopyFromWritableOnly:
     def test_writable_source_types_set(self):
         # REQ-586
         from provisa.pgwire.copy_handler import _WRITABLE_SOURCE_TYPES
+
         assert "postgresql" in _WRITABLE_SOURCE_TYPES
         assert "mysql" in _WRITABLE_SOURCE_TYPES
         assert "sqlite" in _WRITABLE_SOURCE_TYPES
@@ -611,6 +650,7 @@ class TestReq586CopyFromWritableOnly:
     def test_trino_source_not_in_writable_types(self):
         # REQ-586: Trino (iceberg/hive) must not be in writable set
         from provisa.pgwire.copy_handler import _WRITABLE_SOURCE_TYPES
+
         assert "iceberg" not in _WRITABLE_SOURCE_TYPES
         assert "hive" not in _WRITABLE_SOURCE_TYPES
         assert "trino" not in _WRITABLE_SOURCE_TYPES
@@ -633,14 +673,17 @@ class TestReq586CopyFromWritableOnly:
         ctx = MagicMock()
         ctx.session.role_id = "dev"
 
-        with patch("provisa.pgwire.copy_handler._find_table_meta", return_value=(fake_tm, ["id"])), \
-             patch("provisa.pgwire.copy_handler.state", fake_state):
+        with (
+            patch("provisa.pgwire.copy_handler._find_table_meta", return_value=(fake_tm, ["id"])),
+            patch("provisa.pgwire.copy_handler.state", fake_state),
+        ):
             with pytest.raises(PermissionError):
                 handler._handle_copy_from(ctx, None, "orders", None, "text", "dev")
 
     def test_copy_from_column_list_inferred_when_not_provided(self):
         # REQ-586: If no column list provided, columns inferred from registered schema
         from provisa.pgwire.copy_handler import _PARSE_FROM_RE
+
         m = _PARSE_FROM_RE.match("COPY orders FROM STDIN")
         assert m is not None
         assert m.group("cols") is None  # no explicit column list
@@ -654,26 +697,31 @@ class TestReq586CopyFromWritableOnly:
 class TestReq587TransactionIntercept:
     """REQ-587: SET/BEGIN/COMMIT/ROLLBACK etc. are intercepted; in_transaction() always False."""
 
-    @pytest.mark.parametrize("sql", [
-        "SET search_path TO public",
-        "BEGIN",
-        "START TRANSACTION",
-        "COMMIT",
-        "ROLLBACK",
-        "SAVEPOINT sp1",
-        "RELEASE sp1",
-        "DISCARD ALL",
-        "RESET ALL",
-        "DEALLOCATE ALL",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SET search_path TO public",
+            "BEGIN",
+            "START TRANSACTION",
+            "COMMIT",
+            "ROLLBACK",
+            "SAVEPOINT sp1",
+            "RELEASE sp1",
+            "DISCARD ALL",
+            "RESET ALL",
+            "DEALLOCATE ALL",
+        ],
+    )
     def test_transaction_commands_intercepted(self, sql):
         # REQ-587
         from provisa.pgwire.catalog import classify
+
         assert classify(sql) == "INTERCEPT", f"Expected INTERCEPT for: {sql}"
 
     def test_session_in_transaction_always_false(self):
         # REQ-587: The server is stateless w.r.t. transactions
         from provisa.pgwire.server import ProvisaSession
+
         session = ProvisaSession()
         assert session.in_transaction() is False
 
@@ -686,23 +734,28 @@ class TestReq587TransactionIntercept:
 class TestReq588ScalarExpressionIntercepts:
     """REQ-588: current_user, current_database(), version() etc. are intercepted."""
 
-    @pytest.mark.parametrize("sql", [
-        "SELECT current_user",
-        "SELECT session_user",
-        "SELECT current_database()",
-        "SELECT current_schema()",
-        "SELECT version()",
-        "SELECT pg_backend_pid()",
-        "SHOW server_version",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT current_user",
+            "SELECT session_user",
+            "SELECT current_database()",
+            "SELECT current_schema()",
+            "SELECT version()",
+            "SELECT pg_backend_pid()",
+            "SHOW server_version",
+        ],
+    )
     def test_scalar_expressions_intercepted(self, sql):
         # REQ-588
         from provisa.pgwire.catalog import classify
+
         assert classify(sql) == "INTERCEPT", f"Expected INTERCEPT for: {sql}"
 
     def test_version_in_settings_returns_postgresql_14(self):
         # REQ-588: version() must return "PostgreSQL 14.0 on Provisa"
         from provisa.pgwire.catalog import _KNOWN_SETTINGS
+
         # server_version_num maps to 14.x
         assert _KNOWN_SETTINGS["server_version_num"].startswith("14")
 
@@ -753,6 +806,7 @@ class TestReq589BinaryParameters:
         # These are the OIDs named in the requirement
         required_oids = {16, 17, 20, 21, 23, 25, 700, 701, 1043, 1082, 1114, 1184, 1700, 2950}
         from provisa.pgwire.catalog import _PG_TYPE_ROWS
+
         present_oids = {row[0] for row in _PG_TYPE_ROWS}
         missing = required_oids - present_oids
         assert not missing, f"Missing OIDs in pg_type rows: {missing}"
@@ -760,32 +814,38 @@ class TestReq589BinaryParameters:
     def test_pg_literal_bool_true(self):
         # REQ-589: bool True encoded as TRUE
         from provisa.pgwire.server import _pg_literal
+
         assert _pg_literal(True) == "TRUE"
 
     def test_pg_literal_bool_false(self):
         # REQ-589: bool False encoded as FALSE
         from provisa.pgwire.server import _pg_literal
+
         assert _pg_literal(False) == "FALSE"
 
     def test_pg_literal_none_is_null(self):
         # REQ-589: None → NULL
         from provisa.pgwire.server import _pg_literal
+
         assert _pg_literal(None) == "NULL"
 
     def test_pg_literal_bytes_hex_encoded(self):
         # REQ-589: bytes → hex-escaped literal (OID 17 = bytea)
         from provisa.pgwire.server import _pg_literal
+
         result = _pg_literal(b"\xde\xad")
         assert "dead" in result.lower()
 
     def test_pg_literal_integer(self):
         # REQ-589: int passed through numerically
         from provisa.pgwire.server import _pg_literal
+
         assert _pg_literal(42) == "42"
 
     def test_pg_literal_string_escapes_quotes(self):
         # REQ-589: single-quotes inside strings are doubled
         from provisa.pgwire.server import _pg_literal
+
         result = _pg_literal("O'Brien")
         assert "O''Brien" in result
 
@@ -802,6 +862,7 @@ class TestReq590Timeouts:
         # REQ-590: Future.result(timeout=60) in DDL handler
         import inspect
         from provisa.pgwire import ddl_handler
+
         source = inspect.getsource(ddl_handler)
         # The timeout value 60 must appear in future.result calls
         assert "timeout=60" in source, "DDL handler must use timeout=60"
@@ -810,6 +871,7 @@ class TestReq590Timeouts:
         # REQ-590: Future.result(timeout=120) in session execute_sql
         import inspect
         from provisa.pgwire import server
+
         source = inspect.getsource(server)
         assert "timeout=120" in source, "Query handler must use timeout=120"
 
@@ -826,6 +888,7 @@ class TestReq614SqlOnly:
         # REQ-614: The pipeline entry point is named for SQL
         from provisa.pgwire._pipeline import execute_pgwire_sql
         import inspect
+
         source = inspect.getsource(execute_pgwire_sql)
         # Must route through governance pipeline (govern_and_route)
         assert "_govern_and_route" in source
@@ -834,6 +897,7 @@ class TestReq614SqlOnly:
         # REQ-614: No GraphQL execution in the pgwire pipeline module
         import inspect
         from provisa.pgwire import _pipeline
+
         source = inspect.getsource(_pipeline)
         # GraphQL-specific executor modules must not be imported
         assert "graphql_executor" not in source
@@ -842,6 +906,7 @@ class TestReq614SqlOnly:
     def test_pipeline_does_not_have_cypher_entry_point(self):
         # REQ-614: No execute_pgwire_cypher function
         import provisa.pgwire._pipeline as pipeline_mod
+
         assert not hasattr(pipeline_mod, "execute_pgwire_cypher")
         assert not hasattr(pipeline_mod, "execute_pgwire_graphql")
 
@@ -857,6 +922,7 @@ class TestReq615NoDml:
     def test_dml_not_matched_by_ddl_regex(self):
         # REQ-615: DML statements must NOT be captured by the DDL regex
         from provisa.pgwire.server import _DDL_RE
+
         dml_statements = [
             "INSERT INTO orders VALUES (1, 'x')",
             "UPDATE orders SET name = 'y' WHERE id = 1",
@@ -868,6 +934,7 @@ class TestReq615NoDml:
     def test_dml_not_matched_by_copy_regex(self):
         # REQ-615: DML is not COPY either
         from provisa.pgwire.server import _COPY_RE
+
         dml_statements = [
             "INSERT INTO orders VALUES (1)",
             "UPDATE orders SET id = 1",

@@ -230,27 +230,23 @@ def test_table_meta_captures_domain_ownership():
     assert claimed.domain_id == "analytics"
 
 
-def test_discovery_collect_metadata_scope_invalid_raises():
+@pytest.mark.asyncio
+async def test_discovery_collect_metadata_scope_invalid_raises():
     # REQ-611
     # collect_metadata enforces tier prerequisites by raising ValueError on
     # an invalid scope — the tiered model has exactly three valid scopes.
-    import asyncio
-
     from provisa.discovery.collector import collect_metadata
 
     trino_conn = MagicMock()
     pg_conn = MagicMock()
 
-    # asyncpg.fetch returns records; simulate empty
     async def mock_fetch(*_):
         return []
 
     pg_conn.fetch = mock_fetch
 
     with pytest.raises(ValueError, match="Invalid scope"):
-        asyncio.get_event_loop().run_until_complete(
-            collect_metadata(trino_conn, pg_conn, "invalid_scope")
-        )
+        await collect_metadata(trino_conn, pg_conn, "invalid_scope")
 
 
 # ---------------------------------------------------------------------------

@@ -919,16 +919,16 @@ class TestReq635NativeSchemaNames:
         assert len(PROVISA_INTERNAL_SCHEMAS) > 0
 
     def test_mv_cache_is_internal_schema(self):
-        # REQ-635 — must not be presented to users
-        from provisa.api.admin.introspect import PROVISA_INTERNAL_SCHEMAS
+        # REQ-635 — org-scoped mv_cache must not be presented to users
+        from provisa.api.admin.introspect import is_provisa_internal
 
-        assert "mv_cache" in PROVISA_INTERNAL_SCHEMAS
+        assert is_provisa_internal("org_default_mv_cache")
 
     def test_api_cache_is_internal_schema(self):
-        # REQ-635
-        from provisa.api.admin.introspect import PROVISA_INTERNAL_SCHEMAS
+        # REQ-635 — org-scoped api_cache must not be presented to users
+        from provisa.api.admin.introspect import is_provisa_internal
 
-        assert "api_cache" in PROVISA_INTERNAL_SCHEMAS
+        assert is_provisa_internal("org_default_api_cache")
 
     def test_kafka_native_schema_is_kafka(self):
         # REQ-635 — fixed constant for Kafka (flat source)

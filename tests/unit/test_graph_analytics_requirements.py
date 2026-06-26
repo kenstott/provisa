@@ -23,11 +23,11 @@ def _build_networkx_digraph(nodes: list[dict], edges: list[dict]):
 
     G = nx.DiGraph()
     for n in nodes:
-        nid = n.get("id") or n.get("identity")
+        nid = n["id"] if "id" in n else n.get("identity")
         G.add_node(nid, **{k: v for k, v in n.items() if k != "id"})
     for e in edges:
-        src = e.get("start") or e.get("startNode")
-        tgt = e.get("end") or e.get("endNode")
+        src = e["start"] if "start" in e else e.get("startNode")
+        tgt = e["end"] if "end" in e else e.get("endNode")
         eid = e.get("identity")
         G.add_edge(src, tgt, identity=eid)
     return G
@@ -74,13 +74,13 @@ def _merge_analytics(
     """Merge _analytics dict into each node and edge."""
     augmented_nodes = []
     for n in nodes:
-        nid = n.get("id") or n.get("identity")
+        nid = n["id"] if "id" in n else n.get("identity")
         entry = dict(n)
         entry["_analytics"] = analytics.get(nid, {})
         augmented_nodes.append(entry)
     augmented_edges = []
     for e in edges:
-        src = e.get("start") or e.get("startNode")
+        src = e["start"] if "start" in e else e.get("startNode")
         entry = dict(e)
         entry["_analytics"] = analytics.get(src, {})
         augmented_edges.append(entry)
