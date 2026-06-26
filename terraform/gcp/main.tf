@@ -139,6 +139,29 @@ locals {
   metadata_ssh = var.ssh_public_key != "" ? { ssh-keys = var.ssh_public_key } : {}
 }
 
+# ── Private DNS ────────────────────────────────────────────────────────────────
+
+resource "google_dns_managed_zone" "internal" {
+  name        = "provisa-internal"
+  dns_name    = "provisa.internal."
+  description = "Private zone for intra-cluster DNS"
+  visibility  = "private"
+
+  private_visibility_config {
+    networks {
+      network_url = google_compute_network.main.id
+    }
+  }
+}
+
+resource "google_dns_record_set" "primary" {
+  name         = "primary.provisa.internal."
+  managed_zone = google_dns_managed_zone.internal.name
+  type         = "A"
+  ttl          = 30
+  rrdatas      = [google_compute_instance.primary.network_interface[0].network_ip]
+}
+
 # ── Primary Node ───────────────────────────────────────────────────────────────
 
 resource "google_compute_instance" "primary" {
@@ -213,7 +236,7 @@ resource "google_compute_instance" "secondary" {
       /opt/Provisa.AppImage \
         --non-interactive \
         --role secondary \
-        --primary-ip ${google_compute_instance.primary.network_interface[0].network_ip} \
+        --primary-ip primary.provisa.internal \
         --ram-gb ${local.effective_worker_ram}
     SHELL
   })

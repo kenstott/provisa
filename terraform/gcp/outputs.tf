@@ -13,6 +13,11 @@ output "primary_ip" {
   value       = google_compute_instance.primary.network_interface[0].network_ip
 }
 
+output "primary_dns" {
+  description = "Private DNS name for the primary node (stable across replacements)"
+  value       = trimsuffix(google_dns_record_set.primary.name, ".")
+}
+
 output "primary_public_ip" {
   description = "Public IP of the primary node (SSH access)"
   value       = google_compute_instance.primary.network_interface[0].access_config[0].nat_ip

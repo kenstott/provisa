@@ -13,6 +13,11 @@ output "primary_ip" {
   value       = azurerm_network_interface.primary.ip_configuration[0].private_ip_address
 }
 
+output "primary_dns" {
+  description = "Private DNS name for the primary node (stable across replacements)"
+  value       = "${azurerm_private_dns_a_record.primary.name}.${azurerm_private_dns_zone.internal.name}"
+}
+
 output "secondary_ips" {
   description = "Private IPs of all secondary nodes"
   value       = [for nic in azurerm_network_interface.secondary : nic.ip_configuration[0].private_ip_address]

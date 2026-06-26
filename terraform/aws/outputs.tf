@@ -13,6 +13,11 @@ output "primary_ip" {
   value       = aws_instance.primary.private_ip
 }
 
+output "primary_dns" {
+  description = "Private DNS name for the primary node (stable across replacements)"
+  value       = aws_route53_record.primary.name
+}
+
 output "primary_public_ip" {
   description = "Public IP of the primary node (SSH access)"
   value       = aws_instance.primary.public_ip

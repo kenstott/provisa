@@ -223,6 +223,30 @@ resource "azurerm_lb_rule" "flight" {
   probe_id                       = azurerm_lb_probe.flight.id
 }
 
+# ── Private DNS ────────────────────────────────────────────────────────────────
+
+resource "azurerm_private_dns_zone" "internal" {
+  name                = "provisa.internal"
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = merge(var.tags, { Project = "provisa" })
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "internal" {
+  name                  = "provisa-internal-link"
+  resource_group_name   = azurerm_resource_group.main.name
+  private_dns_zone_name = azurerm_private_dns_zone.internal.name
+  virtual_network_id    = azurerm_virtual_network.main.id
+  registration_enabled  = false
+}
+
+resource "azurerm_private_dns_a_record" "primary" {
+  name                = "primary"
+  zone_name           = azurerm_private_dns_zone.internal.name
+  resource_group_name = azurerm_resource_group.main.name
+  ttl                 = 30
+  records             = [azurerm_network_interface.primary.ip_configuration[0].private_ip_address]
+}
+
 # ── Locals ─────────────────────────────────────────────────────────────────────
 
 locals {
@@ -402,7 +426,7 @@ resource "azurerm_linux_virtual_machine" "secondary" {
 
   custom_data = base64encode(<<-YAML
     ${local.base_cloud_init}
-      - /opt/Provisa.AppImage --non-interactive --role secondary --primary-ip ${azurerm_network_interface.primary.ip_configuration[0].private_ip_address} --ram-gb ${local.effective_worker_ram}
+      - /opt/Provisa.AppImage --non-interactive --role secondary --primary-ip primary.provisa.internal --ram-gb ${local.effective_worker_ram}
   YAML
   )
 }

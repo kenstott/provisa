@@ -204,6 +204,23 @@ locals {
   ssh_key_args = var.key_pair != "" ? "key_name = \"${var.key_pair}\"" : ""
 }
 
+# ── Private DNS ────────────────────────────────────────────────────────────────
+
+resource "aws_route53_zone" "internal" {
+  name = "provisa.internal"
+  vpc {
+    vpc_id = aws_vpc.main.id
+  }
+}
+
+resource "aws_route53_record" "primary" {
+  zone_id = aws_route53_zone.internal.zone_id
+  name    = "primary.provisa.internal"
+  type    = "A"
+  ttl     = 30
+  records = [aws_instance.primary.private_ip]
+}
+
 # ── Primary Node ───────────────────────────────────────────────────────────────
 
 resource "aws_instance" "primary" {
@@ -253,7 +270,7 @@ resource "aws_instance" "secondary" {
     /opt/Provisa.AppImage \
       --non-interactive \
       --role secondary \
-      --primary-ip ${aws_instance.primary.private_ip} \
+      --primary-ip primary.provisa.internal \
       --ram-gb ${local.effective_worker_ram}
   SHELL
 
