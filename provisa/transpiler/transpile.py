@@ -37,7 +37,28 @@ def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to Trino SQL."""
     pg_sql = rewrite_correlated_subqueries_for_trino(pg_sql)
     result = transpile(pg_sql, "trino")
+    result = _rewrite_json_build_object_for_trino(result)
     return _rewrite_json_arrayagg_for_trino(result)
+
+
+def _rewrite_json_build_object_for_trino(sql: str) -> str:
+    """Replace JSON_BUILD_OBJECT(k, v, ...) with JSON_OBJECT('k': v, ...) for Trino."""
+    try:
+        tree = sqlglot.parse_one(sql, read="trino")
+    except Exception:
+        return sql
+
+    def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_BUILD_OBJECT":
+            exprs = node.expressions
+            pairs = [
+                exp.JSONKeyValue(this=exprs[i], expression=exprs[i + 1])
+                for i in range(0, len(exprs) - 1, 2)
+            ]
+            return exp.JSONObject(expressions=pairs)
+        return node
+
+    return tree.transform(_transform).sql(dialect="trino")
 
 
 def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
