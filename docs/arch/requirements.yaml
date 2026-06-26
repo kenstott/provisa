@@ -1,0 +1,45 @@
+# Requirements — machine-readable source of truth.
+# docs/arch/requirements.md is generated from this file. Do not hand-edit the markdown.
+# See docs/testing-plan.md for schema documentation and field rules.
+#
+# Status lifecycle: proposed → accepted → in-progress → complete
+#                             → rejected
+# IDs are assigned at proposed and never reused.
+#
+# Generated artifacts:
+#   docs/arch/requirements.md       — scripts/gen_requirements_md.py
+#   tests/features/REQ-NNN.feature  — scripts/gen_features.py
+#   docs/exports/feature_matrix.csv — scripts/gen_feature_matrix.py
+#   docs/exports/traceability_matrix.csv — scripts/gen_traceability_matrix.py
+#   docs/exports/roadmap.md         — scripts/gen_roadmap.py
+
+# ---------------------------------------------------------------------------
+# SEED ENTRY — replace with full migration output (Phase 2)
+# ---------------------------------------------------------------------------
+- id: REQ-001
+  status: complete
+  group: "1. Access Governance & Security"
+  category: Query Governance
+  priority: MUST
+  type: behavioral
+  since: "2026-03"
+  description: >
+    Any authenticated identity can query using any supported language
+    (GraphQL, SQL, pgwire, Arrow Flight). Data returned is governed solely
+    by table/column visibility, RLS, and masking — there is no capability
+    gate on querying itself.
+  use_case: >
+    Removing the query-execution capability gate means governance is expressed
+    entirely through data-layer controls (visibility, RLS, masking), not
+    through access lists.
+  code:
+    - provisa/security/
+    - provisa/compiler/
+  tests:
+    - tests/unit/test_governance.py
+    - tests/integration/test_governance_integration.py
+  scenario: |
+    Given an authenticated identity with role "analyst"
+    When a GraphQL query is submitted against a registered table
+    Then data is returned filtered by RLS and masking rules only
+    And no capability gate rejects the query
