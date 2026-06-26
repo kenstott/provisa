@@ -461,6 +461,8 @@ tables:
     - analyst
   description: "Customer adoption inquiries \u2014 managed by the front-desk/CRM team"
   domain_id: pet-store
+  enable_aggregates: true
+  enable_group_by: true
   governance: pre-approved
   schema: default
   source_id: inquiries-sqlite
