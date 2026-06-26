@@ -23,11 +23,15 @@ from starlette.responses import JSONResponse, Response
 class RateLimitMiddleware(BaseHTTPMiddleware):  # REQ-369, REQ-371
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         from provisa.api.app import state
+        from starlette.requests import ClientDisconnect
 
         limiter = getattr(state, "rate_limiter", None)
         role_id = getattr(request.state, "role", None)
         if limiter is None or not role_id:
-            return await call_next(request)
+            try:
+                return await call_next(request)
+            except ClientDisconnect:
+                return Response(status_code=499)
 
         role = state.roles.get(role_id) or {}
         rate_limit = role.get("rate_limit") or {}
@@ -40,4 +44,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):  # REQ-369, REQ-371
                     content={"error": "rate_limited", "detail": "request rate limit exceeded"},
                     headers={"Retry-After": str(max(1, int(retry_after + 0.999)))},
                 )
-        return await call_next(request)
+        try:
+            return await call_next(request)
+        except ClientDisconnect:
+            return Response(status_code=499)
