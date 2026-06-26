@@ -36,6 +36,32 @@ class ReqType(str, Enum):
     infrastructure = "infrastructure"
 
 
+class CompetitiveStatus(str, Enum):
+    ahead = "ahead"
+    parity = "parity"
+    gap = "gap"
+    neutral = "neutral"
+
+
+class CompetitivePosition(BaseModel):
+    status: CompetitiveStatus
+    rationale: str
+
+
+class IntegrationTestJudgement(str, Enum):
+    required = "required"
+    not_required = "not_required"
+    deferred = "deferred"
+
+
+class Stakeholder(str, Enum):
+    data_engineer = "data-engineer"
+    compliance = "compliance"
+    app_developer = "app-developer"
+    ops = "ops"
+    executive = "executive"
+
+
 _COVERAGE_STATUSES = {Status.accepted, Status.in_progress, Status.complete}
 _NEEDS_SCENARIO = {Status.accepted, Status.in_progress, Status.complete}
 
@@ -51,10 +77,14 @@ class Requirement(BaseModel):
     use_case: Optional[str] = None
     code: Optional[list[str]] = None
     tests: Optional[list[str]] = None
+    integration_test: Optional[IntegrationTestJudgement] = None
+    integration_test_reason: Optional[str] = None
+    stakeholders: Optional[list[Stakeholder]] = None
     scenario: Optional[str] = None
     since: Optional[str] = None
     target: Optional[str] = None
     rejection_reason: Optional[str] = None
+    competitive_position: Optional[CompetitivePosition] = None
 
     @field_validator("id")
     @classmethod
@@ -78,10 +108,17 @@ class Requirement(BaseModel):
     def target_format(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
+        import datetime as _dt
+
         parts = v.split("-")
-        if len(parts) != 2 or not parts[0].isdigit() or parts[1] not in {"Q1", "Q2", "Q3", "Q4"}:
-            raise ValueError(f"target must be YYYY-QN, got {v!r}")
-        return v
+        if len(parts) == 2 and parts[0].isdigit() and parts[1] in {"Q1", "Q2", "Q3", "Q4"}:
+            return v
+        try:
+            _dt.date.fromisoformat(v)
+            return v
+        except ValueError:
+            pass
+        raise ValueError(f"target must be YYYY-QN or YYYY-MM-DD, got {v!r}")
 
     @model_validator(mode="after")
     def cross_field_rules(self) -> Requirement:
