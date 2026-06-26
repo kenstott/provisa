@@ -49,6 +49,7 @@ dependencies = [
     "buenavista",
     "duckdb",
     "networkx>=3.0",
+    "scipy",
     "defusedxml",
 ]
 
