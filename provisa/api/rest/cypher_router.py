@@ -688,10 +688,16 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
 
 @router.get("/data/graph-counts")
 async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
-    """Count nodes and relationships using direct FK/PK queries, filtered by domain."""
+    """Count nodes and relationships via the normal Cypher pipeline, filtered by domain."""
     import asyncio
 
     from provisa.api.app import state
+    from provisa.cypher.parser import parse_cypher
+    from provisa.cypher.translator import cypher_to_sql
+    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+    from provisa.compiler.sql_gen import make_semantic_sql
+    from provisa.pgwire._pipeline import _govern_and_route_compiled
+    from provisa.transpiler.router import Route as _Route
 
     role_id = _resolve_role_id(request, state)
     ctx = state.contexts.get(role_id)
@@ -705,34 +711,38 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
 
     label_map = _build_label_map(ctx, role_id, state)
 
-    def _is_sql_backed(table_name: str) -> bool:
-        return (
-            _lookup_api_endpoint(state, table_name) is None
-            and _lookup_gql_remote_table(state, table_name) is None
-        )
+    async def _run_count(cypher: str) -> int:
+        try:
+            ast = parse_cypher(cypher)
+            body = CypherRequest(query=cypher, params={})
+            result = _build_sql_from_ast(ast, label_map, body, cypher_to_sql, apply_graph_rewrites)
+            if isinstance(result, Response):
+                return 0
+            sql_str, _, _ = result
+            semantic_sql = make_semantic_sql(sql_str, ctx)
+            plan = await _govern_and_route_compiled(semantic_sql, role_id, exec_params=None)
+            if plan.route != _Route.TRINO and plan.source_id:
+                rows = await _dispatch_execution_direct(
+                    plan.exec_sql or "", plan.source_id, [], state
+                )
+            else:
+                rows = await _dispatch_execution(
+                    plan.exec_sql or "", plan.trino_sql or "", [], state, {}
+                )
+            if isinstance(rows, Response):
+                return 0
+            return int(rows[0]["cnt"]) if rows else 0
+        except Exception:
+            return 0
 
-    def _table_ref(nm: Any) -> str:
-        parts = []
-        if nm.catalog_name:
-            parts.append(f'"{nm.catalog_name}"')
-        if nm.schema_name:
-            parts.append(f'"{nm.schema_name}"')
-        parts.append(f'"{nm.sql_table_name}"')
-        return ".".join(parts)
+    node_labels = [
+        nm.label
+        for nm in label_map.nodes.values()
+        if not filtered_domains or nm.domain_id in filtered_domains
+    ]
 
-    node_sql_entries: list[tuple[str, str]] = []  # (label, sql) — SQL-backed
-    node_gql_entries: list[tuple[str, str]] = []  # (label, table_name) — GQL-backed
-
-    for nm in label_map.nodes.values():
-        if filtered_domains and nm.domain_id not in filtered_domains:
-            continue
-        if _is_sql_backed(nm.sql_table_name):
-            node_sql_entries.append((nm.label, f"SELECT COUNT(*) AS cnt FROM {_table_ref(nm)}"))
-        elif _lookup_gql_remote_table(state, nm.sql_table_name) is not None:
-            node_gql_entries.append((nm.label, nm.sql_table_name))
-
-    rel_sqls: list[str] = []
-    seen_rel_keys: set[tuple] = set()
+    seen_rel_types: set[str] = set()
+    rel_types: list[str] = []
     for rel in label_map.relationships.values():
         src_nm = label_map.nodes[rel.source_label]
         tgt_nm = label_map.nodes[rel.target_label]
@@ -740,61 +750,29 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             src_nm.domain_id not in filtered_domains or tgt_nm.domain_id not in filtered_domains
         ):
             continue
-        if not _is_sql_backed(src_nm.sql_table_name) or not _is_sql_backed(tgt_nm.sql_table_name):
-            continue
-        key = (
-            src_nm.sql_table_name,
-            rel.join_source_column,
-            tgt_nm.sql_table_name,
-            rel.join_target_column,
-        )
-        if key in seen_rel_keys:
-            continue
-        seen_rel_keys.add(key)
-        src_ref = _table_ref(src_nm)
-        tgt_ref = _table_ref(tgt_nm)
-        rel_sqls.append(
-            f"SELECT COUNT(*) AS cnt FROM {src_ref} AS _s"
-            f" JOIN {tgt_ref} AS _t"
-            f' ON _s."{rel.join_source_column}" = _t."{rel.join_target_column}"'
-        )
-
-    async def _count_sql(sql: str) -> int:
-        try:
-            rows = await _execute(sql, [], state)
-            return int(rows[0]["cnt"]) if rows else 0
-        except Exception:
-            return 0
-
-    async def _count_gql(table_name: str) -> int:
-        try:
-            rows = await _execute_with_gql_remote(
-                f"SELECT COUNT(*) AS cnt FROM {table_name}", [], {}, state
-            )
-            return int(rows[0]["cnt"]) if rows else 0
-        except Exception:
-            return 0
+        if rel.rel_type not in seen_rel_types:
+            seen_rel_types.add(rel.rel_type)
+            rel_types.append(rel.rel_type)
 
     BATCH = 5
 
     label_counts: dict[str, int] = {}
-    for i in range(0, len(node_sql_entries), BATCH):
-        batch = node_sql_entries[i : i + BATCH]
-        results = await asyncio.gather(*[_count_sql(sql) for _, sql in batch])
-        for (label, _), cnt in zip(batch, results):
-            label_counts[label] = cnt
-
-    for i in range(0, len(node_gql_entries), BATCH):
-        batch = node_gql_entries[i : i + BATCH]
-        results = await asyncio.gather(*[_count_gql(tbl) for _, tbl in batch])
-        for (label, _), cnt in zip(batch, results):
-            label_counts[label] = cnt
+    for i in range(0, len(node_labels), BATCH):
+        batch = node_labels[i : i + BATCH]
+        results = await asyncio.gather(
+            *[_run_count(f"MATCH (n:{lbl}) RETURN count(n) AS cnt") for lbl in batch]
+        )
+        for lbl, cnt in zip(batch, results):
+            label_counts[lbl] = cnt
 
     node_count = sum(label_counts.values())
 
     rel_count = 0
-    for i in range(0, len(rel_sqls), BATCH):
-        results = await asyncio.gather(*[_count_sql(s) for s in rel_sqls[i : i + BATCH]])
+    for i in range(0, len(rel_types), BATCH):
+        batch = rel_types[i : i + BATCH]
+        results = await asyncio.gather(
+            *[_run_count(f"MATCH ()-[r:{rt}]->() RETURN count(r) AS cnt") for rt in batch]
+        )
         rel_count += sum(results)
 
     return JSONResponse(
