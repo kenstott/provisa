@@ -245,7 +245,12 @@ function BranchPanel({
         )}
       </div>
       <div className="nl-branch-body">
-        {branch.loading && <div className="nl-branch-loading">Generating…</div>}
+        {branch.loading && (
+          <div className="nl-branch-loading" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            <span className="btn-spinner" style={{ flexShrink: 0 }} />
+            Generating…
+          </div>
+        )}
         {!branch.loading && notApplicable && (
           <div className="nl-branch-na">Not applicable for this query type</div>
         )}

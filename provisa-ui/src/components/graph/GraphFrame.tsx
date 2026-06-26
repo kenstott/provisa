@@ -952,6 +952,22 @@ export function GraphFrame({
         </button>
       </div>
       <div className="gf-body-content">
+      {frame.status === "loading" && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "2rem",
+            gap: "0.5rem",
+            color: "var(--text-muted)",
+            fontSize: "0.85rem",
+          }}
+        >
+          <span className="btn-spinner" style={{ flexShrink: 0 }} />
+          Running…
+        </div>
+      )}
       {frame.status === "error" && (
         <div className="gf-error gf-error--copyable">
           <span className="gf-error-text">{frame.error}</span>

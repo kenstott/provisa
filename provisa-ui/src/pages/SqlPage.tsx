@@ -2604,7 +2604,22 @@ export function SqlPage() {
 
                 <div style={{ flex: 1, overflow: "auto" }}>
                   {resultTab === "results" &&
-                    (resultError ? (
+                    (running ? (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "2rem",
+                          gap: "0.5rem",
+                          color: "var(--text-muted)",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        <span className="btn-spinner" style={{ flexShrink: 0 }} />
+                        Running…
+                      </div>
+                    ) : resultError ? (
                       <pre
                         style={{
                           margin: "0.75rem",
