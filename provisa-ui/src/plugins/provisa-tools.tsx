@@ -434,10 +434,14 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
             ? raw.queries
             : [raw];
         setCompiled(results);
-        const cypher = results.map((r) => r.compiled_cypher).find((c) => c);
-        setCypherQuery(cypher ?? "");
+        const cypherParts = results.flatMap((r) => {
+          const parts: string[] = [];
+          if (r.compiled_cypher) parts.push(r.compiled_cypher);
+          return parts;
+        });
+        setCypherQuery(cypherParts.join("\n\n") ?? "");
         const cerr = results.map((r) => r.cypher_error).find((e) => e) ?? null;
-        setCypherError(cypher ? null : cerr);
+        setCypherError(cypherParts.length > 0 ? null : cerr);
       } catch {
         setCompiled(null);
       }
