@@ -71,6 +71,40 @@ def _is_cypher(query: str) -> bool:
     return bool(_CYPHER_PREFIX.match(query))
 
 
+_WHERE_PRED_RE = re.compile(
+    r"(\w+)\s*=\s*(?:'([^']*)'|([-]?\d+\.\d+)|([-]?\d+))",
+    re.IGNORECASE,
+)
+
+
+def _parse_where_variables(sql: str) -> dict[str, int | float | str]:
+    """Extract col=val predicates from a WHERE clause (REQ-302)."""
+    where_match = re.search(r"\bWHERE\b(.+?)(?:\bLIMIT\b|$)", sql, re.IGNORECASE | re.DOTALL)
+    if not where_match:
+        return {}
+    clause = where_match.group(1)
+    result: dict[str, int | float | str] = {}
+    for m in _WHERE_PRED_RE.finditer(clause):
+        col = m.group(1)
+        if m.group(2) is not None:
+            result[col] = m.group(2)
+        elif m.group(3) is not None:
+            result[col] = float(m.group(3))
+        else:
+            result[col] = int(m.group(4))
+    return result
+
+
+def _parse_limit_value(value: int | bool | None) -> int | None:
+    """Validate and return a row-limit integer, or None for unlimited."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]
+            "limit must be a non-negative integer"
+        )
+    return value
+
 
 class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143, REQ-369  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Arrow Flight server that executes GraphQL queries and streams Arrow data."""
