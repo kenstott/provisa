@@ -387,6 +387,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._shortestpath_is_all: bool = False
         # Counter for unique UNNEST alias names across the translation
         self._unwind_count: int = 0
+        # UNWIND variables whose source array contains MAP elements (e.g. collect({...}))
+        self._map_unwind_vars: set[str] = set()
+        # Variables whose value is a MAP array (from collect({...}) or similar)
+        self._map_array_vars: set[str] = set()
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
         # path_var → (step_nodes, step_edges) for flat-JOIN paths
@@ -755,6 +759,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             alias = f"_uw{self._unwind_count}"
             self._unwind_count += 1
             array_expr = self._build_unwind_expr(uw.expression)
+            # Detect MAP-element arrays: either literal collect({...}) or a variable
+            # assigned from collect({...}) in a preceding WITH clause.
+            raw_rewritten = rewrite_bare_map_literals(uw.expression)
+            if "MAP(ARRAY[" in raw_rewritten or uw.expression.strip() in self._map_array_vars:
+                self._map_unwind_vars.add(uw.variable)
             unnest = exp.Unnest(
                 expressions=[array_expr],
                 alias=exp.TableAlias(
@@ -1370,6 +1379,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 return f"JSON_EXTRACT_SCALAR({var}, '$.{prop}')"
             if var in self._all_rels_node_vars:
                 return f"JSON_EXTRACT_SCALAR({var}, '$.properties.{prop}')"
+            if var in self._map_unwind_vars:
+                return f"JSON_EXTRACT_SCALAR(CAST(element_at({var}, '{prop}') AS JSON), '$')"
             info = self._var_table.get(var)
             if info and info[1]:
                 sql_alias = info[1].properties.get(prop)
@@ -1707,8 +1718,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             if _is_bare_variable(expr_text) and expr_text in self._var_table:
                 original_meta = self._var_table[expr_text][1]
                 new_var_table[key] = (cte_name, original_meta)
+                if expr_text in self._map_array_vars:
+                    self._map_array_vars.add(key)
             else:
                 new_var_table[key] = (cte_name, None)
+                # collect({...}) produces a MAP array — track the alias for UNWIND resolution
+                if re.search(r"\bcollect\s*\(\s*\{", expr_text, re.IGNORECASE) and key:
+                    self._map_array_vars.add(key)
         self._var_table = new_var_table
         self._cte_sources = set(new_var_table.keys())
 
