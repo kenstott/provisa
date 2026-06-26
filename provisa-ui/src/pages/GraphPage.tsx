@@ -823,6 +823,8 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
         favorites={favorites}
         onFavoriteSelect={(q) => setHistoryQuery(q)}
         onFavoriteDelete={handleFavoriteDelete}
+        onFavoriteRun={(q) => { setHistoryQuery(q); runQuery(q); }}
+        onFavoriteRename={(id, name) => setFavorites((prev) => prev.map((f) => f.id === id ? { ...f, label: name } : f))}
         onLabelClick={handleLabelClick}
         onDomainClick={handleDomainClick}
         onRelClick={handleRelClick}

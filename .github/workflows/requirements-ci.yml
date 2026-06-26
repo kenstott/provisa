@@ -1,0 +1,74 @@
+name: Requirements CI
+
+# Validates requirements.yaml schema, checks generated artifacts for drift,
+# runs pytest-bdd scenarios, and enforces coverage for MUST behavioral requirements.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate requirements.yaml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install deps
+        run: uv sync --frozen --extra dev
+
+      - name: Schema validation
+        run: uv run python scripts/validate_requirements.py
+
+      - name: Coverage check (MUST behavioral completeness)
+        run: uv run python scripts/validate_requirements.py --coverage-check
+
+  drift:
+    name: Check generated artifacts for drift
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install deps
+        run: uv sync --frozen --extra dev
+
+      - name: Check requirements.md is up to date
+        run: uv run python scripts/gen_requirements_md.py --check
+
+      - name: Check .feature files are up to date
+        run: uv run python scripts/gen_features.py --check
+
+  bdd:
+    name: pytest-bdd scenarios
+    runs-on: ubuntu-latest
+    needs: drift
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install deps
+        run: uv sync --frozen --extra dev
+
+      - name: Run BDD scenarios
+        # Scenarios with unimplemented steps call pytest.skip — reported as skipped not failed.
+        # Unregistered steps (missing from generated_stubs.py) cause ERROR — those must be fixed.
+        run: |
+          uv run pytest tests/features/ -m bdd \
+            --no-cov \
+            --tb=short \
+            -q \
+            2>&1 | tail -20

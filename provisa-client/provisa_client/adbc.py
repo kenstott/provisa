@@ -95,7 +95,7 @@ class AdbcConnection:
     def __enter__(self) -> "AdbcConnection":
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.close()
 
 
@@ -180,5 +180,5 @@ class AdbcCursor:
     def __enter__(self) -> "AdbcCursor":
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.close()

@@ -189,7 +189,6 @@ interface Props {
   nodes: Map<string, GNode>;
   edges: Map<string, GEdge>;
   queryStats?: unknown;
-  height: number;
 }
 
 function Spinner() {
@@ -236,7 +235,7 @@ function StatRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-export function GraphStatsPanel({ nodes, edges, queryStats, height }: Props) {
+export function GraphStatsPanel({ nodes, edges, queryStats }: Props) {
   const qs = queryStats as QueryStats | undefined;
   const [instant, setInstant] = useState<ReturnType<typeof computeInstant> | null>(null);
   const [components, setComponents] = useState<{ componentCount: number; largestComponentSize: number } | null>(null);
@@ -269,7 +268,7 @@ export function GraphStatsPanel({ nodes, edges, queryStats, height }: Props) {
     total > 0 ? ` (${Math.round((v / total) * 100)}%)` : "";
 
   return (
-    <div className="gs-panel" style={{ height, overflowY: "auto" }}>
+    <div className="gs-panel">
       <style>{`@keyframes gs-spin { to { transform: rotate(360deg); } }`}</style>
       {!instant ? (
         <div className="gs-loading"><Spinner /> Computing…</div>

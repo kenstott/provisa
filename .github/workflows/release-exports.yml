@@ -1,0 +1,56 @@
+name: Release Exports
+
+# On every release tag: generate and attach feature_matrix.csv,
+# traceability_matrix.csv, and roadmap.md to the GitHub Release.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to upload release assets
+
+jobs:
+  exports:
+    name: Generate and attach release exports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install deps
+        run: uv sync --frozen --extra dev
+
+      - name: Validate requirements.yaml
+        run: uv run python scripts/validate_requirements.py
+
+      - name: Generate feature matrix (buyers)
+        run: uv run python scripts/gen_feature_matrix.py
+
+      - name: Generate traceability matrix (auditors)
+        run: uv run python scripts/gen_traceability_matrix.py
+
+      - name: Generate roadmap
+        run: uv run python scripts/gen_roadmap.py
+
+      - name: Upload feature_matrix.csv
+        uses: softprops/action-gh-release@v2
+        with:
+          files: docs/exports/feature_matrix.csv
+          fail_on_unmatched_files: true
+
+      - name: Upload traceability_matrix.csv
+        uses: softprops/action-gh-release@v2
+        with:
+          files: docs/exports/traceability_matrix.csv
+          fail_on_unmatched_files: true
+
+      - name: Upload roadmap.md
+        uses: softprops/action-gh-release@v2
+        with:
+          files: docs/exports/roadmap.md
+          fail_on_unmatched_files: true

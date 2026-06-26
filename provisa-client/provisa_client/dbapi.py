@@ -145,7 +145,7 @@ class Connection:
     def __enter__(self) -> "Connection":
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.close()
 
 
@@ -282,5 +282,5 @@ class Cursor:
     def __enter__(self) -> "Cursor":
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.close()

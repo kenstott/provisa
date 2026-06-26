@@ -1,4 +1,4 @@
-.PHONY: typecheck lint lint-fix test test-unit pip-audit lint-imports
+.PHONY: typecheck lint lint-fix test test-unit pip-audit lint-imports sync-reqs
 
 typecheck:
 	pyright
@@ -20,6 +20,14 @@ pip-audit:
 
 lint-imports:
 	lint-contracts
+
+sync-reqs:
+	python scripts/gen_requirements_md.py
+	python scripts/gen_features.py
+	python scripts/gen_step_stubs.py
+	python scripts/gen_feature_matrix.py
+	python scripts/gen_traceability_matrix.py
+	python scripts/gen_roadmap.py
 
 coverage-reqs:
 	python scripts/coverage_reqs.py

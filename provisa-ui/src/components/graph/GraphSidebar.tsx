@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { labelColor } from "./graph-model";
 import { DatabaseIcon, HistoryIcon, StarIcon, ExportIcon } from "./GraphIcons";
 import type { RelLineOverride } from "./graph-model";
@@ -49,6 +49,8 @@ interface SidebarProps {
   highlightedLabel?: string | null;
   favorites?: Favorite[];
   onFavoriteSelect?: (query: string) => void;
+  onFavoriteRun?: (query: string) => void;
+  onFavoriteRename?: (id: string, name: string) => void;
   onFavoriteDelete?: (id: string) => void;
   propertyKeys?: string[];
   onPropertyKeyClick?: (key: string) => void;
@@ -92,6 +94,8 @@ export function Sidebar({
   highlightedLabel,
   favorites = [],
   onFavoriteSelect,
+  onFavoriteRun,
+  onFavoriteRename,
   onFavoriteDelete,
   propertyKeys = [],
   onPropertyKeyClick,
@@ -109,6 +113,18 @@ export function Sidebar({
   const [relTypesPage, setRelTypesPage] = useState(0);
   const SCHEMA_PAGE_SIZE = 50;
   const dragging = useRef(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (renamingId && renameInputRef.current) renameInputRef.current.select();
+  }, [renamingId]);
+
+  const commitRename = useCallback(() => {
+    if (renamingId && renameValue.trim()) onFavoriteRename?.(renamingId, renameValue.trim());
+    setRenamingId(null);
+  }, [renamingId, renameValue, onFavoriteRename]);
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -597,20 +613,50 @@ export function Sidebar({
               <div className="graph-history-list">
                 {[...favorites].sort((a, b) => b.ts - a.ts).map((fav) => (
                   <div key={fav.id} className="graph-fav-item">
-                    <span
-                      className="graph-fav-label"
-                      onClick={() => onFavoriteSelect?.(fav.query)}
-                      title={fav.query}
-                    >
-                      {fav.label}
-                    </span>
-                    <button
-                      className="graph-fav-del"
-                      title="Remove"
-                      onClick={() => onFavoriteDelete?.(fav.id)}
-                    >
-                      ✕
-                    </button>
+                    {renamingId === fav.id ? (
+                      <input
+                        ref={renameInputRef}
+                        className="graph-fav-rename-input"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitRename();
+                          if (e.key === "Escape") setRenamingId(null);
+                        }}
+                        onBlur={commitRename}
+                      />
+                    ) : (
+                      <>
+                        <button
+                          className="graph-fav-run"
+                          title="Run"
+                          onClick={(e) => { e.stopPropagation(); onFavoriteRun?.(fav.query); }}
+                        >
+                          ▶
+                        </button>
+                        <span
+                          className="graph-fav-label"
+                          onClick={() => onFavoriteSelect?.(fav.query)}
+                          title={fav.query}
+                        >
+                          {fav.label}
+                        </span>
+                        <button
+                          className="graph-fav-rename-btn"
+                          title="Rename"
+                          onClick={(e) => { e.stopPropagation(); setRenameValue(fav.label); setRenamingId(fav.id); }}
+                        >
+                          ✎
+                        </button>
+                        <button
+                          className="graph-fav-del"
+                          title="Remove"
+                          onClick={() => onFavoriteDelete?.(fav.id)}
+                        >
+                          ✕
+                        </button>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>

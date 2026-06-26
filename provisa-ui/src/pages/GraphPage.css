@@ -331,6 +331,55 @@
   color: #ef4444;
 }
 
+.graph-fav-run,
+.graph-fav-rename-btn {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.graph-fav-item:hover .graph-fav-run,
+.graph-fav-item:hover .graph-fav-rename-btn {
+  opacity: 1;
+}
+
+.graph-fav-run:hover {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.graph-fav-rename-btn:hover {
+  background: rgba(99, 102, 241, 0.15);
+  color: #6366f1;
+}
+
+.graph-fav-rename-input {
+  flex: 1;
+  font-size: 0.72rem;
+  font-family: "SF Mono", "Fira Code", monospace;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.15rem 0.3rem;
+  outline: none;
+}
+
+.graph-fav-rename-input:focus {
+  border-color: var(--accent);
+}
+
 /* ── Main content ─────────────────────────────────────────────────────────────── */
 .graph-content {
   flex: 1;
@@ -449,7 +498,10 @@
   overflow: visible;
   background: var(--surface);
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
+
 
 .gf-frame--drag-over {
   border-color: var(--accent, #6366f1);
@@ -686,8 +738,9 @@
 .gf-body {
   display: flex;
   flex-direction: row;
-  overflow: hidden;
+  overflow: clip;
   border-radius: 0 0 6px 6px;
+  flex: 1 1 auto;
 }
 
 .gf-view-bar {
@@ -732,7 +785,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: clip;
 }
 
 .gf-error {
@@ -766,7 +819,8 @@
 /* ── Graph area ─────────────────────────────────────────────────────────────────── */
 .gf-graph-area {
   display: flex;
-  height: 460px;
+  flex: 1 1 auto;
+  min-height: 150px;
 }
 
 .gf-canvas-wrap {
@@ -1207,11 +1261,9 @@
 /* ── Table view ─────────────────────────────────────────────────────────────────── */
 .gf-table-outer {
   position: relative;
-  max-height: 360px;
-}
-
-.gf-table-outer[style] {
-  max-height: none;
+  flex: 1;
+  min-height: 0;
+  overflow: clip;
 }
 
 .gf-table-wrap {
@@ -1247,16 +1299,19 @@
 
 .gf-json-wrap {
   position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .gf-json-view {
   overflow: hidden;
   font-size: 0.78rem;
+  flex: 1;
+  min-height: 0;
 }
 
-.gf-json-view .cm-editor {
-  height: 100%;
-}
 
 .gf-json-copy-btn {
   position: absolute;
@@ -1513,6 +1568,9 @@
 /* ── Graph Stats Panel ───────────────────────────────────────────────────────── */
 .gs-panel {
   background: var(--bg);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .gs-grid {

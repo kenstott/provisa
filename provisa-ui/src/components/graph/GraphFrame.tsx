@@ -909,7 +909,7 @@ export function GraphFrame({
   );
 
   const frameBody = (
-    <div className="gf-body">
+    <div className="gf-body" style={expanded ? undefined : { height: graphAreaHeight }}>
       <div className="gf-view-bar">
         {hasGraph && (
           <button
@@ -981,7 +981,7 @@ export function GraphFrame({
       {frame.status !== "error" && hasGraph && (
         <div
           className="gf-graph-area"
-          style={{ height: graphAreaHeight, display: activeView === "graph" ? undefined : "none" }}
+          style={{ flexBasis: graphAreaHeight, display: activeView === "graph" ? undefined : "none" }}
         >
           <GraphCanvas
             nodes={augmentedNodes}
@@ -1048,7 +1048,6 @@ export function GraphFrame({
           columns={frame.columns}
           rows={frame.rows}
           wrap={tableWrap}
-          height={graphAreaHeight}
           colWidths={tableColWidths}
           setColWidths={setTableColWidths}
         />
@@ -1077,7 +1076,6 @@ export function GraphFrame({
           nodes={augmentedNodes}
           edges={overlayEdges.size > 0 ? new Map([...frame.edges, ...overlayEdges]) : frame.edges}
           queryStats={frame.queryStats}
-          height={graphAreaHeight}
         />
       )}
       {frame.status !== "error" && activeView === "code" && (() => {
