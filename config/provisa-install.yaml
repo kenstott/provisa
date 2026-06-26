@@ -142,7 +142,7 @@ roles:
   id: analyst
 server:
   limits:
-    default_row_limit: 10000
+    default_row_limit: 100
     request_timeout: 60
     trino_query_timeout: 120
 sources:
