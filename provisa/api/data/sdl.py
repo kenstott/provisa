@@ -109,12 +109,16 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
 async def get_schema_version():  # REQ-537
     """Return the current schema version. Combines a per-boot nonce with the rebuild counter so
     sessionStorage cache entries are always invalidated after a server restart."""
-    from provisa.api.app import state
+    import provisa.api.data.sdl as _self
+
+    _state = getattr(_self, "state", None)
+    if _state is None:
+        from provisa.api.app import state as _state  # type: ignore[assignment]
 
     version = (
-        f"{state.schema_boot_id}-{state.schema_version}"
-        if state.schema_boot_id
-        else str(state.schema_version)
+        f"{_state.schema_boot_id}-{_state.schema_version}"
+        if _state.schema_boot_id
+        else str(_state.schema_version)
     )
     return JSONResponse({"version": version})
 

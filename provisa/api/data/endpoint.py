@@ -173,7 +173,10 @@ def _inject_probe_limit(sql: str, limit: int) -> str:
 
 
 async def _resolve_apq(
-    request: GraphQLRequest, apq_hash: str | None, state
+    request: GraphQLRequest,
+    apq_hash: str | None,
+    state,
+    tenant_id: str | None = None,
 ) -> GraphQLRequest | JSONResponse:
     """Handle APQ lookup (hash-only) or validation (hash+query).
 
@@ -182,7 +185,7 @@ async def _resolve_apq(
     """
     if apq_hash and not request.query:
         apq_cache = getattr(state, "apq_cache", None)
-        cached_query = await apq_cache.get(apq_hash) if apq_cache else None
+        cached_query = await apq_cache.get(apq_hash, tenant_id=tenant_id) if apq_cache else None
         if cached_query is None:
             return JSONResponse(
                 status_code=200,
@@ -404,7 +407,9 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         pq = request.extensions.get("persistedQuery", {})
         apq_hash = pq.get("sha256Hash")
 
-    apq_result = await _resolve_apq(request, apq_hash, state)
+    apq_result = await _resolve_apq(
+        request, apq_hash, state, tenant_id=getattr(raw_request.state, "tenant_id", None)
+    )
     if isinstance(apq_result, JSONResponse):
         return apq_result
     request = apq_result
@@ -512,6 +517,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
             cache_ttl=directives.cache_ttl,
             no_cache=directives.no_cache,
             query_text=request.query,
+            org_id=getattr(raw_request.state, "tenant_id", None),
         )
 
     if stats_enabled:
@@ -524,7 +530,11 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     if apq_hash and request.query and response is not None:
         apq_cache = getattr(state, "apq_cache", None)
         if apq_cache:
-            await apq_cache.set(apq_hash, request.query)
+            await apq_cache.set(
+                apq_hash,
+                request.query,
+                tenant_id=getattr(raw_request.state, "tenant_id", None),
+            )
 
     return response
 
@@ -786,7 +796,10 @@ async def _mat_gql_remote_table(
         for c in col_dicts
     ]
 
-    gql_cache_loc = cache_location(gql_reg["source_id"], "provisa_admin", "gql_cache")
+    _org_id = getattr(state, "org_id", "default")
+    gql_cache_loc = cache_location(
+        gql_reg["source_id"], "provisa_admin", f"org_{_org_id}_gql_cache"
+    )
     gql_cache_tbl = cache_table_name(gql_reg["source_id"], tn, {"cols": sorted(col_selections)})
 
     redirect_config = RedirectConfig.from_env()
@@ -999,7 +1012,12 @@ async def _mat_api_ep_table(
     api_source = getattr(state, "api_sources", {}).get(source_id)
 
     _cc = getattr(api_source, "cache_catalog", None) if api_source else None
-    _cs = getattr(api_source, "cache_schema", "api_cache") if api_source else "api_cache"
+    _org_id = getattr(state, "org_id", "default")
+    _cs = (
+        getattr(api_source, "cache_schema", f"org_{_org_id}_api_cache")
+        if api_source
+        else f"org_{_org_id}_api_cache"
+    )
     _cache_loc = cache_location(source_id, _cc, _cs)
     cache_tbl = cache_table_name(source_id, tn, {})
 
@@ -1609,7 +1627,12 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
 
     api_source = state.api_sources.get(source_id)
     _cache_catalog = getattr(api_source, "cache_catalog", None) if api_source else None
-    _cache_schema = getattr(api_source, "cache_schema", "api_cache") if api_source else "api_cache"
+    _org_id = getattr(state, "org_id", "default")
+    _cache_schema = (
+        getattr(api_source, "cache_schema", f"org_{_org_id}_api_cache")
+        if api_source
+        else f"org_{_org_id}_api_cache"
+    )
     _cache_loc = cache_location(source_id, _cache_catalog, _cache_schema)
 
     # Resolve native filter args (path/query params) — may be "_"-prefixed on collision.
@@ -1810,7 +1833,8 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     from provisa.cache.store import NoopCacheStore
     from provisa.executor.redirect import RedirectConfig
 
-    cache_loc = cache_location(source_id, "provisa_admin", "grpc_cache")
+    _org_id = getattr(state, "org_id", "default")
+    cache_loc = cache_location(source_id, "provisa_admin", f"org_{_org_id}_grpc_cache")
     cache_tbl = cache_table_name(source_id, table_name, nf_args)  # SHA-256(source+method+args)
     redirect_config = RedirectConfig.from_env()
     hot_mgr = getattr(state, "hot_manager", None)
@@ -2121,6 +2145,7 @@ async def _store_response_cache(
     compiled,
     response_cache_ttl: int | None,
     no_cache: bool,
+    org_id: str | None = None,
 ) -> None:
     """Store response_data in the response cache if TTL allows."""
     from provisa.cache.policy import resolve_policy
@@ -2145,6 +2170,7 @@ async def _store_response_cache(
             response_data,
             ttl=resolved_ttl,
             table_ids=table_ids,
+            org_id=org_id,
         )
 
 
@@ -2157,6 +2183,7 @@ async def _store_api_source_cache(
     source_id: str,
     response_cache_ttl: int | None,
     no_cache: bool,
+    org_id: str | None = None,
 ) -> None:
     """Store API-source response_data in the response cache if TTL allows."""
     from provisa.cache.policy import resolve_policy
@@ -2180,6 +2207,7 @@ async def _store_api_source_cache(
             response_data,
             ttl=_resolved_ttl,
             table_ids=_table_ids,
+            org_id=org_id,
         )
 
 
@@ -2210,7 +2238,16 @@ def _append_mermaid(
 
 
 async def _exec_api_route(
-    compiled, ctx, state, decision, root_field, output_format, ck, response_cache_ttl, no_cache
+    compiled,
+    ctx,
+    state,
+    decision,
+    root_field,
+    output_format,
+    ck,
+    response_cache_ttl,
+    no_cache,
+    org_id: str | None = None,
 ):
     """Execute Route.API path.
 
@@ -2302,6 +2339,7 @@ async def _exec_api_route(
             decision.source_id,
             response_cache_ttl,
             no_cache,
+            org_id=org_id,
         )
     return root_field, field_rows, None, ck, None
 
@@ -2497,6 +2535,7 @@ async def _execute_one_field(
     response_cache_ttl: int | None = None,
     no_cache: bool = False,
     query_text: str | None = None,
+    org_id: str | None = None,
 ):  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, REQ-196
     """Execute a single compiled query field through the full pipeline.
 
@@ -2514,7 +2553,7 @@ async def _execute_one_field(
     cached = (
         None
         if (no_cache or output_format != "json")
-        else await check_cache(state.response_cache_store, ck)
+        else await check_cache(state.response_cache_store, ck, org_id=org_id)
     )
     if cached is not None:
         cached_data = json.loads(cached.data)
@@ -2557,6 +2596,7 @@ async def _execute_one_field(
             ck,
             response_cache_ttl,
             no_cache,
+            org_id=org_id,
         )
 
     if (
@@ -2724,6 +2764,7 @@ async def _handle_query(
     cache_ttl: int | None = None,
     no_cache: bool = False,
     query_text: str | None = None,
+    org_id: str | None = None,
 ):  # REQ-001, REQ-027, REQ-028, REQ-029, REQ-043, REQ-047, REQ-049, REQ-137, REQ-140, REQ-196
     """Handle a GraphQL query operation with content negotiation.
 
@@ -2798,6 +2839,7 @@ async def _handle_query(
                     response_cache_ttl=cache_ttl,
                     no_cache=no_cache,
                     query_text=query_text,
+                    org_id=org_id,
                 ),
                 timeout=_request_timeout(),
             )
@@ -2846,6 +2888,7 @@ async def _handle_query(
                         response_cache_ttl=cache_ttl,
                         no_cache=no_cache,
                         query_text=query_text,
+                        org_id=org_id,
                     )
                     for compiled in prepared
                 ]
