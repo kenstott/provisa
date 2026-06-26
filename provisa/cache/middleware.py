@@ -25,9 +25,11 @@ log = logging.getLogger(__name__)
 # Requirements: REQ-536
 
 
-async def check_cache(store: CacheStore, key: str) -> CachedResult | None:  # REQ-544
+async def check_cache(  # REQ-544
+    store: CacheStore, key: str, org_id: str | None = None
+) -> CachedResult | None:
     """Check for a cached result. Returns CachedResult on HIT, None on MISS."""
-    return await store.get(key)
+    return await store.get(key, tenant_id=org_id)
 
 
 async def store_result(  # REQ-544
@@ -36,6 +38,7 @@ async def store_result(  # REQ-544
     result_data: dict,
     ttl: int,
     table_ids: set[int] | None = None,
+    org_id: str | None = None,
 ) -> None:
     """Store a query result in the cache.
 
@@ -45,10 +48,11 @@ async def store_result(  # REQ-544
         result_data: Serialized query result (dict).
         ttl: Time-to-live in seconds.
         table_ids: Set of table IDs referenced by this query (for invalidation).
+        org_id: Tenant/org identifier for key prefixing (REQ-595).
     """
     try:
         data = json.dumps(result_data, default=str).encode("utf-8")
-        await store.set(key, data, ttl, table_ids=table_ids)
+        await store.set(key, data, ttl, tenant_id=org_id, table_ids=table_ids)
     except Exception:
         log.warning("Failed to store result in cache", exc_info=True)
 

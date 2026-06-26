@@ -1,5 +1,5 @@
--- MV cache schema for materialized views
-CREATE SCHEMA IF NOT EXISTS mv_cache;
+-- MV cache schema for materialized views (org-scoped; org_default is the bootstrap org)
+CREATE SCHEMA IF NOT EXISTS org_default_mv_cache;
 
 -- Allow provisa user to create tables in public schema (required for Iceberg JDBC catalog)
 GRANT CREATE ON SCHEMA public TO provisa;

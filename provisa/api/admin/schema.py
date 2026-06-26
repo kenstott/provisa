@@ -890,7 +890,7 @@ class Query:  # REQ-021, REQ-042
     async def available_schemas(self, source_id: str) -> list[str]:
         """List schemas available in a source."""
         from provisa.api.app import state
-        from provisa.api.admin.introspect import native_schemas, PROVISA_INTERNAL_SCHEMAS
+        from provisa.api.admin.introspect import is_provisa_internal, native_schemas
         from provisa.core.models import SOURCE_TO_CONNECTOR
 
         source_type = state.source_types.get(source_id, "")
@@ -900,13 +900,12 @@ class Query:  # REQ-021, REQ-042
         async with pool.acquire() as config_conn:
             result = await native_schemas(source_id, source_type, state.source_pools, config_conn)
         if result is not None:
-            return [s for s in result if s not in PROVISA_INTERNAL_SCHEMAS]
+            return [s for s in result if not is_provisa_internal(s)]
         # native_schemas returns None only for Trino-backed connector sources
         # that have no cheaper direct pool path. Use Trino for those.
         if source_type not in SOURCE_TO_CONNECTOR:
             return []
         catalog = source_to_catalog(source_id)
-        hidden = {"information_schema", "pg_catalog"} | PROVISA_INTERNAL_SCHEMAS
         try:
             assert state.trino_conn is not None
             cursor = state.trino_conn.cursor()
@@ -914,7 +913,7 @@ class Query:  # REQ-021, REQ-042
                 f'SELECT schema_name FROM "{catalog}".information_schema.schemata '
                 f"ORDER BY schema_name"
             )
-            return [row[0].lower() for row in cursor.fetchall() if row[0].lower() not in hidden]
+            return [row[0].lower() for row in cursor.fetchall() if not is_provisa_internal(row[0].lower())]
         except Exception:
             return []
 
@@ -1567,7 +1566,7 @@ def _sync_view_mv(table_name: str, view_sql: str, refresh_interval: int) -> None
         id=mv_id,
         source_tables=[],
         target_catalog="postgresql",
-        target_schema="mv_cache",
+        target_schema=f"org_{state.org_id}_mv_cache",
         target_table=f"mv_{table_name}",
         refresh_interval=refresh_interval,
         enabled=True,

@@ -131,6 +131,7 @@ class AppState:
     tracked_functions: dict[str, dict] = {}  # gql field name → fn dict
     tracked_webhooks: dict[str, dict] = {}  # gql field name → wh dict
     pg_enum_types: dict = {}  # pg_name → GraphQLEnumType (REQ-221)
+    org_id: str = "default"  # REQ-697: org schema scope (ORG_ID env var)
     graphql_remote_sources: dict[str, dict] = {}  # source_id → GraphQL remote registration
     openapi_specs: dict[str, dict] = {}  # source_id → OpenAPI spec registration
     grpc_remote_sources: dict[str, dict] = {}  # source_id → gRPC remote registration
@@ -162,7 +163,7 @@ class AppState:
     ] = {}  # virtual gql table → physical Trino table (Kafka sources)
     config: Any = None  # ProvisaConfig set at startup
     otel_snapshot_retention_hours: int | None = None  # Iceberg snapshot expiry hours
-    _sqlite_stale_task: asyncio.Task | None = None  # SQLite staleness background loop
+    _stale_check_task: asyncio.Task | None = None  # schema staleness background loop
 
 
 state = AppState()
@@ -207,19 +208,19 @@ def _setup_approval_hook(st: AppState) -> None:
 # Views replace tables that have text[] columns Trino can't surface; arrays cast to JSON text.
 _META_TABLE_VIEWS: dict[str, str] = {
     "registered_tables": """
-        DROP VIEW IF EXISTS public.registered_tables_meta CASCADE;
-        CREATE VIEW public.registered_tables_meta AS
+        DROP VIEW IF EXISTS registered_tables_meta CASCADE;
+        CREATE VIEW registered_tables_meta AS
         SELECT id, source_id, domain_id, schema_name, table_name,
                alias, description, cache_ttl, gql_naming_convention, watermark_column,
                column_presets::text AS column_presets,
                view_sql, data_product, materialize, mv_refresh_interval,
                l1_cluster, l2_cluster, l3_cluster, clusters_computed_at,
                tenant_id
-        FROM public.registered_tables
+        FROM registered_tables
     """,
     "table_columns": """
-        DROP VIEW IF EXISTS public.table_columns_meta CASCADE;
-        CREATE VIEW public.table_columns_meta AS
+        DROP VIEW IF EXISTS table_columns_meta CASCADE;
+        CREATE VIEW table_columns_meta AS
         SELECT id, table_id, column_name, data_type, is_primary_key,
                alias, description, path, scope,
                mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
@@ -229,46 +230,46 @@ _META_TABLE_VIEWS: dict[str, str] = {
                array_to_json(unmasked_to)::text AS unmasked_to,
                array_to_json(writable_by)::text AS writable_by,
                tenant_id
-        FROM public.table_columns
+        FROM table_columns
     """,
     "roles": """
-        DROP VIEW IF EXISTS public.roles_meta CASCADE;
-        CREATE VIEW public.roles_meta AS
+        DROP VIEW IF EXISTS roles_meta CASCADE;
+        CREATE VIEW roles_meta AS
         SELECT id, parent_role_id, org_id,
                array_to_json(capabilities)::text AS capabilities,
                tenant_id,
                'meta'::text AS domain_id
-        FROM public.roles
+        FROM roles
     """,
     "roles_domain_access": """
-        DROP VIEW IF EXISTS public.roles_domain_access CASCADE;
-        CREATE VIEW public.roles_domain_access AS
+        DROP VIEW IF EXISTS roles_domain_access CASCADE;
+        CREATE VIEW roles_domain_access AS
         SELECT r.id || ':' || d.id AS id,
                r.id AS role_id, 'meta'::text AS domain_id, d.id AS accessed_domain_id
-        FROM public.roles r
-        CROSS JOIN public.domains d
+        FROM roles r
+        CROSS JOIN domains d
         WHERE d.id <> ''
     """,
     "tracked_webhooks": """
-        DROP VIEW IF EXISTS public.tracked_webhooks_meta CASCADE;
-        CREATE VIEW public.tracked_webhooks_meta AS
+        DROP VIEW IF EXISTS tracked_webhooks_meta CASCADE;
+        CREATE VIEW tracked_webhooks_meta AS
         SELECT id, name, url, method, timeout_ms, returns, kind,
                inline_return_type::text AS inline_return_type,
                arguments::text AS arguments,
                array_to_json(visible_to)::text AS visible_to,
                domain_id, description, created_at, updated_at
-        FROM public.tracked_webhooks
+        FROM tracked_webhooks
     """,
     "tracked_functions": """
-        DROP VIEW IF EXISTS public.tracked_functions_meta CASCADE;
-        CREATE VIEW public.tracked_functions_meta AS
+        DROP VIEW IF EXISTS tracked_functions_meta CASCADE;
+        CREATE VIEW tracked_functions_meta AS
         SELECT id, name, source_id, schema_name, function_name, returns, kind,
                arguments::text AS arguments,
                return_schema::text AS return_schema,
                array_to_json(visible_to)::text AS visible_to,
                array_to_json(writable_by)::text AS writable_by,
                domain_id, description, created_at, updated_at
-        FROM public.tracked_functions
+        FROM tracked_functions
     """,
 }
 # Maps original table name → view name (or itself if no view needed).
@@ -407,8 +408,11 @@ WHERE span_name LIKE 'provisa.query%'
 ]
 
 
-async def _seed_meta_domain(conn: asyncpg.Connection) -> None:  # REQ-012, REQ-016
+async def _seed_meta_domain(
+    conn: asyncpg.Connection, org_id: str = "default"
+) -> None:  # REQ-012, REQ-016, REQ-695
     """Register admin tables in the built-in meta domain (idempotent)."""
+    schema_name = f"org_{org_id}"
     for ddl in _META_TABLE_VIEWS.values():
         await conn.execute(ddl)
 
@@ -416,7 +420,8 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:  # REQ-012, REQ-0
     for view_name in _META_TABLE_ALIAS.values():
         await conn.execute(
             "DELETE FROM registered_tables "
-            "WHERE source_id = 'provisa-admin' AND schema_name = 'public' AND table_name = $1",
+            "WHERE source_id = 'provisa-admin' AND schema_name = $1 AND table_name = $2",
+            schema_name,
             view_name,
         )
 
@@ -425,11 +430,12 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:  # REQ-012, REQ-0
             """
             INSERT INTO registered_tables
                 (source_id, domain_id, schema_name, table_name)
-            VALUES ('provisa-admin', 'meta', 'public', $1)
+            VALUES ('provisa-admin', 'meta', $1, $2)
             ON CONFLICT (source_id, schema_name, table_name)
                 DO UPDATE SET domain_id = 'meta'
             RETURNING id
             """,
+            schema_name,
             tbl,
         )
         pk_cols = {
@@ -441,9 +447,10 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:  # REQ-012, REQ-0
                 JOIN information_schema.key_column_usage kcu
                     ON tc.constraint_name = kcu.constraint_name
                     AND tc.table_schema = kcu.table_schema
-                WHERE tc.table_schema = 'public' AND tc.table_name = $1
+                WHERE tc.table_schema = $1 AND tc.table_name = $2
                   AND tc.constraint_type = 'PRIMARY KEY'
                 """,
+                schema_name,
                 tbl,
             )
         }
@@ -454,9 +461,10 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:  # REQ-012, REQ-0
             SELECT column_name,
                    CASE WHEN data_type IN ('ARRAY', 'jsonb', 'json') THEN 'text' ELSE data_type END AS data_type
             FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = $1
+            WHERE table_schema = $1 AND table_name = $2
             ORDER BY ordinal_position
             """,
+            schema_name,
             view_name,
         )
         col_names = {col["column_name"] for col in cols}
@@ -1062,6 +1070,9 @@ async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:  # REQ-057
     pg_pool_min = int(os.environ.get("PG_POOL_MIN", "2"))
     pg_pool_max = int(os.environ.get("PG_POOL_MAX", "10"))
 
+    org_id = os.environ.get("ORG_ID", "default")
+    state.org_id = org_id
+
     state.pg_pool = await create_pool(
         pg_host,
         pg_port,
@@ -1070,16 +1081,17 @@ async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:  # REQ-057
         pg_password,
         min_size=pg_pool_min,
         max_size=pg_pool_max,
+        org_id=org_id,
     )
 
     schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
     if schema_sql_path.exists():
         schema_sql = schema_sql_path.read_text()
-        await init_schema(state.pg_pool, schema_sql)
+        await init_schema(state.pg_pool, schema_sql, org_id=org_id)
 
     from provisa.audit.query_log import init_audit_schema
 
-    await init_audit_schema(state.pg_pool)
+    await init_audit_schema(state.pg_pool, org_id=org_id)
 
     from provisa.api.billing.tenant_db import init_billing_schema
 
@@ -1124,7 +1136,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
             """
         )
         _pg_conn = cast(asyncpg.Connection, _conn)
-        await _seed_meta_domain(_pg_conn)
+        await _seed_meta_domain(_pg_conn, org_id=state.org_id)
         await _seed_ops_pg(_pg_conn)
         await _seed_meta_relationships(_pg_conn)
         needs_clusters = await _conn.fetchval(
@@ -1145,7 +1157,7 @@ def _apply_server_and_trino_config(raw_config: dict) -> None:
     state.server_limits = {
         "default_row_limit": int(
             os.environ.get(
-                "PROVISA_DEFAULT_ROW_LIMIT", str(_limits_cfg.get("default_row_limit", 10000))
+                "PROVISA_DEFAULT_ROW_LIMIT", str(_limits_cfg.get("default_row_limit", 100))
             )
         ),
         "trino_query_timeout": int(
@@ -1156,6 +1168,11 @@ def _apply_server_and_trino_config(raw_config: dict) -> None:
         "request_timeout": float(
             os.environ.get("PROVISA_REQUEST_TIMEOUT", str(_limits_cfg.get("request_timeout", 60)))
         ),
+        "retry_budget_secs": float(
+            os.environ.get(
+                "PROVISA_RETRY_BUDGET_SECS", str(_limits_cfg.get("retry_budget_secs", 30))
+            )
+        ),
     }
 
     trino_host = os.environ.get("TRINO_HOST", "localhost")
@@ -1165,7 +1182,7 @@ def _apply_server_and_trino_config(raw_config: dict) -> None:
         port=trino_port,
         user="provisa",
         catalog="system",
-        schema="public",
+        schema=f"org_{state.org_id}",
         http_scheme="http",
         request_timeout=10,
     )
@@ -1522,7 +1539,7 @@ def _load_mv_and_views_config(
             id=mvc["id"],
             source_tables=mvc.get("source_tables", []),
             target_catalog=mvc.get("target_catalog", "postgresql"),
-            target_schema=mvc.get("target_schema", "mv_cache"),
+            target_schema=mvc.get("target_schema", f"org_{state.org_id}_mv_cache"),
             target_table=mvc.get("target_table"),
             refresh_interval=mvc.get("refresh_interval", 300),
             enabled=mvc.get("enabled", True),
@@ -1538,7 +1555,7 @@ def _load_mv_and_views_config(
             mv_table = {
                 "source_id": mvc.get("target_catalog", "postgresql"),
                 "domain_id": sdl_cfg.domain_id,
-                "schema": mvc.get("target_schema", "mv_cache"),
+                "schema": mvc.get("target_schema", f"org_{state.org_id}_mv_cache"),
                 "table": mv.target_table,
                 "columns": sdl_cfg.columns or [],
             }
@@ -1560,7 +1577,7 @@ def _load_mv_and_views_config(
 
             view_source_id = view_cfg.get("source_id", "postgresql")
             view_table_name = f"view_{view_id.replace('-', '_')}"
-            view_schema = "mv_cache" if materialize else "public"
+            view_schema = f"org_{state.org_id}_mv_cache" if materialize else f"org_{state.org_id}"
 
             view_table = {
                 "source_id": view_source_id,
@@ -1578,7 +1595,7 @@ def _load_mv_and_views_config(
                     id=f"view-{view_id}",
                     source_tables=[],
                     target_catalog="postgresql",
-                    target_schema="mv_cache",
+                    target_schema=f"org_{state.org_id}_mv_cache",
                     target_table=view_table_name,
                     refresh_interval=refresh_interval,
                     enabled=True,
@@ -1623,7 +1640,7 @@ def _load_mv_and_views_config(
                 id=mv_id,
                 source_tables=[src_table, tgt_table],
                 target_catalog="postgresql",
-                target_schema="mv_cache",
+                target_schema=f"org_{state.org_id}_mv_cache",
                 refresh_interval=rel_cfg.get("refresh_interval", 300),
                 enabled=True,
                 join_pattern=jp,
@@ -2554,7 +2571,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                                 id=_mv_id,
                                 source_tables=[],
                                 target_catalog="postgresql",
-                                target_schema="mv_cache",
+                                target_schema=f"org_{state.org_id}_mv_cache",
                                 target_table=f"mv_{_vr['table_name']}",
                                 refresh_interval=int(
                                     _vr.get("mv_refresh_interval") or _mv_default_ttl
@@ -2820,7 +2837,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
             except Exception:
                 _log.exception("SQLite staleness loop error")
 
-    state._sqlite_stale_task = asyncio.create_task(_sqlite_stale_loop())
+    state._stale_check_task = asyncio.create_task(_sqlite_stale_loop())
 
 
 async def _start_servers(_log: logging.Logger) -> None:
@@ -2874,7 +2891,10 @@ async def _start_servers(_log: logging.Logger) -> None:
     if pgwire_port:
         try:
             import ssl as _ssl
+            from provisa.pgwire import catalog as _pgwire_catalog
             from provisa.pgwire.server import start_pgwire_server
+
+            _pgwire_catalog._KNOWN_SETTINGS["search_path"] = f"org_{state.org_id}"  # REQ-695
 
             _ssl_ctx: _ssl.SSLContext | None = None
             _cert = os.environ.get("PROVISA_PGWIRE_CERT")
@@ -3208,12 +3228,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter]
     if state._grpc_server:
         await state._grpc_server.stop(grace=5)
 
-    # Cancel SQLite staleness loop
-    if getattr(state, "_sqlite_stale_task", None):
-        assert state._sqlite_stale_task is not None
-        state._sqlite_stale_task.cancel()
+    # Cancel schema staleness loop
+    if getattr(state, "_stale_check_task", None):
+        assert state._stale_check_task is not None
+        state._stale_check_task.cancel()
         try:
-            await state._sqlite_stale_task
+            await state._stale_check_task
         except asyncio.CancelledError:
             pass
 
@@ -3399,7 +3419,13 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def _admin_graphql_schema_version_header(request: Request, call_next):  # pyright: ignore[reportUnusedFunction]
-        response = await call_next(request)
+        from starlette.requests import ClientDisconnect
+        from starlette.responses import Response as StarletteResponse
+
+        try:
+            response = await call_next(request)
+        except ClientDisconnect:
+            return StarletteResponse(status_code=499)
         if request.url.path.startswith("/admin/graphql"):
             response.headers["X-Schema-Version"] = str(state.schema_version)
         return response

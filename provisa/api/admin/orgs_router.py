@@ -64,8 +64,13 @@ async def list_orgs(request: Request):  # REQ-042, REQ-059
 
 
 @router.post("/")
-async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
+async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059, REQ-701
     _require_superadmin(request)
+    import os
+    from pathlib import Path
+
+    from provisa.core.org_provisioning import provision_org
+
     pool = _pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -73,6 +78,18 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
             body.id,
             body.name,
         )
+
+    schema_sql_path = Path(__file__).parent.parent.parent / "core" / "schema.sql"
+    schema_sql = schema_sql_path.read_text() if schema_sql_path.exists() else ""
+    redis_url = os.environ.get("REDIS_URL")
+    redis_password = os.environ.get("PROVISA_REDIS_ORG_PASSWORD")
+    await provision_org(
+        pool,
+        schema_sql,
+        org_id=body.id,
+        redis_url=redis_url,
+        redis_password=redis_password,
+    )
     return dict(row)
 
 
@@ -92,8 +109,12 @@ async def rename_org(org_id: str, body: RenameOrgBody, request: Request):  # REQ
 
 
 @router.delete("/{org_id}")
-async def delete_org(org_id: str, request: Request):  # REQ-042, REQ-059
+async def delete_org(org_id: str, request: Request):  # REQ-042, REQ-059, REQ-701
     _require_superadmin(request)
+    import os
+
+    from provisa.core.org_provisioning import deprovision_org
+
     if org_id == "root":
         raise HTTPException(status_code=400, detail="Cannot delete the root org")
     pool = _pool()
@@ -101,6 +122,8 @@ async def delete_org(org_id: str, request: Request):  # REQ-042, REQ-059
         result = await conn.execute("DELETE FROM orgs WHERE id = $1", org_id)
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Org not found")
+    redis_url = os.environ.get("REDIS_URL")
+    await deprovision_org(pool, org_id, redis_url=redis_url)
     return {"deleted": org_id}
 
 

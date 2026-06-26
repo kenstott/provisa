@@ -38,16 +38,20 @@ _SQLSERVER_SYSTEM_SCHEMAS = {
     "db_denydatareader",
     "db_denydatawriter",
 }
-_PG_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast", "mv_cache", "public"}
+_PG_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast", "public"}
 
 PROVISA_INTERNAL_SCHEMAS: frozenset[str] = frozenset(
     {
-        "mv_cache",
-        "gql_cache",
-        "api_cache",
-        "default",
+        "platform",
+        "audit",
     }
 )
+
+
+def is_provisa_internal(schema: str) -> bool:
+    """True for any provisa-managed schema that should be hidden from users."""
+    return schema in PROVISA_INTERNAL_SCHEMAS or schema.startswith("org_")
+
 
 PROVISA_INTERNAL_TABLES: frozenset[str] = frozenset(
     {
