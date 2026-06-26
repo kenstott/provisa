@@ -370,7 +370,7 @@ async def _execute_trino_route(
         from provisa.compiler.view_expand import expand_view_refs
 
         _qualified = expand_view_refs(_qualified, state.view_sql_map)
-    _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_qualified, state)
+    _rewrites, _values_ctes, _ = await _materialize_api_to_trino_cache(_qualified, state)
     for _tn, _entry in _values_ctes.items():
         _qualified = build_values_cte_sql(_qualified, _tn, _entry)
     if _rewrites:
