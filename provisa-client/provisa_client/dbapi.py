@@ -95,7 +95,7 @@ def connect(
 ) -> "Connection":
     """Create a DB-API 2.0 connection to a Provisa server."""
     token, auth_role = _auth_login(url, username, password)
-    resolved_role = role or auth_role
+    resolved_role = role or auth_role or (username if username else None)
     return Connection(base_url=url.rstrip("/"), token=token, role=resolved_role)
 
 

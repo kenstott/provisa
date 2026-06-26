@@ -227,8 +227,19 @@ notarize_dmg() {
     --team-id  "${APPLE_NOTARYTOOL_TEAM_ID}"
   )
   info "Submitting DMG for notarization..."
-  local submit_out
-  submit_out=$(xcrun notarytool submit "$DMG_PATH" "${notary_args[@]}" --output-format json)
+  local submit_out submit_err submit_rc
+  submit_out=$(xcrun notarytool submit "$DMG_PATH" "${notary_args[@]}" --output-format json 2>/tmp/notary-submit-err) \
+    && submit_rc=0 || submit_rc=$?
+  submit_err=$(cat /tmp/notary-submit-err 2>/dev/null || true)
+  rm -f /tmp/notary-submit-err
+  if [ $submit_rc -ne 0 ]; then
+    if printf '%s\n%s' "$submit_out" "$submit_err" | grep -qi "required agreement\|403"; then
+      info "WARNING: Notarization skipped — Apple Developer agreement missing or expired (HTTP 403). DMG will be unsigned."
+      return
+    fi
+    err "notarytool submit failed (exit $submit_rc): $submit_err"
+    exit 1
+  fi
   local submission_id
   submission_id=$(printf '%s' "$submit_out" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
   ok "Submission ID: ${submission_id}"
