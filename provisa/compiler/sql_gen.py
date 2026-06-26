@@ -42,6 +42,7 @@ from graphql import (
     ObjectValueNode,
     OperationDefinitionNode,
     StringValueNode,
+    VariableDefinitionNode,
     VariableNode,
 )
 
@@ -2376,7 +2377,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
         for row_sel in field_node.selection_set.selections:
             if not isinstance(row_sel, FieldNode):
                 continue
-            if row_sel.name.value == "aggregates":
+            if row_sel.name.value == "aggregate":
                 if row_sel.arguments:
                     for agg_arg in row_sel.arguments:
                         if agg_arg.name.value == "where":
@@ -2414,7 +2415,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
     if has_count:
         select_parts.append(f"COUNT(*){filter_sql}")
         columns.append(
-            ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregates")
+            ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate")
         )
 
     for func_name, sql_func in (
@@ -2433,7 +2434,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
                     alias=None,
                     column=phys,
                     field_name=col_name,
-                    nested_in=f"aggregates.{func_name}",
+                    nested_in=f"aggregate.{func_name}",
                 )
             )
 
@@ -2488,6 +2489,50 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
     if "offset" in args:
         sql += f" OFFSET {collector.add(int(args['offset']))}"
 
+    # Build nodes subquery: plain SELECT with same WHERE, no GROUP BY.
+    # Group-by join key columns are appended last with nested_in="__join_key__".
+    nodes_sql: str | None = None
+    nodes_columns: list[ColumnRef] | None = None
+    nodes_params: list = []
+    if field_node.selection_set:
+        for row_sel in field_node.selection_set.selections:
+            if not isinstance(row_sel, FieldNode) or row_sel.name.value != "nodes":
+                continue
+            if not row_sel.selection_set:
+                break
+            nodes_select_parts: list[str] = []
+            nodes_cols: list[ColumnRef] = []
+            for node_sel in row_sel.selection_set.selections:
+                if not isinstance(node_sel, FieldNode):
+                    continue
+                col_name = node_sel.name.value
+                phys = ctx.exposed_to_physical.get((table.table_id, col_name), col_name)
+                nodes_select_parts.append(_q(phys))
+                nodes_cols.append(
+                    ColumnRef(alias=None, column=phys, field_name=col_name, nested_in=None)
+                )
+            for col, phys in zip(by_cols, phys_by_cols):
+                nodes_select_parts.append(_q(phys))
+                nodes_cols.append(
+                    ColumnRef(alias=None, column=phys, field_name=col, nested_in="__join_key__")
+                )
+            if nodes_select_parts:
+                nodes_sql = f"SELECT {', '.join(nodes_select_parts)} FROM {ref}"
+                if "where" in args:
+                    nodes_collector = ParamCollector()
+                    nodes_where_sql = _compile_where(
+                        args["where"],
+                        nodes_collector,
+                        None,
+                        _vvals,
+                        table.table_id,
+                        ctx.exposed_to_physical,
+                    )
+                    nodes_sql += f" WHERE {nodes_where_sql}"
+                    nodes_params = nodes_collector.params
+                nodes_columns = nodes_cols
+            break
+
     return CompiledQuery(
         sql=sql,
         params=collector.params,
@@ -2497,6 +2542,9 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
         sources=sources,
         is_group_by=True,
         group_by_columns=list(by_cols),
+        nodes_sql=nodes_sql,
+        nodes_columns=nodes_columns,
+        nodes_params=nodes_params,
     )
 
 
@@ -2814,6 +2862,19 @@ def compile_query(  # REQ-007, REQ-009, REQ-010, REQ-011, REQ-262, REQ-263, REQ-
     for definition in document.definitions:
         if not isinstance(definition, OperationDefinitionNode):
             continue
+        # Merge variable defaults (from operation definition) under provided values.
+        # Defaults apply only when the variable is absent from the caller's dict.
+        effective_variables: dict | None = variables
+        if definition.variable_definitions:
+            defaults: dict = {}
+            for vd in definition.variable_definitions:
+                if isinstance(vd, VariableDefinitionNode) and vd.default_value is not None:
+                    var_name = vd.variable.name.value
+                    if variables is None or var_name not in variables:
+                        defaults[var_name] = _extract_value(vd.default_value, None)
+            if defaults:
+                effective_variables = {**(variables or {}), **defaults}
+        variables = effective_variables
         for sel in definition.selection_set.selections:
             if isinstance(sel, FieldNode):
                 field_name = sel.name.value

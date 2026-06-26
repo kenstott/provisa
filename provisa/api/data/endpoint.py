@@ -59,7 +59,12 @@ from provisa.compiler.sql_gen import (
     rewrite_semantic_to_trino_physical,
 )
 from provisa.executor.direct import execute_direct
-from provisa.executor.serialize import serialize_aggregate, serialize_rows, shape_transform
+from provisa.executor.serialize import (
+    serialize_aggregate,
+    serialize_group_by,
+    serialize_rows,
+    shape_transform,
+)
 from provisa.executor.trino import execute_trino
 from provisa.executor import stats as _qs_mod
 from provisa.mv.rewriter import rewrite_if_mv_match
@@ -2414,14 +2419,23 @@ async def _exec_inline_result(
         except Exception as e:
             log.exception("Nodes query execution failed for %s", root_field)
             raise HTTPException(status_code=500, detail=str(e))
-        response_data = serialize_aggregate(
-            result.rows,
-            compiled.columns,
-            nodes_result.rows,
-            compiled.nodes_columns,
-            root_field,
-            agg_alias=compiled.agg_alias,
-        )
+        if compiled.is_group_by:
+            response_data = serialize_group_by(
+                result.rows,
+                compiled.columns,
+                nodes_result.rows,
+                compiled.nodes_columns,
+                root_field,
+            )
+        else:
+            response_data = serialize_aggregate(
+                result.rows,
+                compiled.columns,
+                nodes_result.rows,
+                compiled.nodes_columns,
+                root_field,
+                agg_alias=compiled.agg_alias,
+            )
     else:
         response_data = _format_response(
             result.rows,

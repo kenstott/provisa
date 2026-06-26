@@ -555,6 +555,43 @@ def serialize_aggregate(  # REQ-196, REQ-197
     return {"data": {root_field: payload}}
 
 
+def serialize_group_by(
+    rows: list[tuple],
+    columns: list[ColumnRef],
+    nodes_rows: list[tuple] | None,
+    nodes_columns: list[ColumnRef] | None,
+    root_field: str,
+) -> dict:
+    """Serialize group-by query result (with optional per-group nodes) into GraphQL JSON.
+
+    nodes_columns uses nested_in="__join_key__" to mark group-by join columns.
+    Returns:
+        {"data": {root_field: [{"groupKey": {...}, "aggregate": {...}, "nodes": [...]}, ...]}}
+        "nodes" key present on each row only when nodes_rows is not None.
+    """
+    result = serialize_rows(rows, columns, root_field)
+
+    if nodes_rows is None or nodes_columns is None:
+        return result
+
+    join_key_indices = [i for i, c in enumerate(nodes_columns) if c.nested_in == "__join_key__"]
+    output_cols = [(i, c) for i, c in enumerate(nodes_columns) if c.nested_in is None]
+
+    nodes_map: dict = {}
+    for row in nodes_rows:
+        join_key = tuple(_convert_value(row[i]) for i in join_key_indices)
+        node_dict = {c.field_name: _convert_value(row[i]) for i, c in output_cols}
+        nodes_map.setdefault(join_key, []).append(node_dict)
+
+    group_key_indices = [i for i, c in enumerate(columns) if c.nested_in == "groupKey"]
+    group_rows = result["data"][root_field]
+    for idx, row in enumerate(rows):
+        group_key = tuple(_convert_value(row[j]) for j in group_key_indices)
+        group_rows[idx]["nodes"] = nodes_map.get(group_key, [])
+
+    return result
+
+
 def serialize_connection(  # REQ-218
     rows: list[tuple],
     compiled: CompiledQuery,

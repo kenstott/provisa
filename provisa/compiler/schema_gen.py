@@ -1206,9 +1206,10 @@ def _build_group_by_query_field(
         GraphQLObjectType,
         GraphQLObjectType(
             f"{t.type_name}GroupByRow",
-            lambda agg=aggregates_field: {
+            lambda agg=aggregates_field, gt=gql_type: {
                 "groupKey": GraphQLField(GraphQLNonNull(cast(GraphQLScalarType, JSONScalar))),
-                "aggregates": agg,
+                "aggregate": agg,
+                "nodes": GraphQLField(GraphQLList(GraphQLNonNull(gt))),
             },
         ),
     )
