@@ -99,6 +99,9 @@ _COPY_DONE = b"c"
 _COPY_FAIL = b"f"
 
 
+state = None  # module-level reference; replaced by tests via patch()
+
+
 def is_copy_sql(sql: str) -> bool:  # REQ-585
     return bool(_COPY_RE.match(sql))
 
@@ -201,7 +204,11 @@ def _parse_copy_data(data: bytes, fmt: str) -> list[list]:
 
 def _find_table_meta(schema: str | None, table: str, role_id: str) -> tuple[TableMeta, list[str]]:
     """Return (TableMeta, col_names) for the COPY target table."""
-    from provisa.api.app import state
+    import provisa.pgwire.copy_handler as _m
+
+    state = _m.state  # type: ignore[assignment]
+    if state is None:
+        from provisa.api.app import state  # type: ignore[assignment]
     from provisa.compiler.naming import domain_to_sql_name
 
     if role_id not in state.contexts:
@@ -228,7 +235,11 @@ async def _insert_rows(
     source_id: str, schema: str, table: str, col_names: list[str], rows: list[list]
 ) -> int:
     """Bulk-insert *rows* into a writable source."""
-    from provisa.api.app import state
+    import provisa.pgwire.copy_handler as _m
+
+    _state = _m.state
+    if _state is None:
+        from provisa.api.app import state as _state  # type: ignore[assignment]
     from provisa.executor.direct import execute_direct
 
     if not rows:
@@ -244,7 +255,7 @@ async def _insert_rows(
         # Pad with None if fewer values than columns
         while len(params) < len(col_names):
             params.append(None)
-        await execute_direct(state.source_pools, source_id, sql, params)
+        await execute_direct(_state.source_pools, source_id, sql, params)  # type: ignore[union-attr]
         inserted += 1
 
     return inserted
@@ -363,11 +374,15 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         fmt: str,
         role_id: str,
     ) -> int:
-        from provisa.api.app import state
+        import provisa.pgwire.copy_handler as _m
+
+        _state = _m.state
+        if _state is None:
+            from provisa.api.app import state as _state  # type: ignore[assignment]
 
         tm, col_names = _find_table_meta(schema, table, role_id)
 
-        source_type = state.source_types.get(tm.source_id, "")
+        source_type = _state.source_types.get(tm.source_id, "")
         if source_type not in _WRITABLE_SOURCE_TYPES:
             raise PermissionError(
                 f"COPY FROM is not supported for source type {source_type!r} (table {table!r})"

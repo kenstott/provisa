@@ -62,6 +62,9 @@ _DDL_RE = re.compile(
 )
 
 
+state = None  # module-level reference; replaced by tests via patch()
+
+
 def _pg_literal(v) -> str:
     """Render a Python value as a safe PG literal string."""
     if v is None:
@@ -330,11 +333,15 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         password = payload.decode("utf-8").rstrip("\x00")
         username = ctx.params.get("user", "")
 
-        from provisa.api.app import state
+        import provisa.pgwire.server as _m
 
-        provider = (state.auth_config or {}).get("provider", "none")
+        _state = _m.state
+        if _state is None:
+            from provisa.api.app import state as _state  # type: ignore[assignment]
 
-        if provider == "none" or not state.auth_middleware_active:
+        provider = (_state.auth_config or {}).get("provider", "none")
+
+        if provider == "none" or not _state.auth_middleware_active:
             # Trust mode: username maps directly to role_id, password ignored.
             ctx.session.role_id = username  # type: ignore[attr-defined]
             self.send_authentication_ok()

@@ -69,13 +69,20 @@ def _command_tag(sql: str) -> str:
     return kind if kind not in ("TABLE", "VIEW") else f"CREATE {kind}"
 
 
+state = None  # module-level reference; replaced by tests via patch()
+
+
 class DdlHandler:  # REQ-042, REQ-060
     def __init__(self, handler):
         self._handler = handler
 
     def handle(self, ctx, sql: str) -> str:  # REQ-042, REQ-060
         """Execute DDL and return the PG command-complete tag."""
-        from provisa.api.app import state
+        import provisa.pgwire.ddl_handler as _m
+
+        state = _m.state  # type: ignore[assignment]
+        if state is None:
+            from provisa.api.app import state  # type: ignore[assignment]
 
         role_id = ctx.session.role_id
         role = state.roles.get(role_id) or {}
@@ -221,7 +228,11 @@ def _register_ddl_object(
     schema: str,
     kind: str,
 ) -> None:
-    from provisa.api.app import state
+    import provisa.pgwire.ddl_handler as _m
+
+    state = _m.state  # type: ignore[assignment]
+    if state is None:
+        from provisa.api.app import state  # type: ignore[assignment]
     from provisa.compiler.sql_gen import TableMeta
 
     ctx = state.contexts.get(role_id)
