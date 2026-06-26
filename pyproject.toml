@@ -46,7 +46,7 @@ dependencies = [
     "opentelemetry-instrumentation-pymongo",
     "opentelemetry-instrumentation-elasticsearch",
     "opentelemetry-instrumentation-grpc",
-    "buenavista @ file:vendor/buenavista",
+    "buenavista",
     "duckdb",
     "networkx>=3.0",
     "defusedxml",
