@@ -106,9 +106,25 @@ export function Sidebar({
   const [section, setSection] = useState<"db" | "history" | "favorites">("db");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [relContextMenu, setRelContextMenu] = useState<RelContextMenuState | null>(null);
-  const [nodeLabelsCollapsed, setNodeLabelsCollapsed] = useState(false);
-  const [relTypesCollapsed, setRelTypesCollapsed] = useState(false);
-  const [propKeysCollapsed, setPropKeysCollapsed] = useState(false);
+
+  const readCollapsed = (key: string, def: boolean): boolean => {
+    try { const v = localStorage.getItem(key); return v === null ? def : v === "1"; } catch { return def; }
+  };
+  const writeCollapsed = (key: string, v: boolean) => { try { localStorage.setItem(key, v ? "1" : "0"); } catch { /* ignore */ } };
+
+  const [nodeLabelsCollapsed, setNodeLabelsCollapsedRaw] = useState(() => readCollapsed("graph-sidebar:nodeLabels:collapsed", false));
+  const [relTypesCollapsed, setRelTypesCollapsedRaw] = useState(() => readCollapsed("graph-sidebar:relTypes:collapsed", false));
+  const [propKeysCollapsed, setPropKeysCollapsedRaw] = useState(() => readCollapsed("graph-sidebar:propKeys:collapsed", false));
+
+  const setNodeLabelsCollapsed = (updater: boolean | ((prev: boolean) => boolean)) => {
+    setNodeLabelsCollapsedRaw((prev) => { const next = typeof updater === "function" ? updater(prev) : updater; writeCollapsed("graph-sidebar:nodeLabels:collapsed", next); return next; });
+  };
+  const setRelTypesCollapsed = (updater: boolean | ((prev: boolean) => boolean)) => {
+    setRelTypesCollapsedRaw((prev) => { const next = typeof updater === "function" ? updater(prev) : updater; writeCollapsed("graph-sidebar:relTypes:collapsed", next); return next; });
+  };
+  const setPropKeysCollapsed = (updater: boolean | ((prev: boolean) => boolean)) => {
+    setPropKeysCollapsedRaw((prev) => { const next = typeof updater === "function" ? updater(prev) : updater; writeCollapsed("graph-sidebar:propKeys:collapsed", next); return next; });
+  };
   const [nodeLabelsPage, setNodeLabelsPage] = useState(0);
   const [relTypesPage, setRelTypesPage] = useState(0);
   const SCHEMA_PAGE_SIZE = 50;
