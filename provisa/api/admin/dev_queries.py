@@ -33,6 +33,108 @@ class EnforcementMetadata:
 # ---------------------------------------------------------------------------
 
 
+def _merge_nodes_sql(group_by_sql: str, nodes_columns: list) -> str | None:
+    """Inject json_agg(json_build_object(...)) AS nodes into the GROUP BY SELECT clause."""
+    node_cols = [(c.field_name, c.column) for c in nodes_columns if c.nested_in is None]
+    if not node_cols:
+        return None
+    kv = ", ".join(f"'{fname}', \"{col}\"" for fname, col in node_cols)
+    inject = f", json_agg(json_build_object({kv})) AS nodes"
+    from_idx = group_by_sql.upper().find(" FROM ")
+    if from_idx == -1:
+        return None
+    return group_by_sql[:from_idx] + inject + group_by_sql[from_idx:]
+
+
+def _merge_nodes_cypher(group_by_cypher: str, nodes_columns: list) -> str | None:
+    """Append collect({...}) AS nodes to the RETURN clause of a group-by Cypher query."""
+    import re
+
+    node_cols = [c for c in nodes_columns if c.nested_in is None]
+    if not node_cols:
+        return None
+    match_line = next((l for l in group_by_cypher.splitlines() if "MATCH" in l.upper()), "")
+    m = re.search(r"\((\w+):", match_line)
+    var = m.group(1) if m else "a"
+    entries = ", ".join(f"{c.field_name}: {var}.{c.field_name}" for c in node_cols)
+    collect_expr = f"collect({{{entries}}}) AS nodes"
+    lines = group_by_cypher.strip().splitlines()
+    merged = "\n".join(
+        line.rstrip() + ", " + collect_expr
+        if line.strip().upper().startswith("RETURN")
+        else line
+        for line in lines
+    )
+    return merged if merged != group_by_cypher else None
+
+
+def _merge_nodes_sql_denormalized(
+    group_by_sql: str, nodes_sql: str, nodes_columns: list
+) -> str | None:
+    """Return a JOIN query that denormalizes group-by rows with their matching nodes."""
+    node_cols = [c for c in nodes_columns if c.nested_in is None]
+    join_key_cols = [c for c in nodes_columns if c.nested_in == "__join_key__"]
+    if not node_cols or not join_key_cols:
+        return None
+    node_selects = ", ".join(f'n."{c.column}"' for c in node_cols)
+    join_cond = " AND ".join(f'n."{c.column}" = g."{c.column}"' for c in join_key_cols)
+    return (
+        f"SELECT g.*, {node_selects}\n"
+        f"FROM (\n  {group_by_sql}\n) g\n"
+        f"JOIN (\n  {nodes_sql}\n) n ON {join_cond}"
+    )
+
+
+def _merge_nodes_cypher_denormalized(
+    group_by_cypher: str, nodes_columns: list
+) -> str | None:
+    """Return a WITH/UNWIND Cypher that denormalizes group-by rows with their matching nodes."""
+    import re
+
+    node_cols = [c for c in nodes_columns if c.nested_in is None]
+    if not node_cols:
+        return None
+
+    lines = group_by_cypher.strip().splitlines()
+    ret_idx = next((i for i, l in enumerate(lines) if l.strip().upper().startswith("RETURN")), None)
+    if ret_idx is None:
+        return None
+
+    match_line = next((l for l in lines if "MATCH" in l.upper()), "")
+    m = re.search(r"\((\w+):", match_line)
+    var = m.group(1) if m else "a"
+
+    ret_body = lines[ret_idx].strip()[len("RETURN"):].strip()
+    agg_items = [item.strip() for item in ret_body.split(",")]
+
+    def _alias(expr: str) -> str:
+        if " AS " in expr.upper():
+            return expr.split(" AS ")[-1].strip()
+        if "." in expr:
+            return expr.rsplit(".", 1)[-1]
+        if "COUNT(*)" in expr.upper():
+            return "count"
+        return "agg"
+
+    collect_entries = ", ".join(f"{c.field_name}: {var}.{c.field_name}" for c in node_cols)
+    with_parts = [
+        item if " AS " in item.upper() else f"{item} AS {_alias(item)}"
+        for item in agg_items
+    ] + [f"collect({{{collect_entries}}}) AS _nodes"]
+
+    final_ret = [_alias(item) for item in agg_items] + [
+        f"node.{c.field_name} AS {c.field_name}" for c in node_cols
+    ]
+
+    return "\n".join([
+        *lines[:ret_idx],
+        "WITH " + ", ".join(with_parts),
+        "UNWIND _nodes AS node",
+        "RETURN " + ", ".join(final_ret),
+        *lines[ret_idx + 1:],
+    ])
+
+
 def _build_enforcement_metadata(  # REQ-040, REQ-041, REQ-263
     compiled, ctx, rls, masking_rules: dict, role_id: str, route_value: str
 ) -> EnforcementMetadata:
@@ -333,6 +435,12 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
         )
         semantic_sql_str = sql_comment_prefix + raw_semantic_sql
 
+        nodes_semantic_sql: str | None = None
+        if compiled.nodes_sql is not None:
+            nodes_semantic_sql = make_semantic_sql(
+                embed_params_comment(compiled.nodes_sql, compiled.nodes_params), ctx
+            )
+
         compiled_cypher, cypher_error = _compile_cypher_for_result(
             compiled,
             ctx,
@@ -346,10 +454,38 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
             node_only_cypher,
         )
 
+        has_nodes = nodes_semantic_sql is not None and bool(compiled.nodes_columns)
+
+        if has_nodes:
+            assert nodes_semantic_sql is not None
+            assert compiled.nodes_columns is not None
+            if not flat_sql:
+                merged_sql = _merge_nodes_sql(raw_semantic_sql, compiled.nodes_columns)
+            else:
+                merged_sql = _merge_nodes_sql_denormalized(
+                    raw_semantic_sql, nodes_semantic_sql, compiled.nodes_columns
+                )
+            if merged_sql:
+                semantic_sql_str = sql_comment_prefix + merged_sql
+            nodes_semantic_sql = None
+
+        nodes_compiled_cypher: str | None = None
+        if has_nodes and compiled.nodes_columns and compiled_cypher and not node_only_cypher:
+            assert compiled.nodes_columns is not None
+            if not flat_cypher:
+                merged_cypher = _merge_nodes_cypher(compiled_cypher, compiled.nodes_columns)
+            else:
+                merged_cypher = _merge_nodes_cypher_denormalized(
+                    compiled_cypher, compiled.nodes_columns
+                )
+            if merged_cypher:
+                compiled_cypher = merged_cypher
+
         results.append(
             {
                 "sql": compiled.sql,
                 "semantic_sql": semantic_sql_str,
+                "nodes_semantic_sql": nodes_semantic_sql,
                 "trino_sql": trino_sql,
                 "direct_sql": direct_sql,
                 "route": decision.route.value,
@@ -365,7 +501,9 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
                 "enforcement": enforcement,
                 "optimizations": optimizations,
                 "warnings": warnings,
+                "has_nodes": has_nodes,
                 "compiled_cypher": compiled_cypher,
+                "nodes_compiled_cypher": nodes_compiled_cypher,
                 "cypher_error": cypher_error,
             }
         )
