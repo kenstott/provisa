@@ -42,6 +42,22 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
       .catch(() => {});
   }, []);
 
+  const CHECKED_DOMAINS_KEY = "provisa.checkedDomains";
+
+  function restoreChecked(available: string[]): Set<string> {
+    try {
+      const saved = localStorage.getItem(CHECKED_DOMAINS_KEY);
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        const restored = parsed.filter((d) => available.includes(d));
+        if (restored.length > 0) return new Set(restored);
+      }
+    } catch {
+      // ignore
+    }
+    return new Set(available);
+  }
+
   useEffect(() => {
     if (!role) return;
     if (role.domain_access.includes("*")) {
@@ -50,7 +66,7 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
         .then((ids: string[]) => {
           if (ids.length > 0) {
             setDomains(ids);
-            setCheckedDomains(new Set(ids));
+            setCheckedDomains(restoreChecked(ids));
           }
         })
         .catch(() => {});
@@ -60,9 +76,10 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
         /* eslint-disable-next-line react-hooks/set-state-in-effect --
            reset domain filter state in sync with an external input (the active role) */
         setDomains(ds);
-        setCheckedDomains(new Set(ds));
+        setCheckedDomains(restoreChecked(ds));
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
   function toggleDomain(id: string) {
@@ -70,6 +87,7 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      localStorage.setItem(CHECKED_DOMAINS_KEY, JSON.stringify([...next]));
       return next;
     });
   }

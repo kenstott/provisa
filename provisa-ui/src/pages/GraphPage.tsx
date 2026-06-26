@@ -51,7 +51,7 @@ export function GraphPage() {
   const [totalNodeCount, setTotalNodeCount] = useState<number | null>(null);
   const [totalRelCount, setTotalRelCount] = useState<number | null>(null);
   const [labelCounts, setLabelCounts] = useState<Record<string, number>>({});
-  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>("provisa.graph.sidebarWidth", 240);
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
   const [colorOverrides, setColorOverrides] = useLocalStorage<Record<string, string>>(
     "provisa.graph.colorOverrides",

@@ -140,6 +140,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setDevMode(isDev);
       setAvailableRoles(allRoles);
       setAssignments(userAssignments);
+
+      const savedRoleId = localStorage.getItem("provisa_role");
+      if (savedRoleId) {
+        const match = allRoles.find((r) => r.id === savedRoleId);
+        if (match) setSelectedRole(match);
+      }
     }
 
     init().finally(() => setLoading(false));
@@ -166,6 +172,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function selectRole(r: Role | "all") {
     setSelectedRole(r);
     setSelectedDomain(null);
+    if (r === "all") localStorage.removeItem("provisa_role");
+    else localStorage.setItem("provisa_role", (r as Role).id);
   }
 
   function selectDomain(domain: string | null) {

@@ -57,11 +57,6 @@ export function QueryBar({
   const [focused, setFocused] = useState(false);
   const pendingFocusRef = useRef(false);
 
-  const handleCollapsedClick = useCallback(() => {
-    setFocused(true);
-    pendingFocusRef.current = true;
-  }, []);
-
   useEffect(() => {
     if (!cypherSchema || !viewRef.current) return;
     try {
@@ -73,7 +68,6 @@ export function QueryBar({
         }>;
       };
       /* eslint-disable @typescript-eslint/no-require-imports -- optional CommonJS subpath resolved at runtime inside try/catch; a static import would throw at module load when the subpath is unavailable */
-      // @ts-expect-error -- @neo4j-cypher/codemirror ships no Node/CommonJS types, so `require` is not declared here
       const _cypherStateDefs = require("@neo4j-cypher/codemirror/lib/cypher-state-definitions");
       /* eslint-enable @typescript-eslint/no-require-imports */
       const { editorSupportField } = _cypherStateDefs as CypherStateDefs;
