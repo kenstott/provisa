@@ -61,10 +61,10 @@ def _get_default_row_limit() -> int:
         from provisa.api.app import state
 
         return state.server_limits.get(
-            "default_row_limit", int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "10000"))
+            "default_row_limit", int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "100"))
         )
     except Exception:
-        return int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "10000"))
+        return int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "100"))
 
 
 # Module-level query counter for warm-table tracking (REQ-AD5)

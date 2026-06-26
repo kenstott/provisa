@@ -54,7 +54,7 @@ async def upload_config(request: Request):  # REQ-164
 async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
     """Return current platform settings."""
     from provisa.executor.redirect import RedirectConfig
-    from provisa.compiler.sampling import get_sample_size
+    from provisa.compiler.sql_gen import _get_default_row_limit
     from provisa.api.app import state
 
     rc = RedirectConfig.from_env()
@@ -68,8 +68,8 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
             "default_format": rc.default_format,
             "ttl": rc.ttl,
         },
-        "sampling": {
-            "default_sample_size": get_sample_size(),
+        "limits": {
+            "default_row_limit": _get_default_row_limit(),
         },
         "cache": {
             "default_ttl": state.response_cache_default_ttl,
@@ -83,6 +83,9 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
         "relationships": {
             "auto_track_fk": os.environ.get("PROVISA_AUTO_TRACK_FK", "true").lower()
             not in ("0", "false", "no"),
+        },
+        "sampling": {
+            "default_sample_size": int(os.environ.get("PROVISA_SAMPLE_SIZE", "10000")),
         },
         "otel": {
             "endpoint": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -125,11 +128,11 @@ async def update_settings(request: Request):  # REQ-165, REQ-194, REQ-253, REQ-3
             os.environ["PROVISA_REDIRECT_TTL"] = str(r["ttl"])
             updated.append("redirect.ttl")
 
-    if "sampling" in body:
-        s = body["sampling"]
-        if "default_sample_size" in s:
-            os.environ["PROVISA_SAMPLE_SIZE"] = str(s["default_sample_size"])
-            updated.append("sampling.default_sample_size")
+    if "limits" in body:
+        s = body["limits"]
+        if "default_row_limit" in s:
+            os.environ["PROVISA_DEFAULT_ROW_LIMIT"] = str(s["default_row_limit"])
+            updated.append("limits.default_row_limit")
 
     if "cache" in body:
         c = body["cache"]

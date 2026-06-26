@@ -21,20 +21,22 @@ user query feature (GraphQL ``sample`` arg → ``TABLESAMPLE``), handled in the 
 
 from __future__ import annotations
 
-import os
 from dataclasses import replace
+
+import os
 
 from provisa.compiler.sql_gen import CompiledQuery
 from provisa.compiler.stage2 import _apply_limit_ceiling, resolve_row_cap
 
-DEFAULT_SAMPLE_SIZE = 100
+DEFAULT_SAMPLE_SIZE: int = 10000
 
 
-def get_sample_size() -> int:  # REQ-005
-    """Legacy admin-settings knob (deprecated). Distinct from the governance row cap
-    (``resolve_row_cap`` → ``default_row_limit``) and from the large-result redirect
-    threshold. Retained only for the admin `default_sample_size` surface."""
-    return int(os.environ.get("PROVISA_SAMPLE_SIZE", str(DEFAULT_SAMPLE_SIZE)))
+def get_sample_size() -> int:
+    """Return the configured sample size from PROVISA_SAMPLE_SIZE env var."""
+    raw = os.environ.get("PROVISA_SAMPLE_SIZE")
+    if raw is not None:
+        return int(raw)
+    return DEFAULT_SAMPLE_SIZE
 
 
 def apply_sampling(compiled: CompiledQuery, sample_size: int) -> CompiledQuery:  # REQ-263, REQ-478
