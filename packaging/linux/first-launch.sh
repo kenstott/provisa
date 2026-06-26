@@ -7,6 +7,8 @@ set -euo pipefail
 APPDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGES_DIR="${APPDIR}/images"
 COMPOSE_DIR="${APPDIR}/compose"
+CORE_COMPOSE="${COMPOSE_DIR}/core.yml"
+OBS_COMPOSE="${COMPOSE_DIR}/observability.yml"
 PROVISA_HOME="${HOME}/.provisa"
 SENTINEL="${PROVISA_HOME}/.first-launch-complete"
 LOCAL_BIN="${HOME}/.local/bin"

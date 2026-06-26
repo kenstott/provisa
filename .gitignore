@@ -106,3 +106,4 @@ identifier.sqlite
 sharepoint.pfx
 Volumes/
 coverage.xml
+*.bak

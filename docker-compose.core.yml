@@ -2,6 +2,7 @@
 # Usage: docker compose -f docker-compose.core.yml -f docker-compose.dev-install.yml up
 services:
   postgres:
+    restart: unless-stopped
     image: postgres:16
     command: >
       postgres
@@ -25,6 +26,7 @@ services:
       start_period: 60s
 
   pgbouncer:
+    restart: unless-stopped
     image: edoburu/pgbouncer:latest
     environment:
       DB_HOST: postgres
@@ -37,6 +39,7 @@ services:
         condition: service_healthy
 
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     ports:
       - "6379:6379"
@@ -50,6 +53,7 @@ services:
       start_period: 60s
 
   trino:
+    restart: unless-stopped
     image: trinodb/trino:481
     mem_limit: 10g
     ports:
@@ -83,6 +87,7 @@ services:
       start_period: 120s
 
   trino-worker:
+    restart: unless-stopped
     image: trinodb/trino:481
     entrypoint: ["/etc/trino/worker/entrypoint.sh"]
     volumes:
@@ -108,6 +113,7 @@ services:
       replicas: 0
 
   zaychik:
+    restart: unless-stopped
     build: ./zaychik
     ports:
       - "8480:8480"
@@ -132,6 +138,7 @@ services:
       start_interval: 2s
 
   stripe-mock:
+    restart: unless-stopped
     image: stripe/stripe-mock:latest
     ports:
       - "12111:12111"

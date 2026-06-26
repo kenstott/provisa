@@ -3,6 +3,7 @@
 # Usage: docker compose -f docker-compose.core.yml -f docker-compose.observability.yml up
 services:
   minio:
+    restart: unless-stopped
     image: minio/minio:latest
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -33,6 +34,7 @@ services:
       "
 
   otlp2parquet:
+    restart: unless-stopped
     image: ghcr.io/smithclay/otlp2parquet:latest
     volumes:
       - ./observability/otlp2parquet.toml:/etc/otlp2parquet.toml:ro
@@ -54,6 +56,7 @@ services:
         condition: service_healthy
 
   otel-collector:
+    restart: unless-stopped
     image: otel/opentelemetry-collector-contrib:0.99.0
     volumes:
       - ./observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
@@ -71,6 +74,7 @@ services:
       - tempo
 
   prometheus:
+    restart: unless-stopped
     image: prom/prometheus:v2.51.2
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -81,6 +85,7 @@ services:
       - otel-collector
 
   tempo:
+    restart: unless-stopped
     image: grafana/tempo:2.4.1
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
@@ -88,6 +93,7 @@ services:
       - ./observability/tempo.yaml:/etc/tempo.yaml:ro
 
   grafana:
+    restart: unless-stopped
     image: grafana/grafana:10.4.2
     ports:
       - "3100:3000"

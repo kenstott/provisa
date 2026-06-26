@@ -29,6 +29,7 @@ services:
       - "8480:8480"
 
   mongodb:
+    restart: unless-stopped
     image: mongo:7
     ports:
       - "27017:27017"
@@ -43,6 +44,7 @@ services:
       start_period: 60s
 
   kafka:
+    restart: unless-stopped
     image: confluentinc/cp-kafka:7.6.0
     ports:
       - "9092:9092"
@@ -68,6 +70,7 @@ services:
       start_period: 120s
 
   schema-registry:
+    restart: unless-stopped
     image: confluentinc/cp-schema-registry:7.6.0
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
@@ -77,6 +80,7 @@ services:
         condition: service_healthy
 
   debezium-connect:
+    restart: unless-stopped
     image: quay.io/debezium/connect:2.7
     environment:
       BOOTSTRAP_SERVERS: kafka:29092
@@ -100,6 +104,7 @@ services:
       start_period: 120s
 
   elasticsearch:
+    restart: unless-stopped
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
     ports:
       - "9200:9200"
@@ -117,6 +122,7 @@ services:
       start_period: 120s
 
   neo4j:
+    restart: unless-stopped
     image: neo4j:5.19
     ports:
       - "7474:7474"
@@ -134,6 +140,7 @@ services:
       start_period: 120s
 
   fuseki:
+    restart: unless-stopped
     image: atomgraph/fuseki:latest
     ports:
       - "3030:3030"
