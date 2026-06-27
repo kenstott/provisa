@@ -20,8 +20,8 @@ from provisa.core.models import Domain
 async def upsert(conn: asyncpg.Connection, domain: Domain) -> None:  # REQ-021, REQ-367
     await conn.execute(
         """
-        INSERT INTO domains (id, description, graphql_alias)
-        VALUES ($1, $2, $3)
+        INSERT INTO domains (id, description, graphql_alias, org_id)
+        VALUES ($1, $2, $3, 'root')
         ON CONFLICT (id) DO UPDATE
             SET description = EXCLUDED.description,
                 graphql_alias = EXCLUDED.graphql_alias

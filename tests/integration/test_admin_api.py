@@ -48,11 +48,11 @@ class TestQuerySources:
     async def test_get_source(self, client):
         resp = await client.post(
             "/admin/graphql",
-            json={"query": '{ source(id: "sales-pg") { id type host } }'},
+            json={"query": '{ source(id: "pet-store-pg") { id type host } }'},
         )
         assert resp.status_code == 200
         source = resp.json()["data"]["source"]
-        assert source["id"] == "sales-pg"
+        assert source["id"] == "pet-store-pg"
         assert source["type"] == "postgresql"
 
 

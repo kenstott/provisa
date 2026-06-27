@@ -22,19 +22,22 @@ def _json_encoder(v):
     return v if isinstance(v, str) else json.dumps(v)
 
 
-def _make_init_conn(org_id: str):
+async def _init_conn(conn: asyncpg.Connection) -> None:
+    await conn.set_type_codec(
+        "jsonb", encoder=_json_encoder, decoder=json.loads, schema="pg_catalog"
+    )
+    await conn.set_type_codec(
+        "json", encoder=_json_encoder, decoder=json.loads, schema="pg_catalog"
+    )
+
+
+def _make_setup_conn(org_id: str):
     schema_name = f"org_{org_id}"
 
-    async def _init_conn(conn: asyncpg.Connection) -> None:
-        await conn.set_type_codec(
-            "jsonb", encoder=_json_encoder, decoder=json.loads, schema="pg_catalog"
-        )
-        await conn.set_type_codec(
-            "json", encoder=_json_encoder, decoder=json.loads, schema="pg_catalog"
-        )
+    async def _setup_conn(conn: asyncpg.Connection) -> None:
         await conn.execute(f"SET search_path TO {schema_name}")
 
-    return _init_conn
+    return _setup_conn
 
 
 async def create_pool(  # REQ-052
@@ -56,7 +59,8 @@ async def create_pool(  # REQ-052
             password=password,
             min_size=min_size,
             max_size=max_size,
-            init=_make_init_conn(org_id),
+            init=_init_conn,
+            setup=_make_setup_conn(org_id),
         ),
         timeout=10,
     )

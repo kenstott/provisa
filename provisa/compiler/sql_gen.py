@@ -1055,7 +1055,6 @@ def _has_joins(field_node: FieldNode, ctx: CompilationContext, type_name: str) -
     return False
 
 
-_NESTED_DB_ARGS = frozenset({"where", "order_by", "limit", "offset", "distinct_on"})
 # Args that require LATERAL JOIN — limit is handled inside ARRAY_AGG subquery
 _LATERAL_FORCE_ARGS = frozenset({"where", "order_by", "offset", "distinct_on"})
 

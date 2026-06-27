@@ -45,6 +45,7 @@ async def hot_mgr():
     )
     await mgr._connect()
     # Verify connectivity — raises ConnectionError if Redis is down
+    assert mgr._redis is not None
     await mgr._redis.ping()
     yield mgr
     await mgr.close()

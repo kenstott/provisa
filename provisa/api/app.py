@@ -518,9 +518,8 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
         SELECT $1, src.id, tgt.id,
                $4, $5, $6,
                false, 300, null, null, $9, $10, false, null
-        FROM registered_tables src, registered_tables tgt
-        WHERE src.source_id = $2 AND src.table_name = $3
-          AND tgt.source_id = $7 AND tgt.table_name = $8
+        FROM (SELECT id FROM registered_tables WHERE source_id = $2 AND table_name = $3 LIMIT 1) src
+        CROSS JOIN (SELECT id FROM registered_tables WHERE source_id = $7 AND table_name = $8 LIMIT 1) tgt
         ON CONFLICT (id) DO UPDATE
             SET source_table_id = EXCLUDED.source_table_id,
                 target_table_id = EXCLUDED.target_table_id,

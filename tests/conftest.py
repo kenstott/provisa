@@ -280,14 +280,19 @@ async def graphql_client(docker_postgres):
 
     the_app = create_app()
 
-    dsn = (
-        f"postgresql://{os.environ.get('PG_USER', 'provisa')}"
-        f":{os.environ.get('PG_PASSWORD', 'provisa')}"
-        f"@{docker_postgres['host']}"
-        f":{docker_postgres['port']}"
-        f"/{os.environ.get('PG_DATABASE', 'provisa')}"
+    from provisa.core.db import create_pool as _create_pool
+
+    org_id = os.environ.get("ORG_ID", "default")
+    pool = await _create_pool(
+        docker_postgres["host"],
+        int(os.environ.get("PG_PORT", "5432")),
+        os.environ.get("PG_DATABASE", "provisa"),
+        os.environ.get("PG_USER", "provisa"),
+        os.environ.get("PG_PASSWORD", "provisa"),
+        min_size=1,
+        max_size=3,
+        org_id=org_id,
     )
-    pool = await asyncpg.create_pool(dsn, min_size=1, max_size=3, command_timeout=30)
     app_mod.state.pg_pool = pool
     app_mod.state.source_pools = MagicMock()
 

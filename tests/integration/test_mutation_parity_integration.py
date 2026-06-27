@@ -719,7 +719,7 @@ class TestSSESubscriptionEndpoint:
         # The subscribe endpoint returns a StreamingResponse — register a stub route
         # that demonstrates the endpoint exists and returns text/event-stream.
         @app.get("/data/subscribe/{table}")
-        async def _stub_subscribe(table: str):
+        async def _stub_subscribe(table: str):  # noqa: ARG001
             async def _gen():
                 yield 'data: {"event":"connected"}\n\n'
 
