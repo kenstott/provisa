@@ -20,9 +20,8 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 import sys
-import types
 
 import pyarrow as pa
 import pytest
@@ -33,6 +32,7 @@ import provisa.executor.trino_flight as trf
 # ---------------------------------------------------------------------------
 # _substitute_params
 # ---------------------------------------------------------------------------
+
 
 class TestSubstituteParams:
     def test_no_params_returns_sql_unchanged(self):
@@ -110,6 +110,7 @@ class TestSubstituteParams:
 # create_flight_connection — ImportError path
 # ---------------------------------------------------------------------------
 
+
 class TestCreateFlightConnection:
     def test_import_error_propagates_when_adbc_missing(self):
         """If adbc_driver_flightsql is not importable, ImportError propagates.
@@ -117,13 +118,10 @@ class TestCreateFlightConnection:
         Setting sys.modules entries to None causes ``import <name>`` to raise
         ImportError — this is a standard Python mechanism for blocking imports.
         """
-        import sys
 
         # Remove any already-loaded adbc modules and block re-import by setting
         # the sys.modules entries to None (sentinel that triggers ImportError).
-        blocked = {
-            k: v for k, v in sys.modules.items() if "adbc_driver_flightsql" in k
-        }
+        blocked = {k: v for k, v in sys.modules.items() if "adbc_driver_flightsql" in k}
         try:
             for key in list(sys.modules.keys()):
                 if "adbc_driver_flightsql" in key:
@@ -153,10 +151,13 @@ class TestCreateFlightConnection:
         mock_package = MagicMock()
         mock_package.dbapi = mock_dbapi
 
-        with patch.dict("sys.modules", {
-            "adbc_driver_flightsql": mock_package,
-            "adbc_driver_flightsql.dbapi": mock_dbapi,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "adbc_driver_flightsql": mock_package,
+                "adbc_driver_flightsql.dbapi": mock_dbapi,
+            },
+        ):
             conn = trf.create_flight_connection(host="zaychik-host", port=9999, user="testuser")
 
         call_kwargs = mock_dbapi.connect.call_args
@@ -167,6 +168,7 @@ class TestCreateFlightConnection:
 # ---------------------------------------------------------------------------
 # execute_trino_flight_arrow
 # ---------------------------------------------------------------------------
+
 
 class TestExecuteTrinoFlightArrow:
     def _make_mock_conn(self, table: pa.Table) -> MagicMock:
@@ -223,6 +225,7 @@ class TestExecuteTrinoFlightArrow:
         trf.execute_trino_flight_arrow(conn, "SELECT x FROM t")
 
         cursor.close.assert_called_once()
+        assert cursor.close.call_count == 1
 
     def test_row_count_preserved(self):
         schema = pa.schema([("n", pa.int64())])
@@ -237,6 +240,7 @@ class TestExecuteTrinoFlightArrow:
 # ---------------------------------------------------------------------------
 # execute_trino_flight (QueryResult wrapper)
 # ---------------------------------------------------------------------------
+
 
 class TestExecuteTrinoFlight:
     def test_returns_query_result_type(self):
@@ -274,6 +278,7 @@ class TestExecuteTrinoFlight:
 # ---------------------------------------------------------------------------
 # execute_trino_flight_stream
 # ---------------------------------------------------------------------------
+
 
 class TestExecuteTrinoFlightStream:
     def _make_stream_conn(self, batches: list[pa.RecordBatch], schema: pa.Schema) -> MagicMock:
@@ -344,6 +349,7 @@ class TestExecuteTrinoFlightStream:
         list(gen)
 
         cursor.close.assert_called_once()
+        assert cursor.close.call_count == 1
 
     def test_empty_stream_yields_no_batches(self):
         schema = pa.schema([("id", pa.int64())])

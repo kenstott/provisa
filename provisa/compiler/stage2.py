@@ -171,7 +171,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
 # Helpers                                                                     #
 # --------------------------------------------------------------------------- #
 
-_LIMIT_RE = re.compile(r"\bLIMIT\s+(\d+)", re.IGNORECASE)
+_LIMIT_RE = re.compile(r"\bLIMIT\s+(\d+|\$\d+)", re.IGNORECASE)
 
 
 def _table_id_for_node(table_node: exp.Table, gov_ctx: GovernanceContext) -> int | None:
@@ -440,7 +440,11 @@ def _apply_limit_ceiling(sql: str, ceiling: int) -> str:
     """Inject or cap LIMIT to ceiling."""
     m = _LIMIT_RE.search(sql)
     if m:
-        existing = int(m.group(1))
+        val = m.group(1)
+        if val.startswith("$"):
+            # Parameterized LIMIT — cannot compare numerically; leave it unchanged.
+            return sql
+        existing = int(val)
         if existing > ceiling:
             return sql[: m.start()] + f"LIMIT {ceiling}" + sql[m.end() :]
         return sql

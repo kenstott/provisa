@@ -19,7 +19,7 @@ ROOT = Path(__file__).parent.parent
 REQ_FILE = ROOT / "docs/arch/requirements.md"
 TEST_DIRS = [ROOT / "tests/unit", ROOT / "tests/integration", ROOT / "tests/e2e"]
 
-req_ids = re.findall(r"##\s+(REQ-\d+)", REQ_FILE.read_text())
+req_ids = sorted(set(re.findall(r"\bREQ-\d+\b", REQ_FILE.read_text())))
 covered = set()
 for d in TEST_DIRS:
     if not d.exists():

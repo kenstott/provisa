@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -88,12 +87,13 @@ class _MockAcquireContext:
     async def __aenter__(self):
         return self._conn
 
-    async def __aexit__(self, *args):
+    async def __aexit__(self, *_args):
         return False
 
     def __await__(self):
         async def _resolve():
             return self._conn
+
         return _resolve().__await__()
 
 
@@ -145,12 +145,14 @@ async def test_dispatch_fires_webhook():
     mgr._http_client = mock_client
     mgr._running = True
 
-    payload = json.dumps({
-        "operation": "INSERT",
-        "table": "orders",
-        "schema": "public",
-        "row": {"id": 1, "amount": 99.99},
-    })
+    payload = json.dumps(
+        {
+            "operation": "INSERT",
+            "table": "orders",
+            "schema": "public",
+            "row": {"id": 1, "amount": 99.99},
+        }
+    )
 
     channel = _channel_name("public.orders")
     await mgr._dispatch(channel, payload)
@@ -173,17 +175,19 @@ async def test_dispatch_filters_operations():
     mgr._http_client = mock_client
     mgr._running = True
 
-    payload = json.dumps({
-        "operation": "DELETE",
-        "table": "orders",
-        "schema": "public",
-        "row": {"id": 1},
-    })
+    payload = json.dumps(
+        {
+            "operation": "DELETE",
+            "table": "orders",
+            "schema": "public",
+            "row": {"id": 1},
+        }
+    )
 
     channel = _channel_name("public.orders")
     await mgr._dispatch(channel, payload)
 
-    mock_client.post.assert_not_called()
+    assert mock_client.post.call_count == 0
 
 
 # --- Retry with exponential backoff ---
@@ -271,7 +275,7 @@ def test_on_notify_schedules_dispatch():
 
     with patch("provisa.events.triggers.asyncio.ensure_future") as mock_ef:
         mgr._on_notify(mock_conn, 123, _channel_name("public.orders"), payload)
-        mock_ef.assert_called_once()
+        assert mock_ef.call_count == 1
         coro = mock_ef.call_args[0][0]
         coro.close()
 
@@ -283,8 +287,8 @@ def test_on_notify_ignored_when_stopped():
     mgr._running = False
 
     with patch("provisa.events.triggers.asyncio.ensure_future") as mock_ef:
-        mgr._on_notify(MagicMock(), 123, "ch", '{}')
-        mock_ef.assert_not_called()
+        mgr._on_notify(MagicMock(), 123, "ch", "{}")
+        assert mock_ef.call_count == 0
 
 
 # --- Disabled triggers ---
@@ -302,7 +306,7 @@ async def test_disabled_trigger_skipped():
     await mgr.setup(mock_pool)
 
     # No SQL executed for disabled trigger
-    mock_conn.execute.assert_not_called()
+    assert mock_conn.execute.call_count == 0
 
     await mgr.teardown(mock_pool)
 
@@ -320,6 +324,6 @@ async def test_empty_triggers_noop():
     await mgr.setup(mock_pool)
 
     # No pool interaction for empty triggers (setup returns early)
-    mock_pool.acquire.assert_not_called()
+    assert mock_pool.acquire.call_count == 0
 
     await mgr.teardown(mock_pool)

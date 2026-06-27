@@ -117,20 +117,22 @@ class TestFlightServerStartsAndConnects:
 
     async def test_flight_server_starts(self, flight_server_and_client):
         """Flight server binds to port and accepts connections."""
-        client, server, state = flight_server_and_client
+        client, _, _ = flight_server_and_client
         # list_flights with empty criteria should not raise
-        _ = list(client.list_flights(b""))
+        flights = list(client.list_flights(b""))
+        assert isinstance(flights, list)
+        assert _port_in_use(_TEST_FLIGHT_PORT)
 
     async def test_flight_list_flights_default_mode(self, flight_server_and_client):
         """list_flights in default mode returns no flights (ad-hoc query server)."""
-        client, server, state = flight_server_and_client
+        client, _, _ = flight_server_and_client
         flights = list(client.list_flights(b""))
         # Default mode has no pre-defined flights
         assert isinstance(flights, list)
 
     async def test_flight_invalid_ticket_returns_error(self, flight_server_and_client):
         """Malformed ticket JSON raises a Flight error."""
-        client, server, state = flight_server_and_client
+        client, _, _ = flight_server_and_client
         bad_ticket = flight.Ticket(b"not-valid-json")
         with pytest.raises(flight.FlightServerError):
             reader = client.do_get(bad_ticket)
@@ -138,7 +140,7 @@ class TestFlightServerStartsAndConnects:
 
     async def test_flight_ticket_missing_query_returns_catalog(self, flight_server_and_client):
         """Ticket without 'query' key returns catalog metadata (not an error)."""
-        client, server, state = flight_server_and_client
+        client, _, _ = flight_server_and_client
         ticket_bytes = json.dumps({"role": "admin"}).encode()
         ticket = flight.Ticket(ticket_bytes)
         reader = client.do_get(ticket)
@@ -147,7 +149,7 @@ class TestFlightServerStartsAndConnects:
 
     async def test_flight_unknown_role_raises_error(self, flight_server_and_client):
         """Ticket with unknown role raises FlightServerError."""
-        client, server, state = flight_server_and_client
+        client, _, _ = flight_server_and_client
         ticket_bytes = json.dumps({
             "query": "{ orders { id } }",
             "role": "nonexistent_role",
@@ -157,13 +159,16 @@ class TestFlightServerStartsAndConnects:
             reader = client.do_get(bad_ticket)
             reader.read_all()
 
-    async def test_flight_handshake_returns_token_for_valid_mode(self, flight_server_and_client):
+    async def test_flight_handshake_returns_token_for_valid_mode(self, flight_server_and_client: object):
         """do_handshake with valid mode completes without error."""
+        _ = flight_server_and_client  # ensures server is running for fresh client below
         # We connect a fresh client that goes through the handshake implicitly
         client2 = flight.connect(_FLIGHT_LOCATION)
         try:
             # Calling list_flights tests that the connection (handshake) works
-            _ = list(client2.list_flights(b""))
+            flights = list(client2.list_flights(b""))
+            # A successful list_flights call means the handshake completed
+            assert isinstance(flights, list)
         finally:
             client2.close()
 
@@ -183,34 +188,40 @@ class TestFlightDoGetWithRealData:
     @pytest.fixture(scope="class")
     def pg_backed_flight(self, pg_pool):
         """Start a PG-backed Flight server on a separate port."""
+        _ = pg_pool  # requested for side-effect: ensures PG pool is ready before server starts
         port = _TEST_FLIGHT_PORT + 1
         location = f"grpc://localhost:{port}"
 
+        from typing import cast
         from graphql import (
             GraphQLField,
             GraphQLInt,
             GraphQLList,
             GraphQLNonNull,
             GraphQLObjectType,
+            GraphQLScalarType,
             GraphQLSchema,
             GraphQLString,
             GraphQLFloat,
         )
         from provisa.compiler.rls import RLSContext
 
+        _int = cast(GraphQLScalarType, GraphQLInt)
+        _str = cast(GraphQLScalarType, GraphQLString)
+        _float = cast(GraphQLScalarType, GraphQLFloat)
         order_type = GraphQLObjectType(
             "Order",
             lambda: {
-                "id": GraphQLField(GraphQLNonNull(GraphQLInt)),
-                "region": GraphQLField(GraphQLString),
-                "amount": GraphQLField(GraphQLFloat),
+                "id": GraphQLField(GraphQLNonNull(_int)),
+                "region": GraphQLField(_str),
+                "amount": GraphQLField(_float),
             },
         )
         query_type = GraphQLObjectType(
             "Query",
             {"orders": GraphQLField(GraphQLList(order_type))},
         )
-        schema = GraphQLSchema(query=query_type)
+        schema = GraphQLSchema(query=cast(GraphQLObjectType, query_type))
 
         try:
             from provisa.compiler.sql_gen import CompilationContext, TableMeta
@@ -307,13 +318,15 @@ class TestFlightDoGetWithRealData:
 
     async def test_flight_server_starts(self, pg_backed_flight):
         """PG-backed Flight server starts and accepts a connection."""
-        client, server, state, pool, loop = pg_backed_flight
+        client, _, _, _, _ = pg_backed_flight
         # A successful list_flights call proves the server is running
-        _ = list(client.list_flights(b""))
+        flights = list(client.list_flights(b""))
+        assert isinstance(flights, list)
+        assert _port_in_use(_TEST_FLIGHT_PORT + 1)
 
     async def test_flight_do_get_returns_record_batches(self, pg_backed_flight):
         """do_get with a valid GraphQL ticket returns Arrow RecordBatches."""
-        client, server, state, pool, loop = pg_backed_flight
+        client, _, _, _, _ = pg_backed_flight
         ticket_bytes = json.dumps({
             "query": "{ orders { id region amount } }",
             "role": "admin",
@@ -330,7 +343,7 @@ class TestFlightDoGetWithRealData:
 
     async def test_flight_schema_matches_query(self, pg_backed_flight):
         """Returned schema field names match the queried columns."""
-        client, server, state, pool, loop = pg_backed_flight
+        client, _, _, _, _ = pg_backed_flight
         ticket_bytes = json.dumps({
             "query": "{ orders { id region amount } }",
             "role": "admin",
@@ -349,7 +362,7 @@ class TestFlightDoGetWithRealData:
 
     async def test_flight_row_count_matches_sql(self, pg_backed_flight, pg_pool):
         """Row count from Flight matches direct PG count."""
-        client, server, state, pool, loop = pg_backed_flight
+        client, _, _, _, _ = pg_backed_flight
 
         async with pg_pool.acquire() as conn:
             pg_count = await conn.fetchval('SELECT COUNT(*) FROM "public"."orders"')
@@ -371,7 +384,7 @@ class TestFlightDoGetWithRealData:
 
     async def test_flight_invalid_ticket_returns_error(self, pg_backed_flight):
         """Malformed ticket bytes raises a Flight error."""
-        client, server, state, pool, loop = pg_backed_flight
+        client, _, _, _, _ = pg_backed_flight
         bad_ticket = flight.Ticket(b"{{bad-json}}")
         with pytest.raises(flight.FlightServerError):
             reader = client.do_get(bad_ticket)

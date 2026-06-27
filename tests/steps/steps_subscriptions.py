@@ -806,11 +806,11 @@ def when_poll_subscription_created(shared_data: dict) -> None:
         poll_interval_seconds=0.01,
     )
 
-    # Verify that a table without a watermark_column raises ValueError immediately
+    # Verify that a table without a watermark_column raises ValueError immediately.
     no_wm_provider = _PollSubscriptionProvider(
         backend=backend,
         table_config={"table_name": "nope", "source_id": "src-x"},
         poll_interval_seconds=0.01,
     )
 
-    async def _assert_no_watermark_
+    async def _assert_no_watermark

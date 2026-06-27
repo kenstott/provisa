@@ -30,8 +30,7 @@ This file adds:
 
 from __future__ import annotations
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -46,6 +45,7 @@ from provisa.executor.trino import QueryResult
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
 
 def _config(ttl: int = 3600, bucket: str = "provisa-results") -> RedirectConfig:
     return RedirectConfig(
@@ -66,7 +66,9 @@ def _result(n_rows: int = 5) -> QueryResult:
     )
 
 
-def _mock_s3_client(presigned_url: str = "https://s3.example.com/results/abc.ndjson?X-Amz-Expires=3600"):
+def _mock_s3_client(
+    presigned_url: str = "https://s3.example.com/results/abc.ndjson?X-Amz-Expires=3600",
+):
     """Return a mock boto3 S3 client that records calls."""
     client = MagicMock()
     client.put_object = MagicMock()
@@ -78,6 +80,7 @@ def _mock_s3_client(presigned_url: str = "https://s3.example.com/results/abc.ndj
 # TTL expiration of presigned URL
 # ---------------------------------------------------------------------------
 
+
 class TestPresignedUrlTTL:
     """upload_and_presign must pass the configured TTL to generate_presigned_url."""
 
@@ -87,7 +90,7 @@ class TestPresignedUrlTTL:
         s3 = _mock_s3_client()
 
         with patch("boto3.client", return_value=s3):
-            result = await upload_and_presign(_result(), cfg, output_format="ndjson")
+            _ = await upload_and_presign(_result(), cfg, output_format="ndjson")
 
         s3.generate_presigned_url.assert_called_once()
         _, kwargs = s3.generate_presigned_url.call_args
@@ -153,6 +156,7 @@ class TestPresignedUrlTTL:
 # ---------------------------------------------------------------------------
 # Response shape
 # ---------------------------------------------------------------------------
+
 
 class TestUploadAndPresignResponseShape:
     """upload_and_presign must return a dict with the documented keys."""
@@ -222,6 +226,7 @@ class TestUploadAndPresignResponseShape:
 # S3 error handling — permission denied
 # ---------------------------------------------------------------------------
 
+
 class TestS3PermissionDenied:
     """ClientError with AccessDenied must propagate from upload_and_presign."""
 
@@ -231,10 +236,12 @@ class TestS3PermissionDenied:
 
         cfg = _config()
         s3 = MagicMock()
-        s3.put_object = MagicMock(side_effect=ClientError(
-            {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
-            "PutObject",
-        ))
+        s3.put_object = MagicMock(
+            side_effect=ClientError(
+                {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
+                "PutObject",
+            )
+        )
         s3.generate_presigned_url = MagicMock()
 
         with patch("boto3.client", return_value=s3):
@@ -250,10 +257,12 @@ class TestS3PermissionDenied:
         cfg = _config()
         s3 = MagicMock()
         s3.put_object = MagicMock()
-        s3.generate_presigned_url = MagicMock(side_effect=ClientError(
-            {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
-            "GeneratePresignedUrl",
-        ))
+        s3.generate_presigned_url = MagicMock(
+            side_effect=ClientError(
+                {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
+                "GeneratePresignedUrl",
+            )
+        )
 
         with patch("boto3.client", return_value=s3):
             with pytest.raises(ClientError) as exc_info:
@@ -266,6 +275,7 @@ class TestS3PermissionDenied:
 # S3 error handling — bucket missing
 # ---------------------------------------------------------------------------
 
+
 class TestS3BucketMissing:
     """NoSuchBucket error must propagate from upload_and_presign."""
 
@@ -275,10 +285,17 @@ class TestS3BucketMissing:
 
         cfg = _config(bucket="nonexistent-bucket")
         s3 = MagicMock()
-        s3.put_object = MagicMock(side_effect=ClientError(
-            {"Error": {"Code": "NoSuchBucket", "Message": "The specified bucket does not exist"}},
-            "PutObject",
-        ))
+        s3.put_object = MagicMock(
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "NoSuchBucket",
+                        "Message": "The specified bucket does not exist",
+                    }
+                },
+                "PutObject",
+            )
+        )
         s3.generate_presigned_url = MagicMock()
 
         with patch("boto3.client", return_value=s3):
@@ -295,9 +312,13 @@ class TestS3BucketMissing:
         """
         cfg = _config()
 
-        with patch("boto3.client", side_effect=Exception("Connection refused")):
-            # Must not raise
-            await ensure_results_bucket(cfg)
+        with patch("boto3.client", side_effect=Exception("Connection refused")) as mock_client:
+            result = await ensure_results_bucket(cfg)
+
+        # boto3.client was attempted (error occurred during client creation)
+        mock_client.assert_called_once()
+        # Return value is None — the error was silently swallowed
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_ensure_results_bucket_swallows_client_error(self):
@@ -305,18 +326,26 @@ class TestS3BucketMissing:
 
         cfg = _config()
         s3 = MagicMock()
-        s3.head_bucket = MagicMock(side_effect=ClientError(
-            {"Error": {"Code": "403", "Message": "Forbidden"}},
-            "HeadBucket",
-        ))
-        s3.create_bucket = MagicMock(side_effect=ClientError(
-            {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
-            "CreateBucket",
-        ))
+        s3.head_bucket = MagicMock(
+            side_effect=ClientError(
+                {"Error": {"Code": "403", "Message": "Forbidden"}},
+                "HeadBucket",
+            )
+        )
+        s3.create_bucket = MagicMock(
+            side_effect=ClientError(
+                {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
+                "CreateBucket",
+            )
+        )
 
         with patch("boto3.client", return_value=s3):
-            # Must not raise — startup must continue even if bucket creation fails
-            await ensure_results_bucket(cfg)
+            result = await ensure_results_bucket(cfg)
+
+        # The ClientError was swallowed — function returns None without raising
+        assert result is None
+        # head_bucket was attempted (error came from bucket operations, not client creation)
+        s3.head_bucket.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ensure_results_bucket_noop_when_no_endpoint(self):
@@ -332,8 +361,9 @@ class TestS3BucketMissing:
         )
         # boto3.client must not be called at all
         with patch("boto3.client") as mock_client:
-            await ensure_results_bucket(cfg)
+            result = await ensure_results_bucket(cfg)
             mock_client.assert_not_called()
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_put_object_called_with_correct_bucket(self):

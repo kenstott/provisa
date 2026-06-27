@@ -111,9 +111,7 @@ async def _stored_domain(conn, table_name: str = "orders") -> str:
 class TestSingleDomainMode:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_empty_table_domain_coerced_to_default(self, pg_pool):
-        cfg = parse_config_dict(
-            _config({"use_domains": False, "default_domain": "global"}, [], "")
-        )
+        cfg = parse_config_dict(_config({"use_domains": False, "default_domain": "global"}, [], ""))
         async with pg_pool.acquire() as conn:
             await load_config(cfg, conn)
             assert await _stored_domain(conn) == "global"
@@ -161,9 +159,7 @@ class TestLegacyMode:
 class TestNamespacedMode:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_declared_domain_stored(self, pg_pool):
-        cfg = parse_config_dict(
-            _config({"use_domains": True}, [{"id": "sales"}], "sales")
-        )
+        cfg = parse_config_dict(_config({"use_domains": True}, [{"id": "sales"}], "sales"))
         async with pg_pool.acquire() as conn:
             await load_config(cfg, conn)
             assert await _stored_domain(conn) == "sales"
@@ -203,5 +199,10 @@ class TestReloadValidationSweep:
                 "INSERT INTO registered_tables (source_id, domain_id, schema_name, table_name) "
                 "VALUES ('pg1', 'global', 'public', 'ok_tbl')"
             )
-            # Should not raise.
+            # Should not raise — all tables are in the default domain.
             await _validate_existing_domains(conn, "global")
+            # Verify the table is actually present with the expected domain_id.
+            domain_id = await conn.fetchval(
+                "SELECT domain_id FROM registered_tables WHERE table_name = 'ok_tbl'"
+            )
+            assert domain_id == "global"

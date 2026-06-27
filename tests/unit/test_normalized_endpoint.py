@@ -13,15 +13,21 @@ from fastapi import HTTPException
 
 from provisa.api.data.endpoint import _handle_normalized
 from provisa.compiler.normalize import NormalizeError, NormalizedTable
-
-
-class _Compiled:
-    def __init__(self, sql):
-        self.sql = sql
+from provisa.compiler.sql_gen import CompiledQuery
 
 
 def _ntable(name, path, sql):
-    return NormalizedTable(table_name=name, path=path, compiled=_Compiled(sql))
+    return NormalizedTable(
+        table_name=name,
+        path=path,
+        compiled=CompiledQuery(
+            sql=sql,
+            params=[],
+            root_field=name,
+            columns=[],
+            sources=set(),
+        ),
+    )
 
 
 def _state():
@@ -48,16 +54,16 @@ async def test_normalized_returns_manifest_of_tables():
         patch("provisa.api.data.endpoint._prepare_compiled", new=AsyncMock()),
         patch(
             "provisa.api.data.endpoint.rewrite_semantic_to_trino_physical",
-            side_effect=lambda s, c: s,
+            side_effect=lambda s, _c: s,
         ),
         patch("provisa.transpiler.transpile.transpile_to_trino", side_effect=lambda s: s),
         patch(
             "provisa.executor.trino_write.execute_ctas_redirect",
-            side_effect=lambda *a, **k: next(ctas_results),
+            side_effect=lambda *_a, **_k: next(ctas_results),
         ),
         patch(
             "provisa.executor.trino_write.presign_ctas_result",
-            new=AsyncMock(side_effect=lambda p, c: f"https://x/{p[-1]}"),
+            new=AsyncMock(side_effect=lambda p, _c: f"https://x/{p[-1]}"),
         ),
         patch("provisa.executor.trino_write.schedule_s3_cleanup", new=AsyncMock()),
         patch("provisa.executor.redirect.RedirectConfig.from_env", return_value=MagicMock()),
@@ -90,7 +96,7 @@ async def test_normalized_governs_each_table():
         patch("provisa.api.data.endpoint._prepare_compiled", new=AsyncMock()) as prep,
         patch(
             "provisa.api.data.endpoint.rewrite_semantic_to_trino_physical",
-            side_effect=lambda s, c: s,
+            side_effect=lambda s, _c: s,
         ),
         patch("provisa.transpiler.transpile.transpile_to_trino", side_effect=lambda s: s),
         patch(
@@ -113,7 +119,7 @@ async def test_normalized_governs_each_table():
             role_id="admin",
             role={"id": "admin"},
         )
-    prep.assert_awaited_once()  # governance applied to the one table
+    assert prep.await_count == 1  # governance applied to the one table
 
 
 @pytest.mark.asyncio

@@ -20,6 +20,7 @@ Covers:
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import inspect
 import json
 from datetime import datetime
@@ -62,6 +63,8 @@ class TestExecuteTrinoSpanEmission:
                 "provisa.role": "admin",
             },
         )
+        spans = otel_spans.get_finished_spans()
+        assert any("provisa.query.trino" in s.name for s in spans)
         assert_span_emitted(otel_spans, "provisa.query.trino")
 
     def test_span_carries_provisa_table_attribute(self, otel_spans):
@@ -236,6 +239,15 @@ class TestInsertOtelIceberg:
 
         # Must not raise when table_name column is absent from Trino schema
         _insert_otel_iceberg(conn, "traces", table, datetime(2026, 5, 11))
+
+        # Find the INSERT call and verify table_name is not in its column list
+        cur = conn.cursor.return_value
+        insert_calls = [str(c) for c in cur.execute.call_args_list if "INSERT INTO" in str(c)]
+        assert insert_calls, "An INSERT statement must have been executed"
+        insert_sql = insert_calls[0]
+        assert "table_name" not in insert_sql, (
+            "table_name must not appear in the INSERT column list when absent from Trino schema"
+        )
 
 
 # ---------------------------------------------------------------------------

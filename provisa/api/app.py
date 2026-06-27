@@ -3549,6 +3549,27 @@ def create_app() -> FastAPI:
 
     @app.api_route("/health", methods=["GET", "HEAD"])
     async def health():  # noqa: F841  # pyright: ignore[reportUnusedFunction]
+        pg_status = "unavailable"
+        if state.pg_pool is not None:
+            try:
+                async with state.pg_pool.acquire() as conn:
+                    await conn.fetchval("SELECT 1")
+                pg_status = "ok"
+            except Exception:
+                pg_status = "unavailable"
+        return {
+            "status": "ok",
+            "dependencies": {
+                "postgres": pg_status,
+            },
+        }
+
+    @app.api_route("/live", methods=["GET", "HEAD"])
+    async def liveness():  # noqa: F841  # pyright: ignore[reportUnusedFunction]
+        return {"status": "ok"}
+
+    @app.api_route("/ready", methods=["GET", "HEAD"])
+    async def readiness():  # noqa: F841  # pyright: ignore[reportUnusedFunction]
         return {"status": "ok"}
 
     return app

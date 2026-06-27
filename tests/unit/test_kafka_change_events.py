@@ -38,7 +38,7 @@ class _MockAcquireContext:
     async def __aenter__(self):
         return self._conn
 
-    async def __aexit__(self, *args):
+    async def __aexit__(self, *_args):
         return False
 
     def __await__(self):
@@ -56,7 +56,7 @@ def _mock_pool_with_conn(mock_conn):
     return mock_pool
 
 
-def _make_sink_row(**kwargs) -> dict:
+def __make_sink_row(**kwargs) -> dict:
     defaults = {
         "id": 1,
         "stable_id": "q-abc-123",
@@ -118,9 +118,7 @@ class TestGetProducer:
             result = ce._get_producer()
 
         assert result is mock_producer
-        mock_confluent.Producer.assert_called_once_with(
-            {"bootstrap.servers": "broker1:9092"}
-        )
+        mock_confluent.Producer.assert_called_once_with({"bootstrap.servers": "broker1:9092"})
 
     def test_uses_kafka_bootstrap_servers_fallback(self, monkeypatch):
         monkeypatch.delenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", raising=False)
@@ -148,8 +146,10 @@ class TestGetProducer:
         with patch.dict("sys.modules", {"confluent_kafka": mock_confluent}):
             ce._get_producer()
 
-        mock_confluent.Producer.assert_called_once_with(
-            {"bootstrap.servers": "primary:9092"}
+        mock_confluent.Producer.assert_called_once_with({"bootstrap.servers": "primary:9092"})
+        assert mock_confluent.Producer.call_args == (
+            ({"bootstrap.servers": "primary:9092"},),
+            {},
         )
 
     def test_returns_none_when_confluent_kafka_raises(self, monkeypatch):
@@ -209,8 +209,13 @@ class TestEmitChangeEvent:
         monkeypatch.delenv("PROVISA_CHANGE_EVENT_BOOTSTRAP", raising=False)
         monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
 
-        # Should complete silently without raising
-        ce.emit_change_event("orders", "pg-main", "insert")
+        mock_confluent = MagicMock()
+        with patch.dict("sys.modules", {"confluent_kafka": mock_confluent}):
+            ce.emit_change_event("orders", "pg-main", "insert")
+
+        # No producer was created, so produce() must never be called
+        mock_confluent.Producer.assert_not_called()
+        assert mock_confluent.Producer.call_count == 0
 
     def test_calls_produce_with_correct_topic(self, monkeypatch):
         monkeypatch.delenv("PROVISA_CHANGE_EVENT_TOPIC", raising=False)
@@ -276,6 +281,10 @@ class TestEmitChangeEvent:
             # Must not raise
             ce.emit_change_event("orders", "pg-main", "insert")
 
+        # produce() was called despite the exception being swallowed
+        mock_producer.produce.assert_called_once()
+        assert mock_producer.produce.call_count == 1
+
     def test_calls_poll_zero_after_produce(self):
         mock_producer = MagicMock()
 
@@ -283,6 +292,7 @@ class TestEmitChangeEvent:
             ce.emit_change_event("orders", "pg-main", "insert")
 
         mock_producer.poll.assert_called_once_with(0)
+        assert mock_producer.poll.call_args == ((0,), {})
 
     def test_poll_not_called_when_produce_raises(self):
         """poll() should not be called if produce() throws."""
@@ -293,6 +303,7 @@ class TestEmitChangeEvent:
             ce.emit_change_event("orders", "pg-main", "insert")
 
         mock_producer.poll.assert_not_called()
+        assert mock_producer.poll.call_count == 0
 
     def test_default_mutation_type(self):
         mock_producer = MagicMock()
@@ -324,11 +335,14 @@ class TestFlush:
         ce.flush()
 
         mock_producer.flush.assert_called_once_with(timeout=5)
+        assert mock_producer.flush.call_count == 1
 
     def test_flush_does_nothing_when_producer_is_none(self):
         ce._producer = None
         # Must complete without raising
         ce.flush()
+        # Global producer must still be None — flush() must not create one
+        assert ce._producer is None
 
     def test_flush_only_flushes_existing_producer(self):
         mock_producer = MagicMock()
@@ -340,6 +354,7 @@ class TestFlush:
 
         # Only one flush call despite two ce.flush() invocations
         mock_producer.flush.assert_called_once()
+        assert mock_producer.flush.call_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -473,9 +488,7 @@ class TestKafkaProducer:
         producer, mock_inner = self._make_producer_with_mock()
 
         rows = [{"id": 1, "val": "a"}, {"id": 2, "val": "b"}]
-        count = await producer.publish_rows(
-            topic="test-topic", rows=rows, columns=["id", "val"]
-        )
+        count = await producer.publish_rows(topic="test-topic", rows=rows, columns=["id", "val"])
 
         assert count == 2
         assert mock_inner.produce.call_count == 2
@@ -495,9 +508,7 @@ class TestKafkaProducer:
         producer, mock_inner = self._make_producer_with_mock()
 
         rows = [{"id": 1}]
-        await producer.publish_rows(
-            topic="test-topic", rows=rows, columns=["id"], key_column=None
-        )
+        await producer.publish_rows(topic="test-topic", rows=rows, columns=["id"], key_column=None)
 
         call_kwargs = mock_inner.produce.call_args[1]
         assert call_kwargs["key"] is None
@@ -506,9 +517,7 @@ class TestKafkaProducer:
         producer, mock_inner = self._make_producer_with_mock()
 
         rows = [{"id": 1, "amount": 99.5}]
-        await producer.publish_rows(
-            topic="test-topic", rows=rows, columns=["id", "amount"]
-        )
+        await producer.publish_rows(topic="test-topic", rows=rows, columns=["id", "amount"])
 
         call_kwargs = mock_inner.produce.call_args[1]
         decoded = json.loads(call_kwargs["value"].decode("utf-8"))
@@ -517,10 +526,8 @@ class TestKafkaProducer:
     async def test_publish_rows_tuple_rows_zipped_with_columns(self):
         producer, mock_inner = self._make_producer_with_mock()
 
-        rows = [(1, "hello"), (2, "world")]
-        count = await producer.publish_rows(
-            topic="test-topic", rows=rows, columns=["id", "msg"]
-        )
+        rows: list[dict] = [{"id": 1, "msg": "hello"}, {"id": 2, "msg": "world"}]
+        count = await producer.publish_rows(topic="test-topic", rows=rows, columns=["id", "msg"])
 
         assert count == 2
         first_call_kwargs = mock_inner.produce.call_args_list[0][1]
@@ -530,18 +537,15 @@ class TestKafkaProducer:
     async def test_publish_rows_calls_poll_after_produce(self):
         producer, mock_inner = self._make_producer_with_mock()
 
-        await producer.publish_rows(
-            topic="t", rows=[{"id": 1}], columns=["id"]
-        )
+        await producer.publish_rows(topic="t", rows=[{"id": 1}], columns=["id"])
 
         mock_inner.poll.assert_called_once_with(0)
+        assert mock_inner.poll.call_args == ((0,), {})
 
     async def test_publish_empty_rows_returns_zero(self):
         producer, mock_inner = self._make_producer_with_mock()
 
-        count = await producer.publish_rows(
-            topic="t", rows=[], columns=["id"]
-        )
+        count = await producer.publish_rows(topic="t", rows=[], columns=["id"])
 
         assert count == 0
         mock_inner.produce.assert_not_called()
@@ -552,6 +556,7 @@ class TestKafkaProducer:
         producer.flush(timeout=10.0)
 
         mock_inner.flush.assert_called_once_with(10.0)
+        assert mock_inner.flush.call_args == ((10.0,), {})
 
     def test_flush_with_default_timeout(self):
         producer, mock_inner = self._make_producer_with_mock()
@@ -559,12 +564,15 @@ class TestKafkaProducer:
         producer.flush()
 
         mock_inner.flush.assert_called_once_with(5.0)
+        assert mock_inner.flush.call_args == ((5.0,), {})
 
     def test_flush_does_nothing_when_inner_producer_none(self):
         producer = KafkaProducer("localhost:9092")
         producer._producer = None
         # Must not raise
         producer.flush()
+        # Inner producer must remain None — flush() must not create one
+        assert producer._producer is None
 
     def test_close_flushes_then_clears_inner_producer(self):
         producer, mock_inner = self._make_producer_with_mock()
@@ -579,6 +587,8 @@ class TestKafkaProducer:
         producer._producer = None
         # Must not raise
         producer.close()
+        # Inner producer must remain None — close() must not create one
+        assert producer._producer is None
 
     def test_ensure_producer_raises_import_error_when_confluent_kafka_missing(self):
         producer = KafkaProducer("localhost:9092")
@@ -612,9 +622,9 @@ class TestTouchEndpoint:
             patch("provisa.api.app.state", mock_state),
             patch("provisa.kafka.change_events.emit_change_event") as mock_emit,
         ):
-
             result = await touch_table(table="orders", request=mock_request, x_provisa_role=None)
 
+        _ = mock_emit
         assert result.status_code == 204
 
     async def test_touch_unknown_table_returns_404(self):

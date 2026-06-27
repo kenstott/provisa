@@ -46,13 +46,15 @@ class TestInsufficientRightsErrorPropagates:
     def test_present_capability_does_not_raise(self):
         """Role with the required capability does not raise."""
         role = {"id": "steward", "capabilities": ["approve_view"]}
-        check_capability(role, Capability.APPROVE_VIEW)
+        result = check_capability(role, Capability.APPROVE_VIEW)
+        assert result is None
 
     def test_admin_capability_satisfies_any_requirement(self):
         """Admin capability acts as a wildcard — satisfies any check."""
         role = {"id": "superuser", "capabilities": ["admin"]}
         for cap in Capability:
-            check_capability(role, cap)
+            result = check_capability(role, cap)
+            assert result is None
 
     def test_empty_capabilities_raises_for_any_requirement(self):
         """Role with no capabilities raises for every capability check."""
@@ -174,7 +176,8 @@ class TestScheduledTriggerSwallowsExceptions:
             mock_cls.return_value = mock_client
 
             # Must not raise — scheduler-level exception swallowing is intentional
-            await _execute_webhook("https://example.com/hook", "trigger-1")
+            result = await _execute_webhook("https://example.com/hook", "trigger-1")
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_scheduled_webhook_does_not_propagate_500(self):
@@ -194,4 +197,5 @@ class TestScheduledTriggerSwallowsExceptions:
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_cls.return_value = mock_client
 
-            await _execute_webhook("https://example.com/hook", "trigger-1")
+            result = await _execute_webhook("https://example.com/hook", "trigger-1")
+        assert result is None

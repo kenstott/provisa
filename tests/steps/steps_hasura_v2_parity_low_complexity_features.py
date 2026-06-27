@@ -274,12 +274,17 @@ def _given_upsert_mutation_request(shared_data: dict) -> None:
 
 @when("the compiler processes it")
 def _when_compiler_processes_upsert(shared_data: dict) -> None:
-    """Pass the field node and table metadata through ``compile_upsert``.
+    """Pass the field node and table metadata through the appropriate compiler path.
 
-    The result is stored in ``shared_data["result"]`` for assertion in the
-    Then step. Any exception raised by the compiler propagates naturally so
-    that a failed compilation surfaces as a test failure rather than a
-    misleading assertion error.
+    This step is shared across multiple REQ scenarios (REQ-212, REQ-213, REQ-214).
+    It dispatches to the correct compilation path based on which keys have been
+    populated in shared_data by the Given step:
+
+    - REQ-214 (column presets): if ``preset_field_node`` is present, delegate to
+      the insert/update mutation executor.
+    - REQ-213 (distinct_on): if ``pg_field_node`` is present, run compile_query
+      for both PostgreSQL and non-PostgreSQL (Trino) variants and store results.
+    - REQ-212 (upsert): default path — run compile_upsert on the field_node.
     """
     # REQ-214 path: if this is a column-presets scenario, delegate.
     if "preset_field_node" in shared_data:
@@ -725,18 +730,3 @@ def _then_preset_columns_injected(shared_data: dict) -> None:
         f"expected {original_input['title']!r}, got {result.get('title')!r}"
     )
     assert result.get("amount") == original_input["amount"], (
-        f"Non-preset column 'amount' must pass through unchanged; "
-        f"expected {original_input['amount']!r}, got {result.get('amount')!r}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# REQ-217 scenario binding
-# ---------------------------------------------------------------------------
-
-
-@scenario(
-    "req_217_hasura_v2_parity_low_complexity_features.feature",
-    "REQ-217 default behaviour",
-)
-def test_req_

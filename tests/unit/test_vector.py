@@ -142,6 +142,7 @@ class TestProviders:
                 return False
 
             async def post(self, url, json=None):
+                assert json is not None
                 return _Resp([float(len(json["prompt"]))])
 
         import httpx
@@ -261,7 +262,8 @@ class TestModelLocking:
     async def test_dimension_match_ok(self):
         from provisa.vector.query import validate_vector_dimensions
 
-        validate_vector_dimensions([1.0, 2.0, 3.0], VectorModel("m", "openai", 3))  # no raise
+        result = validate_vector_dimensions([1.0, 2.0, 3.0], VectorModel("m", "openai", 3))
+        assert result is None  # returns None when dimensions match
 
     async def test_dimension_mismatch_rejected(self):
         from provisa.vector.query import validate_vector_dimensions
@@ -359,9 +361,14 @@ class TestInvalidation:
     def _state(self, **kw):
         from provisa.vector.cache_invalidation import CacheState
 
-        base = dict(last_refresh_ts=900.0, ttl_seconds=50, source_row_count=10, cache_row_count=10)
-        base.update(kw)
-        return CacheState(**base)
+        return CacheState(
+            last_refresh_ts=kw.get("last_refresh_ts", 900.0),
+            ttl_seconds=kw.get("ttl_seconds", 50),
+            source_row_count=kw.get("source_row_count", 10),
+            cache_row_count=kw.get("cache_row_count", 10),
+            mutated_since_refresh=kw.get("mutated_since_refresh", False),
+            manual_refresh_requested=kw.get("manual_refresh_requested", False),
+        )
 
     async def test_ttl_expiry(self):
         from provisa.vector.cache_invalidation import InvalidationReason, invalidation_reason
@@ -431,9 +438,10 @@ class TestGeneration:
                 return [[0.1, 0.2, 0.3] for _ in texts]
 
         spec = GeneratedEmbeddingSpec("vec", "body", "m")
-        await validate_generation(
+        result = await validate_generation(
             [{"body": "hi"}], spec, VectorModel("m", "openai", 3), provider=_P()
         )
+        assert result is None  # returns None when sample validates successfully
 
     async def test_validate_generation_rejects_empty_source(self):
         from provisa.vector.generation import (

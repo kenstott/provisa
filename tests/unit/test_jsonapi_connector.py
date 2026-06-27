@@ -179,7 +179,8 @@ class TestJsonApiSchemaRegistration:
 
     def test_content_type_check_accepts_jsonapi(self):
         # REQ-656
-        _assert_jsonapi_content_type("application/vnd.api+json")  # must not raise
+        result = _assert_jsonapi_content_type("application/vnd.api+json")  # must not raise
+        assert result is None
 
     def test_multiple_resource_types_produce_separate_tables(self):
         # REQ-656

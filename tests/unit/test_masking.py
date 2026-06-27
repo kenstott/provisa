@@ -27,7 +27,8 @@ assert apply_mask_to_value  # used in TestApplyMaskToValue below
 class TestValidateMaskingRule:
     def test_regex_on_varchar_passes(self):
         rule = MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*$", replace="$1***")
-        validate_masking_rule(rule, "email", "varchar", True)
+        result = validate_masking_rule(rule, "email", "varchar", True)
+        assert result is None
 
     def test_regex_on_integer_raises(self):
         rule = MaskingRule(mask_type=MaskType.regex, pattern=".*", replace="X")
@@ -55,11 +56,13 @@ class TestValidateMaskingRule:
 
     def test_truncate_on_timestamp_passes(self):
         rule = MaskingRule(mask_type=MaskType.truncate, precision="month")
-        validate_masking_rule(rule, "created_at", "timestamp", True)
+        result = validate_masking_rule(rule, "created_at", "timestamp", True)
+        assert result is None
 
     def test_truncate_on_date_passes(self):
         rule = MaskingRule(mask_type=MaskType.truncate, precision="year")
-        validate_masking_rule(rule, "birthday", "date", True)
+        result = validate_masking_rule(rule, "birthday", "date", True)
+        assert result is None
 
     def test_truncate_on_integer_raises(self):
         rule = MaskingRule(mask_type=MaskType.truncate, precision="month")
@@ -75,7 +78,8 @@ class TestValidateMaskingRule:
 
     def test_constant_null_on_nullable_passes(self):
         rule = MaskingRule(mask_type=MaskType.constant, value=None)
-        validate_masking_rule(rule, "email", "varchar", is_nullable=True)
+        result = validate_masking_rule(rule, "email", "varchar", is_nullable=True)
+        assert result is None
 
     def test_constant_null_on_not_null_raises(self):
         rule = MaskingRule(mask_type=MaskType.constant, value=None)
@@ -84,15 +88,18 @@ class TestValidateMaskingRule:
 
     def test_constant_zero_on_integer_passes(self):
         rule = MaskingRule(mask_type=MaskType.constant, value=0)
-        validate_masking_rule(rule, "amount", "integer", True)
+        result = validate_masking_rule(rule, "amount", "integer", True)
+        assert result is None
 
     def test_constant_string_on_varchar_passes(self):
         rule = MaskingRule(mask_type=MaskType.constant, value="***@***.***")
-        validate_masking_rule(rule, "email", "varchar", True)
+        result = validate_masking_rule(rule, "email", "varchar", True)
+        assert result is None
 
     def test_regex_on_parameterized_varchar_passes(self):
         rule = MaskingRule(mask_type=MaskType.regex, pattern=".*", replace="X")
-        validate_masking_rule(rule, "name", "varchar(255)", True)
+        result = validate_masking_rule(rule, "name", "varchar(255)", True)
+        assert result is None
 
 
 class TestBuildMaskExpression:
@@ -194,8 +201,11 @@ class TestApplyMaskToValue:
         assert apply_mask_to_value(rule, 5, "integer") == 2147483647
 
     def test_truncate_iso_string_to_month(self):
+        import datetime as dt
+
         rule = MaskingRule(mask_type=MaskType.truncate, precision="month")
         out = apply_mask_to_value(rule, "2026-06-17T13:45:09", "timestamp")
+        assert isinstance(out, dt.datetime)
         assert out.year == 2026 and out.month == 6 and out.day == 1
         assert out.hour == 0 and out.minute == 0 and out.second == 0
 

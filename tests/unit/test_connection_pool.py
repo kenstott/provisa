@@ -14,19 +14,40 @@ from __future__ import annotations
 
 import pytest
 
+from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.pool import SourcePool
+from provisa.executor.trino import QueryResult
 
 
-class _FakeDriver:
+class _FakeDriver(DirectDriver):
     """Stand-in for DirectDriver — no network I/O."""
 
     def __init__(self) -> None:
         self.close_called = False
-        self.is_connected = True
+        self._is_connected = True
+
+    async def connect(
+        self,
+        host: str,
+        port: int,
+        database: str,
+        user: str,
+        password: str,
+        min_pool: int = 1,
+        max_pool: int = 5,
+    ) -> None:
+        pass
+
+    async def execute(self, sql: str, params: list | None = None) -> QueryResult:
+        return QueryResult(rows=[], column_names=[])
 
     async def close(self) -> None:
         self.close_called = True
-        self.is_connected = False
+        self._is_connected = False
+
+    @property
+    def is_connected(self) -> bool:
+        return self._is_connected
 
 
 class TestSourcePoolPureLogic:
@@ -80,7 +101,12 @@ class TestSourcePoolPureLogic:
     @pytest.mark.asyncio
     async def test_close_nonexistent_is_noop(self):
         sp = SourcePool()
+        drv = _FakeDriver()
+        sp._drivers["other"] = drv
         await sp.close("nonexistent")  # must not raise
+        assert sp.has("other")
+        assert not drv.close_called
+        assert sp.source_ids == ["other"]
 
     @pytest.mark.asyncio
     async def test_close_all_on_empty_pool_is_noop(self):

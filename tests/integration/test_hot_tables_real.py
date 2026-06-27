@@ -53,6 +53,7 @@ async def hot_mgr():
 @pytest_asyncio.fixture(autouse=True, scope="module")
 async def _clean_redis_keys(hot_mgr):
     """Wipe provisa:hot:ht_test_* keys before and after the module."""
+
     async def _wipe():
         async for key in hot_mgr._redis.scan_iter(match=HOT_PREFIX + "ht_test_*"):
             await hot_mgr._redis.delete(key)
@@ -65,6 +66,7 @@ async def _clean_redis_keys(hot_mgr):
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestHotTableRedisRoundTrip:
     async def test_set_and_get_rows(self, hot_mgr):
@@ -88,6 +90,7 @@ class TestHotTableRedisRoundTrip:
         await hot_mgr._redis.set(pk_key, json.dumps({"id": 1}))
 
         from provisa.cache.hot_tables import HotTableEntry
+
         hot_mgr._hot_tables[table] = HotTableEntry(
             table_name=table, catalog="c", schema="s", pk_column="id"
         )
@@ -98,9 +101,9 @@ class TestHotTableRedisRoundTrip:
         assert not hot_mgr.is_hot(table)
 
     async def test_get_rows_miss_raises(self, hot_mgr):
-        """Fetching a non-existent table raises KeyError."""
-        with pytest.raises(KeyError, match="not found in Redis"):
-            await hot_mgr.get_rows("ht_test_nonexistent_xyz")
+        """Cache miss returns empty list (REQ-231: caller falls back to live source)."""
+        result = await hot_mgr.get_rows("ht_test_nonexistent_xyz")
+        assert result == []
 
     async def test_is_hot_reflects_loaded_state(self, hot_mgr):
         """is_hot() returns True only after an entry is registered."""
@@ -108,9 +111,14 @@ class TestHotTableRedisRoundTrip:
         assert not hot_mgr.is_hot(table)
 
         from provisa.cache.hot_tables import HotTableEntry
+
         hot_mgr._hot_tables[table] = HotTableEntry(
-            table_name=table, catalog="c", schema="s", pk_column="id",
-            rows=[{"id": 1}], column_names=["id"],
+            table_name=table,
+            catalog="c",
+            schema="s",
+            pk_column="id",
+            rows=[{"id": 1}],
+            column_names=["id"],
         )
         assert hot_mgr.is_hot(table)
         del hot_mgr._hot_tables[table]

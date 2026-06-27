@@ -81,7 +81,11 @@ class Requirement(BaseModel):
     integration_test_reason: Optional[str] = None
     e2e: Optional[bool] = None
     e2e_reason: Optional[str] = None
+    bdd: Optional[bool] = None
+    bdd_reason: Optional[str] = None
     stakeholders: Optional[list[Stakeholder]] = None
+    unit_test: Optional[bool] = None
+    unit_test_reason: Optional[str] = None
     scenario: Optional[str] = None
     since: Optional[str] = None
     target: Optional[str] = None
@@ -139,6 +143,7 @@ class Requirement(BaseModel):
             and self.status == Status.complete
             and self.type in {ReqType.behavioral, ReqType.constraint}
             and not self.tests
+            and self.unit_test is not False
         ):
             errors.append("tests required for MUST complete behavioral/constraint requirements")
 

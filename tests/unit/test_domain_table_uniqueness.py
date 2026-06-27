@@ -24,17 +24,19 @@ def _t(domain, table, source="s1", schema="public"):
 
 class TestStartupValidation:
     def test_unique_registry_passes(self):
-        _assert_domain_table_unique([_t("d1", "pets"), _t("d1", "users"), _t("d2", "pets")])
+        result = _assert_domain_table_unique(
+            [_t("d1", "pets"), _t("d1", "users"), _t("d2", "pets")]
+        )
+        assert result is None
 
     def test_same_name_different_domain_allowed(self):
         # Uniqueness is per-domain — the same table name in two domains is fine.
-        _assert_domain_table_unique([_t("d1", "pets", "s1"), _t("d2", "pets", "s2")])
+        result = _assert_domain_table_unique([_t("d1", "pets", "s1"), _t("d2", "pets", "s2")])
+        assert result is None
 
     def test_same_domain_table_from_two_sources_rejected(self):
         with pytest.raises(RuntimeError, match="domain.+table"):
-            _assert_domain_table_unique(
-                [_t("d1", "pets", "s1"), _t("d1", "pets", "s2")]
-            )
+            _assert_domain_table_unique([_t("d1", "pets", "s1"), _t("d1", "pets", "s2")])
 
     def test_error_names_the_collision(self):
         with pytest.raises(RuntimeError) as ei:

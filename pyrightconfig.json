@@ -1,6 +1,9 @@
 {
-  "extraPaths": ["vendor/buenavista", "."],
-  "include": ["provisa"],
+  "extraPaths": ["vendor/buenavista", ".", "provisa-client"],
+  "include": ["provisa", "tests"],
+  "venvPath": ".",
+  "venv": ".venv",
   "reportPrivateImportUsage": "none",
-  "reportUnusedParameter": "none"
+  "reportUnusedParameter": "none",
+  "reportUnusedVariable": "none"
 }

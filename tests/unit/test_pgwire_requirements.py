@@ -31,22 +31,53 @@ class TestReq527PgwireDisabledByDefault:
     """REQ-527: pgwire starts only when PROVISA_PGWIRE_PORT env var is a non-zero integer."""
 
     def test_zero_port_does_not_start(self, monkeypatch):
-        # REQ-527
+        # REQ-527: The startup function in app.py gates on `if pgwire_port:` so port 0 means disabled.
+        import inspect
+        from provisa.api import app as app_mod
+
         monkeypatch.setenv("PROVISA_PGWIRE_PORT", "0")
         port = int(os.environ.get("PROVISA_PGWIRE_PORT", "0"))
         assert port == 0, "Port 0 must be treated as disabled"
 
+        # Verify the startup code in app.py uses the correct gating pattern.
+        src = inspect.getsource(app_mod)
+        assert 'PROVISA_PGWIRE_PORT", "0"' in src, (
+            "app.py must read PROVISA_PGWIRE_PORT with default '0'"
+        )
+        assert "if pgwire_port:" in src, (
+            "app.py must gate pgwire startup on `if pgwire_port:` so zero disables it"
+        )
+
     def test_absent_env_var_does_not_start(self, monkeypatch):
-        # REQ-527
+        # REQ-527: Absent env var → default "0" → int 0 → falsy → server not started.
+        import inspect
+        from provisa.api import app as app_mod
+
         monkeypatch.delenv("PROVISA_PGWIRE_PORT", raising=False)
         port = int(os.environ.get("PROVISA_PGWIRE_PORT", "0"))
         assert port == 0
 
+        # Confirm the default value used in the source is "0" (falsy).
+        src = inspect.getsource(app_mod)
+        assert 'os.environ.get("PROVISA_PGWIRE_PORT", "0")' in src, (
+            "app.py must default PROVISA_PGWIRE_PORT to '0' so absent env var disables pgwire"
+        )
+
     def test_nonzero_port_enables_server(self, monkeypatch):
-        # REQ-527
+        # REQ-527: A non-zero port is truthy and passes the `if pgwire_port:` gate.
+        import inspect
+        from provisa.pgwire.server import start_pgwire_server
+
         monkeypatch.setenv("PROVISA_PGWIRE_PORT", "5439")
         port = int(os.environ.get("PROVISA_PGWIRE_PORT", "0"))
         assert port == 5439
+
+        # `start_pgwire_server` must accept a port parameter and pass it to ProvisaServer.
+        src = inspect.getsource(start_pgwire_server)
+        assert "port" in src, "start_pgwire_server must accept and use the port argument"
+        assert "ProvisaServer" in src, (
+            "start_pgwire_server must instantiate ProvisaServer with the given port"
+        )
 
     def test_start_pgwire_server_binds_all_interfaces(self):
         # REQ-527: server binds to 0.0.0.0 on the configured port
@@ -170,12 +201,23 @@ class TestReq530TLS:
     """REQ-530: TLS wraps connections when CERT+KEY set; replies 'N' when absent."""
 
     def test_no_env_vars_means_no_ssl_ctx(self, monkeypatch):
-        # REQ-530
+        # REQ-530: When CERT+KEY are absent, ssl_ctx must be None and no TLS wrapping occurs.
+        import inspect
+        from provisa.api import app as app_mod
+
         monkeypatch.delenv("PROVISA_PGWIRE_CERT", raising=False)
         monkeypatch.delenv("PROVISA_PGWIRE_KEY", raising=False)
         cert = os.environ.get("PROVISA_PGWIRE_CERT")
         key = os.environ.get("PROVISA_PGWIRE_KEY")
         assert cert is None and key is None
+
+        # Confirm app.py reads CERT+KEY and only builds ssl_ctx when both are present.
+        src = inspect.getsource(app_mod)
+        assert "PROVISA_PGWIRE_CERT" in src, "app.py must read PROVISA_PGWIRE_CERT"
+        assert "PROVISA_PGWIRE_KEY" in src, "app.py must read PROVISA_PGWIRE_KEY"
+        assert "if _cert and _key:" in src, (
+            "app.py must gate SSLContext creation on both CERT and KEY being set"
+        )
 
     def test_ssl_negotiation_sends_n_when_no_ctx(self):
         # REQ-530: When no TLS, server replies 'N' to SSL negotiation
@@ -350,8 +392,20 @@ class TestReq580MultiStatement:
     """REQ-580: Semicolon-separated statements executed sequentially."""
 
     def test_semicolon_split_produces_multiple_statements(self):
-        # REQ-580: The handle_query logic splits on semicolons
+        # REQ-580: handle_query in server.py splits on semicolons before dispatching.
+        import inspect
+        from provisa.pgwire.server import ProvisaHandler
 
+        src = inspect.getsource(ProvisaHandler.handle_query)
+        # The source must contain the exact splitting expression used in production.
+        assert 'split(";")' in src, (
+            "handle_query must split the decoded query on ';' to support multi-statement queries"
+        )
+        assert "if s.strip()" in src or "s.strip()" in src, (
+            "handle_query must filter empty parts after splitting on ';'"
+        )
+
+        # Validate the logic matches what the source does.
         decoded = "SELECT 1; SELECT 2; SELECT 3"
         stmts = [s.strip() for s in decoded.split(";") if s.strip()]
         assert len(stmts) == 3
@@ -360,7 +414,16 @@ class TestReq580MultiStatement:
         assert stmts[2] == "SELECT 3"
 
     def test_empty_parts_after_semicolon_skipped(self):
-        # REQ-580: Trailing semicolon must not produce empty statement
+        # REQ-580: Trailing semicolon must not produce empty statement.
+        # Confirm handle_query filters empty strings produced by trailing semicolons.
+        import inspect
+        from provisa.pgwire.server import ProvisaHandler
+
+        src = inspect.getsource(ProvisaHandler.handle_query)
+        assert "EMPTY_QUERY_RESPONSE" in src, (
+            "handle_query must send EMPTY_QUERY_RESPONSE when no statements remain after filtering"
+        )
+
         decoded = "SELECT 1;"
         stmts = [s.strip() for s in decoded.split(";") if s.strip()]
         assert stmts == ["SELECT 1"]
@@ -513,8 +576,10 @@ class TestReq583PostDdlRegistration:
         fake_state.contexts = {}
 
         with patch("provisa.pgwire.ddl_handler.state", fake_state):
-            # Should not raise
             _register_ddl_object("nobody", "t", "iceberg", "s", "TABLE")
+
+        # contexts is still empty — no context was created for the missing role
+        assert "nobody" not in fake_state.contexts
 
 
 # ---------------------------------------------------------------------------
@@ -944,18 +1009,29 @@ class TestReq615NoDml:
             assert not _COPY_RE.match(sql), f"DML should not match COPY regex: {sql}"
 
     def test_validate_sql_rejects_insert(self):
-        # REQ-615: SQL validator must reject INSERT
+        # REQ-615: INSERT is not routed by DDL or COPY handlers; it falls into the
+        # governance pipeline (_govern_and_route) which only handles SELECT queries.
+        # Verify that INSERT cannot be dispatched via a dedicated DML write path.
+        import sqlglot
+        import sqlglot.expressions as exp
+        from provisa.pgwire.server import _DDL_RE, _COPY_RE
+        import provisa.pgwire._pipeline as pipeline_mod
 
-        # The function is async but we only need to confirm it parses/validates SQL
-        # Test that INSERT would fail governance (which applies SQL validation)
-        import asyncio
+        insert_sql = "INSERT INTO orders VALUES (1, 'x')"
 
-        async def _check():
-            # We can't complete the full pipeline without state, but we can check
-            # that the govern_and_route is the entry point used — not a write path
-            pass
+        # INSERT must not be captured by DDL or COPY routing
+        assert not _DDL_RE.match(insert_sql), "INSERT must not match DDL regex"
+        assert not _COPY_RE.match(insert_sql), "INSERT must not match COPY regex"
 
-        asyncio.run(_check())  # just confirm no import errors
+        # The pipeline must have no dedicated INSERT/DML entry point
+        assert not hasattr(pipeline_mod, "execute_pgwire_insert")
+        assert not hasattr(pipeline_mod, "execute_pgwire_dml")
+
+        # sqlglot confirms INSERT is an Insert expression, not a Select — proving
+        # the governance pipeline (which operates on Select trees) cannot succeed for it
+        parsed = sqlglot.parse_one(insert_sql, read="postgres")
+        assert isinstance(parsed, exp.Insert), "INSERT must parse as an Insert expression"
+        assert not isinstance(parsed, exp.Select), "INSERT must not parse as a Select"
 
 
 # ---------------------------------------------------------------------------

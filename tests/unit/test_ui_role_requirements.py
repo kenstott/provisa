@@ -59,7 +59,8 @@ def test_require_capability_skips_for_anonymous_user():
         patch("provisa.api.app.state", MagicMock()),
     ):
         # Should not raise for anonymous user
-        require_capability(info, "source_registration")
+        result = require_capability(info, "source_registration")
+        assert result is None
 
 
 def test_require_capability_skips_for_none_identity():
@@ -74,7 +75,8 @@ def test_require_capability_skips_for_none_identity():
         patch("provisa.api.admin.capabilities._identity_from_info", return_value=None),
         patch("provisa.api.app.state", MagicMock()),
     ):
-        require_capability(info, "table_registration")
+        result = require_capability(info, "table_registration")
+        assert result is None
 
 
 def test_admin_capability_bypasses_all_checks():
@@ -94,7 +96,8 @@ def test_admin_capability_bypasses_all_checks():
         patch("provisa.api.app.state", MagicMock()),
     ):
         # admin bypasses — should not raise even without explicit capability
-        require_capability(info, "relationship_registration")
+        result = require_capability(info, "relationship_registration")
+        assert result is None
 
 
 def test_superadmin_capability_bypasses_all_checks():
@@ -113,7 +116,8 @@ def test_superadmin_capability_bypasses_all_checks():
         patch("provisa.api.admin.capabilities._resolved_capabilities", return_value={"superadmin"}),
         patch("provisa.api.app.state", MagicMock()),
     ):
-        require_capability(info, "security_configuration")
+        result = require_capability(info, "security_configuration")
+        assert result is None
 
 
 def test_source_registration_capability_string_used_in_codebase():
@@ -217,11 +221,12 @@ def test_creation_request_queue_router_exists():
     try:
         import provisa.api.admin.creation_requests  # type: ignore[import-not-found]  # noqa: F401
 
-        assert True
+        assert hasattr(provisa.api.admin.creation_requests, "router")
     except ImportError:
-        import provisa.api.admin.schema as schema_mod
+        import provisa.api.admin.creation_requests_router as cr_router
 
-        schema_src = inspect.getsource(schema_mod)
+        assert hasattr(cr_router, "router")
+        schema_src = inspect.getsource(cr_router)
         assert "creation_request" in schema_src.lower() or "CreationRequest" in schema_src
 
 

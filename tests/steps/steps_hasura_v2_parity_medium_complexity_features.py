@@ -605,7 +605,7 @@ def _build_enum_aware_schema(
 
     # Non-enum columns (always present in our test table)
     from graphql import GraphQLField, GraphQLInt, GraphQLNonNull as GNN
-    fields["id"] = GraphQLField(GraphQLNonNull(GraphQLInt))  # type: ignore[arg-type]
+    fields["id"] = GraphQLField(GNN(GraphQLInt))  # type: ignore[arg-type]
 
     for col_name, pg_type_name in enum_columns.items():
         if pg_type_name in enum_type_map:
@@ -823,4 +823,4 @@ def _simulate_rest_endpoint(
     5. Apply the SQL-equivalent filters to in-memory data.
     6. Return structured result.
     """
-    params = _parse
+    params = _parse_rest_

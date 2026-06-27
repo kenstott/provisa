@@ -71,7 +71,8 @@ class TestMVRegistryBasic:
         mv2 = _mv(mv_id="mv1", status=MVStatus.STALE)
         reg.register(mv1)
         reg.register(mv2)
-        assert reg.get("mv1").status == MVStatus.STALE
+        result = reg.get("mv1")
+        assert result is not None and result.status == MVStatus.STALE
         assert len(reg.all()) == 1
 
 
@@ -230,12 +231,18 @@ class TestMVRegistryStateTransitions:
 
     def test_mark_refreshing_nonexistent_is_noop(self):
         reg = MVRegistry()
-        reg.mark_refreshing("nonexistent")  # should not raise
+        reg.mark_refreshing("nonexistent")
+        assert reg.all() == []
+        assert reg.get("nonexistent") is None
 
     def test_mark_refreshed_nonexistent_is_noop(self):
         reg = MVRegistry()
-        reg.mark_refreshed("nonexistent", 0)  # should not raise
+        reg.mark_refreshed("nonexistent", 0)
+        assert reg.all() == []
+        assert reg.get("nonexistent") is None
 
     def test_mark_refresh_failed_nonexistent_is_noop(self):
         reg = MVRegistry()
-        reg.mark_refresh_failed("nonexistent", "err")  # should not raise
+        reg.mark_refresh_failed("nonexistent", "err")
+        assert reg.all() == []
+        assert reg.get("nonexistent") is None

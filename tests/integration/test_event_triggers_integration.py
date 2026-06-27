@@ -18,7 +18,6 @@ Requires: Docker Compose stack with postgres running.
 
 from __future__ import annotations
 
-import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
 
@@ -44,13 +43,11 @@ async def pg_pool(pg_dsn):
 
 
 @pytest_asyncio.fixture
-async def test_table(pg_pool):
+async def scratch_table(pg_pool):
     """Create a scratch table for trigger installation, drop after test."""
     table = "provisa_evt_test"
     async with pg_pool.acquire() as conn:
-        await conn.execute(
-            f"CREATE TABLE IF NOT EXISTS {table} (id SERIAL PRIMARY KEY, val TEXT)"
-        )
+        await conn.execute(f"CREATE TABLE IF NOT EXISTS {table} (id SERIAL PRIMARY KEY, val TEXT)")
     yield table
     async with pg_pool.acquire() as conn:
         # Drop the trigger function and trigger if they exist
@@ -61,10 +58,10 @@ async def test_table(pg_pool):
 
 
 class TestTriggerInstallation:
-    async def test_setup_installs_pg_function_and_trigger(self, pg_pool, test_table):
+    async def test_setup_installs_pg_function_and_trigger(self, pg_pool, scratch_table):
         """EventTriggerManager.setup() creates a real PG notify function and trigger."""
         trigger = EventTrigger(
-            table_id=test_table,
+            table_id=scratch_table,
             operations=["insert", "update"],
             webhook_url="https://example.com/hook",
         )
@@ -73,14 +70,12 @@ class TestTriggerInstallation:
 
         # Verify function exists in pg_proc
         async with pg_pool.acquire() as conn:
-            fn_name = f"provisa_notify_{_safe_name(test_table)}"
-            row = await conn.fetchrow(
-                "SELECT proname FROM pg_proc WHERE proname = $1", fn_name
-            )
+            fn_name = f"provisa_notify_{_safe_name(scratch_table)}"
+            row = await conn.fetchrow("SELECT proname FROM pg_proc WHERE proname = $1", fn_name)
             assert row is not None, f"PG function {fn_name!r} not found after setup"
 
             # Verify trigger exists in pg_trigger
-            trig_name = f"provisa_trigger_{_safe_name(test_table)}"
+            trig_name = f"provisa_trigger_{_safe_name(scratch_table)}"
             trig_row = await conn.fetchrow(
                 "SELECT tgname FROM pg_trigger WHERE tgname = $1", trig_name
             )
@@ -88,10 +83,10 @@ class TestTriggerInstallation:
 
         await mgr.teardown(pg_pool)
 
-    async def test_teardown_removes_pg_trigger_and_function(self, pg_pool, test_table):
+    async def test_teardown_removes_pg_trigger_and_function(self, pg_pool, scratch_table):
         """EventTriggerManager.teardown() drops the PG trigger and function."""
         trigger = EventTrigger(
-            table_id=test_table,
+            table_id=scratch_table,
             operations=["insert"],
             webhook_url="https://example.com/hook",
         )
@@ -100,17 +95,15 @@ class TestTriggerInstallation:
         await mgr.teardown(pg_pool)
 
         async with pg_pool.acquire() as conn:
-            fn_name = f"provisa_notify_{_safe_name(test_table)}"
-            row = await conn.fetchrow(
-                "SELECT proname FROM pg_proc WHERE proname = $1", fn_name
-            )
+            fn_name = f"provisa_notify_{_safe_name(scratch_table)}"
+            row = await conn.fetchrow("SELECT proname FROM pg_proc WHERE proname = $1", fn_name)
             assert row is None, f"PG function {fn_name!r} still present after teardown"
 
-    async def test_setup_multiple_triggers(self, pg_pool, test_table):
+    async def test_setup_multiple_triggers(self, pg_pool, scratch_table):
         """Multiple triggers are all installed without conflict."""
         triggers = [
             EventTrigger(
-                table_id=test_table,
+                table_id=scratch_table,
                 operations=["insert"],
                 webhook_url="https://example.com/insert-hook",
             ),
@@ -119,10 +112,8 @@ class TestTriggerInstallation:
         await mgr.setup(pg_pool)
 
         async with pg_pool.acquire() as conn:
-            fn_name = f"provisa_notify_{_safe_name(test_table)}"
-            row = await conn.fetchrow(
-                "SELECT proname FROM pg_proc WHERE proname = $1", fn_name
-            )
+            fn_name = f"provisa_notify_{_safe_name(scratch_table)}"
+            row = await conn.fetchrow("SELECT proname FROM pg_proc WHERE proname = $1", fn_name)
             assert row is not None
 
         await mgr.teardown(pg_pool)
@@ -133,12 +124,12 @@ class TestNotifyDispatch:
     # "https://example.com/hook", a 3rd-party webhook URL not in docker-compose.
     # Tests exercise the real PG path (pg_pool fixture) and real trigger logic.
 
-    async def test_notify_triggers_webhook_dispatch(self, pg_pool, test_table):
+    async def test_notify_triggers_webhook_dispatch(self, pg_pool, scratch_table):
         """INSERT into table sends NOTIFY which dispatches to the webhook."""
         received: list[dict] = []
 
         trigger = EventTrigger(
-            table_id=test_table,
+            table_id=scratch_table,
             operations=["insert"],
             webhook_url="https://example.com/hook",
             retry_max=0,
@@ -162,13 +153,15 @@ class TestNotifyDispatch:
         mgr._running = True
 
         # Manually send a NOTIFY to simulate the PG trigger firing
-        channel = _channel_name(test_table)
-        payload = json.dumps({
-            "operation": "INSERT",
-            "table": test_table,
-            "schema": "public",
-            "row": {"id": 42, "val": "hello"},
-        })
+        channel = _channel_name(scratch_table)
+        payload = json.dumps(
+            {
+                "operation": "INSERT",
+                "table": scratch_table,
+                "schema": "public",
+                "row": {"id": 42, "val": "hello"},
+            }
+        )
         await mgr._dispatch(channel, payload)
 
         assert len(received) == 1
@@ -177,10 +170,10 @@ class TestNotifyDispatch:
 
         await mgr.teardown(pg_pool)
 
-    async def test_notify_with_wrong_operation_not_dispatched(self, pg_pool, test_table):
+    async def test_notify_with_wrong_operation_not_dispatched(self, pg_pool, scratch_table):
         """DELETE notification is ignored when trigger only covers INSERT."""
         trigger = EventTrigger(
-            table_id=test_table,
+            table_id=scratch_table,
             operations=["insert"],
             webhook_url="https://example.com/hook",
         )
@@ -189,16 +182,19 @@ class TestNotifyDispatch:
         mgr._http_client = mock_client
         mgr._running = True
 
-        channel = _channel_name(test_table)
-        payload = json.dumps({
-            "operation": "DELETE",
-            "table": test_table,
-            "schema": "public",
-            "row": {"id": 1},
-        })
+        channel = _channel_name(scratch_table)
+        payload = json.dumps(
+            {
+                "operation": "DELETE",
+                "table": scratch_table,
+                "schema": "public",
+                "row": {"id": 1},
+            }
+        )
         await mgr._dispatch(channel, payload)
 
         mock_client.post.assert_not_called()
+        assert mock_client.post.call_count == 0
 
 
 class TestRetryPolicy:
@@ -224,7 +220,9 @@ class TestRetryPolicy:
         mgr._http_client = mock_client
         mgr._running = True
 
-        await mgr._post_webhook(trigger, {"operation": "INSERT", "table": "orders", "schema": "public", "row": {}})
+        await mgr._post_webhook(
+            trigger, {"operation": "INSERT", "table": "orders", "schema": "public", "row": {}}
+        )
 
         assert mock_client.post.call_count == 3
 
@@ -273,3 +271,4 @@ class TestInvalidPayload:
         await mgr._dispatch(channel, "not valid json {{")
 
         mock_client.post.assert_not_called()
+        assert mock_client.post.call_count == 0

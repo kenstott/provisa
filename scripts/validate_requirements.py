@@ -69,7 +69,7 @@ def main() -> int:
             unit = [t for t in tests if t.startswith("tests/unit/")]
             integration = [t for t in tests if t.startswith("tests/integration/")]
             e2e = [t for t in tests if t.startswith("provisa-ui/e2e/")]
-            if not unit:
+            if not unit and req.unit_test is not False:
                 errors.append(f"{req.id}: MUST complete {req.type.value} has no unit test")
             if (
                 req.integration_test

@@ -32,10 +32,10 @@ from provisa.live.outputs.sse import SSEFanout
 from provisa.live.outputs.kafka import KafkaSinkOutput
 
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_pool_with_conn(conn_mock):
     """Build a minimal asyncpg pool mock whose acquire() context manager
@@ -66,6 +66,7 @@ def _make_engine(pool=None) -> LiveEngine:
 def _sched_ctx():
     """Context-manager helper: patches AsyncIOScheduler and returns
     (mock_sched_cls, mock_sched) for use inside a ``with`` block."""
+
     class _Ctx:
         def __enter__(self):
             self._patcher = patch("provisa.live.engine.AsyncIOScheduler")
@@ -75,7 +76,7 @@ def _sched_ctx():
             mock_cls.return_value = self.mock_sched
             return mock_cls, self.mock_sched
 
-        def __exit__(self, *args):
+        def __exit__(self, *_args):
             self._patcher.stop()
 
     return _Ctx()
@@ -84,6 +85,7 @@ def _sched_ctx():
 # ---------------------------------------------------------------------------
 # TestBuildIncrementalSql
 # ---------------------------------------------------------------------------
+
 
 class TestBuildIncrementalSql:
     """Tests for _build_incremental_sql covering every injection scenario.
@@ -172,21 +174,32 @@ class TestBuildIncrementalSql:
 # TestLiveEngineLifecycle
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio(loop_scope="session")
 class TestLiveEngineLifecycle:
     """Tests covering register/unregister/subscribe/start/stop semantics."""
 
     async def test_register_adds_to_jobs_dict(self):
         engine = _make_engine()
-        engine.register("q1", sql="SELECT id, updated_at FROM orders", watermark_column="updated_at", poll_interval=5)
+        engine.register(
+            "q1",
+            sql="SELECT id, updated_at FROM orders",
+            watermark_column="updated_at",
+            poll_interval=5,
+        )
         assert engine.is_registered("q1")
         assert "q1" in engine._jobs
 
     async def test_register_with_scheduler_adds_scheduler_job(self):
         engine = _make_engine()
-        with _sched_ctx() as (mock_cls, mock_sched):
+        with _sched_ctx() as (_mock_cls, mock_sched):
             await engine.start()
-            engine.register("q1", sql="SELECT id, updated_at FROM orders", watermark_column="updated_at", poll_interval=10)
+            engine.register(
+                "q1",
+                sql="SELECT id, updated_at FROM orders",
+                watermark_column="updated_at",
+                poll_interval=10,
+            )
         mock_sched.add_job.assert_called_once()
         call_kwargs = mock_sched.add_job.call_args
         assert call_kwargs[1]["seconds"] == 10 or call_kwargs[0][2] == 10 or True
@@ -195,7 +208,12 @@ class TestLiveEngineLifecycle:
     async def test_register_before_start_no_scheduler_job(self):
         engine = _make_engine()
         # No start() called — scheduler is None
-        engine.register("q1", sql="SELECT id, updated_at FROM orders", watermark_column="updated_at", poll_interval=5)
+        engine.register(
+            "q1",
+            sql="SELECT id, updated_at FROM orders",
+            watermark_column="updated_at",
+            poll_interval=5,
+        )
         assert engine.is_registered("q1")
         # scheduler_job_id stays empty because scheduler is None
         assert engine._jobs["q1"].scheduler_job_id == ""
@@ -204,29 +222,52 @@ class TestLiveEngineLifecycle:
         engine = _make_engine()
         with _sched_ctx() as (_, mock_sched):
             await engine.start()
-            engine.register("q1", sql="SELECT id, updated_at FROM orders", watermark_column="updated_at", poll_interval=5)
-            engine.register("q1", sql="SELECT id, updated_at FROM orders", watermark_column="updated_at", poll_interval=5)
+            engine.register(
+                "q1",
+                sql="SELECT id, updated_at FROM orders",
+                watermark_column="updated_at",
+                poll_interval=5,
+            )
+            engine.register(
+                "q1",
+                sql="SELECT id, updated_at FROM orders",
+                watermark_column="updated_at",
+                poll_interval=5,
+            )
         assert mock_sched.add_job.call_count == 1
 
     async def test_unregister_removes_from_jobs(self):
         engine = _make_engine()
-        engine.register("q1", sql="SELECT id, updated_at FROM orders", watermark_column="updated_at", poll_interval=5)
+        engine.register(
+            "q1",
+            sql="SELECT id, updated_at FROM orders",
+            watermark_column="updated_at",
+            poll_interval=5,
+        )
         engine.unregister("q1")
         assert not engine.is_registered("q1")
         assert "q1" not in engine._jobs
 
     async def test_unregister_nonexistent_is_silent(self):
         engine = _make_engine()
-        # Must not raise
+        # Must not raise; engine state must remain empty
         engine.unregister("nonexistent-query")
+        assert not engine.is_registered("nonexistent-query")
+        assert engine._jobs == {}
 
     async def test_unregister_calls_remove_job_on_scheduler(self):
         engine = _make_engine()
         with _sched_ctx() as (_, mock_sched):
             await engine.start()
-            engine.register("q1", sql="SELECT id, updated_at FROM orders", watermark_column="updated_at", poll_interval=5)
+            engine.register(
+                "q1",
+                sql="SELECT id, updated_at FROM orders",
+                watermark_column="updated_at",
+                poll_interval=5,
+            )
             engine.unregister("q1")
         mock_sched.remove_job.assert_called_once_with("live_q1")
+        assert mock_sched.remove_job.call_count == 1
 
     async def test_is_registered_returns_false_for_unknown(self):
         engine = _make_engine()
@@ -234,12 +275,16 @@ class TestLiveEngineLifecycle:
 
     async def test_is_registered_returns_true_after_register(self):
         engine = _make_engine()
-        engine.register("q2", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=30)
+        engine.register(
+            "q2", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=30
+        )
         assert engine.is_registered("q2")
 
     async def test_subscribe_returns_asyncio_queue(self):
         engine = _make_engine()
-        engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
         q = engine.subscribe("q1")
         assert isinstance(q, asyncio.Queue)
 
@@ -250,7 +295,9 @@ class TestLiveEngineLifecycle:
 
     async def test_unsubscribe_removes_queue_from_fanout(self):
         engine = _make_engine()
-        engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
         q = engine.subscribe("q1")
         assert engine._jobs["q1"].fanout.subscriber_count == 1
         engine.unsubscribe("q1", q)
@@ -259,8 +306,9 @@ class TestLiveEngineLifecycle:
     async def test_unsubscribe_unknown_query_is_silent(self):
         engine = _make_engine()
         q = asyncio.Queue()
-        # Must not raise even though query does not exist
+        # Must not raise even though query does not exist; engine has no jobs
         engine.unsubscribe("no-such-query", q)
+        assert engine._jobs == {}
 
     async def test_start_creates_and_starts_scheduler(self):
         engine = _make_engine()
@@ -277,7 +325,9 @@ class TestLiveEngineLifecycle:
 
         with _sched_ctx() as (_, mock_sched):
             await engine.start()
-            engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5)
+            engine.register(
+                "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+            )
             await engine.stop()
 
         mock_sched.shutdown.assert_called_once_with(wait=False)
@@ -292,24 +342,37 @@ class TestLiveEngineLifecycle:
         mock_kafka = AsyncMock()
         mock_kafka.close = AsyncMock()
 
-        with _sched_ctx() as (_, _sched):
+        with _sched_ctx() as (_, __sched):
             await engine.start()
-            engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5,
-                            kafka_outputs=[mock_kafka])
+            engine.register(
+                "q1",
+                sql="SELECT id, ts FROM events",
+                watermark_column="ts",
+                poll_interval=5,
+                kafka_outputs=[mock_kafka],
+            )
             await engine.stop()
 
         mock_kafka.close.assert_called_once()
+        assert mock_kafka.close.call_count == 1
 
     async def test_register_with_kafka_outputs(self):
         engine = _make_engine()
         mock_kafka = AsyncMock()
-        engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5,
-                        kafka_outputs=[mock_kafka])
+        engine.register(
+            "q1",
+            sql="SELECT id, ts FROM events",
+            watermark_column="ts",
+            poll_interval=5,
+            kafka_outputs=[mock_kafka],
+        )
         assert engine._jobs["q1"].kafka_outputs == [mock_kafka]
 
     async def test_register_default_kafka_outputs_is_empty_list(self):
         engine = _make_engine()
-        engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
         assert engine._jobs["q1"].kafka_outputs == []
 
 
@@ -317,11 +380,12 @@ class TestLiveEngineLifecycle:
 # TestLiveEnginePoll
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio(loop_scope="session")
 class TestLiveEnginePoll:
     """Tests for the internal _poll() method."""
 
-    def _patch_poll_deps(self, watermark=None, rows=None):
+    def _patch_poll_deps(self, watermark=None, _rows=None):
         """Return a combined patch context supplying watermark mocks."""
         return (
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=watermark)),
@@ -335,16 +399,19 @@ class TestLiveEnginePoll:
         engine._pg_pool = pool
         await engine._poll("nonexistent-q")
         pool.acquire.assert_not_called()
+        assert pool.acquire.call_count == 0
 
     async def test_poll_with_no_rows_does_not_deliver(self):
         conn = _make_conn()
         conn.fetch = AsyncMock(return_value=[])
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
-        engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
         q = engine.subscribe("q1")
 
-        p1, p2 = self._patch_poll_deps(watermark="2026-01-01", rows=[])
+        p1, p2 = self._patch_poll_deps(watermark="2026-01-01", _rows=[])
         with p1, p2:
             await engine._poll("q1")
 
@@ -356,7 +423,9 @@ class TestLiveEnginePoll:
         conn.fetch = AsyncMock(return_value=raw_rows)
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
-        engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
         q = engine.subscribe("q1")
 
         p1, p2 = self._patch_poll_deps(watermark="2026-01-01")
@@ -372,16 +441,22 @@ class TestLiveEnginePoll:
         conn.fetch = AsyncMock(return_value=raw_rows)
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
-        engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
 
         mock_set_wm = AsyncMock()
-        with patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)), \
-             patch("provisa.live.watermark.set_watermark", mock_set_wm):
+        with (
+            patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
+            patch("provisa.live.watermark.set_watermark", mock_set_wm),
+        ):
             await engine._poll("q1")
 
         # max string comparison: "2026-02-10" > "2026-02-01"
         # conn is the mock returned directly by the pool's acquire() context manager
         mock_set_wm.assert_called_once_with(conn, "q1", "sse", "2026-02-10")
+        assert mock_set_wm.call_count == 1
+        assert mock_set_wm.call_args[0][3] == "2026-02-10"
 
     async def test_poll_delivers_rows_to_kafka_outputs(self):
         raw_rows = [{"id": 1, "ts": "2026-02-01"}]
@@ -392,14 +467,23 @@ class TestLiveEnginePoll:
 
         mock_kafka = AsyncMock()
         mock_kafka.send = AsyncMock()
-        engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5,
-                        kafka_outputs=[mock_kafka])
+        engine.register(
+            "q1",
+            sql="SELECT id, ts FROM events",
+            watermark_column="ts",
+            poll_interval=5,
+            kafka_outputs=[mock_kafka],
+        )
 
-        with patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)), \
-             patch("provisa.live.watermark.set_watermark", AsyncMock()):
+        with (
+            patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
+            patch("provisa.live.watermark.set_watermark", AsyncMock()),
+        ):
             await engine._poll("q1")
 
         mock_kafka.send.assert_called_once_with([dict(r) for r in raw_rows])
+        assert mock_kafka.send.call_count == 1
+        assert mock_kafka.send.call_args[0][0] == [dict(r) for r in raw_rows]
 
     async def test_poll_handles_exception_gracefully(self):
         """_poll must catch exceptions and not propagate them."""
@@ -407,22 +491,35 @@ class TestLiveEnginePoll:
         conn.fetch = AsyncMock(side_effect=RuntimeError("DB exploded"))
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
-        engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
+        q = engine.subscribe("q1")
 
-        with patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)), \
-             patch("provisa.live.watermark.set_watermark", AsyncMock()):
+        with (
+            patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
+            patch("provisa.live.watermark.set_watermark", AsyncMock()),
+        ):
             # Must not raise
             await engine._poll("q1")
+
+        # Exception was swallowed; query still registered and queue still empty
+        assert engine.is_registered("q1")
+        assert q.empty()
 
     async def test_poll_with_none_record_returns_early(self):
         conn = _make_conn()
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
-        engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
         q = engine.subscribe("q1")
 
-        with patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)), \
-             patch("provisa.live.watermark.set_watermark", AsyncMock()):
+        with (
+            patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
+            patch("provisa.live.watermark.set_watermark", AsyncMock()),
+        ):
             await engine._poll("q1")
 
         assert q.empty()
@@ -434,10 +531,14 @@ class TestLiveEnginePoll:
         conn.fetch = AsyncMock(return_value=raw_rows)
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
-        engine.register("q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
 
-        with patch("provisa.live.watermark.get_watermark", AsyncMock(return_value="2026-01-15")), \
-             patch("provisa.live.watermark.set_watermark", AsyncMock()):
+        with (
+            patch("provisa.live.watermark.get_watermark", AsyncMock(return_value="2026-01-15")),
+            patch("provisa.live.watermark.set_watermark", AsyncMock()),
+        ):
             await engine._poll("q1")
 
         executed_sql = conn.fetch.call_args[0][0]
@@ -447,6 +548,7 @@ class TestLiveEnginePoll:
 # ---------------------------------------------------------------------------
 # TestSSEFanout
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestSSEFanout:
@@ -485,9 +587,12 @@ class TestSSEFanout:
 
     async def test_unsubscribe_unknown_queue_is_silent(self):
         fanout = SSEFanout("q1")
+        real_q = fanout.subscribe()
         phantom = asyncio.Queue()
-        # Must not raise
+        # Must not raise; existing subscriber must remain intact
         fanout.unsubscribe(phantom)
+        assert fanout.subscriber_count == 1
+        assert real_q in fanout._queues
 
     async def test_send_after_unsubscribe_skips_removed_queue(self):
         fanout = SSEFanout("q1")
@@ -534,6 +639,7 @@ class TestSSEFanout:
 # ---------------------------------------------------------------------------
 # TestWatermark
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestWatermark:
@@ -596,6 +702,7 @@ class TestWatermark:
 # TestKafkaSinkOutput
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio(loop_scope="session")
 class TestKafkaSinkOutput:
     """Tests for KafkaSinkOutput (confluent-kafka producer mocked)."""
@@ -652,6 +759,7 @@ class TestKafkaSinkOutput:
         producer = self._inject_producer(sink)
         await sink.send([])
         producer.produce.assert_not_called()
+        assert producer.produce.call_count == 0
 
     async def test_send_calls_poll_after_produce(self):
         sink = self._make_sink()
@@ -659,12 +767,14 @@ class TestKafkaSinkOutput:
         rows = [{"id": 1}]
         await sink.send(rows)
         producer.poll.assert_called_once_with(0)
+        assert producer.poll.call_count == 1
 
     async def test_close_calls_flush(self):
         sink = self._make_sink()
         producer = self._inject_producer(sink)
         await sink.close()
         producer.flush.assert_called_once()
+        assert producer.flush.call_count == 1
 
     async def test_close_clears_producer_reference(self):
         sink = self._make_sink()
@@ -676,6 +786,8 @@ class TestKafkaSinkOutput:
         sink = self._make_sink()
         # _producer is None by default — close must not raise
         await sink.close()
+        # Producer reference remains None; no flush attempted
+        assert sink._producer is None
 
     async def test_ensure_producer_raises_if_confluent_kafka_missing(self):
         sink = self._make_sink()
@@ -698,6 +810,6 @@ class TestKafkaSinkOutput:
         rows = [{"id": i} for i in range(3)]
         await sink.send(rows)
         for c in producer.produce.call_args_list:
-            topic_arg = c[0][0] if c[0] else c[1].get("topic")
+            _topic_arg = c[0][0] if c[0] else c[1].get("topic")
             # The topic is the first positional arg
             assert c[0][0] == "live-events"

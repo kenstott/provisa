@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: c7e41a92-5d3b-48f1-9a26-4f1d8e7b0c63
+# Canary: {canary}
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -138,7 +138,7 @@ def _discriminator_of(topic: KafkaTopicConfig) -> tuple[str | None, object]:
 def register_multi_type_topic(shared_data):
     """Register two logical tables backed by one physical topic.
 
-    Each table is filtered by the same discriminator field (`event_type`)
+    Each table is filtered by the same discriminator field (``event_type``)
     but a distinct value.
     """
     physical_topic = "events"

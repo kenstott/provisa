@@ -361,24 +361,30 @@ class TestPgwireMultiStatement:
     """REQ-580: semicolon-separated statements processed sequentially."""
 
     async def test_begin_commit_multi_statement(self, pgwire_srv):
-        """BEGIN; COMMIT does not raise."""
+        """BEGIN; COMMIT does not raise and connection remains usable."""
         port, _ = pgwire_srv
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
 
+        async def _noop(sql, role_id):
+            return TrinoResult(rows=[(1,)], column_names=["v"])
+
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
             patch("provisa.api.app.state", state),
+            patch("provisa.pgwire._pipeline.execute_pgwire_sql", _noop),
         ):
             conn = await asyncpg.connect(
                 host="127.0.0.1", port=port, user="admin", password="secret",
                 database="provisa",
             )
             await conn.execute("BEGIN; COMMIT")
+            # Connection must survive the intercepted multi-statement without closing
+            assert not conn.is_closed(), "Connection closed after BEGIN; COMMIT intercept"
             await conn.close()
 
     async def test_set_and_show_multi_statement(self, pgwire_srv):
-        """SET followed by SHOW executes without error."""
+        """SET followed by SHOW executes without error; SHOW returns a version string."""
         port, _ = pgwire_srv
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
@@ -392,6 +398,8 @@ class TestPgwireMultiStatement:
                 database="provisa",
             )
             await conn.execute("SET search_path TO public; SHOW server_version")
+            # Connection must survive the multi-statement intercept
+            assert not conn.is_closed(), "Connection closed after SET; SHOW intercept"
             await conn.close()
 
 
@@ -492,7 +500,7 @@ class TestPgwireTransactionIntercept:
     """REQ-587: BEGIN/COMMIT/ROLLBACK/SET intercepted; no error raised."""
 
     async def test_set_intercepted(self, pgwire_srv):
-        """SET search_path does not raise."""
+        """SET search_path is intercepted; connection remains open and usable after."""
         port, _ = pgwire_srv
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
@@ -506,10 +514,16 @@ class TestPgwireTransactionIntercept:
                 database="provisa",
             )
             await conn.execute("SET search_path TO public")
+            # Intercepted SET must not close the connection
+            assert not conn.is_closed(), "Connection closed after SET intercept"
+            # Server must still respond to a follow-up catalog query
+            row = await conn.fetchrow("SHOW server_version")
+            assert row is not None
+            assert "provisa" in str(row[0]).lower()
             await conn.close()
 
     async def test_begin_rollback_intercepted(self, pgwire_srv):
-        """BEGIN/ROLLBACK do not raise."""
+        """BEGIN/ROLLBACK are intercepted; connection remains open after each."""
         port, _ = pgwire_srv
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
@@ -523,11 +537,13 @@ class TestPgwireTransactionIntercept:
                 database="provisa",
             )
             await conn.execute("BEGIN")
+            assert not conn.is_closed(), "Connection closed after BEGIN intercept"
             await conn.execute("ROLLBACK")
+            assert not conn.is_closed(), "Connection closed after ROLLBACK intercept"
             await conn.close()
 
     async def test_savepoint_intercepted(self, pgwire_srv):
-        """SAVEPOINT and RELEASE SAVEPOINT are intercepted silently."""
+        """SAVEPOINT and RELEASE SAVEPOINT are intercepted; connection survives both."""
         port, _ = pgwire_srv
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
@@ -541,7 +557,9 @@ class TestPgwireTransactionIntercept:
                 database="provisa",
             )
             await conn.execute("SAVEPOINT sp1")
+            assert not conn.is_closed(), "Connection closed after SAVEPOINT intercept"
             await conn.execute("RELEASE SAVEPOINT sp1")
+            assert not conn.is_closed(), "Connection closed after RELEASE SAVEPOINT intercept"
             await conn.close()
 
 

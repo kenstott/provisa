@@ -60,8 +60,9 @@ class ProvisaDialect(DefaultDialect):
             "url": f"{scheme}://{url.host}:{port}",
             "username": url.username or "",
             "password": url.password or "",
-            "role": query.get("role", "admin"),
         }
+        if "role" in query:
+            opts["role"] = query["role"]
         return [], opts
 
     def _get_base_url_and_role(self, connection: Any) -> tuple[str, str]:

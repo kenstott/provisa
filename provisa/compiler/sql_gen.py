@@ -1962,11 +1962,17 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             phys_name = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
             sql_name = ctx.physical_to_sql.get((table.table_id, phys_name), phys_name)
             if col_path:
-                # path is "source_col.key1.key2" → PG JSON extraction
+                # path is "source_col.key1.key2" → PG JSON extraction, or just "key"
+                # when the column is aliased (phys_name is the JSON source column).
                 # Emits PG syntax; SQLGlot transpiles to Trino json_extract_scalar
                 path_parts = col_path.split(".")
-                source_col = path_parts[0]
-                keys = path_parts[1:]
+                if len(path_parts) == 1:
+                    # Single-key path: phys_name is the JSON column, col_path is the key.
+                    source_col = phys_name
+                    keys = [col_path]
+                else:
+                    source_col = path_parts[0]
+                    keys = path_parts[1:]
                 if use_aliases:
                     assert root_alias is not None
                     expr = f"{_q(root_alias)}.{_q(source_col)}"

@@ -62,7 +62,6 @@ async def client():
 
 
 class TestHealthEndpoint:
-
     async def test_health_returns_200(self, client):
         """GET /health must return HTTP 200."""
         resp = await client.get("/health")
@@ -96,19 +95,16 @@ class TestHealthEndpoint:
         resp = await client.head("/health")
         assert resp.status_code == 200
 
-    @pytest.mark.skip(reason="liveness endpoint not yet implemented (/live, /healthz, /ready are absent)")
     async def test_liveness_endpoint_returns_200(self, client):
         """GET /live must return HTTP 200 — endpoint not yet implemented."""
         resp = await client.get("/live")
         assert resp.status_code == 200
 
-    @pytest.mark.skip(reason="readiness endpoint not yet implemented")
     async def test_readiness_endpoint_returns_200(self, client):
         """GET /ready must return HTTP 200 — endpoint not yet implemented."""
         resp = await client.get("/ready")
         assert resp.status_code == 200
 
-    @pytest.mark.skip(reason="dependency health reporting not yet implemented")
     async def test_health_includes_database_status(self, client):
         """Health response should include dependency status fields.
 

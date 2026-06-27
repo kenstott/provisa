@@ -18,11 +18,8 @@ from graphql import (
     GraphQLEnumType,
     GraphQLField,
     GraphQLInputObjectType,
-    GraphQLList,
-    GraphQLNonNull,
     GraphQLObjectType,
     assert_valid_schema,
-    print_schema,
 )
 
 from provisa.compiler.introspect import introspect_table_columns
@@ -114,12 +111,14 @@ class TestSchemaGenValid:
     def test_admin_schema_validates(self, schema_input):
         si = _make_schema_input(schema_input, "admin")
         schema = generate_schema(si)
-        assert_valid_schema(schema)
+        assert_valid_schema(schema)  # raises if invalid
+        assert schema.query_type is not None
 
     def test_analyst_schema_validates(self, schema_input):
         si = _make_schema_input(schema_input, "analyst")
         schema = generate_schema(si)
-        assert_valid_schema(schema)
+        assert_valid_schema(schema)  # raises if invalid
+        assert schema.query_type is not None
 
 
 class TestSchemaGenObjectTypes:

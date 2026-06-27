@@ -319,11 +319,15 @@ class TestConnection:
 
     def test_commit_is_noop(self):
         conn = self._make_conn()
-        conn.commit()  # should not raise
+        result = conn.commit()
+        assert result is None  # DB-API 2.0: commit() returns None
+        assert conn._closed is False  # commit does not close the connection
 
     def test_rollback_is_noop(self):
         conn = self._make_conn()
-        conn.rollback()  # should not raise
+        result = conn.rollback()
+        assert result is None  # DB-API 2.0: rollback() returns None
+        assert conn._closed is False  # rollback does not close the connection
 
     def test_context_manager_returns_connection(self):
         conn = self._make_conn()
@@ -361,25 +365,25 @@ class TestCursorExecuteRouting:
         cur = self._make_cursor()
         with patch.object(cur, "_execute_graphql") as mock_gql:
             cur.execute("{ users { id } }")
-        mock_gql.assert_called_once()
+        assert mock_gql.call_count == 1
 
     def test_graphql_query_keyword_routes_to_graphql(self):
         cur = self._make_cursor()
         with patch.object(cur, "_execute_graphql") as mock_gql:
             cur.execute("query GetAll { items { id } }")
-        mock_gql.assert_called_once()
+        assert mock_gql.call_count == 1
 
     def test_graphql_mutation_keyword_routes_to_graphql(self):
         cur = self._make_cursor()
         with patch.object(cur, "_execute_graphql") as mock_gql:
             cur.execute("mutation DoIt { createItem { id } }")
-        mock_gql.assert_called_once()
+        assert mock_gql.call_count == 1
 
     def test_sql_routes_to_sql(self):
         cur = self._make_cursor()
         with patch.object(cur, "_execute_sql") as mock_sql:
             cur.execute("SELECT id FROM orders")
-        mock_sql.assert_called_once()
+        assert mock_sql.call_count == 1
 
     def test_parameters_applied_before_routing(self):
         cur = self._make_cursor()
@@ -545,6 +549,7 @@ class TestCursorSetRows:
     def test_description_tuple_has_seven_elements(self):
         cur = self._make_cursor()
         cur._set_rows([{"col": 1}])
+        assert cur.description is not None
         assert len(cur.description[0]) == 7
 
 
@@ -716,7 +721,7 @@ class TestProvisaDialectCreateConnectArgs:
         self,
         drivername="provisa+http",
         host="myserver",
-        port=8001,
+        port: int | None = 8001,
         username="alice",
         password="secret",
         query=None,
@@ -1096,6 +1101,7 @@ class TestProvisaDialectMiscMethods:
         dialect = ProvisaDialect()
         cursor = MagicMock()
         dialect.do_execute(cursor, "SELECT 1", None)
+        assert cursor.execute.call_count == 1
         cursor.execute.assert_called_once_with("SELECT 1", None)
 
     def test_do_execute_passes_parameters(self):
@@ -1104,6 +1110,7 @@ class TestProvisaDialectMiscMethods:
         dialect = ProvisaDialect()
         cursor = MagicMock()
         dialect.do_execute(cursor, "SELECT :id", {"id": 1})
+        assert cursor.execute.call_count == 1
         cursor.execute.assert_called_once_with("SELECT :id", {"id": 1})
 
     def test_do_execute_converts_empty_dict_to_none(self):
@@ -1113,6 +1120,7 @@ class TestProvisaDialectMiscMethods:
         cursor = MagicMock()
         # parameters={} is falsy, so or None makes it None
         dialect.do_execute(cursor, "SELECT 1", {})
+        assert cursor.execute.call_count == 1
         cursor.execute.assert_called_once_with("SELECT 1", None)
 
 
@@ -1190,6 +1198,7 @@ class TestAdbcConnect:
             ) as mock_connect,
         ):
             adbc_connect("http://myhost:8001", user="u", password="p")
+        assert mock_connect.call_count == 1
         mock_connect.assert_called_once_with("grpc://myhost:8815")
 
     def test_http_error_during_auth_leaves_role_unset(self):
@@ -1233,7 +1242,7 @@ class TestAdbcConnection:
     def test_close_calls_flight_client_close(self):
         conn = self._make_conn()
         conn.close()
-        conn._flight_client.close.assert_called_once()
+        assert conn._flight_client.close.call_count == 1
 
     def test_cursor_on_closed_connection_raises_runtime_error(self):
         conn = self._make_conn()

@@ -47,6 +47,7 @@ CONNECTOR_NAME = "provisa-test-pg"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _register_connector(pg_host: str, pg_port: int, pg_user: str, pg_password: str) -> None:
     """Register a Debezium PostgreSQL connector via the Connect REST API."""
     connector_config = {
@@ -83,9 +84,7 @@ def _register_connector(pg_host: str, pg_port: int, pg_user: str, pg_password: s
         json=connector_config,
         timeout=10,
     )
-    assert r.status_code in (200, 201), (
-        f"Failed to register connector: {r.status_code} {r.text}"
-    )
+    assert r.status_code in (200, 201), f"Failed to register connector: {r.status_code} {r.text}"
 
 
 def _wait_connector_running(timeout: int = 60) -> None:
@@ -137,9 +136,11 @@ async def _collect_events(
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def debezium_connector(pg_pool):
     """Register the Debezium connector once per module and tear it down after."""
+    _ = pg_pool
     pg_host = os.environ.get("PG_HOST", "localhost")
     # Inside docker-compose the connector talks to the internal PG hostname,
     # but when running tests from the host we tell Debezium to reach PG
@@ -165,6 +166,7 @@ def debezium_connector(pg_pool):
     # Drop inactive replication slots to avoid exhausting max_replication_slots
     # (set to 10 in docker-compose) across repeated test runs.
     import subprocess
+
     pg_host = os.environ.get("PG_HOST", "localhost")
     pg_port = os.environ.get("PG_PORT", "5432")
     pg_user = os.environ.get("PG_USER", "provisa")
@@ -197,6 +199,7 @@ def provider():
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestDebeziumConnectorRegistration:
     pytestmark = [pytest.mark.requires_debezium]
 
@@ -207,6 +210,7 @@ class TestDebeziumConnectorRegistration:
 
     def test_connector_registered_and_running(self, debezium_connector):
         """Connector is registered and in RUNNING state."""
+        _ = debezium_connector
         r = httpx.get(
             f"{DEBEZIUM_URL}/connectors/{CONNECTOR_NAME}/status",
             timeout=5,
@@ -222,6 +226,7 @@ class TestDebeziumInsertEvents:
 
     async def test_insert_yields_insert_event(self, debezium_connector, provider, pg_pool):
         """Inserting a row in PG produces an insert ChangeEvent via Debezium."""
+        _ = debezium_connector
         # Insert a unique row so we can identify our event
         marker = f"debezium-test-{uuid.uuid4().hex[:8]}"
 
@@ -232,12 +237,13 @@ class TestDebeziumInsertEvents:
                 pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
                 await conn.execute(
                     "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4)",
-                    1, pid, 999.99, marker,
+                    1,
+                    pid,
+                    999.99,
+                    marker,
                 )
 
-        events_task = asyncio.create_task(
-            _collect_events(provider, "orders", count=5, timeout=30)
-        )
+        events_task = asyncio.create_task(_collect_events(provider, "orders", count=5, timeout=30))
         await do_insert()
         events = await events_task
 
@@ -247,8 +253,7 @@ class TestDebeziumInsertEvents:
         # Find our specific marker row
         matching = [e for e in insert_events if e.row.get("region") == marker]
         assert matching, (
-            f"Expected insert event with region={marker!r}, got: "
-            f"{[e.row for e in insert_events]}"
+            f"Expected insert event with region={marker!r}, got: {[e.row for e in insert_events]}"
         )
         event = matching[0]
         assert event.table == "orders"
@@ -256,6 +261,7 @@ class TestDebeziumInsertEvents:
 
     async def test_insert_event_has_timestamp(self, debezium_connector, provider, pg_pool):
         """ChangeEvents from Debezium carry a UTC timestamp from ts_ms."""
+        _ = debezium_connector
         marker = f"ts-test-{uuid.uuid4().hex[:8]}"
 
         async def do_insert():
@@ -264,12 +270,13 @@ class TestDebeziumInsertEvents:
                 pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
                 await conn.execute(
                     "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4)",
-                    1, pid, 1.0, marker,
+                    1,
+                    pid,
+                    1.0,
+                    marker,
                 )
 
-        events_task = asyncio.create_task(
-            _collect_events(provider, "orders", count=3, timeout=25)
-        )
+        events_task = asyncio.create_task(_collect_events(provider, "orders", count=3, timeout=25))
         await do_insert()
         events = await events_task
 
@@ -279,6 +286,7 @@ class TestDebeziumInsertEvents:
         assert event.timestamp is not None
         # Timestamp should be recent (within last 60 seconds)
         from datetime import datetime, timezone
+
         age = (datetime.now(timezone.utc) - event.timestamp).total_seconds()
         assert abs(age) < 60, f"Event timestamp is too old: {event.timestamp}"
 
@@ -288,13 +296,17 @@ class TestDebeziumUpdateEvents:
 
     async def test_update_yields_update_event(self, debezium_connector, provider, pg_pool):
         """Updating a row produces an update ChangeEvent."""
+        _ = debezium_connector
         # Insert first, then update
         marker = f"upd-test-{uuid.uuid4().hex[:8]}"
         async with pg_pool.acquire() as conn:
             pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
             row_id = await conn.fetchval(
                 "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4) RETURNING id",
-                1, pid, 50.0, marker,
+                1,
+                pid,
+                50.0,
+                marker,
             )
 
         # Small delay to let the insert event pass, then update
@@ -305,20 +317,18 @@ class TestDebeziumUpdateEvents:
             async with pg_pool.acquire() as conn:
                 await conn.execute(
                     "UPDATE orders SET amount = $1 WHERE id = $2",
-                    123.45, row_id,
+                    123.45,
+                    row_id,
                 )
 
-        events_task = asyncio.create_task(
-            _collect_events(provider, "orders", count=5, timeout=30)
-        )
+        events_task = asyncio.create_task(_collect_events(provider, "orders", count=5, timeout=30))
         await do_update()
         events = await events_task
 
         update_events = [e for e in events if e.operation == "update"]
         matching = [e for e in update_events if e.row.get("id") == row_id]
         assert matching, (
-            f"Expected update event for id={row_id}, got updates: "
-            f"{[e.row for e in update_events]}"
+            f"Expected update event for id={row_id}, got updates: {[e.row for e in update_events]}"
         )
         assert matching[0].row["amount"] == pytest.approx(123.45, rel=0.01)
 
@@ -328,12 +338,16 @@ class TestDebeziumDeleteEvents:
 
     async def test_delete_yields_delete_event(self, debezium_connector, provider, pg_pool):
         """Deleting a row produces a delete ChangeEvent."""
+        _ = debezium_connector
         marker = f"del-test-{uuid.uuid4().hex[:8]}"
         async with pg_pool.acquire() as conn:
             pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
             row_id = await conn.fetchval(
                 "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4) RETURNING id",
-                1, pid, 10.0, marker,
+                1,
+                pid,
+                10.0,
+                marker,
             )
 
         await asyncio.sleep(2)
@@ -343,9 +357,7 @@ class TestDebeziumDeleteEvents:
             async with pg_pool.acquire() as conn:
                 await conn.execute("DELETE FROM orders WHERE id = $1", row_id)
 
-        events_task = asyncio.create_task(
-            _collect_events(provider, "orders", count=5, timeout=30)
-        )
+        events_task = asyncio.create_task(_collect_events(provider, "orders", count=5, timeout=30))
         await do_delete()
         events = await events_task
 
@@ -358,14 +370,18 @@ class TestDebeziumProviderLifecycle:
 
     async def test_provider_close_is_idempotent(self, provider):
         """Closing the provider twice does not raise."""
+        _ = provider
         p = DebeziumNotificationProvider(
             bootstrap_servers=KAFKA_BOOTSTRAP,
             topic_prefix=TOPIC_PREFIX,
             database=DATABASE,
             consumer_group_id=f"lifecycle-{uuid.uuid4().hex[:8]}",
         )
-        await p.close()
-        await p.close()  # should not raise
+        result1 = await p.close()
+        assert result1 is None
+        result2 = await p.close()  # should not raise
+        assert result2 is None
+        assert p._consumer is None
 
     def test_topic_name_matches_debezium_convention(self, provider):
         """Topic name follows {prefix}.{schema}.{table} convention for PostgreSQL."""
@@ -375,6 +391,7 @@ class TestDebeziumProviderLifecycle:
 
     async def test_snapshot_events_received_on_fresh_consumer(self, debezium_connector):
         """A fresh consumer group receives snapshot (read) events as inserts."""
+        _ = debezium_connector
         fresh_provider = DebeziumNotificationProvider(
             bootstrap_servers=KAFKA_BOOTSTRAP,
             topic_prefix=TOPIC_PREFIX,
@@ -385,9 +402,6 @@ class TestDebeziumProviderLifecycle:
         # Set offset to earliest to catch snapshot events
         # (snapshot events have op="r", mapped to "insert")
         fresh_provider._consumer  # not connected yet
-
-        # Override auto_offset_reset for this test only
-        original_init = fresh_provider.__class__.__init__
 
         events = []
         from aiokafka import AIOKafkaConsumer  # noqa: PLC0415

@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from provisa.cache.store import NoopCacheStore, RedisCacheStore
+from provisa.cache.store import CachedResult, NoopCacheStore, RedisCacheStore
 
 
 class TestRedisCacheStorePrefixedKey:
@@ -58,7 +58,8 @@ class TestRedisCacheStoreGet:
         store._redis = mock_redis
 
         result = await store.get("mykey", tenant_id=None)
-        assert result is not None
+        assert isinstance(result, CachedResult)
+        assert result.data == b"data"
         mock_pipe.get.assert_any_call("provisa:cache:mykey")
         mock_pipe.get.assert_any_call("provisa:cache:mykey:meta")
 
@@ -73,7 +74,8 @@ class TestRedisCacheStoreGet:
         store._redis = mock_redis
 
         result = await store.get("mykey", tenant_id="acme")
-        assert result is not None
+        assert isinstance(result, CachedResult)
+        assert result.data == b"data"
         mock_pipe.get.assert_any_call("provisa:cache:acme:mykey")
         mock_pipe.get.assert_any_call("provisa:cache:acme:mykey:meta")
 
@@ -105,6 +107,7 @@ class TestRedisCacheStoreSet:
 
         await store.set("k", b"val", 60, tenant_id=None)
         mock_pipe.setex.assert_any_call("provisa:cache:k", 60, b"val")
+        assert mock_pipe.setex.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_set_with_tenant_uses_tenant_prefix(self):
@@ -117,6 +120,7 @@ class TestRedisCacheStoreSet:
 
         await store.set("k", b"val", 60, tenant_id="acme")
         mock_pipe.setex.assert_any_call("provisa:cache:acme:k", 60, b"val")
+        assert mock_pipe.setex.call_count >= 1
 
 
 class TestRedisCacheStoreInvalidateByPattern:
@@ -130,8 +134,8 @@ class TestRedisCacheStoreInvalidateByPattern:
 
         async def fake_scan_iter(match):
             scanned_patterns.append(match)
-            return
-            yield  # make it an async generator
+            if False:  # pragma: no branch — makes this an async generator
+                yield  # noqa: unreachable
 
         mock_redis = MagicMock()
         mock_redis.scan_iter = fake_scan_iter
@@ -147,8 +151,8 @@ class TestRedisCacheStoreInvalidateByPattern:
 
         async def fake_scan_iter(match):
             scanned_patterns.append(match)
-            return
-            yield
+            if False:  # pragma: no branch — makes this an async generator
+                yield  # noqa: unreachable
 
         mock_redis = MagicMock()
         mock_redis.scan_iter = fake_scan_iter
@@ -166,8 +170,10 @@ class TestRedisCacheStoreTlsEnforcement:
 
     def test_require_tls_env_rejects_plain_redis(self):
         with patch.dict("os.environ", {"PROVISA_REQUIRE_REDIS_TLS": "true"}):
-            with pytest.raises(RuntimeError, match="rediss://"):
+            with pytest.raises(RuntimeError, match="rediss://") as exc_info:
                 RedisCacheStore(redis_url="redis://localhost:6379/0")
+        assert isinstance(exc_info.value, RuntimeError)
+        assert "rediss://" in str(exc_info.value)
 
     def test_require_tls_env_allows_rediss(self):
         with patch.dict("os.environ", {"PROVISA_REQUIRE_REDIS_TLS": "true"}):
@@ -184,7 +190,8 @@ class TestNoopCacheStoreTenantSignature:
     @pytest.mark.asyncio
     async def test_set_accepts_tenant_id(self):
         store = NoopCacheStore()
-        await store.set("k", b"v", 60, tenant_id="t1")
+        result = await store.set("k", b"v", 60, tenant_id="t1")
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_invalidate_by_pattern_accepts_tenant_id(self):

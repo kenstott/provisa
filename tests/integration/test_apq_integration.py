@@ -121,10 +121,14 @@ class TestNoopApqCache:
     async def test_noop_set_does_nothing(self):
         cache = NoopAPQCache()
         await cache.set(_TEST_HASH, _TEST_QUERY)  # should not raise
+        # Value is not persisted — a subsequent get still returns None
+        assert await cache.get(_TEST_HASH) is None
 
     async def test_noop_close_does_nothing(self):
         cache = NoopAPQCache()
         await cache.close()  # should not raise
+        # After close, get still returns None (no state change)
+        assert await cache.get(_TEST_HASH) is None
 
     async def test_noop_get_after_set_still_misses(self):
         """NoopAPQCache simulates the PersistedQueryNotFound scenario."""
@@ -160,17 +164,15 @@ class TestApqGovernanceSimulation:
                 self._inner = inner
                 self._allow = allow
 
-            async def get(self, sha256_hash: str) -> str | None:
+            async def get(self, sha256_hash: str, tenant_id: str | None = None) -> str | None:
                 if sha256_hash not in self._allow:
                     return None
-                return await self._inner.get(sha256_hash)
+                return await self._inner.get(sha256_hash, tenant_id)
 
-            async def set(self, sha256_hash: str, query: str) -> None:
+            async def set(self, sha256_hash: str, query: str, tenant_id: str | None = None) -> None:
                 if sha256_hash not in self._allow:
-                    raise PermissionError(
-                        f"Hash {sha256_hash!r} not in approved allowlist"
-                    )
-                await self._inner.set(sha256_hash, query)
+                    raise PermissionError(f"Hash {sha256_hash!r} not in approved allowlist")
+                await self._inner.set(sha256_hash, query, tenant_id)
 
             async def close(self) -> None:
                 await self._inner.close()
@@ -191,6 +193,8 @@ class TestApqGovernanceSimulation:
         cache = await self._build_cache_with_allowlist({registered_hash})
         # set should not raise for the allowlisted hash
         await cache.set(registered_hash, registered_query)
+        # GovernedCache wraps NoopAPQCache so get still returns None (noop storage)
+        assert await cache.get(registered_hash) is None
 
     async def test_apq_governance_get_returns_none_for_unregistered(self):
         """get() returns None for an unregistered hash even when hash is valid."""

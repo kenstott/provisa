@@ -46,11 +46,11 @@ def _make_app(provider=None, mapping_rules=None, default_role="analyst", superus
     )
 
     @app.get("/health")
-    async def health():
+    async def _health():
         return {"status": "ok"}
 
     @app.get("/test")
-    async def test_route(request: Request):
+    async def _test_route(request: Request):
         return {
             "user_id": request.state.identity.user_id,
             "role": request.state.role,
@@ -111,6 +111,7 @@ def test_malformed_auth_header():
     client = TestClient(app)
     resp = client.get("/test", headers={"Authorization": "Basic abc"})
     assert resp.status_code == 401
+    assert "Missing" in resp.json()["detail"] or "invalid" in resp.json()["detail"].lower()
 
 
 # --- REQ-125: superuser bootstrap short-circuit -----------------------------
@@ -142,6 +143,10 @@ def test_superuser_wrong_password_falls_through_to_provider():
     client = TestClient(app)
     resp = client.get("/test", headers={"Authorization": _basic("root", "wrong")})
     assert resp.status_code == 401
+    # The Basic header doesn't match the Bearer scheme expected by MockProvider,
+    # so the middleware returns a missing/invalid header error.
+    detail = resp.json()["detail"]
+    assert "Missing" in detail or "invalid" in detail.lower() or "Invalid" in detail
 
 
 def test_bearer_token_still_works_when_superuser_configured():
@@ -157,6 +162,10 @@ def test_superuser_not_configured_no_short_circuit():
     client = TestClient(app)
     resp = client.get("/test", headers={"Authorization": _basic("root", "s3cr3t")})
     assert resp.status_code == 401
+    # Without superuser configured, Basic header is not a special case;
+    # MockProvider expects Bearer so the middleware rejects as missing/invalid.
+    detail = resp.json()["detail"]
+    assert "Missing" in detail or "invalid" in detail.lower() or "Invalid" in detail
 
 
 def test_superuser_password_from_env_secret(monkeypatch):
@@ -177,8 +186,9 @@ def test_resolve_superuser_config_fails_fast_on_unset_secret(monkeypatch):
 
     monkeypatch.delenv("SU_PASS", raising=False)
     # An unset secret raises at startup rather than silently disabling the superuser.
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError) as exc_info:
         resolve_superuser_config({"username": "root", "password": "${env:SU_PASS}"})
+    assert "SU_PASS" in str(exc_info.value)
 
 
 def test_resolve_superuser_config_none_when_unconfigured():

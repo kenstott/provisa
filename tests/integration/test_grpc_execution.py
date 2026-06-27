@@ -26,11 +26,9 @@ marked to skip when the required components are missing.
 from __future__ import annotations
 
 import os
-import re
-import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -182,13 +180,14 @@ class TestGrpcServerStarts:
             # Port should now be in use — verify by connecting to it
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(2)
+            connected = False
             try:
                 sock.connect(("localhost", port))
+                connected = True
                 sock.close()
-            except (ConnectionRefusedError, OSError) as exc:
-                raise AssertionError(
-                    f"gRPC server is not listening on port {port}: {exc}"
-                ) from exc
+            except (ConnectionRefusedError, OSError):
+                pass
+            assert connected, f"gRPC server is not listening on port {port}"
         finally:
             await server.stop(grace=0)
 
@@ -209,6 +208,7 @@ class TestGrpcQueryExecution:
     @pytest.fixture(scope="class")
     async def grpc_server_and_stub(self, compiled_proto_paths, pg_pool):
         """Start a gRPC server backed by a real PG pool and return a stub."""
+        _ = pg_pool  # requested for side-effect: ensures PG pool is ready before server starts
         from provisa.executor.pool import SourcePool
         from provisa.compiler.rls import RLSContext
         from provisa.grpc.server import _load_module
@@ -219,30 +219,35 @@ class TestGrpcQueryExecution:
         pb2 = _load_module(pb2_path, Path(pb2_path).stem)
         pb2_grpc = _load_module(pb2_grpc_path, Path(pb2_grpc_path).stem)
 
+        from typing import cast
         from graphql import (
             GraphQLField,
             GraphQLInt,
             GraphQLList,
             GraphQLNonNull,
             GraphQLObjectType,
+            GraphQLScalarType,
             GraphQLSchema,
             GraphQLString,
             GraphQLFloat,
         )
 
+        _int = cast(GraphQLScalarType, GraphQLInt)
+        _str = cast(GraphQLScalarType, GraphQLString)
+        _float = cast(GraphQLScalarType, GraphQLFloat)
         order_type = GraphQLObjectType(
             "Order",
             lambda: {
-                "id": GraphQLField(GraphQLNonNull(GraphQLInt)),
-                "region": GraphQLField(GraphQLString),
-                "amount": GraphQLField(GraphQLFloat),
+                "id": GraphQLField(GraphQLNonNull(_int)),
+                "region": GraphQLField(_str),
+                "amount": GraphQLField(_float),
             },
         )
         query_type = GraphQLObjectType(
             "Query",
             {"order": GraphQLField(GraphQLList(order_type))},
         )
-        schema = GraphQLSchema(query=query_type)
+        schema = GraphQLSchema(query=cast(GraphQLObjectType, query_type))
 
         try:
             from provisa.compiler.sql_gen import CompilationContext, TableMeta
@@ -323,7 +328,13 @@ class TestGrpcQueryExecution:
             metadata=[("x-provisa-role", "admin")],
         ):
             rows.append(row)
-        assert len(rows) >= 0  # 0 rows is acceptable; connection itself must succeed
+        # Each row must be an Order proto message with the expected attributes
+        for row in rows:
+            assert hasattr(row, "id"), "Order proto missing 'id' field"
+            assert hasattr(row, "region"), "Order proto missing 'region' field"
+            assert hasattr(row, "amount"), "Order proto missing 'amount' field"
+        # Limit of 3 means we cannot receive more than 3 rows
+        assert len(rows) <= 3, f"Expected at most 3 rows, got {len(rows)}"
 
     async def test_grpc_streaming_response(self, grpc_server_and_stub):
         """Streaming RPC yields multiple messages (or completes cleanly)."""
@@ -335,8 +346,8 @@ class TestGrpcQueryExecution:
             metadata=[("x-provisa-role", "admin")],
         ):
             count += 1
-        # The key assertion is that iteration completes without raising
-        assert count >= 0
+        # Iteration must complete without raising, and the limit caps the result
+        assert count <= 5, f"Expected at most 5 rows (limit=5), got {count}"
 
     async def test_grpc_role_header_applied(self, grpc_server_and_stub):
         """Role in metadata header is respected — wrong role returns NOT_FOUND."""
@@ -365,6 +376,7 @@ class TestGrpcQueryExecution:
 
     async def test_grpc_invalid_query_returns_error(self, grpc_server_and_stub):
         """An RPC for an unregistered type resolves via schema and may abort."""
+        _ = grpc_server_and_stub  # ensures server is up; this test mocks the servicer directly
         # integration: mock-justified — error injection test; MagicMock scaffolds
         # a minimal servicer with an empty state to trigger the NOT_FOUND abort path.
         # No docker-compose service can inject this specific error condition.

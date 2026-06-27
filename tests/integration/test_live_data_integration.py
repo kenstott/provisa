@@ -19,11 +19,34 @@ pipeline functions directly — not HTTP endpoints.
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+
+
+# ---------------------------------------------------------------------------
+# Fixture overrides: these tests mock all external deps — no Docker stack needed
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _require_stack(tmp_path_factory):
+    """Override: these tests are fully mocked — skip the stack check."""
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _db_snapshot_restore():
+    """Override: no live DB used — skip snapshot/restore cycle."""
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _disable_auth_for_integration(tmp_path_factory):
+    """Override: no in-process app — skip auth config patching."""
+    yield
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +69,8 @@ class TestDatasetChangeEvents:
             with patch("provisa.kafka.change_events._producer", None):
                 with patch.dict(os.environ, env_without_kafka, clear=True):
                     # Must not raise — silently no-ops when Kafka is unavailable
-                    emit_change_event("orders", "sales-pg", "insert")
+                    result = emit_change_event("orders", "sales-pg", "insert")
+        assert result is None
 
     def test_emit_change_event_with_mock_producer(self):
         # REQ-172: emit_change_event calls producer.produce with table, source, timestamp
@@ -192,7 +216,9 @@ class TestDatasetChangeEvents:
 
         with patch("provisa.kafka.change_events._producer", mock_producer):
             # Must not propagate the RuntimeError
-            emit_change_event("orders", "sales-pg", "insert")
+            result = emit_change_event("orders", "sales-pg", "insert")
+        assert result is None
+        assert mock_producer.produce.called
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +234,7 @@ class TestSubscriptionTriggerFallback:
 
         # Mock connection that always raises on execute (simulates insufficient privilege)
         failing_conn = MagicMock()
-        failing_conn.execute = MagicMock(side_effect=Exception("permission denied"))
+        failing_conn.execute = AsyncMock(side_effect=Exception("permission denied"))
 
         tables = [
             {"table_name": "orders", "schema_name": "public", "source_id": "sales-pg"},
@@ -225,7 +251,7 @@ class TestSubscriptionTriggerFallback:
 
         # Mock connection where execute succeeds
         ok_conn = MagicMock()
-        ok_conn.execute = MagicMock(return_value=None)
+        ok_conn.execute = AsyncMock(return_value=None)
 
         tables = [
             {"table_name": "orders", "schema_name": "public", "source_id": "sales-pg"},
@@ -240,7 +266,7 @@ class TestSubscriptionTriggerFallback:
         from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
 
         conn = MagicMock()
-        conn.execute = MagicMock(return_value=None)
+        conn.execute = AsyncMock(return_value=None)
 
         tables = [
             {"table_name": "events", "schema_name": "public", "source_id": "kafka-src"},

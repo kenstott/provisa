@@ -22,10 +22,11 @@ def test_get_tracer_returns_tracer_without_otel():
     import sys
     import importlib
 
+    # Pre-import so patch.dict does not drop provisa.otel_compat on exit
+    import provisa.otel_compat as _mod  # noqa: PLC0415
+
     # Force ImportError for opentelemetry
     with patch.dict(sys.modules, {"opentelemetry": None, "opentelemetry.trace": None}):
-        import provisa.otel_compat as _mod
-
         importlib.reload(_mod)
         tracer = _mod.get_tracer("test-component")
         assert hasattr(tracer, "start_as_current_span")
@@ -39,14 +40,17 @@ def test_get_tracer_noop_span_context_manager():
     import sys
     import importlib
 
-    with patch.dict(sys.modules, {"opentelemetry": None, "opentelemetry.trace": None}):
-        import provisa.otel_compat as _mod
+    # Pre-import so patch.dict does not drop provisa.otel_compat on exit
+    import provisa.otel_compat as _mod  # noqa: PLC0415
 
+    with patch.dict(sys.modules, {"opentelemetry": None, "opentelemetry.trace": None}):
         importlib.reload(_mod)
         tracer = _mod.get_tracer("test-component")
         span = tracer.start_as_current_span("my-span")
-        with span:
-            pass  # must not raise
+        entered = None
+        with span as s:
+            entered = s
+        assert entered is not None
     importlib.reload(_mod)
 
 
@@ -56,13 +60,15 @@ def test_get_tracer_noop_span_set_attribute():
     import sys
     import importlib
 
-    with patch.dict(sys.modules, {"opentelemetry": None, "opentelemetry.trace": None}):
-        import provisa.otel_compat as _mod
+    # Pre-import so patch.dict does not drop provisa.otel_compat on exit
+    import provisa.otel_compat as _mod  # noqa: PLC0415
 
+    with patch.dict(sys.modules, {"opentelemetry": None, "opentelemetry.trace": None}):
         importlib.reload(_mod)
         tracer = _mod.get_tracer("test-component")
         span = tracer.start_span("op")
-        span.set_attribute("db.statement", "SELECT 1")  # must not raise
+        result = span.set_attribute("db.statement", "SELECT 1")  # must not raise
+        assert result is None  # no-op returns None
     importlib.reload(_mod)
 
 
@@ -72,13 +78,15 @@ def test_get_tracer_noop_span_record_exception():
     import sys
     import importlib
 
-    with patch.dict(sys.modules, {"opentelemetry": None, "opentelemetry.trace": None}):
-        import provisa.otel_compat as _mod
+    # Pre-import so patch.dict does not drop provisa.otel_compat on exit
+    import provisa.otel_compat as _mod  # noqa: PLC0415
 
+    with patch.dict(sys.modules, {"opentelemetry": None, "opentelemetry.trace": None}):
         importlib.reload(_mod)
         tracer = _mod.get_tracer("test-component")
         span = tracer.start_span("op")
-        span.record_exception(ValueError("boom"))  # must not raise
+        result = span.record_exception(ValueError("boom"))  # must not raise
+        assert result is None  # no-op returns None
     importlib.reload(_mod)
 
 

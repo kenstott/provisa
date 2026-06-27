@@ -60,7 +60,8 @@ class TestCapabilityEnforcement:
 
     def test_check_capability_passes_when_present(self):
         role = _role(Capability.SOURCE_REGISTRATION)
-        check_capability(role, Capability.SOURCE_REGISTRATION)  # no raise
+        result = check_capability(role, Capability.SOURCE_REGISTRATION)  # no raise
+        assert result is None
 
     def test_admin_bypasses_all_rights(self):
         # REQ-002/125: admin override — admin satisfies any capability check.

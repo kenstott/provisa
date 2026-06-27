@@ -739,7 +739,7 @@ class TestSSESubscriptionEndpoint:
         from provisa.api.data.subscribe import router
 
         route_paths = [getattr(r, "path", None) for r in router.routes]
-        assert "/subscribe/{table}" in route_paths
+        assert "/data/subscribe/{table}" in route_paths
 
 
 # ---------------------------------------------------------------------------
@@ -824,6 +824,7 @@ class TestDBEventTriggers:
         await manager._dispatch(channel, payload)
 
         mock_client.post.assert_not_awaited()
+        assert mock_client.post.await_count == 0
 
     @pytest.mark.asyncio
     async def test_dispatch_retries_on_error_status(self):

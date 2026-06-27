@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 import hashlib
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -43,12 +43,14 @@ class TestNoopAPQCache:
     @pytest.mark.asyncio
     async def test_set_is_silent(self):
         cache = NoopAPQCache()
-        await cache.set("hash", "query")  # should not raise
+        result = await cache.set("hash", "query")  # should not raise
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_close_is_silent(self):
         cache = NoopAPQCache()
-        await cache.close()
+        result = await cache.close()
+        assert result is None
 
 
 class TestRedisAPQCache:
@@ -83,9 +85,8 @@ class TestRedisAPQCache:
         cache._redis = mock_redis
 
         await cache.set("abc123", "{ orders { id } }")
-        mock_redis.setex.assert_awaited_once_with(
-            "provisa:apq:abc123", 3600, "{ orders { id } }"
-        )
+        mock_redis.setex.assert_awaited_once_with("provisa:apq:abc123", 3600, "{ orders { id } }")
+        assert mock_redis.setex.await_count == 1
 
     @pytest.mark.asyncio
     async def test_get_handles_redis_error(self):
@@ -104,7 +105,8 @@ class TestRedisAPQCache:
         mock_redis.setex = AsyncMock(side_effect=Exception("connection refused"))
         cache._redis = mock_redis
 
-        await cache.set("abc123", "query")  # should not raise
+        result = await cache.set("abc123", "query")  # should not raise
+        assert result is None
 
 
 class TestApqEndpointLogic:

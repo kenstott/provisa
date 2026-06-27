@@ -368,6 +368,8 @@ def test_dbapi_execute_dispatches_based_on_query_type():
         cursor.execute("{ orders { id } }")
         mock_gql.assert_called_once()
         mock_sql.assert_not_called()
+        assert mock_gql.call_count == 1
+        assert mock_sql.call_count == 0
 
     cursor2 = conn.cursor()
     with (
@@ -377,6 +379,8 @@ def test_dbapi_execute_dispatches_based_on_query_type():
         cursor2.execute("SELECT id FROM orders")
         mock_sql2.assert_called_once()
         mock_gql2.assert_not_called()
+        assert mock_sql2.call_count == 1
+        assert mock_gql2.call_count == 0
 
 
 # ── REQ-606: ProvisaClient accepts bearer token ───────────────────────────────

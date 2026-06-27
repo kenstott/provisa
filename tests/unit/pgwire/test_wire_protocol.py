@@ -221,8 +221,9 @@ async def test_set_does_not_raise(pgwire_server, mock_state):
             password="secret",
             database="provisa",
         )
-        await conn.execute("SET search_path TO public")
+        status = await conn.execute("SET search_path TO public")
         await conn.close()
+    assert status == "SET"
 
 
 @pytest.mark.asyncio
@@ -240,5 +241,6 @@ async def test_multi_statement(pgwire_server, mock_state):
             password="secret",
             database="provisa",
         )
-        await conn.execute("BEGIN; COMMIT")
+        status = await conn.execute("BEGIN; COMMIT")
         await conn.close()
+    assert status == "COMMIT"

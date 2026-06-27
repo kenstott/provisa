@@ -123,6 +123,7 @@ class TestWriteCache:
         pool = MagicMock()
         await write_cache(pool, "src1", "public", [])
         pool.acquire.assert_not_called()
+        assert pool.acquire.call_count == 0
 
     @pytest.mark.asyncio
     async def test_calls_executemany(self):

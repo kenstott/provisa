@@ -35,12 +35,13 @@ the Provisa server for big datasets.
 from __future__ import annotations
 
 import io
+import json
 import os
 import re
 import time
 import uuid
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 from pytest_bdd import given, when, then, scenarios
@@ -643,4 +644,4 @@ def assert_direct_routing_and_dialect_transpilation(shared_data):
         "transpiled native SQL must reference the 'orders' table (REQ-027)"
     )
 
-    where_nodes = list(tree.find_all(exp.Where
+    where_nodes = list(tree.

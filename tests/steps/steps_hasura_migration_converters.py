@@ -956,4 +956,4 @@ def _build_partial_ddn_project_missing_object_type(tmp_path: Path) -> Path:
     """
     Build a DDN supergraph project where one Model references an ObjectType
     whose HML file is intentionally absent (GhostType), while another Model
-    (Artist) has its ObjectType present.  This exercises REQ-628.
+    (Artist) has its ObjectType present. This exercises REQ-628.

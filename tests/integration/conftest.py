@@ -9,7 +9,6 @@
 # permission from the copyright holder.
 
 import os
-import socket
 import subprocess
 from pathlib import Path
 
@@ -22,30 +21,7 @@ _SNAPSHOT_PATH = Path.home() / "provisa-test-db-snapshot.dump"
 _LIVE_SERVER_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
 
 
-def _trino_available() -> bool:
-    try:
-        host = os.environ.get("TRINO_HOST", "localhost")
-        port = int(os.environ.get("TRINO_PORT", "8080"))
-        with socket.create_connection((host, port), timeout=1):
-            return True
-    except OSError:
-        return False
-
-
-def _pg_available() -> bool:
-    try:
-        host = os.environ.get("PG_HOST", "localhost")
-        port = int(os.environ.get("PG_PORT", "5432"))
-        with socket.create_connection((host, port), timeout=1):
-            return True
-    except OSError:
-        return False
-
-
-require_stack = pytest.mark.skipif(
-    not (_trino_available() and _pg_available()),
-    reason="Docker Compose stack (PG + Trino) not running",
-)
+require_stack = pytest.mark.usefixtures()
 
 
 def _pg_env() -> dict:
@@ -56,9 +32,12 @@ def _pg_env() -> dict:
 
 def _pg_args() -> list[str]:
     return [
-        "-h", os.environ.get("PG_HOST", "localhost"),
-        "-p", os.environ.get("PG_PORT", "5432"),
-        "-U", os.environ.get("PG_USER", "provisa"),
+        "-h",
+        os.environ.get("PG_HOST", "localhost"),
+        "-p",
+        os.environ.get("PG_PORT", "5432"),
+        "-U",
+        os.environ.get("PG_USER", "provisa"),
         os.environ.get("PG_DATABASE", "provisa"),
     ]
 
@@ -71,13 +50,16 @@ def _db_snapshot_restore():
     After restore the live server is told to rebuild its schema so its in-memory
     state matches the restored DB.
     """
-    if not _pg_available():
-        yield
-        return
-
     subprocess.run(
-        [f"{_PG_BIN}/pg_dump", "--format=custom", "--no-acl", "--no-owner",
-         "-f", str(_SNAPSHOT_PATH)] + _pg_args(),
+        [
+            f"{_PG_BIN}/pg_dump",
+            "--format=custom",
+            "--no-acl",
+            "--no-owner",
+            "-f",
+            str(_SNAPSHOT_PATH),
+        ]
+        + _pg_args(),
         env=_pg_env(),
         check=True,
     )
@@ -85,13 +67,23 @@ def _db_snapshot_restore():
     yield
 
     subprocess.run(
-        [f"{_PG_BIN}/pg_restore", "--clean", "--if-exists", "--no-acl", "--no-owner",
-         "--single-transaction",
-         "-h", os.environ.get("PG_HOST", "localhost"),
-         "-p", os.environ.get("PG_PORT", "5432"),
-         "-U", os.environ.get("PG_USER", "provisa"),
-         "-d", os.environ.get("PG_DATABASE", "provisa"),
-         str(_SNAPSHOT_PATH)],
+        [
+            f"{_PG_BIN}/pg_restore",
+            "--clean",
+            "--if-exists",
+            "--no-acl",
+            "--no-owner",
+            "--single-transaction",
+            "-h",
+            os.environ.get("PG_HOST", "localhost"),
+            "-p",
+            os.environ.get("PG_PORT", "5432"),
+            "-U",
+            os.environ.get("PG_USER", "provisa"),
+            "-d",
+            os.environ.get("PG_DATABASE", "provisa"),
+            str(_SNAPSHOT_PATH),
+        ],
         env=_pg_env(),
         check=False,
     )
@@ -99,6 +91,7 @@ def _db_snapshot_restore():
     # Tell the live server to rebuild its in-memory schema from the restored DB
     try:
         import httpx
+
         httpx.post(
             f"{_LIVE_SERVER_URL}/admin/graphql",
             json={"query": "mutation { rebuildSchemas { success } }"},
@@ -109,10 +102,8 @@ def _db_snapshot_restore():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _require_stack(tmp_path_factory):
-    """Skip all integration tests when PG + Trino stack is not running."""
-    if not (_trino_available() and _pg_available()):
-        pytest.skip("Docker Compose stack (PG + Trino) not running")
+def _require_stack():
+    """Docker services are started by _DockerServiceManager before tests run."""
     yield
 
 

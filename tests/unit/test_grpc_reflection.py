@@ -15,7 +15,6 @@ Requires a running gRPC server (Docker Compose stack).
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
 
 import grpc
 import grpc.aio
@@ -34,10 +33,20 @@ class TestEnableReflection:
         server = grpc.aio.server()
         service_names = ["provisa.v1.ProvisaService"]
 
-        enable_reflection(server, service_names)
+        captured: dict[str, list[str]] = {}
+        original_enable = reflection.enable_server_reflection
 
-        # Server should have handlers registered (no error on enable)
-        # We verify the function didn't raise and the server is usable
+        def spy(names: list[str], srv: grpc.aio.Server) -> None:
+            captured["names"] = list(names)
+            return original_enable(names, srv)
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(reflection, "enable_server_reflection", spy)
+            result = enable_reflection(server, service_names)
+
+        assert result is None
+        assert "provisa.v1.ProvisaService" in captured["names"]
+        assert reflection.SERVICE_NAME in captured["names"]
         await server.stop(grace=0)
 
     async def test_reflection_includes_reflection_service(self):

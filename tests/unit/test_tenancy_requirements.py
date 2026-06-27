@@ -25,6 +25,7 @@ class TestKMSRegionConfiguration:
                 importlib.reload(kms_module)
                 kms_module._kms_client()
                 mock_boto3_client.assert_called_once_with("kms", region_name="us-east-1")
+                assert mock_boto3_client.call_count == 1
 
     def test_kms_client_uses_aws_kms_region_env_var_when_set(self):
         # REQ-593
@@ -36,6 +37,7 @@ class TestKMSRegionConfiguration:
                 importlib.reload(kms_module)
                 kms_module._kms_client()
                 mock_boto3_client.assert_called_once_with("kms", region_name="eu-west-1")
+                assert mock_boto3_client.call_count == 1
 
     def test_kms_client_region_changes_with_different_env_var_values(self):
         # REQ-593
@@ -48,6 +50,7 @@ class TestKMSRegionConfiguration:
                     importlib.reload(kms_module)
                     kms_module._kms_client()
                     mock_boto3_client.assert_called_once_with("kms", region_name=region)
+                    assert mock_boto3_client.call_count == 1
 
 
 class TestTenantMiddlewareSkipPaths:

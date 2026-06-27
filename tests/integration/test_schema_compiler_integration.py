@@ -429,11 +429,12 @@ class TestDomainPrefix:
         schema = generate_schema(si)
         qt = schema.query_type
         assert qt is not None
-        # The field name should be prefixed with the domain
+        # The field name should be prefixed with the domain abbreviation (first-letter acronym)
+        # domain_gql_alias("sales") → "s", so the field is "s__orders"
         field_names = list(qt.fields.keys())
-        prefixed = [f for f in field_names if "sales" in f.lower() and "orders" in f.lower()]
+        prefixed = [f for f in field_names if "__" in f and "orders" in f.lower()]
         assert prefixed, (
-            f"Expected a domain-prefixed field containing 'sales' and 'orders', got: {field_names}"
+            f"Expected a domain-prefixed field containing '__' and 'orders', got: {field_names}"
         )
 
     def test_domain_prefix_applied_to_field_names(self):

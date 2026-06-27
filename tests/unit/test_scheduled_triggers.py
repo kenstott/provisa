@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -27,20 +26,22 @@ pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_trigger(**kwargs) -> ScheduledTrigger:
-    defaults = dict(
+
+def _make_trigger(**kwargs: object) -> ScheduledTrigger:
+    defaults: dict[str, object] = dict(
         id="trigger-1",
         cron="* * * * *",
         url="https://example.com/hook",
         enabled=True,
     )
     defaults.update(kwargs)
-    return ScheduledTrigger(**defaults)
+    return ScheduledTrigger(**defaults)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestScheduledTriggers:
     async def test_trigger_fires_webhook_on_schedule(self):
@@ -62,6 +63,7 @@ class TestScheduledTriggers:
             json={"trigger_id": "trigger-1"},
         )
         mock_response.raise_for_status.assert_called_once()
+        assert mock_client.post.call_count == 1
 
     async def test_trigger_interval_creates_job(self):
         """build_scheduler creates an APScheduler job for an enabled trigger."""
@@ -107,14 +109,21 @@ class TestScheduledTriggers:
 
         with patch("provisa.scheduler.jobs.httpx.AsyncClient", return_value=mock_client):
             # Should not raise
-            await _execute_webhook("https://bad-host.example.com/hook", "trigger-err")
+            result = await _execute_webhook("https://bad-host.example.com/hook", "trigger-err")
+
+        assert result is None
+        mock_client.post.assert_called_once_with(
+            "https://bad-host.example.com/hook",
+            json={"trigger_id": "trigger-err"},
+        )
 
     async def test_build_scheduler_multiple_triggers(self):
         """Multiple enabled triggers each become a distinct job."""
         triggers = [
             _make_trigger(id="t1", cron="0 * * * *", url="https://example.com/t1"),
             _make_trigger(id="t2", cron="30 * * * *", url="https://example.com/t2"),
-            _make_trigger(id="t3", cron="0 0 * * *", enabled=False, url="https://example.com/t3")]
+            _make_trigger(id="t3", cron="0 0 * * *", enabled=False, url="https://example.com/t3"),
+        ]
         scheduler = build_scheduler(triggers)
         assert scheduler is not None
         job_ids = {j.id for j in scheduler.get_jobs()}

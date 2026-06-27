@@ -333,11 +333,16 @@ class TestGovernanceAsOnlyGate:
     def test_admin_capability_grants_all(self):
         # REQ-042: admin capability must satisfy any capability check.
         role = {"id": ROLE_ADMIN, "capabilities": ["admin"]}
-        # Should not raise for any capability
-        check_capability(role, Capability.SOURCE_REGISTRATION)
-        check_capability(role, Capability.TABLE_REGISTRATION)
-        check_capability(role, Capability.CREATE_RELATIONSHIP)
-        check_capability(role, Capability.MASKING_CONFIG)
+        # check_capability returns None on success; any failure raises InsufficientRightsError.
+        assert check_capability(role, Capability.SOURCE_REGISTRATION) is None
+        assert check_capability(role, Capability.TABLE_REGISTRATION) is None
+        assert check_capability(role, Capability.CREATE_RELATIONSHIP) is None
+        assert check_capability(role, Capability.MASKING_CONFIG) is None
+        # Verify via has_capability that admin is recognised for each checked capability.
+        assert has_capability(role, Capability.SOURCE_REGISTRATION)
+        assert has_capability(role, Capability.TABLE_REGISTRATION)
+        assert has_capability(role, Capability.CREATE_RELATIONSHIP)
+        assert has_capability(role, Capability.MASKING_CONFIG)
 
     def test_has_capability_returns_false_for_missing(self):
         # REQ-001: governance is expressed through rights, not capability gates on querying.

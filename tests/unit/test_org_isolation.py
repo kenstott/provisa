@@ -160,9 +160,9 @@ class TestInitSchema:
     def test_validate_org_id_accepts_valid_ids(self):  # REQ-697
         from provisa.core.db import _validate_org_id
 
-        _validate_org_id("default")
-        _validate_org_id("acme123")
-        _validate_org_id("org_1")
+        assert _validate_org_id("default") is None
+        assert _validate_org_id("acme123") is None
+        assert _validate_org_id("org_1") is None
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +206,7 @@ class TestOrgScopedCacheLocation:
 
         captured_loc = {}
 
-        def fake_table_exists(_conn, loc, _tbl, ttl=None):
+        def fake_table_exists(_conn, loc, _tbl, _ttl=None):  # noqa: ARG001
             captured_loc["loc"] = loc
             return True
 
@@ -309,9 +309,9 @@ class TestProvisionOrg:
         ):
             await provision_org(mock_pool, "SELECT 1", "testorg")
 
-        mock_init.assert_awaited_once()
-        mock_audit.assert_awaited_once()
-        mock_role.assert_awaited_once()
+        assert mock_init.await_count == 1
+        assert mock_audit.await_count == 1
+        assert mock_role.await_count == 1
 
     @pytest.mark.asyncio
     async def test_provision_org_rolls_back_on_failure(self):  # REQ-701

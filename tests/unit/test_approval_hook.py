@@ -12,8 +12,6 @@
 
 from __future__ import annotations
 
-import json
-import time
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -24,7 +22,6 @@ from types import SimpleNamespace
 from provisa.auth.approval_hook import (
     ApprovalHookConfig,
     ApprovalRequest,
-    ApprovalResponse,
     CircuitBreaker,
     FallbackPolicy,
     GrpcApprovalHook,
@@ -63,11 +60,22 @@ class TestConfigLoading:
     def test_setup_populates_state(self):
         from provisa.api.app import AppState, _setup_approval_hook
 
-        meta = SimpleNamespace(domain_id="sales", schema_name="public", table_name="orders", table_id=7)
+        meta = SimpleNamespace(
+            domain_id="sales", schema_name="public", table_name="orders", table_id=7
+        )
         config = SimpleNamespace(
-            auth=SimpleNamespace(approval_hook={"type": "webhook", "url": "http://h/e", "scope": ""}),
-            sources=[SimpleNamespace(id="pg1", approval_hook=True), SimpleNamespace(id="pg2", approval_hook=False)],
-            tables=[SimpleNamespace(domain_id="sales", schema_name="public", table_name="orders", approval_hook=True)],
+            auth=SimpleNamespace(
+                approval_hook={"type": "webhook", "url": "http://h/e", "scope": ""}
+            ),
+            sources=[
+                SimpleNamespace(id="pg1", approval_hook=True),
+                SimpleNamespace(id="pg2", approval_hook=False),
+            ],
+            tables=[
+                SimpleNamespace(
+                    domain_id="sales", schema_name="public", table_name="orders", approval_hook=True
+                )
+            ],
         )
         st = AppState()
         st.config = config
@@ -91,6 +99,7 @@ class TestConfigLoading:
         st.approval_hook = None
         _setup_approval_hook(st)
         assert st.approval_hook is None
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -132,30 +141,15 @@ class TestShouldCheck:
 
     def test_table_hook_triggers(self):
         cfg = _cfg()
-        assert (
-            should_check(
-                ["t1", "t2"], ["s1"], cfg, table_hooks={"t1": True}
-            )
-            is True
-        )
+        assert should_check(["t1", "t2"], ["s1"], cfg, table_hooks={"t1": True}) is True
 
     def test_source_hook_triggers(self):
         cfg = _cfg()
-        assert (
-            should_check(
-                ["t1"], ["s1", "s2"], cfg, source_hooks={"s2": True}
-            )
-            is True
-        )
+        assert should_check(["t1"], ["s1", "s2"], cfg, source_hooks={"s2": True}) is True
 
     def test_table_hook_false_no_trigger(self):
         cfg = _cfg()
-        assert (
-            should_check(
-                ["t1"], ["s1"], cfg, table_hooks={"t1": False}
-            )
-            is False
-        )
+        assert should_check(["t1"], ["s1"], cfg, table_hooks={"t1": False}) is False
 
     def test_mixed_scoping(self):
         cfg = _cfg()
@@ -390,8 +384,10 @@ class TestGrpcApprovalHook:
 
         mock_channel = AsyncMock()
 
-        with patch("grpc.aio.insecure_channel", return_value=mock_channel), \
-             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+        with (
+            patch("grpc.aio.insecure_channel", return_value=mock_channel),
+            patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
+        ):
             result = await hook.evaluate(_REQ)
 
         assert result.approved is True
@@ -413,8 +409,10 @@ class TestGrpcApprovalHook:
         mock_stub = AsyncMock()
         mock_stub.Evaluate = AsyncMock(return_value=mock_proto_resp)
 
-        with patch("grpc.aio.insecure_channel", return_value=AsyncMock()), \
-             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+        with (
+            patch("grpc.aio.insecure_channel", return_value=AsyncMock()),
+            patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
+        ):
             result = await hook.evaluate(_REQ)
 
         assert result.approved is False
@@ -427,12 +425,18 @@ class TestGrpcApprovalHook:
         hook = GrpcApprovalHook(self._grpc_cfg(fallback=FallbackPolicy.DENY))
 
         mock_stub = AsyncMock()
-        mock_stub.Evaluate = AsyncMock(side_effect=grpc.aio.AioRpcError(
-            grpc.StatusCode.UNAVAILABLE, None, None,
-        ))
+        mock_stub.Evaluate = AsyncMock(
+            side_effect=grpc.aio.AioRpcError(
+                grpc.StatusCode.UNAVAILABLE,
+                None,
+                None,
+            )
+        )
 
-        with patch("grpc.aio.insecure_channel", return_value=AsyncMock()), \
-             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+        with (
+            patch("grpc.aio.insecure_channel", return_value=AsyncMock()),
+            patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
+        ):
             result = await hook.evaluate(_REQ)
 
         assert result.approved is False
@@ -445,12 +449,18 @@ class TestGrpcApprovalHook:
         hook = GrpcApprovalHook(self._grpc_cfg(fallback=FallbackPolicy.ALLOW))
 
         mock_stub = AsyncMock()
-        mock_stub.Evaluate = AsyncMock(side_effect=grpc.aio.AioRpcError(
-            grpc.StatusCode.UNAVAILABLE, None, None,
-        ))
+        mock_stub.Evaluate = AsyncMock(
+            side_effect=grpc.aio.AioRpcError(
+                grpc.StatusCode.UNAVAILABLE,
+                None,
+                None,
+            )
+        )
 
-        with patch("grpc.aio.insecure_channel", return_value=AsyncMock()), \
-             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+        with (
+            patch("grpc.aio.insecure_channel", return_value=AsyncMock()),
+            patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
+        ):
             result = await hook.evaluate(_REQ)
 
         assert result.approved is True
@@ -467,13 +477,16 @@ class TestGrpcApprovalHook:
         mock_stub = AsyncMock()
         mock_stub.Evaluate = AsyncMock(return_value=mock_proto_resp)
 
-        with patch("grpc.aio.insecure_channel", return_value=AsyncMock()) as mock_chan_factory, \
-             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+        with (
+            patch("grpc.aio.insecure_channel", return_value=AsyncMock()) as mock_chan_factory,
+            patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
+        ):
             await hook.evaluate(_REQ)
             await hook.evaluate(_REQ)
 
         # Channel created only once; stub reused
         mock_chan_factory.assert_called_once()
+        assert mock_chan_factory.call_count == 1
 
     @pytest.mark.asyncio
     async def test_circuit_breaker_blocks_after_failures(self):
@@ -487,19 +500,27 @@ class TestGrpcApprovalHook:
         hook = GrpcApprovalHook(cfg)
 
         mock_stub = AsyncMock()
-        mock_stub.Evaluate = AsyncMock(side_effect=grpc.aio.AioRpcError(
-            grpc.StatusCode.UNAVAILABLE, None, None,
-        ))
+        mock_stub.Evaluate = AsyncMock(
+            side_effect=grpc.aio.AioRpcError(
+                grpc.StatusCode.UNAVAILABLE,
+                None,
+                None,
+            )
+        )
 
-        with patch("grpc.aio.insecure_channel", return_value=AsyncMock()), \
-             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+        with (
+            patch("grpc.aio.insecure_channel", return_value=AsyncMock()),
+            patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
+        ):
             await hook.evaluate(_REQ)
             await hook.evaluate(_REQ)
 
         # Circuit now open — next call must not reach stub
         mock_stub.Evaluate.reset_mock()
-        with patch("grpc.aio.insecure_channel", return_value=AsyncMock()), \
-             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+        with (
+            patch("grpc.aio.insecure_channel", return_value=AsyncMock()),
+            patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub),
+        ):
             result = await hook.evaluate(_REQ)
 
         assert result.approved is False

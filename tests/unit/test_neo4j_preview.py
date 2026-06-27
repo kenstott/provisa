@@ -53,12 +53,13 @@ class TestValidateShape:
             {"name": "Alice", "age": 30, "active": True},
             {"name": "Bob", "age": 25, "active": False},
         ]
-        # Should not raise
-        validate_shape(rows)
+        result = validate_shape(rows)
+        assert result is None
 
     def test_none_values_pass(self):
         rows = [{"name": None, "age": 0}]
-        validate_shape(rows)  # should not raise
+        result = validate_shape(rows)
+        assert result is None
 
     def test_dict_value_raises(self):
         rows = [{"n": {"labels": ["Order"], "properties": {"id": 1}}}]
@@ -81,4 +82,5 @@ class TestValidateShape:
             validate_shape(rows)
 
     def test_empty_rows_pass(self):
-        validate_shape([])  # should not raise
+        result = validate_shape([])
+        assert result is None

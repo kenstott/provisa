@@ -16,7 +16,6 @@ Tests streamed queries, mutations, and role-based field filtering.
 
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,7 +23,7 @@ import grpc
 import grpc.aio
 import pytest
 
-from provisa.grpc.server import ProvisaServicer, start_grpc_server
+from provisa.grpc.server import ProvisaServicer
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
@@ -207,6 +206,7 @@ class TestMutationsViaGrpc:
         context.abort.assert_awaited_once_with(
             grpc.StatusCode.UNIMPLEMENTED, "InsertOrders not yet implemented"
         )
+        assert context.abort.await_count == 1
 
     async def test_insert_different_tables(self):
         """Insert abort message includes the correct table name."""
@@ -219,6 +219,7 @@ class TestMutationsViaGrpc:
         context.abort.assert_awaited_once_with(
             grpc.StatusCode.UNIMPLEMENTED, "InsertCustomers not yet implemented"
         )
+        assert context.abort.await_count == 1
 
 
 class TestRoleBasedFieldFiltering:

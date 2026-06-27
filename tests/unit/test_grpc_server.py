@@ -67,7 +67,9 @@ def _make_pb2_module(type_name: str = "Orders", fields: list[str] | None = None)
     msg_cls = MagicMock()
     msg_cls.DESCRIPTOR = descriptor
 
-    pb2 = SimpleNamespace(**{type_name: msg_cls, "DESCRIPTOR": SimpleNamespace(services_by_name={})})
+    pb2 = SimpleNamespace(
+        **{type_name: msg_cls, "DESCRIPTOR": SimpleNamespace(services_by_name={})}
+    )
     return pb2, msg_cls
 
 
@@ -134,7 +136,7 @@ class TestHandleQuery:
         fake_result = SimpleNamespace(rows=[[1, 100.0], [2, 200.0]])
 
         with (
-            patch("provisa.compiler.parser.parse_query") as mock_parse,
+            patch("provisa.compiler.parser.parse_query") as _mock_parse,
             patch("provisa.compiler.sql_gen.compile_query", return_value=[fake_compiled]),
             patch("provisa.compiler.rls.inject_rls", return_value=fake_compiled),
             patch("provisa.compiler.mask_inject.inject_masking", return_value=fake_compiled),
@@ -143,11 +145,21 @@ class TestHandleQuery:
             patch("provisa.security.rights.has_capability", return_value=False),
             patch("provisa.compiler.sampling.apply_sampling", return_value=fake_compiled),
             patch("provisa.compiler.sampling.get_sample_size", return_value=100),
-            patch("provisa.transpiler.transpile.transpile", return_value="SELECT id, amount FROM orders"),
-            patch("provisa.executor.direct.execute_direct", new_callable=AsyncMock, return_value=fake_result),
+            patch(
+                "provisa.transpiler.transpile.transpile",
+                return_value="SELECT id, amount FROM orders",
+            ),
+            patch(
+                "provisa.executor.direct.execute_direct",
+                new_callable=AsyncMock,
+                return_value=fake_result,
+            ),
         ):
             from provisa.transpiler.router import Route
-            mock_route.return_value = SimpleNamespace(route=Route.DIRECT, source_id="pg1", dialect="postgres")
+
+            mock_route.return_value = SimpleNamespace(
+                route=Route.DIRECT, source_id="pg1", dialect="postgres"
+            )
 
             rows_yielded = []
             async for msg in servicer._handle_query(request, context, "Orders", "orders"):
@@ -191,8 +203,8 @@ class TestRoleEnforcement:
         admin_state = _make_state(role_id="admin")
         viewer_state = _make_state(role_id="viewer")
 
-        admin_servicer = ProvisaServicer(admin_state, admin_pb2, MagicMock())
-        viewer_servicer = ProvisaServicer(viewer_state, viewer_pb2, MagicMock())
+        ProvisaServicer(admin_state, admin_pb2, MagicMock())
+        ProvisaServicer(viewer_state, viewer_pb2, MagicMock())
 
         # Admin's descriptor exposes 3 fields
         admin_descriptor = admin_msg.DESCRIPTOR
@@ -218,9 +230,9 @@ class TestHandleInsert:
         request = MagicMock()
 
         await servicer._handle_insert(request, context, "Orders")
-        context.abort.assert_awaited_once_with(
-            grpc.StatusCode.UNIMPLEMENTED, "InsertOrders not yet implemented"
-        )
+        assert context.abort.await_count == 1
+        assert context.abort.call_args[0][0] == grpc.StatusCode.UNIMPLEMENTED
+        assert context.abort.call_args[0][1] == "InsertOrders not yet implemented"
 
 
 class TestErrorHandling:

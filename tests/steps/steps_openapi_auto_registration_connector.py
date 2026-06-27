@@ -805,7 +805,7 @@ paths:
                 $ref: "#/components/schemas/Item"
 """
 
-_REQ315_SPEC_JSON = json.dumps({
+_REQ315_SPEC_DICT = {
     "openapi": "3.0.0",
     "info": {"title": "Private Inventory API", "version": "1.0.0"},
     "components": {
@@ -814,4 +814,4 @@ _REQ315_SPEC_JSON = json.dumps({
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
-                    "sku":
+                    "sku": {"type

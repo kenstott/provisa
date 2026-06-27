@@ -4737,3 +4737,328 @@ def step_when_the_endpoint_processes_and_executes_it():
 @then("the response includes columns, rows, and error fields with the correct shape")
 def step_then_the_response_includes_columns_rows_and_error_fields_with_the():
     pytest.skip("step not implemented: the response includes columns, rows, and error fields with t")
+
+# REQ-781
+@given("the Favorites panel displays a favorite with a Cypher query")
+def step_given_the_favorites_panel_displays_a_favorite_with_a_cypher_query():
+    pytest.skip("step not implemented: the Favorites panel displays a favorite with a Cypher query")
+
+# REQ-781
+@when("the user clicks the favorite's label")
+def step_when_the_user_clicks_the_favorite_s_label():
+    pytest.skip("step not implemented: the user clicks the favorite's label")
+
+# REQ-781
+@then("the query is loaded into the editor header")
+def step_then_the_query_is_loaded_into_the_editor_header():
+    pytest.skip("step not implemented: the query is loaded into the editor header")
+
+# REQ-781
+@then("the editor is ready to execute or modify the query")
+def step_and_the_editor_is_ready_to_execute_or_modify_the_query():
+    pytest.skip("step not implemented: the editor is ready to execute or modify the query")
+
+# REQ-782
+@given("the Favorites panel with a visible favorite and action buttons on hover")
+def step_given_the_favorites_panel_with_a_visible_favorite_and_action_butto():
+    pytest.skip("step not implemented: the Favorites panel with a visible favorite and action butto")
+
+# REQ-782
+@when("the user clicks the rename button")
+def step_when_the_user_clicks_the_rename_button():
+    pytest.skip("step not implemented: the user clicks the rename button")
+
+# REQ-782
+@then("a text input appears focused with the current label")
+def step_then_a_text_input_appears_focused_with_the_current_label():
+    pytest.skip("step not implemented: a text input appears focused with the current label")
+
+# REQ-782
+@when("the user types a new label and presses Enter")
+def step_when_the_user_types_a_new_label_and_presses_enter():
+    pytest.skip("step not implemented: the user types a new label and presses Enter")
+
+# REQ-782
+@then("the input closes and the favorite displays the new label")
+def step_then_the_input_closes_and_the_favorite_displays_the_new_label():
+    pytest.skip("step not implemented: the input closes and the favorite displays the new label")
+
+# REQ-782
+@then("the change persists in localStorage")
+def step_and_the_change_persists_in_localstorage():
+    pytest.skip("step not implemented: the change persists in localStorage")
+
+# REQ-783
+@given("the Favorites panel with at least one visible favorite")
+def step_given_the_favorites_panel_with_at_least_one_visible_favorite():
+    pytest.skip("step not implemented: the Favorites panel with at least one visible favorite")
+
+# REQ-783
+@when("the user hovers over a favorite and clicks the delete button")
+def step_when_the_user_hovers_over_a_favorite_and_clicks_the_delete_button():
+    pytest.skip("step not implemented: the user hovers over a favorite and clicks the delete button")
+
+# REQ-783
+@then("the favorite is removed from the panel immediately")
+def step_then_the_favorite_is_removed_from_the_panel_immediately():
+    pytest.skip("step not implemented: the favorite is removed from the panel immediately")
+
+# REQ-783
+@then("the removal persists in localStorage (empty panel shows placeholder)")
+def step_and_the_removal_persists_in_localstorage_empty_panel_shows_place():
+    pytest.skip("step not implemented: the removal persists in localStorage (empty panel shows plac")
+
+# REQ-784
+@given("a set of visible graph nodes with known labels")
+def step_given_a_set_of_visible_graph_nodes_with_known_labels():
+    pytest.skip("step not implemented: a set of visible graph nodes with known labels")
+
+# REQ-784
+@when("the auto-impute endpoint receives the visible node set with stable integer ids")
+def step_when_the_auto_impute_endpoint_receives_the_visible_node_set_with_():
+    pytest.skip("step not implemented: the auto-impute endpoint receives the visible node set with ")
+
+# REQ-784
+@then("it queries each relationship pair (src_label)-[rel_type]->(tgt_label) where both endpoints are visible")
+def step_then_it_queries_each_relationship_pair_src_label_rel_type_tgt_lab():
+    pytest.skip("step not implemented: it queries each relationship pair (src_label)-[rel_type]->(t")
+
+# REQ-784
+@then("returns all discovered edges merged with the input nodes in standard Cypher response format")
+def step_and_returns_all_discovered_edges_merged_with_the_input_nodes_in_():
+    pytest.skip("step not implemented: returns all discovered edges merged with the input nodes in ")
+
+# REQ-786
+@given("a request with nodes: [{label: "Meta", id: 10}, {label: "Meta", id: 11}, ...]")
+def step_given_a_request_with_nodes_label_meta_id_10_label_meta_id_11():
+    pytest.skip("step not implemented: a request with nodes: [{label: "Meta", id: 10}, {label: "Met")
+
+# REQ-786
+@when("the endpoint fetches rows from node_ids WHERE id = ANY([10, 11, ...])")
+def step_when_the_endpoint_fetches_rows_from_node_ids_where_id_any_10_11():
+    pytest.skip("step not implemented: the endpoint fetches rows from node_ids WHERE id = ANY([10, ")
+
+# REQ-786
+@then("it extracts the raw PK from composite_id ("label|pk_value")")
+def step_then_it_extracts_the_raw_pk_from_composite_id_label_pk_value():
+    pytest.skip("step not implemented: it extracts the raw PK from composite_id ("label|pk_value")")
+
+# REQ-786
+@then("uses the raw PK values in the WHERE clause for relationship queries")
+def step_and_uses_the_raw_pk_values_in_the_where_clause_for_relationship_():
+    pytest.skip("step not implemented: uses the raw PK values in the WHERE clause for relationship ")
+
+# REQ-786
+@then("returns stable integer ids in the result edges (via register_node_ids)")
+def step_and_returns_stable_integer_ids_in_the_result_edges_via_register_():
+    pytest.skip("step not implemented: returns stable integer ids in the result edges (via register")
+
+# REQ-788
+@given("a directory containing multiple CSV files matching a glob pattern")
+def step_given_a_directory_containing_multiple_csv_files_matching_a_glob_pa():
+    pytest.skip("step not implemented: a directory containing multiple CSV files matching a glob pa")
+
+# REQ-788
+@when("a file connector source is registered with the directory glob pattern")
+def step_when_a_file_connector_source_is_registered_with_the_directory_glo():
+    pytest.skip("step not implemented: a file connector source is registered with the directory glo")
+
+# REQ-788
+@then("all matching files are discovered and enumerated as available tables")
+def step_then_all_matching_files_are_discovered_and_enumerated_as_availabl():
+    pytest.skip("step not implemented: all matching files are discovered and enumerated as availabl")
+
+# REQ-788
+@then("the table schema is extracted from CSV headers")
+def step_and_the_table_schema_is_extracted_from_csv_headers():
+    pytest.skip("step not implemented: the table schema is extracted from CSV headers")
+
+# REQ-789
+@given("a CSV file with camelCase headers (e.g., "companyName", "customerId")")
+def step_given_a_csv_file_with_camelcase_headers_e_g_companyname_customerid():
+    pytest.skip("step not implemented: a CSV file with camelCase headers (e.g., "companyName", "cus")
+
+# REQ-789
+@when("the file is introspected by the file connector")
+def step_when_the_file_is_introspected_by_the_file_connector():
+    pytest.skip("step not implemented: the file is introspected by the file connector")
+
+# REQ-789
+@then("headers are automatically converted to snake_case (e.g., "company_name", "customer_id")")
+def step_then_headers_are_automatically_converted_to_snake_case_e_g_compan():
+    pytest.skip("step not implemented: headers are automatically converted to snake_case (e.g., "co")
+
+# REQ-789
+@then("GraphQL field names reflect the snake_case conversion")
+def step_and_graphql_field_names_reflect_the_snake_case_conversion():
+    pytest.skip("step not implemented: GraphQL field names reflect the snake_case conversion")
+
+# REQ-790
+@given("the Sources & Tables UI with a registered file connector source")
+def step_given_the_sources_tables_ui_with_a_registered_file_connector_sourc():
+    pytest.skip("step not implemented: the Sources & Tables UI with a registered file connector sou")
+
+# REQ-790
+@when("a user clicks "Add Table" and selects the file source")
+def step_when_a_user_clicks_add_table_and_selects_the_file_source():
+    pytest.skip("step not implemented: a user clicks "Add Table" and selects the file source")
+
+# REQ-790
+@then("the schema dropdown is populated with discovered schemas")
+def step_then_the_schema_dropdown_is_populated_with_discovered_schemas():
+    pytest.skip("step not implemented: the schema dropdown is populated with discovered schemas")
+
+# REQ-790
+@then("the table dropdown lists all CSV-derived tables in the selected schema")
+def step_and_the_table_dropdown_lists_all_csv_derived_tables_in_the_selec():
+    pytest.skip("step not implemented: the table dropdown lists all CSV-derived tables in the selec")
+
+# REQ-791
+@given("a registered customers table created from CSV files via file connector")
+def step_given_a_registered_customers_table_created_from_csv_files_via_file():
+    pytest.skip("step not implemented: a registered customers table created from CSV files via file")
+
+# REQ-791
+@when("a GraphQL query is issued against the data endpoint for customers")
+def step_when_a_graphql_query_is_issued_against_the_data_endpoint_for_cust():
+    pytest.skip("step not implemented: a GraphQL query is issued against the data endpoint for cust")
+
+# REQ-791
+@then("the query returns all rows from the CSV files with all columns")
+def step_then_the_query_returns_all_rows_from_the_csv_files_with_all_colum():
+    pytest.skip("step not implemented: the query returns all rows from the CSV files with all colum")
+
+# REQ-791
+@then("the response matches the CSV schema with snake_case column names")
+def step_and_the_response_matches_the_csv_schema_with_snake_case_column_n():
+    pytest.skip("step not implemented: the response matches the CSV schema with snake_case column n")
+
+# REQ-792
+@given("a graph with multiple node labels and relationship types")
+def step_given_a_graph_with_multiple_node_labels_and_relationship_types():
+    pytest.skip("step not implemented: a graph with multiple node labels and relationship types")
+
+# REQ-792
+@when("GET /data/graph-schema is called")
+def step_when_get_data_graph_schema_is_called():
+    pytest.skip("step not implemented: GET /data/graph-schema is called")
+
+# REQ-792
+@then("the response includes node_labels array with all node labels")
+def step_then_the_response_includes_node_labels_array_with_all_node_labels():
+    pytest.skip("step not implemented: the response includes node_labels array with all node labels")
+
+# REQ-792
+@then("the response includes relationship_types array with source/target pairs")
+def step_and_the_response_includes_relationship_types_array_with_source_t():
+    pytest.skip("step not implemented: the response includes relationship_types array with source/t")
+
+# REQ-793
+@given("a parameterless Cypher query like "MATCH (n:Domain:Table) RETURN n"")
+def step_given_a_parameterless_cypher_query_like_match_n_domain_table_retur():
+    pytest.skip("step not implemented: a parameterless Cypher query like "MATCH (n:Domain:Table) RE")
+
+# REQ-793
+@when("POST /data/cypher is called with the query")
+def step_when_post_data_cypher_is_called_with_the_query():
+    pytest.skip("step not implemented: POST /data/cypher is called with the query")
+
+# REQ-793
+@then("the response returns {rows: [...]}} with query results")
+def step_then_the_response_returns_rows_with_query_results():
+    pytest.skip("step not implemented: the response returns {rows: [...]}} with query results")
+
+# REQ-793
+@then("a query requiring parameters returns error in response")
+def step_and_a_query_requiring_parameters_returns_error_in_response():
+    pytest.skip("step not implemented: a query requiring parameters returns error in response")
+
+# REQ-794
+@given("a Cypher query returning nested nodes and edges")
+def step_given_a_cypher_query_returning_nested_nodes_and_edges():
+    pytest.skip("step not implemented: a Cypher query returning nested nodes and edges")
+
+# REQ-794
+@when("result rows are introspected")
+def step_when_result_rows_are_introspected():
+    pytest.skip("step not implemented: result rows are introspected")
+
+# REQ-794
+@then("nodes with {id, tableLabel, properties} are extracted")
+def step_then_nodes_with_id_tablelabel_properties_are_extracted():
+    pytest.skip("step not implemented: nodes with {id, tableLabel, properties} are extracted")
+
+# REQ-794
+@then("edges with {identity, startNode, endNode, type} are extracted")
+def step_and_edges_with_identity_startnode_endnode_type_are_extracted():
+    pytest.skip("step not implemented: edges with {identity, startNode, endNode, type} are extracte")
+
+# REQ-794
+@then("extraction works on deeply nested result values")
+def step_and_extraction_works_on_deeply_nested_result_values():
+    pytest.skip("step not implemented: extraction works on deeply nested result values")
+
+# REQ-795
+@given("nodes already exported to Neo4j")
+def step_given_nodes_already_exported_to_neo4j():
+    pytest.skip("step not implemented: nodes already exported to Neo4j")
+
+# REQ-795
+@when("POST /data/neo4j-export is called with empty nodes array and populated edges")
+def step_when_post_data_neo4j_export_is_called_with_empty_nodes_array_and_():
+    pytest.skip("step not implemented: POST /data/neo4j-export is called with empty nodes array and")
+
+# REQ-795
+@then("edges are successfully exported using start/end node IDs")
+def step_then_edges_are_successfully_exported_using_start_end_node_ids():
+    pytest.skip("step not implemented: edges are successfully exported using start/end node IDs")
+
+# REQ-795
+@then("Neo4j relationship count matches expected count")
+def step_and_neo4j_relationship_count_matches_expected_count():
+    pytest.skip("step not implemented: Neo4j relationship count matches expected count")
+
+# REQ-796
+@given("an export client with X-Role: DEV header")
+def step_given_an_export_client_with_x_role_dev_header():
+    pytest.skip("step not implemented: an export client with X-Role: DEV header")
+
+# REQ-796
+@when("POST /data/cypher is called")
+def step_when_post_data_cypher_is_called():
+    pytest.skip("step not implemented: POST /data/cypher is called")
+
+# REQ-796
+@then("the request succeeds")
+def step_then_the_request_succeeds():
+    pytest.skip("step not implemented: the request succeeds")
+
+# REQ-796
+@then("a request without X-Role header is rejected")
+def step_and_a_request_without_x_role_header_is_rejected():
+    pytest.skip("step not implemented: a request without X-Role header is rejected")
+
+# REQ-797
+@given("a completed export with N nodes and E edges to Neo4j")
+def step_given_a_completed_export_with_n_nodes_and_e_edges_to_neo4j():
+    pytest.skip("step not implemented: a completed export with N nodes and E edges to Neo4j")
+
+# REQ-797
+@when("node and relationship counts are queried in target Neo4j")
+def step_when_node_and_relationship_counts_are_queried_in_target_neo4j():
+    pytest.skip("step not implemented: node and relationship counts are queried in target Neo4j")
+
+# REQ-797
+@then("node count is ≤ N (due to MERGE deduplication on _provisa_id)")
+def step_then_node_count_is_n_due_to_merge_deduplication_on_provisa_id():
+    pytest.skip("step not implemented: node count is ≤ N (due to MERGE deduplication on _provisa_id")
+
+# REQ-797
+@then("relationship count exactly equals E")
+def step_and_relationship_count_exactly_equals_e():
+    pytest.skip("step not implemented: relationship count exactly equals E")
+
+# REQ-797
+@then("all node counts are > 0")
+def step_and_all_node_counts_are_0():
+    pytest.skip("step not implemented: all node counts are > 0")

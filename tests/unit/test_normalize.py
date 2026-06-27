@@ -119,7 +119,8 @@ class TestNormalize:
 
 class TestPrecondition:
     def test_real_column_join_passes(self):
-        check_normalizable(parse(_QUERY), _ctx())  # no raise
+        result = check_normalizable(parse(_QUERY), _ctx())
+        assert result is None
 
     def test_computed_join_rejected(self):
         import dataclasses

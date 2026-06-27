@@ -113,7 +113,7 @@ async def test_direct_read_retries_on_connection_error():
 
     calls = []
 
-    async def flaky(*_a):
+    async def flaky(*_):
         calls.append(1)
         if len(calls) < 3:
             raise ConnectionError("transient")
@@ -160,7 +160,7 @@ async def test_watch_trino_no_op_when_healthy():
     ):
         await watch_trino()
 
-    mock_exec.assert_not_called()
+    assert mock_exec.call_count == 0
 
 
 @pytest.mark.asyncio
@@ -214,7 +214,7 @@ async def test_watch_trino_skips_when_no_conn():
     ):
         await watch_trino()
 
-    mock_exec.assert_not_called()
+    assert mock_exec.call_count == 0
 
 
 @pytest.mark.asyncio
@@ -233,6 +233,17 @@ async def test_watch_trino_logs_error_on_docker_failure():
         patch.dict(sys.modules, {"provisa.api.app": _app_module(mock_state)}),
         patch("asyncio.to_thread", side_effect=_run_in_thread),
         patch("provisa.scheduler.jobs._trino_ping", side_effect=ConnectionError("down")),
-        patch("asyncio.create_subprocess_exec", return_value=mock_proc),
+        patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec,
     ):
         await watch_trino()
+
+    # docker start was attempted
+    mock_exec.assert_called_once()
+    args = mock_exec.call_args[0]
+    assert "docker" in args
+    assert "start" in args
+    assert "provisa-trino-1" in args
+    # stderr was consumed
+    mock_proc.communicate.assert_called_once()
+    # non-zero returncode — function returned cleanly without raising
+    assert mock_proc.returncode == 1

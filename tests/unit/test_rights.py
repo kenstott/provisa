@@ -23,7 +23,9 @@ from provisa.security.rights import (
 class TestCheckCapability:
     def test_has_exact_capability(self):
         role = {"id": "dev", "capabilities": ["query_development"]}
-        check_capability(role, Capability.QUERY_DEVELOPMENT)  # no raise
+        result = check_capability(role, Capability.QUERY_DEVELOPMENT)  # no raise
+        assert result is None  # check_capability returns None on success
+        assert has_capability(role, Capability.QUERY_DEVELOPMENT) is True
 
     def test_missing_capability_raises(self):
         role = {"id": "viewer", "capabilities": []}
@@ -35,6 +37,10 @@ class TestCheckCapability:
         check_capability(role, Capability.QUERY_DEVELOPMENT)
         check_capability(role, Capability.SOURCE_REGISTRATION)
         check_capability(role, Capability.ACCESS_CONFIG)
+        # has_capability must also return True for all capabilities
+        assert has_capability(role, Capability.QUERY_DEVELOPMENT) is True
+        assert has_capability(role, Capability.SOURCE_REGISTRATION) is True
+        assert has_capability(role, Capability.ACCESS_CONFIG) is True
 
     def test_each_capability_independent(self):
         role = {"id": "reg", "capabilities": ["source_registration"]}

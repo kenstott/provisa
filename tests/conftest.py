@@ -20,6 +20,66 @@ import trino
 
 from provisa.compiler import naming as _naming
 
+_REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
+_CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
+_OBS_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.observability.yml")
+_DEV_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.dev.yml")
+
+_MARKER_SERVICES: dict[str, list[str]] = {
+    "requires_kafka": ["kafka", "schema-registry"],
+    "requires_debezium": ["kafka", "schema-registry", "debezium-connect"],
+    "requires_mongodb": ["mongodb"],
+    "requires_elasticsearch": ["elasticsearch"],
+    "requires_neo4j": ["neo4j"],
+    "requires_sparql": ["fuseki"],
+}
+_CORE_SERVICES = ["postgres", "trino", "redis", "pgbouncer"]
+
+
+class _DockerServiceManager:
+    def pytest_collection_finish(self, session):
+        if os.environ.get("PYTEST_NO_DOCKER"):
+            return
+        integration = [i for i in session.items if "integration" in str(i.fspath)]
+        if not integration:
+            return
+
+        needed: set[str] = set(_CORE_SERVICES)
+        needs_dev = False
+        for item in session.items:
+            for marker, services in _MARKER_SERVICES.items():
+                if item.get_closest_marker(marker):
+                    needed.update(services)
+                    needs_dev = True
+
+        cmd = ["docker", "compose", "-f", _CORE_COMPOSE]
+        if needs_dev:
+            cmd += ["-f", _OBS_COMPOSE, "-f", _DEV_COMPOSE]
+        cmd += ["up", "-d", "--wait"] + sorted(needed)
+        subprocess.run(cmd, cwd=_REPO_ROOT, check=True)
+
+    def pytest_sessionfinish(self, session, exitstatus):
+        if os.environ.get("PYTEST_DOCKER_DOWN"):
+            subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "-f",
+                    _CORE_COMPOSE,
+                    "-f",
+                    _OBS_COMPOSE,
+                    "-f",
+                    _DEV_COMPOSE,
+                    "down",
+                ],
+                cwd=_REPO_ROOT,
+                check=False,
+            )
+
+
+def pytest_configure(config):
+    config.pluginmanager.register(_DockerServiceManager())
+
 
 @pytest.fixture(autouse=True)
 def _reset_naming_convention():
@@ -89,79 +149,6 @@ def _trino_catalog_exists(catalog: str) -> bool:
         return True
     except Exception:
         return False
-
-
-def pytest_collection_modifyitems(config, items):
-    server_url = os.environ.get("PROVISA_URL", "http://localhost:8000")
-    kafka_host = os.environ.get("KAFKA_HOST", "localhost")
-    kafka_port = int(os.environ.get("KAFKA_PORT", "9092"))
-    debezium_host = os.environ.get("DEBEZIUM_HOST", "localhost")
-    debezium_port = int(os.environ.get("DEBEZIUM_PORT", "8083"))
-    mongo_host = os.environ.get("MONGODB_HOST", "localhost")
-    mongo_port = int(os.environ.get("MONGODB_PORT", "27017"))
-    es_host = os.environ.get("ELASTICSEARCH_HOST", "localhost")
-    es_port = int(os.environ.get("ELASTICSEARCH_PORT", "9200"))
-    neo4j_host = os.environ.get("NEO4J_HOST", "localhost")
-    neo4j_port = int(os.environ.get("NEO4J_PORT", "7687"))
-    sparql_host = os.environ.get("SPARQL_HOST", "localhost")
-    sparql_port = int(os.environ.get("SPARQL_PORT", "3030"))
-    pgbouncer_host = os.environ.get("PGBOUNCER_HOST", "localhost")
-    pgbouncer_port = int(os.environ.get("PGBOUNCER_PORT", "6432"))
-
-    _checked: dict[str, bool] = {}
-
-    def _check(key: str, fn) -> bool:
-        if key not in _checked:
-            _checked[key] = fn()
-        return _checked[key]
-
-    for item in items:
-        if item.get_closest_marker("requires_provisa_server"):
-            if not _check(server_url, lambda: _server_reachable(server_url)):
-                item.add_marker(
-                    pytest.mark.skip(reason=f"Provisa server not reachable at {server_url}")
-                )
-        if item.get_closest_marker("requires_kafka"):
-            if not _check("kafka", lambda: _tcp_reachable(kafka_host, kafka_port)):
-                item.add_marker(
-                    pytest.mark.skip(reason=f"Kafka not reachable at {kafka_host}:{kafka_port}")
-                )
-        if item.get_closest_marker("requires_debezium"):
-            if not _check("debezium", lambda: _tcp_reachable(debezium_host, debezium_port)):
-                item.add_marker(
-                    pytest.mark.skip(
-                        reason=f"Debezium not reachable at {debezium_host}:{debezium_port}"
-                    )
-                )
-        if item.get_closest_marker("requires_mongodb"):
-            if not _check("mongodb", lambda: _tcp_reachable(mongo_host, mongo_port)):
-                item.add_marker(
-                    pytest.mark.skip(reason=f"MongoDB not reachable at {mongo_host}:{mongo_port}")
-                )
-        if item.get_closest_marker("requires_elasticsearch"):
-            if not _check("elasticsearch", lambda: _tcp_reachable(es_host, es_port)):
-                item.add_marker(
-                    pytest.mark.skip(reason=f"Elasticsearch not reachable at {es_host}:{es_port}")
-                )
-        if item.get_closest_marker("requires_neo4j"):
-            if not _check("neo4j", lambda: _tcp_reachable(neo4j_host, neo4j_port)):
-                item.add_marker(
-                    pytest.mark.skip(reason=f"Neo4j not reachable at {neo4j_host}:{neo4j_port}")
-                )
-        if item.get_closest_marker("requires_sparql"):
-            if not _check("sparql", lambda: _tcp_reachable(sparql_host, sparql_port)):
-                item.add_marker(
-                    pytest.mark.skip(
-                        reason=f"SPARQL endpoint not reachable at {sparql_host}:{sparql_port}"
-                    )
-                )
-        if item.get_closest_marker("requires_pgbouncer"):
-            if not _check("pgbouncer", lambda: _pgbouncer_auth_ok(pgbouncer_host, pgbouncer_port)):
-                item.add_marker(
-                    pytest.mark.skip(
-                        reason=f"PgBouncer auth failed at {pgbouncer_host}:{pgbouncer_port}"
-                    )
-                )
 
 
 def _free_port() -> int:

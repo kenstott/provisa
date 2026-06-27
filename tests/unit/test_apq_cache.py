@@ -77,6 +77,7 @@ class TestRedisAPQCacheSet:
 
         await cache.set("abc123", "{ orders { id } }", tenant_id=None)
         mock_redis.setex.assert_awaited_once_with("provisa:apq:abc123", 3600, "{ orders { id } }")
+        assert mock_redis.setex.await_count == 1
 
     @pytest.mark.asyncio
     async def test_set_with_tenant_uses_tenant_key(self):
@@ -88,6 +89,7 @@ class TestRedisAPQCacheSet:
         mock_redis.setex.assert_awaited_once_with(
             "provisa:apq:acme:abc123", 3600, "{ orders { id } }"
         )
+        assert mock_redis.setex.await_count == 1
 
 
 class TestRedisAPQCacheTlsEnforcement:
@@ -116,4 +118,5 @@ class TestNoopAPQCacheTenantSignature:
     @pytest.mark.asyncio
     async def test_set_accepts_tenant_id(self):
         cache = NoopAPQCache()
-        await cache.set("h", "q", tenant_id="t1")
+        result = await cache.set("h", "q", tenant_id="t1")
+        assert result is None

@@ -1606,7 +1606,7 @@ def _populate_pg_description(
     tid_col_desc: dict[int, dict[str, str]] = {}
     for rt in raw_tables:
         _tid = rt["id"] if isinstance(rt, dict) else getattr(rt, "id", None)
-        _tdesc = rt["description"] if isinstance(rt, dict) else getattr(rt, "description", None)
+        _tdesc = rt.get("description") if isinstance(rt, dict) else getattr(rt, "description", None)
         _cols = rt["columns"] if isinstance(rt, dict) else getattr(rt, "columns", [])
         if _tid is None:
             continue
