@@ -44,7 +44,8 @@ Copy-Item (Join-Path $RepoRoot 'main.py')        $BuildSrc
 Copy-Item (Join-Path $RepoRoot 'pyproject.toml') $BuildSrc
 Copy-Item (Join-Path $RepoRoot 'provisa')   (Join-Path $BuildSrc 'provisa')   -Recurse -Force
 
-Copy-Item (Join-Path $ScriptDir 'first-launch.ps1') $BuildDir
+Copy-Item (Join-Path $ScriptDir 'first-launch.ps1')     $BuildDir
+Copy-Item (Join-Path $ScriptDir 'first-launch-gui.ps1') $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.ps1')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.cmd')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'install.ps1')       $BuildDir

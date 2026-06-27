@@ -30,8 +30,9 @@ $StartMenuDir = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Pr
 New-Item -ItemType Directory -Path $StartMenuDir -Force | Out-Null
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut("$StartMenuDir\Provisa First Launch.lnk")
-$Shortcut.TargetPath = 'powershell.exe'
-$Shortcut.Arguments  = "-NoExit -ExecutionPolicy Bypass -File `"$InstallDir\first-launch.ps1`""
+$Shortcut.TargetPath    = 'powershell.exe'
+$Shortcut.Arguments     = "-ExecutionPolicy Bypass -File `"$InstallDir\first-launch-gui.ps1`""
+$Shortcut.WorkingDirectory = $InstallDir
 $Shortcut.Save()
 
 # Add $InstallDir to user PATH (HKCU — no admin required)
