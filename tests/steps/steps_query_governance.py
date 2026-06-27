@@ -21,11 +21,16 @@ Covers:
   REQ-603 — V002 relationship governance: every JOIN ON condition in SQL and
             Cypher queries must match an approved, registered relationship.
             Queries traversing unregistered joins are rejected at compile time.
+  REQ-613 — Append-only query audit log provides SOC2-compliant evidence of who
+            queried what data and when. The log captures all required fields and
+            is protected by PostgreSQL rules preventing DELETE and UPDATE.
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
+import uuid
 
 import asyncpg
 import pytest
@@ -33,7 +38,7 @@ import pytest_asyncio
 import sqlglot
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from provisa.audit.query_log import init_audit_schema
+from provisa.audit.query_log import init_audit_schema, log_query
 from provisa.compiler.sql_gen import CompilationContext, JoinMeta, TableMeta
 from provisa.compiler.sql_validator import ValidationViolation, validate_sql
 from provisa.compiler.stage2 import GovernanceContext
@@ -50,6 +55,7 @@ scenarios("../features/REQ-003.feature")
 scenarios("../features/REQ-005.feature")
 scenarios("../features/REQ-006.feature")
 scenarios("../features/REQ-603.feature")
+scenarios("../features/REQ-613.feature")
 
 
 @pytest.fixture
@@ -202,6 +208,25 @@ def then_no_capability_gate(shared_data):
     for forbidden_val in ("query", "execute_query", "run_query", "query_execution"):
         assert forbidden_val not in enum_values
 
+    # Verify the governed SQL in shared_data was produced purely by data-layer
+    # controls (RLS predicate present, masking present) with no capability check
+    # on the query act itself.
+    governed_sql = shared_data.get("governed_sql", "")
+    assert governed_sql, "governed SQL must have been produced by the When step"
+
+    # Confirm masking and RLS controls are present in the emitted SQL — these are
+    # the sole governance instruments applied to the result set.
+    assert "regexp_replace" in governed_sql.lower(), (
+        "masking expression must appear in governed SQL"
+    )
+    parsed = sqlglot.parse_one(governed_sql, read="trino")
+    where = parsed.args.get("where")
+    assert where is not None, "RLS predicate must be present in governed SQL"
+
+    # No pre-approval or registry concept: the Capability enum has no such member.
+    for forbidden_name in ("APPROVE_QUERY", "QUERY_APPROVAL", "QUERY_REGISTRY", "REGISTRY"):
+        assert forbidden_name not in capability_names
+
 
 # ---------------------------------------------------------------------------
 # REQ-003 — Query and mutation governance is rights-based only.
@@ -301,6 +326,50 @@ def then_executed_on_rights_alone(shared_data):
     no_rights = {"id": "no-rights", "capabilities": []}
     with pytest.raises(InsufficientRightsError):
         check_capability(no_rights, Capability.QUERY_DEVELOPMENT)
+
+    # Confirm the rights model has no approval or registry concept at the enum level.
+    enum_values = {c.value for c in Capability}
+    for forbidden_val in (
+        "registry",
+        "registry_membership",
+        "approve_query",
+        "query_approval",
+        "query_registry",
+    ):
+        assert forbidden_val not in enum_values
+
+    # Confirm the two rights that DID gate execution are the table/view right
+    # and the relationship right — nothing more, nothing less.
+    role = shared_data["role"]
+    assert has_capability(role, Capability.QUERY_DEVELOPMENT), (
+        "table/view right (QUERY_DEVELOPMENT) must be held by the executing user"
+    )
+    assert has_capability(role, Capability.CREATE_RELATIONSHIP), (
+        "relationship right (CREATE_RELATIONSHIP) must be held by the executing user"
+    )
+
+    # A user with only one of the two required rights is still admitted for the
+    # operation that right covers, and denied only for what it does not cover —
+    # demonstrating that rights are independently sufficient (not cumulative).
+    query_only_role = {
+        "id": "query-only",
+        "capabilities": [Capability.QUERY_DEVELOPMENT.value],
+    }
+    # Query path: admitted.
+    check_capability(query_only_role, Capability.QUERY_DEVELOPMENT)
+    # Relationship mutation path: denied.
+    with pytest.raises(InsufficientRightsError):
+        check_capability(query_only_role, Capability.CREATE_RELATIONSHIP)
+
+    relationship_only_role = {
+        "id": "relationship-only",
+        "capabilities": [Capability.CREATE_RELATIONSHIP.value],
+    }
+    # Relationship mutation path: admitted.
+    check_capability(relationship_only_role, Capability.CREATE_RELATIONSHIP)
+    # Query path: denied.
+    with pytest.raises(InsufficientRightsError):
+        check_capability(relationship_only_role, Capability.QUERY_DEVELOPMENT)
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +489,58 @@ def then_stage2_injects_limit(shared_data):
     assert no_ceiling is None
     assert sqlglot.parse_one(same, read="trino").args.get("limit") is None
 
+    # Additional narrowing: extra WHERE filter does not prevent ceiling injection
+    # on an otherwise unbounded query.
+    filtered_sql = 'SELECT "id", "total" FROM "public"."orders" WHERE "total" > 100'
+    filtered_rewritten, filtered_ceiling = _stage2_inject_limit(
+        filtered_sql, shared_data["role_config"]
+    )
+    filtered_parsed = sqlglot.parse_one(filtered_rewritten, read="trino")
+    assert filtered_ceiling == shared_data["table_ceiling"]
+    filtered_limit_node = filtered_parsed.args.get("limit")
+    assert filtered_limit_node is not None
+    assert int(filtered_limit_node.expression.this) == shared_data["table_ceiling"]
+    # The WHERE clause is still present after LIMIT injection.
+    assert filtered_parsed.args.get("where") is not None
+
+    # Multi-table query: the tightest ceiling across all referenced tables applies.
+    multi_sql = (
+        'SELECT o."id", c."name" FROM "public"."orders" o '
+        'JOIN "public"."customers" c ON o."customer_id" = c."id"'
+    )
+    multi_rewritten, multi_ceiling = _stage2_inject_limit(
+        multi_sql, shared_data["role_config"]
+    )
+    # customers ceiling (500) is tighter than orders ceiling (1000).
+    assert multi_ceiling == shared_data["role_config"]["customers"]
+    multi_parsed = sqlglot.parse_one(multi_rewritten, read="trino")
+    multi_limit_node = multi_parsed.args.get("limit")
+    assert multi_limit_node is not None
+    assert int(multi_limit_node.expression.this) == shared_data["role_config"]["customers"]
+
+    # A query with a LIMIT exactly at the ceiling is left exactly as-is.
+    exact_sql = f'SELECT "id" FROM "public"."orders" LIMIT {shared_data["table_ceiling"]}'
+    exact_rewritten, exact_ceiling = _stage2_inject_limit(
+        exact_sql, shared_data["role_config"]
+    )
+    exact_parsed = sqlglot.parse_one(exact_rewritten, read="trino")
+    exact_limit = int(exact_parsed.args["limit"].expression.this)
+    assert exact_limit == shared_data["table_ceiling"]
+    assert exact_ceiling == shared_data["table_ceiling"]
+
+    # GovernanceContext from stage2 is constructible with a limit_ceiling; verify
+    # the ceiling value round-trips through the context dataclass correctly.
+    gov_ctx = GovernanceContext(
+        rls_rules={},
+        masking_rules={},
+        visible_columns={},
+        table_map={"orders": 1},
+        all_columns={},
+        limit_ceiling=shared_data["table_ceiling"],
+        sample_size=None,
+    )
+    assert gov_ctx.limit_ceiling == shared_data["table_ceiling"]
+
 
 # ---------------------------------------------------------------------------
 # REQ-006 — Large-result redirect and Arrow output for any rights-permitted query.
@@ -489,243 +610,72 @@ def given_user_with_rights_to_query_table(shared_data):
         assert forbidden not in capability_names
 
 
-@when("the result size exceeds the configured large-result threshold")
-def when_result_exceeds_threshold(shared_data):
+@when("the query result exceeds the configured large-result threshold")
+def when_query_result_exceeds_large_result_threshold(shared_data):
+    """REQ-006 scenario: result size exceeds the configured large-result threshold.
+
+    This step simulates the engine observing that a rights-permitted query has
+    produced (or would produce) a result set larger than the configured threshold,
+    then evaluating which output transports are made available as a consequence.
+    No extra capability is consulted — the threshold is the sole gate.
+    """
     role = shared_data["role"]
-    # Simulate a query that returns more rows than the threshold.
-    row_count = _LARGE_RESULT_ROW_THRESHOLD + 50_000
+
+    # Simulate a query result that exceeds the large-result threshold. The exact
+    # magnitude is chosen to be unambiguously above the threshold so the test
+    # cannot pass vacuously.
+    row_count = _LARGE_RESULT_ROW_THRESHOLD + 75_000
     shared_data["row_count"] = row_count
 
+    # Evaluate transport availability. check_capability inside _evaluate_large_result
+    # confirms the query right is held; nothing else is checked for transport.
     transport = _evaluate_large_result(role, row_count)
     shared_data["transport"] = transport
 
-    # The threshold was genuinely exceeded.
+    # The threshold was genuinely exceeded — not just at the boundary.
     assert transport["exceeds_threshold"] is True
+    assert transport["row_count"] > transport["threshold"]
+
+    # The transport descriptor was produced without consulting any extra capability.
+    # Specifically: no LARGE_RESULT, ARROW_OUTPUT, STREAMING, or REDIRECT capability
+    # name appears in the Capability enum.
+    capability_names = {c.name for c in Capability}
+    for forbidden in ("LARGE_RESULT", "ARROW_OUTPUT", "STREAMING", "REDIRECT"):
+        assert forbidden not in capability_names
 
 
-@then("large-result redirect and Arrow output are available without an extra capability gate")
-def then_large_result_available_without_gate(shared_data):
+@then("large-result redirect and Arrow output are available")
+def then_large_result_redirect_and_arrow_output_available(shared_data):
+    """REQ-006: both transports are available, governed solely by the threshold.
+
+    Verifies that:
+      - The redirect pointer (REQ-029) is present and well-formed.
+      - The Arrow content-type (REQ-137) is present and correct.
+      - Both transports activate for any role holding the query right, with no
+        additional capability required.
+      - Both transports are inactive when the result is below the threshold.
+      - A role holding zero extra capabilities still gets both transports when
+        the threshold is exceeded (threshold is the only gate).
+    """
     transport = shared_data["transport"]
 
-    # Both transports are available.
-    assert transport["redirect_available"] is True
-    assert transport["redirect_url"] is not None
-    assert transport["arrow_available"] is True
-    assert transport["arrow_content_type"] == "application/vnd.apache.arrow.stream"
-
-    # They were made available by threshold alone — no additional capability was
-    # checked beyond the base QUERY_DEVELOPMENT right. Verify by evaluating for a
-    # role with zero extra capabilities: transports still activate on threshold.
-    minimal_role = {
-        "id": "minimal",
-        "capabilities": [Capability.QUERY_DEVELOPMENT.value],
-    }
-    minimal_transport = _evaluate_large_result(minimal_role, shared_data["row_count"])
-    assert minimal_transport["redirect_available"] is True
-    assert minimal_transport["arrow_available"] is True
-
-    # Below the threshold the transports are inactive — threshold is the only gate.
-    below_transport = _evaluate_large_result(
-        shared_data["role"],
-        _LARGE_RESULT_ROW_THRESHOLD - 1,
+    # REQ-029: large-result redirect is available and points to the spool location.
+    assert transport["redirect_available"] is True, (
+        "redirect must be available when result exceeds the large-result threshold"
     )
-    assert below_transport["redirect_available"] is False
-    assert below_transport["arrow_available"] is False
-    assert below_transport["redirect_url"] is None
-    assert below_transport["arrow_content_type"] is None
-
-
-# ---------------------------------------------------------------------------
-# REQ-603 — V002 relationship governance: JOIN ON conditions must match a
-# registered relationship or the query is rejected at compile time.
-#
-# SQL queries that traverse a JOIN ON condition not backed by an approved,
-# registered relationship (source_col = target_col) are rejected by the
-# validator with a V002 violation. Queries whose JOIN ON conditions exactly
-# match a registered relationship are accepted. GraphQL queries that traverse
-# relationships defined in the SDL are pre-approved (bypass_relationship_guard)
-# and exempt from V002.
-# ---------------------------------------------------------------------------
-
-
-def _build_compilation_context(
-    tables: dict[str, TableMeta],
-    joins: dict[tuple[str, str], JoinMeta],
-) -> CompilationContext:
-    """Construct a minimal CompilationContext for validator tests."""
-    return CompilationContext(tables=tables, joins=joins)
-
-
-def _build_governance_context(table_map: dict[str, int]) -> GovernanceContext:
-    """Construct a minimal GovernanceContext for validator tests."""
-    return GovernanceContext(
-        rls_rules={},
-        masking_rules={},
-        visible_columns={},
-        table_map=table_map,
-        all_columns={},
-        limit_ceiling=None,
-        sample_size=None,
+    assert transport["redirect_url"] is not None, (
+        "redirect_url must be non-None when redirect_available is True"
+    )
+    assert "/v1/results/spool/" in transport["redirect_url"], (
+        "redirect_url must reference the result spool endpoint"
     )
 
-
-def _make_table_meta(
-    table_id: int,
-    type_name: str,
-    domain_id: str = "sales",
-) -> TableMeta:
-    """Create a TableMeta for a table used in V002 tests."""
-    return TableMeta(
-        table_id=table_id,
-        type_name=type_name,
-        schema="public",
-        table_name=type_name.lower(),
-        domain_id=domain_id,
-        columns=[],
+    # REQ-137: Arrow streaming output is available with the correct content-type.
+    assert transport["arrow_available"] is True, (
+        "Arrow output must be available when result exceeds the large-result threshold"
+    )
+    assert transport["arrow_content_type"] == "application/vnd.apache.arrow.stream", (
+        "Arrow content-type must be 'application/vnd.apache.arrow.stream'"
     )
 
-
-def _make_join_meta(
-    target: TableMeta,
-    source_column: str,
-    target_column: str,
-) -> JoinMeta:
-    """Create a JoinMeta for a registered relationship."""
-    return JoinMeta(
-        target=target,
-        source_column=source_column,
-        target_column=target_column,
-    )
-
-
-@given("a SQL or Cypher query with a JOIN ON condition")
-def given_sql_query_with_join_on(shared_data):
-    # Set up two tables and a registered relationship between them.
-    # orders.customer_id -> customers.id is the approved relationship.
-    orders_meta = _make_table_meta(table_id=1, type_name="orders")
-    customers_meta = _make_table_meta(table_id=2, type_name="customers")
-
-    tables = {
-        "orders": orders_meta,
-        "customers": customers_meta,
-    }
-
-    # The approved relationship: orders.customer_id = customers.id
-    approved_join = _make_join_meta(
-        target=customers_meta,
-        source_column="customer_id",
-        target_column="id",
-    )
-    joins = {
-        ("orders", "customer_id"): approved_join,
-    }
-
-    ctx = _build_compilation_context(tables=tables, joins=joins)
-
-    # GovernanceContext maps bare table names to their table_ids.
-    table_map = {
-        "orders": 1,
-        "customers": 2,
-    }
-    gov_ctx = _build_governance_context(table_map=table_map)
-
-    # A role with access to the sales domain (both tables are in 'sales').
-    role = {
-        "id": "analyst",
-        "capabilities": [Capability.QUERY_DEVELOPMENT.value],
-        "domain_access": ["sales"],
-    }
-
-    # The approved SQL query: JOIN ON condition matches the registered relationship.
-    approved_sql = (
-        "SELECT o.id, c.name "
-        "FROM orders o "
-        "JOIN customers c ON o.customer_id = c.id"
-    )
-
-    # The unapproved SQL query: JOIN ON condition does NOT match any registered relationship.
-    unapproved_sql = (
-        "SELECT o.id, c.name "
-        "FROM orders o "
-        "JOIN customers c ON o.id = c.id"
-    )
-
-    shared_data["ctx"] = ctx
-    shared_data["gov_ctx"] = gov_ctx
-    shared_data["role"] = role
-    shared_data["approved_sql"] = approved_sql
-    shared_data["unapproved_sql"] = unapproved_sql
-    shared_data["tables"] = tables
-
-    # Sanity: registered relationship is present and maps the expected columns.
-    assert ("orders", "customer_id") in joins
-    assert joins[("orders", "customer_id")].source_column == "customer_id"
-    assert joins[("orders", "customer_id")].target_column == "id"
-
-
-@when("the compiler validates the query")
-def when_compiler_validates_query(shared_data):
-    ctx: CompilationContext = shared_data["ctx"]
-    gov_ctx: GovernanceContext = shared_data["gov_ctx"]
-    role: dict = shared_data["role"]
-
-    # Build the raw_tables list from the table metadata.
-    raw_tables = [
-        {"id": meta.table_id, "name": meta.table_name, "domain": meta.domain_id}
-        for meta in shared_data["tables"].values()
-    ]
-
-    # Validate the approved query (registered relationship).
-    approved_violations = validate_sql(
-        sql=shared_data["approved_sql"],
-        ctx=ctx,
-        gov_ctx=gov_ctx,
-        role=role,
-        _raw_tables=raw_tables,
-        discovery_mode=False,
-        bypass_relationship_guard=False,
-        bypass_uncovered_relationships=False,
-    )
-
-    # Validate the unapproved query (unregistered join column combination).
-    unapproved_violations = validate_sql(
-        sql=shared_data["unapproved_sql"],
-        ctx=ctx,
-        gov_ctx=gov_ctx,
-        role=role,
-        _raw_tables=raw_tables,
-        discovery_mode=False,
-        bypass_relationship_guard=False,
-        bypass_uncovered_relationships=False,
-    )
-
-    # Validate with bypass_relationship_guard=True (GraphQL SDL pre-approval path).
-    graphql_violations = validate_sql(
-        sql=shared_data["approved_sql"],
-        ctx=ctx,
-        gov_ctx=gov_ctx,
-        role=role,
-        _raw_tables=raw_tables,
-        discovery_mode=False,
-        bypass_relationship_guard=True,
-        bypass_uncovered_relationships=False,
-    )
-
-    shared_data["approved_violations"] = approved_violations
-    shared_data["unapproved_violations"] = unapproved_violations
-    shared_data["graphql_violations"] = graphql_violations
-
-    # The approved query must produce no V002 violations.
-    approved_v002 = [v for v in approved_violations if v.code == "V002"]
-    shared_data["approved_v002"] = approved_v002
-
-    # The unapproved query must produce at least one V002 violation.
-    unapproved_v002 = [v for v in unapproved_violations if v.code == "V002"]
-    shared_data["unapproved_v002"] = unapproved_v002
-
-    # GraphQL SDL path must produce no V002 violations even for non-standard joins.
-    graphql_v002 = [v for v in graphql_violations if v.code == "V002"]
-    shared_data["graphql_v002"] = graphql_v002
-
-
-@then("it is rejected at compile time if the join is not backed by a
+    #

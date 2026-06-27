@@ -229,8 +229,7 @@ def consumer_queries_view(shared_data: dict) -> None:
 
 
 @then(
-    "RLS, masking, sampling, and role-based visibility are enforced "
-    "identically to a table"
+    "RLS, masking, sampling, and role-based visibility are enforced identically to a table"
 )
 def enforced_identically(shared_data: dict) -> None:
     consumer_view = shared_data["consumer_view_fields"]
@@ -272,9 +271,17 @@ def view_with_materialize(shared_data: dict) -> None:
     materialized_registry.register(mv)
     assert materialized_registry.get("mv-orders-customers-view") is mv
 
+    # Confirm the MV is fresh and within its TTL so get_fresh() returns it.
+    assert mv.status == MVStatus.FRESH
+    assert mv.is_fresh_at(time.time()) is True
+    fresh_list = materialized_registry.get_fresh()
+    assert len(fresh_list) == 1
+    assert fresh_list[0].id == "mv-orders-customers-view"
+
     # A live (non-materialized) view has no backing MV — it runs as a live
     # subquery via Trino, so its registry is empty of fresh MVs.
     live_registry = MVRegistry()
+    assert live_registry.get_fresh() == []
 
     shared_data["materialized_registry"] = materialized_registry
     shared_data["live_registry"] = live_registry
@@ -301,7 +308,7 @@ def the_view_is_queried(shared_data: dict) -> None:
 
 @then(
     "it is served from the periodically refreshed materialized view; "
-    "views without that flag run as live subqueries"
+    "views without that flag\n    run as live subqueries"
 )
 def served_from_mv_or_live(shared_data: dict) -> None:
     materialized_result = shared_data["materialized_result"]
@@ -332,3 +339,32 @@ def served_from_mv_or_live(shared_data: dict) -> None:
     # 3. The two paths produce genuinely different execution plans, proving the
     #    materialize flag governs MV-vs-live behaviour.
     assert materialized_result.sql != live_result.sql
+
+    # 4. Verify that a stale MV also falls back to live subquery execution,
+    #    confirming that only a *periodically refreshed* (fresh) MV is served.
+    stale_mv = _materialized_view_mv()
+    stale_mv.status = MVStatus.STALE
+    stale_result = rewrite_if_mv_match(shared_data["compiled"], [stale_mv])
+    assert stale_result.sql == _VIEW_JOIN_SQL, (
+        "A stale materialized view must not be served; query must fall back to "
+        f"live subquery. Got: {stale_result.sql}"
+    )
+    assert "mv_cache" not in stale_result.sql
+
+    # 5. Verify that a TTL-expired MV (status FRESH but last_refresh_at beyond
+    #    the refresh_interval) is not served — falls back to live subquery.
+    expired_mv = _materialized_view_mv()
+    expired_mv.last_refresh_at = time.time() - (expired_mv.refresh_interval + 60)
+    # is_fresh_at must report False for the expired MV.
+    assert expired_mv.is_fresh_at(time.time()) is False
+    # get_fresh() on a registry containing only the expired MV returns empty.
+    expired_registry = MVRegistry()
+    expired_registry.register(expired_mv)
+    expired_fresh = expired_registry.get_fresh()
+    assert expired_fresh == [], (
+        "A TTL-expired MV must not appear in get_fresh(); "
+        f"got: {[m.id for m in expired_fresh]}"
+    )
+    expired_result = rewrite_if_mv_match(shared_data["compiled"], expired_fresh)
+    assert expired_result.sql == _VIEW_JOIN_SQL
+    assert "mv_cache" not in expired_result.sql

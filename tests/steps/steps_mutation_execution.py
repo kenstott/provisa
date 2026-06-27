@@ -198,4 +198,284 @@ def _build_restricted_schema():
 
 
 def _find_insert_field(schema):
-    """Locate the generated insert
+    """Locate the generated insert mutation field for orders in the schema."""
+    mutation_type = schema.mutation_type
+    assert mutation_type is not None, "schema has no mutation type"
+    fields = mutation_type.fields
+    insert_field = None
+    for name, field_def in fields.items():
+        if "insert" in name.lower() and "order" in name.lower():
+            insert_field = (name, field_def)
+            break
+    assert insert_field is not None, f"no insert field found in mutation type; fields={list(fields)}"
+    return insert_field
+
+
+@given("a user whose role excludes certain columns")
+def given_user_role_excludes_columns(shared_data):
+    """Set up an analyst role schema where 'region' is excluded from visibility."""
+    si, schema, ctx = _build_restricted_schema()
+    shared_data["schema_input"] = si
+    shared_data["schema"] = schema
+    shared_data["ctx"] = ctx
+    shared_data["source_types"] = {"sales-pg": "postgresql"}
+    # Record which column is excluded for this role
+    shared_data["excluded_column"] = "region"
+    # Record which columns are permitted for this role
+    shared_data["permitted_columns"] = ["id", "amount"]
+
+
+@when("a mutation input type is generated for that role")
+def when_mutation_input_type_generated(shared_data):
+    """Inspect the generated schema mutation input type for the restricted role."""
+    schema = shared_data["schema"]
+
+    # Find the insert mutation field
+    insert_field_name, insert_field_def = _find_insert_field(schema)
+    shared_data["insert_field_name"] = insert_field_name
+    shared_data["insert_field_def"] = insert_field_def
+
+    # Locate the input type used for the 'input' argument of the insert mutation
+    input_arg = insert_field_def.args.get("input")
+    assert input_arg is not None, (
+        f"insert mutation field '{insert_field_name}' has no 'input' argument; "
+        f"args={list(insert_field_def.args)}"
+    )
+
+    # Unwrap NonNull / List wrappers to get the named input type
+    input_type = input_arg.type
+    # Unwrap NonNull
+    if hasattr(input_type, "of_type"):
+        input_type = input_type.of_type
+    # Unwrap List if present
+    if hasattr(input_type, "of_type") and hasattr(input_type, "fields") is False:
+        inner = getattr(input_type, "of_type", None)
+        if inner is not None:
+            input_type = inner
+
+    shared_data["input_type"] = input_type
+
+    # Collect the field names present on the input type
+    if hasattr(input_type, "fields") and input_type.fields:
+        input_field_names = list(input_type.fields.keys())
+    else:
+        # Some wrappers expose fields via .of_type; try one more level
+        inner = getattr(input_type, "of_type", input_type)
+        assert hasattr(inner, "fields") and inner.fields, (
+            f"Could not resolve input type fields from {input_type!r}"
+        )
+        input_field_names = list(inner.fields.keys())
+
+    shared_data["input_field_names"] = input_field_names
+
+
+@then(
+    "excluded columns are absent from the input type and references to them are rejected at\n"
+    "    parse time"
+)
+def then_excluded_columns_absent_and_rejected(shared_data):
+    """Verify that 'region' is absent from the input type and rejected by the validator."""
+    schema = shared_data["schema"]
+    excluded_column = shared_data["excluded_column"]
+    permitted_columns = shared_data["permitted_columns"]
+    input_field_names = shared_data["input_field_names"]
+    insert_field_name = shared_data["insert_field_name"]
+
+    # 1. The excluded column must not appear in the generated input type.
+    assert excluded_column not in input_field_names, (
+        f"Excluded column '{excluded_column}' is present in the mutation input type fields: "
+        f"{input_field_names}"
+    )
+
+    # 2. At least one permitted column must appear in the input type.
+    for col in permitted_columns:
+        assert col in input_field_names, (
+            f"Permitted column '{col}' is missing from mutation input type fields: "
+            f"{input_field_names}"
+        )
+
+    # 3. A mutation that references the excluded column must be rejected at parse/validate time.
+    #    Build a GraphQL document that attempts to set the excluded 'region' column.
+    excluded_mutation_src = (
+        f"mutation {{ {insert_field_name}(input: {{ amount: 10.0, {excluded_column}: \"eu-west\" }}) "
+        f"{{ affected_rows }} }}"
+    )
+    excluded_doc = parse(excluded_mutation_src)
+    validation_errors = validate(schema, excluded_doc)
+    assert validation_errors, (
+        f"Expected validation errors when referencing excluded column '{excluded_column}' "
+        f"in mutation input, but got none. "
+        f"Input type fields: {input_field_names}"
+    )
+
+    # 4. Verify the validation error message mentions the excluded field, confirming the
+    #    rejection is specifically about the disallowed column reference.
+    error_messages = " ".join(str(e) for e in validation_errors)
+    assert excluded_column in error_messages.lower() or any(
+        excluded_column in str(e).lower() for e in validation_errors
+    ), (
+        f"Validation errors do not mention the excluded column '{excluded_column}': "
+        f"{error_messages}"
+    )
+
+    # 5. A mutation using only permitted columns must validate successfully.
+    permitted_mutation_src = (
+        f"mutation {{ {insert_field_name}(input: {{ amount: 10.0 }}) "
+        f"{{ affected_rows }} }}"
+    )
+    permitted_doc = parse(permitted_mutation_src)
+    permitted_errors = validate(schema, permitted_doc)
+    assert not permitted_errors, (
+        f"Mutation with only permitted columns failed validation: {permitted_errors}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-035 — RLS injection into UPDATE and DELETE
+# ---------------------------------------------------------------------------
+
+
+def _build_rls_schema_and_ctx():
+    """Build schema and context for RLS injection tests."""
+    tables = [
+        {
+            "id": 1,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "orders",
+            "governance": "pre-approved",
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "amount", "visible_to": ["admin"]},
+                {"column_name": "region", "visible_to": ["admin"]},
+                {"column_name": "user_id", "visible_to": ["admin"]},
+            ],
+        },
+    ]
+    column_types = {
+        1: [
+            _col("id", "integer"),
+            _col("amount", "decimal(10,2)"),
+            _col("region", "varchar(50)"),
+            _col("user_id", "integer"),
+        ],
+    }
+    si = SchemaInput(
+        tables=tables,
+        relationships=[],
+        column_types=column_types,
+        naming_rules=[],
+        role={"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]},
+        domains=[{"id": "sales", "description": "Sales"}],
+        source_types={"sales-pg": "postgresql"},
+    )
+    schema = generate_schema(si)
+    ctx = build_context(si)
+    return si, schema, ctx
+
+
+@given("a table with RLS rules configured")
+def given_table_with_rls(shared_data):
+    si, schema, ctx = _build_rls_schema_and_ctx()
+    shared_data["schema_input"] = si
+    shared_data["schema"] = schema
+    shared_data["ctx"] = ctx
+    shared_data["source_types"] = {"sales-pg": "postgresql"}
+    # Define RLS clauses that should be injected: restrict to a specific user
+    shared_data["rls_clauses"] = ['user_id = 42']
+
+
+@when("an UPDATE or DELETE mutation is compiled")
+def when_update_or_delete_compiled(shared_data):
+    schema = shared_data["schema"]
+    ctx = shared_data["ctx"]
+    source_types = shared_data["source_types"]
+    rls_clauses = shared_data["rls_clauses"]
+
+    # Compile an UPDATE mutation
+    update_doc = parse("""
+        mutation { updateOrders(set: { amount: 99.0 }, where: { id: { eq: 1 } }) { affected_rows } }
+    """)
+    update_errors = validate(schema, update_doc)
+    assert not update_errors, f"UPDATE mutation did not validate: {update_errors}"
+    update_results = compile_mutation(update_doc, ctx, source_types)
+    assert update_results, "compile_mutation returned no results for UPDATE"
+    update_compiled = update_results[0]
+    assert update_compiled.mutation_type == "update", (
+        f"expected mutation_type='update', got {update_compiled.mutation_type!r}"
+    )
+
+    # Compile a DELETE mutation
+    delete_doc = parse("""
+        mutation { deleteOrders(where: { id: { eq: 5 } }) { affected_rows } }
+    """)
+    delete_errors = validate(schema, delete_doc)
+    assert not delete_errors, f"DELETE mutation did not validate: {delete_errors}"
+    delete_results = compile_mutation(delete_doc, ctx, source_types)
+    assert delete_results, "compile_mutation returned no results for DELETE"
+    delete_compiled = delete_results[0]
+    assert delete_compiled.mutation_type == "delete", (
+        f"expected mutation_type='delete', got {delete_compiled.mutation_type!r}"
+    )
+
+    # Apply RLS injection to both compiled mutations
+    update_with_rls = inject_rls_into_mutation(update_compiled, rls_clauses)
+    delete_with_rls = inject_rls_into_mutation(delete_compiled, rls_clauses)
+
+    shared_data["update_compiled"] = update_compiled
+    shared_data["delete_compiled"] = delete_compiled
+    shared_data["update_with_rls"] = update_with_rls
+    shared_data["delete_with_rls"] = delete_with_rls
+
+
+@then("RLS WHERE clauses are injected into the SQL before execution")
+def then_rls_injected_into_sql(shared_data):
+    rls_clause = shared_data["rls_clauses"][0]
+    update_with_rls = shared_data["update_with_rls"]
+    delete_with_rls = shared_data["delete_with_rls"]
+    update_compiled = shared_data["update_compiled"]
+    delete_compiled = shared_data["delete_compiled"]
+
+    # The RLS clause must appear in the final UPDATE SQL
+    assert rls_clause in update_with_rls.sql, (
+        f"RLS clause {rls_clause!r} not found in UPDATE SQL: {update_with_rls.sql!r}"
+    )
+
+    # The RLS clause must appear in the final DELETE SQL
+    assert rls_clause in delete_with_rls.sql, (
+        f"RLS clause {rls_clause!r} not found in DELETE SQL: {delete_with_rls.sql!r}"
+    )
+
+    # The RLS-injected SQL must still contain the original WHERE condition
+    assert "WHERE" in update_with_rls.sql, (
+        f"WHERE keyword missing from RLS-injected UPDATE SQL: {update_with_rls.sql!r}"
+    )
+    assert "WHERE" in delete_with_rls.sql, (
+        f"WHERE keyword missing from RLS-injected DELETE SQL: {delete_with_rls.sql!r}"
+    )
+
+    # The RLS injection must not break the write-statement classification
+    assert _WRITE_RE.match(update_with_rls.sql), (
+        "RLS-injected UPDATE SQL is no longer classified as a write statement"
+    )
+    assert _WRITE_RE.match(delete_with_rls.sql), (
+        "RLS-injected DELETE SQL is no longer classified as a write statement"
+    )
+
+    # The original (pre-injection) SQL must differ from the injected SQL,
+    # confirming the injection actually modified the statement
+    assert update_with_rls.sql != update_compiled.sql, (
+        "inject_rls_into_mutation did not modify UPDATE SQL"
+    )
+    assert delete_with_rls.sql != delete_compiled.sql, (
+        "inject_rls_into_mutation did not modify DELETE SQL"
+    )
+
+    # Both injected mutations must still target the correct source
+    assert update_with_rls.source_id == "sales-pg", (
+        f"RLS-injected UPDATE has wrong source_id: {update_with_rls.source_id!r}"
+    )
+    assert delete_with_rls.source_id == "sales-pg", (
+        f"RLS-injected DELETE has wrong source_id: {delete_with_rls.source_id!r}"
+    )

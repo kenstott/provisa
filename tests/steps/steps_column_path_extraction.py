@@ -310,6 +310,18 @@ def given_table_with_path_columns(shared_data):
     assert pg_paths, "expected JSON path columns registered for the PostgreSQL table"
     assert any(expr.startswith("payload") for expr in pg_paths.values())
 
+    # Also verify each non-PG source registers path columns correctly.
+    for src in shared_data["non_pg_sources"]:
+        si_src = _make_routed_schema_input(src["source_id"], src["source_type"], src["table_name"])
+        ctx_src = build_context(si_src)
+        src_paths = {gql: expr for (tid, gql), expr in ctx_src.column_paths.items() if tid == 1}
+        assert src_paths, (
+            f"expected JSON path columns registered for non-PG source {src['source_id']}"
+        )
+        assert any(expr.startswith("payload") for expr in src_paths.values()), (
+            f"path expressions for {src['source_id']} do not reference payload column"
+        )
+
 
 @when("the query engine routes a query")
 def when_engine_routes_query(shared_data):
@@ -336,9 +348,18 @@ def then_routing_rules(shared_data):
         "json_extract_scalar" not in pg_sql.lower()
     ), f"PostgreSQL direct route must not use Trino json_extract_scalar: {pg_sql}"
 
+    # Verify the PG source is represented in compiled.sources.
+    pg_source_id = shared_data["pg_source"]["source_id"]
+    assert pg_source_id in pg_compiled.sources, (
+        f"compiled.sources {pg_compiled.sources} missing PG source {pg_source_id}"
+    )
+
     # The PG-direct SQL must transpile cleanly to Trino if ever rerouted.
     pg_trino = sqlglot.transpile(pg_sql, read="postgres", write="trino")
-    assert pg_trino and "json_extract_scalar" in pg_trino[0].lower()
+    assert pg_trino, "SQLGlot produced no Trino output for PG SQL"
+    assert "json_extract_scalar" in pg_trino[0].lower(), (
+        f"transpiled PG→Trino SQL missing json_extract_scalar: {pg_trino[0]}"
+    )
 
     # --- Non-PG sources: forced through Trino → json_extract_scalar. ---
     non_pg_compiled = shared_data["non_pg_compiled"]
@@ -365,4 +386,13 @@ def then_routing_rules(shared_data):
         )
 
     # PostgreSQL and non-PG sources must be distinct routing populations.
-    assert shared_data["pg_source"]["source_id"] not in non_pg_compiled
+    assert pg_source_id not in non_pg_compiled, (
+        f"PG source {pg_source_id} incorrectly appeared in non-PG compiled results"
+    )
+
+    # Confirm the three non-PG sources are all accounted for.
+    expected_non_pg_ids = {src["source_id"] for src in shared_data["non_pg_sources"]}
+    actual_non_pg_ids = set(non_pg_compiled.keys())
+    assert expected_non_pg_ids == actual_non_pg_ids, (
+        f"non-PG source mismatch: expected {expected_non_pg_ids}, got {actual_non_pg_ids}"
+    )

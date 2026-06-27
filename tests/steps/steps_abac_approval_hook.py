@@ -323,7 +323,7 @@ def then_hook_skipped(shared_data):
 
 
 # ---------------------------------------------------------------------------
-# Steps — REQ-555
+# Helpers — REQ-555 fake gRPC infrastructure
 # ---------------------------------------------------------------------------
 
 
@@ -362,6 +362,11 @@ def _install_fake_grpc(channel_calls: dict, stub: object):
         "provisa.auth.approval_pb2": fake_pb2,
     }
     return modules, fake_channel, stub_ctor
+
+
+# ---------------------------------------------------------------------------
+# Steps — REQ-555
+# ---------------------------------------------------------------------------
 
 
 @given("a Provisa instance configured with gRPC approval hook")

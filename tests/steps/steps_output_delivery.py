@@ -476,6 +476,7 @@ def results_delivered_as_arrow_record_batches(shared_data):
     that round-trip from the Arrow IPC stream with the original columnar schema
     and row data fully intact — i.e. no JSON/CSV intermediate serialization."""
     table = shared_data["arrow_table"]
+    ipc_buffer = shared_data["arrow_ipc"]
     rows = shared_data["rows"]
 
     # The native Arrow table must expose record batches — the unit of transfer
@@ -492,3 +493,34 @@ def results_delivered_as_arrow_record_batches(shared_data):
     assert "id" in table.column_names
     assert "amount" in table.column_names
     assert "name" in table.column_names
+
+    # Round-trip the IPC buffer through an Arrow IPC stream reader to confirm
+    # the Flight-compatible wire format is self-contained and lossless.
+    reader = pa.ipc.open_stream(pa.BufferReader(ipc_buffer))
+    rt_table = reader.read_all()
+
+    assert rt_table.num_rows == len(rows)
+    assert set(rt_table.column_names) == set(table.column_names)
+
+    # Verify column values round-trip without mutation (no text serialization).
+    rt_ids = rt_table.column("id").to_pylist()
+    rt_names = rt_table.column("name").to_pylist()
+    assert rt_ids == [row[0] for row in rows]
+    assert rt_names == [row[2] for row in rows]
+
+    # Confirm there is no textual/JSON encoding in the IPC payload: the buffer
+    # should begin with the Arrow magic bytes (b"ARROW1"), not a JSON brace or
+    # any printable ASCII sequence indicating CSV/JSON encoding.
+    magic = ipc_buffer[:6]
+    assert magic == b"ARROW1", (
+        f"Arrow IPC stream must start with magic b'ARROW1', got {magic!r} — "
+        "this indicates intermediate (non-Arrow-native) serialization"
+    )
+
+    # Each individual record batch in the round-tripped table must carry the
+    # full columnar schema — verifying batch-level Arrow Flight compatibility.
+    rt_batches = rt_table.to_batches()
+    assert rt_batches, "round-tripped IPC must yield at least one record batch"
+    for rt_batch in rt_batches:
+        assert isinstance(rt_batch, pa.RecordBatch)
+        assert rt_batch.schema.equals(rt_table.schema)

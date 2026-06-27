@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: dd477e5f-91f7-48f6-ba91-07ff1b054990
+# Canary: {canary}
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -16,6 +16,8 @@ REQ-542: Ordered regex naming rules are applied to table names in order when
 """
 
 from __future__ import annotations
+
+import re as _re
 
 import pytest
 from graphql import GraphQLEnumType, GraphQLInputObjectType
@@ -177,8 +179,6 @@ def then_rules_applied_in_order(shared_data: dict) -> None:
     assert not generated["prod_pg_raw_orders"].startswith("prod_pg_"), generated
 
     # All generated names must be valid GraphQL identifiers (no leftover prefixes).
-    import re as _re
-
     for original, name in generated.items():
         assert _re.fullmatch(r"[_A-Za-z][_0-9A-Za-z]*", name), (
             f"{original!r} produced invalid GraphQL name {name!r}"

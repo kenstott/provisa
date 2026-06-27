@@ -351,3 +351,25 @@ async def then_auto_registered_reusable(
     assert denied["executed"] is False
     assert denied["registered"] is False
     assert await apq_cache.get(forbidden_hash) is None
+
+    # Verify the automatic nature: no steward-owned allow-list is consulted.
+    # The same cache used for permitted execution holds the entry — confirming
+    # the registration path is purely a side-effect of successful execution,
+    # not a separate administrative step.
+    second_query = "{ products { id name price } }"
+    second_hash = compute_apq_hash(second_query)
+    assert await apq_cache.get(second_hash) is None
+    auto_result = await _execute_permitted_query(
+        apq_cache, second_query, permitted=True
+    )
+    assert auto_result["registered"] is True
+    assert auto_result["hash"] == second_hash
+    second_stored = await apq_cache.get(second_hash)
+    assert second_stored == second_query
+    assert compute_apq_hash(second_stored) == second_hash
+
+    # Confirm the second query is also reusable by hash immediately.
+    second_followup = await _apq_request(apq_cache, second_hash, query=None)
+    assert second_followup["executed"] is True
+    assert second_followup["from_cache"] is True
+    assert second_followup["data"]["executed_query"] == second_query

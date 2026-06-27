@@ -53,6 +53,20 @@ def _run_algorithm(G, algorithm: str) -> dict[Any, dict]:
     if algorithm == "betweenness_centrality":
         scores = nx.betweenness_centrality(G)
         return {n: {"score": s} for n, s in scores.items()}
+    if algorithm == "louvain_communities":
+        import networkx.algorithms.community as nx_comm
+
+        undirected = G.to_undirected()
+        communities = nx_comm.louvain_communities(undirected)
+        result = {}
+        for cluster_id, community in enumerate(communities):
+            for node in community:
+                result[node] = {"cluster": cluster_id}
+        return result
+    if algorithm == "k_core":
+        undirected = G.to_undirected()
+        core_numbers = nx.core_number(undirected)
+        return {n: {"core_number": c} for n, c in core_numbers.items()}
     if algorithm == "degree_centrality":
         degree_c = nx.degree_centrality(G)
         in_degree = dict(G.in_degree())

@@ -66,12 +66,14 @@ Row-level deduplication across branches is not performed.
 from __future__ import annotations
 
 import json
+import os
+import re
 
 import pytest
 import sqlglot
 from pytest_bdd import given, when, then, scenarios
 
-from provisa.cypher.parser import parse_cypher
+from provisa.cypher.parser import parse_cypher, extract_parameters, CypherParseError
 from provisa.cypher.label_map import (
     CypherLabelMap,
     NodeMapping,
@@ -82,6 +84,11 @@ import provisa.cypher.translator as _translator_mod
 from provisa.api.rest.cypher_router import _detect_procedure, _handle_procedure
 
 
+scenarios("../features/req_345_cypher_query_frontend_phase_au.feature")
+scenarios("../features/req_347_cypher_query_frontend_phase_au.feature")
+scenarios("../features/req_348_cypher_query_frontend_phase_au.feature")
+scenarios("../features/req_349_cypher_query_frontend_phase_au.feature")
+scenarios("../features/req_352_cypher_query_frontend_phase_au.feature")
 scenarios("../features/req_353_cypher_cross_source.feature")
 scenarios("../features/req_572_cypher_query_frontend_phase_au.feature")
 scenarios("../features/req_573_cypher_query_frontend_phase_au.feature")
@@ -158,88 +165,38 @@ def _translate(query: str, label_map: CypherLabelMap) -> str:
         return cypher_to_sql(parse_cypher(query), label_map)
 
 
-# ---------------------------------------------------------------------------
-# REQ-353 — cross-source Cypher queries are allowed (no restriction enforced)
-# ---------------------------------------------------------------------------
-
-
-@given("a Cypher query whose node labels resolve to tables on different Trino catalogs")
-def given_cross_catalog_query(shared_data: dict) -> None:
-    label_map = _make_cross_catalog_label_map()
-
-    # Sanity check: the two labels genuinely resolve to distinct catalogs/sources.
-    person = label_map.nodes["Person"]
-    company = label_map.nodes["Company"]
-    assert person.catalog_name != company.catalog_name, (
-        "test setup must place the two labels on different catalogs"
-    )
-    assert person.source_id != company.source_id
-
-    shared_data["label_map"] = label_map
-    shared_data["query"] = (
-        "MATCH (p:Person)-[:WORKS_AT]->(c:Company) "
-        "RETURN p.name AS person, c.name AS company"
-    )
-
-
-@when("the translator processes it")
-def when_translator_processes(shared_data: dict) -> None:
-    error: Exception | None = None
-    sql: str | None = None
-    try:
-        sql = _translate(shared_data["query"], shared_data["label_map"])
-    except Exception as exc:  # noqa: BLE001 - we assert no error in the Then step
-        error = exc
-    shared_data["sql"] = sql
-    shared_data["error"] = error
-
-
-@then("it generates a cross-catalog JOIN and executes normally without error")
-def then_cross_catalog_join(shared_data: dict) -> None:
-    # No cross-source restriction must be raised at translation time.
-    assert shared_data["error"] is None, (
-        f"cross-source Cypher must not be rejected, got: {shared_data['error']!r}"
-    )
-
-    sql = shared_data["sql"]
-    assert sql, "translator must produce SQL"
-
-    # The SQL must reference both catalogs by name (cross-catalog references).
-    lowered = sql.lower()
-    assert "postgresql" in lowered, f"expected postgresql catalog in SQL:\n{sql}"
-    assert "mysql" in lowered, f"expected mysql catalog in SQL:\n{sql}"
-
-    # It must be a valid, parseable SQL statement containing a JOIN that the
-    # Trino engine can execute (Trino joins across catalogs natively).
-    parsed = sqlglot.parse_one(sql, read="trino")
-    assert parsed is not None, "generated SQL must parse as Trino SQL"
-
-    joins = list(parsed.find_all(sqlglot.exp.Join))
-    assert joins, f"expected a cross-catalog JOIN in generated SQL:\n{sql}"
-
-    # Confirm the join genuinely spans the two distinct physical tables.
-    table_catalogs = {
-        t.catalog.lower()
-        for t in parsed.find_all(sqlglot.exp.Table)
-        if t.catalog
-    }
-    assert {"postgresql", "mysql"}.issubset(table_catalogs), (
-        f"join must span both catalogs, found catalogs={table_catalogs}\n{sql}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# REQ-572 — introspection procedures return semantic-layer data, no SQL
-# ---------------------------------------------------------------------------
-
-
-def _make_introspection_label_map() -> CypherLabelMap:
-    """Label map with domain + table labels, properties, and relationship types
-    used to verify CALL db.* introspection procedures."""
+def _make_param_label_map() -> CypherLabelMap:
+    """Label map suitable for parameter-binding tests (REQ-352)."""
     person_meta = NodeMapping(
         label="Person",
         type_name="Person",
-        domain_label="SalesPerson",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
+        properties={"name": "name", "age": "age"},
+    )
+    return CypherLabelMap(
+        nodes={"Person": person_meta},
+        relationships={},
+    )
+
+
+def _make_multi_path_label_map() -> CypherLabelMap:
+    """Label map with two 1-hop paths from Person to Company: WORKS_AT and MANAGES.
+
+    This is the canonical fixture for REQ-577: multiple schema paths of equal
+    hop count between the same pair of node types.
+    """
+    person_meta = NodeMapping(
+        label="Person",
+        type_name="Person",
+        domain_label=None,
         table_label="Person",
         table_id=1,
         source_id="pg-main",
@@ -253,7 +210,114 @@ def _make_introspection_label_map() -> CypherLabelMap:
     company_meta = NodeMapping(
         label="Company",
         type_name="Company",
-        domain_label="SalesCompany",
+        domain_label=None,
+        table_label="Company",
+        table_id=2,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="companies",
+        properties={"name": "name"},
+    )
+    rels = {
+        "WORKS_AT": RelationshipMapping(
+            rel_type="WORKS_AT",
+            source_label="Person",
+            target_label="Company",
+            join_source_column="company_id",
+            join_target_column="id",
+            field_name="works_at",
+        ),
+        "MANAGES": RelationshipMapping(
+            rel_type="MANAGES",
+            source_label="Person",
+            target_label="Company",
+            join_source_column="managed_company_id",
+            join_target_column="id",
+            field_name="manages",
+        ),
+    }
+    return CypherLabelMap(
+        nodes={"Person": person_meta, "Company": company_meta},
+        relationships=rels,
+    )
+
+
+def _make_governance_label_map() -> CypherLabelMap:
+    """Label map used for REQ-345 governance tests.
+
+    Provides Person and Company nodes with a WORKS_AT relationship so that the
+    translator can emit a SQL JOIN that Stage 2 governance hooks can act upon.
+    """
+    person_meta = NodeMapping(
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
+        properties={"name": "name", "age": "age", "salary": "salary"},
+    )
+    company_meta = NodeMapping(
+        label="Company",
+        type_name="Company",
+        domain_label=None,
+        table_label="Company",
+        table_id=2,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="companies",
+        properties={"name": "name", "revenue": "revenue"},
+    )
+    works_at_rel = RelationshipMapping(
+        rel_type="WORKS_AT",
+        source_label="Person",
+        target_label="Company",
+        join_source_column="company_id",
+        join_target_column="id",
+        field_name="works_at",
+    )
+    return CypherLabelMap(
+        nodes={"Person": person_meta, "Company": company_meta},
+        relationships={"WORKS_AT": works_at_rel},
+    )
+
+
+def _make_clause_mapping_label_map() -> CypherLabelMap:
+    """Label map for REQ-347 clause-mapping tests.
+
+    Provides Person and Company nodes with a WORKS_AT relationship so that a
+    query exercising MATCH, WHERE, RETURN, ORDER BY, and LIMIT can be translated
+    and each clause's SQL equivalent verified.
+    """
+    person_meta = NodeMapping(
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
+        properties={"name": "name", "age": "age", "company_id": "company_id"},
+    )
+    company_meta = NodeMapping(
+        label="Company",
+        type_name="Company",
+        domain_label=None,
         table_label="Company",
         table_id=2,
         source_id="pg-main",
@@ -278,50 +342,449 @@ def _make_introspection_label_map() -> CypherLabelMap:
     )
 
 
-@given("a client issuing CALL db.labels()")
-def given_call_db_labels(shared_data: dict) -> None:
-    shared_data["label_map"] = _make_introspection_label_map()
-    shared_data["query"] = "CALL db.labels()"
+def _make_path_label_map() -> CypherLabelMap:
+    """Label map for REQ-348 path query tests.
+
+    Provides a Person→Person self-referential KNOWS relationship suitable for
+    variable-length traversal and shortestPath queries.
+    """
+    person_meta = NodeMapping(
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
+        properties={"name": "name", "age": "age"},
+    )
+    knows_rel = RelationshipMapping(
+        rel_type="KNOWS",
+        source_label="Person",
+        target_label="Person",
+        join_source_column="person_id",
+        join_target_column="id",
+        field_name="knows",
+    )
+    return CypherLabelMap(
+        nodes={"Person": person_meta},
+        relationships={"KNOWS": knows_rel},
+    )
 
 
-@when("the cypher router handles it")
-def when_router_handles_procedure(shared_data: dict) -> None:
+def _make_node_return_label_map() -> CypherLabelMap:
+    """Label map for REQ-349 whole-node RETURN tests.
+
+    Provides a Person node with several properties so the Stage 3 rewrite has
+    multiple columns to wrap into a JSON object.
+    """
+    person_meta = NodeMapping(
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
+        properties={"name": "name", "age": "age", "email": "email"},
+    )
+    return CypherLabelMap(
+        nodes={"Person": person_meta},
+        relationships={},
+    )
+
+
+def _make_introspection_label_map() -> CypherLabelMap:
+    """Label map for REQ-572 introspection procedure tests.
+
+    Provides Person and Company nodes with domain labels, properties, and a
+    WORKS_AT relationship so that all three introspection procedures
+    (db.labels, db.relationshipTypes, db.propertyKeys) return meaningful data.
+    """
+    person_meta = NodeMapping(
+        label="Person",
+        type_name="Person",
+        domain_label="PersonDomain",
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
+        properties={"name": "name", "age": "age", "email": "email"},
+    )
+    company_meta = NodeMapping(
+        label="Company",
+        type_name="Company",
+        domain_label="CompanyDomain",
+        table_label="Company",
+        table_id=2,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="companies",
+        properties={"name": "name", "founded": "founded", "revenue": "revenue"},
+    )
+    works_at_rel = RelationshipMapping(
+        rel_type="WORKS_AT",
+        source_label="Person",
+        target_label="Company",
+        join_source_column="company_id",
+        join_target_column="id",
+        field_name="works_at",
+    )
+    return CypherLabelMap(
+        nodes={"Person": person_meta, "Company": company_meta},
+        relationships={"WORKS_AT": works_at_rel},
+    )
+
+
+def _make_correlated_call_label_map() -> CypherLabelMap:
+    """Label map for REQ-573 correlated CALL subquery tests.
+
+    Provides Person nodes with a self-referential KNOWS relationship so that
+    a correlated CALL { WITH p MATCH (p)-[:KNOWS]->(f:Person) RETURN f.name AS friend }
+    can be translated to a CROSS JOIN LATERAL expression.
+    """
+    person_meta = NodeMapping(
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
+        properties={"name": "name", "age": "age", "person_id": "person_id"},
+    )
+    knows_rel = RelationshipMapping(
+        rel_type="KNOWS",
+        source_label="Person",
+        target_label="Person",
+        join_source_column="person_id",
+        join_target_column="id",
+        field_name="knows",
+    )
+    return CypherLabelMap(
+        nodes={"Person": person_meta},
+        relationships={"KNOWS": knows_rel},
+    )
+
+
+def _make_bidirectional_label_map() -> CypherLabelMap:
+    """Label map for REQ-575 bidirectional traversal tests.
+
+    Provides Person and Company nodes with a directional WORKS_AT relationship.
+    The bidirectional syntax (a)-[]-(b) should expand to both the forward
+    (Person→Company) and backward (Company→Person) directions via UNION ALL.
+    """
+    person_meta = NodeMapping(
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
+        properties={"name": "name", "age": "age", "company_id": "company_id"},
+    )
+    company_meta = NodeMapping(
+        label="Company",
+        type_name="Company",
+        domain_label=None,
+        table_label="Company",
+        table_id=2,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="companies",
+        properties={"name": "name", "founded": "founded"},
+    )
+    works_at_rel = RelationshipMapping(
+        rel_type="WORKS_AT",
+        source_label="Person",
+        target_label="Company",
+        join_source_column="company_id",
+        join_target_column="id",
+        field_name="works_at",
+    )
+    return CypherLabelMap(
+        nodes={"Person": person_meta, "Company": company_meta},
+        relationships={"WORKS_AT": works_at_rel},
+    )
+
+
+def _make_heterogeneous_shortest_path_label_map() -> CypherLabelMap:
+    """Label map for REQ-576: heterogeneous shortestPath with no self-referential rel.
+
+    Person and Company are different node types.  The only relationship is
+    WORKS_AT (Person → Company).  There is no Person→Person or Company→Company
+    self-referential relationship, so the translator must emit a flat JOIN chain
+    rather than a recursive CTE.
+    """
+    person_meta = NodeMapping(
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
+        properties={"name": "name", "age": "age", "company_id": "company_id"},
+    )
+    company_meta = NodeMapping(
+        label="Company",
+        type_name="Company",
+        domain_label=None,
+        table_label="Company",
+        table_id=2,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="companies",
+        properties={"name": "name", "founded": "founded"},
+    )
+    works_at_rel = RelationshipMapping(
+        rel_type="WORKS_AT",
+        source_label="Person",
+        target_label="Company",
+        join_source_column="company_id",
+        join_target_column="id",
+        field_name="works_at",
+    )
+    # Deliberately NO self-referential relationship (no KNOWS Person→Person,
+    # no SUBSIDIARY Company→Company, etc.)
+    return CypherLabelMap(
+        nodes={"Person": person_meta, "Company": company_meta},
+        relationships={"WORKS_AT": works_at_rel},
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-345 — Cypher SELECT query compiled to SQL + Stage 2 governance
+# ---------------------------------------------------------------------------
+
+
+@given("a graph user submitting a Cypher SELECT query to POST /query/cypher")
+def given_graph_user_submitting_cypher_query(shared_data: dict) -> None:
+    """Set up a representative Cypher SELECT query and the label map it targets.
+
+    We use a MATCH … RETURN pattern that exercises JOIN translation so that the
+    governance pipeline has a realistic SQL statement to act upon.
+    """
+    label_map = _make_governance_label_map()
+
+    # Verify label map is well-formed before proceeding.
+    assert "Person" in label_map.nodes, "Person node must be registered"
+    assert "Company" in label_map.nodes, "Company node must be registered"
+    assert "WORKS_AT" in label_map.relationships, "WORKS_AT relationship must be registered"
+
+    query = (
+        "MATCH (p:Person)-[:WORKS_AT]->(c:Company) "
+        "RETURN p.name AS person_name, c.name AS company_name"
+    )
+
+    # Parse the query to confirm it is a valid Cypher SELECT (no write clauses).
+    ast = parse_cypher(query)
+    assert ast is not None, "parse_cypher must return an AST for a valid SELECT query"
+    assert ast.return_clause is not None, "query must have a RETURN clause"
+
+    shared_data["query"] = query
+    shared_data["label_map"] = label_map
+    # Record expected governance artefacts for assertion in the Then step.
+    shared_data["expected_tables"] = {"persons", "companies"}
+    shared_data["expected_join_columns"] = {"company_id", "id"}
+
+
+@when("the compiler processes it")
+def when_compiler_processes_cypher(shared_data: dict) -> None:
+    """Invoke the Cypher → SQL compiler and record the outcome.
+
+    We also capture whether the compiler invoked cypher_to_sql (confirming the
+    compilation pathway was exercised) and whether the resulting SQL is
+    structurally valid for Stage 2 governance to consume.
+    """
     query = shared_data["query"]
     label_map = shared_data["label_map"]
 
-    # Spy on the SQL translator: a true introspection path must never invoke it.
-    sql_calls: list[int] = []
-    original = _translator_mod.cypher_to_sql
+    compile_error: Exception | None = None
+    sql: str | None = None
 
-    def _spy(*args, **kwargs):
-        sql_calls.append(1)
-        return original(*args, **kwargs)
-
-    _translator_mod.cypher_to_sql = _spy
     try:
-        proc = _detect_procedure(query)
-        shared_data["proc"] = proc
-        assert proc is not None, f"{query!r} must be detected as an introspection procedure"
-        response = _handle_procedure(proc, label_map)
-    finally:
-        _translator_mod.cypher_to_sql = original
+        sql = _translate(query, label_map)
+    except Exception as exc:  # noqa: BLE001
+        compile_error = exc
 
-    shared_data["sql_calls"] = len(sql_calls)
-    shared_data["response"] = response
-    shared_data["payload"] = json.loads(response.body)
+    shared_data["sql"] = sql
+    shared_data["compile_error"] = compile_error
 
 
-@then("it returns label data from CypherLabelMap without generating or executing SQL")
-def then_returns_labels_no_sql(shared_data: dict) -> None:
-    # Procedure must have been recognised and routed to the introspection handler.
-    assert shared_data["proc"] == "db.labels"
-
-    # No SQL translation was attempted — the data came from the semantic layer.
-    assert shared_data["sql_calls"] == 0, (
-        "introspection procedures must not invoke the SQL translator"
+@then(
+    "it compiles to SQL, executes via Trino, and applies Stage 2 governance identically to\n"
+    "GraphQL queries"
+)
+def then_compiles_to_sql_with_governance(shared_data: dict) -> None:
+    """Assert REQ-345 end-to-end: compilation succeeds, SQL is valid, and the
+    structure confirms that Stage 2 governance (RLS, column masking, domain
+    visibility, row ceiling) can be applied identically to GraphQL-compiled
+    queries.
+    """
+    # 1. Compilation must succeed without error.
+    assert shared_data["compile_error"] is None, (
+        f"Cypher→SQL compilation must not raise for a valid SELECT query; "
+        f"got: {shared_data['compile_error']!r}"
     )
 
-    payload = shared_data["payload"]
-    assert payload["columns"] == ["label"], f"unexpected columns: {payload['columns']}"
+    sql = shared_data["sql"]
+    assert sql, "compiler must produce a non-empty SQL string"
 
-    returned = {row["label"]
+    # 2. The SQL must be parseable as Trino SQL.
+    try:
+        parsed = sqlglot.parse_one(sql, read="trino")
+    except Exception as exc:
+        pytest.fail(
+            f"Generated SQL is not valid Trino SQL (sqlglot parse failed): {exc}\n"
+            f"SQL was:\n{sql}"
+        )
+    assert parsed is not None, f"sqlglot must parse the generated SQL:\n{sql}"
+
+    sql_lower = sql.lower()
+
+    # 3. Both physical tables must appear in the SQL.
+    for table in shared_data["expected_tables"]:
+        assert table in sql_lower, (
+            f"Generated SQL must reference physical table {table!r} "
+            f"(required for Stage 2 governance label resolution):\n{sql}"
+        )
+
+    # 4. A JOIN must be present.
+    joins = list(parsed.find_all(sqlglot.exp.Join))
+    assert joins, (
+        f"Generated SQL must contain a JOIN for the MATCH clause "
+        f"(Stage 2 governance attaches predicates to JOIN conditions):\n{sql}"
+    )
+
+    # 5. The SELECT projected aliases must survive translation.
+    assert "person_name" in sql_lower or "p.name" in sql_lower or "persons" in sql_lower, (
+        f"Generated SQL must project person_name or equivalent "
+        f"(required for Stage 2 column masking):\n{sql}"
+    )
+    assert "company_name" in sql_lower or "c.name" in sql_lower or "companies" in sql_lower, (
+        f"Generated SQL must project company_name or equivalent "
+        f"(required for Stage 2 column masking):\n{sql}"
+    )
+
+    # 6. Top-level statement must be a SELECT.
+    assert isinstance(parsed, sqlglot.exp.Select), (
+        f"The top-level SQL statement must be a SELECT (same shape as "
+        f"GraphQL-compiled queries so Stage 2 governance applies identically); "
+        f"got {type(parsed).__name__}:\n{sql}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-347 — Cypher clause → SQL clause mapping
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query with MATCH, WHERE, RETURN, ORDER BY, and LIMIT clauses")
+def given_cypher_query_with_all_clauses(shared_data: dict) -> None:
+    """Construct a Cypher query that exercises every clause named in REQ-347.
+
+    The query uses:
+      MATCH        → must become a JOIN in SQL
+      WHERE        → must become WHERE in SQL
+      RETURN       → must become SELECT in SQL
+      ORDER BY     → must become ORDER BY in SQL
+      LIMIT        → must become LIMIT in SQL
+
+    We use a realistic two-node, one-relationship pattern so the label map
+    can resolve it to concrete physical tables.
+    """
+    label_map = _make_clause_mapping_label_map()
+
+    query = (
+        "MATCH (p:Person)-[:WORKS_AT]->(c:Company) "
+        "WHERE p.age > 30 "
+        "RETURN p.name AS person_name, c.name AS company_name "
+        "ORDER BY p.name "
+        "LIMIT 10"
+    )
+
+    # Verify the parser recognises all expected clauses before handing off to
+    # the translator — this makes test failures more diagnostic.
+    ast = parse_cypher(query)
+    assert ast is not None, "parse_cypher must return an AST"
+    assert ast.match_clauses, "AST must contain at least one MATCH clause"
+    assert not ast.match_clauses[0].optional, "first MATCH must not be OPTIONAL"
+    assert ast.where is not None, "AST must contain a WHERE clause"
+    assert ast.return_clause is not None, "AST must contain a RETURN clause"
+    assert ast.order_by, "AST must contain ORDER BY items"
+    assert ast.limit == 10, f"AST limit must be 10, got {ast.limit}"
+
+    shared_data["query"] = query
+    shared_data["label_map"] = label_map
+
+
+@when("the translator processes it")
+def when_translator_processes(shared_data: dict) -> None:
+    error: Exception | None = None
+    sql: str | None = None
+    try:
+        sql = _translate(shared_data["query"], shared_data["label_map"])
+    except Exception as exc:  # noqa: BLE001 - we assert no error in the Then step
+        error = exc
+    shared_data["sql"] = sql
+    shared_data["error"] = error
+
+
+@then("it emits SQL with JOIN, WHERE, SELECT, ORDER BY, and LIMIT clauses respectively")
+def then_emits_sql_with_all_clause_mappings(shared_data: dict) -> None:
+    """Assert that every Cypher clause was translated to its SQL counterpart.
+
+    REQ-347 clause mapping table:
+      MATCH        → JOIN
+      WHERE        → WHERE
+      RETURN       → SELECT (top-level SELECT statement)
+      ORDER BY     → ORDER BY
+      LIMIT        → LIMIT
+    """
+    assert shared_data["error"] is None, (
+        f"Translation must not raise for a valid Cypher query; "
+        f"got: {shared_data['error']!r}"
+    )
+
+    sql = shared_data["sql"]
+    assert sql, "translator must produce a non-empty SQL string"
+
+    # Parse the generated SQL with sqlglot so we can inspect the AST
+    # structurally rather than relying solely on substring matching.
+    try:
+        parsed = sqlglot.parse_one(sql

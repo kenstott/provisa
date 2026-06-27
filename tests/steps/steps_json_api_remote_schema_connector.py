@@ -118,6 +118,119 @@ def _unwrap_included(response: dict) -> dict[str, list[dict]]:
 
 
 # ---------------------------------------------------------------------------
+# Reference implementation of JSON:API filter pushdown (REQ-660).
+#
+# Mirrors provisa's JSON:API remote connector compile behaviour: native-filter
+# columns are surfaced with the ``_nf_`` prefix and carry
+# ``native_filter_type: "query_param"``. When the query filters on such a
+# column, the compiler maps the predicate to a ``filter[field]=value`` query
+# parameter on the remote request URL — pushing the filter down to the source
+# rather than fetching the full dataset and applying the predicate locally.
+# ---------------------------------------------------------------------------
+
+
+def _native_filter_field(column_def: dict) -> str:
+    """Resolve the remote ``filter[<field>]`` name for a native-filter column."""
+    name = column_def["name"]
+    if column_def.get("native_filter_type") == "query_param":
+        # Honour an explicit filter_param override if provided; otherwise derive
+        # the remote field name by stripping the ``_nf_`` prefix convention.
+        return column_def.get("filter_param") or name.lstrip("_nf_")
+    raise ValueError(
+        f"Column {name!r} does not have native_filter_type='query_param'"
+    )
+
+
+def _build_filter_params(column_def: dict, *, value: str) -> dict[str, str]:
+    """Convert a native-filter column definition to a ``{filter[field]: value}`` dict."""
+    field = _native_filter_field(column_def)
+    return {f"filter[{field}]": value}
+
+
+def _apply_filter_pushdown(
+    base_url: str,
+    column_def: dict,
+    *,
+    value: str,
+) -> str:
+    """Produce the remote URL with the filter pushed down as a query parameter."""
+    filter_params = _build_filter_params(column_def, value=value)
+    return _build_query_url(base_url, native_filters=filter_params)
+
+
+def _post_fetch_filter(rows: list[dict], *, field: str, value: str) -> list[dict]:
+    """Simulate a post-fetch (local) filter — what the pushdown replaces."""
+    return [r for r in rows if str(r.get(field, "")) == value]
+
+
+# ---------------------------------------------------------------------------
+# Reference implementation of JSON:API pagination-link following (REQ-659).
+#
+# Mirrors provisa's JSON:API remote connector compile behaviour: a client-issued
+# LIMIT/OFFSET is materialized by issuing sequential GET requests, following the
+# ``links.next`` cursor returned by each page until either the dataset is
+# exhausted or enough rows have been collected to satisfy OFFSET + LIMIT. The
+# collected rows are then sliced to the exact LIMIT/OFFSET window.
+# ---------------------------------------------------------------------------
+
+
+def _make_paginated_source(
+    total: int, page_size: int, *, base: str = "https://example.test/api/things"
+) -> tuple[Callable[[str], dict], list[dict], dict]:
+    """Build a fake paginated JSON:API source.
+
+    Returns ``(fetch_fn, all_rows, stats)`` where ``fetch_fn(url)`` returns a
+    JSON:API page document containing a ``data`` slice and ``links.next`` /
+    ``links.prev`` cursors, and ``stats["requests"]`` records the URLs fetched.
+    """
+    all_rows = [
+        {"type": "things", "id": str(i), "attributes": {"n": i}} for i in range(total)
+    ]
+    stats: dict = {"requests": []}
+
+    def _page_url(offset: int) -> str:
+        return f"{base}?page%5Boffset%5D={offset}&page%5Blimit%5D={page_size}"
+
+    def fetch_fn(url: str) -> dict:
+        stats["requests"].append(url)
+        parsed = urllib.parse.urlparse(url)
+        qs = urllib.parse.parse_qs(parsed.query)
+        page_offset = int(qs.get("page[offset]", ["0"])[0])
+        chunk = all_rows[page_offset : page_offset + page_size]
+        links: dict = {}
+        next_offset = page_offset + page_size
+        if next_offset < total:
+            links["next"] = _page_url(next_offset)
+        if page_offset > 0:
+            links["prev"] = _page_url(max(0, page_offset - page_size))
+        return {"data": chunk, "links": links}
+
+    return fetch_fn, all_rows, stats
+
+
+def _fetch_all(
+    initial_url: str,
+    *,
+    fetch_fn: Callable[[str], dict],
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict]:
+    """Follow ``links.next`` pages until exhausted or LIMIT/OFFSET satisfied."""
+    items: list[dict] = []
+    url: str | None = initial_url
+    while url is not None:
+        page = fetch_fn(url)
+        items.extend(page.get("data", []))
+        # Stop early once we have collected enough rows to satisfy the window.
+        if limit is not None and len(items) >= offset + limit:
+            break
+        url = page.get("links", {}).get("next")
+    if limit is not None:
+        return items[offset : offset + limit]
+    return items[offset:]
+
+
+# ---------------------------------------------------------------------------
 # Scenario: REQ-657 default behaviour
 # ---------------------------------------------------------------------------
 
@@ -343,72 +456,58 @@ def then_sparse_fields_injected(shared_data: dict) -> None:
     qs = urllib.parse.parse_qs(parsed.query)
     assert qs.get(f"fields[{resource_type}]") == [",".join(requested)]
 
+    # Verify the sparse fieldset URL would yield a smaller upstream payload:
+    # the fields parameter restricts the response to only the projected columns,
+    # so the remote must not return the full attribute set.
+    full_column_count = len(shared_data["all_columns"])
+    projected_column_count = len(sparse_fields)
+    assert projected_column_count < full_column_count, (
+        f"sparse fieldset must project fewer columns ({projected_column_count}) "
+        f"than the full attribute set ({full_column_count})"
+    )
 
-# ---------------------------------------------------------------------------
-# Reference implementation of JSON:API pagination-link following (REQ-659).
-#
-# Mirrors provisa's JSON:API remote connector compile behaviour: a client-issued
-# LIMIT/OFFSET is materialized by issuing sequential GET requests, following the
-# ``links.next`` cursor returned by each page until either the dataset is
-# exhausted or enough rows have been collected to satisfy OFFSET + LIMIT. The
-# collected rows are then sliced to the exact LIMIT/OFFSET window.
-# ---------------------------------------------------------------------------
+    # Simulate what a conformant JSON:API server returns when the sparse fieldset
+    # parameter is present: only the requested attributes are included in each
+    # resource object. This models the upstream bandwidth reduction.
+    simulated_full_response = {
+        "data": [
+            {
+                "type": resource_type,
+                "id": "1",
+                "attributes": {col: f"val_{col}" for col in shared_data["all_columns"]},
+            }
+        ]
+    }
+    simulated_sparse_response = {
+        "data": [
+            {
+                "type": resource_type,
+                "id": "1",
+                "attributes": {col: f"val_{col}" for col in sparse_fields},
+            }
+        ]
+    }
 
+    full_attrs = set(simulated_full_response["data"][0]["attributes"].keys())
+    sparse_attrs = set(simulated_sparse_response["data"][0]["attributes"].keys())
 
-def _make_paginated_source(
-    total: int, page_size: int, *, base: str = "https://example.test/api/things"
-) -> tuple[Callable[[str], dict], list[dict], dict]:
-    """Build a fake paginated JSON:API source.
+    # The sparse response must contain exactly the requested columns.
+    assert sparse_attrs == set(requested), (
+        f"sparse response attributes {sparse_attrs!r} must equal requested "
+        f"columns {set(requested)!r}"
+    )
 
-    Returns ``(fetch_fn, all_rows, stats)`` where ``fetch_fn(url)`` returns a
-    JSON:API page document containing a ``data`` slice and ``links.next`` /
-    ``links.prev`` cursors, and ``stats["requests"]`` records the URLs fetched.
-    """
-    all_rows = [
-        {"type": "things", "id": str(i), "attributes": {"n": i}} for i in range(total)
-    ]
-    stats: dict = {"requests": []}
+    # The sparse response must be missing the non-requested columns.
+    assert not sparse_attrs.intersection(not_requested), (
+        f"sparse response must not include non-requested columns "
+        f"{not_requested!r}, found overlap: "
+        f"{sparse_attrs.intersection(not_requested)!r}"
+    )
 
-    def _page_url(offset: int) -> str:
-        return f"{base}?page%5Boffset%5D={offset}&page%5Blimit%5D={page_size}"
-
-    def fetch_fn(url: str) -> dict:
-        stats["requests"].append(url)
-        parsed = urllib.parse.urlparse(url)
-        qs = urllib.parse.parse_qs(parsed.query)
-        page_offset = int(qs.get("page[offset]", ["0"])[0])
-        chunk = all_rows[page_offset : page_offset + page_size]
-        links: dict = {}
-        next_offset = page_offset + page_size
-        if next_offset < total:
-            links["next"] = _page_url(next_offset)
-        if page_offset > 0:
-            links["prev"] = _page_url(max(0, page_offset - page_size))
-        return {"data": chunk, "links": links}
-
-    return fetch_fn, all_rows, stats
-
-
-def _fetch_all(
-    initial_url: str,
-    *,
-    fetch_fn: Callable[[str], dict],
-    limit: int | None = None,
-    offset: int = 0,
-) -> list[dict]:
-    """Follow ``links.next`` pages until exhausted or LIMIT/OFFSET satisfied."""
-    items: list[dict] = []
-    url: str | None = initial_url
-    while url is not None:
-        page = fetch_fn(url)
-        items.extend(page.get("data", []))
-        # Stop early once we have collected enough rows to satisfy the window.
-        if limit is not None and len(items) >= offset + limit:
-            break
-        url = page.get("links", {}).get("next")
-    if limit is not None:
-        return items[offset : offset + limit]
-    return items[offset:]
+    # The full response would have contained more attributes.
+    assert full_attrs > sparse_attrs, (
+        "full upstream response would carry more attributes than the sparse projection"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -500,20 +599,96 @@ def then_links_next_materializes_complete_result(shared_data: dict) -> None:
         f"issued {len(requests)} requests: {requests!r}"
     )
 
+    # Confirm that each sequential request URL carried the expected page[offset]
+    # parameter, demonstrating that pagination links were followed in order.
+    first_parsed = urllib.parse.urlparse(requests[0])
+    first_qs = urllib.parse.parse_qs(first_parsed.query)
+    assert first_qs.get("page[offset]") == ["0"], (
+        f"first request must target page[offset]=0, got {requests[0]!r}"
+    )
+
+    # Confirm the materialized rows are the correct slice: IDs must be exactly
+    # the integer range [offset, offset+limit).
+    materialized_ids = [int(r["id"]) for r in materialized]
+    expected_ids = list(range(offset, offset + limit))
+    assert materialized_ids == expected_ids, (
+        f"materialized IDs {materialized_ids!r} must equal expected IDs "
+        f"{expected_ids!r} for LIMIT={limit} OFFSET={offset}"
+    )
+
+    # Assert that no row from outside the window was included in the result.
+    assert all(offset <= int(r["id"]) < offset + limit for r in materialized), (
+        "all materialized rows must fall within the LIMIT/OFFSET window"
+    )
+
+    # Confirm that the links.next mechanism was the driver: the second page URL
+    # must originate from the links returned by the first page response, not from
+    # a separate offset calculation performed by the client. We verify this by
+    # re-fetching page 0 and checking its links.next matches the second request.
+    page0 = shared_data["fetch_fn"](
+        "https://example.test/api/things?page%5Boffset%5D=0&page%5Blimit%5D=10"
+    )
+    links_next = page0.get("links", {}).get("next")
+    assert links_next is not None, (
+        "page 0 must carry a links.next cursor for the compiler to follow"
+    )
+    # Normalise both URLs for comparison by parsing their query strings.
+    next_qs = urllib.parse.parse_qs(urllib.parse.urlparse(links_next).query)
+    second_qs = urllib.parse.parse_qs(urllib.parse.urlparse(second_request).query)
+    assert next_qs.get("page[offset]") == second_qs.get("page[offset]"), (
+        f"second request page[offset]={second_qs.get('page[offset]')!r} must "
+        f"match links.next page[offset]={next_qs.get('page[offset]')!r}"
+    )
+
 
 # ---------------------------------------------------------------------------
-# Reference implementation of JSON:API filter pushdown (REQ-660).
+# Scenario: REQ-660 default behaviour
 #
-# Mirrors provisa's JSON:API remote connector compile behaviour: native-filter
-# columns are surfaced with the ``_nf_`` prefix and carry
-# ``native_filter_type: "query_param"``. When the query filters on such a
-# column, the compiler maps the predicate to a ``filter[field]=value`` query
-# parameter on the remote request URL — pushing the filter down to the source
-# rather than fetching the full dataset and applying the predicate locally.
+# JSON:API filter pushdown: a filter on a column carrying
+# ``native_filter_type: "query_param"`` (and the ``_nf_`` name prefix) must be
+# compiled into a ``?filter[field]=value`` query parameter on the remote request
+# URL. The filter must NOT be applied post-fetch against a locally fetched
+# dataset — instead it is sent upstream so the remote API performs the
+# filtering, reducing data transfer.
 # ---------------------------------------------------------------------------
 
 
-def _native_filter_field(column_def: dict) -> str:
-    """Resolve the remote ``filter[<field>]`` name for a native-filter column."""
-    name = column_def["name"]
-    if column_def.get("native_filter_type")
+@given("a filter on a JSON:API source column with native_filter_type query_param")
+def given_native_filter_column(shared_data: dict) -> None:
+    # Define a native-filter column as the Provisa schema registry would expose
+    # it. The ``_nf_`` prefix signals that this column is a filter handle rather
+    # than a real data attribute; ``native_filter_type: "query_param"`` tells the
+    # connector to push the predicate to the remote API via a query parameter.
+    column_def = {
+        "name": "_nf_status",
+        "native_filter_type": "query_param",
+        # No explicit filter_param override — the field name is derived by
+        # stripping the ``_nf_`` prefix convention: "status".
+    }
+    filter_value = "published"
+
+    shared_data["base_url"] = "https://example.test/api/articles"
+    shared_data["resource_type"] = "articles"
+    shared_data["column_def"] = column_def
+    shared_data["filter_value"] = filter_value
+
+    # Verify the column definition conforms to the native-filter contract.
+    assert column_def["name"].startswith("_nf_"), (
+        "native-filter columns must carry the _nf_ prefix"
+    )
+    assert column_def.get("native_filter_type") == "query_param", (
+        "column must declare native_filter_type='query_param'"
+    )
+
+    # Build the complete upstream dataset that the remote API *would* return
+    # without a filter. This is used later to prove the filter was not applied
+    # post-fetch against a full dataset copy.
+    shared_data["full_upstream_dataset"] = [
+        {
+            "id": "1",
+            "type": "articles",
+            "attributes": {"title": "Alpha", "status": "published"},
+        },
+        {
+            "id": "2",
+            "type": "articles",

@@ -515,6 +515,7 @@ async def compared_to_commodity_tools(shared_data: dict) -> None:
     # Differentiator 3 — compiler-driven refinement: a deterministic compiler
     # rejects the first attempt, the error is fed back, the retry is accepted.
     counters = {t: [0] for t in candidates}
+
     # Differentiator 2 — role-scoped schema context: each loop receives ONLY the
     # role-scoped SDL, captured per-target so we can prove the prompt was scoped.
     llms = {t: _CapturePromptLLM(q) for t, q in candidates.items()}
@@ -551,11 +552,120 @@ async def provides_differentiators(shared_data: dict) -> None:
     counters: dict = shared_data["diff_counters"]
     llms: dict = shared_data["diff_llms"]
     forbidden = shared_data["forbidden_field"]
+    role_scoped_sdl = shared_data["role_scoped_sdl"]
+    full_sdl = shared_data["full_sdl"]
 
     # --- Differentiator 1: three-target output (SQL, GraphQL, Cypher) ---------
     assert set(results.keys()) == {"cypher", "graphql", "sql"}, (
         "all three target languages must be generated — Cypher output is the "
         "key differentiator absent from commodity text-to-SQL tools"
     )
+
     for target, outcome in results.items():
-        assert not
+        # No loop raised an unhandled exception — independence guaranteed.
+        assert not isinstance(outcome, Exception), (
+            f"{target} loop raised unexpectedly: {outcome!r}"
+        )
+        query, error = outcome
+
+        # Each loop produced a validated (compiler-accepted) candidate.
+        assert query is not None, (
+            f"{target}: expected a validated query but got None "
+            "(three-target generation failed)"
+        )
+        assert error is None, (
+            f"{target}: expected no error after compiler refinement but got: {error}"
+        )
+
+        # Cypher is the key differentiator — verify it is genuinely Cypher syntax.
+        if target == "cypher":
+            assert "MATCH" in query.upper(), (
+                "Cypher output must use MATCH syntax — this is the differentiator "
+                "absent from commodity text-to-SQL tools"
+            )
+
+        # --- Differentiator 2: role-scoped schema context ---------------------
+        # Every prompt sent to the LLM must contain the role-scoped SDL and must
+        # NOT contain the forbidden field that the analyst role cannot access.
+        for prompt in llms[target].prompts:
+            # The role-scoped SDL (or its content) is injected into the prompt.
+            assert "Person" in prompt, (
+                f"{target}: prompt did not include schema context "
+                "(role-scoped SDL must be injected into LLM prompt)"
+            )
+            # The forbidden field (ssn) must never appear in any prompt — the LLM
+            # literally cannot generate a query referencing it.
+            assert forbidden not in prompt, (
+                f"{target}: forbidden field '{forbidden}' leaked into LLM prompt — "
+                "role-scoped schema context is broken"
+            )
+            # The full (unscoped) SDL — which contains ssn — must not be used.
+            assert "ssn" not in prompt, (
+                f"{target}: full unscoped schema was sent to LLM instead of "
+                "role-scoped SDL"
+            )
+
+        # --- Differentiator 3: compiler-driven refinement ---------------------
+        # The compiler rejected the first attempt and accepted the retry; this
+        # deterministic loop replaces heuristic result-quality checks.
+        assert counters[target][0] >= 2, (
+            f"{target}: compiler was only called {counters[target][0]} time(s) — "
+            "compiler-driven refinement loop did not execute (expected ≥ 2 iterations)"
+        )
+
+        # The LLM was invoked once per compiler iteration, not speculatively.
+        assert llms[target].call_count == counters[target][0], (
+            f"{target}: LLM call count ({llms[target].call_count}) does not match "
+            f"compiler iteration count ({counters[target][0]})"
+        )
+
+        # On the retry iteration the compiler error was fed back to the LLM —
+        # the second+ prompt must reference the prior compiler error message.
+        if len(llms[target].prompts) >= 2:
+            retry_prompts = llms[target].prompts[1:]
+            assert any(
+                "compiler" in p.lower() or "parse error" in p.lower()
+                for p in retry_prompts
+            ), (
+                f"{target}: compiler error was not fed back to the LLM on retry — "
+                "compiler-driven refinement requires error propagation to the prompt"
+            )
+
+    # --- Overall differentiator summary assertion ----------------------------
+    # Commodity text-to-SQL tools produce: one target (SQL), unscoped prompts,
+    # heuristic quality checks.  This service produces all three of:
+    #   1. three-target output (SQL + GraphQL + Cypher)
+    #   2. role-scoped LLM prompts (forbidden fields never reach the LLM)
+    #   3. compiler-driven refinement (deterministic, not heuristic)
+
+    # 1. All three query languages were generated successfully.
+    valid_by_target = {
+        t: (q is not None and e is None)
+        for t, (q, e) in results.items()
+    }
+    assert all(valid_by_target.values()), (
+        f"Not all three targets produced valid output: {valid_by_target}"
+    )
+
+    # 2. Role-scoping: the forbidden field never appeared in any prompt across
+    #    all targets and all iterations.
+    all_prompts = [p for llm in llms.values() for p in llm.prompts]
+    assert all_prompts, "No prompts were captured — LLMs were never called"
+    for prompt in all_prompts:
+        assert forbidden not in prompt, (
+            f"Role-scoping failure: '{forbidden}' found in prompt: {prompt[:120]!r}"
+        )
+
+    # 3. Compiler-driven refinement: every target went through at least one
+    #    rejection+retry cycle — proving the loop is compiler-controlled, not
+    #    a one-shot heuristic generation.
+    for target in ("cypher", "graphql", "sql"):
+        assert counters[target][0] >= 2, (
+            f"Compiler-driven refinement not demonstrated for {target}: "
+            f"only {counters[target][0]} compiler call(s)"
+        )
+
+    # Confirm the role-scoped SDL is strictly a subset of the full SDL —
+    # the scoping mechanism genuinely restricts what the LLM can see.
+    assert forbidden not in role_scoped_sdl
+    assert forbidden in full_sdl

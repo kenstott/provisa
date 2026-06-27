@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: 5c2a8e4f-9b7d-4f3a-8c1e-2d5b7f9a3c6e
+# Canary: {canary}
 #
 # This source code is licensed under the Business Source License 1.1
 
@@ -139,6 +139,11 @@ def _coerce_to_sql(result) -> tuple[str, object]:
     else:
         sql_text = str(sql_obj)
     return sql_text, params
+
+
+# ---------------------------------------------------------------------------
+# REQ-666 — CREATE (n:Label {props}) → INSERT INTO ... VALUES (...)
+# ---------------------------------------------------------------------------
 
 
 @given("a Cypher CREATE statement with a registered label and scalar properties")

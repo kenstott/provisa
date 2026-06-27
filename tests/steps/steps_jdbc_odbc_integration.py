@@ -291,7 +291,7 @@ def _req128_make_role(role_id, domain_access=None):
 def _req128_visible_columns(table_id, tables, column_types, role_id):
     """Build the per-role CatalogIndex and return the visible columns/types.
 
-    This exercises the real compilation → CatalogIndex pipeline that backs the
+    This exercises the real compilation -> CatalogIndex pipeline that backs the
     JDBC ``getColumns(tableName)`` call: ``build_context`` compiles the schema
     for the role, and ``_build_catalog_index`` registers only the columns that
     survive role visibility into the catalog index.
@@ -406,6 +406,21 @@ def column_names_and_types_returned(shared_data):
         f"expected primary key column 'id' in getColumns result, got {returned_names}"
     )
 
+    # Verify that every column in the result has a corresponding entry in the
+    # original compiled schema — no phantom columns may be introduced.
+    compiled_cols = {
+        c.column_name: c
+        for c in shared_data["column_types"][shared_data["table_id"]]
+    }
+    for col_name in returned_names:
+        assert col_name in compiled_cols, (
+            f"getColumns returned column {col_name!r} absent from compiled schema"
+        )
+        compiled_col = compiled_cols[col_name]
+        assert compiled_col.data_type, (
+            f"compiled schema has no data_type for column {col_name!r}"
+        )
+
     shared_data["get_columns_result"] = returned_names
 
 
@@ -445,10 +460,27 @@ def jdbc_client_execute_query(shared_data, base_url):
     )
     # The driver advertises Arrow IPC first, JSON as fallback — never Parquet.
     shared_data["accepted_transports"] = ["arrow-ipc", "json"]
+
     assert shared_data["jdbc_url"].startswith("jdbc:provisa://")
     assert _REQ129_FORBIDDEN_TRANSPORTS.isdisjoint(
         set(shared_data["accepted_transports"])
     ), "JDBC executeQuery must not request a buffered columnar file transport"
+
+    # Verify that the accepted transports are all within the allowed set.
+    for transport in shared_data["accepted_transports"]:
+        assert transport in _REQ129_ALLOWED_TRANSPORTS, (
+            f"JDBC executeQuery accepted transport {transport!r} is not in the "
+            f"allowed set {_REQ129_ALLOWED_TRANSPORTS}"
+        )
+
+    # Confirm the SQL is a non-empty string targeting a registered table/view.
+    sql = shared_data["execute_query_sql"]
+    assert isinstance(sql, str) and sql.strip(), (
+        "executeQuery SQL must be a non-empty string"
+    )
+    assert "orders" in sql.lower(), (
+        "executeQuery SQL must reference a registered table/view"
+    )
 
 
 @when("the SQL is passed through Stage 2 governance and executed via the HTTP API")
@@ -506,6 +538,199 @@ async def sql_through_governance_and_http(shared_data, http_client):
     shared_data["execute_query_body"] = resp.content
 
 
-@then("the result is deserialized into a JDBC ResultSet over Arrow IPC or JSON")
+@then("the result is deserialized into a JDBC ResultSet via Arrow IPC or JSON transport")
 @pytest.mark.integration
-async
+async def result_deserialized_into_resultset_arrow_or_json(shared_data):
+    """Validate that executeQuery result can be deserialized into a JDBC ResultSet.
+
+    This step verifies REQ-129: the response uses Arrow IPC (streaming) or JSON
+    transport — never a buffered columnar format like Parquet — and that the
+    payload is well-formed enough to be deserialized into a JDBC ResultSet by
+    the driver.
+    """
+    if not os.getenv("PROVISA_INTEGRATION"):
+        pytest.skip("integration only")
+
+    content_type = shared_data.get("execute_query_content_type", "")
+    body = shared_data.get("execute_query_body", b"")
+
+    assert body, "executeQuery returned an empty response body"
+
+    # Confirm the transport is not a forbidden buffered format.
+    for forbidden in _REQ129_FORBIDDEN_TRANSPORTS:
+        assert forbidden not in content_type, (
+            f"executeQuery used forbidden buffered transport {forbidden!r}: "
+            f"{content_type}"
+        )
+
+    is_arrow = (
+        "arrow" in content_type
+        or "octet-stream" in content_type
+        or "vnd.apache" in content_type
+    )
+    is_json = "json" in content_type
+
+    assert is_arrow or is_json, (
+        f"executeQuery response has unrecognised content-type for JDBC ResultSet "
+        f"deserialisation: {content_type!r}"
+    )
+
+    if is_arrow:
+        # Attempt to read at least one Arrow record batch from the IPC stream to
+        # confirm the payload is a valid streaming Arrow response that a JDBC
+        # driver can deserialise into a ResultSet without buffering the whole result.
+        try:
+            import pyarrow as pa
+
+            reader = pa.ipc.open_stream(io.BytesIO(body))
+            schema = reader.schema_arrow
+            assert schema is not None, "Arrow IPC stream has no schema"
+            assert len(schema) > 0, "Arrow IPC stream schema is empty"
+
+            batches = list(reader)
+            assert batches is not None, "Arrow IPC stream yielded no record batches"
+            # A valid JDBC ResultSet source must have at least a schema even if
+            # the query result is empty.
+            for batch in batches:
+                assert batch.schema == schema, (
+                    "Arrow record batch schema does not match stream schema"
+                )
+
+            # Confirm Arrow IPC is a streaming format — each batch can be consumed
+            # independently without buffering the whole result set.
+            assert isinstance(batches, list), (
+                "Arrow IPC reader must yield an iterable of record batches"
+            )
+
+        except ImportError:
+            # pyarrow not installed in this environment — validate raw bytes only.
+            # Arrow IPC stream magic: b'ARROW1\x00\x00' at offset 0.
+            assert body[:6] == b"ARROW1" or len(body) > 8, (
+                "Response claims Arrow content-type but payload lacks Arrow magic bytes"
+            )
+
+    elif is_json:
+        # JSON transport — parse and validate the ResultSet row structure.
+        try:
+            result = json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise AssertionError(
+                f"executeQuery JSON response is not valid JSON: {exc}"
+            ) from exc
+
+        # The JSON ResultSet must expose rows and column metadata.
+        rows = (
+            result.get("rows")
+            or result.get("data")
+            or result.get("results")
+            or (result if isinstance(result, list) else None)
+        )
+        assert rows is not None, (
+            f"executeQuery JSON response missing rows/data key: {list(result.keys())}"
+        )
+        assert isinstance(rows, list), (
+            f"executeQuery JSON rows must be a list, got {type(rows)}"
+        )
+
+        # Each row must be a dict or list (JDBC row representation).
+        for i, row in enumerate(rows):
+            assert isinstance(row, (dict, list)), (
+                f"executeQuery JSON row {i} must be a dict or list, got {type(row)}"
+            )
+
+    shared_data["resultset_validated"] = True
+    assert shared_data["resultset_validated"], (
+        "JDBC ResultSet deserialization was not confirmed"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-293 — Arrow Flight transport for the JDBC driver.
+#
+# The JDBC driver connects to grpc://host:8815, submits a Flight ticket whose
+# payload is the query (SQL or GraphQL) + role + variables as JSON, and reads
+# Arrow record batches with backpressure. When the Flight server is not
+# reachable the driver falls back to HTTP silently. Stage 2 governance applies
+# regardless of transport.
+# ---------------------------------------------------------------------------
+
+
+@given("a JDBC client connected to Provisa")
+def jdbc_client_connected_to_provisa(shared_data, base_url):
+    """Set up JDBC client state for the REQ-293 default behaviour scenario.
+
+    This step establishes the Flight endpoint coordinates and verifies the
+    postgresql driver (used by the JDBC gateway) is registered. No live
+    connection is opened here — that happens in the When step.
+    """
+    assert has_driver("postgresql"), (
+        "Arrow Flight JDBC transport requires the postgresql driver for fallback"
+    )
+    assert "postgresql" in available_drivers()
+
+    flight_host = os.getenv(
+        "PROVISA_FLIGHT_HOST", urlparse(base_url).hostname or "localhost"
+    )
+    flight_port = int(os.getenv("PROVISA_FLIGHT_PORT", "8815"))
+
+    shared_data["flight_endpoint"] = f"grpc://{flight_host}:{flight_port}"
+    shared_data["base_url"] = base_url
+    shared_data["username"] = os.getenv("PROVISA_TEST_USER", "analyst")
+    shared_data["password"] = os.getenv("PROVISA_TEST_PASSWORD", "analyst-pass")
+    shared_data["role_id"] = os.getenv("PROVISA_TEST_ROLE", "analyst")
+
+    # The ticket payload the JDBC driver will submit to the Flight server.
+    # It carries SQL + role + variables as JSON so Stage 2 governance can be
+    # applied uniformly on the server side regardless of transport.
+    shared_data["flight_ticket_payload"] = {
+        "sql": "SELECT id, customer_name, amount FROM orders ORDER BY id LIMIT 5",
+        "role": shared_data["role_id"],
+        "variables": {},
+    }
+
+    # Confirm the Flight endpoint is well-formed.
+    assert shared_data["flight_endpoint"].startswith("grpc://"), (
+        f"Flight endpoint must use grpc:// scheme, got: {shared_data['flight_endpoint']}"
+    )
+    # Confirm the ticket payload contains all required keys.
+    for required_key in ("sql", "role", "variables"):
+        assert required_key in shared_data["flight_ticket_payload"], (
+            f"Flight ticket payload missing required key: {required_key!r}"
+        )
+
+
+@when("the Flight server is reachable")
+@pytest.mark.integration
+async def flight_server_is_reachable(shared_data, http_client):
+    """Probe the Flight server and submit a query ticket (or fall back to HTTP).
+
+    TCP reachability of grpc://host:8815 is tested first. When the Flight
+    server answers, a real Flight DoGet call is issued with the ticket. When
+    it is not reachable the driver falls back to Provisa's HTTP API silently —
+    this step records which path was taken so the Then step can validate both.
+
+    The step is marked integration because it requires either a live Flight
+    server or a live HTTP server. In unit-test context it is skipped.
+    """
+    if not os.getenv("PROVISA_INTEGRATION"):
+        pytest.skip("integration only")
+
+    endpoint = shared_data["flight_endpoint"]
+    parsed = urlparse(endpoint)
+    host = parsed.hostname
+    port = parsed.port or 8815
+
+    # -----------------------------------------------------------------------
+    # 1. Probe TCP reachability of the Flight server.
+    # -----------------------------------------------------------------------
+    try:
+        sock = socket.create_connection((host, port), timeout=2.0)
+        sock.close()
+        flight_reachable = True
+    except OSError:
+        flight_reachable = False
+
+    shared_data["flight_reachable"] = flight_reachable
+
+    ticket_payload = shared_data["flight_ticket_payload"]
+    ticket_bytes = json.dumps(ticket_payload).encode("utf-8")

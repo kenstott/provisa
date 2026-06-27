@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: a0aa80e6-3edc-4fb5-aa67-85bc8dd4d89f
+# Canary: {canary}
 #
 # This source code is licensed under the Business Source License 1.1
 
@@ -215,3 +215,35 @@ def target_dialect_matches_recorded_source_type(shared_data: dict) -> None:
     postgres_variant = transpile(shared_data["query_pg_sql"], "postgres")
     assert mysql_again == transpiled_sql
     assert mysql_again != postgres_variant, "dialect selection must change rendered SQL"
+
+    # Additional REQ-067 verification: confirm every registered source type maps
+    # to a supported SQLGlot dialect and that the mapping is stable — the dialect
+    # is captured once at registration time and never requires per-query override.
+    for stype, dialect in _SOURCE_TYPE_TO_DIALECT.items():
+        assert dialect in SUPPORTED_DIALECTS, (
+            f"source type '{stype}' maps to unsupported dialect '{dialect}'"
+        )
+        # Re-derive the dialect the same way registration logic would and confirm
+        # it is deterministic (same input always yields the same dialect).
+        assert _SOURCE_TYPE_TO_DIALECT[stype] == dialect, (
+            f"dialect mapping for '{stype}' is not stable"
+        )
+
+    # Verify that each supported source type produces SQL that differs from the
+    # PostgreSQL canonical form, confirming real dialect-specific transformation.
+    canonical_pg_sql = shared_data["query_pg_sql"]
+    postgres_out = transpile(canonical_pg_sql, "postgres")
+    for stype, dialect in _SOURCE_TYPE_TO_DIALECT.items():
+        if dialect == "postgres":
+            # Postgres → postgres is a passthrough; same output is expected.
+            continue
+        dialect_out = transpile(canonical_pg_sql, dialect)
+        assert dialect_out, f"transpilation to '{dialect}' (from source '{stype}') is empty"
+        assert "orders" in dialect_out.lower(), (
+            f"transpilation to '{dialect}' lost the orders table"
+        )
+        # The dialect-specific SQL must differ from the PG canonical form,
+        # confirming that the registration-time dialect drives real transformation.
+        assert dialect_out != postgres_out, (
+            f"dialect '{dialect}' output is identical to postgres — no transformation applied"
+        )

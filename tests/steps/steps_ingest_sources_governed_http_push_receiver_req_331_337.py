@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: a156588b-4296-4553-827f-4216cae7b7e8
+# Canary: {canary}
 #
 # This source code is licensed under the Business Source License 1.1
 
@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import time as _time
 
 import pytest
 from pytest_bdd import given, when, then, parsers, scenario
@@ -252,6 +253,57 @@ def ddl_executed_with_system_columns(shared_data):
     assert ddl.count("_received_at") == 1
     assert ddl.count("_updated_at") == 1
 
+    # The DDL uses CREATE TABLE IF NOT EXISTS — idempotent at startup.
+    assert "IF NOT EXISTS" in ddl
+
+    # Verify the allowlisted type normalisation: steward wrote lower-case types,
+    # DDL must render them as upper-case SQL keywords.
+    for user_type, expected_upper in [
+        ("text", "TEXT"),
+        ("uuid", "UUID"),
+        ("integer", "INTEGER"),
+        ("jsonb", "JSONB"),
+        ("timestamptz", "TIMESTAMPTZ"),
+    ]:
+        # Confirm generate_create_table upper-cases every allowlisted type.
+        single_col_ddl = generate_create_table(
+            "type_check",
+            [{"column_name": "col", "data_type": user_type}],
+        )
+        assert f"col {expected_upper}" in single_col_ddl, (
+            f"Expected 'col {expected_upper}' in DDL for data_type={user_type!r}; "
+            f"got:\n{single_col_ddl}"
+        )
+
+    # An unknown / disallowed type must fall back to TEXT (REQ-337).
+    bad_type_ddl = generate_create_table(
+        "fallback_check",
+        [{"column_name": "payload", "data_type": "BLOB"}],
+    )
+    assert "payload TEXT" in bad_type_ddl, (
+        f"Unknown type 'BLOB' should fall back to TEXT; got:\n{bad_type_ddl}"
+    )
+
+    # Columns whose name starts with '_' must be skipped (not double-inserted).
+    dedup_ddl = generate_create_table(
+        "dedup_check",
+        [
+            {"column_name": "_updated_at", "data_type": "timestamptz"},
+            {"column_name": "body", "data_type": "text"},
+        ],
+    )
+    assert dedup_ddl.count("_updated_at") == 1, (
+        "Steward-declared '_updated_at' column must not be double-inserted; "
+        f"got:\n{dedup_ddl}"
+    )
+    assert "body TEXT" in dedup_ddl
+
+    # An empty column list still produces a valid DDL with system columns.
+    empty_ddl = generate_create_table("empty_tbl", [])
+    assert "id SERIAL PRIMARY KEY" in empty_ddl
+    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in empty_ddl
+    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in empty_ddl
+
 
 # ---------------------------------------------------------------------------
 # REQ-334 — Dot-notation path extraction for nested JSON payloads
@@ -331,27 +383,78 @@ def nested_value_extracted_missing_null(shared_data):
         {"key": "host.name", "value": "srv-1"},
         {"key": "service.name", "value": "checkout-svc"},
     ]
-    assert shared_data["extracted"] == expected
-    assert row["resource_attributes"] == expected
+    assert shared_data["extracted"] == expected, (
+        f"extract_value(payload, {path!r}) returned {shared_data['extracted']!r}; "
+        f"expected {expected!r}"
+    )
+    assert row["resource_attributes"] == expected, (
+        f"row['resource_attributes'] = {row['resource_attributes']!r}; expected {expected!r}"
+    )
 
     # Cross-check the row value matches direct extraction.
     assert row["resource_attributes"] == extract_value(payload, path)
 
     # A column with no explicit path falls back to the top-level column name.
-    assert row["severity"] == "ERROR"
+    assert row["severity"] == "ERROR", (
+        f"Expected row['severity'] == 'ERROR', got {row['severity']!r}"
+    )
     assert row["severity"] == extract_value(payload, "severity")
 
     # A path that does not exist in the payload yields NULL (None).
-    assert row["missing_value"] is None
+    assert row["missing_value"] is None, (
+        f"Expected row['missing_value'] to be None, got {row['missing_value']!r}"
+    )
     assert extract_value(payload, "resourceLogs.0.resource.does.not.exist") is None
 
     # Verify array-index out-of-range and non-existent index also yield NULL.
-    assert extract_value(payload, "resourceLogs.5.resource") is None
-    assert extract_value(payload, "resourceLogs.notanint.resource") is None
+    assert extract_value(payload, "resourceLogs.5.resource") is None, (
+        "Out-of-range array index must yield NULL"
+    )
+    assert extract_value(payload, "resourceLogs.notanint.resource") is None, (
+        "Non-integer array segment must yield NULL"
+    )
 
     # An empty/absent path yields NULL by definition.
-    assert extract_value(payload, "") is None
-    assert extract_value(payload, None) is None
+    assert extract_value(payload, "") is None, "Empty path must yield NULL"
+    assert extract_value(payload, None) is None, "None path must yield NULL"
+
+    # Verify the column with no 'path' key uses column_name as top-level key.
+    fallback_extracted = extract_value(payload, "severity")
+    assert fallback_extracted == "ERROR", (
+        f"Fallback top-level key extraction for 'severity' should yield 'ERROR', "
+        f"got {fallback_extracted!r}"
+    )
+
+    # Confirm _extract_row honours the fallback: no 'path' key → use column_name.
+    fallback_only_cols = [{"column_name": "severity", "data_type": "text"}]
+    fallback_row = _extract_row(payload, fallback_only_cols)
+    assert fallback_row["severity"] == "ERROR", (
+        f"_extract_row fallback to column_name should yield 'ERROR', "
+        f"got {fallback_row['severity']!r}"
+    )
+
+    # Deeply nested path with multiple array and dict segments resolves correctly.
+    deep_payload = {
+        "resourceLogs": [
+            {
+                "resource": {
+                    "attributes": [
+                        {"key": "host", "value": "srv1"}
+                    ]
+                }
+            }
+        ]
+    }
+    deep_val = extract_value(deep_payload, "resourceLogs.0.resource.attributes.0.key")
+    assert deep_val == "host", (
+        f"Deep path extraction should yield 'host', got {deep_val!r}"
+    )
+
+    # A path that descends into a scalar (non-dict, non-list) yields NULL.
+    scalar_payload = {"a": "scalar_value"}
+    assert extract_value(scalar_payload, "a.b") is None, (
+        "Descending into a scalar must yield NULL"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -503,11 +606,47 @@ def accepted_with_row_count(shared_data):
     "404 for unknown source/table, 503 for unavailable engine"
 )
 def batch_ingest_status_codes(shared_data):
-    """Assert the full status-code contract of the batch ingest endpoint (REQ-335)."""
+    """Assert the full status-code contract of the batch ingest endpoint (REQ-335).
+
+    This Then step covers:
+    - Happy path: JSON array -> 202 with accurate inserted count.
+    - Single JSON object (not array) is treated as a one-element batch -> 202, inserted=1.
+    - Unknown source -> 404, nothing persisted.
+    - Unknown table -> 404, nothing persisted.
+    - Engine unavailable -> 503, nothing persisted.
+    """
     # The happy-path write already executed in the When step: 202 + count.
-    assert shared_data["status"] == 202
-    assert shared_data["response"]["inserted"] == len(shared_data["array_body"])
-    assert len(shared_data["backing_store"]) == len(shared_data["array_body"])
+    assert shared_data["status"] == 202, (
+        f"Expected 202 from happy-path batch ingest, got {shared_data['status']}"
+    )
+    assert shared_data["response"]["inserted"] == len(shared_data["array_body"]), (
+        f"inserted count mismatch: {shared_data['response']['inserted']} "
+        f"!= {len(shared_data['array_body'])}"
+    )
+    assert len(shared_data["backing_store"]) == len(shared_data["array_body"]), (
+        f"backing_store length mismatch: {len(shared_data['backing_store'])} "
+        f"!= {len(shared_data['array_body'])}"
+    )
+
+    # Verify each row in the backing store has the correct projected columns.
+    expected_cols = {c["column_name"] for c in shared_data["columns"]}
+    for row in shared_data["backing_store"]:
+        assert set(row.keys()) == expected_cols, (
+            f"Row keys {set(row.keys())} != expected {expected_cols}"
+        )
+
+    # Verify the projected values are correct for all three events.
+    assert shared_data["backing_store"][0]["service_name"] == "checkout-svc"
+    assert shared_data["backing_store"][0]["severity"] == "ERROR"
+    assert shared_data["backing_store"][0]["message"] == "payment failed"
+
+    assert shared_data["backing_store"][1]["service_name"] == "auth-svc"
+    assert shared_data["backing_store"][1]["severity"] == "INFO"
+    assert shared_data["backing_store"][1]["message"] == "user logged in"
+
+    assert shared_data["backing_store"][2]["service_name"] == "cart-svc"
+    assert shared_data["backing_store"][2]["severity"] == "WARN"
+    assert shared_data["backing_store"][2]["message"] == "cart abandoned"
 
     columns = shared_data["columns"]
     known_sources = shared_data["known_sources"]
@@ -516,25 +655,37 @@ def batch_ingest_status_codes(shared_data):
     table = shared_data["table"]
     array_body = shared_data["array_body"]
 
+    # -----------------------------------------------------------------------
     # A single JSON object (not an array) is accepted as a one-element batch.
+    # -----------------------------------------------------------------------
     single_store: list[dict] = []
     status, resp = _simulate_ingest(
         source_id,
         table,
-        array_body[0],
+        array_body[0],  # single dict, not a list
         known_sources=known_sources,
         known_tables=known_tables,
         columns=columns,
         backing_store=single_store,
         engine_available=True,
     )
-    assert status == 202
-    assert resp["inserted"] == 1
-    assert len(single_store) == 1
-    assert single_store[0]["service_name"] == "checkout-svc"
+    assert status == 202, f"Single-object ingest: expected 202, got {status}"
+    assert resp["inserted"] == 1, (
+        f"Single-object ingest: expected inserted=1, got {resp['inserted']}"
+    )
+    assert len(single_store) == 1, (
+        f"Single-object ingest: expected 1 row in store, got {len(single_store)}"
+    )
+    assert single_store[0]["service_name"] == "checkout-svc", (
+        f"Single-object ingest: service_name mismatch: {single_store[0]['service_name']!r}"
+    )
+    assert single_store[0]["severity"] == "ERROR"
+    assert single_store[0]["message"] == "payment failed"
 
+    # -----------------------------------------------------------------------
     # Unknown source -> 404, nothing persisted.
-    miss_store: list[dict] = []
+    # -----------------------------------------------------------------------
+    miss_source_store: list[dict] = []
     status, resp = _simulate_ingest(
         _SOURCE_NOT_FOUND,
         table,
@@ -542,15 +693,21 @@ def batch_ingest_status_codes(shared_data):
         known_sources=known_sources,
         known_tables=known_tables,
         columns=columns,
-        backing_store=miss_store,
+        backing_store=miss_source_store,
         engine_available=True,
     )
-    assert status == 404
-    assert "source not found" in resp["detail"]
-    assert miss_store == []
+    assert status == 404, f"Unknown source: expected 404, got {status}"
+    assert "source not found" in resp["detail"], (
+        f"Unknown source: expected 'source not found' in detail, got {resp['detail']!r}"
+    )
+    assert miss_source_store == [], (
+        f"Unknown source: expected empty store, got {miss_source_store}"
+    )
 
+    # -----------------------------------------------------------------------
     # Unknown table -> 404, nothing persisted.
-    miss_store = []
+    # -----------------------------------------------------------------------
+    miss_table_store: list[dict] = []
     status, resp = _simulate_ingest(
         source_id,
         _TABLE_NOT_FOUND,
@@ -558,14 +715,20 @@ def batch_ingest_status_codes(shared_data):
         known_sources=known_sources,
         known_tables=known_tables,
         columns=columns,
-        backing_store=miss_store,
+        backing_store=miss_table_store,
         engine_available=True,
     )
-    assert status == 404
-    assert "table not found" in resp["detail"]
-    assert miss_store == []
+    assert status == 404, f"Unknown table: expected 404, got {status}"
+    assert "table not found" in resp["detail"], (
+        f"Unknown table: expected 'table not found' in detail, got {resp['detail']!r}"
+    )
+    assert miss_table_store == [], (
+        f"Unknown table: expected empty store, got {miss_table_store}"
+    )
 
+    # -----------------------------------------------------------------------
     # Engine unavailable -> 503, nothing persisted.
+    # -----------------------------------------------------------------------
     down_store: list[dict] = []
     status, resp = _simulate_ingest(
         source_id,
@@ -577,18 +740,26 @@ def batch_ingest_status_codes(shared_data):
         backing_store=down_store,
         engine_available=False,
     )
-    assert status == 503
-    assert "unavailable" in resp["detail"]
-    assert down_store == []
+    assert status == 503, f"Engine down: expected 503, got {status}"
+    assert "unavailable" in resp["detail"], (
+        f"Engine down: expected 'unavailable' in detail, got {resp['detail']!r}"
+    )
+    assert down_store == [], (
+        f"Engine down: expected empty store, got {down_store}"
+    )
 
-
-# ---------------------------------------------------------------------------
-# REQ-336 — Ingest tables subscribable via governed SSE endpoint
-# ---------------------------------------------------------------------------
-
-
-def _apply_rls(rows: list[dict], principal: dict) -> list[dict]:
-    """Enforce row-level security identically to local table subscriptions.
-
-    A principal may only see rows whose ``tenant`` matches one of its allowed
-    tenants. This mirrors the RLS
+    # -----------------------------------------------------------------------
+    # Empty array body -> 202, inserted=0, nothing persisted.
+    # -----------------------------------------------------------------------
+    empty_store: list[dict] = []
+    status, resp = _simulate_ingest(
+        source_id,
+        table,
+        [],
+        known_sources=known_sources,
+        known_tables=known_tables,
+        columns=columns,
+        backing_store=empty_store,
+        engine_available=True,
+    )
+    assert status == 202, f"

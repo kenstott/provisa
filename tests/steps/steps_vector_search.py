@@ -5,7 +5,8 @@
 
 """Step definitions for REQ-427 / REQ-428 — Generated embedding columns and
 scheduled incremental refresh (Vector Search) — plus REQ-430 query-time
-vectorization."""
+vectorization, REQ-424 transparent pgvector fallback cache, REQ-422
+source capability auto-detection, and REQ-423 cosine_similarity UDF."""
 
 from __future__ import annotations
 
@@ -15,6 +16,15 @@ import pytest
 import pytest_asyncio
 from pytest_bdd import given, when, then, parsers, scenarios
 
+from provisa.vector.capability import (
+    native_vector_capability,
+    supports_native_vectors,
+)
+from provisa.vector.fallback_cache import (
+    cache_ddl,
+    fallback_similarity_sql,
+    materialize,
+)
 from provisa.vector.generation import (
     GeneratedEmbeddingSpec,
     GenerationError,
@@ -28,10 +38,14 @@ from provisa.vector.scheduled_refresh import (
     needs_full_rebuild,
     plan_refresh,
 )
+from provisa.compiler.sql_gen import CompilationContext, TableMeta
 
 scenarios("../features/REQ-427.feature")
 scenarios("../features/REQ-428.feature")
 scenarios("../features/REQ-430.feature")
+scenarios("../features/REQ-424.feature")
+scenarios("../features/REQ-422.feature")
+scenarios("../features/REQ-423.feature")
 
 
 @pytest.fixture
@@ -209,6 +223,53 @@ def assert_refresh_behaviour(shared_data):
     # Sanity: unchanged model/dimension/schema does not require a full rebuild.
     assert needs_full_rebuild("embed-model", "embed-model", 3, 3, False) is False
 
+    # Additional edge-case assertions for completeness:
+
+    # Only a dimension change (same model id) must also trigger a full rebuild.
+    assert needs_full_rebuild("embed-model", "embed-model", 3, 1536, False) is True
+
+    # A brand-new column (old_model_id=None, old_dimensions=None) with no schema
+    # change must be treated as incremental (first-time population, not a rebuild).
+    first_time_plan = plan_refresh(
+        changed_pks=shared_data["changed_pks"],
+        new_model_id=shared_data["new_model_id"],
+        new_dimensions=shared_data["new_dimensions"],
+        old_model_id=None,
+        old_dimensions=None,
+        schema_changed=False,
+    )
+    assert first_time_plan.mode is RefreshMode.INCREMENTAL
+    assert first_time_plan.pks == shared_data["changed_pks"]
+
+    # A brand-new column with a schema change must still trigger a full rebuild.
+    first_time_schema_plan = plan_refresh(
+        changed_pks=shared_data["changed_pks"],
+        new_model_id=shared_data["new_model_id"],
+        new_dimensions=shared_data["new_dimensions"],
+        old_model_id=None,
+        old_dimensions=None,
+        schema_changed=True,
+    )
+    assert first_time_schema_plan.mode is RefreshMode.FULL
+    assert first_time_schema_plan.reason == "schema change"
+
+    # An empty changed_pks list with no rebuild trigger yields an incremental plan
+    # that simply has nothing to do (no rows to re-embed).
+    empty_incremental = plan_refresh(
+        changed_pks=[],
+        new_model_id=shared_data["new_model_id"],
+        new_dimensions=shared_data["new_dimensions"],
+        old_model_id=shared_data["old_model_id"],
+        old_dimensions=shared_data["old_dimensions"],
+        schema_changed=False,
+    )
+    assert empty_incremental.mode is RefreshMode.INCREMENTAL
+    assert empty_incremental.pks == []
+
+    # The RefreshPlan dataclass must carry the correct mode enum members.
+    assert RefreshMode.INCREMENTAL.value == "incremental"
+    assert RefreshMode.FULL.value == "full"
+
 
 # --- REQ-430: query-time vectorization (text or raw vector input) ---
 
@@ -314,3 +375,355 @@ def assert_query_vectorized(shared_data):
         asyncio.get_event_loop().run_until_complete(
             _resolve_query_vector([0.1, 0.2], model, provider)
         )
+
+
+# ---------------------------------------------------------------------------
+# REQ-424: Transparent pgvector fallback cache
+# ---------------------------------------------------------------------------
+
+_DIMENSIONS = 4
+_SOURCE_TABLE = "public.documents"
+_SOURCE_PK = "doc_id"
+_CACHE_TABLE = "provisa_cache.documents_vec"
+
+
+class _FallbackProvider:
+    """Deterministic embedding provider for REQ-424 fallback tests."""
+
+    def __init__(self, dimensions: int):
+        self._dimensions = dimensions
+        self.embed_calls: list[list[str]] = []
+
+    async def embed(self, texts, model):
+        self.embed_calls.append(list(texts))
+        # Return a unique, deterministic vector for each text based on its index
+        # across all calls so far.
+        offset = sum(len(c) for c in self.embed_calls[:-1])
+        return [[float(offset + i + 1) / 10.0] * self._dimensions for i in range(len(texts))]
+
+
+class _FakeConn:
+    """In-memory async DB connection that records executed statements."""
+
+    def __init__(self):
+        self.executed: list[tuple[str, tuple]] = []
+
+    async def execute(self, sql: str, *args):
+        self.executed.append((sql, args))
+
+
+@given("a source without native vector capability")
+def source_without_native_vector(shared_data):
+    """Set up a non-vector-capable source with sample rows and a fake connection."""
+    model = VectorModel(id="embed-model", provider="openai", dimensions=_DIMENSIONS)
+    provider = _FallbackProvider(_DIMENSIONS)
+    conn = _FakeConn()
+
+    # Source rows that would be fetched from the non-vector-capable source.
+    source_rows = [
+        {"doc_id": "doc-1", "body": "Provisa enables fast vector search"},
+        {"doc_id": "doc-2", "body": "pgvector stores embeddings efficiently"},
+        {"doc_id": "doc-3", "body": "HNSW indexes accelerate nearest-neighbour queries"},
+    ]
+
+    shared_data["model"] = model
+    shared_data["provider"] = provider
+    shared_data["conn"] = conn
+    shared_data["source_rows"] = source_rows
+    shared_data["source_table"] = _SOURCE_TABLE
+    shared_data["source_pk"] = _SOURCE_PK
+    shared_data["cache_table"] = _CACHE_TABLE
+    shared_data["text_field"] = "body"
+    shared_data["has_native_vector"] = False
+
+    # Confirm the source is flagged as not natively capable.
+    assert shared_data["has_native_vector"] is False
+    assert len(source_rows) == 3
+
+
+@when("a cosine_similarity query is executed")
+@pytest.mark.asyncio(loop_scope="session")
+async def execute_cosine_similarity_query(shared_data):
+    """
+    Transparent fallback path:
+    1. Generate cache DDL (CREATE TABLE + CREATE INDEX).
+    2. Materialize source rows (embed + upsert into cache).
+    3. Build the rewritten SQL that joins the cache back to the source.
+    4. Verify the caller-facing SQL contains no reference to the internal cache.
+    """
+    model = shared_data["model"]
+    provider = shared_data["provider"]
+    conn = shared_data["conn"]
+    source_rows = shared_data["source_rows"]
+    cache_table = shared_data["cache_table"]
+    source_table = shared_data["source_table"]
+    source_pk = shared_data["source_pk"]
+    text_field = shared_data["text_field"]
+
+    # Step 1 — generate DDL statements for the cache table and HNSW index.
+    ddl_statements = cache_ddl(cache_table, model.dimensions)
+    shared_data["ddl_statements"] = ddl_statements
+
+    # Step 2 — materialize source rows into the pgvector cache.
+    materialized_count = await materialize(
+        conn=conn,
+        cache_table=cache_table,
+        rows=source_rows,
+        pk_field=source_pk,
+        text_field=text_field,
+        model=model,
+        provider=provider,
+    )
+    shared_data["materialized_count"] = materialized_count
+
+    # Step 3 — produce the rewritten similarity SQL that joins cache PKs to source.
+    # The query vector represents the caller's similarity request.
+    query_vector = [0.1] * _DIMENSIONS
+    rewritten_sql = fallback_similarity_sql(
+        source_table=source_table,
+        source_pk=source_pk,
+        cache_table=cache_table,
+        query_vector=query_vector,
+        limit=10,
+    )
+    shared_data["rewritten_sql"] = rewritten_sql
+    shared_data["query_vector"] = query_vector
+
+    # Record embed calls so the Then step can confirm embedding happened.
+    shared_data["embed_calls"] = list(provider.embed_calls)
+
+
+@then(
+    "the embedding column is materialized to the pgvector cache, an HNSW index "
+    "is built, and results are returned transparently"
+)
+def assert_transparent_fallback(shared_data):
+    """
+    Verify every aspect of the transparent fallback path (REQ-424):
+
+    1. The DDL creates the cache table and an HNSW cosine index.
+    2. All source rows were embedded and upserted into the cache.
+    3. The rewritten query joins the cache back to the source.
+    4. The caller-facing interface hides the fallback (no raw cache details exposed).
+    """
+    ddl_statements = shared_data["ddl_statements"]
+    materialized_count = shared_data["materialized_count"]
+    rewritten_sql = shared_data["rewritten_sql"]
+    embed_calls = shared_data["embed_calls"]
+    conn: _FakeConn = shared_data["conn"]
+    source_rows = shared_data["source_rows"]
+    cache_table = shared_data["cache_table"]
+    source_table = shared_data["source_table"]
+    source_pk = shared_data["source_pk"]
+
+    # --- 1. DDL correctness ---
+    assert len(ddl_statements) == 2, "expected CREATE TABLE and CREATE INDEX statements"
+
+    create_table_sql = ddl_statements[0]
+    assert "CREATE TABLE IF NOT EXISTS" in create_table_sql
+    assert cache_table in create_table_sql
+    assert f"vector({_DIMENSIONS})" in create_table_sql
+    assert "pk" in create_table_sql
+
+    create_index_sql = ddl_statements[1]
+    assert "CREATE INDEX IF NOT EXISTS" in create_index_sql
+    assert "hnsw" in create_index_sql.lower()
+    assert "vector_cosine_ops" in create_index_sql
+    assert cache_table in create_index_sql
+
+    # --- 2. Materialization correctness ---
+    assert materialized_count == len(source_rows), (
+        f"expected {len(source_rows)} rows materialized, got {materialized_count}"
+    )
+
+    # The provider must have been called exactly once (batch embed of all rows).
+    assert len(embed_calls) == 1, (
+        f"expected exactly one batch embed call, got {len(embed_calls)}"
+    )
+    embedded_texts = embed_calls[0]
+    expected_texts = [str(r["body"]) for r in source_rows]
+    assert embedded_texts == expected_texts, (
+        f"embedded texts mismatch: {embedded_texts!r} != {expected_texts!r}"
+    )
+
+    # Each source row must have produced an upsert into the cache.
+    upsert_sqls = [sql for sql, _ in conn.executed]
+    assert len(upsert_sqls) == len(source_rows), (
+        f"expected {len(source_rows)} upsert statements, got {len(upsert_sqls)}"
+    )
+    for sql in upsert_sqls:
+        assert "INSERT INTO" in sql
+        assert cache_table in sql
+        assert "ON CONFLICT" in sql
+        assert "DO UPDATE" in sql
+
+    # The PKs upserted must match the source rows' doc_id values.
+    upserted_pks = {args[0] for _, args in conn.executed}
+    expected_pks = {str(r[source_pk]) for r in source_rows}
+    assert upserted_pks == expected_pks, (
+        f"upserted PKs {upserted_pks!r} do not match expected {expected_pks!r}"
+    )
+
+    # --- 3. Rewritten SQL correctness ---
+    # The SQL must reference both the source table and the cache table.
+    assert source_table in rewritten_sql, (
+        f"source table '{source_table}' missing from rewritten SQL"
+    )
+    assert cache_table in rewritten_sql, (
+        f"cache table '{cache_table}' missing from rewritten SQL"
+    )
+
+    # The join must use the source PK to link cache results back.
+    assert source_pk in rewritten_sql, (
+        f"source PK '{source_pk}' missing from rewritten SQL"
+    )
+
+    # The SQL must use the cosine distance operator (<=>).
+    assert "<=>" in rewritten_sql, "cosine distance operator '<=>' missing from SQL"
+
+    # The SQL must be ordered by similarity score (descending).
+    assert "ORDER BY" in rewritten_sql.upper()
+    assert "_score DESC" in rewritten_sql
+
+    # The SQL must select from the source (s.*) so the caller gets full rows.
+    assert "s.*" in rewritten_sql, "rewritten SQL must select full source rows (s.*)"
+
+    # The SQL must use a JOIN (not a subquery exposed directly to the caller).
+    assert "JOIN" in rewritten_sql.upper(), "rewritten SQL must JOIN cache to source"
+
+    # --- 4. Transparency: caller must not need to know about the fallback ---
+    # The top-level SELECT must target the source table alias, not the cache alias.
+    # The cache details (table name, HNSW, etc.) are encapsulated inside the subquery.
+    sql_upper = rewritten_sql.upper()
+    # The outer SELECT must be `SELECT s.*`, not `SELECT c.*`.
+    outer_select_idx = sql_upper.index("SELECT")
+    outer_select_clause = rewritten_sql[outer_select_idx: outer_select_idx + 20]
+    assert "s.*" in outer_select_clause, (
+        "top-level SELECT must expose source columns (s.*), not cache internals"
+    )
+
+    # The LIMIT clause must be present inside the cache subquery (not applied to
+    # the outer query, so source-side pagination is not inadvertently skipped).
+    assert "LIMIT" in sql_upper, "LIMIT must be present in the rewritten SQL"
+
+    # --- 5. Fallback transparency: verify that the materialization path is opaque ---
+    # The DDL and upsert operations are internal; the final SQL handed to the caller
+    # reads like a normal source query joined to an opaque subquery.  The caller
+    # does not receive DDL statements or raw upsert counts — only the rewritten SQL.
+    #
+    # We confirm this by checking that the rewritten SQL does NOT contain DDL keywords
+    # that would reveal the internal cache management to the caller.
+    assert "CREATE TABLE" not in rewritten_sql.upper(), (
+        "rewritten query must not expose CREATE TABLE DDL to the caller"
+    )
+    assert "CREATE INDEX" not in rewritten_sql.upper(), (
+        "rewritten query must not expose CREATE INDEX DDL to the caller"
+    )
+    assert "INSERT INTO" not in rewritten_sql.upper(), (
+        "rewritten query must not expose INSERT/upsert statements to the caller"
+    )
+
+    # The query vector embedded in the SQL must match what the caller supplied.
+    query_vector = shared_data["query_vector"]
+    # Each element of the query vector appears in the literal embedded in the SQL.
+    for component in query_vector:
+        assert str(component) in rewritten_sql or f"{component:.1f}" in rewritten_sql, (
+            f"query vector component {component} not found in rewritten SQL"
+        )
+
+
+# ---------------------------------------------------------------------------
+# REQ-422: Source capability auto-detection at registration time
+# ---------------------------------------------------------------------------
+
+
+@given("a PostgreSQL source being registered")
+def postgresql_source_being_registered(shared_data):
+    """
+    Set up two representative PostgreSQL source descriptors:
+
+    1. A source whose PostgreSQL instance has the pgvector extension installed —
+       ``native_capable`` should be True after detection.
+    2. A source whose instance does NOT have pgvector — it must be flagged as
+       requiring fallback.
+
+    We use ``native_vector_capability`` from
+    ``provisa.vector.capability`` to probe each source descriptor.
+    The function accepts a source descriptor mapping that includes at minimum
+    a ``source_type`` key and, for PostgreSQL sources, an ``extensions``
+    sequence that lists installed extensions (as would be discovered by
+    querying ``pg_extension``).
+    """
+    # Source with pgvector extension present.
+    pgvector_source = {
+        "source_type": "postgresql",
+        "host": "pg-with-pgvector.example.com",
+        "port": 5432,
+        "database": "mydb",
+        # Simulates the result of: SELECT extname FROM pg_extension
+        "extensions": ["plpgsql", "pgvector", "pg_trgm"],
+    }
+
+    # Source without pgvector extension.
+    plain_pg_source = {
+        "source_type": "postgresql",
+        "host": "pg-plain.example.com",
+        "port": 5432,
+        "database": "mydb",
+        "extensions": ["plpgsql"],
+    }
+
+    # MongoDB source with Atlas Vector Search capability.
+    mongodb_atlas_source = {
+        "source_type": "mongodb",
+        "host": "atlas-cluster.mongodb.net",
+        "port": 27017,
+        "database": "mydb",
+        "features": ["atlas_vector_search"],
+    }
+
+    # MongoDB source without Atlas Vector Search.
+    mongodb_plain_source = {
+        "source_type": "mongodb",
+        "host": "plain-mongo.example.com",
+        "port": 27017,
+        "database": "mydb",
+        "features": [],
+    }
+
+    # Snowflake source with Cortex capability.
+    snowflake_cortex_source = {
+        "source_type": "snowflake",
+        "account": "myaccount.snowflakecomputing.com",
+        "database": "mydb",
+        "features": ["cortex"],
+    }
+
+    # Snowflake source without Cortex.
+    snowflake_plain_source = {
+        "source_type": "snowflake",
+        "account": "myaccount.snowflakecomputing.com",
+        "database": "mydb",
+        "features": [],
+    }
+
+    shared_data["pgvector_source"] = pgvector_source
+    shared_data["plain_pg_source"] = plain_pg_source
+    shared_data["mongodb_atlas_source"] = mongodb_atlas_source
+    shared_data["mongodb_plain_source"] = mongodb_plain_source
+    shared_data["snowflake_cortex_source"] = snowflake_cortex_source
+    shared_data["snowflake_plain_source"] = snowflake_plain_source
+
+    # Confirm all are typed correctly.
+    assert pgvector_source["source_type"] == "postgresql"
+    assert plain_pg_source["source_type"] == "postgresql"
+    assert mongodb_atlas_source["source_type"] == "mongodb"
+    assert mongodb_plain_source["source_type"] == "mongodb"
+    assert snowflake_cortex_source["source_type"] == "snowflake"
+    assert snowflake_plain_source["source_type"] == "snowflake"
+
+
+@when("Provisa checks for native vector support")
+def check_native_vector_support(shared_data):
+    """
+    Call

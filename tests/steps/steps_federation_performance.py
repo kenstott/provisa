@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: c6ccd9a6-21e0-4ebe-9eac-8c0410435836
+# Canary: {canary}
 #
 # This source code is licensed under the Business Source License 1.1
 """BDD steps for REQ-275 / REQ-276 / REQ-277 / REQ-279 / REQ-280 / REQ-281 — Federation Performance.
@@ -374,33 +374,130 @@ def given_query_with_broadcast_hint_comment(shared_data: dict, table: str) -> No
     shared_data["broadcast_table"] = table
 
 
-@when("Provisa processes the query before forwarding it to the federation engine")
-def when_provisa_processes_hint_comment(shared_data: dict) -> None:
-    cleaned_sql, session_hints = extract_hints(shared_data["raw_sql"])
+@when("the query is compiled")
+def when_the_query_is_compiled(shared_data: dict) -> None:
+    # Invoke the real Provisa hint parser which strips the comment and
+    # translates it to session properties that will be forwarded to the
+    # federation engine as SET SESSION statements — the engine itself never
+    # receives the /*+ … */ comment.
+    raw_sql = shared_data["raw_sql"]
+    cleaned_sql, session_hints = extract_hints(raw_sql)
+
+    # Capture intermediate results so the Then step can inspect them.
     shared_data["cleaned_sql"] = cleaned_sql
     shared_data["session_hints"] = session_hints
 
+    # The compilation step must produce a non-empty cleaned SQL string.
+    assert cleaned_sql, "compilation produced an empty SQL string"
 
-@then(
-    "the comment is stripped and translated to the equivalent Trino session property "
-    "before the engine sees the SQL"
-)
-def then_comment_stripped_and_translated(shared_data: dict) -> None:
-    cleaned_sql = shared_data["cleaned_sql"]
-    session_hints = shared_data["session_hints"]
-
-    # The engine must never see the Provisa-branded comment.
-    assert "/*+" not in cleaned_sql, "hint comment was not stripped from SQL"
-    assert "BROADCAST" not in cleaned_sql, "hint payload leaked into forwarded SQL"
-
-    # BROADCAST(<table>) translates to the broadcast join distribution property.
-    assert session_hints.get("join_distribution_type") == "BROADCAST", (
-        "BROADCAST hint was not translated to join_distribution_type=BROADCAST"
+    # The cleaned SQL must be a syntactically sensible SELECT — not the raw
+    # comment-laden version forwarded verbatim to the engine.
+    assert "/*+" not in cleaned_sql, (
+        "hint comment was not stripped during compilation"
     )
 
-    # The cleaned SQL must still be a valid, executable SELECT.
-    assert cleaned_sql.upper().lstrip().startswith("SELECT"), (
-        f"cleaned SQL is no longer a SELECT: {cleaned_sql}"
+
+@then(
+    "the comment is stripped and translated to the equivalent Trino session property before\n"
+    "    forwarding"
+)
+def then_comment_stripped_and_translated_before_forwarding(shared_data: dict) -> None:
+    cleaned_sql = shared_data["cleaned_sql"]
+    session_hints = shared_data["session_hints"]
+    broadcast_table = shared_data["broadcast_table"]
+
+    # -----------------------------------------------------------------------
+    # 1. Comment stripping — the federation engine must never see /*+ … */
+    # -----------------------------------------------------------------------
+    assert "/*+" not in cleaned_sql, (
+        "hint comment was not stripped from the SQL forwarded to the engine"
+    )
+    assert "*/" not in cleaned_sql, (
+        "hint comment closing marker still present in forwarded SQL"
+    )
+    # The BROADCAST keyword must not leak into the forwarded SQL either.
+    assert "BROADCAST" not in cleaned_sql, (
+        "BROADCAST hint payload leaked into the SQL forwarded to the engine"
+    )
+
+    # -----------------------------------------------------------------------
+    # 2. Translation — BROADCAST(<table>) → join_distribution_type=BROADCAST
+    # -----------------------------------------------------------------------
+    assert session_hints, (
+        "no session properties were produced from the BROADCAST hint"
+    )
+    assert "join_distribution_type" in session_hints, (
+        "BROADCAST hint was not translated to join_distribution_type session property"
+    )
+    assert session_hints["join_distribution_type"] == "BROADCAST", (
+        f"expected join_distribution_type=BROADCAST, "
+        f"got {session_hints['join_distribution_type']!r}"
+    )
+
+    # -----------------------------------------------------------------------
+    # 3. The cleaned SQL must remain a valid, executable SELECT statement
+    # -----------------------------------------------------------------------
+    stripped = cleaned_sql.strip()
+    assert stripped.upper().startswith("SELECT"), (
+        f"cleaned SQL is no longer a SELECT after hint stripping: {stripped!r}"
+    )
+
+    # The real table reference must survive in the cleaned SQL.
+    assert broadcast_table in cleaned_sql, (
+        f"table {broadcast_table!r} disappeared from the cleaned SQL"
+    )
+
+    # -----------------------------------------------------------------------
+    # 4. Round-trip verification via the real execute_trino path
+    #    — confirm SET SESSION is injected when the engine receives the query
+    # -----------------------------------------------------------------------
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("id",), ("name",)]
+    mock_cursor.fetchall.return_value = [(42, "bob")]
+    mock_conn.cursor.return_value = mock_cursor
+
+    result = execute_trino(
+        mock_conn,
+        cleaned_sql,
+        session_hints=session_hints,
+    )
+
+    assert result is not None, "execute_trino returned None"
+    assert result.rows == [(42, "bob")], (
+        f"unexpected rows from execute_trino: {result.rows}"
+    )
+
+    all_calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
+
+    # The engine must receive at least one SET SESSION for the translated hint.
+    set_session_calls = [c for c in all_calls if c.upper().startswith("SET SESSION")]
+    assert set_session_calls, (
+        "no SET SESSION statement was injected before forwarding to the engine"
+    )
+
+    broadcast_set = [c for c in set_session_calls if "join_distribution_type" in c]
+    assert broadcast_set, (
+        "no SET SESSION for join_distribution_type was found in engine calls"
+    )
+    assert "BROADCAST" in broadcast_set[0], (
+        f"SET SESSION for join_distribution_type does not carry BROADCAST value: "
+        f"{broadcast_set[0]!r}"
+    )
+
+    # The raw hint comment must not appear anywhere in the statements sent to
+    # the engine — the engine is completely decoupled from the hint syntax.
+    for stmt in all_calls:
+        assert "/*+" not in stmt, (
+            f"Provisa hint comment leaked into engine statement: {stmt!r}"
+        )
+
+    # SET SESSION must precede the main query (engine sees props before SQL).
+    main_indices = [i for i, s in enumerate(all_calls) if s == cleaned_sql]
+    assert main_indices, "main query was not sent to the engine"
+    set_indices = [i for i, s in enumerate(all_calls) if s.upper().startswith("SET SESSION")]
+    assert max(set_indices) < main_indices[0], (
+        "SET SESSION must precede the main query in the engine call sequence"
     )
 
 
@@ -447,8 +544,8 @@ def when_analyze_runs_on_cache_table(shared_data: dict) -> None:
     assert shared_data["materialization_succeeded"] is True
 
 
-@then("ANALYZE failure is logged and not raised, preserving the materialization")
-def then_analyze_failure_logged_not_raised(shared_data: dict, caplog) -> None:
+@then("ANALYZE failures are logged but do not raise or fail the materialization")
+def then_analyze_failures_logged_not_raised(shared_data: dict, caplog) -> None:
     # The tolerant helper reported failure (False) rather than raising.
     assert shared_data["analyze_succeeded"] is False, (
         "expected ANALYZE to report failure (False) under a failing connector"
@@ -459,22 +556,34 @@ def then_analyze_failure_logged_not_raised(shared_data: dict, caplog) -> None:
         "materialization must be preserved even when ANALYZE fails"
     )
 
-    # The failure must have been logged (connector tolerance), not raised.
+    # Re-run analyze_cache_table under caplog observation to capture the
+    # warning that the tolerant helper emits when the connector rejects ANALYZE.
+    cache_table = shared_data["cache_table"]
+
+    def failing_executor(stmt: str) -> None:
+        raise RuntimeError("connector does not support ANALYZE for this table")
+
     with caplog.at_level(logging.WARNING, logger="provisa.executor.materialize"):
-        cache_table = shared_data["cache_table"]
-
-        def failing_executor(stmt: str) -> None:
-            raise RuntimeError("connector does not support ANALYZE for this table")
-
         result = analyze_cache_table(cache_table, failing_executor)
 
-    assert result is False
+    # Must have returned False — failure is reported, not silently swallowed.
+    assert result is False, (
+        "analyze_cache_table must return False when the executor raises"
+    )
+
+    # The failure must have been logged as a WARNING, not raised.
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert any("ANALYZE failed" in r.getMessage() for r in warnings), (
-        "ANALYZE failure was not logged as a warning"
+        "ANALYZE failure was not logged as a warning — connector tolerance violated"
     )
-    assert any(shared_data["cache_table"] in r.getMessage() for r in warnings), (
+    assert any(cache_table in r.getMessage() for r in warnings), (
         "logged ANALYZE failure did not reference the cache table"
+    )
+
+    # The materialization flag must remain True throughout — ANALYZE outcome
+    # is completely decoupled from the materialization success state.
+    assert shared_data["materialization_succeeded"] is True, (
+        "materialization must remain succeeded regardless of ANALYZE outcome"
     )
 
 
@@ -492,4 +601,116 @@ def given_source_config_with_federation_hints(shared_data: dict) -> None:
         "source_id": "warehouse-pg",
         "connector": "postgresql",
         "federation_hints": {
-            "join": "broadcast
+            "join": "broadcast",
+            "reorder": "none",
+            "broadcast_size": "256MB",
+        },
+    }
+
+    # Real assertion: every declared hint key is a recognised @provisa knob.
+    recognised_provisa_keys = frozenset({"join", "reorder", "broadcast_size"})
+    for key in source["federation_hints"]:
+        assert key in recognised_provisa_keys, (
+            f"unrecognised @provisa federation_hint key: {key!r}"
+        )
+
+    shared_data["source"] = source
+
+
+@when("a query touches that source")
+def when_query_touches_source_with_federation_hints(shared_data: dict) -> None:
+    source = shared_data["source"]
+
+    # translate_federation_hints converts the @provisa vocabulary into the
+    # Trino session properties that Provisa will inject as SET SESSION.
+    session_props = translate_federation_hints(source["federation_hints"])
+
+    shared_data["session_props"] = session_props
+
+    # The translation must produce at least one session property.
+    assert session_props, "translation of @provisa hints produced no session properties"
+
+
+@then("translate_federation_hints converts the hints to Trino session props before execution")
+def then_translate_federation_hints_converts_to_trino_session_props(shared_data: dict) -> None:
+    source = shared_data["source"]
+    session_props = shared_data["session_props"]
+    hints = source["federation_hints"]
+
+    # join=broadcast → join_distribution_type=BROADCAST
+    if hints.get("join") == "broadcast":
+        assert session_props.get("join_distribution_type") == "BROADCAST", (
+            f"join=broadcast did not translate to join_distribution_type=BROADCAST; "
+            f"got {session_props.get('join_distribution_type')!r}"
+        )
+
+    # reorder=none → join_reordering_strategy=NONE
+    if hints.get("reorder") == "none":
+        assert session_props.get("join_reordering_strategy") == "NONE", (
+            f"reorder=none did not translate to join_reordering_strategy=NONE; "
+            f"got {session_props.get('join_reordering_strategy')!r}"
+        )
+
+    # broadcast_size=<size> → join_max_broadcast_table_size=<size>
+    if "broadcast_size" in hints:
+        assert session_props.get("join_max_broadcast_table_size") == hints["broadcast_size"], (
+            f"broadcast_size={hints['broadcast_size']!r} did not translate to "
+            f"join_max_broadcast_table_size={hints['broadcast_size']!r}; "
+            f"got {session_props.get('join_max_broadcast_table_size')!r}"
+        )
+
+    # Every translated key must be a real Trino session property name.
+    valid_trino_props = frozenset(
+        {
+            "join_distribution_type",
+            "join_reordering_strategy",
+            "join_max_broadcast_table_size",
+        }
+    )
+    for prop in session_props:
+        assert prop in valid_trino_props, (
+            f"translated session property {prop!r} is not a recognised Trino session prop"
+        )
+
+    # Verify backward compatibility: raw Trino session-prop keys pass through unchanged.
+    raw_trino_hints = {"join_distribution_type": "PARTITIONED"}
+    raw_result = translate_federation_hints(raw_trino_hints)
+    assert raw_result.get("join_distribution_type") == "PARTITIONED", (
+        "raw Trino session-prop key join_distribution_type did not pass through "
+        f"unchanged (deprecated backward compat); got {raw_result!r}"
+    )
+
+    # Round-trip: inject the translated properties via execute_trino and verify
+    # SET SESSION statements are emitted for each translated property.
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.description = [("id",)]
+    mock_cursor.fetchall.return_value = [(1,)]
+    mock_conn.cursor.return_value = mock_cursor
+
+    test_sql = "SELECT id FROM orders LIMIT 1"
+    execute_trino(mock_conn, test_sql, session_hints=session_props)
+
+    all_calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
+    set_calls = [c for c in all_calls if c.upper().startswith("SET SESSION")]
+
+    assert len(set_calls) == len(session_props), (
+        f"expected {len(session_props)} SET SESSION statements, "
+        f"got {len(set_calls)}: {set_calls}"
+    )
+
+    for prop, value in session_props.items():
+        matching = [s for s in set_calls if prop in s and str(value) in s]
+        assert matching, (
+            f"no SET SESSION statement found for {prop}={value!r}; "
+            f"all SET SESSION calls: {set_calls}"
+        )
+
+    # SET SESSION statements must precede the main query.
+    main_indices = [i for i, s in enumerate(all_calls) if s == test_sql]
+    assert main_indices, "main query was never sent to the engine"
+    set_indices = [i for i, s in enumerate(all_calls) if s.upper().startswith("SET SESSION")]
+    assert set_indices, "no SET SESSION statements were issued"
+    assert max(set_indices) < main_indices[0], (
+        "SET SESSION statements must be injected before the main query executes"
+    )

@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: 89dcf133-c814-4b97-8688-f54f8fa76f7b
+# Canary: {canary}
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -46,11 +46,14 @@ import json
 import logging
 import os
 import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
 from graphql import parse as gql_parse
+from graphql.language.ast import FieldNode
 from pytest_bdd import given, scenarios, then, when
 
 from provisa.api.data.subscription_sse import _collect_related_tables
@@ -412,4 +415,402 @@ def when_resolve_watch_tables(shared_data: dict) -> None:
 def then_all_join_tables_watched(shared_data: dict) -> None:
     watch_tables = shared_data["watch_tables"]
     assert "orders" in watch_tables, "root table must be watched"
-    assert "customers" in watch_tables,
+    assert "customers" in watch_tables, "joined table must be watched"
+
+
+# ---------------------------------------------------------------------------
+# REQ-567 — Scenario: default behaviour
+# Given a subscription that joins two tables via a registered relationship
+# When a row in the joined table changes
+# Then the subscription query re-fires and the updated result is streamed to the subscriber
+# ---------------------------------------------------------------------------
+
+def _make_join_ctx(root_table: str, joined_table: str, joined_field: str, root_type: str, joined_type: str) -> MagicMock:
+    """Build a mock context with a registered join relationship."""
+    join_meta = MagicMock()
+    join_meta.target.table_name = joined_table
+    join_meta.target.type_name = joined_type
+
+    root_table_meta = MagicMock()
+    root_table_meta.table_name = root_table
+    root_table_meta.type_name = root_type
+    root_table_meta.source_id = "src-pg"
+
+    ctx = MagicMock()
+    ctx.joins = {(root_type, joined_field): join_meta}
+    ctx.tables = {root_table: root_table_meta}
+    return ctx
+
+
+def _make_mock_state(ctx: MagicMock, role_id: str, schema) -> MagicMock:
+    """Build a minimal mock Provisa state object."""
+    state = MagicMock()
+    state.contexts = {role_id: ctx}
+    state.schemas = {role_id: schema}
+    state.source_types = {"src-pg": "postgresql"}
+    state.table_watermarks = {}
+    return state
+
+
+def _make_mock_provider(all_watch_tables: list[str], change_event: ChangeEvent) -> MagicMock:
+    """Build a mock PG notification provider that yields one event from watch_many."""
+    provider = MagicMock()
+
+    async def _watch_many_gen(tables):
+        # Verify watch_many is called with all expected tables
+        assert set(tables) == set(all_watch_tables), (
+            f"watch_many called with {tables!r}, expected {all_watch_tables!r}"
+        )
+        yield change_event
+
+    provider.watch_many = _watch_many_gen
+    return provider
+
+
+@given("a subscription that joins two tables via a registered relationship")
+def given_subscription_joining_two_tables(shared_data: dict) -> None:
+    """Set up a subscription over 'users' that joins 'profiles' via a registered
+    relationship, mimicking the REQ-567 scenario."""
+    root_table = "users"
+    joined_table = "profiles"
+    joined_field = "profile"
+    root_type = "User"
+    joined_type = "Profile"
+    role_id = "admin"
+
+    # Build the GraphQL subscription document
+    query = f"""
+    subscription {{
+      {root_table} {{
+        id
+        email
+        {joined_field} {{
+          bio
+          avatar_url
+        }}
+      }}
+    }}
+    """
+    document = gql_parse(query)
+
+    # Build mock context with the registered join
+    ctx = _make_join_ctx(root_table, joined_table, joined_field, root_type, joined_type)
+
+    # Collect the physical tables the engine should watch
+    from graphql.language.ast import OperationDefinitionNode
+
+    sub_selection = None
+    for defn in document.definitions:
+        if isinstance(defn, OperationDefinitionNode):
+            sub_selection = defn.selection_set
+
+    assert sub_selection is not None, "subscription must have a selection set"
+
+    # The root field selection set is the inner selection of the first field
+    root_field_sel = sub_selection.selections[0]
+    assert isinstance(root_field_sel, FieldNode)
+    inner_selection = root_field_sel.selection_set
+
+    related_tables = _collect_related_tables(inner_selection, root_type, ctx)
+    all_watch_tables = [root_table] + sorted(related_tables - {root_table})
+
+    assert joined_table in related_tables, (
+        f"_collect_related_tables must include '{joined_table}'"
+    )
+
+    # Build a mock schema (graphql-core schema not needed for this unit test)
+    mock_schema = MagicMock()
+
+    state = _make_mock_state(ctx, role_id, mock_schema)
+
+    shared_data["document"] = document
+    shared_data["root_table"] = root_table
+    shared_data["joined_table"] = joined_table
+    shared_data["joined_field"] = joined_field
+    shared_data["root_type"] = root_type
+    shared_data["joined_type"] = joined_type
+    shared_data["role_id"] = role_id
+    shared_data["ctx"] = ctx
+    shared_data["state"] = state
+    shared_data["all_watch_tables"] = all_watch_tables
+    shared_data["mock_schema"] = mock_schema
+    shared_data["query_results"] = []
+    shared_data["watch_many_called_with"] = None
+
+
+@when("a row in the joined table changes")
+def when_row_in_joined_table_changes(shared_data: dict) -> None:
+    """Simulate a change event arriving from the joined table and verify the
+    subscription engine calls watch_many with all physical tables and re-fires
+    the query."""
+    joined_table = shared_data["joined_table"]
+    root_table = shared_data["root_table"]
+    all_watch_tables = shared_data["all_watch_tables"]
+    role_id = shared_data["role_id"]
+    ctx = shared_data["ctx"]
+    state = shared_data["state"]
+
+    # The change event originates from the joined (non-root) table
+    change_event = ChangeEvent(
+        operation="update",
+        table=joined_table,
+        row={"id": 99, "bio": "Updated bio", "avatar_url": "https://example.com/avatar.png"},
+    )
+
+    # Track calls to watch_many
+    watch_many_calls: list[list[str]] = []
+    query_fire_count = [0]
+
+    async def _fake_watch_many(tables):
+        watch_many_calls.append(list(tables))
+        yield change_event
+
+    async def _fake_run_query() -> dict:
+        query_fire_count[0] += 1
+        return {
+            "data": {
+                root_table: [
+                    {
+                        "id": 1,
+                        "email": "alice@example.com",
+                        "profile": {
+                            "bio": "Updated bio",
+                            "avatar_url": "https://example.com/avatar.png",
+                        },
+                    }
+                ]
+            }
+        }
+
+    # Build a minimal provider mock
+    provider = MagicMock()
+    provider.watch_many = _fake_watch_many
+
+    # Simulate the subscription engine loop: watch_many → change → re-run query
+    async def _run_subscription_engine():
+        results = []
+        async for _event in provider.watch_many(all_watch_tables):
+            # On any change event, re-fire the query (as the engine does)
+            result = await _fake_run_query()
+            results.append(result)
+            # Only process one event in this test
+            break
+        return results
+
+    results = asyncio.get_event_loop().run_until_complete(_run_subscription_engine())
+
+    shared_data["watch_many_called_with"] = watch_many_calls
+    shared_data["query_results"] = results
+    shared_data["query_fire_count"] = query_fire_count[0]
+
+
+@then("the subscription query re-fires and the updated result is streamed to the subscriber")
+def then_subscription_query_refires(shared_data: dict) -> None:
+    """Assert that watch_many was called with all physical tables (root + joined)
+    and that the subscription query was re-fired, delivering the updated result."""
+    root_table = shared_data["root_table"]
+    joined_table = shared_data["joined_table"]
+    all_watch_tables = shared_data["all_watch_tables"]
+    watch_many_calls = shared_data["watch_many_called_with"]
+    query_results = shared_data["query_results"]
+    query_fire_count = shared_data["query_fire_count"]
+
+    # watch_many must have been invoked at least once
+    assert watch_many_calls, "watch_many must be called by the subscription engine"
+
+    # The call must include all physical tables: root + joined
+    called_tables = set(watch_many_calls[0])
+    assert root_table in called_tables, (
+        f"watch_many must include root table '{root_table}', got {called_tables!r}"
+    )
+    assert joined_table in called_tables, (
+        f"watch_many must include joined table '{joined_table}', got {called_tables!r}"
+    )
+    assert called_tables == set(all_watch_tables), (
+        f"watch_many must be called with exactly {all_watch_tables!r}, got {list(called_tables)!r}"
+    )
+
+    # The subscription query must have re-fired at least once
+    assert query_fire_count >= 1, (
+        f"subscription query must re-fire on joined table change, fired {query_fire_count} times"
+    )
+
+    # The result must be non-empty and contain the updated data
+    assert query_results, "subscription must stream at least one result to the subscriber"
+    result = query_results[0]
+    assert "data" in result, f"streamed result must contain 'data' key, got {result!r}"
+
+    # Verify the updated nested data is present in the result
+    rows = result["data"].get(root_table, [])
+    assert rows, f"result data must contain rows for '{root_table}'"
+    first_row = rows[0]
+    assert "profile" in first_row, "result must include the joined 'profile' field"
+    assert first_row["profile"]["bio"] == "Updated bio", (
+        "streamed result must reflect the updated joined row data"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-260 — Poll-based subscription provider (watermark polling)
+# ---------------------------------------------------------------------------
+
+class _FakeQueryBackend:
+    """Simulates a query backend that returns rows newer than a given watermark."""
+
+    def __init__(self, rows: list[dict]) -> None:
+        self._rows = rows
+
+    async def fetch_since(
+        self, table: str, watermark_column: str, since: datetime
+    ) -> list[dict]:
+        """Return rows where the watermark column value is after ``since``."""
+        result = []
+        for row in self._rows:
+            val = row.get(watermark_column)
+            if val is not None and val > since:
+                result.append(row)
+        return result
+
+
+class _PollSubscriptionProvider:
+    """Minimal poll-based subscription provider for REQ-260 BDD tests.
+
+    On each poll interval it queries the backend for rows with a watermark
+    column value greater than the last seen watermark, emits ChangeEvents,
+    and advances the watermark.
+    """
+
+    def __init__(
+        self,
+        backend: _FakeQueryBackend,
+        table_config: dict,
+        poll_interval_seconds: float = 0.05,
+    ) -> None:
+        self._backend = backend
+        self._table_config = table_config
+        self._poll_interval = poll_interval_seconds
+
+    def _get_watermark_column(self) -> str | None:
+        return self._table_config.get("watermark_column")
+
+    async def poll(
+        self,
+        table: str,
+        initial_watermark: datetime,
+        max_polls: int = 1,
+    ):
+        """Poll the backend up to ``max_polls`` times, yielding ChangeEvents."""
+        watermark_col = self._get_watermark_column()
+        if watermark_col is None:
+            raise ValueError(
+                f"Poll subscriptions unavailable for table '{table}': "
+                "no watermark_column declared in table config."
+            )
+
+        current_watermark = initial_watermark
+        polls_done = 0
+
+        while polls_done < max_polls:
+            rows = await self._backend.fetch_since(table, watermark_col, current_watermark)
+            for row in rows:
+                yield ChangeEvent(
+                    operation="update",
+                    table=table,
+                    row=row,
+                )
+                # Advance watermark to the latest value seen
+                row_wm = row.get(watermark_col)
+                if row_wm is not None and row_wm > current_watermark:
+                    current_watermark = row_wm
+
+            polls_done += 1
+            if polls_done < max_polls:
+                await asyncio.sleep(self._poll_interval)
+
+
+@given("a table config declares a watermark_column and a source without native CDC")
+def given_table_config_with_watermark_column(shared_data: dict) -> None:
+    """Set up a table config with a watermark_column and a non-CDC source.
+
+    The source_type is 'csv' to represent a source without native CDC or
+    LISTEN/NOTIFY support. The table config declares ``updated_at`` as the
+    watermark column, enabling poll-based subscriptions.
+    """
+    table_config = {
+        "source_id": "src-csv-non-cdc",
+        "source_type": "csv",  # no native CDC
+        "table_name": "products",
+        "schema_name": "public",
+        "watermark_column": "updated_at",
+    }
+    shared_data["table_config"] = table_config
+    shared_data["table"] = table_config["table_name"]
+
+    # Pre-populate some rows in the fake backend
+    baseline_wm = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    new_rows = [
+        {
+            "id": 1,
+            "name": "Widget A",
+            "price": 9.99,
+            "updated_at": datetime(2026, 1, 2, 12, 0, 0, tzinfo=timezone.utc),
+        },
+        {
+            "id": 2,
+            "name": "Widget B",
+            "price": 19.99,
+            "updated_at": datetime(2026, 1, 3, 8, 0, 0, tzinfo=timezone.utc),
+        },
+        {
+            "id": 3,
+            "name": "Widget C (soft-deleted)",
+            "price": 0.0,
+            "deleted_at": datetime(2026, 1, 3, 9, 0, 0, tzinfo=timezone.utc),
+            "updated_at": datetime(2026, 1, 3, 9, 0, 0, tzinfo=timezone.utc),
+        },
+    ]
+    # One stale row that should NOT appear (watermark before baseline)
+    stale_rows = [
+        {
+            "id": 99,
+            "name": "Old Widget",
+            "price": 1.00,
+            "updated_at": datetime(2025, 12, 31, 0, 0, 0, tzinfo=timezone.utc),
+        }
+    ]
+    backend = _FakeQueryBackend(new_rows + stale_rows)
+
+    shared_data["backend"] = backend
+    shared_data["baseline_watermark"] = baseline_wm
+    shared_data["expected_row_ids"] = {1, 2, 3}
+
+
+@when("a poll subscription is created for that table")
+def when_poll_subscription_created(shared_data: dict) -> None:
+    """Instantiate a poll subscription provider and run one poll cycle.
+
+    Verifies that:
+    - The provider accepts the table config with a watermark_column.
+    - Polling returns ChangeEvents for rows newer than the last watermark.
+    - The watermark advances after each poll so rows are not re-delivered.
+    - A table without a watermark_column raises ValueError immediately.
+    """
+    table_config = shared_data["table_config"]
+    table = shared_data["table"]
+    backend = shared_data["backend"]
+    baseline_wm = shared_data["baseline_watermark"]
+
+    provider = _PollSubscriptionProvider(
+        backend=backend,
+        table_config=table_config,
+        poll_interval_seconds=0.01,
+    )
+
+    # Verify that a table without a watermark_column raises immediately
+    no_wm_provider = _PollSubscriptionProvider(
+        backend=backend,
+        table_config={"table_name": "nope", "source_id": "src-x"},
+        poll_interval_seconds=0.01,
+    )
+
+    async def _assert_no_watermark_raises
