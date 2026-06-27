@@ -57,7 +57,7 @@ function Ask-RamBudget {
   $selected = $options[[int]$choice - 1]
   $script:BudgetGb = if ($selected -like 'All*') { $totalGb } else { [int]($selected -replace 'GB', '') }
   $script:TrinoWorkers = Get-WorkersFromBudget -Gb $script:BudgetGb
-  Write-Ok "RAM budget: $($script:BudgetGb)GB → Trino workers: $($script:TrinoWorkers)"
+  Write-Ok "RAM budget: $($script:BudgetGb)GB -> Trino workers: $($script:TrinoWorkers)"
 }
 
 # ── Ensure WSL2 is enabled and nerdctl-full is installed ─────────────────────
@@ -179,7 +179,7 @@ function Get-ExtensionImages {
   )
 
   if ((Test-Path $DestDir) -and (Get-ChildItem $DestDir -ErrorAction SilentlyContinue)) {
-    Write-Info "$Label images already present — skipping."
+    Write-Info "$Label images already present - skipping."
     return
   }
 
