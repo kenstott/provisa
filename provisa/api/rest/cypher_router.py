@@ -1147,7 +1147,8 @@ async def _execute_with_api(
             continue
 
         _cc = getattr(api_source, "cache_catalog", None) if api_source else None
-        _cs = getattr(api_source, "cache_schema", "api_cache") if api_source else "api_cache"
+        _default_cs = f"org_{getattr(state, 'org_id', 'default')}_api_cache"
+        _cs = getattr(api_source, "cache_schema", _default_cs) if api_source else _default_cs
         _cache_loc = cache_location(source_id, _cc, _cs)
         cache_tbl = cache_table_name(source_id, table_name, url_params)
         cache_rewrites[table_name] = (_cache_loc, cache_tbl)
@@ -1173,6 +1174,7 @@ async def _execute_with_api(
                 source=api_source,
                 source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
                 global_ttl=getattr(state, "response_cache_default_ttl", None),
+                loc=_cache_loc,
             )
 
             ttl = (
@@ -1274,7 +1276,11 @@ async def _execute_with_gql_remote(
                 f"add a WHERE clause, e.g. WHERE n.{missing[0]} = <value>"
             )
 
-        cache_loc = cache_location(info["source_id"], info["cache_catalog"], "gql_cache")
+        cache_loc = cache_location(
+            info["source_id"],
+            info["cache_catalog"],
+            f"org_{getattr(state, 'org_id', 'default')}_gql_cache",
+        )
         cache_tbl = cache_table_name(info["source_id"], tn, gql_vars)
         cache_rewrites[tn] = (cache_loc, cache_tbl)
         _info_columns: list = info["columns"]

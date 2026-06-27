@@ -1707,6 +1707,7 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
             source=api_source,
             source_ttl=state.source_cache.get(source_id, {}).get("cache_ttl"),
             global_ttl=state.response_cache_default_ttl,
+            loc=_cache_loc,
         )
         cache_tbl = result.cache_table
         _cache_miss = not result.from_cache
