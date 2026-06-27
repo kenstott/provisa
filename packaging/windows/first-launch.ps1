@@ -18,6 +18,13 @@ function Write-Info  { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor 
 function Write-Ok    { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Green }
 function Write-Err   { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Red }
 
+function ConvertTo-WslPath {
+  param([string]$WinPath)
+  $drive = $WinPath[0].ToString().ToLower()
+  $rest  = $WinPath.Substring(2) -replace '\\', '/'
+  return "/mnt/$drive$rest"
+}
+
 # ── Derive Trino worker count from RAM budget ─────────────────────────────────
 function Get-WorkersFromBudget {
   param([int]$Gb)
@@ -109,12 +116,7 @@ function Ensure-WSL2 {
   Write-Info 'Installing nerdctl-full into WSL2...'
 
   # Convert Windows path to WSL path for the bundle
-  $wslBundle = wsl wslpath -u $NerdctlBundle 2>&1
-  if ($LASTEXITCODE -ne 0) {
-    Write-Err "Failed to convert bundle path for WSL: $wslBundle"
-    exit 1
-  }
-  $wslBundle = $wslBundle.Trim()
+  $wslBundle = ConvertTo-WslPath $NerdctlBundle
 
   # Extract nerdctl-full into /usr/local (requires root in WSL)
   wsl sh -c "sudo tar -C /usr/local -xzf '$wslBundle'"
@@ -140,12 +142,7 @@ function Load-Images {
   $tars = Get-ChildItem -Path $ImagesDir -Filter '*.tar.gz' -ErrorAction Stop
   foreach ($tar in $tars) {
     Write-Info "  Loading: $($tar.Name)"
-    $wslTarPath = wsl wslpath -u $tar.FullName 2>&1
-    if ($LASTEXITCODE -ne 0) {
-      Write-Err "Failed to convert path for WSL: $($tar.FullName)"
-      exit 1
-    }
-    $wslTarPath = $wslTarPath.Trim()
+    $wslTarPath = ConvertTo-WslPath $tar.FullName
     wsl nerdctl load -i $wslTarPath
     if ($LASTEXITCODE -ne 0) { Write-Err "Failed to load image: $($tar.Name)"; exit 1 }
   }
@@ -159,12 +156,7 @@ function Build-ProvisaImage {
     Write-Err "provisa-source not found at $SourceDir. Reinstall Provisa."
     exit 1
   }
-  $wslSourceDir = wsl wslpath -u $SourceDir 2>&1
-  if ($LASTEXITCODE -ne 0) {
-    Write-Err "Failed to convert source path for WSL: $wslSourceDir"
-    exit 1
-  }
-  $wslSourceDir = $wslSourceDir.Trim()
+  $wslSourceDir = ConvertTo-WslPath $SourceDir
   wsl nerdctl build -t provisa/provisa:local $wslSourceDir
   if ($LASTEXITCODE -ne 0) { Write-Err 'Failed to build provisa image.'; exit 1 }
   Write-Ok 'provisa/provisa:local built.'

@@ -64,9 +64,10 @@ if ($LASTEXITCODE -ne 0) {
 $TarFiles = Get-ChildItem -Path $ImagesDir -Filter '*.tar.gz'
 foreach ($f in $TarFiles) {
     Write-Info "Loading: $($f.Name)"
-    $wslPath = wsl wslpath -u $f.FullName 2>&1
-    if ($LASTEXITCODE -ne 0) { Write-Err "Path conversion failed: $($f.FullName)"; exit 1 }
-    wsl nerdctl load -i $wslPath.Trim()
+    $drive = $f.FullName[0].ToString().ToLower()
+    $rest  = $f.FullName.Substring(2) -replace '\\', '/'
+    $wslPath = "/mnt/$drive$rest"
+    wsl nerdctl load -i $wslPath
     if ($LASTEXITCODE -ne 0) { Write-Err "Failed to load $($f.Name)"; exit 1 }
 }
 Write-Ok "Demo images loaded."
