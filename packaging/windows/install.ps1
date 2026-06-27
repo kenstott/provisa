@@ -3,7 +3,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\Provisa'
+$InstallDir = Join-Path $env:APPDATA 'Programs\Provisa'
 $ExtractDir = $PSScriptRoot
 
 function Write-Info { Write-Host "[provisa-install] $args" -ForegroundColor Cyan }
@@ -31,7 +31,7 @@ New-Item -ItemType Directory -Path $StartMenuDir -Force | Out-Null
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut("$StartMenuDir\Provisa First Launch.lnk")
 $Shortcut.TargetPath = 'powershell.exe'
-$Shortcut.Arguments  = "-ExecutionPolicy Bypass -File `"$InstallDir\first-launch.ps1`""
+$Shortcut.Arguments  = "-NoExit -ExecutionPolicy Bypass -File `"$InstallDir\first-launch.ps1`""
 $Shortcut.Save()
 
 # Add $InstallDir to user PATH (HKCU — no admin required)

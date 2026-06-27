@@ -331,8 +331,18 @@ if (-not (Test-Path $ProvisaHome)) {
 }
 New-Item -ItemType File -Path $Sentinel -Force | Out-Null
 
+$StartMenuDir = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Provisa'
+New-Item -ItemType Directory -Path $StartMenuDir -Force | Out-Null
+$WshShell  = New-Object -ComObject WScript.Shell
+$StartLink = $WshShell.CreateShortcut("$StartMenuDir\Start Provisa.lnk")
+$StartLink.TargetPath  = 'powershell.exe'
+$StartLink.Arguments   = "-NoExit -ExecutionPolicy Bypass -Command `"& '$ScriptDir\provisa.cmd' start`""
+$StartLink.WorkingDirectory = $ScriptDir
+$StartLink.Save()
+
 Write-Ok 'First-launch setup complete.'
 Write-Host ''
 Write-Host 'Provisa is ready.' -ForegroundColor Green
-Write-Host 'Run: provisa start' -ForegroundColor White
+Write-Host 'Start Menu -> Provisa -> Start Provisa' -ForegroundColor White
+Write-Host 'Or run: provisa start' -ForegroundColor White
 Write-Host ''
