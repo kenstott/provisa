@@ -211,8 +211,15 @@ def given_auto_generated_mv(shared_data: dict):
     ]
     generated = _auto_generate_mvs(relationships, registry)
     assert len(generated) == 1
+    mv = generated[0]
+
+    # Verify the MV was auto-generated with the correct initial state.
+    assert mv.status == MVStatus.STALE
+    assert mv.last_refresh_at is None
+    assert mv.row_count is None
+
     shared_data["registry"] = registry
-    shared_data["mv"] = generated[0]
+    shared_data["mv"] = mv
 
 
 @when("it is first created")

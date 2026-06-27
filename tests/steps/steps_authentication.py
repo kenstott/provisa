@@ -439,6 +439,20 @@ _KC_CLIENT_ROLE_MAP = {
     "data-analyst": "analyst",
 }
 
+# Keycloak system realm roles that must NOT be mapped to Provisa roles.
+_KC_SYSTEM_REALM_ROLES = {
+    "offline_access",
+    "uma_authorization",
+    "default-roles-provisa-realm",
+}
+
+# Keycloak account-level client roles that are present but not Provisa-mapped.
+_KC_SYSTEM_CLIENT_ROLES = {
+    "manage-account",
+    "manage-account-links",
+    "view-profile",
+}
+
 
 def _map_keycloak_roles(claims: dict, client_id: str) -> list[str]:
     """Extract and map Keycloak realm + client roles onto Provisa roles."""
@@ -626,10 +640,11 @@ def request_with_keycloak_jwt(shared_data: dict) -> None:
 
     The token includes:
       * One realm role that maps to a Provisa role (``provisa-analyst`` → ``analyst``).
+      * One realm role that maps to another Provisa role (``provisa-viewer`` → ``viewer``).
       * Two Keycloak system realm roles that must be dropped (``offline_access``,
         ``uma_authorization``).
       * One client role that maps to a Provisa role (``data-editor`` → ``editor``).
-      * Account-level client roles that must also be dropped.
+      * Account-level client roles that are present but not Provisa-mapped.
     """
     now = int(time.time())
     client_id = shared_data["kc_client_id"]
@@ -658,30 +673,5 @@ def request_with_keycloak_jwt(shared_data: dict) -> None:
         "session_state": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
         "scope": "openid email profile roles",
         "sid": "session-id-test-123",
-        # Keycloak realm roles — provisa-analyst maps; the others are system roles.
-        "realm_access": {
-            "roles": [
-                "provisa-analyst",
-                "offline_access",
-                "uma_authorization",
-                "default-roles-provisa-realm",
-            ]
-        },
-        # Keycloak per-client roles
-        "resource_access": {
-            client_id: {
-                "roles": [
-                    "data-editor",
-                ]
-            },
-            "account": {
-                "roles": [
-                    "manage-account",
-                    "manage-account-links",
-                    "view-profile",
-                ]
-            },
-        },
-    }
-
-    # Sign the token with the RS
+        # Keycloak realm roles: one Provisa-mapped, two system roles, one extra mapped
+        "realm

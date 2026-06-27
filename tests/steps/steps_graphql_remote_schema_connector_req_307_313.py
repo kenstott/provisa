@@ -235,7 +235,7 @@ _JSON_SCHEMA_TO_PROVISA = {
 
 def _synthesize_column_metadata_graphql(source: dict) -> list[dict]:
     """Synthesize ColumnMetadata for a GraphQL remote source."""
-    from provisa.graphql_remote.mapper import _gql_to_provisa_type, map_schema
+    from provisa.graphql_remote.mapper import map_schema
 
     tables, _, _ = map_schema(source["schema"], source["namespace"], source["source_id"])
     result = []
@@ -841,4 +841,4 @@ class _InMemoryRelationshipRegistry:
         # rel_id -> relationship dict
         self._store: dict[str, dict] = {}
 
-    def u
+    def upsert(self, relationship: dict) -> None

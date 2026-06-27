@@ -692,9 +692,14 @@ def connection_wrapped_in_tls_or_n_reply(shared_data):
 # ===========================================================================
 
 
-@given("a BI tool querying information_schema or pg_catalog via pgwire")
-def bi_tool_querying_catalog(shared_data):
-    """
-    Prepare the catalog proxy with a minimal compilation context that represents
-    the schemas a BI tool would discover.  We build a mock CompilationContext
-    containing two schemas each with one table, then record it in shared
+def _make_col_meta(name: str, dtype: str, nullable: bool):
+    """Build a minimal column metadata mock compatible with catalog internals."""
+    col = MagicMock()
+    col.column_name = name
+    col.data_type = dtype
+    col.is_nullable = nullable
+    return col
+
+
+def _make_table_meta(
+    table

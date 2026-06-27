@@ -748,10 +748,9 @@ def then_get_operations_auto_registered(shared_data):
 
 
 # ---------------------------------------------------------------------------
-# REQ-315 Steps
+# REQ-315 — shared spec constants
 # ---------------------------------------------------------------------------
 
-# Minimal OpenAPI 3.x spec used across all REQ-315 steps.
 _REQ315_SPEC_YAML = """\
 openapi: "3.0.0"
 info:
@@ -814,3 +813,5 @@ _REQ315_SPEC_JSON = json.dumps({
             "Item": {
                 "type": "object",
                 "properties": {
+                    "id": {"type": "integer"},
+                    "sku":

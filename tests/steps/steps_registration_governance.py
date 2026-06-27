@@ -697,7 +697,7 @@ def schema_generation_triggered_and_table_available(shared_data: dict) -> None:
 def registered_nosql_source_with_native_trino_connector(shared_data: dict) -> None:
     """Set up a MongoDB source registered in Provisa with the MongoDB Trino connector.
 
-    We verify that:
+    Verifies:
     - The source type maps to a known Trino connector in SOURCE_TO_CONNECTOR.
     - The catalog properties are built via the connector path (not Parquet/ETL).
     - The catalog is marked read-only (no mutation properties present).

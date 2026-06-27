@@ -607,12 +607,6 @@ def assert_transparent_fallback(shared_data):
     assert "LIMIT" in sql_upper, "LIMIT must be present in the rewritten SQL"
 
     # --- 5. Fallback transparency: verify that the materialization path is opaque ---
-    # The DDL and upsert operations are internal; the final SQL handed to the caller
-    # reads like a normal source query joined to an opaque subquery.  The caller
-    # does not receive DDL statements or raw upsert counts — only the rewritten SQL.
-    #
-    # We confirm this by checking that the rewritten SQL does NOT contain DDL keywords
-    # that would reveal the internal cache management to the caller.
     assert "CREATE TABLE" not in rewritten_sql.upper(), (
         "rewritten query must not expose CREATE TABLE DDL to the caller"
     )
@@ -646,13 +640,6 @@ def postgresql_source_being_registered(shared_data):
        ``native_capable`` should be True after detection.
     2. A source whose instance does NOT have pgvector — it must be flagged as
        requiring fallback.
-
-    We use ``native_vector_capability`` from
-    ``provisa.vector.capability`` to probe each source descriptor.
-    The function accepts a source descriptor mapping that includes at minimum
-    a ``source_type`` key and, for PostgreSQL sources, an ``extensions``
-    sequence that lists installed extensions (as would be discovered by
-    querying ``pg_extension``).
     """
     # Source with pgvector extension present.
     pgvector_source = {
@@ -660,7 +647,6 @@ def postgresql_source_being_registered(shared_data):
         "host": "pg-with-pgvector.example.com",
         "port": 5432,
         "database": "mydb",
-        # Simulates the result of: SELECT extname FROM pg_extension
         "extensions": ["plpgsql", "pgvector", "pg_trgm"],
     }
 
@@ -714,7 +700,6 @@ def postgresql_source_being_registered(shared_data):
     shared_data["snowflake_cortex_source"] = snowflake_cortex_source
     shared_data["snowflake_plain_source"] = snowflake_plain_source
 
-    # Confirm all are typed correctly.
     assert pgvector_source["source_type"] == "postgresql"
     assert plain_pg_source["source_type"] == "postgresql"
     assert mongodb_atlas_source["source_type"] == "mongodb"
@@ -725,5 +710,20 @@ def postgresql_source_being_registered(shared_data):
 
 @when("Provisa checks for native vector support")
 def check_native_vector_support(shared_data):
-    """
-    Call
+    """Call native_vector_capability for every source descriptor stored in shared_data."""
+    shared_data["pgvector_capability"] = native_vector_capability(
+        shared_data["pgvector_source"]
+    )
+    shared_data["plain_pg_capability"] = native_vector_capability(
+        shared_data["plain_pg_source"]
+    )
+    shared_data["mongodb_atlas_capability"] = native_vector_capability(
+        shared_data["mongodb_atlas_source"]
+    )
+    shared_data["mongodb_plain_capability"] = native_vector_capability(
+        shared_data["mongodb_plain_source"]
+    )
+    shared_data["snowflake_cortex_capability"] = native_vector_capability(
+        shared_data["snowflake_cortex_source"]
+    )
+    shared_data["snowflake_plain_capability"] = native_vector_capability(

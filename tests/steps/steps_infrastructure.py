@@ -434,12 +434,24 @@ def ctrl_c_without_keep_docker(shared_data):
     "and Trino patches are reverted"
 )
 def full_shutdown_with_revert(shared_data):
-    """Assert the cleanup path stops every component and reverts Trino patches."""
+    """Assert the cleanup path stops every component and reverts Trino patches.
+
+    Verifies four invariants mandated by REQ-619 for the default (no
+    ``--keep-docker``) Ctrl+C path:
+
+    1. Docker Compose services are brought down (``compose down`` or equivalent).
+    2. The backend (and UI) process(es) are explicitly killed via a tracked PID.
+    3. The Trino ``jvm.config`` patch is reverted on shutdown.
+    4. A revert/restore operation (mv, cp, backup suffix, etc.) is applied to
+       ``jvm.config`` — not just referenced.
+    """
     body = shared_data["cleanup_body"]
     content = shared_data["start_ui_content"]
     haystack = (body + "\n" + content).lower()
 
-    # Docker Compose services must be brought down (default behaviour).
+    # ------------------------------------------------------------------
+    # 1. Docker Compose services must be brought down (default behaviour).
+    # ------------------------------------------------------------------
     assert re.search(
         r"docker[\s-]*compose.*down|compose.*down|docker.*down",
         haystack,
@@ -448,20 +460,32 @@ def full_shutdown_with_revert(shared_data):
         "--keep-docker is not supplied"
     )
 
-    # The backend process must be terminated (kill of a tracked PID).
+    # ------------------------------------------------------------------
+    # 2. The backend process must be terminated (kill of a tracked PID).
+    # ------------------------------------------------------------------
     assert "kill" in haystack, (
         "cleanup must terminate the backend (and UI) process(es) via kill"
     )
 
-    # The Trino jvm.config patch must be reverted on shutdown.
+    # ------------------------------------------------------------------
+    # 3. The Trino jvm.config patch must be reverted on shutdown.
+    # ------------------------------------------------------------------
     assert "jvm.config" in haystack, (
         "cleanup must reference jvm.config to revert Trino patches"
     )
+
+    # ------------------------------------------------------------------
+    # 4. A concrete revert/restore action must be applied to jvm.config.
+    # ------------------------------------------------------------------
     assert re.search(
         r"jvm\.config.*(bak|backup|orig|revert|restore|mv|cp)"
         r"|(bak|backup|orig|revert|restore|mv|cp).*jvm\.config",
         haystack,
     ), "cleanup must revert/restore the Trino jvm.config patch on shutdown"
 
-    # Confirm this scenario is the default (non --keep-docker) path.
-    assert shared_data.get("keep_docker") is False
+    # ------------------------------------------------------------------
+    # 5. Confirm this is the non-keep-docker path.
+    # ------------------------------------------------------------------
+    assert shared_data.get("keep_docker") is False, (
+        "this scenario must execute the default (no --keep-docker) shutdown path"
+    )

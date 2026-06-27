@@ -303,6 +303,7 @@ def _find_table(config: ProvisaConfig, table_name: str):
                 getattr(table, "alias", None),
                 getattr(table, "source_table", None),
                 getattr(table, "table", None),
+                getattr(table, "table_name", None),
             }
             if table_name in candidates:
                 return table
@@ -312,6 +313,7 @@ def _find_table(config: ProvisaConfig, table_name: str):
             getattr(table, "alias", None),
             getattr(table, "source_table", None),
             getattr(table, "table", None),
+            getattr(table, "table_name", None),
         }
         if table_name in candidates:
             return table
@@ -955,6 +957,3 @@ def _build_partial_ddn_project_missing_object_type(tmp_path: Path) -> Path:
     Build a DDN supergraph project where one Model references an ObjectType
     whose HML file is intentionally absent (GhostType), while another Model
     (Artist) has its ObjectType present.  This exercises REQ-628.
-    """
-    project_dir = tmp_path / "partial_supergraph"
-    project_dir.mkdir(parents

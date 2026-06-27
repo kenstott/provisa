@@ -23,8 +23,8 @@ designated PK column is used as the canonical ``id_column`` for Cypher node
 identity resolution, taking priority over all heuristics.
 
 REQ-400: When a Relationship is saved, the target_column on the target table is
-marked ``is_primary_key=true`` if no other column in that table already has a
-primary key; otherwise it is marked ``is_alternate_key=true``.
+marked ``is_primary_key=true`` if no other column in that table already has
+a primary key; otherwise it is marked ``is_alternate_key=true``.
 """
 
 from __future__ import annotations

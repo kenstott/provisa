@@ -79,7 +79,7 @@ from provisa.cypher.label_map import (
     NodeMapping,
     RelationshipMapping,
 )
-from provisa.cypher.translator import cypher_to_sql
+from provisa.cypher.translator import cypher_to_sql, GraphVarKind
 import provisa.cypher.translator as _translator_mod
 from provisa.api.rest.cypher_router import _detect_procedure, _handle_procedure
 
@@ -787,4 +787,4 @@ def then_emits_sql_with_all_clause_mappings(shared_data: dict) -> None:
     # Parse the generated SQL with sqlglot so we can inspect the AST
     # structurally rather than relying solely on substring matching.
     try:
-        parsed = sqlglot.parse_one(sql
+        parsed = sqlglot
