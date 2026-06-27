@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 import respx
 import httpx
 from sqlalchemy import create_engine
@@ -26,6 +25,7 @@ BASE = "http://localhost:8001"
 
 
 # ── Dialect registration ──────────────────────────────────────────────────────
+
 
 def test_dialect_name():
     assert ProvisaDialect.name == "provisa"
@@ -43,6 +43,7 @@ def test_dbapi_returns_dbapi_module():
 
 # ── create_connect_args() ─────────────────────────────────────────────────────
 
+
 def test_create_connect_args_http():
     dialect = ProvisaDialect()
     url = URL.create(
@@ -58,7 +59,6 @@ def test_create_connect_args_http():
     assert kwargs["username"] == "alice"
     assert kwargs["password"] == "secret"
     assert kwargs["role"] == "admin"
-    assert kwargs["mode"] == "approved"
 
 
 def test_create_connect_args_https():
@@ -98,7 +98,6 @@ def test_create_connect_args_query_params():
     )
     _, kwargs = dialect.create_connect_args(url)
     assert kwargs["role"] == "viewer"
-    assert kwargs["mode"] == "catalog"
 
 
 # Shared introspection response used by multiple tests
@@ -107,12 +106,30 @@ _INTROSPECT_RESPONSE = {
         "__schema": {
             "queryType": {
                 "fields": [
-                    {"name": "orders", "type": {"name": None, "kind": "LIST", "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None}}},
-                    {"name": "users", "type": {"name": None, "kind": "LIST", "ofType": {"name": "Users", "kind": "OBJECT", "ofType": None}}},
+                    {
+                        "name": "orders",
+                        "type": {
+                            "name": None,
+                            "kind": "LIST",
+                            "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None},
+                        },
+                    },
+                    {
+                        "name": "users",
+                        "type": {
+                            "name": None,
+                            "kind": "LIST",
+                            "ofType": {"name": "Users", "kind": "OBJECT", "ofType": None},
+                        },
+                    },
                 ]
             },
             "types": [
-                {"name": "Orders", "kind": "OBJECT", "fields": [{"name": "id"}, {"name": "amount"}]},
+                {
+                    "name": "Orders",
+                    "kind": "OBJECT",
+                    "fields": [{"name": "id"}, {"name": "amount"}],
+                },
                 {"name": "Users", "kind": "OBJECT", "fields": [{"name": "id"}, {"name": "name"}]},
                 {"name": "String", "kind": "SCALAR", "fields": None},
             ],
@@ -122,6 +139,7 @@ _INTROSPECT_RESPONSE = {
 
 
 # ── get_table_names() ─────────────────────────────────────────────────────────
+
 
 @respx.mock
 def test_get_table_names_returns_role_scoped_tables():
@@ -140,9 +158,7 @@ def test_get_table_names_returns_role_scoped_tables():
 
 @respx.mock
 def test_get_table_names_returns_empty_on_error():
-    respx.post(f"{BASE}/data/graphql").mock(
-        return_value=httpx.Response(500)
-    )
+    respx.post(f"{BASE}/data/graphql").mock(return_value=httpx.Response(500))
     dialect = ProvisaDialect()
     mock_conn = MagicMock()
 
@@ -198,6 +214,7 @@ def test_get_table_names_uses_data_endpoint_not_admin():
 
 # ── has_table() ───────────────────────────────────────────────────────────────
 
+
 def test_has_table_true():
     dialect = ProvisaDialect()
     mock_conn = MagicMock()
@@ -214,9 +231,11 @@ def test_has_table_false():
 
 # ── Engine construction ───────────────────────────────────────────────────────
 
+
 def test_create_engine_does_not_raise():
     """Engine construction must succeed without connecting."""
     from sqlalchemy.dialects import registry as _registry
+
     _registry.register("provisa.http", "provisa_client.sqlalchemy_dialect", "ProvisaDialect")
     engine = create_engine("provisa+http://user:pass@localhost:8001")
     assert engine is not None

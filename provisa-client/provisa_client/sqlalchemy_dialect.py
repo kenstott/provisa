@@ -61,7 +61,6 @@ class ProvisaDialect(DefaultDialect):
             "username": url.username or "",
             "password": url.password or "",
             "role": query.get("role", "admin"),
-            "mode": query.get("mode", "approved"),
         }
         return [], opts
 

@@ -287,13 +287,6 @@ class TestConnectionStringParsing:
         _, kwargs = dialect.create_connect_args(url)
         assert kwargs["role"] == "admin"
 
-    def test_default_mode_is_approved(self):
-        """When no mode query param is given, mode defaults to 'approved'."""
-        dialect = ProvisaDialect()
-        url = URL.create("provisa+http", username="u", password="p", host="localhost", port=8001)
-        _, kwargs = dialect.create_connect_args(url)
-        assert kwargs["mode"] == "approved"
-
     def test_role_from_query_string(self):
         dialect = ProvisaDialect()
         url = URL.create(
