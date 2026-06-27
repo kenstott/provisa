@@ -18171,7 +18171,7 @@
       never holds the master key is stronger than Snowflake's customer-managed key
       model and not available in Hasura or Dremio.
 - id: REQ-695
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -18197,7 +18197,7 @@
       provides schema-level isolation stronger than row-level tenant filtering used
       by Hasura Cloud or Dremio.
 - id: REQ-696
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -18217,7 +18217,7 @@
     status: neutral
     rationale: ''
 - id: REQ-697
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -18238,7 +18238,7 @@
     status: neutral
     rationale: ''
 - id: REQ-698
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -18263,7 +18263,7 @@
       cache bleed in the query federation layer — not present in standard Trino or
       Hasura multi-tenant setups.
 - id: REQ-699
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -18284,7 +18284,7 @@
     rationale: Dedicated PostgreSQL role per org with schema-only access enforces
       DB-level tenant isolation beyond row-level security used by Hasura Cloud.
 - id: REQ-700
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -18310,7 +18310,7 @@
       at the Redis ACL layer — stronger than namespace-only separation used by most
       multi-tenant SaaS platforms.
 - id: REQ-701
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: SHOULD
@@ -18333,20 +18333,21 @@
       schema) with compensating workflow on partial failure is more robust than Hasura
       Cloud's sequential provisioning.
 - id: REQ-702
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
   type: structural
-  description: Demo data migration tool moves all existing demo and seeded data from
-    the legacy/default schema layout into org_<org_id> schemas as part of org isolation
-    rollout. The migration is idempotent and runs after schema init (REQ-697), ensuring
-    that existing single-org deployments and demo environments are correctly scoped
-    to their assigned org.
-  use_case: Org isolation (REQ-695 through REQ-701) requires all tables to be schema-scoped.
-    Existing demo data sitting in the default or legacy schema layout must be migrated
-    into org schemas to complete the isolation model and enable multi-tenant deployments
-    to coexist on shared infrastructure.
+  description: Demo init code and static demo assets are org-scoped. _seed_built_in_sources()
+    passes state.org_id to _seed_meta_domain(); _seed_ops_pg() inherits the correct
+    schema via the asyncpg connection pool search_path set by REQ-695. Static demo
+    file assets (Parquet, SQLite, CSV) contain no schema references. No migration
+    tool is required — org scoping is handled entirely through the connection pool
+    and seed function wiring.
+  use_case: Demo environments must participate in org isolation (REQ-695 through REQ-701)
+    without special-casing. Seeded data lands in org_<org_id> automatically via the
+    pool init hook, ensuring demo deployments and production multi-tenant deployments
+    use the same code path.
   dependencies:
   - REQ-695
   - REQ-697
