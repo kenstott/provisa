@@ -222,7 +222,9 @@ function Get-ExtensionImages {
   $nonInteractive = $env:PROVISA_NONINTERACTIVE
   $answer = 'n'
   if ($nonInteractive) {
-    $answer = if ($Label -like 'Demo*') { $env:PROVISA_INSTALL_DEMO ?? 'n' } else { $env:PROVISA_INSTALL_OBS ?? 'n' }
+    $obsVal  = if ($env:PROVISA_INSTALL_OBS)  { $env:PROVISA_INSTALL_OBS }  else { 'n' }
+    $demoVal = if ($env:PROVISA_INSTALL_DEMO) { $env:PROVISA_INSTALL_DEMO } else { 'n' }
+    $answer  = if ($Label -like 'Demo*') { $demoVal } else { $obsVal }
   } elseif ($downloadUrl) {
     Write-Host ''
     Write-Host "$Label Extension" -ForegroundColor White

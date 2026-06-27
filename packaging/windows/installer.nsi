@@ -10,7 +10,7 @@ SetCompressor lzma
 
 Name "Provisa ${VERSION}"
 OutFile "dist\Provisa-Setup.exe"
-InstallDir "$LOCALAPPDATA\Programs\Provisa"
+InstallDir "$APPDATA\Programs\Provisa"
 RequestExecutionLevel user
 
 !include "MUI2.nsh"
@@ -59,10 +59,8 @@ SectionEnd
 
 ; ── Uninstall ─────────────────────────────────────────────────────────────────
 Section "Uninstall"
-  ; Stop and remove Provisa VM before deleting files
-  nsExec::Exec 'VBoxManage controlvm Provisa acpipowerbutton'
-  Sleep 3000
-  nsExec::Exec 'VBoxManage unregistervm Provisa --delete'
+  ; Stop Provisa services in WSL before deleting files
+  nsExec::Exec 'wsl sh -c "nerdctl compose down 2>/dev/null"'
 
   RMDir /r "$INSTDIR"
 

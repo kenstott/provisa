@@ -48,31 +48,26 @@ if (-not (Test-Path $ObsExt)) {
     exit 1
 }
 
-# Check VirtualBox VM is running
-$VmName = 'Provisa'
-try {
-    $vmState = & VBoxManage showvminfo $VmName --machinereadable 2>&1 |
-        Select-String '^VMState=' | ForEach-Object { $_ -replace '^VMState=','' -replace '"','' }
-} catch {
-    Write-Err "VBoxManage not found or VM '$VmName' not registered. Install Provisa Core first."
+# Verify WSL2 + nerdctl are available (installed by Core first-launch)
+$wslTest = wsl echo ok 2>&1
+if ($LASTEXITCODE -ne 0 -or $wslTest -notmatch 'ok') {
+    Write-Err 'WSL2 is not responding. Run Provisa First Launch to complete Core setup first.'
     exit 1
 }
-if ($vmState -ne 'running') {
-    Write-Err "Provisa VM is not running. Start Provisa first (provisa start), then retry."
+$nerdctlCheck = wsl sh -c 'command -v nerdctl' 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Err 'nerdctl not found in WSL2. Run Provisa First Launch to complete Core setup first.'
     exit 1
 }
 
-# Load demo images into VM
+# Load demo images into WSL2 via nerdctl
 $TarFiles = Get-ChildItem -Path $ImagesDir -Filter '*.tar.gz'
 foreach ($f in $TarFiles) {
     Write-Info "Loading: $($f.Name)"
-    $result = & VBoxManage guestcontrol $VmName run `
-        --exe '/bin/bash' --username root `
-        -- '-c' "gunzip -c '$($f.FullName)' | docker load" 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Err "Failed to load $($f.Name): $result"
-        exit 1
-    }
+    $wslPath = wsl wslpath -u $f.FullName 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Err "Path conversion failed: $($f.FullName)"; exit 1 }
+    wsl nerdctl load -i $wslPath.Trim()
+    if ($LASTEXITCODE -ne 0) { Write-Err "Failed to load $($f.Name)"; exit 1 }
 }
 Write-Ok "Demo images loaded."
 
@@ -139,7 +134,7 @@ $OutExe  = Join-Path $DistDir 'Provisa-Demo-Setup.exe'
 
 Name "`${PRODUCT_NAME} `${PRODUCT_VERSION}"
 OutFile "$OutExe"
-InstallDir "`$LOCALAPPDATA\Provisa-Demo"
+InstallDir "`$APPDATA\Provisa-Demo"
 RequestExecutionLevel user
 SetCompressor lzma
 

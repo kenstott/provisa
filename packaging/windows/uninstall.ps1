@@ -3,12 +3,10 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\Provisa'
+$InstallDir = Join-Path $env:APPDATA 'Programs\Provisa'
 
-# Stop and remove VM
-try { & VBoxManage controlvm Provisa acpipowerbutton 2>$null } catch {}
-Start-Sleep 3
-try { & VBoxManage unregistervm Provisa --delete 2>$null } catch {}
+# Stop Provisa services running in WSL
+try { wsl sh -c 'nerdctl compose down 2>/dev/null' 2>$null } catch {}
 
 # Remove files
 if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
