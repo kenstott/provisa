@@ -29,6 +29,21 @@ function ConvertTo-WslPath {
   return "/mnt/$d$r"
 }
 
+function Find-ExtFile {
+  param([string]$Pattern)
+  $candidates = @()
+  $candidates += @(Get-ChildItem -Path $ScriptDir -Filter $Pattern -ErrorAction SilentlyContinue)
+  $dl = Join-Path $env:USERPROFILE 'Downloads'
+  $candidates += @(Get-ChildItem -Path $dl -Filter $Pattern -ErrorAction SilentlyContinue)
+  foreach ($drv in [System.IO.DriveInfo]::GetDrives() | Where-Object { $_.DriveType -eq 'Removable' -or $_.DriveType -eq 'CDRom' }) {
+    $candidates += @(Get-ChildItem -Path $drv.RootDirectory.FullName -Filter $Pattern -ErrorAction SilentlyContinue)
+  }
+  return ($candidates | Select-Object -First 1)
+}
+
+$obsFile  = Find-ExtFile 'provisa-obs-images-*.tar.gz'
+$demoFile = Find-ExtFile 'provisa-demo-images-*.tar.gz'
+
 # ── RAM options ───────────────────────────────────────────────────────────────
 $totalBytes = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
 $totalGb    = [int][Math]::Floor($totalBytes / 1GB)
@@ -121,6 +136,46 @@ $nudPort.Font     = New-Object System.Drawing.Font('Segoe UI', 10)
 $nudPort.Location = New-Object System.Drawing.Point(20, 202)
 $nudPort.Width    = 100
 $pConfig.Controls.Add($nudPort)
+
+Lbl 'Extensions'  20 238 $true
+
+$cbObs          = New-Object System.Windows.Forms.CheckBox
+$cbObs.Text     = 'Observability'
+$cbObs.AutoSize = $true
+$cbObs.Location = New-Object System.Drawing.Point(20, 264)
+$cbObs.Checked  = ($null -ne $obsFile)
+$pConfig.Controls.Add($cbObs)
+
+$lbObsStatus           = New-Object System.Windows.Forms.Label
+$lbObsStatus.AutoSize  = $true
+$lbObsStatus.Location  = New-Object System.Drawing.Point(160, 266)
+if ($obsFile) {
+  $lbObsStatus.Text     = $obsFile.Name
+  $lbObsStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 160, 0)
+} else {
+  $lbObsStatus.Text     = 'not found locally — will download if checked'
+  $lbObsStatus.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 160)
+}
+$pConfig.Controls.Add($lbObsStatus)
+
+$cbDemo          = New-Object System.Windows.Forms.CheckBox
+$cbDemo.Text     = 'Demo'
+$cbDemo.AutoSize = $true
+$cbDemo.Location = New-Object System.Drawing.Point(20, 290)
+$cbDemo.Checked  = ($null -ne $demoFile)
+$pConfig.Controls.Add($cbDemo)
+
+$lbDemoStatus           = New-Object System.Windows.Forms.Label
+$lbDemoStatus.AutoSize  = $true
+$lbDemoStatus.Location  = New-Object System.Drawing.Point(160, 292)
+if ($demoFile) {
+  $lbDemoStatus.Text     = $demoFile.Name
+  $lbDemoStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 160, 0)
+} else {
+  $lbDemoStatus.Text     = 'not found locally — will download if checked'
+  $lbDemoStatus.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 160)
+}
+$pConfig.Controls.Add($lbDemoStatus)
 
 $btnInstall            = New-Object System.Windows.Forms.Button
 $btnInstall.Text       = 'Install'
@@ -231,6 +286,11 @@ $btnInstall.Add_Click({
   if ([string]::IsNullOrEmpty($hostname)) { $hostname = 'localhost' }
   $uiPort = [int]$nudPort.Value
 
+  $installObs  = $cbObs.Checked
+  $installDemo = $cbDemo.Checked
+  $obsFilePath  = if ($obsFile)  { $obsFile.FullName }  else { $null }
+  $demoFilePath = if ($demoFile) { $demoFile.FullName } else { $null }
+
   # WSL2 elevation must happen on the UI thread before the runspace starts
   $wslStatus  = wsl --status 2>&1
   $wslEnabled = ($LASTEXITCODE -eq 0) -and ($wslStatus -match 'Default Version: 2' -or $wslStatus -match 'WSL 2')
@@ -274,6 +334,10 @@ $btnInstall.Add_Click({
   $rs.SessionStateProxy.SetVariable('Workers',       $workers)
   $rs.SessionStateProxy.SetVariable('Hostname',      $hostname)
   $rs.SessionStateProxy.SetVariable('UiPort',        $uiPort)
+  $rs.SessionStateProxy.SetVariable('InstallObs',    $installObs)
+  $rs.SessionStateProxy.SetVariable('InstallDemo',   $installDemo)
+  $rs.SessionStateProxy.SetVariable('ObsFilePath',   $obsFilePath)
+  $rs.SessionStateProxy.SetVariable('DemoFilePath',  $demoFilePath)
 
   $ps = [powershell]::Create()
   $ps.Runspace = $rs
@@ -353,7 +417,63 @@ runtime: wsl2-nerdctl
 federation_workers: $Workers
 "@ | Set-Content -Path $cfgPath -Encoding UTF8
       }
+      $sync.Progress = 92
+
+      # Optional extensions (obs / demo)
+      function Get-ExtVersion {
+        $v = $env:PROVISA_VERSION
+        if ($v) { return $v }
+        try {
+          $out = (& provisa version 2>$null | Select-Object -First 1)
+          if ($out) { return $out.Trim().Split()[-1] }
+        } catch {}
+        return $null
+      }
+      function Load-ExtImages {
+        param($Label, $Slug, $FilePath, $ExtDir)
+        if (-not $FilePath) {
+          $ver = Get-ExtVersion
+          if ($ver) {
+            $fname = "provisa-${Slug}-images-${ver}.tar.gz"
+            $url   = "https://github.com/kenstott/provisa/releases/download/${ver}/${fname}"
+            Log "  $Label: downloading $fname..."
+            $tmpFile = Join-Path $ProvisaHome $fname
+            try {
+              Invoke-WebRequest -Uri $url -OutFile $tmpFile -UseBasicParsing
+              $FilePath = $tmpFile
+            } catch {
+              Log "  $Label: download failed — skipping."
+              return
+            }
+          } else {
+            Log "  $Label: no tarball and version unknown — skipping."
+            return
+          }
+        }
+        Log "Extracting $Label images from $(Split-Path $FilePath -Leaf)..."
+        New-Item -ItemType Directory -Path $ExtDir -Force | Out-Null
+        $wpSrc = Wsl2Path $FilePath
+        $wpDst = Wsl2Path $ExtDir
+        wsl -u root sh -c "tar -xzf '$wpSrc' -C '$wpDst'"
+        if ($LASTEXITCODE -ne 0) { Log "  $Label: extraction failed — skipping."; return }
+        $imgs = @(Get-ChildItem -Path $ExtDir -Filter '*.tar.gz' -ErrorAction SilentlyContinue)
+        foreach ($img in $imgs) {
+          Log "  $($img.Name)"
+          wsl -u root nerdctl load -i (Wsl2Path $img.FullName)
+        }
+        Log "$Label extension loaded ($($imgs.Count) images)."
+      }
+
+      if ($InstallObs) {
+        Log 'Loading Observability extension...'
+        Load-ExtImages 'Observability' 'obs' $ObsFilePath (Join-Path $ProvisaHome 'obs-images')
+      }
       $sync.Progress = 95
+      if ($InstallDemo) {
+        Log 'Loading Demo extension...'
+        Load-ExtImages 'Demo' 'demo' $DemoFilePath (Join-Path $ProvisaHome 'demo-images')
+      }
+      $sync.Progress = 98
 
       # Sentinel + Start Menu shortcut
       New-Item -ItemType File -Path $Sentinel -Force | Out-Null
