@@ -13,6 +13,7 @@ Exit codes:
 Usage:
   python scripts/validate_requirements.py
   python scripts/validate_requirements.py --coverage-check
+  python scripts/validate_requirements.py --orphan-check
 """
 
 from __future__ import annotations
@@ -34,7 +35,12 @@ def main() -> int:
     parser.add_argument(
         "--coverage-check",
         action="store_true",
-        help="Fail if any MUST complete behavioral/constraint REQ has no tests",
+        help="Fail if any MUST/SHOULD complete behavioral/constraint REQ has no tests",
+    )
+    parser.add_argument(
+        "--orphan-check",
+        action="store_true",
+        help="Fail if any test file under tests/ or provisa-ui/e2e/ is not referenced by any requirement",
     )
     args = parser.parse_args()
 
@@ -53,12 +59,45 @@ def main() -> int:
     if args.coverage_check:
         for req in rf.requirements:
             if (
-                req.priority == Priority.MUST
-                and req.status == Status.complete
-                and req.type in {ReqType.behavioral, ReqType.constraint}
-                and not req.tests
+                req.priority not in {Priority.MUST, Priority.SHOULD}
+                or req.status != Status.complete
             ):
-                errors.append(f"{req.id}: MUST complete {req.type.value} has no tests")
+                continue
+            if req.type not in {ReqType.behavioral, ReqType.constraint}:
+                continue
+            tests = req.tests or []
+            unit = [t for t in tests if t.startswith("tests/unit/")]
+            integration = [t for t in tests if t.startswith("tests/integration/")]
+            e2e = [t for t in tests if t.startswith("provisa-ui/e2e/")]
+            if not unit:
+                errors.append(f"{req.id}: MUST complete {req.type.value} has no unit test")
+            if (
+                req.integration_test
+                and req.integration_test.value == "required"
+                and not integration
+            ):
+                errors.append(f"{req.id}: integration_test=required but no tests/integration/ path")
+            if req.e2e and not e2e:
+                errors.append(f"{req.id}: e2e=true but no provisa-ui/e2e/ path")
+
+    if args.orphan_check:
+        referenced: set[str] = set()
+        for req in rf.requirements:
+            for t in req.tests or []:
+                referenced.add(t)
+
+        test_roots = [Path("tests"), Path("provisa-ui/e2e")]
+        for root in test_roots:
+            if not root.exists():
+                continue
+            for f in (
+                sorted(root.rglob("test_*.py"))
+                if root.name == "tests"
+                else sorted(root.rglob("*.spec.ts"))
+            ):
+                rel = str(f)
+                if rel not in referenced:
+                    errors.append(f"ORPHAN: {rel}")
 
     if errors:
         for e in errors:

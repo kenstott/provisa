@@ -79,6 +79,8 @@ class Requirement(BaseModel):
     tests: Optional[list[str]] = None
     integration_test: Optional[IntegrationTestJudgement] = None
     integration_test_reason: Optional[str] = None
+    e2e: Optional[bool] = None
+    e2e_reason: Optional[str] = None
     stakeholders: Optional[list[Stakeholder]] = None
     scenario: Optional[str] = None
     since: Optional[str] = None
