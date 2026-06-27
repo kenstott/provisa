@@ -54,7 +54,7 @@ def _row_to_tenant(row) -> Tenant:
     )
 
 
-async def init_billing_schema(pool: asyncpg.Pool) -> None:  # REQ-592
+async def init_billing_schema(pool: asyncpg.Pool) -> None:  # REQ-592, REQ-696
     async with pool.acquire() as conn:
         await conn.execute("SELECT pg_advisory_lock(7338)")
         try:

@@ -69,7 +69,7 @@ def is_api_source(source_id: str, source_types: dict[str, str]) -> bool:  # REQ-
     return stype in {e.value for e in ApiSourceType}
 
 
-async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-318
+async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-318, REQ-698
     endpoint: ApiEndpoint,
     params: dict,
     conn,
@@ -77,6 +77,7 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
     source_ttl: int | None = None,
     global_ttl: int | None = None,
     loc: CacheLocation | None = None,
+    org_id: str = "default",
 ) -> QueryResult:
     """Execute an API query with Trino cache.
 
@@ -93,7 +94,8 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
 
         if loc is None:
             _cc = getattr(source, "cache_catalog", None) if source else None
-            _cs = getattr(source, "cache_schema", "api_cache") if source else "api_cache"
+            _default_cs = f"org_{org_id}_api_cache"
+            _cs = getattr(source, "cache_schema", _default_cs) if source else _default_cs
             loc = cache_location(endpoint.source_id, _cc, _cs)
 
         if table_exists(conn, loc, tbl, ttl=ttl):
