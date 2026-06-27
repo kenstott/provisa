@@ -293,7 +293,19 @@ async def async_main() -> int:
             print(f"  ERROR {req['id']}: {exc}", file=sys.stderr, flush=True)
             return None
 
-    results = await asyncio.gather(*[run_one(r) for r in targets])
+    # Group by output file so reqs sharing a file run sequentially (each reads
+    # the file after the previous one has written it). Different files run concurrently.
+    from collections import defaultdict
+
+    by_file: dict[str, list[dict]] = defaultdict(list)
+    for r in targets:
+        by_file[str(steps_file_for(r.get("category", "misc")))].append(r)
+
+    async def run_group(reqs: list[dict]) -> list[Path | None]:
+        return [await run_one(r) for r in reqs]
+
+    group_results = await asyncio.gather(*[run_group(g) for g in by_file.values()])
+    results = [p for group in group_results for p in group]
     generated = [p for p in results if p]
 
     unique = list({str(p): p for p in generated}.values())
