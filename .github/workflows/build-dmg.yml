@@ -1032,7 +1032,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: "${{ github.ref_name }}"
-          prerelease: ${{ needs.metadata.outputs.is_prerelease }}
+          prerelease: ${{ needs.metadata.outputs.is_prerelease != 'false' }}
+          make_latest: "false"
           generate_release_notes: true
           files: |
             release-assets/${{ needs.metadata.outputs.dmg_name }}
