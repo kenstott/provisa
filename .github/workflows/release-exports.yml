@@ -42,15 +42,21 @@ jobs:
         with:
           files: docs/exports/feature_matrix.csv
           fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          make_latest: "false"
 
       - name: Upload traceability_matrix.csv
         uses: softprops/action-gh-release@v2
         with:
           files: docs/exports/traceability_matrix.csv
           fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          make_latest: "false"
 
       - name: Upload roadmap.md
         uses: softprops/action-gh-release@v2
         with:
           files: docs/exports/roadmap.md
           fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          make_latest: "false"
