@@ -10,8 +10,6 @@
 
 """Unit tests for available_tables query returning table metadata with comments."""
 
-import pytest
-
 from provisa.api.admin.types import AvailableTableType
 
 
@@ -49,8 +47,13 @@ def test_available_table_type_from_trino_row():
 def test_admin_tables_filtered():
     """Simulates the admin table filtering logic from the resolver."""
     _ADMIN_TABLES = {
-        "sources", "domains", "registered_tables", "table_columns",
-        "relationships", "roles", "rls_rules", "persisted_queries",
+        "sources",
+        "domains",
+        "registered_tables",
+        "table_columns",
+        "relationships",
+        "roles",
+        "rls_rules",
     }
     rows = [
         ("customers", "Registered customer accounts"),
