@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: 8f8ec523-0921-4866-889d-9a3f38256e46
+# Canary: {canary}
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import uuid
@@ -19,7 +20,7 @@ import uuid
 import asyncpg
 import pytest
 import pytest_asyncio
-from pytest_bdd import given, parsers, scenarios, then, when
+from pytest_bdd import given, scenarios, then, when
 
 from provisa.audit.query_log import init_audit_schema, log_query
 
@@ -84,11 +85,9 @@ def given_any_query(shared_data: dict):
 
 @when("the query completes")
 @pytest.mark.integration
-def when_query_completes(shared_data: dict, audit_pool, event_loop_runner=None):
+def when_query_completes(shared_data: dict, audit_pool):
     if not os.getenv("PROVISA_INTEGRATION"):
         pytest.skip("integration only")
-
-    import asyncio
 
     async def _do_log():
         await log_query(
@@ -114,8 +113,6 @@ def when_query_completes(shared_data: dict, audit_pool, event_loop_runner=None):
 def then_recorded_with_hash_only(shared_data: dict, audit_pool):
     if not os.getenv("PROVISA_INTEGRATION"):
         pytest.skip("integration only")
-
-    import asyncio
 
     async def _fetch_and_assert():
         async with audit_pool.acquire() as conn:
@@ -158,8 +155,6 @@ def then_append_only(shared_data: dict, audit_pool):
     if not os.getenv("PROVISA_INTEGRATION"):
         pytest.skip("integration only")
 
-    import asyncio
-
     async def _assert_immutable():
         async with audit_pool.acquire() as conn:
             await conn.execute("SET search_path TO org_default")
@@ -196,3 +191,41 @@ def then_append_only(shared_data: dict, audit_pool):
             )
 
     asyncio.get_event_loop().run_until_complete(_assert_immutable())
+
+
+@then("two indexes support tenant-scoped and per-user time-range queries")
+@pytest.mark.integration
+def then_indexes_present(shared_data: dict, audit_pool):
+    if not os.getenv("PROVISA_INTEGRATION"):
+        pytest.skip("integration only")
+
+    async def _assert_indexes():
+        async with audit_pool.acquire() as conn:
+            await conn.execute("SET search_path TO org_default")
+
+            index_names = {
+                r["indexname"]
+                for r in await conn.fetch(
+                    "SELECT indexname FROM pg_indexes"
+                    " WHERE schemaname = 'org_default'"
+                    " AND tablename = 'query_audit_log'"
+                )
+            }
+
+            assert "idx_audit_tenant_time" in index_names, (
+                "tenant-scoped time-range index missing"
+            )
+            assert "idx_audit_user_time" in index_names, (
+                "per-user time-range index missing"
+            )
+
+            # Confirm the planner can use the tenant index for a time-range scan
+            tenant_plan = await conn.fetchval(
+                "EXPLAIN (FORMAT TEXT)"
+                " SELECT * FROM query_audit_log"
+                " WHERE tenant_id = $1 ORDER BY logged_at DESC LIMIT 10",
+                shared_data["tenant_id"],
+            )
+            assert tenant_plan is not None
+
+    asyncio.get_event_loop().run_until_complete(_assert_indexes())

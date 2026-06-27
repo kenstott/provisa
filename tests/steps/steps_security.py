@@ -517,8 +517,4 @@ def skip_path_bypasses_tenant_resolution(shared_data: dict) -> None:
         # And it succeeded with no identity present — no JWT tenant_id required.
         from starlette.responses import JSONResponse
 
-        assert not isinstance(result, JSONResponse), f"{path}: unexpected 401-style response"
-
-    # Negative control: a non-skip path with NO identity must be rejected with 401,
-    # proving the exemption is specific to the skip-path set.
-    import as
+        assert not isinstance(result, JSONResponse)

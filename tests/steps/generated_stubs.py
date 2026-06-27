@@ -3967,18 +3967,3 @@ def step_given_a_successful_cypher_create_statement_executed_via_the_write_():
 @then("the JSON body includes an affected_rows field with the count of inserted rows")
 def step_then_the_json_body_includes_an_affected_rows_field_with_the_count():
     pytest.skip("step not implemented: the JSON body includes an affected_rows field with the count")
-
-# REQ-673
-@given("a GQL remote source with count_query configured and a cold Trino cache")
-def step_given_a_gql_remote_source_with_count_query_configured_and_a_cold_t():
-    pytest.skip("step not implemented: a GQL remote source with count_query configured and a cold T")
-
-# REQ-673
-@when("the graph-counts endpoint is called")
-def step_when_the_graph_counts_endpoint_is_called():
-    pytest.skip("step not implemented: the graph-counts endpoint is called")
-
-# REQ-673
-@then("the remote GraphQL API is queried to return node counts instead of returning no count")
-def step_then_the_remote_graphql_api_is_queried_to_return_node_counts_inst():
-    pytest.skip("step not implemented: the remote GraphQL API is queried to return node counts inst")

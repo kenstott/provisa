@@ -5,7 +5,7 @@
 # This source code is licensed under the Business Source License 1.1
 """Generate real BDD step implementations from requirements.yaml using Claude.
 
-For each behavioral requirement with a scenario, calls claude-opus-4-8 to
+For each behavioral requirement with a scenario, calls claude-sonnet-4-6 to
 generate step definitions that call real Provisa APIs/code with real assertions.
 Organises output into domain step files: tests/steps/steps_{category_slug}.py
 
@@ -13,11 +13,13 @@ Usage:
   python scripts/gen_step_implementations.py --req REQ-001
   python scripts/gen_step_implementations.py --all
   python scripts/gen_step_implementations.py --all --skip-existing
+  python scripts/gen_step_implementations.py --all --skip-existing --concurrency 10
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import re
 import sys
 from pathlib import Path
@@ -145,7 +147,13 @@ the new implementations for the scenario above. Output Python source only.
 """
 
 
-def generate_for_req(client: anthropic.Anthropic, req: dict, skip_existing: bool) -> Path | None:
+async def generate_for_req(
+    client: anthropic.AsyncAnthropic,
+    req: dict,
+    skip_existing: bool,
+    semaphore: asyncio.Semaphore,
+    file_locks: dict[str, asyncio.Lock],
+) -> Path | None:
     req_id = req["id"]
     category = req.get("category", "misc")
     scenario = req.get("scenario", "")
@@ -160,7 +168,6 @@ def generate_for_req(client: anthropic.Anthropic, req: dict, skip_existing: bool
         return None
 
     if skip_existing and steps_file.exists():
-        # Check if all scenario steps already have real impls
         all_real = True
         for line in scenario.splitlines():
             m = re.match(r"^\s*(Given|When|Then|And|But)\s+(.+)$", line)
@@ -170,43 +177,51 @@ def generate_for_req(client: anthropic.Anthropic, req: dict, skip_existing: bool
                     all_real = False
                     break
         if all_real:
-            print(f"  skip {req_id}: all steps already implemented")
+            print(f"  skip {req_id}: all steps already implemented", flush=True)
             return None
 
     feature_text = feature_path.read_text()
-    existing_file = steps_file.read_text() if steps_file.exists() else ""
     test_context = collect_existing_tests(req.get("tests"))
     code_context = collect_code_refs(req.get("code"))
 
-    prompt = build_prompt(req, feature_text, existing_file, test_context, code_context)
+    file_key = str(steps_file)
+    if file_key not in file_locks:
+        file_locks[file_key] = asyncio.Lock()
 
-    print(f"  generating {req_id} → {steps_file}")
+    async with semaphore:
+        print(f"  generating {req_id} → {steps_file}", flush=True)
 
-    content_parts: list[str] = []
-    with client.messages.stream(
-        model="claude-opus-4-8",
-        max_tokens=8000,
-        thinking={"type": "adaptive"},
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    ) as stream:
-        for event in stream:
-            if hasattr(event, "type"):
-                if event.type == "content_block_delta":
-                    delta = getattr(event, "delta", None)
-                    if delta and getattr(delta, "type", None) == "text_delta":
-                        content_parts.append(delta.text)
+        async with file_locks[file_key]:
+            existing_file = steps_file.read_text() if steps_file.exists() else ""
 
-    generated = "".join(content_parts).strip()
+        prompt = build_prompt(req, feature_text, existing_file, test_context, code_context)
 
-    # Strip accidental markdown fences
-    if generated.startswith("```"):
-        lines = generated.splitlines()
-        generated = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        content_parts: list[str] = []
+        async with client.messages.stream(
+            model="claude-sonnet-4-6",
+            max_tokens=8000,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            async for event in stream:
+                if hasattr(event, "type"):
+                    if event.type == "content_block_delta":
+                        delta = getattr(event, "delta", None)
+                        if delta and getattr(delta, "type", None) == "text_delta":
+                            content_parts.append(delta.text)
 
-    STEPS_DIR.mkdir(parents=True, exist_ok=True)
-    steps_file.write_text(generated + "\n")
-    return steps_file
+        generated = "".join(content_parts).strip()
+
+        if generated.startswith("```"):
+            lines = generated.splitlines()
+            generated = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+
+        STEPS_DIR.mkdir(parents=True, exist_ok=True)
+        async with file_locks[file_key]:
+            steps_file.write_text(generated + "\n")
+
+        print(f"  done {req_id}", flush=True)
+        return steps_file
 
 
 def update_conftest(generated_files: list[Path]) -> None:
@@ -233,7 +248,7 @@ def update_conftest(generated_files: list[Path]) -> None:
         print(f"  updated {conftest}")
 
 
-def main() -> int:
+async def async_main() -> int:
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--req", metavar="REQ-NNN", help="Generate for a single requirement")
@@ -242,6 +257,9 @@ def main() -> int:
     )
     parser.add_argument(
         "--skip-existing", action="store_true", help="Skip reqs whose steps are already implemented"
+    )
+    parser.add_argument(
+        "--concurrency", type=int, default=10, help="Max parallel API calls (default: 10)"
     )
     args = parser.parse_args()
 
@@ -258,18 +276,26 @@ def main() -> int:
     else:
         targets = behavioral
 
-    client = anthropic.Anthropic()
-    generated: list[Path] = []
+    client = anthropic.AsyncAnthropic()
+    semaphore = asyncio.Semaphore(args.concurrency)
+    file_locks: dict[str, asyncio.Lock] = {}
 
-    for req in targets:
+    async def run_one(req: dict) -> Path | None:
         try:
-            out = generate_for_req(client, req, skip_existing=args.skip_existing)
-            if out:
-                generated.append(out)
+            return await generate_for_req(
+                client,
+                req,
+                skip_existing=args.skip_existing,
+                semaphore=semaphore,
+                file_locks=file_locks,
+            )
         except Exception as exc:
-            print(f"  ERROR {req['id']}: {exc}", file=sys.stderr)
+            print(f"  ERROR {req['id']}: {exc}", file=sys.stderr, flush=True)
+            return None
 
-    # Deduplicate (multiple reqs may share a category file)
+    results = await asyncio.gather(*[run_one(r) for r in targets])
+    generated = [p for p in results if p]
+
     unique = list({str(p): p for p in generated}.values())
     if unique:
         update_conftest(unique)
@@ -281,4 +307,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(asyncio.run(async_main()))

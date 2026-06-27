@@ -532,6 +532,7 @@ def then_circuit_opens_then_half_open(shared_data):
     hook = shared_data["hook"]
     request = shared_data["request"]
     cooldown_s = shared_data["cooldown_s"]
+    threshold = shared_data["threshold"]
     breaker = hook._breaker
 
     # Immediately after reaching the threshold, the circuit is OPEN and not yet
@@ -540,35 +541,50 @@ def then_circuit_opens_then_half_open(shared_data):
     assert breaker.is_half_open is False
 
     # While open, the hook short-circuits and never calls the endpoint.
-    short_circuit_calls = {"n": 0}
+    open_call_count = {"n": 0}
 
-    async def post_should_not_run(self, *args, **kwargs):  # noqa: ANN001
-        short_circuit_calls["n"] += 1
-        raise AssertionError("endpoint must not be called while circuit is open")
+    async def tracking_post(self, *args, **kwargs):  # noqa: ANN001
+        open_call_count["n"] += 1
+        raise httpx_connect_error()
 
-    with patch("httpx.AsyncClient.post", new=post_should_not_run):
-        resp = asyncio.run(hook.evaluate(request))
-    assert short_circuit_calls["n"] == 0
-    assert "circuit breaker open" in resp.reason
+    with patch("httpx.AsyncClient.post", new=tracking_post):
+        short_circuit_resp = asyncio.run(hook.evaluate(request))
 
-    # Wait out the configured cooldown period; the circuit becomes HALF-OPEN.
+    # No network call was made — the breaker short-circuited the request.
+    assert open_call_count["n"] == 0
+    # Fallback policy (ALLOW) governed the short-circuited response.
+    assert short_circuit_resp.approved is True
+    assert "circuit breaker open" in short_circuit_resp.reason
+
+    # Wait for the configured cooldown to elapse so the breaker can half-open.
     time.sleep(cooldown_s + 0.05)
+
+    # After cooldown the breaker is in half-open state: it permits exactly one
+    # trial request through to the endpoint.
     assert breaker.is_half_open is True
-    # In half-open, ``is_open`` reports False so a single trial attempt is allowed.
+    # is_open returns False once cooldown elapsed (half-open allows an attempt).
     assert breaker.is_open is False
 
-    # A successful trial call in half-open state must close the circuit again
-    # and reset the consecutive-failure counter to zero.
-    trial_calls = {"n": 0}
-
+    # A successful trial call must close the circuit and reset failure count.
     success_resp = MagicMock()
     success_resp.status_code = 200
-    success_resp.json.return_value = {"approved": True, "reason": "ok"}
+    success_resp.json.return_value = {"approved": True, "reason": "recovered"}
     success_resp.raise_for_status.return_value = None
 
+    trial_call_count = {"n": 0}
+
     async def recovering_post(self, *args, **kwargs):  # noqa: ANN001
-        trial_calls["n"] += 1
+        trial_call_count["n"] += 1
         return success_resp
 
     with patch("httpx.AsyncClient.post", new=recovering_post):
-        recovered = asyncio.run(hook.
+        recovery_resp = asyncio.run(hook.evaluate(request))
+
+    # The half-open trial request reached the endpoint exactly once.
+    assert trial_call_count["n"] == 1
+    assert recovery_resp.approved is True
+
+    # A successful trial closes the circuit: failures reset, breaker closed.
+    assert breaker._consecutive_failures == 0
+    assert breaker.is_open is False
+    assert breaker.is_half_open is False

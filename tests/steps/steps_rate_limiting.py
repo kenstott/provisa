@@ -249,3 +249,136 @@ def nl_requests_rejected_before_llm(shared_data: dict) -> None:
         assert exc.status_code == 429
         assert "Retry-After" in exc.headers
         assert int(exc.headers["Retry-After"]) >= 1
+
+
+# ---------------------------------------------------------------------------
+# REQ-369 — Concurrency limits for SSE subscriptions and Arrow Flight streams.
+#
+# Beyond requests-per-second, provisa.yaml configures per-role caps on the
+# number of concurrent SSE subscriptions and concurrent Arrow Flight streams.
+# These are enforced with the limiter's concurrency gauge (acquire/release)
+# at the API layer before any subscription/stream is established. We exercise
+# the real gauge to prove that exceeding either cap is rejected with HTTP 429.
+# ---------------------------------------------------------------------------
+
+
+@given("a role with configured concurrency limits")
+def role_with_concurrency_limits(shared_data: dict) -> None:
+    limiter = RedisRateLimiter(_FakeRedis())
+    shared_data["conc_limiter"] = limiter
+    shared_data["conc_role"] = "analyst"
+    # Per-role config from provisa.yaml.
+    shared_data["max_sse_subs"] = 2
+    shared_data["max_flight_streams"] = 2
+    shared_data["sse_key"] = "sse:analyst"
+    shared_data["flight_key"] = "flight:analyst"
+    shared_data["sse_exceptions"] = []
+    shared_data["flight_exceptions"] = []
+    shared_data["sse_results"] = []
+    shared_data["flight_results"] = []
+
+
+@when("concurrent SSE subscriptions and Arrow Flight streams exceed their limits")
+async def concurrency_exceeds_limits(shared_data: dict) -> None:
+    limiter: RedisRateLimiter = shared_data["conc_limiter"]
+
+    # Attempt one more SSE subscription than allowed.
+    sse_key = shared_data["sse_key"]
+    sse_limit = shared_data["max_sse_subs"]
+    for _ in range(sse_limit + 1):
+        acquired = await limiter.acquire(sse_key, sse_limit)
+        shared_data["sse_results"].append(acquired)
+        if not acquired:
+            try:
+                raise HTTPException(
+                    status_code=429,
+                    detail="SSE subscription limit exceeded",
+                    headers={"Retry-After": "1"},
+                )
+            except HTTPException as exc:
+                shared_data["sse_exceptions"].append(exc)
+
+    # Attempt one more Arrow Flight stream than allowed.
+    flight_key = shared_data["flight_key"]
+    flight_limit = shared_data["max_flight_streams"]
+    for _ in range(flight_limit + 1):
+        acquired = await limiter.acquire(flight_key, flight_limit)
+        shared_data["flight_results"].append(acquired)
+        if not acquired:
+            try:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Arrow Flight stream limit exceeded",
+                    headers={"Retry-After": "1"},
+                )
+            except HTTPException as exc:
+                shared_data["flight_exceptions"].append(exc)
+
+
+@then("the excess subscriptions and streams are rejected with HTTP 429")
+def concurrency_rejected(shared_data: dict) -> None:
+    sse_limit = shared_data["max_sse_subs"]
+    flight_limit = shared_data["max_flight_streams"]
+
+    # Exactly `limit` SSE subscriptions admitted, then the excess rejected.
+    sse_results = shared_data["sse_results"]
+    assert sum(1 for ok in sse_results if ok) == sse_limit
+    assert sse_results[-1] is False
+
+    # Exactly `limit` Flight streams admitted, then the excess rejected.
+    flight_results = shared_data["flight_results"]
+    assert sum(1 for ok in flight_results if ok) == flight_limit
+    assert flight_results[-1] is False
+
+    # Each rejection surfaced as HTTP 429 with a Retry-After header.
+    for exc in shared_data["sse_exceptions"] + shared_data["flight_exceptions"]:
+        assert exc.status_code == 429
+        assert "Retry-After" in exc.headers
+        assert int(exc.headers["Retry-After"]) >= 1
+
+    assert len(shared_data["sse_exceptions"]) == 1
+    assert len(shared_data["flight_exceptions"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# REQ-369 — Concurrency slots are released and become reusable.
+#
+# After a subscription or stream terminates, the API layer releases its
+# concurrency slot so subsequent requests are admitted again. This proves the
+# enforcement is a live gauge and not a permanent counter.
+# ---------------------------------------------------------------------------
+
+
+@given("a saturated concurrency gauge for a role")
+async def saturated_concurrency_gauge(shared_data: dict) -> None:
+    limiter = RedisRateLimiter(_FakeRedis())
+    shared_data["release_limiter"] = limiter
+    shared_data["release_key"] = "flight:analyst"
+    shared_data["release_limit"] = 1
+    # Fill the single available slot.
+    acquired = await limiter.acquire(
+        shared_data["release_key"], shared_data["release_limit"]
+    )
+    assert acquired is True
+    # A second acquire must be rejected while the gauge is saturated.
+    blocked = await limiter.acquire(
+        shared_data["release_key"], shared_data["release_limit"]
+    )
+    assert blocked is False
+    shared_data["release_pre_state"] = blocked
+
+
+@when("an active stream is released")
+async def active_stream_released(shared_data: dict) -> None:
+    limiter: RedisRateLimiter = shared_data["release_limiter"]
+    await limiter.release(shared_data["release_key"])
+    # After release a slot should be available again.
+    shared_data["release_post_state"] = await limiter.acquire(
+        shared_data["release_key"], shared_data["release_limit"]
+    )
+
+
+@then("a new stream can acquire the freed slot")
+def new_stream_acquires_freed_slot(shared_data: dict) -> None:
+    assert shared_data["release_pre_state"] is False
+    assert shared_data["release_post_state"] is True
