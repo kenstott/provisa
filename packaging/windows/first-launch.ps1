@@ -128,7 +128,7 @@ function Ensure-WSL2 {
   # Start containerd if not running
   wsl sh -c 'sudo nohup containerd > /dev/null 2>&1 &'
 
-  $nerdctlVerify = wsl nerdctl version 2>&1
+  $nerdctlVerify = wsl sudo nerdctl version 2>&1
   if ($LASTEXITCODE -ne 0) {
     Write-Err "nerdctl not functional after installation: $nerdctlVerify"
     exit 1
@@ -139,11 +139,12 @@ function Ensure-WSL2 {
 # ── Load images ────────────────────────────────────────────────────────────────
 function Load-Images {
   Write-Info 'Loading bundled container images (no network required)...'
+  wsl sh -c 'sudo nohup containerd > /dev/null 2>&1 & sleep 3'
   $tars = Get-ChildItem -Path $ImagesDir -Filter '*.tar.gz' -ErrorAction Stop
   foreach ($tar in $tars) {
     Write-Info "  Loading: $($tar.Name)"
     $wslTarPath = ConvertTo-WslPath $tar.FullName
-    wsl nerdctl load -i $wslTarPath
+    wsl sudo nerdctl load -i $wslTarPath
     if ($LASTEXITCODE -ne 0) { Write-Err "Failed to load image: $($tar.Name)"; exit 1 }
   }
   Write-Ok "Loaded $($tars.Count) images."
@@ -157,7 +158,7 @@ function Build-ProvisaImage {
     exit 1
   }
   $wslSourceDir = ConvertTo-WslPath $SourceDir
-  wsl nerdctl build -t provisa/provisa:local $wslSourceDir
+  wsl sudo nerdctl build -t provisa/provisa:local $wslSourceDir
   if ($LASTEXITCODE -ne 0) { Write-Err 'Failed to build provisa image.'; exit 1 }
   Write-Ok 'provisa/provisa:local built.'
 }
