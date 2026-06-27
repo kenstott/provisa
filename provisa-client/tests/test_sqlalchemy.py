@@ -58,7 +58,7 @@ def test_create_connect_args_http():
     assert kwargs["url"] == "http://myserver:8001"
     assert kwargs["username"] == "alice"
     assert kwargs["password"] == "secret"
-    assert kwargs["role"] == "admin"
+    assert "role" not in kwargs
 
 
 def test_create_connect_args_https():

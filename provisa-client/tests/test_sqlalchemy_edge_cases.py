@@ -280,12 +280,12 @@ class TestConnectionStringParsing:
         assert kwargs["username"] == "alice"
         assert kwargs["password"] == "s3cret"
 
-    def test_default_role_is_admin(self):
-        """When no role query param is given, role defaults to 'admin'."""
+    def test_no_default_role_when_not_in_query(self):
+        """When no role query param is given, role is omitted from connect args."""
         dialect = ProvisaDialect()
         url = URL.create("provisa+http", username="u", password="p", host="localhost", port=8001)
         _, kwargs = dialect.create_connect_args(url)
-        assert kwargs["role"] == "admin"
+        assert "role" not in kwargs
 
     def test_role_from_query_string(self):
         dialect = ProvisaDialect()
