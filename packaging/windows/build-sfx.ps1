@@ -13,15 +13,6 @@ Write-Host '[build-sfx] Preparing build directory...' -ForegroundColor Cyan
 # ── Assemble build tree (mirrors build-installer.ps1) ─────────────────────────
 $BuildDir = Join-Path $ScriptDir 'build'
 
-$BuildImages = Join-Path $BuildDir 'images'
-New-Item -ItemType Directory -Path $BuildImages -Force | Out-Null
-$ObsImages = @('minio-latest.tar.gz','otlp2parquet-latest.tar.gz',
-    'opentelemetry-collector-contrib-0.99.0.tar.gz','prometheus-v2.51.2.tar.gz',
-    'tempo-2.4.1.tar.gz','grafana-10.4.2.tar.gz',
-    'petstore3-unstable.tar.gz','graphql-demo-local.tar.gz')
-Get-ChildItem -Path (Join-Path $ScriptDir 'images') -Filter '*.tar.gz' |
-  Where-Object { $_.Name -ne 'provisa-local.tar.gz' -and $ObsImages -notcontains $_.Name } |
-  Copy-Item -Destination $BuildImages
 
 $BuildCompose = Join-Path $BuildDir 'compose'
 New-Item -ItemType Directory -Path $BuildCompose -Force | Out-Null

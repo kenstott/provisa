@@ -31,6 +31,7 @@ jobs:
       py_version: ${{ steps.meta.outputs.py_version }}
       obs_images_name: ${{ steps.meta.outputs.obs_images_name }}
       demo_images_name: ${{ steps.meta.outputs.demo_images_name }}
+      core_images_name: ${{ steps.meta.outputs.core_images_name }}
       plugins_name: ${{ steps.meta.outputs.plugins_name }}
     steps:
       - name: Resolve channel and versions from tag
@@ -69,6 +70,7 @@ jobs:
           echo "py_version=$PY_VERSION"                                    >> "$GITHUB_OUTPUT"
           echo "obs_images_name=provisa-obs-images-${TAG}.tar.gz"         >> "$GITHUB_OUTPUT"
           echo "demo_images_name=provisa-demo-images-${TAG}.tar.gz"       >> "$GITHUB_OUTPUT"
+          echo "core_images_name=provisa-core-images-${TAG}.tar.gz"       >> "$GITHUB_OUTPUT"
           echo "plugins_name=provisa-trino-plugins-${TAG}.tar.gz"         >> "$GITHUB_OUTPUT"
 
   build-vm-image:
@@ -963,6 +965,29 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+  package-core-images:
+    name: Package core image tarballs for release
+    runs-on: ubuntu-latest
+    needs: [metadata, pull-images-core]
+    steps:
+      - name: Download core image tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images-core
+          path: core-images/
+
+      - name: Package as single tarball
+        run: |
+          tar -czf "${{ needs.metadata.outputs.core_images_name }}" -C core-images/ .
+
+      - name: Upload core images tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-images-tarball
+          path: "${{ needs.metadata.outputs.core_images_name }}"
+          retention-days: 1
+          compression-level: 0
+
   # ── Release ──────────────────────────────────────────────────────────────────
 
   publish-release:
@@ -982,6 +1007,7 @@ jobs:
       - rename-ova
       - package-obs-images
       - package-demo-images
+      - package-core-images
       - package-plugins
     permissions:
       contents: write
@@ -1017,6 +1043,12 @@ jobs:
           name: demo-images-tarball
           path: release-assets/
 
+      - name: Download core images tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: core-images-tarball
+          path: release-assets/
+
       - name: Download Trino plugins tarball
         uses: actions/download-artifact@v4
         with:
@@ -1047,6 +1079,7 @@ jobs:
             release-assets/${{ needs.metadata.outputs.jdbc_name }}
             release-assets/${{ needs.metadata.outputs.obs_images_name }}
             release-assets/${{ needs.metadata.outputs.demo_images_name }}
+            release-assets/${{ needs.metadata.outputs.core_images_name }}
             release-assets/${{ needs.metadata.outputs.plugins_name }}
             release-assets/*.whl
           body: |
@@ -1064,8 +1097,9 @@ jobs:
             | `${{ needs.metadata.outputs.ova_name }}` | Alpine Linux OVA (VirtualBox runtime) |
             | `${{ needs.metadata.outputs.jdbc_name }}` | JDBC driver — Tableau, PowerBI, DBeaver |
             | `provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl` | Python client |
-            | `${{ needs.metadata.outputs.obs_images_name }}` | Observability Docker images (optional download) |
-            | `${{ needs.metadata.outputs.demo_images_name }}` | Demo Docker images (optional download) |
+            | `${{ needs.metadata.outputs.core_images_name }}` | Core Docker images (airgapped install) |
+            | `${{ needs.metadata.outputs.obs_images_name }}` | Observability Docker images (optional) |
+            | `${{ needs.metadata.outputs.demo_images_name }}` | Demo Docker images (optional) |
             | `${{ needs.metadata.outputs.plugins_name }}` | Trino connector plugins (SharePoint, Splunk, File) |
 
             ### macOS Install
@@ -1083,11 +1117,12 @@ jobs:
             ```
 
             ### Windows Install
-            1. Run `${{ needs.metadata.outputs.windows_name }}` — installs core + VirtualBox VM
+            **Online**: Run `${{ needs.metadata.outputs.windows_name }}` → Start Menu → **Provisa First Launch** (downloads images automatically)
+            **Airgapped**: Download installer + `${{ needs.metadata.outputs.core_images_name }}` + any extension tarballs to same folder, then run installer
+            1. Run `${{ needs.metadata.outputs.windows_name }}`
             2. Open **Provisa First Launch** from the Start Menu
             3. `provisa start`
-            4. **Optional**: Run `${{ needs.metadata.outputs.windows_obs_name }}` for observability
-            5. **Optional**: Run `${{ needs.metadata.outputs.windows_demo_name }}` for demo data (requires obs)
+            4. **Optional**: check Observability / Demo in setup GUI (or place tarballs in same folder for airgap)
 
             ### Python client
             ```bash

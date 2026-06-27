@@ -41,6 +41,7 @@ function Find-ExtFile {
   return ($candidates | Select-Object -First 1)
 }
 
+$coreFile = Find-ExtFile 'provisa-core-images-*.tar.gz'
 $obsFile  = Find-ExtFile 'provisa-obs-images-*.tar.gz'
 $demoFile = Find-ExtFile 'provisa-demo-images-*.tar.gz'
 
@@ -56,7 +57,7 @@ $null = $ramOptions.Add("All (${totalGb}GB)")
 # ── Form ──────────────────────────────────────────────────────────────────────
 $form = New-Object System.Windows.Forms.Form
 $form.Text            = 'Provisa Setup'
-$form.ClientSize      = New-Object System.Drawing.Size(600, 480)
+$form.ClientSize      = New-Object System.Drawing.Size(600, 544)
 $form.StartPosition   = 'CenterScreen'
 $form.FormBorderStyle = 'FixedSingle'
 $form.MaximizeBox     = $false
@@ -89,7 +90,7 @@ $header.Controls.Add($lbSub)
 # ── Panel 1 : Config ──────────────────────────────────────────────────────────
 $pConfig          = New-Object System.Windows.Forms.Panel
 $pConfig.Location = New-Object System.Drawing.Point(0, 72)
-$pConfig.Size     = New-Object System.Drawing.Size(600, 370)
+$pConfig.Size     = New-Object System.Drawing.Size(600, 472)
 $pConfig.Visible  = $true
 $form.Controls.Add($pConfig)
 
@@ -137,18 +138,31 @@ $nudPort.Location = New-Object System.Drawing.Point(20, 202)
 $nudPort.Width    = 100
 $pConfig.Controls.Add($nudPort)
 
-Lbl 'Extensions'  20 238 $true
+Lbl 'Core Images'  20 238 $true
+$lbCoreStatus           = New-Object System.Windows.Forms.Label
+$lbCoreStatus.AutoSize  = $true
+$lbCoreStatus.Location  = New-Object System.Drawing.Point(20, 258)
+if ($coreFile) {
+  $lbCoreStatus.Text     = $coreFile.Name
+  $lbCoreStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 160, 0)
+} else {
+  $lbCoreStatus.Text     = 'not found locally — will download (required)'
+  $lbCoreStatus.ForeColor = [System.Drawing.Color]::FromArgb(180, 100, 0)
+}
+$pConfig.Controls.Add($lbCoreStatus)
+
+Lbl 'Extensions'  20 288 $true
 
 $cbObs          = New-Object System.Windows.Forms.CheckBox
 $cbObs.Text     = 'Observability'
 $cbObs.AutoSize = $true
-$cbObs.Location = New-Object System.Drawing.Point(20, 264)
+$cbObs.Location = New-Object System.Drawing.Point(20, 314)
 $cbObs.Checked  = ($null -ne $obsFile)
 $pConfig.Controls.Add($cbObs)
 
 $lbObsStatus           = New-Object System.Windows.Forms.Label
 $lbObsStatus.AutoSize  = $true
-$lbObsStatus.Location  = New-Object System.Drawing.Point(160, 266)
+$lbObsStatus.Location  = New-Object System.Drawing.Point(160, 316)
 if ($obsFile) {
   $lbObsStatus.Text     = $obsFile.Name
   $lbObsStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 160, 0)
@@ -161,13 +175,13 @@ $pConfig.Controls.Add($lbObsStatus)
 $cbDemo          = New-Object System.Windows.Forms.CheckBox
 $cbDemo.Text     = 'Demo'
 $cbDemo.AutoSize = $true
-$cbDemo.Location = New-Object System.Drawing.Point(20, 290)
+$cbDemo.Location = New-Object System.Drawing.Point(20, 340)
 $cbDemo.Checked  = ($null -ne $demoFile)
 $pConfig.Controls.Add($cbDemo)
 
 $lbDemoStatus           = New-Object System.Windows.Forms.Label
 $lbDemoStatus.AutoSize  = $true
-$lbDemoStatus.Location  = New-Object System.Drawing.Point(160, 292)
+$lbDemoStatus.Location  = New-Object System.Drawing.Point(160, 342)
 if ($demoFile) {
   $lbDemoStatus.Text     = $demoFile.Name
   $lbDemoStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 160, 0)
@@ -181,7 +195,7 @@ $btnInstall            = New-Object System.Windows.Forms.Button
 $btnInstall.Text       = 'Install'
 $btnInstall.Font       = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
 $btnInstall.Size       = New-Object System.Drawing.Size(110, 36)
-$btnInstall.Location   = New-Object System.Drawing.Point(470, 316)
+$btnInstall.Location   = New-Object System.Drawing.Point(470, 376)
 $btnInstall.BackColor  = [System.Drawing.Color]::FromArgb(0, 120, 215)
 $btnInstall.ForeColor  = [System.Drawing.Color]::White
 $btnInstall.FlatStyle  = 'Flat'
@@ -191,7 +205,7 @@ $pConfig.Controls.Add($btnInstall)
 # ── Panel 2 : Progress ────────────────────────────────────────────────────────
 $pProg          = New-Object System.Windows.Forms.Panel
 $pProg.Location = New-Object System.Drawing.Point(0, 72)
-$pProg.Size     = New-Object System.Drawing.Size(600, 370)
+$pProg.Size     = New-Object System.Drawing.Size(600, 472)
 $pProg.Visible  = $false
 $form.Controls.Add($pProg)
 
@@ -210,7 +224,7 @@ $pProg.Controls.Add($lbStatus)
 
 $rtb               = New-Object System.Windows.Forms.RichTextBox
 $rtb.Location      = New-Object System.Drawing.Point(20, 74)
-$rtb.Size          = New-Object System.Drawing.Size(560, 200)
+$rtb.Size          = New-Object System.Drawing.Size(560, 310)
 $rtb.ReadOnly      = $true
 $rtb.Font          = New-Object System.Drawing.Font('Consolas', 8)
 $rtb.BackColor     = [System.Drawing.Color]::FromArgb(18, 18, 18)
@@ -222,7 +236,7 @@ $btnFinish            = New-Object System.Windows.Forms.Button
 $btnFinish.Text       = 'Finish'
 $btnFinish.Font       = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
 $btnFinish.Size       = New-Object System.Drawing.Size(110, 36)
-$btnFinish.Location   = New-Object System.Drawing.Point(470, 316)
+$btnFinish.Location   = New-Object System.Drawing.Point(470, 426)
 $btnFinish.BackColor  = [System.Drawing.Color]::FromArgb(0, 120, 215)
 $btnFinish.ForeColor  = [System.Drawing.Color]::White
 $btnFinish.FlatStyle  = 'Flat'
@@ -286,6 +300,7 @@ $btnInstall.Add_Click({
   if ([string]::IsNullOrEmpty($hostname)) { $hostname = 'localhost' }
   $uiPort = [int]$nudPort.Value
 
+  $coreFilePath = if ($coreFile) { $coreFile.FullName } else { $null }
   $installObs  = $cbObs.Checked
   $installDemo = $cbDemo.Checked
   $obsFilePath  = if ($obsFile)  { $obsFile.FullName }  else { $null }
@@ -334,6 +349,7 @@ $btnInstall.Add_Click({
   $rs.SessionStateProxy.SetVariable('Workers',       $workers)
   $rs.SessionStateProxy.SetVariable('Hostname',      $hostname)
   $rs.SessionStateProxy.SetVariable('UiPort',        $uiPort)
+  $rs.SessionStateProxy.SetVariable('CoreFilePath',  $coreFilePath)
   $rs.SessionStateProxy.SetVariable('InstallObs',    $installObs)
   $rs.SessionStateProxy.SetVariable('InstallDemo',   $installDemo)
   $rs.SessionStateProxy.SetVariable('ObsFilePath',   $obsFilePath)
@@ -372,6 +388,35 @@ $btnInstall.Add_Click({
       Log 'Starting containerd...'
       wsl -u root sh -c 'nohup containerd > /dev/null 2>&1 & sleep 3'
       $sync.Progress = 20
+
+      # Ensure core images are present (extract from tarball if images dir is empty)
+      $hasBundledImages = (Test-Path $ImagesDir) -and (@(Get-ChildItem -Path $ImagesDir -Filter '*.tar.gz' -ErrorAction SilentlyContinue).Count -gt 0)
+      if (-not $hasBundledImages) {
+        if (-not $CoreFilePath) {
+          # Attempt GitHub download
+          Log 'Core images not found locally — attempting download...'
+          $ver = $env:PROVISA_VERSION
+          if (-not $ver) {
+            try { $o = (& provisa version 2>$null | Select-Object -First 1); if ($o) { $ver = $o.Trim().Split()[-1] } } catch {}
+          }
+          if ($ver) {
+            $fname   = "provisa-core-images-${ver}.tar.gz"
+            $url     = "https://github.com/kenstott/provisa/releases/download/${ver}/${fname}"
+            $tmpFile = Join-Path $ProvisaHome $fname
+            try {
+              Invoke-WebRequest -Uri $url -OutFile $tmpFile -UseBasicParsing
+              $CoreFilePath = $tmpFile
+            } catch { throw "Core images download failed: $_. Place provisa-core-images-${ver}.tar.gz beside the installer and re-run." }
+          } else { throw "Core images not found and version unknown. Place provisa-core-images-<version>.tar.gz beside the installer and re-run." }
+        }
+        Log "Extracting core images from $(Split-Path $CoreFilePath -Leaf)..."
+        New-Item -ItemType Directory -Path $ImagesDir -Force | Out-Null
+        $wpSrc = Wsl2Path $CoreFilePath
+        $wpDst = Wsl2Path $ImagesDir
+        wsl -u root sh -c "tar -xzf '$wpSrc' -C '$wpDst'"
+        if ($LASTEXITCODE -ne 0) { throw "Core images extraction failed." }
+        Log "Core images extracted."
+      }
 
       # Load images
       Log 'Loading container images (this takes a few minutes)...'

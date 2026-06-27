@@ -50,7 +50,10 @@ def adbc_connect(
     """
     base_url = url.rstrip("/")
     token, auth_role = _auth_login(base_url, user, password)
-    resolved_role = role or auth_role if token else role or user or None
+    if token:
+        resolved_role: str | None = role or auth_role
+    else:
+        resolved_role = role or (user if user else None)
 
     parsed = urlparse(base_url)
     host = parsed.hostname or "localhost"
