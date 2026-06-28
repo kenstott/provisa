@@ -84,8 +84,9 @@ build-backend = "setuptools.build_meta"
 include = ["provisa*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "--cov=provisa --cov-report=term-missing --cov-report=xml --no-cov-on-fail"
+testpaths = ["tests", "tests/steps"]
+addopts = ""
+python_files = ["test_*.py", "*_test.py", "steps_*.py"]
 asyncio_mode = "auto"
 log_level = "DEBUG"
 log_cli = false

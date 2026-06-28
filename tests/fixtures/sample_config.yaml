@@ -14,6 +14,7 @@ domains:
     description: Product catalog data
 
 naming:
+  domain_prefix: true
   rules:
     - pattern: "^prod_pg_"
       replace: ""

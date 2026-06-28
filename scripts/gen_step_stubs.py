@@ -59,11 +59,14 @@ def generate_stubs(feature_files: list[Path]) -> str:
     for req_id, verb, text in steps:
         decorator = verb.lower() if verb.lower() in {"given", "when", "then"} else "then"
         func = step_to_func(verb, text)
+        # Escape quotes in the text for use in decorator and skip message
+        escaped_text = text.replace('"', '\\"')
+        escaped_text_short = text[:60].replace('"', '\\"')
         lines += [
             f"# {req_id}",
-            f'@{decorator}("{text}")',
+            f'@{decorator}("{escaped_text}")',
             f"def {func}():",
-            f'    pytest.skip("step not implemented: {text[:60]}")',
+            f'    pytest.skip("step not implemented: {escaped_text_short}")',
             "",
         ]
 
