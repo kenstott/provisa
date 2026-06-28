@@ -405,6 +405,17 @@ def apply_governance(
 
     tree = tree.transform(_transform)
 
+    # SQLGlot's transform may visit parent Select nodes before their WHERE-clause
+    # subquery children when UNION/CTE structures are present (REQ-264).  Do a
+    # second bottom-up pass over any remaining Subquery nodes so that every
+    # physical table reference inside IN/EXISTS/correlated subqueries is governed.
+    for subq in list(tree.find_all(exp.Subquery)):
+        inner = subq.this
+        if isinstance(inner, exp.Select):
+            governed_inner = _govern_select(inner, gov_ctx)
+            if governed_inner is not inner:
+                subq.set("this", governed_inner)
+
     governed = tree.sql(dialect="postgres")
 
     # Apply LIMIT ceiling (REQ-005): most restrictive of the role-level ceiling and

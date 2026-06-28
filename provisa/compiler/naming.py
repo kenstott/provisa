@@ -294,8 +294,26 @@ def generate_name(  # REQ-154, REQ-155, REQ-157, REQ-194
     name = _apply_naming_rules(table_name, naming_rules)
     transformed_names = [_apply_naming_rules(n, naming_rules) for n in domain_table_names]
 
-    # Find shortest unique within domain (comparing transformed names)
-    name = _shortest_unique(name, transformed_names, [schema_name, source_id])
+    # Collision check uses "first-wins" ordering: only tables that appear
+    # earlier in domain_table_names can claim a name ahead of this table.
+    try:
+        self_idx = domain_table_names.index(table_name)
+    except ValueError:
+        self_idx = len(domain_table_names)
+    prior_names = transformed_names[:self_idx]
+
+    # If name already claimed by a prior table, qualify it.
+    if name in prior_names:
+        for qualifier in [schema_name, source_id]:
+            candidate = f"{qualifier}_{name}"
+            if candidate not in prior_names:
+                name = candidate
+                break
+        else:
+            raise ValueError(
+                f"Cannot generate unique name for {table_name!r} within domain. "
+                f"All qualifier combinations exhausted."
+            )
 
     result = _apply_table_convention(name, convention)
     if not result:

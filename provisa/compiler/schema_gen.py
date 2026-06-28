@@ -439,8 +439,10 @@ def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-
                 if alias:
                     t.field_name = f"{alias}__{t.field_name}"
                     t.type_name = f"{alias.upper()}__{to_type_name(t.field_name.split('__', 1)[1])}"
-                else:
+                elif domain_snake:
                     t.field_name = f"{domain_snake}__{t.field_name}"
+                    t.type_name = to_type_name(t.field_name)
+                else:
                     t.type_name = to_type_name(t.field_name)
             else:
                 t.type_name = to_type_name(t.field_name)
@@ -1446,8 +1448,14 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:  # REQ-007, REQ-008, REQ-
             )
 
         # REQ-653: table-level enable_aggregates gates the _aggregate root field.
-        # REQ-197: role-level "no_aggregations" capability remains as an additional override.
-        if t.enable_aggregates and "no_aggregations" not in (si.role.get("capabilities") or []):
+        # REQ-197: role-level "no_aggregations" capability (or top-level key) overrides.
+        # Also blocked when allow_aggregations is explicitly set to False.
+        _role_blocks_agg = (
+            si.role.get("no_aggregations")
+            or "no_aggregations" in (si.role.get("capabilities") or [])
+            or si.role.get("allow_aggregations") is False
+        )
+        if t.enable_aggregates and not _role_blocks_agg:
             agg_result = _build_aggregate_query_field(
                 t, gql_type, si.enum_types, shared_agg_fields_type
             )

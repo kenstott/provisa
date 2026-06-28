@@ -343,6 +343,14 @@ def _register_table_in_ctx(
         ctx.physical_to_sql[(t.table_id, phys)] = sql_name
         if col_path:
             ctx.column_paths[(t.table_id, gql)] = col_path
+        object_fields = col.get("object_fields")
+        if object_fields and isinstance(object_fields, list):
+            convention = getattr(t, "gql_convention_override", None)
+            ctx.gql_json_columns.add((t.table_id, gql))
+            for sf in object_fields:
+                sf_name = sf["name"]
+                sf_gql = sf.get("alias") or apply_gql_name(sf_name, convention)
+                ctx.column_paths[(t.table_id, sf_gql)] = f"{phys}.{sf_name}"
 
     for col_name in si.gql_object_columns.get(t.table_name) or {}:
         ctx.gql_json_columns.add((t.table_id, col_name))
@@ -760,6 +768,15 @@ def _compile_order_by(
     _e2p = exposed_to_physical or {}
     for item in order_by_list:
         for col_name, direction in item.items():
+            if isinstance(direction, dict):
+                # Nested relationship order-by: { rel_field: { col: dir } }
+                # Flatten one level — qualify with the relationship field name as alias.
+                for nested_col, nested_dir in direction.items():
+                    sql_dir = _DIRECTION_SQL.get(nested_dir)
+                    if sql_dir is None:
+                        raise ValueError(f"Unknown order direction: {nested_dir!r}")
+                    parts.append(f"{_q(col_name)}.{_q(nested_col)} {sql_dir}")
+                continue
             sql_dir = _DIRECTION_SQL.get(direction)
             if sql_dir is None:
                 raise ValueError(f"Unknown order direction: {direction!r}")
@@ -2086,8 +2103,18 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             else f"{_q(root_alias)}.{_q(_e2p_d.get((_tid_d, c), c))}"
             for c in distinct_cols
         ]
-        distinct_prefix = f"DISTINCT ON ({', '.join(parts_d)}) "
-        sql = f"SELECT {distinct_prefix}{sql[len('SELECT ') :]}"
+        if table.source_type in ("postgresql", ""):
+            # PostgreSQL supports DISTINCT ON natively.
+            distinct_prefix = f"DISTINCT ON ({', '.join(parts_d)}) "
+            sql = f"SELECT {distinct_prefix}{sql[len('SELECT ') :]}"
+        else:
+            # Non-PostgreSQL sources (Trino, Iceberg, etc.) do not support DISTINCT ON.
+            # Wrap as ROW_NUMBER() window function to deduplicate by the distinct columns.
+            partition_cols = ", ".join(parts_d)
+            inner_alias = "__distinct_inner"
+            rn_expr = f"ROW_NUMBER() OVER (PARTITION BY {partition_cols}) AS __rn"
+            inner_sql = f"SELECT *, {rn_expr} FROM ({sql}) AS {_q(inner_alias)}"
+            sql = f"SELECT * FROM ({inner_sql}) AS {_q('__distinct_dedup')} WHERE __rn = 1"
 
     # WHERE
     if "where" in args:
