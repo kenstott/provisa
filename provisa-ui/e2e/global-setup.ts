@@ -23,6 +23,31 @@ export default async function globalSetup() {
   if (!res.ok) {
     throw new Error(`Config reload failed: ${res.status} ${await res.text()}`);
   }
+
+  // Ensure the setup wizard will not block page tests: if needs_setup=true, run the
+  // setup endpoint to create the initial admin user.  The config already contains
+  // auth.provider = basic, so POST /setup with provider=basic completes the flow.
+  const statusRes = await fetch("http://localhost:8000/setup/status");
+  if (statusRes.ok) {
+    const status = await statusRes.json() as { needs_setup: boolean };
+    if (status.needs_setup) {
+      const setupRes = await fetch("http://localhost:8000/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "basic",
+          mode: "single",
+          admin_username: "admin",
+          admin_password: "admin",
+        }),
+      });
+      if (!setupRes.ok && setupRes.status !== 409) {
+        // 409 = user already exists; treat as success
+        throw new Error(`Setup failed: ${setupRes.status} ${await setupRes.text()}`);
+      }
+    }
+  }
+
   // Wait for schema to rebuild (graph-schema endpoint reflects PetStore tables)
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 500));
