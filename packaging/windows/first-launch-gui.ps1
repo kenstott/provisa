@@ -355,6 +355,7 @@ $btnInstall.Add_Click({
   $rs.SessionStateProxy.SetVariable('Workers',       $workers)
   $rs.SessionStateProxy.SetVariable('Hostname',      $hostname)
   $rs.SessionStateProxy.SetVariable('UiPort',        $uiPort)
+  $rs.SessionStateProxy.SetVariable('EmbeddedVersion', $EmbeddedVersion)
   $rs.SessionStateProxy.SetVariable('CoreFilePath',  $coreFilePath)
   $rs.SessionStateProxy.SetVariable('InstallObs',    $installObs)
   $rs.SessionStateProxy.SetVariable('InstallDemo',   $installDemo)
