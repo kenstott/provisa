@@ -642,3 +642,16 @@ def _split_cypher_labels(field_name: str) -> tuple[str | None, str]:
         domain_part, table_part = field_name.split("__", 1)
         return _apply_cql_label(domain_part), _apply_cql_label(table_part)
     return None, _apply_cql_label(field_name)
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat aliases (REQ-398)
+# ---------------------------------------------------------------------------
+
+#: Alias for NodeMapping — the public name used in /data/graph-schema context.
+NodeLabel = NodeMapping
+
+
+def build_label_map(node_labels: list[NodeMapping]) -> dict[str, NodeMapping]:
+    """Build a label → NodeMapping index from a list of node labels (REQ-398)."""
+    return {n.label: n for n in node_labels}

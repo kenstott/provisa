@@ -191,9 +191,12 @@ def _is_bwd_for_candidate(
         if not canonical_fwd and not canonical_bwd and not chains_from_tgt:
             return None
         if tgt_nm is not None and tgt_nm_explicit:
-            if backward and canonical_fwd:
+            # For non-self-referential rels, backward on a fwd-canonical rel is invalid
+            # and forward on a bwd-only rel is invalid.  For self-referential rels
+            # (canonical_fwd AND canonical_bwd both true), both directions are valid.
+            if backward and canonical_fwd and not canonical_bwd:
                 return None
-            if not backward and not canonical_fwd:
+            if not backward and not canonical_fwd and canonical_bwd:
                 return None
         return not canonical_fwd
     return backward
@@ -974,6 +977,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 alias_matches = bwd_exact
             elif fwd_exact:
                 alias_matches = fwd_exact
+        if bidir:
+            # REQ-575: undirected pattern → UNION ALL of both traversal directions.
+            # For each matching mapping, include forward (False) and backward (True) variants
+            # so _build_candidate_joins emits both branches.
+            candidates: list[tuple] = []
+            for m in alias_matches:
+                fwd_ok = _is_bwd_for_candidate(m, False, False, src_nm, tgt_nm, tgt_nm_explicit)
+                bwd_ok = _is_bwd_for_candidate(m, False, True, src_nm, tgt_nm, tgt_nm_explicit)
+                if fwd_ok is not None:
+                    candidates.append((m, False))
+                if bwd_ok is not None:
+                    candidates.append((m, True))
+            return candidates
         return [
             (m, bwd)
             for m in alias_matches
