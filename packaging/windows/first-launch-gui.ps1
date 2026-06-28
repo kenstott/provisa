@@ -1,6 +1,7 @@
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$EmbeddedVersion = 'PROVISA_VERSION_PLACEHOLDER'
 
 $LogPath = Join-Path $env:TEMP 'provisa-first-launch.log'
 Start-Transcript -Path $LogPath -Append -ErrorAction SilentlyContinue
@@ -401,6 +402,8 @@ $btnInstall.Add_Click({
           # Attempt GitHub download
           Log 'Core images not found locally - attempting download...'
           $ver = $env:PROVISA_VERSION
+          if (-not $ver) { $ver = $EmbeddedVersion }
+          if ($ver -eq 'PROVISA_VERSION_PLACEHOLDER') { $ver = $null }
           if (-not $ver) {
             try { $o = (& provisa version 2>$null | Select-Object -First 1); if ($o) { $ver = $o.Trim().Split()[-1] } } catch {}
           }
@@ -473,6 +476,7 @@ federation_workers: $Workers
       function Get-ExtVersion {
         $v = $env:PROVISA_VERSION
         if ($v) { return $v }
+        if ($EmbeddedVersion -and $EmbeddedVersion -ne 'PROVISA_VERSION_PLACEHOLDER') { return $EmbeddedVersion }
         try {
           $out = (& provisa version 2>$null | Select-Object -First 1)
           if ($out) { return $out.Trim().Split()[-1] }
