@@ -5,4 +5,5 @@ Feature: REQ-636 — Registration & Governance
   Scenario: REQ-636 default behaviour
     Given a source type with a Trino connector configured
     When schema or table introspection is triggered
-    Then Trino is used as the introspection path; native driver is used only when no connector exists
+    Then Trino is used as the introspection path; native driver is used only when no connector
+    exists

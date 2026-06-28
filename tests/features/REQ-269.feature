@@ -5,4 +5,5 @@ Feature: REQ-269 — SQL & Multi-Protocol Client Access
   Scenario: REQ-269 default behaviour
     Given a DB-API 2.0 connection
     When arbitrary SQL is executed
-    Then only tables and views permitted by the user's rights are accessible with uniform Stage 2 governance
+    Then only tables and views permitted by the user's rights are accessible with uniform Stage 2
+      governance

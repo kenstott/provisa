@@ -5,4 +5,5 @@ Feature: REQ-721 — Splunk Connector
   Scenario: REQ-721 default behaviour
     Given a Splunk instance with admin credentials
     When a user registers the Splunk source with host, port, and auth token
-    Then the source is added to the catalog and Splunk's search tables (internal_server) are enumerable
+    Then the source is added to the catalog and Splunk's search tables (internal_server)
+    are enumerable

@@ -5,4 +5,5 @@ Feature: REQ-527 — pgwire Server
   Scenario: REQ-527 default behaviour
     Given PROVISA_PGWIRE_PORT is not set or is zero
     When the server starts
-    Then the pgwire listener does not bind; when the variable is set to a non-zero integer it binds to 0.0.0.0
+    Then the pgwire listener does not bind; when the variable is set to a non-zero integer it binds
+      to 0.0.0.0

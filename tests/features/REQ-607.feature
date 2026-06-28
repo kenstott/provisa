@@ -4,5 +4,6 @@ Feature: REQ-607 — SQL & Multi-Protocol Client Access
 
   Scenario: REQ-607 default behaviour
     Given a ProvisaClient caller
-    When query() receives a 4xx/5xx response it raises httpx.HTTPStatusError; when query_df() receives a GraphQL errors field it raises RuntimeError
+    When query() receives a 4xx/5xx response it raises httpx.HTTPStatusError; when query_df()
+      receives a GraphQL errors field it raises RuntimeError
     Then callers can handle transport and schema errors separately

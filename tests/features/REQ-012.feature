@@ -5,4 +5,5 @@ Feature: REQ-012 — Registration & Governance
   Scenario: REQ-012 default behaviour
     Given a privileged steward with registration rights
     When they submit a new source registration
-    Then Provisa validates the connection, calls the Trino dynamic catalog API, and makes the source available within seconds without a server restart
+    Then Provisa validates the connection, calls the Trino dynamic catalog API, and makes the source
+    available within seconds without a server restart
