@@ -101,7 +101,10 @@ UninstallDisplayIcon={app}\uninstall.ps1
 Source: "$BuildDir\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Provisa First Launch"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\first-launch.ps1"""
+Name: "{group}\Provisa First Launch"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\first-launch-gui.ps1"""
+
+[Run]
+Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\first-launch-gui.ps1"""; Description: "Launch Provisa first-run setup (download and configure)"; Flags: postinstall nowait
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa"; ValueType: string; ValueName: "DisplayName"; ValueData: "Provisa $Version"
