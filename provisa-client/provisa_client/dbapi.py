@@ -22,23 +22,47 @@ threadsafety = 1
 paramstyle = "named"
 
 
-# ── Exceptions ────────────────────────────────────────────────────────────────
+# ── Exceptions (PEP 249) ──────────────────────────────────────────────────────
+
+
+class Warning(Exception):  # noqa: A001
+    """Exception raised for important warnings."""
 
 
 class Error(Exception):
     """Base DB-API exception."""
 
 
+class InterfaceError(Error):
+    """Error related to the database interface."""
+
+
 class DatabaseError(Error):
     """Database-related error."""
+
+
+class DataError(DatabaseError):
+    """Error due to problems with the processed data."""
 
 
 class OperationalError(DatabaseError):
     """Operational database error (connection, auth, etc.)."""
 
 
+class IntegrityError(DatabaseError):
+    """Error raised when the relational integrity of the database is affected."""
+
+
+class InternalError(DatabaseError):
+    """Internal database error."""
+
+
 class ProgrammingError(DatabaseError):
     """Programming error (bad query syntax, etc.)."""
+
+
+class NotSupportedError(DatabaseError):
+    """Method or database API not supported."""
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -98,7 +122,7 @@ def connect(
     if token:
         resolved_role: str | None = role or auth_role
     else:
-        resolved_role = role or (username if username else None)
+        resolved_role = role
     return Connection(base_url=url.rstrip("/"), token=token, role=resolved_role)
 
 

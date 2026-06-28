@@ -10,5 +10,6 @@
 
 from provisa_client.client import ProvisaClient
 from provisa_client.dbapi import connect
+from provisa_client.adbc import adbc_connect
 
-__all__ = ["ProvisaClient", "connect"]
+__all__ = ["ProvisaClient", "connect", "adbc_connect"]
