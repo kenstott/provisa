@@ -20,6 +20,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import sqlglot
+import sqlglot.expressions as exp
+
 if TYPE_CHECKING:
     from provisa.mv.models import MVDefinition
 
@@ -98,13 +101,47 @@ class AggregateMVCatalog:  # REQ-198, REQ-199
     ) -> str:
         """Rewrite a SQL aggregate query to read from an MV backing table.
 
-        Produces: SELECT {agg_cols} FROM {mv_backing_table} WHERE {filters}
-        with an identifying comment.
+        Replaces every base-table reference in the original SQL with the MV
+        backing table, preserving all SELECT expressions (including aggregates
+        such as SUM/AVG), WHERE clauses, and GROUP BY clauses.
         """
-        target = f'"{mv.target_catalog}"."{mv.target_schema}"."{mv.target_table}"'
-        select_cols = ", ".join(f'"{c}"' for c in agg_columns) if agg_columns else "*"
-        where_clause = " WHERE " + " AND ".join(remaining_filters) if remaining_filters else ""
-        rewritten = f"/* aggregate_mv: {mv.id} */\nSELECT {select_cols} FROM {target}{where_clause}"
+        mv_table = exp.Table(
+            this=exp.Identifier(this=mv.target_table, quoted=True),
+            db=exp.Identifier(this=mv.target_schema, quoted=True),
+            catalog=exp.Identifier(this=mv.target_catalog, quoted=True),
+        )
+
+        tree = sqlglot.parse_one(sql)
+
+        # Replace SELECT clause with quoted agg_columns (or * when none given).
+        if agg_columns:
+            select_exprs = [
+                exp.Column(this=exp.Identifier(this=c, quoted=True)) for c in agg_columns
+            ]
+        else:
+            select_exprs = [exp.Star()]
+        tree.set("expressions", select_exprs)
+
+        # Replace every FROM / JOIN table reference that matches a source table.
+        source_set = {t.lower() for t in mv.source_tables}
+        for node in tree.find_all(exp.Table):
+            if node.name.lower() in source_set:
+                node.replace(mv_table.copy())
+
+        # If no FROM clause exists (e.g. original was SELECT 1), set one.
+        if not tree.find(exp.From):
+            tree.set("from", exp.From(this=mv_table.copy()))
+
+        # Append any additional remaining_filters to the WHERE clause.
+        if remaining_filters:
+            extra = sqlglot.parse_one(" AND ".join(remaining_filters))
+            existing_where = tree.find(exp.Where)
+            if existing_where:
+                existing_where.set("this", exp.And(this=existing_where.this, expression=extra))
+            else:
+                tree.set("where", exp.Where(this=extra))
+
+        rewritten = f"/* aggregate_mv: {mv.id} */\n{tree.sql()}"
         log.info("Rewrote aggregate query for table=%s to MV %s", mv.source_tables, mv.id)
         return rewritten
 

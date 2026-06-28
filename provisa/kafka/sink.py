@@ -97,14 +97,21 @@ class KafkaProducer:  # REQ-176, REQ-181
         self._ensure_producer()
         count = 0
 
+        from decimal import Decimal as _Decimal
+
+        def _serial(o):
+            if isinstance(o, _Decimal):
+                return float(o)
+            return str(o)
+
         for row in rows:
             # Build message value
             if isinstance(row, dict):
-                value = json.dumps(row, default=str).encode("utf-8")
+                value = json.dumps(row, default=_serial).encode("utf-8")
             else:
                 # Row is a tuple — zip with column names
                 row_dict = dict(zip(columns, row))
-                value = json.dumps(row_dict, default=str).encode("utf-8")
+                value = json.dumps(row_dict, default=_serial).encode("utf-8")
 
             # Build message key
             key = None

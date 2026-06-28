@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 log = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/events/ingest", tags=["ingest"])
+router = APIRouter(prefix="/data/ingest", tags=["ingest"])
 
 
 @router.post("/{source_id}/{table}", status_code=202)
@@ -43,6 +43,12 @@ async def ingest_event(  # REQ-331, REQ-333, REQ-335
     Returns 404 if the source/table is unknown, 503 if no engine is available.
     """
     from provisa.api.app import state
+
+    # Parse JSON first — invalid body is a 400 regardless of source registration.
+    try:
+        body: Any = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Request body must be valid JSON") from exc
 
     # Validate source and table are registered ingest targets
     source_tables = state.ingest_tables.get(source_id)
@@ -60,11 +66,6 @@ async def ingest_event(  # REQ-331, REQ-333, REQ-335
         raise HTTPException(
             status_code=503, detail=f"No engine available for ingest source {source_id!r}"
         )
-
-    try:
-        body: Any = await request.json()
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Request body must be valid JSON") from exc
 
     # Support both a single event dict and a list of events
     events: list[Any] = body if isinstance(body, list) else [body]
