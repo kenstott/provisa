@@ -389,24 +389,41 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self.send_paramter_description([])
                 self.send_no_data()
                 return
+            indices = {int(m) for m in re.findall(r"\$(\d+)", sql)}
+            if "typeinfo_tree" in sql.lower() and indices:
+                param_oids = [1028]
+            elif "set_config" in sql.lower() and indices:
+                param_oids = [25] * len(indices)
+            else:
+                stored_oids = ctx.stmts[stmt][1]
+                if stored_oids:
+                    param_oids = stored_oids
+                elif indices:
+                    _CAST_OID = {
+                        "text": 25,
+                        "varchar": 25,
+                        "int": 23,
+                        "int4": 23,
+                        "int8": 20,
+                        "bigint": 20,
+                        "bool": 16,
+                        "float8": 701,
+                    }
+                    cast_map = {
+                        int(m): _CAST_OID.get(t.lower(), 25)
+                        for m, t in re.findall(r"\$(\d+)::(\w+)", sql)
+                    }
+                    param_oids = [cast_map.get(i, 20) for i in range(1, max(indices) + 1)]
+                else:
+                    param_oids = []
+            # Update stored param_oids so describe_statement substitutes example values
+            # instead of executing the SQL with unresolved $N placeholders.
+            ctx.stmts[stmt] = (sql, param_oids)
             try:
-                # describe_statement executes with $N→NULL (0-row result) but gives us column schema
                 query_result = ctx.describe_statement(stmt)
             except Exception as e:
                 self.send_error(e, ctx)
                 return
-            indices = {int(m) for m in re.findall(r"\$(\d+)", sql)}
-            if "typeinfo_tree" in sql.lower() and indices:
-                # OID 1028 = _oid (oid[]) — asyncpg has a built-in binary codec for this,
-                # so it can encode list(typeoids) and we can decode the binary response.
-                param_oids = [1028]
-                ctx.stmts[stmt] = (sql, param_oids)
-            elif "set_config" in sql.lower() and indices:
-                # set_config takes TEXT params; OID 25 prevents asyncpg from looping on OID 0
-                param_oids = [25] * len(indices)
-            else:
-                # OID 0 = unspecified: tells client how many params without declaring types
-                param_oids = [0] * max(indices) if indices else ctx.stmts[stmt][1]
             self.send_paramter_description(param_oids)
             if query_result.has_results():
                 self.send_row_description(query_result)

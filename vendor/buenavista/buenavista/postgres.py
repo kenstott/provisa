@@ -233,8 +233,10 @@ BVTYPE_TO_PGTYPE = {
     BVType.INTEGERARRAY: (
         1007,
         lambda v: "{" + ",".join(str(x) for x in v) + "}",
-        lambda r: struct.pack("!iiiii", 1, 0, 23, len(r), 1)
-        + b"".join(struct.pack("!ii", 4, x) for x in r),
+        lambda r: (
+            struct.pack("!iiiii", 1, 0, 23, len(r), 1)
+            + b"".join(struct.pack("!ii", 4, x) for x in r)
+        ),
     ),
     BVType.INTERVAL: (
         1186,
@@ -249,12 +251,14 @@ BVTYPE_TO_PGTYPE = {
     BVType.STRINGARRAY: (
         1009,
         lambda v: "{" + ",".join(v) + "}",
-        lambda r: struct.pack("!iiiii", 1, 0, 25, len(r), 1)
-        + b"".join(
-            (struct.pack("!i", len(s.encode("utf-8"))) + s.encode("utf-8"))
-            if s is not None
-            else struct.pack("!i", -1)
-            for s in r
+        lambda r: (
+            struct.pack("!iiiii", 1, 0, 25, len(r), 1)
+            + b"".join(
+                (struct.pack("!i", len(s.encode("utf-8"))) + s.encode("utf-8"))
+                if s is not None
+                else struct.pack("!i", -1)
+                for s in r
+            )
         ),
     ),
     BVType.TEXT: (25, str, lambda r: r.encode("utf-8")),
@@ -587,6 +591,9 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         params = []
         for i in range(num_params):
             nb = buf.read_int32()
+            if nb == -1:
+                params.append(None)
+                continue
             v = buf.read_bytes(nb)
             stmt_oids = ctx.stmts[stmt][1]
             typeoid = stmt_oids[i] if i < len(stmt_oids) else 0

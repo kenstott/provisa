@@ -1335,6 +1335,9 @@ def _build_catalog_index(ctx, col_types: dict) -> CatalogIndex:  # REQ-128, REQ-
         real_cols = col_types.get(tm.table_id, [])
         for i, col in enumerate(real_cols, 1):
             phys = col.column_name
+            # Skip columns not visible to this role (absent from physical_to_sql).
+            if _p2s and (tm.table_id, phys) not in _p2s:
+                continue
             exposed = _p2s.get((tm.table_id, phys)) or apply_sql_name(phys)
             idx.all_cols.append((toid, exposed, col.data_type, col.is_nullable, i))
             idx.col_attnum[(toid, exposed)] = i
@@ -1355,6 +1358,9 @@ def _populate_is_schemata(db, idx: CatalogIndex) -> None:
         default_character_set_catalog VARCHAR, default_character_set_schema VARCHAR,
         default_character_set_name VARCHAR, sql_path VARCHAR)""")
     seen_schemas: set[tuple] = {(c, s) for c, s, *_ in idx.tables}
+    # Always include schemas from the namespace map (public, information_schema, pg_catalog).
+    for ns in idx.ns_map:
+        seen_schemas.add(("provisa", ns))
     if seen_schemas:
         db.executemany(
             "INSERT INTO _is_schemata VALUES (?,?,'provisa',NULL,NULL,NULL,NULL)",
@@ -1616,7 +1622,9 @@ def _populate_pg_description(
         for col in _cols:
             _cname = col["column_name"] if isinstance(col, dict) else getattr(col, "name", "")
             _cdesc = (
-                col["description"] if isinstance(col, dict) else getattr(col, "description", None)
+                col.get("description")
+                if isinstance(col, dict)
+                else getattr(col, "description", None)
             )
             if _cdesc:
                 cdesc[_cname] = _cdesc
@@ -1628,7 +1636,9 @@ def _populate_pg_description(
     # Namespace (schema/domain) descriptions
     for dom in raw_domains or []:
         _did = dom["id"] if isinstance(dom, dict) else getattr(dom, "id", None)
-        _ddesc = dom["description"] if isinstance(dom, dict) else getattr(dom, "description", None)
+        _ddesc = (
+            dom.get("description") if isinstance(dom, dict) else getattr(dom, "description", None)
+        )
         if not _did or not _ddesc:
             continue
         ns_oid = idx.ns_map.get(domain_to_sql_name(_did))
