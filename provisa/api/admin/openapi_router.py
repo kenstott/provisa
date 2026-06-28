@@ -27,7 +27,7 @@ from typing import cast
 import asyncpg
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/openapi", tags=["admin", "openapi"])
@@ -43,6 +43,12 @@ class OpenAPIRegisterRequest(BaseModel):
     cache_ttl: int = 300
     operation_overrides: dict[str, str] = {}  # {operationId: "query" | "mutation"}
     relationships: list[dict] = []
+
+    @model_validator(mode="after")
+    def _set_inline_sentinel(self) -> "OpenAPIRegisterRequest":  # REQ-407
+        if self.spec_content and not self.spec_path:
+            self.spec_path = ":inline:"
+        return self
 
 
 class OpenAPIPreviewRequest(BaseModel):
