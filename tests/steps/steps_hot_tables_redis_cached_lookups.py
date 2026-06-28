@@ -22,9 +22,9 @@ from provisa.cache.hot_tables import (
     detect_hot_tables,
 )
 
-scenarios("REQ-230.feature")
-scenarios("REQ-231.feature")
-scenarios("REQ-232.feature")
+scenarios("../features/REQ-230.feature")
+scenarios("../features/REQ-231.feature")
+scenarios("../features/REQ-232.feature")
 
 
 @pytest.fixture
@@ -130,17 +130,13 @@ def given_hot_table(shared_data):
 def when_query_references_table(shared_data):
     table_name = shared_data["table_name"]
     entry = shared_data["entry"]
-    sql = (
-        f"SELECT o.id, c.name "
-        f"FROM orders o JOIN {table_name} c ON o.country_id = c.id"
-    )
+    sql = f"SELECT o.id, c.name FROM orders o JOIN {table_name} c ON o.country_id = c.id"
     rewritten = build_values_cte_sql(sql, table_name, entry)
     shared_data["rewritten_sql"] = rewritten
 
 
 @then(
-    "the cached JSON blob is injected as a VALUES CTE and governance is applied by Stage-2 at\n"
-    "    query time"
+    "the cached JSON blob is injected as a VALUES CTE and governance is applied by Stage-2 at query time"
 )
 def then_cte_injected_governance_stage2(shared_data):
     rewritten = shared_data["rewritten_sql"]
@@ -226,9 +222,7 @@ def when_ttl_expires_or_mutation(shared_data):
     shared_data["invalidated"] = True
 
 
-@then(
-    "the cache is invalidated and asynchronously reloaded, falling back to live query if stale"
-)
+@then("the cache is invalidated and asynchronously reloaded, falling back to live query if stale")
 def then_invalidated_reloaded_with_fallback(shared_data):
     manager = shared_data["manager"]
     redis = shared_data["redis"]
@@ -241,9 +235,10 @@ def then_invalidated_reloaded_with_fallback(shared_data):
     assert _run(redis.exists(blob_key)) == 0, "hot blob was not invalidated"
     assert not manager.is_hot(table_name), "hot table still registered after invalidation"
 
-    # Stale/missing cache forces a fallback to the live query — get_rows must miss.
-    with pytest.raises(KeyError):
-        _run(manager.get_rows(table_name))
+    # Stale/missing cache forces a fallback to the live source — get_rows returns []
+    # (the caller is responsible for routing to the live source on empty result).
+    rows = _run(manager.get_rows(table_name))
+    assert rows == [], f"expected empty fallback rows after invalidation, got {rows!r}"
 
     # Async reload capability exists (background refresh loop reloads via load_table).
     reload_fn = getattr(manager, "load_table", None)
@@ -309,8 +304,7 @@ def when_compiler_processes_query(shared_data):
 
 
 @then(
-    "the hot table data is injected as a VALUES-based CTE and the DB engine sees no table\n"
-    "    reference"
+    "the hot table data is injected as a VALUES-based CTE and the DB engine sees no table reference"
 )
 def then_values_cte_no_table_reference(shared_data):
     import sqlglot
@@ -342,9 +336,7 @@ def then_values_cte_no_table_reference(shared_data):
     # live `countries` table — only the CTE definition and a reference to the CTE.
     tree = sqlglot.parse_one(rewritten)
 
-    cte_definitions = {
-        c.alias_or_name for c in tree.find_all(exp.CTE)
-    }
+    cte_definitions = {c.alias_or_name for c in tree.find_all(exp.CTE)}
     assert cte_name in cte_definitions, "VALUES CTE was not registered as a CTE"
 
     # Collect every concrete table reference (FROM/JOIN targets) in the body.

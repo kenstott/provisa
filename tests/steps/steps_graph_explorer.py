@@ -27,9 +27,9 @@ from pytest_bdd import given, parsers, scenarios, then, when
 # Bind all scenarios from the feature files
 # ---------------------------------------------------------------------------
 
-scenarios("features/req_781_graph_explorer.feature")
-scenarios("features/req_782_graph_explorer.feature")
-scenarios("features/req_783_graph_explorer.feature")
+scenarios("../features/REQ-781.feature")
+scenarios("../features/REQ-782.feature")
+scenarios("../features/REQ-783.feature")
 
 # ---------------------------------------------------------------------------
 # Inline model — mirrors the contract defined in the unit-test reference file.

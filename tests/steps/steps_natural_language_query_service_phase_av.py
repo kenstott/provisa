@@ -267,9 +267,7 @@ async def three_generation_loops_run(shared_data: dict) -> None:
 
 
 @then(
-    "each independently generates and validates a Cypher, GraphQL, and SQL candidate with "
-    "compiler-driven refinement"
-)
+    "each independently generates and validates a Cypher, GraphQL, and SQL candidate with compiler-driven refinement")
 @pytest.mark.asyncio
 async def each_loop_generates_and_validates(shared_data: dict) -> None:
     results: dict = shared_data["loop_results"]

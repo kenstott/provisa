@@ -299,9 +299,7 @@ def when_user_submits_query_or_mutation(shared_data):
 
 
 @then(
-    "it is executed based solely on their rights without requiring "
-    "registry membership or approval"
-)
+    "it is executed based solely on their rights without requiring registry membership or approval")
 def then_executed_on_rights_alone(shared_data):
     # Execution was admitted purely on the held rights.
     assert shared_data["query_allowed"] is True

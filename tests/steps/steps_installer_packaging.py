@@ -71,6 +71,9 @@ def _authoritative_config_dict() -> dict:
                 "database": "app",
             }
         ],
+        "domains": [
+            {"id": "default"},
+        ],
         "tables": [
             {
                 "source_id": "pgmain",
@@ -95,12 +98,17 @@ def _authoritative_config_dict() -> dict:
         ],
         "relationships": [
             {
-                "name": "order_customer",
-                "from_table": "orders",
-                "from_column": "customer_id",
-                "to_table": "customers",
-                "to_column": "id",
+                "id": "order_customer",
+                "source_table_id": "orders",
+                "source_column": "customer_id",
+                "target_table_id": "customers",
+                "target_column": "id",
+                "cardinality": "many-to-one",
             }
+        ],
+        "roles": [
+            {"id": "analyst", "capabilities": [], "domain_access": ["default"]},
+            {"id": "admin", "capabilities": [], "domain_access": ["default"]},
         ],
     }
 
@@ -152,7 +160,7 @@ def secondary_config_matches_primary(shared_data: dict) -> None:
     assert {t.table_name for t in secondary.tables} == {t.table_name for t in primary.tables}
 
     # Relationships read from the primary PG.
-    assert [r.name for r in secondary.relationships] == [r.name for r in primary.relationships]
+    assert [r.id for r in secondary.relationships] == [r.id for r in primary.relationships]
 
     # Role-scoped column visibility (roles + RLS projection) is preserved.
     secondary_orders = next(t for t in secondary.tables if t.table_name == "orders")
@@ -198,7 +206,7 @@ def secondary_reads_from_shared_pool(shared_data: dict) -> None:
         finally:
             await primary_pool.close()
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
 
 
 # ---------------------------------------------------------------------------

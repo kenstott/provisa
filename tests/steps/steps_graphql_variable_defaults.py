@@ -68,7 +68,7 @@ def _coerce_variable_values(document_source: str, variables: dict[str, Any]) -> 
 
 
 @scenario(
-    "../features/req_300_graphql_variable_defaults.feature",
+    "../features/REQ-300.feature",
     "REQ-300 default behaviour",
 )
 def test_req_300_default_behaviour() -> None:

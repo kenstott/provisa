@@ -35,7 +35,8 @@ def shared_data():
 # ---------------------------------------------------------------------------
 
 @scenario(
-    "../../features/req_738.feature",
+    "../features/REQ-738.feature",
+
     "REQ-738 default behaviour",
 )
 def test_req_738_default():

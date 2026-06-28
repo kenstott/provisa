@@ -65,36 +65,31 @@ Row-level deduplication across branches is not performed.
 
 from __future__ import annotations
 
-import json
-import os
-import re
 
 import pytest
 import sqlglot
 from pytest_bdd import given, when, then, scenarios
 
-from provisa.cypher.parser import parse_cypher, extract_parameters, CypherParseError
+from provisa.cypher.parser import parse_cypher
 from provisa.cypher.label_map import (
     CypherLabelMap,
     NodeMapping,
     RelationshipMapping,
 )
-from provisa.cypher.translator import cypher_to_sql, GraphVarKind
-import provisa.cypher.translator as _translator_mod
-from provisa.api.rest.cypher_router import _detect_procedure, _handle_procedure
+from provisa.cypher.translator import cypher_to_sql
 
 
-scenarios("../features/req_345_cypher_query_frontend_phase_au.feature")
-scenarios("../features/req_347_cypher_query_frontend_phase_au.feature")
-scenarios("../features/req_348_cypher_query_frontend_phase_au.feature")
-scenarios("../features/req_349_cypher_query_frontend_phase_au.feature")
-scenarios("../features/req_352_cypher_query_frontend_phase_au.feature")
-scenarios("../features/req_353_cypher_cross_source.feature")
-scenarios("../features/req_572_cypher_query_frontend_phase_au.feature")
-scenarios("../features/req_573_cypher_query_frontend_phase_au.feature")
-scenarios("../features/req_575_cypher_query_frontend_phase_au.feature")
-scenarios("../features/req_576_cypher_query_frontend_phase_au.feature")
-scenarios("../features/req_577_cypher_query_frontend_phase_au.feature")
+scenarios("../features/REQ-345.feature")
+scenarios("../features/REQ-347.feature")
+scenarios("../features/REQ-348.feature")
+scenarios("../features/REQ-349.feature")
+scenarios("../features/REQ-352.feature")
+scenarios("../features/REQ-353.feature")
+scenarios("../features/REQ-572.feature")
+scenarios("../features/REQ-573.feature")
+scenarios("../features/REQ-575.feature")
+scenarios("../features/REQ-576.feature")
+scenarios("../features/REQ-577.feature")
 
 
 # ---------------------------------------------------------------------------
@@ -157,12 +152,15 @@ def _make_cross_catalog_label_map() -> CypherLabelMap:
     )
 
 
-def _translate(query: str, label_map: CypherLabelMap) -> str:
-    """Translate a Cypher query to SQL, tolerating string- or AST-based APIs."""
-    try:
-        return cypher_to_sql(query, label_map)
-    except TypeError:
-        return cypher_to_sql(parse_cypher(query), label_map)
+def _translate(query: str, label_map: CypherLabelMap, params: dict | None = None) -> str:
+    """Translate a Cypher query to SQL."""
+    ast = parse_cypher(query)
+    result = cypher_to_sql(ast, label_map, params or {})
+    # cypher_to_sql returns (sql_ast, param_names, graph_vars); extract SQL string.
+    sql_ast = result[0] if isinstance(result, tuple) else result
+    if hasattr(sql_ast, "sql"):
+        return sql_ast.sql(dialect="trino")
+    return str(sql_ast)
 
 
 def _make_param_label_map() -> CypherLabelMap:
@@ -647,8 +645,7 @@ def when_compiler_processes_cypher(shared_data: dict) -> None:
 
 
 @then(
-    "it compiles to SQL, executes via Trino, and applies Stage 2 governance identically to\n"
-    "GraphQL queries"
+    "it compiles to SQL, executes via Trino, and applies Stage 2 governance identically to GraphQL queries"
 )
 def then_compiles_to_sql_with_governance(shared_data: dict) -> None:
     """Assert REQ-345 end-to-end: compilation succeeds, SQL is valid, and the
@@ -670,8 +667,7 @@ def then_compiles_to_sql_with_governance(shared_data: dict) -> None:
         parsed = sqlglot.parse_one(sql, read="trino")
     except Exception as exc:
         pytest.fail(
-            f"Generated SQL is not valid Trino SQL (sqlglot parse failed): {exc}\n"
-            f"SQL was:\n{sql}"
+            f"Generated SQL is not valid Trino SQL (sqlglot parse failed): {exc}\nSQL was:\n{sql}"
         )
     assert parsed is not None, f"sqlglot must parse the generated SQL:\n{sql}"
 
@@ -777,8 +773,7 @@ def then_emits_sql_with_all_clause_mappings(shared_data: dict) -> None:
       LIMIT        → LIMIT
     """
     assert shared_data["error"] is None, (
-        f"Translation must not raise for a valid Cypher query; "
-        f"got: {shared_data['error']!r}"
+        f"Translation must not raise for a valid Cypher query; got: {shared_data['error']!r}"
     )
 
     sql = shared_data["sql"]
@@ -787,4 +782,13 @@ def then_emits_sql_with_all_clause_mappings(shared_data: dict) -> None:
     # Parse the generated SQL with sqlglot so we can inspect the AST
     # structurally rather than relying solely on substring matching.
     try:
-        parsed = sqlglot
+        parsed = sqlglot.parse_one(sql, read="trino")
+    except Exception as exc:  # noqa: BLE001
+        pytest.fail(f"sqlglot failed to parse generated SQL: {exc}\nSQL: {sql!r}")
+        return
+
+    import sqlglot.expressions as exp
+
+    assert isinstance(parsed, exp.Select), (
+        f"Expected a SELECT statement at the root, got {type(parsed).__name__!r}"
+    )

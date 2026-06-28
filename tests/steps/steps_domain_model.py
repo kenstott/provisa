@@ -23,15 +23,15 @@ designated PK column is used as the canonical ``id_column`` for Cypher node
 identity resolution, taking priority over all heuristics.
 
 REQ-400: When a Relationship is saved, the target_column on the target table is
-marked ``is_primary_key=true`` if no other column in that table already has
-a primary key; otherwise it is marked ``is_alternate_key=true``.
+marked ``is_primary_key=true`` if no other column in that table already has a
+primary key; otherwise it is marked ``is_alternate_key=true``.
 """
 
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pytest_bdd import given, when, then, scenarios
@@ -218,8 +218,7 @@ def when_analyst_imports_cross_domain_data(shared_data: dict) -> None:
 
 
 @then(
-    "it must be done via views; all calculations and relationships are defined only within the\n"
-    "    analyst's own domain"
+    "it must be done via views; all calculations and relationships are defined only within the analyst's own domain"
 )
 def then_cross_domain_data_only_via_views(shared_data: dict) -> None:
     """Assert the three enforcement guarantees for REQ-418.
@@ -313,9 +312,7 @@ def given_domain_with_grant(shared_data: dict) -> None:
 
     # The grant is owned by the requesting domain, not by the prompting view.
     stored = registry.for_domain("analytics")
-    assert stored is not None, (
-        "Grant must be retrievable by domain_id 'analytics'"
-    )
+    assert stored is not None, "Grant must be retrievable by domain_id 'analytics'"
     assert stored.domain_id == "analytics", (
         f"Grant must be keyed by requesting domain, got: {stored.domain_id}"
     )
@@ -388,10 +385,7 @@ def when_new_view_uses_granted_fields(shared_data: dict) -> None:
     )
 
 
-@then(
-    "no additional approval is required; "
-    "only new fields outside the grant trigger a new request"
-)
+@then("no additional approval is required; only new fields outside the grant trigger a new request")
 def then_no_additional_approval_for_covered_only(shared_data: dict) -> None:
     """Assert domain-scoped grant enforcement for REQ-610.
 
@@ -412,9 +406,7 @@ def then_no_additional_approval_for_covered_only(shared_data: dict) -> None:
     # ── Guarantee 2: the grant itself reports full coverage ──
     registry: GrantRegistry = shared_data["registry"]
     grant = registry.for_domain(shared_data["requesting_domain"])
-    assert grant is not None, (
-        "Grant must still be present in the registry after the When step"
-    )
+    assert grant is not None, "Grant must still be present in the registry after the When step"
     covered_fields: set[str] = shared_data["covered_fields"]
     assert grant.covers(covered_fields), (
         f"DomainFieldGrant.covers() must return True for fields {covered_fields}, "
@@ -697,12 +689,31 @@ def when_relationship_is_persisted(shared_data: dict) -> None:
 
     # Run the async upsert in a fresh event loop (pytest-asyncio not used here
     # because this step file mixes sync and async steps; asyncio.run is cleaner).
-    executed_conn = asyncio.get_event_loop().run_until_complete(
-        _run_upsert_with_fake_conn(rel, fake_conn)
-    )
+    executed_conn = asyncio.run(_run_upsert_with_fake_conn(rel, fake_conn))
     shared_data["executed_statements"] = executed_conn.executed
 
 
 @then(
-    "the target_column is marked is_primary_key=true; if a PK already exists it is marked\n"
-    "    is_alternate_
+    "the target_column is marked is_primary_key=true; if a PK already exists it is marked is_alternate_key=true"
+)
+def then_target_column_marked_pk_or_alternate(shared_data: dict) -> None:
+    """Assert that the upsert SQL marks is_primary_key or is_alternate_key correctly."""
+    statements: list[tuple[str, tuple]] = shared_data.get("executed_statements", [])
+    existing_pk_count: int = shared_data.get("existing_pk_count", 0)
+
+    if existing_pk_count == 0:
+        # No existing PK → target_column must be set as primary key
+        pk_updates = [s for s in statements if "is_primary_key" in s[0] and "true" in s[0].lower()]
+        assert pk_updates, (
+            "Expected an SQL statement setting is_primary_key=true for the target_column "
+            "when no existing primary key exists. Statements executed: " + repr(statements)
+        )
+    else:
+        # Existing PK present → target_column becomes alternate key
+        alt_updates = [
+            s for s in statements if "is_alternate_key" in s[0] and "true" in s[0].lower()
+        ]
+        assert alt_updates, (
+            "Expected an SQL statement setting is_alternate_key=true for the target_column "
+            "when an existing primary key already exists. Statements executed: " + repr(statements)
+        )

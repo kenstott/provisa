@@ -12,16 +12,14 @@ import json
 from decimal import Decimal
 from unittest.mock import MagicMock
 
-import pytest
 import pytest_asyncio
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, scenarios
 
 from provisa.kafka.sink import KafkaProducer, KafkaSinkConfig
-from provisa.kafka.sink_executor import _Encoder
 
-scenarios("../features/REQ-176_kafka_sinks_table_view_publishing.feature")
-scenarios("../features/REQ-178_kafka_sinks_table_view_publishing.feature")
-scenarios("../features/REQ-180_kafka_sinks_table_view_publishing.feature")
+scenarios("../features/REQ-176.feature")
+scenarios("../features/REQ-178.feature")
+scenarios("../features/REQ-180.feature")
 
 
 @pytest_asyncio.fixture
@@ -58,17 +56,21 @@ def kafka_sink_configured(shared_data: dict) -> None:
 
 
 @when("the configured trigger fires")
-async def trigger_fires(shared_data: dict) -> None:
+def trigger_fires(shared_data: dict) -> None:
+    import asyncio as _asyncio
+
     config: KafkaSinkConfig = shared_data["config"]
     producer: KafkaProducer = shared_data["producer"]
 
-    count = await producer.publish_rows(
-        topic=config.topic,
-        rows=shared_data["rows"],
-        columns=shared_data["columns"],
-        key_column=config.key_column,
-    )
-    shared_data["published_count"] = count
+    async def _run():
+        return await producer.publish_rows(
+            topic=config.topic,
+            rows=shared_data["rows"],
+            columns=shared_data["columns"],
+            key_column=config.key_column,
+        )
+
+    shared_data["published_count"] = _asyncio.run(_run())
 
 
 @then("the query results are published to the configured Kafka topic")
@@ -141,7 +143,9 @@ def no_kafka_sink_configured(shared_data: dict) -> None:
 
 
 @when("the table data changes")
-async def table_data_changes(shared_data: dict) -> None:
+def table_data_changes(shared_data: dict) -> None:
+    import asyncio as _asyncio
+
     table_name: str = shared_data["table_name"]
     sink_registry: dict[str, KafkaSinkConfig] = shared_data["sink_registry"]
     producer: KafkaProducer = shared_data["producer"]
@@ -150,12 +154,16 @@ async def table_data_changes(shared_data: dict) -> None:
     config = sink_registry.get(table_name)
     published_count = 0
     if config is not None:
-        published_count = await producer.publish_rows(
-            topic=config.topic,
-            rows=shared_data["rows"],
-            columns=shared_data["columns"],
-            key_column=config.key_column,
-        )
+
+        async def _run():
+            return await producer.publish_rows(
+                topic=config.topic,
+                rows=shared_data["rows"],
+                columns=shared_data["columns"],
+                key_column=config.key_column,
+            )
+
+        published_count = _asyncio.run(_run())
 
     shared_data["published_count"] = published_count
 
@@ -244,22 +252,15 @@ def steward_removes_sink(shared_data: dict) -> None:
 
 
 @then("subsequent triggers produce no Kafka messages and other table config is unchanged")
-async def no_messages_and_config_unchanged(shared_data: dict) -> None:
+def no_messages_and_config_unchanged(shared_data: dict) -> None:
     table_name: str = shared_data["table_name"]
     sink_registry: dict[str, KafkaSinkConfig] = shared_data["sink_registry"]
-    producer: KafkaProducer = shared_data["producer"]
     captured = shared_data["captured_producer"]
 
     # Fire a trigger after the sink was removed: the opt-in gate finds no sink.
     config = sink_registry.get(table_name)
     published_count = 0
-    if config is not None:
-        published_count = await producer.publish_rows(
-            topic=config.topic,
-            rows=shared_data["rows"],
-            columns=shared_data["columns"],
-            key_column=config.key_column,
-        )
+    # config is None after removal — no publish occurs
 
     # No messages emitted because the sink is gone.
     assert config is None

@@ -35,23 +35,22 @@ the Provisa server for big datasets.
 from __future__ import annotations
 
 import io
-import json
 import os
 import re
 import time
 import uuid
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pytest_bdd import given, when, then, scenarios
 
-scenarios("REQ-397.feature")
-scenarios("REQ-536.feature")
-scenarios("REQ-552.feature")
-scenarios("REQ-028.feature")
-scenarios("REQ-027.feature")
-scenarios("REQ-029.feature")
+scenarios("../features/REQ-397.feature")
+scenarios("../features/REQ-536.feature")
+scenarios("../features/REQ-552.feature")
+scenarios("../features/REQ-028.feature")
+scenarios("../features/REQ-027.feature")
+scenarios("../features/REQ-029.feature")
 
 # Repository root: tests/<...>/this_file.py -> repo root.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -644,4 +643,7 @@ def assert_direct_routing_and_dialect_transpilation(shared_data):
         "transpiled native SQL must reference the 'orders' table (REQ-027)"
     )
 
-    where_nodes = list(tree.
+    where_nodes = list(tree.find_all(exp.Where))
+    assert where_nodes, (
+        "transpiled native SQL must contain a WHERE clause for the date filter (REQ-027)"
+    )

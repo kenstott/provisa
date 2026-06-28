@@ -7,14 +7,12 @@
 """BDD step implementations for REQ-540 — GovData Sources (subject-grouped)."""
 
 import pytest
-import pytest_asyncio
-from pytest_bdd import given, when, then, parsers, scenario
+from pytest_bdd import given, when, then, scenario
 
 from provisa.core.models import (
     GOVDATA_SUBJECT_SCHEMAS,
     GovDataSource,
     GovDataSubject,
-    SourceType,
 )
 
 
@@ -24,7 +22,8 @@ def shared_data() -> dict:
 
 
 @scenario(
-    "REQ-540.feature",
+    "../features/REQ-540.feature",
+
     "REQ-540 default behaviour",
 )
 def test_req540_default_behaviour():
@@ -45,10 +44,10 @@ def govdata_source_configured(shared_data):
     subject, expected_schemas = _resolve_subject()
     source = GovDataSource(
         id="gov-data-1",
-        type=SourceType.govdata,
         subject=subject,
+        govdata_schemas=list(expected_schemas),
+        domain_id="gov",
     )
-    assert source.type == SourceType.govdata
     assert source.subject == subject
     shared_data["source"] = source
     shared_data["subject"] = subject

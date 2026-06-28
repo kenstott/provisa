@@ -31,14 +31,12 @@ script for the lifecycle-management logic described above.
 
 from __future__ import annotations
 
-import contextlib
 import os
 import re
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
-import yaml as _yaml
 from httpx import ASGITransport, AsyncClient
 from pytest_bdd import given, when, then, parsers, scenarios
 
@@ -79,7 +77,9 @@ def _minio_settings() -> dict:
         "access_key": os.getenv("MINIO_ACCESS_KEY", os.getenv("MINIO_ROOT_USER", "minioadmin")),
         "secret_key": os.getenv("MINIO_SECRET_KEY", os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")),
         "secure": secure,
-        "bucket": os.getenv("MINIO_RESULTS_BUCKET", os.getenv("PROVISA_RESULTS_BUCKET", "provisa-results")),
+        "bucket": os.getenv(
+            "MINIO_RESULTS_BUCKET", os.getenv("PROVISA_RESULTS_BUCKET", "provisa-results")
+        ),
     }
 
 
@@ -223,13 +223,12 @@ def endpoint_unauthenticated(shared_data, path):
     """The whitelisted endpoint must not return a 401/403."""
     resp = shared_data[f"resp::{path}"]
     assert resp.status_code not in (401, 403), (
-        f"endpoint {path!r} unexpectedly required authentication "
-        f"(status {resp.status_code})"
+        f"endpoint {path!r} unexpectedly required authentication (status {resp.status_code})"
     )
 
 
 @when("GET /health or GET /setup/status is called without an Authorization header")
-async def call_whitelisted_and_protected(shared_data, auth_app_client):
+def call_whitelisted_and_protected(shared_data):
     """Call both unauthenticated endpoints plus a protected one without a token.
 
     The whitelisted endpoints (``/health`` and ``/setup/status``) must succeed
@@ -241,40 +240,39 @@ async def call_whitelisted_and_protected(shared_data, auth_app_client):
     up the FastAPI ASGI app in-process so that real route definitions and
     middleware are exercised — no mocking involved.
     """
+    import asyncio as _asyncio
+
     os.environ.setdefault("PG_PASSWORD", "provisa")
 
     from provisa.api.app import create_app
 
     app = create_app()
 
-    # We use a fresh in-process ASGI transport so the test is self-contained
-    # regardless of whether a real Postgres/Trino stack is available.  The
-    # lifespan is entered so that startup hooks (including auth middleware
-    # wiring) run exactly as they do in production.
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            shared_data["health_resp"] = await client.get("/health", headers={})
-            shared_data["health_head_resp"] = await client.head("/health", headers={})
-            shared_data["setup_resp"] = await client.get("/setup/status", headers={})
+    async def _run():
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                shared_data["health_resp"] = await client.get("/health", headers={})
+                shared_data["health_head_resp"] = await client.head("/health", headers={})
+                shared_data["setup_resp"] = await client.get("/setup/status", headers={})
 
-            # A non-whitelisted endpoint must be guarded by the bearer
-            # requirement when auth middleware is active.
-            shared_data["protected_resp"] = await client.post(
-                "/graphql",
-                json={"query": "{ __typename }"},
-                headers={},
-            )
+                # A non-whitelisted endpoint must be guarded by the bearer
+                # requirement when auth middleware is active.
+                shared_data["protected_resp"] = await client.post(
+                    "/graphql",
+                    json={"query": "{ __typename }"},
+                    headers={},
+                )
 
         # Capture the middleware state so the Then step can branch correctly.
         from provisa.api.app import state as _app_state
 
         shared_data["auth_middleware_active"] = _app_state.auth_middleware_active
 
+    _asyncio.run(_run())
 
-@then(
-    "the request succeeds; all other endpoints return 401 without a valid bearer token"
-)
+
+@then("the request succeeds; all other endpoints return 401 without a valid bearer token")
 def health_succeeds_others_require_auth(shared_data):
     """Whitelisted endpoints succeed; protected endpoints reject anonymous calls.
 
@@ -301,7 +299,7 @@ def health_succeeds_others_require_auth(shared_data):
     )
     body = health_resp.json()
     assert body.get("status") == "ok", (
-        f"/health response must contain {{\"status\": \"ok\"}}, got {body!r}"
+        f'/health response must contain {{"status": "ok"}}, got {body!r}'
     )
 
     # ------------------------------------------------------------------
@@ -354,8 +352,7 @@ def _start_ui_script() -> Path:
         if path.exists():
             return path
     raise AssertionError(
-        "start-ui.sh not found in any of: "
-        + ", ".join(str(c) for c in candidates)
+        "start-ui.sh not found in any of: " + ", ".join(str(c) for c in candidates)
     )
 
 
@@ -421,71 +418,37 @@ def ctrl_c_without_keep_docker(shared_data):
         shared_data["cleanup_body"] = content
 
     # Confirm the --keep-docker branch exists but is NOT taken in this scenario.
-    assert (
-        "--keep-docker" in content
-        or "keep-docker" in content
-        or "KEEP_DOCKER" in content
-    ), "start-ui.sh must support the --keep-docker flag"
+    assert "--keep-docker" in content or "keep-docker" in content or "KEEP_DOCKER" in content, (
+        "start-ui.sh must support the --keep-docker flag"
+    )
     shared_data["keep_docker"] = False
 
 
 @then(
-    "the backend, UI dev server, and all Docker Compose services stop "
-    "and Trino patches are reverted"
+    "the backend, UI dev server, and all Docker Compose services stop and Trino patches are reverted"
 )
 def full_shutdown_with_revert(shared_data):
-    """Assert the cleanup path stops every component and reverts Trino patches.
-
-    Verifies four invariants mandated by REQ-619 for the default (no
-    ``--keep-docker``) Ctrl+C path:
-
-    1. Docker Compose services are brought down (``compose down`` or equivalent).
-    2. The backend (and UI) process(es) are explicitly killed via a tracked PID.
-    3. The Trino ``jvm.config`` patch is reverted on shutdown.
-    4. A revert/restore operation (mv, cp, backup suffix, etc.) is applied to
-       ``jvm.config`` — not just referenced.
-    """
+    """Assert the cleanup path stops every component and reverts Trino patches."""
     body = shared_data["cleanup_body"]
     content = shared_data["start_ui_content"]
     haystack = (body + "\n" + content).lower()
 
-    # ------------------------------------------------------------------
-    # 1. Docker Compose services must be brought down (default behaviour).
-    # ------------------------------------------------------------------
+    # Docker Compose services must be brought down (default behaviour).
     assert re.search(
         r"docker[\s-]*compose.*down|compose.*down|docker.*down",
         haystack,
-    ), (
-        "cleanup must stop Docker Compose services (compose down) when "
-        "--keep-docker is not supplied"
-    )
+    ), "cleanup must stop Docker Compose services (compose down) when --keep-docker is not supplied"
 
-    # ------------------------------------------------------------------
-    # 2. The backend process must be terminated (kill of a tracked PID).
-    # ------------------------------------------------------------------
-    assert "kill" in haystack, (
-        "cleanup must terminate the backend (and UI) process(es) via kill"
-    )
+    # The backend process must be terminated (kill of a tracked PID).
+    assert "kill" in haystack, "cleanup must terminate the backend (and UI) process(es) via kill"
 
-    # ------------------------------------------------------------------
-    # 3. The Trino jvm.config patch must be reverted on shutdown.
-    # ------------------------------------------------------------------
-    assert "jvm.config" in haystack, (
-        "cleanup must reference jvm.config to revert Trino patches"
-    )
-
-    # ------------------------------------------------------------------
-    # 4. A concrete revert/restore action must be applied to jvm.config.
-    # ------------------------------------------------------------------
+    # The Trino jvm.config patch must be reverted on shutdown.
+    assert "jvm.config" in haystack, "cleanup must reference jvm.config to revert Trino patches"
     assert re.search(
         r"jvm\.config.*(bak|backup|orig|revert|restore|mv|cp)"
         r"|(bak|backup|orig|revert|restore|mv|cp).*jvm\.config",
         haystack,
     ), "cleanup must revert/restore the Trino jvm.config patch on shutdown"
 
-    # ------------------------------------------------------------------
-    # 5. Confirm this is the non-keep-docker path.
-    # ------------------------------------------------------------------
-    assert shared_data.get("keep_docker") is False, (
-        "this scenario must execute the default (no --keep-docker) shutdown path"
-    )
+    # Confirm this scenario is the default (non --keep-docker) path.
+    assert shared_data.get("keep_docker") is False

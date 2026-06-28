@@ -17,13 +17,13 @@ import time
 from unittest.mock import MagicMock
 
 import pytest
-from pytest_bdd import given, parsers, scenarios, then, when
+from pytest_bdd import given, scenarios, then, when
 
 from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
 from provisa.mv import refresh as mv_refresh
 
-scenarios("req_234.feature")
+scenarios("../features/REQ-234.feature")
 
 
 # ---------------------------------------------------------------------------
@@ -110,9 +110,7 @@ def _invoke(func, **available):
 # ---------------------------------------------------------------------------
 
 
-@given(
-    "a materialized view that is removed from config or whose source is unregistered"
-)
+@given("a materialized view that is removed from config or whose source is unregistered")
 def given_removed_mv(shared_data: dict) -> None:
     registry = MVRegistry()
 
@@ -160,10 +158,17 @@ def when_cleanup_runs(shared_data: dict) -> None:
     removed_mv: MVDefinition = shared_data["removed_mv"]
     now = time.time()
 
+    # config_mv_ids: the set of MV IDs still present in config (active only).
+    config_mv_ids = {shared_data["active_mv"].id}
+    # Orphan tracker maps table name -> first-seen timestamp; ghost is already expired.
+    orphan_tracker: dict[str, float] = {"mv_ghost": now - 10_000}
+    orphan_tables = ["mv_ghost"]
     common = dict(
         conn=conn,
         connection=conn,
+        trino_conn=conn,
         registry=registry,
+        config_mv_ids=config_mv_ids,
         mv=removed_mv,
         mvs=[shared_data["active_mv"], removed_mv],
         definitions=[shared_data["active_mv"], removed_mv],
@@ -171,21 +176,20 @@ def when_cleanup_runs(shared_data: dict) -> None:
         grace_period=0,
         catalog=shared_data["target_catalog"],
         schema=shared_data["target_schema"],
+        schema_name=shared_data["target_schema"],
         target_catalog=shared_data["target_catalog"],
         target_schema=shared_data["target_schema"],
         auto_drop=True,
         known_tables=shared_data["known_tables"],
+        orphan_tracker=orphan_tracker,
+        orphan_tables=orphan_tables,
     )
 
     # 1. Reclaim tables for MVs removed/disabled in config.
-    shared_data["reclaimed"] = _invoke(
-        getattr(mv_refresh, "reclaim_removed_mvs", None), **common
-    )
+    shared_data["reclaimed"] = _invoke(getattr(mv_refresh, "reclaim_removed_mvs", None), **common)
 
     # 2. Detect orphan tables (present in schema, absent from registry).
-    shared_data["orphans"] = _invoke(
-        getattr(mv_refresh, "detect_orphans", None), **common
-    )
+    shared_data["orphans"] = _invoke(getattr(mv_refresh, "detect_orphans", None), **common)
 
     # 3. Auto-drop orphans past their grace period.
     shared_data["dropped_orphans"] = _invoke(
@@ -198,9 +202,7 @@ def when_cleanup_runs(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-@then(
-    "the backing MV table is dropped and any orphaned MV tables are flagged for auto-drop"
-)
+@then("the backing MV table is dropped and any orphaned MV tables are flagged for auto-drop")
 def then_table_dropped_and_orphans_flagged(shared_data: dict) -> None:
     executed_sql = shared_data["executed_sql"]
     upper = [s.upper() for s in executed_sql]
@@ -211,15 +213,14 @@ def then_table_dropped_and_orphans_flagged(shared_data: dict) -> None:
 
     # The disabled MV's backing table must be the target of a drop.
     removed_table = shared_data["removed_mv"].target_table
-    assert any(
-        removed_table.upper() in s for s in drops
-    ), f"removed MV table {removed_table} was not dropped: {executed_sql}"
+    assert any(removed_table.upper() in s for s in drops), (
+        f"removed MV table {removed_table} was not dropped: {executed_sql}"
+    )
 
     # The active MV's backing table must NOT be dropped.
     active_table = shared_data["active_mv"].target_table
     assert not any(
-        f"{active_table.upper()} " in s or s.rstrip().endswith(active_table.upper())
-        for s in drops
+        f"{active_table.upper()} " in s or s.rstrip().endswith(active_table.upper()) for s in drops
     ), f"active MV table {active_table} must not be dropped: {executed_sql}"
 
     # Orphan detection must surface the ghost table not present in the registry.

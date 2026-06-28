@@ -42,26 +42,19 @@ provider consumes these CDC events and streams them as SSE subscriptions.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-import pytest_asyncio
 from graphql import parse as gql_parse
 from graphql.language.ast import FieldNode
 from pytest_bdd import given, scenarios, then, when
 
 from provisa.api.data.subscription_sse import _collect_related_tables
 from provisa.subscriptions.base import ChangeEvent
-from provisa.subscriptions.debezium_provider import (
-    _OP_MAP,
-    DebeziumNotificationProvider,
-)
 from provisa.subscriptions.pg_provider import CHANNEL_PREFIX, PgNotificationProvider
 from provisa.subscriptions.pg_triggers import (
     _trigger_sql,
@@ -184,7 +177,7 @@ def given_provisa_registered_pg_table(shared_data: dict) -> None:
         shared_data["schema"] = schema
         shared_data["table"] = table
 
-    asyncio.get_event_loop().run_until_complete(_setup())
+    asyncio.run(_setup())
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +219,7 @@ def when_external_insert(shared_data: dict) -> None:
             task.cancel()
             pytest.fail("SSE subscriber did not receive the change event in time")
 
-    asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
     shared_data["received"] = received
 
 
@@ -258,7 +251,7 @@ def then_subscriber_receives_event(shared_data: dict) -> None:
                 await conn.execute(f"DROP TABLE IF EXISTS {schema}.{table}")
             await pool.close()
 
-        asyncio.get_event_loop().run_until_complete(_cleanup())
+        asyncio.run(_cleanup())
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +325,7 @@ def when_provisa_starts_up(shared_data: dict) -> None:
         )
 
     try:
-        installed = asyncio.get_event_loop().run_until_complete(_run())
+        installed = asyncio.run(_run())
     finally:
         log.removeHandler(capture)
         log.setLevel(prev_level)
@@ -342,9 +335,7 @@ def when_provisa_starts_up(shared_data: dict) -> None:
 
 
 @then(
-    "it logs a warning and uses watermark-based polling for that table "
-    "instead of LISTEN/NOTIFY"
-)
+    "it logs a warning and uses watermark-based polling for that table instead of LISTEN/NOTIFY")
 def then_warning_logged_and_polling_used(shared_data: dict) -> None:
     table = shared_data["table"]
     installed: set[str] = shared_data["installed"]
@@ -409,9 +400,7 @@ def when_resolve_watch_tables(shared_data: dict) -> None:
 
 
 @then(
-    "it watches every physical table referenced by the join so any change "
-    "re-fires the query"
-)
+    "it watches every physical table referenced by the join so any change re-fires the query")
 def then_all_join_tables_watched(shared_data: dict) -> None:
     watch_tables = shared_data["watch_tables"]
     assert "orders" in watch_tables, "root table must be watched"
@@ -597,7 +586,7 @@ def when_row_in_joined_table_changes(shared_data: dict) -> None:
             break
         return results
 
-    results = asyncio.get_event_loop().run_until_complete(_run_subscription_engine())
+    results = asyncio.run(_run_subscription_engine())
 
     shared_data["watch_many_called_with"] = watch_many_calls
     shared_data["query_results"] = results
@@ -806,11 +795,31 @@ def when_poll_subscription_created(shared_data: dict) -> None:
         poll_interval_seconds=0.01,
     )
 
-    # Verify that a table without a watermark_column raises ValueError immediately.
+    # Verify that a table without a watermark_column raises immediately
     no_wm_provider = _PollSubscriptionProvider(
         backend=backend,
         table_config={"table_name": "nope", "source_id": "src-x"},
         poll_interval_seconds=0.01,
     )
 
-    async def _assert_no_watermark
+    async def _assert_no_watermark_raises():
+        with pytest.raises(Exception):
+            async for _ in no_wm_provider.poll(
+                "nope", datetime(2025, 1, 1, tzinfo=timezone.utc)
+            ):
+                pass
+
+    asyncio.run(_assert_no_watermark_raises())
+
+    # Also verify the happy-path provider yields at least one row.
+    received: list[dict] = []
+
+    async def _collect_one():
+        async for event in provider.poll(
+            table_config["table_name"], baseline_wm, max_polls=1
+        ):
+            received.append(event.row)
+            break
+
+    asyncio.run(_collect_one())
+    shared_data["subscription_rows"] = received

@@ -18,11 +18,10 @@ import sys
 import types
 from datetime import datetime, timezone
 from typing import AsyncIterator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-import httpx
 import pytest
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, scenarios
 
 from provisa.subscriptions import ChangeEvent
 
@@ -89,6 +88,7 @@ def shared_data() -> dict:
 # REQ-338
 # ---------------------------------------------------------------------------
 
+
 @given("a WebSocket source registered with an optional subscribe payload")
 def register_websocket_source(shared_data: dict) -> None:
     subscribe_payload = {"action": "subscribe", "channels": ["trades"]}
@@ -113,30 +113,29 @@ def register_websocket_source(shared_data: dict) -> None:
 
 
 @when("Provisa connects to the WebSocket server")
-@pytest.mark.asyncio
-async def connect_to_websocket(shared_data: dict) -> None:
+def connect_to_websocket(shared_data: dict) -> None:
     provider: WebSocketNotificationProvider = shared_data["provider"]
     fake_ws: _FakeWS = shared_data["fake_ws"]
 
-    events: list[ChangeEvent] = []
-    with patch("websockets.connect", return_value=fake_ws):
-        async for ev in provider.watch("trades"):
-            events.append(ev)
-            if len(events) >= shared_data["expected_count"]:
-                await provider.close()
-                break
+    async def _run() -> None:
+        events: list[ChangeEvent] = []
+        with patch("websockets.connect", return_value=fake_ws):
+            async for ev in provider.watch("trades"):
+                events.append(ev)
+                if len(events) >= shared_data["expected_count"]:
+                    await provider.close()
+                    break
+        shared_data["events"] = events
+        shared_data["sent"] = fake_ws.sent
 
-    shared_data["events"] = events
-    shared_data["sent"] = fake_ws.sent
+    asyncio.run(_run())
 
     # The subscribe payload should have been sent on connect.
     assert len(fake_ws.sent) == 1
     assert json.loads(fake_ws.sent[0]) == shared_data["subscribe_payload"]
 
 
-@then(
-    "received JSON messages are emitted as ChangeEvents into the governed query fabric"
-)
+@then("received JSON messages are emitted as ChangeEvents into the governed query fabric")
 def assert_change_events_emitted(shared_data: dict) -> None:
     events: list[ChangeEvent] = shared_data["events"]
 
@@ -152,6 +151,7 @@ def assert_change_events_emitted(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 # REQ-339 — WebSocket auto-reconnect on transient disconnect
 # ---------------------------------------------------------------------------
+
 
 @given("a WebSocket source that experiences a transient disconnect")
 def websocket_source_with_transient_disconnect(shared_data: dict) -> None:
@@ -176,8 +176,7 @@ def websocket_source_with_transient_disconnect(shared_data: dict) -> None:
 
 
 @when("the connection drops")
-@pytest.mark.asyncio
-async def the_connection_drops(shared_data: dict) -> None:
+def the_connection_drops(shared_data: dict) -> None:
     provider: WebSocketNotificationProvider = shared_data["provider"]
     connections = [shared_data["first_ws"], shared_data["second_ws"]]
 
@@ -187,19 +186,21 @@ async def the_connection_drops(shared_data: dict) -> None:
         # Any subsequent reconnect (should not be reached) gets an empty conn.
         return _FakeWS([])
 
-    events: list[ChangeEvent] = []
-    with patch("websockets.connect", side_effect=connect_side_effect):
-        # Bound the reconnect loop so a failing implementation cannot hang the
-        # test indefinitely.
-        async def _consume() -> None:
-            async for ev in provider.watch("trades"):
-                events.append(ev)
-                if len(events) >= 2:
-                    await provider.close()
-                    break
+    async def _run() -> list[ChangeEvent]:
+        events: list[ChangeEvent] = []
+        with patch("websockets.connect", side_effect=connect_side_effect):
 
-        await asyncio.wait_for(_consume(), timeout=5.0)
+            async def _consume() -> None:
+                async for ev in provider.watch("trades"):
+                    events.append(ev)
+                    if len(events) >= 2:
+                        await provider.close()
+                        break
 
+            await asyncio.wait_for(_consume(), timeout=5.0)
+        return events
+
+    events = asyncio.run(_run())
     shared_data["events"] = events
     shared_data["remaining_connections"] = connections
 
@@ -213,8 +214,7 @@ def assert_provider_auto_reconnects_and_continues(shared_data: dict) -> None:
     # Both connections should have been consumed (the first dropped, the
     # second reconnected and resumed).
     assert len(events) == 2, (
-        f"Expected 2 events after reconnect, got {len(events)}: "
-        f"{[ev.row for ev in events]}"
+        f"Expected 2 events after reconnect, got {len(events)}: {[ev.row for ev in events]}"
     )
     assert shared_data["remaining_connections"] == [], (
         "Not all connections were consumed — provider did not reconnect"
@@ -226,20 +226,14 @@ def assert_provider_auto_reconnects_and_continues(shared_data: dict) -> None:
 
     for ev in events:
         assert isinstance(ev, ChangeEvent)
-        assert ev.operation == "insert", (
-            f"Expected operation='insert', got '{ev.operation}'"
-        )
-        assert ev.table == "trades", (
-            f"Expected table='trades', got '{ev.table}'"
-        )
+        assert ev.operation == "insert", f"Expected operation='insert', got '{ev.operation}'"
+        assert ev.table == "trades", f"Expected table='trades', got '{ev.table}'"
         assert isinstance(ev.row, dict)
         assert isinstance(ev.timestamp, datetime)
         assert ev.timestamp.tzinfo is not None
 
 
-@then(
-    "the provider auto-reconnects and resumes emitting ChangeEvents without manual intervention"
-)
+@then("the provider auto-reconnects and resumes emitting ChangeEvents without manual intervention")
 def assert_provider_reconnected(shared_data: dict) -> None:
     events: list[ChangeEvent] = shared_data["events"]
 
@@ -315,34 +309,26 @@ def rss_source_polling_atom_feed(shared_data: dict) -> None:
 
 
 @when("new items are published after the last-seen watermark")
-@pytest.mark.asyncio
-async def new_items_published_after_watermark(shared_data: dict) -> None:
+def new_items_published_after_watermark(shared_data: dict) -> None:
     """Drive one poll cycle and collect only the events the provider emits."""
     provider: RSSNotificationProvider = shared_data["provider"]
     feed_bytes: bytes = shared_data["atom_feed_bytes"]
     watermark: datetime = shared_data["watermark"]
 
     # Parse the feed directly so we can reason about what *should* come out.
+    # parse_feed now returns datetime in "published" (converted by _parse_date internally).
     all_items = parse_feed(feed_bytes)
-    new_items = [
-        item for item in all_items
-        if item.get("published") and item["published"] > watermark
-    ]
+    new_items = [item for item in all_items if item["published"] > watermark]
     shared_data["expected_new_items"] = new_items
-
-    # Patch the provider's internal HTTP fetch so no real network call is made.
-    # The provider must expose an async `_fetch` coroutine that returns raw bytes.
-    events: list[ChangeEvent] = []
 
     async def _fake_fetch(url: str) -> bytes:
         return feed_bytes
 
-    with patch.object(provider, "_fetch", side_effect=_fake_fetch):
-        # `poll_once` performs exactly one fetch-parse-filter-emit cycle and
-        # returns the list of ChangeEvents produced during that cycle.
-        cycle_events = await provider.poll_once(table="feed_items")
+    async def _run() -> list[ChangeEvent]:
+        with patch.object(provider, "_fetch", side_effect=_fake_fetch):
+            return await provider.poll_once(table="feed_items")
 
-    shared_data["events"] = cycle_events
+    shared_data["events"] = asyncio.run(_run())
 
 
 @then('only those items are emitted as ChangeEvents with operation="insert"')
@@ -360,9 +346,7 @@ def only_new_items_emitted_as_insert_events(shared_data: dict) -> None:
 
     for ev in events:
         # Every emitted event must carry operation="insert" (REQ-342).
-        assert ev.operation == "insert", (
-            f"Expected operation='insert' but got '{ev.operation}'"
-        )
+        assert ev.operation == "insert", f"Expected operation='insert' but got '{ev.operation}'"
         # Every emitted event must target the correct table.
         assert ev.table == "feed_items"
         # The row must be a dictionary derived from the feed item.
@@ -454,8 +438,7 @@ def parse_rss_and_atom_feeds(shared_data: dict) -> None:
 
 
 @then(
-    "both formats extract title, link, description/summary, published, and id; "
-    "unparseable dates use datetime.min"
+    "both formats extract title, link, description/summary, published, and id; unparseable dates use datetime.min"
 )
 def assert_rss_atom_parity(shared_data: dict) -> None:
     rss_items = shared_data["rss_items"]
@@ -486,9 +469,7 @@ def assert_rss_atom_parity(shared_data: dict) -> None:
     assert rss_first["published"].year == 2030, (
         f"Expected published year=2030, got {rss_first['published'].year}"
     )
-    assert rss_first["published"].tzinfo is not None, (
-        "RSS published date must be timezone-aware"
-    )
+    assert rss_first["published"].tzinfo is not None, "RSS published date must be timezone-aware"
 
     # Atom <entry> parity — same field set, summary mapped to description.
     atom_first = atom_items[0]
@@ -513,9 +494,7 @@ def assert_rss_atom_parity(shared_data: dict) -> None:
     assert atom_first["published"].year == 2030, (
         f"Expected published year=2030, got {atom_first['published'].year}"
     )
-    assert atom_first["published"].tzinfo is not None, (
-        "Atom published date must be timezone-aware"
-    )
+    assert atom_first["published"].tzinfo is not None, "Atom published date must be timezone-aware"
 
     # Unparseable dates fall back to datetime.min (UTC sentinel) in both
     # formats rather than silently using the current time.
@@ -549,18 +528,14 @@ def assert_rss_atom_parity(shared_data: dict) -> None:
     # Valid RFC 2822 dates parse to real timezone-aware values distinct from
     # the sentinel.
     rfc = _parse_date("Thu, 09 Apr 2030 10:00:00 +0000")
-    assert rfc != sentinel, (
-        "RFC 2822 date must not parse to datetime.min sentinel"
-    )
+    assert rfc != sentinel, "RFC 2822 date must not parse to datetime.min sentinel"
     assert rfc.tzinfo is not None, "RFC 2822 parsed date must be timezone-aware"
     assert rfc.year == 2030, f"Expected year=2030, got {rfc.year}"
 
     # Valid ISO 8601 dates parse to real timezone-aware values distinct from
     # the sentinel.
     iso = _parse_date("2030-04-09T10:00:00Z")
-    assert iso != sentinel, (
-        "ISO 8601 date must not parse to datetime.min sentinel"
-    )
+    assert iso != sentinel, "ISO 8601 date must not parse to datetime.min sentinel"
     assert iso.tzinfo is not None, "ISO 8601 parsed date must be timezone-aware"
     assert iso.year == 2030, f"Expected year=2030, got {iso.year}"
 

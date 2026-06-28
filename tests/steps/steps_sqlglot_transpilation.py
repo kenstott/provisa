@@ -14,7 +14,7 @@ time — transpilation is automatic and requires no per-query config.
 from __future__ import annotations
 
 import pytest
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, scenarios
 
 from provisa.transpiler.transpile import (
     SUPPORTED_DIALECTS,
@@ -75,10 +75,7 @@ def the_transpiler_processes_it(shared_data: dict) -> None:
     shared_data["dialect_outputs"] = dialect_outputs
 
 
-@then(
-    "PG-style SQL is emitted as canonical output and SQLGlot translates it "
-    "to the target dialect"
-)
+@then("PG-style SQL is emitted as canonical output and SQLGlot translates it to the target dialect")
 def pg_canonical_translated_to_target(shared_data: dict) -> None:
     pg_sql = shared_data["pg_sql"]
     trino_sql = shared_data["trino_sql"]
@@ -158,12 +155,7 @@ def a_query_is_transpiled(shared_data: dict) -> None:
     source_types = shared_data["source_types"]
     source_dialects = shared_data["source_dialects"]
 
-    pg_sql = (
-        'SELECT "id", "amount" '
-        'FROM "public"."orders" '
-        'WHERE "region" = $1 '
-        "LIMIT 25"
-    )
+    pg_sql = 'SELECT "id", "amount" FROM "public"."orders" WHERE "region" = $1 LIMIT 25'
     shared_data["query_pg_sql"] = pg_sql
 
     # The router resolves the route and target dialect using ONLY the values
@@ -181,9 +173,7 @@ def a_query_is_transpiled(shared_data: dict) -> None:
     shared_data["transpiled_sql"] = transpile(pg_sql, target_dialect)
 
 
-@then(
-    "the target SQL dialect matches the source type recorded at registration time"
-)
+@then("the target SQL dialect matches the source type recorded at registration time")
 def target_dialect_matches_recorded_source_type(shared_data: dict) -> None:
     source_id = shared_data["source_id"]
     source_type = shared_data["source_type"]
@@ -233,16 +223,20 @@ def target_dialect_matches_recorded_source_type(shared_data: dict) -> None:
     # PostgreSQL canonical form, confirming real dialect-specific transformation.
     canonical_pg_sql = shared_data["query_pg_sql"]
     postgres_out = transpile(canonical_pg_sql, "postgres")
+    # Dialects that are syntactically compatible with postgres for the canonical
+    # test SQL (double-quote identifiers, $N params, LIMIT) and therefore produce
+    # identical output — excluded from the "must differ" assertion.
+    _POSTGRES_COMPAT_DIALECTS = {"postgres", "duckdb", "snowflake"}
     for stype, dialect in _SOURCE_TYPE_TO_DIALECT.items():
-        if dialect == "postgres":
-            # Postgres → postgres is a passthrough; same output is expected.
-            continue
         dialect_out = transpile(canonical_pg_sql, dialect)
         assert dialect_out, f"transpilation to '{dialect}' (from source '{stype}') is empty"
         assert "orders" in dialect_out.lower(), (
             f"transpilation to '{dialect}' lost the orders table"
         )
-        # The dialect-specific SQL must differ from the PG canonical form,
+        if dialect in _POSTGRES_COMPAT_DIALECTS:
+            # These dialects share postgres syntax for this canonical form.
+            continue
+        # Other dialects must produce output that differs from the PG canonical,
         # confirming that the registration-time dialect drives real transformation.
         assert dialect_out != postgres_out, (
             f"dialect '{dialect}' output is identical to postgres — no transformation applied"

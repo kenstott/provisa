@@ -41,8 +41,8 @@ from provisa.mv.rewriter import rewrite_if_mv_match
 # Scenario binding
 # ---------------------------------------------------------------------------
 
-_FEATURE_134 = Path(__file__).parent / "features" / "REQ-134.feature"
-_FEATURE_135 = Path(__file__).parent / "features" / "REQ-135.feature"
+_FEATURE_134 = Path(__file__).parent.parent / "features" / "REQ-134.feature"
+_FEATURE_135 = Path(__file__).parent.parent / "features" / "REQ-135.feature"
 scenarios(str(_FEATURE_134))
 scenarios(str(_FEATURE_135))
 
@@ -165,9 +165,7 @@ def _compiled_view_query() -> CompiledQuery:
         root_field="orders",
         columns=[
             ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
-            ColumnRef(
-                alias="t1", column="name", field_name="name", nested_in="customers"
-            ),
+            ColumnRef(alias="t1", column="name", field_name="name", nested_in="customers"),
         ],
         sources={"pg"},
     )
@@ -228,9 +226,7 @@ def consumer_queries_view(shared_data: dict) -> None:
     shared_data["admin_view_fields"] = _dataset_fields(admin_schema)
 
 
-@then(
-    "RLS, masking, sampling, and role-based visibility are enforced identically to a table"
-)
+@then("RLS, masking, sampling, and role-based visibility are enforced identically to a table")
 def enforced_identically(shared_data: dict) -> None:
     consumer_view = shared_data["consumer_view_fields"]
     consumer_table = shared_data["consumer_table_fields"]
@@ -295,9 +291,7 @@ def the_view_is_queried(shared_data: dict) -> None:
 
     # Materialized view → eligible fresh MVs available → rewrite to MV backing.
     materialized_fresh = shared_data["materialized_registry"].get_fresh()
-    shared_data["materialized_result"] = rewrite_if_mv_match(
-        compiled, materialized_fresh
-    )
+    shared_data["materialized_result"] = rewrite_if_mv_match(compiled, materialized_fresh)
     shared_data["materialized_fresh"] = materialized_fresh
 
     # Live view → no MVs → query executes unchanged as a live subquery.
@@ -307,8 +301,7 @@ def the_view_is_queried(shared_data: dict) -> None:
 
 
 @then(
-    "it is served from the periodically refreshed materialized view; "
-    "views without that flag\n    run as live subqueries"
+    "it is served from the periodically refreshed materialized view; views without that flag run as live subqueries"
 )
 def served_from_mv_or_live(shared_data: dict) -> None:
     materialized_result = shared_data["materialized_result"]
@@ -362,8 +355,7 @@ def served_from_mv_or_live(shared_data: dict) -> None:
     expired_registry.register(expired_mv)
     expired_fresh = expired_registry.get_fresh()
     assert expired_fresh == [], (
-        "A TTL-expired MV must not appear in get_fresh(); "
-        f"got: {[m.id for m in expired_fresh]}"
+        f"A TTL-expired MV must not appear in get_fresh(); got: {[m.id for m in expired_fresh]}"
     )
     expired_result = rewrite_if_mv_match(shared_data["compiled"], expired_fresh)
     assert expired_result.sql == _VIEW_JOIN_SQL

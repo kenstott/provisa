@@ -47,16 +47,16 @@ from urllib.parse import urlparse
 import httpx
 import pytest
 import pytest_asyncio
-from pytest_bdd import given, parsers, scenarios, then, when
+from pytest_bdd import given, scenarios, then, when
 
 from provisa.executor.drivers.registry import available_drivers, has_driver
 
-FEATURE_DIR = Path(__file__).resolve().parent / "features"
-scenarios(str(FEATURE_DIR / "req_126.feature"))
-scenarios(str(FEATURE_DIR / "req_127.feature"))
-scenarios(str(FEATURE_DIR / "req_128.feature"))
-scenarios(str(FEATURE_DIR / "req_129.feature"))
-scenarios(str(FEATURE_DIR / "req_293.feature"))
+FEATURE_DIR = Path(__file__).resolve().parent.parent / "features"
+scenarios(str(FEATURE_DIR / "REQ-126.feature"))
+scenarios(str(FEATURE_DIR / "REQ-127.feature"))
+scenarios(str(FEATURE_DIR / "REQ-128.feature"))
+scenarios(str(FEATURE_DIR / "REQ-129.feature"))
+scenarios(str(FEATURE_DIR / "REQ-293.feature"))
 
 
 @pytest.fixture
@@ -219,9 +219,7 @@ async def role_has_visibility(shared_data, http_client):
 
 
 @then(
-    "only those registered tables and views are returned by their "
-    "registered names"
-)
+    "only those registered tables and views are returned by their registered names")
 @pytest.mark.integration
 async def only_registered_tables_returned(shared_data):
     if not os.getenv("PROVISA_INTEGRATION"):
@@ -329,6 +327,12 @@ def jdbc_client_get_columns(shared_data):
 
     table_id = 1
     table_name = "orders"
+    _col_defs = [
+        ("id", "bigint", False),
+        ("customer_name", "varchar", True),
+        ("amount", "numeric", True),
+        ("created_at", "timestamp", True),
+    ]
     tables = [
         {
             "id": table_id,
@@ -337,14 +341,16 @@ def jdbc_client_get_columns(shared_data):
             "schema_name": "public",
             "table_name": table_name,
             "governance": "pre-app",
+            "columns": [
+                {"column_name": name, "visible_to": [], "native_filter_type": None}
+                for name, _dtype, _nullable in _col_defs
+            ],
         }
     ]
     column_types = {
         table_id: [
-            _req128_col("id", "bigint", nullable=False),
-            _req128_col("customer_name", "varchar"),
-            _req128_col("amount", "numeric"),
-            _req128_col("created_at", "timestamp"),
+            _req128_col(name, dtype, nullable)
+            for name, dtype, nullable in _col_defs
         ]
     }
 
@@ -373,7 +379,12 @@ def compiled_metadata_filtered_by_role(shared_data):
     compiled_names = {
         c.column_name for c in shared_data["column_types"][shared_data["table_id"]]
     }
-    visible_names = {name for name, _ in visible}
+    # Exclude Provisa internal system columns (prefixed/suffixed with _) that the
+    # catalog index adds automatically — they are not user-defined schema columns.
+    visible_names = {
+        name for name, _ in visible
+        if not (name.startswith("_") and name.endswith("_"))
+    }
     assert visible_names.issubset(compiled_names), (
         f"getColumns exposed columns not in compiled schema: "
         f"{visible_names - compiled_names}"
@@ -387,8 +398,11 @@ def column_names_and_types_returned(shared_data):
 
     # JDBC getColumns must surface both a name and a (resolved) type for each
     # column so tools can render correct types without manual configuration.
+    # Provisa internal system columns (surrounded by underscores) are excluded.
     returned_names = []
     for name, rest in visible:
+        if name.startswith("_") and name.endswith("_"):
+            continue
         assert name, f"getColumns returned a column with no name: {(name, rest)}"
         # rest carries the catalog tuple tail (type oid / type info etc.);
         # there must be type metadata accompanying every column name.

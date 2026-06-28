@@ -20,7 +20,7 @@ from provisa.core.models import Source, SourceType, SOURCE_TO_CONNECTOR
 
 
 @scenario(
-    "../features/req_721_splunk_connector.feature",
+    "../features/REQ-721.feature",
     "REQ-721 default behaviour",
 )
 def test_splunk_connector_default():
@@ -28,7 +28,7 @@ def test_splunk_connector_default():
 
 
 @scenario(
-    "../features/req_722_splunk_connector.feature",
+    "../features/REQ-722.feature",
     "REQ-722 default behaviour",
 )
 def test_splunk_connector_url_construction():

@@ -634,18 +634,8 @@ def expose_as_virtual_table(shared_data):
         "StreamStockEvents must be flagged server_streaming so the executor "
         "collects all streamed response messages"
     )
-
-    # Simulate the executor's async collection loop:
-    #   rows = []
-    #   async for msg in stub.StreamStockEvents(request):
-    #       rows.append(_msg_to_dict(msg))
-    # We represent this synchronously here since we're testing the data contract,
-    # not the async runtime. The server_streaming flag drives this behaviour in
-    # the real executor (provisa/grpc_remote/executor.py).
-    collected_rows = list(streamed_messages)  # collect all into a list
-
     shared_data["streamed_messages"] = streamed_messages
-    shared_data["collected_rows"] = collected_rows
+    shared_data["collected_rows"] = list(streamed_messages)  # collect into list
 
 
 # ---------------------------------------------------------------------------
@@ -654,9 +644,7 @@ def expose_as_virtual_table(shared_data):
 
 
 @then(
-    "output fields become columns, input fields become GraphQL arguments, "
-    "and streaming methods collect all messages"
-)
+    "output fields become columns, input fields become GraphQL arguments, and streaming methods collect all messages")
 def assert_virtual_table_structure(shared_data):
     """Assert REQ-325: columns from output, args from input, streaming collects all rows."""
     virtual_tables: dict = shared_data["virtual_tables"]
@@ -816,7 +804,17 @@ def assert_virtual_table_structure(shared_data):
         )
 
     # -----------------------------------------------------------------------
-    # Non-streaming method must also be registered and functional
+    # Streaming accumulation simulation: verify executor semantics are
+    # represented correctly — server_streaming=True implies collect-all
     # -----------------------------------------------------------------------
+    # Non-streaming method must also be registered and functional
     get_products_entry = virtual_tables["CatalogService.GetProducts"]
     assert get_products_entry["server_streaming"] is False, (
+        "GetProducts is a unary RPC; server_streaming must be False"
+    )
+
+    # For streaming methods the executor would do:
+    #   rows = []
+    #   async for msg in stub.StreamStockEvents(request):
+    #       rows.append(_msg_to_dict(msg))
+    # We verify the simulated result matches this contract.

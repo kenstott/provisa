@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 from graphql import parse, validate
-from pytest_bdd import given, when, then, parsers, scenario
+from pytest_bdd import given, when, then, scenario
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
@@ -95,6 +95,9 @@ def _build_schema_with_relationship():
             "kind": "object",
             "relationship_type": "object",
             "type": "object",
+            "cardinality": "many-to-one",
+            "source_column": "customer_id",
+            "target_column": "id",
             "mapping": [{"source_column": "customer_id", "ref_column": "id"}],
             "column_mapping": {"customer_id": "id"},
         },
@@ -134,9 +137,7 @@ def given_query_with_relationship_order_by(shared_data):
     schema, ctx = _build_schema_with_relationship()
     shared_data["schema"] = schema
     shared_data["ctx"] = ctx
-    doc = parse(
-        "{ orders(order_by: { customer: { name: asc } }) { id amount } }"
-    )
+    doc = parse("{ orders(order_by: { customers: { name: asc } }) { id amount } }")
     errors = validate(schema, doc)
     assert not errors, f"GraphQL validation failed: {errors}"
     shared_data["doc"] = doc
@@ -168,6 +169,4 @@ def then_order_by_references_related_column(shared_data):
     assert '"name"' in after_order or "name" in after_order.lower(), (
         f"ORDER BY does not reference the related column 'name':\n{sql}"
     )
-    assert "ASC" in after_order.upper(), (
-        f"ORDER BY missing ASC direction:\n{sql}"
-    )
+    assert "ASC" in after_order.upper(), f"ORDER BY missing ASC direction:\n{sql}"

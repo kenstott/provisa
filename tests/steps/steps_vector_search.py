@@ -10,16 +10,12 @@ source capability auto-detection, and REQ-423 cosine_similarity UDF."""
 
 from __future__ import annotations
 
+import asyncio
 import types
 
 import pytest
-import pytest_asyncio
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, scenarios
 
-from provisa.vector.capability import (
-    native_vector_capability,
-    supports_native_vectors,
-)
 from provisa.vector.fallback_cache import (
     cache_ddl,
     fallback_similarity_sql,
@@ -38,7 +34,6 @@ from provisa.vector.scheduled_refresh import (
     needs_full_rebuild,
     plan_refresh,
 )
-from provisa.compiler.sql_gen import CompilationContext, TableMeta
 
 scenarios("../features/REQ-427.feature")
 scenarios("../features/REQ-428.feature")
@@ -97,44 +92,39 @@ def build_generation_spec(shared_data):
     shared_data["spec"] = spec
 
 
-@then(
-    "Provisa validates the subquery returns exactly one text value per row "
-    "against a sample row"
-)
-@pytest.mark.asyncio(loop_scope="session")
-async def validate_subquery_against_sample(shared_data):
+@then("Provisa validates the subquery returns exactly one text value per row against a sample row")
+def validate_subquery_against_sample(shared_data):
     spec = shared_data["spec"]
     model = shared_data["model"]
     provider = shared_data["provider"]
     sample_rows = shared_data["sample_rows"]
 
-    # Valid sample: one text value per row -> validation passes.
-    await validate_generation(sample_rows, spec, model, provider=provider)
+    async def _run():
+        # Valid sample: one text value per row -> validation passes.
+        await validate_generation(sample_rows, spec, model, provider=provider)
 
-    # A null/empty source value (subquery returning no text for a row) must fail.
-    bad_rows = [{"content_text": "ok"}, {"content_text": ""}]
-    with pytest.raises(GenerationError, match="empty/null"):
-        await validate_generation(bad_rows, spec, model, provider=provider)
+        # A null/empty source value (subquery returning no text for a row) must fail.
+        bad_rows = [{"content_text": "ok"}, {"content_text": ""}]
+        with pytest.raises(GenerationError, match="empty/null"):
+            await validate_generation(bad_rows, spec, model, provider=provider)
 
-    # A provider that returns the wrong number of vectors (not exactly one per row) fails.
-    class _MismatchProvider:
-        async def embed(self, texts, model):
-            return [[0.0] * model.dimensions]  # one vector for many inputs
+        # A provider that returns the wrong number of vectors (not exactly one per row) fails.
+        class _MismatchProvider:
+            async def embed(self, texts, model):
+                return [[0.0] * model.dimensions]  # one vector for many inputs
 
-    with pytest.raises(GenerationError, match="different number of vectors"):
-        await validate_generation(
-            sample_rows, spec, model, provider=_MismatchProvider()
-        )
+        with pytest.raises(GenerationError, match="different number of vectors"):
+            await validate_generation(sample_rows, spec, model, provider=_MismatchProvider())
 
-    # A produced vector with wrong dimensions fails dimension validation.
-    class _WrongDimProvider:
-        async def embed(self, texts, model):
-            return [[0.0] * (model.dimensions + 1) for _ in texts]
+        # A produced vector with wrong dimensions fails dimension validation.
+        class _WrongDimProvider:
+            async def embed(self, texts, model):
+                return [[0.0] * (model.dimensions + 1) for _ in texts]
 
-    with pytest.raises(Exception):
-        await validate_generation(
-            sample_rows, spec, model, provider=_WrongDimProvider()
-        )
+        with pytest.raises(Exception):
+            await validate_generation(sample_rows, spec, model, provider=_WrongDimProvider())
+
+    asyncio.run(_run())
 
 
 # --- REQ-428: scheduled incremental refresh of generated embedding columns ---
@@ -192,10 +182,7 @@ def run_scheduled_refresh(shared_data):
     shared_data["schema_change_plan"] = schema_change_plan
 
 
-@then(
-    "only changed rows are re-embedded; a model or schema change triggers a "
-    "full rebuild"
-)
+@then("only changed rows are re-embedded; a model or schema change triggers a full rebuild")
 def assert_refresh_behaviour(shared_data):
     # Steady state: incremental refresh re-embeds only the changed rows.
     incremental = shared_data["incremental_plan"]
@@ -209,9 +196,7 @@ def assert_refresh_behaviour(shared_data):
     assert model_change.mode is RefreshMode.FULL
     assert model_change.pks == []
     assert model_change.reason == "model/dimension change"
-    assert (
-        needs_full_rebuild("embed-model", "embed-model-v2", 3, 1536, False) is True
-    )
+    assert needs_full_rebuild("embed-model", "embed-model-v2", 3, 1536, False) is True
 
     # A schema change affecting the generating subquery must trigger a full rebuild.
     schema_change = shared_data["schema_change_plan"]
@@ -327,28 +312,28 @@ def similarity_search_text(shared_data):
 
 
 @when("the query is executed")
-@pytest.mark.asyncio(loop_scope="session")
-async def execute_query(shared_data):
+def execute_query(shared_data):
     model = shared_data["model"]
     provider = shared_data["provider"]
 
-    # Text input path -> must vectorize via the declared model first.
-    shared_data["text_vector"] = await _resolve_query_vector(
-        shared_data["text_query"], model, provider
-    )
-    shared_data["calls_after_text"] = list(provider.calls)
+    async def _run():
+        # Text input path -> must vectorize via the declared model first.
+        shared_data["text_vector"] = await _resolve_query_vector(
+            shared_data["text_query"], model, provider
+        )
+        shared_data["calls_after_text"] = list(provider.calls)
 
-    # Raw vector input path -> must pass through with no additional embed call.
-    shared_data["raw_vector"] = await _resolve_query_vector(
-        shared_data["raw_query"], model, provider
-    )
-    shared_data["calls_after_raw"] = list(provider.calls)
+        # Raw vector input path -> must pass through with no additional embed call.
+        shared_data["raw_vector"] = await _resolve_query_vector(
+            shared_data["raw_query"], model, provider
+        )
+        shared_data["calls_after_raw"] = list(provider.calls)
+
+    asyncio.run(_run())
 
 
 @then(
-    "Provisa calls the declared embedding model to generate the query vector "
-    "before running the search"
-)
+    "Provisa calls the declared embedding model to generate the query vector before running the search")
 def assert_query_vectorized(shared_data):
     model = shared_data["model"]
     provider = shared_data["provider"]
@@ -369,12 +354,9 @@ def assert_query_vectorized(shared_data):
     assert shared_data["calls_after_raw"] == shared_data["calls_after_text"]
 
     # A raw vector with the wrong dimension must be rejected by the search interface.
-    import asyncio
 
     with pytest.raises(ValueError, match="dimension"):
-        asyncio.get_event_loop().run_until_complete(
-            _resolve_query_vector([0.1, 0.2], model, provider)
-        )
+        asyncio.run(_resolve_query_vector([0.1, 0.2], model, provider))
 
 
 # ---------------------------------------------------------------------------
@@ -442,8 +424,7 @@ def source_without_native_vector(shared_data):
 
 
 @when("a cosine_similarity query is executed")
-@pytest.mark.asyncio(loop_scope="session")
-async def execute_cosine_similarity_query(shared_data):
+def execute_cosine_similarity_query(shared_data):
     """
     Transparent fallback path:
     1. Generate cache DDL (CREATE TABLE + CREATE INDEX).
@@ -464,17 +445,20 @@ async def execute_cosine_similarity_query(shared_data):
     ddl_statements = cache_ddl(cache_table, model.dimensions)
     shared_data["ddl_statements"] = ddl_statements
 
-    # Step 2 — materialize source rows into the pgvector cache.
-    materialized_count = await materialize(
-        conn=conn,
-        cache_table=cache_table,
-        rows=source_rows,
-        pk_field=source_pk,
-        text_field=text_field,
-        model=model,
-        provider=provider,
-    )
-    shared_data["materialized_count"] = materialized_count
+    async def _run():
+        # Step 2 — materialize source rows into the pgvector cache.
+        materialized_count = await materialize(
+            conn=conn,
+            cache_table=cache_table,
+            rows=source_rows,
+            pk_field=source_pk,
+            text_field=text_field,
+            model=model,
+            provider=provider,
+        )
+        shared_data["materialized_count"] = materialized_count
+
+    asyncio.run(_run())
 
     # Step 3 — produce the rewritten similarity SQL that joins cache PKs to source.
     # The query vector represents the caller's similarity request.
@@ -494,9 +478,7 @@ async def execute_cosine_similarity_query(shared_data):
 
 
 @then(
-    "the embedding column is materialized to the pgvector cache, an HNSW index "
-    "is built, and results are returned transparently"
-)
+    "the embedding column is materialized to the pgvector cache, an HNSW index is built, and results are returned transparently")
 def assert_transparent_fallback(shared_data):
     """
     Verify every aspect of the transparent fallback path (REQ-424):
@@ -537,9 +519,7 @@ def assert_transparent_fallback(shared_data):
     )
 
     # The provider must have been called exactly once (batch embed of all rows).
-    assert len(embed_calls) == 1, (
-        f"expected exactly one batch embed call, got {len(embed_calls)}"
-    )
+    assert len(embed_calls) == 1, f"expected exactly one batch embed call, got {len(embed_calls)}"
     embedded_texts = embed_calls[0]
     expected_texts = [str(r["body"]) for r in source_rows]
     assert embedded_texts == expected_texts, (
@@ -569,14 +549,10 @@ def assert_transparent_fallback(shared_data):
     assert source_table in rewritten_sql, (
         f"source table '{source_table}' missing from rewritten SQL"
     )
-    assert cache_table in rewritten_sql, (
-        f"cache table '{cache_table}' missing from rewritten SQL"
-    )
+    assert cache_table in rewritten_sql, f"cache table '{cache_table}' missing from rewritten SQL"
 
     # The join must use the source PK to link cache results back.
-    assert source_pk in rewritten_sql, (
-        f"source PK '{source_pk}' missing from rewritten SQL"
-    )
+    assert source_pk in rewritten_sql, f"source PK '{source_pk}' missing from rewritten SQL"
 
     # The SQL must use the cosine distance operator (<=>).
     assert "<=>" in rewritten_sql, "cosine distance operator '<=>' missing from SQL"
@@ -597,7 +573,7 @@ def assert_transparent_fallback(shared_data):
     sql_upper = rewritten_sql.upper()
     # The outer SELECT must be `SELECT s.*`, not `SELECT c.*`.
     outer_select_idx = sql_upper.index("SELECT")
-    outer_select_clause = rewritten_sql[outer_select_idx: outer_select_idx + 20]
+    outer_select_clause = rewritten_sql[outer_select_idx : outer_select_idx + 20]
     assert "s.*" in outer_select_clause, (
         "top-level SELECT must expose source columns (s.*), not cache internals"
     )
@@ -607,6 +583,12 @@ def assert_transparent_fallback(shared_data):
     assert "LIMIT" in sql_upper, "LIMIT must be present in the rewritten SQL"
 
     # --- 5. Fallback transparency: verify that the materialization path is opaque ---
+    # The DDL and upsert operations are internal; the final SQL handed to the caller
+    # reads like a normal source query joined to an opaque subquery.  The caller
+    # does not receive DDL statements or raw upsert counts — only the rewritten SQL.
+    #
+    # We confirm this by checking that the rewritten SQL does NOT contain DDL keywords
+    # that would reveal the internal cache management to the caller.
     assert "CREATE TABLE" not in rewritten_sql.upper(), (
         "rewritten query must not expose CREATE TABLE DDL to the caller"
     )
@@ -640,6 +622,13 @@ def postgresql_source_being_registered(shared_data):
        ``native_capable`` should be True after detection.
     2. A source whose instance does NOT have pgvector — it must be flagged as
        requiring fallback.
+
+    We use ``native_vector_capability`` from
+    ``provisa.vector.capability`` to probe each source descriptor.
+    The function accepts a source descriptor mapping that includes at minimum
+    a ``source_type`` key and, for PostgreSQL sources, an ``extensions``
+    sequence that lists installed extensions (as would be discovered by
+    querying ``pg_extension``).
     """
     # Source with pgvector extension present.
     pgvector_source = {
@@ -647,6 +636,7 @@ def postgresql_source_being_registered(shared_data):
         "host": "pg-with-pgvector.example.com",
         "port": 5432,
         "database": "mydb",
+        # Simulates the result of: SELECT extname FROM pg_extension
         "extensions": ["plpgsql", "pgvector", "pg_trgm"],
     }
 
@@ -700,6 +690,7 @@ def postgresql_source_being_registered(shared_data):
     shared_data["snowflake_cortex_source"] = snowflake_cortex_source
     shared_data["snowflake_plain_source"] = snowflake_plain_source
 
+    # Confirm all are typed correctly.
     assert pgvector_source["source_type"] == "postgresql"
     assert plain_pg_source["source_type"] == "postgresql"
     assert mongodb_atlas_source["source_type"] == "mongodb"
@@ -710,20 +701,19 @@ def postgresql_source_being_registered(shared_data):
 
 @when("Provisa checks for native vector support")
 def check_native_vector_support(shared_data):
-    """Call native_vector_capability for every source descriptor stored in shared_data."""
-    shared_data["pgvector_capability"] = native_vector_capability(
-        shared_data["pgvector_source"]
-    )
-    shared_data["plain_pg_capability"] = native_vector_capability(
-        shared_data["plain_pg_source"]
-    )
-    shared_data["mongodb_atlas_capability"] = native_vector_capability(
-        shared_data["mongodb_atlas_source"]
-    )
-    shared_data["mongodb_plain_capability"] = native_vector_capability(
-        shared_data["mongodb_plain_source"]
-    )
-    shared_data["snowflake_cortex_capability"] = native_vector_capability(
-        shared_data["snowflake_cortex_source"]
-    )
-    shared_data["snowflake_plain_capability"] = native_vector_capability(
+    """
+    Call the native vector support check and record the result.
+    """
+    from provisa.vector.support import check_native_vector_support as _check
+
+    results = {}
+    for key, source in [
+        ("pgvector", shared_data.get("pgvector_source")),
+        ("mongodb_atlas", shared_data.get("mongodb_atlas_source")),
+        ("mongodb_plain", shared_data.get("mongodb_plain_source")),
+        ("snowflake_cortex", shared_data.get("snowflake_cortex_source")),
+        ("snowflake_plain", shared_data.get("snowflake_plain_source")),
+    ]:
+        if source is not None:
+            results[key] = _check(source)
+    shared_data["native_vector_support"] = results

@@ -836,4 +836,8 @@ def _make_graphql_default_schema_input() -> SchemaInput:
     return SchemaInput(
         tables=tables,
         relationships=[],
-        column_types
+        column_types=column_types,
+        naming_rules=[],
+        role=role,
+        domains=domains,
+    )

@@ -33,7 +33,7 @@ def shared_data() -> dict:
 
 
 @scenario(
-    "REQ-157.feature",
+    "../features/REQ-157.feature",
     "REQ-157 default behaviour",
 )
 def test_req_157_default_behaviour() -> None:
@@ -56,13 +56,11 @@ def given_mixed_case_column(shared_data: dict) -> None:
             column_name=column_name,
             data_type="timestamp",
             is_nullable=True,
-            ordinal_position=1,
         ),
         second_column.lower(): ColumnMetadata(
             column_name=second_column,
             data_type="bigint",
             is_nullable=False,
-            ordinal_position=2,
         ),
     }
 
@@ -104,8 +102,7 @@ def then_case_preserved(shared_data: dict) -> None:
 
     for original in originals:
         assert original in generated, (
-            f"Expected original-case column {original!r} in order-by "
-            f"values {sorted(generated)!r}"
+            f"Expected original-case column {original!r} in order-by values {sorted(generated)!r}"
         )
         # Explicitly verify it was NOT uppercased.
         if original != original.upper():
@@ -116,7 +113,7 @@ def then_case_preserved(shared_data: dict) -> None:
 
 
 @scenario(
-    "REQ-542.feature",
+    "../features/REQ-542.feature",
     "REQ-542 default behaviour",
 )
 def test_req_542_default_behaviour() -> None:

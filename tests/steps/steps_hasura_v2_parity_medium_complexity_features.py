@@ -70,11 +70,11 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import TableMeta, build_context, compile_query
 
-scenarios("REQ-218.feature")
-scenarios("REQ-219.feature")
-scenarios("REQ-220.feature")
-scenarios("REQ-221.feature")
-scenarios("REQ-222.feature")
+scenarios("../features/REQ-218.feature")
+scenarios("../features/REQ-219.feature")
+scenarios("../features/REQ-220.feature")
+scenarios("../features/REQ-221.feature")
+scenarios("../features/REQ-222.feature")
 
 
 # ---------------------------------------------------------------------------
@@ -605,7 +605,7 @@ def _build_enum_aware_schema(
 
     # Non-enum columns (always present in our test table)
     from graphql import GraphQLField, GraphQLInt, GraphQLNonNull as GNN
-    fields["id"] = GraphQLField(GNN(GraphQLInt))  # type: ignore[arg-type]
+    fields["id"] = GraphQLField(GraphQLNonNull(GraphQLInt))  # type: ignore[arg-type]
 
     for col_name, pg_type_name in enum_columns.items():
         if pg_type_name in enum_type_map:
@@ -823,4 +823,4 @@ def _simulate_rest_endpoint(
     5. Apply the SQL-equivalent filters to in-memory data.
     6. Return structured result.
     """
-    params = _parse_rest_
+    params = _parse

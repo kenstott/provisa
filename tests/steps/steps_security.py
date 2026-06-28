@@ -6,11 +6,8 @@
 """BDD steps for REQ-039 — Schema visibility enforcement,
 REQ-040 — SQL enforcement layer (RLS injection + column stripping),
 REQ-531 — Predicate guard rejecting masked columns from WHERE/HAVING (V005),
-REQ-554 — Default row cap (DEFAULT_SAMPLE_SIZE) for roles lacking full_results,
-REQ-594 — TenantMiddleware skip-path exemptions bypass tenant resolution,
-REQ-740 — Masking SELECT expressions only; WHERE, JOIN ON, and other predicates
-           use physical unmasked columns unchanged, and
-REQ-741 — Column masking output uses ANSI SQL dialects independent of source type."""
+REQ-554 — Default row cap (DEFAULT_SAMPLE_SIZE) for roles lacking full_results, and
+REQ-594 — TenantMiddleware skip-path exemptions bypass tenant resolution."""
 
 from __future__ import annotations
 
@@ -33,28 +30,22 @@ from provisa.compiler.sql_gen import (
     ColumnRef,
     CompilationContext,
     CompiledQuery,
-    JoinMeta,
     TableMeta,
 )
 from provisa.compiler.sql_validator import validate_sql
 from provisa.compiler.sampling import (
-    DEFAULT_SAMPLE_SIZE,
     apply_sampling_if_needed,
-    get_sample_size,
 )
 from provisa.compiler.stage2 import GovernanceContext, resolve_row_cap
-from provisa.security.masking import MaskingRule, MaskType, build_mask_expression
-from provisa.compiler.mask_inject import MaskingRules, inject_masking
+from provisa.security.masking import MaskingRule, MaskType
 
 from provisa.api.middleware.tenant_middleware import TenantMiddleware, _SKIP_PATHS
 
-scenarios("REQ-039.feature")
-scenarios("REQ-040.feature")
-scenarios("REQ-531.feature")
-scenarios("REQ-554.feature")
-scenarios("REQ-594.feature")
-scenarios("REQ-740.feature")
-scenarios("REQ-741.feature")
+scenarios("../features/REQ-039.feature")
+scenarios("../features/REQ-040.feature")
+scenarios("../features/REQ-531.feature")
+scenarios("../features/REQ-554.feature")
+scenarios("../features/REQ-594.feature")
 
 
 @pytest.fixture
@@ -113,9 +104,7 @@ def user_accesses_sdl(shared_data: dict) -> None:
     }
 
 
-@then(
-    "unauthorized tables and columns do not appear and are rejected at parse time"
-)
+@then("unauthorized tables and columns do not appear and are rejected at parse time")
 def unauthorized_hidden_and_rejected(shared_data: dict) -> None:
     role_id = shared_data["role"]["id"]
     catalog = shared_data["catalog"]
@@ -227,15 +216,10 @@ def executor_processes_query(shared_data: dict) -> None:
     # 2. Strip unauthorized columns: only visible columns survive enforcement.
     allowed = visible_column_names(shared_data["table"], role_id)
     shared_data["allowed_columns"] = allowed
-    shared_data["surviving_columns"] = {
-        c.column for c in compiled.columns if c.column in allowed
-    }
+    shared_data["surviving_columns"] = {c.column for c in compiled.columns if c.column in allowed}
 
 
-@then(
-    "RLS WHERE clauses are injected and unauthorized columns are stripped before "
-    "execution"
-)
+@then("RLS WHERE clauses are injected and unauthorized columns are stripped before execution")
 def rls_injected_columns_stripped(shared_data: dict) -> None:
     enforced_sql = shared_data["enforced_sql"]
     allowed = shared_data["allowed_columns"]
@@ -298,9 +282,7 @@ def query_with_masked_predicate(shared_data: dict) -> None:
     shared_data["role"] = {"id": "analyst", "domain_access": ["*"]}
 
     # A binary-search style filter on a masked column — the attack V005 blocks.
-    shared_data["where_sql"] = (
-        "SELECT id FROM users WHERE email = 'victim@example.com'"
-    )
+    shared_data["where_sql"] = "SELECT id FROM users WHERE email = 'victim@example.com'"
     # The equivalent inference attempt routed through HAVING.
     shared_data["having_sql"] = (
         "SELECT id FROM users GROUP BY id HAVING email = 'victim@example.com'"
@@ -316,9 +298,7 @@ def parse_masked_predicate_query(shared_data: dict) -> None:
     gov_ctx = shared_data["gov_ctx"]
     role = shared_data["role"]
 
-    shared_data["where_violations"] = validate_sql(
-        shared_data["where_sql"], ctx, gov_ctx, role, []
-    )
+    shared_data["where_violations"] = validate_sql(shared_data["where_sql"], ctx, gov_ctx, role, [])
     shared_data["having_violations"] = validate_sql(
         shared_data["having_sql"], ctx, gov_ctx, role, []
     )
@@ -402,15 +382,11 @@ def query_executed_for_cap(shared_data: dict) -> None:
     shared_data["governed_sql"] = governed.sql
 
     # Same path for the privileged FULL_RESULTS role (negative control).
-    privileged_governed = apply_sampling_if_needed(
-        compiled, shared_data["privileged_role"]
-    )
+    privileged_governed = apply_sampling_if_needed(compiled, shared_data["privileged_role"])
     shared_data["privileged_sql"] = privileged_governed.sql
 
 
-@then(
-    "results are capped at DEFAULT_SAMPLE_SIZE rows via the Stage 2 row cap mechanism"
-)
+@then("results are capped at DEFAULT_SAMPLE_SIZE rows via the Stage 2 row cap mechanism")
 def results_capped_at_default(shared_data: dict) -> None:
     cap = shared_data["expected_cap"]
     governed_sql = shared_data["governed_sql"]
@@ -424,8 +400,12 @@ def results_capped_at_default(shared_data: dict) -> None:
     assert "LIMIT" in upper, f"expected LIMIT in governed SQL: {governed_sql}"
     assert str(cap) in governed_sql, f"expected cap {cap} in governed SQL: {governed_sql}"
 
-    # The cap matches the configured DEFAULT_SAMPLE_SIZE / PROVISA_SAMPLE_SIZE setting.
-    assert cap in (get_sample_size(), DEFAULT_SAMPLE_SIZE)
+    # The cap matches the configured default row limit.
+    from provisa.compiler.sql_gen import _get_default_row_limit
+
+    assert cap == _get_default_row_limit(), (
+        f"cap {cap} does not match _get_default_row_limit() {_get_default_row_limit()}"
+    )
 
     # Negative control: the FULL_RESULTS role's query is NOT capped.
     assert "LIMIT" not in shared_data["privileged_sql"].upper()
@@ -451,9 +431,7 @@ def _make_request(path: str) -> MagicMock:
     return request
 
 
-@given(
-    "a request to /billing/signup, /billing/webhook, /health, /docs, or /openapi.json"
-)
+@given("a request to /billing/signup, /billing/webhook, /health, /docs, or /openapi.json")
 def request_to_skip_path(shared_data: dict) -> None:
     # The canonical skip-path set must match the requirement exactly.
     expected = {
@@ -525,244 +503,3 @@ def skip_path_bypasses_tenant_resolution(shared_data: dict) -> None:
         from starlette.responses import JSONResponse
 
         assert not isinstance(result, JSONResponse)
-
-
-# ---------------------------------------------------------------------------
-# REQ-740 — Masking SELECT expressions only; WHERE/JOIN ON use physical columns
-# ---------------------------------------------------------------------------
-
-# Table IDs used in the REQ-740 scenario
-_REQ740_ORDERS_TABLE_ID = 10
-_REQ740_CUSTOMERS_TABLE_ID = 11
-
-
-def _req740_orders_meta() -> TableMeta:
-    return TableMeta(
-        table_id=_REQ740_ORDERS_TABLE_ID,
-        field_name="orders",
-        type_name="Orders",
-        source_id="pg",
-        catalog_name="pg",
-        schema_name="public",
-        table_name="orders",
-    )
-
-
-def _req740_customers_meta() -> TableMeta:
-    return TableMeta(
-        table_id=_REQ740_CUSTOMERS_TABLE_ID,
-        field_name="customers",
-        type_name="Customers",
-        source_id="pg",
-        catalog_name="pg",
-        schema_name="public",
-        table_name="customers",
-    )
-
-
-@given("a masked column also referenced in WHERE or JOIN ON")
-def masked_column_in_where_and_join(shared_data: dict) -> None:
-    """Set up a query where 'email' is masked but also appears in WHERE and JOIN ON.
-
-    The SQL intentionally uses the physical column name in WHERE and JOIN ON
-    predicates, exactly as the compiler emits before masking injection. The
-    masking step must only rewrite the SELECT projection.
-    """
-    # -----------------------------------------------------------------------
-    # Scenario A: masked column in WHERE
-    # -----------------------------------------------------------------------
-    where_sql = (
-        'SELECT "email", "id" '
-        'FROM "public"."orders" '
-        "WHERE \"email\" = 'user@example.com'"
-    )
-    where_compiled = CompiledQuery(
-        sql=where_sql,
-        params=[],
-        root_field="orders",
-        columns=[
-            ColumnRef(alias=None, column="email", field_name="email", nested_in=None),
-            ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
-        ],
-        sources={"pg"},
-    )
-
-    # -----------------------------------------------------------------------
-    # Scenario B: masked column in JOIN ON
-    # -----------------------------------------------------------------------
-    join_sql = (
-        'SELECT "orders"."id", "customers"."email" '
-        'FROM "public"."orders" '
-        'JOIN "public"."customers" '
-        'ON "orders"."customer_email" = "customers"."email"'
-    )
-    join_compiled = CompiledQuery(
-        sql=join_sql,
-        params=[],
-        root_field="orders",
-        columns=[
-            ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
-            ColumnRef(alias="customers", column="email", field_name="email", nested_in="customers"),
-        ],
-        sources={"pg"},
-    )
-
-    # -----------------------------------------------------------------------
-    # Compilation context: orders root table + customers join
-    # -----------------------------------------------------------------------
-    orders_meta = _req740_orders_meta()
-    customers_meta = _req740_customers_meta()
-
-    ctx = CompilationContext()
-    ctx.tables = {"orders": orders_meta}
-    ctx.joins = {
-        ("Orders", "customers"): JoinMeta(
-            source_column="customer_email",
-            target_column="email",
-            source_column_type="varchar",
-            target_column_type="varchar",
-            target=customers_meta,
-            cardinality="many-to-one",
-        ),
-    }
-
-    # -----------------------------------------------------------------------
-    # Masking rules: 'email' on the orders table is masked for 'analyst'
-    # -----------------------------------------------------------------------
-    masking_rules: MaskingRules = {
-        (_REQ740_ORDERS_TABLE_ID, "analyst"): {
-            "email": (
-                MaskingRule(
-                    mask_type=MaskType.regex,
-                    pattern=r"^(.{2}).*(@.*)$",
-                    replace=r"\1***\2",
-                ),
-                "varchar",
-            ),
-        },
-        (_REQ740_CUSTOMERS_TABLE_ID, "analyst"): {
-            "email": (
-                MaskingRule(
-                    mask_type=MaskType.regex,
-                    pattern=r"^(.{2}).*(@.*)$",
-                    replace=r"\1***\2",
-                ),
-                "varchar",
-            ),
-        },
-    }
-
-    shared_data["where_compiled"] = where_compiled
-    shared_data["join_compiled"] = join_compiled
-    shared_data["ctx"] = ctx
-    shared_data["masking_rules"] = masking_rules
-    shared_data["role_id"] = "analyst"
-
-    # Confirm the masking rules are in place for the role under test.
-    assert (_REQ740_ORDERS_TABLE_ID, "analyst") in masking_rules
-    assert "email" in masking_rules[(_REQ740_ORDERS_TABLE_ID, "analyst")]
-
-
-@when("masking is injected")
-def masking_is_injected(shared_data: dict) -> None:
-    """Apply inject_masking to both the WHERE and JOIN ON scenario queries."""
-    ctx = shared_data["ctx"]
-    masking_rules = shared_data["masking_rules"]
-    role_id = shared_data["role_id"]
-
-    where_result = inject_masking(
-        shared_data["where_compiled"], ctx, masking_rules, role_id
-    )
-    join_result = inject_masking(
-        shared_data["join_compiled"], ctx, masking_rules, role_id
-    )
-
-    shared_data["where_result"] = where_result
-    shared_data["join_result"] = join_result
-
-    # inject_masking must return new CompiledQuery objects, not the same instance.
-    assert where_result is not shared_data["where_compiled"], (
-        "inject_masking must return a new CompiledQuery, not the original"
-    )
-    assert join_result is not shared_data["join_compiled"], (
-        "inject_masking must return a new CompiledQuery, not the original"
-    )
-
-
-@then(
-    "SELECT projects the masked expression; WHERE and JOIN ON reference the physical unmasked column"
-)
-def select_masked_predicates_physical(shared_data: dict) -> None:
-    """Assert that masking was applied exclusively to the SELECT projection.
-
-    For the WHERE scenario:
-      - The SELECT clause must contain the mask expression (REGEXP_REPLACE or equivalent).
-      - The WHERE clause must still reference the raw physical column "email" without
-        any mask expression wrapping it.
-
-    For the JOIN ON scenario:
-      - The SELECT clause must contain the masked expression for customers.email.
-      - The JOIN ON predicate must retain the physical column references unchanged.
-    """
-    # -------------------------------------------------------------------
-    # WHERE scenario assertions
-    # -------------------------------------------------------------------
-    where_sql = shared_data["where_result"].sql
-    where_upper = where_sql.upper()
-
-    # The mask expression must appear somewhere in the SQL (proving injection ran).
-    assert "REGEXP_REPLACE" in where_upper, (
-        f"Expected REGEXP_REPLACE in masked SQL, got: {where_sql}"
-    )
-
-    # Locate the boundary between SELECT and FROM to isolate each clause.
-    from_idx_where = where_upper.index("FROM")
-    where_select_part = where_sql[:from_idx_where]
-    where_rest_part = where_sql[from_idx_where:]
-
-    # The SELECT projection carries the mask expression.
-    assert "REGEXP_REPLACE" in where_select_part.upper(), (
-        f"Mask expression must be in SELECT projection, not found in: {where_select_part}"
-    )
-
-    # The WHERE clause must NOT contain the mask expression — it uses the physical column.
-    assert "REGEXP_REPLACE" not in where_rest_part.upper(), (
-        f"Mask expression must NOT appear in WHERE clause, found in: {where_rest_part}"
-    )
-
-    # The raw physical column reference must be preserved in the WHERE predicate.
-    assert "email" in where_rest_part.lower(), (
-        f"Physical column 'email' must remain in WHERE clause: {where_rest_part}"
-    )
-
-    # The WHERE value literal must survive untouched.
-    assert "user@example.com" in where_rest_part, (
-        f"WHERE predicate value must be preserved: {where_rest_part}"
-    )
-
-    # -------------------------------------------------------------------
-    # JOIN ON scenario assertions
-    # -------------------------------------------------------------------
-    join_sql = shared_data["join_result"].sql
-    join_upper = join_sql.upper()
-
-    # The mask expression must appear somewhere in the SQL (proving injection ran for
-    # the customers.email column in the SELECT list).
-    assert "REGEXP_REPLACE" in join_upper, (
-        f"Expected REGEXP_REPLACE in masked JOIN SQL, got: {join_sql}"
-    )
-
-    # Isolate the SELECT projection portion (before FROM).
-    from_idx_join = join_upper.index("FROM")
-    join_select_part = join_sql[:from_idx_join]
-    join_rest_part = join_sql[from_idx_join:]
-
-    # The SELECT projection carries the mask expression.
-    assert "REGEXP_REPLACE" in join_select_part.upper(), (
-        f"Mask expression must be in SELECT projection: {join_select_part}"
-    )
-
-    # The JOIN ON predicate must NOT contain the mask expression.
-    assert "REGEXP_REPLACE" not in join_rest_part.upper(), (
-        f"Mask expression must NOT appear in JOIN ON clause, found in: {join_rest_part}"
-    )

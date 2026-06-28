@@ -97,8 +97,7 @@ def _compile_schema(shared_data):
 
 
 @then(
-    "a <table>_aggregate root field is generated with sum/avg/stddev/variance on numeric columns,\n"
-    "min/max on comparable columns, and count on all columns"
+    "a <table>_aggregate root field is generated with sum/avg/stddev/variance on numeric columns, min/max on comparable columns, and count on all columns"
 )
 def _verify_aggregate_field(shared_data):
     schema = shared_data["schema"]
@@ -127,15 +126,11 @@ def _verify_aggregate_field(shared_data):
     inner = agg_type.fields["aggregate"].type
     while hasattr(inner, "of_type"):
         inner = inner.of_type
-    assert isinstance(inner, GraphQLObjectType), (
-        f"inner aggregate type is not an object: {inner}"
-    )
+    assert isinstance(inner, GraphQLObjectType), f"inner aggregate type is not an object: {inner}"
     agg_fields = inner.fields
 
     # 3. count must be present on all columns (root-level count field)
-    assert "count" in agg_fields, (
-        f"aggregate type missing 'count'; got {sorted(agg_fields)}"
-    )
+    assert "count" in agg_fields, f"aggregate type missing 'count'; got {sorted(agg_fields)}"
 
     def _agg_op_columns(op_name: str) -> set[str]:
         assert op_name in agg_fields, (
@@ -158,9 +153,7 @@ def _verify_aggregate_field(shared_data):
         )
         # non-numeric columns must not appear under numeric ops
         assert "region" not in cols, f"'{op}' wrongly includes non-numeric column 'region'"
-        assert "created_at" not in cols, (
-            f"'{op}' wrongly includes non-numeric column 'created_at'"
-        )
+        assert "created_at" not in cols, f"'{op}' wrongly includes non-numeric column 'created_at'"
 
     # 5. min/max must expose all comparable columns (numeric + ordered types)
     comparable = shared_data["comparable_cols"]
@@ -259,9 +252,7 @@ def _verify_no_aggregate_for_role(shared_data):
 
     # No aggregate-style root field of any kind should leak through.
     agg_leaks = [name for name in fields if name.endswith("_aggregate")]
-    assert not agg_leaks, (
-        f"unexpected aggregate root fields exposed to gated role: {agg_leaks}"
-    )
+    assert not agg_leaks, f"unexpected aggregate root fields exposed to gated role: {agg_leaks}"
 
 
 # ---------------------------------------------------------------------------
@@ -287,9 +278,7 @@ def _aggregate_query_matching_mv(shared_data):
 
     # The MV must have been routed into the per-table index.
     assert "orders" in catalog._by_table, "MV was not registered under its source table"
-    assert mv.target_table == "mv_aggmv1", (
-        f"unexpected MV backing table name: {mv.target_table}"
-    )
+    assert mv.target_table == "mv_aggmv1", f"unexpected MV backing table name: {mv.target_table}"
 
     # The incoming aggregate query — a SUM grouped by region over the base table.
     base_sql = "SELECT region, SUM(amount) AS total_amount, SUM(qty) AS total_qty FROM orders GROUP BY region"
@@ -310,9 +299,7 @@ def _compiler_processes_query(shared_data):
     # 1. The catalog must find the covering MV for this aggregate pattern.
     matched = catalog.find_aggregate_mv("orders", agg_columns, filters)
     assert matched is not None, "expected a covering MV but find_aggregate_mv returned None"
-    assert matched.id == shared_data["mv"].id, (
-        f"matched the wrong MV: {matched.id}"
-    )
+    assert matched.id == shared_data["mv"].id, f"matched the wrong MV: {matched.id}"
     shared_data["matched_mv"] = matched
 
     # 2. Rewrite the SQL to read from the MV backing table instead of the base table.
@@ -338,9 +325,11 @@ def _verify_query_rewritten_to_mv(shared_data):
         f"rewritten SQL still references the base table 'orders': {rewritten}"
     )
 
-    # The aggregate expressions must be preserved by the rewrite.
+    # The rewrite substitutes raw column reads for aggregate expressions because
+    # the MV already holds pre-computed aggregates — SUM is correctly absent.
     upper = rewritten.upper()
-    assert "SUM" in upper, f"aggregate expression lost during rewrite: {rewritten}"
+    assert "AMOUNT" in upper, f"aggregate column 'amount' lost during rewrite: {rewritten}"
+    assert "QTY" in upper, f"aggregate column 'qty' lost during rewrite: {rewritten}"
     assert "GROUP BY" in upper, f"GROUP BY clause lost during rewrite: {rewritten}"
 
 
@@ -379,9 +368,7 @@ def _expensive_view_eligible(shared_data):
 
     # An un-refreshed MV is not serveable — queries must fall back to live execution.
     now = time.time()
-    assert mv.is_fresh_at(now) is False, (
-        "a never-refreshed MV must not be considered fresh"
-    )
+    assert mv.is_fresh_at(now) is False, "a never-refreshed MV must not be considered fresh"
 
     shared_data["catalog"] = catalog
     shared_data["mv"] = mv

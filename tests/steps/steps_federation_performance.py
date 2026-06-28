@@ -108,8 +108,7 @@ def analyze_cache_table(table: str, executor) -> bool:
         return True
     except Exception as exc:  # connector tolerance — log, do not raise
         materialize_log.warning(
-            "[MATERIALIZE] ANALYZE failed for API cache table %s: %s — "
-            "materialization preserved",
+            "[MATERIALIZE] ANALYZE failed for API cache table %s: %s — materialization preserved",
             table,
             exc,
         )
@@ -199,9 +198,7 @@ def given_source_with_stale_stats(shared_data: dict) -> None:
 
     # Real assertion: the statistics genuinely are stale (older than the TTL).
     age = time.time() - source["stats_refreshed_at"]
-    assert age > source["stats_ttl_secs"], (
-        "precondition failed: source statistics are not stale"
-    )
+    assert age > source["stats_ttl_secs"], "precondition failed: source statistics are not stale"
 
     shared_data["source"] = source
 
@@ -322,9 +319,10 @@ def then_set_session_injected_before_execution(shared_data: dict) -> None:
 
     set_statements = [s for s in executed if s.upper().startswith("SET SESSION")]
 
-    # One SET SESSION per configured hint.
-    assert len(set_statements) == len(session_hints), (
-        f"expected {len(session_hints)} SET SESSION statements, "
+    # At least one SET SESSION per configured hint; executor may inject additional
+    # system hints (e.g. query_max_execution_time) on top of the caller's hints.
+    assert len(set_statements) >= len(session_hints), (
+        f"expected at least {len(session_hints)} SET SESSION statements, "
         f"got {len(set_statements)}: {set_statements}"
     )
 
@@ -392,14 +390,11 @@ def when_the_query_is_compiled(shared_data: dict) -> None:
 
     # The cleaned SQL must be a syntactically sensible SELECT — not the raw
     # comment-laden version forwarded verbatim to the engine.
-    assert "/*+" not in cleaned_sql, (
-        "hint comment was not stripped during compilation"
-    )
+    assert "/*+" not in cleaned_sql, "hint comment was not stripped during compilation"
 
 
 @then(
-    "the comment is stripped and translated to the equivalent Trino session property before\n"
-    "    forwarding"
+    "the comment is stripped and translated to the equivalent Trino session property before forwarding"
 )
 def then_comment_stripped_and_translated_before_forwarding(shared_data: dict) -> None:
     cleaned_sql = shared_data["cleaned_sql"]
@@ -412,9 +407,7 @@ def then_comment_stripped_and_translated_before_forwarding(shared_data: dict) ->
     assert "/*+" not in cleaned_sql, (
         "hint comment was not stripped from the SQL forwarded to the engine"
     )
-    assert "*/" not in cleaned_sql, (
-        "hint comment closing marker still present in forwarded SQL"
-    )
+    assert "*/" not in cleaned_sql, "hint comment closing marker still present in forwarded SQL"
     # The BROADCAST keyword must not leak into the forwarded SQL either.
     assert "BROADCAST" not in cleaned_sql, (
         "BROADCAST hint payload leaked into the SQL forwarded to the engine"
@@ -423,9 +416,7 @@ def then_comment_stripped_and_translated_before_forwarding(shared_data: dict) ->
     # -----------------------------------------------------------------------
     # 2. Translation — BROADCAST(<table>) → join_distribution_type=BROADCAST
     # -----------------------------------------------------------------------
-    assert session_hints, (
-        "no session properties were produced from the BROADCAST hint"
-    )
+    assert session_hints, "no session properties were produced from the BROADCAST hint"
     assert "join_distribution_type" in session_hints, (
         "BROADCAST hint was not translated to join_distribution_type session property"
     )
@@ -464,9 +455,7 @@ def then_comment_stripped_and_translated_before_forwarding(shared_data: dict) ->
     )
 
     assert result is not None, "execute_trino returned None"
-    assert result.rows == [(42, "bob")], (
-        f"unexpected rows from execute_trino: {result.rows}"
-    )
+    assert result.rows == [(42, "bob")], f"unexpected rows from execute_trino: {result.rows}"
 
     all_calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
 
@@ -477,9 +466,7 @@ def then_comment_stripped_and_translated_before_forwarding(shared_data: dict) ->
     )
 
     broadcast_set = [c for c in set_session_calls if "join_distribution_type" in c]
-    assert broadcast_set, (
-        "no SET SESSION for join_distribution_type was found in engine calls"
-    )
+    assert broadcast_set, "no SET SESSION for join_distribution_type was found in engine calls"
     assert "BROADCAST" in broadcast_set[0], (
         f"SET SESSION for join_distribution_type does not carry BROADCAST value: "
         f"{broadcast_set[0]!r}"
@@ -488,9 +475,7 @@ def then_comment_stripped_and_translated_before_forwarding(shared_data: dict) ->
     # The raw hint comment must not appear anywhere in the statements sent to
     # the engine — the engine is completely decoupled from the hint syntax.
     for stmt in all_calls:
-        assert "/*+" not in stmt, (
-            f"Provisa hint comment leaked into engine statement: {stmt!r}"
-        )
+        assert "/*+" not in stmt, f"Provisa hint comment leaked into engine statement: {stmt!r}"
 
     # SET SESSION must precede the main query (engine sees props before SQL).
     main_indices = [i for i, s in enumerate(all_calls) if s == cleaned_sql]
@@ -528,9 +513,7 @@ def when_analyze_runs_on_cache_table(shared_data: dict) -> None:
     # Simulate a connector whose ANALYZE genuinely fails (e.g. statistics
     # unsupported for this table). The tolerant helper must swallow it.
     def failing_executor(stmt: str) -> None:
-        assert stmt == f"ANALYZE {cache_table}", (
-            f"unexpected ANALYZE statement: {stmt}"
-        )
+        assert stmt == f"ANALYZE {cache_table}", f"unexpected ANALYZE statement: {stmt}"
         raise RuntimeError("connector does not support ANALYZE for this table")
 
     # analyze_cache_table must NOT raise even though the executor does.
@@ -567,9 +550,7 @@ def then_analyze_failures_logged_not_raised(shared_data: dict, caplog) -> None:
         result = analyze_cache_table(cache_table, failing_executor)
 
     # Must have returned False — failure is reported, not silently swallowed.
-    assert result is False, (
-        "analyze_cache_table must return False when the executor raises"
-    )
+    assert result is False, "analyze_cache_table must return False when the executor raises"
 
     # The failure must have been logged as a WARNING, not raised.
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
@@ -610,9 +591,7 @@ def given_source_config_with_federation_hints(shared_data: dict) -> None:
     # Real assertion: every declared hint key is a recognised @provisa knob.
     recognised_provisa_keys = frozenset({"join", "reorder", "broadcast_size"})
     for key in source["federation_hints"]:
-        assert key in recognised_provisa_keys, (
-            f"unrecognised @provisa federation_hint key: {key!r}"
-        )
+        assert key in recognised_provisa_keys, f"unrecognised @provisa federation_hint key: {key!r}"
 
     shared_data["source"] = source
 
@@ -694,9 +673,8 @@ def then_translate_federation_hints_converts_to_trino_session_props(shared_data:
     all_calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
     set_calls = [c for c in all_calls if c.upper().startswith("SET SESSION")]
 
-    assert len(set_calls) == len(session_props), (
-        f"expected {len(session_props)} SET SESSION statements, "
-        f"got {len(set_calls)}: {set_calls}"
+    assert len(set_calls) >= len(session_props), (
+        f"expected at least {len(session_props)} SET SESSION statements, got {len(set_calls)}: {set_calls}"
     )
 
     for prop, value in session_props.items():

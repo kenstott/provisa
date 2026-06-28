@@ -31,10 +31,8 @@ failures from a slow or unavailable hook endpoint.
 from __future__ import annotations
 
 import asyncio
-import inspect
-import sys
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -43,7 +41,6 @@ from pytest_bdd import given, scenario, then, when
 from provisa.auth.approval_hook import (
     ApprovalHookConfig,
     ApprovalRequest,
-    CircuitBreaker,
     FallbackPolicy,
     GrpcApprovalHook,
     HookType,
@@ -79,16 +76,19 @@ def _call_should_check(
     table_approval_hooks: dict,
     source_approval_hooks: dict,
 ) -> bool:
-    """Invoke ``should_check`` adapting to its concrete arity.
+    """Invoke ``should_check`` with the correct arguments for its current signature.
 
-    The scoping helper may take the config plus the request and the per-table /
-    per-source hook maps. We introspect its signature so this step remains valid
-    regardless of the exact number of positional parameters.
+    ``should_check(table_ids, source_ids, config, *, table_hooks, source_hooks)``
     """
-    sig = inspect.signature(should_check)
-    candidates = [config, request, table_approval_hooks, source_approval_hooks]
-    n = len(sig.parameters)
-    result = should_check(*candidates[:n])
+    table_ids: list[str] = list(request.tables)
+    source_ids: list[str] = list(source_approval_hooks.keys())
+    result = should_check(
+        table_ids,
+        source_ids,
+        config,
+        table_hooks=table_approval_hooks,
+        source_hooks=source_approval_hooks,
+    )
     assert isinstance(result, bool)
     return result
 
@@ -98,22 +98,22 @@ def _call_should_check(
 # ---------------------------------------------------------------------------
 
 
-@scenario("req_203_abac_approval_hook.feature", "REQ-203 default behaviour")
+@scenario("../features/REQ-203.feature", "REQ-203 default behaviour")
 def test_req_203_default_behaviour():
     """REQ-203: approval hook called after RLS injection, before execution."""
 
 
-@scenario("req_204_abac_approval_hook.feature", "REQ-204 default behaviour")
+@scenario("../features/REQ-204.feature", "REQ-204 default behaviour")
 def test_req_204_default_behaviour():
     """REQ-204: approval hook skipped entirely for unscoped tables."""
 
 
-@scenario("req_555_abac_approval_hook.feature", "REQ-555 default behaviour")
+@scenario("../features/REQ-555.feature", "REQ-555 default behaviour")
 def test_req_555_default_behaviour():
     """REQ-555: single persistent grpc.aio channel reused across all calls."""
 
 
-@scenario("req_556_abac_approval_hook.feature", "REQ-556 default behaviour")
+@scenario("../features/REQ-556.feature", "REQ-556 default behaviour")
 def test_req_556_default_behaviour():
     """REQ-556: circuit breaker opens after threshold failures, then half-opens."""
 
@@ -196,9 +196,7 @@ def when_query_references_table(shared_data):
 
 
 @then(
-    "the approval hook is called after RLS injection and before "
-    "execution with the query context"
-)
+    "the approval hook is called after RLS injection and before execution with the query context")
 def then_hook_called_with_context(shared_data):
     order = shared_data["order"]
     captured = shared_data["captured"]
@@ -399,6 +397,8 @@ def given_grpc_approval_hook(shared_data):
 
 @when("multiple approval hook calls are made")
 def when_multiple_grpc_calls(shared_data):
+    import importlib
+
     hook = shared_data["hook"]
     request = shared_data["request"]
 
@@ -418,9 +418,21 @@ def when_multiple_grpc_calls(shared_data):
 
     modules, fake_channel, stub_ctor = _install_fake_grpc(channel_calls, fake_stub)
 
+    # Ensure the real grpc and proto modules are loaded so patch.object can reach them.
+    # _ensure_channel does `import grpc.aio` and `from provisa.auth import approval_pb2_grpc`
+    # which retrieve the already-cached module object — patch.dict(sys.modules) alone does
+    # not intercept that when the modules are already in the package namespace.
+    # Using patch.object on the real module attributes ensures consistent interception
+    # whether the modules were pre-loaded by prior tests or freshly imported here.
+    real_grpc_aio = importlib.import_module("grpc.aio")
+    real_pb2_grpc = importlib.import_module("provisa.auth.approval_pb2_grpc")
+
     responses = []
     n_calls = 5
-    with patch.dict(sys.modules, modules):
+    with (
+        patch.object(real_grpc_aio, "insecure_channel", new=modules["grpc.aio"].insecure_channel),
+        patch.object(real_pb2_grpc, "ApprovalServiceStub", new=stub_ctor),
+    ):
         for _ in range(n_calls):
             responses.append(asyncio.run(hook.evaluate(request)))
 
@@ -530,9 +542,7 @@ def when_threshold_reached(shared_data):
 
 
 @then(
-    "the circuit opens and enters half-open state after the configured "
-    "cooldown period"
-)
+    "the circuit opens and enters half-open state after the configured cooldown period")
 def then_circuit_opens_then_half_open(shared_data):
     hook = shared_data["hook"]
     request = shared_data["request"]

@@ -17,13 +17,12 @@ execution so that row-level security is enforced on all write operations.
 
 from __future__ import annotations
 
-import inspect
 import re
 
 import pytest
 
 from graphql import parse, validate
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, scenarios
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import compile_mutation, inject_rls_into_mutation
@@ -88,8 +87,7 @@ def _build_schema_and_ctx():
 def given_db_mutation(shared_data):
     si, schema, ctx = _build_schema_and_ctx()
     doc = parse(
-        'mutation { insertOrders(input: { amount: 42.0, region: "us-east" }) '
-        "{ affected_rows } }"
+        'mutation { insertOrders(input: { amount: 42.0, region: "us-east" }) { affected_rows } }'
     )
     # The mutation must validate against the generated schema for the registered table.
     errors = validate(schema, doc)
@@ -103,18 +101,13 @@ def given_db_mutation(shared_data):
 
 @when("the mutation is executed")
 def when_mutation_executed(shared_data):
-    results = compile_mutation(
-        shared_data["doc"], shared_data["ctx"], shared_data["source_types"]
-    )
+    results = compile_mutation(shared_data["doc"], shared_data["ctx"], shared_data["source_types"])
     assert results, "compile_mutation returned no compiled mutations"
     shared_data["results"] = results
     shared_data["compiled"] = results[0]
 
 
-@then(
-    "it bypasses Trino and registry approval but enforces write authority "
-    "on the target table"
-)
+@then("it bypasses Trino and registry approval but enforces write authority on the target table")
 def then_bypass_trino_enforce_write_authority(shared_data):
     results = shared_data["results"]
     compiled = shared_data["compiled"]
@@ -207,7 +200,9 @@ def _find_insert_field(schema):
         if "insert" in name.lower() and "order" in name.lower():
             insert_field = (name, field_def)
             break
-    assert insert_field is not None, f"no insert field found in mutation type; fields={list(fields)}"
+    assert insert_field is not None, (
+        f"no insert field found in mutation type; fields={list(fields)}"
+    )
     return insert_field
 
 
@@ -270,8 +265,7 @@ def when_mutation_input_type_generated(shared_data):
 
 
 @then(
-    "excluded columns are absent from the input type and references to them are rejected at\n"
-    "    parse time"
+    "excluded columns are absent from the input type and references to them are rejected at parse time"
 )
 def then_excluded_columns_absent_and_rejected(shared_data):
     """Verify that 'region' is absent from the input type and rejected by the validator."""
@@ -297,7 +291,7 @@ def then_excluded_columns_absent_and_rejected(shared_data):
     # 3. A mutation that references the excluded column must be rejected at parse/validate time.
     #    Build a GraphQL document that attempts to set the excluded 'region' column.
     excluded_mutation_src = (
-        f"mutation {{ {insert_field_name}(input: {{ amount: 10.0, {excluded_column}: \"eu-west\" }}) "
+        f'mutation {{ {insert_field_name}(input: {{ amount: 10.0, {excluded_column}: "eu-west" }}) '
         f"{{ affected_rows }} }}"
     )
     excluded_doc = parse(excluded_mutation_src)
@@ -313,15 +307,11 @@ def then_excluded_columns_absent_and_rejected(shared_data):
     error_messages = " ".join(str(e) for e in validation_errors)
     assert excluded_column in error_messages.lower() or any(
         excluded_column in str(e).lower() for e in validation_errors
-    ), (
-        f"Validation errors do not mention the excluded column '{excluded_column}': "
-        f"{error_messages}"
-    )
+    ), f"Validation errors do not mention the excluded column '{excluded_column}': {error_messages}"
 
     # 5. A mutation using only permitted columns must validate successfully.
     permitted_mutation_src = (
-        f"mutation {{ {insert_field_name}(input: {{ amount: 10.0 }}) "
-        f"{{ affected_rows }} }}"
+        f"mutation {{ {insert_field_name}(input: {{ amount: 10.0 }}) {{ affected_rows }} }}"
     )
     permitted_doc = parse(permitted_mutation_src)
     permitted_errors = validate(schema, permitted_doc)
@@ -383,7 +373,7 @@ def given_table_with_rls(shared_data):
     shared_data["ctx"] = ctx
     shared_data["source_types"] = {"sales-pg": "postgresql"}
     # Define RLS clauses that should be injected: restrict to a specific user
-    shared_data["rls_clauses"] = ['user_id = 42']
+    shared_data["rls_clauses"] = ["user_id = 42"]
 
 
 @when("an UPDATE or DELETE mutation is compiled")
@@ -420,8 +410,10 @@ def when_update_or_delete_compiled(shared_data):
     )
 
     # Apply RLS injection to both compiled mutations
-    update_with_rls = inject_rls_into_mutation(update_compiled, rls_clauses)
-    delete_with_rls = inject_rls_into_mutation(delete_compiled, rls_clauses)
+    # table_id=1 matches the table registered in _build_rls_schema_and_ctx.
+    rls_rules = {1: rls_clauses[0]}
+    update_with_rls = inject_rls_into_mutation(update_compiled, 1, rls_rules)
+    delete_with_rls = inject_rls_into_mutation(delete_compiled, 1, rls_rules)
 
     shared_data["update_compiled"] = update_compiled
     shared_data["delete_compiled"] = delete_compiled

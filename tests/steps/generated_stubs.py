@@ -4,9 +4,9 @@ import pytest
 from pytest_bdd import given, when, then
 
 # REQ-001
-@given("an authenticated identity with role "analyst"")
+@given("an authenticated identity with role \"analyst\"")
 def step_given_an_authenticated_identity_with_role_analyst():
-    pytest.skip("step not implemented: an authenticated identity with role "analyst"")
+    pytest.skip("step not implemented: an authenticated identity with role \"analyst\"")
 
 # REQ-001
 @when("a GraphQL query is submitted against a registered table")
@@ -1034,7 +1034,7 @@ def step_when_the_v2_converter_runs():
     pytest.skip("step not implemented: the v2 converter runs")
 
 # REQ-185
-@then("each column's visible_to is populated from the role's column list, with "*" meaning all columns")
+@then("each column's visible_to is populated from the role's column list, with \"*\" meaning all columns")
 def step_then_each_column_s_visible_to_is_populated_from_the_role_s_column():
     pytest.skip("step not implemented: each column's visible_to is populated from the role's column")
 
@@ -2209,9 +2209,9 @@ def step_then_create_table_if_not_exists_ddl_is_executed_with_system_colum():
     pytest.skip("step not implemented: CREATE TABLE IF NOT EXISTS DDL is executed with system colum")
 
 # REQ-334
-@given("an ingest column with path "resourceLogs.0.resource.attributes"")
+@given("an ingest column with path \"resourceLogs.0.resource.attributes\"")
 def step_given_an_ingest_column_with_path_resourcelogs_0_resource_attribute():
-    pytest.skip("step not implemented: an ingest column with path "resourceLogs.0.resource.attribut")
+    pytest.skip("step not implemented: an ingest column with path \"resourceLogs.0.resource.attribut")
 
 # REQ-334
 @when("a POST payload is received")
@@ -2294,7 +2294,7 @@ def step_when_new_items_are_published_after_the_last_seen_watermark():
     pytest.skip("step not implemented: new items are published after the last-seen watermark")
 
 # REQ-342
-@then("only those items are emitted as ChangeEvents with operation="insert"")
+@then("only those items are emitted as ChangeEvents with operation=\"insert\"")
 def step_then_only_those_items_are_emitted_as_changeevents_with_operation_():
     pytest.skip("step not implemented: only those items are emitted as ChangeEvents with operation=")
 
@@ -2649,7 +2649,7 @@ def step_when_the_backend_processes_the_request():
     pytest.skip("step not implemented: the backend processes the request")
 
 # REQ-407
-@then("the inline spec is parsed (YAML then JSON fallback) and path is stored as ":inline:"")
+@then("the inline spec is parsed (YAML then JSON fallback) and path is stored as \":inline:\"")
 def step_then_the_inline_spec_is_parsed_yaml_then_json_fallback_and_path_i():
     pytest.skip("step not implemented: the inline spec is parsed (YAML then JSON fallback) and path")
 
@@ -3504,9 +3504,9 @@ def step_given_a_gql_remote_source_with_a_query_type_field_that_behaves_as_():
     pytest.skip("step not implemented: a GQL remote source with a query-type field that behaves as ")
 
 # REQ-597
-@when("field_overrides maps that field to "mutation"")
+@when("field_overrides maps that field to \"mutation\"")
 def step_when_field_overrides_maps_that_field_to_mutation():
-    pytest.skip("step not implemented: field_overrides maps that field to "mutation"")
+    pytest.skip("step not implemented: field_overrides maps that field to \"mutation\"")
 
 # REQ-597
 @then("the field is registered as a tracked function and the override takes priority over structural classification")
@@ -3539,14 +3539,14 @@ def step_then_those_parameters_become_nf_prefixed_native_filter_columns_wi():
     pytest.skip("step not implemented: those parameters become _nf_-prefixed native filter columns ")
 
 # REQ-601
-@given("an OpenAPI spec with operationId "findPetsByStatus"")
+@given("an OpenAPI spec with operationId \"findPetsByStatus\"")
 def step_given_an_openapi_spec_with_operationid_findpetsbystatus():
-    pytest.skip("step not implemented: an OpenAPI spec with operationId "findPetsByStatus"")
+    pytest.skip("step not implemented: an OpenAPI spec with operationId \"findPetsByStatus\"")
 
 # REQ-601
-@then("the virtual table alias is "pet_by_status" used as the consumer-facing GraphQL name")
+@then("the virtual table alias is \"pet_by_status\" used as the consumer-facing GraphQL name")
 def step_then_the_virtual_table_alias_is_pet_by_status_used_as_the_consume():
-    pytest.skip("step not implemented: the virtual table alias is "pet_by_status" used as the consu")
+    pytest.skip("step not implemented: the virtual table alias is \"pet_by_status\" used as the consu")
 
 # REQ-602
 @given("remote schema tables (GraphQL remote, gRPC remote, OpenAPI) registered in Provisa")
@@ -3984,9 +3984,9 @@ def step_then_the_nodes_and_edges_are_transmitted_to_the_neo4j_http_transa():
     pytest.skip("step not implemented: the nodes and edges are transmitted to the Neo4j HTTP transa")
 
 # REQ-714
-@given("a node with tableLabel "User" and properties {name: "Alice", age: 30}")
+@given("a node with tableLabel \"User\" and properties {name: \"Alice\", age: 30}")
 def step_given_a_node_with_tablelabel_user_and_properties_name_alice_age_30():
-    pytest.skip("step not implemented: a node with tableLabel "User" and properties {name: "Alice",")
+    pytest.skip("step not implemented: a node with tableLabel \"User\" and properties {name: \"Alice\",")
 
 # REQ-714
 @when("the node is exported via POST /data/neo4j-export")
@@ -3994,14 +3994,14 @@ def step_when_the_node_is_exported_via_post_data_neo4j_export():
     pytest.skip("step not implemented: the node is exported via POST /data/neo4j-export")
 
 # REQ-714
-@then("Neo4j contains a node with label "User", property _provisa_id set, and properties SET via += operator")
+@then("Neo4j contains a node with label \"User\", property _provisa_id set, and properties SET via += operator")
 def step_then_neo4j_contains_a_node_with_label_user_property_provisa_id_se():
-    pytest.skip("step not implemented: Neo4j contains a node with label "User", property _provisa_i")
+    pytest.skip("step not implemented: Neo4j contains a node with label \"User\", property _provisa_i")
 
 # REQ-715
-@given("a node with properties {active: true, count: 42, name: "Test", nested: {key: "value"}}")
+@given("a node with properties {active: true, count: 42, name: \"Test\", nested: {key: \"value\"}}")
 def step_given_a_node_with_properties_active_true_count_42_name_test_nested():
-    pytest.skip("step not implemented: a node with properties {active: true, count: 42, name: "Test")
+    pytest.skip("step not implemented: a node with properties {active: true, count: 42, name: \"Test")
 
 # REQ-715
 @when("the node is exported")
@@ -4014,9 +4014,9 @@ def step_then_all_properties_are_set_in_neo4j_with_correct_cypher_literal_():
     pytest.skip("step not implemented: all properties are SET in Neo4j with correct Cypher literal ")
 
 # REQ-716
-@given("an edge with start: 101, end: 202, type: "CONNECTS_TO"")
+@given("an edge with start: 101, end: 202, type: \"CONNECTS_TO\"")
 def step_given_an_edge_with_start_101_end_202_type_connects_to():
-    pytest.skip("step not implemented: an edge with start: 101, end: 202, type: "CONNECTS_TO"")
+    pytest.skip("step not implemented: an edge with start: 101, end: 202, type: \"CONNECTS_TO\"")
 
 # REQ-716
 @when("the edge is exported")
@@ -4029,9 +4029,9 @@ def step_then_neo4j_contains_a_relationship_matching_a_label_provisa_id_10():
     pytest.skip("step not implemented: Neo4j contains a relationship matching (a:Label{_provisa_id:")
 
 # REQ-717
-@given("credentials username: "neo4j", password: "secret"")
+@given("credentials username: \"neo4j\", password: \"secret\"")
 def step_given_credentials_username_neo4j_password_secret():
-    pytest.skip("step not implemented: credentials username: "neo4j", password: "secret"")
+    pytest.skip("step not implemented: credentials username: \"neo4j\", password: \"secret\"")
 
 # REQ-717
 @when("POST /data/neo4j-export is called")
@@ -4039,9 +4039,9 @@ def step_when_post_data_neo4j_export_is_called():
     pytest.skip("step not implemented: POST /data/neo4j-export is called")
 
 # REQ-717
-@then("Authorization header contains "Basic " + base64("neo4j:secret")")
+@then("Authorization header contains \"Basic \" + base64(\"neo4j:secret\")")
 def step_then_authorization_header_contains_basic_base64_neo4j_secret():
-    pytest.skip("step not implemented: Authorization header contains "Basic " + base64("neo4j:secre")
+    pytest.skip("step not implemented: Authorization header contains \"Basic \" + base64(\"neo4j:secre")
 
 # REQ-719
 @given("an export with 10 nodes, where 1 node fails due to a Neo4j constraint violation")
@@ -4054,9 +4054,9 @@ def step_when_post_data_neo4j_export_completes():
     pytest.skip("step not implemented: POST /data/neo4j-export completes")
 
 # REQ-719
-@then("the response contains imported: 9, errors: ["constraint violation message"]")
+@then("the response contains imported: 9, errors: [\"constraint violation message\"]")
 def step_then_the_response_contains_imported_9_errors_constraint_violation():
-    pytest.skip("step not implemented: the response contains imported: 9, errors: ["constraint viol")
+    pytest.skip("step not implemented: the response contains imported: 9, errors: [\"constraint viol")
 
 # REQ-720
 @given("a graph with 500 nodes and 300 edges")
@@ -4129,9 +4129,9 @@ def step_given_a_user_creates_a_new_source():
     pytest.skip("step not implemented: a user creates a new source")
 
 # REQ-726
-@when("they select type "sharepoint"")
+@when("they select type \"sharepoint\"")
 def step_when_they_select_type_sharepoint():
-    pytest.skip("step not implemented: they select type "sharepoint"")
+    pytest.skip("step not implemented: they select type \"sharepoint\"")
 
 # REQ-726
 @then("the source is created and can be queried via Trino using the sharepoint connector")
@@ -4164,9 +4164,9 @@ def step_then_provisa_sends_certificate_path_and_certificate_password_inst():
     pytest.skip("step not implemented: Provisa sends certificate-path and certificate-password inst")
 
 # REQ-728
-@given("a SharePoint source with base_url="https://kenstott.sharepoint.com",")
+@given("a SharePoint source with base_url=\"https://kenstott.sharepoint.com\",")
 def step_given_a_sharepoint_source_with_base_url_https_kenstott_sharepoint_():
-    pytest.skip("step not implemented: a SharePoint source with base_url="https://kenstott.sharepoi")
+    pytest.skip("step not implemented: a SharePoint source with base_url=\"https://kenstott.sharepoi")
 
 # REQ-728
 @when("catalog properties are built")
@@ -4194,9 +4194,9 @@ def step_when_a_user_navigates_to_add_a_table_and_selects_this_source():
     pytest.skip("step not implemented: a user navigates to add a table and selects this source")
 
 # REQ-731
-@then("available SharePoint lists (e.g., "calendar", "events") appear in the table dropdown")
+@then("available SharePoint lists (e.g., \"calendar\", \"events\") appear in the table dropdown")
 def step_then_available_sharepoint_lists_e_g_calendar_events_appear_in_the():
-    pytest.skip("step not implemented: available SharePoint lists (e.g., "calendar", "events") appe")
+    pytest.skip("step not implemented: available SharePoint lists (e.g., \"calendar\", \"events\") appe")
 
 # REQ-732
 @given("the Calcite sharepoint connector does not expose information_schema.columns")
@@ -4504,9 +4504,9 @@ def step_given_a_cypher_query_match_n_person_return_n_name_age():
     pytest.skip("step not implemented: a Cypher query MATCH (n:Person) RETURN n { .name, .age }")
 
 # REQ-757
-@then("it emits MAP(ARRAY['name','age'], ARRAY[n."name",n."age"])")
+@then("it emits MAP(ARRAY['name','age'], ARRAY[n.\"name\",n.\"age\"])")
 def step_then_it_emits_map_array_name_age_array_n_name_n_age():
-    pytest.skip("step not implemented: it emits MAP(ARRAY['name','age'], ARRAY[n."name",n."age"])")
+    pytest.skip("step not implemented: it emits MAP(ARRAY['name','age'], ARRAY[n.\"name\",n.\"age\"])")
 
 # REQ-758
 @given("a Cypher query MATCH (a:Person)-[]-(b:Company) where forward and backward relationships exist")
@@ -4584,9 +4584,9 @@ def step_given_a_cypher_query_match_p_return_p_works_at_c_company_c_name():
     pytest.skip("step not implemented: a Cypher query MATCH (p) RETURN [(p)-[:WORKS_AT]->(c:Company")
 
 # REQ-765
-@then("it emits ARRAY(SELECT c."name" FROM ... WHERE ...)")
+@then("it emits ARRAY(SELECT c.\"name\" FROM ... WHERE ...)")
 def step_then_it_emits_array_select_c_name_from_where():
-    pytest.skip("step not implemented: it emits ARRAY(SELECT c."name" FROM ... WHERE ...)")
+    pytest.skip("step not implemented: it emits ARRAY(SELECT c.\"name\" FROM ... WHERE ...)")
 
 # REQ-766
 @given("a Cypher query MATCH p = (...) RETURN length(p)")
@@ -4829,9 +4829,9 @@ def step_and_returns_all_discovered_edges_merged_with_the_input_nodes_in_():
     pytest.skip("step not implemented: returns all discovered edges merged with the input nodes in ")
 
 # REQ-786
-@given("a request with nodes: [{label: "Meta", id: 10}, {label: "Meta", id: 11}, ...]")
+@given("a request with nodes: [{label: \"Meta\", id: 10}, {label: \"Meta\", id: 11}, ...]")
 def step_given_a_request_with_nodes_label_meta_id_10_label_meta_id_11():
-    pytest.skip("step not implemented: a request with nodes: [{label: "Meta", id: 10}, {label: "Met")
+    pytest.skip("step not implemented: a request with nodes: [{label: \"Meta\", id: 10}, {label: \"Met")
 
 # REQ-786
 @when("the endpoint fetches rows from node_ids WHERE id = ANY([10, 11, ...])")
@@ -4839,9 +4839,9 @@ def step_when_the_endpoint_fetches_rows_from_node_ids_where_id_any_10_11():
     pytest.skip("step not implemented: the endpoint fetches rows from node_ids WHERE id = ANY([10, ")
 
 # REQ-786
-@then("it extracts the raw PK from composite_id ("label|pk_value")")
+@then("it extracts the raw PK from composite_id (\"label|pk_value\")")
 def step_then_it_extracts_the_raw_pk_from_composite_id_label_pk_value():
-    pytest.skip("step not implemented: it extracts the raw PK from composite_id ("label|pk_value")")
+    pytest.skip("step not implemented: it extracts the raw PK from composite_id (\"label|pk_value\")")
 
 # REQ-786
 @then("uses the raw PK values in the WHERE clause for relationship queries")
@@ -4874,9 +4874,9 @@ def step_and_the_table_schema_is_extracted_from_csv_headers():
     pytest.skip("step not implemented: the table schema is extracted from CSV headers")
 
 # REQ-789
-@given("a CSV file with camelCase headers (e.g., "companyName", "customerId")")
+@given("a CSV file with camelCase headers (e.g., \"companyName\", \"customerId\")")
 def step_given_a_csv_file_with_camelcase_headers_e_g_companyname_customerid():
-    pytest.skip("step not implemented: a CSV file with camelCase headers (e.g., "companyName", "cus")
+    pytest.skip("step not implemented: a CSV file with camelCase headers (e.g., \"companyName\", \"cus")
 
 # REQ-789
 @when("the file is introspected by the file connector")
@@ -4884,9 +4884,9 @@ def step_when_the_file_is_introspected_by_the_file_connector():
     pytest.skip("step not implemented: the file is introspected by the file connector")
 
 # REQ-789
-@then("headers are automatically converted to snake_case (e.g., "company_name", "customer_id")")
+@then("headers are automatically converted to snake_case (e.g., \"company_name\", \"customer_id\")")
 def step_then_headers_are_automatically_converted_to_snake_case_e_g_compan():
-    pytest.skip("step not implemented: headers are automatically converted to snake_case (e.g., "co")
+    pytest.skip("step not implemented: headers are automatically converted to snake_case (e.g., \"co")
 
 # REQ-789
 @then("GraphQL field names reflect the snake_case conversion")
@@ -4899,9 +4899,9 @@ def step_given_the_sources_tables_ui_with_a_registered_file_connector_sourc():
     pytest.skip("step not implemented: the Sources & Tables UI with a registered file connector sou")
 
 # REQ-790
-@when("a user clicks "Add Table" and selects the file source")
+@when("a user clicks \"Add Table\" and selects the file source")
 def step_when_a_user_clicks_add_table_and_selects_the_file_source():
-    pytest.skip("step not implemented: a user clicks "Add Table" and selects the file source")
+    pytest.skip("step not implemented: a user clicks \"Add Table\" and selects the file source")
 
 # REQ-790
 @then("the schema dropdown is populated with discovered schemas")
@@ -4954,9 +4954,9 @@ def step_and_the_response_includes_relationship_types_array_with_source_t():
     pytest.skip("step not implemented: the response includes relationship_types array with source/t")
 
 # REQ-793
-@given("a parameterless Cypher query like "MATCH (n:Domain:Table) RETURN n"")
+@given("a parameterless Cypher query like \"MATCH (n:Domain:Table) RETURN n\"")
 def step_given_a_parameterless_cypher_query_like_match_n_domain_table_retur():
-    pytest.skip("step not implemented: a parameterless Cypher query like "MATCH (n:Domain:Table) RE")
+    pytest.skip("step not implemented: a parameterless Cypher query like \"MATCH (n:Domain:Table) RE")
 
 # REQ-793
 @when("POST /data/cypher is called with the query")

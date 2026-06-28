@@ -3,16 +3,11 @@
 #
 # This source code is licensed under the Business Source License 1.1
 
-import os
 import json
 
 import pytest
-import pytest_asyncio
 import httpx
-from pytest_bdd import given, when, then, scenarios, parsers
-
-from provisa.sources.gql import GQLRemoteSource, GQLSourceConfig
-from provisa.sources.counts import graph_counts
+from pytest_bdd import given, when, then, scenarios
 
 
 scenarios("../features/REQ-673.feature")
@@ -44,6 +39,8 @@ class _StubGraphQLTransport(httpx.AsyncBaseTransport):
 
 @given("a GQL remote source with count_query configured and a cold Trino cache")
 def gql_source_with_count_query(shared_data):
+    from provisa.sources.gql import GQLRemoteSource, GQLSourceConfig
+
     transport = _StubGraphQLTransport(count_value=4242)
     client = httpx.AsyncClient(
         transport=transport,
@@ -70,21 +67,24 @@ def gql_source_with_count_query(shared_data):
 
 
 @when("the graph-counts endpoint is called")
-@pytest.mark.asyncio
-async def call_graph_counts(shared_data):
+def call_graph_counts(shared_data):
+    import asyncio
+    from provisa.sources.counts import graph_counts
+
     source = shared_data["source"]
-    result = await graph_counts(
-        source=source,
-        cache_warm=shared_data["cache_warm"],
-    )
-    shared_data["result"] = result
-    await shared_data["client"].aclose()
+
+    async def _run():
+        result = await graph_counts(
+            source=source,
+            cache_warm=shared_data["cache_warm"],
+        )
+        shared_data["result"] = result
+        await shared_data["client"].aclose()
+
+    asyncio.run(_run())
 
 
-@then(
-    "the remote GraphQL API is queried to return node counts "
-    "instead of returning no count"
-)
+@then("the remote GraphQL API is queried to return node counts instead of returning no count")
 def assert_remote_queried(shared_data):
     transport = shared_data["transport"]
     result = shared_data["result"]

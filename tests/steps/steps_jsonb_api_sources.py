@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 import pytest_asyncio
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, scenarios
 
 from provisa.api_source.promotions import (
     apply_promotions,
@@ -65,7 +65,10 @@ def jsonb_column_with_nested_fields(shared_data):
 
 
 @when("a steward promotes a nested field via dot-path")
-async def steward_promotes_nested_field(shared_data, recording_conn):
+def steward_promotes_nested_field(shared_data):
+    import asyncio as _asyncio
+
+    conn = _RecordingConn()
     promotions = [
         PromotionConfig(
             jsonb_column=shared_data["jsonb_column"],
@@ -87,16 +90,16 @@ async def steward_promotes_nested_field(shared_data, recording_conn):
     shared_data["ddl"] = ddl
 
     # Apply the promotions against the recording connection.
-    count = await apply_promotions(
-        recording_conn, shared_data["table_name"], promotions
-    )
+    async def _run():
+        return await apply_promotions(conn, shared_data["table_name"], promotions)
+
+    count = _asyncio.run(_run())
     shared_data["applied_count"] = count
-    shared_data["executed_ddl"] = recording_conn.executed
+    shared_data["executed_ddl"] = conn.executed
 
 
 @then(
-    "a PostgreSQL generated column is created that is filterable, indexable, and\n"
-    "    relationship-eligible"
+    "a PostgreSQL generated column is created that is filterable, indexable, and relationship-eligible"
 )
 def generated_column_created(shared_data):
     ddl = shared_data["ddl"]

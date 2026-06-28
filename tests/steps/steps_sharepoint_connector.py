@@ -5,18 +5,15 @@
 
 """pytest-bdd step definitions for REQ-726, REQ-727, and REQ-728 — SharePoint Connector."""
 
-import os
-
 import pytest
-import pytest_asyncio
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from provisa.core.catalog import _build_catalog_properties
 from provisa.core.models import SOURCE_TO_CONNECTOR, Source, SourceType
 
-scenarios("../features/req_726.feature")
-scenarios("../features/req_727.feature")
-scenarios("../features/req_728.feature")
+scenarios("../features/REQ-726.feature")
+scenarios("../features/REQ-727.feature")
+scenarios("../features/REQ-728.feature")
 
 
 @pytest.fixture
@@ -60,8 +57,7 @@ def a_sharepoint_source_with_auth_type_client_credentials(shared_data):
 
 @given(
     parsers.parse(
-        'a SharePoint source with base_url="{base_url}",\n'
-        'username="{username}", password="{password}", database="{database}"'
+        'a SharePoint source with base_url="{base_url}", username="{username}", password="{password}", database="{database}"'
     )
 )
 def a_sharepoint_source_req728(shared_data, base_url, username, password, database):
@@ -158,9 +154,7 @@ def the_source_is_created_and_can_be_queried_via_trino(shared_data):
     )
 
     connector_name = SOURCE_TO_CONNECTOR["sharepoint"]
-    assert connector_name, (
-        "Connector name for 'sharepoint' is empty in SOURCE_TO_CONNECTOR."
-    )
+    assert connector_name, "Connector name for 'sharepoint' is empty in SOURCE_TO_CONNECTOR."
     assert connector_name == "sharepoint", (
         f"Expected Trino connector 'sharepoint', got '{connector_name}'."
     )

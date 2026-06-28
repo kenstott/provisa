@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: {canary}
+# Canary: c7e41a92-5d3b-48f1-9a26-4f1d8e7b0c63
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -43,12 +43,14 @@ def register_kafka_topic(shared_data):
         KafkaColumn(name="region", data_type="varchar", is_complex=False),
     ]
     topic = KafkaTopicConfig(
-        topic_name="orders",
+        id="topic-001",
+        topic="orders",
+        source_id="src-001",
         table_name="orders",
         columns=columns,
     )
     source = KafkaSourceConfig(
-        name="support_kafka",
+        id="src-001",
         bootstrap_servers="localhost:9092",
         topics=[topic],
     )
@@ -59,9 +61,9 @@ def register_kafka_topic(shared_data):
     shared_data["topic"] = topic
     shared_data["columns"] = columns
 
-    assert source.name == "support_kafka"
+    assert source.id == "src-001"
     assert len(source.topics) == 1
-    assert source.topics[0].topic_name == "orders"
+    assert source.topics[0].topic == "orders"
     assert len(source.topics[0].columns) == 4
 
 
@@ -69,7 +71,13 @@ def register_kafka_topic(shared_data):
 def query_topic(shared_data):
     """Resolve the topic into Trino catalog properties (the routing path)."""
     source = shared_data["source"]
-    props = generate_trino_kafka_properties(source)
+    props_str = generate_trino_kafka_properties(source)
+    # Parse key=value lines into a dict for assertions.
+    props = {}
+    for line in props_str.splitlines():
+        if "=" in line:
+            k, _, v = line.partition("=")
+            props[k.strip()] = v.strip()
     shared_data["trino_properties"] = props
 
     # Real assertion: query resolution produced a Trino Kafka catalog.
@@ -120,6 +128,7 @@ def assert_routed_through_trino(shared_data):
 # REQ-149 — Discriminator filter for multi-type topics
 # ---------------------------------------------------------------------------
 
+
 def _discriminator_of(topic: KafkaTopicConfig) -> tuple[str | None, object]:
     """Resolve the (field, value) discriminator pair for a topic config.
 
@@ -132,13 +141,11 @@ def _discriminator_of(topic: KafkaTopicConfig) -> tuple[str | None, object]:
 
 
 @given(
-    "multiple table configs registered against the same Kafka topic with "
-    "different discriminator values"
-)
+    "multiple table configs registered against the same Kafka topic with different discriminator values")
 def register_multi_type_topic(shared_data):
     """Register two logical tables backed by one physical topic.
 
-    Each table is filtered by the same discriminator field (``event_type``)
+    Each table is filtered by the same discriminator field (`event_type`)
     but a distinct value.
     """
     physical_topic = "events"
@@ -153,32 +160,25 @@ def register_multi_type_topic(shared_data):
     # back to a side-channel discriminator map if the field isn't accepted.
     discriminators = {"orders": "order", "payments": "payment"}
     topics: list[KafkaTopicConfig] = []
-    for table_name, disc_value in discriminators.items():
-        try:
-            topic = KafkaTopicConfig(
-                topic_name=physical_topic,
-                table_name=table_name,
-                columns=list(shared_columns),
-                discriminator_field="event_type",
-                discriminator_value=disc_value,
-            )
-        except TypeError:
-            topic = KafkaTopicConfig(
-                topic_name=physical_topic,
-                table_name=table_name,
-                columns=list(shared_columns),
-            )
+    for idx, (table_name, disc_value) in enumerate(discriminators.items()):
+        topic = KafkaTopicConfig(
+            id=f"topic-{idx:03d}",
+            topic=physical_topic,
+            source_id="src-002",
+            table_name=table_name,
+            columns=list(shared_columns),
+        )
         topics.append(topic)
 
     source = KafkaSourceConfig(
-        name="support_kafka",
+        id="src-002",
         bootstrap_servers="localhost:9092",
         topics=topics,
     )
 
     # All logical tables must map to the *same* physical topic.
-    assert len({t.topic_name for t in source.topics}) == 1
-    assert all(t.topic_name == physical_topic for t in source.topics)
+    assert len({t.topic for t in source.topics}) == 1
+    assert all(t.topic == physical_topic for t in source.topics)
     assert {t.table_name for t in source.topics} == {"orders", "payments"}
 
     # Sample messages that physically coexist on the single topic.
@@ -223,9 +223,7 @@ def query_each_table(shared_data):
     assert all(isinstance(rows, list) for rows in results.values())
 
 
-@then(
-    "only messages matching that table's discriminator field/value are returned"
-)
+@then("only messages matching that table's discriminator field/value are returned")
 def assert_discriminator_filter(shared_data):
     """Verify each logical table returns only its discriminator's messages."""
     results = shared_data["results"]

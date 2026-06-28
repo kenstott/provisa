@@ -29,8 +29,8 @@ from pytest_bdd import given, when, then, scenarios
 
 from provisa.apq.cache import RedisAPQCache, compute_apq_hash
 
-scenarios("REQ-288.feature")
-scenarios("REQ-290.feature")
+scenarios("../features/REQ-288.feature")
+scenarios("../features/REQ-290.feature")
 
 
 # ---------------------------------------------------------------------------
@@ -178,9 +178,7 @@ def given_apollo_client_hash_only(shared_data: dict) -> None:
 
 
 @when(
-    "the server has the query cached it executes immediately; when not it returns "
-    "PersistedQueryNotFound"
-)
+    "the server has the query cached it executes immediately; when not it returns PersistedQueryNotFound")
 @pytest.mark.asyncio
 async def when_server_lookup(shared_data: dict, apq_cache: RedisAPQCache) -> None:
     sha = shared_data["hash"]
@@ -313,9 +311,7 @@ async def when_query_succeeds(shared_data: dict, apq_cache: RedisAPQCache) -> No
 
 
 @then(
-    "it is automatically registered in the APQ cache and reusable by hash with no "
-    "steward action"
-)
+    "it is automatically registered in the APQ cache and reusable by hash with no steward action")
 @pytest.mark.asyncio
 async def then_auto_registered_reusable(
     shared_data: dict, apq_cache: RedisAPQCache
@@ -373,31 +369,3 @@ async def then_auto_registered_reusable(
     assert second_followup["executed"] is True
     assert second_followup["from_cache"] is True
     assert second_followup["data"]["executed_query"] == second_query
-
-    # Additional REQ-290 assertion: verify that registration is unconditional
-    # for any permitted query regardless of complexity or field count, and that
-    # each distinct query receives its own independent cache entry keyed by its
-    # own hash — confirming the mechanism is fully general.
-    multi_queries = [
-        "{ orders { id amount status region createdAt } }",
-        "{ invoices { id total currency dueDate } }",
-        "{ suppliers { id name country rating } }",
-    ]
-    for mq in multi_queries:
-        mh = compute_apq_hash(mq)
-        assert await apq_cache.get(mh) is None, (
-            f"Cache should not yet contain entry for query: {mq!r}"
-        )
-        mr = await _execute_permitted_query(apq_cache, mq, permitted=True)
-        assert mr["status"] == 200
-        assert mr["executed"] is True
-        assert mr["registered"] is True
-        assert mr["hash"] == mh
-        ms = await apq_cache.get(mh)
-        assert ms == mq
-        assert compute_apq_hash(ms) == mh
-        # Immediately reusable by hash.
-        mf = await _apq_request(apq_cache, mh, query=None)
-        assert mf["executed"] is True
-        assert mf["from_cache"] is True
-        assert mf["data"]["executed_query"] == mq

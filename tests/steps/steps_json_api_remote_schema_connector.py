@@ -136,9 +136,7 @@ def _native_filter_field(column_def: dict) -> str:
         # Honour an explicit filter_param override if provided; otherwise derive
         # the remote field name by stripping the ``_nf_`` prefix convention.
         return column_def.get("filter_param") or name.lstrip("_nf_")
-    raise ValueError(
-        f"Column {name!r} does not have native_filter_type='query_param'"
-    )
+    raise ValueError(f"Column {name!r} does not have native_filter_type='query_param'")
 
 
 def _build_filter_params(column_def: dict, *, value: str) -> dict[str, str]:
@@ -183,9 +181,7 @@ def _make_paginated_source(
     JSON:API page document containing a ``data`` slice and ``links.next`` /
     ``links.prev`` cursors, and ``stats["requests"]`` records the URLs fetched.
     """
-    all_rows = [
-        {"type": "things", "id": str(i), "attributes": {"n": i}} for i in range(total)
-    ]
+    all_rows = [{"type": "things", "id": str(i), "attributes": {"n": i}} for i in range(total)]
     stats: dict = {"requests": []}
 
     def _page_url(offset: int) -> str:
@@ -304,17 +300,13 @@ def when_compiler_processes_join_query(shared_data: dict) -> None:
                 "type": "articles",
                 "id": "1",
                 "attributes": {"title": "First"},
-                "relationships": {
-                    "author": {"data": {"type": "people", "id": "9"}}
-                },
+                "relationships": {"author": {"data": {"type": "people", "id": "9"}}},
             },
             {
                 "type": "articles",
                 "id": "2",
                 "attributes": {"title": "Second"},
-                "relationships": {
-                    "author": {"data": {"type": "people", "id": "9"}}
-                },
+                "relationships": {"author": {"data": {"type": "people", "id": "9"}}},
             },
         ],
         "included": [
@@ -326,8 +318,7 @@ def when_compiler_processes_join_query(shared_data: dict) -> None:
 
 
 @then(
-    "the corresponding include list is injected into the remote request to "
-    "expand the traversal in a single call"
+    "the corresponding include list is injected into the remote request to expand the traversal in a single call"
 )
 def then_include_injected_single_call(shared_data: dict) -> None:
     url = shared_data["compiled_url"]
@@ -337,8 +328,7 @@ def then_include_injected_single_call(shared_data: dict) -> None:
     # The include parameter must be present and contain the JOIN's relationship.
     assert "include=" in url, f"expected ?include= in compiled URL, got {url!r}"
     assert relationship_field in includes, (
-        f"include list {includes!r} must contain relationship "
-        f"{relationship_field!r}"
+        f"include list {includes!r} must contain relationship {relationship_field!r}"
     )
     assert includes == shared_data["include_list"], (
         f"injected include list {includes!r} must equal compiler-derived "
@@ -420,8 +410,7 @@ def when_compiler_generates_remote_request(shared_data: dict) -> None:
 
 
 @then(
-    "sparse fieldset parameters are injected to reduce the upstream payload to only "
-    "requested columns"
+    "sparse fieldset parameters are injected to reduce the upstream payload to only requested columns"
 )
 def then_sparse_fields_injected(shared_data: dict) -> None:
     url = shared_data["compiled_url"]
@@ -430,7 +419,11 @@ def then_sparse_fields_injected(shared_data: dict) -> None:
     sparse_fields = shared_data["sparse_fields"]
 
     # The sparse fieldset parameter must be present in the upstream request.
-    assert f"fields[{resource_type}]" in url, (
+    # URLs may be percent-encoded; decode before matching.
+    from urllib.parse import unquote as _unquote
+
+    decoded_url = _unquote(url)
+    assert f"fields[{resource_type}]" in decoded_url, (
         f"expected ?fields[{resource_type}]= in compiled URL, got {url!r}"
     )
 
@@ -554,15 +547,10 @@ def when_results_span_multiple_pages(shared_data: dict) -> None:
     # The compiler must have issued more than one sequential request, proving it
     # followed pagination links rather than relying on a single response.
     requests = shared_data["stats"]["requests"]
-    assert len(requests) >= 2, (
-        f"expected multiple sequential page requests, got {requests!r}"
-    )
+    assert len(requests) >= 2, f"expected multiple sequential page requests, got {requests!r}"
 
 
-@then(
-    "the compiler follows links.next to fetch all pages and materializes a "
-    "complete result set"
-)
+@then("the compiler follows links.next to fetch all pages and materializes a complete result set")
 def then_links_next_materializes_complete_result(shared_data: dict) -> None:
     materialized = shared_data["materialized"]
     all_rows = shared_data["all_rows"]
@@ -578,8 +566,7 @@ def then_links_next_materializes_complete_result(shared_data: dict) -> None:
         f"expected slice {[r['id'] for r in expected]!r}"
     )
     assert len(materialized) == limit, (
-        f"materialized result must contain exactly LIMIT={limit} rows, "
-        f"got {len(materialized)}"
+        f"materialized result must contain exactly LIMIT={limit} rows, got {len(materialized)}"
     )
 
     # Verify links.next was actually followed: the second request URL must be the
@@ -673,9 +660,7 @@ def given_native_filter_column(shared_data: dict) -> None:
     shared_data["filter_value"] = filter_value
 
     # Verify the column definition conforms to the native-filter contract.
-    assert column_def["name"].startswith("_nf_"), (
-        "native-filter columns must carry the _nf_ prefix"
-    )
+    assert column_def["name"].startswith("_nf_"), "native-filter columns must carry the _nf_ prefix"
     assert column_def.get("native_filter_type") == "query_param", (
         "column must declare native_filter_type='query_param'"
     )
@@ -692,3 +677,6 @@ def given_native_filter_column(shared_data: dict) -> None:
         {
             "id": "2",
             "type": "articles",
+            "attributes": {"title": "Beta", "status": "draft"},
+        },
+    ]

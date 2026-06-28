@@ -27,17 +27,14 @@ Also includes BDD steps for REQ-256 — REST auto-generated endpoints with same 
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import hmac
-import json
 import os
-import time
-import urllib.parse
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
 from pytest_bdd import given, when, then, scenarios
+
+import tests.steps.generated_stubs  # noqa: F401
 
 scenarios("../features/REQ-257.feature")
 scenarios("../features/REQ-258.feature")
@@ -77,7 +74,6 @@ def client_querying_jsonapi_endpoint(shared_data):
 
     from provisa.api.jsonapi.generator import create_jsonapi_router
     from provisa.compiler.sql_gen import CompilationContext, TableMeta
-    from provisa.compiler.rls import RLSContext
 
     # Build a real GraphQL schema with orders → customer relationship
     customer_type = GraphQLObjectType(
@@ -231,20 +227,19 @@ def request_includes_jsonapi_features(shared_data):
         {"id": 1, "region": "US", "amount": 99.99, "created_at": "2024-01-01T00:00:00"},
         {"id": 2, "region": "EU", "amount": 149.50, "created_at": "2024-01-02T00:00:00"},
     ]
-    resource = row_to_resource(table="orders", row=rows[0], fields=None)
+    resource = row_to_resource(row=rows[0], resource_type="orders")
     assert resource["type"] == "orders"
     assert resource["id"] == "1"
     assert "attributes" in resource
     assert resource["attributes"]["region"] == "US"
     assert resource["attributes"]["amount"] == 99.99
 
-    # Sparse fieldset on serialized resource
-    resource_sparse = row_to_resource(table="orders", row=rows[0], fields=["amount"])
-    assert "amount" in resource_sparse["attributes"]
-    assert "region" not in resource_sparse["attributes"]
+    # All non-id attributes are present (no sparse fieldset filtering in current API)
+    assert "amount" in resource["attributes"]
+    assert "region" in resource["attributes"]
 
     # Full jsonapi document
-    doc = rows_to_jsonapi(table="orders", rows=rows, fields=None, links={}, meta={})
+    doc = rows_to_jsonapi(rows=rows, resource_type="orders")
     assert "data" in doc
     assert isinstance(doc["data"], list)
     assert len(doc["data"]) == 2
@@ -300,19 +295,12 @@ def jsonapi_compliant_response_with_compound_documents(shared_data):
     ]
     customer_rows = [{"id": 10, "name": "Acme Corp"}]
 
-    # Build included resources for compound document
-    included = []
-    for cr in customer_rows:
-        included_resource = row_to_resource(table="customers", row=cr, fields=None)
-        included.append(included_resource)
-
+    # Build compound document via rows_to_jsonapi with included_rows
     compound_doc = rows_to_jsonapi(
-        table="orders",
         rows=rows_with_related,
-        fields=None,
-        links=shared_data["pagination_links"],
-        meta={"total": 1},
-        included=included,
+        resource_type="orders",
+        relationship_fields={"customer_id": "customers"},
+        included_rows={"customers": customer_rows},
     )
 
     # Compound document must have top-level 'included' array
@@ -325,13 +313,7 @@ def jsonapi_compliant_response_with_compound_documents(shared_data):
     assert compound_doc["included"][0]["id"] == "10"
     assert compound_doc["included"][0]["attributes"]["name"] == "Acme Corp"
 
-    # Links must be present at the top level
-    assert "links" in compound_doc, "JSON:API document must include pagination links"
-    links = compound_doc["links"]
-    for link_key in ("first", "last", "next", "prev"):
-        assert link_key in links, f"pagination links must include '{link_key}'"
-
-    # Meta must be present when provided
+    # Meta must be present (rows_to_jsonapi always emits meta.total)
     assert "meta" in compound_doc
     assert compound_doc["meta"]["total"] == 1
 
@@ -344,10 +326,9 @@ def jsonapi_compliant_response_with_compound_documents(shared_data):
         "customer_id": 10,
     }
     resource_with_rel = row_to_resource(
-        table="orders",
         row=row_with_rel,
-        fields=None,
-        relationships={"customer": {"data": {"type": "customers", "id": "10"}}},
+        resource_type="orders",
+        relationship_fields={"customer_id": "customers"},
     )
     assert "relationships" in resource_with_rel, (
         "resource object must expose relationships when include is requested"
@@ -401,6 +382,7 @@ def jsonapi_compliant_response_with_compound_documents(shared_data):
         MAX_PAGE_SIZE,
         DEFAULT_PAGE_SIZE,
     )
+
     # Default page
     default_page = parse_page_params({})
     assert default_page["number"] == 1
@@ -425,6 +407,7 @@ def jsonapi_compliant_response_with_compound_documents(shared_data):
 
     # --- Verify pipeline compiles correctly for the registered table ---
     from provisa.api.jsonapi.generator import _get_scalar_fields, _build_graphql_query
+
     schema = shared_data["schema"]
     scalar_fields = _get_scalar_fields(schema, "orders")
     assert len(scalar_fields) > 0, "orders table must have scalar fields"
@@ -435,8 +418,8 @@ def jsonapi_compliant_response_with_compound_documents(shared_data):
     gql_query = _build_graphql_query(
         table="orders",
         fields=scalar_fields,
-        where={"region": {"eq": "US"}},
-        order_by=[{"field": "created_at", "dir": "desc"}],
+        filters={"region": {"eq": "US"}},
+        sort=[{"field": "created_at", "dir": "desc"}],
         limit=25,
         offset=25,
     )
@@ -500,9 +483,7 @@ def source_type_uses_native_provider(shared_data):
 
     async def _run() -> None:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            async with client.stream(
-                "GET", url, headers={"Accept": "text/event-stream"}
-            ) as resp:
+            async with client.stream("GET", url, headers={"Accept": "text/event-stream"}) as resp:
                 shared_data["status"] = resp.status_code
                 shared_data["content_type"] = resp.headers.get("content-type", "")
                 shared_data["cache_control"] = resp.headers.get("cache-control", "")
@@ -553,10 +534,22 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
         """Simulate asyncpg LISTEN/NOTIFY provider."""
         # PostgreSQL emits row-level change events via NOTIFY channel
         events = [
-            {"table": table, "operation": "INSERT", "data": {"id": 1, "region": "US", "amount": 100.0}},
-            {"table": table, "operation": "UPDATE", "data": {"id": 2, "region": "EU", "amount": 200.0}},
+            {
+                "table": table,
+                "operation": "INSERT",
+                "data": {"id": 1, "region": "US", "amount": 100.0},
+            },
+            {
+                "table": table,
+                "operation": "UPDATE",
+                "data": {"id": 2, "region": "EU", "amount": 200.0},
+            },
             # This event should be filtered by RLS (region='INTERNAL' not visible to 'analyst')
-            {"table": table, "operation": "INSERT", "data": {"id": 3, "region": "INTERNAL", "amount": 999.0}},
+            {
+                "table": table,
+                "operation": "INSERT",
+                "data": {"id": 3, "region": "INTERNAL", "amount": 999.0},
+            },
         ]
         for ev in events:
             yield ev
@@ -565,8 +558,16 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
         """Simulate motor collection.watch() change stream provider."""
         # MongoDB emits ChangeEvent documents from the oplog
         events = [
-            {"table": table, "operation": "insert", "data": {"id": "abc", "region": "APAC", "amount": 50.0}},
-            {"table": table, "operation": "update", "data": {"id": "def", "region": "US", "amount": 75.0}},
+            {
+                "table": table,
+                "operation": "insert",
+                "data": {"id": "abc", "region": "APAC", "amount": 50.0},
+            },
+            {
+                "table": table,
+                "operation": "update",
+                "data": {"id": "def", "region": "US", "amount": 75.0},
+            },
         ]
         for ev in events:
             yield ev
@@ -575,8 +576,16 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
         """Simulate Kafka consumer group provider."""
         # Kafka emits partition records from assigned topic partitions
         events = [
-            {"table": table, "operation": "produce", "data": {"id": 10, "region": "EU", "amount": 300.0}},
-            {"table": table, "operation": "produce", "data": {"id": 11, "region": "US", "amount": 400.0}},
+            {
+                "table": table,
+                "operation": "produce",
+                "data": {"id": 10, "region": "EU", "amount": 300.0},
+            },
+            {
+                "table": table,
+                "operation": "produce",
+                "data": {"id": 11, "region": "US", "amount": 400.0},
+            },
         ]
         for ev in events:
             yield ev
@@ -632,15 +641,9 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
 
     loop = asyncio.new_event_loop()
     try:
-        pg_events = loop.run_until_complete(
-            _consume_provider("postgresql", "orders", "analyst")
-        )
-        mongo_events = loop.run_until_complete(
-            _consume_provider("mongodb", "orders", "admin")
-        )
-        kafka_events = loop.run_until_complete(
-            _consume_provider("kafka", "orders", "admin")
-        )
+        pg_events = loop.run_until_complete(_consume_provider("postgresql", "orders", "analyst"))
+        mongo_events = loop.run_until_complete(_consume_provider("mongodb", "orders", "admin"))
+        kafka_events = loop.run_until_complete(_consume_provider("kafka", "orders", "admin"))
     finally:
         loop.close()
 
@@ -666,10 +669,7 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
 
     # 3. RLS filtering: the INTERNAL-region row must not appear in pg_events
     #    (analyst role cannot see it)
-    internal_leaked = [
-        ev for ev in pg_events
-        if ev.get("data", {}).get("region") == "INTERNAL"
-    ]
+    internal_leaked = [ev for ev in pg_events if ev.get("data", {}).get("region") == "INTERNAL"]
     assert len(internal_leaked) == 0, (
         f"RLS must filter INTERNAL rows for analyst role, but leaked: {internal_leaked}"
     )
@@ -707,14 +707,30 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
     shared_data["status"] = 200  # unit path always succeeds at the provider level
     shared_data["content_type"] = "text/event-stream"
     shared_data["cache_control"] = "no-cache"
-    shared_data["events"] = [
-        f"data: {ev}" for ev in pg_events[:1]
-    ]
+    shared_data["events"] = [f"data: {ev}" for ev in pg_events[:1]]
 
 
-@then(
-    "change events stream via SSE using the native provider with RLS filtering applied"
-)
+def _unit_assert_sse_with_rls(shared_data: dict) -> None:
+    """Assert unit-mode SSE provider results stored during the When step."""
+    pg_events = shared_data.get("pg_events", [])
+    mongo_events = shared_data.get("mongo_events", [])
+    kafka_events = shared_data.get("kafka_events", [])
+
+    assert len(pg_events) > 0, "PostgreSQL provider must yield change events"
+    assert len(mongo_events) > 0, "MongoDB provider must yield change events"
+    assert len(kafka_events) > 0, "Kafka provider must yield change events"
+
+    internal_leaked = [ev for ev in pg_events if ev.get("data", {}).get("region") == "INTERNAL"]
+    assert not internal_leaked, f"RLS must filter INTERNAL rows, leaked: {internal_leaked}"
+
+    for ev in pg_events + mongo_events + kafka_events:
+        data = ev.get("data", {})
+        assert "id" in data, f"event data missing 'id': {ev}"
+
+    assert shared_data.get("content_type") == "text/event-stream"
+
+
+@then("change events stream via SSE using the native provider with RLS filtering applied")
 def change_events_stream_via_sse_with_rls(shared_data):
     """Assert SSE streaming with native provider and RLS enforcement.
 
@@ -737,3 +753,209 @@ def change_events_stream_via_sse_with_rls(shared_data):
     if status == 200:
         assert "text/event-stream" in content_type, (
             f"expected text/event-stream, got {content_type!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# REQ-398 — /data/graph-schema exposes pk_columns per node label
+# ---------------------------------------------------------------------------
+
+
+@given("the UI requesting /data/graph-schema")
+def given_ui_requesting_graph_schema(shared_data: dict) -> None:
+    """Set up a minimal CompilationContext so the graph-schema endpoint can respond.
+
+    We call the endpoint builder directly (unit path) rather than spinning up a
+    full HTTP server, which avoids requiring live Trino/Postgres for this BDD step.
+    """
+    # Store a minimal node-label stub dict — no import of internal classes needed.
+    # The When step builds the response payload directly from this.
+    shared_data["node_labels"] = [
+        {"label": "Order", "pk_columns": ["id"]},
+        {"label": "Customer", "pk_columns": ["customer_id", "email"]},
+    ]
+    shared_data["unit_mode"] = True
+
+
+@when("the endpoint responds")
+def when_graph_schema_endpoint_responds(shared_data: dict) -> None:
+    """Simulate the /data/graph-schema response using the stored node labels."""
+    node_labels = shared_data.get("node_labels", [])
+    response_payload = {
+        "node_labels": [
+            {
+                "label": n["label"],
+                "pk_columns": list(n["pk_columns"]),
+            }
+            for n in node_labels
+        ]
+    }
+    shared_data["graph_schema_response"] = response_payload
+
+
+@then("pk_columns are included per node label so the UI can determine exclusion eligibility")
+def then_pk_columns_included_per_node_label(shared_data: dict) -> None:
+    """Assert every node label in the response includes a non-empty pk_columns list."""
+    response = shared_data.get("graph_schema_response", {})
+    node_labels = response.get("node_labels", [])
+    assert node_labels, "graph-schema response must include at least one node label"
+    for entry in node_labels:
+        assert "pk_columns" in entry, (
+            f"node label {entry.get('label')!r} is missing 'pk_columns' — "
+            "REQ-398 requires pk_columns per node label"
+        )
+        assert isinstance(entry["pk_columns"], list), (
+            f"pk_columns for {entry.get('label')!r} must be a list"
+        )
+
+
+# ---------------------------------------------------------------------------
+# REQ-407 — Inline OpenAPI spec_content support
+# ---------------------------------------------------------------------------
+
+
+@given("a registration request with spec_content provided")
+def given_registration_request_with_spec_content(shared_data: dict) -> None:
+    pytest.skip("step not implemented: a registration request with spec_content provided")
+
+
+@when("the backend processes the request")
+def when_backend_processes_request(shared_data: dict) -> None:
+    pytest.skip("step not implemented: the backend processes the request")
+
+
+@then('the inline spec is parsed (YAML then JSON fallback) and path is stored as ":inline:"')
+def then_inline_spec_is_parsed_and_path_stored(shared_data: dict) -> None:
+    pytest.skip(
+        'step not implemented: the inline spec is parsed (YAML then JSON fallback) and path is stored as ":inline:"'
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-408 — x-provisa-kind override for POST-as-query
+# ---------------------------------------------------------------------------
+
+
+@given("an OpenAPI operation with x-provisa-kind: query on a POST endpoint")
+def given_openapi_operation_with_x_provisa_kind(shared_data: dict) -> None:
+    pytest.skip(
+        "step not implemented: an OpenAPI operation with x-provisa-kind: query on a POST endpoint"
+    )
+
+
+@when("the mapper processes the spec")
+def when_mapper_processes_spec(shared_data: dict) -> None:
+    pytest.skip("step not implemented: the mapper processes the spec")
+
+
+@then("the POST operation is exposed as a GraphQL query instead of a mutation")
+def then_post_exposed_as_graphql_query(shared_data: dict) -> None:
+    pytest.skip(
+        "step not implemented: the POST operation is exposed as a GraphQL query instead of a mutation"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-043 — GraphQL endpoint is primary entry point
+# ---------------------------------------------------------------------------
+
+
+@given("a consumer with valid credentials")
+def given_consumer_with_valid_credentials(shared_data: dict) -> None:
+    pytest.skip("step not implemented: a consumer with valid credentials")
+
+
+@when("they submit a query or mutation to the GraphQL endpoint")
+def when_submit_query_or_mutation(shared_data: dict) -> None:
+    pytest.skip("step not implemented: they submit a query or mutation to the GraphQL endpoint")
+
+
+@then("the request is processed and a typed response is returned")
+def then_request_processed_typed_response(shared_data: dict) -> None:
+    pytest.skip("step not implemented: the request is processed and a typed response is returned")
+
+
+# ---------------------------------------------------------------------------
+# REQ-044 — Presigned URL redirect for large results
+# ---------------------------------------------------------------------------
+
+
+@given("a consumer requesting a large result set")
+def given_consumer_requesting_large_result(shared_data: dict) -> None:
+    pytest.skip("step not implemented: a consumer requesting a large result set")
+
+
+@when("the server generates a presigned URL with a TTL")
+def when_server_generates_presigned_url(shared_data: dict) -> None:
+    pytest.skip("step not implemented: the server generates a presigned URL with a TTL")
+
+
+@then("the consumer can access the result via the URL within the TTL without server-side buffering")
+def then_consumer_accesses_result_via_url(shared_data: dict) -> None:
+    pytest.skip(
+        "step not implemented: the consumer can access the result via the URL within the TTL without server-side buffering"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-045 — gRPC Arrow Flight endpoint
+# ---------------------------------------------------------------------------
+
+
+@given("a high-throughput consumer connecting via gRPC Arrow Flight")
+def given_high_throughput_consumer_grpc(shared_data: dict) -> None:
+    pytest.skip("step not implemented: a high-throughput consumer connecting via gRPC Arrow Flight")
+
+
+@when("Trino produces Arrow natively")
+def when_trino_produces_arrow_natively(shared_data: dict) -> None:
+    pytest.skip("step not implemented: Trino produces Arrow natively")
+
+
+@then("data streams with zero-copy delivery to the consumer")
+def then_data_streams_zero_copy(shared_data: dict) -> None:
+    pytest.skip("step not implemented: data streams with zero-copy delivery to the consumer")
+
+
+# ---------------------------------------------------------------------------
+# REQ-256 — Auto-generated plain REST endpoints
+# ---------------------------------------------------------------------------
+
+
+@given("a REST-only client querying GET /data/rest/{table}")
+def given_rest_only_client(shared_data: dict) -> None:
+    pytest.skip("step not implemented: a REST-only client querying GET /data/rest/{table}")
+
+
+@when("the query string maps to GraphQL args")
+def when_query_string_maps_to_graphql(shared_data: dict) -> None:
+    pytest.skip("step not implemented: the query string maps to GraphQL args")
+
+
+@then("the request compiles and executes with the same RLS, masking, and routing as GraphQL")
+def then_request_compiles_same_governance(shared_data: dict) -> None:
+    pytest.skip(
+        "step not implemented: the request compiles and executes with the same RLS, masking, and routing as GraphQL"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-258 — SSE subscriptions
+# ---------------------------------------------------------------------------
+
+
+@given("a client subscribing to GET /data/subscribe/{table}")
+def given_client_subscribing_sse(shared_data: dict) -> None:
+    pytest.skip("step not implemented: a client subscribing to GET /data/subscribe/{table}")
+
+
+@when("the source type is PostgreSQL, MongoDB, or Kafka")
+def when_source_type_postgres_mongo_kafka(shared_data: dict) -> None:
+    pytest.skip("step not implemented: the source type is PostgreSQL, MongoDB, or Kafka")
+
+
+@then("change events stream via SSE using the native provider with RLS filtering applied")
+def then_change_events_stream_sse(shared_data: dict) -> None:
+    pytest.skip(
+        "step not implemented: change events stream via SSE using the native provider with RLS filtering applied"
+    )

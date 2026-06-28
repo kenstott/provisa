@@ -13,24 +13,19 @@ REQ-599: Native filter columns for remote schema source types."""
 
 from __future__ import annotations
 
-import os
-import time
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import respx
-import httpx
-from pytest_bdd import given, when, then, scenarios
+from pytest_bdd import scenarios
 
-scenarios("../../../features/req_602.feature")
-scenarios("../../../features/req_313.feature")
-scenarios("../../../features/req_308.feature")
-scenarios("../../../features/req_309.feature")
-scenarios("../../../features/req_311.feature")
-scenarios("../../../features/req_597.feature")
-scenarios("../../../features/req_598.feature")
-scenarios("../../../features/req_599.feature")
+scenarios("../features/REQ-602.feature")
+scenarios("../features/REQ-313.feature")
+scenarios("../features/REQ-308.feature")
+scenarios("../features/REQ-309.feature")
+scenarios("../features/REQ-311.feature")
+scenarios("../features/REQ-597.feature")
+scenarios("../features/REQ-598.feature")
+scenarios("../features/REQ-599.feature")
 
 
 @pytest.fixture
@@ -41,6 +36,7 @@ def shared_data() -> dict:
 # ---------------------------------------------------------------------------
 # Helpers / inline stubs for Provisa relationship + federation routing
 # ---------------------------------------------------------------------------
+
 
 def _make_local_table(name: str, rows: list[dict]) -> dict:
     """Return a minimal local table descriptor with an in-memory row cache."""
@@ -106,6 +102,7 @@ def _federation_join(
 # ---------------------------------------------------------------------------
 # Helpers for REQ-602: remote schema type synthesis
 # ---------------------------------------------------------------------------
+
 
 def _make_scalar_gql_type(name: str) -> dict:
     return {"kind": "SCALAR", "name": name, "ofType": None}
@@ -320,6 +317,7 @@ def _build_column_metadata_objects(synthesized: list[dict]):
 # Helpers for REQ-308: building a rich schema with both Query and Mutation fields
 # ---------------------------------------------------------------------------
 
+
 def _make_req308_schema() -> dict:
     """Build a representative GraphQL __schema dict with Query and Mutation fields."""
     product_type = {
@@ -414,6 +412,7 @@ def _make_req308_schema() -> dict:
 # Helpers for REQ-309: Iceberg/Trino cache simulation
 # ---------------------------------------------------------------------------
 
+
 class _FakeTrinoConnection:
     """In-memory fake Trino connection that records executed SQL and serves SELECT queries."""
 
@@ -446,6 +445,7 @@ class _FakeTrinoConnectionCursor:
             self._result = []
         elif sql_upper.startswith("CREATE TABLE"):
             import re
+
             m = re.search(
                 r'CREATE TABLE IF NOT EXISTS\s+([\w.]+)\."([\w]+)"',
                 sql,
@@ -461,16 +461,15 @@ class _FakeTrinoConnectionCursor:
         elif sql_upper.startswith("SELECT"):
             matched_rows = []
             for fqn, rows in self._conn._tables.items():
-                if any(part in sql for part in fqn.replace('"', '').split('.')):
+                if any(part in sql for part in fqn.replace('"', "").split(".")):
                     matched_rows = rows
                     break
             self._result = (
-                [(list(r.values()) if r else [1]) for r in matched_rows]
-                if matched_rows
-                else [[1]]
+                [(list(r.values()) if r else [1]) for r in matched_rows] if matched_rows else [[1]]
             )
         elif sql_upper.startswith("DROP TABLE"):
             import re
+
             m = re.search(
                 r'DROP TABLE\s+(?:IF EXISTS\s+)?([\w.]+\."[\w]+")',
                 sql,
@@ -493,6 +492,7 @@ class _FakeTrinoConnectionCursor:
 def _make_iceberg_cache_location():
     """Return a CacheLocation targeting the Iceberg results catalog."""
     from provisa.api_source.trino_cache import cache_location
+
     return cache_location("graphql-remote-src", cache_catalog="results")
 
 
@@ -556,6 +556,7 @@ def _simulate_second_query_from_cache(
 # ---------------------------------------------------------------------------
 # Helpers for REQ-311: On-demand schema refresh registry
 # ---------------------------------------------------------------------------
+
 
 class _InMemorySchemaRegistry:
     """Simulates the Provisa server-side registry for remote GraphQL schema sources."""
@@ -739,6 +740,7 @@ def _build_evolved_schema_v2() -> dict:
 # Helpers for REQ-597: field_overrides for GraphQL remote schema connector
 # ---------------------------------------------------------------------------
 
+
 def _make_req597_schema_with_misclassified_query_field() -> dict:
     """Build a GraphQL schema that has a query-type field behaving like a mutation.
 
@@ -791,6 +793,7 @@ def _make_req597_schema_with_misclassified_query_field() -> dict:
 # Helpers for REQ-598: manual vs auto-detected relationships
 # ---------------------------------------------------------------------------
 
+
 def _make_manual_relationship(
     rel_id: str,
     source_table: str,
@@ -841,4 +844,18 @@ class _InMemoryRelationshipRegistry:
         # rel_id -> relationship dict
         self._store: dict[str, dict] = {}
 
-    def upsert(self, relationship: dict) -> None
+    def upsert(self, rel: dict) -> None:
+        self._store[rel["id"]] = rel
+
+    def list_all(self) -> list[dict]:
+        return list(self._store.values())
+
+    def delete(self, rel_id: str) -> None:
+        self._store.pop(rel_id, None)
+
+    def refresh_remote_managed(self, new_rels: list[dict]) -> None:
+        """Replace all remote_managed=True rels; preserve manually declared ones."""
+        manual = {k: v for k, v in self._store.items() if not v.get("remote_managed")}
+        self._store = manual
+        for rel in new_rels:
+            self._store[rel["id"]] = rel

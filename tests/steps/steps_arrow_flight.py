@@ -21,14 +21,14 @@ REQ-146: Falls back to materializing via Trino REST if Zaychik unavailable.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import threading
 import time
 
 import pyarrow as pa
 import pytest
-import pytest_asyncio
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, scenarios
 
 import provisa.executor.trino_flight as trf
 from provisa.executor.formats.arrow import rows_to_arrow_table
@@ -64,7 +64,14 @@ def client_connects_to_flight_server_port_8815(shared_data: dict) -> None:
     from provisa.api.flight.server import ProvisaFlightServer
 
     # Use an ephemeral test port to avoid clashing with a live server.
-    test_port = int(os.environ.get("PROVISA_TEST_FLIGHT_PORT_143", "8916"))
+    import socket as _socket
+
+    if "PROVISA_TEST_FLIGHT_PORT_143" in os.environ:
+        test_port = int(os.environ["PROVISA_TEST_FLIGHT_PORT_143"])
+    else:
+        with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as _s:
+            _s.bind(("localhost", 0))
+            test_port = _s.getsockname()[1]
     location = f"grpc://localhost:{test_port}"
 
     # Build a minimal AppState that carries enough structure for the server to
@@ -82,9 +89,22 @@ def client_connects_to_flight_server_port_8815(shared_data: dict) -> None:
     state.trino_conn = None
     state.pg_pool = None
 
-    server = ProvisaFlightServer(state, location=location)
+    # Start a dedicated event loop in a daemon thread so that the server's
+    # run_coroutine_threadsafe calls have a running loop to dispatch to.
+    main_loop = asyncio.new_event_loop()
+
+    def _run_loop(loop: asyncio.AbstractEventLoop) -> None:
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
+
+    loop_thread = threading.Thread(target=_run_loop, args=(main_loop,), daemon=True)
+    loop_thread.start()
+
+    server = ProvisaFlightServer(state, location=location, main_loop=main_loop)
     thread = threading.Thread(target=server.serve, daemon=True)
     thread.start()
+
+    shared_data["_main_loop"] = main_loop
 
     # Wait up to 2 s for the server to bind.
     import socket
@@ -358,19 +378,24 @@ def returns_arrow_batches(shared_data: dict) -> None:
     # --- Part 2: Arrow batch delivery assertion ---
     # Simulate the Trino JDBC result set returned to the proxy and convert
     # it into Arrow batches as the Flight server would deliver to the client.
-    columns = ["id", "name"]
-    rows = [
-        {"id": 1, "name": "alpha"},
-        {"id": 2, "name": "beta"},
+    from provisa.compiler.sql_gen import ColumnRef
+
+    col_names = ["id", "name"]
+    col_refs = [
+        ColumnRef(field_name=c, column=c, alias=None, nested_in=None) for c in col_names
     ]
-    table = rows_to_arrow_table(rows, columns)
+    rows = [
+        (1, "alpha"),
+        (2, "beta"),
+    ]
+    table = rows_to_arrow_table(rows, col_refs)
 
     # The result must be a valid Arrow Table.
     assert isinstance(table, pa.Table), (
         f"rows_to_arrow_table must return pa.Table, got {type(table)}"
     )
-    assert table.column_names == columns, (
-        f"Arrow table columns must match {columns}, got {table.column_names}"
+    assert table.column_names == col_names, (
+        f"Arrow table columns must match {col_names}, got {table.column_names}"
     )
     assert table.num_rows == 2, (
         f"Arrow table must contain 2 rows, got {table.num_rows}"
@@ -392,8 +417,8 @@ def returns_arrow_batches(shared_data: dict) -> None:
         assert isinstance(batch.schema, pa.Schema), (
             f"Batch {i} schema must be pa.Schema, got {type(batch.schema)}"
         )
-        assert set(batch.schema.names) == set(columns), (
-            f"Batch {i} schema columns must be {columns}, got {batch.schema.names}"
+        assert set(batch.schema.names) == set(col_names), (
+            f"Batch {i} schema columns must be {col_names}, got {batch.schema.names}"
         )
 
     # Verify the Arrow batches are serialisable to IPC format — the wire
@@ -629,18 +654,23 @@ def falls_back_to_trino_rest(shared_data: dict) -> None:
 
     # --- Assertion 5: materialization produces a valid Arrow table ---
     # Simulate the Trino REST result set that the fallback path materializes.
-    columns = ["id", "name"]
-    rest_rows = [
-        {"id": 1, "name": "alpha"},
-        {"id": 2, "name": "beta"},
+    from provisa.compiler.sql_gen import ColumnRef
+
+    col_names = ["id", "name"]
+    col_refs = [
+        ColumnRef(field_name=c, column=c, alias=None, nested_in=None) for c in col_names
     ]
-    table = rows_to_arrow_table(rest_rows, columns)
+    rest_rows = [
+        (1, "alpha"),
+        (2, "beta"),
+    ]
+    table = rows_to_arrow_table(rest_rows, col_refs)
 
     assert isinstance(table, pa.Table), (
         f"REST fallback must produce a pa.Table, got {type(table)}"
     )
-    assert table.column_names == columns, (
-        f"Arrow table columns must be {columns}, got {table.column_names}"
+    assert table.column_names == col_names, (
+        f"Arrow table columns must be {col_names}, got {table.column_names}"
     )
     assert table.num_rows == 2, (
         f"Arrow table must contain 2 rows, got {table.num_rows}"

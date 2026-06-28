@@ -146,7 +146,8 @@ def shared_data():
 
 
 @scenario(
-    "req_182.feature",
+    "../features/REQ-182.feature",
+
     "REQ-182 default behaviour",
 )
 def test_req_182_default_behaviour():
@@ -154,7 +155,8 @@ def test_req_182_default_behaviour():
 
 
 @scenario(
-    "req_183.feature",
+    "../features/REQ-183.feature",
+
     "REQ-183 default behaviour",
 )
 def test_req_183_default_behaviour():
@@ -162,7 +164,8 @@ def test_req_183_default_behaviour():
 
 
 @scenario(
-    "req_184.feature",
+    "../features/REQ-184.feature",
+
     "REQ-184 default behaviour",
 )
 def test_req_184_default_behaviour():
@@ -170,7 +173,8 @@ def test_req_184_default_behaviour():
 
 
 @scenario(
-    "req_185.feature",
+    "../features/REQ-185.feature",
+
     "REQ-185 default behaviour",
 )
 def test_req_185_default_behaviour():
@@ -178,7 +182,8 @@ def test_req_185_default_behaviour():
 
 
 @scenario(
-    "req_186.feature",
+    "../features/REQ-186.feature",
+
     "REQ-186 default behaviour",
 )
 def test_req_186_default_behaviour():
@@ -186,7 +191,8 @@ def test_req_186_default_behaviour():
 
 
 @scenario(
-    "req_187.feature",
+    "../features/REQ-187.feature",
+
     "REQ-187 default behaviour",
 )
 def test_req_187_default_behaviour():
@@ -194,7 +200,8 @@ def test_req_187_default_behaviour():
 
 
 @scenario(
-    "req_188.feature",
+    "../features/REQ-188.feature",
+
     "REQ-188 default behaviour",
 )
 def test_req_188_default_behaviour():
@@ -202,7 +209,8 @@ def test_req_188_default_behaviour():
 
 
 @scenario(
-    "req_189.feature",
+    "../features/REQ-189.feature",
+
     "REQ-189 default behaviour",
 )
 def test_req_189_default_behaviour():
@@ -210,7 +218,8 @@ def test_req_189_default_behaviour():
 
 
 @scenario(
-    "req_190.feature",
+    "../features/REQ-190.feature",
+
     "REQ-190 default behaviour",
 )
 def test_req_190_default_behaviour():
@@ -218,7 +227,8 @@ def test_req_190_default_behaviour():
 
 
 @scenario(
-    "req_191.feature",
+    "../features/REQ-191.feature",
+
     "REQ-191 default behaviour",
 )
 def test_req_191_default_behaviour():
@@ -226,7 +236,8 @@ def test_req_191_default_behaviour():
 
 
 @scenario(
-    "req_192.feature",
+    "../features/REQ-192.feature",
+
     "REQ-192 default behaviour",
 )
 def test_req_192_default_behaviour():
@@ -234,7 +245,8 @@ def test_req_192_default_behaviour():
 
 
 @scenario(
-    "req_621.feature",
+    "../features/REQ-621.feature",
+
     "REQ-621 default behaviour",
 )
 def test_req_621_default_behaviour():
@@ -242,7 +254,8 @@ def test_req_621_default_behaviour():
 
 
 @scenario(
-    "req_623.feature",
+    "../features/REQ-623.feature",
+
     "REQ-623 default behaviour",
 )
 def test_req_623_default_behaviour():
@@ -250,7 +263,8 @@ def test_req_623_default_behaviour():
 
 
 @scenario(
-    "req_624.feature",
+    "../features/REQ-624.feature",
+
     "REQ-624 default behaviour",
 )
 def test_req_624_default_behaviour():
@@ -258,7 +272,8 @@ def test_req_624_default_behaviour():
 
 
 @scenario(
-    "req_625.feature",
+    "../features/REQ-625.feature",
+
     "REQ-625 default behaviour",
 )
 def test_req_625_default_behaviour():
@@ -266,7 +281,8 @@ def test_req_625_default_behaviour():
 
 
 @scenario(
-    "req_626.feature",
+    "../features/REQ-626.feature",
+
     "REQ-626 default behaviour",
 )
 def test_req_626_default_behaviour():
@@ -274,7 +290,8 @@ def test_req_626_default_behaviour():
 
 
 @scenario(
-    "req_627.feature",
+    "../features/REQ-627.feature",
+
     "REQ-627 default behaviour",
 )
 def test_req_627_default_behaviour():
@@ -282,7 +299,8 @@ def test_req_627_default_behaviour():
 
 
 @scenario(
-    "req_628.feature",
+    "../features/REQ-628.feature",
+
     "REQ-628 default behaviour",
 )
 def test_req_628_default_behaviour():
@@ -303,7 +321,6 @@ def _find_table(config: ProvisaConfig, table_name: str):
                 getattr(table, "alias", None),
                 getattr(table, "source_table", None),
                 getattr(table, "table", None),
-                getattr(table, "table_name", None),
             }
             if table_name in candidates:
                 return table
@@ -313,7 +330,6 @@ def _find_table(config: ProvisaConfig, table_name: str):
             getattr(table, "alias", None),
             getattr(table, "source_table", None),
             getattr(table, "table", None),
-            getattr(table, "table_name", None),
         }
         if table_name in candidates:
             return table
@@ -956,4 +972,15 @@ def _build_partial_ddn_project_missing_object_type(tmp_path: Path) -> Path:
     """
     Build a DDN supergraph project where one Model references an ObjectType
     whose HML file is intentionally absent (GhostType), while another Model
-    (Artist) has its ObjectType present. This exercises REQ-628.
+    (Artist) has its ObjectType present.  This exercises REQ-628.
+    """
+    project_dir = tmp_path / "partial_supergraph"
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    # Supergraph config — references two subgraph dirs, one missing its HML.
+    (project_dir / "supergraph.yaml").write_text(
+        "kind: Supergraph\nversion: v2\ndefinition:\n  subgraphs:\n"
+        "    - globals/subgraph.yaml\n    - app/subgraph.yaml\n",
+        encoding="utf-8",
+    )
+    return project_dir

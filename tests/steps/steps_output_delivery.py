@@ -12,7 +12,7 @@ import json
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from pytest_bdd import given, when, then, parsers, scenario
+from pytest_bdd import given, when, then, scenario
 
 from provisa.compiler.sql_gen import ColumnRef
 from provisa.executor.formats.ndjson import rows_to_ndjson
@@ -26,7 +26,7 @@ def shared_data():
 
 
 @scenario(
-    "REQ-047.feature",
+    "../features/REQ-047.feature",
     "REQ-047 default behaviour",
 )
 def test_req_047_default_behaviour():
@@ -66,9 +66,7 @@ def deliver_result_as_json(shared_data):
     assert len(shared_data["parsed"]) == len(shared_data["rows"])
 
 
-@then(
-    "the nested structure mirrors the GraphQL response shape with relationships intact"
-)
+@then("the nested structure mirrors the GraphQL response shape with relationships intact")
 def nested_structure_mirrors_graphql_shape(shared_data):
     """Verify nested relationship fields are preserved via dotted keys and that
     the structure can be faithfully reconstructed into the GraphQL shape."""
@@ -112,7 +110,7 @@ def nested_structure_mirrors_graphql_shape(shared_data):
 
 
 @scenario(
-    "REQ-048.feature",
+    "../features/REQ-048.feature",
     "REQ-048 default behaviour",
 )
 def test_req_048_default_behaviour():
@@ -176,7 +174,7 @@ def each_row_is_single_json_object_per_line(shared_data):
 
 
 @scenario(
-    "REQ-049.feature",
+    "../features/REQ-049.feature",
     "REQ-049 default behaviour",
 )
 def test_req_049_default_behaviour():
@@ -236,9 +234,7 @@ def output_format_is_normalized_tabular(shared_data):
     shared_data["customers_csv"] = rows_to_csv(
         shared_data["customer_rows"], shared_data["customer_columns"]
     )
-    shared_data["orders_csv"] = rows_to_csv(
-        shared_data["order_rows"], shared_data["order_columns"]
-    )
+    shared_data["orders_csv"] = rows_to_csv(shared_data["order_rows"], shared_data["order_columns"])
 
     # Parquet serialization of both relational tables.
     shared_data["customers_parquet"] = rows_to_parquet(
@@ -254,18 +250,12 @@ def output_format_is_normalized_tabular(shared_data):
     assert isinstance(shared_data["orders_parquet"], (bytes, bytearray))
 
 
-@then(
-    "results are flattened to relational tables with FK relationships preserved"
-)
+@then("results are flattened to relational tables with FK relationships preserved")
 def results_flattened_with_fk_preserved(shared_data):
     """Verify both tables serialize cleanly and the FK relationship is intact."""
     # --- CSV: verify headers and the FK column on the child table ---
-    customers_lines = [
-        ln.strip() for ln in shared_data["customers_csv"].strip().splitlines()
-    ]
-    orders_lines = [
-        ln.strip() for ln in shared_data["orders_csv"].strip().splitlines()
-    ]
+    customers_lines = [ln.strip() for ln in shared_data["customers_csv"].strip().splitlines()]
+    orders_lines = [ln.strip() for ln in shared_data["orders_csv"].strip().splitlines()]
 
     customers_headers = customers_lines[0].split(",")
     orders_headers = orders_lines[0].split(",")
@@ -295,8 +285,7 @@ def results_flattened_with_fk_preserved(shared_data):
 
     # The original nested relationship is fully reconstructable via the FK join.
     customers_by_id = {
-        row[0]: {"name": row[1], "email": row[2]}
-        for row in shared_data["customer_rows"]
+        row[0]: {"name": row[1], "email": row[2]} for row in shared_data["customer_rows"]
     }
     for order in shared_data["order_rows"]:
         order_id, amount, customer_id = order
@@ -306,7 +295,7 @@ def results_flattened_with_fk_preserved(shared_data):
 
 
 @scenario(
-    "REQ-050.feature",
+    "../features/REQ-050.feature",
     "REQ-050 default behaviour",
 )
 def test_req_050_default_behaviour():
@@ -324,17 +313,14 @@ def output_format_is_denormalized_tabular(shared_data):
     directly into a pandas/Polars dataframe.
     """
     customers_by_id = {
-        row[0]: {"name": row[1], "email": row[2]}
-        for row in shared_data["customer_rows"]
+        row[0]: {"name": row[1], "email": row[2]} for row in shared_data["customer_rows"]
     }
 
     # The denormalized schema: order scalars + inlined customer attributes.
     flat_columns = [
         ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
         ColumnRef(alias=None, column="amount", field_name="amount", nested_in=None),
-        ColumnRef(
-            alias=None, column="customer_id", field_name="customer_id", nested_in=None
-        ),
+        ColumnRef(alias=None, column="customer_id", field_name="customer_id", nested_in=None),
         ColumnRef(alias=None, column="name", field_name="name", nested_in="customer"),
         ColumnRef(alias=None, column="email", field_name="email", nested_in="customer"),
     ]
@@ -366,9 +352,7 @@ def output_format_is_denormalized_tabular(shared_data):
     assert shared_data["partitions"], "expected at least one partition"
 
 
-@then(
-    "results are fully flattened into a single table, optionally partitioned"
-)
+@then("results are fully flattened into a single table, optionally partitioned")
 def results_fully_flattened_single_table(shared_data):
     """Verify the denormalized output is a single flat table (CSV + Parquet) and
     that the optional partitioned form preserves all rows and the flat schema."""
@@ -418,7 +402,7 @@ def results_fully_flattened_single_table(shared_data):
 
 
 @scenario(
-    "REQ-051.feature",
+    "../features/REQ-051.feature",
     "REQ-051 default behaviour",
 )
 def test_req_051_default_behaviour():
@@ -468,9 +452,7 @@ def trino_executes_query_producing_arrow(shared_data):
     assert len(ipc_buffer) > 0
 
 
-@then(
-    "results are delivered as Arrow record batches via gRPC with no intermediate serialization"
-)
+@then("results are delivered as Arrow record batches via gRPC with no intermediate serialization")
 def results_delivered_as_arrow_record_batches(shared_data):
     """Verify the delivered payload is composed of genuine Arrow record batches
     that round-trip from the Arrow IPC stream with the original columnar schema
@@ -508,13 +490,14 @@ def results_delivered_as_arrow_record_batches(shared_data):
     assert rt_ids == [row[0] for row in rows]
     assert rt_names == [row[2] for row in rows]
 
-    # Confirm there is no textual/JSON encoding in the IPC payload: the buffer
-    # should begin with the Arrow magic bytes (b"ARROW1"), not a JSON brace or
-    # any printable ASCII sequence indicating CSV/JSON encoding.
-    magic = ipc_buffer[:6]
-    assert magic == b"ARROW1", (
-        f"Arrow IPC stream must start with magic b'ARROW1', got {magic!r} — "
-        "this indicates intermediate (non-Arrow-native) serialization"
+    # Confirm there is no textual/JSON encoding in the IPC payload.
+    # Arrow IPC *stream* format (used by Arrow Flight) begins with the
+    # continuation marker \xff\xff\xff\xff, not a JSON brace or CSV text.
+    # (Arrow IPC *file* format begins with b"ARROW1\x00\x00".)
+    stream_marker = ipc_buffer[:4]
+    assert stream_marker == b"\xff\xff\xff\xff", (
+        f"Arrow IPC stream must start with continuation marker b'\\xff\\xff\\xff\\xff', "
+        f"got {stream_marker!r} — this indicates non-Arrow-native serialization"
     )
 
     # Each individual record batch in the round-tripped table must carry the

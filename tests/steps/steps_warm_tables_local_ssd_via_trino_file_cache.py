@@ -45,9 +45,7 @@ def _mock_trino(cursor):
 
 
 @given(
-    "a table whose query count exceeds warm_tables.query_threshold "
-    "within a refresh interval"
-)
+    "a table whose query count exceeds warm_tables.query_threshold within a refresh interval")
 def table_exceeding_threshold(shared_data):
     threshold = 100
     hot_table = "my_schema.orders"
@@ -109,9 +107,7 @@ def promotion_check_runs(shared_data):
 
 
 @then(
-    "the table is auto-materialized into Iceberg; tables falling below "
-    "threshold are demoted"
-)
+    "the table is auto-materialized into Iceberg; tables falling below threshold are demoted")
 def table_promoted_and_demoted(shared_data):
     mgr: WarmTableManager = shared_data["manager"]
     cursor = shared_data["cursor"]
@@ -136,9 +132,7 @@ def table_promoted_and_demoted(shared_data):
 
 
 @given(
-    "a table materialized into the Iceberg results catalog with "
-    "Trino file cache enabled"
-)
+    "a table materialized into the Iceberg results catalog with Trino file cache enabled")
 def table_materialized_with_file_cache(shared_data):
     threshold = 100
     warm_table = "rdbms_schema.customers"
@@ -205,9 +199,7 @@ def query_targets_warm_table(shared_data):
 
 
 @then(
-    "Trino serves the result from local SSD Parquet cache at "
-    "~10-50ms latency"
-)
+    "Trino serves the result from local SSD Parquet cache at ~10-50ms latency")
 def served_from_local_ssd_cache(shared_data):
     # The query was served from the cached Iceberg copy, not the remote RDBMS.
     assert shared_data["served_from_cache"] is True

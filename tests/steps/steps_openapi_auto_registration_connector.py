@@ -35,29 +35,17 @@ REQ-321: Spec refresh is triggered on demand via an admin mutation. On refresh, 
 virtual table and tracked function registrations derived from the spec are updated;
 governance rules applied on top are preserved.
 """
+
 from __future__ import annotations
 
-import copy
 import json
-import os
-import pathlib
-import tempfile
-import time
-import unittest.mock as mock
 
 import pytest
 from pytest_bdd import given, when, then, parsers, scenarios
 
-from provisa.openapi.loader import load_spec, parse_text
-from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, map_operations
+from provisa.openapi.loader import parse_text
+from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, parse_spec as map_operations
 from provisa.openapi.register import _operation_id_to_alias
-from provisa.api_source.trino_cache import (
-    CacheLocation,
-    cache_location,
-    cache_table_name,
-    table_exists,
-    _TABLE_EXISTS_CACHE,
-)
 
 scenarios("../features/REQ-601.feature")
 scenarios("../features/REQ-316.feature")
@@ -80,6 +68,7 @@ def shared_data() -> dict:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _resolve_ref_from_spec(spec: dict, ref: str) -> dict:
     """Resolve a JSON $ref like #/components/schemas/Foo within *spec*."""
     if not ref.startswith("#/"):
@@ -93,7 +82,9 @@ def _resolve_ref_from_spec(spec: dict, ref: str) -> dict:
     return node if isinstance(node, dict) else {}
 
 
-def _parse_and_register_spec(spec: dict) -> tuple[dict[str, OpenAPIQuery], dict[str, OpenAPIMutation]]:
+def _parse_and_register_spec(
+    spec: dict,
+) -> tuple[dict[str, OpenAPIQuery], dict[str, OpenAPIMutation]]:
     """Parse *spec* with the Provisa mapper and return (virtual_tables, mutations).
 
     Falls back to inline logic when the mapper is not yet wired.
@@ -132,7 +123,9 @@ def _parse_and_register_spec(spec: dict) -> tuple[dict[str, OpenAPIQuery], dict[
                         if not resp:
                             continue
                         content = resp.get("content", {})
-                        media = content.get("application/json", content.get(next(iter(content), ""), {}))
+                        media = content.get(
+                            "application/json", content.get(next(iter(content), ""), {})
+                        )
                         raw_schema = media.get("schema")
                         if raw_schema:
                             if raw_schema.get("type") == "array":
@@ -148,7 +141,9 @@ def _parse_and_register_spec(spec: dict) -> tuple[dict[str, OpenAPIQuery], dict[
                                     is_list = True
                                     items = resolved.get("items", {})
                                     if "$ref" in items:
-                                        response_schema = _resolve_ref_from_spec(spec, items["$ref"])
+                                        response_schema = _resolve_ref_from_spec(
+                                            spec, items["$ref"]
+                                        )
                                     else:
                                         response_schema = items
                                 else:
@@ -172,7 +167,9 @@ def _parse_and_register_spec(spec: dict) -> tuple[dict[str, OpenAPIQuery], dict[
                     request_body = operation.get("requestBody", {})
                     if request_body:
                         content = request_body.get("content", {})
-                        media = content.get("application/json", content.get(next(iter(content), ""), {}))
+                        media = content.get(
+                            "application/json", content.get(next(iter(content), ""), {})
+                        )
                         raw_schema = media.get("schema")
                         if raw_schema:
                             if "$ref" in raw_schema:
@@ -188,7 +185,9 @@ def _parse_and_register_spec(spec: dict) -> tuple[dict[str, OpenAPIQuery], dict[
                         content = resp.get("content", {})
                         if not content:
                             continue
-                        media = content.get("application/json", content.get(next(iter(content), ""), {}))
+                        media = content.get(
+                            "application/json", content.get(next(iter(content), ""), {})
+                        )
                         raw_schema = media.get("schema")
                         if raw_schema:
                             if "$ref" in raw_schema:
@@ -359,9 +358,7 @@ def when_spec_registered(shared_data):
 
 
 @then(
-    parsers.parse(
-        'the virtual table alias is "{alias}" used as the consumer-facing GraphQL name'
-    )
+    parsers.parse('the virtual table alias is "{alias}" used as the consumer-facing GraphQL name')
 )
 def then_alias_is(shared_data, alias):
     registrations = shared_data["registrations"]
@@ -563,12 +560,15 @@ def when_provisa_parses_the_spec(shared_data):
                     resp = responses.get(status_key)
                     if resp:
                         content = resp.get("content", {})
-                        media = content.get("application/json", content.get(next(iter(content), ""), {}))
+                        media = content.get(
+                            "application/json", content.get(next(iter(content), ""), {})
+                        )
                         raw_schema = media.get("schema")
                         if raw_schema:
                             break
 
                 if raw_schema:
+
                     def resolve_ref(ref_str: str) -> dict:
                         parts = ref_str.lstrip("#/").split("/")
                         node = spec
@@ -612,7 +612,9 @@ def when_provisa_parses_the_spec(shared_data):
     shared_data["virtual_tables"] = virtual_tables
 
 
-@then("all GET operations are auto-registered as virtual query tables with path/query params as GraphQL arguments")
+@then(
+    "all GET operations are auto-registered as virtual query tables with path/query params as GraphQL arguments"
+)
 def then_get_operations_auto_registered(shared_data):
     """Assert that every GET operation in the spec is represented as a virtual
     query table with the correct path params, query params, and response schema."""
@@ -697,9 +699,7 @@ def then_get_operations_auto_registered(shared_data):
         # Every operation in our test spec has a 200 response with a schema.
         responses = operation.get("responses", {})
         has_response_schema = any(
-            resp.get("content", {})
-            for resp in responses.values()
-            if isinstance(resp, dict)
+            resp.get("content", {}) for resp in responses.values() if isinstance(resp, dict)
         )
         if has_response_schema:
             assert table.response_schema is not None, (
@@ -748,9 +748,10 @@ def then_get_operations_auto_registered(shared_data):
 
 
 # ---------------------------------------------------------------------------
-# REQ-315 — shared spec constants
+# REQ-315 Steps
 # ---------------------------------------------------------------------------
 
+# Minimal OpenAPI 3.x spec used across all REQ-315 steps.
 _REQ315_SPEC_YAML = """\
 openapi: "3.0.0"
 info:
@@ -805,13 +806,38 @@ paths:
                 $ref: "#/components/schemas/Item"
 """
 
-_REQ315_SPEC_DICT = {
-    "openapi": "3.0.0",
-    "info": {"title": "Private Inventory API", "version": "1.0.0"},
-    "components": {
-        "schemas": {
-            "Item": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "integer"},
-                    "sku": {"type
+_REQ315_SPEC_JSON = json.dumps(
+    {
+        "openapi": "3.0.0",
+        "info": {"title": "Private Inventory API", "version": "1.0.0"},
+        "components": {
+            "schemas": {
+                "Item": {
+                    "type": "object",
+                    "properties": {
+                        "sku": {"type": "string"},
+                        "qty": {"type": "integer"},
+                    },
+                }
+            }
+        },
+        "paths": {
+            "/items": {
+                "get": {
+                    "operationId": "listItems",
+                    "summary": "List items",
+                    "responses": {
+                        "200": {
+                            "description": "ok",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/Item"}
+                                }
+                            },
+                        }
+                    },
+                }
+            }
+        },
+    }
+)

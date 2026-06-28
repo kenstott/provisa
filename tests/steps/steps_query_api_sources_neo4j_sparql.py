@@ -32,8 +32,8 @@ from provisa.neo4j.source import build_endpoint as build_neo4j_endpoint
 from provisa.sparql.source import SparqlSourceConfig
 from provisa.sparql.source import build_endpoint as build_sparql_endpoint
 
-scenarios("REQ-296.feature")
-scenarios("REQ-298.feature")
+scenarios("../features/REQ-296.feature")
+scenarios("../features/REQ-298.feature")
 
 
 @pytest.fixture
@@ -93,9 +93,7 @@ def query_returns_node_objects(shared_data: dict) -> None:
 
 
 @then(
-    "registration is blocked with an error directing the steward to use "
-    "explicit scalar RETURN aliases"
-)
+    "registration is blocked with an error directing the steward to use explicit scalar RETURN aliases")
 def registration_blocked_with_error(shared_data: dict) -> None:
     """Assert validation raised and the message guides toward scalar aliases."""
     error = shared_data.get("validation_error")

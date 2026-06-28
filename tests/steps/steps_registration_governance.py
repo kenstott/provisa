@@ -100,25 +100,16 @@ type internally, with no source-type-specific endpoints exposed to the UI.
 
 from __future__ import annotations
 
-import asyncio
 import os
-import sqlite3
-import tempfile
 import time
 import uuid
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from pytest_bdd import given, when, then, scenario
+from pytest_bdd import given, when, then
 
-from provisa.core.models import SOURCE_TO_CONNECTOR, Column, Source, SourceType, Table, Cardinality, Relationship
-from provisa.discovery.analyzer import RelationshipCandidate
-from provisa.api.admin import introspect as introspect_mod
-from provisa.api.admin.introspect import native_schemas
+from provisa.core.models import SOURCE_TO_CONNECTOR, Column, Source, SourceType, Table
 
 
 # ---------------------------------------------------------------------------
@@ -212,12 +203,8 @@ def submit_new_source_registration(shared_data: dict) -> None:
     assert isinstance(catalog_props, dict), "Catalog properties must be a dict"
     assert len(catalog_props) > 0, "Catalog properties must not be empty"
 
-    props_sql_parts = ", ".join(
-        f"'{k}' = '{v}'" for k, v in catalog_props.items()
-    )
-    create_catalog_sql = (
-        f"CREATE CATALOG {catalog_name} USING postgresql WITH ({props_sql_parts})"
-    )
+    props_sql_parts = ", ".join(f"'{k}' = '{v}'" for k, v in catalog_props.items())
+    create_catalog_sql = f"CREATE CATALOG {catalog_name} USING postgresql WITH ({props_sql_parts})"
     mock_cursor.execute(create_catalog_sql)
 
     assert len(trino_call_log) == 1, (
@@ -244,9 +231,7 @@ def submit_new_source_registration(shared_data: dict) -> None:
 
 
 @then(
-    "Provisa validates the connection, calls the Trino dynamic catalog API, and makes the source\n"
-    "    available within seconds without a server restart"
-)
+    "Provisa validates the connection, calls the Trino dynamic catalog API, and makes the source\n    available within seconds without a server restart")
 def provisa_validates_connection_calls_trino_and_makes_source_available(
     shared_data: dict,
 ) -> None:
@@ -268,17 +253,14 @@ def provisa_validates_connection_calls_trino_and_makes_source_available(
     trino_call_log: list[str] = shared_data["trino_call_log"]
     assert len(trino_call_log) >= 1, "No Trino catalog API calls were recorded"
 
-    create_catalog_calls = [
-        sql for sql in trino_call_log if "CREATE CATALOG" in sql
-    ]
+    create_catalog_calls = [sql for sql in trino_call_log if "CREATE CATALOG" in sql]
     assert len(create_catalog_calls) >= 1, (
         f"Expected CREATE CATALOG in Trino call log, got: {trino_call_log}"
     )
 
     catalog_name = shared_data["catalog_name"]
     assert catalog_name in create_catalog_calls[0], (
-        f"Expected catalog name '{catalog_name}' in CREATE CATALOG SQL: "
-        f"{create_catalog_calls[0]!r}"
+        f"Expected catalog name '{catalog_name}' in CREATE CATALOG SQL: {create_catalog_calls[0]!r}"
     )
 
     assert shared_data["source_available"] is True, (
@@ -416,8 +398,7 @@ def user_with_appropriate_rights_queries_it(shared_data: dict) -> None:
                 "schema_name": table.schema_name,
                 "table_name": table.table_name,
                 "columns": [
-                    {"name": col.name, "visible_to": col.visible_to}
-                    for col in table.columns
+                    {"name": col.name, "visible_to": col.visible_to} for col in table.columns
                 ],
                 "rls_filter": None,
                 "label": None,
@@ -472,9 +453,7 @@ def stage2_governance_applied_uniformly(shared_data: dict) -> None:
     )
 
     for table_name, schema in generated_schemas.items():
-        assert_valid_schema(schema), (
-            f"Generated schema for '{table_name}' is not valid GraphQL."
-        )
+        assert_valid_schema(schema), (f"Generated schema for '{table_name}' is not valid GraphQL.")
         query_type = schema.query_type
         assert query_type is not None, (
             f"Schema for '{table_name}' has no Query type — table is not queryable. "
@@ -610,10 +589,7 @@ def publication_completes(shared_data: dict) -> None:
         "domain_id": table.domain_id,
         "schema_name": table.schema_name,
         "table_name": table.table_name,
-        "columns": [
-            {"name": col.name, "visible_to": col.visible_to}
-            for col in table.columns
-        ],
+        "columns": [{"name": col.name, "visible_to": col.visible_to} for col in table.columns],
         "rls_filter": None,
         "label": None,
     }
@@ -647,12 +623,10 @@ def publication_completes(shared_data: dict) -> None:
 
 
 @then(
-    "a schema generation pass is triggered and the table is immediately available in the query\n"
-    "    builder"
-)
+    "a schema generation pass is triggered and the table is immediately available in the query\n    builder")
 def schema_generation_triggered_and_table_available(shared_data: dict) -> None:
     """Assert all REQ-016 postconditions."""
-    from graphql import GraphQLObjectType, assert_valid_schema
+    from graphql import assert_valid_schema
 
     assert shared_data["published"] is True, "Table was not marked as published"
     assert shared_data["schema_generation_triggered"] is True, (
@@ -679,8 +653,7 @@ def schema_generation_triggered_and_table_available(shared_data: dict) -> None:
     table: Table = shared_data["table"]
     type_map = generated_schema.type_map
     table_type_found = any(
-        table.table_name.lower() in type_name.lower()
-        for type_name in type_map.keys()
+        table.table_name.lower() in type_name.lower() for type_name in type_map.keys()
     )
     assert table_type_found, (
         f"Table '{table.table_name}' not found in generated schema type map: "
@@ -697,12 +670,11 @@ def schema_generation_triggered_and_table_available(shared_data: dict) -> None:
 def registered_nosql_source_with_native_trino_connector(shared_data: dict) -> None:
     """Set up a MongoDB source registered in Provisa with the MongoDB Trino connector.
 
-    Verifies:
+    We verify that:
     - The source type maps to a known Trino connector in SOURCE_TO_CONNECTOR.
     - The catalog properties are built via the connector path (not Parquet/ETL).
     - The catalog is marked read-only (no mutation properties present).
     """
-    from provisa.core.catalog import _build_catalog_properties, _to_catalog_name
     from provisa.core.trino_catalog_files import catalog_properties_for
 
     # MongoDB is the canonical NoSQL example from the requirement.
@@ -725,3 +697,45 @@ def registered_nosql_source_with_native_trino_connector(shared_data: dict) -> No
     connector_name = SOURCE_TO_CONNECTOR[SourceType.mongodb]
     assert connector_name, (
         "SOURCE_TO_CONNECTOR[SourceType.mongodb] is empty — a connector name is required."
+    )
+
+    # 2. Build catalog properties via the connector path and store for later steps.
+    props = catalog_properties_for(source, "")
+    shared_data["nosql_catalog_props"] = props
+    shared_data["nosql_connector_name"] = connector_name
+
+
+@when("a consumer queries a table from that source")
+def consumer_queries_table_from_nosql_source(shared_data: dict) -> None:
+    """Simulate a read query against the NoSQL source via the Trino connector path.
+
+    We verify that the catalog properties were built (i.e. the connector path was taken),
+    which means queries will be routed through the native Trino connector.
+    """
+    props = shared_data.get("nosql_catalog_props")
+    assert props is not None, (
+        "No catalog properties found — Given step did not store them. "
+        "The NoSQL connector path must produce a non-None catalog properties dict."
+    )
+    shared_data["query_routed_via_connector"] = True
+
+
+@then("the query is executed read-only through the Trino connector with no mutation path available")
+def query_executed_read_only_via_trino_connector(shared_data: dict) -> None:
+    """Assert the NoSQL source is read-only: catalog properties contain no mutation keys.
+
+    Mutation keys (e.g. 'mongodb.allow-inserts', 'mongodb.allow-updates', 'mongodb.allow-deletes')
+    must be absent or explicitly set to 'false' for REQ-017 compliance.
+    """
+    assert shared_data.get("query_routed_via_connector"), (
+        "When step did not confirm connector routing."
+    )
+    props = shared_data.get("nosql_catalog_props", {})
+    mutation_keys = {
+        k for k in props if "insert" in k or "update" in k or "delete" in k or "write" in k
+    }
+    for key in mutation_keys:
+        assert props[key].lower() == "false", (
+            f"Mutation key '{key}' is not disabled in catalog properties — "
+            f"REQ-017 requires NoSQL sources to be read-only. Value: {props[key]!r}"
+        )

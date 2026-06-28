@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 import sqlglot
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, scenarios
 
 from provisa.compiler.stage2 import (
     GovernanceContext,
@@ -65,8 +65,7 @@ def _stage2_processes(shared_data: dict) -> None:
 
 
 @then(
-    "RLS predicates, column masking, column visibility, and row cap "
-    "are all applied via AST rewrite"
+    "RLS predicates, column masking, column visibility, and row cap are all applied via AST rewrite"
 )
 def _all_governance_applied(shared_data: dict) -> None:
     result: str = shared_data["result"]
@@ -101,10 +100,7 @@ def _all_governance_applied(shared_data: dict) -> None:
 # --------------------------------------------------------------------------- #
 
 
-@given(
-    "a SQL query with subqueries, CTEs, JOINs, SELECT *, UNION, "
-    "or nested expressions"
-)
+@given("a SQL query with subqueries, CTEs, JOINs, SELECT *, UNION, or nested expressions")
 def _structural_query(shared_data: dict) -> None:
     # table 1 = orders, table 2 = customers
     mask_rule = MaskingRule(mask_type=MaskType.regex, pattern=r".+@", replace="***@")
@@ -162,20 +158,20 @@ def _governance_at_every_reference(shared_data: dict) -> None:
     # outermost SELECT.
     orders_rls_count = result.count("region = 'us'")
     assert orders_rls_count >= 2, (
-        f"RLS for orders not injected at every reference "
-        f"(found {orders_rls_count}): {result}"
+        f"RLS for orders not injected at every reference (found {orders_rls_count}): {result}"
     )
 
     # customers is referenced twice (JOIN target + UNION arm). RLS must appear
     # at both references.
     customers_rls_count = result.lower().count("active")
-    assert customers_rls_count >= 2, (
-        f"RLS for customers not injected at every reference: {result}"
-    )
+    assert customers_rls_count >= 2, f"RLS for customers not injected at every reference: {result}"
 
     # SELECT * inside the CTE must be expanded to the governed physical columns,
-    # not left as a bare star.
-    assert "*" not in result or "COUNT(*)" in upper, (
+    # not left as a bare star.  Check for bare SELECT * / , * (not regexp ***@).
+    import re as _re
+
+    has_bare_star = bool(_re.search(r"SELECT\s+\*|,\s*\*\b", result, _re.IGNORECASE))
+    assert not has_bare_star or "COUNT(*)" in upper, (
         f"SELECT * was not expanded via schema introspection: {result}"
     )
     for col in ("id", "cid", "region"):
@@ -247,15 +243,10 @@ def _endpoint_processes_raw_sql(shared_data: dict) -> None:
 
     # GraphQL route: the compiled SQL is governed through the identical
     # apply_governance entrypoint.
-    shared_data["graphql_result"] = apply_governance(
-        shared_data["graphql_path_sql"], gov
-    )
+    shared_data["graphql_result"] = apply_governance(shared_data["graphql_path_sql"], gov)
 
 
-@then(
-    "it passes through Stage 2 governance and executes identically to the "
-    "GraphQL path"
-)
+@then("it passes through Stage 2 governance and executes identically to the GraphQL path")
 def _identical_to_graphql_path(shared_data: dict) -> None:
     sql_result: str = shared_data["sql_endpoint_result"]
     gql_result: str = shared_data["graphql_result"]
@@ -265,13 +256,9 @@ def _identical_to_graphql_path(shared_data: dict) -> None:
     # /data/sql:
     #   (1) RLS predicate injected for the referenced table
     assert "WHERE" in upper, f"RLS WHERE not injected on /data/sql path: {sql_result}"
-    assert "region = 'us'" in sql_result, (
-        f"RLS predicate missing on /data/sql path: {sql_result}"
-    )
+    assert "region = 'us'" in sql_result, f"RLS predicate missing on /data/sql path: {sql_result}"
     #   (2) masking applied to the masked column
-    assert "REGEXP_REPLACE" in upper, (
-        f"masking not applied on /data/sql path: {sql_result}"
-    )
+    assert "REGEXP_REPLACE" in upper, f"masking not applied on /data/sql path: {sql_result}"
     #   (3) invisible column ("secret") stripped or nulled
     assert "secret" not in sql_result.lower() or "NULL" in upper, (
         f"invisible column not removed on /data/sql path: {sql_result}"

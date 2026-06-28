@@ -30,23 +30,25 @@ import os
 
 import httpx
 import pytest
-from pytest_bdd import given, when, then, scenarios, parsers
+from pytest_bdd import given, when, then, scenarios
 
-from provisa.cypher.parser import parse_cypher
 from provisa.cypher.label_map import (
     CypherLabelMap,
     NodeMapping,
     RelationshipMapping,
 )
+from provisa.cypher.write_translator import WriteTranslator, parse_cypher_write as parse_cypher
 
-# The WriteTranslator turns Cypher write clauses (CREATE/MERGE/SET/DELETE) into DML SQL.
-from provisa.cypher.write_translator import WriteTranslator
+scenarios("../features/REQ-666.feature")
+scenarios("../features/REQ-667.feature")
+scenarios("../features/REQ-668.feature")
+scenarios("../features/REQ-670.feature")
 
 
-scenarios("req_666.feature")
-scenarios("req_667.feature")
-scenarios("req_668.feature")
-scenarios("req_670.feature")
+@pytest.fixture
+def shared_data() -> dict:
+    """Plain dict to pass state between Given/When/Then steps."""
+    return {}
 
 
 def _make_write_label_map() -> CypherLabelMap:
@@ -162,6 +164,7 @@ def given_cypher_create_statement(shared_data):
 
 @when("the WriteTranslator processes the statement")
 def when_write_translator_processes(shared_data):
+
     translator = WriteTranslator(shared_data["label_map"])
     result = translator.translate(shared_data["ast"])
     sql_text, params = _coerce_to_sql(result)
@@ -228,9 +231,7 @@ def given_cypher_match_delete_statement(shared_data):
     shared_data["ast"] = ast
 
 
-@then(
-    "the output is a DELETE FROM SQL statement with the WHERE clause from the MATCH pattern"
-)
+@then("the output is a DELETE FROM SQL statement with the WHERE clause from the MATCH pattern")
 def then_delete_from_with_where(shared_data):
     sql = shared_data["sql"]
     upper = sql.upper()
@@ -303,7 +304,7 @@ def then_update_with_comma_separated_set(shared_data):
     # column assignments.
     set_idx = upper.index("SET")
     where_idx = upper.index("WHERE", set_idx)
-    set_segment = sql[set_idx + len("SET"):where_idx]
+    set_segment = sql[set_idx + len("SET") : where_idx]
     assert "," in set_segment, f"SET clauses must be comma-separated: {set_segment!r}"
     assert set_segment.count("=") >= 2, f"expected two assignments in SET: {set_segment!r}"
 
@@ -333,7 +334,7 @@ def then_domain_prefix_stripping_maps_columns(shared_data):
     # The physical columns must be the targets of assignments within the SET segment.
     set_idx = upper.index("SET")
     where_idx = upper.index("WHERE", set_idx)
-    set_segment = upper[set_idx + len("SET"):where_idx]
+    set_segment = upper[set_idx + len("SET") : where_idx]
     assert "FULL_NAME" in set_segment, f"'full_name' must be assigned in SET: {set_segment!r}"
     assert "AGE_YEARS" in set_segment, f"'age_years' must be assigned in SET: {set_segment!r}"
 

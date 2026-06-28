@@ -5,14 +5,11 @@
 
 from __future__ import annotations
 
-import json
-import os
 import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import pytest_asyncio
 from pytest_bdd import given, parsers, scenario, then, when
 
 
@@ -20,8 +17,9 @@ from pytest_bdd import given, parsers, scenario, then, when
 # Scenario binding
 # ---------------------------------------------------------------------------
 
+
 @scenario(
-    "../features/req_713.feature",
+    "../features/REQ-713.feature",
     "REQ-713 default behaviour",
 )
 def test_req_713_default_behaviour():
@@ -29,7 +27,7 @@ def test_req_713_default_behaviour():
 
 
 @scenario(
-    "../features/req_714.feature",
+    "../features/REQ-714.feature",
     "REQ-714 default behaviour",
 )
 def test_req_714_default_behaviour():
@@ -39,6 +37,7 @@ def test_req_714_default_behaviour():
 # ---------------------------------------------------------------------------
 # Shared state fixture
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def shared_data() -> dict:
@@ -166,6 +165,7 @@ def _validate_and_simulate_export(
 # Step definitions — REQ-713
 # ---------------------------------------------------------------------------
 
+
 @given(
     "a list of nodes with id, tableLabel, and properties, and edges with start, end, and type",
     target_fixture="shared_data",
@@ -218,7 +218,6 @@ def when_post_neo4j_export(shared_data: dict) -> dict:
 
     captured_requests: list[dict[str, Any]] = []
 
-    import httpx
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -226,7 +225,8 @@ def when_post_neo4j_export(shared_data: dict) -> dict:
         from provisa.api.rest.cypher_router import router as cypher_router  # type: ignore
 
         app = FastAPI()
-        app.include_router(cypher_router, prefix="/data")
+        # The router already declares "/data/..." paths; mount at root.
+        app.include_router(cypher_router)
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -236,18 +236,22 @@ def when_post_neo4j_export(shared_data: dict) -> dict:
         }
         mock_response.raise_for_status = MagicMock()
 
-        def _fake_post(url: str, **kwargs: Any) -> MagicMock:
+        async def _fake_post_async(url: str, **kwargs: Any) -> MagicMock:
             captured_requests.append({"url": url, "kwargs": kwargs})
             return mock_response
 
-        with patch("httpx.AsyncClient.post", new_callable=AsyncMock, side_effect=_fake_post):
-            with patch("httpx.Client.post", side_effect=_fake_post):
-                client = TestClient(app)
-                response = client.post(
-                    "/data/neo4j-export",
-                    json=payload,
-                    headers={"X-Role": "DEV"},
-                )
+        mock_async_client = AsyncMock()
+        mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
+        mock_async_client.__aexit__ = AsyncMock(return_value=False)
+        mock_async_client.post = AsyncMock(side_effect=_fake_post_async)
+
+        with patch("httpx.AsyncClient", return_value=mock_async_client):
+            client = TestClient(app)
+            response = client.post(
+                "/data/neo4j-export",
+                json=payload,
+                headers={"X-Role": "DEV"},
+            )
 
         shared_data["response_status"] = response.status_code
         shared_data["response_body"] = response.json() if response.content else {}
@@ -301,9 +305,7 @@ def then_nodes_edges_transmitted(shared_data: dict) -> None:
 
     else:
         captured = shared_data.get("captured_requests", [])
-        assert len(captured) > 0, (
-            "Expected at least one simulated request to be captured."
-        )
+        assert len(captured) > 0, "Expected at least one simulated request to be captured."
 
         request = captured[0]
         request_url: str = request["url"]
@@ -346,9 +348,7 @@ def then_nodes_edges_transmitted(shared_data: dict) -> None:
         for node in nodes:
             label = node["tableLabel"]
             matching = [s for s in statements if label in s.get("statement", "")]
-            assert matching, (
-                f"Expected a MERGE statement referencing label {label!r}, found none."
-            )
+            assert matching, f"Expected a MERGE statement referencing label {label!r}, found none."
 
         for edge in edges:
             rel_type = edge["type"]
@@ -362,8 +362,11 @@ def then_nodes_edges_transmitted(shared_data: dict) -> None:
 # Step definitions — REQ-714
 # ---------------------------------------------------------------------------
 
+
 @given(
-    parsers.parse('a node with tableLabel "{table_label}" and properties {{name: "Alice", age: 30}}'),
+    parsers.parse(
+        'a node with tableLabel "{table_label}" and properties {{name: "Alice", age: 30}}'
+    ),
     target_fixture="shared_data",
 )
 def given_single_node_with_table_label(table_label: str) -> dict:
@@ -394,9 +397,7 @@ def given_single_node_with_table_label(table_label: str) -> dict:
     assert "_provisa_id" in cypher, (
         f"Helper must reference _provisa_id in MERGE key, got: {cypher!r}"
     )
-    assert "+=" in cypher, (
-        f"Helper must use += for SET clause, got: {cypher!r}"
-    )
+    assert "+=" in cypher, f"Helper must use += for SET clause, got: {cypher!r}"
 
     # For compound labels, check that at least part of the label appears
     if ":" in table_label:
@@ -423,9 +424,7 @@ def given_single_node_with_table_label(table_label: str) -> dict:
 
     # Verify _provisa_id is inside the MERGE pattern (dedup key), not just in SET
     merge_pattern_match = re.search(r"MERGE\s*\(([^)]+)\)", cypher, re.IGNORECASE)
-    assert merge_pattern_match is not None, (
-        f"Could not find MERGE(...) pattern in: {cypher!r}"
-    )
+    assert merge_pattern_match is not None, f"Could not find MERGE(...) pattern in: {cypher!r}"
     merge_pattern_content = merge_pattern_match.group(1)
     assert "_provisa_id" in merge_pattern_content, (
         f"_provisa_id must be inside the MERGE(...) dedup key pattern, "
@@ -465,7 +464,8 @@ def when_single_node_exported(shared_data: dict) -> None:
         from provisa.api.rest.cypher_router import router as cypher_router  # type: ignore
 
         app = FastAPI()
-        app.include_router(cypher_router, prefix="/data")
+        # The router already declares "/data/..." paths; mount at root.
+        app.include_router(cypher_router)
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -475,18 +475,22 @@ def when_single_node_exported(shared_data: dict) -> None:
         }
         mock_response.raise_for_status = MagicMock()
 
-        def _fake_post(url: str, **kwargs: Any) -> MagicMock:
+        async def _fake_post_async(url: str, **kwargs: Any) -> MagicMock:
             captured_requests.append({"url": url, "kwargs": kwargs})
             return mock_response
 
-        with patch("httpx.AsyncClient.post", new_callable=AsyncMock, side_effect=_fake_post):
-            with patch("httpx.Client.post", side_effect=_fake_post):
-                client = TestClient(app)
-                response = client.post(
-                    "/data/neo4j-export",
-                    json=payload,
-                    headers={"X-Role": "DEV"},
-                )
+        mock_async_client = AsyncMock()
+        mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
+        mock_async_client.__aexit__ = AsyncMock(return_value=False)
+        mock_async_client.post = AsyncMock(side_effect=_fake_post_async)
+
+        with patch("httpx.AsyncClient", return_value=mock_async_client):
+            client = TestClient(app)
+            response = client.post(
+                "/data/neo4j-export",
+                json=payload,
+                headers={"X-Role": "DEV"},
+            )
 
         shared_data["response_status"] = response.status_code
         shared_data["response_body"] = response.json() if response.content else {}
@@ -504,9 +508,7 @@ def when_single_node_exported(shared_data: dict) -> None:
         assert "_provisa_id" in cypher, (
             f"Simulated statement must use _provisa_id as dedup key, got: {cypher!r}"
         )
-        assert "+=" in cypher, (
-            f"Simulated statement must use += for SET clause, got: {cypher!r}"
-        )
+        assert "+=" in cypher, f"Simulated statement must use += for SET clause, got: {cypher!r}"
 
         table_label: str = node["tableLabel"]
         if ":" in table_label:
@@ -520,8 +522,7 @@ def when_single_node_exported(shared_data: dict) -> None:
             )
 
         assert stmt["parameters"]["id"] == node["id"], (
-            f"Simulated statement id param must equal {node['id']}, "
-            f"got {stmt['parameters']['id']}"
+            f"Simulated statement id param must equal {node['id']}, got {stmt['parameters']['id']}"
         )
         assert stmt["parameters"]["props"] == node["properties"], (
             f"Simulated statement props param must equal {node['properties']!r}, "
@@ -615,9 +616,7 @@ def then_node_merge_with_provisa_id(label: str, shared_data: dict) -> None:
         )
         all_statements = [expected_stmt]
 
-    assert all_statements, (
-        "No MERGE statements were captured for the neo4j-export call."
-    )
+    assert all_statements, "No MERGE statements were captured for the neo4j-export call."
 
     # Find the statement targeting this node by _provisa_id parameter value
     node_id: int = node["id"]
@@ -671,14 +670,16 @@ def then_node_merge_with_provisa_id(label: str, shared_data: dict) -> None:
     #    For compound labels, check that at least one part has colon-prefix.
     if ":" in table_label_value:
         parts = [p.strip() for p in table_label_value.split(":") if p.strip()]
-        colon_present = any(
-            re.search(rf":\s*{re.escape(p)}\b", cypher_text) for p in parts
-        ) or re.search(r":\s*" + re.escape(label), cypher_text) is not None
+        colon_present = (
+            any(re.search(rf":\s*{re.escape(p)}\b", cypher_text) for p in parts)
+            or re.search(r":\s*" + re.escape(label), cypher_text) is not None
+        )
         assert colon_present, (
             f"Expected label parts {parts!r} with colon-prefix Neo4j syntax in: {cypher_text!r}"
         )
     else:
-        assert re.search(rf":\s*{re.escape(label)}\b", cypher_text), (
+        # Allow backtick-quoted labels: `:Label` or `` :`Label` ``
+        assert re.search(rf":\s*`?{re.escape(label)}`?\b", cypher_text), (
             f"Expected label {label!r} with colon-prefix Neo4j syntax in: {cypher_text!r}"
         )
 
@@ -689,9 +690,7 @@ def then_node_merge_with_provisa_id(label: str, shared_data: dict) -> None:
 
     # 4. _provisa_id must be inside the MERGE(...) pattern (not just in the SET clause)
     merge_pattern_match = re.search(r"MERGE\s*\(([^)]+)\)", cypher_text, re.IGNORECASE)
-    assert merge_pattern_match is not None, (
-        f"Could not find MERGE(...) pattern in: {cypher_text!r}"
-    )
+    assert merge_pattern_match is not None, f"Could not find MERGE(...) pattern in: {cypher_text!r}"
     merge_pattern_content = merge_pattern_match.group(1)
     assert "_provisa_id" in merge_pattern_content, (
         f"_provisa_id must be inside the MERGE(...) dedup key pattern, "
@@ -709,9 +708,7 @@ def then_node_merge_with_provisa_id(label: str, shared_data: dict) -> None:
     )
 
     # 7. Properties must be SET with the += operator (additive, not = which replaces)
-    assert "SET" in cypher_text.upper(), (
-        f"Expected SET clause in statement, got: {cypher_text!r}"
-    )
+    assert "SET" in cypher_text.upper(), f"Expected SET clause in statement, got: {cypher_text!r}"
     assert "+=" in cypher_text, (
         f"Expected '+=' operator in SET clause (additive merge), got: {cypher_text!r}"
     )

@@ -80,9 +80,7 @@ def resolve_cache_key_and_policy(shared_data):
 
 
 @then(
-    "table-level TTL takes precedence, and cache keys include role_id and RLS context for"
-    " security partitioning"
-)
+    "table-level TTL takes precedence, and cache keys include role_id and RLS context for security partitioning")
 def assert_table_ttl_and_partitioning(shared_data):
     # Table-level TTL (60) wins over source (600) and global default (300)
     assert shared_data["resolved_policy"] == CachePolicy.TTL
@@ -131,7 +129,8 @@ def assert_unresolved_rls_raises(shared_data):
 
 
 @scenario(
-    "REQ-544.feature",
+    "../features/REQ-544.feature",
+
     "REQ-544 default behaviour",
 )
 def test_req_544_default_behaviour():

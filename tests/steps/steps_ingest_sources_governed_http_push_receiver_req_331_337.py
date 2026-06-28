@@ -29,7 +29,7 @@ def shared_data() -> dict:
 
 
 @scenario(
-    "../features/req_331.feature",
+    "../features/REQ-331.feature",
     "REQ-331 default behaviour",
 )
 def test_req_331_default_behaviour():
@@ -37,7 +37,7 @@ def test_req_331_default_behaviour():
 
 
 @scenario(
-    "../features/req_333.feature",
+    "../features/REQ-333.feature",
     "REQ-333 default behaviour",
 )
 def test_req_333_default_behaviour():
@@ -45,7 +45,7 @@ def test_req_333_default_behaviour():
 
 
 @scenario(
-    "../features/req_334.feature",
+    "../features/REQ-334.feature",
     "REQ-334 default behaviour",
 )
 def test_req_334_default_behaviour():
@@ -53,7 +53,7 @@ def test_req_334_default_behaviour():
 
 
 @scenario(
-    "../features/req_335.feature",
+    "../features/REQ-335.feature",
     "REQ-335 default behaviour",
 )
 def test_req_335_default_behaviour():
@@ -61,7 +61,7 @@ def test_req_335_default_behaviour():
 
 
 @scenario(
-    "../features/req_336.feature",
+    "../features/REQ-336.feature",
     "REQ-336 default behaviour",
 )
 def test_req_336_default_behaviour():
@@ -218,9 +218,7 @@ def provisa_starts_up(shared_data):
 
 
 @then(
-    "CREATE TABLE IF NOT EXISTS DDL is executed with system columns "
-    "_received_at and _updated_at injected"
-)
+    "CREATE TABLE IF NOT EXISTS DDL is executed with system columns _received_at and _updated_at injected")
 def ddl_executed_with_system_columns(shared_data):
     """Assert the generated DDL was executed and includes injected audit columns."""
     executed = shared_data["executed_ddls"]
@@ -368,9 +366,7 @@ def post_payload_received(shared_data):
 
 
 @then(
-    "the value at that nested path is extracted into the column "
-    "and missing paths yield NULL"
-)
+    "the value at that nested path is extracted into the column and missing paths yield NULL")
 def nested_value_extracted_missing_null(shared_data):
     """Assert nested path extraction (incl. array index) and NULL for missing paths."""
     payload = shared_data["payload"]
@@ -602,9 +598,7 @@ def accepted_with_row_count(shared_data):
 
 
 @then(
-    "HTTP 202 is returned with the count of inserted rows; "
-    "404 for unknown source/table, 503 for unavailable engine"
-)
+    "HTTP 202 is returned with the count of inserted rows; 404 for unknown source/table, 503 for unavailable engine")
 def batch_ingest_status_codes(shared_data):
     """Assert the full status-code contract of the batch ingest endpoint (REQ-335).
 
@@ -762,4 +756,10 @@ def batch_ingest_status_codes(shared_data):
         backing_store=empty_store,
         engine_available=True,
     )
-    assert status == 202, f"
+    assert status == 202, (
+        f"Expected HTTP 202 for empty array body, got {status!r}"
+    )
+    assert resp.get("inserted") == 0, (
+        f"Expected inserted=0 for empty array body, got {resp.get('inserted')!r}"
+    )
+    assert empty_store == [], "No records should be persisted for empty array body"

@@ -23,8 +23,8 @@ from provisa.cache.hot_tables import (
     detect_hot_tables,
 )
 
-scenarios("REQ-236.feature")
-scenarios("REQ-237.feature")
+scenarios("../features/REQ-236.feature")
+scenarios("../features/REQ-237.feature")
 
 
 @pytest.fixture
@@ -33,9 +33,7 @@ def shared_data():
 
 
 @given(
-    "a table that is the target of a many-to-one relationship or has row count "
-    "<= auto_threshold"
-)
+    "a table that is the target of a many-to-one relationship or has row count <= auto_threshold")
 def given_auto_hot_candidate(shared_data):
     """Define a schema where 'countries' is the target of a many-to-one relationship.
 
@@ -108,8 +106,7 @@ def when_schema_built(shared_data):
             await manager.close()
             return fetched
 
-        shared_data["cached_rows"] = asyncio.get_event_loop().run_until_complete(
-            _cache()
+        shared_data["cached_rows"] = asyncio.run(_cache()
         )
     else:
         # In-memory Redis substitute: faithfully store and return the JSON blob.
@@ -136,8 +133,7 @@ def when_schema_built(shared_data):
             blob = await manager._redis.get(blob_key)
             return json.loads(blob)
 
-        shared_data["cached_rows"] = asyncio.get_event_loop().run_until_complete(
-            _cache()
+        shared_data["cached_rows"] = asyncio.run(_cache()
         )
 
     shared_data["manager"] = manager
@@ -236,8 +232,7 @@ def when_schema_rebuilt(shared_data):
             await manager.close()
             return exists
 
-        shared_data["countries_blob_exists"] = asyncio.get_event_loop().run_until_complete(
-            _cache()
+        shared_data["countries_blob_exists"] = asyncio.run(_cache()
         )
     else:
         store: dict[str, str] = {}
@@ -266,8 +261,7 @@ def when_schema_rebuilt(shared_data):
             blob_key = HOT_PREFIX + "countries:blob"
             return bool(await manager._redis.exists(blob_key))
 
-        shared_data["countries_blob_exists"] = asyncio.get_event_loop().run_until_complete(
-            _cache()
+        shared_data["countries_blob_exists"] = asyncio.run(_cache()
         )
 
     shared_data["manager"] = manager

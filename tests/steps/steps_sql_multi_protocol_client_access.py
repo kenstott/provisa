@@ -59,12 +59,11 @@ import httpx
 import pytest
 import pytest_asyncio
 import respx
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, scenarios
 
 pytest.importorskip("provisa_client")
 pa = pytest.importorskip("pyarrow")
 
-from provisa_client.client import ProvisaClient  # type: ignore[import-not-found]
 
 scenarios("../features/REQ-268.feature")
 scenarios("../features/REQ-269.feature")
@@ -213,7 +212,7 @@ def cursor_execute_called_with_graphql_or_sql(shared_data: dict) -> None:
 
     # GraphQL execute path.
     with respx.mock(base_url=BASE) as mock:
-        mock.post("/data/query").mock(
+        mock.post("/data/graphql").mock(
             return_value=httpx.Response(200, json=gql_response)
         )
         cursor.execute("{ orders { id region } }")
@@ -223,7 +222,7 @@ def cursor_execute_called_with_graphql_or_sql(shared_data: dict) -> None:
 
     # SQL execute path.
     with respx.mock(base_url=BASE) as mock:
-        mock.post("/data/query").mock(
+        mock.post("/data/sql").mock(
             return_value=httpx.Response(200, json=sql_response)
         )
         cursor.execute("SELECT id, region FROM orders")
@@ -411,7 +410,7 @@ def arbitrary_sql_is_executed(shared_data: dict) -> None:
     all_results = []
     for sql, mock_response in sql_statements:
         with respx.mock(base_url=BASE) as mock:
-            mock.post("/data/query").mock(
+            mock.post("/data/sql").mock(
                 return_value=httpx.Response(200, json=mock_response)
             )
             cursor.execute(sql)
@@ -436,9 +435,7 @@ def arbitrary_sql_is_executed(shared_data: dict) -> None:
 
 
 @then(
-    "only tables and views permitted by the user's rights are accessible with uniform Stage 2\n"
-    " governance"
-)
+    "only tables and views permitted by the user's rights are accessible with uniform Stage 2 governance")
 def only_permitted_tables_accessible_uniform_governance(shared_data: dict) -> None:
     """Assert that rights-governed access and uniform Stage 2 governance hold.
 
@@ -490,7 +487,7 @@ def only_permitted_tables_accessible_uniform_governance(shared_data: dict) -> No
     restricted_cursor = restricted_conn.cursor()
 
     with respx.mock(base_url=BASE) as mock:
-        mock.post("/data/query").mock(
+        mock.post("/data/sql").mock(
             return_value=httpx.Response(
                 403,
                 json={"detail": "Access denied: table not permitted for role 'restricted'"}

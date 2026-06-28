@@ -15,7 +15,6 @@ sources are forced through Trino routing (``json_extract_scalar``).
 
 from __future__ import annotations
 
-import os
 
 import pytest
 import sqlglot
@@ -187,7 +186,9 @@ def _compile_pg_sql(schema, ctx) -> str:
     document = parse(query)
     errors = validate(schema, document)
     assert not errors, f"GraphQL validation errors: {errors}"
-    compiled = compile_query(schema, ctx, document)
+    results = compile_query(document, ctx)
+    assert results, "compile_query produced no results"
+    compiled = results[0]
     assert compiled.sql, "compile_query produced empty SQL"
     return compiled.sql
 
@@ -206,7 +207,9 @@ def _compile_for_source(source_id: str, source_type: str, table_name: str):
     document = parse(query)
     errors = validate(schema, document)
     assert not errors, f"GraphQL validation errors for {source_id}: {errors}"
-    compiled = compile_query(schema, ctx, document)
+    results = compile_query(document, ctx)
+    assert results, f"compile_query produced no results for {source_id}"
+    compiled = results[0]
     assert compiled.sql, f"compile_query produced empty SQL for {source_id}"
     return compiled
 
@@ -216,12 +219,12 @@ def _compile_for_source(source_id: str, source_type: str, table_name: str):
 # ---------------------------------------------------------------------------
 
 
-@scenario("REQ-151.feature", "REQ-151 default behaviour")
+@scenario("../features/REQ-151.feature", "REQ-151 default behaviour")
 def test_req_151_default_behaviour():
     """REQ-151 — Column Path Extraction default behaviour."""
 
 
-@scenario("REQ-152.feature", "REQ-152 default behaviour")
+@scenario("../features/REQ-152.feature", "REQ-152 default behaviour")
 def test_req_152_default_behaviour():
     """REQ-152 — Column Path Extraction routing default behaviour."""
 
@@ -242,9 +245,9 @@ def given_path_column(shared_data):
     paths_for_table = {gql: expr for (tid, gql), expr in ctx.column_paths.items() if tid == 1}
     assert paths_for_table, "expected JSON path columns to be registered for the events table"
     # Path expressions must point into the JSON 'payload' source column.
-    assert any(
-        expr.startswith("payload") for expr in paths_for_table.values()
-    ), f"path expressions do not reference JSON source column: {paths_for_table}"
+    assert any(expr.startswith("payload") for expr in paths_for_table.values()), (
+        f"path expressions do not reference JSON source column: {paths_for_table}"
+    )
 
     shared_data["schema"] = schema
     shared_data["ctx"] = ctx
@@ -259,9 +262,7 @@ def when_compile_pg(shared_data):
     shared_data["pg_sql"] = sql
 
 
-@then(
-    "PG >> syntax is used; when compiled for Trino, json_extract_scalar is used"
-)
+@then("PG >> syntax is used; when compiled for Trino, json_extract_scalar is used")
 def then_pg_and_trino_path_syntax(shared_data):
     pg_sql = shared_data["pg_sql"]
 
@@ -272,9 +273,9 @@ def then_pg_and_trino_path_syntax(shared_data):
     transpiled = sqlglot.transpile(pg_sql, read="postgres", write="trino")
     assert transpiled, "SQLGlot produced no Trino output"
     trino_sql = transpiled[0]
-    assert (
-        "json_extract_scalar" in trino_sql.lower()
-    ), f"expected json_extract_scalar in Trino SQL: {trino_sql}"
+    assert "json_extract_scalar" in trino_sql.lower(), (
+        f"expected json_extract_scalar in Trino SQL: {trino_sql}"
+    )
 
     # The Trino form must not retain the raw PG operator.
     assert "->>" not in trino_sql, f"Trino SQL still contains PG operator: {trino_sql}"
@@ -336,17 +337,15 @@ def when_engine_routes_query(shared_data):
     shared_data["non_pg_compiled"] = non_pg_compiled
 
 
-@then(
-    "PostgreSQL sources use the direct route and all non-PG sources are forced through Trino"
-)
+@then("PostgreSQL sources use the direct route and all non-PG sources are forced through Trino")
 def then_routing_rules(shared_data):
     # --- PostgreSQL source: direct route uses native PG '->>' extraction. ---
     pg_compiled = shared_data["pg_compiled"]
     pg_sql = pg_compiled.sql
     assert "->>" in pg_sql, f"expected PG direct-route ->> syntax for PostgreSQL source: {pg_sql}"
-    assert (
-        "json_extract_scalar" not in pg_sql.lower()
-    ), f"PostgreSQL direct route must not use Trino json_extract_scalar: {pg_sql}"
+    assert "json_extract_scalar" not in pg_sql.lower(), (
+        f"PostgreSQL direct route must not use Trino json_extract_scalar: {pg_sql}"
+    )
 
     # Verify the PG source is represented in compiled.sources.
     pg_source_id = shared_data["pg_source"]["source_id"]
@@ -373,12 +372,12 @@ def then_routing_rules(shared_data):
         trino_sql = sqlglot.transpile(sql, read="postgres", write="trino")
         assert trino_sql, f"SQLGlot produced no Trino output for {source_id}"
         trino_lower = trino_sql[0].lower()
-        assert (
-            "json_extract_scalar" in trino_lower
-        ), f"non-PG source {source_id} must route through Trino json_extract_scalar: {trino_sql[0]}"
-        assert (
-            "->>" not in trino_sql[0]
-        ), f"Trino-routed SQL for {source_id} still contains PG operator: {trino_sql[0]}"
+        assert "json_extract_scalar" in trino_lower, (
+            f"non-PG source {source_id} must route through Trino json_extract_scalar: {trino_sql[0]}"
+        )
+        assert "->>" not in trino_sql[0], (
+            f"Trino-routed SQL for {source_id} still contains PG operator: {trino_sql[0]}"
+        )
 
         # The compiled sources set must reflect the non-PG origin.
         assert source_id in compiled.sources, (

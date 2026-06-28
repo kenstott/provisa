@@ -33,7 +33,7 @@ import csv
 import io
 import json
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from pytest_bdd import given, when, then, scenarios
@@ -304,21 +304,21 @@ def given_redirect_results_written_to_s3(shared_data):
 @when("the query executes")
 def query_executes(shared_data):
     # REQ-137 branch: header-driven redirect decisions.
-    # Force scenario: format alone, evaluate against a small result.
-    fmt_a, thr_a, force_a = shared_data["parsed_force"]
-    config_a = _make_config(enabled=True, threshold=1000)
-    shared_data["redirect_force_decision"] = should_redirect(
-        shared_data["small_result"], config_a, force=force_a
-    )
-    shared_data["redirect_format_force"] = fmt_a
+    if "parsed_force" in shared_data:
+        fmt_a, thr_a, force_a = shared_data["parsed_force"]
+        config_a = _make_config(enabled=True, threshold=1000)
+        shared_data["redirect_force_decision"] = should_redirect(
+            shared_data["small_result"], config_a, force=force_a
+        )
+        shared_data["redirect_format_force"] = fmt_a
 
-    # Threshold scenario: redirect only when row count exceeds threshold.
-    fmt_b, thr_b, force_b = shared_data["parsed_threshold"]
-    config_b = _make_config(enabled=True, threshold=thr_b)
-    shared_data["redirect_threshold_decision"] = should_redirect(
-        shared_data["large_result"], config_b, force=force_b
-    )
-    shared_data["redirect_format_threshold"] = fmt_b
+        # Threshold scenario: redirect only when row count exceeds threshold.
+        fmt_b, thr_b, force_b = shared_data["parsed_threshold"]
+        config_b = _make_config(enabled=True, threshold=thr_b)
+        shared_data["redirect_threshold_decision"] = should_redirect(
+            shared_data["large_result"], config_b, force=force_b
+        )
+        shared_data["redirect_format_threshold"] = fmt_b
 
     # REQ-138 branch: for each native format build and record the CTAS
     # statement so the Then step can inspect it.  Native-format queries reach

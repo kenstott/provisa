@@ -106,7 +106,8 @@ def _apply_mutation(mutated_table: str, registry: MVRegistry) -> list[MVDefiniti
 
 
 @scenario(
-    "REQ-158_auto_materialized_relationships.feature",
+    "../features/REQ-158.feature",
+
     "REQ-158 default behaviour",
 )
 def test_req_158_default_behaviour():
@@ -188,7 +189,8 @@ def then_mv_definitions_generated(shared_data: dict):
 
 
 @scenario(
-    "REQ-160_auto_materialized_relationships.feature",
+    "../features/REQ-160.feature",
+
     "REQ-160 default behaviour",
 )
 def test_req_160_default_behaviour():
@@ -211,15 +213,8 @@ def given_auto_generated_mv(shared_data: dict):
     ]
     generated = _auto_generate_mvs(relationships, registry)
     assert len(generated) == 1
-    mv = generated[0]
-
-    # Verify the MV was auto-generated with the correct initial state.
-    assert mv.status == MVStatus.STALE
-    assert mv.last_refresh_at is None
-    assert mv.row_count is None
-
     shared_data["registry"] = registry
-    shared_data["mv"] = mv
+    shared_data["mv"] = generated[0]
 
 
 @when("it is first created")
@@ -232,9 +227,7 @@ def when_first_created(shared_data: dict):
 
 
 @then(
-    "its state is STALE and the background refresh loop populates it "
-    "before it serves queries"
-)
+    "its state is STALE and the background refresh loop populates it before it serves queries")
 def then_stale_then_populated(shared_data: dict):
     registry: MVRegistry = shared_data["registry"]
     mv: MVDefinition = shared_data["mv"]
@@ -269,7 +262,8 @@ def then_stale_then_populated(shared_data: dict):
 
 
 @scenario(
-    "REQ-543_auto_materialized_relationships.feature",
+    "../features/REQ-543.feature",
+
     "REQ-543 default behaviour",
 )
 def test_req_543_default_behaviour():

@@ -35,12 +35,13 @@ from provisa.security.visibility import (
 )
 
 # Bind every scenario in the generated feature file for this requirement.
-scenarios(str(Path(__file__).parent / "features" / "REQ-363.feature"))
+scenarios(str(Path(__file__).parent.parent / "features" / "REQ-363.feature"))
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def shared_data() -> dict:
@@ -103,9 +104,7 @@ def _post_governed_introspection(
 
     async def _call() -> httpx.Response:
         async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
-            return await client.post(
-                "/data/graphql", json={"query": query}, headers=headers
-            )
+            return await client.post("/data/graphql", json={"query": query}, headers=headers)
 
     return asyncio.run(_call())
 
@@ -113,6 +112,7 @@ def _post_governed_introspection(
 # ---------------------------------------------------------------------------
 # Given
 # ---------------------------------------------------------------------------
+
 
 @given("a SQLAlchemy client using the Provisa dialect with a specific role")
 def given_dialect_with_role(shared_data: dict) -> None:
@@ -134,6 +134,7 @@ def given_dialect_with_role(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 # When
 # ---------------------------------------------------------------------------
+
 
 @when("get_table_names() or get_columns() is called")
 def when_introspect(shared_data: dict) -> None:
@@ -180,6 +181,7 @@ def when_introspect(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 # Then
 # ---------------------------------------------------------------------------
+
 
 @then(
     parsers.parse(

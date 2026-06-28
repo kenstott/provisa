@@ -9,15 +9,16 @@ and REQ-370 — Independent NL query rate limiting to cap LLM cost exposure."""
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
-import pytest_asyncio
 from fastapi import HTTPException
-from pytest_bdd import given, when, then, scenarios, parsers
+from pytest_bdd import given, when, then, scenarios
 
 from provisa.api.rate_limit import RedisRateLimiter, build_rate_limiter, NoopRateLimiter
 
-scenarios("../features/REQ-369_rate_limiting.feature")
-scenarios("../features/REQ-370_rate_limiting.feature")
+scenarios("../features/REQ-369.feature")
+scenarios("../features/REQ-370.feature")
 
 
 class _FakeRedis:
@@ -93,42 +94,44 @@ def role_with_rate_limits(shared_data: dict) -> None:
 
 
 @when("requests exceed the rate limit")
-async def requests_exceed_limit(shared_data: dict) -> None:
-    limiter: RedisRateLimiter = shared_data["limiter"]
-    key = shared_data["rate_key"]
-    limit = shared_data["max_rps"]
-    window = shared_data["window_seconds"]
+def requests_exceed_limit(shared_data: dict) -> None:
+    async def _run() -> None:
+        limiter: RedisRateLimiter = shared_data["limiter"]
+        key = shared_data["rate_key"]
+        limit = shared_data["max_rps"]
+        window = shared_data["window_seconds"]
 
-    results = []
-    # Fire one more than the configured limit within the same window.
-    for _ in range(limit + 1):
-        allowed, retry_after = await limiter.allow(key, limit, window)
-        results.append((allowed, retry_after))
+        results = []
+        # Fire one more than the configured limit within the same window.
+        for _ in range(limit + 1):
+            allowed, retry_after = await limiter.allow(key, limit, window)
+            results.append((allowed, retry_after))
 
-    shared_data["results"] = results
+        shared_data["results"] = results
 
-    # Simulate the API layer rejecting the over-limit request before compilation
-    # or execution: it raises HTTP 429 with a Retry-After header.
-    last_allowed, last_retry = results[-1]
-    shared_data["compilation_invoked"] = False
-    if not last_allowed:
-        retry_after_secs = max(1, int(round(last_retry)))
-        try:
-            raise HTTPException(
-                status_code=429,
-                detail="Rate limit exceeded",
-                headers={"Retry-After": str(retry_after_secs)},
-            )
-        except HTTPException as exc:
-            shared_data["exception"] = exc
-    else:
-        # Only if allowed would the request proceed to compilation/execution.
-        shared_data["compilation_invoked"] = True
+        # Simulate the API layer rejecting the over-limit request before compilation
+        # or execution: it raises HTTP 429 with a Retry-After header.
+        last_allowed, last_retry = results[-1]
+        shared_data["compilation_invoked"] = False
+        if not last_allowed:
+            retry_after_secs = max(1, int(round(last_retry)))
+            try:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Rate limit exceeded",
+                    headers={"Retry-After": str(retry_after_secs)},
+                )
+            except HTTPException as exc:
+                shared_data["exception"] = exc
+        else:
+            # Only if allowed would the request proceed to compilation/execution.
+            shared_data["compilation_invoked"] = True
+
+    asyncio.run(_run())
 
 
 @then(
-    "requests are rejected with HTTP 429 and a Retry-After header "
-    "before compilation or execution"
+    "requests are rejected with HTTP 429 and a Retry-After header before compilation or execution"
 )
 def requests_rejected(shared_data: dict) -> None:
     results = shared_data["results"]
@@ -184,41 +187,44 @@ def role_with_nl_rate_limit(shared_data: dict) -> None:
 
 
 @when("NL query requests exceed the per-minute limit")
-async def nl_requests_exceed_limit(shared_data: dict) -> None:
-    limiter: RedisRateLimiter = shared_data["nl_limiter"]
-    key = shared_data["nl_rate_key"]
-    limit = shared_data["nl_rate_limit"]
-    window = shared_data["nl_window_seconds"]
+def nl_requests_exceed_limit(shared_data: dict) -> None:
+    async def _run() -> None:
+        limiter: RedisRateLimiter = shared_data["nl_limiter"]
+        key = shared_data["nl_rate_key"]
+        limit = shared_data["nl_rate_limit"]
+        window = shared_data["nl_window_seconds"]
 
-    async def fake_llm_call() -> str:
-        # Each invocation here represents real spend against the LLM provider.
-        shared_data["llm_calls"] += 1
-        return "SELECT 1"
+        async def fake_llm_call() -> str:
+            # Each invocation here represents real spend against the LLM provider.
+            shared_data["llm_calls"] += 1
+            return "SELECT 1"
 
-    results = []
-    rejections = []
-    # Fire two requests beyond the configured per-minute limit, all within the
-    # same window so none of them age out.
-    for _ in range(limit + 2):
-        allowed, retry_after = await limiter.allow(key, limit, window)
-        results.append((allowed, retry_after))
-        if allowed:
-            # Only allowed requests reach the LLM generation step.
-            await fake_llm_call()
-        else:
-            rejections.append(retry_after)
-            retry_after_secs = max(1, int(round(retry_after)))
-            try:
-                raise HTTPException(
-                    status_code=429,
-                    detail="NL rate limit exceeded",
-                    headers={"Retry-After": str(retry_after_secs)},
-                )
-            except HTTPException as exc:
-                shared_data["nl_exceptions"].append(exc)
+        results = []
+        rejections = []
+        # Fire two requests beyond the configured per-minute limit, all within the
+        # same window so none of them age out.
+        for _ in range(limit + 2):
+            allowed, retry_after = await limiter.allow(key, limit, window)
+            results.append((allowed, retry_after))
+            if allowed:
+                # Only allowed requests reach the LLM generation step.
+                await fake_llm_call()
+            else:
+                rejections.append(retry_after)
+                retry_after_secs = max(1, int(round(retry_after)))
+                try:
+                    raise HTTPException(
+                        status_code=429,
+                        detail="NL rate limit exceeded",
+                        headers={"Retry-After": str(retry_after_secs)},
+                    )
+                except HTTPException as exc:
+                    shared_data["nl_exceptions"].append(exc)
 
-    shared_data["nl_results"] = results
-    shared_data["nl_rejections"] = rejections
+        shared_data["nl_results"] = results
+        shared_data["nl_rejections"] = rejections
+
+    asyncio.run(_run())
 
 
 @then("requests are rejected before any LLM call is made")
@@ -279,40 +285,43 @@ def role_with_concurrency_limits(shared_data: dict) -> None:
 
 
 @when("concurrent SSE subscriptions and Arrow Flight streams exceed their limits")
-async def concurrency_exceeds_limits(shared_data: dict) -> None:
-    limiter: RedisRateLimiter = shared_data["conc_limiter"]
+def concurrency_exceeds_limits(shared_data: dict) -> None:
+    async def _run() -> None:
+        limiter: RedisRateLimiter = shared_data["conc_limiter"]
 
-    # Attempt one more SSE subscription than allowed.
-    sse_key = shared_data["sse_key"]
-    sse_limit = shared_data["max_sse_subs"]
-    for _ in range(sse_limit + 1):
-        acquired = await limiter.acquire(sse_key, sse_limit)
-        shared_data["sse_results"].append(acquired)
-        if not acquired:
-            try:
-                raise HTTPException(
-                    status_code=429,
-                    detail="SSE subscription limit exceeded",
-                    headers={"Retry-After": "1"},
-                )
-            except HTTPException as exc:
-                shared_data["sse_exceptions"].append(exc)
+        # Attempt one more SSE subscription than allowed.
+        sse_key = shared_data["sse_key"]
+        sse_limit = shared_data["max_sse_subs"]
+        for _ in range(sse_limit + 1):
+            acquired = await limiter.acquire(sse_key, sse_limit)
+            shared_data["sse_results"].append(acquired)
+            if not acquired:
+                try:
+                    raise HTTPException(
+                        status_code=429,
+                        detail="SSE subscription limit exceeded",
+                        headers={"Retry-After": "1"},
+                    )
+                except HTTPException as exc:
+                    shared_data["sse_exceptions"].append(exc)
 
-    # Attempt one more Arrow Flight stream than allowed.
-    flight_key = shared_data["flight_key"]
-    flight_limit = shared_data["max_flight_streams"]
-    for _ in range(flight_limit + 1):
-        acquired = await limiter.acquire(flight_key, flight_limit)
-        shared_data["flight_results"].append(acquired)
-        if not acquired:
-            try:
-                raise HTTPException(
-                    status_code=429,
-                    detail="Arrow Flight stream limit exceeded",
-                    headers={"Retry-After": "1"},
-                )
-            except HTTPException as exc:
-                shared_data["flight_exceptions"].append(exc)
+        # Attempt one more Arrow Flight stream than allowed.
+        flight_key = shared_data["flight_key"]
+        flight_limit = shared_data["max_flight_streams"]
+        for _ in range(flight_limit + 1):
+            acquired = await limiter.acquire(flight_key, flight_limit)
+            shared_data["flight_results"].append(acquired)
+            if not acquired:
+                try:
+                    raise HTTPException(
+                        status_code=429,
+                        detail="Arrow Flight stream limit exceeded",
+                        headers={"Retry-After": "1"},
+                    )
+                except HTTPException as exc:
+                    shared_data["flight_exceptions"].append(exc)
+
+    asyncio.run(_run())
 
 
 @then("the excess subscriptions and streams are rejected with HTTP 429")
@@ -350,32 +359,34 @@ def concurrency_rejected(shared_data: dict) -> None:
 
 
 @given("a saturated concurrency gauge for a role")
-async def saturated_concurrency_gauge(shared_data: dict) -> None:
-    limiter = RedisRateLimiter(_FakeRedis())
-    shared_data["release_limiter"] = limiter
-    shared_data["release_key"] = "flight:analyst"
-    shared_data["release_limit"] = 1
-    # Fill the single available slot.
-    acquired = await limiter.acquire(
-        shared_data["release_key"], shared_data["release_limit"]
-    )
-    assert acquired is True
-    # A second acquire must be rejected while the gauge is saturated.
-    blocked = await limiter.acquire(
-        shared_data["release_key"], shared_data["release_limit"]
-    )
-    assert blocked is False
-    shared_data["release_pre_state"] = blocked
+def saturated_concurrency_gauge(shared_data: dict) -> None:
+    async def _run() -> None:
+        limiter = RedisRateLimiter(_FakeRedis())
+        shared_data["release_limiter"] = limiter
+        shared_data["release_key"] = "flight:analyst"
+        shared_data["release_limit"] = 1
+        # Fill the single available slot.
+        acquired = await limiter.acquire(shared_data["release_key"], shared_data["release_limit"])
+        assert acquired is True
+        # A second acquire must be rejected while the gauge is saturated.
+        blocked = await limiter.acquire(shared_data["release_key"], shared_data["release_limit"])
+        assert blocked is False
+        shared_data["release_pre_state"] = blocked
+
+    asyncio.run(_run())
 
 
 @when("an active stream is released")
-async def active_stream_released(shared_data: dict) -> None:
-    limiter: RedisRateLimiter = shared_data["release_limiter"]
-    await limiter.release(shared_data["release_key"])
-    # After release a slot should be available again.
-    shared_data["release_post_state"] = await limiter.acquire(
-        shared_data["release_key"], shared_data["release_limit"]
-    )
+def active_stream_released(shared_data: dict) -> None:
+    async def _run() -> None:
+        limiter: RedisRateLimiter = shared_data["release_limiter"]
+        await limiter.release(shared_data["release_key"])
+        # After release a slot should be available again.
+        shared_data["release_post_state"] = await limiter.acquire(
+            shared_data["release_key"], shared_data["release_limit"]
+        )
+
+    asyncio.run(_run())
 
 
 @then("a new stream can acquire the freed slot")

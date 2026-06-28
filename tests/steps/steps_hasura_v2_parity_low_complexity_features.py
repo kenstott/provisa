@@ -30,27 +30,15 @@ REQ-217 — batch mutations: multiple mutations in a single GraphQL request exec
 
 from __future__ import annotations
 
-import asyncio
-import importlib
-import inspect
-import time
 from datetime import datetime, timezone
 
 import pytest
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from graphql import (
     FieldNode,
-    GraphQLArgument,
-    GraphQLField,
-    GraphQLObjectType,
-    GraphQLSchema,
-    GraphQLString,
     OperationDefinitionNode,
-    execute,
     parse,
 )
-from pytest_bdd import given, parsers, scenario, then, when
+from pytest_bdd import given, scenario, then, when
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import (
@@ -58,7 +46,7 @@ from provisa.compiler.mutation_gen import (
     apply_column_presets,
     compile_upsert,
 )
-from provisa.compiler.schema_gen import SchemaInput, generate_schema
+from provisa.compiler.schema_gen import SchemaInput
 from provisa.compiler.sql_gen import TableMeta, build_context, compile_query
 
 
@@ -156,37 +144,26 @@ def _build_schema_input(source_type: str = "postgresql") -> SchemaInput:
     )
 
 
-def _query_field_node(query: str) -> FieldNode:
-    """Parse a GraphQL query string and return its first root field node."""
+def _query_field_node(query: str) -> tuple:
+    """Parse a GraphQL query string and return (DocumentNode, FieldNode)."""
     doc = parse(query)
     op = doc.definitions[0]
     assert isinstance(op, OperationDefinitionNode)
     field = op.selection_set.selections[0]
     assert isinstance(field, FieldNode)
-    return field
+    return doc, field
 
 
-def _run_compile_query(field_node: FieldNode, ctx: object, table: TableMeta) -> object:
-    """Invoke compile_query, adapting to its real signature."""
-    sig = inspect.signature(compile_query)
-    param_names = [
-        name
-        for name, p in sig.parameters.items()
-        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
-    ]
-    call_args: list[object] = [field_node]
-    for name in param_names[1:]:
-        lname = name.lower()
-        if any(token in lname for token in ("context", "ctx")):
-            call_args.append(ctx)
-        elif any(token in lname for token in ("table", "meta")):
-            call_args.append(table)
-        elif "variable" in lname:
-            call_args.append(None)
-        else:
-            if sig.parameters[name].default is inspect.Parameter.empty:
-                call_args.append(ctx)
-    return compile_query(*call_args)
+def _run_compile_query(doc_and_field, ctx: object, table: TableMeta) -> object:
+    """Invoke compile_query(document, ctx) and return the first CompiledQuery."""
+    if isinstance(doc_and_field, tuple):
+        document, _field = doc_and_field
+    else:
+        # Legacy: bare FieldNode passed directly (should not happen after refactor).
+        raise TypeError(f"_run_compile_query expects (doc, field) tuple, got {type(doc_and_field)}")
+    results = compile_query(document, ctx)
+    assert results, "compile_query produced no results"
+    return results[0]
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +222,7 @@ def _flatten_roles(role_definitions: list[dict]) -> dict[str, dict]:
 
 
 @scenario(
-    "req_212_hasura_v2_parity_low_complexity_features.feature",
+    "../features/REQ-212.feature",
     "REQ-212 default behaviour",
 )
 def test_req_212_default_behaviour() -> None:
@@ -274,17 +251,12 @@ def _given_upsert_mutation_request(shared_data: dict) -> None:
 
 @when("the compiler processes it")
 def _when_compiler_processes_upsert(shared_data: dict) -> None:
-    """Pass the field node and table metadata through the appropriate compiler path.
+    """Pass the field node and table metadata through ``compile_upsert``.
 
-    This step is shared across multiple REQ scenarios (REQ-212, REQ-213, REQ-214).
-    It dispatches to the correct compilation path based on which keys have been
-    populated in shared_data by the Given step:
-
-    - REQ-214 (column presets): if ``preset_field_node`` is present, delegate to
-      the insert/update mutation executor.
-    - REQ-213 (distinct_on): if ``pg_field_node`` is present, run compile_query
-      for both PostgreSQL and non-PostgreSQL (Trino) variants and store results.
-    - REQ-212 (upsert): default path — run compile_upsert on the field_node.
+    The result is stored in ``shared_data["result"]`` for assertion in the
+    Then step. Any exception raised by the compiler propagates naturally so
+    that a failed compilation surfaces as a test failure rather than a
+    misleading assertion error.
     """
     # REQ-214 path: if this is a column-presets scenario, delegate.
     if "preset_field_node" in shared_data:
@@ -313,7 +285,9 @@ def _when_compiler_processes_upsert(shared_data: dict) -> None:
     shared_data["result"] = result
 
 
-@then("INSERT ... ON CONFLICT ... DO UPDATE SQL is generated with conflict columns from primary key metadata")
+@then(
+    "INSERT ... ON CONFLICT ... DO UPDATE SQL is generated with conflict columns from primary key metadata"
+)
 def _then_on_conflict_sql_generated(shared_data: dict) -> None:
     """Assert that the compiled SQL contains the expected upsert clauses.
 
@@ -336,9 +310,7 @@ def _then_on_conflict_sql_generated(shared_data: dict) -> None:
     assert "ON CONFLICT" in sql_upper, (
         f"Expected 'ON CONFLICT' in generated SQL, got:\n{result.sql}"
     )
-    assert "DO UPDATE" in sql_upper, (
-        f"Expected 'DO UPDATE' in generated SQL, got:\n{result.sql}"
-    )
+    assert "DO UPDATE" in sql_upper, f"Expected 'DO UPDATE' in generated SQL, got:\n{result.sql}"
 
     # The conflict column (primary key: id) must appear in the SQL to confirm
     # it was inferred from primary key metadata and included in the conflict target.
@@ -353,7 +325,7 @@ def _then_on_conflict_sql_generated(shared_data: dict) -> None:
 
 
 @scenario(
-    "req_213_hasura_v2_parity_low_complexity_features.feature",
+    "../features/REQ-213.feature",
     "REQ-213 default behaviour",
 )
 def test_req_213_default_behaviour() -> None:
@@ -415,9 +387,7 @@ def _given_distinct_on_query(shared_data: dict) -> None:
 
 
 @then(
-    "deduplicated results are returned using DISTINCT ON or a window function fallback"
-    " for non-PostgreSQL dialects"
-)
+    "deduplicated results are returned using DISTINCT ON or a window function fallback for non-PostgreSQL dialects")
 def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
     """Assert correct deduplication SQL for PostgreSQL and non-PostgreSQL dialects.
 
@@ -544,7 +514,7 @@ def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
 
 
 @scenario(
-    "req_214_hasura_v2_parity_low_complexity_features.feature",
+    "../features/REQ-214.feature",
     "REQ-214 default behaviour",
 )
 def test_req_214_default_behaviour() -> None:
@@ -660,9 +630,7 @@ def _when_insert_or_update_mutation_executed(shared_data: dict) -> None:
 
 
 @then(
-    "preset columns are removed from user input and injected with session variable"
-    " or built-in function values before SQL generation"
-)
+    "preset columns are removed from user input and injected with session variable or built-in function values before SQL generation")
 def _then_preset_columns_injected(shared_data: dict) -> None:
     """Assert that apply_column_presets correctly processes all configured presets."""
     result: dict = shared_data["preset_result"]
@@ -670,9 +638,7 @@ def _then_preset_columns_injected(shared_data: dict) -> None:
     before_apply: datetime = shared_data["before_apply"]
     after_apply: datetime = shared_data["after_apply"]
 
-    assert isinstance(result, dict), (
-        f"apply_column_presets must return a dict; got {type(result)}"
-    )
+    assert isinstance(result, dict), f"apply_column_presets must return a dict; got {type(result)}"
 
     # ------------------------------------------------------------------
     # 1. created_by — injected from header x_user_id
@@ -696,8 +662,7 @@ def _then_preset_columns_injected(shared_data: dict) -> None:
         "updated_at column must be present in the result after preset injection"
     )
     assert result["updated_at"] != "1970-01-01T00:00:00", (
-        "updated_at must NOT contain the client-supplied epoch value; "
-        f"got {result['updated_at']!r}"
+        f"updated_at must NOT contain the client-supplied epoch value; got {result['updated_at']!r}"
     )
 
     # The injected value must be a parseable ISO datetime.
@@ -714,8 +679,12 @@ def _then_preset_columns_injected(shared_data: dict) -> None:
         parsed_updated_at = parsed_updated_at.replace(tzinfo=timezone.utc)
 
     # Normalise before/after to UTC for comparison.
-    before_utc = before_apply.replace(tzinfo=timezone.utc) if before_apply.tzinfo is None else before_apply
-    after_utc = after_apply.replace(tzinfo=timezone.utc) if after_apply.tzinfo is None else after_apply
+    before_utc = (
+        before_apply.replace(tzinfo=timezone.utc) if before_apply.tzinfo is None else before_apply
+    )
+    after_utc = (
+        after_apply.replace(tzinfo=timezone.utc) if after_apply.tzinfo is None else after_apply
+    )
 
     assert before_utc <= parsed_updated_at <= after_utc, (
         f"updated_at must be within the window [{before_utc.isoformat()}, "
@@ -730,3 +699,19 @@ def _then_preset_columns_injected(shared_data: dict) -> None:
         f"expected {original_input['title']!r}, got {result.get('title')!r}"
     )
     assert result.get("amount") == original_input["amount"], (
+        f"Non-preset column 'amount' must pass through unchanged; "
+        f"expected {original_input['amount']!r}, got {result.get('amount')!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-217 scenario binding
+# ---------------------------------------------------------------------------
+
+
+@scenario(
+    "../features/REQ-217.feature",
+    "REQ-217 default behaviour",
+)
+def test_req_217_default_behaviour() -> None:
+    """Verify REQ-217 default behaviour."""

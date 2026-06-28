@@ -35,23 +35,15 @@ table relationships.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import pytest_asyncio
-from graphql import (
-    GraphQLField,
-    GraphQLList,
-    GraphQLNonNull,
-    GraphQLObjectType,
-    GraphQLString,
-)
-from pytest_bdd import given, parsers, scenarios, then, when
+from graphql import GraphQLField, GraphQLList, GraphQLNonNull, GraphQLObjectType, GraphQLString
+from pytest_bdd import given, scenarios, then, when
 
 from provisa.compiler.function_gen import build_function_mutations, build_function_sql
-from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
+from provisa.core.models import Function, FunctionArgument, Webhook
 from provisa.webhooks.executor import (
     WebhookResult,
     execute_webhook,
@@ -147,12 +139,8 @@ def then_exposed_as_mutation_field(shared_data: dict) -> None:
         f"VOLATILE function mutation return type must be GraphQLList, got {type(return_type)}"
     )
 
-    assert "order_id" in mutation_field.args, (
-        "Expected 'order_id' argument on the mutation field"
-    )
-    assert "note" in mutation_field.args, (
-        "Expected 'note' argument on the mutation field"
-    )
+    assert "order_id" in mutation_field.args, "Expected 'order_id' argument on the mutation field"
+    assert "note" in mutation_field.args, "Expected 'note' argument on the mutation field"
 
 
 # ---------------------------------------------------------------------------
@@ -198,9 +186,7 @@ def when_function_executed_via_graphql(shared_data: dict) -> None:
 
     sql, params = build_function_sql(func, arg_values)
     assert sql, "build_function_sql must return a non-empty SQL string"
-    assert len(params) == len(arg_values), (
-        f"Expected {len(arg_values)} params, got {len(params)}"
-    )
+    assert len(params) == len(arg_values), f"Expected {len(arg_values)} params, got {len(params)}"
 
     shared_data["generated_sql"] = sql
     shared_data["generated_params"] = params
@@ -208,13 +194,12 @@ def when_function_executed_via_graphql(shared_data: dict) -> None:
     direct_calls: list[dict] = []
 
     async def _fake_execute_direct(pool, source_id, sql, params=None):
-        direct_calls.append(
-            {"pool": pool, "source_id": source_id, "sql": sql, "params": params}
-        )
+        direct_calls.append({"pool": pool, "source_id": source_id, "sql": sql, "params": params})
         from provisa.executor.trino import QueryResult
+
         return QueryResult(
-            rows=[{"id": "1", "segment": "premium"}],
-            columns=["id", "segment"],
+            rows=[("1", "premium")],
+            column_names=["id", "segment"],
         )
 
     mock_pool = MagicMock()
@@ -224,9 +209,7 @@ def when_function_executed_via_graphql(shared_data: dict) -> None:
         "provisa.executor.direct.execute_direct",
         side_effect=_fake_execute_direct,
     ):
-        result = asyncio.run(
-            _fake_execute_direct(mock_pool, func.source_id, sql, params)
-        )
+        result = asyncio.run(_fake_execute_direct(mock_pool, func.source_id, sql, params))
 
     shared_data["direct_calls"] = direct_calls
     shared_data["execution_result"] = result
@@ -247,25 +230,21 @@ def then_runs_via_direct_db_not_trino(shared_data: dict) -> None:
         f"Generated SQL must reference function name '{func.function_name}', got: {sql!r}"
     )
 
-    assert func.schema in sql, (
-        f"Generated SQL must reference schema '{func.schema}', got: {sql!r}"
+    assert func.schema_name in sql, (
+        f"Generated SQL must reference schema '{func.schema_name}', got: {sql!r}"
     )
 
     parts = [p.strip().strip('"') for p in sql.replace("`", '"').split(".")]
     if func.source_id in parts:
         catalog_idx = parts.index(func.source_id)
-        remaining = parts[catalog_idx + 1:]
+        remaining = parts[catalog_idx + 1 :]
         assert not (
             len(remaining) >= 2
-            and remaining[0] == func.schema
+            and remaining[0] == func.schema_name
             and remaining[1] == func.function_name
-        ), (
-            f"SQL appears to be Trino-routed (three-part catalog.schema.function): {sql!r}"
-        )
+        ), f"SQL appears to be Trino-routed (three-part catalog.schema.function): {sql!r}"
 
-    assert len(direct_calls) == 1, (
-        f"Expected exactly 1 direct DB call, got {len(direct_calls)}"
-    )
+    assert len(direct_calls) == 1, f"Expected exactly 1 direct DB call, got {len(direct_calls)}"
     call = direct_calls[0]
     assert call["source_id"] == func.source_id, (
         f"Direct executor called with wrong source_id: expected '{func.source_id}', "
@@ -284,15 +263,14 @@ def then_runs_via_direct_db_not_trino(shared_data: dict) -> None:
     )
 
     from provisa.executor.trino import QueryResult
+
     assert isinstance(result, QueryResult), (
         f"Result must be a QueryResult from the direct executor, got {type(result)}"
     )
-    assert len(result.rows) >= 1, (
-        "Expected at least one row from the direct DB execution"
-    )
-    assert result.rows[0].get("segment") == "premium", (
-        "Unexpected row content from direct DB execution"
-    )
+    assert len(result.rows) >= 1, "Expected at least one row from the direct DB execution"
+    row = result.rows[0]
+    col_idx = result.column_names.index("segment")
+    assert row[col_idx] == "premium", "Unexpected row content from direct DB execution"
 
 
 # ---------------------------------------------------------------------------
@@ -424,9 +402,7 @@ def then_approval_and_endpoint_called(shared_data: dict) -> None:
         f"Unexpected response data: {result.data!r}"
     )
 
-    mapped = map_response_to_return_type(
-        result.data, inline_fields=[{"name": "id", "type": "Int"}]
-    )
+    mapped = map_response_to_return_type(result.data, inline_fields=[{"name": "id", "type": "Int"}])
     assert mapped == {"id": 42}, (
         f"map_response_to_return_type with inline_fields=[id] must return {{id: 42}}, "
         f"got {mapped!r}"
@@ -442,9 +418,7 @@ def then_approval_and_endpoint_called(shared_data: dict) -> None:
         "not the database (REQ-209 explicitly excludes DB mutation paths)"
     )
 
-    assert webhook.timeout_ms == 5000, (
-        f"Expected timeout_ms=5000, got {webhook.timeout_ms}"
-    )
+    assert webhook.timeout_ms == 5000, f"Expected timeout_ms=5000, got {webhook.timeout_ms}"
 
 
 # ---------------------------------------------------------------------------
@@ -509,7 +483,7 @@ def _apply_pagination(rows: list[dict], limit: int | None, offset: int | None) -
     start = offset or 0
     if limit is None:
         return rows[start:]
-    return rows[start: start + limit]
+    return rows[start : start + limit]
 
 
 def post_process_action_query(
@@ -579,11 +553,11 @@ def when_function_executes_and_materializes(shared_data: dict) -> None:
 
     # The function (webhook) executes and returns a materialized result set.
     materialized_rows = [
-        {"id": 1, "amount": 50,  "region": "us-east", "status": "open"},
+        {"id": 1, "amount": 50, "region": "us-east", "status": "open"},
         {"id": 2, "amount": 300, "region": "us-east", "status": "closed"},
         {"id": 3, "amount": 150, "region": "us-east", "status": "open"},
         {"id": 4, "amount": 200, "region": "us-east", "status": "open"},
-        {"id": 5, "amount": 80,  "region": "us-east", "status": "open"},
+        {"id": 5, "amount": 80, "region": "us-east", "status": "open"},
     ]
 
     mock_response = MagicMock()
@@ -621,29 +595,41 @@ def when_function_executes_and_materializes(shared_data: dict) -> None:
 def then_filter_sort_pagination_applied(shared_data: dict) -> None:
     """Assert that where/order_by/limit/offset post-processing is correctly applied
     to the materialized action query field results (REQ-360).
+
+    Verified properties:
+    1. ``where`` filters rows to only those matching the predicate.
+    2. ``order_by`` sorts the filtered rows by the specified field and direction.
+    3. ``limit`` and ``offset`` paginate the sorted result set.
+    4. The pipeline is applied in the correct order: filter → sort → paginate.
+    5. The post_process_action_query helper applies all four operations in one call.
+    6. Each operation is independently verifiable against the materialized rows.
     """
     materialized_rows: list[dict] = shared_data["materialized_rows"]
     query_args: dict = shared_data["query_args"]
 
-    where = query_args["where"]
-    order_by = query_args["order_by"]
-    limit = query_args["limit"]
-    offset = query_args["offset"]
+    where = query_args["where"]  # amount >= 100
+    order_by = query_args["order_by"]  # amount desc
+    limit = query_args["limit"]  # 2
+    offset = query_args["offset"]  # 1
 
+    # -----------------------------------------------------------------------
+    # Step 1: verify ``where`` filter in isolation.
+    # Rows with amount >= 100: ids 2 (300), 3 (150), 4 (200)
+    # -----------------------------------------------------------------------
     filtered = _apply_where(materialized_rows, where)
     assert len(filtered) == 3, (
         f"where {{amount: {{_gte: 100}}}} should keep 3 rows (ids 2,3,4), "
         f"got {len(filtered)}: {filtered}"
     )
     filtered_ids = {r["id"] for r in filtered}
-    assert filtered_ids == {2, 3, 4}, (
-        f"Filtered row ids must be {{2, 3, 4}}, got {filtered_ids}"
-    )
+    assert filtered_ids == {2, 3, 4}, f"Filtered row ids must be {{2, 3, 4}}, got {filtered_ids}"
 
+    # -----------------------------------------------------------------------
+    # Step 2: verify ``order_by`` sort in isolation (applied to filtered rows).
+    # amount desc: 300 (id=2), 200 (id=4), 150 (id=3)
+    # -----------------------------------------------------------------------
     sorted_rows = _apply_order_by(filtered, order_by)
-    assert len(sorted_rows) == 3, (
-        f"Sorted result should still have 3 rows, got {len(sorted_rows)}"
-    )
+    assert len(sorted_rows) == 3, f"Sorted result should still have 3 rows, got {len(sorted_rows)}"
     assert sorted_rows[0]["amount"] == 300, (
         f"First sorted row (desc) must have amount=300, got {sorted_rows[0]['amount']}"
     )
@@ -654,6 +640,11 @@ def then_filter_sort_pagination_applied(shared_data: dict) -> None:
         f"Third sorted row (desc) must have amount=150, got {sorted_rows[2]['amount']}"
     )
 
+    # -----------------------------------------------------------------------
+    # Step 3: verify ``limit`` + ``offset`` pagination in isolation.
+    # offset=1 skips the first row (amount=300), limit=2 keeps the next two.
+    # Expected: [{id:4, amount:200}, {id:3, amount:150}]
+    # -----------------------------------------------------------------------
     paginated = _apply_pagination(sorted_rows, limit, offset)
     assert len(paginated) == 2, (
         f"limit=2, offset=1 on 3 sorted rows should yield 2 rows, got {len(paginated)}"
@@ -667,6 +658,10 @@ def then_filter_sort_pagination_applied(shared_data: dict) -> None:
         f"got {paginated[1]['amount']}"
     )
 
+    # -----------------------------------------------------------------------
+    # Step 4: verify the full pipeline via post_process_action_query.
+    # Must produce identical results to the three individual steps above.
+    # -----------------------------------------------------------------------
     pipeline_result = post_process_action_query(
         materialized_rows,
         where=where,
@@ -680,6 +675,10 @@ def then_filter_sort_pagination_applied(shared_data: dict) -> None:
         f"Step-by-step: {paginated}"
     )
 
+    # -----------------------------------------------------------------------
+    # Step 5: verify ordering guarantee — filter BEFORE sort BEFORE paginate.
+    # If we paginate before filtering, we'd lose eligible rows.
+    # -----------------------------------------------------------------------
     wrong_order_paginate_first = _apply_pagination(materialized_rows, limit, offset)
     wrong_order_then_filter = _apply_where(wrong_order_paginate_first, where)
     wrong_ids = {r["id"] for r in wrong_order_then_filter}
@@ -689,6 +688,9 @@ def then_filter_sort_pagination_applied(shared_data: dict) -> None:
         f"for this dataset. correct={correct_ids}, wrong_order={wrong_ids}"
     )
 
+    # -----------------------------------------------------------------------
+    # Step 6: verify edge cases — empty where, no order_by, no pagination.
+    # -----------------------------------------------------------------------
     all_rows = post_process_action_query(materialized_rows)
     assert len(all_rows) == len(materialized_rows), (
         "post_process_action_query with no arguments must return all rows unchanged"
@@ -704,50 +706,4 @@ def then_filter_sort_pagination_applied(shared_data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# REQ-361 — Governed relationship resolution on action results
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class JoinMeta:
-    """Declares a relationship between two tables and its cardinality.
-
-    Attributes:
-        from_table:  The source table name (e.g. "orders").
-        to_table:    The related table name (e.g. "customers").
-        from_col:    The foreign-key column on from_table.
-        to_col:      The primary-key column on to_table.
-        cardinality: Either "one_to_many" or "many_to_one".
-    """
-    from_table: str
-    to_table: str
-    from_col: str
-    to_col: str
-    cardinality: str  # "one_to_many" | "many_to_one"
-
-
-def resolve_relationship_field(
-    row: dict[str, Any],
-    join_meta: JoinMeta,
-    related_rows: list[dict[str, Any]],
-) -> Any:
-    """Resolve a relationship field on an action result row.
-
-    For one-to-many: collect all related rows where related[to_col] == row[from_col]
-    and return them as a list (array field).
-
-    For many-to-one: find the single related row where related[to_col] == row[from_col]
-    and return it as an object or None if not found (object field or null).
-
-    Args:
-        row:          A single action result row.
-        join_meta:    The JoinMeta declaration for this relationship.
-        related_rows: The full pool of related rows to match against.
-
-    Returns:
-        list[dict] for one_to_many; dict | None for many_to_one.
-
-    Raises:
-        ValueError: if cardinality is not one of the two recognised values.
-    """
-    key_value =
+# RE

@@ -40,7 +40,8 @@ def shared_data() -> dict:
 
 
 @scenario(
-    "../../features/req_735.feature",
+    "../features/REQ-735.feature",
+
     "REQ-735 default behaviour",
 )
 def test_req_735_default_behaviour():

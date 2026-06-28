@@ -102,13 +102,11 @@ def when_query_completes(shared_data: dict, audit_pool):
             duration_ms=shared_data["duration_ms"],
         )
 
-    asyncio.get_event_loop().run_until_complete(_do_log())
+    asyncio.run(_do_log())
 
 
 @then(
-    "it is recorded in query_audit_log with required fields and only the "
-    "SHA-256 hash of the query text"
-)
+    "it is recorded in query_audit_log with required fields and only the SHA-256 hash of the query text")
 @pytest.mark.integration
 def then_recorded_with_hash_only(shared_data: dict, audit_pool):
     if not os.getenv("PROVISA_INTEGRATION"):
@@ -146,7 +144,7 @@ def then_recorded_with_hash_only(shared_data: dict, audit_pool):
                 if isinstance(value, str):
                     assert shared_data["query_text"] not in value
 
-    asyncio.get_event_loop().run_until_complete(_fetch_and_assert())
+    asyncio.run(_fetch_and_assert())
 
 
 @then("the table is append-only (DELETE and UPDATE are blocked)")
@@ -190,7 +188,7 @@ def then_append_only(shared_data: dict, audit_pool):
                 "UPDATE was not blocked — log not append-only"
             )
 
-    asyncio.get_event_loop().run_until_complete(_assert_immutable())
+    asyncio.run(_assert_immutable())
 
 
 @then("two indexes support tenant-scoped and per-user time-range queries")
@@ -228,4 +226,4 @@ def then_indexes_present(shared_data: dict, audit_pool):
             )
             assert tenant_plan is not None
 
-    asyncio.get_event_loop().run_until_complete(_assert_indexes())
+    asyncio.run(_assert_indexes())
