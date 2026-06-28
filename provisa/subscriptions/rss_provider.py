@@ -84,7 +84,7 @@ def _parse_rss(root: ET.Element) -> list[dict]:  # REQ-343
                 "title": _child_text(item, "title"),
                 "link": _child_text(item, "link"),
                 "description": _child_text(item, "description"),
-                "published": _child_text(item, "pubDate"),
+                "published": _parse_date(_child_text(item, "pubDate")),
                 "id": _child_text(item, "guid") or _child_text(item, "link"),
             }
         )
@@ -105,7 +105,7 @@ def _parse_atom(root: ET.Element) -> list[dict]:  # REQ-343
                 "title": _child_text(child, "title"),
                 "link": link,
                 "description": _child_text(child, "summary", "content"),
-                "published": _child_text(child, "updated", "published"),
+                "published": _parse_date(_child_text(child, "updated", "published")),
                 "id": _child_text(child, "id") or link,
             }
         )
@@ -131,17 +131,67 @@ class RSSNotificationProvider(NotificationProvider):  # REQ-342, REQ-343, REQ-34
         poll_interval: Seconds between polls (default 300 = 5 min).
     """
 
-    def __init__(self, url: str, poll_interval: float = 300.0) -> None:
+    def __init__(
+        self,
+        url: str,
+        poll_interval: float = 300.0,
+        watermark: datetime | None = None,
+    ) -> None:
         self._url = url
         self._poll_interval = poll_interval
+        self._watermark = watermark
         self._running = True
+
+    @property
+    def poll_interval(self) -> float:
+        return self._poll_interval
+
+    @property
+    def watermark(self) -> datetime | None:
+        return self._watermark
+
+    async def _fetch(self, url: str) -> bytes:
+        """Fetch raw bytes from *url*. Patched in tests."""
+        import httpx
+
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.content
+
+    async def poll_once(self, table: str) -> list[ChangeEvent]:
+        """Perform a single fetch-parse-filter cycle; return list of new ChangeEvents."""
+        watermark = self._watermark or datetime.min.replace(tzinfo=timezone.utc)
+        try:
+            raw = await self._fetch(self._url)
+            items = parse_feed(raw)
+        except Exception as exc:
+            log.warning("RSSProvider: fetch/parse error (%s)", exc)
+            return []
+
+        events: list[ChangeEvent] = []
+        for item in items:
+            pub: datetime = item["published"]  # already datetime from parse_feed
+            if pub <= watermark:
+                continue
+            row = {k: v for k, v in item.items() if v is not None}
+            row["published"] = pub
+            events.append(
+                ChangeEvent(
+                    operation="insert",
+                    table=table,
+                    row=row,
+                    timestamp=pub,
+                )
+            )
+        return events
 
     async def watch(
         self, table: str, filter_expr: str | None = None
     ) -> AsyncGenerator[ChangeEvent, None]:
         import httpx
 
-        watermark = datetime.now(timezone.utc)
+        watermark = self._watermark or datetime.now(timezone.utc)
         log.info("RSSProvider: polling %s every %.0fs", self._url, self._poll_interval)
 
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
@@ -157,19 +207,23 @@ class RSSNotificationProvider(NotificationProvider):  # REQ-342, REQ-343, REQ-34
 
                 new_watermark = watermark
                 for item in items:
-                    pub = _parse_date(item.get("published"))
+                    pub: datetime = item["published"]  # already datetime from parse_feed
                     if pub <= watermark:
                         continue
                     if pub > new_watermark:
                         new_watermark = pub
+                        self._watermark = new_watermark
+                    row = {k: v for k, v in item.items() if v is not None}
+                    row["published"] = pub
                     yield ChangeEvent(
                         operation="insert",
                         table=table,
-                        row={k: v for k, v in item.items() if v is not None},
+                        row=row,
                         timestamp=pub,
                     )
 
                 watermark = new_watermark
+                self._watermark = new_watermark
                 await asyncio.sleep(self._poll_interval)
 
     async def close(self) -> None:

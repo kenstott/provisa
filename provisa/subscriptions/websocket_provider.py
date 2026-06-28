@@ -29,7 +29,8 @@ log = logging.getLogger(__name__)
 
 
 def _extract_path(
-    data: object, path: str
+    data: object,  # object-ok: parsed JSON — isinstance-narrowed before every attribute access
+    path: str,
 ) -> (
     object
 ):  # object-ok: parsed JSON — isinstance-narrowed before every attribute access  # REQ-340
@@ -72,6 +73,10 @@ class WebSocketNotificationProvider(NotificationProvider):  # REQ-338, REQ-339, 
         self._reconnect_interval = reconnect_interval
         self._running = True
         self._ws: ClientConnection | None = None
+
+    @property
+    def reconnect_interval(self) -> float:
+        return self._reconnect_interval
 
     async def watch(
         self, table: str, filter_expr: str | None = None
