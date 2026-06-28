@@ -31,13 +31,16 @@ async def _init_conn(conn: asyncpg.Connection) -> None:
     )
 
 
-def _make_setup_conn(org_id: str):
+def _make_init_conn(org_id: str):
     schema_name = f"org_{org_id}"
 
-    async def _setup_conn(conn: asyncpg.Connection) -> None:
+    async def _init_conn_for_org(conn: asyncpg.Connection) -> None:
         await conn.execute(f"SET search_path TO {schema_name}")
 
-    return _setup_conn
+    return _init_conn_for_org
+
+
+_make_setup_conn = _make_init_conn
 
 
 async def create_pool(  # REQ-052

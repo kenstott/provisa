@@ -597,6 +597,7 @@ class Webhook(BaseModel):  # REQ-209, REQ-210, REQ-211
     domain_id: str = ""
     description: str | None = None
     kind: str = "mutation"  # "mutation" or "query"
+    governance: str | None = None  # e.g. "requires_approval" (REQ-209)
 
 
 class ScheduledTrigger(BaseModel):
