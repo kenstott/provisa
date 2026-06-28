@@ -37,8 +37,6 @@ Copy-Item (Join-Path $RepoRoot 'provisa')   (Join-Path $BuildSrc 'provisa')   -R
 
 Copy-Item (Join-Path $ScriptDir 'first-launch.ps1')     $BuildDir
 Copy-Item (Join-Path $ScriptDir 'first-launch-gui.ps1') $BuildDir
-$guiDest = Join-Path $BuildDir 'first-launch-gui.ps1'
-(Get-Content $guiDest -Raw) -replace 'PROVISA_VERSION_PLACEHOLDER', $Version | Set-Content $guiDest -Encoding UTF8
 Copy-Item (Join-Path $ScriptDir 'launch-gui.vbs')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.ps1')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.cmd')       $BuildDir
@@ -79,6 +77,9 @@ New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 
 $Version      = if ($env:VERSION) { $env:VERSION } else { 'dev' }
 $InstallerPath = Join-Path $DistDir 'Provisa-Setup.exe'
+
+$guiDest = Join-Path $BuildDir 'first-launch-gui.ps1'
+(Get-Content $guiDest -Raw) -replace 'PROVISA_VERSION_PLACEHOLDER', $Version | Set-Content $guiDest -Encoding UTF8
 
 # ── Generate Inno Setup script ────────────────────────────────────────────────
 $IssPath = Join-Path $env:TEMP 'provisa-installer.iss'
