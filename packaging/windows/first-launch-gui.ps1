@@ -151,7 +151,7 @@ if ($coreFile) {
   $lbCoreStatus.Text     = $coreFile.Name
   $lbCoreStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 160, 0)
 } else {
-  $lbCoreStatus.Text     = 'not found locally — will download (required)'
+  $lbCoreStatus.Text     = 'not found locally - will download (required)'
   $lbCoreStatus.ForeColor = [System.Drawing.Color]::FromArgb(180, 100, 0)
 }
 $pConfig.Controls.Add($lbCoreStatus)
@@ -172,7 +172,7 @@ if ($obsFile) {
   $lbObsStatus.Text     = $obsFile.Name
   $lbObsStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 160, 0)
 } else {
-  $lbObsStatus.Text     = 'not found locally — will download if checked'
+  $lbObsStatus.Text     = 'not found locally - will download if checked'
   $lbObsStatus.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 160)
 }
 $pConfig.Controls.Add($lbObsStatus)
@@ -191,7 +191,7 @@ if ($demoFile) {
   $lbDemoStatus.Text     = $demoFile.Name
   $lbDemoStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 160, 0)
 } else {
-  $lbDemoStatus.Text     = 'not found locally — will download if checked'
+  $lbDemoStatus.Text     = 'not found locally - will download if checked'
   $lbDemoStatus.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 160)
 }
 $pConfig.Controls.Add($lbDemoStatus)
@@ -399,7 +399,7 @@ $btnInstall.Add_Click({
       if (-not $hasBundledImages) {
         if (-not $CoreFilePath) {
           # Attempt GitHub download
-          Log 'Core images not found locally — attempting download...'
+          Log 'Core images not found locally - attempting download...'
           $ver = $env:PROVISA_VERSION
           if (-not $ver) {
             try { $o = (& provisa version 2>$null | Select-Object -First 1); if ($o) { $ver = $o.Trim().Split()[-1] } } catch {}
