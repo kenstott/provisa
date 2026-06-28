@@ -6,7 +6,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$ScriptDir     = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
+$ScriptDir     = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 $ImagesDir     = Join-Path $ScriptDir 'images'
 $ComposeDir    = Join-Path $ScriptDir 'compose'
 $SourceDir     = Join-Path $ScriptDir 'provisa-source'
