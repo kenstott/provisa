@@ -5,5 +5,4 @@ Feature: REQ-417 — Registration & Governance
   Scenario: REQ-417 default behaviour
     Given a Hasura v2 metadata file containing Remote Schema entries
     When the migration tool runs
-    Then each Remote Schema is mapped to a graphql_remote source registration preserving name, URL,
-    headers, and auth
+    Then each Remote Schema is mapped to a graphql_remote source registration preserving name, URL, headers, and auth

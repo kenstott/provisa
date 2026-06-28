@@ -5,5 +5,4 @@ Feature: REQ-534 — Compiler & Schema
   Scenario: REQ-534 default behaviour
     Given a GraphQL query with multiple root fields
     When it is executed
-    Then each root field is compiled and executed independently and results are merged into one
-    response
+    Then each root field is compiled and executed independently and results are merged into one response

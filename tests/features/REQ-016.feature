@@ -5,5 +5,4 @@ Feature: REQ-016 — Registration & Governance
   Scenario: REQ-016 default behaviour
     Given a steward who publishes a table
     When the publication completes
-    Then a schema generation pass is triggered and the table is immediately available in the query
-    builder
+    Then a schema generation pass is triggered and the table is immediately available in the query builder
