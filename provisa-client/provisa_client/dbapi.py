@@ -122,7 +122,9 @@ def connect(
     if token:
         resolved_role: str | None = role or auth_role
     else:
-        resolved_role = role or (username if username else None)
+        resolved_role = role or (
+            username if username else None
+        )  # design: username is role for unauthed access (REQ-AK5)
     return Connection(base_url=url.rstrip("/"), token=token, role=resolved_role)
 
 

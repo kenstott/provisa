@@ -53,7 +53,9 @@ def adbc_connect(
     if token:
         resolved_role: str | None = role or auth_role
     else:
-        resolved_role = role or (user if user else None)
+        resolved_role = role or (
+            user if user else None
+        )  # design: username is role for unauthed access (REQ-AK5)
 
     parsed = urlparse(base_url)
     host = parsed.hostname or "localhost"
