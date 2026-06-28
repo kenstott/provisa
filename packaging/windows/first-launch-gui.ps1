@@ -486,17 +486,17 @@ federation_workers: $Workers
           if ($ver) {
             $fname = "provisa-${Slug}-images-${ver}.tar.gz"
             $url   = "https://github.com/kenstott/provisa/releases/download/${ver}/${fname}"
-            Log "  $Label: downloading $fname..."
+            Log "  ${Label}: downloading $fname..."
             $tmpFile = Join-Path $ProvisaHome $fname
             try {
               Invoke-WebRequest -Uri $url -OutFile $tmpFile -UseBasicParsing
               $FilePath = $tmpFile
             } catch {
-              Log "  $Label: download failed — skipping."
+              Log "  ${Label}: download failed - skipping."
               return
             }
           } else {
-            Log "  $Label: no tarball and version unknown — skipping."
+            Log "  ${Label}: no tarball and version unknown - skipping."
             return
           }
         }
@@ -505,7 +505,7 @@ federation_workers: $Workers
         $wpSrc = Wsl2Path $FilePath
         $wpDst = Wsl2Path $ExtDir
         wsl -u root sh -c "tar -xzf '$wpSrc' -C '$wpDst'"
-        if ($LASTEXITCODE -ne 0) { Log "  $Label: extraction failed — skipping."; return }
+        if ($LASTEXITCODE -ne 0) { Log "  ${Label}: extraction failed - skipping."; return }
         $imgs = @(Get-ChildItem -Path $ExtDir -Filter '*.tar.gz' -ErrorAction SilentlyContinue)
         foreach ($img in $imgs) {
           Log "  $($img.Name)"
