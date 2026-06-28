@@ -19,51 +19,50 @@ from typing import Any
 
 def row_to_resource(  # REQ-257
     row: dict[str, Any],
-    resource_type: str,
+    resource_type: str | None = None,
     id_field: str = "id",
     relationship_fields: dict[str, str] | None = None,
+    *,
+    table: str | None = None,
+    fields: list[str] | None = None,
 ) -> dict[str, Any]:
     """Convert a flat row dict to a JSON:API resource object.
 
     Args:
         row: flat dict of column values.
-        resource_type: the JSON:API type (table name).
+        resource_type: the JSON:API type (table name). Also accepted as ``table``.
         id_field: which key to use as the resource id.
         relationship_fields: {field_name: related_type} for FK columns.
-            e.g. {"customer_id": "customers"} -> relationship "customer".
+        table: alias for ``resource_type``.
+        fields: sparse fieldset — only include these attribute names. None = all.
 
     Returns:
         JSON:API resource object with type, id, attributes, relationships.
     """
-    resource_id = str(row.get(id_field, ""))
+    effective_type = resource_type or table or ""
     relationship_fields = relationship_fields or {}
+    fk_columns = set(relationship_fields.keys())
+    sparse = set(fields) if fields else None
 
-    # Separate attributes from relationship FK columns
+    resource_id = str(row.get(id_field, ""))
     attributes: dict[str, Any] = {}
     relationships: dict[str, Any] = {}
-
-    fk_columns = set(relationship_fields.keys())
 
     for key, value in row.items():
         if key == id_field:
             continue
         if key in fk_columns:
             related_type = relationship_fields[key]
-            # Derive relationship name: strip _id suffix if present
             rel_name = key[:-3] if key.endswith("_id") else key
             relationships[rel_name] = {
-                "data": {
-                    "type": related_type,
-                    "id": str(value),
-                }
-                if value is not None
-                else None,
+                "data": {"type": related_type, "id": str(value)} if value is not None else None,
             }
         else:
-            attributes[key] = value
+            if sparse is None or key in sparse:
+                attributes[key] = value
 
     resource: dict[str, Any] = {
-        "type": resource_type,
+        "type": effective_type,
         "id": resource_id,
         "attributes": attributes,
     }
@@ -74,24 +73,37 @@ def row_to_resource(  # REQ-257
 
 def rows_to_jsonapi(  # REQ-257
     rows: list[dict[str, Any]],
-    resource_type: str,
+    resource_type: str | None = None,
     id_field: str = "id",
     relationship_fields: dict[str, str] | None = None,
     included_rows: dict[str, list[dict[str, Any]]] | None = None,
+    *,
+    table: str | None = None,
+    fields: list[str] | None = None,
+    links: dict[str, Any] | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Convert rows to a full JSON:API document.
 
     Args:
         rows: list of flat row dicts.
-        resource_type: table name used as JSON:API type.
+        resource_type: table name used as JSON:API type. Also accepted as ``table``.
         id_field: primary key field.
         relationship_fields: FK columns -> related type.
         included_rows: {type: [row, ...]} for sideloaded resources.
+        table: alias for ``resource_type``.
+        fields: sparse fieldset list of field names (None = all).
+        links: pagination/self links dict to include in the document.
+        meta: metadata dict to include in the document.
 
     Returns:
         JSON:API document with data, included, meta.
     """
-    data = [row_to_resource(row, resource_type, id_field, relationship_fields) for row in rows]
+    effective_type = resource_type or table or ""
+    data = [
+        row_to_resource(row, effective_type, id_field, relationship_fields, fields=fields)
+        for row in rows
+    ]
 
     doc: dict[str, Any] = {"data": data}
 
@@ -103,5 +115,9 @@ def rows_to_jsonapi(  # REQ-257
         if included:
             doc["included"] = included
 
-    doc["meta"] = {"total": len(rows)}
+    doc["meta"] = {**(meta or {}), "total": len(rows)}
+
+    if links is not None:
+        doc["links"] = links
+
     return doc

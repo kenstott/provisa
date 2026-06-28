@@ -21,10 +21,10 @@ DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 1000
 
 
-def parse_page_params(params: dict[str, str]) -> tuple[int, int]:  # REQ-257
+def parse_page_params(params: dict[str, str]) -> dict[str, int]:  # REQ-257
     """Parse page[number] and page[size] from query params.
 
-    Returns (page_number, page_size). page_number is 1-based.
+    Returns {"number": page_number, "size": page_size}. page_number is 1-based.
     """
     page_number = 1
     page_size = DEFAULT_PAGE_SIZE
@@ -43,36 +43,40 @@ def parse_page_params(params: dict[str, str]) -> tuple[int, int]:  # REQ-257
         except (ValueError, TypeError):
             page_size = DEFAULT_PAGE_SIZE
 
-    return page_number, page_size
+    return {"number": page_number, "size": page_size}
 
 
-def page_to_limit_offset(page_number: int, page_size: int) -> tuple[int, int]:  # REQ-257
-    """Convert 1-based page number + size to limit/offset."""
+def page_to_limit_offset(page: dict[str, int]) -> tuple[int, int]:  # REQ-257
+    """Convert page dict {"number": N, "size": S} to (limit, offset)."""
+    page_number = page["number"]
+    page_size = page["size"]
     offset = (page_number - 1) * page_size
     return page_size, offset
 
 
 def build_pagination_links(  # REQ-257
-    base_path: str,
+    base_url: str,
     page_number: int,
     page_size: int,
-    result_count: int,
-    extra_params: dict[str, str] | None = None,
+    total: int,
+    query_params: dict[str, str] | None = None,
 ) -> dict[str, str | None]:
-    """Build JSON:API pagination links (self, first, prev, next).
+    """Build JSON:API pagination links (self, first, prev, next, last).
 
-    next is None when result_count < page_size (last page).
+    next is None when on the last page.
     """
+    extra = query_params or {}
+    last_page = max(1, (total + page_size - 1) // page_size)
 
     def _url(pn: int) -> str:
         p = {"page[number]": str(pn), "page[size]": str(page_size)}
-        if extra_params:
-            p.update(extra_params)
-        return f"{base_path}?{urlencode(p)}"
+        p.update(extra)
+        return f"{base_url}?{urlencode(p)}"
 
     links: dict[str, str | None] = {
         "self": _url(page_number),
         "first": _url(1),
+        "last": _url(last_page),
     }
 
     if page_number > 1:
@@ -80,7 +84,7 @@ def build_pagination_links(  # REQ-257
     else:
         links["prev"] = None
 
-    if result_count >= page_size:
+    if page_number < last_page:
         links["next"] = _url(page_number + 1)
     else:
         links["next"] = None

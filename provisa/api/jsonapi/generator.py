@@ -107,17 +107,21 @@ def _parse_sort(sort_param: str | None) -> list[dict[str, str]]:  # REQ-257
 
 def _parse_sparse_fieldsets(  # REQ-257
     params: dict[str, str],
-    table: str,
-) -> list[str] | None:
-    """Parse JSON:API sparse fieldsets: ?fields[orders]=amount,created_at
+) -> dict[str, list[str]]:
+    """Parse JSON:API sparse fieldsets from all fields[*] query params.
 
-    Returns list of field names or None (all fields).
+    Returns a dict mapping table name to list of requested field names.
+    An empty dict means no sparse fieldset requested (return all fields).
+
+    Example: ?fields[orders]=amount,created_at&fields[customers]=name
+    → {"orders": ["amount", "created_at"], "customers": ["name"]}
     """
-    key = f"fields[{table}]"
-    raw = params.get(key)
-    if raw is None:
-        return None
-    return [f.strip() for f in raw.split(",") if f.strip()]
+    result: dict[str, list[str]] = {}
+    for key, value in params.items():
+        if key.startswith("fields[") and key.endswith("]"):
+            table_name = key[len("fields[") : -1]
+            result[table_name] = [f.strip() for f in value.split(",") if f.strip()]
+    return result
 
 
 def _get_scalar_fields(schema: GraphQLSchema, table: str) -> list[str]:
@@ -210,13 +214,24 @@ def _relationship_scalars(schema: GraphQLSchema, table: str, rel_field: str) -> 
 def _build_graphql_query(
     table: str,
     fields: list[str],
-    filters: dict[str, dict[str, Any]],
-    sort: list[dict[str, str]],
-    limit: int | None,
-    offset: int | None,
+    filters: dict[str, dict[str, Any]] | None = None,
+    sort: list[dict[str, str]] | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+    *,
+    where: dict[str, dict[str, Any]] | None = None,
+    order_by: list[dict[str, str]] | None = None,
 ) -> str:
-    """Build GraphQL query from JSON:API params."""
-    return _build_graphql_query_shared(table, fields, filters, sort, limit, offset)
+    """Build GraphQL query from JSON:API params.
+
+    ``where`` is accepted as an alias for ``filters``;
+    ``order_by`` is accepted as an alias for ``sort``.
+    """
+    effective_filters = where if filters is None else filters
+    effective_sort = order_by if sort is None else sort
+    return _build_graphql_query_shared(
+        table, fields, effective_filters or {}, effective_sort or [], limit, offset
+    )
 
 
 def _jsonapi_error_response(status: int, title: str, detail: str | None = None, **kwargs):
@@ -277,7 +292,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         raw_params = dict(request.query_params)
 
         # Parse JSON:API params
-        sparse = _parse_sparse_fieldsets(raw_params, table)
+        sparse = _parse_sparse_fieldsets(raw_params).get(table)
         all_scalars = _get_scalar_fields(schema, table)
         selected_fields = sparse if sparse else all_scalars
 
@@ -294,8 +309,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
 
         filters = _parse_filters(raw_params)
         sort = _parse_sort(raw_params.get("sort"))
-        page_number, page_size = parse_page_params(raw_params)
-        limit, pg_offset = page_to_limit_offset(page_number, page_size)
+        page = parse_page_params(raw_params)
+        page_number, page_size = page["number"], page["size"]
+        limit, pg_offset = page_to_limit_offset(page)
 
         # Validate filter columns
         for col in filters:
@@ -415,11 +431,11 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 extra[k] = v
 
         doc["links"] = build_pagination_links(
-            base_path,
-            page_number,
-            page_size,
-            len(rows),
-            extra or None,
+            base_url=base_path,
+            page_number=page_number,
+            page_size=page_size,
+            total=len(rows),
+            query_params=extra or None,
         )
 
         return JSONResponse(content=doc, media_type=JSONAPI_CONTENT_TYPE)
