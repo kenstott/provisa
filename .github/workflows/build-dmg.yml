@@ -24,8 +24,6 @@ jobs:
       dmg_demo_name: ${{ steps.meta.outputs.dmg_demo_name }}
       linux_name: ${{ steps.meta.outputs.linux_name }}
       windows_name: ${{ steps.meta.outputs.windows_name }}
-      windows_obs_name: ${{ steps.meta.outputs.windows_obs_name }}
-      windows_demo_name: ${{ steps.meta.outputs.windows_demo_name }}
       ova_name: ${{ steps.meta.outputs.ova_name }}
       jdbc_name: ${{ steps.meta.outputs.jdbc_name }}
       py_version: ${{ steps.meta.outputs.py_version }}
@@ -63,8 +61,6 @@ jobs:
           echo "dmg_demo_name=Provisa-Demo-${TAG}-macOS.dmg"              >> "$GITHUB_OUTPUT"
           echo "linux_name=Provisa-${TAG}-linux-x86_64.AppImage"          >> "$GITHUB_OUTPUT"
           echo "windows_name=Provisa-${TAG}-windows-x64.exe"              >> "$GITHUB_OUTPUT"
-          echo "windows_obs_name=Provisa-Obs-${TAG}-windows-x64.exe"      >> "$GITHUB_OUTPUT"
-          echo "windows_demo_name=Provisa-Demo-${TAG}-windows-x64.exe"    >> "$GITHUB_OUTPUT"
           echo "ova_name=Provisa-${TAG}-runtime.ova"                       >> "$GITHUB_OUTPUT"
           echo "jdbc_name=provisa-jdbc-${TAG}.jar"                         >> "$GITHUB_OUTPUT"
           echo "py_version=$PY_VERSION"                                    >> "$GITHUB_OUTPUT"
@@ -797,126 +793,6 @@ jobs:
           path: "packaging/windows/dist/${{ needs.metadata.outputs.windows_name }}"
           retention-days: 1
 
-  build-windows-obs:
-    name: Build Windows Obs installer (${{ needs.metadata.outputs.channel }})
-    runs-on: windows-latest
-    needs: [metadata, pull-images-obs, download-plugins]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download obs image tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-images-obs
-          path: packaging/windows/obs-images/
-
-      - name: Download Calcite plugins
-        uses: actions/download-artifact@v4
-        with:
-          name: trino-plugins
-          path: trino/plugins/
-
-      - name: Install NSIS
-        shell: pwsh
-        run: |
-          $nsisDir = "C:\Program Files (x86)\NSIS"
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            choco install nsis --no-progress -y
-            if ($LASTEXITCODE -eq 0) { break }
-            Start-Sleep 15
-          }
-          if (-not (Test-Path "$nsisDir\makensis.exe")) {
-            $installer = "$env:TEMP\nsis-setup.exe"
-            Invoke-WebRequest -Uri "https://prdownloads.sourceforge.net/nsis/nsis-3.11-setup.exe" `
-              -OutFile $installer -UseBasicParsing
-            Start-Process -FilePath $installer -ArgumentList "/S" -Wait
-          }
-          if (-not (Test-Path "$nsisDir\makensis.exe")) { exit 1 }
-          $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Append
-
-      - name: Build obs installer
-        shell: pwsh
-        env:
-          VERSION: ${{ github.ref_name }}
-          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
-          WINDOWS_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CERT_PFX_PASSWORD }}
-          WINDOWS_CERT_TIMESTAMP_URL: ${{ secrets.WINDOWS_CERT_TIMESTAMP_URL }}
-        run: packaging/windows/build-installer-obs.ps1
-
-      - name: Rename installer
-        shell: pwsh
-        run: |
-          Move-Item packaging/windows/dist/Provisa-Obs-Setup.exe `
-            "packaging/windows/dist/${{ needs.metadata.outputs.windows_obs_name }}"
-
-      - name: Upload obs installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-obs-dist
-          path: "packaging/windows/dist/${{ needs.metadata.outputs.windows_obs_name }}"
-          retention-days: 1
-
-  build-windows-demo:
-    name: Build Windows Demo installer (${{ needs.metadata.outputs.channel }})
-    runs-on: windows-latest
-    needs: [metadata, pull-images-demo, download-plugins]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download demo image tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-images-demo
-          path: packaging/windows/demo-images/
-
-      - name: Download Calcite plugins
-        uses: actions/download-artifact@v4
-        with:
-          name: trino-plugins
-          path: trino/plugins/
-
-      - name: Install NSIS
-        shell: pwsh
-        run: |
-          $nsisDir = "C:\Program Files (x86)\NSIS"
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            choco install nsis --no-progress -y
-            if ($LASTEXITCODE -eq 0) { break }
-            Start-Sleep 15
-          }
-          if (-not (Test-Path "$nsisDir\makensis.exe")) {
-            $installer = "$env:TEMP\nsis-setup.exe"
-            Invoke-WebRequest -Uri "https://prdownloads.sourceforge.net/nsis/nsis-3.11-setup.exe" `
-              -OutFile $installer -UseBasicParsing
-            Start-Process -FilePath $installer -ArgumentList "/S" -Wait
-          }
-          if (-not (Test-Path "$nsisDir\makensis.exe")) { exit 1 }
-          $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Append
-
-      - name: Build demo installer
-        shell: pwsh
-        env:
-          VERSION: ${{ github.ref_name }}
-          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
-          WINDOWS_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CERT_PFX_PASSWORD }}
-          WINDOWS_CERT_TIMESTAMP_URL: ${{ secrets.WINDOWS_CERT_TIMESTAMP_URL }}
-        run: packaging/windows/build-installer-demo.ps1
-
-      - name: Rename installer
-        shell: pwsh
-        run: |
-          Move-Item packaging/windows/dist/Provisa-Demo-Setup.exe `
-            "packaging/windows/dist/${{ needs.metadata.outputs.windows_demo_name }}"
-
-      - name: Upload demo installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-demo-dist
-          path: "packaging/windows/dist/${{ needs.metadata.outputs.windows_demo_name }}"
-          retention-days: 1
-
   # ── Package extension image tarballs (Option A) ─────────────────────────────
 
   package-obs-images:
@@ -1000,8 +876,6 @@ jobs:
       - build-macos-demo
       - build-linux
       - build-windows-core
-      - build-windows-obs
-      - build-windows-demo
       - build-jdbc
       - build-python-client
       - rename-ova
@@ -1073,8 +947,6 @@ jobs:
             release-assets/${{ needs.metadata.outputs.dmg_demo_name }}
             release-assets/${{ needs.metadata.outputs.linux_name }}
             release-assets/${{ needs.metadata.outputs.windows_name }}
-            release-assets/${{ needs.metadata.outputs.windows_obs_name }}
-            release-assets/${{ needs.metadata.outputs.windows_demo_name }}
             release-assets/${{ needs.metadata.outputs.ova_name }}
             release-assets/${{ needs.metadata.outputs.jdbc_name }}
             release-assets/${{ needs.metadata.outputs.obs_images_name }}
@@ -1092,8 +964,6 @@ jobs:
             | `${{ needs.metadata.outputs.dmg_demo_name }}` | macOS Demo extension (requires Obs) |
             | `${{ needs.metadata.outputs.linux_name }}` | Linux x86_64 (core + obs, airgapped AppImage) |
             | `${{ needs.metadata.outputs.windows_name }}` | Windows x64 Core installer |
-            | `${{ needs.metadata.outputs.windows_obs_name }}` | Windows Observability extension |
-            | `${{ needs.metadata.outputs.windows_demo_name }}` | Windows Demo extension (requires Obs) |
             | `${{ needs.metadata.outputs.ova_name }}` | Alpine Linux OVA (VirtualBox runtime) |
             | `${{ needs.metadata.outputs.jdbc_name }}` | JDBC driver — Tableau, PowerBI, DBeaver |
             | `provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl` | Python client |
