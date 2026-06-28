@@ -37,7 +37,7 @@ Requirements satisfied at unit level only (no integration coverage needed):
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -59,6 +59,7 @@ def _make_app_state_with_orders():
     # fields; the real governance pipeline and REST router run unmodified.
     """
     from graphql import (
+        GraphQLArgument,
         GraphQLField,
         GraphQLFloat,
         GraphQLInt,
@@ -68,6 +69,7 @@ def _make_app_state_with_orders():
         GraphQLString,
     )
     from provisa.compiler.rls import RLSContext
+    from provisa.compiler.type_map import JSONScalar
 
     order_type = GraphQLObjectType(
         "Order",
@@ -79,7 +81,12 @@ def _make_app_state_with_orders():
     )
     query_type = GraphQLObjectType(
         "Query",
-        {"orders": GraphQLField(GraphQLList(order_type))},
+        {
+            "orders": GraphQLField(
+                GraphQLList(order_type),
+                args={"where": GraphQLArgument(JSONScalar)},  # type: ignore[arg-type]
+            )
+        },
     )
     schema = GraphQLSchema(query=query_type)  # type: ignore[arg-type]
 
@@ -103,6 +110,8 @@ def _make_app_state_with_orders():
     except Exception:
         raise
 
+    from provisa.cache.store import NoopCacheStore
+
     state = MagicMock()
     state.schemas = {"admin": schema}
     state.contexts = {"admin": ctx}
@@ -110,17 +119,34 @@ def _make_app_state_with_orders():
     state.roles = {
         "admin": {
             "id": "admin",
-            "capabilities": ["full_results", "ad_hoc_query"],
+            "capabilities": ["full_results", "ad_hoc_query", "query_development"],
             "domain_access": ["*"],
         }
     }
     state.masking_rules = {}
     state.source_types = {"test-pg": "postgresql"}
     state.source_dialects = {"test-pg": "postgres"}
-    state.source_pools = MagicMock()
+    from provisa.executor.trino import QueryResult
+
+    _pool = MagicMock()
+    _pool.has = MagicMock(return_value=True)
+    _pool.execute = AsyncMock(
+        return_value=QueryResult(
+            rows=[(1, "us-east", 9.99)], column_names=["id", "region", "amount"]
+        )
+    )
+    state.source_pools = _pool
     state.trino_conn = None
     state.schema_build_cache = {"column_types": {1: []}, "tables": []}
     state.tables = []
+    state.approval_hook = None
+    state.server_limits = {}
+    state.response_cache_store = NoopCacheStore()
+    state.response_cache_default_ttl = 300
+    state.source_cache = {}
+    state.table_cache = {}
+    state.view_sql_map = {}
+    state.kafka_table_configs = {}
     return state
 
 
@@ -236,58 +262,74 @@ class TestPresignedURLRedirect:
 
     async def test_presign_returns_redirect_url(self):
         """upload_and_presign returns a URL and HTTP status 302-compatible payload."""
-        from provisa.executor.redirect import upload_and_presign
+        from provisa.executor.redirect import RedirectConfig, upload_and_presign
+        from provisa.executor.trino import QueryResult
 
         mock_s3 = MagicMock()
-        mock_s3.upload_fileobj = MagicMock()
+        mock_s3.put_object = MagicMock()
         mock_s3.generate_presigned_url = MagicMock(
             return_value="https://s3.example.com/results/abc.ndjson?X-Amz-Expires=3600"
+        )
+
+        mock_boto3 = MagicMock()
+        mock_boto3.client.return_value = mock_s3
+
+        redirect_config = RedirectConfig(
+            enabled=True,
+            threshold=1000,
+            bucket="test-bucket",
+            endpoint_url="http://localhost:9000",
+            access_key="test",
+            secret_key="test",
+            ttl=3600,
         )
 
         rows = [("a", 1), ("b", 2)]
         col_names = ["label", "count"]
 
-        redirect_config = MagicMock()
-        redirect_config.s3_bucket = "test-bucket"
-        redirect_config.s3_prefix = "results/"
-        redirect_config.ttl_seconds = 3600
+        import sys as _sys
 
-        from provisa.executor.trino import QueryResult
-
-        with patch("provisa.executor.redirect.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+        with patch.dict(_sys.modules, {"boto3": mock_boto3, "botocore.config": MagicMock()}):
             result = await upload_and_presign(
                 QueryResult(rows=rows, column_names=col_names),
                 config=redirect_config,
             )
 
-        assert "url" in result
-        assert result["url"].startswith("https://")
+        assert "redirect_url" in result
+        assert result["redirect_url"].startswith("https://")
 
     async def test_presign_url_contains_expiry(self):
         """REQ-044: presigned URL includes TTL-bounded expiry parameter."""
-        from provisa.executor.redirect import upload_and_presign
-
-        mock_s3 = MagicMock()
-        mock_s3.upload_fileobj = MagicMock()
-        expected_url = "https://s3.example.com/r/q.ndjson?X-Amz-Expires=1800"
-        mock_s3.generate_presigned_url = MagicMock(return_value=expected_url)
-
-        redirect_config = MagicMock()
-        redirect_config.s3_bucket = "bucket"
-        redirect_config.s3_prefix = "r/"
-        redirect_config.ttl_seconds = 1800
-
+        from provisa.executor.redirect import RedirectConfig, upload_and_presign
         from provisa.executor.trino import QueryResult
 
-        with patch("provisa.executor.redirect.boto3") as mock_boto3:
-            mock_boto3.client.return_value = mock_s3
+        expected_url = "https://s3.example.com/r/q.ndjson?X-Amz-Expires=1800"
+        mock_s3 = MagicMock()
+        mock_s3.put_object = MagicMock()
+        mock_s3.generate_presigned_url = MagicMock(return_value=expected_url)
+
+        mock_boto3 = MagicMock()
+        mock_boto3.client.return_value = mock_s3
+
+        redirect_config = RedirectConfig(
+            enabled=True,
+            threshold=1000,
+            bucket="bucket",
+            endpoint_url="http://localhost:9000",
+            access_key="test",
+            secret_key="test",
+            ttl=1800,
+        )
+
+        import sys as _sys
+
+        with patch.dict(_sys.modules, {"boto3": mock_boto3, "botocore.config": MagicMock()}):
             result = await upload_and_presign(
                 QueryResult(rows=[], column_names=["v"]),
                 config=redirect_config,
             )
 
-        assert "X-Amz-Expires" in result["url"]
+        assert "X-Amz-Expires" in result["redirect_url"]
 
 
 # ---------------------------------------------------------------------------

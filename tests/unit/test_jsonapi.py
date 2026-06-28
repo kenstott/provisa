@@ -10,8 +10,6 @@
 
 """Unit tests for JSON:API auto-generation (Phase AB6)."""
 
-import pytest
-
 from provisa.api.jsonapi.errors import error_response, jsonapi_error
 from provisa.api.jsonapi.pagination import (
     DEFAULT_PAGE_SIZE,
@@ -123,7 +121,8 @@ class TestJsonApiErrors:
 
     def test_error_with_source(self):
         err = jsonapi_error(
-            400, "Invalid Filter",
+            400,
+            "Invalid Filter",
             source_parameter="filter[foo]",
         )
         assert err["source"]["parameter"] == "filter[foo]"
@@ -139,45 +138,45 @@ class TestJsonApiErrors:
 
 class TestPagination:
     def test_default_params(self):
-        pn, ps = parse_page_params({})
-        assert pn == 1
-        assert ps == DEFAULT_PAGE_SIZE
+        page = parse_page_params({})
+        assert page["number"] == 1
+        assert page["size"] == DEFAULT_PAGE_SIZE
 
     def test_custom_params(self):
-        pn, ps = parse_page_params({"page[number]": "3", "page[size]": "50"})
-        assert pn == 3
-        assert ps == 50
+        page = parse_page_params({"page[number]": "3", "page[size]": "50"})
+        assert page["number"] == 3
+        assert page["size"] == 50
 
     def test_clamps_page_size(self):
-        _, ps = parse_page_params({"page[size]": "99999"})
-        assert ps == MAX_PAGE_SIZE
+        page = parse_page_params({"page[size]": "99999"})
+        assert page["size"] == MAX_PAGE_SIZE
 
     def test_clamps_negative_page(self):
-        pn, _ = parse_page_params({"page[number]": "-5"})
-        assert pn == 1
+        page = parse_page_params({"page[number]": "-5"})
+        assert page["number"] == 1
 
     def test_invalid_values_use_defaults(self):
-        pn, ps = parse_page_params({"page[number]": "abc", "page[size]": "xyz"})
-        assert pn == 1
-        assert ps == DEFAULT_PAGE_SIZE
+        page = parse_page_params({"page[number]": "abc", "page[size]": "xyz"})
+        assert page["number"] == 1
+        assert page["size"] == DEFAULT_PAGE_SIZE
 
     def test_limit_offset_conversion(self):
-        limit, offset = page_to_limit_offset(1, 25)
+        limit, offset = page_to_limit_offset({"number": 1, "size": 25})
         assert limit == 25
         assert offset == 0
 
-        limit, offset = page_to_limit_offset(3, 10)
+        limit, offset = page_to_limit_offset({"number": 3, "size": 10})
         assert limit == 10
         assert offset == 20
 
     def test_pagination_links_first_page(self):
-        links = build_pagination_links("/data/jsonapi/orders", 1, 10, 10)
+        links = build_pagination_links("/data/jsonapi/orders", 1, 10, 25)
         assert links["prev"] is None
         assert links["next"] is not None
         assert "page%5Bnumber%5D=2" in links["next"]
 
     def test_pagination_links_middle_page(self):
-        links = build_pagination_links("/data/jsonapi/orders", 3, 10, 10)
+        links = build_pagination_links("/data/jsonapi/orders", 3, 10, 50)
         assert links["prev"] is not None
         assert links["next"] is not None
 
@@ -202,7 +201,8 @@ class TestSerializer:
     def test_resource_with_relationship(self):
         row = {"id": 1, "amount": 50, "customer_id": 7}
         resource = row_to_resource(
-            row, "orders",
+            row,
+            "orders",
             relationship_fields={"customer_id": "customers"},
         )
         assert resource["attributes"] == {"amount": 50}
@@ -212,7 +212,8 @@ class TestSerializer:
     def test_null_relationship(self):
         row = {"id": 1, "customer_id": None}
         resource = row_to_resource(
-            row, "orders",
+            row,
+            "orders",
             relationship_fields={"customer_id": "customers"},
         )
         assert resource["relationships"]["customer"]["data"] is None
@@ -232,7 +233,8 @@ class TestSerializer:
         rows = [{"id": 1, "customer_id": 7}]
         included = {"customers": [{"id": 7, "name": "Alice"}]}
         doc = rows_to_jsonapi(
-            rows, "orders",
+            rows,
+            "orders",
             relationship_fields={"customer_id": "customers"},
             included_rows=included,
         )
@@ -254,10 +256,12 @@ class TestParseFilters:
         assert result == {"amount": {"gt": "100"}}
 
     def test_multiple_filters(self):
-        result = _parse_filters({
-            "filter[region]": "US",
-            "filter[amount][gte]": "50",
-        })
+        result = _parse_filters(
+            {
+                "filter[region]": "US",
+                "filter[amount][gte]": "50",
+            }
+        )
         assert "region" in result
         assert "amount" in result
         assert result["amount"]["gte"] == "50"
@@ -306,18 +310,14 @@ class TestParseSort:
 
 class TestSparseFieldsets:
     def test_no_fieldset(self):
-        assert _parse_sparse_fieldsets({}, "orders") is None
+        assert _parse_sparse_fieldsets({}).get("orders") is None
 
     def test_basic_fieldset(self):
-        result = _parse_sparse_fieldsets(
-            {"fields[orders]": "amount,created_at"}, "orders",
-        )
+        result = _parse_sparse_fieldsets({"fields[orders]": "amount,created_at"}).get("orders")
         assert result == ["amount", "created_at"]
 
     def test_wrong_table_ignored(self):
-        result = _parse_sparse_fieldsets(
-            {"fields[customers]": "name"}, "orders",
-        )
+        result = _parse_sparse_fieldsets({"fields[customers]": "name"}).get("orders")
         assert result is None
 
 
@@ -336,16 +336,24 @@ class TestBuildGraphQLQuery:
 
     def test_with_filters(self):
         q = _build_graphql_query(
-            "orders", ["id"],
-            {"region": {"eq": "US"}}, [], None, None,
+            "orders",
+            ["id"],
+            {"region": {"eq": "US"}},
+            [],
+            None,
+            None,
         )
         assert "where:" in q
         assert 'region: {eq: "US"}' in q
 
     def test_with_sort(self):
         q = _build_graphql_query(
-            "orders", ["id"], {},
-            [{"field": "created_at", "dir": "desc"}], None, None,
+            "orders",
+            ["id"],
+            {},
+            [{"field": "created_at", "dir": "desc"}],
+            None,
+            None,
         )
         assert "order_by:" in q
         assert "created_at: desc" in q

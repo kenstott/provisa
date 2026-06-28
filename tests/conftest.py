@@ -79,6 +79,33 @@ class _DockerServiceManager:
 
 def pytest_configure(config):
     config.pluginmanager.register(_DockerServiceManager())
+    config.addinivalue_line(
+        "markers",
+        "requires_provisa_server: skip when Provisa server is not reachable",
+    )
+    config.addinivalue_line(
+        "markers",
+        "requires_debezium: skip when Debezium Connect is not reachable",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    server_url = os.environ.get("PROVISA_URL", "http://localhost:8000")
+    server_up = _server_reachable(server_url)
+    skip_server = pytest.mark.skip(reason=f"Provisa server not reachable at {server_url}")
+
+    debezium_host = os.environ.get("DEBEZIUM_HOST", "localhost")
+    debezium_port = int(os.environ.get("DEBEZIUM_PORT", "8083"))
+    debezium_up = _tcp_reachable(debezium_host, debezium_port)
+    skip_debezium = pytest.mark.skip(
+        reason=f"Debezium not reachable at {debezium_host}:{debezium_port}"
+    )
+
+    for item in items:
+        if item.get_closest_marker("requires_provisa_server") and not server_up:
+            item.add_marker(skip_server)
+        if item.get_closest_marker("requires_debezium") and not debezium_up:
+            item.add_marker(skip_debezium)
 
 
 @pytest.fixture(autouse=True)
@@ -301,6 +328,22 @@ async def graphql_client(docker_postgres):
         yield client
 
     await pool.close()
+    app_mod.state.pg_pool = None
+
+
+@pytest.fixture(scope="session")
+def test_client(docker_postgres):
+    """Synchronous ASGI test client for in-process Provisa app."""
+    from unittest.mock import MagicMock
+
+    import provisa.api.app as app_mod
+    from provisa.api.app import create_app
+    from starlette.testclient import TestClient
+
+    the_app = create_app()
+    app_mod.state.source_pools = MagicMock()
+    with TestClient(the_app, raise_server_exceptions=False) as client:
+        yield client
     app_mod.state.pg_pool = None
 
 

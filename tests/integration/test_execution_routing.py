@@ -395,7 +395,7 @@ class TestTenantCachePrefix:
         from provisa.cache.store import NoopCacheStore
 
         store = NoopCacheStore()
-        result = asyncio.get_event_loop().run_until_complete(store.get("any-key"))
+        result = asyncio.run(store.get("any-key"))
         assert result is None
 
     def test_cache_table_name_stable(self):

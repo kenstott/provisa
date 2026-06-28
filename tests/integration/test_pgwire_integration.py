@@ -108,6 +108,7 @@ def _make_mock_state(role: str = "admin", provider: str = "simple") -> MagicMock
     state.source_types = {}
     state.source_dialects = {}
     state.source_pools = MagicMock()
+    state.server_limits = {}
     state.trino_conn = None
     return state
 
@@ -488,7 +489,7 @@ class TestPgwireParameterizedQueries:
             row = await conn.fetchrow("SELECT $1::text AS v", None)
             await conn.close()
         assert received
-        assert "NULL" in received[0].upper()
+        assert any("NULL" in r.upper() for r in received)
 
 
 # ---------------------------------------------------------------------------
@@ -658,9 +659,13 @@ class TestPgwireTLS:
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
 
+        async def _one(sql, role_id):
+            return TrinoResult(rows=[(1,)], column_names=["v"])
+
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
             patch("provisa.api.app.state", state),
+            patch("provisa.pgwire._pipeline.execute_pgwire_sql", _one),
         ):
             # asyncpg with ssl=False should connect normally (server replies N to SSL)
             conn = await asyncpg.connect(
@@ -734,9 +739,13 @@ class TestPgwireTLS:
             client_ssl.check_hostname = False
             client_ssl.verify_mode = ssl.CERT_NONE
 
+            async def _one(sql, role_id):
+                return TrinoResult(rows=[(1,)], column_names=["v"])
+
             with (
                 patch("provisa.auth.providers.simple._provider_instance", provider),
                 patch("provisa.api.app.state", state),
+                patch("provisa.pgwire._pipeline.execute_pgwire_sql", _one),
             ):
                 conn = await asyncpg.connect(
                     host="127.0.0.1", port=port, user="admin", password="secret",

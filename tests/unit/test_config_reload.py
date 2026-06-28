@@ -44,32 +44,37 @@ from provisa.core.config_loader import parse_config_dict
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+
 def _minimal_config_dict(
     convention: str = "snake",
     domain_prefix: bool = False,
 ) -> dict:
     return {
-        "sources": [{
-            "id": "pg-src",
-            "type": "postgresql",
-            "host": "localhost",
-            "port": 5432,
-            "database": "testdb",
-            "username": "user",
-            "password": "secret",
-        }],
+        "sources": [
+            {
+                "id": "pg-src",
+                "type": "postgresql",
+                "host": "localhost",
+                "port": 5432,
+                "database": "testdb",
+                "username": "user",
+                "password": "secret",
+            }
+        ],
         "domains": [{"id": "sales"}],
-        "tables": [{
-            "source_id": "pg-src",
-            "domain_id": "sales",
-            "schema": "public",
-            "table": "order_items",
-            "governance": "pre-approved",
-            "columns": [
-                {"name": "id", "visible_to": ["analyst"]},
-                {"name": "total_amount", "visible_to": ["analyst"]},
-            ],
-        }],
+        "tables": [
+            {
+                "source_id": "pg-src",
+                "domain_id": "sales",
+                "schema": "public",
+                "table": "order_items",
+                "governance": "pre-approved",
+                "columns": [
+                    {"name": "id", "visible_to": ["analyst"]},
+                    {"name": "total_amount", "visible_to": ["analyst"]},
+                ],
+            }
+        ],
         "roles": [{"id": "analyst", "capabilities": ["read"], "domain_access": ["sales"]}],
         "naming": {"convention": convention, "domain_prefix": domain_prefix},
     }
@@ -83,50 +88,52 @@ def _make_schema_input(convention: str = "snake", domain_prefix: bool = False) -
     """Build a SchemaInput that mirrors what _load_and_build assembles at runtime."""
     _naming.configure(gql=convention)
     return SchemaInput(
-        tables=[{
-            "id": 1,
-            "source_id": "pg-src",
-            "domain_id": "sales",
-            "schema_name": "public",
-            "table_name": "order_items",
-            "governance": "pre-approved",
-            "description": None,
-            "alias": None,
-            "gql_naming_convention": None,
-            "source_gql_naming_convention": None,
-            "relay_pagination": None,
-            "hot": None,
-            "columns": [
-                {
-                    "column_name": "id",
-                    "visible_to": ["analyst"],
-                    "writable_by": [],
-                    "unmasked_to": [],
-                    "mask_type": None,
-                    "mask_pattern": None,
-                    "mask_replace": None,
-                    "mask_value": None,
-                    "mask_precision": None,
-                    "alias": None,
-                    "description": None,
-                    "path": None,
-                },
-                {
-                    "column_name": "total_amount",
-                    "visible_to": ["analyst"],
-                    "writable_by": [],
-                    "unmasked_to": [],
-                    "mask_type": None,
-                    "mask_pattern": None,
-                    "mask_replace": None,
-                    "mask_value": None,
-                    "mask_precision": None,
-                    "alias": None,
-                    "description": None,
-                    "path": None,
-                },
-            ],
-        }],
+        tables=[
+            {
+                "id": 1,
+                "source_id": "pg-src",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "order_items",
+                "governance": "pre-approved",
+                "description": None,
+                "alias": None,
+                "gql_naming_convention": None,
+                "source_gql_naming_convention": None,
+                "relay_pagination": None,
+                "hot": None,
+                "columns": [
+                    {
+                        "column_name": "id",
+                        "visible_to": ["analyst"],
+                        "writable_by": [],
+                        "unmasked_to": [],
+                        "mask_type": None,
+                        "mask_pattern": None,
+                        "mask_replace": None,
+                        "mask_value": None,
+                        "mask_precision": None,
+                        "alias": None,
+                        "description": None,
+                        "path": None,
+                    },
+                    {
+                        "column_name": "total_amount",
+                        "visible_to": ["analyst"],
+                        "writable_by": [],
+                        "unmasked_to": [],
+                        "mask_type": None,
+                        "mask_pattern": None,
+                        "mask_replace": None,
+                        "mask_value": None,
+                        "mask_precision": None,
+                        "alias": None,
+                        "description": None,
+                        "path": None,
+                    },
+                ],
+            }
+        ],
         relationships=[],
         column_types={
             1: [
@@ -145,6 +152,7 @@ def _make_schema_input(convention: str = "snake", domain_prefix: bool = False) -
 # ---------------------------------------------------------------------------
 # 1. Naming convention change triggers schema rebuild
 # ---------------------------------------------------------------------------
+
 
 class TestNamingConventionTriggersRebuild:
     """Changing the naming convention in config must produce a different schema."""
@@ -209,6 +217,7 @@ class TestNamingConventionTriggersRebuild:
 
     def test_convention_change_column_name_in_rebuilt_schema(self):
         """Round-trip: switch convention, rebuild, verify field change."""
+
         def _unwrap(field):
             t = field.type
             while hasattr(t, "of_type"):
@@ -231,6 +240,7 @@ class TestNamingConventionTriggersRebuild:
 # ---------------------------------------------------------------------------
 # 2. Atomic update — no partial state during reload
 # ---------------------------------------------------------------------------
+
 
 class TestAtomicConfigUpdate:
     """parse_config_dict validates the entire config before any state changes.
@@ -298,11 +308,13 @@ class TestAtomicConfigUpdate:
 # 3. Rollback on validation failure
 # ---------------------------------------------------------------------------
 
+
 class TestRollbackOnValidationFailure:
     """When a new config fails validation, the prior schema must remain usable."""
 
     def test_schema_from_valid_config_usable_after_reload_failure(self):
         """The schema built from the prior config continues to serve queries."""
+
         def _unwrap(field):
             t = field.type
             while hasattr(t, "of_type"):
@@ -347,6 +359,7 @@ class TestRollbackOnValidationFailure:
         """NamingConfig rejects unknown convention values at parse time."""
         from provisa.core.models import NamingConfig
         from pydantic import ValidationError as PydanticValidationError
+
         with pytest.raises(PydanticValidationError):
             NamingConfig(convention="unknown_convention")
 
@@ -358,3 +371,87 @@ class TestRollbackOnValidationFailure:
         si.role = {"id": "stranger", "capabilities": ["read"], "domain_access": []}
         with pytest.raises(ValueError, match="No tables visible"):
             generate_schema(si)
+
+
+# ---------------------------------------------------------------------------
+# 4. domain_prefix=True with empty domain_id must not produce __ names
+# ---------------------------------------------------------------------------
+
+
+class TestDomainPrefixEmptyDomain:
+    """domain_prefix=True with domain_id='' must not create names starting with '__'.
+
+    GraphQL forbids names beginning with '__' (reserved for introspection).
+    When a table has an empty domain_id (e.g. a graphql_remote source with no
+    domain assignment), the schema generator must not prepend '__' as a prefix.
+    """
+
+    def _make_empty_domain_schema_input(self) -> "SchemaInput":
+        """SchemaInput with a table whose domain_id is empty string."""
+        _naming.configure(gql="apollo_graphql")
+        return SchemaInput(
+            tables=[
+                {
+                    "id": 2,
+                    "source_id": "remote-src",
+                    "domain_id": "",
+                    "schema_name": "default",
+                    "table_name": "testns__users",
+                    "governance": "pre-approved",
+                    "description": None,
+                    "alias": None,
+                    "gql_naming_convention": None,
+                    "source_gql_naming_convention": None,
+                    "relay_pagination": None,
+                    "hot": None,
+                    "columns": [
+                        {
+                            "column_name": "id",
+                            "visible_to": ["admin"],
+                            "writable_by": [],
+                            "unmasked_to": [],
+                            "mask_type": None,
+                            "mask_pattern": None,
+                            "mask_replace": None,
+                            "mask_value": None,
+                            "mask_precision": None,
+                            "alias": None,
+                            "description": None,
+                            "path": None,
+                        },
+                    ],
+                }
+            ],
+            relationships=[],
+            column_types={
+                2: [_col("id", "integer")],
+            },
+            naming_rules=[],
+            role={"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]},
+            domains=[],
+            source_types={"remote-src": "graphql_remote"},
+            domain_prefix=True,
+        )
+
+    def test_no_double_underscore_field_names(self):
+        """Field names must not start with '__' when domain_id is empty."""
+        si = self._make_empty_domain_schema_input()
+        schema = generate_schema(si)
+        fields = schema.query_type.fields
+        for name in fields:
+            assert not name.startswith("__"), (
+                f"Field name {name!r} begins with '__', which is reserved by GraphQL introspection"
+            )
+
+    def test_no_double_underscore_type_names(self):
+        """GraphQL type names must not start with '__' when domain_id is empty."""
+        from graphql import is_introspection_type
+
+        si = self._make_empty_domain_schema_input()
+        schema = generate_schema(si)
+        for type_name, gql_type in schema.type_map.items():
+            if type_name.startswith("__"):
+                # Only built-in graphql-core introspection types are allowed
+                assert is_introspection_type(gql_type), (
+                    f"Custom type {type_name!r} begins with '__', which is reserved by GraphQL introspection"
+                )

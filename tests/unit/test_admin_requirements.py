@@ -50,13 +50,13 @@ class TestREQ407InlineSpecContent:
         req = OpenAPIPreviewRequest(spec_content="openapi: '3.0.0'")
         assert req.spec_content == "openapi: '3.0.0'"
 
-    def test_register_request_spec_path_defaults_empty(self):
-        # REQ-407: path is stored as ":inline:" when spec_content is used;
-        # the model default for spec_path must be empty so the router can decide
+    def test_register_request_spec_path_set_to_sentinel_when_spec_content_used(self):
+        # REQ-407: when spec_content is provided and spec_path is absent,
+        # the model validator sets spec_path to ":inline:" immediately
         from provisa.api.admin.openapi_router import OpenAPIRegisterRequest
 
         req = OpenAPIRegisterRequest(source_id="s1", spec_content="data: 1")
-        assert req.spec_path == ""
+        assert req.spec_path == ":inline:"
 
     def test_inline_path_sentinel_is_stored_when_spec_path_absent(self):
         # REQ-407: when spec_content is provided and spec_path is absent the

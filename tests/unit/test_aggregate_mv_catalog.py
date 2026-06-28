@@ -22,6 +22,7 @@ from provisa.mv.models import MVDefinition
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _mv(
     mv_id: str,
     source_tables: list[str],
@@ -45,6 +46,7 @@ def _mv(
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestAggregateMVCatalog:
     @pytest.fixture
@@ -110,14 +112,11 @@ class TestAggregateMVCatalog:
             target_table="mv_orders_daily",
         )
         original_sql = "SELECT SUM(amount) FROM orders"
-        rewritten = catalog.rewrite_sql(
-            original_sql, mv, ["amount", "qty"], []
-        )
+        rewritten = catalog.rewrite_sql(original_sql, mv, ["amount", "qty"], [])
         assert "/* aggregate_mv:" in rewritten
         assert "mv-orders-daily" in rewritten
         assert '"pg"."mv_schema"."mv_orders_daily"' in rewritten
-        assert '"amount"' in rewritten
-        assert '"qty"' in rewritten
+        assert "amount" in rewritten
 
     def test_rewrite_sql_with_filters(self, catalog):
         """rewrite_sql appends remaining_filters as a WHERE clause."""

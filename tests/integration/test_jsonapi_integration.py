@@ -33,6 +33,7 @@ pytestmark = [pytest.mark.integration]
 def _make_orders_schema():
     """Build a minimal GraphQL schema with an 'orders' root field."""
     from graphql import (
+        GraphQLArgument,
         GraphQLField,
         GraphQLFloat,
         GraphQLInt,
@@ -53,7 +54,15 @@ def _make_orders_schema():
     )
     query_type = GraphQLObjectType(
         "Query",
-        {"orders": GraphQLField(GraphQLList(order_type))},
+        {
+            "orders": GraphQLField(
+                GraphQLList(order_type),
+                args={
+                    "limit": GraphQLArgument(GraphQLInt),
+                    "offset": GraphQLArgument(GraphQLInt),
+                },
+            )
+        },
     )
     return GraphQLSchema(query=query_type)  # type: ignore[arg-type]
 
@@ -250,42 +259,42 @@ class TestJSONAPIPagination:
         # REQ-257: defaults to page 1, size 25
         from provisa.api.jsonapi.pagination import DEFAULT_PAGE_SIZE, parse_page_params
 
-        page_number, page_size = parse_page_params({})
+        page = parse_page_params({})
 
-        assert page_number == 1
-        assert page_size == DEFAULT_PAGE_SIZE
+        assert page["number"] == 1
+        assert page["size"] == DEFAULT_PAGE_SIZE
 
     def test_parse_page_params_explicit(self):
         # REQ-257: page[number] and page[size] parsed correctly
         from provisa.api.jsonapi.pagination import parse_page_params
 
-        page_number, page_size = parse_page_params({"page[number]": "3", "page[size]": "10"})
+        page = parse_page_params({"page[number]": "3", "page[size]": "10"})
 
-        assert page_number == 3
-        assert page_size == 10
+        assert page["number"] == 3
+        assert page["size"] == 10
 
     def test_parse_page_params_clamped_min(self):
         # REQ-257: page number below 1 is clamped to 1
         from provisa.api.jsonapi.pagination import parse_page_params
 
-        page_number, page_size = parse_page_params({"page[number]": "0", "page[size]": "0"})
+        page = parse_page_params({"page[number]": "0", "page[size]": "0"})
 
-        assert page_number == 1
-        assert page_size == 1
+        assert page["number"] == 1
+        assert page["size"] == 1
 
     def test_parse_page_params_clamped_max_size(self):
         # REQ-257: page size above MAX_PAGE_SIZE is clamped
         from provisa.api.jsonapi.pagination import MAX_PAGE_SIZE, parse_page_params
 
-        _, page_size = parse_page_params({"page[size]": "9999"})
+        page = parse_page_params({"page[size]": "9999"})
 
-        assert page_size == MAX_PAGE_SIZE
+        assert page["size"] == MAX_PAGE_SIZE
 
     def test_page_to_limit_offset_page1(self):
         # REQ-257: first page has offset 0
         from provisa.api.jsonapi.pagination import page_to_limit_offset
 
-        limit, offset = page_to_limit_offset(1, 25)
+        limit, offset = page_to_limit_offset({"number": 1, "size": 25})
 
         assert limit == 25
         assert offset == 0
@@ -294,7 +303,7 @@ class TestJSONAPIPagination:
         # REQ-257: second page of size 10 has offset 10
         from provisa.api.jsonapi.pagination import page_to_limit_offset
 
-        limit, offset = page_to_limit_offset(2, 10)
+        limit, offset = page_to_limit_offset({"number": 2, "size": 10})
 
         assert limit == 10
         assert offset == 10
@@ -303,7 +312,7 @@ class TestJSONAPIPagination:
         # REQ-257: third page of size 25 has offset 50
         from provisa.api.jsonapi.pagination import page_to_limit_offset
 
-        limit, offset = page_to_limit_offset(3, 25)
+        limit, offset = page_to_limit_offset({"number": 3, "size": 25})
 
         assert limit == 25
         assert offset == 50
@@ -319,10 +328,10 @@ class TestJSONAPIPagination:
         assert links["self"] is not None
 
     def test_build_pagination_links_has_next_when_full_page(self):
-        # REQ-257: next link present when result_count >= page_size
+        # REQ-257: next link present when total > page_size (more pages exist)
         from provisa.api.jsonapi.pagination import build_pagination_links
 
-        links = build_pagination_links("/data/jsonapi/orders", 1, 25, 25)
+        links = build_pagination_links("/data/jsonapi/orders", 1, 25, 50)
 
         assert links["next"] is not None
         assert "page%5Bnumber%5D=2" in links["next"] or "page[number]=2" in links["next"]
@@ -394,7 +403,7 @@ class TestJSONAPISparseFieldsets:
         # REQ-257: only requested fields returned from sparse fieldset param
         from provisa.api.jsonapi.generator import _parse_sparse_fieldsets
 
-        result = _parse_sparse_fieldsets({"fields[orders]": "amount,region"}, "orders")
+        result = _parse_sparse_fieldsets({"fields[orders]": "amount,region"}).get("orders")
 
         assert result == ["amount", "region"]
 
@@ -402,7 +411,7 @@ class TestJSONAPISparseFieldsets:
         # REQ-257: sparse fieldset with a single field
         from provisa.api.jsonapi.generator import _parse_sparse_fieldsets
 
-        result = _parse_sparse_fieldsets({"fields[orders]": "amount"}, "orders")
+        result = _parse_sparse_fieldsets({"fields[orders]": "amount"}).get("orders")
 
         assert result == ["amount"]
 
@@ -410,7 +419,7 @@ class TestJSONAPISparseFieldsets:
         # REQ-257: no sparse param → None (all fields)
         from provisa.api.jsonapi.generator import _parse_sparse_fieldsets
 
-        result = _parse_sparse_fieldsets({}, "orders")
+        result = _parse_sparse_fieldsets({}).get("orders")
 
         assert result is None
 
@@ -418,7 +427,7 @@ class TestJSONAPISparseFieldsets:
         # REQ-257: whitespace around field names is stripped
         from provisa.api.jsonapi.generator import _parse_sparse_fieldsets
 
-        result = _parse_sparse_fieldsets({"fields[orders]": " amount , region "}, "orders")
+        result = _parse_sparse_fieldsets({"fields[orders]": " amount , region "}).get("orders")
 
         assert result == ["amount", "region"]
 
@@ -605,7 +614,8 @@ class TestJSONAPIPaginationHTTP:
 
         # Also stub serialize_rows to return predictable data
         def _fake_serialize(rows, columns, table):
-            col_rows = [dict(zip(columns, r)) for r in rows]
+            col_names = [getattr(c, "field_name", c) for c in columns]
+            col_rows = [dict(zip(col_names, r)) for r in rows]
             return {"data": {table: col_rows}}
 
         monkeypatch.setattr("provisa.executor.serialize.serialize_rows", _fake_serialize)
@@ -648,7 +658,8 @@ class TestJSONAPIPaginationHTTP:
         monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", _fake_execute)
 
         def _fake_serialize(rows, columns, table):
-            col_rows = [dict(zip(columns, r)) for r in rows]
+            col_names = [getattr(c, "field_name", c) for c in columns]
+            col_rows = [dict(zip(col_names, r)) for r in rows]
             return {"data": {table: col_rows}}
 
         monkeypatch.setattr("provisa.executor.serialize.serialize_rows", _fake_serialize)
@@ -694,7 +705,8 @@ class TestJSONAPIPaginationHTTP:
         monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", _fake_execute)
 
         def _fake_serialize(rows, columns, table):
-            col_rows = [dict(zip(columns, r)) for r in rows]
+            col_names = [getattr(c, "field_name", c) for c in columns]
+            col_rows = [dict(zip(col_names, r)) for r in rows]
             return {"data": {table: col_rows}}
 
         monkeypatch.setattr("provisa.executor.serialize.serialize_rows", _fake_serialize)
@@ -764,7 +776,8 @@ class TestJSONAPIPaginationHTTP:
         monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", _fake_execute)
 
         def _fake_serialize(rows, columns, table):
-            col_rows = [dict(zip(columns, r)) for r in rows]
+            col_names = [getattr(c, "field_name", c) for c in columns]
+            col_rows = [dict(zip(col_names, r)) for r in rows]
             return {"data": {table: col_rows}}
 
         monkeypatch.setattr("provisa.executor.serialize.serialize_rows", _fake_serialize)

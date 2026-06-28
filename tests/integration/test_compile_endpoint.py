@@ -19,7 +19,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import asyncpg
 import httpx
 import pytest
 import pytest_asyncio
@@ -55,7 +54,6 @@ async def _compile(
 
 
 _FIXTURE_CONFIG = Path(__file__).parent.parent / "fixtures" / "sample_config.yaml"
-_SCHEMA_SQL = Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql"
 _LIVE_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
 
 
@@ -164,28 +162,31 @@ async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
 
     from provisa.api.app import create_app
-    from provisa.core.config_loader import load_config_from_yaml
 
-    pg_dsn = (
-        f"postgresql://{os.environ.get('PG_USER', 'provisa')}"
-        f":{os.environ.get('PG_PASSWORD', 'provisa')}"
-        f"@{os.environ.get('PG_HOST', 'localhost')}"
-        f":{os.environ.get('PG_PORT', '5432')}"
-        f"/{os.environ.get('PG_DATABASE', 'provisa')}"
-    )
-    conn = await asyncpg.connect(pg_dsn)
-    try:
-        await conn.execute(_SCHEMA_SQL.read_text())
-        await load_config_from_yaml(_FIXTURE_CONFIG, conn)
-    finally:
-        await conn.close()
+    # Point the app at the fixture config so _load_and_build uses it instead of
+    # the production config (which has a different analyst role domain_access).
+    # PROVISA_CONFIG_REPLACE=1 ensures stale rows from other test modules are cleared.
+    _prev_config = os.environ.get("PROVISA_CONFIG")
+    _prev_replace = os.environ.get("PROVISA_CONFIG_REPLACE")
+    os.environ["PROVISA_CONFIG"] = str(_FIXTURE_CONFIG)
+    os.environ["PROVISA_CONFIG_REPLACE"] = "1"
 
     app = create_app()
 
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            yield c
+    try:
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                yield c
+    finally:
+        if _prev_config is None:
+            os.environ.pop("PROVISA_CONFIG", None)
+        else:
+            os.environ["PROVISA_CONFIG"] = _prev_config
+        if _prev_replace is None:
+            os.environ.pop("PROVISA_CONFIG_REPLACE", None)
+        else:
+            os.environ["PROVISA_CONFIG_REPLACE"] = _prev_replace
 
 
 class TestCompileBasic:

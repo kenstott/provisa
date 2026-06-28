@@ -168,7 +168,7 @@ class TestAuthProviderInterface:
         # validate_token is async; check it is callable via the interface contract.
         import asyncio
 
-        result = asyncio.get_event_loop().run_until_complete(provider.validate_token("any-token"))
+        result = asyncio.run(provider.validate_token("any-token"))
         assert result.user_id == "u1"
 
     def test_auth_scheme_default_is_bearer(self):
@@ -209,7 +209,7 @@ class TestSimpleAuthProvider:
 
         provider = _make_simple_provider()
         token = provider.login("alice", "s3cr3t")
-        identity = asyncio.get_event_loop().run_until_complete(provider.validate_token(token))
+        identity = asyncio.run(provider.validate_token(token))
         assert identity.user_id == "alice"
         assert ROLE_ANALYST in identity.roles
 
@@ -227,7 +227,7 @@ class TestSimpleAuthProvider:
         }
         expired_token = jwt.encode(payload, _JWT_SECRET, algorithm="HS256")
         with pytest.raises(jwt.ExpiredSignatureError):
-            asyncio.get_event_loop().run_until_complete(provider.validate_token(expired_token))
+            asyncio.run(provider.validate_token(expired_token))
 
     def test_jwt_contains_role_claims(self):
         # REQ-124: JWT payload must contain roles claim.
