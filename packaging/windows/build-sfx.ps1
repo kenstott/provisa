@@ -37,6 +37,7 @@ Copy-Item (Join-Path $RepoRoot 'provisa')   (Join-Path $BuildSrc 'provisa')   -R
 
 Copy-Item (Join-Path $ScriptDir 'first-launch.ps1')     $BuildDir
 Copy-Item (Join-Path $ScriptDir 'first-launch-gui.ps1') $BuildDir
+Copy-Item (Join-Path $ScriptDir 'launch-gui.vbs')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.ps1')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.cmd')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'install.ps1')       $BuildDir
@@ -104,7 +105,7 @@ Source: "$BuildDir\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 Name: "{group}\Provisa First Launch"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\first-launch-gui.ps1"""
 
 [Run]
-Filename: "cmd.exe"; Parameters: "/c start """" powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\first-launch-gui.ps1"""; Description: "Launch Provisa first-run setup (download and configure)"; Flags: postinstall nowait
+Filename: "wscript.exe"; Parameters: "/nologo ""{app}\launch-gui.vbs"""; Description: "Launch Provisa first-run setup (download and configure)"; Flags: postinstall nowait
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa"; ValueType: string; ValueName: "DisplayName"; ValueData: "Provisa $Version"

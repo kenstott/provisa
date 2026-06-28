@@ -2,6 +2,11 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$LogPath = Join-Path $env:TEMP 'provisa-first-launch.log'
+Start-Transcript -Path $LogPath -Append -ErrorAction SilentlyContinue
+
+try {
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -546,3 +551,16 @@ federation_workers: $Workers
 })
 
 [System.Windows.Forms.Application]::Run($form)
+
+} catch {
+    $errText = $_.ToString() + "`n`n" + $_.ScriptStackTrace
+    try {
+        [System.Windows.Forms.MessageBox]::Show(
+            $errText,
+            'Provisa Setup Error', 'OK', 'Error') | Out-Null
+    } catch {
+        $errText | Out-File -FilePath $LogPath -Append -Encoding UTF8
+    }
+} finally {
+    Stop-Transcript -ErrorAction SilentlyContinue
+}
