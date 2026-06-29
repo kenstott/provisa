@@ -11,6 +11,13 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
+# Hide the PowerShell console window — form remains visible
+Add-Type -Name 'ConsoleHelper' -Namespace 'Provisa' -MemberDefinition @'
+  [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+  [DllImport("user32.dll")]   public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+'@
+[Provisa.ConsoleHelper]::ShowWindow([Provisa.ConsoleHelper]::GetConsoleWindow(), 0) | Out-Null
+
 $ScriptDir    = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 $VersionFile  = Join-Path $ScriptDir 'VERSION'
 $EmbeddedVersion = if (Test-Path $VersionFile) { (Get-Content $VersionFile -Raw).Trim() } else { $null }
