@@ -123,6 +123,7 @@ class TestHandleQuery:
         context = AsyncMock(spec=grpc.aio.ServicerContext)
         context.invocation_metadata.return_value = [("x-provisa-role", "admin")]
         request = MagicMock()
+        request.limit = 0
 
         fake_compiled = SimpleNamespace(
             sql="SELECT id, amount FROM orders",
@@ -136,7 +137,7 @@ class TestHandleQuery:
         fake_result = SimpleNamespace(rows=[[1, 100.0], [2, 200.0]])
 
         with (
-            patch("provisa.compiler.parser.parse_query") as _mock_parse,
+            patch("provisa.compiler.parser.parse_query"),
             patch("provisa.compiler.sql_gen.compile_query", return_value=[fake_compiled]),
             patch("provisa.compiler.rls.inject_rls", return_value=fake_compiled),
             patch("provisa.compiler.mask_inject.inject_masking", return_value=fake_compiled),
@@ -258,6 +259,7 @@ class TestErrorHandling:
         )
 
         request = MagicMock()
+        request.limit = 0
         results = []
         with pytest.raises(grpc.aio.AbortError):
             async for msg in servicer._handle_query(request, context, "Nonexistent", "nonexistent"):

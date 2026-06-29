@@ -332,6 +332,7 @@ class TestREQ617RoleSelectionViaMetadata:
         context = AsyncMock(spec=grpc.aio.ServicerContext)
         context.invocation_metadata.return_value = [("x-provisa-role", "admin")]
         request = MagicMock()
+        request.limit = 0
 
         fake_compiled = SimpleNamespace(
             sql="SELECT id, amount FROM orders",
