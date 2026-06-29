@@ -114,6 +114,11 @@ filterwarnings = [
     "ignore:ast\\.Str is deprecated:DeprecationWarning:docstring_parser",
     "ignore:`LoggingHandler` in `opentelemetry-sdk` is deprecated:DeprecationWarning:opentelemetry",
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+    "ignore::ResourceWarning:asyncpg",
+    "ignore::ResourceWarning:asyncio",
+    "ignore::ResourceWarning:httpcore",
+    "ignore::ResourceWarning:socketserver",
+    "ignore::DeprecationWarning:opentelemetry",
 ]
 
 [tool.coverage.run]
