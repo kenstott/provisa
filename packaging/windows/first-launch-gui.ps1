@@ -330,8 +330,11 @@ $btnInstall.Add_Click({
       # Step 2: Import OVA --------------------------------------------------
       Log 'Importing Provisa VM...'
       if (-not (Test-Path $OvaPath)) { throw "OVA not found: $OvaPath" }
-      $vmList = & $VBoxManage list vms 2>&1
-      if ($vmList -notmatch '"Provisa"') {
+      & $VBoxManage showvminfo 'Provisa' --machinereadable 2>&1 | Out-Null
+      $vmRegistered = ($LASTEXITCODE -eq 0)
+      if (-not $vmRegistered) {
+        # Clean up any stale registration before importing
+        & $VBoxManage unregistervm 'Provisa' --delete 2>&1 | Out-Null
         $importOut = & $VBoxManage import $OvaPath --vsys 0 --vmname 'Provisa' 2>&1
         $importOut | ForEach-Object { Log "  $_" }
         if ($LASTEXITCODE -ne 0) { throw "OVA import failed (exit $LASTEXITCODE). See log above." }
