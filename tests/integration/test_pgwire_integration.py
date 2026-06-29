@@ -151,7 +151,7 @@ class TestPgwireAuth:
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
 
-        async def _noop(sql, role_id):
+        async def _noop(*_):
             return TrinoResult(rows=[(1,)], column_names=["v"])
 
         with (
@@ -160,7 +160,10 @@ class TestPgwireAuth:
             patch("provisa.pgwire._pipeline.execute_pgwire_sql", _noop),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             val = await conn.fetchval("SELECT 1")
@@ -179,7 +182,10 @@ class TestPgwireAuth:
         ):
             with pytest.raises(asyncpg.InvalidPasswordError):
                 await asyncpg.connect(
-                    host="127.0.0.1", port=port, user="admin", password="wrong",
+                    host="127.0.0.1",
+                    port=port,
+                    user="admin",
+                    password="wrong",
                     database="provisa",
                 )
 
@@ -188,7 +194,7 @@ class TestPgwireAuth:
         port, _ = pgwire_srv
         state = _make_mock_state("analyst", "none")
 
-        async def _echo_role(sql, role_id):
+        async def _echo_role(_, role_id):
             return TrinoResult(rows=[(role_id,)], column_names=["role"])
 
         with (
@@ -196,7 +202,10 @@ class TestPgwireAuth:
             patch("provisa.pgwire._pipeline.execute_pgwire_sql", _echo_role),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="analyst", password="any",
+                host="127.0.0.1",
+                port=port,
+                user="analyst",
+                password="any",
                 database="provisa",
             )
             row = await conn.fetchrow("SELECT 1")
@@ -222,7 +231,10 @@ class TestPgwireServerVersion:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             row = await conn.fetchrow("SHOW server_version")
@@ -241,7 +253,10 @@ class TestPgwireServerVersion:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             ver = conn.get_server_version()
@@ -269,7 +284,10 @@ class TestPgwireCatalogIntercept:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             rows = await conn.fetch("SELECT nspname FROM pg_catalog.pg_namespace")
@@ -289,7 +307,10 @@ class TestPgwireCatalogIntercept:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             rows = await conn.fetch("SELECT table_name FROM information_schema.tables LIMIT 5")
@@ -308,7 +329,10 @@ class TestPgwireCatalogIntercept:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             rows = await conn.fetch("SELECT schema_name FROM information_schema.schemata")
@@ -327,7 +351,10 @@ class TestPgwireCatalogIntercept:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             rows = await conn.fetch("SELECT typname FROM pg_catalog.pg_type LIMIT 10")
@@ -345,7 +372,10 @@ class TestPgwireCatalogIntercept:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             rows = await conn.fetch("SELECT name, setting FROM pg_catalog.pg_settings LIMIT 5")
@@ -367,7 +397,7 @@ class TestPgwireMultiStatement:
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
 
-        async def _noop(sql, role_id):
+        async def _noop(*_):
             return TrinoResult(rows=[(1,)], column_names=["v"])
 
         with (
@@ -376,7 +406,10 @@ class TestPgwireMultiStatement:
             patch("provisa.pgwire._pipeline.execute_pgwire_sql", _noop),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             await conn.execute("BEGIN; COMMIT")
@@ -395,7 +428,10 @@ class TestPgwireMultiStatement:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             await conn.execute("SET search_path TO public; SHOW server_version")
@@ -419,7 +455,7 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, role_id):
+        async def _capture(sql, *_):
             received.append(sql)
             return TrinoResult(rows=[("hello",)], column_names=["v"])
 
@@ -429,7 +465,10 @@ class TestPgwireParameterizedQueries:
             patch("provisa.pgwire._pipeline.execute_pgwire_sql", _capture),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             row = await conn.fetchrow("SELECT $1::text AS v", "hello")
@@ -446,7 +485,7 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, role_id):
+        async def _capture(sql, *_):
             received.append(sql)
             return TrinoResult(rows=[(42,)], column_names=["v"])
 
@@ -456,10 +495,13 @@ class TestPgwireParameterizedQueries:
             patch("provisa.pgwire._pipeline.execute_pgwire_sql", _capture),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
-            row = await conn.fetchrow("SELECT $1 AS v", 42)
+            await conn.fetchrow("SELECT $1 AS v", 42)
             await conn.close()
         assert received
         # Integer literal in SQL — must not be wrapped in quotes
@@ -473,7 +515,7 @@ class TestPgwireParameterizedQueries:
         state = _make_mock_state("admin", "simple")
         received: list[str] = []
 
-        async def _capture(sql, role_id):
+        async def _capture(sql, *_):
             received.append(sql)
             return TrinoResult(rows=[(None,)], column_names=["v"])
 
@@ -483,10 +525,13 @@ class TestPgwireParameterizedQueries:
             patch("provisa.pgwire._pipeline.execute_pgwire_sql", _capture),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
-            row = await conn.fetchrow("SELECT $1::text AS v", None)
+            await conn.fetchrow("SELECT $1::text AS v", None)
             await conn.close()
         assert received
         assert any("NULL" in r.upper() for r in received)
@@ -511,7 +556,10 @@ class TestPgwireTransactionIntercept:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             await conn.execute("SET search_path TO public")
@@ -534,7 +582,10 @@ class TestPgwireTransactionIntercept:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             await conn.execute("BEGIN")
@@ -554,7 +605,10 @@ class TestPgwireTransactionIntercept:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             await conn.execute("SAVEPOINT sp1")
@@ -583,7 +637,10 @@ class TestPgwireScalarIntercept:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             val = await conn.fetchval("SELECT current_user")
@@ -601,7 +658,10 @@ class TestPgwireScalarIntercept:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             val = await conn.fetchval("SELECT current_database()")
@@ -619,7 +679,10 @@ class TestPgwireScalarIntercept:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             val = await conn.fetchval("SELECT version()")
@@ -637,7 +700,10 @@ class TestPgwireScalarIntercept:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             val = await conn.fetchval("SHOW TRANSACTION ISOLATION LEVEL")
@@ -659,7 +725,7 @@ class TestPgwireTLS:
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
 
-        async def _one(sql, role_id):
+        async def _one(*_):
             return TrinoResult(rows=[(1,)], column_names=["v"])
 
         with (
@@ -669,8 +735,12 @@ class TestPgwireTLS:
         ):
             # asyncpg with ssl=False should connect normally (server replies N to SSL)
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
-                database="provisa", ssl=False,
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
+                database="provisa",
+                ssl=False,
             )
             val = await conn.fetchval("SELECT 1")
             await conn.close()
@@ -678,7 +748,7 @@ class TestPgwireTLS:
 
     async def test_tls_server_accepts_connection(self):
         """REQ-530: TLS server wraps connection when ssl_ctx provided."""
-        cryptography = pytest.importorskip("cryptography")
+        pytest.importorskip("cryptography")
         from cryptography import x509
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import rsa
@@ -686,9 +756,11 @@ class TestPgwireTLS:
         import datetime
 
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        subject = issuer = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
-        ])
+        subject = issuer = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
+            ]
+        )
         cert = (
             x509.CertificateBuilder()
             .subject_name(subject)
@@ -696,7 +768,9 @@ class TestPgwireTLS:
             .public_key(key.public_key())
             .serial_number(x509.random_serial_number())
             .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
-            .not_valid_after(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1))
+            .not_valid_after(
+                datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
+            )
             .add_extension(
                 x509.SubjectAlternativeName([x509.DNSName("localhost")]),
                 critical=False,
@@ -708,11 +782,13 @@ class TestPgwireTLS:
             cf.write(cert.public_bytes(serialization.Encoding.PEM))
             cert_path = cf.name
         with tempfile.NamedTemporaryFile(suffix=".key", delete=False) as kf:
-            kf.write(key.private_bytes(
-                serialization.Encoding.PEM,
-                serialization.PrivateFormat.TraditionalOpenSSL,
-                serialization.NoEncryption(),
-            ))
+            kf.write(
+                key.private_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PrivateFormat.TraditionalOpenSSL,
+                    serialization.NoEncryption(),
+                )
+            )
             key_path = kf.name
 
         import provisa.pgwire.server as _srv
@@ -739,7 +815,7 @@ class TestPgwireTLS:
             client_ssl.check_hostname = False
             client_ssl.verify_mode = ssl.CERT_NONE
 
-            async def _one(sql, role_id):
+            async def _one(*_):
                 return TrinoResult(rows=[(1,)], column_names=["v"])
 
             with (
@@ -748,8 +824,12 @@ class TestPgwireTLS:
                 patch("provisa.pgwire._pipeline.execute_pgwire_sql", _one),
             ):
                 conn = await asyncpg.connect(
-                    host="127.0.0.1", port=port, user="admin", password="secret",
-                    database="provisa", ssl=client_ssl,
+                    host="127.0.0.1",
+                    port=port,
+                    user="admin",
+                    password="secret",
+                    database="provisa",
+                    ssl=client_ssl,
                 )
                 val = await conn.fetchval("SELECT 1")
                 await conn.close()
@@ -774,7 +854,7 @@ class TestPgwireSQLOnlyRestrictions:
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
 
-        async def _raise_on_insert(sql, role_id):
+        async def _raise_on_insert(*_):
             raise PermissionError("DML not supported over pgwire")
 
         with (
@@ -783,7 +863,10 @@ class TestPgwireSQLOnlyRestrictions:
             patch("provisa.pgwire._pipeline.execute_pgwire_sql", _raise_on_insert),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             with pytest.raises(asyncpg.PostgresError):
@@ -796,7 +879,7 @@ class TestPgwireSQLOnlyRestrictions:
         provider = _stub_auth_provider("admin", "secret")
         state = _make_mock_state("admin", "simple")
 
-        async def _raise_on_update(sql, role_id):
+        async def _raise_on_update(*_):
             raise PermissionError("DML not supported over pgwire")
 
         with (
@@ -805,7 +888,10 @@ class TestPgwireSQLOnlyRestrictions:
             patch("provisa.pgwire._pipeline.execute_pgwire_sql", _raise_on_update),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             with pytest.raises(asyncpg.PostgresError):
@@ -834,7 +920,10 @@ class TestPgwireDDLCapability:
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
-                host="127.0.0.1", port=port, user="admin", password="secret",
+                host="127.0.0.1",
+                port=port,
+                user="admin",
+                password="secret",
                 database="provisa",
             )
             with pytest.raises(asyncpg.PostgresError):
@@ -850,7 +939,7 @@ class TestPgwireDDLCapability:
 class TestPgwireStartupGating:
     """REQ-527: start_pgwire_server called only when env var is set."""
 
-    def test_start_pgwire_server_binds_port(self):
+    async def test_start_pgwire_server_binds_port(self):
         """start_pgwire_server starts a daemon thread that binds the given port."""
         from provisa.pgwire.server import start_pgwire_server
 
