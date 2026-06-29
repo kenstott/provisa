@@ -673,3 +673,190 @@ def then_large_result_redirect_and_arrow_output_available(shared_data):
 
     # Both transports are inactive when the result is below the threshold.
     role = shared_data["role"]
+    below = _evaluate_large_result(role, _LARGE_RESULT_ROW_THRESHOLD - 1)
+    assert below["redirect_available"] is False
+    assert below["arrow_available"] is False
+    assert below["redirect_url"] is None
+    assert below["arrow_content_type"] is None
+
+    # A minimal role still gets both transports when the threshold is exceeded.
+    minimal = {"id": "minimal", "capabilities": [Capability.QUERY_DEVELOPMENT.value]}
+    over = _evaluate_large_result(minimal, _LARGE_RESULT_ROW_THRESHOLD + 1)
+    assert over["redirect_available"] is True
+    assert over["arrow_available"] is True
+
+
+# ---------------------------------------------------------------------------
+# REQ-603 — V002 relationship governance: unregistered JOINs rejected
+# ---------------------------------------------------------------------------
+
+
+@given("a SQL or Cypher query with a JOIN ON condition")
+def given_sql_query_with_join(shared_data: dict) -> None:
+    orders_meta = TableMeta(
+        table_id=1,
+        field_name="orders",
+        type_name="Orders",
+        source_id="pg",
+        catalog_name="pg",
+        schema_name="public",
+        table_name="orders",
+    )
+    customers_meta = TableMeta(
+        table_id=2,
+        field_name="customers",
+        type_name="Customers",
+        source_id="pg",
+        catalog_name="pg",
+        schema_name="public",
+        table_name="customers",
+    )
+
+    # Context with NO registered join between orders and customers.
+    ctx_no_join = CompilationContext()
+    ctx_no_join.tables = {"orders": orders_meta, "customers": customers_meta}
+    ctx_no_join.joins = {}
+
+    # Context WITH the join registered (positive control).
+    ctx_with_join = CompilationContext()
+    ctx_with_join.tables = {"orders": orders_meta, "customers": customers_meta}
+    ctx_with_join.joins = {
+        ("Orders", "customers"): JoinMeta(
+            source_column="customer_id",
+            target_column="id",
+            source_column_type="integer",
+            target_column_type="integer",
+            target=customers_meta,
+            cardinality="many-to-one",
+        )
+    }
+
+    gov_ctx = GovernanceContext(
+        rls_rules={},
+        masking_rules={},
+        visible_columns={},
+        table_map={"orders": 1, "customers": 2},
+        all_columns={
+            1: [("id", "integer"), ("customer_id", "integer")],
+            2: [("id", "integer"), ("name", "varchar")],
+        },
+        limit_ceiling=None,
+        sample_size=None,
+    )
+
+    sql = (
+        'SELECT "orders"."id" FROM "public"."orders" '
+        'JOIN "public"."customers" ON "orders"."customer_id" = "customers"."id"'
+    )
+
+    shared_data["sql"] = sql
+    shared_data["ctx_no_join"] = ctx_no_join
+    shared_data["ctx_with_join"] = ctx_with_join
+    shared_data["gov_ctx"] = gov_ctx
+    shared_data["role"] = {"id": "analyst", "domain_access": ["*"]}
+
+
+@when("the compiler validates the query")
+def when_compiler_validates_join_query(shared_data: dict) -> None:
+    violations_no_join = validate_sql(
+        shared_data["sql"],
+        shared_data["ctx_no_join"],
+        shared_data["gov_ctx"],
+        shared_data["role"],
+        [],
+    )
+    violations_with_join = validate_sql(
+        shared_data["sql"],
+        shared_data["ctx_with_join"],
+        shared_data["gov_ctx"],
+        shared_data["role"],
+        [],
+    )
+    shared_data["violations_no_join"] = violations_no_join
+    shared_data["violations_with_join"] = violations_with_join
+
+
+@then("it is rejected at compile time if the join is not backed by a registered relationship")
+def then_unregistered_join_rejected(shared_data: dict) -> None:
+    codes_no_join = {v.code for v in shared_data["violations_no_join"]}
+    codes_with_join = {v.code for v in shared_data["violations_with_join"]}
+
+    assert "V002" in codes_no_join, (
+        f"Expected V002 for unregistered join, got violations: {shared_data['violations_no_join']}"
+    )
+    assert "V002" not in codes_with_join, (
+        f"Expected no V002 for registered join, got violations: {shared_data['violations_with_join']}"
+    )
+
+    v002 = next(v for v in shared_data["violations_no_join"] if v.code == "V002")
+    assert "customer" in v002.message.lower() or "join" in v002.message.lower(), (
+        f"V002 message should reference the unregistered join: {v002.message!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-613 — Append-only audit log with all required fields
+# ---------------------------------------------------------------------------
+
+
+@given("any query touching a domain asset")
+def given_query_touching_domain_asset(shared_data: dict) -> None:
+    shared_data["audit_query"] = 'SELECT "id", "name" FROM "public"."customers"'
+    shared_data["audit_user_id"] = "user-abc"
+    shared_data["audit_role_id"] = "analyst"
+    shared_data["audit_tenant_id"] = str(uuid.uuid4())
+    shared_data["audit_table_ids"] = ["customers"]
+    shared_data["audit_source"] = "graphql"
+    shared_data["audit_status_code"] = 200
+    shared_data["audit_duration_ms"] = 42
+
+
+@when("the query is executed")
+def when_audit_query_executed(shared_data: dict) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    captured: list[tuple] = []
+
+    mock_pool = MagicMock()
+    mock_pool.execute = AsyncMock(side_effect=lambda sql, *args: captured.append((sql, args)))
+
+    import asyncio
+
+    asyncio.run(
+        log_query(
+            mock_pool,
+            tenant_id=shared_data["audit_tenant_id"],
+            user_id=shared_data["audit_user_id"],
+            role_id=shared_data["audit_role_id"],
+            query_text=shared_data["audit_query"],
+            table_ids=shared_data["audit_table_ids"],
+            source=shared_data["audit_source"],
+            status_code=shared_data["audit_status_code"],
+            duration_ms=shared_data["audit_duration_ms"],
+        )
+    )
+    shared_data["captured_audit_calls"] = captured
+
+
+@then("it is logged in the append-only query_audit_log with all required fields")
+def then_query_logged_with_required_fields(shared_data: dict) -> None:
+    calls = shared_data["captured_audit_calls"]
+    assert len(calls) == 1, f"Expected exactly 1 audit INSERT, got {len(calls)}"
+
+    _sql, args = calls[0]
+    assert "INSERT INTO query_audit_log" in _sql
+
+    tenant_id, user_id, role_id, query_hash, table_ids, source, status_code, duration_ms = args
+
+    assert tenant_id == shared_data["audit_tenant_id"]
+    assert user_id == shared_data["audit_user_id"]
+    assert role_id == shared_data["audit_role_id"]
+    assert table_ids == shared_data["audit_table_ids"]
+    assert source == shared_data["audit_source"]
+    assert status_code == shared_data["audit_status_code"]
+    assert duration_ms == shared_data["audit_duration_ms"]
+
+    expected_hash = hashlib.sha256(shared_data["audit_query"].encode()).hexdigest()
+    assert query_hash == expected_hash, (
+        f"query_hash must be SHA-256 of query_text: expected {expected_hash!r}, got {query_hash!r}"
+    )
