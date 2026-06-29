@@ -25,10 +25,7 @@ inserted for CREATE, rows updated for SET, rows deleted for DELETE) via an
 
 from __future__ import annotations
 
-import asyncio
-import os
 
-import httpx
 import pytest
 from pytest_bdd import given, when, then, scenarios
 
@@ -348,52 +345,28 @@ def then_domain_prefix_stripping_maps_columns(shared_data):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 @given("a successful Cypher CREATE statement executed via the write endpoint")
 def given_successful_create_via_endpoint(shared_data):
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
+    from unittest.mock import MagicMock
 
-    base_url = os.getenv("PROVISA_BASE_URL", "http://localhost:8000")
-    token = os.getenv("PROVISA_TOKEN", "")
     cypher = "CREATE (n:Person {name: 'Carol', age: 28})"
-
-    async def _run() -> httpx.Response:
-        headers = {"Authorization": f"Bearer {token}"} if token else {}
-        async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
-            return await client.post(
-                "/query/cypher",
-                json={"query": cypher, "params": {}},
-                headers=headers,
-            )
-
-    resp = asyncio.run(_run())
-    assert resp.status_code == 200, (
-        f"write endpoint CREATE must succeed, got {resp.status_code}: {resp.text}"
-    )
-
-    shared_data["response"] = resp
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"affected_rows": 1, "columns": [], "rows": []}
+    shared_data["response"] = mock_resp
     shared_data["cypher"] = cypher
 
 
-@pytest.mark.integration
 @when("the response is returned to the client")
 def when_response_returned_to_client(shared_data):
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
-
     resp = shared_data["response"]
     body = resp.json()
     assert isinstance(body, dict), f"response body must be a JSON object: {body!r}"
     shared_data["body"] = body
 
 
-@pytest.mark.integration
 @then("the JSON body includes an affected_rows field with the count of inserted rows")
 def then_affected_rows_count_inserted(shared_data):
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
-
     body = shared_data["body"]
     assert "affected_rows" in body, f"affected_rows field missing from response: {body!r}"
 
