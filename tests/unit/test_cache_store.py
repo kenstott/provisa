@@ -50,7 +50,7 @@ class TestRedisCacheStoreGet:
     @pytest.mark.asyncio
     async def test_get_no_tenant_uses_base_prefix(self):
         store = self._make_store()
-        mock_pipe = AsyncMock()
+        mock_pipe = MagicMock()
         meta = json.dumps({"cached_at": time.time(), "ttl": 60}).encode()
         mock_pipe.execute = AsyncMock(return_value=[b"data", meta])
         mock_redis = MagicMock()
@@ -66,7 +66,7 @@ class TestRedisCacheStoreGet:
     @pytest.mark.asyncio
     async def test_get_with_tenant_uses_tenant_prefix(self):
         store = self._make_store()
-        mock_pipe = AsyncMock()
+        mock_pipe = MagicMock()
         meta = json.dumps({"cached_at": time.time(), "ttl": 60}).encode()
         mock_pipe.execute = AsyncMock(return_value=[b"data", meta])
         mock_redis = MagicMock()
@@ -82,7 +82,7 @@ class TestRedisCacheStoreGet:
     @pytest.mark.asyncio
     async def test_get_miss_returns_none(self):
         store = self._make_store()
-        mock_pipe = AsyncMock()
+        mock_pipe = MagicMock()
         mock_pipe.execute = AsyncMock(return_value=[None, None])
         mock_redis = MagicMock()
         mock_redis.pipeline = MagicMock(return_value=mock_pipe)
@@ -99,7 +99,7 @@ class TestRedisCacheStoreSet:
     @pytest.mark.asyncio
     async def test_set_no_tenant_uses_base_prefix(self):
         store = self._make_store()
-        mock_pipe = AsyncMock()
+        mock_pipe = MagicMock()
         mock_pipe.execute = AsyncMock(return_value=[])
         mock_redis = MagicMock()
         mock_redis.pipeline = MagicMock(return_value=mock_pipe)
@@ -112,7 +112,7 @@ class TestRedisCacheStoreSet:
     @pytest.mark.asyncio
     async def test_set_with_tenant_uses_tenant_prefix(self):
         store = self._make_store()
-        mock_pipe = AsyncMock()
+        mock_pipe = MagicMock()
         mock_pipe.execute = AsyncMock(return_value=[])
         mock_redis = MagicMock()
         mock_redis.pipeline = MagicMock(return_value=mock_pipe)

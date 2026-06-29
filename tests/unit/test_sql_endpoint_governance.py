@@ -21,8 +21,6 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.executor.trino import QueryResult
 
-pytestmark = pytest.mark.asyncio
-
 
 # ---------------------------------------------------------------------------
 # Helpers / Fixtures
@@ -114,6 +112,7 @@ async def sql_client():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 class TestSQLParseError:
     async def test_sql_parse_error_returns_400(self, sql_client):
         """Completely invalid SQL that cannot be parsed returns HTTP 400."""
@@ -127,6 +126,7 @@ class TestSQLParseError:
         assert "parse" in resp.json()["detail"].lower() or "SQL" in resp.json()["detail"]
 
 
+@pytest.mark.asyncio
 class TestSQLForbiddenTable:
     async def test_sql_forbidden_table_returns_403(self, sql_client):
         """SQL referencing a table not in the role's schema scope returns HTTP 403."""
@@ -159,6 +159,7 @@ class TestSQLForbiddenTable:
         assert resp.status_code != 403
 
 
+@pytest.mark.asyncio
 class TestSQLGovernanceApplied:
     async def test_sql_governance_applied_rls_injected(self):
         """When an RLS rule exists for the table, build_governance_context + apply_governance

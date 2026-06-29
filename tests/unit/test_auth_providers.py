@@ -24,7 +24,7 @@ from provisa.auth.role_mapping import resolve_role
 
 pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
-JWT_SECRET = "integration-test-secret"
+JWT_SECRET = "integration-test-secret-for-unit-tests"
 
 
 def _hash_pw(password: str) -> str:
@@ -94,10 +94,10 @@ class TestJWTValidationRoundTrip:
             await provider.validate_token(tampered)
 
     async def test_wrong_secret_rejected(self):
-        provider_a = SimpleAuthProvider(users=[], jwt_secret="secret-a")
-        provider_b = SimpleAuthProvider(users=[], jwt_secret="secret-b")
+        provider_a = SimpleAuthProvider(users=[], jwt_secret="secret-a-for-unit-tests-padded!x")
+        provider_b = SimpleAuthProvider(users=[], jwt_secret="secret-b-for-unit-tests-padded!x")
         token = jwt.encode(
-            {"sub": "x", "roles": []}, "secret-a", algorithm="HS256"
+            {"sub": "x", "roles": []}, "secret-a-for-unit-tests-padded!x", algorithm="HS256"
         )
         with pytest.raises(jwt.InvalidSignatureError):
             await provider_b.validate_token(token)
