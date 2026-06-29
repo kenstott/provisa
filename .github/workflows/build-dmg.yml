@@ -126,6 +126,8 @@ jobs:
           sudo mkdir -p /mnt/vm/opt/provisa-source
           sudo cp Dockerfile main.py pyproject.toml /mnt/vm/opt/provisa-source/
           sudo cp -r provisa /mnt/vm/opt/provisa-source/
+          sudo cp -r vendor /mnt/vm/opt/provisa-source/
+          sudo mkdir -p /mnt/vm/opt/provisa-source/static
 
           sudo cp /tmp/vm_key.pub /mnt/vm/root/.ssh/authorized_keys
           sudo chmod 600 /mnt/vm/root/.ssh/authorized_keys
