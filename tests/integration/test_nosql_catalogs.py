@@ -73,18 +73,16 @@ async def test_prometheus_catalog_created_and_queryable():
         _drop(cur, catalog)
 
 
-_KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:19092")
+_KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 
 
+@pytest.mark.requires_kafka
 async def test_kafka_sample_infers_record_layout():
     """REQ-250 SAMPLE: produce JSON records, sample the topic, infer column types.
 
-    The no-Confluent path — sampling a topic and proposing the record layout. Skips
-    when no broker is reachable.
+    The no-Confluent path — sampling a topic and proposing the record layout.
     """
-    pytest.importorskip("aiokafka")
     from aiokafka import AIOKafkaProducer
-    from aiokafka.errors import KafkaConnectionError
 
     from provisa.kafka.source import infer_columns_from_records, sample_topic_records
 
@@ -92,10 +90,7 @@ async def test_kafka_sample_infers_record_layout():
 
     topic = "itest.orders"
     producer = AIOKafkaProducer(bootstrap_servers=_KAFKA_BOOTSTRAP, request_timeout_ms=3000)
-    try:
-        await producer.start()
-    except (KafkaConnectionError, Exception):
-        pytest.skip(f"Kafka broker not reachable at {_KAFKA_BOOTSTRAP}")
+    await producer.start()
     try:
         for i in range(8):
             rec = {"order_id": i, "amount": round(i * 1.5, 2), "paid": i % 2 == 0, "region": "us"}

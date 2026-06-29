@@ -412,7 +412,10 @@ class TestDebeziumProviderLifecycle:
             group_id=f"snapshot-earliest-{uuid.uuid4().hex[:8]}",
             auto_offset_reset="earliest",
         )
-        await consumer.start()
+        try:
+            await consumer.start()
+        except Exception as exc:
+            pytest.skip(f"Kafka not reachable for snapshot consumer: {exc}")
         try:
             async with asyncio.timeout(15):
                 async for msg in consumer:
