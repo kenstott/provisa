@@ -51,7 +51,7 @@ pytestmark = [pytest.mark.integration]
 # Constants
 # ---------------------------------------------------------------------------
 
-_JWT_SECRET = "test-secret-for-integration-tests"
+_JWT_SECRET = "test-secret-for-integration-tests-padded"
 
 ROLE_ANALYST = "analyst"
 ROLE_ADMIN = "admin"

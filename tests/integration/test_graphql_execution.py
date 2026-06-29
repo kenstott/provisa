@@ -50,6 +50,7 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
             "schema_name": "public",
             "table_name": "orders",
             "governance": "pre-approved",
+            "enable_aggregates": True,
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
