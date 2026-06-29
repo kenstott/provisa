@@ -440,7 +440,7 @@ $btnInstall.Add_Click({
       $idx      = 0
       foreach ($tb in $tarballs) {
         $idx++
-        Log "Loading image $idx/$total: $($tb.Name)..."
+        Log "Loading image $idx/${total}: $($tb.Name)..."
         $uri = 'http://127.0.0.1:2375/images/load'
         $fs  = [System.IO.File]::OpenRead($tb.FullName)
         try {
