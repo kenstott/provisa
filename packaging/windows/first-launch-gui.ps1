@@ -18,6 +18,7 @@ $ComposeDir   = Join-Path $ScriptDir 'compose'
 $RedistDir    = Join-Path $ScriptDir 'redist'
 $VBoxInstaller = Join-Path $RedistDir 'VirtualBox-setup.exe'
 $OvaPath      = Join-Path $ScriptDir 'provisa-runtime.ova'
+$ImagesDir    = Join-Path $ScriptDir 'images'
 $ProvisaHome  = Join-Path $env:USERPROFILE '.provisa'
 $Sentinel     = Join-Path $ProvisaHome '.first-launch-complete'
 
@@ -269,6 +270,7 @@ $btnInstall.Add_Click({
   $rs.SessionStateProxy.SetVariable('ComposeDir',      $ComposeDir)
   $rs.SessionStateProxy.SetVariable('VBoxInstaller',   $VBoxInstaller)
   $rs.SessionStateProxy.SetVariable('OvaPath',         $OvaPath)
+  $rs.SessionStateProxy.SetVariable('ImagesDir',      $ImagesDir)
   $rs.SessionStateProxy.SetVariable('ProvisaHome',     $ProvisaHome)
   $rs.SessionStateProxy.SetVariable('Sentinel',        $Sentinel)
   $rs.SessionStateProxy.SetVariable('BudgetGb',        $budgetGb)
@@ -386,9 +388,41 @@ $btnInstall.Add_Click({
       }
       if (-not $ready) { throw 'Docker TCP did not respond within 360s.' }
       Log 'Docker ready.'
+      $sync.Progress = 60
+
+      # Step 6: Load container images via Docker HTTP API -------------------
+      if (Test-Path $ImagesDir) {
+        $tarballs = Get-ChildItem -Path $ImagesDir -Filter '*.tar.gz' | Sort-Object Name
+        $total    = $tarballs.Count
+        $idx      = 0
+        foreach ($tb in $tarballs) {
+          $idx++
+          Log "Loading image $idx/$total: $($tb.Name)..."
+          $uri = 'http://127.0.0.1:2375/images/load'
+          $fs  = [System.IO.File]::OpenRead($tb.FullName)
+          try {
+            $req             = [System.Net.WebRequest]::Create($uri)
+            $req.Method      = 'POST'
+            $req.ContentType = 'application/x-tar'
+            $req.SendChunked = $true
+            $reqStream = $req.GetRequestStream()
+            $fs.CopyTo($reqStream)
+            $reqStream.Close()
+            $resp   = $req.GetResponse()
+            $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
+            $out    = $reader.ReadToEnd()
+            $resp.Close()
+            Log "  $($out.Trim())"
+          } finally {
+            $fs.Close()
+          }
+          $sync.Progress = 60 + [int](($idx / $total) * 25)
+        }
+        Log 'All images loaded.'
+      }
       $sync.Progress = 85
 
-      # Step 6: Write config ------------------------------------------------
+      # Step 7: Write config
       Log 'Writing config...'
       New-Item -ItemType Directory -Path $ProvisaHome -Force | Out-Null
       $cfgPath = Join-Path $ProvisaHome 'config.yaml'

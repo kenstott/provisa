@@ -57,6 +57,14 @@ if (-not (Test-Path $OvaSrc)) {
 }
 Copy-Item $OvaSrc $BuildDir
 
+$ImagesSrc = Join-Path $ScriptDir 'images'
+if (-not (Test-Path $ImagesSrc)) {
+  throw "images/ directory not found at $ImagesSrc -- CI should download docker-images-core-amd64 before building."
+}
+$BuildImages = Join-Path $BuildDir 'images'
+New-Item -ItemType Directory -Path $BuildImages -Force | Out-Null
+Copy-Item (Join-Path $ImagesSrc '*.tar.gz') $BuildImages
+
 # ── Install Inno Setup via chocolatey ─────────────────────────────────────────
 Write-Host '[build-sfx] Installing Inno Setup...' -ForegroundColor Cyan
 choco install innosetup --no-progress -y
