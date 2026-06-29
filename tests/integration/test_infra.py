@@ -10,9 +10,29 @@
 
 """Infrastructure integration tests — PG + Trino connectivity and sample data."""
 
+import time
+
 import pytest
+import trino.dbapi
 
 pytestmark = [pytest.mark.integration]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _wait_for_trino():
+    """Wait for Trino to finish initializing before running Trino tests."""
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        try:
+            conn = trino.dbapi.connect(host="localhost", port=8080, user="test")
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchall()
+            conn.close()
+            return
+        except Exception:
+            time.sleep(2)
+    raise RuntimeError("Trino did not become ready within 120s")
 
 
 @pytest.mark.asyncio(loop_scope="session")

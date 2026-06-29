@@ -14,10 +14,32 @@ verifiable against the running stack.
 from __future__ import annotations
 
 import os
+import time
 
 import pytest
+import trino.dbapi
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _wait_for_trino():
+    """Wait for Trino to finish initializing before running Trino tests."""
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        try:
+            conn = trino.dbapi.connect(
+                host=_TRINO_HOST, port=_TRINO_PORT, user="itest", catalog="system"
+            )
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchall()
+            conn.close()
+            return
+        except Exception:
+            time.sleep(2)
+    raise RuntimeError("Trino did not become ready within 120s")
+
 
 _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
 _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))
