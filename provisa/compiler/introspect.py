@@ -173,7 +173,7 @@ def introspect_column_types(  # REQ-636
             f"WHERE table_schema = '{sch}' AND table_name = '{tbl}'"
         )
         return {row[0]: row[1] for row in cur.fetchall()}
-    except trino.exceptions.TrinoQueryError:
+    except Exception:
         return {}
 
 

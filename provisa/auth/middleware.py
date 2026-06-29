@@ -25,7 +25,7 @@ from provisa.auth.superuser import check_superuser
 
 # Requirements: REQ-120, REQ-125, REQ-273
 
-_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/auth/login"}
+_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/auth/login", "/setup/status"}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273

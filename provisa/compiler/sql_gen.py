@@ -60,8 +60,11 @@ def _get_default_row_limit() -> int:
     try:
         from provisa.api.app import state
 
-        return state.server_limits.get(
-            "default_row_limit", int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "100"))
+        return int(
+            _os.environ.get(
+                "PROVISA_DEFAULT_ROW_LIMIT",
+                str(state.server_limits.get("default_row_limit", 100)),
+            )
         )
     except Exception:
         return int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "100"))

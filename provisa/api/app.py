@@ -1277,6 +1277,17 @@ def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
 
     for ks in raw_config.get("kafka_sources", []):
         source_id = ks["id"]
+        # Ensure the kafka source exists in raw_config["sources"] so the FK is satisfied
+        # when registered_tables references it.
+        existing_ids = {s["id"] for s in raw_config.get("sources", [])}
+        if source_id not in existing_ids:
+            raw_config.setdefault("sources", []).append(
+                {
+                    "id": source_id,
+                    "type": "kafka",
+                    "host": ks.get("bootstrap_servers", ""),
+                }
+            )
         # REQ-250: generate the Kafka catalog .properties from YAML config.
         write_kafka_catalog_files(ks)
         for topic in ks.get("topics", []):
