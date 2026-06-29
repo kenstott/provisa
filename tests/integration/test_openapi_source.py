@@ -12,6 +12,7 @@
 
 Requires a live PostgreSQL connection (docker-compose provides it).
 """
+
 from __future__ import annotations
 import json
 import os
@@ -66,17 +67,13 @@ SAMPLE_SPEC = {
                 "summary": "Create user",
                 "requestBody": {
                     "content": {
-                        "application/json": {
-                            "schema": {"$ref": "#/components/schemas/User"}
-                        }
+                        "application/json": {"schema": {"$ref": "#/components/schemas/User"}}
                     }
                 },
                 "responses": {
                     "200": {
                         "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/User"}
-                            }
+                            "application/json": {"schema": {"$ref": "#/components/schemas/User"}}
                         },
                         "description": "created",
                     }
@@ -105,15 +102,35 @@ SAMPLE_SPEC = {
 }
 
 
+def _wait_for_trino(timeout: int = 60) -> None:
+    import time
+    import trino.dbapi
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            conn = trino.dbapi.connect(host="localhost", port=8080, user="test")
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchall()
+            conn.close()
+            return
+        except Exception:
+            time.sleep(1)
+    raise RuntimeError("Trino did not recover within %ds after lifespan teardown" % timeout)
+
+
 @pytest_asyncio.fixture(scope="module")
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
     from provisa.api.app import create_app
+
     app = create_app()
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
+    _wait_for_trino()
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -156,7 +173,7 @@ async def test_register_creates_tables_and_functions(client, spec_file):
     assert resp.status_code == 200
     body = resp.json()
     assert body["source_id"] == "test-openapi"
-    assert body["tables"] == 2   # listUsers, getUser
+    assert body["tables"] == 2  # listUsers, getUser
     assert body["mutations"] == 1  # createUser
 
 

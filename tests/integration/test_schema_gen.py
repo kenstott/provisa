@@ -50,7 +50,7 @@ async def _init_schema(pg_pool):
 async def _load_config(pg_pool, _init_schema):
     """Load sample config into PG once per module."""
     async with pg_pool.acquire() as conn:
-        # Clean first
+        await conn.execute("SET search_path TO org_default")
         await conn.execute("""
             TRUNCATE rls_rules, relationships, table_columns,
                      registered_tables, naming_rules, roles, domains, sources
@@ -64,6 +64,7 @@ async def _load_config(pg_pool, _init_schema):
 async def schema_input(pg_pool, trino_conn, _load_config) -> dict:
     """Build SchemaInput from loaded config + real Trino metadata."""
     async with pg_pool.acquire() as conn:
+        await conn.execute("SET search_path TO org_default")
         tables = await table_repo.list_all(conn)
         rels = await rel_repo.list_all(conn)
         roles = await role_repo.list_all(conn)
