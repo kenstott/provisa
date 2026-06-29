@@ -5,5 +5,4 @@ Feature: REQ-261 — Subscriptions
   Scenario: REQ-261 default behaviour
     Given a MySQL source is connected via Debezium and Kafka
     When a row is inserted, updated, or deleted in MySQL
-    Then the change is captured by Debezium, published to Kafka, consumed by Provisa, and streamed
-      as an SSE event to subscribers
+    Then the change is captured by Debezium, published to Kafka, consumed by Provisa, and streamed as an SSE event to subscribers
