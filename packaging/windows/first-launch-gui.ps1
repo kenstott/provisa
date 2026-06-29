@@ -229,9 +229,25 @@ $lbStatus.AutoSize = $true
 $lbStatus.Location = New-Object System.Drawing.Point(20, 50)
 $pProg.Controls.Add($lbStatus)
 
+$lbDownload           = New-Object System.Windows.Forms.Label
+$lbDownload.AutoSize  = $true
+$lbDownload.Location  = New-Object System.Drawing.Point(20, 72)
+$lbDownload.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 160)
+$lbDownload.Text      = ''
+$lbDownload.Visible   = $false
+$pProg.Controls.Add($lbDownload)
+
+$pbDownload          = New-Object System.Windows.Forms.ProgressBar
+$pbDownload.Location = New-Object System.Drawing.Point(20, 90)
+$pbDownload.Size     = New-Object System.Drawing.Size(560, 14)
+$pbDownload.Minimum  = 0
+$pbDownload.Maximum  = 100
+$pbDownload.Visible  = $false
+$pProg.Controls.Add($pbDownload)
+
 $rtb               = New-Object System.Windows.Forms.RichTextBox
-$rtb.Location      = New-Object System.Drawing.Point(20, 74)
-$rtb.Size          = New-Object System.Drawing.Size(560, 310)
+$rtb.Location      = New-Object System.Drawing.Point(20, 110)
+$rtb.Size          = New-Object System.Drawing.Size(560, 274)
 $rtb.ReadOnly      = $true
 $rtb.Font          = New-Object System.Drawing.Font('Consolas', 8)
 $rtb.BackColor     = [System.Drawing.Color]::FromArgb(18, 18, 18)
@@ -255,11 +271,13 @@ $btnFinish.Add_Click({ $form.Close() })
 
 # ── Synchronized state ────────────────────────────────────────────────────────
 $sync = [hashtable]::Synchronized(@{
-  Queue    = [System.Collections.Queue]::Synchronized((New-Object System.Collections.Queue))
-  Progress = 0
-  Status   = 'Starting...'
-  Done     = $false
-  Error    = $null
+  Queue         = [System.Collections.Queue]::Synchronized((New-Object System.Collections.Queue))
+  Progress      = 0
+  Status        = 'Starting...'
+  Done          = $false
+  Error         = $null
+  DownloadPct   = -1
+  DownloadLabel = ''
 })
 
 # ── Timer (polls background runspace) ────────────────────────────────────────
@@ -274,6 +292,15 @@ $timer.Add_Tick({
   }
   if ($sync.Progress -gt $pb.Value) { $pb.Value = [Math]::Min($sync.Progress, 100) }
   if ($sync.Status)                 { $lbStatus.Text = $sync.Status }
+  if ($sync.DownloadPct -ge 0) {
+    $pbDownload.Visible   = $true
+    $lbDownload.Visible   = $true
+    $lbDownload.Text      = $sync.DownloadLabel
+    $pbDownload.Value     = [Math]::Min($sync.DownloadPct, 100)
+  } else {
+    $pbDownload.Visible = $false
+    $lbDownload.Visible = $false
+  }
   if ($sync.Done) {
     $timer.Stop()
     if ($sync.Error) {
@@ -366,6 +393,36 @@ $btnInstall.Add_Click({
   $ps = [powershell]::Create()
   $ps.Runspace = $rs
   $null = $ps.AddScript({
+    function Invoke-Download {
+      param([string]$Url, [string]$OutFile, [string]$Label)
+      $sync.DownloadLabel = $Label
+      $sync.DownloadPct   = 0
+      try {
+        $req  = [System.Net.HttpWebRequest]::Create($Url)
+        $req.UserAgent = 'Provisa-Installer'
+        $resp = $req.GetResponse()
+        $total = $resp.ContentLength
+        $src   = $resp.GetResponseStream()
+        $dst   = [System.IO.File]::OpenWrite($OutFile)
+        $buf   = New-Object byte[] 65536
+        $received = [long]0
+        do {
+          $n = $src.Read($buf, 0, $buf.Length)
+          if ($n -gt 0) { $dst.Write($buf, 0, $n); $received += $n }
+          if ($total -gt 0) {
+            $sync.DownloadPct = [int](($received / $total) * 100)
+          }
+        } while ($n -gt 0)
+        $dst.Close(); $src.Close(); $resp.Close()
+      } catch {
+        if ($dst)  { try { $dst.Close()  } catch {} }
+        if ($src)  { try { $src.Close()  } catch {} }
+        if ($resp) { try { $resp.Close() } catch {} }
+        throw
+      } finally {
+        $sync.DownloadPct = -1
+      }
+    }
     function Log { param($Msg)
       $sync.Queue.Enqueue($Msg)
       $sync.Status = $Msg
@@ -416,7 +473,7 @@ $btnInstall.Add_Click({
             Log "Saving to:   $tmpFile"
             New-Item -ItemType Directory -Path $ProvisaHome -Force | Out-Null
             try {
-              Invoke-WebRequest -Uri $url -OutFile $tmpFile -UseBasicParsing
+              Invoke-Download -Url $url -OutFile $tmpFile -Label "Downloading $fname..."
               $CoreFilePath = $tmpFile
             } catch { throw "Core images download failed: $_. Place provisa-core-images-${ver}.tar.gz beside the installer and re-run." }
           } else { throw "Core images not found and version unknown. Place provisa-core-images-<version>.tar.gz beside the installer and re-run." }
@@ -498,7 +555,7 @@ federation_workers: $Workers
             $tmpFile = Join-Path $ProvisaHome $fname
             New-Item -ItemType Directory -Path $ProvisaHome -Force | Out-Null
             try {
-              Invoke-WebRequest -Uri $url -OutFile $tmpFile -UseBasicParsing
+              Invoke-Download -Url $url -OutFile $tmpFile -Label "Downloading $fname..."
               $FilePath = $tmpFile
             } catch {
               Log "  ${Label}: download failed - skipping."
