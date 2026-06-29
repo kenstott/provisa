@@ -5,5 +5,6 @@
   "venv": ".venv",
   "reportPrivateImportUsage": "none",
   "reportUnusedParameter": "none",
-  "reportUnusedVariable": "none"
+  "reportUnusedVariable": "none",
+  "reportUnusedFunction": "none"
 }

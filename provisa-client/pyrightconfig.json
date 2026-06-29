@@ -1,4 +1,6 @@
 {
   "include": ["provisa_client", "tests"],
-  "reportUnusedParameter": "none"
+  "reportUnusedParameter": "none",
+  "reportUnusedVariable": "none",
+  "reportUnusedFunction": "none"
 }
