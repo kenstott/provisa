@@ -126,7 +126,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
         ctx = state.contexts[role_id]
 
         # Build a GraphQL query from the proto request
-        gql_query = f"{{ {field_name} {{ "
+        limit_clause = f"(limit: {request.limit})" if request.limit > 0 else ""
+        gql_query = f"{{ {field_name}{limit_clause} {{ "
         # Get visible fields from the message type
         msg_cls = getattr(self._pb2, type_name, None)
         if msg_cls is None:

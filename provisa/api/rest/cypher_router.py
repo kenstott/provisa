@@ -242,7 +242,7 @@ async def _execute_multi_call(
     except Exception as exc:
         log.exception("Cypher serialization failed")
         return JSONResponse(status_code=500, content={"error": f"Serialization failed: {exc}"})
-    return JSONResponse(content={"columns": columns, "rows": serializable_rows})
+    return JSONResponse(content={"columns": columns, "rows": serializable_rows, "type": "cypher"})
 
 
 def _build_sql_from_ast(
