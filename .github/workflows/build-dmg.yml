@@ -175,7 +175,7 @@ jobs:
           ssh -p 2222 -i /tmp/vm_key -o StrictHostKeyChecking=no -o BatchMode=yes \
             root@localhost 'docker system prune -f; rm -rf /opt/provisa-images /opt/provisa-source /root/.ssh; dd if=/dev/zero of=/zeros bs=1M 2>/dev/null; rm -f /zeros; sync; poweroff' || true
 
-          QPID=$(cat /tmp/qemu.pid 2>/dev/null || true)
+          QPID=$(sudo cat /tmp/qemu.pid 2>/dev/null || true)
           if [ -n "$QPID" ]; then
             echo "Waiting for QEMU PID $QPID to exit..."
             timeout 120 bash -c "while [ -d /proc/$QPID ]; do sleep 2; done" || \
