@@ -179,8 +179,9 @@ jobs:
           ssh -p 2222 -i /tmp/vm_key -o StrictHostKeyChecking=no -o BatchMode=yes \
             root@localhost 'poweroff' || true
 
-          timeout 120 sh -c 'while kill -0 "$(cat /tmp/qemu.pid)" 2>/dev/null; do sleep 2; done' || \
+          timeout 120 sh -c 'while [ -d /proc/'"'"'$(cat /tmp/qemu.pid)'"'"' ]; do sleep 2; done' || \
             sudo kill "$(cat /tmp/qemu.pid)" 2>/dev/null || true
+          sleep 3
 
           echo "--- VM serial log ---"
           cat /tmp/vm-serial.log || true
