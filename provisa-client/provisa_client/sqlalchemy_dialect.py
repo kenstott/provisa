@@ -39,6 +39,7 @@ class ProvisaDialect(DefaultDialect):
     returns_unicode_strings = True
     description_encoding = None
     supports_native_boolean = True
+    supports_statement_cache = True
 
     @classmethod
     def dbapi(cls):
@@ -121,7 +122,7 @@ class ProvisaDialect(DefaultDialect):
                 self._schema_cache[key] = {}
         return self._schema_cache[key]
 
-    def get_table_names(self, connection: Any, schema: str | None = None, **kw: Any) -> list[str]:
+    def get_table_names(self, connection: Any, schema: str | None = None, **_kw: Any) -> list[str]:
         base_url, role = self._get_base_url_and_role(connection)
         fields = self._fetch_schema(base_url, role).get("queryType", {}).get("fields", [])
         return [f["name"] for f in fields if f.get("name")]
@@ -130,8 +131,8 @@ class ProvisaDialect(DefaultDialect):
         self,
         connection: Any,
         table_name: str,
-        schema: str | None = None,
-        **kw: Any,
+        _schema: str | None = None,
+        **_kw: Any,
     ) -> list[dict]:
         base_url, role = self._get_base_url_and_role(connection)
         schema_data = self._fetch_schema(base_url, role)
@@ -160,7 +161,7 @@ class ProvisaDialect(DefaultDialect):
         connection: Any,
         table_name: str,
         schema: str | None = None,
-        **kw: Any,
+        **_kw: Any,
     ) -> bool:
         return table_name in self.get_table_names(connection, schema=schema)
 
@@ -169,17 +170,17 @@ class ProvisaDialect(DefaultDialect):
         cursor: Any,
         statement: str,
         parameters: Any,
-        context: Any = None,
+        context: Any = None,  # pyright: ignore[reportUnusedParameter]
     ) -> None:
         cursor.execute(statement, parameters or None)
 
-    def _check_unicode_returns(self, connection: Any, additional_tests: Any = None) -> bool:
+    def _check_unicode_returns(self, _connection: Any, _additional_tests: Any = None) -> bool:
         return True
 
-    def _check_unicode_description(self, connection: Any) -> bool:
+    def _check_unicode_description(self, _connection: Any) -> bool:
         return True
 
-    def get_schema_names(self, connection: Any, **kw: Any) -> list[str]:
+    def get_schema_names(self, connection: Any, **_kw: Any) -> list[str]:  # pyright: ignore[reportUnusedParameter]
         return ["default"]
 
     def get_foreign_keys(
