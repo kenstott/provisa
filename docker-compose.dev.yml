@@ -82,6 +82,8 @@ services:
   debezium-connect:
     restart: unless-stopped
     image: quay.io/debezium/connect:2.7
+    ports:
+      - "8083:8083"
     environment:
       BOOTSTRAP_SERVERS: kafka:29092
       GROUP_ID: debezium-connect

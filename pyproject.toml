@@ -51,6 +51,7 @@ dependencies = [
     "networkx>=3.0",
     "scipy",
     "defusedxml",
+    "jpype1",
 ]
 
 [project.optional-dependencies]
@@ -108,7 +109,11 @@ markers = [
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:pytest_asyncio",
-    "ignore:The HMAC key is:UserWarning",
+    "ignore:ast\\.NameConstant is deprecated:DeprecationWarning:docstring_parser",
+    "ignore:ast\\.Num is deprecated:DeprecationWarning:docstring_parser",
+    "ignore:ast\\.Str is deprecated:DeprecationWarning:docstring_parser",
+    "ignore:`LoggingHandler` in `opentelemetry-sdk` is deprecated:DeprecationWarning:opentelemetry",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
 ]
 
 [tool.coverage.run]
