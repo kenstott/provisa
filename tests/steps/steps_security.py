@@ -608,9 +608,7 @@ def masked_column_in_where_and_join(shared_data: dict) -> None:
     # Query 1: masked column 'email' in SELECT and WHERE.
     # The WHERE predicate must use the raw physical column; SELECT gets masked.
     sql_where = (
-        'SELECT "email", "name" '
-        'FROM "public"."customers" '
-        "WHERE \"email\" LIKE '%@example.com'"
+        'SELECT "email", "name" FROM "public"."customers" WHERE "email" LIKE \'%@example.com\''
     )
     compiled_where = CompiledQuery(
         sql=sql_where,
@@ -636,7 +634,7 @@ def masked_column_in_where_and_join(shared_data: dict) -> None:
         'SELECT "orders"."id", "customers"."email" '
         'FROM "public"."orders" '
         'JOIN "public"."customers" ON "orders"."customer_id" = "customers"."id" '
-        "WHERE \"orders\".\"status\" = 'active'"
+        'WHERE "orders"."status" = \'active\''
     )
     compiled_join = CompiledQuery(
         sql=sql_join,
@@ -681,7 +679,9 @@ def masking_is_injected(shared_data: dict) -> None:
     shared_data["result_join"] = result_join
 
 
-@then("SELECT projects the masked expression; WHERE and JOIN ON reference the physical unmasked column")
+@then(
+    "SELECT projects the masked expression; WHERE and JOIN ON reference the physical unmasked column"
+)
 def select_masked_where_join_physical(shared_data: dict) -> None:
     """Assert masking affects only the SELECT projection."""
     from provisa.compiler.mask_inject import _find_select_end
@@ -738,9 +738,173 @@ def select_masked_where_join_physical(shared_data: dict) -> None:
     rest_part_join = sql_join[select_end_join:]
 
     # SELECT projection must contain the masking expression for 'email'.
-    assert (
-        "REGEXP_REPLACE" in select_part_join.upper()
-        or "regexp_replace" in select_part_join
-    ), f"Expected REGEXP_REPLACE in SELECT portion of join query; got: {select_part_join!r}"
+    assert "REGEXP_REPLACE" in select_part_join.upper() or "regexp_replace" in select_part_join, (
+        f"Expected REGEXP_REPLACE in SELECT portion of join query; got: {select_part_join!r}"
+    )
 
-    #
+    # REGEXP_REPLACE must NOT appear in the JOIN/WHERE rest portion.
+    assert "REGEXP_REPLACE" not in rest_part_join.upper(), (
+        f"REGEXP_REPLACE leaked into JOIN/WHERE portion: {rest_part_join!r}"
+    )
+
+    # JOIN ON clause must survive unchanged (references customer_id, not masked email).
+    assert "customer_id" in rest_part_join.lower() or "JOIN" in rest_part_join.upper(), (
+        f"JOIN ON clause must be present in rest portion: {rest_part_join!r}"
+    )
+
+    # Params are preserved unchanged.
+    assert result_join.params == original_join.params
+
+
+# ---------------------------------------------------------------------------
+# REQ-741 — Masking uses ANSI SQL regardless of source dialect
+# ---------------------------------------------------------------------------
+
+
+@given("a masked column in queries against different source types")
+def given_masked_column_different_source_types(shared_data: dict) -> None:
+    regex_rule = MaskingRule(
+        mask_type=MaskType.regex,
+        pattern=r"^(.{2}).*$",
+        replace=r"\1***",
+    )
+    truncate_rule = MaskingRule(
+        mask_type=MaskType.truncate,
+        precision="month",
+    )
+    shared_data["regex_rule"] = regex_rule
+    shared_data["truncate_rule"] = truncate_rule
+    shared_data["source_types"] = ["postgresql", "mysql", "trino", "sqlserver", "bigquery"]
+
+
+@when("build_mask_expression generates the mask")
+def when_build_mask_expression(shared_data: dict) -> None:
+    regex_rule = shared_data["regex_rule"]
+    truncate_rule = shared_data["truncate_rule"]
+
+    results = {}
+    for source in shared_data["source_types"]:
+        col = f'"{source}"."email"'
+        results[source] = {
+            "regex": build_mask_expression(regex_rule, col, "varchar"),
+            "truncate": build_mask_expression(
+                truncate_rule, f'"{source}"."created_at"', "timestamp"
+            ),
+        }
+    shared_data["mask_results"] = results
+
+
+@then("output is ANSI REGEXP_REPLACE/DATE_TRUNC regardless of source dialect")
+def then_ansi_output_regardless_of_dialect(shared_data: dict) -> None:
+    for source, exprs in shared_data["mask_results"].items():
+        regex_expr = exprs["regex"]
+        truncate_expr = exprs["truncate"]
+
+        assert "REGEXP_REPLACE" in regex_expr.upper(), (
+            f"Expected REGEXP_REPLACE for source {source!r}, got: {regex_expr!r}"
+        )
+        assert "DATE_TRUNC" in truncate_expr.upper(), (
+            f"Expected DATE_TRUNC for source {source!r}, got: {truncate_expr!r}"
+        )
+        assert "'month'" in truncate_expr.lower(), (
+            f"Expected precision 'month' in DATE_TRUNC for source {source!r}, got: {truncate_expr!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# REQ-742 — Type-aware masking validation at config load time
+# ---------------------------------------------------------------------------
+
+
+@given("a masking rule configured with an incompatible type")
+def given_incompatible_masking_rule(shared_data: dict) -> None:
+    shared_data["invalid_cases"] = [
+        {
+            "rule": MaskingRule(mask_type=MaskType.regex, pattern=r"\d+", replace="0"),
+            "column": "age",
+            "data_type": "integer",
+            "is_nullable": True,
+            "reason": "regex on integer",
+        },
+        {
+            "rule": MaskingRule(mask_type=MaskType.truncate, precision="month"),
+            "column": "name",
+            "data_type": "varchar",
+            "is_nullable": True,
+            "reason": "truncate on varchar",
+        },
+        {
+            "rule": MaskingRule(mask_type=MaskType.constant, value=None),
+            "column": "status",
+            "data_type": "varchar",
+            "is_nullable": False,
+            "reason": "NULL on NOT NULL column",
+        },
+    ]
+
+
+@when("config is loaded")
+def when_config_loaded(shared_data: dict) -> None:
+    errors = []
+    for case in shared_data["invalid_cases"]:
+        try:
+            validate_masking_rule(
+                case["rule"],
+                case["column"],
+                case["data_type"],
+                case["is_nullable"],
+            )
+            errors.append(None)
+        except MaskingValidationError as exc:
+            errors.append(str(exc))
+    shared_data["validation_errors"] = errors
+
+
+@then("validation rejects the rule (e.g., regex on integer, truncate on varchar, NULL on NOT NULL)")
+def then_validation_rejects_incompatible_rule(shared_data: dict) -> None:
+    for case, error in zip(shared_data["invalid_cases"], shared_data["validation_errors"]):
+        assert error is not None, (
+            f"Expected MaskingValidationError for {case['reason']!r}, but no error was raised"
+        )
+        assert len(error) > 0, f"Expected non-empty error message for {case['reason']!r}"
+
+
+# ---------------------------------------------------------------------------
+# REQ-743 — Constant mask SQL literals are syntactically valid
+# ---------------------------------------------------------------------------
+
+
+@given("various constant mask values (null, boolean, numeric, string with apostrophe)")
+def given_constant_mask_values(shared_data: dict) -> None:
+    shared_data["constant_cases"] = [
+        {"value": None, "data_type": "varchar", "expected": "NULL"},
+        {"value": True, "data_type": "boolean", "expected": "TRUE"},
+        {"value": False, "data_type": "boolean", "expected": "FALSE"},
+        {"value": 42, "data_type": "integer", "expected": "42"},
+        {"value": 3.14, "data_type": "double", "expected": "3.14"},
+        {"value": "it's a test", "data_type": "varchar", "expected": "'it''s a test'"},
+    ]
+
+
+@when("build_mask_expression generates the SQL literal")
+def when_build_mask_expression_constant(shared_data: dict) -> None:
+    results = []
+    for case in shared_data["constant_cases"]:
+        rule = MaskingRule(mask_type=MaskType.constant, value=case["value"])
+        expr = build_mask_expression(rule, '"col"', case["data_type"])
+        results.append(expr)
+    shared_data["constant_expressions"] = results
+
+
+@then(
+    "output is syntactically valid (NULL keyword, TRUE/FALSE, numeric unquoted, strings single-quoted with escaped apostrophes)"
+)
+def then_constant_sql_literals_valid(shared_data: dict) -> None:
+    cases = shared_data["constant_cases"]
+    exprs = shared_data["constant_expressions"]
+
+    for case, expr in zip(cases, exprs):
+        assert expr == case["expected"], (
+            f"For value {case['value']!r} ({case['data_type']}): "
+            f"expected {case['expected']!r}, got {expr!r}"
+        )
