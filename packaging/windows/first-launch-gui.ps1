@@ -412,6 +412,9 @@ $btnInstall.Add_Click({
             $fname   = "provisa-core-images-${ver}.tar.gz"
             $url     = "https://github.com/kenstott/provisa/releases/download/${ver}/${fname}"
             $tmpFile = Join-Path $ProvisaHome $fname
+            Log "Downloading: $url"
+            Log "Saving to:   $tmpFile"
+            New-Item -ItemType Directory -Path $ProvisaHome -Force | Out-Null
             try {
               Invoke-WebRequest -Uri $url -OutFile $tmpFile -UseBasicParsing
               $CoreFilePath = $tmpFile
@@ -491,8 +494,9 @@ federation_workers: $Workers
           if ($ver) {
             $fname = "provisa-${Slug}-images-${ver}.tar.gz"
             $url   = "https://github.com/kenstott/provisa/releases/download/${ver}/${fname}"
-            Log "  ${Label}: downloading $fname..."
+            Log "  ${Label}: downloading $url"
             $tmpFile = Join-Path $ProvisaHome $fname
+            New-Item -ItemType Directory -Path $ProvisaHome -Force | Out-Null
             try {
               Invoke-WebRequest -Uri $url -OutFile $tmpFile -UseBasicParsing
               $FilePath = $tmpFile

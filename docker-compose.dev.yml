@@ -1,6 +1,9 @@
-# Dev/test overlay — dev services + exposed ports for direct host access.
-# Includes: CDC stack (Kafka/Debezium), alternative DBs, observability (Grafana/Tempo/OTel).
-# Usage: docker compose -f docker-compose.core.yml -f docker-compose.dev.yml [-f docker-compose.app.yml] up
+# Dev/test overlay — exposed ports for direct host access + optional test services.
+# Test-only services (Kafka/Debezium, Elasticsearch, Neo4j, Fuseki, MongoDB) require --profile test.
+# Usage:
+#   dev:   docker compose -f docker-compose.core.yml -f docker-compose.observability.yml -f docker-compose.dev.yml up
+#   test:  docker compose -f docker-compose.core.yml -f docker-compose.observability.yml -f docker-compose.dev.yml --profile test up
+#   clean: docker compose -f docker-compose.core.yml -f docker-compose.observability.yml -f docker-compose.dev.yml --profile test down --volumes
 services:
   # Expose core service ports for direct access during development
   postgres:
@@ -29,6 +32,7 @@ services:
       - "8480:8480"
 
   mongodb:
+    profiles: ["test"]
     restart: unless-stopped
     image: mongo:7
     ports:
@@ -44,6 +48,7 @@ services:
       start_period: 60s
 
   kafka:
+    profiles: ["test"]
     restart: unless-stopped
     image: confluentinc/cp-kafka:7.6.0
     ports:
@@ -70,6 +75,7 @@ services:
       start_period: 120s
 
   schema-registry:
+    profiles: ["test"]
     restart: unless-stopped
     image: confluentinc/cp-schema-registry:7.6.0
     environment:
@@ -80,6 +86,7 @@ services:
         condition: service_healthy
 
   debezium-connect:
+    profiles: ["test"]
     restart: unless-stopped
     image: quay.io/debezium/connect:2.7
     ports:
@@ -106,6 +113,7 @@ services:
       start_period: 120s
 
   elasticsearch:
+    profiles: ["test"]
     restart: unless-stopped
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
     ports:
@@ -124,6 +132,7 @@ services:
       start_period: 120s
 
   neo4j:
+    profiles: ["test"]
     restart: unless-stopped
     image: neo4j:5.19
     ports:
@@ -142,6 +151,7 @@ services:
       start_period: 120s
 
   fuseki:
+    profiles: ["test"]
     restart: unless-stopped
     image: atomgraph/fuseki:latest
     ports:
