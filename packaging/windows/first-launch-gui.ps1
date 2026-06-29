@@ -202,13 +202,35 @@ $pProg.Controls.Add($btnFinish)
 
 $btnFinish.Add_Click({ $form.Close() })
 
+$btnReboot            = New-Object System.Windows.Forms.Button
+$btnReboot.Text       = 'Reboot Now'
+$btnReboot.Font       = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+$btnReboot.Size       = New-Object System.Drawing.Size(130, 36)
+$btnReboot.Location   = New-Object System.Drawing.Point(330, 358)
+$btnReboot.BackColor  = [System.Drawing.Color]::FromArgb(0, 120, 215)
+$btnReboot.ForeColor  = [System.Drawing.Color]::White
+$btnReboot.FlatStyle  = 'Flat'
+$btnReboot.FlatAppearance.BorderSize = 0
+$btnReboot.Visible    = $false
+$pProg.Controls.Add($btnReboot)
+
+$btnReboot.Add_Click({
+  $runOnce = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
+  $script  = "`"$ScriptDir\first-launch-gui.ps1`""
+  Set-ItemProperty -Path $runOnce -Name 'ProvisaSetup' `
+    -Value "powershell.exe -ExecutionPolicy Bypass -WindowStyle Normal -File $script"
+  shutdown.exe /r /t 10 /c 'Provisa: Rebooting to complete setup'
+  $form.Close()
+})
+
 # -- Synchronized state -------------------------------------------------------
 $sync = [hashtable]::Synchronized(@{
-  Queue    = [System.Collections.Queue]::Synchronized((New-Object System.Collections.Queue))
-  Progress = 0
-  Status   = 'Starting...'
-  Done     = $false
-  Error    = $null
+  Queue       = [System.Collections.Queue]::Synchronized((New-Object System.Collections.Queue))
+  Progress    = 0
+  Status      = 'Starting...'
+  Done        = $false
+  Error       = $null
+  NeedsReboot = $false
 })
 
 # -- Timer (polls background runspace) ----------------------------------------
@@ -225,18 +247,24 @@ $timer.Add_Tick({
   if ($sync.Status)                 { $lbStatus.Text = $sync.Status }
   if ($sync.Done) {
     $timer.Stop()
-    if ($sync.Error) {
+    if ($sync.NeedsReboot) {
+      $lbStatus.Text     = 'Reboot required to complete setup.'
+      $btnFinish.Text    = 'Close'
+      $btnFinish.Enabled = $true
+      $btnReboot.Visible = $true
+    } elseif ($sync.Error) {
       $rtb.SelectionStart  = $rtb.TextLength
       $rtb.SelectionLength = 0
       $rtb.SelectionColor  = [System.Drawing.Color]::FromArgb(255, 80, 80)
       $rtb.AppendText("`nERROR: $($sync.Error)`n")
       $lbStatus.Text  = 'Setup failed. See log above.'
       $btnFinish.Text = 'Close'
+      $btnFinish.Enabled = $true
     } else {
       $lbStatus.Text  = 'Setup complete!'
       $btnFinish.Text = 'Finish'
+      $btnFinish.Enabled = $true
     }
-    $btnFinish.Enabled = $true
   }
 })
 
@@ -324,6 +352,15 @@ $btnInstall.Add_Click({
         Log 'VirtualBox installed.'
       } else {
         Log "VirtualBox: $VBoxManage"
+      }
+
+      # Check federation driver is loaded
+      $drvState = (sc.exe query vboxsup 2>&1) -join ' '
+      if ($drvState -match 'STATE\s+:\s+1\s+STOPPED') {
+        Log 'Federation driver not loaded — reboot required.'
+        $sync.NeedsReboot = $true
+        $sync.Done        = $true
+        return
       }
       $sync.Progress = 15
 
