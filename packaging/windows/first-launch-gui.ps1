@@ -510,6 +510,7 @@ federation_workers: $Workers
   $timer.Start()
 })
 
+$form.Add_Shown({ $form.Activate() })
 [System.Windows.Forms.Application]::Run($form)
 
 } catch {
