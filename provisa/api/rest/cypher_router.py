@@ -607,6 +607,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     await register_node_ids(serializable_rows, state.pg_pool)
 
     content = _build_stats_content(columns, serializable_rows, trino_sql, stats_enabled, _t0)
+    content["type"] = "cypher"
     return JSONResponse(content=content)
 
 
