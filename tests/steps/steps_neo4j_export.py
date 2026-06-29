@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -728,4 +727,157 @@ def then_node_merge_with_provisa_id(label: str, shared_data: dict) -> None:
         f"got MERGE content: {merge_pattern_content!r} in: {cypher_text!r}"
     )
 
-    # 5. MERGE keyword must be
+    # 5. MERGE keyword must be present (not CREATE — idempotency)
+    assert re.search(r"\bMERGE\b", cypher_text, re.IGNORECASE), (
+        f"MERGE keyword must appear in statement, got: {cypher_text!r}"
+    )
+    assert not re.search(r"\bCREATE\b", cypher_text, re.IGNORECASE), (
+        f"CREATE must not appear in MERGE statement (use MERGE for idempotency), got: {cypher_text!r}"
+    )
+
+    # 6. += operator must be used for property SET
+    assert "+=" in cypher_text, f"Property SET must use += operator, got: {cypher_text!r}"
+
+    # 7. The id parameter carries the node's actual id value (when parameters are present)
+    params = node_stmt.get("parameters", {})
+    if "id" in params:
+        assert params["id"] == node_id, (
+            f"id parameter must equal node id {node_id}, got {params['id']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-715
+# ---------------------------------------------------------------------------
+
+
+@given(
+    'a node with properties {active: true, count: 42, name: "Test", nested: {key: "value"}}',
+    target_fixture="shared_data",
+)
+def given_node_with_typed_properties() -> dict:
+    node = {
+        "id": 715,
+        "tableLabel": "Widget",
+        "properties": {
+            "active": True,
+            "count": 42,
+            "name": "Test",
+            "nested": {"key": "value"},
+        },
+    }
+    data: dict[str, Any] = {"node": node}
+    return data
+
+
+@when("the node is exported")
+def when_node_exported(shared_data: dict) -> None:
+    node = shared_data["node"]
+    stmt = _build_node_merge_statement(node)
+    shared_data["merge_stmt"] = stmt
+    shared_data["payload_props"] = stmt["parameters"]["props"]
+
+
+@then("all properties are SET in Neo4j with correct Cypher literal types")
+def then_properties_set_with_correct_types(shared_data: dict) -> None:
+    stmt = shared_data["merge_stmt"]
+    props = shared_data["payload_props"]
+    cypher = stmt["statement"]
+
+    assert re.search(r"\bMERGE\b", cypher, re.IGNORECASE)
+    assert "_provisa_id" in cypher
+    assert "+=" in cypher
+
+    assert props["active"] is True
+    assert props["count"] == 42
+    assert props["name"] == "Test"
+    assert props["nested"] == {"key": "value"}
+
+    assert stmt["parameters"]["id"] == 715
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-716
+# ---------------------------------------------------------------------------
+
+
+@given(
+    'an edge with start: 101, end: 202, type: "CONNECTS_TO"',
+    target_fixture="shared_data",
+)
+def given_edge_with_ids_and_type() -> dict:
+    edge = {"start": 101, "end": 202, "type": "CONNECTS_TO"}
+    return {"edge": edge}
+
+
+@when("the edge is exported")
+def when_edge_exported(shared_data: dict) -> None:
+    edge = shared_data["edge"]
+    stmt = _build_edge_merge_statement(edge)
+    shared_data["edge_stmt"] = stmt
+
+
+@then(
+    "Neo4j contains a relationship matching "
+    "(a:Label{_provisa_id: 101})-[r:CONNECTS_TO]->(b:Label{_provisa_id: 202})"
+)
+def then_relationship_merge_correct(shared_data: dict) -> None:
+    stmt = shared_data["edge_stmt"]
+    cypher = stmt["statement"]
+    params = stmt["parameters"]
+
+    assert "CONNECTS_TO" in cypher
+    assert "_provisa_id" in cypher
+    assert "MERGE" in cypher.upper()
+    assert params["start"] == 101
+    assert params["end"] == 202
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-717
+# ---------------------------------------------------------------------------
+
+
+@given(
+    'credentials username: "neo4j", password: "secret"',
+    target_fixture="shared_data",
+)
+def given_credentials_for_basic_auth() -> dict:
+    return {"username": "neo4j", "password": "secret"}
+
+
+@when("POST /data/neo4j-export is called")
+def when_post_neo4j_export_basic_auth(shared_data: dict) -> None:
+    username = shared_data["username"]
+    password = shared_data["password"]
+    node = {"id": 1, "tableLabel": "Node", "properties": {"x": 1}}
+    payload = {
+        "url": _FAKE_NEO4J_URL,
+        "username": username,
+        "password": password,
+        "database": _FAKE_DATABASE,
+        "nodes": [node],
+        "edges": [],
+    }
+    captured: list[dict[str, Any]] = []
+    _validate_and_simulate_export(payload, captured)
+    shared_data["captured_requests"] = captured
+    shared_data["payload"] = payload
+
+
+@then('Authorization header contains "Basic " + base64("neo4j:secret")')
+def then_authorization_header_basic_base64(shared_data: dict) -> None:
+    import base64 as _b64
+
+    username = shared_data["username"]
+    password = shared_data["password"]
+    expected_encoded = _b64.b64encode(f"{username}:{password}".encode()).decode()
+    expected_header = f"Basic {expected_encoded}"
+
+    captured = shared_data["captured_requests"]
+    assert len(captured) > 0, "No request was captured"
+
+    auth_header = captured[0]["kwargs"]["headers"]["Authorization"]
+    assert auth_header == expected_header, (
+        f"Expected Authorization header {expected_header!r}, got {auth_header!r}"
+    )
