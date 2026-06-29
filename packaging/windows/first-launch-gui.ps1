@@ -134,7 +134,7 @@ $nudPort.Location = New-Object System.Drawing.Point(20, 202)
 $nudPort.Width    = 100
 $pConfig.Controls.Add($nudPort)
 
-Lbl 'VirtualBox' 20 238 $true
+Lbl 'Federation Engine' 20 238 $true
 $lbVBoxStatus           = New-Object System.Windows.Forms.Label
 $lbVBoxStatus.AutoSize  = $true
 $lbVBoxStatus.Location  = New-Object System.Drawing.Point(20, 258)
@@ -313,8 +313,8 @@ $btnInstall.Add_Click({
       $sync.Status = $Msg
     }
     try {
-      # Step 1: Ensure VirtualBox -------------------------------------------
-      Log 'Checking VirtualBox...'
+      # Step 1: Ensure Federation Engine -------------------------------------------
+      Log 'Checking Federation Engine...'
       $sync.Progress = 5
       $VBoxManage = $null
       foreach ($p in @(
@@ -329,16 +329,16 @@ $btnInstall.Add_Click({
       }
 
       if (-not $VBoxManage) {
-        Log 'Installing VirtualBox (UAC prompt may appear)...'
+        Log 'Installing Federation Engine (UAC prompt may appear)...'
         if (-not (Test-Path $VBoxInstaller)) {
-          throw "VirtualBox installer not found: $VBoxInstaller"
+          throw "Federation Engine installer not found: $VBoxInstaller"
         }
         $proc = Start-Process -FilePath $VBoxInstaller `
           -ArgumentList '--silent','--ignore-reboot' `
           -Verb RunAs -Wait -PassThru
         # Exit 3010 = success, reboot required (VBox typically does not need one)
         if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
-          throw "VirtualBox installation failed (exit $($proc.ExitCode))."
+          throw "Federation Engine installation failed (exit $($proc.ExitCode))."
         }
         foreach ($p in @(
           "$env:ProgramFiles\Oracle\VirtualBox\VBoxManage.exe",
@@ -347,11 +347,11 @@ $btnInstall.Add_Click({
           if (Test-Path $p) { $VBoxManage = $p; break }
         }
         if (-not $VBoxManage) {
-          throw 'VirtualBox installed but VBoxManage.exe not found. Reboot and re-run setup.'
+          throw 'Federation Engine installed but VBoxManage.exe not found. Reboot and re-run setup.'
         }
-        Log 'VirtualBox installed.'
+        Log 'Federation Engine installed.'
       } else {
-        Log "VirtualBox: $VBoxManage"
+        Log "Federation Engine: $VBoxManage"
       }
 
       # Check federation driver is loaded
