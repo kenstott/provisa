@@ -137,8 +137,9 @@ def get_trino_connection(
 def _write(path: str, content: str) -> None:
     try:
         try:
-            if open(path).read() == content:
-                return
+            with open(path) as _existing:
+                if _existing.read() == content:
+                    return
         except OSError:
             pass
         with open(path, "w") as _f:

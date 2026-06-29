@@ -2969,9 +2969,8 @@ def _start_scheduler(_log: logging.Logger) -> None:
         scheduler = AsyncIOScheduler()
         _cfg_triggers = []
         try:
-            _raw = yaml.safe_load(
-                open(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")).read()
-            )
+            with open(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")) as _cfg_f:
+                _raw = yaml.safe_load(_cfg_f.read())
             if isinstance(_raw, dict):
                 from provisa.core.config_loader import parse_config_dict
 
@@ -3195,7 +3194,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter]
+async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, reportUnusedVariable]
     """App lifespan: load config and build schemas at startup."""
     import logging
 
@@ -3319,7 +3318,7 @@ def create_app() -> FastAPI:
     from fastapi.responses import JSONResponse as _JSONResponse
 
     @app.exception_handler(Exception)
-    async def _global_exception_handler(_req: _Request, exc: Exception):  # noqa: F841  # pyright: ignore[reportUnusedFunction]
+    async def _global_exception_handler(_req: _Request, exc: Exception):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
         log.exception("Unhandled exception on %s %s", _req.method, _req.url.path)
         return _JSONResponse(
             status_code=500,
@@ -3327,7 +3326,7 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(asyncio.TimeoutError)
-    async def _timeout_handler(_req: _Request, _exc: asyncio.TimeoutError):  # noqa: F841  # pyright: ignore[reportUnusedFunction]
+    async def _timeout_handler(_req: _Request, _exc: asyncio.TimeoutError):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
         log.error("Request timeout on %s %s", _req.method, _req.url.path)
         return _JSONResponse(status_code=504, content={"detail": "Request timed out"})
 
