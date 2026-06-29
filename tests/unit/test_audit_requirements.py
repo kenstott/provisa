@@ -206,7 +206,7 @@ class TestREQ596AuditLogSchema:
 
         import asyncio
 
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             log_query(
                 mock_pool,
                 tenant_id="tenant-1",
@@ -237,7 +237,7 @@ class TestREQ596AuditLogSchema:
 
         import asyncio
 
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             log_query(
                 mock_pool,
                 tenant_id="tenant-abc",
