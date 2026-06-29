@@ -457,7 +457,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     query_id: str | None = Query(None),
     x_provisa_stats: str | None = Header(None),
 ) -> Response:
-    """Execute a Cypher read query and return typed rows."""
+    """Execute a Cypher read or write query and return typed rows or affected_rows."""
     from provisa.api.app import state
 
     if query_id:
@@ -468,6 +468,119 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
                 "directly — access is governed by table/view and relationship rights"
             },
         )
+
+    # --- Write path (REQ-670): CREATE / DELETE / UPDATE ---
+    from provisa.cypher.write_translator import (  # noqa: PLC0415
+        CypherWriteParseError as _CWPE,
+        WriteTranslator as _WT,
+        parse_cypher_write as _pwc,
+    )
+
+    _write_ast = None
+    try:
+        _write_ast = _pwc(body.query)
+    except _CWPE:
+        pass  # not a write query; fall through to read path
+
+    if _write_ast is not None:
+        import asyncio as _asyncio
+
+        from provisa.compiler.mutation_gen import (
+            MutationResult as _MutationResult,
+            inject_rls_into_mutation as _inject_rls,
+        )
+        from provisa.compiler.rls import RLSContext as _RLSContext
+        from provisa.executor.direct import execute_direct as _exec_direct
+        from provisa.transpiler.transpile import transpile as _transpile
+
+        _role_id = _resolve_role_id(request, state)
+        _ctx = state.contexts.get(_role_id)
+        if _ctx is None:
+            return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
+        _label_map = _build_label_map(_ctx, _role_id, state)
+        try:
+            _translator = _WT(_label_map)
+            _mapping = _translator._resolve_mapping(_write_ast.label)
+            _write_sql = _translator.translate(_write_ast)
+        except _CWPE as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+        _source_id = _mapping.source_id
+        if not state.source_pools.has(_source_id):
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": f"Source '{_source_id}' does not support writes or is not connected"
+                },
+            )
+
+        # Build MutationResult so the full write pipeline applies (RLS, dialect
+        # transpilation, post-mutation hooks) — same as GraphQL and SQL mutations.
+        _mutation_type = {"create": "insert", "delete": "delete", "update": "update"}[
+            _write_ast.kind
+        ]
+        _mut = _MutationResult(
+            sql=_write_sql,
+            params=[],
+            mutation_type=_mutation_type,
+            table_name=_mapping.table_name,
+            source_id=_source_id,
+            returning_columns=[],
+        )
+
+        # Look up table_meta for RLS and post-mutation hooks (same pattern as GraphQL)
+        _table_meta = _ctx.tables.get(_mapping.table_name)
+        if _table_meta is None:
+            for _m in _ctx.tables.values():
+                if _m.table_name == _mapping.table_name:
+                    _table_meta = _m
+                    break
+
+        # Apply RLS into UPDATE/DELETE (same as GraphQL mutations)
+        if _table_meta is not None:
+            _rls = state.rls_contexts.get(_role_id, _RLSContext.empty())
+            if _rls.has_rules():
+                _mut = _inject_rls(_mut, _table_meta.table_id, _rls.rules)
+
+        # Transpile to target dialect then add RETURNING for row-count on write-capable backends
+        _dialect = state.source_dialects.get(_source_id, "postgres")
+        _target_sql = _transpile(_mut.sql, _dialect)
+        _source_type = state.source_types.get(_source_id, "")
+        if _source_type == "postgresql":
+            _target_sql += " RETURNING 1"
+
+        try:
+            _result = await _exec_direct(state.source_pools, _source_id, _target_sql)
+            affected = len(_result.rows)
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": f"Write failed: {exc}"})
+
+        # Post-mutation hooks: cache invalidation, MV staleness, Kafka events,
+        # hot-table reload — same as GraphQL mutations.
+        if _table_meta is not None:
+            await state.response_cache_store.invalidate_by_table(_table_meta.table_id)
+            state.mv_registry.mark_stale(_table_meta.table_name)
+            from provisa.kafka.change_events import emit_change_event as _emit_change
+            from provisa.kafka.sink_executor import trigger_sinks_for_table as _trigger_sinks
+
+            _emit_change(_mapping.table_name, _source_id)
+            _asyncio.create_task(_trigger_sinks(_mapping.table_name, state))
+            if state.hot_manager is not None:
+                from provisa.cache.hot_tables import HotTableManager as _HotMgr
+
+                _hot = state.hot_manager
+                assert isinstance(_hot, _HotMgr)
+                if _hot.is_hot(_table_meta.table_name):
+                    await _hot.invalidate(_table_meta.table_name)
+                    if _hot.get_entry(_table_meta.table_name) is None:
+                        await _hot.load_table(
+                            state.trino_conn,
+                            _table_meta.table_name,
+                            _table_meta.schema_name,
+                            _table_meta.catalog_name,
+                            "id",
+                        )
+
+        return JSONResponse(content={"affected_rows": affected, "type": "cypher"})
 
     try:
         from provisa.cypher.parser import parse_cypher, CypherParseError

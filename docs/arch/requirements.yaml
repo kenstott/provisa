@@ -22987,3 +22987,46 @@
   stakeholders:
   - app-developer
   - data-engineer
+- id: REQ-798
+  status: complete
+  group: 5. Query Languages, Compilation & Operations
+  category: Cypher Mutations
+  priority: MUST
+  type: behavioral
+  description: Cypher mutations (CREATE/DELETE/UPDATE) must be transpiled through
+    the full semantic SQL write pipeline, applying RLS injection, dialect transpilation,
+    and all post-mutation hooks (response cache invalidation, MV stale marking, Kafka
+    change events, Kafka sink triggers, hot-table reload).
+  use_case: Cypher mutations must enforce the same security policies, maintain consistency
+    across multiple backends, and trigger the same change-propagation workflows as
+    SQL and GraphQL mutations.
+  code:
+  - provisa/api/rest/cypher_router.py
+  tests:
+  - tests/integration/test_mutations.py
+  - tests/steps/steps_cypher_mutations.py
+  since: 2026-06
+  scenario: 'Given a Cypher CREATE/DELETE/UPDATE mutation
+
+    When the mutation is transpiled through WriteTranslator and wrapped in MutationResult
+
+    Then RLS is injected via inject_rls_into_mutation
+
+    And the mutation is transpiled to the target dialect
+
+    And the mutation is executed via execute_direct
+
+    And all post-mutation hooks fire (cache invalidation, MV stale marking, Kafka events, hot-table reload)
+
+    '
+  e2e: true
+  e2e_reason: Full write pipeline with hook execution can only be verified through
+    live-stack round-trip from API call to backend state change and cache/topic updates.
+  related_reqs:
+  - REQ-666
+  - REQ-667
+  - REQ-668
+  - REQ-670
+  stakeholders:
+  - app-developer
+  - data-engineer
