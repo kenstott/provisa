@@ -171,13 +171,9 @@ jobs:
           ssh -p 2222 -i /tmp/vm_key -o StrictHostKeyChecking=no -o BatchMode=yes \
             root@localhost 'docker build -t provisa/provisa:local /opt/provisa-source'
 
-          echo "Cleaning up and zeroing free space..."
+          echo "Cleaning up, zeroing free space, and shutting down VM..."
           ssh -p 2222 -i /tmp/vm_key -o StrictHostKeyChecking=no -o BatchMode=yes \
-            root@localhost 'docker system prune -f; rm -rf /opt/provisa-images /opt/provisa-source /root/.ssh; dd if=/dev/zero of=/zeros bs=1M 2>/dev/null; rm -f /zeros; sync'
-
-          echo "Shutting down VM..."
-          ssh -p 2222 -i /tmp/vm_key -o StrictHostKeyChecking=no -o BatchMode=yes \
-            root@localhost 'poweroff' || true
+            root@localhost 'docker system prune -f; rm -rf /opt/provisa-images /opt/provisa-source /root/.ssh; dd if=/dev/zero of=/zeros bs=1M 2>/dev/null; rm -f /zeros; sync; poweroff' || true
 
           QPID=$(cat /tmp/qemu.pid 2>/dev/null || true)
           if [ -n "$QPID" ]; then
