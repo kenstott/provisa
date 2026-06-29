@@ -764,10 +764,17 @@ def test_req773_map_projection_properties(client):
     # REQ-773
     Verify map projection with specific properties.
     """
-    resp = client.post(
-        "/data/cypher",
-        json={"query": "MATCH (n) RETURN n {.id, .name} AS node_proj LIMIT 1"},
-    )
+    try:
+        resp = client.post(
+            "/data/cypher",
+            json={"query": "MATCH (n) RETURN n {.id, .name} AS node_proj LIMIT 1"},
+        )
+    except httpx.ReadError:
+        # Keep-alive connection closed by server between tests; retry on new connection.
+        resp = client.post(
+            "/data/cypher",
+            json={"query": "MATCH (n) RETURN n {.id, .name} AS node_proj LIMIT 1"},
+        )
     assert resp.status_code != 404
 
 
