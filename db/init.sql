@@ -143,6 +143,9 @@ INSERT INTO orders (customer_id, product_id, amount, quantity, region, status, c
     (19, 5, 14.99, 1, 'us-east', 'completed', '2025-03-30 10:00:00'),
     (20, 6, 74.95, 3, 'us-west', 'pending', '2025-03-30 15:00:00');
 
+-- Domain-prefixed view for ADBC/Arrow Flight tests (sa = sales domain alias)
+CREATE OR REPLACE VIEW sa__orders AS SELECT * FROM orders;
+
 -- Second schema: analytics (simulates a separate data source)
 CREATE SCHEMA IF NOT EXISTS analytics;
 
