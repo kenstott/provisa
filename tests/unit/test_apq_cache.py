@@ -76,8 +76,8 @@ class TestRedisAPQCacheSet:
         cache._redis = mock_redis
 
         await cache.set("abc123", "{ orders { id } }", tenant_id=None)
-        mock_redis.setex.assert_awaited_once_with("provisa:apq:abc123", 3600, "{ orders { id } }")
-        assert mock_redis.setex.await_count == 1
+        mock_redis.set.assert_awaited_once_with("provisa:apq:abc123", "{ orders { id } }", ex=3600)
+        assert mock_redis.set.await_count == 1
 
     @pytest.mark.asyncio
     async def test_set_with_tenant_uses_tenant_key(self):
@@ -86,10 +86,10 @@ class TestRedisAPQCacheSet:
         cache._redis = mock_redis
 
         await cache.set("abc123", "{ orders { id } }", tenant_id="acme")
-        mock_redis.setex.assert_awaited_once_with(
-            "provisa:apq:acme:abc123", 3600, "{ orders { id } }"
+        mock_redis.set.assert_awaited_once_with(
+            "provisa:apq:acme:abc123", "{ orders { id } }", ex=3600
         )
-        assert mock_redis.setex.await_count == 1
+        assert mock_redis.set.await_count == 1
 
 
 class TestRedisAPQCacheTlsEnforcement:

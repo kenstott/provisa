@@ -85,8 +85,8 @@ class TestRedisAPQCache:
         cache._redis = mock_redis
 
         await cache.set("abc123", "{ orders { id } }")
-        mock_redis.setex.assert_awaited_once_with("provisa:apq:abc123", 3600, "{ orders { id } }")
-        assert mock_redis.setex.await_count == 1
+        mock_redis.set.assert_awaited_once_with("provisa:apq:abc123", "{ orders { id } }", ex=3600)
+        assert mock_redis.set.await_count == 1
 
     @pytest.mark.asyncio
     async def test_get_handles_redis_error(self):
@@ -102,7 +102,7 @@ class TestRedisAPQCache:
     async def test_set_handles_redis_error(self):
         cache = self._make_cache()
         mock_redis = AsyncMock()
-        mock_redis.setex = AsyncMock(side_effect=Exception("connection refused"))
+        mock_redis.set = AsyncMock(side_effect=Exception("connection refused"))
         cache._redis = mock_redis
 
         result = await cache.set("abc123", "query")  # should not raise
@@ -140,9 +140,9 @@ class TestApqGovernanceBeforeStore:
 
         original_set = cache.set
 
-        async def tracked_set(h, q):
-            set_calls.append((h, q))
-            return await original_set(h, q)
+        async def tracked_set(sha256_hash: str, query: str, tenant_id: str | None = None):
+            set_calls.append((sha256_hash, query))
+            return await original_set(sha256_hash, query, tenant_id)
 
         cache.set = tracked_set
 

@@ -413,7 +413,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
 
     async def close(self) -> None:
         if self._redis:
-            await self._redis.close()
+            await self._redis.aclose()
             self._redis = None
 
 
@@ -694,7 +694,7 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         result = _tbl_meta(tbl_name)
         if result[0] is None or result[3] not in _TRINO_BACKED:
             continue
-        _, source_id, _source_cfg, _source_type, pk_col, schema_name = result
+        _source_cfg, source_id, _source_type, _, pk_col, schema_name = result  # pyright: ignore[reportUnusedVariable]
         catalog = source_to_catalog(source_id)
         count_candidates.append((tbl_name, schema_name, catalog))
         count_meta[tbl_name] = (pk_col, catalog, schema_name)

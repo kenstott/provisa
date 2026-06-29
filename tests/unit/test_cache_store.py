@@ -106,8 +106,8 @@ class TestRedisCacheStoreSet:
         store._redis = mock_redis
 
         await store.set("k", b"val", 60, tenant_id=None)
-        mock_pipe.setex.assert_any_call("provisa:cache:k", 60, b"val")
-        assert mock_pipe.setex.call_count >= 1
+        mock_pipe.set.assert_any_call("provisa:cache:k", b"val", ex=60)
+        assert mock_pipe.set.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_set_with_tenant_uses_tenant_prefix(self):
@@ -119,8 +119,8 @@ class TestRedisCacheStoreSet:
         store._redis = mock_redis
 
         await store.set("k", b"val", 60, tenant_id="acme")
-        mock_pipe.setex.assert_any_call("provisa:cache:acme:k", 60, b"val")
-        assert mock_pipe.setex.call_count >= 1
+        mock_pipe.set.assert_any_call("provisa:cache:acme:k", b"val", ex=60)
+        assert mock_pipe.set.call_count >= 1
 
 
 class TestRedisCacheStoreInvalidateByPattern:
@@ -134,8 +134,8 @@ class TestRedisCacheStoreInvalidateByPattern:
 
         async def fake_scan_iter(match):
             scanned_patterns.append(match)
-            if False:  # pragma: no branch — makes this an async generator
-                yield  # noqa: unreachable
+            for _ in range(0):  # pragma: no branch — empty range makes this an async generator
+                yield
 
         mock_redis = MagicMock()
         mock_redis.scan_iter = fake_scan_iter
@@ -151,8 +151,8 @@ class TestRedisCacheStoreInvalidateByPattern:
 
         async def fake_scan_iter(match):
             scanned_patterns.append(match)
-            if False:  # pragma: no branch — makes this an async generator
-                yield  # noqa: unreachable
+            for _ in range(0):  # pragma: no branch — empty range makes this an async generator
+                yield
 
         mock_redis = MagicMock()
         mock_redis.scan_iter = fake_scan_iter

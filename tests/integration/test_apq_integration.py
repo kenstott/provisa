@@ -270,7 +270,7 @@ class TestRedisApqCache:
             expected_key = f"provisa:apq:{_TEST_HASH}"
             val = await raw.get(expected_key)
             assert val == _TEST_QUERY
-            await raw.close()
+            await raw.aclose()
         finally:
             await cache.close()
 
@@ -284,7 +284,7 @@ class TestRedisApqCache:
             raw = aioredis.from_url(_REDIS_URL, decode_responses=True)
             ttl = await raw.ttl(f"provisa:apq:{_TEST_HASH}")
             assert ttl > 0
-            await raw.close()
+            await raw.aclose()
         finally:
             await cache.close()
 

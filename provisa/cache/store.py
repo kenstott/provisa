@@ -77,10 +77,10 @@ class CacheStore(ABC):  # REQ-544
 class NoopCacheStore(CacheStore):
     """No-op store when caching is disabled. Always misses."""
 
-    async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:
+    async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:  # pyright: ignore[reportUnusedParameter]
         return None
 
-    async def set(
+    async def set(  # pyright: ignore[reportUnusedParameter]
         self,
         key: str,
         data: bytes,
@@ -90,10 +90,10 @@ class NoopCacheStore(CacheStore):
     ) -> None:
         pass
 
-    async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:
+    async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:  # pyright: ignore[reportUnusedParameter]
         return 0
 
-    async def invalidate_by_table(self, table_id: int, tenant_id: str | None = None) -> int:
+    async def invalidate_by_table(self, table_id: int, tenant_id: str | None = None) -> int:  # pyright: ignore[reportUnusedParameter]
         return 0
 
     async def close(self) -> None:
@@ -191,8 +191,8 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
                 rkey = self._prefixed_key(key, tenant_id)
                 meta = json.dumps({"cached_at": time.time(), "ttl": ttl}).encode()
                 pipe = self._redis.pipeline()
-                pipe.setex(rkey, ttl, data)
-                pipe.setex(rkey + ":meta", ttl, meta)
+                pipe.set(rkey, data, ex=ttl)
+                pipe.set(rkey + ":meta", meta, ex=ttl)
                 if table_ids:
                     for tid in table_ids:
                         tkey = self._prefixed_table_key(tid, tenant_id)
@@ -244,5 +244,5 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
 
     async def close(self) -> None:
         if self._redis:
-            await self._redis.close()
+            await self._redis.aclose()
             self._redis = None

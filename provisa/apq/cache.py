@@ -59,10 +59,10 @@ class APQCache(ABC):  # REQ-288, REQ-289, REQ-290, REQ-291
 class NoopAPQCache(APQCache):  # REQ-288, REQ-289
     """No-op APQ cache — always misses. Used when Redis is not configured."""
 
-    async def get(self, sha256_hash: str, tenant_id: str | None = None) -> str | None:
+    async def get(self, sha256_hash: str, tenant_id: str | None = None) -> str | None:  # pyright: ignore[reportUnusedParameter]
         return None
 
-    async def set(self, sha256_hash: str, query: str, tenant_id: str | None = None) -> None:
+    async def set(self, sha256_hash: str, query: str, tenant_id: str | None = None) -> None:  # pyright: ignore[reportUnusedParameter]
         pass
 
     async def close(self) -> None:
@@ -114,11 +114,11 @@ class RedisAPQCache(APQCache):  # REQ-288, REQ-289, REQ-290, REQ-291
         try:
             await self._connect()
             assert self._redis is not None
-            await self._redis.setex(self._build_key(sha256_hash, tenant_id), self._ttl, query)
+            await self._redis.set(self._build_key(sha256_hash, tenant_id), query, ex=self._ttl)
         except Exception:
             log.warning("APQ Redis set failed", exc_info=True)
 
     async def close(self) -> None:
         if self._redis:
-            await self._redis.close()
+            await self._redis.aclose()
             self._redis = None
