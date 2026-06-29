@@ -221,6 +221,7 @@ class TestGrpcQueryExecution:
 
         from typing import cast
         from graphql import (
+            GraphQLArgument,
             GraphQLField,
             GraphQLInt,
             GraphQLList,
@@ -245,7 +246,12 @@ class TestGrpcQueryExecution:
         )
         query_type = GraphQLObjectType(
             "Query",
-            {"order": GraphQLField(GraphQLList(order_type))},
+            {
+                "order": GraphQLField(
+                    GraphQLList(order_type),
+                    args={"limit": GraphQLArgument(_int)},
+                )
+            },
         )
         schema = GraphQLSchema(query=cast(GraphQLObjectType, query_type))
 
