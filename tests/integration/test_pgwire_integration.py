@@ -856,15 +856,18 @@ class TestPgwireStartupGating:
 
         port = _free_port()
         state = _make_mock_state("admin", "simple")
-
-        with patch("provisa.api.app.state", state):
-            start_pgwire_server("127.0.0.1", port, ssl_ctx=None, loop=asyncio.get_event_loop())
-        time.sleep(0.2)
-
-        # Port should now be in use
+        loop = asyncio.new_event_loop()
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=1):
-                bound = True
-        except OSError:
-            bound = False
-        assert bound, "pgwire server did not bind after start_pgwire_server()"
+            with patch("provisa.api.app.state", state):
+                start_pgwire_server("127.0.0.1", port, ssl_ctx=None, loop=loop)
+            time.sleep(0.2)
+
+            # Port should now be in use
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=1):
+                    bound = True
+            except OSError:
+                bound = False
+            assert bound, "pgwire server did not bind after start_pgwire_server()"
+        finally:
+            loop.close()
