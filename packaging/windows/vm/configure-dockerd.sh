@@ -28,3 +28,12 @@ EOF
 
 # Enable IP forwarding for container networking
 echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+
+# SSH for CI image pre-bake (key-only, no password auth)
+rc-update add sshd boot
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+ssh-keygen -A
+# Append settings; default config has them commented out
+echo "PermitRootLogin without-password" >> /etc/ssh/sshd_config
+echo "PasswordAuthentication no" >> /etc/ssh/sshd_config

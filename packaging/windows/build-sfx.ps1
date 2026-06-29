@@ -45,11 +45,17 @@ Copy-Item (Join-Path $ScriptDir 'uninstall.ps1')     $BuildDir
 
 $BuildRedist = Join-Path $BuildDir 'redist'
 New-Item -ItemType Directory -Path $BuildRedist -Force | Out-Null
-$NerdctlSrc = Join-Path $ScriptDir 'redist\nerdctl-full.tar.gz'
-if (-not (Test-Path $NerdctlSrc)) {
-  throw "nerdctl-full.tar.gz not found at $NerdctlSrc — CI should download it before building."
+$VBoxSrc = Join-Path $ScriptDir 'redist\VirtualBox-setup.exe'
+if (-not (Test-Path $VBoxSrc)) {
+  throw "VirtualBox-setup.exe not found at $VBoxSrc -- CI should download it before building."
 }
-Copy-Item $NerdctlSrc $BuildRedist
+Copy-Item $VBoxSrc $BuildRedist
+
+$OvaSrc = Join-Path $ScriptDir 'provisa-runtime.ova'
+if (-not (Test-Path $OvaSrc)) {
+  throw "provisa-runtime.ova not found at $OvaSrc -- CI should download it before building."
+}
+Copy-Item $OvaSrc $BuildDir
 
 # ── Install Inno Setup via chocolatey ─────────────────────────────────────────
 Write-Host '[build-sfx] Installing Inno Setup...' -ForegroundColor Cyan

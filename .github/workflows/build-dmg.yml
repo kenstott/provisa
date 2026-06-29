@@ -72,14 +72,25 @@ jobs:
   build-vm-image:
     name: Build Provisa runtime VM (OVA)
     runs-on: ubuntu-latest
+    needs: [pull-images-core-amd64]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Download amd64 core image tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images-core-amd64
+          path: core-images-amd64/
+
       - name: Install build tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y qemu-utils e2fsprogs dosfstools parted util-linux
+          sudo apt-get install -y qemu-utils qemu-system-x86 e2fsprogs dosfstools parted util-linux
+          sudo chmod 666 /dev/kvm
+
+      - name: Generate SSH key for VM pre-bake access
+        run: ssh-keygen -t ed25519 -f /tmp/vm_key -N ""
 
       - name: Download alpine-make-vm-image
         run: |
@@ -87,20 +98,94 @@ jobs:
             -o alpine-make-vm-image
           chmod +x alpine-make-vm-image
 
-      - name: Build Alpine VM with dockerd
+      - name: Build Alpine VM with dockerd + sshd
         run: |
           chmod +x packaging/windows/vm/configure-dockerd.sh
           sudo ./alpine-make-vm-image \
             --image-format qcow2 \
-            --image-size 10G \
-            --packages "docker docker-compose openrc" \
+            --image-size 20G \
+            --packages "docker docker-compose openrc openssh" \
             --script-chroot \
             provisa-runtime.qcow2 \
             -- packaging/windows/vm/configure-dockerd.sh
 
+      - name: Inject images and provisa source into VM filesystem
+        run: |
+          sudo modprobe nbd max_part=8
+          sudo qemu-nbd --connect=/dev/nbd0 provisa-runtime.qcow2
+          sleep 2
+          sudo partprobe /dev/nbd0
+          sleep 1
+          ROOT_PART=$(sudo lsblk -ln -o NAME,FSTYPE /dev/nbd0 | awk '$2=="ext4"{print "/dev/"$1}' | head -1)
+          sudo mkdir -p /mnt/vm
+          sudo mount "$ROOT_PART" /mnt/vm
+
+          sudo mkdir -p /mnt/vm/opt/provisa-images
+          sudo cp core-images-amd64/*.tar.gz /mnt/vm/opt/provisa-images/
+
+          sudo mkdir -p /mnt/vm/opt/provisa-source
+          sudo cp Dockerfile main.py pyproject.toml /mnt/vm/opt/provisa-source/
+          sudo cp -r provisa /mnt/vm/opt/provisa-source/
+
+          sudo cp /tmp/vm_key.pub /mnt/vm/root/.ssh/authorized_keys
+          sudo chmod 600 /mnt/vm/root/.ssh/authorized_keys
+
+          sudo umount /mnt/vm
+          sudo qemu-nbd --disconnect /dev/nbd0
+
+      - name: Boot VM and pre-bake images
+        run: |
+          sudo qemu-system-x86_64 \
+            -enable-kvm \
+            -m 4096 -smp 2 \
+            -drive file=provisa-runtime.qcow2,format=qcow2 \
+            -netdev user,id=net0,hostfwd=tcp::2375-:2375,hostfwd=tcp::2222-:22 \
+            -device e1000,netdev=net0 \
+            -display none \
+            -serial file:/tmp/vm-serial.log \
+            -daemonize \
+            -pidfile /tmp/qemu.pid
+
+          echo "Waiting for sshd..."
+          for i in $(seq 1 90); do
+            ssh -p 2222 -i /tmp/vm_key \
+              -o StrictHostKeyChecking=no -o ConnectTimeout=3 -o BatchMode=yes \
+              root@localhost true 2>/dev/null && break
+            sleep 5
+          done
+
+          echo "Waiting for Docker..."
+          for i in $(seq 1 30); do
+            ssh -p 2222 -i /tmp/vm_key -o StrictHostKeyChecking=no -o BatchMode=yes \
+              root@localhost 'docker info >/dev/null 2>&1' 2>/dev/null && break
+            sleep 5
+          done
+
+          echo "Loading container images..."
+          ssh -p 2222 -i /tmp/vm_key -o StrictHostKeyChecking=no -o BatchMode=yes \
+            root@localhost 'for f in /opt/provisa-images/*.tar.gz; do echo "Loading $f"; docker load -i "$f"; done'
+
+          echo "Building provisa/provisa:local..."
+          ssh -p 2222 -i /tmp/vm_key -o StrictHostKeyChecking=no -o BatchMode=yes \
+            root@localhost 'docker build -t provisa/provisa:local /opt/provisa-source'
+
+          echo "Cleaning up and zeroing free space..."
+          ssh -p 2222 -i /tmp/vm_key -o StrictHostKeyChecking=no -o BatchMode=yes \
+            root@localhost 'docker system prune -f; rm -rf /opt/provisa-images /opt/provisa-source /root/.ssh; dd if=/dev/zero of=/zeros bs=1M 2>/dev/null; rm -f /zeros; sync'
+
+          echo "Shutting down VM..."
+          ssh -p 2222 -i /tmp/vm_key -o StrictHostKeyChecking=no -o BatchMode=yes \
+            root@localhost 'poweroff' || true
+
+          timeout 120 sh -c 'while kill -0 "$(cat /tmp/qemu.pid)" 2>/dev/null; do sleep 2; done' || \
+            sudo kill "$(cat /tmp/qemu.pid)" 2>/dev/null || true
+
+          echo "--- VM serial log ---"
+          cat /tmp/vm-serial.log || true
+
       - name: Convert QCOW2 to VMDK (streamOptimized)
         run: |
-          qemu-img convert -f qcow2 -O vmdk \
+          sudo qemu-img convert -f qcow2 -O vmdk \
             -o subformat=streamOptimized \
             provisa-runtime.qcow2 provisa-runtime.vmdk
           VMDK_BYTES=$(stat -c %s provisa-runtime.vmdk)
@@ -120,7 +205,7 @@ jobs:
             </References>
             <DiskSection>
               <Info>List of the virtual disks</Info>
-              <Disk ovf:capacity="10737418240" ovf:diskId="disk1" ovf:fileRef="file1"
+              <Disk ovf:capacity="21474836480" ovf:diskId="disk1" ovf:fileRef="file1"
                     ovf:format="http://www.vmware.com/interfaces/specifications/vmdk.html#streamOptimized"/>
             </DiskSection>
             <NetworkSection>
@@ -318,6 +403,39 @@ jobs:
         with:
           name: provisa-wheels
           path: provisa-wheels/
+          retention-days: 1
+          compression-level: 0
+
+  pull-images-core-amd64:
+    name: Pull core Docker images (amd64) for OVA
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pull core images (amd64) and build zaychik
+        run: |
+          mkdir -p images
+          for img in \
+            "python:3.12-slim" \
+            "postgres:16" \
+            "edoburu/pgbouncer:latest" \
+            "redis:7-alpine" \
+            "trinodb/trino:481"; do
+            tag="${img##*/}"
+            tag="${tag//:/-}"
+            tag="${tag//\//-}"
+            docker pull --platform linux/amd64 "$img"
+            docker save "$img" | gzip -9 > "images/${tag}.tar.gz"
+          done
+          docker build --platform linux/amd64 -t provisa/zaychik:local ./zaychik
+          docker save provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
+
+      - name: Upload amd64 core image tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-images-core-amd64
+          path: images/
           retention-days: 1
           compression-level: 0
 
@@ -760,16 +878,6 @@ jobs:
           Write-Host "Downloading VirtualBox ${VBoxVersion}..."
           Invoke-WebRequest -Uri $VBoxUrl -OutFile packaging/windows/redist/VirtualBox-setup.exe -UseBasicParsing
           Write-Host "VirtualBox installer downloaded."
-
-      - name: Download nerdctl-full
-        shell: pwsh
-        run: |
-          $NerdctlVersion = '2.2.2'
-          $NerdctlUrl = "https://github.com/containerd/nerdctl/releases/download/v${NerdctlVersion}/nerdctl-full-${NerdctlVersion}-linux-amd64.tar.gz"
-          New-Item -ItemType Directory -Path packaging/windows/redist -Force | Out-Null
-          Write-Host "Downloading nerdctl-full ${NerdctlVersion}..."
-          Invoke-WebRequest -Uri $NerdctlUrl -OutFile packaging/windows/redist/nerdctl-full.tar.gz -UseBasicParsing
-          Write-Host "nerdctl-full downloaded."
 
       - name: Build installer (7-Zip SFX)
         shell: pwsh
