@@ -47,6 +47,7 @@ def create_flight_connection(  # REQ-045, REQ-144, REQ-271
             "password": "",
             "adbc.flight.sql.client_option.authority": f"{host}:{port}",
         },
+        autocommit=True,
     )
     return conn
 
@@ -98,7 +99,7 @@ def _skip_prepare(cursor) -> None:
     """Patch cursor to skip prepare() — Zaychik doesn't support it."""
     import types
 
-    def _prepare_execute_no_prepare(self, operation, _parameters=None):
+    def _prepare_execute_no_prepare(self, operation, *_):
         self._results = None
         if operation != self._last_query:
             self._last_query = operation
