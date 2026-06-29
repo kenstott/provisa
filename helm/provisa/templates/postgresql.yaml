@@ -115,6 +115,12 @@ metadata:
   name: {{ .Release.Name }}-init-sql
 data:
   init.sql: |
+    -- Pre-create org_default schema so asyncpg pool setup can SET search_path
+    -- before provisa's init_schema runs on first startup.
+    CREATE SCHEMA IF NOT EXISTS org_default;
+    CREATE SCHEMA IF NOT EXISTS org_default_mv_cache;
+    ALTER USER provisa SET search_path TO org_default, public;
+
     CREATE TABLE IF NOT EXISTS customers (
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,

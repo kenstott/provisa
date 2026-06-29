@@ -69,6 +69,15 @@ spec:
       ports:
         - port: {{ .Values.redis.port }}
     {{- end }}
+    # Zaychik Arrow Flight SQL proxy
+    {{- if .Values.zaychik.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: zaychik
+      ports:
+        - port: {{ .Values.zaychik.port }}
+    {{- end }}
     # OTel Collector
     {{- if .Values.observability.enabled }}
     - to:

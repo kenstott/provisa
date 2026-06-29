@@ -101,6 +101,12 @@ spec:
               value: "8480"
             - name: FLIGHT_PORT
               value: "{{ .Values.provisa.flightPort }}"
+            {{- if .Values.zaychik.enabled }}
+            - name: ZAYCHIK_HOST
+              value: "{{ .Release.Name }}-zaychik"
+            - name: ZAYCHIK_PORT
+              value: "{{ .Values.zaychik.port }}"
+            {{- end }}
             {{- range $key, $val := .Values.provisa.env }}
             - name: {{ $key }}
               value: "{{ $val }}"

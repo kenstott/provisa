@@ -75,5 +75,24 @@ def docker_stack():
 def _disable_auth_for_e2e(tmp_path_factory):  # pyright: ignore
     """E2E tests build the in-process app (create_app) and call it with a `role`
     but no bearer token; force auth off so AuthMiddleware is not installed and
-    requests are not rejected with HTTP 401."""
-    yield from pin_no_auth_config(tmp_path_factory.mktemp("noauth-cfg"))
+    requests are not rejected with HTTP 401.
+
+    Also points PROVISA_CONFIG at the sales-analytics test fixture config so
+    all e2e tests see the expected sa__ schema, and sets PROVISA_CONFIG_REPLACE=1
+    so the first create_app() call loads that config into the DB."""
+    sample_cfg = os.path.join(_REPO_ROOT, "tests", "fixtures", "sample_config.yaml")
+    prev_config = os.environ.get("PROVISA_CONFIG")
+    prev_replace = os.environ.get("PROVISA_CONFIG_REPLACE")
+    os.environ["PROVISA_CONFIG"] = sample_cfg
+    os.environ["PROVISA_CONFIG_REPLACE"] = "1"
+    try:
+        yield from pin_no_auth_config(tmp_path_factory.mktemp("noauth-cfg"))
+    finally:
+        if prev_config is None:
+            os.environ.pop("PROVISA_CONFIG", None)
+        else:
+            os.environ["PROVISA_CONFIG"] = prev_config
+        if prev_replace is None:
+            os.environ.pop("PROVISA_CONFIG_REPLACE", None)
+        else:
+            os.environ["PROVISA_CONFIG_REPLACE"] = prev_replace

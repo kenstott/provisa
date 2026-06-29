@@ -57,6 +57,14 @@ trino:
       limits:
         cpu: "2"
         memory: 4Gi
+    readinessProbe:
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      failureThreshold: 6
+    livenessProbe:
+      initialDelaySeconds: 60
+      periodSeconds: 30
+      failureThreshold: 5
     pdb:
       minAvailable: 1
   worker:
@@ -101,6 +109,21 @@ pgbouncer:
   maxClientConn: 200
   pdb:
     minAvailable: 1
+
+zaychik:
+  enabled: true
+  image:
+    repository: zaychik
+    tag: latest
+    pullPolicy: IfNotPresent
+  port: 8480
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
 
 mongodb:
   enabled: true

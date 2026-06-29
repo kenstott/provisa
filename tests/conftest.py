@@ -33,7 +33,7 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_neo4j": ["neo4j"],
     "requires_sparql": ["fuseki"],
 }
-_CORE_SERVICES = ["postgres", "trino", "redis", "pgbouncer"]
+_CORE_SERVICES = ["postgres", "trino", "redis", "pgbouncer", "minio"]
 
 
 class _DockerServiceManager:
@@ -177,7 +177,13 @@ def _free_port() -> int:
 
 @pytest.fixture(scope="session", autouse=True)
 def _wait_for_trino():  # pyright: ignore
-    """Block until Trino core catalogs are ready or 6 minutes elapse."""
+    """Block until Trino core catalogs are ready or 6 minutes elapse.
+
+    Set PROVISA_SKIP_TRINO_WAIT=1 when the test session provisions its own
+    Trino (e.g. helm/minikube tests) and external Trino is not available.
+    """
+    if os.environ.get("PROVISA_SKIP_TRINO_WAIT"):
+        return
     host = os.environ.get("TRINO_HOST", "localhost")
     port = int(os.environ.get("TRINO_PORT", "8080"))
     deadline = time.monotonic() + 360
@@ -402,12 +408,26 @@ def provisa_server():
         yield server_url
         return
 
+    from urllib.parse import urlparse as _urlparse
+
+    _parsed = _urlparse(server_url)
+    _port = _parsed.port or 8000
+    _host = _parsed.hostname or "localhost"
+    if _tcp_reachable(_host, _port):
+        raise RuntimeError(
+            f"Port {_port} is already bound by another process but {server_url}/health "
+            "is not responding — stop the existing process before running tests that "
+            "require a Provisa server."
+        )
+
     venv_python = os.path.join(_REPO_ROOT, ".venv", "bin", "uvicorn")
+    server_env = {**os.environ, "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa"}
     proc = subprocess.Popen(
-        [venv_python, "main:app", "--host", "0.0.0.0", "--port", "8000"],
+        [venv_python, "main:app", "--host", "0.0.0.0", f"--port={_port}"],
         cwd=_REPO_ROOT,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env=server_env,
     )
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:

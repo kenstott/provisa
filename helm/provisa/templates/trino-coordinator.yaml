@@ -72,14 +72,16 @@ spec:
             httpGet:
               path: /v1/info
               port: {{ .Values.trino.port }}
-            initialDelaySeconds: 30
-            periodSeconds: 10
+            initialDelaySeconds: {{ .Values.trino.coordinator.readinessProbe.initialDelaySeconds | default 30 }}
+            periodSeconds: {{ .Values.trino.coordinator.readinessProbe.periodSeconds | default 10 }}
+            failureThreshold: {{ .Values.trino.coordinator.readinessProbe.failureThreshold | default 6 }}
           livenessProbe:
             httpGet:
               path: /v1/info
               port: {{ .Values.trino.port }}
-            initialDelaySeconds: 60
-            periodSeconds: 30
+            initialDelaySeconds: {{ .Values.trino.coordinator.livenessProbe.initialDelaySeconds | default 60 }}
+            periodSeconds: {{ .Values.trino.coordinator.livenessProbe.periodSeconds | default 30 }}
+            failureThreshold: {{ .Values.trino.coordinator.livenessProbe.failureThreshold | default 5 }}
       volumes:
         - name: config
           configMap:

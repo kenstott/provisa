@@ -1,0 +1,71 @@
+{{- if .Values.zaychik.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-zaychik
+  labels:
+    app: zaychik
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zaychik
+  template:
+    metadata:
+      labels:
+        app: zaychik
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: zaychik
+          image: "{{ .Values.zaychik.image.repository }}:{{ .Values.zaychik.image.tag }}"
+          imagePullPolicy: {{ .Values.zaychik.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.zaychik.port }}
+          env:
+            - name: TF_TRINO_HOST
+              value: "{{ .Release.Name }}-trino-coordinator"
+            - name: TF_TRINO_PORT
+              value: "{{ .Values.trino.port }}"
+            - name: TF_TRINO_SSL
+              value: "false"
+            - name: TF_FLIGHT_HOST
+              value: "0.0.0.0"
+            - name: TF_FLIGHT_PORT
+              value: "{{ .Values.zaychik.port }}"
+            - name: TF_FLIGHT_SSL
+              value: "false"
+            - name: TF_FLIGHT_AUTH_TYPE
+              value: "trino"
+            - name: TF_FLIGHT_BATCH_SIZE
+              value: "10000"
+          resources:
+            {{- toYaml .Values.zaychik.resources | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.zaychik.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.zaychik.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-zaychik
+spec:
+  selector:
+    app: zaychik
+  ports:
+    - port: {{ .Values.zaychik.port }}
+      targetPort: {{ .Values.zaychik.port }}
+  type: ClusterIP
+{{- end }}
