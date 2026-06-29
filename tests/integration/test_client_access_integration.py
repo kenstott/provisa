@@ -546,7 +546,7 @@ class TestGraphSchemaEndpoint:
 class TestSourceTypeCollapsing:
     """REQ-405: graphql_api/graphql_remote → graphql; grpc_api/grpc_remote → grpc."""
 
-    def test_graphql_api_and_remote_collapse_to_graphql(self):
+    async def test_graphql_api_and_remote_collapse_to_graphql(self):
         """REQ-405: source_type 'graphql' represents both graphql_api and graphql_remote."""
         # Probe the admin schema source types exposed to the UI / GraphQL layer.
         # The canonical values are 'graphql' and 'grpc' — the split remote/api
@@ -561,7 +561,7 @@ class TestSourceTypeCollapsing:
             or "graphql_api" not in _SOURCE_TYPE_DISPLAY_NAMES
         )
 
-    def test_grpc_api_and_remote_collapse_to_grpc(self):
+    async def test_grpc_api_and_remote_collapse_to_grpc(self):
         """REQ-405: source_type 'grpc' represents both grpc_api and grpc_remote."""
         try:
             from provisa.api.admin.schema import _SOURCE_TYPE_DISPLAY_NAMES  # type: ignore[attr-defined]
@@ -579,7 +579,7 @@ class TestSourceTypeCollapsing:
 class TestOpenAPIInlineSpec:
     """REQ-407: spec_content accepted on register/preview; stored as ':inline:'."""
 
-    def test_register_request_accepts_spec_content(self):
+    async def test_register_request_accepts_spec_content(self):
         """REQ-407: OpenAPIRegisterRequest has a spec_content field."""
         from provisa.api.admin.openapi_router import OpenAPIRegisterRequest  # type: ignore[import]
 
@@ -589,7 +589,7 @@ class TestOpenAPIInlineSpec:
         )
         assert req.spec_content is not None
 
-    def test_preview_request_accepts_spec_content(self):
+    async def test_preview_request_accepts_spec_content(self):
         """REQ-407: OpenAPIPreviewRequest has a spec_content field."""
         from provisa.api.admin.openapi_router import OpenAPIPreviewRequest  # type: ignore[import]
 
@@ -598,7 +598,7 @@ class TestOpenAPIInlineSpec:
         )
         assert req.spec_content is not None
 
-    def test_inline_path_sentinel_applied(self):
+    async def test_inline_path_sentinel_applied(self):
         """REQ-407: path defaults to ':inline:' when spec_content provided without spec_path."""
         from provisa.api.admin.openapi_router import OpenAPIRegisterRequest  # type: ignore[import]
 
@@ -617,7 +617,7 @@ class TestOpenAPIInlineSpec:
 class TestOpenAPIKindExtension:
     """REQ-408: x-provisa-kind overrides GET-heuristic for POST operations."""
 
-    def test_x_provisa_kind_query_maps_to_query(self):
+    async def test_x_provisa_kind_query_maps_to_query(self):
         """REQ-408: POST endpoint with x-provisa-kind: query becomes a GraphQL query."""
         try:
             from provisa.openapi.mapper import classify_operation  # type: ignore[import]
@@ -631,7 +631,7 @@ class TestOpenAPIKindExtension:
         result = classify_operation("POST", "/orders", operation)
         assert result == "query"
 
-    def test_x_provisa_kind_mutation_maps_to_mutation(self):
+    async def test_x_provisa_kind_mutation_maps_to_mutation(self):
         """REQ-408: POST endpoint with x-provisa-kind: mutation stays a mutation."""
         try:
             from provisa.openapi.mapper import classify_operation  # type: ignore[import]
@@ -645,7 +645,7 @@ class TestOpenAPIKindExtension:
         result = classify_operation("POST", "/orders", operation)
         assert result == "mutation"
 
-    def test_post_without_kind_defaults_to_mutation(self):
+    async def test_post_without_kind_defaults_to_mutation(self):
         """REQ-408: POST without x-provisa-kind is classified as mutation by default."""
         try:
             from provisa.openapi.mapper import classify_operation  # type: ignore[import]
@@ -656,7 +656,7 @@ class TestOpenAPIKindExtension:
         result = classify_operation("POST", "/orders", operation)
         assert result == "mutation"
 
-    def test_get_without_kind_is_query(self):
+    async def test_get_without_kind_is_query(self):
         """REQ-408: GET without x-provisa-kind is classified as query."""
         try:
             from provisa.openapi.mapper import classify_operation  # type: ignore[import]

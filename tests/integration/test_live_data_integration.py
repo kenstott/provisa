@@ -55,7 +55,7 @@ def _disable_auth_for_integration(tmp_path_factory):
 
 
 class TestDatasetChangeEvents:
-    def test_emit_change_event_no_op_without_kafka(self):
+    async def test_emit_change_event_no_op_without_kafka(self):
         # REQ-172: emit_change_event is a no-op when no Kafka bootstrap is configured
         from provisa.kafka.change_events import emit_change_event
 
@@ -72,7 +72,7 @@ class TestDatasetChangeEvents:
                     result = emit_change_event("orders", "sales-pg", "insert")
         assert result is None
 
-    def test_emit_change_event_with_mock_producer(self):
+    async def test_emit_change_event_with_mock_producer(self):
         # REQ-172: emit_change_event calls producer.produce with table, source, timestamp
         import json
 
@@ -100,7 +100,7 @@ class TestDatasetChangeEvents:
         assert "timestamp" in call["value"]
         assert call["key"] == "sales-pg.orders"
 
-    def test_emit_change_event_default_mutation_type(self):
+    async def test_emit_change_event_default_mutation_type(self):
         # REQ-172: mutation_type defaults to "mutation" when not specified
         import json
 
@@ -120,7 +120,7 @@ class TestDatasetChangeEvents:
 
         assert produced[0]["type"] == "mutation"
 
-    def test_emit_change_event_no_row_detail(self):
+    async def test_emit_change_event_no_row_detail(self):
         # REQ-172: change events contain no row-level detail — only table, source, timestamp
         import json
 
@@ -146,7 +146,7 @@ class TestDatasetChangeEvents:
         assert "data" not in event
         assert "payload" not in event
 
-    def test_emit_fires_on_same_hook_as_cache_invalidation(self):
+    async def test_emit_fires_on_same_hook_as_cache_invalidation(self):
         # REQ-173: change events fire on the same mutation hook that invalidates cache
         # Verified by checking both calls are orchestrated in the mutation pipeline.
         # We test the emitter directly; the orchestration is in endpoint.py _handle_mutation.
@@ -167,7 +167,7 @@ class TestDatasetChangeEvents:
 
         assert calls == ["orders"]
 
-    def test_touch_operation_emits_change_event(self):
+    async def test_touch_operation_emits_change_event(self):
         # REQ-174: external ETL can signal changes via touch (mutation_type="touch")
         import json
 
@@ -188,7 +188,7 @@ class TestDatasetChangeEvents:
         assert produced[0]["type"] == "touch"
         assert produced[0]["table"] == "etl_table"
 
-    def test_change_event_topic_configurable(self):
+    async def test_change_event_topic_configurable(self):
         # REQ-175: topic read from PROVISA_CHANGE_EVENT_TOPIC env var
         from provisa.kafka.change_events import _get_topic
 
@@ -196,7 +196,7 @@ class TestDatasetChangeEvents:
             topic = _get_topic()
         assert topic == "my.custom-events"
 
-    def test_change_event_topic_default(self):
+    async def test_change_event_topic_default(self):
         # REQ-175: default topic is "provisa.change-events" when env var not set
         from provisa.kafka.change_events import _get_topic
 
@@ -207,7 +207,7 @@ class TestDatasetChangeEvents:
             topic = _get_topic()
         assert topic == "provisa.change-events"
 
-    def test_emit_change_event_producer_failure_does_not_raise(self):
+    async def test_emit_change_event_producer_failure_does_not_raise(self):
         # REQ-172: producer failure is swallowed — mutation pipeline must not abort
         from provisa.kafka.change_events import emit_change_event
 
@@ -304,7 +304,7 @@ class TestSubscriptionTriggerFallback:
         assert "orders" not in installed
         assert "customers" in installed
 
-    def test_trigger_sql_contains_channel_prefix(self):
+    async def test_trigger_sql_contains_channel_prefix(self):
         # REQ-566: trigger SQL uses provisa_ channel prefix matching PgNotificationProvider
         from provisa.subscriptions.pg_triggers import _trigger_sql
         from provisa.subscriptions.pg_provider import CHANNEL_PREFIX
@@ -312,7 +312,7 @@ class TestSubscriptionTriggerFallback:
         sql = _trigger_sql("public", "orders")
         assert CHANNEL_PREFIX in sql  # "provisa_" prefix
 
-    def test_trigger_sql_idempotent_drop_before_create(self):
+    async def test_trigger_sql_idempotent_drop_before_create(self):
         # REQ-566: trigger SQL drops existing trigger before creating (idempotent install)
         from provisa.subscriptions.pg_triggers import _trigger_sql
 
@@ -323,7 +323,7 @@ class TestSubscriptionTriggerFallback:
         assert create_pos != -1
         assert drop_pos < create_pos  # DROP before CREATE
 
-    def test_channel_name_matches_pg_provider_convention(self):
+    async def test_channel_name_matches_pg_provider_convention(self):
         # REQ-566: channel name in trigger matches PgNotificationProvider.watch() convention
         from provisa.subscriptions.pg_triggers import _trigger_sql
         from provisa.subscriptions.pg_provider import CHANNEL_PREFIX

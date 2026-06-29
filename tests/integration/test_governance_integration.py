@@ -169,7 +169,7 @@ async def source_pool():
 
 
 class TestSchemaVisibility:
-    def test_unauthorized_columns_excluded_from_visible_set(self):
+    async def test_unauthorized_columns_excluded_from_visible_set(self):
         # REQ-039: unauthorized columns must not appear in the schema visible to a role.
         table = {
             "id": ORDERS_TABLE_ID,
@@ -185,7 +185,7 @@ class TestSchemaVisibility:
         assert "region" in visible
         assert "amount" not in visible, "REQ-039: 'amount' must not be visible to analyst"
 
-    def test_all_columns_visible_to_admin(self):
+    async def test_all_columns_visible_to_admin(self):
         # REQ-039: admin must see all columns when all are listed in visible_to.
         table = {
             "id": ORDERS_TABLE_ID,
@@ -199,7 +199,7 @@ class TestSchemaVisibility:
         visible = visible_column_names(table, ROLE_ADMIN)
         assert visible == {"id", "amount", "region"}
 
-    def test_is_column_visible_returns_false_for_unauthorized(self):
+    async def test_is_column_visible_returns_false_for_unauthorized(self):
         # REQ-039: is_column_visible must return False for unauthorized (role, column) pair.
         table = {
             "columns": [
@@ -210,7 +210,7 @@ class TestSchemaVisibility:
             "REQ-039: 'secret' must not be visible to analyst"
         )
 
-    def test_is_column_visible_returns_true_for_authorized(self):
+    async def test_is_column_visible_returns_true_for_authorized(self):
         # REQ-039: is_column_visible must return True for authorized (role, column) pair.
         table = {
             "columns": [
@@ -219,7 +219,7 @@ class TestSchemaVisibility:
         }
         assert is_column_visible(table, "region", ROLE_ANALYST)
 
-    def test_visible_tables_excludes_table_with_no_visible_columns(self):
+    async def test_visible_tables_excludes_table_with_no_visible_columns(self):
         # REQ-039: a table with no visible columns for the role must be excluded entirely.
         tables = [
             {
@@ -234,7 +234,7 @@ class TestSchemaVisibility:
         result = visible_tables(tables, role)
         assert result == [], "REQ-039: table with no visible columns must be excluded from schema"
 
-    def test_visible_tables_includes_partial_columns(self):
+    async def test_visible_tables_includes_partial_columns(self):
         # REQ-039: table with at least one visible column must appear with only visible columns.
         tables = [
             {
@@ -323,14 +323,14 @@ class TestRLSEnforcement:
 
 
 class TestGovernanceAsOnlyGate:
-    def test_check_capability_raises_for_missing_capability(self):
+    async def test_check_capability_raises_for_missing_capability(self):
         # REQ-042: distinct capabilities must be independently enforced.
         role = {"id": ROLE_ANALYST, "capabilities": ["usage"]}
         with pytest.raises(InsufficientRightsError) as exc:
             check_capability(role, Capability.SOURCE_REGISTRATION)
         assert "source_registration" in str(exc.value)
 
-    def test_admin_capability_grants_all(self):
+    async def test_admin_capability_grants_all(self):
         # REQ-042: admin capability must satisfy any capability check.
         role = {"id": ROLE_ADMIN, "capabilities": ["admin"]}
         # check_capability returns None on success; any failure raises InsufficientRightsError.
@@ -344,19 +344,19 @@ class TestGovernanceAsOnlyGate:
         assert has_capability(role, Capability.CREATE_RELATIONSHIP)
         assert has_capability(role, Capability.MASKING_CONFIG)
 
-    def test_has_capability_returns_false_for_missing(self):
+    async def test_has_capability_returns_false_for_missing(self):
         # REQ-001: governance is expressed through rights, not capability gates on querying.
         role = {"id": ROLE_VIEWER, "capabilities": ["usage"]}
         assert not has_capability(role, Capability.FULL_RESULTS)
         assert not has_capability(role, Capability.AD_HOC_QUERY)
 
-    def test_has_capability_returns_true_when_present(self):
+    async def test_has_capability_returns_true_when_present(self):
         # REQ-042: independently configured rights — present capability is respected.
         role = {"id": ROLE_ANALYST, "capabilities": ["usage", "full_results"]}
         assert has_capability(role, Capability.USAGE)
         assert has_capability(role, Capability.FULL_RESULTS)
 
-    def test_distinct_rights_are_independent(self):
+    async def test_distinct_rights_are_independent(self):
         # REQ-042: holding one right does not grant another.
         role = {"id": ROLE_ANALYST, "capabilities": ["table_registration"]}
         assert has_capability(role, Capability.TABLE_REGISTRATION)
@@ -367,7 +367,7 @@ class TestGovernanceAsOnlyGate:
             "REQ-042: TABLE_REGISTRATION must not imply CREATE_RELATIONSHIP"
         )
 
-    def test_ignore_relationships_is_distinct_capability(self):
+    async def test_ignore_relationships_is_distinct_capability(self):
         # REQ-042 / REQ-463: ignore_relationships is a distinct, independently assigned cap.
         role_with = {"id": "steward", "capabilities": ["ignore_relationships"]}
         role_without = {"id": ROLE_ANALYST, "capabilities": ["usage"]}
@@ -381,7 +381,7 @@ class TestGovernanceAsOnlyGate:
 
 
 class TestTwoIndependentEnforcementLayers:
-    def test_visibility_layer_excludes_column_before_sql(self):
+    async def test_visibility_layer_excludes_column_before_sql(self):
         # REQ-038: schema visibility layer is a guard independent of SQL enforcement.
         table = {
             "id": ORDERS_TABLE_ID,
@@ -438,7 +438,7 @@ class TestTwoIndependentEnforcementLayers:
 
 
 class TestTwoStageCompiler:
-    def test_stage2_governance_context_includes_rls_rules(self):
+    async def test_stage2_governance_context_includes_rls_rules(self):
         # REQ-262, REQ-263: GovernanceContext carries RLS rules from RLSContext.
         rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'us-east'"})
         masking_rules: MaskingRules = {}
@@ -467,7 +467,7 @@ class TestTwoStageCompiler:
         )
         assert gov.rls_rules[ORDERS_TABLE_ID] == "region = 'us-east'"
 
-    def test_stage2_governance_context_includes_masking_rules(self):
+    async def test_stage2_governance_context_includes_masking_rules(self):
         # REQ-263: GovernanceContext must include masking rules for the requesting role.
         rule = MaskingRule(mask_type=MaskType.constant, value=0)
         masking_rules: MaskingRules = {
@@ -495,7 +495,7 @@ class TestTwoStageCompiler:
             "REQ-263: GovernanceContext must carry masking rule for (table_id, col) pair"
         )
 
-    def test_stage2_masking_rules_not_leaked_to_other_role(self):
+    async def test_stage2_masking_rules_not_leaked_to_other_role(self):
         # REQ-263, REQ-265: masking rules for analyst must not appear for admin.
         rule = MaskingRule(mask_type=MaskType.constant, value=0)
         masking_rules: MaskingRules = {
@@ -523,7 +523,7 @@ class TestTwoStageCompiler:
             "REQ-263: admin must not inherit analyst's masking rules"
         )
 
-    def test_stage2_row_cap_applied_for_role_without_full_results(self):
+    async def test_stage2_row_cap_applied_for_role_without_full_results(self):
         # REQ-263, REQ-005: roles without FULL_RESULTS capability get a row cap.
         from provisa.compiler.stage2 import resolve_row_cap
 
@@ -531,7 +531,7 @@ class TestTwoStageCompiler:
         cap = resolve_row_cap(role_without, None)
         assert cap is not None, "REQ-263: analyst without FULL_RESULTS must receive a row cap"
 
-    def test_stage2_row_cap_none_for_full_results_role(self):
+    async def test_stage2_row_cap_none_for_full_results_role(self):
         # REQ-263: role with FULL_RESULTS capability must receive no row cap.
         from provisa.compiler.stage2 import resolve_row_cap
 
@@ -539,7 +539,7 @@ class TestTwoStageCompiler:
         cap = resolve_row_cap(role_full, None)
         assert cap is None, "REQ-263: role with FULL_RESULTS must not be capped"
 
-    def test_stage2_explicit_max_rows_takes_precedence(self):
+    async def test_stage2_explicit_max_rows_takes_precedence(self):
         # REQ-263: explicit max_rows on a role overrides any computed default.
         from provisa.compiler.stage2 import resolve_row_cap
 
@@ -547,7 +547,7 @@ class TestTwoStageCompiler:
         cap = resolve_row_cap(role, 500)
         assert cap == 500, "REQ-263: explicit max_rows=500 must take precedence over defaults"
 
-    def test_stage2_governs_sql_with_rls_and_mask_applied(self):
+    async def test_stage2_governs_sql_with_rls_and_mask_applied(self):
         # REQ-262, REQ-263, REQ-266: apply_governance produces SQL with WHERE and mask.
         sql = 'SELECT "id", "amount", "region" FROM "public"."orders"'
         gov = GovernanceContext(
@@ -582,7 +582,7 @@ class TestTwoStageCompiler:
 
 
 class TestStage2StructuralPatterns:
-    def test_stage2_injects_rls_into_subquery(self):
+    async def test_stage2_injects_rls_into_subquery(self):
         # REQ-264: RLS must be applied at every table reference including subqueries.
         sql = (
             'SELECT sub."id", sub."region" FROM '
@@ -601,7 +601,7 @@ class TestStage2StructuralPatterns:
             "REQ-264: RLS must be injected into subquery table reference"
         )
 
-    def test_stage2_injects_rls_into_cte(self):
+    async def test_stage2_injects_rls_into_cte(self):
         # REQ-264: RLS must be applied at every table reference inside CTEs.
         sql = (
             'WITH cte AS (SELECT "id", "region" FROM "public"."orders") '
@@ -627,7 +627,7 @@ class TestStage2StructuralPatterns:
 
 
 class TestABACApprovalHook:
-    def test_approval_request_structure(self):
+    async def test_approval_request_structure(self):
         # REQ-203: approval hook receives user_id, roles, tables, columns, operation.
         req = ApprovalRequest(
             user="alice",
@@ -642,7 +642,7 @@ class TestABACApprovalHook:
         assert "orders" in req.tables
         assert "query" == req.operation
 
-    def test_approval_response_with_additional_filter(self):
+    async def test_approval_response_with_additional_filter(self):
         # REQ-203: approval hook may return additional SQL filter to AND into query.
         resp = ApprovalResponse(
             approved=True,
@@ -652,13 +652,13 @@ class TestABACApprovalHook:
         assert resp.approved
         assert resp.additional_filter == "region IN ('us-east', 'us-west')"
 
-    def test_approval_response_denied(self):
+    async def test_approval_response_denied(self):
         # REQ-203: approval hook can deny a query.
         resp = ApprovalResponse(approved=False, reason="policy denied")
         assert not resp.approved
         assert resp.additional_filter is None
 
-    def test_hook_config_fallback_deny(self):
+    async def test_hook_config_fallback_deny(self):
         # REQ-247: fallback=deny means timeout → deny.
         cfg = ApprovalHookConfig(
             type=HookType.WEBHOOK,
@@ -668,7 +668,7 @@ class TestABACApprovalHook:
         )
         assert cfg.fallback == FallbackPolicy.DENY
 
-    def test_hook_config_fallback_allow(self):
+    async def test_hook_config_fallback_allow(self):
         # REQ-247: fallback=allow means timeout → allow.
         cfg = ApprovalHookConfig(
             type=HookType.WEBHOOK,
@@ -678,7 +678,7 @@ class TestABACApprovalHook:
         )
         assert cfg.fallback == FallbackPolicy.ALLOW
 
-    def test_hook_config_grpc_transport(self):
+    async def test_hook_config_grpc_transport(self):
         # REQ-246: gRPC transport is a supported approval hook type.
         cfg = ApprovalHookConfig(
             type=HookType.GRPC,
@@ -687,7 +687,7 @@ class TestABACApprovalHook:
         )
         assert cfg.type == HookType.GRPC
 
-    def test_hook_config_unix_socket_transport(self):
+    async def test_hook_config_unix_socket_transport(self):
         # REQ-246: unix_socket transport is a supported approval hook type.
         cfg = ApprovalHookConfig(
             type=HookType.UNIX_SOCKET,
@@ -697,7 +697,7 @@ class TestABACApprovalHook:
         assert cfg.type == HookType.UNIX_SOCKET
         assert cfg.socket_path == "/var/run/provisa-authz.sock"
 
-    def test_approval_hook_skipped_when_no_table_scoped(self):
+    async def test_approval_hook_skipped_when_no_table_scoped(self):
         # REQ-204: when no queried table has approval_hook enabled, the call is skipped.
         # Simulate the scoping check: no hook flag on any table → hook should not fire.
         tables_without_hook = [
@@ -709,7 +709,7 @@ class TestABACApprovalHook:
             "REQ-204: no table with approval_hook=True — hook call must be skipped"
         )
 
-    def test_approval_hook_required_when_table_scoped(self):
+    async def test_approval_hook_required_when_table_scoped(self):
         # REQ-204: when at least one queried table has approval_hook=true, hook is called.
         tables_with_hook = [
             {"id": ORDERS_TABLE_ID, "approval_hook": True},
@@ -725,7 +725,7 @@ class TestABACApprovalHook:
 
 
 class TestStage2AllClientPaths:
-    def test_stage2_governance_applied_to_raw_sql(self):
+    async def test_stage2_governance_applied_to_raw_sql(self):
         # REQ-266, REQ-267: raw SQL passed to Stage 2 receives the same governance
         # as a GraphQL-compiled query.
         raw_sql = 'SELECT "id", "amount", "region" FROM "public"."orders"'
@@ -748,7 +748,7 @@ class TestStage2AllClientPaths:
             "REQ-266: row cap must be injected by Stage 2 regardless of client path"
         )
 
-    def test_stage2_governance_identical_for_graphql_vs_raw_sql(self):
+    async def test_stage2_governance_identical_for_graphql_vs_raw_sql(self):
         # REQ-266: same SQL from any client path must produce identical governed SQL.
         sql = 'SELECT "id", "region" FROM "public"."orders"'
         gov = GovernanceContext(

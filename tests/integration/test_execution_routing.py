@@ -33,21 +33,13 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 # ---------------------------------------------------------------------------
 
 
-def _make_source_types(**kwargs: str) -> dict[str, str]:
-    return kwargs
-
-
-def _make_dialects(**kwargs: str) -> dict[str, str]:
-    return kwargs
-
-
 # ---------------------------------------------------------------------------
 # REQ-027, REQ-028, REQ-030, REQ-031, REQ-552: decide_route
 # ---------------------------------------------------------------------------
 
 
 class TestDecideRoute:
-    def test_single_pg_source_routes_direct(self):
+    async def test_single_pg_source_routes_direct(self):
         # REQ-027: single RDBMS source with direct driver routes DIRECT
         from provisa.transpiler.router import Route, decide_route
 
@@ -59,7 +51,7 @@ class TestDecideRoute:
         assert result.route == Route.DIRECT
         assert result.source_id == "sales-pg"
 
-    def test_multi_source_routes_trino(self):
+    async def test_multi_source_routes_trino(self):
         # REQ-028: cross-source queries route to Trino
         from provisa.transpiler.router import Route, decide_route
 
@@ -71,7 +63,7 @@ class TestDecideRoute:
         assert result.route == Route.TRINO
         assert result.source_id is None
 
-    def test_steward_override_trino(self):
+    async def test_steward_override_trino(self):
         # REQ-030: steward override forces Trino even for a single RDBMS source
         from provisa.transpiler.router import Route, decide_route
 
@@ -83,7 +75,7 @@ class TestDecideRoute:
         )
         assert result.route == Route.TRINO
 
-    def test_steward_override_direct(self):
+    async def test_steward_override_direct(self):
         # REQ-030: steward can force DIRECT on single RDBMS source
         from provisa.transpiler.router import Route, decide_route
 
@@ -95,7 +87,7 @@ class TestDecideRoute:
         )
         assert result.route == Route.DIRECT
 
-    def test_mutation_always_direct(self):
+    async def test_mutation_always_direct(self):
         # REQ-031: DB mutations always route DIRECT, never Trino
         from provisa.transpiler.router import Route, decide_route
 
@@ -108,7 +100,7 @@ class TestDecideRoute:
         assert result.route == Route.DIRECT
         assert "mutation" in result.reason
 
-    def test_virtual_source_routes_trino(self):
+    async def test_virtual_source_routes_trino(self):
         # REQ-028: NoSQL/virtual sources always route through Trino
         from provisa.transpiler.router import Route, decide_route
 
@@ -119,7 +111,7 @@ class TestDecideRoute:
         )
         assert result.route == Route.TRINO
 
-    def test_api_source_routes_api(self):
+    async def test_api_source_routes_api(self):
         # REQ-027: openapi sources route through API caller pipeline
         from provisa.transpiler.router import Route, decide_route
 
@@ -130,7 +122,7 @@ class TestDecideRoute:
         )
         assert result.route == Route.API
 
-    def test_cross_source_type_coercion_routes_trino(self):
+    async def test_cross_source_type_coercion_routes_trino(self):
         # REQ-552: cross-source JOINs across differing native types route Trino
         from provisa.transpiler.router import Route, decide_route
 
@@ -141,7 +133,7 @@ class TestDecideRoute:
         )
         assert result.route == Route.TRINO
 
-    def test_colocated_sources_route_direct(self):
+    async def test_colocated_sources_route_direct(self):
         # REQ-027: two sources on the same physical DB DSN route DIRECT
         from provisa.transpiler.router import Route, decide_route
 
@@ -161,7 +153,7 @@ class TestDecideRoute:
 
 
 class TestRedirectParams:
-    def test_build_redirect_params_force_redirect(self):
+    async def test_build_redirect_params_force_redirect(self):
         # REQ-029: X-Provisa-Redirect: true forces redirect regardless of row count
         from provisa.api.data.endpoint import _build_redirect_params
 
@@ -169,12 +161,10 @@ class TestRedirectParams:
         directives.redirect_format = None
         directives.redirect_threshold = None
 
-        redirect_format, effective_threshold, force_redirect = _build_redirect_params(
-            "true", None, None, directives
-        )
+        _, _, force_redirect = _build_redirect_params("true", None, None, directives)
         assert force_redirect is True
 
-    def test_build_redirect_params_threshold_header(self):
+    async def test_build_redirect_params_threshold_header(self):
         # REQ-029: X-Provisa-Redirect-Threshold header sets effective_threshold
         from provisa.api.data.endpoint import _build_redirect_params
 
@@ -188,7 +178,7 @@ class TestRedirectParams:
         assert effective_threshold == 1000
         assert force_redirect is False
 
-    def test_build_redirect_params_format_without_threshold_forces_redirect(self):
+    async def test_build_redirect_params_format_without_threshold_forces_redirect(self):
         # REQ-029: redirect_format without threshold implies force_redirect
         from provisa.api.data.endpoint import _build_redirect_params
 
@@ -196,7 +186,7 @@ class TestRedirectParams:
         directives.redirect_format = None
         directives.redirect_threshold = None
 
-        redirect_format, effective_threshold, force_redirect = _build_redirect_params(
+        redirect_format, _, force_redirect = _build_redirect_params(
             None, None, "application/vnd.apache.parquet", directives
         )
         assert force_redirect is True
@@ -209,7 +199,7 @@ class TestRedirectParams:
 
 
 class TestInjectProbeLimit:
-    def test_inject_no_existing_limit(self):
+    async def test_inject_no_existing_limit(self):
         # REQ-397: inject LIMIT when query has none
         from provisa.api.data.endpoint import _inject_probe_limit
 
@@ -217,7 +207,7 @@ class TestInjectProbeLimit:
         result = _inject_probe_limit(sql, 500)
         assert "LIMIT 500" in result
 
-    def test_inject_tightens_existing_literal_limit(self):
+    async def test_inject_tightens_existing_literal_limit(self):
         # REQ-397: probe limit tightens existing literal LIMIT
         from provisa.api.data.endpoint import _inject_probe_limit
 
@@ -226,7 +216,7 @@ class TestInjectProbeLimit:
         assert "LIMIT 500" in result
         assert "LIMIT 2000" not in result
 
-    def test_inject_respects_smaller_existing_limit(self):
+    async def test_inject_respects_smaller_existing_limit(self):
         # REQ-397: probe limit leaves existing LIMIT when it is already smaller
         from provisa.api.data.endpoint import _inject_probe_limit
 
@@ -234,7 +224,7 @@ class TestInjectProbeLimit:
         result = _inject_probe_limit(sql, 500)
         assert "LIMIT 100" in result
 
-    def test_inject_skips_parameterized_limit(self):
+    async def test_inject_skips_parameterized_limit(self):
         # REQ-397: parameterized LIMIT is user-supplied and must not be overridden
         from provisa.api.data.endpoint import _inject_probe_limit
 
@@ -250,7 +240,7 @@ class TestInjectProbeLimit:
 
 
 class TestCacheHeaders:
-    def test_cache_miss_header(self):
+    async def test_cache_miss_header(self):
         # REQ-536: responses include X-Provisa-Cache: MISS when not cached
         from provisa.cache.middleware import build_cache_headers
 
@@ -258,7 +248,7 @@ class TestCacheHeaders:
         assert headers["X-Provisa-Cache"] == "MISS"
         assert "X-Provisa-Cache-Age" not in headers
 
-    def test_cache_hit_header(self):
+    async def test_cache_hit_header(self):
         # REQ-536: responses include X-Provisa-Cache: HIT and X-Provisa-Cache-Age on HIT
         from provisa.cache.middleware import build_cache_headers
         from provisa.cache.store import CachedResult
@@ -276,7 +266,7 @@ class TestCacheHeaders:
 
 
 class TestCacheKey:
-    def test_different_roles_produce_different_keys(self):
+    async def test_different_roles_produce_different_keys(self):
         # REQ-544: cache keys are role-partitioned
         from provisa.cache.key import cache_key
 
@@ -284,7 +274,7 @@ class TestCacheKey:
         k2 = cache_key("SELECT 1", [], "viewer", {})
         assert k1 != k2
 
-    def test_different_rls_produce_different_keys(self):
+    async def test_different_rls_produce_different_keys(self):
         # REQ-544: RLS filter values are included in cache key
         from provisa.cache.key import cache_key
 
@@ -292,14 +282,14 @@ class TestCacheKey:
         k2 = cache_key("SELECT 1", [], "admin", {1: "region = 'eu-west'"})
         assert k1 != k2
 
-    def test_empty_rls_rule_raises(self):
+    async def test_empty_rls_rule_raises(self):
         # REQ-544: empty RLS rule expression raises ValueError (security defect detection)
         from provisa.cache.key import cache_key
 
         with pytest.raises(ValueError, match="empty filter expression"):
             cache_key("SELECT 1", [], "admin", {1: ""})
 
-    def test_same_inputs_stable_key(self):
+    async def test_same_inputs_stable_key(self):
         # REQ-544: cache key is deterministic for identical inputs
         from provisa.cache.key import cache_key
 
@@ -307,7 +297,7 @@ class TestCacheKey:
         k2 = cache_key("SELECT 1", [42], "admin", {1: "x = 1"})
         assert k1 == k2
 
-    def test_table_level_ttl_resolution(self):
+    async def test_table_level_ttl_resolution(self):
         # REQ-544: table-level TTL overrides source-level and global TTL
         from provisa.cache.policy import CachePolicy, resolve_policy
 
@@ -322,7 +312,7 @@ class TestCacheKey:
         assert policy == CachePolicy.TTL
         assert ttl == 60  # table-level wins
 
-    def test_source_level_ttl_overrides_global(self):
+    async def test_source_level_ttl_overrides_global(self):
         # REQ-544: source-level TTL overrides global default when no table-level TTL
         from provisa.cache.policy import CachePolicy, resolve_policy
 
@@ -337,11 +327,11 @@ class TestCacheKey:
         assert policy == CachePolicy.TTL
         assert ttl == 120
 
-    def test_source_cache_disabled_overrides_table_ttl(self):
+    async def test_source_cache_disabled_overrides_table_ttl(self):
         # REQ-544: source cache_enabled=false disables all caching for that source
         from provisa.cache.policy import CachePolicy, resolve_policy
 
-        policy, ttl = resolve_policy(
+        policy, _ = resolve_policy(
             stable_id="q1",
             cache_ttl=None,
             default_ttl=300,
@@ -357,7 +347,7 @@ class TestCacheKey:
 
 
 class TestTypeCoercedRouting:
-    def test_mysql_source_routes_trino_with_json_extract(self):
+    async def test_mysql_source_routes_trino_with_json_extract(self):
         # REQ-552: MySQL source with JSON extract routes Trino (not JSON-safe for direct)
         from provisa.transpiler.router import Route, decide_route
 
@@ -369,7 +359,7 @@ class TestTypeCoercedRouting:
         )
         assert result.route == Route.TRINO
 
-    def test_postgres_source_with_json_extract_routes_direct(self):
+    async def test_postgres_source_with_json_extract_routes_direct(self):
         # REQ-552: Postgres supports ->> natively; json_extract does not force Trino
         from provisa.transpiler.router import Route, decide_route
 
@@ -388,17 +378,15 @@ class TestTypeCoercedRouting:
 
 
 class TestTenantCachePrefix:
-    def test_noop_store_always_misses(self):
+    async def test_noop_store_always_misses(self):
         # REQ-595: NoopCacheStore never returns cached results (caching disabled)
-        import asyncio
-
         from provisa.cache.store import NoopCacheStore
 
         store = NoopCacheStore()
-        result = asyncio.run(store.get("any-key"))
+        result = await store.get("any-key")
         assert result is None
 
-    def test_cache_table_name_stable(self):
+    async def test_cache_table_name_stable(self):
         # REQ-595: cache table name is a stable SHA-256 hash of source+operation+args
         from provisa.api_source.trino_cache import cache_table_name
 
@@ -407,7 +395,7 @@ class TestTenantCachePrefix:
         assert t1 == t2
         assert t1.startswith("r_")
 
-    def test_cache_table_name_differs_by_source(self):
+    async def test_cache_table_name_differs_by_source(self):
         # REQ-595: different source IDs produce different cache table names
         from provisa.api_source.trino_cache import cache_table_name
 
@@ -415,7 +403,7 @@ class TestTenantCachePrefix:
         t2 = cache_table_name("source-b", "my_table", {})
         assert t1 != t2
 
-    def test_cache_table_name_differs_by_args(self):
+    async def test_cache_table_name_differs_by_args(self):
         # REQ-595: different native args produce different cache table names
         from provisa.api_source.trino_cache import cache_table_name
 
@@ -430,7 +418,7 @@ class TestTenantCachePrefix:
 
 
 class TestMVLifecycle:
-    def test_stale_mv_not_in_fresh_list(self):
+    async def test_stale_mv_not_in_fresh_list(self):
         # REQ-234: STALE MV is excluded from get_fresh() so queries fall back to live source
         from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
         from provisa.mv.registry import MVRegistry
@@ -453,7 +441,7 @@ class TestMVLifecycle:
         reg.register(mv)
         assert reg.get_fresh() == []
 
-    def test_fresh_mv_within_ttl_in_fresh_list(self):
+    async def test_fresh_mv_within_ttl_in_fresh_list(self):
         # REQ-235: FRESH MV within TTL is returned by get_fresh() for rewriter
         from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
         from provisa.mv.registry import MVRegistry
@@ -480,7 +468,7 @@ class TestMVLifecycle:
         assert len(fresh) == 1
         assert fresh[0].id == "mv-fresh"
 
-    def test_fresh_mv_past_ttl_excluded(self):
+    async def test_fresh_mv_past_ttl_excluded(self):
         # REQ-235: FRESH MV whose TTL has elapsed is excluded (prevents stale reads)
         from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
         from provisa.mv.registry import MVRegistry
@@ -505,7 +493,7 @@ class TestMVLifecycle:
         reg.register(mv)
         assert reg.get_fresh() == []
 
-    def test_unregister_removes_mv(self):
+    async def test_unregister_removes_mv(self):
         # REQ-234: unregistering MV removes it from registry (storage reclamation)
         from provisa.mv.models import MVDefinition
         from provisa.mv.registry import MVRegistry
@@ -522,7 +510,7 @@ class TestMVLifecycle:
         reg.unregister("mv-drop")
         assert reg.get("mv-drop") is None
 
-    def test_mark_stale_by_table(self):
+    async def test_mark_stale_by_table(self):
         # REQ-234: changing a source table marks dependent MVs STALE
         from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
         from provisa.mv.registry import MVRegistry
@@ -550,7 +538,7 @@ class TestMVLifecycle:
         assert mv_ref is not None
         assert mv_ref.status == MVStatus.STALE
 
-    def test_mv_size_guard_status(self):
+    async def test_mv_size_guard_status(self):
         # REQ-235: MVs with SKIPPED_SIZE status are excluded from get_fresh()
         from provisa.mv.models import MVDefinition, MVStatus
         from provisa.mv.registry import MVRegistry
@@ -575,7 +563,7 @@ class TestMVLifecycle:
 
 
 class TestFederationHints:
-    def test_table_known_live_returns_false_on_miss(self):
+    async def test_table_known_live_returns_false_on_miss(self):
         # REQ-280: table_known_live is False when cache has no entry
         from provisa.api_source.trino_cache import (
             CacheLocation,
@@ -587,7 +575,7 @@ class TestFederationHints:
         _TABLE_EXISTS_CACHE.pop((loc.catalog, loc.schema, "nonexistent_table"), None)
         assert table_known_live(loc, "nonexistent_table") is False
 
-    def test_table_known_live_returns_true_within_ttl(self):
+    async def test_table_known_live_returns_true_within_ttl(self):
         # REQ-280: table_known_live is True when in-process cache entry is valid
         import time
 
@@ -602,7 +590,7 @@ class TestFederationHints:
         assert table_known_live(loc, "live_table") is True
         _TABLE_EXISTS_CACHE.pop(("test_c", "test_s", "live_table"), None)
 
-    def test_table_known_live_returns_false_after_expiry(self):
+    async def test_table_known_live_returns_false_after_expiry(self):
         # REQ-280: expired in-process cache entry is treated as a miss
         import time
 
@@ -617,7 +605,7 @@ class TestFederationHints:
         assert table_known_live(loc, "old_table") is False
         _TABLE_EXISTS_CACHE.pop(("test_c2", "test_s2", "old_table"), None)
 
-    def test_cache_location_postgresql_backend(self):
+    async def test_cache_location_postgresql_backend(self):
         # REQ-275: cache_location builds correct CacheLocation for PG-backed catalog
         from provisa.api_source.trino_cache import cache_location
 
@@ -626,7 +614,7 @@ class TestFederationHints:
         assert loc.schema == "api_cache"
         assert loc.backend == "postgresql"
 
-    def test_cache_location_iceberg_backend(self):
+    async def test_cache_location_iceberg_backend(self):
         # REQ-275: cache_location with "results" catalog uses iceberg backend
         from provisa.api_source.trino_cache import cache_location
 
@@ -634,7 +622,7 @@ class TestFederationHints:
         assert loc.catalog == "results"
         assert loc.backend == "iceberg"
 
-    def test_rewrite_from_cache_replaces_root_table(self):
+    async def test_rewrite_from_cache_replaces_root_table(self):
         # REQ-276: rewrite_from_cache rewrites FROM clause to point at cache table
         from provisa.api_source.trino_cache import CacheLocation, rewrite_from_cache
 
@@ -644,7 +632,7 @@ class TestFederationHints:
         assert "r_abc123" in result
         assert "api_cache" in result
 
-    def test_rewrite_all_from_cache_rewrites_all_tables(self):
+    async def test_rewrite_all_from_cache_rewrites_all_tables(self):
         # REQ-277, REQ-278: rewrite_all_from_cache handles multiple table references
         from provisa.api_source.trino_cache import CacheLocation, rewrite_all_from_cache
 
@@ -661,7 +649,7 @@ class TestFederationHints:
         result = rewrite_all_from_cache(sql, rewrites)
         assert "r_orders_hash" in result or "r_cust_hash" in result
 
-    def test_parse_accept_header(self):
+    async def test_parse_accept_header(self):
         # REQ-279: _parse_accept returns format name from MIME type
         from provisa.api.data.endpoint import _parse_accept
 
@@ -671,13 +659,13 @@ class TestFederationHints:
         assert _parse_accept(None) == "json"
         assert _parse_accept("application/vnd.apache.arrow.stream") == "arrow"
 
-    def test_detect_introspection(self):
+    async def test_detect_introspection(self):
         # REQ-281: _detect_introspection identifies pure introspection queries
         from graphql import build_schema, parse
 
         from provisa.api.data.endpoint import _detect_introspection
 
-        schema = build_schema("type Query { _dummy: String }")
+        build_schema("type Query { _dummy: String }")
 
         introspection_doc = parse("{ __schema { types { name } } }")
         assert _detect_introspection(introspection_doc) is True
@@ -685,7 +673,7 @@ class TestFederationHints:
         data_doc = parse("{ __typename }")
         assert _detect_introspection(data_doc) is True
 
-    def test_mv_rewrite_skips_stale_mv(self):
+    async def test_mv_rewrite_skips_stale_mv(self):
         # REQ-275: rewrite_if_mv_match skips MV when no fresh MVs provided
         from provisa.compiler.sql_gen import CompiledQuery
         from provisa.mv.rewriter import rewrite_if_mv_match
@@ -701,7 +689,7 @@ class TestFederationHints:
         # No MV match — returned unchanged
         assert result.sql == compiled.sql
 
-    def test_mv_rewrite_applies_fresh_mv(self):
+    async def test_mv_rewrite_applies_fresh_mv(self):
         # REQ-276: rewrite_if_mv_match rewrites SQL when a matching fresh MV exists
         import time
 

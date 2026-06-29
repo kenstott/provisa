@@ -45,20 +45,20 @@ class _DockerServiceManager:
             return
 
         needed: set[str] = set(_CORE_SERVICES)
-        needs_dev = False
+        needs_test_profile = False
         for item in session.items:
             for marker, services in _MARKER_SERVICES.items():
                 if item.get_closest_marker(marker):
                     needed.update(services)
-                    needs_dev = True
+                    needs_test_profile = True
 
-        cmd = ["docker", "compose", "-f", _CORE_COMPOSE]
-        if needs_dev:
-            cmd += ["-f", _OBS_COMPOSE, "-f", _DEV_COMPOSE]
+        cmd = ["docker", "compose", "-f", _CORE_COMPOSE, "-f", _OBS_COMPOSE, "-f", _DEV_COMPOSE]
+        if needs_test_profile:
+            cmd += ["--profile", "test"]
         cmd += ["up", "-d", "--wait"] + sorted(needed)
         subprocess.run(cmd, cwd=_REPO_ROOT, check=True)
 
-    def pytest_sessionfinish(self, session, exitstatus):
+    def pytest_sessionfinish(self, session, exitstatus):  # pyright: ignore
         if os.environ.get("PYTEST_DOCKER_DOWN"):
             subprocess.run(
                 [
@@ -70,6 +70,8 @@ class _DockerServiceManager:
                     _OBS_COMPOSE,
                     "-f",
                     _DEV_COMPOSE,
+                    "--profile",
+                    "test",
                     "down",
                 ],
                 cwd=_REPO_ROOT,
@@ -89,7 +91,7 @@ def pytest_configure(config):
     )
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(config, items):  # pyright: ignore
     for item in items:
         if item.get_closest_marker("requires_provisa_server"):
             item.fixturenames.insert(0, "provisa_server")
@@ -98,7 +100,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
-def _reset_naming_convention():
+def _reset_naming_convention():  # pyright: ignore
     """Reset global naming convention to defaults after each test.
 
     Tests that call _naming.configure() mutate module-level state. Without
@@ -129,7 +131,7 @@ def _tcp_reachable(host: str, port: int) -> bool:
         return False
 
 
-def _pgbouncer_auth_ok(host: str, port: int) -> bool:
+def _pgbouncer_auth_ok(host: str, port: int) -> bool:  # pyright: ignore
     import asyncio
 
     async def _try():
@@ -150,7 +152,7 @@ def _pgbouncer_auth_ok(host: str, port: int) -> bool:
     return asyncio.run(_try())
 
 
-def _trino_catalog_exists(catalog: str) -> bool:
+def _trino_catalog_exists(catalog: str) -> bool:  # pyright: ignore
     import trino
 
     try:
@@ -174,7 +176,7 @@ def _free_port() -> int:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _wait_for_trino():
+def _wait_for_trino():  # pyright: ignore
     """Block until Trino core catalogs are ready or 6 minutes elapse."""
     host = os.environ.get("TRINO_HOST", "localhost")
     port = int(os.environ.get("TRINO_PORT", "8080"))
@@ -197,7 +199,7 @@ def _wait_for_trino():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _reserve_flight_port():
+def _reserve_flight_port():  # pyright: ignore
     """Allocate a free port for the Arrow Flight server before any test starts.
 
     Multiple integration tests spin up an in-process FastAPI app via
@@ -311,10 +313,23 @@ async def graphql_client(docker_postgres):
         max_size=3,
         org_id=org_id,
     )
-    from unittest.mock import AsyncMock
+    from unittest.mock import AsyncMock, MagicMock
 
+    from provisa.executor.pool import SourcePool
+
+    _sp = MagicMock(spec=SourcePool)
+    _sp.has.return_value = False
+    _sp.get.side_effect = KeyError
+    _sp.dialect_for.return_value = None
+    _sp.source_ids = []
+    _sp.execute = AsyncMock(return_value=MagicMock(rows=[]))
+    _sp.execute_ddl = AsyncMock()
+    _sp.add = AsyncMock()
+    _sp.remove = AsyncMock()
+    _sp.close_all = AsyncMock()
+    _sp.close = AsyncMock()
     app_mod.state.pg_pool = pool
-    app_mod.state.source_pools = AsyncMock()
+    app_mod.state.source_pools = _sp
 
     transport = ASGITransport(app=the_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -325,16 +340,28 @@ async def graphql_client(docker_postgres):
 
 
 @pytest.fixture(scope="session")
-def test_client(docker_postgres):
+def test_client(docker_postgres):  # pyright: ignore[reportUnusedParameter]
     """Synchronous ASGI test client for in-process Provisa app."""
-    from unittest.mock import AsyncMock
+    from unittest.mock import AsyncMock, MagicMock
 
     import provisa.api.app as app_mod
     from provisa.api.app import create_app
+    from provisa.executor.pool import SourcePool
     from starlette.testclient import TestClient
 
+    _sp = MagicMock(spec=SourcePool)
+    _sp.has.return_value = False
+    _sp.get.side_effect = KeyError
+    _sp.dialect_for.return_value = None
+    _sp.source_ids = []
+    _sp.execute = AsyncMock(return_value=MagicMock(rows=[]))
+    _sp.execute_ddl = AsyncMock()
+    _sp.add = AsyncMock()
+    _sp.remove = AsyncMock()
+    _sp.close_all = AsyncMock()
+    _sp.close = AsyncMock()
     the_app = create_app()
-    app_mod.state.source_pools = AsyncMock()
+    app_mod.state.source_pools = _sp
     with TestClient(the_app, raise_server_exceptions=False) as client:
         yield client
     app_mod.state.pg_pool = None

@@ -28,14 +28,14 @@ def kafka_bootstrap():
 class TestKafkaTopicRead:
     pytestmark = [pytest.mark.requires_kafka]
 
-    def test_trino_kafka_connector_available(self, trino_conn):
+    async def test_trino_kafka_connector_available(self, trino_conn):
         """Verify the Kafka connector is configured in Trino."""
         cursor = trino_conn.cursor()
         cursor.execute("SHOW CATALOGS")
         catalogs = [row[0] for row in cursor.fetchall()]
         assert "support_kafka" in catalogs, "Kafka catalog not configured in Trino"
 
-    def test_kafka_topic_readable_as_table(self, trino_conn):
+    async def test_kafka_topic_readable_as_table(self, trino_conn):
         """Read from a Kafka topic table via Trino."""
         cursor = trino_conn.cursor()
         cursor.execute("SHOW TABLES FROM support_kafka.default")
@@ -50,7 +50,7 @@ class TestKafkaTopicRead:
         # Should return rows (may be empty if no messages yet)
         assert isinstance(rows, list)
 
-    def test_kafka_topic_has_columns(self, trino_conn):
+    async def test_kafka_topic_has_columns(self, trino_conn):
         """Kafka topic tables should have schema-defined columns."""
         cursor = trino_conn.cursor()
         cursor.execute("SHOW TABLES FROM support_kafka.default")
@@ -72,7 +72,7 @@ class TestKafkaTopicRead:
 class TestKafkaMessageContent:
     pytestmark = [pytest.mark.requires_kafka]
 
-    def test_kafka_messages_have_typed_columns(self, trino_conn):
+    async def test_kafka_messages_have_typed_columns(self, trino_conn):
         """When a schema is defined, messages have typed columns (not just raw bytes)."""
         cursor = trino_conn.cursor()
         cursor.execute("SHOW TABLES FROM support_kafka.default")

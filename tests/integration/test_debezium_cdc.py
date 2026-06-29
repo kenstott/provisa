@@ -65,7 +65,10 @@ def _register_connector(pg_host: str, pg_port: int, pg_user: str, pg_password: s
             "plugin.name": "pgoutput",
             "slot.name": f"debezium_test_{uuid.uuid4().hex[:8]}",
             "publication.name": f"debezium_pub_{uuid.uuid4().hex[:8]}",
-            "snapshot.mode": "initial",
+            # "always" forces a fresh snapshot on every registration, bypassing any stale
+            # Kafka Connect offsets that reference a prior slot's LSN (which would cause
+            # the streaming phase to start with a null WAL resume position).
+            "snapshot.mode": "always",
             "publication.autocreate.mode": "filtered",
             "decimal.handling.mode": "double",
             "key.converter": "org.apache.kafka.connect.json.JsonConverter",
@@ -75,7 +78,15 @@ def _register_connector(pg_host: str, pg_port: int, pg_user: str, pg_password: s
         },
     }
 
-    # Delete existing connector if present
+    # Stop and reset offsets before deleting so the next registration starts clean.
+    # Without this, Kafka Connect retains the prior run's WAL LSN; the new slot
+    # (which starts at the current WAL) cannot resume from that old position,
+    # causing the streaming phase to exit immediately with a null WAL resume.
+    r_check = httpx.get(f"{DEBEZIUM_URL}/connectors/{CONNECTOR_NAME}", timeout=5)
+    if r_check.status_code == 200:
+        httpx.put(f"{DEBEZIUM_URL}/connectors/{CONNECTOR_NAME}/stop", timeout=10)
+        time.sleep(2)
+        httpx.delete(f"{DEBEZIUM_URL}/connectors/{CONNECTOR_NAME}/offsets", timeout=10)
     httpx.delete(f"{DEBEZIUM_URL}/connectors/{CONNECTOR_NAME}", timeout=5)
     time.sleep(1)
 
@@ -137,37 +148,7 @@ async def _collect_events(
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
-def debezium_connector(pg_pool):
-    """Register the Debezium connector once per module and tear it down after."""
-    _ = pg_pool
-    pg_host = os.environ.get("PG_HOST", "localhost")
-    # Inside docker-compose the connector talks to the internal PG hostname,
-    # but when running tests from the host we tell Debezium to reach PG
-    # via its service name (or override via env).
-    debezium_pg_host = os.environ.get("DEBEZIUM_PG_HOST", "postgres")
-    debezium_pg_port = int(os.environ.get("DEBEZIUM_PG_PORT", "5432"))
-
-    _register_connector(
-        pg_host=debezium_pg_host,
-        pg_port=debezium_pg_port,
-        pg_user=os.environ.get("PG_USER", "provisa"),
-        pg_password=os.environ.get("PG_PASSWORD", "provisa"),
-    )
-
-    try:
-        _wait_connector_running(timeout=60)
-    except RuntimeError as exc:
-        pytest.skip(str(exc))
-
-    yield
-
-    # Cleanup: delete the connector
-    httpx.delete(f"{DEBEZIUM_URL}/connectors/{CONNECTOR_NAME}", timeout=5)
-    time.sleep(1)
-
-    # Drop inactive replication slots to avoid exhausting max_replication_slots
-    # (set to 10 in docker-compose) across repeated test runs.
+def _drop_inactive_replication_slots() -> None:
     import subprocess
 
     pg_host = os.environ.get("PG_HOST", "localhost")
@@ -185,6 +166,43 @@ def debezium_connector(pg_pool):
         capture_output=True,
         timeout=10,
     )
+
+
+@pytest.fixture(scope="module")
+def debezium_connector(pg_pool):
+    """Register the Debezium connector once per module and tear it down after."""
+    _ = pg_pool
+    # Drop any inactive slots left by previous runs whose teardown was skipped.
+    _drop_inactive_replication_slots()
+
+    # Inside docker-compose the connector talks to the internal PG hostname,
+    # but when running tests from the host we tell Debezium to reach PG
+    # via its service name (or override via env).
+    debezium_pg_host = os.environ.get("DEBEZIUM_PG_HOST", "postgres")
+    debezium_pg_port = int(os.environ.get("DEBEZIUM_PG_PORT", "5432"))
+
+    _register_connector(
+        pg_host=debezium_pg_host,
+        pg_port=debezium_pg_port,
+        pg_user=os.environ.get("PG_USER", "provisa"),
+        pg_password=os.environ.get("PG_PASSWORD", "provisa"),
+    )
+
+    try:
+        _wait_connector_running(timeout=120)
+    except RuntimeError as exc:
+        pytest.skip(str(exc))
+
+    yield
+
+    # Stop connector and reset offsets before deleting so the next run starts clean.
+    httpx.put(f"{DEBEZIUM_URL}/connectors/{CONNECTOR_NAME}/stop", timeout=10)
+    time.sleep(2)
+    httpx.delete(f"{DEBEZIUM_URL}/connectors/{CONNECTOR_NAME}/offsets", timeout=10)
+    httpx.delete(f"{DEBEZIUM_URL}/connectors/{CONNECTOR_NAME}", timeout=5)
+    time.sleep(1)
+
+    _drop_inactive_replication_slots()
 
 
 @pytest.fixture(scope="module")
@@ -206,12 +224,12 @@ def provider():
 class TestDebeziumConnectorRegistration:
     pytestmark = [pytest.mark.requires_debezium]
 
-    def test_debezium_connect_reachable(self):
+    async def test_debezium_connect_reachable(self):
         """Debezium Connect REST API is reachable."""
         r = httpx.get(f"{DEBEZIUM_URL}/connectors", timeout=5)
         assert r.status_code == 200
 
-    def test_connector_registered_and_running(self, debezium_connector):
+    async def test_connector_registered_and_running(self, debezium_connector):
         """Connector is registered and in RUNNING state."""
         _ = debezium_connector
         r = httpx.get(
@@ -386,7 +404,7 @@ class TestDebeziumProviderLifecycle:
         assert result2 is None
         assert p._consumer is None
 
-    def test_topic_name_matches_debezium_convention(self, provider):
+    async def test_topic_name_matches_debezium_convention(self, provider):
         """Topic name follows {prefix}.{schema}.{table} convention for PostgreSQL."""
         topic = provider._build_topic("orders")
         # PostgreSQL Debezium connector uses schema name (public) not database name
