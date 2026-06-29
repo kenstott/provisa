@@ -112,8 +112,6 @@ def stack_first_start(shared_data):
     Removing the bucket up front guarantees that any later assertion proves the
     startup sequence (not a leftover from a previous run) created it.
     """
-    _require_integration()
-
     settings = _minio_settings()
     shared_data["minio_settings"] = settings
 
@@ -139,21 +137,28 @@ def stack_first_start(shared_data):
 
 
 @when("the startup sequence runs")
-async def run_startup_sequence(shared_data):
+def run_startup_sequence(shared_data):
     """Run the real application startup (lifespan) which bootstraps storage."""
-    _require_integration()
+    import asyncio as _asyncio
 
     os.environ.setdefault("PG_PASSWORD", "provisa")
+
+    minio = shared_data["minio_settings"]
+    scheme = "https" if minio["secure"] else "http"
+    os.environ.setdefault("PROVISA_REDIRECT_ENDPOINT", f"{scheme}://{minio['endpoint']}")
+    os.environ.setdefault("PROVISA_REDIRECT_ACCESS_KEY", minio["access_key"])
+    os.environ.setdefault("PROVISA_REDIRECT_SECRET_KEY", minio["secret_key"])
+    os.environ.setdefault("PROVISA_REDIRECT_BUCKET", minio["bucket"])
 
     from provisa.api.app import create_app
 
     app = create_app()
 
-    # Entering the lifespan context executes the application's startup hooks,
-    # which include MinIO results-bucket provisioning.
-    async with app.router.lifespan_context(app):
-        shared_data["startup_completed"] = True
+    async def _run():
+        async with app.router.lifespan_context(app):
+            shared_data["startup_completed"] = True
 
+    _asyncio.run(_run())
     assert shared_data.get("startup_completed") is True, "startup lifespan did not complete"
 
 
@@ -165,8 +170,6 @@ async def run_startup_sequence(shared_data):
 @then("the MinIO results bucket is created automatically without manual intervention")
 def results_bucket_created(shared_data):
     """Verify the startup sequence created the results bucket."""
-    _require_integration()
-
     settings = shared_data["minio_settings"]
     client = _minio_client(settings)
     bucket = settings["bucket"]
@@ -244,25 +247,31 @@ def call_whitelisted_and_protected(shared_data):
 
     os.environ.setdefault("PG_PASSWORD", "provisa")
 
-    from provisa.api.app import create_app
+    from provisa.api.app import state as _state, create_app
+
+    # Clear stale module state left by previous tests that ran a full lifespan.
+    # The pg_pool from a prior test is closed; auth_config must be reset so this
+    # fresh app starts with no assumed auth configuration.
+    _state.pg_pool = None
+    _state.auth_config = None
+    _state.auth_middleware_active = False
 
     app = create_app()
 
     async def _run():
-        async with app.router.lifespan_context(app):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                shared_data["health_resp"] = await client.get("/health", headers={})
-                shared_data["health_head_resp"] = await client.head("/health", headers={})
-                shared_data["setup_resp"] = await client.get("/setup/status", headers={})
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            shared_data["health_resp"] = await client.get("/health", headers={})
+            shared_data["health_head_resp"] = await client.head("/health", headers={})
+            shared_data["setup_resp"] = await client.get("/setup/status", headers={})
 
-                # A non-whitelisted endpoint must be guarded by the bearer
-                # requirement when auth middleware is active.
-                shared_data["protected_resp"] = await client.post(
-                    "/graphql",
-                    json={"query": "{ __typename }"},
-                    headers={},
-                )
+            # A non-whitelisted endpoint must be guarded by the bearer
+            # requirement when auth middleware is active.
+            shared_data["protected_resp"] = await client.post(
+                "/graphql",
+                json={"query": "{ __typename }"},
+                headers={},
+            )
 
         # Capture the middleware state so the Then step can branch correctly.
         from provisa.api.app import state as _app_state

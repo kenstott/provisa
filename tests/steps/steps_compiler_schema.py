@@ -7,17 +7,12 @@
 
 from __future__ import annotations
 
-import os
 import re
-import uuid
 from typing import Any
 
-import pytest
-from pytest_bdd import given, parsers, scenario, then, when
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.sql_gen import build_context, compile_query
 
 
 # ---------------------------------------------------------------------------
@@ -476,7 +471,9 @@ def _make_mongo_discover_schema_input(
 # ---------------------------------------------------------------------------
 
 
-def _make_naming_convention_schema_input(naming_rules: list[dict], role_id: str = "admin") -> SchemaInput:
+def _make_naming_convention_schema_input(
+    naming_rules: list[dict], role_id: str = "admin"
+) -> SchemaInput:
     """
     Build a SchemaInput with the given naming_rules applied, simulating the
     state of Provisa after an admin mutation changes a naming convention.
@@ -589,9 +586,7 @@ def _simulate_introspection_query(schema: Any) -> dict:
         f"Introspection query returned errors: {result.errors}"
     )
     assert result.data is not None, "Introspection query returned no data"
-    assert "__schema" in result.data, (
-        "Introspection result must contain a '__schema' key"
-    )
+    assert "__schema" in result.data, "Introspection result must contain a '__schema' key"
     return result.data
 
 
@@ -653,9 +648,7 @@ _ISO8601_SAMPLES = [
 ]
 
 # Pattern that mirrors what the translator uses internally (ISO 8601 date-time).
-_ISO8601_RE = re.compile(
-    r"'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?'"
-)
+_ISO8601_RE = re.compile(r"'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?'")
 
 
 def _build_cypher_where_with_datetime(dt_string: str = "2024-01-15T00:00:00") -> str:
@@ -663,11 +656,7 @@ def _build_cypher_where_with_datetime(dt_string: str = "2024-01-15T00:00:00") ->
     Return a complete Cypher query whose WHERE clause contains an ISO 8601
     datetime string literal.  The Event node uses a 'created_at' timestamp PK.
     """
-    return (
-        f"MATCH (e:Event) "
-        f"WHERE e.created_at = '{dt_string}' "
-        f"RETURN e.created_at"
-    )
+    return f"MATCH (e:Event) WHERE e.created_at = '{dt_string}' RETURN e.created_at"
 
 
 def _build_cypher_label_map_for_event() -> Any:
@@ -757,7 +746,7 @@ def _make_hasura_default_schema_input() -> SchemaInput:
 
 def _is_snake_case(name: str) -> bool:
     """Return True if name is valid snake_case (lowercase letters, digits, underscores)."""
-    return bool(re.match(r'^[a-z][a-z0-9_]*$', name))
+    return bool(re.match(r"^[a-z][a-z0-9_]*$", name))
 
 
 # ---------------------------------------------------------------------------

@@ -87,8 +87,9 @@ class TestKafkaSourceRegistration:
 
         tables = resp.json().get("data", {}).get("tables", [])
         kafka_tables = [t for t in tables if "kafka" in t.get("sourceId", "").lower()]
-        if not kafka_tables:
-            pytest.fail("No Kafka-backed tables registered")
+        assert kafka_tables, (
+            "No Kafka-backed tables registered — add kafka_sources to sample_config.yaml"
+        )
 
         # Try to query one via the data endpoint
         table_name = kafka_tables[0]["tableName"]

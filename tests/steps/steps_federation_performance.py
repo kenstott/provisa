@@ -394,7 +394,8 @@ def when_the_query_is_compiled(shared_data: dict) -> None:
 
 
 @then(
-    "the comment is stripped and translated to the equivalent Trino session property before forwarding"
+    "the comment is stripped and translated to the equivalent Trino session property before"
+    " forwarding"
 )
 def then_comment_stripped_and_translated_before_forwarding(shared_data: dict) -> None:
     cleaned_sql = shared_data["cleaned_sql"]

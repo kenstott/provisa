@@ -3968,6 +3968,21 @@ def step_given_a_successful_cypher_create_statement_executed_via_the_write_():
 def step_then_the_json_body_includes_an_affected_rows_field_with_the_count():
     pytest.skip("step not implemented: the JSON body includes an affected_rows field with the count")
 
+# REQ-673
+@given("a GQL remote source with count_query configured and a cold Trino cache")
+def step_given_a_gql_remote_source_with_count_query_configured_and_a_cold_t():
+    pytest.skip("step not implemented: a GQL remote source with count_query configured and a cold T")
+
+# REQ-673
+@when("the graph-counts endpoint is called")
+def step_when_the_graph_counts_endpoint_is_called():
+    pytest.skip("step not implemented: the graph-counts endpoint is called")
+
+# REQ-673
+@then("the remote GraphQL API is queried to return node counts instead of returning no count")
+def step_then_the_remote_graphql_api_is_queried_to_return_node_counts_inst():
+    pytest.skip("step not implemented: the remote GraphQL API is queried to return node counts inst")
+
 # REQ-713
 @given("a list of nodes with id, tableLabel, and properties, and edges with start, end, and type")
 def step_given_a_list_of_nodes_with_id_tablelabel_and_properties_and_edges_():
@@ -5062,3 +5077,33 @@ def step_and_relationship_count_exactly_equals_e():
 @then("all node counts are > 0")
 def step_and_all_node_counts_are_0():
     pytest.skip("step not implemented: all node counts are > 0")
+
+# REQ-798
+@given("a Cypher CREATE/DELETE/UPDATE mutation")
+def step_given_a_cypher_create_delete_update_mutation():
+    pytest.skip("step not implemented: a Cypher CREATE/DELETE/UPDATE mutation")
+
+# REQ-798
+@when("the mutation is transpiled through WriteTranslator and wrapped in MutationResult")
+def step_when_the_mutation_is_transpiled_through_writetranslator_and_wrapp():
+    pytest.skip("step not implemented: the mutation is transpiled through WriteTranslator and wrapp")
+
+# REQ-798
+@then("RLS is injected via inject_rls_into_mutation")
+def step_then_rls_is_injected_via_inject_rls_into_mutation():
+    pytest.skip("step not implemented: RLS is injected via inject_rls_into_mutation")
+
+# REQ-798
+@then("the mutation is transpiled to the target dialect")
+def step_and_the_mutation_is_transpiled_to_the_target_dialect():
+    pytest.skip("step not implemented: the mutation is transpiled to the target dialect")
+
+# REQ-798
+@then("the mutation is executed via execute_direct")
+def step_and_the_mutation_is_executed_via_execute_direct():
+    pytest.skip("step not implemented: the mutation is executed via execute_direct")
+
+# REQ-798
+@then("all post-mutation hooks fire (cache invalidation, MV stale marking, Kafka events, hot-table reload)")
+def step_and_all_post_mutation_hooks_fire_cache_invalidation_mv_stale_mar():
+    pytest.skip("step not implemented: all post-mutation hooks fire (cache invalidation, MV stale m")

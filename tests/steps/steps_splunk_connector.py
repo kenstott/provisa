@@ -3,7 +3,7 @@
 #
 # This source code is licensed under the Business Source License 1.1
 
-"""pytest-bdd step definitions for REQ-721 and REQ-722 — Splunk Connector."""
+"""pytest-bdd step definitions for REQ-721, REQ-722, REQ-723, and REQ-724 — Splunk Connector."""
 
 import os
 
@@ -32,6 +32,22 @@ def test_splunk_connector_default():
     "REQ-722 default behaviour",
 )
 def test_splunk_connector_url_construction():
+    pass
+
+
+@scenario(
+    "../features/REQ-723.feature",
+    "REQ-723 default behaviour",
+)
+def test_splunk_connector_auth():
+    pass
+
+
+@scenario(
+    "../features/REQ-724.feature",
+    "REQ-724 default behaviour",
+)
+def test_splunk_connector_app_and_ssl():
     pass
 
 
@@ -334,4 +350,213 @@ def step_connector_receives_url(expected_url, shared_data):
     port = shared_data["req722_port"]
     assert f"{host}:{port}" in actual_url, (
         f"URL {actual_url!r} must contain host:port fragment '{host}:{port}'"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-723
+# ---------------------------------------------------------------------------
+
+
+@given("a source with use_token=true and a password field")
+def step_req723_source_with_use_token_true(shared_data):
+    """Construct a Splunk Source with use_token=True and a non-empty password.
+
+    REQ-723: when use_token=True (the default), the password value is treated
+    as a bearer token and passed as the ``token`` connector property.  The
+    ``user`` and ``password`` keys must not appear in the resulting props.
+    """
+    password = "my-secret-splunk-token-xyz"
+
+    source = Source(
+        id="req-723-splunk",
+        type=SourceType.splunk,
+        host="splunk",
+        port=8089,
+        username="admin",
+        password=password,
+        mapping={"use_token": True},
+    )
+
+    assert source.type == SourceType.splunk
+    assert source.password == password
+    assert source.mapping["use_token"] is True
+
+    shared_data["req723_source"] = source
+    shared_data["req723_password"] = password
+
+
+@when("the connector properties are built")
+def step_build_connector_properties(shared_data):
+    """Invoke _build_catalog_properties with the source and its raw password.
+
+    This step is shared across REQ-723 and REQ-724 scenarios.  It dispatches
+    on which source key is present in shared_data to support both scenarios
+    without ambiguity.
+    """
+    from provisa.core.catalog import _build_catalog_properties
+
+    # REQ-724 scenario populates req724_source / req724_password
+    if "req724_source" in shared_data:
+        source: Source = shared_data["req724_source"]
+        resolved_password: str = shared_data.get("req724_password", "")
+        props = _build_catalog_properties(source, resolved_password)
+        shared_data["req724_props"] = props
+        return
+
+    # REQ-723 scenario populates req723_source / req723_password
+    source = shared_data["req723_source"]
+    resolved_password = shared_data["req723_password"]
+    props = _build_catalog_properties(source, resolved_password)
+    shared_data["req723_props"] = props
+
+
+@then("props contains token=<password> and no user/password keys")
+def step_req723_assert_token_auth(shared_data):
+    """Assert REQ-723 token-auth contract.
+
+    When use_token=True:
+    * ``token`` must equal the password/resolved-password value.
+    * Neither ``user`` nor ``password`` keys may appear in the props dict.
+    * The ``url`` key must still be present (inherited from REQ-722 URL construction).
+    * ``case-insensitive-name-matching`` must be ``"true"``.
+    """
+    props: dict = shared_data["req723_props"]
+    expected_token: str = shared_data["req723_password"]
+
+    # Primary REQ-723 assertion: token must equal the password
+    assert "token" in props, (
+        f"REQ-723: 'token' key missing from connector props; got keys: {list(props.keys())}"
+    )
+    assert props["token"] == expected_token, (
+        f"REQ-723: expected token={expected_token!r}, got {props['token']!r}"
+    )
+
+    # Neither 'user' nor 'password' may appear when use_token=True
+    assert "user" not in props, (
+        f"REQ-723: 'user' key must not be present when use_token=True; props={props}"
+    )
+    assert "password" not in props, (
+        f"REQ-723: 'password' key must not be present when use_token=True; props={props}"
+    )
+
+    # Structural invariants that must always hold for Splunk connector props
+    assert "url" in props, (
+        f"REQ-723: 'url' key must always be present in Splunk connector props; got: {list(props.keys())}"
+    )
+    assert props["url"].startswith("https://"), (
+        f"REQ-723: Splunk connector URL must use HTTPS scheme; got: {props['url']!r}"
+    )
+    assert props.get("case-insensitive-name-matching") == "true", (
+        f"REQ-723: 'case-insensitive-name-matching' must be 'true'; got: {props.get('case-insensitive-name-matching')!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-724
+# ---------------------------------------------------------------------------
+
+
+@given("a source with database=search_app and mapping.disable_ssl_validation=true")
+def step_req724_source_with_app_and_ssl(shared_data):
+    """Construct a Splunk Source that exercises both the optional ``app`` property
+    (sourced from ``source.database``) and the ``disable-ssl-validation`` property
+    (sourced from ``source.mapping.disable_ssl_validation``).
+
+    REQ-724 specifies:
+    * When ``source.database`` is set, the connector property ``app`` must equal
+      that value.
+    * When ``source.mapping.disable_ssl_validation`` is truthy, the connector
+      property ``disable-ssl-validation`` must be set to ``"true"``.
+    """
+    database = "search_app"
+    password = "test-token-req724"
+
+    source = Source(
+        id="req-724-splunk",
+        type=SourceType.splunk,
+        host="splunk",
+        port=8089,
+        username="",
+        password=password,
+        database=database,
+        mapping={
+            "use_token": True,
+            "disable_ssl_validation": True,
+        },
+    )
+
+    assert source.type == SourceType.splunk, (
+        f"REQ-724: expected SourceType.splunk, got {source.type!r}"
+    )
+    assert source.database == database, (
+        f"REQ-724: expected database={database!r}, got {source.database!r}"
+    )
+    assert source.mapping["disable_ssl_validation"] is True, (
+        "REQ-724: mapping.disable_ssl_validation must be True on the source fixture"
+    )
+
+    shared_data["req724_source"] = source
+    shared_data["req724_password"] = password
+    shared_data["req724_expected_app"] = database
+
+
+@then("props contains app=search_app and disable-ssl-validation=true")
+def step_req724_assert_app_and_ssl(shared_data):
+    """Assert REQ-724 optional-property contract.
+
+    Verifies:
+    * ``app`` connector property equals the value of ``source.database``
+      (``"search_app"`` in this scenario).
+    * ``disable-ssl-validation`` connector property is the string ``"true"``.
+    * The standard structural invariants (``url``, ``case-insensitive-name-matching``)
+      are also satisfied.
+    """
+    props: dict = shared_data["req724_props"]
+    expected_app: str = shared_data["req724_expected_app"]
+
+    # ── Primary REQ-724 assertion: app property ──────────────────────────────
+    assert "app" in props, (
+        f"REQ-724: 'app' key missing from connector props; got keys: {list(props.keys())}"
+    )
+    assert props["app"] == expected_app, (
+        f"REQ-724: expected app={expected_app!r}, got {props['app']!r}"
+    )
+
+    # ── Primary REQ-724 assertion: disable-ssl-validation ────────────────────
+    assert "disable-ssl-validation" in props, (
+        f"REQ-724: 'disable-ssl-validation' key missing from connector props; "
+        f"got keys: {list(props.keys())}"
+    )
+    assert props["disable-ssl-validation"] == "true", (
+        f"REQ-724: expected disable-ssl-validation='true', "
+        f"got {props['disable-ssl-validation']!r}"
+    )
+
+    # ── Structural invariants ─────────────────────────────────────────────────
+    assert "url" in props, (
+        f"REQ-724: 'url' key must always be present in Splunk connector props; "
+        f"got: {list(props.keys())}"
+    )
+    assert props["url"].startswith("https://"), (
+        f"REQ-724: Splunk connector URL must use HTTPS scheme; got: {props['url']!r}"
+    )
+    assert props.get("case-insensitive-name-matching") == "true", (
+        f"REQ-724: 'case-insensitive-name-matching' must be 'true'; "
+        f"got: {props.get('case-insensitive-name-matching')!r}"
+    )
+
+    # ── Token auth must still be set (use_token=True on this source) ──────────
+    password = shared_data["req724_password"]
+    assert props.get("token") == password, (
+        f"REQ-724: expected token={password!r} (use_token=True), "
+        f"got {props.get('token')!r}"
+    )
+
+    # ── user/password keys must be absent when token auth is active ───────────
+    assert "user" not in props, (
+        f"REQ-724: 'user' key must not appear when use_token=True; props={props}"
+    )
+    assert "password" not in props, (
+        f"REQ-724: 'password' key must not appear when use_token=True; props={props}"
     )

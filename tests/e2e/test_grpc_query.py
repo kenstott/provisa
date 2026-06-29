@@ -140,6 +140,7 @@ class TestStreamedQueries:
 
             context = _mock_context("admin")
             request = MagicMock()
+            request.limit = 0
 
             streamed = []
             async for msg in servicer._handle_query(request, context, "Orders", "orders"):
@@ -185,8 +186,10 @@ class TestStreamedQueries:
             )
 
             context = _mock_context("admin")
+            request = MagicMock()
+            request.limit = 0
             streamed = []
-            async for msg in servicer._handle_query(MagicMock(), context, "Orders", "orders"):
+            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
                 streamed.append(msg)
 
             assert len(streamed) == 0
@@ -280,8 +283,10 @@ class TestRoleBasedFieldFiltering:
             )
 
             context = _mock_context("viewer")
+            request = MagicMock()
+            request.limit = 0
             streamed = []
-            async for msg in servicer._handle_query(MagicMock(), context, "Orders", "orders"):
+            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
                 streamed.append(msg)
 
             mock_parse.assert_called_once()

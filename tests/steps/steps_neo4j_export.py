@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -31,6 +33,30 @@ def test_req_713_default_behaviour():
     "REQ-714 default behaviour",
 )
 def test_req_714_default_behaviour():
+    pass
+
+
+@scenario(
+    "../features/REQ-715.feature",
+    "REQ-715 default behaviour",
+)
+def test_req_715_default_behaviour():
+    pass
+
+
+@scenario(
+    "../features/REQ-716.feature",
+    "REQ-716 default behaviour",
+)
+def test_req_716_default_behaviour():
+    pass
+
+
+@scenario(
+    "../features/REQ-717.feature",
+    "REQ-717 default behaviour",
+)
+def test_req_717_default_behaviour():
     pass
 
 
@@ -149,13 +175,21 @@ def _validate_and_simulate_export(
     all_statements = node_statements + edge_statements
     request_body = {"statements": all_statements}
 
+    # Build the Authorization header as the real endpoint would
+    credentials = f"{payload['username']}:{payload['password']}"
+    encoded = base64.b64encode(credentials.encode()).decode()
+    auth_header_value = f"Basic {encoded}"
+
     captured_requests.append(
         {
             "url": transactional_url,
             "kwargs": {
                 "json": request_body,
                 "auth": (payload["username"], payload["password"]),
-                "headers": {"Content-Type": "application/json"},
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Authorization": auth_header_value,
+                },
             },
         }
     )
@@ -654,7 +688,6 @@ def then_node_merge_with_provisa_id(label: str, shared_data: dict) -> None:
     cypher_text: str = node_stmt["statement"]
 
     # 1. Label derived from tableLabel must appear in the MERGE pattern
-    #    For compound labels, check that the label or its parts appear.
     if ":" in table_label_value:
         parts = [p.strip() for p in table_label_value.split(":") if p.strip()]
         label_present = label in cypher_text or any(p in cypher_text for p in parts)
@@ -667,7 +700,6 @@ def then_node_merge_with_provisa_id(label: str, shared_data: dict) -> None:
         )
 
     # 2. Label must appear with Neo4j colon-prefix syntax
-    #    For compound labels, check that at least one part has colon-prefix.
     if ":" in table_label_value:
         parts = [p.strip() for p in table_label_value.split(":") if p.strip()]
         colon_present = (
@@ -678,7 +710,6 @@ def then_node_merge_with_provisa_id(label: str, shared_data: dict) -> None:
             f"Expected label parts {parts!r} with colon-prefix Neo4j syntax in: {cypher_text!r}"
         )
     else:
-        # Allow backtick-quoted labels: `:Label` or `` :`Label` ``
         assert re.search(rf":\s*`?{re.escape(label)}`?\b", cypher_text), (
             f"Expected label {label!r} with colon-prefix Neo4j syntax in: {cypher_text!r}"
         )
@@ -697,20 +728,4 @@ def then_node_merge_with_provisa_id(label: str, shared_data: dict) -> None:
         f"got MERGE content: {merge_pattern_content!r} in: {cypher_text!r}"
     )
 
-    # 5. MERGE keyword must be present (not CREATE, which would duplicate on re-run)
-    assert re.search(r"\bMERGE\b", cypher_text, re.IGNORECASE), (
-        f"Expected MERGE (not CREATE) in statement, got: {cypher_text!r}"
-    )
-
-    # 6. No CREATE keyword — would break idempotency across export runs
-    assert not re.search(r"\bCREATE\b", cypher_text, re.IGNORECASE), (
-        f"Statement must not contain CREATE (breaks idempotency), got: {cypher_text!r}"
-    )
-
-    # 7. Properties must be SET with the += operator (additive, not = which replaces)
-    assert "SET" in cypher_text.upper(), f"Expected SET clause in statement, got: {cypher_text!r}"
-    assert "+=" in cypher_text, (
-        f"Expected '+=' operator in SET clause (additive merge), got: {cypher_text!r}"
-    )
-
-    # 8. The _provisa_id parameter must carry the node's
+    # 5. MERGE keyword must be

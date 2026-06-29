@@ -140,44 +140,43 @@ def test_trigger_sql_is_idempotent_and_notifies() -> None:
 @given("Provisa has started and registered a PostgreSQL subscription table")
 @pytest.mark.integration
 def given_provisa_registered_pg_table(shared_data: dict) -> None:
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
+    schema = "public"
+    table = f"provisa_req565_{uuid.uuid4().hex[:8]}"
 
     async def _setup() -> None:
         pool = await _make_pool()
-        schema = "public"
-        table = f"provisa_req565_{uuid.uuid4().hex[:8]}"
+        try:
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    f"CREATE TABLE {schema}.{table} "
+                    f"(id integer PRIMARY KEY, amount numeric)"
+                )
 
-        async with pool.acquire() as conn:
-            await conn.execute(
-                f"CREATE TABLE {schema}.{table} "
-                f"(id integer PRIMARY KEY, amount numeric)"
-            )
+                source_id = "src-pg"
+                tables = [
+                    {
+                        "source_id": source_id,
+                        "schema_name": schema,
+                        "table_name": table,
+                    }
+                ]
+                source_types = {source_id: "postgresql"}
 
-            source_id = "src-pg"
-            tables = [
-                {
-                    "source_id": source_id,
-                    "schema_name": schema,
-                    "table_name": table,
-                }
-            ]
-            source_types = {source_id: "postgresql"}
+                installed = await ensure_pg_notify_triggers(conn, tables, source_types)
+                assert table in installed, "trigger must be installed on the registered table"
 
-            installed = await ensure_pg_notify_triggers(conn, tables, source_types)
-            assert table in installed, "trigger must be installed on the registered table"
-
-            # Idempotent: installing again must succeed and remain installed.
-            installed_again = await ensure_pg_notify_triggers(
-                conn, tables, source_types
-            )
-            assert table in installed_again
-
-        shared_data["pool"] = pool
-        shared_data["schema"] = schema
-        shared_data["table"] = table
+                # Idempotent: installing again must succeed and remain installed.
+                installed_again = await ensure_pg_notify_triggers(
+                    conn, tables, source_types
+                )
+                assert table in installed_again
+        finally:
+            await pool.close()
 
     asyncio.run(_setup())
+    shared_data["pg_env"] = _pg_env()
+    shared_data["schema"] = schema
+    shared_data["table"] = table
 
 
 # ---------------------------------------------------------------------------
@@ -187,37 +186,50 @@ def given_provisa_registered_pg_table(shared_data: dict) -> None:
 @when("an external process inserts a row directly into the table")
 @pytest.mark.integration
 def when_external_insert(shared_data: dict) -> None:
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
-
-    pool = shared_data["pool"]
+    pg_env = shared_data["pg_env"]
     schema = shared_data["schema"]
     table = shared_data["table"]
-    provider = PgNotificationProvider(pool)
     received: list[ChangeEvent] = []
 
     async def _run() -> None:
-        async def _consume() -> None:
-            async for event in provider.watch(table):
-                received.append(event)
-                break
+        import asyncpg as _asyncpg  # noqa: PLC0415
 
-        task = asyncio.create_task(_consume())
-        await asyncio.sleep(0.3)  # allow LISTEN to register
-
-        # External writer: plain INSERT, no manual pg_notify call.
-        async with pool.acquire() as conn:
-            await conn.execute(
-                f"INSERT INTO {schema}.{table} (id, amount) VALUES ($1, $2)",
-                7,
-                42.5,
-            )
-
+        pool = await _asyncpg.create_pool(
+            host=pg_env["host"],
+            port=pg_env["port"],
+            database=pg_env["database"],
+            user=pg_env["user"],
+            password=pg_env["password"],
+            min_size=1,
+            max_size=3,
+            command_timeout=10,
+        )
         try:
-            await asyncio.wait_for(task, timeout=5.0)
-        except asyncio.TimeoutError:
-            task.cancel()
-            pytest.fail("SSE subscriber did not receive the change event in time")
+            provider = PgNotificationProvider(pool)
+
+            async def _consume() -> None:
+                async for event in provider.watch(table):
+                    received.append(event)
+                    break
+
+            task = asyncio.create_task(_consume())
+            await asyncio.sleep(0.3)  # allow LISTEN to register
+
+            # External writer: plain INSERT, no manual pg_notify call.
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    f"INSERT INTO {schema}.{table} (id, amount) VALUES ($1, $2)",
+                    7,
+                    42.5,
+                )
+
+            try:
+                await asyncio.wait_for(task, timeout=5.0)
+            except asyncio.TimeoutError:
+                task.cancel()
+                pytest.fail("SSE subscriber did not receive the change event in time")
+        finally:
+            await pool.close()
 
     asyncio.run(_run())
     shared_data["received"] = received
@@ -230,12 +242,9 @@ def when_external_insert(shared_data: dict) -> None:
 @then("the trigger fires pg_notify and the SSE subscriber receives the change event")
 @pytest.mark.integration
 def then_subscriber_receives_event(shared_data: dict) -> None:
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
-
     received = shared_data["received"]
     table = shared_data["table"]
-    pool = shared_data["pool"]
+    pg_env = shared_data["pg_env"]
     schema = shared_data["schema"]
 
     try:
@@ -247,9 +256,22 @@ def then_subscriber_receives_event(shared_data: dict) -> None:
         assert float(evt.row["amount"]) == 42.5
     finally:
         async def _cleanup() -> None:
-            async with pool.acquire() as conn:
-                await conn.execute(f"DROP TABLE IF EXISTS {schema}.{table}")
-            await pool.close()
+            import asyncpg as _asyncpg  # noqa: PLC0415
+
+            pool = await _asyncpg.create_pool(
+                host=pg_env["host"],
+                port=pg_env["port"],
+                database=pg_env["database"],
+                user=pg_env["user"],
+                password=pg_env["password"],
+                min_size=1,
+                max_size=2,
+            )
+            try:
+                async with pool.acquire() as conn:
+                    await conn.execute(f"DROP TABLE IF EXISTS {schema}.{table}")
+            finally:
+                await pool.close()
 
         asyncio.run(_cleanup())
 

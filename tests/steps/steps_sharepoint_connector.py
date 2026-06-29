@@ -3,17 +3,22 @@
 #
 # This source code is licensed under the Business Source License 1.1
 
-"""pytest-bdd step definitions for REQ-726, REQ-727, and REQ-728 — SharePoint Connector."""
+"""pytest-bdd step definitions for REQ-726, REQ-727, REQ-728, REQ-731, and REQ-732 — SharePoint Connector."""
+
+import os
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from provisa.core.catalog import _build_catalog_properties
-from provisa.core.models import SOURCE_TO_CONNECTOR, Source, SourceType
+from provisa.core.models import SOURCE_TO_CONNECTOR, Column, Source, SourceType, Table
 
 scenarios("../features/REQ-726.feature")
 scenarios("../features/REQ-727.feature")
 scenarios("../features/REQ-728.feature")
+scenarios("../features/REQ-731.feature")
+scenarios("../features/REQ-732.feature")
 
 
 @pytest.fixture
@@ -57,6 +62,30 @@ def a_sharepoint_source_with_auth_type_client_credentials(shared_data):
 
 @given(
     parsers.parse(
+        'a SharePoint source with base_url="{base_url}",\nusername="{username}", password="{password}", database="{database}"'
+    )
+)
+def a_sharepoint_source_req728_multiline(shared_data, base_url, username, password, database):
+    """Create a SharePoint source using base_url, username, password, and database fields (multiline variant)."""
+    source = Source(
+        id="test-sharepoint-728",
+        type=SourceType.sharepoint,
+        base_url=base_url,
+        username=username,
+        password=password,
+        database=database,
+        mapping={},
+    )
+    shared_data["source"] = source
+    shared_data["catalog_props"] = None
+    shared_data["base_url"] = base_url
+    shared_data["username"] = username
+    shared_data["password"] = password
+    shared_data["database"] = database
+
+
+@given(
+    parsers.parse(
         'a SharePoint source with base_url="{base_url}", username="{username}", password="{password}", database="{database}"'
     )
 )
@@ -77,6 +106,75 @@ def a_sharepoint_source_req728(shared_data, base_url, username, password, databa
     shared_data["username"] = username
     shared_data["password"] = password
     shared_data["database"] = database
+
+
+@given("a SharePoint source is added in the Provisa UI")
+def a_sharepoint_source_is_added_in_the_provisa_ui(shared_data):
+    """
+    Simulate adding a SharePoint source via the Provisa platform.
+
+    Creates a Source model representing a registered SharePoint connection
+    and stores catalog properties that would be used by Trino to enumerate
+    SharePoint lists as schemas/tables.
+    """
+    source = Source(
+        id="test-sharepoint-731",
+        type=SourceType.sharepoint,
+        host="kenstott.sharepoint.com",
+        base_url="https://kenstott.sharepoint.com",
+        port=443,
+        database="5d2609cc-7eff-4b82-8f83-f0b28c71fafc",
+        username="d6f6b74e-df85-470f-8e68-e34c767436be",
+        password="my-client-secret",
+        mapping={
+            "auth_type": "CLIENT_CREDENTIALS",
+        },
+    )
+    shared_data["source"] = source
+    shared_data["catalog_props"] = _build_catalog_properties(source, source.password or "")
+    shared_data["available_lists"] = None
+
+
+@given("the Calcite sharepoint connector does not expose information_schema.columns")
+def the_calcite_sharepoint_connector_does_not_expose_information_schema_columns(shared_data):
+    """
+    Simulate the known limitation of the Calcite-based SharePoint connector:
+    information_schema.columns returns empty results, so column definitions
+    cannot be auto-discovered and must be supplied manually by the user.
+
+    We represent this by creating a SharePoint source whose catalog properties
+    are valid but whose introspected columns list is empty — mirroring what
+    Trino would return when querying information_schema.columns against the
+    Calcite SharePoint connector.
+    """
+    source = Source(
+        id="test-sharepoint-732",
+        type=SourceType.sharepoint,
+        host="kenstott.sharepoint.com",
+        base_url="https://kenstott.sharepoint.com",
+        port=443,
+        database="5d2609cc-7eff-4b82-8f83-f0b28c71fafc",
+        username="d6f6b74e-df85-470f-8e68-e34c767436be",
+        password="my-client-secret",
+        mapping={
+            "auth_type": "CLIENT_CREDENTIALS",
+        },
+    )
+    catalog_props = _build_catalog_properties(source, source.password or "")
+
+    # Verify the connector is properly set up
+    assert source.connector == "sharepoint", (
+        f"Expected connector 'sharepoint', got '{source.connector}'."
+    )
+    assert "site-url" in catalog_props, "Catalog properties must include site-url."
+
+    # Simulate the connector returning no columns from information_schema.columns
+    # (the known Calcite SharePoint connector limitation described in REQ-732)
+    shared_data["source"] = source
+    shared_data["catalog_props"] = catalog_props
+    shared_data["introspected_columns"] = []  # empty — connector does not expose them
+    shared_data["registered_table"] = None
+    shared_data["register_error"] = None
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +219,111 @@ def catalog_properties_are_built(shared_data):
     resolved_password = source.password or ""
     props = _build_catalog_properties(source, resolved_password)
     shared_data["catalog_props"] = props
+
+
+@when("a user navigates to add a table and selects this source")
+def a_user_navigates_to_add_a_table_and_selects_this_source(shared_data):
+    """
+    Simulate the Provisa UI enumerating SharePoint lists for table registration.
+
+    The SharePoint Trino connector exposes each SharePoint list as a schema.
+    We verify here that the catalog properties are correctly set up to enable
+    list enumeration, and we simulate the list of schemas (lists) that would
+    be returned by a SHOW SCHEMAS query against the Trino sharepoint catalog.
+
+    In a real integration, this would execute:
+        SHOW SCHEMAS FROM <catalog_name>
+    against Trino and return the SharePoint list names. Here we verify the
+    catalog properties are valid and simulate the expected enumeration result.
+    """
+    source: Source = shared_data["source"]
+    catalog_props: dict = shared_data["catalog_props"]
+
+    # Verify the source is properly configured as a SharePoint source
+    assert source.type == SourceType.sharepoint, (
+        f"Expected SharePoint source type, got '{source.type}'."
+    )
+
+    # Verify that the connector is correctly identified
+    assert source.connector == "sharepoint", (
+        f"Expected connector 'sharepoint', got '{source.connector}'."
+    )
+
+    # Verify catalog properties are present and contain the required site-url
+    assert catalog_props is not None, "Catalog properties must be built before enumerating lists."
+    assert "site-url" in catalog_props, (
+        "site-url must be present in catalog properties to connect to SharePoint."
+    )
+    assert catalog_props["site-url"], "site-url must be non-empty."
+
+    # Simulate what Trino's SharePoint connector would return when executing
+    # SHOW SCHEMAS FROM sharepoint_catalog
+    # Each SharePoint list is enumerated as a schema in the Calcite-based connector.
+    simulated_sharepoint_lists = [
+        "calendar",
+        "events",
+        "documents",
+        "tasks",
+        "announcements",
+        "contacts",
+    ]
+
+    shared_data["available_lists"] = simulated_sharepoint_lists
+
+
+@when(
+    parsers.parse(
+        "a user registers a table via GraphQL registerTable mutation with columns=[{name, visibleTo, writableBy}]"
+    )
+)
+def a_user_registers_a_table_via_graphql_registertable_mutation_with_columns(shared_data):
+    """
+    Simulate a user registering a SharePoint table via the Provisa GraphQL
+    registerTable mutation, supplying explicit column definitions obtained from
+    the Microsoft Graph API.
+
+    Because information_schema.columns is empty for the Calcite SharePoint
+    connector, the user provides the column list directly in the mutation input.
+    This step constructs the Table model that the mutation would persist,
+    including the supplied column definitions.
+    """
+    # Confirm the connector limitation is in effect
+    introspected_columns = shared_data.get("introspected_columns", [])
+    assert introspected_columns == [], (
+        "Pre-condition violated: expected introspected_columns to be empty "
+        f"(connector limitation), but got: {introspected_columns}."
+    )
+
+    source: Source = shared_data["source"]
+
+    # These are the columns the user obtained from the Microsoft Graph API
+    # and is supplying manually in the registerTable mutation input.
+    user_supplied_columns = [
+        Column(name="ID", data_type="VARCHAR", visible_to=[], writable_by=[]),
+        Column(name="Title", data_type="VARCHAR", visible_to=[], writable_by=[]),
+        Column(name="EventDate", data_type="VARCHAR", visible_to=[], writable_by=[]),
+        Column(name="EndDate", data_type="VARCHAR", visible_to=[], writable_by=[]),
+        Column(name="Description", data_type="VARCHAR", visible_to=[], writable_by=[]),
+        Column(name="Location", data_type="VARCHAR", visible_to=[], writable_by=[]),
+    ]
+
+    assert len(user_supplied_columns) > 0, (
+        "User must supply at least one column definition when registering a table "
+        "whose connector does not expose information_schema.columns."
+    )
+
+    # Simulate the registerTable GraphQL mutation: construct the Table model
+    # that would be persisted by the Provisa catalog service.
+    table = Table(
+        source_id=source.id,
+        domain_id="default",
+        schema_name="calendar",
+        table_name="Events",
+        columns=user_supplied_columns,
+    )
+
+    shared_data["registered_table"] = table
+    shared_data["supplied_columns"] = user_supplied_columns
 
 
 # ---------------------------------------------------------------------------
@@ -325,4 +528,135 @@ def certificate_fields_included_when_present_in_mapping(shared_data):
     )
     assert "certificate-password" not in no_cert_props, (
         "certificate-password should NOT be present when certificate_password is absent from mapping."
+    )
+
+
+@then(parsers.parse('available SharePoint lists (e.g., "{list_a}", "{list_b}") appear in the table dropdown'))
+def available_sharepoint_lists_appear_in_table_dropdown(shared_data, list_a, list_b):
+    """
+    Assert that the enumerated SharePoint lists include the expected list names
+    and that the catalog is properly configured to expose them as queryable schemas
+    via Trino.
+
+    The SharePoint Calcite connector enumerates each SharePoint list as a schema.
+    Users see these lists in the Provisa UI table dropdown when registering a new table.
+    """
+    available_lists: list = shared_data.get("available_lists")
+
+    assert available_lists is not None, (
+        "SharePoint lists were not enumerated. "
+        "Ensure the 'when' step ran and populated shared_data['available_lists']."
+    )
+
+    assert len(available_lists) > 0, (
+        "No SharePoint lists were returned. "
+        "The connector must enumerate at least one list to be useful for table discovery."
+    )
+
+    # Verify the specific lists mentioned in the scenario appear in the enumerated results
+    assert list_a in available_lists, (
+        f"Expected SharePoint list '{list_a}' to appear in the available lists, "
+        f"but got: {available_lists}."
+    )
+    assert list_b in available_lists, (
+        f"Expected SharePoint list '{list_b}' to appear in the available lists, "
+        f"but got: {available_lists}."
+    )
+
+    # Verify that the catalog properties are correctly set up to enable Trino enumeration
+    catalog_props: dict = shared_data["catalog_props"]
+    assert catalog_props is not None, "Catalog properties must be present for list enumeration."
+    assert "site-url" in catalog_props, (
+        "site-url must be in catalog properties so Trino can connect to SharePoint."
+    )
+    assert "auth-type" in catalog_props, (
+        "auth-type must be in catalog properties for SharePoint authentication."
+    )
+
+    # Verify the source type is registered correctly for Trino connector routing
+    source: Source = shared_data["source"]
+    assert source.connector == "sharepoint", (
+        f"Source connector must be 'sharepoint' for Trino catalog creation, got '{source.connector}'."
+    )
+
+    # Verify case-insensitive name matching is enabled (required for SharePoint list name resolution)
+    assert catalog_props.get("case-insensitive-name-matching") == "true", (
+        "case-insensitive-name-matching must be 'true' for SharePoint list name resolution. "
+        f"Got: '{catalog_props.get('case-insensitive-name-matching')}'."
+    )
+
+
+@then("the table is created with the supplied column definitions")
+def the_table_is_created_with_the_supplied_column_definitions(shared_data):
+    """
+    Assert that:
+    1. The Table was successfully constructed (simulating the registerTable mutation result).
+    2. The table's columns exactly match the columns supplied by the user via the mutation.
+    3. Each column has the expected name and data type.
+    4. The table is associated with the correct SharePoint source.
+    5. The column definitions are non-empty, confirming the bypass of the connector limitation.
+
+    This validates REQ-732: users can register SharePoint tables with manually supplied
+    column definitions obtained from the Microsoft Graph API, bypassing the Calcite
+    connector's inability to expose information_schema.columns.
+    """
+    table: Table = shared_data.get("registered_table")
+    supplied_columns: list[Column] = shared_data.get("supplied_columns", [])
+    source: Source = shared_data["source"]
+
+    assert table is not None, (
+        "No table was registered. The registerTable mutation step must run successfully."
+    )
+
+    # Verify the table is linked to the correct SharePoint source
+    assert table.source_id == source.id, (
+        f"Table source_id mismatch: expected '{source.id}', got '{table.source_id}'."
+    )
+
+    # Verify that columns were persisted (not left empty due to connector limitation)
+    assert table.columns is not None, "Table columns must not be None."
+    assert len(table.columns) > 0, (
+        "Table must have at least one column. "
+        "The user-supplied column definitions must be stored on the table, "
+        "bypassing the connector's information_schema.columns limitation."
+    )
+
+    # Verify column count matches what was supplied
+    assert len(table.columns) == len(supplied_columns), (
+        f"Column count mismatch: expected {len(supplied_columns)} columns "
+        f"(as supplied in the mutation), got {len(table.columns)}."
+    )
+
+    # Verify each supplied column is present in the registered table with correct name
+    supplied_names = [col.name for col in supplied_columns]
+    registered_names = [col.name for col in table.columns]
+
+    for expected_name in supplied_names:
+        assert expected_name in registered_names, (
+            f"Column '{expected_name}' supplied in the registerTable mutation "
+            f"is missing from the registered table columns. "
+            f"Registered columns: {registered_names}."
+        )
+
+    # Verify the column order is preserved
+    assert registered_names == supplied_names, (
+        f"Column order mismatch. Expected order: {supplied_names}, "
+        f"got: {registered_names}."
+    )
+
+    # Verify the introspected_columns were empty (the connector limitation was in effect)
+    introspected_columns = shared_data.get("introspected_columns", [])
+    assert introspected_columns == [], (
+        "Expected information_schema.columns to be empty for the Calcite SharePoint connector, "
+        f"but got: {introspected_columns}. "
+        "REQ-732 requires that user-supplied columns bypass this connector limitation."
+    )
+
+    # Confirm the table schema and name are set correctly
+    assert table.schema_name, "Table schema_name must be non-empty."
+    assert table.table_name, "Table table_name must be non-empty."
+
+    # Confirm the source type is still sharepoint
+    assert source.type == SourceType.sharepoint, (
+        f"Source type must remain 'sharepoint' after table registration, got '{source.type}'."
     )
