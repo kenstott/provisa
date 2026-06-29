@@ -50,19 +50,32 @@ def _db_snapshot_restore():
     After restore the live server is told to rebuild its schema so its in-memory
     state matches the restored DB.
     """
-    subprocess.run(
-        [
-            f"{_PG_BIN}/pg_dump",
-            "--format=custom",
-            "--no-acl",
-            "--no-owner",
-            "-f",
-            str(_SNAPSHOT_PATH),
-        ]
-        + _pg_args(),
-        env=_pg_env(),
-        check=True,
-    )
+    import time
+
+    # Retry pg_dump up to 5 times — live server DDL may hold AccessExclusiveLock
+    # briefly at startup, causing pg_dump's AccessShareLock to deadlock/fail.
+    result = None
+    for attempt in range(5):
+        result = subprocess.run(
+            [
+                f"{_PG_BIN}/pg_dump",
+                "--format=custom",
+                "--no-acl",
+                "--no-owner",
+                "-f",
+                str(_SNAPSHOT_PATH),
+            ]
+            + _pg_args(),
+            env=_pg_env(),
+            check=False,
+        )
+        if result.returncode == 0:
+            break
+        if attempt < 4:
+            time.sleep(3)
+    else:
+        code = result.returncode if result is not None else "unknown"
+        raise RuntimeError(f"pg_dump failed after 5 attempts (exit code {code})")
 
     yield
 

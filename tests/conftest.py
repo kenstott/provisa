@@ -90,22 +90,11 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    server_url = os.environ.get("PROVISA_URL", "http://localhost:8000")
-    server_up = _server_reachable(server_url)
-    skip_server = pytest.mark.skip(reason=f"Provisa server not reachable at {server_url}")
-
-    debezium_host = os.environ.get("DEBEZIUM_HOST", "localhost")
-    debezium_port = int(os.environ.get("DEBEZIUM_PORT", "8083"))
-    debezium_up = _tcp_reachable(debezium_host, debezium_port)
-    skip_debezium = pytest.mark.skip(
-        reason=f"Debezium not reachable at {debezium_host}:{debezium_port}"
-    )
-
     for item in items:
-        if item.get_closest_marker("requires_provisa_server") and not server_up:
-            item.add_marker(skip_server)
-        if item.get_closest_marker("requires_debezium") and not debezium_up:
-            item.add_marker(skip_debezium)
+        if item.get_closest_marker("requires_provisa_server"):
+            item.fixturenames.insert(0, "provisa_server")
+        if item.get_closest_marker("requires_debezium"):
+            item.fixturenames.insert(0, "debezium_server")
 
 
 @pytest.fixture(autouse=True)
@@ -186,10 +175,11 @@ def _free_port() -> int:
 
 @pytest.fixture(scope="session", autouse=True)
 def _wait_for_trino():
-    """Block until Trino core catalogs are ready or 3 minutes elapse."""
+    """Block until Trino core catalogs are ready or 6 minutes elapse."""
     host = os.environ.get("TRINO_HOST", "localhost")
     port = int(os.environ.get("TRINO_PORT", "8080"))
-    deadline = time.monotonic() + 180
+    deadline = time.monotonic() + 360
+    last_exc: Exception | None = None
     while time.monotonic() < deadline:
         try:
             conn = trino.dbapi.connect(host=host, port=port, user="test")
@@ -200,8 +190,10 @@ def _wait_for_trino():
             cur.fetchall()
             conn.close()
             return
-        except Exception:
+        except Exception as exc:
+            last_exc = exc
             time.sleep(3)
+    raise RuntimeError(f"Trino not ready at {host}:{port} after 360s — last error: {last_exc}")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -299,7 +291,6 @@ async def graphql_client(docker_postgres):
     so GraphQL queries exercise the full compiler + executor path without
     requiring a separate server process.
     """
-    from unittest.mock import MagicMock
 
     import provisa.api.app as app_mod
     from provisa.api.app import create_app
@@ -320,8 +311,10 @@ async def graphql_client(docker_postgres):
         max_size=3,
         org_id=org_id,
     )
+    from unittest.mock import AsyncMock
+
     app_mod.state.pg_pool = pool
-    app_mod.state.source_pools = MagicMock()
+    app_mod.state.source_pools = AsyncMock()
 
     transport = ASGITransport(app=the_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -334,32 +327,80 @@ async def graphql_client(docker_postgres):
 @pytest.fixture(scope="session")
 def test_client(docker_postgres):
     """Synchronous ASGI test client for in-process Provisa app."""
-    from unittest.mock import MagicMock
+    from unittest.mock import AsyncMock
 
     import provisa.api.app as app_mod
     from provisa.api.app import create_app
     from starlette.testclient import TestClient
 
     the_app = create_app()
-    app_mod.state.source_pools = MagicMock()
+    app_mod.state.source_pools = AsyncMock()
     with TestClient(the_app, raise_server_exceptions=False) as client:
         yield client
     app_mod.state.pg_pool = None
 
 
-@pytest_asyncio.fixture(scope="session")
-async def live_client():
-    """AsyncClient that hits the running Provisa server (PROVISA_URL or localhost:8000).
+@pytest.fixture(scope="session")
+def debezium_server():
+    """Wait for Debezium Connect to be reachable — started by _DockerServiceManager."""
+    host = os.environ.get("DEBEZIUM_HOST", "localhost")
+    port = int(os.environ.get("DEBEZIUM_PORT", "8083"))
+    deadline = time.monotonic() + 480
+    while time.monotonic() < deadline:
+        if _tcp_reachable(host, port):
+            yield f"http://{host}:{port}"
+            return
+        time.sleep(3)
+    raise RuntimeError(f"Debezium Connect did not become reachable at {host}:{port} within 480s")
 
-    Skips if the server is not reachable.
-    """
+
+@pytest_asyncio.fixture(scope="session")
+async def live_client(provisa_server):
+    """AsyncClient that hits the running Provisa server (PROVISA_URL or localhost:8000)."""
     import httpx
 
-    server_url = os.environ.get("PROVISA_URL", "http://localhost:8000")
-    if not _server_reachable(server_url):
-        pytest.skip(f"Provisa server not reachable at {server_url}")
-    async with httpx.AsyncClient(base_url=server_url, timeout=120.0) as client:
+    async with httpx.AsyncClient(base_url=provisa_server, timeout=120.0) as client:
         yield client
+
+
+@pytest.fixture(scope="session")
+def provisa_server():
+    """Start the Provisa server subprocess if not already running.
+
+    Used by requires_provisa_server tests — injected automatically via
+    pytest_collection_modifyitems, not requested directly.
+    """
+    server_url = os.environ.get("PROVISA_URL", "http://localhost:8000")
+    if _server_reachable(server_url):
+        yield server_url
+        return
+
+    venv_python = os.path.join(_REPO_ROOT, ".venv", "bin", "uvicorn")
+    proc = subprocess.Popen(
+        [venv_python, "main:app", "--host", "0.0.0.0", "--port", "8000"],
+        cwd=_REPO_ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        if _server_reachable(server_url):
+            break
+        if proc.poll() is not None:
+            raise RuntimeError(f"Provisa server exited early (code {proc.returncode})")
+        time.sleep(2)
+    else:
+        proc.terminate()
+        raise RuntimeError(f"Provisa server did not become reachable at {server_url} within 90s")
+
+    try:
+        yield server_url
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
 
 
 @pytest.fixture
