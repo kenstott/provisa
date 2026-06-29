@@ -70,7 +70,8 @@ function Ensure-VmRunning {
   $env:DOCKER_HOST = $Config.DockerHost
 
   $info  = & $vbox showvminfo $Config.VmName --machinereadable 2>&1
-  $state = ($info | Select-String 'VMState=').ToString() -replace '.*="(.*)".*', '$1'
+  $stateMatch = $info | Select-String 'VMState=' | Select-Object -First 1
+  $state      = if ($stateMatch) { $stateMatch.Line -replace '.*="(.*)".*','$1' } else { 'poweroff' }
 
   if ($state -eq 'running') { return }
 
@@ -103,7 +104,8 @@ function Stop-Vm {
   if (-not $vbox) { return }
 
   $info  = & $vbox showvminfo $Config.VmName --machinereadable 2>&1
-  $state = ($info | Select-String 'VMState=').ToString() -replace '.*="(.*)".*', '$1'
+  $stateMatch = $info | Select-String 'VMState=' | Select-Object -First 1
+  $state      = if ($stateMatch) { $stateMatch.Line -replace '.*="(.*)".*','$1' } else { 'poweroff' }
 
   if ($state -ne 'running') {
     Write-Info 'VM is not running.'

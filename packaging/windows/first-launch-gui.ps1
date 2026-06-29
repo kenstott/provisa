@@ -358,8 +358,9 @@ $btnInstall.Add_Click({
 
       # Step 4: Start VM ----------------------------------------------------
       Log 'Starting Provisa VM...'
-      $vmInfo  = & $VBoxManage showvminfo 'Provisa' --machinereadable 2>&1
-      $vmState = ($vmInfo | Select-String 'VMState=').ToString() -replace '.*="(.*)".*', '$1'
+      $vmInfo       = & $VBoxManage showvminfo 'Provisa' --machinereadable 2>&1
+      $vmStateMatch = $vmInfo | Select-String 'VMState=' | Select-Object -First 1
+      $vmState      = if ($vmStateMatch) { $vmStateMatch.Line -replace '.*="(.*)".*','$1' } else { 'poweroff' }
       if ($vmState -ne 'running') {
         $startOut = & $VBoxManage startvm 'Provisa' --type headless 2>&1
         $startOut | ForEach-Object { Log "  $_" }
