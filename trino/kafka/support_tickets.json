@@ -6,9 +6,9 @@
     "dataFormat": "json",
     "fields": [
       {
-        "name": "id",
+        "name": "ticket_id",
         "type": "VARCHAR",
-        "mapping": "id"
+        "mapping": "ticket_id"
       },
       {
         "name": "subject",
@@ -19,11 +19,6 @@
         "name": "status",
         "type": "VARCHAR",
         "mapping": "status"
-      },
-      {
-        "name": "created_at",
-        "type": "VARCHAR",
-        "mapping": "created_at"
       }
     ]
   }

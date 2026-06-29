@@ -8,6 +8,7 @@ CLI_INSTALL_DIR="/usr/local/bin"
 CLI_NAME="provisa"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NON_INTERACTIVE=false
+AIRGAP=false
 MIN_DOCKER_VERSION="20.10"
 MIN_COMPOSE_VERSION="2.0"
 
@@ -15,6 +16,7 @@ MIN_COMPOSE_VERSION="2.0"
 for arg in "$@"; do
     case "$arg" in
         --non-interactive) NON_INTERACTIVE=true ;;
+        --airgap) AIRGAP=true; NON_INTERACTIVE=true ;;
     esac
 done
 
@@ -198,6 +200,12 @@ main() {
 
     # 7. Install CLI wrapper
     info "Installing CLI wrapper..."
+    # In airgap mode install to ~/.provisa/bin to avoid needing sudo
+    if [ "$AIRGAP" = true ]; then
+        CLI_INSTALL_DIR="${PROVISA_HOME}/bin"
+        mkdir -p "${CLI_INSTALL_DIR}"
+    fi
+
     if [ ! -d "${CLI_INSTALL_DIR}" ]; then
         err "${CLI_INSTALL_DIR} does not exist."
         exit 1
@@ -219,10 +227,12 @@ main() {
     fi
     ok "Installed ${CLI_INSTALL_DIR}/${CLI_NAME}"
 
-    # 8. Verify installation by starting services
-    printf "\n${BOLD}Verifying installation...${NC}\n"
-    info "Starting Provisa services..."
-    "${CLI_INSTALL_DIR}/${CLI_NAME}" start
+    # 8. Verify installation by starting services (skipped in airgap mode)
+    if [ "$AIRGAP" = false ]; then
+        printf "\n${BOLD}Verifying installation...${NC}\n"
+        info "Starting Provisa services..."
+        "${CLI_INSTALL_DIR}/${CLI_NAME}" start
+    fi
 
     # 9. Done
     printf "\n${GREEN}${BOLD}Installation complete.${NC}\n\n"

@@ -27,6 +27,7 @@ tables:
     governance: pre-approved
     columns:
       - name: id
+        data_type: integer
         visible_to: [admin, analyst]
       - name: customer_id
         visible_to: [admin, analyst]
@@ -45,6 +46,7 @@ tables:
     governance: pre-approved
     columns:
       - name: id
+        data_type: integer
         visible_to: [admin, analyst]
       - name: name
         visible_to: [admin, analyst]
@@ -59,6 +61,7 @@ tables:
     governance: registry-required
     columns:
       - name: id
+        data_type: integer
         visible_to: [admin, analyst]
       - name: name
         visible_to: [admin, analyst]
@@ -92,6 +95,20 @@ roles:
       - ad_hoc_query
     domain_access:
       - sales-analytics
+
+kafka_sources:
+  - id: kafka-support
+    bootstrap_servers: localhost:9092
+    topics:
+      - id: tickets
+        topic: support.tickets
+        domain_id: sales-analytics
+        description: "Inbound support tickets"
+        default_window: 1h
+        columns:
+          - name: ticket_id
+          - name: subject
+          - name: status
 
 rls_rules:
   - table_id: orders
