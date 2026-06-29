@@ -82,9 +82,7 @@ def jdbc_client_connecting(shared_data, base_url):
     assert has_driver("postgresql"), "JDBC gateway requires postgresql driver"
     assert "postgresql" in available_drivers()
 
-    shared_data["jdbc_url"] = (
-        f"jdbc:provisa://{base_url.split('://', 1)[-1]}/governed"
-    )
+    shared_data["jdbc_url"] = f"jdbc:provisa://{base_url.split('://', 1)[-1]}/governed"
     shared_data["username"] = os.getenv("PROVISA_TEST_USER", "analyst")
     shared_data["password"] = os.getenv("PROVISA_TEST_PASSWORD", "analyst-pass")
     assert shared_data["jdbc_url"].startswith("jdbc:provisa://")
@@ -155,9 +153,7 @@ def jdbc_client_get_tables(shared_data, base_url):
     assert has_driver("postgresql"), "getTables() requires the postgresql driver"
     assert "postgresql" in available_drivers()
 
-    shared_data["jdbc_url"] = (
-        f"jdbc:provisa://{base_url.split('://', 1)[-1]}/governed"
-    )
+    shared_data["jdbc_url"] = f"jdbc:provisa://{base_url.split('://', 1)[-1]}/governed"
     shared_data["username"] = os.getenv("PROVISA_TEST_USER", "analyst")
     shared_data["password"] = os.getenv("PROVISA_TEST_PASSWORD", "analyst-pass")
     # JDBC getTables(catalog, schemaPattern, tableNamePattern, types)
@@ -207,9 +203,7 @@ async def role_has_visibility(shared_data, http_client):
         "tableNamePattern": req["table_name_pattern"],
         "types": ",".join(req["types"]),
     }
-    resp = await http_client.get(
-        "/jdbc/metadata/tables", headers=headers, params=params
-    )
+    resp = await http_client.get("/jdbc/metadata/tables", headers=headers, params=params)
     assert resp.status_code == 200, resp.text
 
     body = resp.json()
@@ -218,8 +212,7 @@ async def role_has_visibility(shared_data, http_client):
     shared_data["get_tables_result"] = rows
 
 
-@then(
-    "only those registered tables and views are returned by their registered names")
+@then("only those registered tables and views are returned by their registered names")
 @pytest.mark.integration
 async def only_registered_tables_returned(shared_data):
     if not os.getenv("PROVISA_INTEGRATION"):
@@ -233,23 +226,12 @@ async def only_registered_tables_returned(shared_data):
     seen_names = []
     for row in rows:
         # JDBC getTables ResultSet exposes TABLE_NAME and TABLE_TYPE columns.
-        name = (
-            row.get("TABLE_NAME")
-            or row.get("table_name")
-            or row.get("name")
-        )
-        ttype = (
-            row.get("TABLE_TYPE")
-            or row.get("table_type")
-            or row.get("type")
-            or "TABLE"
-        )
+        name = row.get("TABLE_NAME") or row.get("table_name") or row.get("name")
+        ttype = row.get("TABLE_TYPE") or row.get("table_type") or row.get("type") or "TABLE"
         assert name, f"getTables row missing TABLE_NAME: {row}"
 
         # Must be returned by its registered name (not an internal/physical id).
-        assert not str(name).startswith("_"), (
-            f"table not exposed by registered name: {name}"
-        )
+        assert not str(name).startswith("_"), f"table not exposed by registered name: {name}"
         assert str(ttype).upper() in allowed_types, (
             f"getTables returned unexpected type {ttype} for {name}"
         )
@@ -310,11 +292,7 @@ def _req128_visible_columns(table_id, tables, column_types, role_id):
     )
     ctx = build_context(si)
     idx = _build_catalog_index(ctx, column_types)
-    return [
-        (col_name, rest)
-        for toid, col_name, *rest in idx.all_cols
-        if toid == 16384 + table_id
-    ]
+    return [(col_name, rest) for toid, col_name, *rest in idx.all_cols if toid == 16384 + table_id]
 
 
 @given("a JDBC client calling getColumns(tableName)")
@@ -348,10 +326,7 @@ def jdbc_client_get_columns(shared_data):
         }
     ]
     column_types = {
-        table_id: [
-            _req128_col(name, dtype, nullable)
-            for name, dtype, nullable in _col_defs
-        ]
+        table_id: [_req128_col(name, dtype, nullable) for name, dtype, nullable in _col_defs]
     }
 
     shared_data["table_id"] = table_id
@@ -376,18 +351,14 @@ def compiled_metadata_filtered_by_role(shared_data):
 
     # The set of visible column names must be a subset of what was compiled for
     # the table — visibility may only restrict, never invent, columns.
-    compiled_names = {
-        c.column_name for c in shared_data["column_types"][shared_data["table_id"]]
-    }
+    compiled_names = {c.column_name for c in shared_data["column_types"][shared_data["table_id"]]}
     # Exclude Provisa internal system columns (prefixed/suffixed with _) that the
     # catalog index adds automatically — they are not user-defined schema columns.
     visible_names = {
-        name for name, _ in visible
-        if not (name.startswith("_") and name.endswith("_"))
+        name for name, _ in visible if not (name.startswith("_") and name.endswith("_"))
     }
     assert visible_names.issubset(compiled_names), (
-        f"getColumns exposed columns not in compiled schema: "
-        f"{visible_names - compiled_names}"
+        f"getColumns exposed columns not in compiled schema: {visible_names - compiled_names}"
     )
 
 
@@ -422,18 +393,13 @@ def column_names_and_types_returned(shared_data):
 
     # Verify that every column in the result has a corresponding entry in the
     # original compiled schema — no phantom columns may be introduced.
-    compiled_cols = {
-        c.column_name: c
-        for c in shared_data["column_types"][shared_data["table_id"]]
-    }
+    compiled_cols = {c.column_name: c for c in shared_data["column_types"][shared_data["table_id"]]}
     for col_name in returned_names:
         assert col_name in compiled_cols, (
             f"getColumns returned column {col_name!r} absent from compiled schema"
         )
         compiled_col = compiled_cols[col_name]
-        assert compiled_col.data_type, (
-            f"compiled schema has no data_type for column {col_name!r}"
-        )
+        assert compiled_col.data_type, f"compiled schema has no data_type for column {col_name!r}"
 
     shared_data["get_columns_result"] = returned_names
 
@@ -461,9 +427,7 @@ def jdbc_client_execute_query(shared_data, base_url):
     assert has_driver("postgresql"), "executeQuery() requires the postgresql driver"
     assert "postgresql" in available_drivers()
 
-    shared_data["jdbc_url"] = (
-        f"jdbc:provisa://{base_url.split('://', 1)[-1]}/governed"
-    )
+    shared_data["jdbc_url"] = f"jdbc:provisa://{base_url.split('://', 1)[-1]}/governed"
     shared_data["username"] = os.getenv("PROVISA_TEST_USER", "analyst")
     shared_data["password"] = os.getenv("PROVISA_TEST_PASSWORD", "analyst-pass")
     shared_data["role_id"] = os.getenv("PROVISA_TEST_ROLE", "analyst")
@@ -476,9 +440,9 @@ def jdbc_client_execute_query(shared_data, base_url):
     shared_data["accepted_transports"] = ["arrow-ipc", "json"]
 
     assert shared_data["jdbc_url"].startswith("jdbc:provisa://")
-    assert _REQ129_FORBIDDEN_TRANSPORTS.isdisjoint(
-        set(shared_data["accepted_transports"])
-    ), "JDBC executeQuery must not request a buffered columnar file transport"
+    assert _REQ129_FORBIDDEN_TRANSPORTS.isdisjoint(set(shared_data["accepted_transports"])), (
+        "JDBC executeQuery must not request a buffered columnar file transport"
+    )
 
     # Verify that the accepted transports are all within the allowed set.
     for transport in shared_data["accepted_transports"]:
@@ -489,12 +453,8 @@ def jdbc_client_execute_query(shared_data, base_url):
 
     # Confirm the SQL is a non-empty string targeting a registered table/view.
     sql = shared_data["execute_query_sql"]
-    assert isinstance(sql, str) and sql.strip(), (
-        "executeQuery SQL must be a non-empty string"
-    )
-    assert "orders" in sql.lower(), (
-        "executeQuery SQL must reference a registered table/view"
-    )
+    assert isinstance(sql, str) and sql.strip(), "executeQuery SQL must be a non-empty string"
+    assert "orders" in sql.lower(), "executeQuery SQL must reference a registered table/view"
 
 
 @when("the SQL is passed through Stage 2 governance and executed via the HTTP API")
@@ -537,16 +497,14 @@ async def sql_through_governance_and_http(shared_data, http_client):
     assert resp.status_code == 200, resp.text
 
     content_type = resp.headers.get("content-type", "").lower()
-    assert not any(
-        bad in content_type for bad in _REQ129_FORBIDDEN_TRANSPORTS
-    ), f"executeQuery returned a buffered file transport: {content_type}"
+    assert not any(bad in content_type for bad in _REQ129_FORBIDDEN_TRANSPORTS), (
+        f"executeQuery returned a buffered file transport: {content_type}"
+    )
 
     # Governance metadata must confirm Stage 2 was applied to the SQL.
     governance = resp.headers.get("x-provisa-governance-stage")
     if governance is not None:
-        assert "2" in str(governance), (
-            f"Stage 2 governance not applied: {governance}"
-        )
+        assert "2" in str(governance), f"Stage 2 governance not applied: {governance}"
 
     shared_data["execute_query_content_type"] = content_type
     shared_data["execute_query_body"] = resp.content
@@ -573,14 +531,11 @@ async def result_deserialized_into_resultset_arrow_or_json(shared_data):
     # Confirm the transport is not a forbidden buffered format.
     for forbidden in _REQ129_FORBIDDEN_TRANSPORTS:
         assert forbidden not in content_type, (
-            f"executeQuery used forbidden buffered transport {forbidden!r}: "
-            f"{content_type}"
+            f"executeQuery used forbidden buffered transport {forbidden!r}: {content_type}"
         )
 
     is_arrow = (
-        "arrow" in content_type
-        or "octet-stream" in content_type
-        or "vnd.apache" in content_type
+        "arrow" in content_type or "octet-stream" in content_type or "vnd.apache" in content_type
     )
     is_json = "json" in content_type
 
@@ -628,9 +583,7 @@ async def result_deserialized_into_resultset_arrow_or_json(shared_data):
         try:
             result = json.loads(body)
         except json.JSONDecodeError as exc:
-            raise AssertionError(
-                f"executeQuery JSON response is not valid JSON: {exc}"
-            ) from exc
+            raise AssertionError(f"executeQuery JSON response is not valid JSON: {exc}") from exc
 
         # The JSON ResultSet must expose rows and column metadata.
         rows = (
@@ -640,11 +593,9 @@ async def result_deserialized_into_resultset_arrow_or_json(shared_data):
             or (result if isinstance(result, list) else None)
         )
         assert rows is not None, (
-            f"executeQuery JSON response missing rows/data key: {list(result.keys())}"
+            f"executeQuery JSON response missing rows/data key: {list(result.keys()) if isinstance(result, dict) else result}"
         )
-        assert isinstance(rows, list), (
-            f"executeQuery JSON rows must be a list, got {type(rows)}"
-        )
+        assert isinstance(rows, list), f"executeQuery JSON rows must be a list, got {type(rows)}"
 
         # Each row must be a dict or list (JDBC row representation).
         for i, row in enumerate(rows):
@@ -653,9 +604,7 @@ async def result_deserialized_into_resultset_arrow_or_json(shared_data):
             )
 
     shared_data["resultset_validated"] = True
-    assert shared_data["resultset_validated"], (
-        "JDBC ResultSet deserialization was not confirmed"
-    )
+    assert shared_data["resultset_validated"], "JDBC ResultSet deserialization was not confirmed"
 
 
 # ---------------------------------------------------------------------------
@@ -682,9 +631,7 @@ def jdbc_client_connected_to_provisa(shared_data, base_url):
     )
     assert "postgresql" in available_drivers()
 
-    flight_host = os.getenv(
-        "PROVISA_FLIGHT_HOST", urlparse(base_url).hostname or "localhost"
-    )
+    flight_host = os.getenv("PROVISA_FLIGHT_HOST", urlparse(base_url).hostname or "localhost")
     flight_port = int(os.getenv("PROVISA_FLIGHT_PORT", "8815"))
 
     shared_data["flight_endpoint"] = f"grpc://{flight_host}:{flight_port}"
@@ -715,7 +662,7 @@ def jdbc_client_connected_to_provisa(shared_data, base_url):
 
 @when("the Flight server is reachable")
 @pytest.mark.integration
-async def flight_server_is_reachable(shared_data, http_client):
+def flight_server_is_reachable(shared_data):
     """Probe the Flight server and submit a query ticket (or fall back to HTTP).
 
     TCP reachability of grpc://host:8815 is tested first. When the Flight
@@ -748,3 +695,179 @@ async def flight_server_is_reachable(shared_data, http_client):
 
     ticket_payload = shared_data["flight_ticket_payload"]
     ticket_bytes = json.dumps(ticket_payload).encode("utf-8")
+
+    # -----------------------------------------------------------------------
+    # 2. If Flight is reachable, attempt a real DoGet via pyarrow.flight.
+    #    If not reachable, fall back to Provisa's HTTP API silently.
+    # -----------------------------------------------------------------------
+    if flight_reachable:
+        try:
+            import pyarrow as pa
+            import pyarrow.flight as flight
+
+            client = flight.connect(endpoint)
+            ticket = flight.Ticket(ticket_bytes)
+            reader = client.do_get(ticket)
+            schema = reader.schema
+            assert schema is not None, "Flight DoGet returned a reader with no schema"
+
+            batches = []
+            for batch, _ in reader:
+                batches.append(batch)
+                # Backpressure: consume one batch at a time — never buffer all.
+                assert isinstance(batch, pa.RecordBatch), (
+                    f"Flight stream yielded non-RecordBatch: {type(batch)}"
+                )
+
+            shared_data["flight_batches"] = batches
+            shared_data["flight_schema"] = schema
+            shared_data["transport_used"] = "flight"
+            client.close()
+        except Exception as exc:  # noqa: BLE001
+            # Flight server reachable at TCP level but DoGet failed — fall back.
+            shared_data["flight_reachable"] = False
+            shared_data["flight_error"] = str(exc)
+            flight_reachable = False
+
+    if not flight_reachable:
+        # HTTP fallback path — mirrors what the JDBC driver does silently.
+        base_url = shared_data.get(
+            "base_url", os.getenv("PROVISA_BASE_URL", "http://localhost:8000")
+        )
+        with httpx.Client(base_url=base_url, timeout=30.0) as sync_client:
+            login = sync_client.post(
+                "/auth/login",
+                json={
+                    "username": shared_data["username"],
+                    "password": shared_data["password"],
+                },
+            )
+            assert login.status_code == 200, login.text
+            payload = login.json()
+            token = payload.get("access_token") or payload.get("token")
+            assert token, f"no auth token returned: {payload}"
+            shared_data["token"] = token
+
+            role = payload.get("role") or payload.get("roles") or shared_data["role_id"]
+            assert role, f"authenticated user not mapped to a role: {payload}"
+            shared_data["role"] = role
+
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.apache.arrow.stream, application/json",
+            }
+            resp = sync_client.post(
+                "/query/sql",
+                headers=headers,
+                json={
+                    "sql": ticket_payload["sql"],
+                    "role": role,
+                    "variables": ticket_payload.get("variables", {}),
+                    "transport": ["arrow-ipc", "json"],
+                },
+            )
+            assert resp.status_code == 200, (
+                f"HTTP fallback query failed: {resp.status_code} {resp.text}"
+            )
+
+            shared_data["http_fallback_body"] = resp.content
+            shared_data["http_fallback_content_type"] = resp.headers.get("content-type", "").lower()
+        shared_data["transport_used"] = "http"
+
+    assert shared_data.get("transport_used") in ("flight", "http"), (
+        "Neither Flight nor HTTP transport was recorded"
+    )
+
+
+@then(
+    "results stream as Arrow record batches with backpressure; falls back to HTTP silently if not"
+)
+def results_stream_as_arrow_batches_or_http_fallback(shared_data):
+    """Verify REQ-293: Arrow Flight streaming with backpressure, or silent HTTP fallback.
+
+    When the Flight server was reachable, each record batch must be a valid
+    pa.RecordBatch so the driver can yield rows with backpressure (one batch
+    at a time) without buffering the full result set.
+
+    When Flight was not reachable, the HTTP fallback response must carry
+    Arrow IPC or JSON — never a buffered columnar file format.
+    """
+    transport = shared_data.get("transport_used")
+    assert transport in ("flight", "http"), (
+        f"No transport was recorded by the When step; got: {transport!r}"
+    )
+
+    import pyarrow as pa
+
+    if transport == "flight":
+        batches = shared_data.get("flight_batches")
+        schema = shared_data.get("flight_schema")
+
+        assert schema is not None, "Flight transport recorded but no schema was captured"
+        assert batches is not None, "Flight transport recorded but no record batches were captured"
+        assert isinstance(batches, list), f"Flight batches must be a list, got {type(batches)}"
+
+        # Each batch must share the same schema — the driver can process them
+        # incrementally without holding the full result in memory (backpressure).
+        for i, batch in enumerate(batches):
+            assert isinstance(batch, pa.RecordBatch), (
+                f"Flight stream item {i} is not a RecordBatch: {type(batch)}"
+            )
+            assert batch.schema.equals(schema), (
+                f"Flight record batch {i} schema mismatch: expected {schema}, got {batch.schema}"
+            )
+
+        # Schema must expose at least the columns requested in the ticket SQL.
+        col_names = schema.names
+        assert col_names, "Flight stream schema has no column names"
+
+    else:
+        # HTTP fallback — the driver must have fallen back silently.
+        body = shared_data.get("http_fallback_body", b"")
+        content_type = shared_data.get("http_fallback_content_type", "")
+
+        assert body, "HTTP fallback returned an empty response body"
+
+        _forbidden = {"parquet", "orc", "csv-file"}
+        for forbidden in _forbidden:
+            assert forbidden not in content_type, (
+                f"HTTP fallback used forbidden buffered transport {forbidden!r}: {content_type}"
+            )
+
+        is_arrow = (
+            "arrow" in content_type
+            or "octet-stream" in content_type
+            or "vnd.apache" in content_type
+        )
+        is_json = "json" in content_type
+
+        assert is_arrow or is_json, (
+            f"HTTP fallback response has unrecognised content-type: {content_type!r}"
+        )
+
+        if is_arrow:
+            try:
+                reader = pa.ipc.open_stream(io.BytesIO(body))
+                assert reader.schema_arrow is not None, (
+                    "HTTP fallback Arrow IPC stream has no schema"
+                )
+            except ImportError:
+                assert body[:6] == b"ARROW1" or len(body) > 8, (
+                    "HTTP fallback claims Arrow but payload lacks Arrow magic bytes"
+                )
+        elif is_json:
+            try:
+                result = json.loads(body)
+            except json.JSONDecodeError as exc:
+                raise AssertionError(
+                    f"HTTP fallback JSON response is not valid JSON: {exc}"
+                ) from exc
+            rows = (
+                result.get("rows")
+                or result.get("data")
+                or result.get("results")
+                or (result if isinstance(result, list) else None)
+            )
+            assert rows is not None, (
+                f"HTTP fallback JSON missing rows/data key: {list(result.keys()) if isinstance(result, dict) else result}"
+            )

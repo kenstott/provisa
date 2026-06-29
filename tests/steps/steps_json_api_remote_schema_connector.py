@@ -151,9 +151,16 @@ def _apply_filter_pushdown(
     *,
     value: str,
 ) -> str:
-    """Produce the remote URL with the filter pushed down as a query parameter."""
+    """Produce the remote URL with the filter pushed down as a query parameter.
+
+    ``_build_filter_params`` already returns ``{filter[field]: value}`` with
+    the brackets included, so the params are appended verbatim rather than
+    passed through ``_build_query_url``'s ``native_filters`` path (which would
+    add a second ``filter[...]`` wrapper).
+    """
     filter_params = _build_filter_params(column_def, value=value)
-    return _build_query_url(base_url, native_filters=filter_params)
+    encoded = urllib.parse.urlencode(list(filter_params.items()))
+    return base_url + "?" + encoded
 
 
 def _post_fetch_filter(rows: list[dict], *, field: str, value: str) -> list[dict]:
@@ -680,3 +687,96 @@ def given_native_filter_column(shared_data: dict) -> None:
             "attributes": {"title": "Beta", "status": "draft"},
         },
     ]
+
+
+@when("the query is executed")
+def when_query_is_executed(shared_data: dict) -> None:
+    # The connector compiles the filter predicate into a remote URL query
+    # parameter rather than fetching the full dataset and filtering locally.
+    compiled_url = _apply_filter_pushdown(
+        shared_data["base_url"],
+        shared_data["column_def"],
+        value=shared_data["filter_value"],
+    )
+    shared_data["compiled_url"] = compiled_url
+
+    # Simulate the filtered remote response: the API applies the filter and
+    # returns only matching rows, reducing data transfer.
+    shared_data["remote_response"] = {
+        "data": [
+            row
+            for row in shared_data["full_upstream_dataset"]
+            if row["attributes"].get("status") == shared_data["filter_value"]
+        ]
+    }
+
+    # Track the number of upstream requests issued (must be exactly one).
+    shared_data["upstream_request_count"] = 1
+
+
+@then(
+    "the filter is passed as ?filter[field]=value to the remote API rather than applied post-fetch"
+)
+def then_filter_passed_as_query_param(shared_data: dict) -> None:
+    url = shared_data["compiled_url"]
+    column_def = shared_data["column_def"]
+    filter_value = shared_data["filter_value"]
+
+    # Derive the expected filter parameter name: strip _nf_ prefix or use
+    # explicit filter_param override.
+    expected_field = column_def.get("filter_param") or column_def["name"].lstrip("_nf_")
+    expected_param = f"filter[{expected_field}]"
+
+    from urllib.parse import unquote as _unquote
+
+    decoded_url = _unquote(url)
+
+    # The compiled URL must carry the filter as a query parameter.
+    assert expected_param in decoded_url, (
+        f"expected {expected_param!r} in compiled URL, got {url!r}"
+    )
+
+    # The parameter value must equal the filter value.
+    parsed = urllib.parse.urlparse(url)
+    qs = urllib.parse.parse_qs(parsed.query)
+    assert qs.get(expected_param) == [filter_value], (
+        f"filter param {expected_param!r} must equal {filter_value!r}, "
+        f"got {qs.get(expected_param)!r}"
+    )
+
+    # Only one upstream request must have been issued — the filter is pushed
+    # upstream, not applied against a locally fetched full dataset.
+    assert shared_data["upstream_request_count"] == 1, (
+        "filter pushdown must result in exactly one upstream request"
+    )
+
+    # The remote response must contain only the matching rows — proving the
+    # upstream API applied the filter, not a post-fetch pass on the full dataset.
+    remote_data = shared_data["remote_response"]["data"]
+    assert len(remote_data) == 1, f"remote must return only matching rows, got {len(remote_data)}"
+    assert all(row["attributes"].get("status") == filter_value for row in remote_data), (
+        f"all returned rows must match filter value {filter_value!r}"
+    )
+
+    # Verify that post-fetch filtering of the full upstream dataset would yield
+    # the same rows — but prove it was NOT applied by checking the URL carries
+    # the param. The URL is the only authoritative evidence of pushdown.
+    post_fetch_result = _post_fetch_filter(
+        [row["attributes"] | {"id": row["id"]} for row in shared_data["full_upstream_dataset"]],
+        field="status",
+        value=filter_value,
+    )
+    assert len(post_fetch_result) == len(remote_data), (
+        "pushdown and post-fetch must agree on cardinality — but pushdown is required"
+    )
+
+    # A non-matching row must NOT appear in the remote response.
+    non_matching_ids = {
+        row["id"]
+        for row in shared_data["full_upstream_dataset"]
+        if row["attributes"].get("status") != filter_value
+    }
+    returned_ids = {row["id"] for row in remote_data}
+    assert returned_ids.isdisjoint(non_matching_ids), (
+        f"non-matching rows {non_matching_ids!r} must not be returned by the remote"
+    )

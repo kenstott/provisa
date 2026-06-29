@@ -29,9 +29,7 @@ REQ-535 exercises dev-mode anonymous identity.
 
 from __future__ import annotations
 
-import base64
 import json
-import os
 import time
 import types
 import unittest.mock as mock
@@ -47,8 +45,7 @@ from jwt.algorithms import RSAAlgorithm
 from pytest_bdd import given, scenarios, then, when
 
 from provisa.auth.middleware import AuthMiddleware
-from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment
-from provisa.auth.providers.simple import SimpleAuthProvider
+from provisa.auth.models import AuthIdentity
 from provisa.auth.superuser import check_superuser
 
 scenarios("../features/REQ-121.feature")
@@ -684,4 +681,441 @@ def request_with_keycloak_jwt(shared_data: dict) -> None:
         },
     }
 
-    # Sign the token with the RS
+    # Sign the token with the RSA private key generated in the Given step (RS256).
+    token = jwt.encode(
+        payload,
+        private_key,
+        algorithm="RS256",
+        headers={"kid": _KC_SIGNING_KID},
+    )
+
+    shared_data["kc_token"] = token
+    shared_data["kc_payload"] = payload
+
+    assert token
+    assert isinstance(token, str)
+
+
+# ---------------------------------------------------------------------------
+# REQ-122 — Then: token validated via OIDC discovery + JWKS, roles mapped
+# ---------------------------------------------------------------------------
+
+
+@then("the token is validated via OIDC discovery and JWKS, and realm/client roles are mapped to Provisa roles")
+def keycloak_token_validated_and_roles_mapped(shared_data: dict) -> None:
+    token = shared_data["kc_token"]
+    payload = shared_data["kc_payload"]
+    jwks = shared_data["jwks"]
+    client_id = shared_data["kc_client_id"]
+    kc_issuer = shared_data["kc_issuer"]
+
+    # Resolve the signing key from JWKS (simulates OIDC discovery + JWKS fetch).
+    public_key = _resolve_signing_key(jwks, _KC_SIGNING_KID)
+
+    # Verify the JWT signature and claims.
+    decoded = jwt.decode(
+        token,
+        public_key,
+        algorithms=["RS256"],
+        audience=client_id,
+        issuer=kc_issuer,
+        options={"verify_exp": True},
+    )
+
+    assert decoded["sub"] == payload["sub"]
+    assert decoded["iss"] == kc_issuer
+    assert decoded["email"] == "dave@example.com"
+    assert decoded["preferred_username"] == "dave"
+
+    # Map realm + client roles to Provisa roles.
+    provisa_roles = _map_keycloak_roles(decoded, client_id)
+
+    assert "analyst" in provisa_roles, (
+        f"provisa-analyst realm role must map to 'analyst'; got {provisa_roles}"
+    )
+    assert "editor" in provisa_roles, (
+        f"data-editor client role must map to 'editor'; got {provisa_roles}"
+    )
+    # System roles must be dropped.
+    assert "offline_access" not in provisa_roles
+    assert "uma_authorization" not in provisa_roles
+    assert "manage-account" not in provisa_roles
+
+    identity = AuthIdentity(
+        user_id=decoded["sub"],
+        email=decoded.get("email", ""),
+        display_name=decoded.get("name", decoded["sub"]),
+        roles=provisa_roles,
+        raw_claims=decoded,
+    )
+
+    assert identity.user_id == payload["sub"]
+    assert set(identity.roles) == {"analyst", "editor"}
+    shared_data["kc_identity"] = identity
+
+
+# ---------------------------------------------------------------------------
+# REQ-123 — Generic OIDC
+# ---------------------------------------------------------------------------
+
+_GENERIC_OIDC_ISSUER = "https://oidc.example.com"
+_GENERIC_OIDC_AUDIENCE = "provisa-api"
+_GENERIC_OIDC_SIGNING_KID = "generic-rsa-key-1"
+
+# Claim mapping: OIDC claim → Provisa role (value in claim → mapped role)
+_GENERIC_CLAIM_MAPPING = {
+    "claim": "roles",
+    "mapping": {
+        "provisa-admin": "admin",
+        "provisa-analyst": "analyst",
+        "provisa-editor": "editor",
+    },
+}
+
+
+@given("a generic OIDC provider is configured with a discovery URL")
+def generic_oidc_configured(shared_data: dict) -> None:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key = private_key.public_key()
+
+    jwk = json.loads(RSAAlgorithm.to_jwk(public_key))
+    jwk["kid"] = _GENERIC_OIDC_SIGNING_KID
+    jwk["use"] = "sig"
+    jwk["alg"] = "RS256"
+    jwk["kty"] = "RSA"
+
+    jwks = {"keys": [jwk]}
+
+    discovery_url = f"{_GENERIC_OIDC_ISSUER}/.well-known/openid-configuration"
+    discovery = {
+        "issuer": _GENERIC_OIDC_ISSUER,
+        "authorization_endpoint": f"{_GENERIC_OIDC_ISSUER}/authorize",
+        "token_endpoint": f"{_GENERIC_OIDC_ISSUER}/token",
+        "jwks_uri": f"{_GENERIC_OIDC_ISSUER}/jwks",
+        "userinfo_endpoint": f"{_GENERIC_OIDC_ISSUER}/userinfo",
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "response_types_supported": ["code"],
+        "subject_types_supported": ["public"],
+        "scopes_supported": ["openid", "email", "profile"],
+        "claims_supported": ["sub", "iss", "aud", "exp", "iat", "email", "name", "roles"],
+    }
+
+    shared_data["generic_private_key"] = private_key
+    shared_data["generic_public_key"] = public_key
+    shared_data["generic_jwks"] = jwks
+    shared_data["generic_discovery"] = discovery
+    shared_data["generic_discovery_url"] = discovery_url
+    shared_data["generic_issuer"] = _GENERIC_OIDC_ISSUER
+    shared_data["generic_audience"] = _GENERIC_OIDC_AUDIENCE
+    shared_data["generic_claim_mapping"] = _GENERIC_CLAIM_MAPPING
+
+    assert discovery_url.endswith("/.well-known/openid-configuration")
+    assert discovery["issuer"] == _GENERIC_OIDC_ISSUER
+    assert "jwks_uri" in discovery
+    assert jwks["keys"]
+    jwk_entry = jwks["keys"][0]
+    assert jwk_entry["kid"] == _GENERIC_OIDC_SIGNING_KID
+    assert jwk_entry["kty"] == "RSA"
+    assert jwk_entry["use"] == "sig"
+
+
+@when("a request arrives with a JWT access token")
+def request_with_generic_jwt(shared_data: dict) -> None:
+    now = int(time.time())
+    private_key = shared_data["generic_private_key"]
+    issuer = shared_data["generic_issuer"]
+    audience = shared_data["generic_audience"]
+
+    payload = {
+        "sub": "generic-user-abc123",
+        "iss": issuer,
+        "aud": audience,
+        "iat": now,
+        "exp": now + 3600,
+        "email": "alice@example.com",
+        "name": "Alice Analyst",
+        # Custom claim carrying roles — mapped via configured claim mapping.
+        "roles": ["provisa-analyst", "provisa-editor", "unrecognised-role"],
+    }
+
+    token = jwt.encode(
+        payload,
+        private_key,
+        algorithm="RS256",
+        headers={"kid": _GENERIC_OIDC_SIGNING_KID},
+    )
+
+    shared_data["generic_token"] = token
+    shared_data["generic_payload"] = payload
+
+    assert token
+    assert isinstance(token, str)
+
+
+@then("the token is validated via JWKS and roles are mapped using the configured claim mapping")
+def generic_token_validated_and_roles_mapped(shared_data: dict) -> None:
+    token = shared_data["generic_token"]
+    payload = shared_data["generic_payload"]
+    jwks = shared_data["generic_jwks"]
+    issuer = shared_data["generic_issuer"]
+    audience = shared_data["generic_audience"]
+    claim_mapping = shared_data["generic_claim_mapping"]
+
+    public_key = _resolve_signing_key(jwks, _GENERIC_OIDC_SIGNING_KID)
+
+    decoded = jwt.decode(
+        token,
+        public_key,
+        algorithms=["RS256"],
+        audience=audience,
+        issuer=issuer,
+        options={"verify_exp": True},
+    )
+
+    assert decoded["sub"] == payload["sub"]
+    assert decoded["iss"] == issuer
+    assert decoded["email"] == "alice@example.com"
+
+    # Apply configured claim mapping.
+    claim_key = claim_mapping["claim"]
+    role_map = claim_mapping["mapping"]
+    raw_roles: list[str] = decoded.get(claim_key, [])
+    provisa_roles = [
+        role_map[r] for r in raw_roles if r in role_map
+    ]
+    # Deduplicate while preserving order.
+    seen: set[str] = set()
+    provisa_roles_deduped = [r for r in provisa_roles if not (r in seen or seen.add(r))]
+
+    assert "analyst" in provisa_roles_deduped
+    assert "editor" in provisa_roles_deduped
+    # Unrecognised roles must be dropped.
+    assert "unrecognised-role" not in provisa_roles_deduped
+
+    identity = AuthIdentity(
+        user_id=decoded["sub"],
+        email=decoded.get("email", ""),
+        display_name=decoded.get("name", decoded["sub"]),
+        roles=provisa_roles_deduped,
+        raw_claims=decoded,
+    )
+
+    assert identity.user_id == "generic-user-abc123"
+    assert set(identity.roles) == {"analyst", "editor"}
+    shared_data["generic_identity"] = identity
+
+
+# ---------------------------------------------------------------------------
+# REQ-124 — Simple username/password auth
+# ---------------------------------------------------------------------------
+
+_SIMPLE_AUTH_SECRET = "simple-auth-jwt-secret-for-testing"
+_SIMPLE_AUTH_TOKEN_TTL = 3600
+
+
+@given("allow_simple_auth is true and users are defined in config YAML with bcrypt passwords")
+def simple_auth_configured(shared_data: dict) -> None:
+    password_plain = "hunter2"
+    password_hash = bcrypt.hashpw(password_plain.encode(), bcrypt.gensalt()).decode()
+
+    config_yaml = yaml.dump({
+        "allow_simple_auth": True,
+        "simple_auth_secret": _SIMPLE_AUTH_SECRET,
+        "simple_auth_token_ttl": _SIMPLE_AUTH_TOKEN_TTL,
+        "users": [
+            {
+                "username": "dev-user",
+                "password_hash": password_hash,
+                "roles": ["analyst"],
+                "email": "dev@example.com",
+            }
+        ],
+    })
+
+    config = yaml.safe_load(config_yaml)
+
+    assert config["allow_simple_auth"] is True
+    assert config["users"]
+    user = config["users"][0]
+    assert bcrypt.checkpw(password_plain.encode(), user["password_hash"].encode()), (
+        "bcrypt hash in config must verify against the plain password"
+    )
+
+    shared_data["simple_auth_config"] = config
+    shared_data["simple_auth_plain_password"] = password_plain
+    shared_data["simple_auth_username"] = "dev-user"
+
+
+@when("a developer submits valid credentials")
+def developer_submits_valid_credentials(shared_data: dict) -> None:
+    config = shared_data["simple_auth_config"]
+    username = shared_data["simple_auth_username"]
+    password = shared_data["simple_auth_plain_password"]
+
+    user_record = next(
+        (u for u in config["users"] if u["username"] == username), None
+    )
+    assert user_record is not None, f"User {username!r} not found in config"
+    assert bcrypt.checkpw(password.encode(), user_record["password_hash"].encode()), (
+        "Password must match the stored bcrypt hash"
+    )
+
+    now = int(time.time())
+    claims = {
+        "sub": username,
+        "email": user_record.get("email", ""),
+        "roles": user_record.get("roles", []),
+        "iat": now,
+        "exp": now + config["simple_auth_token_ttl"],
+        "iss": "provisa-simple-auth",
+    }
+
+    token = jwt.encode(claims, config["simple_auth_secret"], algorithm="HS256")
+
+    shared_data["simple_auth_token"] = token
+    shared_data["simple_auth_claims"] = claims
+
+    assert token
+    assert isinstance(token, str)
+
+
+@then("a short-lived JWT is issued for local testing")
+def short_lived_jwt_issued(shared_data: dict) -> None:
+    token = shared_data["simple_auth_token"]
+    claims = shared_data["simple_auth_claims"]
+    config = shared_data["simple_auth_config"]
+
+    decoded = jwt.decode(
+        token,
+        config["simple_auth_secret"],
+        algorithms=["HS256"],
+        options={"verify_exp": True},
+    )
+
+    assert decoded["sub"] == "dev-user"
+    assert decoded["iss"] == "provisa-simple-auth"
+    assert decoded["roles"] == ["analyst"]
+    ttl = decoded["exp"] - decoded["iat"]
+    assert ttl == _SIMPLE_AUTH_TOKEN_TTL, (
+        f"Token TTL must be {_SIMPLE_AUTH_TOKEN_TTL}s; got {ttl}s"
+    )
+    assert ttl <= 86400, "Simple-auth tokens must be short-lived (≤ 24 h)"
+
+    identity = AuthIdentity(
+        user_id=decoded["sub"],
+        email=decoded.get("email", ""),
+        display_name=decoded["sub"],
+        roles=decoded["roles"],
+        raw_claims=decoded,
+    )
+
+    assert identity.user_id == "dev-user"
+    assert identity.roles == ["analyst"]
+    shared_data["simple_auth_identity"] = identity
+
+
+# ---------------------------------------------------------------------------
+# REQ-125 — Superuser bootstrap access
+# ---------------------------------------------------------------------------
+
+_SUPERUSER_USERNAME = "superadmin"
+_SUPERUSER_PASSWORD = "super-secret-bootstrap-password"
+
+
+@given("superuser credentials are set in config via env secret")
+def superuser_credentials_configured(shared_data: dict) -> None:
+    config = {
+        "superuser": {
+            "username": _SUPERUSER_USERNAME,
+            "password": _SUPERUSER_PASSWORD,
+        }
+    }
+
+    shared_data["superuser_config"] = config
+    shared_data["superuser_username"] = _SUPERUSER_USERNAME
+    shared_data["superuser_password"] = _SUPERUSER_PASSWORD
+
+    assert config["superuser"]["username"] == _SUPERUSER_USERNAME
+    assert config["superuser"]["password"] == _SUPERUSER_PASSWORD
+
+
+@when("the superuser authenticates")
+def superuser_authenticates(shared_data: dict) -> None:
+    config = shared_data["superuser_config"]
+    username = shared_data["superuser_username"]
+    password = shared_data["superuser_password"]
+
+    result = check_superuser(
+        username=username,
+        password=password,
+        config=config["superuser"],
+    )
+
+    shared_data["superuser_auth_result"] = result
+
+
+@then("they receive admin role and all capabilities regardless of the configured auth provider")
+def superuser_receives_admin_role(shared_data: dict) -> None:
+    result = shared_data["superuser_auth_result"]
+
+    assert result is not None, "check_superuser must return an identity for valid credentials"
+    assert isinstance(result, AuthIdentity), (
+        f"check_superuser must return an AuthIdentity; got {type(result)}"
+    )
+    assert "admin" in result.roles, (
+        f"Superuser must have the 'admin' role; got roles={result.roles}"
+    )
+    assert result.user_id == _SUPERUSER_USERNAME, (
+        f"Superuser identity user_id must be {_SUPERUSER_USERNAME!r}; got {result.user_id!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-535 — Dev-mode anonymous identity
+# ---------------------------------------------------------------------------
+
+
+@given("no auth provider is configured")
+def no_auth_provider_configured(shared_data: dict) -> None:
+    config = {"auth": None}
+    shared_data["anon_config"] = config
+
+    assert config["auth"] is None, "Auth must be None to trigger anonymous mode"
+
+
+@when("any request arrives")
+def any_request_arrives(shared_data: dict) -> None:
+    app = FastAPI()
+
+    @app.get("/probe")
+    async def probe(request: Request):
+        identity: AuthIdentity = request.state.identity
+        return {
+            "user_id": identity.user_id,
+            "roles": identity.roles,
+            "email": identity.email,
+        }
+
+    middleware = AuthMiddleware(app=app, provider=None)
+    client = TestClient(middleware)
+
+    response = client.get("/probe")
+    shared_data["anon_response"] = response
+    shared_data["anon_status_code"] = response.status_code
+
+
+@then("it is treated as the anonymous identity with all roles and wildcard domain access")
+def anonymous_identity_with_all_roles(shared_data: dict) -> None:
+    response = shared_data["anon_response"]
+
+    assert response.status_code == 200, (
+        f"Anonymous requests must succeed (200); got {response.status_code}"
+    )
+
+    body = response.json()
+    assert body["user_id"] == "anonymous", (
+        f"Anonymous identity user_id must be 'anonymous'; got {body['user_id']!r}"
+    )
+    assert body["roles"], "Anonymous identity must have at least one role"
+    shared_data["anon_identity_response"] = body
+

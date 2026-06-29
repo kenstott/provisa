@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from pytest_bdd import scenarios
+from pytest_bdd import given, scenarios, then, when
 
 scenarios("../features/REQ-602.feature")
 scenarios("../features/REQ-313.feature")
@@ -859,3 +859,557 @@ class _InMemoryRelationshipRegistry:
         self._store = manual
         for rel in new_rels:
             self._store[rel["id"]] = rel
+
+
+# ---------------------------------------------------------------------------
+# Helpers for REQ-599: native filter columns from required input parameters
+# ---------------------------------------------------------------------------
+
+
+def _build_native_filter_columns_for_graphql(field: dict) -> list[dict]:
+    """Build _nf_-prefixed native filter columns from required (NON_NULL) GQL args
+    that are not already response fields."""
+    from provisa.graphql_remote.mapper import _build_required_args
+
+    required_args = _build_required_args(field)
+    return [
+        {
+            "name": f"_nf_{arg['name']}",
+            "type": arg["provisa_type"],
+            "native_filter_type": "graphql_variable",
+        }
+        for arg in required_args
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-308
+# ---------------------------------------------------------------------------
+
+
+@given("a remote GraphQL schema is registered in Provisa", target_fixture="shared_data")
+def step_given_remote_gql_schema_registered(shared_data: dict) -> dict:
+    schema = _make_req308_schema()
+    shared_data["schema"] = schema
+    shared_data["namespace"] = "shop"
+    shared_data["source_id"] = "shop-remote"
+    return shared_data
+
+
+@when("introspection completes")
+def step_when_introspection_completes(shared_data: dict) -> None:
+    from provisa.graphql_remote.mapper import map_schema
+
+    tables, functions, relationships = map_schema(
+        shared_data["schema"],
+        shared_data["namespace"],
+        shared_data["source_id"],
+    )
+    shared_data["tables"] = tables
+    shared_data["functions"] = functions
+    shared_data["relationships"] = relationships
+
+
+@then(
+    "Query fields are auto-registered as virtual read-only tables and Mutation fields as tracked functions"
+)
+def step_then_query_fields_registered_as_tables_mutation_as_functions(shared_data: dict) -> None:
+    tables = shared_data["tables"]
+    functions = shared_data["functions"]
+
+    table_field_names = {t["field_name"] for t in tables}
+    func_field_names = {f["field_name"] for f in functions}
+
+    # Query fields with OBJECT return types → virtual tables
+    assert "products" in table_field_names, f"Expected 'products' table, got {table_field_names}"
+    assert "orders" in table_field_names, f"Expected 'orders' table, got {table_field_names}"
+
+    # Mutation fields → tracked functions
+    assert "createOrder" in func_field_names, (
+        f"Expected 'createOrder' function, got {func_field_names}"
+    )
+    assert "updateProduct" in func_field_names, (
+        f"Expected 'updateProduct' function, got {func_field_names}"
+    )
+
+    # Tables must have columns derived from the GQL return type
+    products_table = next(t for t in tables if t["field_name"] == "products")
+    col_names = {c["name"] for c in products_table["columns"]}
+    assert "id" in col_names
+    assert "name" in col_names
+    assert "price" in col_names
+
+    # Functions must have return_schema
+    create_fn = next(f for f in functions if f["field_name"] == "createOrder")
+    assert create_fn["return_schema"], "createOrder must have a return_schema"
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-309
+# ---------------------------------------------------------------------------
+
+
+@given("a remote GraphQL source query executed within TTL", target_fixture="shared_data")
+def step_given_remote_gql_query_executed_within_ttl(shared_data: dict) -> dict:
+    conn = _FakeTrinoConnection()
+    loc = _make_iceberg_cache_location()
+    columns = _make_fake_columns()
+    remote_rows = [{"id": "1", "name": "Alice", "age": 30}, {"id": "2", "name": "Bob", "age": 25}]
+    table_name = "users_cache_20260101"
+
+    rows = _simulate_first_query_execution(conn, remote_rows, table_name, loc, columns)
+
+    shared_data["conn"] = conn
+    shared_data["loc"] = loc
+    shared_data["table_name"] = table_name
+    shared_data["first_rows"] = rows
+    shared_data["remote_call_count_after_first"] = conn.remote_call_count
+    return shared_data
+
+
+@when("the same query is issued again")
+def step_when_same_query_issued_again(shared_data: dict) -> None:
+    conn: _FakeTrinoConnection = shared_data["conn"]
+    loc = shared_data["loc"]
+    table_name = shared_data["table_name"]
+    ttl = 3600  # 1-hour TTL
+
+    rows, cache_hit = _simulate_second_query_from_cache(conn, table_name, loc, ttl)
+    shared_data["second_rows"] = rows
+    shared_data["cache_hit"] = cache_hit
+    shared_data["remote_call_count_after_second"] = conn.remote_call_count
+
+
+@then("results are served from the Iceberg cache in Trino with zero remote hops")
+def step_then_results_served_from_iceberg_cache(shared_data: dict) -> None:
+    assert shared_data["cache_hit"], "Expected a cache hit on the second query"
+    assert (
+        shared_data["remote_call_count_after_second"]
+        == shared_data["remote_call_count_after_first"]
+    ), "Remote endpoint must not be called again when serving from cache"
+    assert shared_data["second_rows"] == shared_data["first_rows"], (
+        "Cached rows must match the originally fetched rows"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-311
+# ---------------------------------------------------------------------------
+
+
+@given("a remote GraphQL schema that has changed upstream", target_fixture="shared_data")
+def step_given_remote_gql_schema_changed_upstream(shared_data: dict) -> dict:
+    registry = _InMemorySchemaRegistry()
+    source_id = "user-svc"
+    url = "https://user-svc.example.com/graphql"
+    namespace = "usersvc"
+
+    registry.register_source(source_id, url, namespace, _build_initial_schema_v1())
+
+    # Apply governance rules on the original schema
+    registry.add_rls_rule(source_id, f"{namespace}__users", "role IN ('admin', 'analyst')")
+    registry.add_masking_rule(source_id, f"{namespace}__users", "email", "hash")
+
+    shared_data["registry"] = registry
+    shared_data["source_id"] = source_id
+    shared_data["namespace"] = namespace
+    shared_data["evolved_schema"] = _build_evolved_schema_v2()
+    return shared_data
+
+
+@when("a steward triggers the Refresh Schema admin mutation")
+def step_when_steward_triggers_refresh_schema(shared_data: dict) -> None:
+    registry: _InMemorySchemaRegistry = shared_data["registry"]
+    summary = registry.refresh_schema(shared_data["source_id"], shared_data["evolved_schema"])
+    shared_data["refresh_summary"] = summary
+
+
+@then("registrations are updated and existing RLS/masking rules are preserved")
+def step_then_registrations_updated_rls_masking_preserved(shared_data: dict) -> None:
+    registry: _InMemorySchemaRegistry = shared_data["registry"]
+    source_id = shared_data["source_id"]
+    namespace = shared_data["namespace"]
+    summary = shared_data["refresh_summary"]
+
+    entry = registry.get_entry(source_id)
+
+    # New table from evolved schema must be registered
+    table_names = {t["name"] for t in entry["tables"]}
+    assert f"{namespace}__products" in table_names, (
+        f"Expected products table after refresh, got {table_names}"
+    )
+    assert f"{namespace}__users" in table_names
+
+    # Added tables reflected in summary
+    assert f"{namespace}__products" in summary["added_tables"]
+
+    # RLS rule preserved
+    assert len(entry["rls_rules"]) == 1
+    assert entry["rls_rules"][0]["rule_expr"] == "role IN ('admin', 'analyst')"
+
+    # Masking rule preserved
+    assert len(entry["masking_rules"]) == 1
+    assert entry["masking_rules"][0]["column_name"] == "email"
+    assert entry["masking_rules"][0]["strategy"] == "hash"
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-313
+# ---------------------------------------------------------------------------
+
+
+@given(
+    "a relationship defined between a remote schema virtual table and a local table",
+    target_fixture="shared_data",
+)
+def step_given_relationship_between_remote_virtual_and_local(shared_data: dict) -> dict:
+    local_orders = _make_local_table(
+        "orders",
+        [
+            {"order_id": "o1", "user_id": "u1", "total": 99.99},
+            {"order_id": "o2", "user_id": "u2", "total": 49.50},
+            {"order_id": "o3", "user_id": "u1", "total": 15.00},
+        ],
+    )
+    remote_users = _make_remote_virtual_table(
+        field_name="users",
+        source_url="https://user-svc.example.com/graphql",
+        cached_rows=[
+            {"id": "u1", "name": "Alice"},
+            {"id": "u2", "name": "Bob"},
+        ],
+    )
+    relationship = _define_relationship(
+        local_table=local_orders,
+        remote_table=remote_users,
+        local_key="user_id",
+        remote_key="id",
+    )
+    shared_data["relationship"] = relationship
+    return shared_data
+
+
+@when("a joined query is executed")
+def step_when_joined_query_executed(shared_data: dict) -> None:
+    rel = shared_data["relationship"]
+    local_rows = _resolve_local_side(rel)
+    remote_rows = _resolve_remote_side_from_cache(rel)
+    joined = _federation_join(local_rows, remote_rows, rel["local_key"], rel["remote_key"])
+    shared_data["joined_rows"] = joined
+    shared_data["local_key"] = rel["local_key"]
+    shared_data["remote_key"] = rel["remote_key"]
+
+
+@then("the local side is resolved from cache/DB and the remote side via the cached remote call")
+def step_then_local_from_cache_remote_via_cached_call(shared_data: dict) -> None:
+    joined = shared_data["joined_rows"]
+
+    # Both local and remote columns must appear in the joined result
+    assert len(joined) > 0, "Join must produce at least one row"
+    for row in joined:
+        assert "order_id" in row, "Local column 'order_id' must be present"
+        assert "name" in row, "Remote column 'name' must be present"
+
+    # Verify specific join correctness: user_id=u1 should join with name=Alice
+    alice_rows = [r for r in joined if r.get("user_id") == "u1"]
+    assert alice_rows, "Expected at least one row joined to user u1"
+    assert all(r["name"] == "Alice" for r in alice_rows)
+
+    bob_rows = [r for r in joined if r.get("user_id") == "u2"]
+    assert bob_rows, "Expected at least one row joined to user u2"
+    assert all(r["name"] == "Bob" for r in bob_rows)
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-597
+# ---------------------------------------------------------------------------
+
+
+@given(
+    "a GQL remote source with a query-type field that behaves as a mutation",
+    target_fixture="shared_data",
+)
+def step_given_gql_source_with_query_field_behaving_as_mutation(shared_data: dict) -> dict:
+    schema = _make_req597_schema_with_misclassified_query_field()
+    shared_data["schema"] = schema
+    shared_data["namespace"] = "reporting"
+    shared_data["source_id"] = "reporting-remote"
+    return shared_data
+
+
+@when('field_overrides maps that field to "mutation"')
+def step_when_field_overrides_maps_field_to_mutation(shared_data: dict) -> None:
+    from provisa.graphql_remote.mapper import map_schema
+
+    tables, functions, relationships = map_schema(
+        shared_data["schema"],
+        shared_data["namespace"],
+        shared_data["source_id"],
+        field_overrides={"submitReport": "mutation"},
+    )
+    shared_data["tables"] = tables
+    shared_data["functions"] = functions
+    shared_data["relationships"] = relationships
+
+    # Also map WITHOUT overrides to confirm structural classification differs
+    tables_no_override, functions_no_override, _ = map_schema(
+        shared_data["schema"],
+        shared_data["namespace"],
+        shared_data["source_id"],
+    )
+    shared_data["tables_no_override"] = tables_no_override
+    shared_data["functions_no_override"] = functions_no_override
+
+
+@then(
+    "the field is registered as a tracked function and the override takes priority over structural classification"
+)
+def step_then_field_registered_as_function_override_takes_priority(shared_data: dict) -> None:
+    func_field_names = {f["field_name"] for f in shared_data["functions"]}
+    table_field_names = {t["field_name"] for t in shared_data["tables"]}
+
+    # With override: submitReport must be a function, not a table
+    assert "submitReport" in func_field_names, (
+        f"submitReport must be a tracked function with override; got functions={func_field_names}"
+    )
+    assert "submitReport" not in table_field_names, (
+        "submitReport must NOT be a table when override='mutation'"
+    )
+
+    # Without override: submitReport would be a table (OBJECT return type → table)
+    table_field_names_no_override = {t["field_name"] for t in shared_data["tables_no_override"]}
+    assert "submitReport" in table_field_names_no_override, (
+        "Without override, submitReport (OBJECT return type) would be a table"
+    )
+
+    # The normal query field 'reports' must remain a table in both cases
+    assert "reports" in table_field_names, "'reports' must still be registered as a table"
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-598
+# ---------------------------------------------------------------------------
+
+
+@given(
+    "a remote schema source with both manually declared and auto-detected relationships",
+    target_fixture="shared_data",
+)
+def step_given_remote_schema_with_manual_and_auto_rels(shared_data: dict) -> dict:
+    registry = _InMemoryRelationshipRegistry()
+
+    manual_rel = _make_manual_relationship(
+        rel_id="manual-rel-1",
+        source_table="orders",
+        target_table="customers",
+        source_col="customer_id",
+        target_col="id",
+    )
+    auto_rel = _make_auto_detected_relationship(
+        rel_id="gql_remote__shop-remote__products__categoryId",
+        source_table="products",
+        target_table="categories",
+        source_col="categoryId",
+        target_col="id",
+    )
+
+    registry.upsert(manual_rel)
+    registry.upsert(auto_rel)
+
+    shared_data["registry"] = registry
+    shared_data["manual_rel_id"] = manual_rel["id"]
+    shared_data["auto_rel_id"] = auto_rel["id"]
+    return shared_data
+
+
+@when("a schema refresh is triggered")
+def step_when_schema_refresh_triggered(shared_data: dict) -> None:
+    registry: _InMemoryRelationshipRegistry = shared_data["registry"]
+
+    # Simulate refresh: auto-detected rels are replaced with a different set
+    new_auto_rel = _make_auto_detected_relationship(
+        rel_id="gql_remote__shop-remote__products__brandId",
+        source_table="products",
+        target_table="brands",
+        source_col="brandId",
+        target_col="id",
+    )
+    registry.refresh_remote_managed([new_auto_rel])
+    shared_data["new_auto_rel_id"] = new_auto_rel["id"]
+
+
+@then(
+    "auto-detected relationships are re-run and may change; manually declared relationships are preserved unchanged"
+)
+def step_then_auto_rels_replaced_manual_preserved(shared_data: dict) -> None:
+    registry: _InMemoryRelationshipRegistry = shared_data["registry"]
+    all_rels = registry.list_all()
+    rel_ids = {r["id"] for r in all_rels}
+
+    # Manual relationship must still be present
+    assert shared_data["manual_rel_id"] in rel_ids, (
+        f"Manual rel '{shared_data['manual_rel_id']}' must be preserved after refresh"
+    )
+
+    # Old auto-detected relationship must be gone
+    assert shared_data["auto_rel_id"] not in rel_ids, (
+        f"Old auto-detected rel '{shared_data['auto_rel_id']}' must be replaced by refresh"
+    )
+
+    # New auto-detected relationship must be present
+    assert shared_data["new_auto_rel_id"] in rel_ids, (
+        f"New auto-detected rel '{shared_data['new_auto_rel_id']}' must exist after refresh"
+    )
+
+    # Manual rel must not have remote_managed flag
+    manual = next(r for r in all_rels if r["id"] == shared_data["manual_rel_id"])
+    assert not manual.get("remote_managed"), "Manual relationship must not have remote_managed=True"
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-599
+# ---------------------------------------------------------------------------
+
+
+@given(
+    "a remote schema source with required input parameters not in the response fields",
+    target_fixture="shared_data",
+)
+def step_given_remote_source_with_required_input_params(shared_data: dict) -> dict:
+    # Build a GQL field that has a required (NON_NULL) arg 'userId' which is
+    # not a field on the return type
+    required_arg = {
+        "name": "userId",
+        "type": {"kind": "NON_NULL", "name": None, "ofType": _make_scalar_gql_type("ID")},
+        "defaultValue": None,
+    }
+    optional_arg = {
+        "name": "limit",
+        "type": _make_scalar_gql_type("Int"),
+        "defaultValue": 10,
+    }
+    activity_type = {
+        "kind": "OBJECT",
+        "name": "Activity",
+        "fields": [
+            {"name": "id", "type": _make_scalar_gql_type("ID")},
+            {"name": "action", "type": _make_scalar_gql_type("String")},
+            {"name": "timestamp", "type": _make_scalar_gql_type("String")},
+        ],
+    }
+    field = {
+        "name": "userActivity",
+        "description": "Fetch activity for a user",
+        "type": _make_list_of_object("Activity"),
+        "args": [required_arg, optional_arg],
+    }
+    shared_data["field"] = field
+    shared_data["activity_type"] = activity_type
+    return shared_data
+
+
+@when("the source is registered")
+def step_when_source_is_registered(shared_data: dict) -> None:
+    nf_columns = _build_native_filter_columns_for_graphql(shared_data["field"])
+    shared_data["nf_columns"] = nf_columns
+
+
+@then(
+    "those parameters become _nf_-prefixed native filter columns with the appropriate native_filter_type"
+)
+def step_then_params_become_nf_prefixed_native_filter_columns(shared_data: dict) -> None:
+    nf_columns = shared_data["nf_columns"]
+
+    # Only the NON_NULL arg (userId) must become a native filter column
+    nf_names = {c["name"] for c in nf_columns}
+    assert "_nf_userId" in nf_names, (
+        f"Required arg 'userId' must produce '_nf_userId' column; got {nf_names}"
+    )
+
+    # Optional arg must NOT be promoted to a native filter column
+    assert "_nf_limit" not in nf_names, (
+        "Optional arg 'limit' must not produce a native filter column"
+    )
+
+    # native_filter_type must be set
+    user_id_col = next(c for c in nf_columns if c["name"] == "_nf_userId")
+    assert user_id_col["native_filter_type"], (
+        "native_filter_type must be set on the native filter column"
+    )
+
+    # Type must map correctly: ID → text
+    assert user_id_col["type"] == "text", (
+        f"GQL ID type must map to 'text', got {user_id_col['type']!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-602
+# ---------------------------------------------------------------------------
+
+
+@given(
+    "remote schema tables (GraphQL remote, gRPC remote, OpenAPI) registered in Provisa",
+    target_fixture="shared_data",
+)
+def step_given_remote_schema_tables_registered(shared_data: dict) -> dict:
+    gql_source = _make_graphql_remote_source("gql-src", "gql")
+    grpc_source = _make_grpc_remote_source("grpc-src", "grpc")
+    openapi_source = _make_openapi_source("oapi-src", "oapi")
+    shared_data["sources"] = [gql_source, grpc_source, openapi_source]
+    return shared_data
+
+
+@when("schema generation runs")
+def step_when_schema_generation_runs(shared_data: dict) -> None:
+    synthesized = _synthesize_all(shared_data["sources"])
+    shared_data["synthesized"] = synthesized
+
+
+@then(
+    "ColumnMetadata is synthesized with correct type mappings equivalent to catalog introspection for local tables"
+)
+def step_then_column_metadata_synthesized_with_correct_mappings(shared_data: dict) -> None:
+    from provisa.compiler.introspect import ColumnMetadata
+
+    synthesized: dict[str, list[dict]] = shared_data["synthesized"]
+
+    # --- GraphQL remote source ---
+    gql_cols = synthesized["gql-src"]
+    gql_by_name = {c["column_name"]: c for c in gql_cols}
+
+    assert gql_by_name["id"]["provisa_type"] == "text"  # GQL ID → text
+    assert gql_by_name["name"]["provisa_type"] == "text"  # GQL String → text
+    assert gql_by_name["age"]["provisa_type"] == "integer"  # GQL Int → integer
+    assert gql_by_name["score"]["provisa_type"] == "numeric"  # GQL Float → numeric
+    assert gql_by_name["active"]["provisa_type"] == "boolean"  # GQL Boolean → boolean
+
+    # source_type must be set
+    assert all(c["source_type"] == "graphql_remote" for c in gql_cols)
+
+    # Can be wrapped into ColumnMetadata objects without error
+    cm_objects = _build_column_metadata_objects(gql_cols)
+    assert all(isinstance(cm, ColumnMetadata) for cm in cm_objects)
+
+    # --- gRPC remote source ---
+    grpc_cols = synthesized["grpc-src"]
+    grpc_by_name = {c["column_name"]: c for c in grpc_cols}
+
+    assert grpc_by_name["id"]["provisa_type"] == "text"  # proto string → text
+    assert grpc_by_name["order_total"]["provisa_type"] == "numeric"  # proto double → numeric
+    assert grpc_by_name["quantity"]["provisa_type"] == "integer"  # proto int32 → integer
+    assert grpc_by_name["fulfilled"]["provisa_type"] == "boolean"  # proto bool → boolean
+    assert grpc_by_name["created_at"]["provisa_type"] == "bigint"  # proto int64 → bigint
+    assert all(c["source_type"] == "grpc_remote" for c in grpc_cols)
+
+    # --- OpenAPI source ---
+    oapi_cols = synthesized["oapi-src"]
+    oapi_by_name = {c["column_name"]: c for c in oapi_cols}
+
+    assert oapi_by_name["product_id"]["provisa_type"] == "text"  # JSON string → text
+    assert oapi_by_name["price"]["provisa_type"] == "numeric"  # JSON number → numeric
+    assert oapi_by_name["stock"]["provisa_type"] == "integer"  # JSON integer → integer
+    assert oapi_by_name["available"]["provisa_type"] == "boolean"  # JSON boolean → boolean
+    assert oapi_by_name["tags"]["provisa_type"] == "jsonb"  # JSON array → jsonb
+    assert oapi_by_name["attributes"]["provisa_type"] == "jsonb"  # JSON object → jsonb
+    assert all(c["source_type"] == "openapi" for c in oapi_cols)

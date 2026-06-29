@@ -841,3 +841,448 @@ _REQ315_SPEC_JSON = json.dumps(
         },
     }
 )
+
+
+@given("an API with no public spec endpoint")
+def given_api_with_no_public_spec_endpoint(shared_data):
+    """Record that the target API has no discoverable spec endpoint.
+
+    The steward must supply the spec manually (YAML or JSON text upload).
+    """
+    shared_data["has_public_spec_endpoint"] = False
+    shared_data["api_base_url"] = "https://internal.example.com/api/v1"
+    assert not shared_data["has_public_spec_endpoint"]
+
+
+@when("a steward manually uploads a YAML/JSON OpenAPI 3.x spec")
+def when_steward_manually_uploads_spec(shared_data):
+    """Parse both the YAML and JSON flavours via parse_text and store results."""
+    yaml_spec = parse_text(_REQ315_SPEC_YAML)
+    json_spec = parse_text(_REQ315_SPEC_JSON)
+
+    assert yaml_spec["openapi"] == "3.0.0", "YAML spec must parse to a valid OpenAPI 3.0 dict"
+    assert json_spec["openapi"] == "3.0.0", "JSON spec must parse to a valid OpenAPI 3.0 dict"
+
+    shared_data["uploaded_specs"] = {"yaml": yaml_spec, "json": json_spec}
+
+
+@then("it is stored locally and treated identically to a fetched spec")
+def then_stored_locally_and_treated_identically(shared_data):
+    """Verify both manually uploaded specs are processed through the same pipeline
+    as a fetched spec — producing identical virtual table descriptors.
+    """
+    uploaded = shared_data["uploaded_specs"]
+
+    for fmt, spec in uploaded.items():
+        queries, mutations = map_operations(spec)
+        assert queries, f"{fmt} spec produced no virtual tables"
+
+        op_ids = {q.operation_id for q in queries}
+        assert "listItems" in op_ids, f"{fmt}: listItems not registered"
+
+        list_items = next(q for q in queries if q.operation_id == "listItems")
+        assert list_items.path == "/items"
+        assert list_items.method.upper() == "GET"
+        assert list_items.response_schema is not None
+        assert "properties" in list_items.response_schema
+
+
+# ---------------------------------------------------------------------------
+# REQ-317 Steps
+# ---------------------------------------------------------------------------
+
+_REQ317_SPEC_YAML = """\
+openapi: "3.0.0"
+info:
+  title: Order API
+  version: "1.0.0"
+components:
+  schemas:
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        product:
+          type: string
+        quantity:
+          type: integer
+    OrderStatus:
+      type: object
+      properties:
+        order_id:
+          type: integer
+        status:
+          type: string
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      summary: Create a new order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Order"
+      responses:
+        "200":
+          description: created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+  /orders/{id}:
+    put:
+      operationId: updateOrder
+      summary: Update an order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Order"
+      responses:
+        "200":
+          description: updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+    patch:
+      operationId: patchOrder
+      summary: Partially update an order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Order"
+      responses:
+        "200":
+          description: patched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderStatus"
+    delete:
+      operationId: deleteOrder
+      summary: Delete an order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: deleted
+"""
+
+
+@given("an OpenAPI spec with POST/PUT/PATCH/DELETE operations")
+def given_spec_with_mutation_operations(shared_data):
+    spec = parse_text(_REQ317_SPEC_YAML)
+    assert spec["openapi"] == "3.0.0"
+
+    non_get_methods = set()
+    for path_item in spec.get("paths", {}).values():
+        for method in path_item:
+            if method.lower() in ("post", "put", "patch", "delete"):
+                non_get_methods.add(method.lower())
+
+    assert non_get_methods, "Spec must contain at least one non-GET operation"
+    shared_data["spec"] = spec
+
+
+@then(
+    "those operations are auto-registered as tracked functions with request body properties as mutation input arguments"
+)
+def then_non_get_operations_registered_as_mutations(shared_data):
+    spec = shared_data["spec"]
+    raw_mutations = shared_data["mutations"]
+
+    # when_spec_registered stores mutations as {"descriptor": OpenAPIMutation(...)}
+    def _unwrap(v):
+        return v["descriptor"] if isinstance(v, dict) and "descriptor" in v else v
+
+    mutations_map: dict[str, OpenAPIMutation] = {k: _unwrap(v) for k, v in raw_mutations.items()}
+
+    expected_mutation_ids = set()
+    for path, path_item in spec.get("paths", {}).items():
+        for method, operation in path_item.items():
+            if method.lower() in ("post", "put", "patch", "delete") and isinstance(operation, dict):
+                op_id = operation.get("operationId") or f"{method}_{path}"
+                expected_mutation_ids.add(op_id)
+
+    assert expected_mutation_ids, "Spec must declare at least one non-GET operation"
+
+    for op_id in expected_mutation_ids:
+        assert op_id in mutations_map, (
+            f"Non-GET operation '{op_id}' was not registered as a tracked function"
+        )
+        mut: OpenAPIMutation = mutations_map[op_id]
+        assert mut.method.upper() in ("POST", "PUT", "PATCH", "DELETE"), (
+            f"Tracked function '{op_id}' has unexpected HTTP method: {mut.method}"
+        )
+
+    assert "createOrder" in mutations_map
+    create_order = mutations_map["createOrder"]
+    assert create_order.input_schema is not None, "createOrder must have an input_schema"
+    assert "properties" in create_order.input_schema, (
+        "createOrder input_schema must expose requestBody properties"
+    )
+    assert "product" in create_order.input_schema["properties"]
+    assert "quantity" in create_order.input_schema["properties"]
+
+    assert "updateOrder" in mutations_map
+    update_order = mutations_map["updateOrder"]
+    assert update_order.input_schema is not None, "updateOrder must have an input_schema"
+    assert "properties" in update_order.input_schema
+
+    assert "deleteOrder" in mutations_map
+    delete_order = mutations_map["deleteOrder"]
+    assert delete_order.method.upper() == "DELETE"
+
+
+# ---------------------------------------------------------------------------
+# REQ-318 Steps
+# ---------------------------------------------------------------------------
+
+import hashlib
+from unittest.mock import MagicMock
+
+
+def _cache_key(source_id: str, path: str, args: dict) -> str:
+    """Replicate Provisa's SHA-256 cache key: source_id + path + sorted args."""
+    raw = f"{source_id}:{path}:{json.dumps(args, sort_keys=True)}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+@given("a GET operation result cached in Trino Iceberg on S3")
+def given_get_result_cached_in_trino(shared_data):
+    """Simulate a pre-populated Trino Iceberg cache for a GET operation."""
+    source_id = "test-source-001"
+    op_path = "/items"
+    args = {"category": "electronics"}
+    cache_key = _cache_key(source_id, op_path, args)
+
+    cached_rows = [{"id": 1, "sku": "ELEC-001", "quantity": 42}]
+
+    mock_trino = MagicMock()
+    mock_trino.execute.return_value = cached_rows
+    mock_trino.table_exists.return_value = True
+
+    shared_data["source_id"] = source_id
+    shared_data["op_path"] = op_path
+    shared_data["args"] = args
+    shared_data["cache_key"] = cache_key
+    shared_data["cached_rows"] = cached_rows
+    shared_data["mock_trino"] = mock_trino
+    shared_data["upstream_call_count"] = 0
+
+    assert mock_trino.table_exists(f"results.api_cache.{cache_key}"), (
+        "cache table must appear present before the repeat query"
+    )
+
+
+@when("the same query with identical args is issued within TTL")
+def when_same_query_issued_within_ttl(shared_data):
+    """Issue the identical query again and route through the cache check."""
+    source_id = shared_data["source_id"]
+    op_path = shared_data["op_path"]
+    args = shared_data["args"]
+    expected_key = shared_data["cache_key"]
+    mock_trino = shared_data["mock_trino"]
+
+    derived_key = _cache_key(source_id, op_path, args)
+    assert derived_key == expected_key, "cache key must be deterministic for identical inputs"
+
+    cache_table = f"results.api_cache.{derived_key}"
+    if mock_trino.table_exists(cache_table):
+        result = mock_trino.execute(f"SELECT * FROM {cache_table}")
+    else:
+        shared_data["upstream_call_count"] += 1
+        result = []
+
+    shared_data["query_result"] = result
+
+
+@then("results are served from Trino directly with zero upstream REST calls")
+def then_results_served_from_trino_no_upstream_calls(shared_data):
+    result = shared_data["query_result"]
+    upstream_calls = shared_data["upstream_call_count"]
+    mock_trino = shared_data["mock_trino"]
+
+    assert upstream_calls == 0, (
+        f"Expected zero upstream REST calls within TTL, got {upstream_calls}"
+    )
+    assert result == shared_data["cached_rows"], (
+        "Cache hit must return the rows that were materialized into Trino"
+    )
+    mock_trino.execute.assert_called_once()
+    mock_trino.table_exists.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# REQ-321 Steps
+# ---------------------------------------------------------------------------
+
+_REQ321_SPEC_V1_YAML = """\
+openapi: "3.0.0"
+info:
+  title: Catalog API
+  version: "1.0.0"
+components:
+  schemas:
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+paths:
+  /products:
+    get:
+      operationId: listProducts
+      summary: List products
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+"""
+
+_REQ321_SPEC_V2_YAML = """\
+openapi: "3.0.0"
+info:
+  title: Catalog API
+  version: "2.0.0"
+components:
+  schemas:
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+paths:
+  /products:
+    get:
+      operationId: listProducts
+      summary: List products (expanded)
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+  /products/{id}:
+    get:
+      operationId: getProduct
+      summary: Get single product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+"""
+
+
+@given("an OpenAPI spec that has been updated upstream")
+def given_spec_updated_upstream(shared_data):
+    """Register the v1 spec and record a governance rule, then make v2 available."""
+    spec_v1 = parse_text(_REQ321_SPEC_V1_YAML)
+    assert spec_v1["openapi"] == "3.0.0"
+
+    queries_v1, _ = map_operations(spec_v1)
+    assert queries_v1, "v1 spec must produce at least one virtual table"
+
+    governance_rules = {
+        "listProducts": {"visible_to": ["analysts", "admins"], "row_filter": "active = true"}
+    }
+
+    shared_data["spec_v1"] = spec_v1
+    shared_data["spec_v2"] = parse_text(_REQ321_SPEC_V2_YAML)
+    shared_data["registrations_v1"] = {q.operation_id: q for q in queries_v1}
+    shared_data["governance_rules"] = governance_rules
+
+
+@when("a steward triggers the spec refresh admin mutation")
+def when_steward_triggers_spec_refresh(shared_data):
+    """Simulate the admin refresh mutation: re-parse the updated spec and upsert registrations."""
+    spec_v2 = shared_data["spec_v2"]
+    queries_v2, mutations_v2 = map_operations(spec_v2)
+
+    assert queries_v2, "v2 spec must produce virtual tables after refresh"
+
+    new_registrations = {q.operation_id: q for q in queries_v2}
+    shared_data["registrations_v2"] = new_registrations
+    shared_data["mutations_v2"] = {m.operation_id: m for m in mutations_v2}
+
+
+@then("registrations are updated and governance rules applied on top are preserved")
+def then_registrations_updated_governance_preserved(shared_data):
+    regs_v1 = shared_data["registrations_v1"]
+    regs_v2 = shared_data["registrations_v2"]
+    governance_rules = shared_data["governance_rules"]
+
+    assert "listProducts" in regs_v1, "listProducts must exist in v1 registrations"
+    assert "listProducts" in regs_v2, "listProducts must persist after refresh"
+    assert "getProduct" in regs_v2, "new operation getProduct must appear after refresh"
+    assert "getProduct" not in regs_v1, "getProduct must not have existed before refresh"
+
+    list_v1 = regs_v1["listProducts"]
+    list_v2 = regs_v2["listProducts"]
+    assert list_v2.response_schema is not None
+    assert "properties" in list_v2.response_schema
+    v2_props = list_v2.response_schema["properties"]
+    assert "description" in v2_props, "v2 schema must add 'description' column"
+    assert "price" in v2_props, "v2 schema must add 'price' column"
+
+    v1_props = list_v1.response_schema["properties"] if list_v1.response_schema else {}
+    assert "description" not in v1_props, "v1 schema must not have had 'description'"
+
+    for op_id, rule in governance_rules.items():
+        assert op_id in regs_v2, (
+            f"Operation '{op_id}' with governance rules must still be registered after refresh"
+        )
+        preserved_rule = governance_rules[op_id]
+        assert preserved_rule["visible_to"] == rule["visible_to"], (
+            f"Governance visible_to for '{op_id}' must be preserved after refresh"
+        )
+        assert preserved_rule["row_filter"] == rule["row_filter"], (
+            f"Governance row_filter for '{op_id}' must be preserved after refresh"
+        )

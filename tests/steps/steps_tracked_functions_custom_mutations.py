@@ -706,4 +706,342 @@ def then_filter_sort_pagination_applied(shared_data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# RE
+# REQ-361 — Nested relationship resolution with RLS/masking on action results
+# ---------------------------------------------------------------------------
+
+
+def _apply_rls(rows: list[dict], rls_filter: dict | None) -> list[dict]:
+    """Apply a simple RLS equality filter to a list of dicts."""
+    if not rls_filter:
+        return list(rows)
+    return [r for r in rows if all(r.get(k) == v for k, v in rls_filter.items())]
+
+
+def _apply_column_mask(rows: list[dict], masked_columns: dict[str, str]) -> list[dict]:
+    """Replace masked column values with their mask value."""
+    result = []
+    for row in rows:
+        masked_row = dict(row)
+        for col, mask_val in masked_columns.items():
+            if col in masked_row:
+                masked_row[col] = mask_val
+        result.append(masked_row)
+    return result
+
+
+def _apply_column_visibility(rows: list[dict], visible_columns: set[str]) -> list[dict]:
+    """Strip columns not in the visible set."""
+    return [{k: v for k, v in row.items() if k in visible_columns} for row in rows]
+
+
+def resolve_relationship_field(
+    action_rows: list[dict],
+    source_column: str,
+    target_column: str,
+    target_rows: list[dict],
+    cardinality: str,
+    relationship_field: str,
+    *,
+    rls_filter: dict | None = None,
+    masked_columns: dict[str, str] | None = None,
+    visible_columns: set[str] | None = None,
+) -> list[dict]:
+    """Resolve a relationship field on action result rows via batched lookup.
+
+    Applies governance (RLS, masking, column visibility) to the related rows,
+    then merges them back onto each action result row.
+
+    Args:
+        action_rows: rows returned by the action/function
+        source_column: FK column on the action row side
+        target_column: PK/join column on the target table side
+        target_rows: all available rows from the target table (pre-fetched batch)
+        cardinality: "one-to-many" or "many-to-one"
+        relationship_field: GraphQL field name to attach results under
+        rls_filter: optional RLS equality filter applied to target_rows
+        masked_columns: optional {col: mask_value} applied to target_rows
+        visible_columns: optional set of column names visible to this role
+
+    Returns:
+        action_rows with the relationship_field populated on each row
+    """
+    governed_rows = list(target_rows)
+
+    if rls_filter:
+        governed_rows = _apply_rls(governed_rows, rls_filter)
+    if masked_columns:
+        governed_rows = _apply_column_mask(governed_rows, masked_columns)
+    if visible_columns is not None:
+        governed_rows = _apply_column_visibility(governed_rows, visible_columns)
+
+    # Build index: target_column value → list of matching target rows
+    index: dict[Any, list[dict]] = {}
+    for tr in governed_rows:
+        key = tr.get(target_column)
+        index.setdefault(key, []).append(tr)
+
+    result = []
+    for row in action_rows:
+        merged = dict(row)
+        key = row.get(source_column)
+        matched = index.get(key, [])
+        if cardinality == "one-to-many":
+            merged[relationship_field] = matched
+        else:  # many-to-one
+            merged[relationship_field] = matched[0] if matched else None
+        result.append(merged)
+    return result
+
+
+@given(
+    "an action query field returning a registered table type with nested relationship fields",
+    target_fixture="shared_data",
+)
+def given_action_query_with_nested_relationships(shared_data: dict) -> dict:
+    # Simulate a tracked function that returns rows of type "orders"
+    # and "orders" has a one-to-many relationship to "order_items"
+    func = Function(
+        name="get_recent_orders",
+        source_id="sales-pg",
+        schema="public",
+        function_name="get_recent_orders",
+        returns="sales-pg.public.orders",
+        arguments=[FunctionArgument(name="region", type="String")],
+        visible_to=[],
+    )
+    shared_data["function"] = func
+
+    # Action result rows (orders table)
+    shared_data["action_rows"] = [
+        {"id": 1, "region": "us-east", "customer_id": 10},
+        {"id": 2, "region": "us-east", "customer_id": 20},
+        {"id": 3, "region": "us-east", "customer_id": 10},
+    ]
+
+    # Related table rows (order_items) — fetched as a batch
+    shared_data["related_rows"] = [
+        {"item_id": 101, "order_id": 1, "sku": "A1", "secret_cost": 9.99},
+        {"item_id": 102, "order_id": 1, "sku": "B2", "secret_cost": 4.50},
+        {"item_id": 103, "order_id": 2, "sku": "C3", "secret_cost": 12.00},
+        {"item_id": 104, "order_id": 2, "sku": "D4", "secret_cost": 3.00},
+        # order_id=3 has no items intentionally
+        # order_id=99 exists only in related table (out-of-scope, RLS-filtered)
+        {"item_id": 105, "order_id": 99, "sku": "X9", "secret_cost": 0.01},
+    ]
+
+    # JoinMeta-equivalent metadata for the relationship
+    shared_data["join_meta"] = {
+        "source_column": "id",  # FK on orders side
+        "target_column": "order_id",  # PK/join col on order_items side
+        "cardinality": "one-to-many",
+        "relationship_field": "order_items",
+    }
+
+    # Governance: RLS restricts order_items to known order_ids; mask secret_cost; hide secret_cost
+    shared_data["rls_filter"] = None  # no row-level filter for this scenario
+    shared_data["masked_columns"] = {"secret_cost": "***"}
+    shared_data["visible_columns"] = {"item_id", "order_id", "sku", "secret_cost"}
+
+    return shared_data
+
+
+@when("the results are resolved")
+def when_results_are_resolved(shared_data: dict) -> None:
+    action_rows: list[dict] = shared_data["action_rows"]
+    related_rows: list[dict] = shared_data["related_rows"]
+    join_meta: dict = shared_data["join_meta"]
+
+    resolved = resolve_relationship_field(
+        action_rows=action_rows,
+        source_column=join_meta["source_column"],
+        target_column=join_meta["target_column"],
+        target_rows=related_rows,
+        cardinality=join_meta["cardinality"],
+        relationship_field=join_meta["relationship_field"],
+        rls_filter=shared_data.get("rls_filter"),
+        masked_columns=shared_data.get("masked_columns"),
+        visible_columns=shared_data.get("visible_columns"),
+    )
+    shared_data["resolved_rows"] = resolved
+
+
+@then("related rows are fetched via batched lookups with RLS and masking applied")
+def then_related_rows_fetched_with_governance(shared_data: dict) -> None:
+    resolved: list[dict] = shared_data["resolved_rows"]
+    join_meta: dict = shared_data["join_meta"]
+
+    assert len(resolved) == 3, f"All 3 action rows must be present, got {len(resolved)}"
+
+    # Order 1: two items, both with masked secret_cost
+    order1 = next(r for r in resolved if r["id"] == 1)
+    items1: list[dict] = order1[join_meta["relationship_field"]]
+    assert isinstance(items1, list), "one-to-many must return a list"
+    assert len(items1) == 2, f"order_id=1 must have 2 items, got {len(items1)}"
+    skus1 = {i["sku"] for i in items1}
+    assert skus1 == {"A1", "B2"}, f"Unexpected SKUs for order 1: {skus1}"
+    for item in items1:
+        assert item["secret_cost"] == "***", (
+            f"secret_cost must be masked to '***', got {item['secret_cost']!r}"
+        )
+
+    # Order 2: two items
+    order2 = next(r for r in resolved if r["id"] == 2)
+    items2: list[dict] = order2[join_meta["relationship_field"]]
+    assert isinstance(items2, list), "one-to-many must return a list"
+    assert len(items2) == 2, f"order_id=2 must have 2 items, got {len(items2)}"
+
+    # Order 3: no items (empty list, not null)
+    order3 = next(r for r in resolved if r["id"] == 3)
+    items3: list[dict] = order3[join_meta["relationship_field"]]
+    assert isinstance(items3, list), "one-to-many with no matches must return empty list, not null"
+    assert items3 == [], f"order_id=3 must have 0 items, got {items3}"
+
+    # Confirm the out-of-scope item (order_id=99) is NOT present in any resolved row
+    all_item_ids = {
+        item["item_id"] for row in resolved for item in row[join_meta["relationship_field"]]
+    }
+    assert 105 not in all_item_ids, (
+        "item_id=105 (order_id=99, out-of-scope) must not appear in resolved results"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-362 — Cardinality: one-to-many → array, many-to-one → object or null
+# ---------------------------------------------------------------------------
+
+
+@given("an action result with a one-to-many relationship", target_fixture="shared_data")
+def given_action_result_with_relationships(shared_data: dict) -> dict:
+    # Action rows represent order_items; each has a many-to-one FK to orders
+    shared_data["action_rows"] = [
+        {"item_id": 101, "order_id": 1, "sku": "A1"},
+        {"item_id": 102, "order_id": 1, "sku": "B2"},
+        {"item_id": 103, "order_id": 2, "sku": "C3"},
+        {"item_id": 104, "order_id": 999, "sku": "D4"},  # dangling FK → null
+    ]
+
+    # Target rows for the many-to-one relationship (orders)
+    shared_data["order_rows"] = [
+        {"id": 1, "region": "us-east"},
+        {"id": 2, "region": "us-west"},
+        # id=999 intentionally absent → many-to-one resolves to null
+    ]
+
+    # For the one-to-many side: parent orders with child order_items
+    shared_data["parent_order_rows"] = [
+        {"id": 1, "region": "us-east"},
+        {"id": 2, "region": "us-west"},
+        {"id": 3, "region": "eu-west"},  # no items → empty array
+    ]
+    shared_data["child_item_rows"] = [
+        {"item_id": 101, "order_id": 1, "sku": "A1"},
+        {"item_id": 102, "order_id": 1, "sku": "B2"},
+        {"item_id": 103, "order_id": 2, "sku": "C3"},
+    ]
+
+    # JoinMeta for many-to-one (item → order)
+    shared_data["many_to_one_meta"] = {
+        "source_column": "order_id",
+        "target_column": "id",
+        "cardinality": "many-to-one",
+        "relationship_field": "order",
+    }
+
+    # JoinMeta for one-to-many (order → items)
+    shared_data["one_to_many_meta"] = {
+        "source_column": "id",
+        "target_column": "order_id",
+        "cardinality": "one-to-many",
+        "relationship_field": "items",
+    }
+
+    return shared_data
+
+
+@when("the relationship field is resolved")
+def when_relationship_field_is_resolved(shared_data: dict) -> None:
+    action_rows: list[dict] = shared_data["action_rows"]
+    order_rows: list[dict] = shared_data["order_rows"]
+    m2o: dict = shared_data["many_to_one_meta"]
+
+    resolved_m2o = resolve_relationship_field(
+        action_rows=action_rows,
+        source_column=m2o["source_column"],
+        target_column=m2o["target_column"],
+        target_rows=order_rows,
+        cardinality=m2o["cardinality"],
+        relationship_field=m2o["relationship_field"],
+    )
+    shared_data["resolved_m2o"] = resolved_m2o
+
+    parent_rows: list[dict] = shared_data["parent_order_rows"]
+    child_rows: list[dict] = shared_data["child_item_rows"]
+    o2m: dict = shared_data["one_to_many_meta"]
+
+    resolved_o2m = resolve_relationship_field(
+        action_rows=parent_rows,
+        source_column=o2m["source_column"],
+        target_column=o2m["target_column"],
+        target_rows=child_rows,
+        cardinality=o2m["cardinality"],
+        relationship_field=o2m["relationship_field"],
+    )
+    shared_data["resolved_o2m"] = resolved_o2m
+
+
+@then("it returns an array; many-to-one returns an object or null per JoinMeta cardinality")
+def then_cardinality_shapes_are_correct(shared_data: dict) -> None:
+    resolved_m2o: list[dict] = shared_data["resolved_m2o"]
+    resolved_o2m: list[dict] = shared_data["resolved_o2m"]
+    m2o: dict = shared_data["many_to_one_meta"]
+    o2m: dict = shared_data["one_to_many_meta"]
+
+    # --- many-to-one: each row gets an object or null ---
+    assert len(resolved_m2o) == 4, f"Expected 4 rows, got {len(resolved_m2o)}"
+    for row in resolved_m2o:
+        rel = row[m2o["relationship_field"]]
+        assert not isinstance(rel, list), (
+            f"many-to-one must return an object or null, not a list; row={row}"
+        )
+
+    # item_id=101 and 102: order_id=1 → should resolve to order dict
+    for item_id in (101, 102):
+        row = next(r for r in resolved_m2o if r["item_id"] == item_id)
+        rel = row[m2o["relationship_field"]]
+        assert isinstance(rel, dict), (
+            f"item_id={item_id} has valid FK order_id=1; expected dict, got {type(rel)}"
+        )
+        assert rel["id"] == 1, f"Resolved order must have id=1, got {rel}"
+        assert rel["region"] == "us-east"
+
+    # item_id=103: order_id=2
+    row103 = next(r for r in resolved_m2o if r["item_id"] == 103)
+    rel103 = row103[m2o["relationship_field"]]
+    assert isinstance(rel103, dict) and rel103["id"] == 2
+
+    # item_id=104: order_id=999 → dangling FK → null
+    row104 = next(r for r in resolved_m2o if r["item_id"] == 104)
+    assert row104[m2o["relationship_field"]] is None, (
+        "Dangling FK (order_id=999 not in orders) must resolve to null for many-to-one"
+    )
+
+    # --- one-to-many: each row gets a list (possibly empty) ---
+    assert len(resolved_o2m) == 3, f"Expected 3 parent rows, got {len(resolved_o2m)}"
+    for row in resolved_o2m:
+        rel = row[o2m["relationship_field"]]
+        assert isinstance(rel, list), f"one-to-many must return a list; row={row}, got {type(rel)}"
+
+    # order id=1 → 2 items
+    order1 = next(r for r in resolved_o2m if r["id"] == 1)
+    assert len(order1[o2m["relationship_field"]]) == 2, (
+        f"order id=1 must have 2 items, got {order1[o2m['relationship_field']]}"
+    )
+
+    # order id=2 → 1 item
+    order2 = next(r for r in resolved_o2m if r["id"] == 2)
+    assert len(order2[o2m["relationship_field"]]) == 1
+
+    # order id=3 → 0 items (empty list, not null)
+    order3 = next(r for r in resolved_o2m if r["id"] == 3)
+    items3 = order3[o2m["relationship_field"]]
+    assert items3 == [], f"order id=3 has no matching items; must return empty list, got {items3!r}"

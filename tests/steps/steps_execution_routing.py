@@ -34,11 +34,8 @@ the Provisa server for big datasets.
 
 from __future__ import annotations
 
-import io
-import os
 import re
 import time
-import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -126,9 +123,7 @@ def generate_exclusion_clause(shared_data):
 
     # Find the PK-preferred clause template, e.g.  `${alias}.${pkCol} IN [...]`
     # (a property-qualified membership predicate, not an id() membership predicate).
-    pk_clause_re = re.compile(
-        r"\$\{[^}]*\}\s*\.\s*\$\{[^}]*\}\s*IN\s*\[", re.IGNORECASE
-    )
+    pk_clause_re = re.compile(r"\$\{[^}]*\}\s*\.\s*\$\{[^}]*\}\s*IN\s*\[", re.IGNORECASE)
     # Find the id()-based fallback template, e.g.  `id(${alias}) IN [...]`
     id_clause_re = re.compile(r"id\s*\(\s*\$?\{?[^)]*\}?\s*\)\s*IN\s*\[", re.IGNORECASE)
 
@@ -200,12 +195,8 @@ def assert_pk_based_exclusion(shared_data):
 
     # The pk_col and pk_value are logically used by the UI exclusion generator;
     # their presence in shared_data proves the Given step modelled the PK path.
-    assert pk_col == "account_id", (
-        f"expected PK column 'account_id', got {pk_col!r}"
-    )
-    assert pk_value == "A-1001", (
-        f"expected PK value 'A-1001', got {pk_value!r}"
-    )
+    assert pk_col == "account_id", f"expected PK column 'account_id', got {pk_col!r}"
+    assert pk_value == "A-1001", f"expected PK value 'A-1001', got {pk_value!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -242,9 +233,7 @@ def response_returned_to_client(shared_data):
     shared_data["hit_headers"] = build_cache_headers(shared_data["cached_hit"])
 
 
-@then(
-    "it includes X-Provisa-Cache: HIT|MISS and X-Provisa-Cache-Age on cache HITs"
-)
+@then("it includes X-Provisa-Cache: HIT|MISS and X-Provisa-Cache-Age on cache HITs")
 def assert_cache_headers(shared_data):
     miss_headers = shared_data["miss_headers"]
     hit_headers = shared_data["hit_headers"]
@@ -302,12 +291,8 @@ def assert_cache_headers(shared_data):
     try:
         parsed_age = int(age_value)
     except ValueError:
-        pytest.fail(
-            f"X-Provisa-Cache-Age must be a parseable integer string, got {age_value!r}"
-        )
-    assert parsed_age >= 0, (
-        f"X-Provisa-Cache-Age must be >= 0, got {parsed_age}"
-    )
+        pytest.fail(f"X-Provisa-Cache-Age must be a parseable integer string, got {age_value!r}")
+    assert parsed_age >= 0, f"X-Provisa-Cache-Age must be >= 0, got {parsed_age}"
 
     # Validate the HIT age is consistent with the ~30-second offset set in Given.
     assert 29 <= parsed_age <= 32, (
@@ -518,8 +503,7 @@ def assert_trino_routing_and_transpilation(shared_data):
         f"got {decision.route!r} — reason: {decision.reason}"
     )
     assert decision.source_id is None, (
-        "a Trino-routed cross-source query must not be pinned to a single "
-        "direct source (REQ-028)"
+        "a Trino-routed cross-source query must not be pinned to a single direct source (REQ-028)"
     )
     assert decision.reason, "RouteDecision.reason must always be populated"
 
@@ -531,9 +515,7 @@ def assert_trino_routing_and_transpilation(shared_data):
 
     # The transpiled output must be parseable as valid Trino SQL.
     tree = sqlglot.parse_one(trino_sql, read="trino")
-    assert tree is not None, (
-        f"SQLGlot produced invalid Trino SQL: {trino_sql!r} (REQ-028)"
-    )
+    assert tree is not None, f"SQLGlot produced invalid Trino SQL: {trino_sql!r} (REQ-028)"
 
     # The output must contain a SELECT statement — structural integrity check.
     assert isinstance(tree, exp.Select), (
@@ -568,9 +550,7 @@ def assert_trino_routing_and_transpilation(shared_data):
         f"cross-source routing + SQLGlot transpilation took {elapsed_ms:.1f}ms, "
         f"exceeding the 500ms ceiling defined by REQ-028"
     )
-    assert elapsed_ms >= 0, (
-        f"elapsed_ms must be non-negative, got {elapsed_ms}"
-    )
+    assert elapsed_ms >= 0, f"elapsed_ms must be non-negative, got {elapsed_ms}"
 
 
 # ---------------------------------------------------------------------------
@@ -586,17 +566,11 @@ def query_targeting_single_rdbms_source(shared_data):
     shared_data["source_dialects"] = {"sales-pg": "postgres"}
 
     shared_data["single_source_sql"] = (
-        "SELECT id, amount, region "
-        "FROM orders "
-        "WHERE amount > 50 "
-        "ORDER BY amount DESC "
-        "LIMIT 10"
+        "SELECT id, amount, region FROM orders WHERE amount > 50 ORDER BY amount DESC LIMIT 10"
     )
 
 
-@then(
-    "it routes directly to the RDBMS connection and SQLGlot transpiles to the target dialect"
-)
+@then("it routes directly to the RDBMS connection and SQLGlot transpiles to the target dialect")
 def assert_direct_routing_and_dialect_transpilation(shared_data):
     """Verify route == DIRECT, dialect SQL is valid, and latency is sub-100ms."""
     import sqlglot
@@ -612,27 +586,22 @@ def assert_direct_routing_and_dialect_transpilation(shared_data):
         f"got {decision.route!r} — reason: {decision.reason}"
     )
     assert decision.source_id == "sales-pg", (
-        f"DIRECT route must identify the target source as 'sales-pg', "
-        f"got {decision.source_id!r}"
+        f"DIRECT route must identify the target source as 'sales-pg', got {decision.source_id!r}"
     )
     assert decision.dialect == "postgres", (
-        f"DIRECT route must carry the source's SQLGlot dialect 'postgres', "
-        f"got {decision.dialect!r}"
+        f"DIRECT route must carry the source's SQLGlot dialect 'postgres', got {decision.dialect!r}"
     )
     assert decision.reason, "RouteDecision.reason must always be populated (REQ-027)"
 
     # ── 2. Transpilation assertions ────────────────────────────────────────
     native_sql = shared_data["native_sql"]
     assert native_sql and native_sql.strip(), (
-        "SQLGlot must produce non-empty native dialect SQL for the single-source "
-        "query (REQ-027)"
+        "SQLGlot must produce non-empty native dialect SQL for the single-source query (REQ-027)"
     )
 
     dialect = decision.dialect  # "postgres"
     tree = sqlglot.parse_one(native_sql, read=dialect)
-    assert tree is not None, (
-        f"SQLGlot produced invalid {dialect!r} SQL: {native_sql!r} (REQ-027)"
-    )
+    assert tree is not None, f"SQLGlot produced invalid {dialect!r} SQL: {native_sql!r} (REQ-027)"
 
     assert isinstance(tree, exp.Select), (
         f"transpiled native SQL root node must be a SELECT, got {type(tree).__name__!r}"
@@ -646,4 +615,138 @@ def assert_direct_routing_and_dialect_transpilation(shared_data):
     where_nodes = list(tree.find_all(exp.Where))
     assert where_nodes, (
         "transpiled native SQL must contain a WHERE clause for the date filter (REQ-027)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-029 — Large result redirect to blob storage with presigned URL and TTL
+# ---------------------------------------------------------------------------
+
+
+@given("a query whose result set exceeds the configured size threshold")
+def query_result_exceeds_threshold(shared_data):
+    """Set up a QueryResult whose row count exceeds the redirect threshold."""
+    from provisa.executor.redirect import DEFAULT_THRESHOLD, DEFAULT_TTL, RedirectConfig
+    from provisa.executor.trino import QueryResult
+
+    threshold = DEFAULT_THRESHOLD
+    # Build a result with one more row than the threshold to guarantee redirect.
+    rows = [("row_value",)] * (threshold + 1)
+    result = QueryResult(
+        column_names=["col"],
+        rows=rows,
+    )
+
+    config = RedirectConfig(
+        enabled=True,
+        threshold=threshold,
+        bucket="provisa-results-test",
+        endpoint_url="http://localhost:9000",
+        access_key="minioadmin",
+        secret_key="minioadmin",
+        ttl=DEFAULT_TTL,
+        region="us-east-1",
+        default_format="ndjson",
+    )
+
+    assert len(result.rows) > config.threshold, (
+        f"test setup: row count {len(result.rows)} must exceed threshold {config.threshold}"
+    )
+
+    shared_data["query_result"] = result
+    shared_data["redirect_config"] = config
+
+
+@when("the query completes")
+def query_completes(shared_data):
+    """Check the redirect gate and, with a mocked S3 client, upload and presign."""
+    import asyncio
+
+    from provisa.executor.redirect import should_redirect, upload_and_presign
+
+    result = shared_data["query_result"]
+    config = shared_data["redirect_config"]
+
+    # Verify the should_redirect gate fires for an over-threshold result.
+    shared_data["should_redirect"] = should_redirect(result, config)
+
+    if not shared_data["should_redirect"]:
+        return
+
+    # Mock boto3 so no real S3 infrastructure is required.
+    fake_url = f"https://minio.example.com/provisa-results-test/results/fake-key.ndjson?X-Amz-Expires={config.ttl}"
+
+    fake_s3 = MagicMock()
+    fake_s3.put_object.return_value = {}
+    fake_s3.generate_presigned_url.return_value = fake_url
+
+    with patch("boto3.client", return_value=fake_s3):
+        redirect_response = asyncio.run(upload_and_presign(result, config, output_format="ndjson"))
+
+    shared_data["redirect_response"] = redirect_response
+    shared_data["fake_url"] = fake_url
+    shared_data["fake_s3"] = fake_s3
+
+
+@then("the result is stored in blob storage and the client receives a presigned URL with TTL")
+def assert_blob_redirect(shared_data):
+    """Verify redirect gate fired, blob was uploaded, and response carries presigned URL + TTL."""
+    from provisa.executor.redirect import DEFAULT_TTL
+
+    # The should_redirect gate must have returned True for an over-threshold result.
+    assert shared_data["should_redirect"], (
+        "should_redirect() must return True when row count exceeds the configured "
+        "threshold and redirect is enabled (REQ-029)"
+    )
+
+    redirect_response = shared_data["redirect_response"]
+    assert redirect_response, "upload_and_presign must return a non-empty response dict (REQ-029)"
+
+    # The response must contain a presigned URL.
+    assert "redirect_url" in redirect_response, (
+        "redirect response must include 'redirect_url' (REQ-029)"
+    )
+    redirect_url = redirect_response["redirect_url"]
+    assert redirect_url and redirect_url.strip(), (
+        "presigned redirect_url must be a non-empty string (REQ-029)"
+    )
+
+    # The response must include the TTL (expires_in).
+    assert "expires_in" in redirect_response, (
+        "redirect response must include 'expires_in' TTL (REQ-029)"
+    )
+    assert redirect_response["expires_in"] == DEFAULT_TTL, (
+        f"expires_in must match configured TTL {DEFAULT_TTL}, "
+        f"got {redirect_response['expires_in']} (REQ-029)"
+    )
+
+    # The response must include the row count.
+    assert "row_count" in redirect_response, "redirect response must include 'row_count' (REQ-029)"
+    assert redirect_response["row_count"] > 0, "redirect row_count must be positive (REQ-029)"
+
+    # Verify S3 put_object was called (blob was actually stored).
+    fake_s3 = shared_data["fake_s3"]
+    fake_s3.put_object.assert_called_once()
+    put_kwargs = fake_s3.put_object.call_args.kwargs
+    assert put_kwargs.get("Bucket") == shared_data["redirect_config"].bucket, (
+        f"put_object must target bucket {shared_data['redirect_config'].bucket!r} (REQ-029)"
+    )
+    assert put_kwargs.get("Key", "").startswith("results/"), (
+        "put_object key must be under the 'results/' prefix (REQ-029)"
+    )
+    assert put_kwargs.get("Body"), "put_object must upload non-empty body bytes (REQ-029)"
+
+    # Verify presigned URL was generated with the correct TTL.
+    fake_s3.generate_presigned_url.assert_called_once()
+    presign_kwargs = fake_s3.generate_presigned_url.call_args
+    assert presign_kwargs.args[0] == "get_object", (
+        "presigned URL must be generated for 'get_object' operation (REQ-029)"
+    )
+    assert presign_kwargs.kwargs.get("ExpiresIn") == shared_data["redirect_config"].ttl, (
+        "presigned URL ExpiresIn must match configured TTL (REQ-029)"
+    )
+
+    # The presigned URL returned to the client must be the generated one.
+    assert redirect_response["redirect_url"] == shared_data["fake_url"], (
+        "redirect_url in response must be the presigned URL from generate_presigned_url (REQ-029)"
     )

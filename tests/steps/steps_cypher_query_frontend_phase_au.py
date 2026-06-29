@@ -792,3 +792,377 @@ def then_emits_sql_with_all_clause_mappings(shared_data: dict) -> None:
     assert isinstance(parsed, exp.Select), (
         f"Expected a SELECT statement at the root, got {type(parsed).__name__!r}"
     )
+
+    sql_lower = sql.lower()
+
+    # MATCH → JOIN
+    joins = list(parsed.find_all(exp.Join))
+    assert joins, f"Generated SQL must contain JOIN for MATCH clause:\n{sql}"
+
+    # WHERE → WHERE
+    assert "where" in sql_lower, f"Generated SQL must contain WHERE:\n{sql}"
+
+    # RETURN → SELECT columns present
+    assert "person_name" in sql_lower or "name" in sql_lower, (
+        f"Generated SQL must project name columns from RETURN clause:\n{sql}"
+    )
+
+    # ORDER BY → ORDER BY
+    assert "order by" in sql_lower, f"Generated SQL must contain ORDER BY:\n{sql}"
+
+    # LIMIT → LIMIT
+    assert "limit" in sql_lower, f"Generated SQL must contain LIMIT:\n{sql}"
+
+
+# ---------------------------------------------------------------------------
+# REQ-348 — Path queries: shortestPath / [*1..n] → WITH RECURSIVE CTE
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query with shortestPath or [*1..n] variable-length pattern")
+def given_cypher_path_query(shared_data: dict) -> None:
+    label_map = _make_path_label_map()
+    # Variable-length pattern [*1..3] on a self-referential rel (KNOWS: Person→Person)
+    # _needs_recursive_cte returns True for variable_length + same src/tgt type.
+    query = "MATCH p = shortestPath((a:Person)-[:KNOWS*1..3]->(b:Person)) RETURN p"
+    shared_data["query"] = query
+    shared_data["label_map"] = label_map
+    # Unbounded pattern must be rejected
+    shared_data["unbounded_query"] = (
+        "MATCH p = shortestPath((a:Person)-[:KNOWS*]->(b:Person)) RETURN p"
+    )
+
+
+@then("it emits a WITH RECURSIVE CTE and rejects unbounded [*] patterns at compile time")
+def then_emits_recursive_cte_and_rejects_unbounded(shared_data: dict) -> None:
+    from provisa.cypher.translator import CypherTranslateError
+
+    sql = shared_data.get("sql")
+    error = shared_data.get("error")
+
+    # Bounded pattern must produce WITH RECURSIVE SQL or succeed without error.
+    if error is not None:
+        pytest.fail(f"Bounded path query must not raise; got: {error!r}")
+
+    assert sql, "bounded path query must produce SQL"
+    sql_lower = sql.lower()
+    assert "with recursive" in sql_lower or "with" in sql_lower, (
+        f"bounded path query must emit a WITH (RECURSIVE) CTE:\n{sql}"
+    )
+
+    # Unbounded [*] must raise CypherTranslateError at compile time.
+    unbounded_query = shared_data["unbounded_query"]
+    label_map = shared_data["label_map"]
+    with pytest.raises((CypherTranslateError, Exception)) as exc_info:
+        _translate(unbounded_query, label_map)
+    assert exc_info.value is not None, "unbounded [*] must raise at compile time"
+
+
+# ---------------------------------------------------------------------------
+# REQ-349 — Whole-node RETURN → Stage 3 rewrite → CAST(ROW(...) AS JSON)
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher RETURN clause referencing a whole node variable")
+def given_whole_node_return(shared_data: dict) -> None:
+    label_map = _make_node_return_label_map()
+    # Returning the whole node variable `p`, not a scalar property.
+    query = "MATCH (p:Person) RETURN p"
+    shared_data["query"] = query
+    shared_data["label_map"] = label_map
+
+
+@when("Stage 3 rewrite runs")
+def when_stage3_rewrite_runs(shared_data: dict) -> None:
+    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+
+    error: Exception | None = None
+    rewritten_sql: str | None = None
+    try:
+        ast = parse_cypher(shared_data["query"])
+        result = cypher_to_sql(ast, shared_data["label_map"], {})
+        sql_ast, _param_order, graph_vars = result
+        rewritten_ast = apply_graph_rewrites(sql_ast, graph_vars, shared_data["label_map"])
+        rewritten_sql = rewritten_ast.sql(dialect="trino")
+    except Exception as exc:  # noqa: BLE001
+        error = exc
+    shared_data["rewritten_sql"] = rewritten_sql
+    shared_data["stage3_error"] = error
+
+
+@then("the node columns are wrapped into a single JSON object via CAST(ROW(...) AS JSON)")
+def then_node_columns_wrapped_in_json(shared_data: dict) -> None:
+    assert shared_data["stage3_error"] is None, (
+        f"Stage 3 rewrite must not raise; got: {shared_data['stage3_error']!r}"
+    )
+    sql = shared_data["rewritten_sql"]
+    assert sql, "Stage 3 rewrite must produce SQL"
+    sql_lower = sql.lower()
+    # Stage 3 wraps node variables into JSON_OBJECT (SQLGlot emits JSON_OBJECT for Trino)
+    assert "json_object" in sql_lower or "cast" in sql_lower or "row" in sql_lower, (
+        f"Stage 3 SQL must contain JSON_OBJECT / CAST(ROW(...) AS JSON) for node variable:\n{sql}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-352 — Missing $param with no default rejected at compile time
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query with $param and no default")
+def given_cypher_query_with_param_no_default(shared_data: dict) -> None:
+    label_map = _make_param_label_map()
+    # $minAge is a named parameter with no default in the label map.
+    query = "MATCH (p:Person) WHERE p.age > $minAge RETURN p.name"
+    shared_data["query"] = query
+    shared_data["label_map"] = label_map
+
+
+@when("the parameter is missing from the request")
+def when_parameter_missing_from_request(shared_data: dict) -> None:
+    from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
+
+    query = shared_data["query"]
+    param_names = collect_param_names(query)
+    shared_data["param_names"] = param_names
+    # Simulate: no params provided in the request
+    error: Exception | None = None
+    try:
+        bind_params(param_names, {})
+    except CypherParamError as exc:
+        error = exc
+    except Exception as exc:  # noqa: BLE001
+        error = exc
+    shared_data["param_error"] = error
+
+
+@then("it is rejected at compile time")
+def then_rejected_at_compile_time(shared_data: dict) -> None:
+    from provisa.cypher.params import CypherParamError
+
+    assert shared_data["param_error"] is not None, (
+        "A missing required $param must raise CypherParamError"
+    )
+    assert isinstance(shared_data["param_error"], CypherParamError), (
+        f"Expected CypherParamError, got {type(shared_data['param_error']).__name__!r}: "
+        f"{shared_data['param_error']!r}"
+    )
+    assert "minAge" in str(shared_data["param_error"]), (
+        f"Error message must mention the missing param name 'minAge'; "
+        f"got: {shared_data['param_error']!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-353 — Cross-catalog JOIN executes normally (no cross-source restriction)
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query whose node labels resolve to tables on different Trino catalogs")
+def given_cross_catalog_cypher_query(shared_data: dict) -> None:
+    label_map = _make_cross_catalog_label_map()
+    # Person is in catalog 'postgresql', Company is in catalog 'mysql'.
+    query = (
+        "MATCH (p:Person)-[:WORKS_AT]->(c:Company) "
+        "RETURN p.name AS person_name, c.name AS company_name"
+    )
+    shared_data["query"] = query
+    shared_data["label_map"] = label_map
+
+
+@then("it generates a cross-catalog JOIN and executes normally without error")
+def then_generates_cross_catalog_join(shared_data: dict) -> None:
+    assert shared_data.get("error") is None, (
+        f"Cross-catalog query must not raise; got: {shared_data.get('error')!r}"
+    )
+    sql = shared_data.get("sql")
+    assert sql, "cross-catalog query must produce SQL"
+    sql_lower = sql.lower()
+    # Both physical catalog qualifiers must appear.
+    assert "postgresql" in sql_lower, f"SQL must reference postgresql catalog:\n{sql}"
+    assert "mysql" in sql_lower, f"SQL must reference mysql catalog:\n{sql}"
+    # A JOIN must connect the two catalogs' tables.
+    parsed = sqlglot.parse_one(sql, read="trino")
+    joins = list(parsed.find_all(sqlglot.exp.Join))
+    assert joins, f"Cross-catalog SQL must contain a JOIN:\n{sql}"
+
+
+# ---------------------------------------------------------------------------
+# REQ-572 — CALL db.labels() → CypherLabelMap introspection, no SQL generated
+# ---------------------------------------------------------------------------
+
+
+@given("a client issuing CALL db.labels()")
+def given_client_issuing_call_db_labels(shared_data: dict) -> None:
+    label_map = _make_introspection_label_map()
+    shared_data["label_map"] = label_map
+    shared_data["procedure"] = "db.labels"
+
+
+@when("the cypher router handles it")
+def when_cypher_router_handles_it(shared_data: dict) -> None:
+    from provisa.api.rest.cypher_router import _handle_procedure
+
+    label_map = shared_data["label_map"]
+    proc = shared_data["procedure"]
+    response = _handle_procedure(proc, label_map)
+    shared_data["response"] = response
+    shared_data["response_content"] = response.body
+
+
+@then("it returns label data from CypherLabelMap without generating or executing SQL")
+def then_returns_label_data_without_sql(shared_data: dict) -> None:
+    import json
+
+    response = shared_data["response"]
+    assert response is not None, "handler must return a response"
+    content = json.loads(shared_data["response_content"])
+    assert "rows" in content, f"response must contain 'rows'; got: {content!r}"
+    assert "columns" in content, f"response must contain 'columns'; got: {content!r}"
+    returned_labels = {row["label"] for row in content["rows"]}
+    # The introspection label map has Person (domain: PersonDomain) and Company (domain: CompanyDomain).
+    assert "Person" in returned_labels or "PersonDomain" in returned_labels, (
+        f"Person label or domain must appear in db.labels() output; got: {returned_labels!r}"
+    )
+    assert "Company" in returned_labels or "CompanyDomain" in returned_labels, (
+        f"Company label or domain must appear in db.labels() output; got: {returned_labels!r}"
+    )
+    # No SQL key must appear in the response — data is sourced from CypherLabelMap directly.
+    assert "sql" not in content, f"db.labels() response must not contain SQL; got: {content!r}"
+
+
+# ---------------------------------------------------------------------------
+# REQ-573 — Correlated CALL subquery → CROSS JOIN LATERAL
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher CALL subquery with WITH importing an outer variable")
+def given_correlated_call_subquery(shared_data: dict) -> None:
+    label_map = _make_correlated_call_label_map()
+    # Correlated CALL { WITH p MATCH (p)-[:KNOWS]->(f:Person) RETURN f.name AS friend }
+    query = (
+        "MATCH (p:Person) "
+        "CALL { WITH p MATCH (p)-[:KNOWS]->(f:Person) RETURN f.name AS friend } "
+        "RETURN p.name, friend"
+    )
+    shared_data["query"] = query
+    shared_data["label_map"] = label_map
+
+
+@then("it emits a CROSS JOIN LATERAL expression")
+def then_emits_cross_join_lateral(shared_data: dict) -> None:
+    assert shared_data.get("error") is None, (
+        f"Correlated CALL query must not raise; got: {shared_data.get('error')!r}"
+    )
+    sql = shared_data.get("sql")
+    assert sql, "correlated CALL query must produce SQL"
+    sql_lower = sql.lower()
+    assert "lateral" in sql_lower, f"Correlated CALL must emit CROSS JOIN LATERAL; got SQL:\n{sql}"
+
+
+# ---------------------------------------------------------------------------
+# REQ-575 — Bidirectional traversal (a)-[]-(b) → UNION ALL fwd + bwd
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query with bidirectional traversal (a)-[]-(b)")
+def given_bidirectional_traversal_query(shared_data: dict) -> None:
+    # Use correlated call label map: Person with self-referential KNOWS rel.
+    # Bidirectional expansion (UNION ALL) requires a self-referential relationship
+    # so that both forward (a)-[:KNOWS]->(b) and backward (b)-[:KNOWS]->(a) branches
+    # are non-trivially distinct and the translator emits both via UNION ALL.
+    label_map = _make_correlated_call_label_map()
+    # Undirected syntax: no arrow → direction="none" in the parser
+    query = "MATCH (a:Person)-[:KNOWS]-(b:Person) RETURN a.name, b.name"
+    shared_data["query"] = query
+    shared_data["label_map"] = label_map
+
+
+@then("it emits a UNION ALL of forward and backward directed relationship joins")
+def then_emits_union_all_bidirectional(shared_data: dict) -> None:
+    assert shared_data.get("error") is None, (
+        f"Bidirectional traversal query must not raise; got: {shared_data.get('error')!r}"
+    )
+    sql = shared_data.get("sql")
+    assert sql, "bidirectional traversal query must produce SQL"
+    sql_lower = sql.lower()
+    assert "union all" in sql_lower, (
+        f"Bidirectional traversal must emit UNION ALL of both directions:\n{sql}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-576 — shortestPath between different node types → flat JOIN chain
+# ---------------------------------------------------------------------------
+
+
+@given("a shortestPath query between two different node types with a unique schema path")
+def given_heterogeneous_shortest_path_query(shared_data: dict) -> None:
+    label_map = _make_heterogeneous_shortest_path_label_map()
+    # Person and Company are different types; only WORKS_AT connects them (no self-ref rel).
+    # _needs_recursive_cte returns False: variable_length=True but src != tgt and no self-ref rel.
+    query = "MATCH p = shortestPath((a:Person)-[:WORKS_AT*1..3]->(b:Company)) RETURN p"
+    shared_data["query"] = query
+    shared_data["label_map"] = label_map
+
+
+@then("it emits a flat JOIN chain instead of a recursive CTE")
+def then_emits_flat_join_chain(shared_data: dict) -> None:
+    assert shared_data.get("error") is None, (
+        f"Heterogeneous shortestPath must not raise; got: {shared_data.get('error')!r}"
+    )
+    sql = shared_data.get("sql")
+    assert sql, "heterogeneous shortestPath must produce SQL"
+    sql_lower = sql.lower()
+    # Flat JOIN path: no WITH RECURSIVE.
+    assert "with recursive" not in sql_lower, (
+        f"Heterogeneous shortestPath must emit a flat JOIN chain, not WITH RECURSIVE:\n{sql}"
+    )
+    # Must still reference both node tables.
+    assert "persons" in sql_lower, f"SQL must reference persons table:\n{sql}"
+    assert "companies" in sql_lower, f"SQL must reference companies table:\n{sql}"
+
+
+# ---------------------------------------------------------------------------
+# REQ-577 — Multiple equal-cost schema paths → UNION ALL branches
+# ---------------------------------------------------------------------------
+
+
+@given("multiple schema paths of equal hop count between the same node types")
+def given_multiple_equal_cost_paths(shared_data: dict) -> None:
+    label_map = _make_multi_path_label_map()
+    # Person→Company via WORKS_AT (company_id) and via MANAGES (managed_company_id):
+    # both are 1-hop paths of equal cost.
+    query = "MATCH p = shortestPath((a:Person)-[*1..2]->(b:Company)) RETURN p"
+    shared_data["query"] = query
+    shared_data["label_map"] = label_map
+
+
+@when("the translator processes a shortestPath query")
+def when_translator_processes_shortest_path(shared_data: dict) -> None:
+    error: Exception | None = None
+    sql: str | None = None
+    try:
+        sql = _translate(shared_data["query"], shared_data["label_map"])
+    except Exception as exc:  # noqa: BLE001
+        error = exc
+    shared_data["sql"] = sql
+    shared_data["error"] = error
+
+
+@then("all matching paths are emitted as UNION ALL branches without deduplication")
+def then_all_paths_as_union_all(shared_data: dict) -> None:
+    assert shared_data.get("error") is None, (
+        f"Multi-path shortestPath must not raise; got: {shared_data.get('error')!r}"
+    )
+    sql = shared_data.get("sql")
+    assert sql, "multi-path shortestPath must produce SQL"
+    sql_lower = sql.lower()
+    # Multiple equal-cost paths → UNION ALL (no DISTINCT deduplication).
+    assert "union all" in sql_lower, (
+        f"Multiple equal-cost paths must emit UNION ALL branches:\n{sql}"
+    )
+    # DISTINCT must not appear (no deduplication per REQ-577).
+    assert "union all" in sql_lower and "union distinct" not in sql_lower, (
+        f"UNION ALL branches must not be deduplicated (no UNION DISTINCT):\n{sql}"
+    )

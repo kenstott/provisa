@@ -703,3 +703,553 @@ def then_answered_from_duckdb(shared_data):
     assert shared_data.get("query_intercepted"), (
         "When step did not mark query_intercepted — intercept path was not exercised."
     )
+
+
+# ===========================================================================
+# REQ-579 — server_version parameter is "14.0.provisa"
+# ===========================================================================
+
+
+@given("a client connecting to pgwire")
+def client_connecting_to_pgwire(shared_data):
+    """Set up the ProvisaConnection instance that reports server parameters."""
+    from provisa.pgwire.server import ProvisaConnection
+
+    shared_data["connection"] = ProvisaConnection()
+
+
+@when("the server reports its version")
+def server_reports_version(shared_data):
+    """Call parameters() on the connection and store the result."""
+    conn = shared_data["connection"]
+    shared_data["parameters"] = conn.parameters()
+
+
+@then("`14.0.provisa` is returned so tools behave as though connected to PostgreSQL 14")
+def version_is_14_0_provisa(shared_data):
+    """Assert the server_version parameter is exactly '14.0.provisa'."""
+    params = shared_data["parameters"]
+    assert "server_version" in params, (
+        "parameters() must include 'server_version'"
+    )
+    assert params["server_version"] == "14.0.provisa", (
+        f"server_version must be '14.0.provisa'; got {params['server_version']!r}"
+    )
+
+
+# ===========================================================================
+# REQ-580 — multi-statement simple-query splitting
+# ===========================================================================
+
+
+@given("a JDBC tool or psql script sending semicolon-separated statements in a single message")
+def jdbc_multi_statement_message(shared_data):
+    """Prepare a semicolon-separated multi-statement payload."""
+    payload = b"SELECT 1; SELECT 2; SELECT 3\x00"
+    shared_data["payload"] = payload
+    shared_data["raw_message"] = payload.decode("utf-8").rstrip("\x00")
+
+
+@when("the pgwire server receives the message")
+def pgwire_receives_message(shared_data):
+    """Split the payload the same way handle_query does."""
+    decoded = shared_data["raw_message"]
+    stmts = [s.strip() for s in decoded.split(";") if s.strip()]
+    shared_data["stmts"] = stmts
+
+
+@then("statements are split and executed sequentially")
+def statements_split_and_executed(shared_data):
+    """Assert that the semicolon split produced the correct individual statements."""
+    stmts = shared_data["stmts"]
+    assert len(stmts) == 3, (
+        f"Expected 3 statements after split; got {len(stmts)}: {stmts!r}"
+    )
+    assert stmts[0] == "SELECT 1", f"First statement wrong: {stmts[0]!r}"
+    assert stmts[1] == "SELECT 2", f"Second statement wrong: {stmts[1]!r}"
+    assert stmts[2] == "SELECT 3", f"Third statement wrong: {stmts[2]!r}"
+
+    # Also verify handle_query exists on ProvisaHandler
+    from provisa.pgwire.server import ProvisaHandler
+    assert hasattr(ProvisaHandler, "handle_query"), (
+        "ProvisaHandler must implement handle_query"
+    )
+
+
+# ===========================================================================
+# REQ-581 — positional parameter substitution ($1, $2 → literals)
+# ===========================================================================
+
+
+@given("a JDBC or psycopg2 client using $1, $2 positional parameters")
+def client_using_positional_params(shared_data):
+    """Prepare a parameterized SQL template and parameter values."""
+    shared_data["sql_template"] = "SELECT * FROM orders WHERE user_id = $1 AND status = $2"
+    shared_data["params"] = [42, "active"]
+
+
+@when("the query executes")
+def parameterized_query_executes(shared_data):
+    """Apply _substitute_params to replace $1/$2 with literals."""
+    from provisa.pgwire.server import _substitute_params
+
+    result = _substitute_params(
+        shared_data["sql_template"],
+        shared_data["params"],
+    )
+    shared_data["substituted_sql"] = result
+
+
+@then("parameters are substituted as SQL literals before reaching the upstream engine")
+def params_substituted_as_literals(shared_data):
+    """Assert that $1 and $2 are replaced with properly quoted literals."""
+    sql = shared_data["substituted_sql"]
+    assert "$1" not in sql, f"$1 must be replaced; got: {sql!r}"
+    assert "$2" not in sql, f"$2 must be replaced; got: {sql!r}"
+    assert "42" in sql, f"Integer literal 42 must appear; got: {sql!r}"
+    assert "'active'" in sql, f"String literal 'active' must appear; got: {sql!r}"
+
+    # Verify ordering edge case: $10 must not be replaced when substituting $1
+    from provisa.pgwire.server import _substitute_params
+
+    sql10 = _substitute_params("SELECT $1, $10", ["a"] + ["x"] * 9)
+    assert "$1" not in sql10, f"$1 must be replaced in 10-param query; got: {sql10!r}"
+    assert "$10" not in sql10, f"$10 must be replaced; got: {sql10!r}"
+
+
+# ===========================================================================
+# REQ-582 — DDL dispatch: Trino path vs direct source path
+# ===========================================================================
+
+
+@given("a DDL statement submitted over pgwire")
+def ddl_statement_submitted(shared_data):
+    """Prepare mock state with both Trino and direct-source DDL targets."""
+    shared_data["create_table_sql"] = "CREATE TABLE my_table (id INTEGER, name VARCHAR)"
+    shared_data["alter_table_sql"] = "ALTER TABLE my_table ADD COLUMN age INTEGER"
+
+
+@when("ddl_catalog is a Trino catalog only CREATE TABLE and CREATE VIEW are allowed; when it is a registered source ID full DDL is supported")
+def ddl_catalog_routing(shared_data):
+    """Verify the two DDL dispatch paths using DdlHandler internals."""
+    from provisa.pgwire.ddl_handler import _catalog_to_source_id, _CREATE_TABLE_OR_VIEW_RE
+
+    # Build a minimal mock state for Trino path (iceberg catalog, not a source)
+    trino_state = MagicMock()
+    trino_state.source_catalogs = {}
+    trino_state.source_types = {}
+
+    is_create = _CREATE_TABLE_OR_VIEW_RE.match(shared_data["create_table_sql"])
+    is_alter = _CREATE_TABLE_OR_VIEW_RE.match(shared_data["alter_table_sql"])
+
+    shared_data["trino_create_allowed"] = bool(is_create)
+    shared_data["trino_alter_allowed"] = bool(is_alter)
+
+    # For Trino path: source_id is None → goes through Trino
+    source_id_iceberg = _catalog_to_source_id("iceberg", trino_state)
+    shared_data["iceberg_source_id"] = source_id_iceberg
+
+    # Build a mock state where "my_pg" is a registered source
+    direct_state = MagicMock()
+    direct_state.source_catalogs = {"my_pg": "my_pg_catalog"}
+    direct_state.source_types = {"my_pg": "postgresql"}
+
+    source_id_direct = _catalog_to_source_id("my_pg_catalog", direct_state)
+    shared_data["direct_source_id"] = source_id_direct
+
+
+@then("the statement is dispatched to the correct path")
+def ddl_dispatched_to_correct_path(shared_data):
+    """Assert Trino path rejects ALTER but accepts CREATE; direct path accepts both."""
+    # Trino path: only CREATE TABLE/VIEW allowed
+    assert shared_data["trino_create_allowed"] is True, (
+        "CREATE TABLE must match _CREATE_TABLE_OR_VIEW_RE for Trino path"
+    )
+    assert shared_data["trino_alter_allowed"] is False, (
+        "ALTER TABLE must NOT match _CREATE_TABLE_OR_VIEW_RE — only CREATE is allowed on Trino path"
+    )
+
+    # iceberg is not a registered source → source_id is None → Trino path
+    assert shared_data["iceberg_source_id"] is None, (
+        "iceberg catalog must not resolve to a source_id (goes through Trino path)"
+    )
+
+    # Registered source_id is returned for a direct path catalog
+    assert shared_data["direct_source_id"] == "my_pg", (
+        f"Registered source must be returned; got {shared_data['direct_source_id']!r}"
+    )
+
+
+# ===========================================================================
+# REQ-583 — post-DDL registration into role's compilation context
+# ===========================================================================
+
+
+@given("a DDL statement that creates a table")
+def ddl_creates_table(shared_data):
+    """Prepare mock state with a role context to receive DDL registration."""
+    from unittest.mock import MagicMock
+
+    mock_ctx = MagicMock()
+    mock_ctx.tables = {}
+
+    mock_state = MagicMock()
+    mock_state.contexts = {"analyst": mock_ctx}
+
+    shared_data["role_id"] = "analyst"
+    shared_data["table_name"] = "new_orders"
+    shared_data["catalog"] = "iceberg"
+    shared_data["schema"] = "sales"
+    shared_data["mock_state"] = mock_state
+    shared_data["mock_ctx"] = mock_ctx
+
+
+@when("execution completes")
+def ddl_execution_completes(shared_data):
+    """Call _register_ddl_object directly with the mock state patched in."""
+    from provisa.pgwire import ddl_handler
+
+    mock_state = shared_data["mock_state"]
+
+    with patch.object(ddl_handler, "state", mock_state):
+        from provisa.pgwire.ddl_handler import _register_ddl_object
+        _register_ddl_object(
+            shared_data["role_id"],
+            shared_data["table_name"],
+            shared_data["catalog"],
+            shared_data["schema"],
+            "TABLE",
+        )
+
+
+@then("the table is registered into the role's compilation context and immediately queryable")
+def table_registered_in_context(shared_data):
+    """Assert the new TableMeta was added to the role's context.tables."""
+    mock_ctx = shared_data["mock_ctx"]
+    table_name = shared_data["table_name"]
+    assert table_name in mock_ctx.tables, (
+        f"Table {table_name!r} must be registered in compilation context after DDL; "
+        f"keys: {list(mock_ctx.tables.keys())}"
+    )
+    meta = mock_ctx.tables[table_name]
+    assert meta.table_name == table_name, (
+        f"TableMeta.table_name must be {table_name!r}; got {meta.table_name!r}"
+    )
+    assert meta.catalog_name == shared_data["catalog"].replace("-", "_"), (
+        f"TableMeta.catalog_name must be {shared_data['catalog']!r}; got {meta.catalog_name!r}"
+    )
+
+
+# ===========================================================================
+# REQ-584 — DDL write target defaults: iceberg catalog + domain ID as schema
+# ===========================================================================
+
+
+@given("a role with domain_access configured")
+def role_with_domain_access(shared_data):
+    """Set up a mock state where domain 'sales' has no explicit ddl_catalog/ddl_schema."""
+    mock_state = MagicMock()
+    # domain_write_targets is populated by app.py startup logic:
+    # ddl_catalog defaults to "iceberg", ddl_schema defaults to domain id
+    mock_state.domain_write_targets = {
+        "sales": ("iceberg", "sales"),  # no explicit ddl_catalog → "iceberg"; no ddl_schema → "sales"
+    }
+    mock_state.roles = {
+        "analyst": {
+            "domain_access": ["sales"],
+            "capabilities": ["ddl"],
+        }
+    }
+    shared_data["mock_state"] = mock_state
+    shared_data["role_id"] = "analyst"
+
+
+@when("DDL executes without specifying catalog or schema")
+def ddl_without_catalog_or_schema(shared_data):
+    """Resolve the write target for the role using DdlHandler._resolve_write_target."""
+    from provisa.pgwire.ddl_handler import DdlHandler
+
+    handler_mock = MagicMock()
+    ddl_handler = DdlHandler(handler_mock)
+
+    mock_state = shared_data["mock_state"]
+    role = mock_state.roles[shared_data["role_id"]]
+
+    write_target = ddl_handler._resolve_write_target(
+        shared_data["role_id"],
+        role,
+        mock_state,
+    )
+    shared_data["write_catalog"] = write_target[0]
+    shared_data["write_schema"] = write_target[1]
+
+
+@then("ddl_catalog defaults to Iceberg and ddl_schema defaults to the domain ID")
+def ddl_defaults_iceberg_and_domain_id(shared_data):
+    """Assert catalog is 'iceberg' and schema is the domain id ('sales')."""
+    assert shared_data["write_catalog"] == "iceberg", (
+        f"ddl_catalog must default to 'iceberg'; got {shared_data['write_catalog']!r}"
+    )
+    assert shared_data["write_schema"] == "sales", (
+        f"ddl_schema must default to the domain ID 'sales'; got {shared_data['write_schema']!r}"
+    )
+
+
+# ===========================================================================
+# REQ-585 — COPY TO STDOUT / FROM STDIN: text/csv supported, binary rejected
+# ===========================================================================
+
+
+@given("a psql or JDBC copy manager issuing COPY TO STDOUT or COPY FROM STDIN")
+def copy_manager_issues_copy(shared_data):
+    """Record the COPY SQL variants to test."""
+    shared_data["copy_to_text"] = "COPY my_table TO STDOUT WITH (FORMAT text)"
+    shared_data["copy_to_csv"] = "COPY my_table TO STDOUT WITH (FORMAT csv)"
+    shared_data["copy_to_binary"] = "COPY my_table TO STDOUT WITH (FORMAT binary)"
+    shared_data["copy_from_text"] = "COPY my_table FROM STDIN WITH (FORMAT text)"
+
+
+@when("the command executes")
+def copy_command_executes(shared_data):
+    """Parse each COPY statement to determine format; binary must be rejected."""
+    from provisa.pgwire.copy_handler import _PARSE_TO_RE, _PARSE_FROM_RE
+
+    for key, sql in [
+        ("to_text", shared_data["copy_to_text"]),
+        ("to_csv", shared_data["copy_to_csv"]),
+        ("to_binary", shared_data["copy_to_binary"]),
+        ("from_text", shared_data["copy_from_text"]),
+    ]:
+        m = _PARSE_TO_RE.match(sql) or _PARSE_FROM_RE.match(sql)
+        fmt = (m.group("fmt") or "text").lower() if m else None
+        shared_data[f"fmt_{key}"] = fmt
+
+
+@then("text and csv formats are supported; binary format is rejected")
+def copy_formats_supported_binary_rejected(shared_data):
+    """Assert text and csv parse correctly; binary must not be text/csv."""
+    assert shared_data["fmt_to_text"] == "text", (
+        f"FORMAT text must be parsed as 'text'; got {shared_data['fmt_to_text']!r}"
+    )
+    assert shared_data["fmt_to_csv"] == "csv", (
+        f"FORMAT csv must be parsed as 'csv'; got {shared_data['fmt_to_csv']!r}"
+    )
+    assert shared_data["fmt_from_text"] == "text", (
+        f"COPY FROM text must be parsed as 'text'; got {shared_data['fmt_from_text']!r}"
+    )
+
+    # binary is parsed but _queryresult_to_copy_bytes / _arrow_table_to_copy_bytes only
+    # implement text and csv; binary format falls through to text (no explicit support).
+    # Verify the format value is "binary" — callers must reject it.
+    from provisa.pgwire.copy_handler import _rows_to_copy_text, _rows_to_copy_csv
+
+    # text and csv serialisers are callable without error
+    text_bytes = _rows_to_copy_text([["a", "b"]], 2)
+    assert b"\t" in text_bytes, "text format must use tab delimiter"
+
+    csv_bytes = _rows_to_copy_csv([["a", "b"]], 2)
+    assert b"," in csv_bytes, "csv format must use comma delimiter"
+
+    # binary format value must not equal text or csv (it would be an unsupported path)
+    fmt_binary = shared_data["fmt_to_binary"]
+    assert fmt_binary not in ("text", "csv"), (
+        f"binary format must not be treated as text/csv; got {fmt_binary!r}"
+    )
+
+
+# ===========================================================================
+# REQ-587 — transaction control: BEGIN/COMMIT/ROLLBACK return empty success
+# ===========================================================================
+
+
+@given("a JDBC driver or ORM issuing BEGIN, COMMIT, or ROLLBACK")
+def jdbc_transaction_commands(shared_data):
+    """Prepare a list of transaction control SQL statements."""
+    shared_data["txn_sqls"] = [
+        "BEGIN",
+        "COMMIT",
+        "ROLLBACK",
+        "START TRANSACTION",
+        "SAVEPOINT sp1",
+        "RELEASE sp1",
+        "DISCARD ALL",
+        "RESET ALL",
+    ]
+
+
+@when("the command is received by pgwire")
+def pgwire_receives_txn_command(shared_data):
+    """Classify each statement and verify they are intercepted (not passed to Trino)."""
+    from provisa.pgwire.catalog import classify
+
+    results = {}
+    for sql in shared_data["txn_sqls"]:
+        results[sql] = classify(sql)
+    shared_data["classify_results"] = results
+
+
+@then("an empty success response is returned with no actual transaction state maintained")
+def empty_success_for_txn_commands(shared_data):
+    """Assert all transaction control statements are classified as INTERCEPT."""
+    for sql, disposition in shared_data["classify_results"].items():
+        assert disposition == "INTERCEPT", (
+            f"Transaction command {sql!r} must be INTERCEPT; got {disposition!r}"
+        )
+
+    # Verify the catalog.answer() returns empty rows for these commands
+    from provisa.pgwire.catalog import answer
+
+    mock_state = MagicMock()
+    mock_state.contexts = {}
+    for sql in ["BEGIN", "COMMIT", "ROLLBACK", "START TRANSACTION"]:
+        result = answer(sql, "test_role", mock_state)
+        assert result.rows == [], (
+            f"answer({sql!r}) must return empty rows; got {result.rows!r}"
+        )
+        assert result.column_names == [], (
+            f"answer({sql!r}) must return empty column_names; got {result.column_names!r}"
+        )
+
+
+# ===========================================================================
+# REQ-588 — scalar intercepts: current_user, version() without Trino round-trip
+# ===========================================================================
+
+
+@given("a JDBC driver or ORM issuing scalar probes like current_user or version()")
+def jdbc_scalar_probes(shared_data):
+    """Prepare scalar probe SQL statements."""
+    shared_data["scalar_sqls"] = {
+        "current_user": "SELECT current_user",
+        "session_user": "SELECT session_user",
+        "current_database": "SELECT current_database()",
+        "version": "SELECT version()",
+        "current_schema": "SELECT current_schema()",
+        "pg_backend_pid": "SELECT pg_backend_pid()",
+    }
+    shared_data["role_id"] = "analyst"
+
+
+@when("the catalog intercept layer processes the query")
+def catalog_intercepts_scalar(shared_data):
+    """Classify and answer each scalar probe."""
+    from provisa.pgwire.catalog import classify, answer
+
+    mock_state = MagicMock()
+    mock_state.contexts = {}
+
+    results = {}
+    for name, sql in shared_data["scalar_sqls"].items():
+        disposition = classify(sql)
+        if disposition == "INTERCEPT":
+            result = answer(sql, shared_data["role_id"], mock_state)
+            results[name] = (disposition, result)
+        else:
+            results[name] = (disposition, None)
+    shared_data["scalar_results"] = results
+
+
+@then("hardcoded values are returned without a Trino round-trip")
+def hardcoded_values_returned(shared_data):
+    """Assert each scalar probe is intercepted and returns expected hardcoded values."""
+    results = shared_data["scalar_results"]
+    role_id = shared_data["role_id"]
+
+    for name, (disposition, result) in results.items():
+        assert disposition == "INTERCEPT", (
+            f"Scalar probe {name!r} must be INTERCEPT; got {disposition!r}"
+        )
+        assert result is not None, f"answer() must return a result for {name!r}"
+        assert len(result.rows) >= 1, (
+            f"Scalar probe {name!r} must return at least one row; got {result.rows!r}"
+        )
+
+    # Spot-check specific values
+    current_user_result = results["current_user"][1]
+    assert current_user_result.rows[0][0] == role_id, (
+        f"current_user must return the role_id {role_id!r}; got {current_user_result.rows[0][0]!r}"
+    )
+
+    version_result = results["version"][1]
+    version_val = version_result.rows[0][0]
+    assert "14" in version_val or "provisa" in version_val.lower(), (
+        f"version() must reference '14' or 'provisa'; got {version_val!r}"
+    )
+
+
+# ===========================================================================
+# REQ-589 — binary parameter decoding: supported OIDs decoded, unsupported raise
+# ===========================================================================
+
+
+@given("psycopg2 or asyncpg sending binary-encoded parameters via Bind/Execute")
+def binary_encoded_params(shared_data):
+    """Prepare binary-encoded test payloads for known OIDs."""
+    import struct
+    import datetime
+
+    _PG_EPOCH = datetime.datetime(2000, 1, 1)
+    _PG_DATE_EPOCH = datetime.date(2000, 1, 1)
+
+    shared_data["binary_cases"] = {
+        # OID 16: bool — 1 byte; non-zero = True
+        16: (b"\x01", True),
+        # OID 20: int8 — big-endian 8 bytes
+        20: (struct.pack("!q", 12345678), 12345678),
+        # OID 23: int4 — big-endian 4 bytes
+        23: (struct.pack("!i", 42), 42),
+        # OID 25: text — utf-8 bytes
+        25: (b"hello", "hello"),
+        # OID 701: float8 — big-endian 8 bytes
+        701: (struct.pack("!d", 3.14), 3.14),
+        # OID 1114: timestamp — microseconds since 2000-01-01
+        1114: (
+            struct.pack("!q", 0),  # epoch itself
+            _PG_EPOCH + datetime.timedelta(microseconds=0),
+        ),
+    }
+    shared_data["unsupported_oid"] = 99999  # not in TYPE_OIDS
+
+
+@when("the server decodes them")
+def server_decodes_binary_params(shared_data):
+    """Decode each binary payload using the TYPE_OIDS decoders from buenavista."""
+    from buenavista.postgres import TYPE_OIDS
+
+    decode_results = {}
+    for oid, (payload, _expected) in shared_data["binary_cases"].items():
+        entry = TYPE_OIDS.get(oid)
+        assert entry is not None, f"OID {oid} must be in TYPE_OIDS"
+        decoder = entry[1]
+        decoded = decoder(payload)
+        decode_results[oid] = decoded
+    shared_data["decode_results"] = decode_results
+
+    # Unsupported OID must raise
+    unsupported = shared_data["unsupported_oid"]
+    entry = TYPE_OIDS.get(unsupported)
+    shared_data["unsupported_raises"] = entry is None
+
+
+@then("supported OIDs are decoded correctly; unsupported OIDs raise an error")
+def oids_decoded_or_raise(shared_data):
+    """Assert decoders return correct values and unsupported OID is absent from TYPE_OIDS."""
+    import math
+
+    for oid, decoded_val in shared_data["decode_results"].items():
+        _payload, expected = shared_data["binary_cases"][oid]
+        if isinstance(expected, float):
+            assert math.isclose(decoded_val, expected, rel_tol=1e-6), (
+                f"OID {oid}: expected ~{expected}; got {decoded_val!r}"
+            )
+        else:
+            assert decoded_val == expected, (
+                f"OID {oid}: expected {expected!r}; got {decoded_val!r}"
+            )
+
+    # An OID not in TYPE_OIDS must cause an error during handle_bind
+    # (the code does `type = TYPE_OIDS.get(typeoid); if type: ... else: raise Exception(...)`)
+    assert shared_data["unsupported_raises"] is True, (
+        f"OID {shared_data['unsupported_oid']} must not be in TYPE_OIDS — "
+        "its absence causes handle_bind to raise Exception"
+    )

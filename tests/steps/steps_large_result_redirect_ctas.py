@@ -658,3 +658,156 @@ def then_trino_writes_directly_to_s3_no_data_through_provisa(shared_data):
     # result payload.  The When step records bytes-produced per format; each
     # value must be 0 — Trino writes the files directly to S3 via Iceberg.
     provisa_bytes = shared_data.get("provisa_bytes_produced", {})
+    for fmt in native_formats:
+        assert provisa_bytes.get(fmt, 0) == 0, (
+            f"Provisa must not produce any bytes for native format {fmt!r}; "
+            f"got {provisa_bytes.get(fmt)} bytes"
+        )
+
+
+@then("Provisa serializes the result and uploads it to S3 via boto3")
+def then_provisa_serializes_and_uploads_to_s3(shared_data):
+    """REQ-139: verify that non-native formats are serialized by Provisa and
+    uploaded to S3 via boto3 put_object + generate_presigned_url.
+    """
+    serialized_payloads = shared_data["serialized_payloads"]
+    mock_s3 = shared_data["mock_s3"]
+    uploaded_keys = shared_data["uploaded_keys"]
+    presigned_urls = shared_data["presigned_urls"]
+    mediated_formats = shared_data["mediated_formats"]
+
+    # Every non-native format must have been serialized to non-empty bytes.
+    for fmt in mediated_formats:
+        assert fmt in serialized_payloads, (
+            f"format {fmt!r} missing from serialized_payloads"
+        )
+        payload = serialized_payloads[fmt]
+        assert isinstance(payload, bytes), (
+            f"serialized payload for {fmt!r} must be bytes, got {type(payload)}"
+        )
+        assert len(payload) > 0, (
+            f"serialized payload for {fmt!r} must not be empty"
+        )
+
+    # boto3 put_object must have been called exactly once per format.
+    assert mock_s3.put_object.call_count == len(mediated_formats), (
+        f"expected {len(mediated_formats)} put_object calls, "
+        f"got {mock_s3.put_object.call_count}"
+    )
+
+    # generate_presigned_url must have been called exactly once per format.
+    assert mock_s3.generate_presigned_url.call_count == len(mediated_formats), (
+        f"expected {len(mediated_formats)} generate_presigned_url calls, "
+        f"got {mock_s3.generate_presigned_url.call_count}"
+    )
+
+    # Each format must have an object key and a presigned URL recorded.
+    for fmt in mediated_formats:
+        assert fmt in uploaded_keys, f"no S3 object key recorded for format {fmt!r}"
+        assert fmt in presigned_urls, f"no presigned URL recorded for format {fmt!r}"
+        url = presigned_urls[fmt]
+        assert url.startswith("https://"), (
+            f"presigned URL for {fmt!r} must be an HTTPS URL; got {url!r}"
+        )
+
+    # None of the non-native formats must be classified as a native CTAS format.
+    for fmt in mediated_formats:
+        assert not _is_native_ctas_format(fmt), (
+            f"format {fmt!r} must not be a native CTAS format for this REQ-139 path"
+        )
+
+
+@then("a LIMIT threshold+1 probe determines redirect without COUNT(*) or re-executing the query")
+def then_limit_probe_determines_redirect(shared_data):
+    """REQ-140: verify the probe uses LIMIT threshold+1, no COUNT(*) is issued,
+    and the full query is not re-executed to make the redirect decision.
+    """
+    probe_sql = shared_data["probe_sql"]
+    threshold = shared_data["probe_threshold"]
+    probe_rows_fetched = shared_data["probe_rows_fetched"]
+    probe_redirect_decision = shared_data["probe_redirect_decision"]
+
+    # The probe SQL must contain LIMIT threshold+1 — not COUNT(*).
+    expected_limit = threshold + 1
+    assert f"LIMIT {expected_limit}" in probe_sql, (
+        f"probe SQL must contain 'LIMIT {expected_limit}'; got: {probe_sql!r}"
+    )
+    assert "COUNT(*)" not in probe_sql.upper(), (
+        f"probe SQL must not contain COUNT(*); got: {probe_sql!r}"
+    )
+
+    # No COUNT(*) statement must have been executed at any point.
+    assert shared_data["count_star_executed"] is False, (
+        "COUNT(*) must never be executed for threshold-based redirect decisions"
+    )
+
+    # The probe must have fetched exactly threshold+1 rows (the sentinel value
+    # that signals the result exceeds the inline threshold).
+    assert probe_rows_fetched == expected_limit, (
+        f"probe must fetch exactly {expected_limit} rows to signal redirect; "
+        f"got {probe_rows_fetched}"
+    )
+
+    # The probe result alone must have triggered the redirect decision.
+    assert probe_redirect_decision is True, (
+        "probe result exceeding threshold must produce a redirect decision of True"
+    )
+
+    # The full query must NOT have been re-executed after the probe.
+    assert shared_data["full_query_reexecuted"] is False, (
+        "full query must not be re-executed after the probe makes the redirect decision"
+    )
+
+    # Negative control: a probe returning fewer than threshold+1 rows must NOT
+    # redirect — the already-fetched rows are served inline instead.
+    config = shared_data["probe_config"]
+    inline_result = _make_result(threshold - 1)
+    assert not should_redirect(inline_result, config, force=False), (
+        "a probe returning fewer rows than threshold must not redirect"
+    )
+
+
+@then("a scheduled job removes the corresponding S3 data")
+def then_scheduled_job_removes_s3_data(shared_data):
+    """REQ-141: verify that a scheduled cleanup job deletes expired objects and
+    leaves live objects untouched.
+    """
+    s3_objects = shared_data["s3_objects"]
+    s3_store = shared_data["s3_store"]
+    simulated_now = shared_data["simulated_now"]
+
+    # Run the scheduled cleanup at the simulated clock time.
+    deleted = _run_scheduled_cleanup(s3_objects, s3_store, simulated_now)
+
+    # Both expired objects must have been removed.
+    assert len(deleted) == 2, (
+        f"expected 2 objects deleted by cleanup, got {len(deleted)}: {deleted}"
+    )
+    assert "results/expired-key-1.csv" in deleted, (
+        "expired-key-1.csv must be removed by the cleanup job"
+    )
+    assert "results/expired-key-2.json" in deleted, (
+        "expired-key-2.json must be removed by the cleanup job"
+    )
+
+    # The live object must remain in the bucket.
+    live_key = "results/live-key-1.parquet"
+    assert live_key not in deleted, (
+        f"live key {live_key!r} must not be deleted before its TTL expires"
+    )
+    assert live_key in s3_store, (
+        f"live key {live_key!r} must still be present in the bucket after cleanup"
+    )
+
+    # The expired objects must no longer be in the bucket.
+    assert "results/expired-key-1.csv" not in s3_store, (
+        "expired-key-1.csv must be absent from the bucket after cleanup"
+    )
+    assert "results/expired-key-2.json" not in s3_store, (
+        "expired-key-2.json must be absent from the bucket after cleanup"
+    )
+
+    # The bucket must now contain exactly one object (the live key).
+    assert len(s3_store) == 1, (
+        f"bucket must contain exactly 1 object after cleanup, got {len(s3_store)}: {s3_store}"
+    )

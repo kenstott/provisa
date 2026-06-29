@@ -37,38 +37,24 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import os
-import queue
-import threading
-import time
 from typing import AsyncIterator
-from unittest.mock import AsyncMock, MagicMock, patch
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl
 
 import pytest
 from graphql import (
     GraphQLEnumType,
     GraphQLEnumValue,
-    GraphQLInputObjectType,
-    GraphQLList,
     GraphQLNonNull,
     GraphQLObjectType,
-    GraphQLScalarType,
     GraphQLString,
     parse,
     validate,
 )
-from graphql.language.ast import (
-    ArgumentNode,
-    FieldNode,
-    IntValueNode,
-    ObjectValueNode,
-)
-from pytest_bdd import given, parsers, scenarios, then, when
+from pytest_bdd import given, scenarios, then, when
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.sql_gen import TableMeta, build_context, compile_query
+from provisa.compiler.sql_gen import build_context, compile_query
 
 scenarios("../features/REQ-218.feature")
 scenarios("../features/REQ-219.feature")
@@ -568,7 +554,7 @@ class PgEnumDefinition:
         enum_values = {v: GraphQLEnumValue(v) for v in self.values}
         # Type name is PascalCase of the UDT name
         gql_type_name = _pg_type_name_to_graphql(self.type_name)
-        return GraphQLEnumType(gql_type_name, enum_values)
+        return GraphQLEnumType(gql_type_name, enum_values)  # type: ignore[return-value]
 
 
 def _pg_type_name_to_graphql(pg_type_name: str) -> str:
@@ -604,7 +590,7 @@ def _build_enum_aware_schema(
     fields: dict = {}
 
     # Non-enum columns (always present in our test table)
-    from graphql import GraphQLField, GraphQLInt, GraphQLNonNull as GNN
+    from graphql import GraphQLField, GraphQLInt
     fields["id"] = GraphQLField(GraphQLNonNull(GraphQLInt))  # type: ignore[arg-type]
 
     for col_name, pg_type_name in enum_columns.items():
@@ -612,10 +598,10 @@ def _build_enum_aware_schema(
             fields[col_name] = GraphQLField(enum_type_map[pg_type_name])
         else:
             # Fallback: unknown type -> String (should not happen in well-formed input)
-            fields[col_name] = GraphQLField(GraphQLString)
+            fields[col_name] = GraphQLField(GraphQLString)  # type: ignore[arg-type]
 
     obj_type = GraphQLObjectType("Order", lambda: fields)
-    return obj_type, enum_type_map
+    return obj_type, enum_type_map  # type: ignore[return-value]
 
 
 def _simulate_pg_enum_introspection(
@@ -797,10 +783,11 @@ def _build_graphql_where_clause(where: dict) -> str:
     conditions: list[str] = []
     for col_name, operators in where.items():
         for op, value in operators.items():
-            # Map REST operator names to GraphQL convention (_eq, _gt, etc.)
-            gql_op = f"_{op}" if not op.startswith("_") else op
+            # The Provisa schema filter types use bare names: eq, neq, gt, lt, etc.
+            # Strip leading underscore if caller passed _eq style.
+            gql_op = op.lstrip("_")
             if isinstance(value, str):
-                conditions.append(f"{col_name}: {{{gql_op}: \"{value}\"}}")
+                conditions.append(f'{col_name}: {{{gql_op}: "{value}"}}')
             else:
                 conditions.append(f"{col_name}: {{{gql_op}: {value}}}")
     return "{" + ", ".join(conditions) + "}"
@@ -823,4 +810,402 @@ def _simulate_rest_endpoint(
     5. Apply the SQL-equivalent filters to in-memory data.
     6. Return structured result.
     """
-    params = _parse
+    params = _parse_rest_query_params(query_string)
+    columns = list(available_rows[0].keys()) if available_rows else ["id", "amount", "region"]
+    gql_query = _build_graphql_query_from_rest_params(table, params, columns)
+
+    # Parse and validate against the schema
+    doc = parse(gql_query)
+    errors = validate(schema, doc)
+    if errors:
+        return {"errors": [str(e) for e in errors], "data": None}
+
+    # Compile to SQL (exercises the compilation pipeline)
+    compiled = compile_query(doc, ctx)
+    assert compiled, "compile_query returned no results"
+
+    # Apply filters to in-memory rows to simulate execution
+    result_rows = list(available_rows)
+
+    if "where" in params:
+        for col_name, operators in params["where"].items():
+            for op, value in operators.items():
+                if op in ("eq", "_eq"):
+                    result_rows = [r for r in result_rows if r.get(col_name) == value]
+                elif op in ("gt", "_gt"):
+                    result_rows = [r for r in result_rows if r.get(col_name, 0) > value]
+                elif op in ("lt", "_lt"):
+                    result_rows = [r for r in result_rows if r.get(col_name, 0) < value]
+
+    if "limit" in params:
+        result_rows = result_rows[: params["limit"]]
+
+    if "offset" in params:
+        result_rows = result_rows[params["offset"] :]
+
+    return {
+        "data": {table: result_rows},
+        "sql": compiled[0].sql if compiled else None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# BDD Steps — REQ-218: Cursor-based pagination
+# ---------------------------------------------------------------------------
+
+
+@given("a root query field with first/after/last/before cursor pagination args")
+def given_cursor_pagination_args(shared_data: dict) -> None:
+    """Set up sample rows and pagination parameters for cursor-based queries."""
+    shared_data["rows"] = [
+        {"id": 1, "amount": 100.0, "region": "north"},
+        {"id": 2, "amount": 200.0, "region": "south"},
+        {"id": 3, "amount": 300.0, "region": "east"},
+        {"id": 4, "amount": 400.0, "region": "west"},
+        {"id": 5, "amount": 500.0, "region": "north"},
+    ]
+    shared_data["first"] = 2
+    shared_data["sort_key"] = "id"
+    # Build the after cursor: start after row with id=2
+    shared_data["after_cursor"] = _encode_cursor({"id": 2})
+    schema, ctx = _build_schema_with_cursor_pagination()
+    shared_data["schema"] = schema
+    shared_data["ctx"] = ctx
+    assert shared_data["rows"], "rows must be non-empty"
+    assert shared_data["after_cursor"], "cursor must be non-empty"
+
+
+@when("the query executes")
+def when_cursor_query_executes(shared_data: dict) -> None:
+    """Execute the cursor-based pagination simulation."""
+    result = _simulate_cursor_query(
+        shared_data["rows"],
+        first=shared_data["first"],
+        after=shared_data.get("after_cursor"),
+        sort_key=shared_data["sort_key"],
+    )
+    shared_data["result"] = result
+
+
+@then("edges[{cursor, node}] and pageInfo are returned with base64-encoded cursors")
+def then_edges_and_page_info_returned(shared_data: dict) -> None:
+    """Verify connection result structure with base64 cursors and pageInfo."""
+    result = shared_data["result"]
+
+    assert "edges" in result, "result must contain 'edges'"
+    assert "pageInfo" in result, "result must contain 'pageInfo'"
+
+    edges = result["edges"]
+    assert len(edges) == shared_data["first"], (
+        f"expected {shared_data['first']} edges, got {len(edges)}"
+    )
+
+    for edge in edges:
+        assert "cursor" in edge, "each edge must have a 'cursor'"
+        assert "node" in edge, "each edge must have a 'node'"
+        # Cursor must be valid base64-encoded JSON
+        decoded = _decode_cursor(edge["cursor"])
+        assert shared_data["sort_key"] in decoded, (
+            f"cursor must encode sort key '{shared_data['sort_key']}'"
+        )
+
+    page_info = result["pageInfo"]
+    assert "hasNextPage" in page_info
+    assert "hasPreviousPage" in page_info
+    assert "startCursor" in page_info
+    assert "endCursor" in page_info
+
+    # Rows after cursor id=2 are ids 3,4,5 — requesting first=2 yields [3,4]
+    # with hasNextPage=True
+    assert page_info["hasNextPage"] is True, "hasNextPage must be True (row 5 remains)"
+
+    # Verify startCursor decodes to first returned row's id
+    start = _decode_cursor(page_info["startCursor"])
+    end = _decode_cursor(page_info["endCursor"])
+    assert start["id"] == 3, f"startCursor must point to id=3, got {start}"
+    assert end["id"] == 4, f"endCursor must point to id=4, got {end}"
+
+
+# ---------------------------------------------------------------------------
+# BDD Steps — REQ-219: SSE subscriptions
+# ---------------------------------------------------------------------------
+
+
+@given("a client connected to GET /data/subscribe/<table>")
+def given_sse_client_connected(shared_data: dict) -> None:
+    """Set up a mock asyncpg connection and table for SSE subscription."""
+    table = "orders"
+    notifications = [
+        {"event_type": "INSERT", "row": {"id": 10, "amount": 99.0, "region": "north"}},
+        {"event_type": "UPDATE", "row": {"id": 10, "amount": 109.0, "region": "north"}},
+        {"event_type": "DELETE", "row": {"id": 10, "amount": 109.0, "region": "north"}},
+    ]
+    conn = MockAsyncpgConnection(notifications=notifications, table=table)
+    shared_data["table"] = table
+    shared_data["notifications"] = notifications
+    shared_data["conn"] = conn
+    assert shared_data["table"] == "orders"
+
+
+@when("INSERT, UPDATE, or DELETE events occur on that table")
+def when_db_events_occur(shared_data: dict) -> None:
+    """Simulate database notifications arriving via asyncpg LISTEN/NOTIFY."""
+    received: list[str] = []
+    table = shared_data["table"]
+    notifications = shared_data["notifications"]
+
+    async def _collect():
+        async for chunk in _mock_asyncpg_listen_notify(table, notifications):
+            received.append(chunk)
+
+    asyncio.run(_collect())
+    shared_data["sse_chunks"] = received
+    assert received, "at least one SSE chunk must be produced"
+
+
+@then("the events are streamed to the client via SSE using PostgreSQL LISTEN/NOTIFY")
+def then_sse_events_streamed(shared_data: dict) -> None:
+    """Verify SSE chunks conform to the SSE protocol and carry event payloads."""
+    chunks = shared_data["sse_chunks"]
+    table = shared_data["table"]
+    notifications = shared_data["notifications"]
+
+    assert len(chunks) == len(notifications), (
+        f"expected {len(notifications)} SSE chunks, got {len(chunks)}"
+    )
+
+    raw = "".join(chunks)
+    events = _parse_sse_events(raw)
+
+    assert len(events) == len(notifications), (
+        f"parsed {len(events)} events, expected {len(notifications)}"
+    )
+
+    expected_types = [n["event_type"] for n in notifications]
+    for i, event in enumerate(events):
+        assert "event" in event, f"event[{i}] missing 'event' field"
+        assert "data" in event, f"event[{i}] missing 'data' field"
+        assert event["event"] == expected_types[i], (
+            f"event[{i}] type mismatch: {event['event']} != {expected_types[i]}"
+        )
+        assert event["data"]["table"] == table, (
+            f"event[{i}] table mismatch: {event['data']['table']} != {table}"
+        )
+        assert "data" in event["data"], f"event[{i}] payload missing 'data'"
+
+
+# ---------------------------------------------------------------------------
+# BDD Steps — REQ-220: DB event triggers
+# ---------------------------------------------------------------------------
+
+
+@given("a table with event trigger config specifying a webhook URL and operation filter")
+def given_event_trigger_config(shared_data: dict) -> None:
+    """Configure an event trigger for INSERT/UPDATE on the orders table."""
+    trigger_config = EventTriggerConfig(
+        table="orders",
+        webhook_url="https://example.com/hooks/orders",
+        operations=["INSERT", "UPDATE"],
+        retry_policy={"max_retries": 2, "interval_seconds": 1, "timeout_seconds": 5},
+    )
+    conn = MockAsyncpgEventTriggerConnection(
+        table="orders",
+        trigger_config=trigger_config,
+    )
+    http_client = MockHttpClient()
+    shared_data["trigger_config"] = trigger_config
+    shared_data["conn"] = conn
+    shared_data["http_client"] = http_client
+    assert trigger_config.matches_operation("INSERT")
+    assert trigger_config.matches_operation("UPDATE")
+    assert not trigger_config.matches_operation("DELETE"), (
+        "DELETE must be excluded from the operation filter"
+    )
+
+
+@when("an insert, update, or delete occurs on that table")
+def when_table_change_occurs(shared_data: dict) -> None:
+    """Simulate INSERT, UPDATE, and DELETE table changes via pg_notify."""
+    table_changes = [
+        {"operation": "INSERT", "old": None, "new": {"id": 1, "amount": 50.0}},
+        {"operation": "UPDATE", "old": {"id": 1, "amount": 50.0}, "new": {"id": 1, "amount": 75.0}},
+        {"operation": "DELETE", "old": {"id": 1, "amount": 75.0}, "new": None},
+    ]
+    shared_data["table_changes"] = table_changes
+
+    async def _run():
+        return await _run_event_trigger_pipeline(
+            shared_data["conn"],
+            shared_data["trigger_config"],
+            table_changes,
+            shared_data["http_client"],
+        )
+
+    dispatched = asyncio.run(_run())
+    shared_data["dispatched"] = dispatched
+
+
+@then("an HTTP POST is fired to the configured URL via the asyncpg listener with retry policy applied")
+def then_webhook_fired(shared_data: dict) -> None:
+    """Verify webhooks fired for matching operations only, via the http client."""
+    dispatched = shared_data["dispatched"]
+    http_client = shared_data["http_client"]
+    trigger_config = shared_data["trigger_config"]
+
+    # Only INSERT and UPDATE match the filter — DELETE must be excluded
+    assert len(dispatched) == 2, (
+        f"expected 2 dispatched webhooks (INSERT + UPDATE), got {len(dispatched)}"
+    )
+    assert len(http_client.calls) == 2, (
+        f"expected 2 HTTP POST calls, got {len(http_client.calls)}"
+    )
+
+    for call in http_client.calls:
+        assert call["url"] == trigger_config.webhook_url, (
+            f"webhook URL mismatch: {call['url']}"
+        )
+        payload = call["payload"]
+        assert "trigger" in payload, "webhook payload must include 'trigger'"
+        assert "event" in payload, "webhook payload must include 'event'"
+        assert payload["trigger"]["table"] == "orders"
+        assert payload["trigger"]["operation"] in ("INSERT", "UPDATE")
+
+    ops = [c["payload"]["trigger"]["operation"] for c in http_client.calls]
+    assert "INSERT" in ops, "INSERT webhook must have been fired"
+    assert "UPDATE" in ops, "UPDATE webhook must have been fired"
+    assert "DELETE" not in ops, "DELETE must not fire (excluded by operation filter)"
+
+
+# ---------------------------------------------------------------------------
+# BDD Steps — REQ-221: Enum auto-detection
+# ---------------------------------------------------------------------------
+
+
+@given("a PostgreSQL schema with user-defined enum types used as column types")
+def given_pg_enum_schema(shared_data: dict) -> None:
+    """Define PG enum types and a table whose columns use those enum types."""
+    pg_enums = [
+        PgEnumDefinition("order_status", ["pending", "processing", "shipped", "delivered"]),
+        PgEnumDefinition("region_code", ["NORTH", "SOUTH", "EAST", "WEST"]),
+    ]
+    table_columns = [
+        _col("id", "integer"),
+        _col("status", "order_status"),
+        _col("region", "region_code"),
+        _col("notes", "text"),
+    ]
+    shared_data["pg_enums"] = pg_enums
+    shared_data["table_columns"] = table_columns
+    assert len(pg_enums) == 2
+    assert any(c.data_type == "order_status" for c in table_columns)
+
+
+@when("the schema is built")
+def when_enum_schema_built(shared_data: dict) -> None:
+    """Run the enum introspection and schema-build pipeline."""
+    obj_type, enum_type_map, detected_enum_columns = _build_schema_with_pg_enums(
+        shared_data["pg_enums"],
+        shared_data["table_columns"],
+    )
+    shared_data["obj_type"] = obj_type
+    shared_data["enum_type_map"] = enum_type_map
+    shared_data["detected_enum_columns"] = detected_enum_columns
+    assert obj_type is not None
+    assert enum_type_map, "enum_type_map must be non-empty"
+
+
+@then("GraphQL enum types are generated and enum columns are mapped to GraphQL enum types instead of String")
+def then_enum_types_generated(shared_data: dict) -> None:
+    """Verify enum columns resolve to GraphQLEnumType, not GraphQLString."""
+    enum_type_map = shared_data["enum_type_map"]
+    detected_enum_columns = shared_data["detected_enum_columns"]
+    obj_type: GraphQLObjectType = shared_data["obj_type"]
+
+    # Both PG enum types must be present in the map
+    assert "order_status" in enum_type_map, "order_status enum must be detected"
+    assert "region_code" in enum_type_map, "region_code enum must be detected"
+
+    # enum columns must have been detected
+    assert "status" in detected_enum_columns, "status column must be detected as enum"
+    assert "region" in detected_enum_columns, "region column must be detected as enum"
+    assert "notes" not in detected_enum_columns, "notes (text) must not be an enum column"
+
+    # GraphQLEnumType values must match PG enum labels
+    status_enum: GraphQLEnumType = enum_type_map["order_status"]
+    assert isinstance(status_enum, GraphQLEnumType)
+    assert "pending" in status_enum.values or "PENDING" in status_enum.values or any(
+        v.lower() == "pending" for v in status_enum.values
+    ), f"'pending' must be a value of order_status enum, got {list(status_enum.values)}"
+
+    region_enum: GraphQLEnumType = enum_type_map["region_code"]
+    assert isinstance(region_enum, GraphQLEnumType)
+
+    # Object type fields for enum columns must be GraphQLEnumType, not GraphQLString
+    fields = obj_type.fields
+    status_field = fields.get("status")
+    assert status_field is not None, "obj_type must have a 'status' field"
+    assert isinstance(status_field.type, GraphQLEnumType), (
+        f"'status' field type must be GraphQLEnumType, got {type(status_field.type)}"
+    )
+
+    region_field = fields.get("region")
+    assert region_field is not None, "obj_type must have a 'region' field"
+    assert isinstance(region_field.type, GraphQLEnumType), (
+        f"'region' field type must be GraphQLEnumType, got {type(region_field.type)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# BDD Steps — REQ-222: REST endpoint auto-generation
+# ---------------------------------------------------------------------------
+
+
+@given("a REST client calling GET /data/rest/<table>?limit=10&where.id.eq=1")
+def given_rest_client_request(shared_data: dict) -> None:
+    """Prepare a REST request for the orders table with limit and where filter."""
+    shared_data["table"] = "orders"
+    shared_data["query_string"] = "limit=10&where.id.eq=1"
+    shared_data["available_rows"] = [
+        {"id": 1, "amount": 100.0, "region": "north"},
+        {"id": 2, "amount": 200.0, "region": "south"},
+        {"id": 3, "amount": 300.0, "region": "east"},
+    ]
+    schema, ctx = _build_rest_schema()
+    shared_data["schema"] = schema
+    shared_data["ctx"] = ctx
+    assert shared_data["query_string"] == "limit=10&where.id.eq=1"
+
+
+@when("the endpoint is hit")
+def when_rest_endpoint_hit(shared_data: dict) -> None:
+    """Process the REST request through the GraphQL compilation pipeline."""
+    result = _simulate_rest_endpoint(
+        table=shared_data["table"],
+        query_string=shared_data["query_string"],
+        available_rows=shared_data["available_rows"],
+        schema=shared_data["schema"],
+        ctx=shared_data["ctx"],
+    )
+    shared_data["rest_result"] = result
+    assert result is not None
+
+
+@then("the request is processed through the GraphQL compilation pipeline and results are returned")
+def then_rest_pipeline_executed(shared_data: dict) -> None:
+    """Verify the REST response contains filtered data produced via the GraphQL pipeline."""
+    result = shared_data["rest_result"]
+    table = shared_data["table"]
+
+    assert "errors" not in result or result["errors"] is None, (
+        f"REST pipeline produced errors: {result.get('errors')}"
+    )
+    assert "data" in result, "result must contain 'data'"
+    assert table in result["data"], f"result data must contain table '{table}'"
+
+    rows = result["data"][table]
+    # where.id.eq=1 should filter to only id=1
+    assert len(rows) == 1, f"expected 1 row (id=1), got {len(rows)}: {rows}"
+    assert rows[0]["id"] == 1, f"returned row must have id=1, got {rows[0]}"
+
+    # SQL must have been produced by the compilation pipeline
+    assert result.get("sql"), "compile_query must have produced a SQL string"

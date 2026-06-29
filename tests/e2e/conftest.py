@@ -17,8 +17,10 @@ import pytest
 
 from tests._noauth_config import pin_no_auth_config
 
-_REPO_ROOT = "/Volumes/main/Users/kennethstott/PycharmProjects/provisa-group-11"
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _COMPOSE_FILE = "docker-compose.core.yml"
+
+__all__ = ["docker_stack", "_disable_auth_for_e2e"]
 
 
 def _wait_for_port(host: str, port: int, timeout: float = 120.0) -> None:
@@ -35,27 +37,7 @@ def _wait_for_port(host: str, port: int, timeout: float = 120.0) -> None:
             time.sleep(1)
 
 
-def _pg_available() -> bool:
-    try:
-        host = os.environ.get("PG_HOST", "localhost")
-        port = int(os.environ.get("PG_PORT", "5432"))
-        with socket.create_connection((host, port), timeout=1):
-            return True
-    except OSError:
-        return False
-
-
-def _trino_available() -> bool:
-    try:
-        host = os.environ.get("TRINO_HOST", "localhost")
-        port = int(os.environ.get("TRINO_PORT", "8080"))
-        with socket.create_connection((host, port), timeout=1):
-            return True
-    except OSError:
-        return False
-
-
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def docker_stack():
     """Spin up the core Docker Compose stack for e2e tests.
 
@@ -90,13 +72,7 @@ def docker_stack():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _require_stack(docker_stack):
-    """Ensure PG + Trino stack is running before e2e tests execute."""
-    yield
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _disable_auth_for_e2e(tmp_path_factory):
+def _disable_auth_for_e2e(tmp_path_factory):  # pyright: ignore
     """E2E tests build the in-process app (create_app) and call it with a `role`
     but no bearer token; force auth off so AuthMiddleware is not installed and
     requests are not rejected with HTTP 401."""

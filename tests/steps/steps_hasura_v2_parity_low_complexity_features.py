@@ -47,7 +47,7 @@ from provisa.compiler.mutation_gen import (
     compile_upsert,
 )
 from provisa.compiler.schema_gen import SchemaInput
-from provisa.compiler.sql_gen import TableMeta, build_context, compile_query
+from provisa.compiler.sql_gen import CompilationContext, TableMeta, build_context, compile_query
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +154,7 @@ def _query_field_node(query: str) -> tuple:
     return doc, field
 
 
-def _run_compile_query(doc_and_field, ctx: object, table: TableMeta) -> object:
+def _run_compile_query(doc_and_field, ctx: CompilationContext, table: TableMeta) -> object:
     """Invoke compile_query(document, ctx) and return the first CompiledQuery."""
     if isinstance(doc_and_field, tuple):
         document, _field = doc_and_field
@@ -387,7 +387,8 @@ def _given_distinct_on_query(shared_data: dict) -> None:
 
 
 @then(
-    "deduplicated results are returned using DISTINCT ON or a window function fallback for non-PostgreSQL dialects")
+    "deduplicated results are returned using DISTINCT ON or a window function fallback for non-PostgreSQL dialects"
+)
 def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
     """Assert correct deduplication SQL for PostgreSQL and non-PostgreSQL dialects.
 
@@ -438,9 +439,9 @@ def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
         if isinstance(result, str):
             return result
         if hasattr(result, "sql"):
-            return str(result.sql)
+            return str(getattr(result, "sql"))
         if hasattr(result, "query"):
-            return str(result.query)
+            return str(getattr(result, "query"))
         return str(result)
 
     assert pg_result is not None, (
@@ -630,7 +631,8 @@ def _when_insert_or_update_mutation_executed(shared_data: dict) -> None:
 
 
 @then(
-    "preset columns are removed from user input and injected with session variable or built-in function values before SQL generation")
+    "preset columns are removed from user input and injected with session variable or built-in function values before SQL generation"
+)
 def _then_preset_columns_injected(shared_data: dict) -> None:
     """Assert that apply_column_presets correctly processes all configured presets."""
     result: dict = shared_data["preset_result"]
@@ -715,3 +717,61 @@ def _then_preset_columns_injected(shared_data: dict) -> None:
 )
 def test_req_217_default_behaviour() -> None:
     """Verify REQ-217 default behaviour."""
+
+
+@given("a GraphQL request containing multiple mutations")
+def _given_multiple_mutations_request(shared_data: dict) -> None:
+    si = _build_schema_input(source_type="postgresql")
+    ctx = build_context(si)
+
+    doc = parse(
+        """
+        mutation {
+            insertOrders(input: {id: 1, amount: 100, region: "US"}) { id }
+            updateOrders(set: {amount: 200}, where: {id: {eq: 1}}) { amount }
+        }
+        """
+    )
+
+    shared_data["batch_document"] = doc
+    shared_data["batch_ctx"] = ctx
+    shared_data["batch_source_types"] = {"sales-pg": "postgresql"}
+
+
+@when("the request is executed")
+def _when_batch_request_executed(shared_data: dict) -> None:
+    from provisa.compiler.mutation_gen import compile_mutation
+
+    doc = shared_data["batch_document"]
+    ctx = shared_data["batch_ctx"]
+    source_types = shared_data["batch_source_types"]
+
+    results = compile_mutation(doc, ctx, source_types, variables=None)
+
+    shared_data["batch_results"] = results
+
+
+@then("mutations execute sequentially per the GraphQL spec")
+def _then_mutations_execute_sequentially(shared_data: dict) -> None:
+    results: list[MutationResult] = shared_data["batch_results"]
+
+    assert len(results) == 2, (
+        f"Expected 2 mutation results for a batch of 2 mutations; got {len(results)}"
+    )
+
+    assert results[0].mutation_type == "insert", (
+        f"First mutation must be 'insert' (selection-set order); got {results[0].mutation_type!r}"
+    )
+    assert results[1].mutation_type == "update", (
+        f"Second mutation must be 'update' (selection-set order); got {results[1].mutation_type!r}"
+    )
+
+    insert_sql = results[0].sql.upper()
+    assert "INSERT INTO" in insert_sql, (
+        f"First result must be an INSERT statement; got:\n{results[0].sql}"
+    )
+
+    update_sql = results[1].sql.upper()
+    assert "UPDATE" in update_sql, (
+        f"Second result must be an UPDATE statement; got:\n{results[1].sql}"
+    )
