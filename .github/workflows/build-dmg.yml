@@ -30,6 +30,7 @@ jobs:
       obs_images_name: ${{ steps.meta.outputs.obs_images_name }}
       demo_images_name: ${{ steps.meta.outputs.demo_images_name }}
       core_images_name: ${{ steps.meta.outputs.core_images_name }}
+      core_images_amd64_name: ${{ steps.meta.outputs.core_images_amd64_name }}
       plugins_name: ${{ steps.meta.outputs.plugins_name }}
     steps:
       - name: Resolve channel and versions from tag
@@ -66,8 +67,9 @@ jobs:
           echo "py_version=$PY_VERSION"                                    >> "$GITHUB_OUTPUT"
           echo "obs_images_name=provisa-obs-images-${TAG}.tar.gz"         >> "$GITHUB_OUTPUT"
           echo "demo_images_name=provisa-demo-images-${TAG}.tar.gz"       >> "$GITHUB_OUTPUT"
-          echo "core_images_name=provisa-core-images-${TAG}.tar.gz"       >> "$GITHUB_OUTPUT"
-          echo "plugins_name=provisa-trino-plugins-${TAG}.tar.gz"         >> "$GITHUB_OUTPUT"
+          echo "core_images_name=provisa-core-images-${TAG}.tar.gz"            >> "$GITHUB_OUTPUT"
+          echo "core_images_amd64_name=provisa-core-images-amd64-${TAG}.zip" >> "$GITHUB_OUTPUT"
+          echo "plugins_name=provisa-trino-plugins-${TAG}.tar.gz"            >> "$GITHUB_OUTPUT"
 
   build-vm-image:
     name: Build Provisa runtime VM (OVA)
@@ -779,16 +781,10 @@ jobs:
   build-windows-core:
     name: Build Windows Core installer (${{ needs.metadata.outputs.channel }})
     runs-on: windows-latest
-    needs: [metadata, pull-images-core-amd64, build-vm-image, download-plugins]
+    needs: [metadata, build-vm-image, download-plugins]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Download amd64 core image tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-images-core-amd64
-          path: packaging/windows/images/
 
       - name: Download Calcite plugins
         uses: actions/download-artifact@v4
@@ -905,6 +901,30 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+  package-core-images-amd64:
+    name: Package amd64 core image tarballs for Windows release
+    runs-on: ubuntu-latest
+    needs: [metadata, pull-images-core-amd64]
+    steps:
+      - name: Download amd64 core image tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images-core-amd64
+          path: core-images-amd64/
+
+      - name: Package as zip (tarballs already compressed — store only)
+        run: |
+          cd core-images-amd64
+          zip -0 "../${{ needs.metadata.outputs.core_images_amd64_name }}" *.tar.gz
+
+      - name: Upload amd64 core images zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-images-amd64-tarball
+          path: "${{ needs.metadata.outputs.core_images_amd64_name }}"
+          retention-days: 1
+          compression-level: 0
+
   # ── Release ──────────────────────────────────────────────────────────────────
 
   publish-release:
@@ -923,6 +943,7 @@ jobs:
       - package-obs-images
       - package-demo-images
       - package-core-images
+      - package-core-images-amd64
       - package-plugins
     permissions:
       contents: write
@@ -964,6 +985,12 @@ jobs:
           name: core-images-tarball
           path: release-assets/
 
+      - name: Download amd64 core images zip
+        uses: actions/download-artifact@v4
+        with:
+          name: core-images-amd64-tarball
+          path: release-assets/
+
       - name: Download Trino plugins tarball
         uses: actions/download-artifact@v4
         with:
@@ -993,6 +1020,7 @@ jobs:
             release-assets/${{ needs.metadata.outputs.obs_images_name }}
             release-assets/${{ needs.metadata.outputs.demo_images_name }}
             release-assets/${{ needs.metadata.outputs.core_images_name }}
+            release-assets/${{ needs.metadata.outputs.core_images_amd64_name }}
             release-assets/${{ needs.metadata.outputs.plugins_name }}
             release-assets/*.whl
           body: |
@@ -1004,8 +1032,9 @@ jobs:
             | `${{ needs.metadata.outputs.dmg_obs_name }}` | macOS Observability extension |
             | `${{ needs.metadata.outputs.dmg_demo_name }}` | macOS Demo extension (requires Obs) |
             | `${{ needs.metadata.outputs.linux_name }}` | Linux x86_64 (core + obs, airgapped AppImage) |
-            | `${{ needs.metadata.outputs.windows_name }}` | Windows x64 Core installer |
+            | `${{ needs.metadata.outputs.windows_name }}` | Windows x64 Core installer (downloads images on first launch) |
             | `${{ needs.metadata.outputs.ova_name }}` | Alpine Linux OVA (VirtualBox runtime) |
+            | `${{ needs.metadata.outputs.core_images_amd64_name }}` | Core Docker images for Windows airgapped install |
             | `${{ needs.metadata.outputs.jdbc_name }}` | JDBC driver — Tableau, PowerBI, DBeaver |
             | `provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl` | Python client |
             | `${{ needs.metadata.outputs.core_images_name }}` | Core Docker images (airgapped install) |
@@ -1028,12 +1057,11 @@ jobs:
             ```
 
             ### Windows Install
-            **Online**: Run `${{ needs.metadata.outputs.windows_name }}` → Start Menu → **Provisa First Launch** (downloads images automatically)
-            **Airgapped**: Download installer + `${{ needs.metadata.outputs.core_images_name }}` + any extension tarballs to same folder, then run installer
+            **Online**: Run `${{ needs.metadata.outputs.windows_name }}` → Start Menu → **Provisa First Launch** (downloads ~1.5 GB images automatically)
+            **Airgapped**: Download installer + `${{ needs.metadata.outputs.core_images_amd64_name }}` to the same folder, then run installer
             1. Run `${{ needs.metadata.outputs.windows_name }}`
-            2. Open **Provisa First Launch** from the Start Menu
+            2. Open **Provisa First Launch** from the Start Menu (images download or are found locally)
             3. `provisa start`
-            4. **Optional**: check Observability / Demo in setup GUI (or place tarballs in same folder for airgap)
 
             ### Python client
             ```bash

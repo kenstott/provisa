@@ -21,8 +21,7 @@ Copy-Item (Join-Path $RepoRoot 'docker-compose.app.yml')    $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'docker-compose.airgap.yml') $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'config')  (Join-Path $BuildCompose 'config')  -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'db')      (Join-Path $BuildCompose 'db')      -Recurse -Force
-# Copy trino WITHOUT plugins/ — plugins ship as a separate release asset
-# (provisa-trino-plugins-*.tar.gz) to keep the installer under the 2 GB limit.
+# Copy trino WITHOUT plugins/ — plugins ship as a separate release asset.
 $TrinoSrc = Join-Path $RepoRoot 'trino'
 $TrinoDst = Join-Path $BuildCompose 'trino'
 New-Item -ItemType Directory -Path $TrinoDst -Force | Out-Null
@@ -56,14 +55,6 @@ if (-not (Test-Path $OvaSrc)) {
   throw "provisa-runtime.ova not found at $OvaSrc -- CI should download it before building."
 }
 Copy-Item $OvaSrc $BuildDir
-
-$ImagesSrc = Join-Path $ScriptDir 'images'
-if (-not (Test-Path $ImagesSrc)) {
-  throw "images/ directory not found at $ImagesSrc -- CI should download docker-images-core-amd64 before building."
-}
-$BuildImages = Join-Path $BuildDir 'images'
-New-Item -ItemType Directory -Path $BuildImages -Force | Out-Null
-Copy-Item (Join-Path $ImagesSrc '*.tar.gz') $BuildImages
 
 # ── Install Inno Setup via chocolatey ─────────────────────────────────────────
 Write-Host '[build-sfx] Installing Inno Setup...' -ForegroundColor Cyan

@@ -18,7 +18,6 @@ $ComposeDir   = Join-Path $ScriptDir 'compose'
 $RedistDir    = Join-Path $ScriptDir 'redist'
 $VBoxInstaller = Join-Path $RedistDir 'VirtualBox-setup.exe'
 $OvaPath      = Join-Path $ScriptDir 'provisa-runtime.ova'
-$ImagesDir    = Join-Path $ScriptDir 'images'
 $ProvisaHome  = Join-Path $env:USERPROFILE '.provisa'
 $Sentinel     = Join-Path $ProvisaHome '.first-launch-complete'
 
@@ -270,7 +269,6 @@ $btnInstall.Add_Click({
   $rs.SessionStateProxy.SetVariable('ComposeDir',      $ComposeDir)
   $rs.SessionStateProxy.SetVariable('VBoxInstaller',   $VBoxInstaller)
   $rs.SessionStateProxy.SetVariable('OvaPath',         $OvaPath)
-  $rs.SessionStateProxy.SetVariable('ImagesDir',      $ImagesDir)
   $rs.SessionStateProxy.SetVariable('ProvisaHome',     $ProvisaHome)
   $rs.SessionStateProxy.SetVariable('Sentinel',        $Sentinel)
   $rs.SessionStateProxy.SetVariable('BudgetGb',        $budgetGb)
@@ -390,36 +388,81 @@ $btnInstall.Add_Click({
       Log 'Docker ready.'
       $sync.Progress = 60
 
-      # Step 6: Load container images via Docker HTTP API -------------------
-      if (Test-Path $ImagesDir) {
-        $tarballs = Get-ChildItem -Path $ImagesDir -Filter '*.tar.gz' | Sort-Object Name
-        $total    = $tarballs.Count
-        $idx      = 0
-        foreach ($tb in $tarballs) {
-          $idx++
-          Log "Loading image $idx/$total: $($tb.Name)..."
-          $uri = 'http://127.0.0.1:2375/images/load'
-          $fs  = [System.IO.File]::OpenRead($tb.FullName)
-          try {
-            $req             = [System.Net.WebRequest]::Create($uri)
-            $req.Method      = 'POST'
-            $req.ContentType = 'application/x-tar'
-            $req.SendChunked = $true
-            $reqStream = $req.GetRequestStream()
-            $fs.CopyTo($reqStream)
-            $reqStream.Close()
-            $resp   = $req.GetResponse()
-            $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
-            $out    = $reader.ReadToEnd()
-            $resp.Close()
-            Log "  $($out.Trim())"
-          } finally {
-            $fs.Close()
-          }
-          $sync.Progress = 60 + [int](($idx / $total) * 25)
-        }
-        Log 'All images loaded.'
+      # Step 6: Find or download core images zip, then load into Docker -----
+      $sync.Status = 'Locating container images...'
+      $CoreZip = $null
+      foreach ($searchDir in @($ScriptDir, (Split-Path -Parent $ScriptDir))) {
+        $found = Get-ChildItem -Path $searchDir -Filter 'provisa-core-images-amd64-*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($found) { $CoreZip = $found.FullName; break }
       }
+      if (-not $CoreZip) {
+        if (-not $EmbeddedVersion) { throw 'VERSION file missing — cannot determine download URL for container images.' }
+        $downloadUrl  = "https://github.com/kenstott/provisa/releases/download/$EmbeddedVersion/provisa-core-images-amd64-$EmbeddedVersion.zip"
+        $localZipPath = Join-Path $env:TEMP "provisa-core-images-amd64-$EmbeddedVersion.zip"
+        Log "Downloading container images ($EmbeddedVersion)..."
+        $request = [System.Net.HttpWebRequest]::Create($downloadUrl)
+        $request.UserAgent = 'Provisa-Installer/1.0'
+        $response   = $request.GetResponse()
+        $totalBytes = $response.ContentLength
+        $respStream = $response.GetResponseStream()
+        $fs         = [System.IO.File]::Create($localZipPath)
+        $buf        = New-Object byte[] 65536
+        $downloaded = [long]0
+        while (($read = $respStream.Read($buf, 0, $buf.Length)) -gt 0) {
+          $fs.Write($buf, 0, $read)
+          $downloaded += $read
+          if ($totalBytes -gt 0) {
+            $pct = [int](($downloaded / $totalBytes) * 100)
+            $sync.Progress = 60 + [int]($pct * 0.15)
+            $sync.Status   = "Downloading images: $pct% ($([int]($downloaded/1MB)) / $([int]($totalBytes/1MB)) MB)"
+          }
+        }
+        $fs.Close()
+        $respStream.Close()
+        $response.Close()
+        Log "Download complete."
+        $CoreZip = $localZipPath
+      } else {
+        Log "Found local images: $CoreZip"
+      }
+      $sync.Progress = 75
+
+      Log 'Extracting images...'
+      $ExtractDir = Join-Path $env:TEMP 'provisa-images-extract'
+      if (Test-Path $ExtractDir) { Remove-Item -Recurse -Force $ExtractDir }
+      New-Item -ItemType Directory -Path $ExtractDir -Force | Out-Null
+      Add-Type -AssemblyName System.IO.Compression.FileSystem
+      [System.IO.Compression.ZipFile]::ExtractToDirectory($CoreZip, $ExtractDir)
+      $sync.Progress = 78
+
+      $tarballs = Get-ChildItem -Path $ExtractDir -Filter '*.tar.gz' | Sort-Object Name
+      $total    = $tarballs.Count
+      $idx      = 0
+      foreach ($tb in $tarballs) {
+        $idx++
+        Log "Loading image $idx/$total: $($tb.Name)..."
+        $uri = 'http://127.0.0.1:2375/images/load'
+        $fs  = [System.IO.File]::OpenRead($tb.FullName)
+        try {
+          $req             = [System.Net.WebRequest]::Create($uri)
+          $req.Method      = 'POST'
+          $req.ContentType = 'application/x-tar'
+          $req.SendChunked = $true
+          $reqStream = $req.GetRequestStream()
+          $fs.CopyTo($reqStream)
+          $reqStream.Close()
+          $resp   = $req.GetResponse()
+          $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
+          $out    = $reader.ReadToEnd()
+          $resp.Close()
+          Log "  $($out.Trim())"
+        } finally {
+          $fs.Close()
+        }
+        $sync.Progress = 78 + [int](($idx / $total) * 7)
+      }
+      Log 'All images loaded.'
+      Remove-Item -Recurse -Force $ExtractDir -ErrorAction SilentlyContinue
       $sync.Progress = 85
 
       # Step 7: Write config
