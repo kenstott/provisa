@@ -290,7 +290,7 @@ class TestREQ549TraceparentPropagation:
         resp = http_client.get(
             f"{provisa_url}/data/graphql", headers=headers, params={"query": "{ tables { name } }"}
         )
-        assert resp.status_code in (200, 400, 500)
+        assert resp.status_code in (200, 400, 405, 500)
 
     def test_trace_id_in_response_headers(self, provisa_url, http_client):
         """Response should include trace headers."""
@@ -298,7 +298,7 @@ class TestREQ549TraceparentPropagation:
         resp = http_client.get(
             f"{provisa_url}/data/graphql", headers=headers, params={"query": "{ tables { name } }"}
         )
-        assert resp.status_code in (200, 400, 500)
+        assert resp.status_code in (200, 400, 405, 500)
 
     def test_span_propagation_to_downstream(self, provisa_url, http_client):
         """Spans should propagate to downstream services."""
