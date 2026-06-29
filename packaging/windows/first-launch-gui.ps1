@@ -1,7 +1,6 @@
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$EmbeddedVersion = 'PROVISA_VERSION_PLACEHOLDER'
 
 $LogPath = Join-Path $env:TEMP 'provisa-first-launch.log'
 Start-Transcript -Path $LogPath -Append -ErrorAction SilentlyContinue
@@ -13,6 +12,8 @@ Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 $ScriptDir     = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+$VersionFile   = Join-Path $ScriptDir 'VERSION'
+$EmbeddedVersion = if (Test-Path $VersionFile) { (Get-Content $VersionFile -Raw).Trim() } else { $null }
 $ImagesDir     = Join-Path $ScriptDir 'images'
 $ComposeDir    = Join-Path $ScriptDir 'compose'
 $SourceDir     = Join-Path $ScriptDir 'provisa-source'
@@ -404,7 +405,6 @@ $btnInstall.Add_Click({
           Log 'Core images not found locally - attempting download...'
           $ver = $env:PROVISA_VERSION
           if (-not $ver) { $ver = $EmbeddedVersion }
-          if ($ver -eq 'PROVISA_VERSION_PLACEHOLDER') { $ver = $null }
           if (-not $ver) {
             try { $o = (& provisa version 2>$null | Select-Object -First 1); if ($o) { $ver = $o.Trim().Split()[-1] } } catch {}
           }
@@ -477,7 +477,7 @@ federation_workers: $Workers
       function Get-ExtVersion {
         $v = $env:PROVISA_VERSION
         if ($v) { return $v }
-        if ($EmbeddedVersion -and $EmbeddedVersion -ne 'PROVISA_VERSION_PLACEHOLDER') { return $EmbeddedVersion }
+        if ($EmbeddedVersion) { return $EmbeddedVersion }
         try {
           $out = (& provisa version 2>$null | Select-Object -First 1)
           if ($out) { return $out.Trim().Split()[-1] }

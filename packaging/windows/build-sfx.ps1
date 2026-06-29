@@ -78,8 +78,7 @@ New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 $Version      = if ($env:VERSION) { $env:VERSION } else { 'dev' }
 $InstallerPath = Join-Path $DistDir 'Provisa-Setup.exe'
 
-$guiDest = Join-Path $BuildDir 'first-launch-gui.ps1'
-(Get-Content $guiDest -Raw) -replace 'PROVISA_VERSION_PLACEHOLDER', $Version | Set-Content $guiDest -Encoding UTF8
+[System.IO.File]::WriteAllText((Join-Path $BuildDir 'VERSION'), $Version, [System.Text.Encoding]::ASCII)
 
 # ── Generate Inno Setup script ────────────────────────────────────────────────
 $IssPath = Join-Path $env:TEMP 'provisa-installer.iss'
