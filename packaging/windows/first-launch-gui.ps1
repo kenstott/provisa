@@ -377,8 +377,8 @@ $btnInstall.Add_Click({
       $sync.Progress = 15
 
       # Step 2: Import OVA --------------------------------------------------
-      Log 'Importing Provisa VM...'
-      if (-not (Test-Path $OvaPath)) { throw "OVA not found: $OvaPath" }
+      Log 'Provisioning runtime environment...'
+      if (-not (Test-Path $OvaPath)) { throw "Runtime package not found: $OvaPath" }
       & $VBoxManage showvminfo 'Provisa' --machinereadable 2>&1 | Out-Null
       $vmRegistered = ($LASTEXITCODE -eq 0)
       if (-not $vmRegistered) {
@@ -386,15 +386,15 @@ $btnInstall.Add_Click({
         & $VBoxManage unregistervm 'Provisa' --delete 2>&1 | Out-Null
         $importOut = & $VBoxManage import $OvaPath --vsys 0 --vmname 'Provisa' 2>&1
         $importOut | ForEach-Object { Log "  $_" }
-        if ($LASTEXITCODE -ne 0) { throw "OVA import failed (exit $LASTEXITCODE). See log above." }
-        Log 'VM imported.'
+        if ($LASTEXITCODE -ne 0) { throw "Runtime environment provisioning failed (exit $LASTEXITCODE). See log above." }
+        Log 'Runtime environment provisioned.'
       } else {
-        Log 'VM already imported.'
+        Log 'Runtime environment already provisioned.'
       }
       $sync.Progress = 35
 
       # Step 3: Configure VM ------------------------------------------------
-      Log 'Configuring VM...'
+      Log 'Configuring runtime environment...'
       $vmRamMb = $BudgetGb * 1024
       & $VBoxManage modifyvm 'Provisa' --memory $vmRamMb 2>&1 | Out-Null
       $ApiPort = $UiPort + 1
@@ -405,25 +405,25 @@ $btnInstall.Add_Click({
       & $VBoxManage modifyvm 'Provisa' --natpf1 "ui,tcp,,$UiPort,,$UiPort" 2>&1 | Out-Null
       & $VBoxManage modifyvm 'Provisa' --natpf1 delete 'api' 2>&1 | Out-Null
       & $VBoxManage modifyvm 'Provisa' --natpf1 "api,tcp,,$ApiPort,,$ApiPort" 2>&1 | Out-Null
-      Log "VM RAM: ${vmRamMb} MB, ports: docker=2375, ui=${UiPort}, api=${ApiPort}"
+      Log "Resources: ${vmRamMb} MB RAM | UI: ${UiPort} | API: ${ApiPort}"
       $sync.Progress = 45
 
       # Step 4: Start VM ----------------------------------------------------
-      Log 'Starting Provisa VM...'
+      Log 'Starting Provisa...'
       $vmInfo       = & $VBoxManage showvminfo 'Provisa' --machinereadable 2>&1
       $vmStateMatch = $vmInfo | Select-String 'VMState=' | Select-Object -First 1
       $vmState      = if ($vmStateMatch) { $vmStateMatch.Line -replace '.*="(.*)".*','$1' } else { 'poweroff' }
       if ($vmState -ne 'running') {
         $startOut = & $VBoxManage startvm 'Provisa' --type headless 2>&1
         $startOut | ForEach-Object { Log "  $_" }
-        if ($LASTEXITCODE -ne 0) { throw "Failed to start VM (exit $LASTEXITCODE)." }
+        if ($LASTEXITCODE -ne 0) { throw "Failed to start runtime environment (exit $LASTEXITCODE)." }
       } else {
-        Log 'VM already running.'
+        Log 'Runtime environment already running.'
       }
       $sync.Progress = 55
 
       # Step 5: Wait for Docker TCP -----------------------------------------
-      Log 'Waiting for Docker to become ready...'
+      Log 'Waiting for Core Services to become ready...'
       $ready = $false
       for ($i = 0; $i -lt 120; $i++) {
         try {
@@ -437,22 +437,22 @@ $btnInstall.Add_Click({
         if ($i % 10 -eq 9) { Log "  Still waiting... ($([int](($i+1)*3))s elapsed)" }
         $sync.Progress = 55 + [int](($i / 120) * 30)
       }
-      if (-not $ready) { throw 'Docker TCP did not respond within 360s.' }
-      Log 'Docker ready.'
+      if (-not $ready) { throw 'Core Services did not respond within 360s.' }
+      Log 'Core Services ready.'
       $sync.Progress = 60
 
       # Step 6: Find or download core images zip, then load into Docker -----
-      $sync.Status = 'Locating container images...'
+      $sync.Status = 'Locating service packages...'
       $CoreZip = $null
       foreach ($searchDir in @($ScriptDir, (Split-Path -Parent $ScriptDir))) {
         $found = Get-ChildItem -Path $searchDir -Filter 'provisa-core-images-amd64-*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($found) { $CoreZip = $found.FullName; break }
       }
       if (-not $CoreZip) {
-        if (-not $EmbeddedVersion) { throw 'VERSION file missing — cannot determine download URL for container images.' }
+        if (-not $EmbeddedVersion) { throw 'VERSION file missing — cannot determine download URL.' }
         $downloadUrl  = "https://github.com/kenstott/provisa/releases/download/$EmbeddedVersion/provisa-core-images-amd64-$EmbeddedVersion.zip"
         $localZipPath = Join-Path $env:TEMP "provisa-core-images-amd64-$EmbeddedVersion.zip"
-        Log "Downloading container images ($EmbeddedVersion)..."
+        Log "Downloading Core Services ($EmbeddedVersion)..."
         $request = [System.Net.HttpWebRequest]::Create($downloadUrl)
         $request.UserAgent = 'Provisa-Installer/1.0'
         $response   = $request.GetResponse()
@@ -467,7 +467,7 @@ $btnInstall.Add_Click({
           if ($totalBytes -gt 0) {
             $pct = [int](($downloaded / $totalBytes) * 100)
             $sync.Progress = 60 + [int]($pct * 0.15)
-            $sync.Status   = "Downloading images: $pct% ($([int]($downloaded/1MB)) / $([int]($totalBytes/1MB)) MB)"
+            $sync.Status   = "Downloading Core Services: $pct% ($([int]($downloaded/1MB)) / $([int]($totalBytes/1MB)) MB)"
           }
         }
         $fs.Close()
@@ -476,11 +476,11 @@ $btnInstall.Add_Click({
         Log "Download complete."
         $CoreZip = $localZipPath
       } else {
-        Log "Found local images: $CoreZip"
+        Log "Found bundled service packages."
       }
       $sync.Progress = 75
 
-      Log 'Extracting images...'
+      Log 'Preparing service packages...'
       $ExtractDir = Join-Path $env:TEMP 'provisa-images-extract'
       if (Test-Path $ExtractDir) { Remove-Item -Recurse -Force $ExtractDir }
       New-Item -ItemType Directory -Path $ExtractDir -Force | Out-Null
@@ -493,7 +493,7 @@ $btnInstall.Add_Click({
       $idx      = 0
       foreach ($tb in $tarballs) {
         $idx++
-        Log "Loading image $idx/${total}: $($tb.Name)..."
+        Log "Installing service package $idx of ${total}..."
         $uri = 'http://127.0.0.1:2375/images/load'
         $fs  = [System.IO.File]::OpenRead($tb.FullName)
         try {
@@ -514,7 +514,7 @@ $btnInstall.Add_Click({
         }
         $sync.Progress = 78 + [int](($idx / $total) * 7)
       }
-      Log 'All images loaded.'
+      Log 'All service packages installed.'
       Remove-Item -Recurse -Force $ExtractDir -ErrorAction SilentlyContinue
       $sync.Progress = 85
 

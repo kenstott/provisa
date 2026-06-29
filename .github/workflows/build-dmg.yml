@@ -1033,21 +1033,21 @@ jobs:
             | `${{ needs.metadata.outputs.dmg_demo_name }}` | macOS Demo extension (requires Obs) |
             | `${{ needs.metadata.outputs.linux_name }}` | Linux x86_64 (core + obs, airgapped AppImage) |
             | `${{ needs.metadata.outputs.windows_name }}` | Windows x64 Core installer (downloads images on first launch) |
-            | `${{ needs.metadata.outputs.ova_name }}` | Alpine Linux OVA (VirtualBox runtime) |
-            | `${{ needs.metadata.outputs.core_images_amd64_name }}` | Core Docker images for Windows airgapped install |
+            | `${{ needs.metadata.outputs.ova_name }}` | Federation Engine runtime image |
+            | `${{ needs.metadata.outputs.core_images_amd64_name }}` | Core Services bundle — Windows airgapped install |
             | `${{ needs.metadata.outputs.jdbc_name }}` | JDBC driver — Tableau, PowerBI, DBeaver |
             | `provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl` | Python client |
-            | `${{ needs.metadata.outputs.core_images_name }}` | Core Docker images (airgapped install) |
-            | `${{ needs.metadata.outputs.obs_images_name }}` | Observability Docker images (optional) |
-            | `${{ needs.metadata.outputs.demo_images_name }}` | Demo Docker images (optional) |
-            | `${{ needs.metadata.outputs.plugins_name }}` | Trino connector plugins (SharePoint, Splunk, File) |
+            | `${{ needs.metadata.outputs.core_images_name }}` | Core Services (airgapped install) |
+            | `${{ needs.metadata.outputs.obs_images_name }}` | Observability Stack (optional) |
+            | `${{ needs.metadata.outputs.demo_images_name }}` | Demo Data Pack (optional) |
+            | `${{ needs.metadata.outputs.plugins_name }}` | Coordination Engine connectors (SharePoint, Splunk, File) |
 
             ### macOS Install
             1. Download `${{ needs.metadata.outputs.dmg_name }}` — drag **Provisa.app** to `/Applications`
             2. Double-click — first-launch setup runs once (~2 min, no internet required)
             3. `provisa start && provisa open`
-            4. **Optional**: Open `${{ needs.metadata.outputs.dmg_obs_name }}` and run `install-obs.sh` to add observability
-            5. **Optional**: Open `${{ needs.metadata.outputs.dmg_demo_name }}` and run `install-demo.sh` to add demo data (requires obs)
+            4. **Optional**: Open `${{ needs.metadata.outputs.dmg_obs_name }}` and run `install-obs.sh` to add Observability Stack
+            5. **Optional**: Open `${{ needs.metadata.outputs.dmg_demo_name }}` and run `install-demo.sh` to add Demo Data Pack (requires Observability Stack)
 
             ### Linux Install
             ```bash
@@ -1057,10 +1057,10 @@ jobs:
             ```
 
             ### Windows Install
-            **Online**: Run `${{ needs.metadata.outputs.windows_name }}` → Start Menu → **Provisa First Launch** (downloads ~1.5 GB images automatically)
+            **Online**: Run `${{ needs.metadata.outputs.windows_name }}` → Start Menu → **Provisa First Launch** (downloads ~1.5 GB Core Services automatically)
             **Airgapped**: Download installer + `${{ needs.metadata.outputs.core_images_amd64_name }}` to the same folder, then run installer
             1. Run `${{ needs.metadata.outputs.windows_name }}`
-            2. Open **Provisa First Launch** from the Start Menu (images download or are found locally)
+            2. Open **Provisa First Launch** from the Start Menu (Core Services download or are found locally)
             3. `provisa start`
 
             ### Python client
