@@ -58,6 +58,38 @@ from provisa.api.admin.types import (
 )
 
 
+_SOURCE_TYPE_DISPLAY_NAMES: dict[str, str] = {
+    "graphql": "GraphQL",
+    "grpc": "gRPC",
+    "postgresql": "PostgreSQL",
+    "mysql": "MySQL",
+    "mariadb": "MariaDB",
+    "sqlserver": "SQL Server",
+    "oracle": "Oracle",
+    "mongodb": "MongoDB",
+    "cassandra": "Cassandra",
+    "duckdb": "DuckDB",
+    "snowflake": "Snowflake",
+    "bigquery": "BigQuery",
+    "clickhouse": "ClickHouse",
+    "redshift": "Redshift",
+    "databricks": "Databricks",
+    "elasticsearch": "Elasticsearch",
+    "kafka": "Kafka",
+    "neo4j": "Neo4j",
+    "sparql": "SPARQL",
+    "openapi": "OpenAPI",
+    "prometheus": "Prometheus",
+    "redis": "Redis",
+    "websocket": "WebSocket",
+    "rss": "RSS",
+    "govdata": "GovData",
+    "sharepoint": "SharePoint",
+    "splunk": "Splunk",
+    "files": "Files",
+}
+
+
 async def _get_pool() -> asyncpg.Pool:
     from provisa.api.app import state
 

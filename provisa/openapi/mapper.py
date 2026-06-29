@@ -245,3 +245,13 @@ def parse_spec(
                 )
 
     return queries, mutations
+
+
+def classify_operation(
+    method: str, _path: str, operation: dict
+) -> str:  # REQ-408  # pyright: ignore[reportUnusedParameter]
+    """Return 'query' or 'mutation' for an OpenAPI operation."""
+    explicit_kind = (operation.get("x-provisa-kind") or "").lower()
+    if explicit_kind in ("query", "mutation"):
+        return explicit_kind
+    return "query" if method.lower() == "get" else "mutation"
