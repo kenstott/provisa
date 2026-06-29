@@ -213,7 +213,7 @@ class TestConnect:
         # REQ-268/269/273: no role is assumed client-side; role stays unset unless requested.
         assert conn._role is None
 
-    def test_failed_auth_leaves_token_none_and_no_role_fallback(self):
+    def test_failed_auth_leaves_token_none_role_falls_back_to_username(self):
         from provisa_client import dbapi
 
         login_resp = _make_httpx_response(401, {})
@@ -223,11 +223,11 @@ class TestConnect:
                 username="analyst_user",
                 password="wrong",
             )
-        # REQ-273: failed auth does not silently adopt the username as a role.
+        # REQ-AK5: on auth failure, role falls back to username for unauthed access.
         assert conn._token is None
-        assert conn._role is None
+        assert conn._role == "analyst_user"
 
-    def test_http_error_during_auth_leaves_role_unset(self):
+    def test_http_error_during_auth_role_falls_back_to_username(self):
         import httpx
         from provisa_client import dbapi
 
@@ -237,8 +237,9 @@ class TestConnect:
                 username="fallback_user",
                 password="pw",
             )
+        # REQ-AK5: on auth failure, role falls back to username.
         assert conn._token is None
-        assert conn._role is None
+        assert conn._role == "fallback_user"
 
     def test_trailing_slash_stripped_from_base_url(self):
         from provisa_client import dbapi
@@ -1172,7 +1173,7 @@ class TestAdbcConnect:
             )
         assert conn._role == "analyst"
 
-    def test_failed_auth_leaves_token_and_role_none(self):
+    def test_failed_auth_leaves_token_none_role_falls_back_to_username(self):
         from provisa_client.adbc import adbc_connect
 
         login_resp = _make_httpx_response(401, {})
@@ -1182,9 +1183,9 @@ class TestAdbcConnect:
             patch("provisa_client.adbc.fl.connect", return_value=mock_flight_client),
         ):
             conn = adbc_connect("http://localhost:8001", user="analyst_bob", password="bad")
-        # REQ-273: no username-as-role fallback.
+        # REQ-AK5: on auth failure, role falls back to username for unauthed access.
         assert conn._token is None
-        assert conn._role is None
+        assert conn._role == "analyst_bob"
 
     def test_flight_client_connected_to_grpc_endpoint(self):
         from provisa_client.adbc import adbc_connect
@@ -1201,7 +1202,7 @@ class TestAdbcConnect:
         assert mock_connect.call_count == 1
         mock_connect.assert_called_once_with("grpc://myhost:8815")
 
-    def test_http_error_during_auth_leaves_role_unset(self):
+    def test_http_error_during_auth_role_falls_back_to_username(self):
         import httpx
         from provisa_client.adbc import adbc_connect
 
@@ -1211,8 +1212,9 @@ class TestAdbcConnect:
             patch("provisa_client.adbc.fl.connect", return_value=mock_flight_client),
         ):
             conn = adbc_connect("http://localhost:8001", user="guest", password="pw")
+        # REQ-AK5: on auth failure, role falls back to username.
         assert conn._token is None
-        assert conn._role is None
+        assert conn._role == "guest"
 
 
 class TestAdbcConnection:
