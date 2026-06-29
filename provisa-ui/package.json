@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vite",
     "generate-schema": "tsx scripts/generate-schema.ts",
+    "screenshots": "npx tsx scripts/capture-screenshots.ts",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",

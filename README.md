@@ -4,21 +4,72 @@ Config-driven data virtualization platform. A single governed API over 30+ heter
 
 GraphQL, Cypher, and SQL are all first-class over federated data — something no federated engine offers natively. Arrow Flight columnar streaming is built in, not bolted on. Distributed traces, metrics, and logs are automatically registered as queryable tables in the same schema as your business data, so observability is just another join.
 
-## Features
+## Screenshots
 
-### Query & API
-- **GraphQL, Cypher and SQL over federated data** — All three are first-class query languages across every registered source; governance, RLS, and column masking apply uniformly; auto-detected by all client interfaces. Federated query engines expose SQL only — Provisa adds GraphQL and Cypher on top of the same federation layer.
-- **Query Language Explorer** — Write a GraphQL query and see live **Semantic SQL** and **Cypher** translations in side panels; copy either or jump directly into the SQL or Graph editor. GraphQL is schema-constrained to approved relationships — structurally valid by construction, the fastest path to a correct simple query. SQL and Cypher are unconstrained and more expressive; a practical workflow is to sketch query fragments in GraphQL, then stitch the resulting SQL into complex views or reports.
-- **Natural language query** — NL→SQL/Cypher/GraphQL pipeline powered by Claude with an interactive validation loop
-- **GraphQL API** — Per-role schemas with field-level visibility, filtering, cursor-based pagination, and aggregate queries (`count`, `sum`, `avg`, `min`, `max`)
-- **Apollo APQ** — Automatic Persisted Queries; Redis-backed hash→query cache; zero client changes required
-- **Enum auto-detection** — Lookup tables below a configurable row threshold are exposed as GraphQL enum types
-- **PostgreSQL wire protocol (pgwire)** — Any PostgreSQL client (psql, DBeaver, asyncpg, SQLAlchemy, pandas `read_sql`) connects to Provisa on port 5439 as if it were a Postgres server. Full governance pipeline applies: domain access, RLS, column masking, and predicate guard. `pg_catalog` and `information_schema` queries are answered from an in-memory DuckDB catalog so schema browsers and BI tools work without a Trino round-trip. TLS optional.
-- **gRPC endpoint** — Auto-generated `.proto` from the registration model; streaming responses
-- **REST & JSON:API endpoints** — Auto-generated routes from approved queries; JSON:API includes pagination, relationships, and error objects
-- **Subscriptions** — Near-real-time change events over WebSocket, SSE, or Kafka; backends: PG native, MongoDB native, Debezium CDC, polling
+> Run `make screenshots` to regenerate these from a live instance.
+
+### Query Language Explorer
+
+![Query Language Explorer](docs/images/query-explorer.png)
+
+### Natural Language Query
+
+![Natural Language Query](docs/images/natural-language.png)
+
+### Graph Visualization
+
+![Graph Visualization](docs/images/graph-view.png)
+
+### Schema Voyager
+
+![Schema Voyager](docs/images/schema-voyager.png)
 
 ### Data Sources
+
+![Data Sources](docs/images/data-sources.png)
+
+### Table Registration
+
+![Table Registration](docs/images/table-registration.png)
+
+### Relationships
+
+![Relationships](docs/images/relationships.png)
+
+### Security Roles
+
+![Security Roles](docs/images/security-roles.png)
+
+## Features
+
+### Query Interfaces
+
+These are the languages and structured APIs you write queries in. Each has its own syntax and semantics; governance (RLS, masking, column visibility, relationship enforcement) applies uniformly across all of them regardless of which wire protocol delivers them.
+
+- **GraphQL** — Per-role schemas with field-level visibility, filtering, cursor-based pagination, and aggregate queries (`count`, `sum`, `avg`, `min`, `max`). Schema-constrained to registered relationships — structurally valid by construction, the fastest path to a correct simple query. Apollo APQ included: queries are hashed and registered server-side; subsequent calls send only the hash over HTTP GET, making responses CDN-cacheable with zero client changes required. Lookup tables below a configurable row threshold are exposed as enum types.
+- **SQL** — Full SQL over federated data; unconstrained and more expressive than GraphQL. Correlated subqueries are automatically rewritten to CTEs. Single-source queries bypass the federation layer entirely (sub-100ms).
+- **Cypher** — Graph query language over the same federated schema. Traverse relationships as graph edges; union sources; variable-length paths. Governance applies identically to GraphQL and SQL.
+- **gRPC model API** — Auto-generated `.proto` from the registered schema; typed query and insert RPCs per table, streamed responses. Schema-driven in the same sense as GraphQL — the registration model is the contract, protobuf is the wire encoding. Unlike Arrow Flight (which is a columnar streaming transport), this is a full per-table query interface.
+- **JSON:API** — Structured query API at `/data/jsonapi/{table}`, HTTP-only by design. Supports JSON:API 1.1: sparse fieldsets (`fields[table]=col1,col2`), filter expressions (`filter[field][op]=value`), compound documents (`include=relation`), and sort. Not a general-purpose query language — queries one table at a time with standardized filter syntax rather than an ad-hoc query string.
+- **Query Language Explorer** — Write a GraphQL query and see live **Semantic SQL** and **Cypher** translations in side panels; copy either or jump directly into the SQL or Graph editor. A practical workflow is to sketch query fragments in GraphQL, then stitch the resulting SQL into complex views or reports.
+
+### Query Composition Tools
+
+These tools help you write queries in the above languages — they are not query languages themselves.
+
+- **Natural language query** — NL→SQL/Cypher/GraphQL pipeline powered by Claude. Describe what you want in plain English; the pipeline produces a query in your chosen language with an interactive validation loop before execution.
+
+### Wire Protocols
+
+These are the connection protocols. SQL, GraphQL, and Cypher ride over them — the choice of wire protocol does not change the query interface or governance behaviour.
+
+- **pgwire** — Any PostgreSQL client (psql, DBeaver, asyncpg, SQLAlchemy, pandas `read_sql`) connects on port 5439 as if it were a Postgres server. Accepts SQL only. Full governance pipeline applies. `pg_catalog` and `information_schema` answered from an in-memory DuckDB catalog so schema browsers work without a Trino round-trip. TLS optional.
+- **Arrow Flight** — High-throughput columnar streaming over gRPC; accepts GraphQL or SQL as the query input. Unbounded result sets, no server-side materialization, no separate infrastructure required.
+- **JDBC** — BI tool integration (Tableau, Power BI, DBeaver) in `approved` or `catalog` mode.
+- **WebSocket / SSE** — Subscriptions: near-real-time change events; backends: PG native, MongoDB native, Debezium CDC, polling. Also exposed over Kafka.
+
+### Data Sources
+
 - **30+ source types** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, and more through a single API; graph and RDF sources are first-class, not adapters
 - **Smart routing** — Single-source queries bypass federation (sub-100ms); multi-source queries route through Trino-compatible federation — bring your own cluster or use the embedded workers
 - **API sources** — Register REST, GraphQL, gRPC, WebSocket, or RSS endpoints as queryable tables; SPARQL helpers included; federated joins across API sources and relational sources work transparently
@@ -29,6 +80,7 @@ GraphQL, Cypher, and SQL are all first-class over federated data — something n
 - **Federation performance hints** — SQL-comment routing hints override automatic routing decisions
 
 ### Security & Governance
+
 - **Row-level security** — Per-table, per-role WHERE clause injection
 - **Column masking** — Per-column masking (regex, constant, truncate) with role-based bypass
 - **Column presets** — Server-side static or session-variable values injected on insert/update; not exposed in mutation input types
@@ -40,20 +92,18 @@ GraphQL, Cypher, and SQL are all first-class over federated data — something n
 - **Pluggable auth** — Firebase, Keycloak, OAuth 2.0, simple (testing)
 
 ### Delivery & Performance
-- **Output formats** — JSON, NDJSON, CSV, Parquet, Apache Arrow
-- **Arrow Flight built-in** — High-throughput columnar streaming over gRPC, included out of the box; unbounded result sets, no server-side materialization, no separate infrastructure required
+
 - **Correlated subquery rewrite** — Correlated subqueries are automatically rewritten to CTEs and set-based patterns; federated query engines do not support correlated subqueries, so this rewrite is required for correctness
 - **Materialized view transparent rewriting** — Structural join-pattern matching rewrites queries (or subexpressions) to use a fresh MV automatically; partial matches are supported so an MV covering a subset of joins still applies, with remaining joins preserved
 - **Hot table inlining** — Small frequently-joined lookup tables are inlined as VALUES CTEs directly in the query plan, eliminating cross-source round trips for dimension data
 - **Query caching** — Role+RLS-partitioned Redis result cache; APQ hash cache included
 - **Observability as data** — Distributed traces, metrics, and logs are collected via OpenTelemetry, compacted into Iceberg on S3, and automatically registered as queryable tables (`traces`, `metrics`, `logs`, `queries`) in the federated schema; query them with SQL, GraphQL, or Cypher alongside your business data — join a `customers` table to the `queries` table to see who ran what and how long it took
-- **Large result redirect** — Threshold-based S3 redirect for oversized result sets
 
 ### Administration & Integration
+
 - **Admin API** — Strawberry GraphQL at `/admin/graphql`; config upload/download, relationship editing, query approval
 - **GraphQL Voyager** — Interactive role-scoped schema visualization as an entity-relationship diagram
 - **LLM relationship discovery** — Claude-powered foreign key candidate suggestions
-- **JDBC driver** — BI tool integration (Tableau, Power BI, DBeaver) in `approved` or `catalog` mode
 - **Python client** — `pip install provisa-client`; GraphQL/SQL → DataFrames, Arrow Flight → pyarrow Tables, SQLAlchemy dialect, ADBC support
 - **Data ingestion** — HTTP endpoints for pushing JSON event data into the platform
 - **Hasura v2 / DDN import** — Convert Hasura v2 metadata or DDN supergraph YAML to Provisa config

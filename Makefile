@@ -1,4 +1,4 @@
-.PHONY: typecheck lint lint-fix test test-unit pip-audit lint-imports sync-reqs
+.PHONY: typecheck lint lint-fix test test-unit pip-audit lint-imports sync-reqs screenshots
 
 typecheck:
 	pyright
@@ -31,3 +31,6 @@ sync-reqs:
 
 coverage-reqs:
 	python scripts/coverage_reqs.py
+
+screenshots:
+	cd provisa-ui && npm run screenshots
