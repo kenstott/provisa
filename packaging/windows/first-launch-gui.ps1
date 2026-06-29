@@ -495,7 +495,8 @@ $btnInstall.Add_Click({
       foreach ($tar in $tars) {
         Log "  $($tar.Name)"
         $wp = Wsl2Path $tar.FullName
-        wsl -u root nerdctl load -i $wp
+        $loadOut = wsl -u root nerdctl load -i $wp 2>&1
+        $loadOut | ForEach-Object { Log "    $_" }
         if ($LASTEXITCODE -ne 0) { throw "Failed to load image: $($tar.Name)" }
         $i++
         $sync.Progress = 20 + [int](($i / $total) * 45)
@@ -507,8 +508,9 @@ $btnInstall.Add_Click({
       Log 'Building provisa/provisa:local...'
       if (-not (Test-Path $SourceDir)) { throw "provisa-source not found at $SourceDir" }
       $ws = Wsl2Path $SourceDir
-      wsl -u root nerdctl build -t provisa/provisa:local $ws
-      if ($LASTEXITCODE -ne 0) { throw 'provisa image build failed.' }
+      $buildOut = wsl -u root nerdctl build -t provisa/provisa:local $ws 2>&1
+      $buildOut | ForEach-Object { Log "  $_" }
+      if ($LASTEXITCODE -ne 0) { throw "provisa image build failed (exit $LASTEXITCODE). See log above." }
       Log 'Build complete.'
       $sync.Progress = 88
 
