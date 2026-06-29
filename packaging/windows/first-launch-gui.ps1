@@ -30,11 +30,9 @@ if (Test-Path $Sentinel) {
 
 # -- VirtualBox detection -----------------------------------------------------
 $VBoxFound = $false
-foreach ($p in @(
-  "$env:ProgramFiles\Oracle\VirtualBox\VBoxManage.exe",
-  "${env:ProgramFiles(x86)}\Oracle\VirtualBox\VBoxManage.exe"
-)) {
-  if (Test-Path $p) { $VBoxFound = $true; break }
+$_vboxReg = Get-ItemProperty 'HKLM:\SOFTWARE\Oracle\VirtualBox' -ErrorAction SilentlyContinue
+if ($_vboxReg -and $_vboxReg.InstallDir -and (Test-Path (Join-Path $_vboxReg.InstallDir 'VBoxManage.exe'))) {
+  $VBoxFound = $true
 }
 if (-not $VBoxFound) {
   $cmd = Get-Command VBoxManage -ErrorAction SilentlyContinue
@@ -317,11 +315,20 @@ $btnInstall.Add_Click({
       Log 'Checking Federation Engine...'
       $sync.Progress = 5
       $VBoxManage = $null
-      foreach ($p in @(
-        "$env:ProgramFiles\Oracle\VirtualBox\VBoxManage.exe",
-        "${env:ProgramFiles(x86)}\Oracle\VirtualBox\VBoxManage.exe"
-      )) {
-        if (Test-Path $p) { $VBoxManage = $p; break }
+      $vboxReg = Get-ItemProperty 'HKLM:\SOFTWARE\Oracle\VirtualBox' -ErrorAction SilentlyContinue
+      if ($vboxReg -and $vboxReg.InstallDir) {
+        $candidate = Join-Path $vboxReg.InstallDir 'VBoxManage.exe'
+        if (Test-Path $candidate) { $VBoxManage = $candidate }
+      }
+      if (-not $VBoxManage) {
+        $pf   = [System.Environment]::GetEnvironmentVariable('ProgramFiles',      'Machine')
+        $pfx86 = [System.Environment]::GetEnvironmentVariable('ProgramFiles(x86)', 'Machine')
+        foreach ($p in @(
+          "$pf\Oracle\VirtualBox\VBoxManage.exe",
+          "$pfx86\Oracle\VirtualBox\VBoxManage.exe"
+        )) {
+          if ($p -and (Test-Path $p)) { $VBoxManage = $p; break }
+        }
       }
       if (-not $VBoxManage) {
         $cmd = Get-Command VBoxManage -ErrorAction SilentlyContinue
@@ -340,11 +347,10 @@ $btnInstall.Add_Click({
         if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
           throw "Federation Engine installation failed (exit $($proc.ExitCode))."
         }
-        foreach ($p in @(
-          "$env:ProgramFiles\Oracle\VirtualBox\VBoxManage.exe",
-          "${env:ProgramFiles(x86)}\Oracle\VirtualBox\VBoxManage.exe"
-        )) {
-          if (Test-Path $p) { $VBoxManage = $p; break }
+        $vboxReg2 = Get-ItemProperty 'HKLM:\SOFTWARE\Oracle\VirtualBox' -ErrorAction SilentlyContinue
+        if ($vboxReg2 -and $vboxReg2.InstallDir) {
+          $candidate2 = Join-Path $vboxReg2.InstallDir 'VBoxManage.exe'
+          if (Test-Path $candidate2) { $VBoxManage = $candidate2 }
         }
         if (-not $VBoxManage) {
           throw 'Federation Engine installed but VBoxManage.exe not found. Reboot and re-run setup.'
