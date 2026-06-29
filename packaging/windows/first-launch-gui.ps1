@@ -497,10 +497,12 @@ $btnInstall.Add_Click({
         $uri = 'http://127.0.0.1:2375/images/load'
         $fs  = [System.IO.File]::OpenRead($tb.FullName)
         try {
-          $req             = [System.Net.WebRequest]::Create($uri)
-          $req.Method      = 'POST'
-          $req.ContentType = 'application/x-tar'
-          $req.SendChunked = $true
+          $req                  = [System.Net.WebRequest]::Create($uri)
+          $req.Method           = 'POST'
+          $req.ContentType      = 'application/x-tar'
+          $req.SendChunked      = $true
+          $req.Timeout          = -1
+          $req.ReadWriteTimeout = -1
           $reqStream = $req.GetRequestStream()
           $fs.CopyTo($reqStream)
           $reqStream.Close()
