@@ -382,8 +382,8 @@ def pgwire_cert_and_key_are_set(monkeypatch, tmp_path, shared_data):
             .issuer_name(issuer)
             .public_key(private_key.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(_dt.datetime.utcnow())
-            .not_valid_after(_dt.datetime.utcnow() + _dt.timedelta(days=1))
+            .not_valid_before(_dt.datetime.now(_dt.timezone.utc))
+            .not_valid_after(_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=1))
             .add_extension(
                 x509.SubjectAlternativeName([x509.DNSName("localhost")]),
                 critical=False,

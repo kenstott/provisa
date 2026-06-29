@@ -21,10 +21,10 @@ APQ cache and is thereafter reusable by hash, with no steward involvement.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
-import pytest_asyncio
 from pytest_bdd import given, when, then, scenarios
 
 from provisa.apq.cache import RedisAPQCache, compute_apq_hash
@@ -43,8 +43,8 @@ def shared_data() -> dict:
     return {}
 
 
-@pytest_asyncio.fixture
-async def apq_cache() -> RedisAPQCache:
+@pytest.fixture
+def apq_cache() -> RedisAPQCache:
     """A RedisAPQCache backed by an in-memory dict, simulating the store."""
     cache = RedisAPQCache(redis_url="redis://localhost:6379/0", ttl=3600)
     store: dict[str, str] = {}
@@ -54,11 +54,11 @@ async def apq_cache() -> RedisAPQCache:
     async def _get(key: str):
         return store.get(key)
 
-    async def _setex(key: str, ttl: int, value: str):
+    async def _set(key: str, value: str, **_kwargs):
         store[key] = value
 
     mock_redis.get = AsyncMock(side_effect=_get)
-    mock_redis.setex = AsyncMock(side_effect=_setex)
+    mock_redis.set = AsyncMock(side_effect=_set)
     cache._redis = mock_redis
     return cache
 
@@ -178,26 +178,24 @@ def given_apollo_client_hash_only(shared_data: dict) -> None:
 
 
 @when(
-    "the server has the query cached it executes immediately; when not it returns PersistedQueryNotFound")
-@pytest.mark.asyncio
-async def when_server_lookup(shared_data: dict, apq_cache: RedisAPQCache) -> None:
-    sha = shared_data["hash"]
+    "the server has the query cached it executes immediately; when not it returns PersistedQueryNotFound"
+)
+def when_server_lookup(shared_data: dict, apq_cache: RedisAPQCache) -> None:
+    async def _body() -> None:
+        sha = shared_data["hash"]
+        assert await apq_cache.get(sha) is None
+        miss = await _apq_request(apq_cache, sha, query=None)
+        assert miss["executed"] is False
+        assert miss["errors"][0]["message"] == "PersistedQueryNotFound"
+        shared_data["miss_response"] = miss
+        await apq_cache.set(sha, shared_data["query"])
+        hit = await _apq_request(apq_cache, sha, query=None)
+        assert hit["executed"] is True
+        assert hit["from_cache"] is True
+        assert hit["data"]["executed_query"] == shared_data["query"]
+        shared_data["hit_response"] = hit
 
-    # Fresh cache: hash-only request must miss with PersistedQueryNotFound.
-    assert await apq_cache.get(sha) is None
-    miss = await _apq_request(apq_cache, sha, query=None)
-    assert miss["executed"] is False
-    assert miss["errors"][0]["message"] == "PersistedQueryNotFound"
-    shared_data["miss_response"] = miss
-
-    # Now seed the cache and confirm a hash-only request executes immediately
-    # without the query text being resent.
-    await apq_cache.set(sha, shared_data["query"])
-    hit = await _apq_request(apq_cache, sha, query=None)
-    assert hit["executed"] is True
-    assert hit["from_cache"] is True
-    assert hit["data"]["executed_query"] == shared_data["query"]
-    shared_data["hit_response"] = hit
+    asyncio.run(_body())
 
 
 # ---------------------------------------------------------------------------
@@ -205,58 +203,41 @@ async def when_server_lookup(shared_data: dict, apq_cache: RedisAPQCache) -> Non
 # ---------------------------------------------------------------------------
 
 
-@then(
-    "the client resends with full text, server stores and executes without modification"
-)
-@pytest.mark.asyncio
-async def then_resend_store_execute(
-    shared_data: dict, apq_cache: RedisAPQCache
-) -> None:
-    query = shared_data["query"]
-    sha = shared_data["hash"]
+@then("the client resends with full text, server stores and executes without modification")
+def then_resend_store_execute(shared_data: dict, apq_cache: RedisAPQCache) -> None:
+    async def _body() -> None:
+        query = shared_data["query"]
+        sha = shared_data["hash"]
+        store: dict[str, str] = {}
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=lambda key: store.get(key))
 
-    # Use a fresh cache state to exercise the full miss-then-retry flow exactly
-    # as an unmodified Apollo client would perform it.
-    store: dict[str, str] = {}
-    mock_redis = AsyncMock()
-    mock_redis.get = AsyncMock(side_effect=lambda key: store.get(key))
+        async def _set(key, value, **_kwargs):
+            store[key] = value
 
-    async def _setex(key, ttl, value):
-        store[key] = value
+        mock_redis.set = AsyncMock(side_effect=_set)
+        apq_cache._redis = mock_redis
+        miss = await _apq_request(apq_cache, sha, query=None)
+        assert miss["errors"][0]["message"] == "PersistedQueryNotFound"
+        assert await apq_cache.get(sha) is None
+        retry = await _apq_request(apq_cache, sha, query=query)
+        assert retry["status"] == 200
+        assert retry["executed"] is True
+        assert retry["stored"] is True
+        assert retry["data"]["executed_query"] == query
+        stored = await apq_cache.get(sha)
+        assert stored == query
+        assert compute_apq_hash(stored) == sha
+        followup = await _apq_request(apq_cache, sha, query=None)
+        assert followup["executed"] is True
+        assert followup["from_cache"] is True
+        assert followup["data"]["executed_query"] == query
+        bad = await _apq_request(apq_cache, sha, query="{ secrets { token } }")
+        assert bad["status"] == 400
+        assert bad["errors"][0]["message"] == "PersistedQueryHashMismatch"
+        assert await apq_cache.get(sha) == query
 
-    mock_redis.setex = AsyncMock(side_effect=_setex)
-    apq_cache._redis = mock_redis
-
-    # 1. Hash-only request → miss.
-    miss = await _apq_request(apq_cache, sha, query=None)
-    assert miss["errors"][0]["message"] == "PersistedQueryNotFound"
-    assert await apq_cache.get(sha) is None
-
-    # 2. Client resends with full query text + hash → server stores & executes.
-    retry = await _apq_request(apq_cache, sha, query=query)
-    assert retry["status"] == 200
-    assert retry["executed"] is True
-    assert retry["stored"] is True
-    assert retry["data"]["executed_query"] == query
-
-    # The server stored the mapping unchanged (no modification of the query).
-    stored = await apq_cache.get(sha)
-    assert stored == query
-    assert compute_apq_hash(stored) == sha
-
-    # 3. A subsequent hash-only request now executes immediately from cache —
-    #    standard Apollo behaviour with no client changes.
-    followup = await _apq_request(apq_cache, sha, query=None)
-    assert followup["executed"] is True
-    assert followup["from_cache"] is True
-    assert followup["data"]["executed_query"] == query
-
-    # A tampered retry (hash not matching the text) is rejected, proving the
-    # server verifies integrity rather than blindly trusting the client.
-    bad = await _apq_request(apq_cache, sha, query="{ secrets { token } }")
-    assert bad["status"] == 400
-    assert bad["errors"][0]["message"] == "PersistedQueryHashMismatch"
-    assert await apq_cache.get(sha) == query
+    asyncio.run(_body())
 
 
 # ---------------------------------------------------------------------------
@@ -287,22 +268,19 @@ def given_authenticated_caller_permitted_query(shared_data: dict) -> None:
 
 
 @when("the query succeeds")
-@pytest.mark.asyncio
-async def when_query_succeeds(shared_data: dict, apq_cache: RedisAPQCache) -> None:
-    sha = shared_data["hash"]
+def when_query_succeeds(shared_data: dict, apq_cache: RedisAPQCache) -> None:
+    async def _body() -> None:
+        sha = shared_data["hash"]
+        assert await apq_cache.get(sha) is None
+        result = await _execute_permitted_query(
+            apq_cache, shared_data["query"], permitted=shared_data["permitted"]
+        )
+        assert result["status"] == 200
+        assert result["executed"] is True
+        assert result["hash"] == sha
+        shared_data["execution_result"] = result
 
-    # Before execution the query is not yet registered in the APQ cache.
-    assert await apq_cache.get(sha) is None
-
-    result = await _execute_permitted_query(
-        apq_cache, shared_data["query"], permitted=shared_data["permitted"]
-    )
-
-    # A permitted query executes successfully.
-    assert result["status"] == 200
-    assert result["executed"] is True
-    assert result["hash"] == sha
-    shared_data["execution_result"] = result
+    asyncio.run(_body())
 
 
 # ---------------------------------------------------------------------------
@@ -310,62 +288,40 @@ async def when_query_succeeds(shared_data: dict, apq_cache: RedisAPQCache) -> No
 # ---------------------------------------------------------------------------
 
 
-@then(
-    "it is automatically registered in the APQ cache and reusable by hash with no steward action")
-@pytest.mark.asyncio
-async def then_auto_registered_reusable(
-    shared_data: dict, apq_cache: RedisAPQCache
-) -> None:
-    query = shared_data["query"]
-    sha = shared_data["hash"]
-    result = shared_data["execution_result"]
+@then("it is automatically registered in the APQ cache and reusable by hash with no steward action")
+def then_auto_registered_reusable(shared_data: dict, apq_cache: RedisAPQCache) -> None:
+    async def _body() -> None:
+        query = shared_data["query"]
+        sha = shared_data["hash"]
+        result = shared_data["execution_result"]
+        assert result["registered"] is True
+        stored = await apq_cache.get(sha)
+        assert stored == query
+        assert compute_apq_hash(stored) == sha
+        followup = await _apq_request(apq_cache, sha, query=None)
+        assert followup["status"] == 200
+        assert followup["executed"] is True
+        assert followup["from_cache"] is True
+        assert followup["data"]["executed_query"] == query
+        forbidden_query = "{ payroll { ssn salary } }"
+        forbidden_hash = compute_apq_hash(forbidden_query)
+        denied = await _execute_permitted_query(apq_cache, forbidden_query, permitted=False)
+        assert denied["status"] == 403
+        assert denied["executed"] is False
+        assert denied["registered"] is False
+        assert await apq_cache.get(forbidden_hash) is None
+        second_query = "{ products { id name price } }"
+        second_hash = compute_apq_hash(second_query)
+        assert await apq_cache.get(second_hash) is None
+        auto_result = await _execute_permitted_query(apq_cache, second_query, permitted=True)
+        assert auto_result["registered"] is True
+        assert auto_result["hash"] == second_hash
+        second_stored = await apq_cache.get(second_hash)
+        assert second_stored == second_query
+        assert compute_apq_hash(second_stored) == second_hash
+        second_followup = await _apq_request(apq_cache, second_hash, query=None)
+        assert second_followup["executed"] is True
+        assert second_followup["from_cache"] is True
+        assert second_followup["data"]["executed_query"] == second_query
 
-    # Registration happened automatically as part of execution — no steward
-    # action and no extra configuration were required.
-    assert result["registered"] is True
-
-    # The query is now present in the APQ cache, keyed by its SHA-256 hash.
-    stored = await apq_cache.get(sha)
-    assert stored == query
-    assert compute_apq_hash(stored) == sha
-
-    # It is immediately reusable by hash alone on a subsequent call.
-    followup = await _apq_request(apq_cache, sha, query=None)
-    assert followup["status"] == 200
-    assert followup["executed"] is True
-    assert followup["from_cache"] is True
-    assert followup["data"]["executed_query"] == query
-
-    # Negative control: a query the caller is NOT permitted to run is rejected
-    # and never registered — proving APQ applies only to permitted queries.
-    forbidden_query = "{ payroll { ssn salary } }"
-    forbidden_hash = compute_apq_hash(forbidden_query)
-    denied = await _execute_permitted_query(
-        apq_cache, forbidden_query, permitted=False
-    )
-    assert denied["status"] == 403
-    assert denied["executed"] is False
-    assert denied["registered"] is False
-    assert await apq_cache.get(forbidden_hash) is None
-
-    # Verify the automatic nature: no steward-owned allow-list is consulted.
-    # The same cache used for permitted execution holds the entry — confirming
-    # the registration path is purely a side-effect of successful execution,
-    # not a separate administrative step.
-    second_query = "{ products { id name price } }"
-    second_hash = compute_apq_hash(second_query)
-    assert await apq_cache.get(second_hash) is None
-    auto_result = await _execute_permitted_query(
-        apq_cache, second_query, permitted=True
-    )
-    assert auto_result["registered"] is True
-    assert auto_result["hash"] == second_hash
-    second_stored = await apq_cache.get(second_hash)
-    assert second_stored == second_query
-    assert compute_apq_hash(second_stored) == second_hash
-
-    # Confirm the second query is also reusable by hash immediately.
-    second_followup = await _apq_request(apq_cache, second_hash, query=None)
-    assert second_followup["executed"] is True
-    assert second_followup["from_cache"] is True
-    assert second_followup["data"]["executed_query"] == second_query
+    asyncio.run(_body())

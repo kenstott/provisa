@@ -40,7 +40,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from pytest_bdd import given, when, then, parsers, scenarios
 
-pytestmark = [pytest.mark.asyncio(loop_scope="session"), pytest.mark.integration]
+pytestmark = [pytest.mark.integration]
 
 scenarios("../features/REQ-171.feature")
 scenarios("../features/REQ-539.feature")
@@ -112,6 +112,7 @@ def stack_first_start(shared_data):
     Removing the bucket up front guarantees that any later assertion proves the
     startup sequence (not a leftover from a previous run) created it.
     """
+    _require_integration()
     settings = _minio_settings()
     shared_data["minio_settings"] = settings
 
