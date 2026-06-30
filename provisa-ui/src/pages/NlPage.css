@@ -14,7 +14,7 @@
   background: hsl(224, 20%, 15%);
   border: 1px solid hsl(224, 15%, 26%);
   border-radius: 8px;
-  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .nl-guide-toggle {
@@ -23,12 +23,17 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: none;
+  background: hsl(224, 20%, 13%);
   border: none;
+  border-bottom: 1px solid hsl(224, 15%, 26%);
   cursor: pointer;
-  color: hsl(224, 10%, 80%);
+  color: hsl(224, 10%, 85%);
   font-size: 13px;
   text-align: left;
+}
+
+.nl-guide-toggle[aria-expanded="false"] {
+  border-bottom: none;
 }
 
 .nl-guide-toggle:hover {
@@ -50,6 +55,10 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.nl-guide[data-collapsed="true"] .nl-guide-body {
+  display: none;
 }
 
 .nl-guide-desc {
@@ -161,8 +170,7 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
-  flex: 1;
-  min-height: 0;
+  margin-top: 12px;
 }
 
 @media (max-width: 900px) {
@@ -179,6 +187,7 @@
   border-radius: 8px;
   overflow: hidden;
   min-height: 200px;
+  max-height: 400px;
 }
 
 .nl-branch-header {

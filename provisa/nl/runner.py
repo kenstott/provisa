@@ -42,11 +42,48 @@ JobStore = InMemoryJobStore | RedisJobStore
 
 log = logging.getLogger(__name__)
 
-_TARGETS: list[NlTarget] = ["cypher", "graphql", "sql"]
+_TARGETS: list[NlTarget] = ["cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"]
+
+
+def _generate_grpc_query(
+    selected_type_names: set[str], user_nodes: dict
+) -> tuple[str | None, str | None]:
+    if not selected_type_names:
+        return None, "NOT_APPLICABLE"
+    type_name = next(iter(sorted(selected_type_names)))
+    nm = user_nodes.get(type_name)
+    if nm is None:
+        return None, "NOT_APPLICABLE"
+    return f"Query{nm.table_label}", None
+
+
+def _generate_jsonapi_query(
+    selected_type_names: set[str], user_nodes: dict
+) -> tuple[str | None, str | None]:
+    if not selected_type_names:
+        return None, "NOT_APPLICABLE"
+    type_name = next(iter(sorted(selected_type_names)))
+    nm = user_nodes.get(type_name)
+    if nm is None or nm.domain_id is None:
+        return None, "NOT_APPLICABLE"
+    return f"/data/jsonapi/{nm.domain_id}/{nm.table_name}?page[size]=20", None
+
+
+def _generate_openapi_query(
+    selected_type_names: set[str], user_nodes: dict
+) -> tuple[str | None, str | None]:
+    if not selected_type_names:
+        return None, "NOT_APPLICABLE"
+    type_name = next(iter(sorted(selected_type_names)))
+    nm = user_nodes.get(type_name)
+    if nm is None or nm.domain_id is None:
+        return None, "NOT_APPLICABLE"
+    return f"GET /data/rest/{nm.domain_id}/{nm.table_name}", None
 
 
 async def _generate_sql_from_nl(
-    nl_query: str, role: str, app_state: AppState
+    nl_query: str, role: str, app_state: AppState,
+    pre_selected_types: "set[str] | None" = None,
 ) -> tuple[str | None, str | None]:
     """Generate semantic SQL via the proven endpoint_dev pipeline.
 
@@ -85,9 +122,12 @@ async def _generate_sql_from_nl(
     def _sql_domain(domain_id: str | None) -> str:
         return domain_to_sql_name(domain_id) if domain_id else "default"
 
-    selected_types = await _run_table_selection(
-        user_nodes, nl_query, _sql_domain, table_name_to_type
-    )
+    if pre_selected_types is not None:
+        selected_types = pre_selected_types
+    else:
+        selected_types = await _run_table_selection(
+            user_nodes, nl_query, _sql_domain, table_name_to_type
+        )
     multihop_lines = _build_multihop_lines(selected_types, lm, _sql_domain)
     relevant_type_names = _build_relevant_type_names(selected_types, lm)
     schema_block = _build_schema_block(
@@ -114,7 +154,7 @@ async def _generate_sql_from_nl(
 async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     job_id: str, nl_query: str, role: str, app_state: AppState, job_store: JobStore, llm: LLMClient
 ) -> None:
-    """Background coroutine: runs all three generation branches, writes results."""
+    """Background coroutine: runs all six generation branches, writes results."""
     await job_store.set_state(job_id, "running")
 
     schema_sdl = _get_schema_sdl(app_state, role)
@@ -153,14 +193,44 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         lm = CypherLabelMap.from_schema(ctx)
         cypher_schema_block = _format_cypher_schema(lm)
 
+    # Shared table selection for SQL and protocol-based branches (one LLM call).
+    shared_selected_types: set[str] = set()
+    shared_user_nodes: dict = {}
+    if ctx is not None:
+        from provisa.api.data.endpoint_dev import _collect_nl_user_tables, _run_table_selection
+        from provisa.compiler.naming import domain_to_sql_name
+
+        _, _u_nodes, _tbl_to_type, _ = _collect_nl_user_tables(ctx)
+
+        def _sql_dom(d: str | None) -> str:
+            return domain_to_sql_name(d) if d else "default"
+
+        shared_selected_types = await _run_table_selection(
+            _u_nodes, nl_query, _sql_dom, _tbl_to_type
+        )
+        shared_user_nodes = _u_nodes
+
+    _QUERY_TARGETS = {"cypher", "graphql", "sql"}
+
     async def _run_branch(target: NlTarget) -> tuple[NlTarget, str | None, str | None]:
         if target == "sql":
-            valid_query, error = await _generate_sql_from_nl(nl_query, role, app_state)
+            valid_query, error = await _generate_sql_from_nl(
+                nl_query, role, app_state, pre_selected_types=shared_selected_types
+            )
             return target, valid_query, error
-        compiler = compilers[target]
+        if target == "grpc":
+            q, e = _generate_grpc_query(shared_selected_types, shared_user_nodes)
+            return target, q, e
+        if target == "jsonapi":
+            q, e = _generate_jsonapi_query(shared_selected_types, shared_user_nodes)
+            return target, q, e
+        if target == "openapi":
+            q, e = _generate_openapi_query(shared_selected_types, shared_user_nodes)
+            return target, q, e
+        compiler = compilers[target]  # type: ignore[index]
         entities = cypher_schema_block if target == "cypher" else relevant_entities
         valid_query, error = await generation_loop(
-            nl_query, target, schema_sdl, compiler, llm, relevant_entities=entities
+            nl_query, target, schema_sdl, compiler, llm, relevant_entities=entities  # type: ignore[arg-type]
         )
         return target, valid_query, error
 
@@ -171,9 +241,9 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     for coro in asyncio.as_completed(branch_tasks):
         target, valid_query, error = await coro
         result = None
-        if valid_query is not None and error is None:
+        if valid_query is not None and error is None and target in _QUERY_TARGETS:
             try:
-                result = await _execute(valid_query, target, role, app_state)
+                result = await _execute(valid_query, target, role, app_state)  # type: ignore[arg-type]
             except Exception as exc:
                 error = str(exc)
                 # Keep valid_query so the UI can show the generated query alongside the error

@@ -18,6 +18,9 @@ const EXPLORER_ROUTES: Record<string, { path: string; stateKey: string }> = {
   sql: { path: "/sql", stateKey: "sql" },
   graphql: { path: "/query", stateKey: "query" },
   cypher: { path: "/graph", stateKey: "query" },
+  grpc: { path: "/grpc", stateKey: "grpcMethod" },
+  jsonapi: { path: "/jsonapi", stateKey: "jsonapiUrl" },
+  openapi: { path: "/openapi", stateKey: "openApiUrl" },
 };
 
 const GUIDE_KEY = "provisa.nl.guide.collapsed";
@@ -33,38 +36,37 @@ function GuidanceBanner() {
     () => localStorage.getItem(GUIDE_KEY) === "1",
   );
 
-  function toggle() {
-    const next = !collapsed;
-    setCollapsed(next);
-    localStorage.setItem(GUIDE_KEY, next ? "1" : "0");
-  }
-
+  const toggle = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem(GUIDE_KEY, next ? "1" : "0");
+      return next;
+    });
+  }, []);
   return (
-    <div className="nl-guide">
+    <div className="nl-guide" data-collapsed={collapsed ? "true" : "false"}>
       <button className="nl-guide-toggle" onClick={toggle} aria-expanded={!collapsed}>
         <span className="nl-guide-title">How to write a good question</span>
         <span className="nl-guide-chevron">{collapsed ? "▸" : "▾"}</span>
       </button>
-      {!collapsed && (
-        <div className="nl-guide-body">
-          <p className="nl-guide-desc">
-            This tool generates queries directly from your schema — it does not reason over
-            free-form text or general knowledge. Phrase your question as a composition of the
-            tables, fields, and relationships that exist in your data.
-          </p>
-          <ul className="nl-guide-rules">
-            <li>Use the names of your entities, not synonyms (<em>Orders</em>, not <em>purchases</em>)</li>
-            <li>Specify filters, groupings, and aggregations the way you would in a query</li>
-            <li>If a field or relationship is not in your schema, it cannot be queried</li>
-          </ul>
-          <div className="nl-guide-examples-label">Examples</div>
-          <ul className="nl-guide-examples">
-            {EXAMPLES.map((ex) => (
-              <li key={ex} className="nl-guide-example">{ex}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <div className="nl-guide-body">
+        <p className="nl-guide-desc">
+          This tool generates queries directly from your schema — it does not reason over
+          free-form text or general knowledge. Phrase your question as a composition of the
+          tables, fields, and relationships that exist in your data.
+        </p>
+        <ul className="nl-guide-rules">
+          <li>Use the names of your entities, not synonyms (<em>Orders</em>, not <em>purchases</em>)</li>
+          <li>Specify filters, groupings, and aggregations the way you would in a query</li>
+          <li>If a field or relationship is not in your schema, it cannot be queried</li>
+        </ul>
+        <div className="nl-guide-examples-label">Examples</div>
+        <ul className="nl-guide-examples">
+          {EXAMPLES.map((ex) => (
+            <li key={ex} className="nl-guide-example">{ex}</li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -78,10 +80,13 @@ type BranchState = {
 
 const EMPTY_BRANCH: BranchState = { query: null, result: null, error: null, loading: false };
 
-const TARGETS = ["sql", "graphql", "cypher"] as const;
+const TARGETS = ["sql", "graphql", "cypher", "grpc", "jsonapi", "openapi"] as const;
 type Target = (typeof TARGETS)[number];
 
-const LABELS: Record<Target, string> = { sql: "SQL", graphql: "GraphQL", cypher: "Cypher" };
+const LABELS: Record<Target, string> = {
+  sql: "SQL", graphql: "GraphQL", cypher: "Cypher",
+  grpc: "gRPC", jsonapi: "JSON:API", openapi: "OpenAPI",
+};
 
 export function NlPage() {
   const { role } = useAuth();
@@ -94,9 +99,20 @@ export function NlPage() {
   const [branches, setBranches] = useState<Record<Target, BranchState>>(() => {
     try {
       const saved = localStorage.getItem(NL_BRANCHES_KEY);
-      return saved ? JSON.parse(saved) : { sql: EMPTY_BRANCH, graphql: EMPTY_BRANCH, cypher: EMPTY_BRANCH };
+      const parsed = saved ? JSON.parse(saved) : {};
+      return {
+        sql: parsed.sql ?? EMPTY_BRANCH,
+        graphql: parsed.graphql ?? EMPTY_BRANCH,
+        cypher: parsed.cypher ?? EMPTY_BRANCH,
+        grpc: parsed.grpc ?? EMPTY_BRANCH,
+        jsonapi: parsed.jsonapi ?? EMPTY_BRANCH,
+        openapi: parsed.openapi ?? EMPTY_BRANCH,
+      };
     } catch {
-      return { sql: EMPTY_BRANCH, graphql: EMPTY_BRANCH, cypher: EMPTY_BRANCH };
+      return {
+        sql: EMPTY_BRANCH, graphql: EMPTY_BRANCH, cypher: EMPTY_BRANCH,
+        grpc: EMPTY_BRANCH, jsonapi: EMPTY_BRANCH, openapi: EMPTY_BRANCH,
+      };
     }
   });
   const [hasResults, setHasResults] = useState(
@@ -124,6 +140,9 @@ export function NlPage() {
       sql: { ...EMPTY_BRANCH, loading: true },
       graphql: { ...EMPTY_BRANCH, loading: true },
       cypher: { ...EMPTY_BRANCH, loading: true },
+      grpc: { ...EMPTY_BRANCH, loading: true },
+      jsonapi: { ...EMPTY_BRANCH, loading: true },
+      openapi: { ...EMPTY_BRANCH, loading: true },
     });
 
     let jobId: string;
@@ -133,7 +152,10 @@ export function NlPage() {
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : String(e));
       setSubmitting(false);
-      saveBranches({ sql: EMPTY_BRANCH, graphql: EMPTY_BRANCH, cypher: EMPTY_BRANCH });
+      saveBranches({
+        sql: EMPTY_BRANCH, graphql: EMPTY_BRANCH, cypher: EMPTY_BRANCH,
+        grpc: EMPTY_BRANCH, jsonapi: EMPTY_BRANCH, openapi: EMPTY_BRANCH,
+      });
       return;
     }
 
@@ -174,9 +196,13 @@ export function NlPage() {
     cancelRef.current = stop;
   }, [question, submitting, role]);
 
-  const openInExplorer = useCallback((target: Target, query: string) => {
+  const openInExplorer = useCallback((target: Target, _query: string) => {
     const route = EXPLORER_ROUTES[target];
-    navigate(route.path, { state: { [route.stateKey]: query, autoRun: true } });
+    if (!route.stateKey) {
+      navigate(route.path);
+      return;
+    }
+    navigate(route.path, { state: { [route.stateKey]: _query, autoRun: true } });
   }, [navigate]);
 
   return (

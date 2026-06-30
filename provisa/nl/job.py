@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 NlJobState = Literal["pending", "running", "complete", "failed"]
-NlTarget = Literal["cypher", "graphql", "sql"]
+NlTarget = Literal["cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"]
 
 _JOB_TTL = 3600  # seconds
 

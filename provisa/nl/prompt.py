@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-NlTarget = Literal["cypher", "graphql", "sql"]
+NlTarget = Literal["cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"]
 
 _NOT_APPLICABLE_RULE = (
     "If the question cannot be naturally expressed as a {lang} query "

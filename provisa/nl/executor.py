@@ -26,7 +26,7 @@ from typing import Any, Literal
 
 log = logging.getLogger(__name__)
 
-NlTarget = Literal["cypher", "graphql", "sql"]
+NlTarget = Literal["cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"]
 
 
 class FederationError(RuntimeError):
