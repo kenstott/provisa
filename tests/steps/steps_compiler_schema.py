@@ -180,7 +180,6 @@ def _make_federation_schema_input(role_id: str = "admin") -> SchemaInput:
         naming_rules=[],
         role=role,
         domains=domains,
-        federation_v2=True,
     )
 
 
@@ -837,4 +836,7 @@ def _make_graphql_default_schema_input() -> SchemaInput:
 
 # ---------------------------------------------------------------------------
 # Helpers for REQ-009: Single-statement SQL compilation
-#
+# ---------------------------------------------------------------------------
+
+
+def _build_req009

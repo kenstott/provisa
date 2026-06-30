@@ -68,9 +68,79 @@ def _build_schema_and_ctx(enable_group_by: bool = True, enable_aggregates: bool 
     return schema, ctx
 
 
+def _build_schema_and_ctx_with_rel():
+    """orders (table 1) → customers (table 2), many-to-one via customer_id."""
+    _naming.configure(gql="snake")
+    tables = [
+        {
+            "id": 1,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "orders",
+            "governance": "pre-approved",
+            "enable_group_by": True,
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "customer_id", "visible_to": ["admin"]},
+                {"column_name": "amount", "visible_to": ["admin"]},
+                {"column_name": "region", "visible_to": ["admin"]},
+                {"column_name": "status", "visible_to": ["admin"]},
+            ],
+        },
+        {
+            "id": 2,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "customers",
+            "governance": "pre-approved",
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "name", "visible_to": ["admin"]},
+            ],
+        },
+    ]
+    column_types = {
+        1: [
+            _col("id", "integer"),
+            _col("customer_id", "integer"),
+            _col("amount", "decimal(10,2)"),
+            _col("region", "varchar(20)"),
+            _col("status", "varchar(20)"),
+        ],
+        2: [_col("id", "integer"), _col("name", "varchar(100)")],
+    }
+    relationships = [
+        {
+            "id": "r1",
+            "source_table_id": 1,
+            "target_table_id": 2,
+            "source_column": "customer_id",
+            "target_column": "id",
+            "cardinality": "many-to-one",
+        }
+    ]
+    role = {"id": "admin", "capabilities": [], "domain_access": ["*"]}
+    si = SchemaInput(
+        tables=tables,
+        relationships=relationships,
+        column_types=column_types,
+        naming_rules=[],
+        role=role,
+        domains=[{"id": "sales", "description": "Sales"}],
+    )
+    return generate_schema(si), build_context(si)
+
+
 @pytest.fixture
 def schema_and_ctx():
     return _build_schema_and_ctx()
+
+
+@pytest.fixture
+def schema_and_ctx_rel():
+    return _build_schema_and_ctx_with_rel()
 
 
 class TestGroupBySchema:
@@ -714,3 +784,81 @@ class TestSerializeGroupBy:
         result = serialize_group_by(rows, columns, None, None, "orders_group_by")
         data = result["data"]["orders_group_by"]
         assert "nodes" not in data[0]
+
+
+class TestGroupByNodesRelationship:
+    """REQ-654: nested relationship fields inside group_by nodes (regression)."""
+
+    def _unwrap(self, t):
+        while hasattr(t, "of_type"):
+            t = t.of_type
+        return t
+
+    def _rel_field(self, schema):
+        row_type = self._unwrap(schema.query_type.fields["orders_group_by"].type)
+        nodes_type = self._unwrap(row_type.fields["nodes"].type)
+        # the relationship field is the only one whose type is itself an object with fields
+        return next(
+            n for n, f in nodes_type.fields.items() if hasattr(self._unwrap(f.type), "fields")
+        )
+
+    def test_relationship_emits_json_subquery_not_bare_column(self, schema_and_ctx_rel):
+        schema, ctx = schema_and_ctx_rel
+        rel = self._rel_field(schema)
+        doc = parse(f"""
+            query {{
+                orders_group_by(by: [region]) {{
+                    groupKey
+                    aggregate {{ count }}
+                    nodes {{ id {rel} {{ name }} }}
+                }}
+            }}
+        """)
+        assert not validate(schema, doc)
+        compiled = compile_query(doc, ctx, variables=None)
+        nodes_sql = compiled[0].nodes_sql or ""
+        # relationship must compile to a correlated json subquery, not SELECT "customer"
+        assert "json_object" in nodes_sql
+        assert '"customers"' in nodes_sql
+        assert f'SELECT "{rel}"' not in nodes_sql
+        assert f'AS "{rel}"' in nodes_sql
+        # scalar columns qualified with the root alias once a relationship is present
+        assert '"t0"."id"' in nodes_sql
+        assert '"t0"."region"' in nodes_sql
+
+    def test_relationship_column_tagged_as_output(self, schema_and_ctx_rel):
+        schema, ctx = schema_and_ctx_rel
+        rel = self._rel_field(schema)
+        doc = parse(f"""
+            query {{
+                orders_group_by(by: [region]) {{
+                    groupKey
+                    nodes {{ id {rel} {{ name }} }}
+                }}
+            }}
+        """)
+        compiled = compile_query(doc, ctx, variables=None)
+        cols = compiled[0].nodes_columns or []
+        rel_col = next(c for c in cols if c.field_name == rel)
+        assert rel_col.nested_in is None
+        assert rel_col.is_agg
+
+    def test_relationship_value_parsed_into_nodes(self, schema_and_ctx_rel):
+        import json
+
+        from provisa.compiler.sql_gen import ColumnRef
+        from provisa.executor.serialize import serialize_group_by
+
+        columns = [
+            ColumnRef(alias=None, column="region", field_name="region", nested_in="groupKey"),
+        ]
+        rows = [("US",)]
+        nodes_columns = [
+            ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
+            ColumnRef(alias="t1", column="customer", field_name="customer", nested_in=None),
+            ColumnRef(alias=None, column="region", field_name="region", nested_in="__join_key__"),
+        ]
+        nodes_rows = [(1, json.dumps({"name": "Acme"}), "US")]
+        result = serialize_group_by(rows, columns, nodes_rows, nodes_columns, "orders_group_by")
+        node = result["data"]["orders_group_by"][0]["nodes"][0]
+        assert node["customer"] == {"name": "Acme"}
