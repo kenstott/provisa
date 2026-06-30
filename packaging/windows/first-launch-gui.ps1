@@ -423,7 +423,7 @@ $btnInstall.Add_Click({
       $sync.Progress = 55
 
       # Step 5: Wait for Docker TCP -----------------------------------------
-      Log 'Waiting for Core Services to become ready...'
+      Log 'Waiting for Coordination Engine to become ready...'
       $ready = $false
       for ($i = 0; $i -lt 120; $i++) {
         try {
@@ -437,8 +437,8 @@ $btnInstall.Add_Click({
         if ($i % 10 -eq 9) { Log "  Still waiting... ($([int](($i+1)*3))s elapsed)" }
         $sync.Progress = 55 + [int](($i / 120) * 30)
       }
-      if (-not $ready) { throw 'Core Services did not respond within 360s.' }
-      Log 'Core Services ready.'
+      if (-not $ready) { throw 'Coordination Engine did not respond within 360s.' }
+      Log 'Coordination Engine ready.'
       $sync.Progress = 60
 
       # Step 6: Find or download core images zip, then load into Docker -----
