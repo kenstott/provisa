@@ -488,6 +488,10 @@ $btnInstall.Add_Click({
       [System.IO.Compression.ZipFile]::ExtractToDirectory($CoreZip, $ExtractDir)
       $sync.Progress = 78
 
+      Add-Type -AssemblyName System.Net.Http
+      $httpClient = New-Object System.Net.Http.HttpClient
+      $httpClient.Timeout = [System.Threading.Timeout]::InfiniteTimeSpan
+
       $tarballs = Get-ChildItem -Path $ExtractDir -Filter '*.tar.gz' | Sort-Object Name
       $total    = $tarballs.Count
       $idx      = 0
@@ -497,25 +501,17 @@ $btnInstall.Add_Click({
         $uri = 'http://127.0.0.1:2375/images/load'
         $fs  = [System.IO.File]::OpenRead($tb.FullName)
         try {
-          $req                  = [System.Net.WebRequest]::Create($uri)
-          $req.Method           = 'POST'
-          $req.ContentType      = 'application/x-tar'
-          $req.ContentLength    = $fs.Length
-          $req.Timeout          = -1
-          $req.ReadWriteTimeout = -1
-          $reqStream = $req.GetRequestStream()
-          $fs.CopyTo($reqStream, 1MB)
-          $reqStream.Close()
-          $resp   = $req.GetResponse()
-          $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
-          $out    = $reader.ReadToEnd()
-          $resp.Close()
+          $content = New-Object System.Net.Http.StreamContent($fs)
+          $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/x-tar')
+          $resp = $httpClient.PostAsync($uri, $content).GetAwaiter().GetResult()
+          $out  = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
           Log "  $($out.Trim())"
         } finally {
           $fs.Close()
         }
         $sync.Progress = 78 + [int](($idx / $total) * 7)
       }
+      $httpClient.Dispose()
       Log 'All service packages installed.'
       Remove-Item -Recurse -Force $ExtractDir -ErrorAction SilentlyContinue
       $sync.Progress = 85
