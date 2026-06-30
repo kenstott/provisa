@@ -1287,13 +1287,25 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 if _first.variable:
                     _path_src_alias = _first.variable
                 elif rels and rel_mapping is not None:
-                    _path_src_alias = rel_mapping.source_label.lower()
+                    _src_nm_for_path = self._lm.nodes.get(rel_mapping.source_label)
+                    _path_src_alias = (
+                        _src_nm_for_path.table_name
+                        if _src_nm_for_path
+                        else rel_mapping.source_label.lower()
+                    )
                 else:
                     _path_src_alias = ""
                 if _last.variable:
                     _path_tgt_alias = _last.variable
                 elif rels and tgt_nm is not None:
                     _path_tgt_alias = tgt_nm.table_name
+                elif rels and rel_mapping is not None:
+                    _tgt_nm_for_path = self._lm.nodes.get(rel_mapping.target_label)
+                    _path_tgt_alias = (
+                        _tgt_nm_for_path.table_name
+                        if _tgt_nm_for_path
+                        else rel_mapping.target_label.lower()
+                    )
                 else:
                     _path_tgt_alias = ""
                 self._path_vars[clause.variable] = (_path_src_alias, _path_tgt_alias, False)
@@ -1334,7 +1346,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                                             False,
                                         )
                                     )
-                    if _step_nodes:
+                    if _step_nodes or _step_edges:
                         self._path_steps[clause.variable] = (_step_nodes, _step_edges)
 
         if from_expr is None:

@@ -714,10 +714,11 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         return _ser_result
     columns, serializable_rows = _ser_result
 
-    # Register nodes and replace composite string IDs with stable integers
-    from provisa.cypher.assembler import register_node_ids
+    # Register nodes and relationships, replacing composite string IDs with stable integers
+    from provisa.cypher.assembler import register_node_ids, register_rel_ids
 
     await register_node_ids(serializable_rows, state.pg_pool)
+    await register_rel_ids(serializable_rows, state.pg_pool)
 
     content = _build_stats_content(columns, serializable_rows, trino_sql, stats_enabled, _t0)
     content["type"] = "cypher"
@@ -1001,10 +1002,11 @@ async def impute_relationships(
                         key = f"{ser['label']}:{ser['id']}"
                         all_nodes[key] = ser
 
-    from provisa.cypher.assembler import register_node_ids
+    from provisa.cypher.assembler import register_node_ids, register_rel_ids
 
     serializable_merged = [{"node": r} for r in list(all_nodes.values()) + list(all_edges.values())]
     await register_node_ids(serializable_merged, state.pg_pool)
+    await register_rel_ids(serializable_merged, state.pg_pool)
     return JSONResponse(content={"columns": ["node"], "rows": serializable_merged})
 
 

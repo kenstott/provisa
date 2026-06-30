@@ -530,3 +530,12 @@ CREATE TABLE IF NOT EXISTS node_ids (
     properties   JSONB NOT NULL DEFAULT '{}'
 );
 
+-- Each unique graph relationship gets a BIGSERIAL id on first sight, mirroring node_ids.
+-- composite_id is the edge identity string, e.g. "SUBMITTED_BY:1-1".
+CREATE TABLE IF NOT EXISTS rel_ids (
+    id           BIGSERIAL PRIMARY KEY,
+    composite_id TEXT UNIQUE NOT NULL,   -- edge identity "Type:startPk-endPk"
+    rel_type     TEXT NOT NULL,
+    properties   JSONB NOT NULL DEFAULT '{}'
+);
+

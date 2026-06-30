@@ -303,11 +303,19 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 this=exp.Identifier(this=nm.id_column, quoted=True),
                 table=exp.Identifier(this=alias),
             )
+            # Compound ID "Label|raw_id" so _walk_for_nodes can find and register it.
+            compound_id = exp.DPipe(
+                this=exp.DPipe(
+                    this=exp.Literal.string(nm.label),
+                    expression=exp.Literal.string("|"),
+                ),
+                expression=exp.Cast(this=id_col, to=exp.DataType.build("VARCHAR")),
+            )
             return exp.Anonymous(
                 this="JSON_OBJECT",
                 expressions=[
                     exp.Literal.string("id"),
-                    exp.Cast(this=id_col, to=exp.DataType.build("VARCHAR")),
+                    compound_id,
                     exp.Literal.string("label"),
                     exp.Literal.string(nm.label),
                     exp.Literal.string("tableLabel"),
@@ -375,6 +383,16 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 ],
             )
 
+        if not step_nodes and step_edges:
+            seen: set[str] = set()
+            step_nodes = []
+            for rt, sa, snm, ta, tnm, rev in step_edges:
+                if sa not in seen:
+                    step_nodes.append((sa, snm))
+                    seen.add(sa)
+                if ta not in seen:
+                    step_nodes.append((ta, tnm))
+                    seen.add(ta)
         nodes_array = exp.Anonymous(
             this="JSON_ARRAY",
             expressions=[_node_obj(alias, nm) for alias, nm in step_nodes],

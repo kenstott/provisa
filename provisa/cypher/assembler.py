@@ -314,10 +314,93 @@ def _apply_id_map(v: Any, id_map: dict[str, int]) -> Any:
             if isinstance(new_v.get("end"), str) and new_v["end"] in id_map:
                 new_v["end"] = id_map[new_v["end"]]
             return new_v
+        if "nodes" in v and "edges" in v:
+            # Path dict — recurse into both lists so node IDs get replaced.
+            return {k: _apply_id_map(val, id_map) for k, val in v.items()}
         return v
     if isinstance(v, list):
         return [_apply_id_map(item, id_map) for item in v]
     return v
+
+
+def _walk_for_edges(v: Any, out: dict[str, tuple[str, dict]]) -> None:
+    """Recursively collect edge dicts from serialized graph output.
+
+    An edge dict has 'identity' (composite string "Type:startPk-endPk"), 'type',
+    and 'startNode'.
+    """
+    if isinstance(v, dict):
+        if "identity" in v and "type" in v and "startNode" in v and isinstance(v["identity"], str):
+            out[v["identity"]] = (str(v.get("type", "")), v.get("properties") or {})
+        for val in v.values():
+            if isinstance(val, (dict, list)):
+                _walk_for_edges(val, out)
+    elif isinstance(v, list):
+        for item in v:
+            _walk_for_edges(item, out)
+
+
+def _apply_rel_id_map(v: Any, rel_map: dict[str, int]) -> Any:
+    """Replace composite string edge identities with integers from rel_map."""
+    if isinstance(v, dict):
+        if (
+            "identity" in v
+            and "type" in v
+            and isinstance(v.get("identity"), str)
+            and v["identity"] in rel_map
+        ):
+            v = {**v, "identity": rel_map[v["identity"]]}
+        return {k: _apply_rel_id_map(val, rel_map) for k, val in v.items()}
+    if isinstance(v, list):
+        return [_apply_rel_id_map(item, rel_map) for item in v]
+    return v
+
+
+async def register_rel_ids(serializable_rows: list[dict], pg_pool: Any) -> None:
+    """Upsert all graph relationships to rel_ids; replace composite edge identities with ints.
+
+    Mutates serializable_rows in place.  No-op if pg_pool is None or no edges found.
+    Mirrors register_node_ids so relationships get durable IDs the same way nodes do.
+    """
+    import json as _json
+
+    if pg_pool is None:
+        return
+
+    edges: dict[str, tuple[str, dict]] = {}
+    for row in serializable_rows:
+        for v in row.values():
+            _walk_for_edges(v, edges)
+
+    if not edges:
+        return
+
+    composite_ids = list(edges.keys())
+    rel_types = [edges[c][0] for c in composite_ids]
+    props_json = [
+        _json.dumps({k: v for k, v in edges[c][1].items() if v is not None}) for c in composite_ids
+    ]
+
+    async with pg_pool.acquire() as conn:
+        db_rows = await conn.fetch(
+            """
+            INSERT INTO rel_ids (composite_id, rel_type, properties)
+            SELECT t.cid, t.rt, t.props::jsonb
+            FROM UNNEST($1::text[], $2::text[], $3::text[]) AS t(cid, rt, props)
+            ON CONFLICT (composite_id) DO UPDATE
+                SET rel_type   = EXCLUDED.rel_type,
+                    properties = rel_ids.properties || EXCLUDED.properties
+            RETURNING id, composite_id
+            """,
+            composite_ids,
+            rel_types,
+            props_json,
+        )
+
+    rel_map: dict[str, int] = {row["composite_id"]: row["id"] for row in db_rows}
+
+    for i, row in enumerate(serializable_rows):
+        serializable_rows[i] = {k: _apply_rel_id_map(v, rel_map) for k, v in row.items()}
 
 
 async def register_node_ids(serializable_rows: list[dict], pg_pool: Any) -> None:  # REQ-394

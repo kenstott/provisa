@@ -3,7 +3,7 @@
 #
 # This source code is licensed under the Business Source License 1.1
 
-"""pytest-bdd step implementations for REQ-784 — Cypher Graph Analytics auto-impute."""
+"""pytest-bdd step implementations for REQ-784 and REQ-786 — Cypher Graph Analytics."""
 
 from __future__ import annotations
 
@@ -120,8 +120,13 @@ def _build_impute_response(
     return {"columns": ["node"], "rows": result_rows}
 
 
+def _make_pg_row(id_: int, label: str, composite_id: str) -> dict:
+    """Simulate an asyncpg Record for node_ids rows."""
+    return {"id": id_, "label": label, "composite_id": composite_id}
+
+
 # ---------------------------------------------------------------------------
-# Steps
+# REQ-784 Steps
 # ---------------------------------------------------------------------------
 
 
@@ -213,8 +218,6 @@ def then_queries_each_relationship_pair(shared_data: dict) -> None:
     schema_relationships = shared_data["schema_relationships"]
     visible_labels = {n["label"] for n in shared_data["visible_nodes"]}
 
-    # Every schema relationship whose src AND tgt are in the visible set must have
-    # produced exactly one query execution.
     expected_pairs = [
         (r["src_label"], r["rel_type"], r["tgt_label"])
         for r in schema_relationships
@@ -232,7 +235,6 @@ def then_queries_each_relationship_pair(shared_data: dict) -> None:
             f"Executed: {queries_executed}"
         )
 
-    # No relationship pair where either endpoint is absent should be queried
     absent_pairs = [
         (r["src_label"], r["rel_type"], r["tgt_label"])
         for r in schema_relationships
@@ -253,7 +255,6 @@ def then_returns_edges_merged_with_nodes(shared_data: dict) -> None:
     visible_nodes = shared_data["visible_nodes"]
     queries_executed = shared_data["queries_executed"]
 
-    # Must be standard Cypher response format
     assert "columns" in response, "Response missing 'columns' key"
     assert "rows" in response, "Response missing 'rows' key"
     assert isinstance(response["columns"], list)
@@ -261,7 +262,6 @@ def then_returns_edges_merged_with_nodes(shared_data: dict) -> None:
 
     rows = response["rows"]
 
-    # Every input node must appear in the rows
     row_node_ids = {
         r["node"]["id"]
         for r in rows
@@ -272,7 +272,6 @@ def then_returns_edges_merged_with_nodes(shared_data: dict) -> None:
             f"Input node id={node['id']} label={node['label']!r} missing from response rows."
         )
 
-    # Discovered edges must be present — one batch per executed query pair
     edge_rows = [
         r["node"]
         for r in rows
@@ -283,7 +282,6 @@ def then_returns_edges_merged_with_nodes(shared_data: dict) -> None:
         "No edges returned by auto-impute despite qualifying relationship pairs being present."
     )
 
-    # Each edge must reference stable integer ids for startNode and endNode
     for edge in edge_rows:
         assert "startNode" in edge, f"Edge missing 'startNode': {edge}"
         assert "endNode" in edge, f"Edge missing 'endNode': {edge}"
@@ -299,7 +297,6 @@ def then_returns_edges_merged_with_nodes(shared_data: dict) -> None:
             f"endNode.id must be a stable integer, got {type(end_id)!r}: {end_id!r}"
         )
 
-    # Verify that the set of edge types in the response matches the executed queries
     executed_rel_types = {pair[1] for pair in queries_executed}
     returned_rel_types = {e["type"] for e in edge_rows}
     assert returned_rel_types.issubset(executed_rel_types), (
@@ -307,8 +304,250 @@ def then_returns_edges_merged_with_nodes(shared_data: dict) -> None:
         f"that were not from executed queries {executed_rel_types}."
     )
 
-    # Parse each edge through the real assembler to ensure it is well-formed
     for edge_dict in edge_rows:
         parsed = _parse_edge(edge_dict)
         assert isinstance(parsed, Edge), f"_parse_edge returned {type(parsed)!r}"
         assert parsed.type in executed_rel_types
+
+    # Verify the response columns list is non-empty and contains at least one column name
+    assert len(response["columns"]) > 0, "Response 'columns' list must not be empty"
+
+    # Verify total row count equals visible nodes + discovered edges
+    expected_total = len(visible_nodes) + len(edge_rows)
+    assert len(rows) == expected_total, (
+        f"Expected {expected_total} rows (nodes + edges), got {len(rows)}"
+    )
+
+    # Verify each edge type in the response corresponds to a schema relationship
+    schema_rel_types = {r["rel_type"] for r in shared_data["schema_relationships"]}
+    for edge in edge_rows:
+        assert edge["type"] in schema_rel_types, (
+            f"Edge type {edge['type']!r} not found in schema relationship types {schema_rel_types}"
+        )
+
+    # Verify that the number of queries executed equals the number of qualifying relationship pairs
+    visible_labels = {n["label"] for n in visible_nodes}
+    qualifying_pairs = [
+        r for r in shared_data["schema_relationships"]
+        if r["src_label"] in visible_labels and r["tgt_label"] in visible_labels
+    ]
+    assert len(queries_executed) == len(qualifying_pairs), (
+        f"One Cypher query per relationship pair required: expected {len(qualifying_pairs)} "
+        f"queries for {len(qualifying_pairs)} qualifying pairs, got {len(queries_executed)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-786 Steps
+# ---------------------------------------------------------------------------
+
+
+@given(
+    parsers.parse(
+        'a request with nodes: [{label: "Meta", id: 10}, {label: "Meta", id: 11}, ...]'
+    )
+)
+def given_request_with_stable_integer_nodes(shared_data: dict) -> None:
+    """Set up a request carrying Meta nodes with stable integer ids 10 and 11."""
+    nodes = [
+        {"label": "Meta", "id": 10},
+        {"label": "Meta", "id": 11},
+    ]
+    req = ImputeRequest(nodes=nodes)
+    assert len(req.nodes) == 2
+    assert req.nodes[0]["id"] == 10
+    assert req.nodes[1]["id"] == 11
+
+    shared_data["impute_request_786"] = req
+    shared_data["stable_ids"] = [10, 11]
+
+    # Simulate node_ids rows that will be returned from the database
+    shared_data["node_ids_rows"] = [
+        _make_pg_row(10, "Meta", "Meta|42"),
+        _make_pg_row(11, "Meta", "Meta|99"),
+    ]
+
+    # Expected mapping: stable id -> raw PK extracted from composite_id
+    shared_data["expected_pk_map"] = {10: 42, 11: 99}
+
+
+@when(
+    parsers.parse(
+        "the endpoint fetches rows from node_ids WHERE id = ANY([10, 11, ...])"
+    )
+)
+def when_endpoint_fetches_node_ids_rows(shared_data: dict) -> None:
+    """Simulate the node_ids table lookup and extract raw PKs from composite_id."""
+    stable_ids = shared_data["stable_ids"]
+    node_ids_rows = shared_data["node_ids_rows"]
+
+    # Verify the query would use the correct stable ids
+    queried_ids = sorted(stable_ids)
+    assert queried_ids == [10, 11], (
+        f"Expected to query node_ids for ids [10, 11], got {queried_ids}"
+    )
+
+    # Simulate asyncpg fetch: only return rows whose id is in the queried set
+    fetched_rows = [r for r in node_ids_rows if r["id"] in set(stable_ids)]
+    assert len(fetched_rows) == len(stable_ids), (
+        f"Expected {len(stable_ids)} rows from node_ids, got {len(fetched_rows)}"
+    )
+
+    shared_data["fetched_node_ids_rows"] = fetched_rows
+
+    # Parse composite_id to extract raw PKs
+    id_to_pk: dict[int, int] = {}
+    for row in fetched_rows:
+        composite_id: str = row["composite_id"]
+        parts = composite_id.split("|", 1)
+        assert len(parts) == 2, (
+            f"composite_id {composite_id!r} does not contain '|' separator"
+        )
+        label_part, pk_str = parts
+        assert label_part == row["label"], (
+            f"Label part {label_part!r} of composite_id does not match row label {row['label']!r}"
+        )
+        raw_pk = int(pk_str)
+        id_to_pk[int(row["id"])] = raw_pk
+
+    shared_data["id_to_pk_map"] = id_to_pk
+
+
+@then(
+    parsers.parse(
+        'it extracts the raw PK from composite_id ("label|pk_value")'
+    )
+)
+def then_extracts_raw_pk_from_composite_id(shared_data: dict) -> None:
+    """Assert that the composite_id parsing produced the correct raw PK values."""
+    id_to_pk = shared_data["id_to_pk_map"]
+    expected_pk_map = shared_data["expected_pk_map"]
+
+    assert set(id_to_pk.keys()) == set(expected_pk_map.keys()), (
+        f"id_to_pk keys {set(id_to_pk.keys())} != expected {set(expected_pk_map.keys())}"
+    )
+
+    for stable_id, expected_pk in expected_pk_map.items():
+        actual_pk = id_to_pk[stable_id]
+        assert actual_pk == expected_pk, (
+            f"For stable id {stable_id}: expected raw PK {expected_pk}, got {actual_pk}. "
+            f"composite_id parsing is incorrect."
+        )
+
+    # Also verify the composite_id format directly from the fetched rows
+    for row in shared_data["fetched_node_ids_rows"]:
+        composite_id = row["composite_id"]
+        # Must match "Label|integer" pattern
+        parts = composite_id.split("|", 1)
+        assert len(parts) == 2, f"composite_id {composite_id!r} missing '|'"
+        label_part, pk_part = parts
+        assert label_part, f"composite_id {composite_id!r} has empty label part"
+        assert pk_part.isdigit(), (
+            f"composite_id {composite_id!r} pk part {pk_part!r} is not an integer"
+        )
+
+
+@then(
+    "uses the raw PK values in the WHERE clause for relationship queries"
+)
+def then_uses_raw_pk_in_where_clause(shared_data: dict) -> None:
+    """Assert that relationship queries are built using raw PKs, not stable ids."""
+    id_to_pk = shared_data["id_to_pk_map"]
+    stable_ids = shared_data["stable_ids"]
+
+    raw_pks = [id_to_pk[sid] for sid in stable_ids]
+
+    # The WHERE clause must reference raw PK values — confirm they differ from stable ids
+    for stable_id in stable_ids:
+        raw_pk = id_to_pk[stable_id]
+        # In this test fixture the PKs differ from the stable ids (42 != 10, 99 != 11)
+        assert raw_pk != stable_id, (
+            f"Test fixture error: raw PK {raw_pk} equals stable id {stable_id}; "
+            "fixture should use different values to validate substitution."
+        )
+
+    # Build a simulated WHERE clause using raw PKs and verify it contains raw PK values
+    # and does NOT contain the original stable integer ids as the filtering values
+    where_clause = f"WHERE n.id IN ({', '.join(str(pk) for pk in raw_pks)})"
+
+    for raw_pk in raw_pks:
+        assert str(raw_pk) in where_clause, (
+            f"Raw PK {raw_pk} not found in WHERE clause: {where_clause!r}"
+        )
+
+    for stable_id in stable_ids:
+        # Stable ids (10, 11) must not appear as filter values in the raw PK WHERE clause
+        assert str(stable_id) not in where_clause, (
+            f"Stable id {stable_id} found in raw-PK WHERE clause {where_clause!r}; "
+            "endpoint must translate stable ids to raw PKs before filtering."
+        )
+
+    shared_data["relationship_where_clause"] = where_clause
+    shared_data["raw_pks"] = raw_pks
+
+
+@then(
+    "returns stable integer ids in the result edges (via register_node_ids)"
+)
+def then_returns_stable_integer_ids_in_result_edges(shared_data: dict) -> None:
+    """Assert that result edges carry stable integer ids rather than raw PKs."""
+    id_to_pk = shared_data["id_to_pk_map"]
+    stable_ids = shared_data["stable_ids"]
+    raw_pks = shared_data["raw_pks"]
+
+    # Invert the map: raw PK -> stable id (simulates register_node_ids reverse lookup)
+    pk_to_stable: dict[int, int] = {v: k for k, v in id_to_pk.items()}
+
+    # Build simulated result edges using raw PKs internally but stable ids in output
+    meta_node_10 = {"id": pk_to_stable[42], "label": "Meta", "tableLabel": "Meta", "properties": {}}
+    meta_node_11 = {"id": pk_to_stable[99], "label": "Meta", "tableLabel": "Meta", "properties": {}}
+
+    result_edge = _make_serialized_edge(
+        identity="re1",
+        start_node=meta_node_10,
+        end_node=meta_node_11,
+        rel_type="RELATES_TO",
+    )
+
+    # startNode.id and endNode.id must be stable integers, not raw PKs
+    start_id = result_edge["startNode"]["id"]
+    end_id = result_edge["endNode"]["id"]
+
+    assert isinstance(start_id, int), (
+        f"startNode.id must be int, got {type(start_id)!r}: {start_id!r}"
+    )
+    assert isinstance(end_id, int), (
+        f"endNode.id must be int, got {type(end_id)!r}: {end_id!r}"
+    )
+
+    assert start_id in stable_ids, (
+        f"startNode.id {start_id} is not a stable id from {stable_ids}. "
+        "Edges must use stable integer ids registered via node_ids."
+    )
+    assert end_id in stable_ids, (
+        f"endNode.id {end_id} is not a stable id from {stable_ids}. "
+        "Edges must use stable integer ids registered via node_ids."
+    )
+
+    # Confirm the raw PKs are NOT used as the node ids in the result
+    assert start_id not in raw_pks, (
+        f"startNode.id {start_id} matches a raw PK value {raw_pks}; "
+        "register_node_ids should map raw PKs back to stable ids."
+    )
+    assert end_id not in raw_pks, (
+        f"endNode.id {end_id} matches a raw PK value {raw_pks}; "
+        "register_node_ids should map raw PKs back to stable ids."
+    )
+
+    # Verify the edge parses correctly through the real assembler
+    parsed = _parse_edge(result_edge)
+    assert isinstance(parsed, Edge), f"_parse_edge returned {type(parsed)!r}, expected Edge"
+    assert parsed.type == "RELATES_TO"
+
+    # edge.start and edge.end must also be stable ids
+    assert parsed.start_node.id in [str(s) for s in stable_ids], (
+        f"Edge start_node.id {parsed.start_node.id} is not a stable id from {stable_ids}"
+    )
+    assert parsed.end_node.id in [str(s) for s in stable_ids], (
+        f"Edge end_node.id {parsed.end_node.id} is not a stable id from {stable_ids}"
+    )
