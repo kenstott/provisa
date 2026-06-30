@@ -5,4 +5,5 @@ Feature: REQ-355 — Natural Language Query Service (Phase AV)
   Scenario: REQ-355 default behaviour
     Given an NL query submitted to the service
     When the three generation loops run
-    Then each independently generates and validates a Cypher, GraphQL, and SQL candidate with compiler-driven refinement
+    Then each independently generates and validates a Cypher, GraphQL, and SQL candidate with
+    compiler-driven refinement

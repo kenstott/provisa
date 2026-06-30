@@ -5,4 +5,5 @@ Feature: REQ-008 — Compiler & Schema
   Scenario: REQ-008 default behaviour
     Given a table is registered
     When the schema generation pass runs
-    Then it queries Trino INFORMATION_SCHEMA, applies per-role column visibility, incorporates relationships, and produces GraphQL SDL
+    Then it queries Trino INFORMATION_SCHEMA, applies per-role column visibility, incorporates
+    relationships, and produces GraphQL SDL

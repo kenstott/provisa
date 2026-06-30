@@ -4,5 +4,6 @@ Feature: REQ-582 — pgwire Server
 
   Scenario: REQ-582 default behaviour
     Given a DDL statement submitted over pgwire
-    When ddl_catalog is a Trino catalog only CREATE TABLE and CREATE VIEW are allowed; when it is a registered source ID full DDL is supported
+    When ddl_catalog is a Trino catalog only CREATE TABLE and CREATE VIEW are allowed; when it is a
+      registered source ID full DDL is supported
     Then the statement is dispatched to the correct path

@@ -5107,3 +5107,38 @@ def step_and_the_mutation_is_executed_via_execute_direct():
 @then("all post-mutation hooks fire (cache invalidation, MV stale marking, Kafka events, hot-table reload)")
 def step_and_all_post_mutation_hooks_fire_cache_invalidation_mv_stale_mar():
     pytest.skip("step not implemented: all post-mutation hooks fire (cache invalidation, MV stale m")
+
+# REQ-802
+@given("a Cypher client connecting to Bolt port 5251")
+def step_given_a_cypher_client_connecting_to_bolt_port_5251():
+    pytest.skip("step not implemented: a Cypher client connecting to Bolt port 5251")
+
+# REQ-802
+@when("the client sends Cypher query \"MATCH (n:Person) RETURN n\"")
+def step_when_the_client_sends_cypher_query_match_n_person_return_n():
+    pytest.skip("step not implemented: the client sends Cypher query \"MATCH (n:Person) RETURN n\"")
+
+# REQ-802
+@then("the server accepts the handshake (magic + version negotiation)")
+def step_then_the_server_accepts_the_handshake_magic_version_negotiation():
+    pytest.skip("step not implemented: the server accepts the handshake (magic + version negotiatio")
+
+# REQ-802
+@then("the query is transpiled to SQL via WriteTranslator")
+def step_and_the_query_is_transpiled_to_sql_via_writetranslator():
+    pytest.skip("step not implemented: the query is transpiled to SQL via WriteTranslator")
+
+# REQ-802
+@then("governance (RLS, masking, visibility) is applied at compile time")
+def step_and_governance_rls_masking_visibility_is_applied_at_compile_time():
+    pytest.skip("step not implemented: governance (RLS, masking, visibility) is applied at compile ")
+
+# REQ-802
+@then("results are executed and returned as Bolt structures (nodes, relationships)")
+def step_and_results_are_executed_and_returned_as_bolt_structures_nodes_r():
+    pytest.skip("step not implemented: results are executed and returned as Bolt structures (nodes,")
+
+# REQ-802
+@then("response is serialized via PackStream and framed for TCP")
+def step_and_response_is_serialized_via_packstream_and_framed_for_tcp():
+    pytest.skip("step not implemented: response is serialized via PackStream and framed for TCP")

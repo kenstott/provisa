@@ -5,4 +5,5 @@ Feature: REQ-232 — Hot Tables (Redis-Cached Lookups)
   Scenario: REQ-232 default behaviour
     Given a query that JOINs a hot table
     When the compiler processes the query
-    Then the hot table data is injected as a VALUES-based CTE and the DB engine sees no table reference
+    Then the hot table data is injected as a VALUES-based CTE and the DB engine sees no table
+    reference

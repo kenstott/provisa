@@ -5,4 +5,5 @@ Feature: REQ-253 — Compiler & Schema
   Scenario: REQ-253 default behaviour
     Given a naming convention change is applied via admin mutation
     When _rebuild_schemas() completes
-    Then the in-memory GraphQL schema is regenerated and fresh introspection is returned on the next request
+    Then the in-memory GraphQL schema is regenerated and fresh introspection is returned on the next
+    request

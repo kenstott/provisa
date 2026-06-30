@@ -5,4 +5,5 @@ Feature: REQ-366 — Registration & Governance
   Scenario: REQ-366 default behaviour
     Given a user attempting to create a view over tables they do not own
     When they submit the view creation
-    Then an approval workflow is triggered unless the originator already holds rights to all underlying tables and joins
+    Then an approval workflow is triggered unless the originator already holds rights to all
+    underlying tables and joins

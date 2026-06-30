@@ -5,4 +5,5 @@ Feature: REQ-252 — Compiler & Schema
   Scenario: REQ-252 default behaviour
     Given a MongoDB source with discover: true
     When the schema compiler runs
-    Then it introspects the connector and generates a starting column list, with explicit definitions taking precedence
+    Then it introspects the connector and generates a starting column list, with explicit definitions
+    taking precedence
