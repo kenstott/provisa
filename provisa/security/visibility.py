@@ -24,8 +24,8 @@ from provisa.core import domain_policy
 def visible_tables(tables: list[dict], role: dict) -> list[dict]:  # REQ-039, REQ-042, REQ-363
     """Filter tables to those visible to the role based on domain access."""
     accessible = set(role["domain_access"])
-    # Single-domain mode: domain is not a gate — only column visibility applies.
-    all_access = "*" in accessible or domain_policy.single_domain()
+    # [] means no domain restriction (consistent with visible_to=[] for columns).
+    all_access = not accessible or "*" in accessible or domain_policy.single_domain()
 
     result = []
     for table in tables:

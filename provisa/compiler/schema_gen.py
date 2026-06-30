@@ -316,7 +316,8 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
     """Filter tables by role's domain access. Build per-table metadata."""
     role = si.role
     accessible = set(role["domain_access"])
-    all_access = "*" in accessible
+    # Consistent with visible_to=[]: empty list means no restriction (all domains accessible).
+    all_access = not accessible or "*" in accessible
 
     result: list[_TableInfo] = []
     for table in si.tables:
