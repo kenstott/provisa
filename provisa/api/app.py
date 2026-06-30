@@ -30,6 +30,7 @@ from fastapi import FastAPI, Request
 
 from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.endpoint_dev import router as dev_router
+from provisa.api.data.endpoint_grpc_proxy import router as grpc_proxy_router
 from provisa.api.data.sdl import router as sdl_router
 from provisa.compiler.introspect import ColumnMetadata, introspect_tables
 from provisa.compiler.naming import source_to_catalog
@@ -96,6 +97,9 @@ class AppState:
     mv_registry: MVRegistry = MVRegistry()
     _mv_refresh_task: asyncio.Task | None = None
     proto_files: dict[str, str] = {}  # role_id → .proto content
+    table_path_maps: dict[
+        str, dict[str, dict]
+    ] = {}  # role_id → {gql_field_name → {schema_name, table_name, domain_id}}
     _grpc_server: Any | None = None
     _flight_server: Any | None = None  # ProvisaFlightServer
     kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
@@ -2406,7 +2410,10 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
             gql_governed_object_cols=_gov_obj_cols,
         )
         try:
+            from provisa.compiler.schema_gen import build_table_path_map
+
             state.schemas[role["id"]] = generate_schema(si)
+            state.table_path_maps[role["id"]] = build_table_path_map(si)
             state.contexts[role["id"]] = build_context(si)
             state.rls_contexts[role["id"]] = build_rls_context(
                 rls_rules,
@@ -3410,6 +3417,7 @@ def create_app() -> FastAPI:
 
     app.include_router(data_router)
     app.include_router(dev_router)
+    app.include_router(grpc_proxy_router)
     app.include_router(sdl_router)
 
     # Ingest push receiver (Phase AS)

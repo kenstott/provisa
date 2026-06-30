@@ -53,7 +53,12 @@ def row_to_resource(  # REQ-257
             continue
         if key in fk_columns:
             related_type = relationship_fields[key]
-            rel_name = key[:-3] if key.endswith("_id") else key
+            if key.endswith("_id"):
+                rel_name = key[:-3]
+            elif key.endswith("Id"):
+                rel_name = key[:-2]
+            else:
+                rel_name = key
             relationships[rel_name] = {
                 "data": {"type": related_type, "id": str(value)} if value is not None else None,
             }

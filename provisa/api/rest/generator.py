@@ -26,7 +26,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from graphql import GraphQLSchema
 
 from provisa.api._query_helpers import (
@@ -43,40 +43,57 @@ _WHERE_OPS = {"eq", "neq", "gt", "gte", "lt", "lte", "like", "in"}
 
 
 def _parse_where_params(params: dict[str, str]) -> dict[str, dict[str, Any]]:
-    """Parse where.column.op=value query params into structured filters.
+    """Parse filter=JSON query param into structured filters.
 
+    Accepts JSON string: filter=[{"field":"col","comparator":"eq","value":"x"}]
     Returns {column_name: {op: value, ...}, ...}.
     """
+    import json
+
+    raw = params.get("filter", "").strip()
+    if not raw:
+        return {}
+    try:
+        entries = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
     filters: dict[str, dict[str, Any]] = {}
-    for key, value in params.items():
-        if not key.startswith("where."):
+    for entry in entries if isinstance(entries, list) else []:
+        field = entry.get("field")
+        comparator = entry.get("comparator")
+        value = entry.get("value")
+        if not field or not comparator or value is None:
             continue
-        parts = key.split(".")
-        if len(parts) != 3:
+        if comparator not in _WHERE_OPS:
             continue
-        _, col, op = parts
-        if op not in _WHERE_OPS:
-            continue
-        if op == "in":
-            value = value.split(",")
-        filters.setdefault(col, {})[op] = value
+        filters.setdefault(field, {})[comparator] = value
     return filters
 
 
 def _parse_order_by_params(params: dict[str, str]) -> list[dict[str, str]]:
-    """Parse order_by.column=asc|desc query params.
+    """Parse orderBy=JSON query param.
 
+    Accepts JSON string: orderBy=[{"field":"col","direction":"asc"}]
     Returns [{"field": col, "dir": "asc"|"desc"}, ...].
     """
+    import json
+
+    raw = params.get("orderBy", "").strip()
+    if not raw:
+        return []
+    try:
+        entries = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
     ordering = []
-    for key, value in params.items():
-        if not key.startswith("order_by."):
+    for entry in entries if isinstance(entries, list) else []:
+        field = entry.get("field")
+        direction = (entry.get("direction") or "asc").lower()
+        if not field:
             continue
-        col = key[len("order_by.") :]
-        direction = value.lower()
         if direction not in ("asc", "desc"):
             direction = "asc"
-        ordering.append({"field": col, "dir": direction})
+        ordering.append({"field": field, "dir": direction})
     return ordering
 
 
@@ -108,10 +125,34 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
     """
     rest_router = APIRouter(prefix="/data/rest", tags=["rest"])
 
-    @rest_router.get("/{table}")
+    @rest_router.get("/openapi.json", include_in_schema=False)
+    async def rest_openapi_json(  # pyright: ignore[reportUnusedFunction]
+        request: Request,
+        role: str | None = Query(None),
+        domains: str | None = Query(None),
+    ):
+        from provisa.api.rest.openapi_spec import generate_rest_openapi_spec
+
+        auth_role = getattr(request.state, "role", None)
+        role_id = auth_role or role or "admin"
+        domain_list = [d for d in domains.split(",") if d] if domains else None
+        spec = generate_rest_openapi_spec(state, role_id, domains=domain_list)
+        download = request.query_params.get("download")
+        headers = {"Content-Disposition": "attachment; filename=openapi.json"} if download else {}
+        return JSONResponse(content=spec, headers=headers)
+
+    @rest_router.get("/docs", include_in_schema=False)
+    async def rest_docs(  # pyright: ignore[reportUnusedFunction]
+    ):
+        from provisa.api.rest.openapi_spec import SWAGGER_UI_HTML
+
+        return HTMLResponse(content=SWAGGER_UI_HTML)
+
+    @rest_router.get("/{domain_id}/{table_name}")
     async def rest_table_endpoint(  # pyright: ignore[reportUnusedFunction]
         request: Request,
-        table: str,
+        domain_id: str,
+        table_name: str,
         limit: int | None = Query(None, ge=1),
         offset: int | None = Query(None, ge=0),
         fields: str | None = Query(None),
@@ -128,10 +169,21 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         schema = state.schemas[role_id]
         ctx = state.contexts[role_id]
 
-        # Validate table exists
+        # Resolve {domain_id}/{table_name} → GQL field name via path map
+        path_map = getattr(state, "table_path_maps", {}).get(role_id, {})
+        table = next(
+            (
+                gql_field
+                for gql_field, meta in path_map.items()
+                if meta["domain_id"] == domain_id and meta["table_name"] == table_name
+            ),
+            None,
+        )
         query_type = schema.query_type
-        if query_type is None or table not in query_type.fields:
-            raise HTTPException(status_code=404, detail=f"Table {table!r} not found")
+        if table is None or query_type is None or table not in query_type.fields:
+            raise HTTPException(
+                status_code=404, detail=f"Table {domain_id!r}/{table_name!r} not found"
+            )
 
         # Parse all query params
         raw_params = dict(request.query_params)
@@ -196,6 +248,70 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
 
         response_data = serialize_rows(result.rows, compiled.columns, table)
         rows = response_data.get("data", {}).get(table, [])
+        col_names = list(compiled.columns or [])
+        accept = request.headers.get("accept", "application/json").lower()
+
+        if "text/csv" in accept:
+            import csv
+            import io
+
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            if rows:
+                writer.writerow(rows[0].keys())
+                for row in rows:
+                    writer.writerow(row.values())
+            from fastapi.responses import Response
+
+            return Response(
+                content=buf.getvalue(),
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={table_name}.csv"},
+            )
+
+        if "application/vnd.apache.parquet" in accept:
+            try:
+                import io
+
+                import pyarrow as pa
+                import pyarrow.parquet as pq
+
+                keys = list(rows[0].keys()) if rows else col_names
+                arrays = {k: [row.get(k) for row in rows] for k in keys}
+                table_pa = pa.table(arrays)
+                buf = io.BytesIO()
+                pq.write_table(table_pa, buf)
+                from fastapi.responses import Response
+
+                return Response(
+                    content=buf.getvalue(),
+                    media_type="application/vnd.apache.parquet",
+                    headers={"Content-Disposition": f"attachment; filename={table_name}.parquet"},
+                )
+            except ImportError:
+                raise HTTPException(status_code=400, detail="parquet format requires pyarrow")
+
+        if "application/vnd.apache.arrow.stream" in accept:
+            try:
+                import io
+
+                import pyarrow as pa
+
+                keys = list(rows[0].keys()) if rows else col_names
+                arrays = {k: [row.get(k) for row in rows] for k in keys}
+                table_pa = pa.table(arrays)
+                buf = io.BytesIO()
+                with pa.ipc.new_stream(buf, table_pa.schema) as writer:
+                    writer.write_table(table_pa)
+                from fastapi.responses import Response
+
+                return Response(
+                    content=buf.getvalue(),
+                    media_type="application/vnd.apache.arrow.stream",
+                    headers={"Content-Disposition": f"attachment; filename={table_name}.arrow"},
+                )
+            except ImportError:
+                raise HTTPException(status_code=400, detail="arrow format requires pyarrow")
 
         return JSONResponse(content={"data": rows})
 

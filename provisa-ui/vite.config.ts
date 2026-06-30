@@ -193,6 +193,8 @@ export default defineConfig((config) => ({
       "/health": "http://127.0.0.1:8000",
       "/setup": "http://127.0.0.1:8000",
       "/auth": "http://127.0.0.1:8000",
+      "/docs": "http://127.0.0.1:8000",
+      "/openapi.json": "http://127.0.0.1:8000",
     },
   },
 }));

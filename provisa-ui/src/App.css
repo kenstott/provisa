@@ -3,6 +3,7 @@
 :root {
   --bg: #0f1117;
   --surface: #1a1d27;
+  --surface-alt: #20243a;
   --border: #2a2d37;
   --text: #e1e4ed;
   --text-muted: #8b8fa3;
@@ -316,7 +317,7 @@ main {
 }
 
 /* Page layout */
-.page { padding: 1.5rem; width: 100%; max-width: 1200px; box-sizing: border-box; margin: 0 auto; }
+.page { padding: 1.5rem; width: 100%; box-sizing: border-box; }
 .page h2 { margin-bottom: 1rem; }
 .page-header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
 .page-header h2 { margin-bottom: 0; justify-self: start; }

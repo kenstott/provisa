@@ -56,9 +56,67 @@ def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, request_r
 
 
 @router.get("/proto/{role_id}")
-async def proto_endpoint(role_id: str):  # REQ-525
-    """Return the .proto file content for a role as text/plain."""
+async def proto_endpoint(role_id: str, domains: str = ""):  # REQ-525
+    """Return the .proto file content for a role as text/plain.
+
+    Pass ?domains=a,b to restrict to specific domains.
+    """
     from provisa.api.app import state
+    from provisa.grpc.proto_gen import generate_proto
+
+    domain_list = [d for d in domains.split(",") if d and d != "all"]
+
+    if domain_list:
+        role = state.roles.get(role_id)
+        if role is None:
+            raise HTTPException(status_code=404, detail=f"No role {role_id!r}")
+        if not state.schema_build_cache:
+            raise HTTPException(status_code=503, detail="Schema build cache not ready")
+        from provisa.api.data.sdl import _reachable_table_ids
+        from provisa.compiler.schema_gen import SchemaInput
+
+        cache = state.schema_build_cache
+        tables = cache["tables"]
+        relationships = cache["relationships"]
+        seed_ids: set[int] = set()
+        reachable: set[int] = set()
+        for domain_id in domain_list:
+            reachable |= _reachable_table_ids(domain_id, tables, relationships)
+            seed_ids |= {t["id"] for t in tables if t["domain_id"] == domain_id}
+        reachable |= seed_ids
+        filtered_tables = [t for t in tables if t["id"] in reachable]
+        existing = role.get("domain_access") or []
+        if "*" not in existing:
+            role = {
+                **role,
+                "domain_access": list(set(existing) | set(domain_list)),
+            }
+        si = SchemaInput(
+            tables=filtered_tables,
+            root_table_ids=seed_ids,
+            relationships=relationships,
+            column_types=cache["column_types"],
+            naming_rules=cache["naming_rules"],
+            role=role,
+            domains=cache["domains"],
+            source_types=state.source_types,
+            domain_prefix=cache["domain_prefix"],
+            physical_table_map=cache["physical_table_map"],
+            functions=cache["functions"],
+            webhooks=cache["webhooks"],
+            enum_types=cache["enum_types"],
+            governed_gql_types={
+                tbl.get("gql_type_name")
+                for reg in getattr(state, "graphql_remote_sources", {}).values()
+                for tbl in reg.get("tables", [])
+                if tbl.get("gql_type_name")
+            },
+        )
+        try:
+            proto = generate_proto(si)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return Response(content=proto, media_type="text/plain")
 
     if role_id not in state.proto_files:
         raise HTTPException(

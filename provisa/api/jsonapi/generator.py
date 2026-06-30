@@ -125,8 +125,12 @@ def _parse_sparse_fieldsets(  # REQ-257
 
 
 def _get_scalar_fields(schema: GraphQLSchema, table: str) -> list[str]:
-    """Get scalar field names for a root query type."""
-    return _get_scalar_fields_shared(schema, table)
+    """Get scalar field names for a root query type, excluding virtual sentinel fields."""
+    return [
+        f
+        for f in _get_scalar_fields_shared(schema, table)
+        if not (f.startswith("_") and f.endswith("_"))
+    ]
 
 
 def _get_relationship_fields(
@@ -156,8 +160,8 @@ def _get_relationship_fields(
         while isinstance(inner, (GraphQLNonNull, GraphQLList)):
             inner = inner.of_type
         if isinstance(inner, GraphQLObjectType):
-            # The FK column is typically name_id, the relationship field is name
-            rels[f"{name}_id"] = name
+            # FK column in serialized rows uses camelCase (e.g. petId), not snake_case (pet_id)
+            rels[f"{name}Id"] = name
     return rels
 
 
@@ -203,6 +207,8 @@ def _relationship_scalars(schema: GraphQLSchema, table: str, rel_field: str) -> 
         return []
     scalars: list[str] = []
     for name, f in inner.fields.items():
+        if name.startswith("_") and name.endswith("_"):
+            continue
         ft = f.type
         while isinstance(ft, (GraphQLNonNull, GraphQLList)):
             ft = ft.of_type
@@ -255,9 +261,27 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
     """
     jsonapi_router = APIRouter(prefix="/data/jsonapi", tags=["jsonapi"])
 
-    @jsonapi_router.get("/{table}")
+    @jsonapi_router.get("/openapi.json", include_in_schema=False)
+    async def _jsonapi_openapi_json(  # pyright: ignore[reportUnusedFunction]
+        request: Request,
+        role: str | None = None,
+        domains: str | None = None,
+    ):
+        from provisa.api.jsonapi.spec import generate_jsonapi_openapi_spec
+
+        auth_role = getattr(request.state, "role", None)
+        role_id = auth_role or role or "admin"
+        domain_list = [d for d in domains.split(",") if d] if domains else None
+        spec = generate_jsonapi_openapi_spec(state, role_id, domains=domain_list)
+        download = request.query_params.get("download")
+        headers = (
+            {"Content-Disposition": "attachment; filename=jsonapi-openapi.json"} if download else {}
+        )
+        return JSONResponse(content=spec, headers=headers)
+
+    @jsonapi_router.get("/{domain_id}/{table_name}")
     async def _jsonapi_table_endpoint(  # pyright: ignore[reportUnusedFunction]
-        request: Request, table: str
+        request: Request, domain_id: str, table_name: str
     ):
         # Content negotiation
         accept = request.headers.get("accept", "")
@@ -281,26 +305,37 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         schema = state.schemas[role_id]
         ctx = state.contexts[role_id]
 
+        # Resolve domain_id + table_name → GQL field name (e.g. "ps__pets")
+        path_map = getattr(state, "table_path_maps", {}).get(role_id, {})
+        gql_table = next(
+            (
+                gql
+                for gql, meta in path_map.items()
+                if meta["domain_id"] == domain_id and meta["table_name"] == table_name
+            ),
+            None,
+        )
+
         query_type = schema.query_type
-        if query_type is None or table not in query_type.fields:
+        if gql_table is None or query_type is None or gql_table not in query_type.fields:
             return _jsonapi_error_response(
                 404,
                 "Not Found",
-                f"Resource type {table!r} not found",
+                f"Resource type {domain_id!r}/{table_name!r} not found",
             )
 
         raw_params = dict(request.query_params)
 
         # Parse JSON:API params
-        sparse = _parse_sparse_fieldsets(raw_params).get(table)
-        all_scalars = _get_scalar_fields(schema, table)
+        sparse = _parse_sparse_fieldsets(raw_params).get(table_name)
+        all_scalars = _get_scalar_fields(schema, gql_table)
         selected_fields = sparse if sparse else all_scalars
 
         if not selected_fields:
             return _jsonapi_error_response(
                 400,
                 "Bad Request",
-                f"No selectable fields for resource type {table!r}",
+                f"No selectable fields for resource type {domain_id!r}/{table_name!r}",
             )
 
         # Ensure id is always selected for resource identity
@@ -334,7 +369,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 )
 
         # REQ-257: ?include=rel1,rel2 — sideload related resources as a compound document.
-        rel_fields = _get_relationship_fields(schema, table)
+        rel_fields = _get_relationship_fields(schema, gql_table)
         valid_rel_names = set(rel_fields.values())
         fk_by_rel = {rel_name: fk for fk, rel_name in rel_fields.items()}
         include_param = raw_params.get("include")
@@ -351,7 +386,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 )
         query_fields = list(selected_fields)
         for inc in include_names:
-            inc_scalars = _relationship_scalars(schema, table, inc)
+            inc_scalars = _relationship_scalars(schema, gql_table, inc)
             if "id" in inc_scalars:
                 inc_scalars = ["id"] + [s for s in inc_scalars if s != "id"]
             query_fields.append(f"{inc} {{ {' '.join(inc_scalars)} }}")
@@ -361,7 +396,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 query_fields.append(fk)
 
         gql_query = _build_graphql_query(
-            table,
+            gql_table,
             query_fields,
             filters,
             sort,
@@ -398,14 +433,43 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 return _jsonapi_error_response(503, "Service Unavailable", e.detail)
             raise
         except Exception as e:
-            log.exception("JSON:API query execution failed for %s", table)
+            log.exception("JSON:API query execution failed for %s", gql_table)
             return _jsonapi_error_response(500, "Internal Server Error", str(e))
+
+        # Count query — same filters, no pagination, single field — for accurate total
+        count_field = "id" if "id" in all_scalars else all_scalars[0]
+        count_gql = _build_graphql_query(gql_table, [count_field], filters, [], None, None)
+        try:
+            count_doc = parse_query(schema, count_gql)
+            count_compiled = compile_query(count_doc, ctx)
+        except (GraphQLValidationError, Exception) as e:
+            return _jsonapi_error_response(400, "Bad Request", str(e))
+        if not count_compiled:
+            return _jsonapi_error_response(400, "Bad Request", "Count compilation failed")
+        try:
+            count_plan = await _govern_and_route_compiled(
+                count_compiled[0].sql,
+                role_id,
+                exec_params=count_compiled[0].params or None,
+                state=state,
+            )
+            count_result = await _execute_plan(count_plan, state)
+        except PermissionError as e:
+            return _jsonapi_error_response(403, "Forbidden", str(e))
+        except HTTPException as e:
+            if e.status_code == 503:
+                return _jsonapi_error_response(503, "Service Unavailable", e.detail)
+            raise
+        except Exception as e:
+            log.exception("JSON:API count query failed for %s", gql_table)
+            return _jsonapi_error_response(500, "Internal Server Error", str(e))
+        total_count = len(count_result.rows)
 
         # Serialize to flat rows first
         from provisa.executor.serialize import serialize_rows
 
-        response_data = serialize_rows(result.rows, compiled.columns, table)
-        rows = response_data.get("data", {}).get(table, [])
+        response_data = serialize_rows(result.rows, compiled.columns, gql_table)
+        rows = response_data.get("data", {}).get(gql_table, [])
 
         # REQ-257: pull nested included entities out of the rows into a deduplicated set.
         included_rows = _extract_included(rows, include_names)
@@ -413,19 +477,21 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         # Build JSON:API document (compound when includes were requested)
         doc = rows_to_jsonapi(
             rows,
-            table,
+            table_name,
             id_field="id",
             relationship_fields=rel_fields,
             included_rows=included_rows or None,
         )
+        doc.setdefault("meta", {})["total"] = total_count
 
-        # Pagination links
-        base_path = f"/data/jsonapi/{table}"
+        # Pagination links — preserve role, sort, sparse fieldset, filters, and include
+        base_path = f"/data/jsonapi/{domain_id}/{table_name}"
         extra = {}
+        for k in ("role", "sort", "include"):
+            if raw_params.get(k):
+                extra[k] = raw_params[k]
         if sparse:
-            extra[f"fields[{table}]"] = ",".join(sparse)
-        if raw_params.get("sort"):
-            extra["sort"] = raw_params["sort"]
+            extra[f"fields[{table_name}]"] = ",".join(sparse)
         for k, v in raw_params.items():
             if k.startswith("filter["):
                 extra[k] = v
@@ -434,7 +500,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             base_url=base_path,
             page_number=page_number,
             page_size=page_size,
-            total=len(rows),
+            total=total_count,
             query_params=extra or None,
         )
 

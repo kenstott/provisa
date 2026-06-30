@@ -1,0 +1,192 @@
+.grpc-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--navbar-height, 56px) - var(--subnav-height, 36px));
+  overflow: hidden;
+}
+
+/* ── Top bar ──────────────────────────────────────────────── */
+.grpc-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-alt, #f9fafb);
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.grpc-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.grpc-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.grpc-server-badge {
+  font-size: 0.75rem;
+  font-family: monospace;
+  color: var(--text-muted, #666);
+  background: var(--surface, #fff);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  white-space: nowrap;
+}
+
+.grpc-op-select,
+.grpc-method-select {
+  appearance: auto;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.82rem;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.grpc-op-select {
+  font-weight: 600;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.grpc-method-select {
+  flex: 1;
+  min-width: 0;
+  max-width: 320px;
+  font-family: monospace;
+}
+
+.grpc-topbar-error {
+  font-size: 0.75rem;
+  color: var(--error, #dc2626);
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.grpc-send-btn {
+  padding: 0.35rem 1rem;
+  background: var(--primary, #2563eb);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.grpc-send-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ── Body area ────────────────────────────────────────────── */
+.grpc-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.grpc-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+}
+
+.grpc-panel-left {
+  border-right: 1px solid var(--border);
+}
+
+/* ── Tabs ─────────────────────────────────────────────────── */
+.grpc-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-alt);
+  flex-shrink: 0;
+}
+
+/* More specific than .page button (0,2,0 > 0,1,1) so our styles win */
+.grpc-tabs .grpc-tab {
+  padding: 0.35rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.grpc-tabs .grpc-tab:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.grpc-tabs .grpc-tab.active {
+  background: transparent;
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+/* ── Editor & code areas ──────────────────────────────────── */
+.grpc-editor {
+  flex: 1;
+  padding: 0.75rem;
+  resize: none;
+  border: none;
+  outline: none;
+  font-family: monospace;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.grpc-code {
+  flex: 1;
+  margin: 0;
+  padding: 0.75rem;
+  overflow: auto;
+  font-family: monospace;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  white-space: pre;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.grpc-response {
+  color: var(--text-muted, #555);
+}
+
+.grpc-response:not(:empty) {
+  color: var(--text);
+}
+
+/* ── Error bar ────────────────────────────────────────────── */
+.grpc-error-bar {
+  padding: 0.45rem 0.75rem;
+  background: #fef2f2;
+  color: var(--error, #dc2626);
+  font-size: 0.78rem;
+  border-bottom: 1px solid #fecaca;
+  flex-shrink: 0;
+}

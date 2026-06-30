@@ -1341,6 +1341,28 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
     return result
 
 
+def build_table_path_map(si: SchemaInput) -> dict[str, dict]:
+    """Return {gql_field_name: {schema_name, table_name, domain_id, table_description, domain_description}} for REST path routing."""
+    tables = _build_visible_tables(si)
+    if not tables:
+        return {}
+    domain_alias_map = _build_domain_alias_map(si.domains)
+    _assign_names(
+        tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
+    )
+    domain_descs = {d["id"]: d.get("description") for d in si.domains}
+    return {
+        t.field_name: {
+            "schema_name": t.schema_name,
+            "table_name": t.table_name,
+            "domain_id": t.domain_id,
+            "table_description": t.description,
+            "domain_description": domain_descs.get(t.domain_id),
+        }
+        for t in tables
+    }
+
+
 def generate_schema(si: SchemaInput) -> GraphQLSchema:  # REQ-007, REQ-008, REQ-021, REQ-133, REQ-134, REQ-196, REQ-197, REQ-213, REQ-218, REQ-253
     """Generate a graphql-core schema for a specific role.
 

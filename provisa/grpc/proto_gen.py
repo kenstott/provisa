@@ -18,8 +18,10 @@ from __future__ import annotations
 
 from provisa.compiler.schema_gen import (
     SchemaInput,
-    _build_visible_tables,
+    _IMPLICIT_TRAVERSAL_DOMAINS,
     _assign_names,
+    _build_domain_alias_map,
+    _build_visible_tables,
     _can_see_relationship,
 )
 
@@ -46,11 +48,13 @@ _PROTO_TYPE_MAP: dict[str, str] = {
     "time with time zone": "string",
     "json": "string",
     "jsonb": "string",
+    "text": "string",
+    "float4": "float",
+    "float8": "double",
 }
 
 
 def _trino_to_proto(trino_type: str) -> str:
-    """Map a Trino data type to a proto3 type."""
     normalized = trino_type.lower().strip()
     if normalized in _PROTO_TYPE_MAP:
         return _PROTO_TYPE_MAP[normalized]
@@ -64,12 +68,24 @@ def _trino_to_proto(trino_type: str) -> str:
 
 
 def _needs_timestamp_import(columns: list[tuple[str, str]]) -> bool:
-    """Check if any column maps to google.protobuf.Timestamp."""
     return any(_trino_to_proto(dtype) == "google.protobuf.Timestamp" for _, dtype in columns)
 
 
 def _is_array_type(trino_type: str) -> bool:
     return trino_type.lower().strip().startswith("array(")
+
+
+def _to_proto_type_name(gql_name: str) -> str:
+    """Convert GQL type name to proto3 PascalCase. PS__Pets → PsPets."""
+    if "__" in gql_name:
+        prefix, rest = gql_name.split("__", 1)
+        return prefix.capitalize() + rest
+    return gql_name
+
+
+def _to_proto_field_name(gql_name: str) -> str:
+    """Convert GQL field name to proto3 snake_case. ps__pets → ps_pets."""
+    return gql_name.replace("__", "_")
 
 
 def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
@@ -78,13 +94,21 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
     if not tables:
         raise ValueError(f"No tables visible to role {si.role['id']!r}. Cannot generate proto.")
 
-    _assign_names(tables, si.naming_rules)
-    table_lookup = {t.table_id: t for t in tables}
+    domain_alias_map = _build_domain_alias_map(si.domains)
+    _assign_names(
+        tables,
+        si.naming_rules,
+        domain_prefix=si.domain_prefix,
+        domain_alias_map=domain_alias_map,
+    )
+    # Convert GQL-style names (PS__Pets / ps__pets) to proto3 conventions (PsPets / ps_pets)
+    for t in tables:
+        t.type_name = _to_proto_type_name(t.type_name)
+        t.field_name = _to_proto_field_name(t.field_name)
 
-    # Collect visible relationships
+    table_lookup = {t.table_id: t for t in tables}
     visible_rels = [r for r in si.relationships if _can_see_relationship(r, table_lookup)]
 
-    # Check if timestamp import needed
     all_columns: list[tuple[str, str]] = []
     for t in tables:
         for col in t.visible_columns:
@@ -100,45 +124,62 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
 
     if _needs_timestamp_import(all_columns):
         lines.append('import "google/protobuf/timestamp.proto";')
-        lines.append("")
+    lines.append('import "google/protobuf/field_mask.proto";')
+    lines.append("")
 
-    # Generate message types per table
+    # --- Query message (mirrors GraphQL type Query) ---
+    _root_ids = si.root_table_ids
+    _accessible = set(si.role.get("domain_access") or [])
+    _all_access = not _accessible or "*" in _accessible
+    root_tables = [
+        t
+        for t in sorted(tables, key=lambda t: t.type_name)
+        if (_root_ids is None or t.table_id in _root_ids)
+        and (_all_access or t.domain_id not in _IMPLICIT_TRAVERSAL_DOMAINS)
+    ]
+    lines.append("message Query {")
+    for i, t in enumerate(root_tables, start=1):
+        lines.append(f"  repeated {t.type_name} {t.field_name} = {i};")
+    lines.append("}")
+    lines.append("")
+
+    # --- Data + Filter + Request messages ---
+    nosql_types = {"mongodb", "cassandra"}
     for t in sorted(tables, key=lambda t: t.type_name):
-        # Collect columns sorted for deterministic field numbers
         sorted_cols = sorted(t.visible_columns, key=lambda c: c["column_name"])
         field_num = 1
 
-        # --- Data message ---
         lines.append(f"message {t.type_name} {{")
-        col_field_nums: dict[str, int] = {}
+        used_fields: set[str] = set()
         for col in sorted_cols:
             meta = t.column_metadata.get(col["column_name"])
             if meta is None:
-                raise ValueError(
-                    f"Column {col['column_name']!r} on {t.table_name!r} missing Trino metadata."
-                )
+                continue
             proto_type = _trino_to_proto(meta.data_type)
             repeated = "repeated " if _is_array_type(meta.data_type) else ""
             lines.append(f"  {repeated}{proto_type} {col['column_name']} = {field_num};")
-            col_field_nums[col["column_name"]] = field_num
+            used_fields.add(col["column_name"])
             field_num += 1
 
-        # Add relationship fields
         for rel in visible_rels:
             if rel["source_table_id"] == t.table_id:
-                target = table_lookup[rel["target_table_id"]]
+                target = table_lookup.get(rel["target_table_id"])
+                if target is None or target.field_name in used_fields:
+                    continue
+                used_fields.add(target.field_name)
                 if rel["cardinality"] == "many-to-one":
                     lines.append(f"  {target.type_name} {target.field_name} = {field_num};")
                 elif rel["cardinality"] == "one-to-many":
                     lines.append(
                         f"  repeated {target.type_name} {target.field_name} = {field_num};"
                     )
+                else:
+                    continue
                 field_num += 1
 
         lines.append("}")
         lines.append("")
 
-        # --- Filter input message ---
         lines.append(f"message {t.type_name}Filter {{")
         filter_num = 1
         for col in sorted_cols:
@@ -146,26 +187,21 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
             if meta is None:
                 continue
             proto_type = _trino_to_proto(meta.data_type)
-            # Filters use the base scalar type (not Timestamp)
-            if proto_type == "google.protobuf.Timestamp":
-                filter_proto = "string"
-            else:
-                filter_proto = proto_type
+            filter_proto = "string" if proto_type == "google.protobuf.Timestamp" else proto_type
             lines.append(f"  {filter_proto} {col['column_name']} = {filter_num};")
             filter_num += 1
         lines.append("}")
         lines.append("")
 
-        # --- Request message ---
         lines.append(f"message {t.type_name}Request {{")
         lines.append(f"  {t.type_name}Filter filter = 1;")
         lines.append("  int32 limit = 2;")
         lines.append("  int32 offset = 3;")
+        lines.append("  google.protobuf.FieldMask read_mask = 4;")
         lines.append("}")
         lines.append("")
 
     # --- Mutation input messages ---
-    nosql_types = {"mongodb", "cassandra"}
     for t in sorted(tables, key=lambda t: t.type_name):
         if si.source_types and si.source_types.get(t.source_id, "") in nosql_types:
             continue

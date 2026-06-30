@@ -35,6 +35,9 @@ const SqlPage = lazy(() => import("./pages/SqlPage").then((m) => ({ default: m.S
 const SetupPage = lazy(() => import("./pages/SetupPage").then((m) => ({ default: m.SetupPage })));
 const SchemaExplorer = lazy(() => import("./pages/SchemaExplorer").then((m) => ({ default: m.SchemaExplorer })));
 const NlPage = lazy(() => import("./pages/NlPage").then((m) => ({ default: m.NlPage })));
+const GrpcPage = lazy(() => import("./pages/GrpcPage").then((m) => ({ default: m.GrpcPage })));
+const JsonApiPage = lazy(() => import("./pages/JsonApiPage").then((m) => ({ default: m.JsonApiPage })));
+const OpenApiPage = lazy(() => import("./pages/OpenApiPage").then((m) => ({ default: m.OpenApiPage })));
 
 const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === "true";
 
@@ -188,6 +191,30 @@ function App() {
                     element={
                       <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
                         <NlPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/grpc"
+                    element={
+                      <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
+                        <GrpcPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/jsonapi"
+                    element={
+                      <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
+                        <JsonApiPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/openapi"
+                    element={
+                      <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
+                        <OpenApiPage />
                       </CapabilityGate>
                     }
                   />
