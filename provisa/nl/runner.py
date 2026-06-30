@@ -213,26 +213,33 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     _QUERY_TARGETS = {"cypher", "graphql", "sql"}
 
     async def _run_branch(target: NlTarget) -> tuple[NlTarget, str | None, str | None]:
-        if target == "sql":
-            valid_query, error = await _generate_sql_from_nl(
-                nl_query, role, app_state, pre_selected_types=shared_selected_types
+        # Each branch is independent: a failure in one (e.g. SQL generation
+        # raising) must not abort the asyncio.as_completed loop and discard the
+        # other branches' results. Convert any exception into a branch error.
+        try:
+            if target == "sql":
+                valid_query, error = await _generate_sql_from_nl(
+                    nl_query, role, app_state, pre_selected_types=shared_selected_types
+                )
+                return target, valid_query, error
+            if target == "grpc":
+                q, e = _generate_grpc_query(shared_selected_types, shared_user_nodes)
+                return target, q, e
+            if target == "jsonapi":
+                q, e = _generate_jsonapi_query(shared_selected_types, shared_user_nodes)
+                return target, q, e
+            if target == "openapi":
+                q, e = _generate_openapi_query(shared_selected_types, shared_user_nodes)
+                return target, q, e
+            compiler = compilers[target]  # type: ignore[index]
+            entities = cypher_schema_block if target == "cypher" else relevant_entities
+            valid_query, error = await generation_loop(
+                nl_query, target, schema_sdl, compiler, llm, relevant_entities=entities  # type: ignore[arg-type]
             )
             return target, valid_query, error
-        if target == "grpc":
-            q, e = _generate_grpc_query(shared_selected_types, shared_user_nodes)
-            return target, q, e
-        if target == "jsonapi":
-            q, e = _generate_jsonapi_query(shared_selected_types, shared_user_nodes)
-            return target, q, e
-        if target == "openapi":
-            q, e = _generate_openapi_query(shared_selected_types, shared_user_nodes)
-            return target, q, e
-        compiler = compilers[target]  # type: ignore[index]
-        entities = cypher_schema_block if target == "cypher" else relevant_entities
-        valid_query, error = await generation_loop(
-            nl_query, target, schema_sdl, compiler, llm, relevant_entities=entities  # type: ignore[arg-type]
-        )
-        return target, valid_query, error
+        except Exception as exc:
+            log.warning("NL branch %s failed: %s", target, exc)
+            return target, None, str(exc)
 
     branch_tasks = [asyncio.create_task(_run_branch(t)) for t in _TARGETS]
 

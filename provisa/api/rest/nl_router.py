@@ -32,7 +32,7 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from provisa.api.app import AppState
 
-from provisa.nl.job import NlJob, make_job_store, new_job_id
+from provisa.nl.job import NlJob, _json_default, make_job_store, new_job_id
 
 log = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ async def _sse_generator(job_id: str) -> AsyncGenerator[str, None]:
                     "result": branch.result,
                     "error": branch.error,
                 }
-                yield f"event: branch\ndata: {json.dumps(payload)}\n\n"
+                yield f"event: branch\ndata: {json.dumps(payload, default=_json_default)}\n\n"
 
         if job.state in ("complete", "failed"):
             yield f"event: done\ndata: {json.dumps({'state': job.state})}\n\n"

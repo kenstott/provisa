@@ -33,6 +33,19 @@ NlTarget = Literal["cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"]
 _JOB_TTL = 3600  # seconds
 
 
+def _json_default(obj: Any) -> Any:
+    """Serialize values that appear in executed query results but are not JSON
+    native — notably Decimal (numeric DB columns) and date/datetime."""
+    import datetime
+    import decimal
+
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    if isinstance(obj, (datetime.date, datetime.datetime, datetime.time)):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+
+
 @dataclass
 class BranchResult:
     """Result for a single generation branch."""
@@ -128,7 +141,9 @@ class RedisJobStore:  # REQ-371
         return f"nl:job:{job_id}"
 
     async def put(self, job: NlJob) -> None:
-        await self._redis.setex(self._key(job.job_id), _JOB_TTL, json.dumps(job.to_dict()))
+        await self._redis.setex(
+            self._key(job.job_id), _JOB_TTL, json.dumps(job.to_dict(), default=_json_default)
+        )
 
     async def get(self, job_id: str) -> NlJob | None:
         raw = await self._redis.get(self._key(job_id))
