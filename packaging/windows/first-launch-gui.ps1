@@ -370,7 +370,7 @@ $btnInstall.Add_Click({
       # Check federation driver is loaded
       $drvState = (sc.exe query vboxsup 2>&1) -join ' '
       if ($drvState -match 'STATE\s+:\s+1\s+STOPPED') {
-        Log 'Federation driver not loaded — reboot required.'
+        Log 'Federation driver not loaded - reboot required.'
         $sync.NeedsReboot = $true
         $sync.Done        = $true
         return
@@ -450,7 +450,7 @@ $btnInstall.Add_Click({
         if ($found) { $CoreZip = $found.FullName; break }
       }
       if (-not $CoreZip) {
-        if (-not $EmbeddedVersion) { throw 'VERSION file missing — cannot determine download URL.' }
+        if (-not $EmbeddedVersion) { throw 'VERSION file missing - cannot determine download URL.' }
         $downloadUrl  = "https://github.com/kenstott/provisa/releases/download/$EmbeddedVersion/provisa-core-images-amd64-$EmbeddedVersion.zip"
         $localZipPath = Join-Path $env:TEMP "provisa-core-images-amd64-$EmbeddedVersion.zip"
         Log "Downloading Core Services ($EmbeddedVersion)..."
@@ -490,7 +490,7 @@ $btnInstall.Add_Click({
       $sync.Progress = 78
 
       $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
-      if (-not (Test-Path $curlExe)) { throw 'curl.exe not found — Windows 10 version 1803 or later required.' }
+      if (-not (Test-Path $curlExe)) { throw 'curl.exe not found - Windows 10 version 1803 or later required.' }
 
       # Brief settle time after Coordination Engine reports ready
       Start-Sleep 10
@@ -522,8 +522,8 @@ $btnInstall.Add_Click({
           # Success: either clean exit or connection reset after Docker confirmed load
           Log "  Package installed."
         } elseif ($curlExit -eq 56) {
-          # Data sent but no confirmation in partial response — poll image count.
-          Log "  Package transmitted — waiting for processing..."
+          # Data sent but no confirmation in partial response - poll image count.
+          Log "  Package transmitted - waiting for processing..."
           $waited = 0
           $loaded = $false
           while ($waited -lt 300 -and -not $loaded) {
