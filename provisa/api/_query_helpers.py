@@ -65,7 +65,7 @@ def build_graphql_query(  # REQ-256
 
     if limit is not None:
         args_parts.append(f"limit: {limit}")
-    if offset is not None:
+    if offset:
         args_parts.append(f"offset: {offset}")
 
     if where:

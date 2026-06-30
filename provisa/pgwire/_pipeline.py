@@ -258,6 +258,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
     *,
     exec_params: list | None = None,
     state: Any | None = None,
+    api_args: dict | None = None,
 ) -> _Plan:
     """Governance + routing for already-physical SQL.
 
@@ -314,7 +315,14 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             from provisa.compiler.view_expand import expand_view_refs
 
             _exec_sql = expand_view_refs(_exec_sql, _view_map)
-        _rewrites, _values_ctes, _dropped = await _materialize_api_to_trino_cache(_exec_sql, state)
+        from provisa.compiler.nf_extractor import extract_nf_args
+
+        _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(_exec_sql, exec_params or [])
+        exec_params = _nf_clean_params if _nf_clean_params != (exec_params or []) else exec_params
+        _nf_args = {**(api_args or {}), **(_extracted_nf or {})} or None
+        _rewrites, _values_ctes, _dropped = await _materialize_api_to_trino_cache(
+            _exec_sql, state, nf_args=_nf_args
+        )
         if _dropped:
             from provisa.compiler.nf_extractor import drop_union_branches_for_table
 

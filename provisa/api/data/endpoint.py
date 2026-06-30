@@ -721,6 +721,7 @@ async def _mat_gql_remote_table(
     cache_rewrites: dict,
     values_cte_entries: dict,
     extra_selections: dict[str, str] | None = None,
+    variables: dict | None = None,
 ) -> None:
     """Materialize a graphql_remote-backed table into the Trino cache or VALUES CTE."""
     from provisa.api_source.trino_cache import (
@@ -800,7 +801,10 @@ async def _mat_gql_remote_table(
     gql_cache_loc = cache_location(
         gql_reg["source_id"], "provisa_admin", f"org_{_org_id}_gql_cache"
     )
-    gql_cache_tbl = cache_table_name(gql_reg["source_id"], tn, {"cols": sorted(col_selections)})
+    _cache_hash: dict = {"cols": sorted(col_selections)}
+    if variables:
+        _cache_hash.update(variables)
+    gql_cache_tbl = cache_table_name(gql_reg["source_id"], tn, _cache_hash)
 
     redirect_config = RedirectConfig.from_env()
 
@@ -817,6 +821,8 @@ async def _mat_gql_remote_table(
             auth=gql_reg.get("auth"),
             field_name=gql_tbl.get("field_name") or gql_tbl["name"],
             columns=col_selections,
+            variables=variables or None,
+            required_args=gql_tbl.get("required_args") or None,
             limit=state.config.graphql_remote.max_list_items,
             pagination=gql_tbl.get("pagination"),
         )
@@ -1118,7 +1124,10 @@ async def _mat_api_ep_table(
 
 
 async def _materialize_api_to_trino_cache(
-    exec_sql: str, state, gql_remote_extra_selections: dict | None = None
+    exec_sql: str,
+    state,
+    gql_remote_extra_selections: dict | None = None,
+    nf_args: dict | None = None,
 ) -> tuple[dict, dict, list[str]]:
     """Materialize API-backed tables into Trino cache (VARCHAR columns) before Trino SQL runs.
 
@@ -1160,26 +1169,59 @@ async def _materialize_api_to_trino_cache(
             if gql_reg is not None:
                 assert gql_tbl is not None
                 assert isinstance(gql_tbl, dict)
-            if gql_reg is not None and gql_tbl is not None and not gql_tbl.get("required_args"):
-                try:
-                    await _mat_gql_remote_table(
-                        tn,
-                        gql_reg,
-                        gql_tbl,
-                        state,
-                        hot_mgr,
-                        _hot_threshold,
-                        cache_rewrites,
-                        values_cte_entries,
-                        extra_selections=(gql_remote_extra_selections or {}).get(tn),
-                    )
-                except RuntimeError as _gql_err:
-                    log.warning(
-                        "[MAT] GQL remote unreachable for %s — dropping union branch: %s",
-                        tn,
-                        _gql_err,
-                    )
-                    dropped_tables.append(tn)
+            if gql_reg is not None and gql_tbl is not None:
+                req_args = gql_tbl.get("required_args") or []
+                if req_args:
+                    resolved = {
+                        a["name"]: nf_args[a["name"]]
+                        for a in req_args
+                        if nf_args and a["name"] in nf_args
+                    }
+                    missing = [
+                        a["name"] for a in req_args if not nf_args or a["name"] not in nf_args
+                    ]
+                    if missing:
+                        raise ValueError(
+                            f"Table {tn!r} requires filter(s) {missing} — "
+                            "add them to the request filter"
+                        )
+                    else:
+                        try:
+                            await _mat_gql_remote_table(
+                                tn,
+                                gql_reg,
+                                gql_tbl,
+                                state,
+                                hot_mgr,
+                                _hot_threshold,
+                                cache_rewrites,
+                                values_cte_entries,
+                                extra_selections=(gql_remote_extra_selections or {}).get(tn),
+                                variables=resolved,
+                            )
+                        except RuntimeError as _gql_err:
+                            log.warning("[MAT] GQL remote unreachable for %s: %s", tn, _gql_err)
+                            dropped_tables.append(tn)
+                else:
+                    try:
+                        await _mat_gql_remote_table(
+                            tn,
+                            gql_reg,
+                            gql_tbl,
+                            state,
+                            hot_mgr,
+                            _hot_threshold,
+                            cache_rewrites,
+                            values_cte_entries,
+                            extra_selections=(gql_remote_extra_selections or {}).get(tn),
+                        )
+                    except RuntimeError as _gql_err:
+                        log.warning(
+                            "[MAT] GQL remote unreachable for %s — dropping union branch: %s",
+                            tn,
+                            _gql_err,
+                        )
+                        dropped_tables.append(tn)
             continue
 
         if not _has_pg_pool:
