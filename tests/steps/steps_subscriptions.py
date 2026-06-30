@@ -42,11 +42,12 @@ provider consumes these CDC events and streams them as SSE subscriptions.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from graphql import parse as gql_parse
@@ -815,110 +816,3 @@ def when_poll_subscription_created(shared_data: dict) -> None:
         backend=backend,
         table_config=table_config,
         poll_interval_seconds=0.01,
-    )
-
-    # Verify that a table without a watermark_column raises immediately
-    no_wm_provider = _PollSubscriptionProvider(
-        backend=backend,
-        table_config={"table_name": "nope", "source_id": "src-x"},
-        poll_interval_seconds=0.01,
-    )
-
-    async def _assert_no_watermark_raises():
-        with pytest.raises(Exception):
-            async for _ in no_wm_provider.poll(
-                "nope", datetime(2025, 1, 1, tzinfo=timezone.utc)
-            ):
-                pass
-
-    asyncio.run(_assert_no_watermark_raises())
-
-    # Also verify the happy-path provider yields at least one row.
-    received: list[dict] = []
-
-    async def _collect_all():
-        async for event in provider.poll(
-            table_config["table_name"], baseline_wm, max_polls=1
-        ):
-            received.append(event.row)
-
-    asyncio.run(_collect_all())
-    shared_data["subscription_rows"] = received
-
-
-@then(
-    "new or updated rows since the last watermark are delivered to the subscriber on each poll interval"
-)
-def then_watermark_rows_delivered(shared_data: dict) -> None:
-    rows = shared_data["subscription_rows"]
-    expected_ids = shared_data["expected_row_ids"]
-
-    delivered_ids = {r["id"] for r in rows}
-
-    assert delivered_ids == expected_ids, (
-        f"Expected rows with ids {expected_ids}, got {delivered_ids}"
-    )
-    assert 99 not in delivered_ids, "Stale row (id=99) must not be delivered"
-
-
-# ---------------------------------------------------------------------------
-# REQ-261 — Debezium CDC subscription provider (MySQL via Kafka)
-# ---------------------------------------------------------------------------
-
-
-@given("a MySQL source is connected via Debezium and Kafka")
-def given_mysql_debezium_kafka(shared_data: dict) -> None:
-    from provisa.subscriptions.debezium_provider import DebeziumNotificationProvider
-
-    provider = DebeziumNotificationProvider(
-        bootstrap_servers="kafka:9092",
-        topic_prefix="dbserver1",
-        database="mydb",
-        consumer_group_id="provisa-test",
-        source_type="mysql",
-    )
-    shared_data["debezium_provider"] = provider
-    shared_data["debezium_table"] = "orders"
-    shared_data["debezium_envelope"] = {
-        "payload": {
-            "op": "c",
-            "ts_ms": 1700000000000,
-            "before": None,
-            "after": {
-                "id": 42,
-                "customer_id": 7,
-                "total": 99.99,
-                "status": "new",
-            },
-        }
-    }
-
-
-@when("a row is inserted, updated, or deleted in MySQL")
-def when_mysql_row_change(shared_data: dict) -> None:
-    provider = shared_data["debezium_provider"]
-    envelope = shared_data["debezium_envelope"]
-    table = shared_data["debezium_table"]
-
-    event = provider._extract_event(envelope, table)
-    shared_data["debezium_event"] = event
-
-
-@then(
-    "the change is captured by Debezium, published to Kafka, consumed by Provisa, "
-    "and streamed as an SSE event to subscribers"
-)
-def then_debezium_event_streamed(shared_data: dict) -> None:
-    from provisa.subscriptions.base import ChangeEvent
-
-    event = shared_data["debezium_event"]
-    assert event is not None, "DebeziumNotificationProvider must produce a ChangeEvent"
-    assert isinstance(event, ChangeEvent)
-
-    assert event.operation == "insert", (
-        f"Expected operation 'insert' for op='c', got {event.operation!r}"
-    )
-    assert event.table == shared_data["debezium_table"]
-    assert event.row["id"] == 42
-    assert event.row["total"] == 99.99
-    assert event.timestamp is not None

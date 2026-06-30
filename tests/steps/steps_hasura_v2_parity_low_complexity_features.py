@@ -30,13 +30,16 @@ REQ-217 — batch mutations: multiple mutations in a single GraphQL request exec
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from graphql import (
     FieldNode,
     OperationDefinitionNode,
     parse,
+    validate,
 )
 from pytest_bdd import given, scenario, then, when
 
@@ -44,10 +47,13 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import (
     MutationResult,
     apply_column_presets,
+    compile_mutation,
     compile_upsert,
 )
-from provisa.compiler.schema_gen import SchemaInput
+from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import CompilationContext, TableMeta, build_context, compile_query
+from provisa.core.models import Role, ScheduledTrigger, flatten_roles
+from provisa.scheduler.jobs import _execute_webhook, build_scheduler
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +150,64 @@ def _build_schema_input(source_type: str = "postgresql") -> SchemaInput:
     )
 
 
+def _build_batch_schema_and_ctx() -> tuple:
+    """Build a SchemaInput/schema/ctx covering orders and customers tables."""
+    tables = [
+        {
+            "id": 1,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "orders",
+            "governance": "pre-approved",
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "amount", "visible_to": ["admin"]},
+                {"column_name": "region", "visible_to": ["admin"]},
+                {"column_name": "status", "visible_to": ["admin"]},
+            ],
+        },
+        {
+            "id": 2,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "customers",
+            "governance": "pre-approved",
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "name", "visible_to": ["admin"]},
+                {"column_name": "email", "visible_to": ["admin"]},
+            ],
+        },
+    ]
+    col_types = {
+        1: [
+            _col("id", "integer"),
+            _col("amount", "decimal(10,2)"),
+            _col("region", "varchar(50)"),
+            _col("status", "varchar(20)"),
+        ],
+        2: [
+            _col("id", "integer"),
+            _col("name", "varchar(100)"),
+            _col("email", "varchar(255)"),
+        ],
+    }
+    si = SchemaInput(
+        tables=tables,
+        relationships=[],
+        column_types=col_types,
+        naming_rules=[],
+        role={"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]},
+        domains=[{"id": "sales", "description": "Sales"}],
+        source_types={"sales-pg": "postgresql"},
+    )
+    schema = generate_schema(si)
+    ctx = build_context(si)
+    return schema, ctx
+
+
 def _query_field_node(query: str) -> tuple:
     """Parse a GraphQL query string and return (DocumentNode, FieldNode)."""
     doc = parse(query)
@@ -159,7 +223,6 @@ def _run_compile_query(doc_and_field, ctx: CompilationContext, table: TableMeta)
     if isinstance(doc_and_field, tuple):
         document, _field = doc_and_field
     else:
-        # Legacy: bare FieldNode passed directly (should not happen after refactor).
         raise TypeError(f"_run_compile_query expects (doc, field) tuple, got {type(doc_and_field)}")
     results = compile_query(document, ctx)
     assert results, "compile_query produced no results"
@@ -171,21 +234,9 @@ def _run_compile_query(doc_and_field, ctx: CompilationContext, table: TableMeta)
 # ---------------------------------------------------------------------------
 
 
-def _flatten_roles(role_definitions: list[dict]) -> dict[str, dict]:
-    """Flatten a role hierarchy into per-role dicts with merged capabilities/domain_access.
-
-    Each role definition may contain:
-      - ``id``             (str) — unique role identifier
-      - ``capabilities``   (list[str]) — direct capabilities granted to this role
-      - ``domain_access``  (list[str]) — direct domain access granted to this role
-      - ``parent_role_id`` (str | None) — optional parent role to inherit from
-
-    The function performs a single-pass topological merge so that every role's
-    entry in the returned dict contains the *union* of its own and all ancestor
-    capabilities/domain_access. Lookups on the returned dict are O(1).
-    """
+def _flatten_roles_from_dicts(role_definitions: list[dict]) -> dict[str, dict]:
+    """Flatten a role hierarchy into per-role dicts with merged capabilities/domain_access."""
     by_id: dict[str, dict] = {r["id"]: r for r in role_definitions}
-    # Memoised result store — avoids redundant traversal of shared ancestors.
     resolved: dict[str, dict] = {}
 
     def _resolve(role_id: str, visiting: set[str]) -> dict:
@@ -216,6 +267,21 @@ def _flatten_roles(role_definitions: list[dict]) -> dict[str, dict]:
     return resolved
 
 
+def _role(
+    role_id: str,
+    caps: list[str],
+    domains: list[str],
+    parent: str | None = None,
+) -> Role:
+    """Construct a Role model instance."""
+    return Role(
+        id=role_id,
+        capabilities=caps,
+        domain_access=domains,
+        parent_role_id=parent,
+    )
+
+
 # ---------------------------------------------------------------------------
 # REQ-212 scenario binding
 # ---------------------------------------------------------------------------
@@ -231,15 +297,7 @@ def test_req_212_default_behaviour() -> None:
 
 @given("a GraphQL upsert_<table> mutation request")
 def _given_upsert_mutation_request(shared_data: dict) -> None:
-    """Construct a GraphQL upsert_orders mutation field node and table metadata.
-
-    The field node carries:
-      - ``input``: a dict with ``id`` (the primary key) and ``amount`` values.
-      - ``on_conflict``: a list containing the primary key column name ``id``.
-
-    The table metadata describes the ``orders`` table in the ``sales-pg`` source
-    with ``id`` as its primary key column.
-    """
+    """Construct a GraphQL upsert_orders mutation field node and table metadata."""
     table = _make_table_meta()
     field_node = _make_field_node(
         "upsertOrders",
@@ -251,20 +309,12 @@ def _given_upsert_mutation_request(shared_data: dict) -> None:
 
 @when("the compiler processes it")
 def _when_compiler_processes_upsert(shared_data: dict) -> None:
-    """Pass the field node and table metadata through ``compile_upsert``.
-
-    The result is stored in ``shared_data["result"]`` for assertion in the
-    Then step. Any exception raised by the compiler propagates naturally so
-    that a failed compilation surfaces as a test failure rather than a
-    misleading assertion error.
-    """
-    # REQ-214 path: if this is a column-presets scenario, delegate.
+    """Pass the field node and table metadata through ``compile_upsert``."""
     if "preset_field_node" in shared_data:
         _when_insert_or_update_mutation_executed(shared_data)
         return
 
     if "pg_field_node" in shared_data:
-        # REQ-213 distinct_on path
         pg_result = _run_compile_query(
             shared_data["pg_field_node"],
             shared_data["pg_ctx"],
@@ -289,17 +339,7 @@ def _when_compiler_processes_upsert(shared_data: dict) -> None:
     "INSERT ... ON CONFLICT ... DO UPDATE SQL is generated with conflict columns from primary key metadata"
 )
 def _then_on_conflict_sql_generated(shared_data: dict) -> None:
-    """Assert that the compiled SQL contains the expected upsert clauses.
-
-    Specifically:
-    - The ``mutation_type`` attribute on the result must equal ``"upsert"``,
-      confirming that ``compile_upsert`` classified the operation correctly.
-    - The generated SQL string must contain ``"ON CONFLICT"`` (case-insensitive
-      check using upper()), confirming that the INSERT ... ON CONFLICT ...
-      DO UPDATE pattern was emitted rather than a plain INSERT.
-    - The conflict column inferred from primary key metadata (``id``) must appear
-      in the SQL so that the conflict target is correctly identified.
-    """
+    """Assert that the compiled SQL contains the expected upsert clauses."""
     result: MutationResult = shared_data["result"]
 
     assert result.mutation_type == "upsert", (
@@ -312,8 +352,6 @@ def _then_on_conflict_sql_generated(shared_data: dict) -> None:
     )
     assert "DO UPDATE" in sql_upper, f"Expected 'DO UPDATE' in generated SQL, got:\n{result.sql}"
 
-    # The conflict column (primary key: id) must appear in the SQL to confirm
-    # it was inferred from primary key metadata and included in the conflict target.
     assert "id" in result.sql.lower(), (
         f"Expected conflict column 'id' to appear in generated SQL, got:\n{result.sql}"
     )
@@ -334,29 +372,13 @@ def test_req_213_default_behaviour() -> None:
 
 @given("a GraphQL query with a distinct_on argument specifying columns")
 def _given_distinct_on_query(shared_data: dict) -> None:
-    """Build two GraphQL query field nodes containing a distinct_on argument.
-
-    We construct two variants:
-      - A PostgreSQL-backed SchemaInput / context (source_type="postgresql")
-        which should yield DISTINCT ON syntax in the compiled SQL.
-      - A non-PostgreSQL-backed SchemaInput / context (source_type="trino")
-        which should fall back to a ROW_NUMBER() window function approach.
-
-    Both field nodes specify ``distinct_on: [region]`` to deduplicate rows
-    by the ``region`` column.  The SchemaInput for each variant records the
-    source_type so that compile_query can emit the correct dialect.
-    """
-    # PostgreSQL variant — expects DISTINCT ON (region) or plain DISTINCT
+    """Build two GraphQL query field nodes containing a distinct_on argument."""
     pg_si = _build_schema_input(source_type="postgresql")
     pg_ctx = build_context(pg_si)
 
-    # Non-PostgreSQL (Trino) variant — expects ROW_NUMBER() or QUALIFY fallback
     trino_si = _build_schema_input(source_type="trino")
     trino_ctx = build_context(trino_si)
 
-    # Build query field nodes with the distinct_on argument.
-    # The argument is rendered as a plain enum-style list in GQL syntax; the
-    # compiler is responsible for interpreting the string values as column names.
     pg_field_node = _query_field_node(
         "query { orders(distinct_on: [region]) { id amount region } }"
     )
@@ -390,29 +412,7 @@ def _given_distinct_on_query(shared_data: dict) -> None:
     "deduplicated results are returned using DISTINCT ON or a window function fallback for non-PostgreSQL dialects"
 )
 def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
-    """Assert correct deduplication SQL for PostgreSQL and non-PostgreSQL dialects.
-
-    For the PostgreSQL dialect the compiler must emit one of:
-      - ``DISTINCT ON (region)``          — native PostgreSQL syntax
-      - ``DISTINCT``                      — simpler distinct clause
-      - ``ROW_NUMBER()``                  — window-function approach (also acceptable
-                                            if the compiler normalises dialects)
-
-    For the non-PostgreSQL (Trino) dialect the compiler must emit a
-    deduplication mechanism.  Since Trino does not support ``DISTINCT ON``,
-    the expected output is one of:
-      - ``ROW_NUMBER()``                  — window function fallback
-      - ``DISTINCT``                      — simple distinct (acceptable fallback)
-      - ``QUALIFY``                       — Trino-native equivalent
-
-    At a minimum, the SQL for *both* dialects must contain some form of
-    deduplication keyword: the test accepts DISTINCT (in any form) or ROW_NUMBER
-    as valid evidence that deduplication was applied.
-    """
-    # If the compilation was triggered lazily in the When step, results are
-    # already in shared_data.  If the When step ran the REQ-212 branch (because
-    # both pg_field_node and field_node are absent from shared_data at that
-    # point), compile now.
+    """Assert correct deduplication SQL for PostgreSQL and non-PostgreSQL dialects."""
     if "pg_result" not in shared_data and "pg_field_node" in shared_data:
         pg_result = _run_compile_query(
             shared_data["pg_field_node"],
@@ -430,11 +430,6 @@ def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
     pg_result = shared_data.get("pg_result")
     trino_result = shared_data.get("trino_result")
 
-    # ---------------------------------------------------------------------------
-    # Helper: extract the SQL string from whatever compile_query returns.
-    # The function may return a plain str, a namedtuple/dataclass with a .sql
-    # attribute, or some other wrapper.
-    # ---------------------------------------------------------------------------
     def _sql(result: object) -> str:
         if isinstance(result, str):
             return result
@@ -445,17 +440,12 @@ def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
         return str(result)
 
     assert pg_result is not None, (
-        "PostgreSQL compile_query result must not be None; "
-        "check that _given_distinct_on_query populated shared_data correctly"
+        "PostgreSQL compile_query result must not be None"
     )
     assert trino_result is not None, (
-        "Trino compile_query result must not be None; "
-        "check that _given_distinct_on_query populated shared_data correctly"
+        "Trino compile_query result must not be None"
     )
 
-    # ---------------------------------------------------------------------------
-    # Assert PostgreSQL variant contains a deduplication construct.
-    # ---------------------------------------------------------------------------
     pg_sql = _sql(pg_result)
     pg_sql_upper = pg_sql.upper()
 
@@ -470,15 +460,11 @@ def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
         f"for deduplication. Got:\n{pg_sql}"
     )
 
-    # The target column must appear in the SQL to confirm distinct_on was honoured.
     assert "region" in pg_sql.lower(), (
         f"Expected 'region' column to appear in PostgreSQL SQL for distinct_on=[region]. "
         f"Got:\n{pg_sql}"
     )
 
-    # ---------------------------------------------------------------------------
-    # Assert non-PostgreSQL (Trino) variant contains a deduplication construct.
-    # ---------------------------------------------------------------------------
     trino_sql = _sql(trino_result)
     trino_sql_upper = trino_sql.upper()
 
@@ -497,11 +483,6 @@ def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
         f"Got:\n{trino_sql}"
     )
 
-    # ---------------------------------------------------------------------------
-    # Additional structural check: if the PostgreSQL variant uses DISTINCT ON,
-    # confirm that the Trino variant does NOT use DISTINCT ON (it must fall back).
-    # This validates that the dialect branching actually happens.
-    # ---------------------------------------------------------------------------
     if "DISTINCT ON" in pg_sql_upper:
         assert "DISTINCT ON" not in trino_sql_upper, (
             "Trino SQL must not use DISTINCT ON syntax — it must use a window "
@@ -524,21 +505,7 @@ def test_req_214_default_behaviour() -> None:
 
 @given("a table config with column_presets for created_by and updated_at")
 def _given_table_config_with_column_presets(shared_data: dict) -> None:
-    """Set up a TableMeta with column_presets for created_by (header) and updated_at (now).
-
-    The presets are configured as:
-      - created_by: source=header, name=x_user_id  — read from the request header
-        named ``x_user_id`` and stamp it on the created_by column.
-      - updated_at: source=now                     — stamp the current UTC datetime
-        on the updated_at column.
-
-    We also prepare a realistic user input dict that includes both preset columns
-    (as a client might submit them) together with non-preset columns.  The columns
-    preset list and the raw input are stored in shared_data so the When step can
-    invoke ``apply_column_presets`` and the Then step can assert on its output.
-    """
-    # Column presets configuration — matches the ColumnPreset schema used by
-    # apply_column_presets in provisa/compiler/mutation_gen.py.
+    """Set up a TableMeta with column_presets for created_by (header) and updated_at (now)."""
     column_presets = [
         {
             "column": "created_by",
@@ -554,9 +521,6 @@ def _given_table_config_with_column_presets(shared_data: dict) -> None:
         },
     ]
 
-    # Simulate user input that includes the preset columns plus legitimate data.
-    # The preset columns should be stripped from user input and overwritten by
-    # the preset sources; non-preset columns must pass through unchanged.
     user_input = {
         "created_by": "attacker-supplied-value",
         "updated_at": "1970-01-01T00:00:00",
@@ -564,13 +528,11 @@ def _given_table_config_with_column_presets(shared_data: dict) -> None:
         "amount": 42,
     }
 
-    # Request headers that the preset will read x_user_id from.
     request_headers = {
         "x_user_id": "user-abc-123",
         "Authorization": "Bearer sometoken",
     }
 
-    # Build a TableMeta with column_presets set.
     table = TableMeta(
         table_id=1,
         field_name="orders",
@@ -582,7 +544,6 @@ def _given_table_config_with_column_presets(shared_data: dict) -> None:
         column_presets=column_presets,
     )
 
-    # Build a minimal FieldNode for an insert mutation carrying the user input.
     preset_field_node = _make_field_node(
         "insertOrders",
         {
@@ -604,23 +565,11 @@ def _given_table_config_with_column_presets(shared_data: dict) -> None:
 
 @when("an insert or update mutation is executed")
 def _when_insert_or_update_mutation_executed(shared_data: dict) -> None:
-    """Invoke apply_column_presets to process the user input through the column presets.
-
-    This simulates what the Provisa mutation pipeline does before SQL generation:
-      1. Start with the raw user-supplied input dict.
-      2. Call apply_column_presets with the configured presets and request headers.
-      3. The function removes preset columns from user input and injects values
-         derived from the configured sources (header lookups or built-in functions).
-
-    The resulting dict (what would be passed to SQL generation) is stored in
-    shared_data["preset_result"] for assertion by the Then step.
-    """
-    user_input: dict = dict(shared_data["user_input"])  # copy to avoid mutation of original
+    """Invoke apply_column_presets to process the user input through the column presets."""
+    user_input: dict = dict(shared_data["user_input"])
     column_presets: list[dict] = shared_data["column_presets"]
     request_headers: dict = shared_data["request_headers"]
 
-    # Record the timestamp just before calling apply_column_presets so that the
-    # Then step can verify the injected updated_at value is >= this time.
     shared_data["before_apply"] = datetime.now(timezone.utc)
 
     result = apply_column_presets(user_input, column_presets, headers=request_headers)
@@ -642,9 +591,6 @@ def _then_preset_columns_injected(shared_data: dict) -> None:
 
     assert isinstance(result, dict), f"apply_column_presets must return a dict; got {type(result)}"
 
-    # ------------------------------------------------------------------
-    # 1. created_by — injected from header x_user_id
-    # ------------------------------------------------------------------
     assert "created_by" in result, (
         "created_by column must be present in the result after preset injection"
     )
@@ -657,9 +603,6 @@ def _then_preset_columns_injected(shared_data: dict) -> None:
         f"got {result['created_by']!r}"
     )
 
-    # ------------------------------------------------------------------
-    # 2. updated_at — injected from now()
-    # ------------------------------------------------------------------
     assert "updated_at" in result, (
         "updated_at column must be present in the result after preset injection"
     )
@@ -667,7 +610,6 @@ def _then_preset_columns_injected(shared_data: dict) -> None:
         f"updated_at must NOT contain the client-supplied epoch value; got {result['updated_at']!r}"
     )
 
-    # The injected value must be a parseable ISO datetime.
     try:
         parsed_updated_at = datetime.fromisoformat(result["updated_at"])
     except (ValueError, TypeError) as exc:
@@ -676,11 +618,9 @@ def _then_preset_columns_injected(shared_data: dict) -> None:
             f"got {result['updated_at']!r}: {exc}"
         ) from exc
 
-    # Normalise to UTC for comparison (fromisoformat may or may not attach tzinfo).
     if parsed_updated_at.tzinfo is None:
         parsed_updated_at = parsed_updated_at.replace(tzinfo=timezone.utc)
 
-    # Normalise before/after to UTC for comparison.
     before_utc = (
         before_apply.replace(tzinfo=timezone.utc) if before_apply.tzinfo is None else before_apply
     )
@@ -693,9 +633,6 @@ def _then_preset_columns_injected(shared_data: dict) -> None:
         f"{after_utc.isoformat()}]; got {parsed_updated_at.isoformat()}"
     )
 
-    # ------------------------------------------------------------------
-    # 3. Non-preset columns pass through unchanged
-    # ------------------------------------------------------------------
     assert result.get("title") == original_input["title"], (
         f"Non-preset column 'title' must pass through unchanged; "
         f"expected {original_input['title']!r}, got {result.get('title')!r}"
@@ -707,71 +644,123 @@ def _then_preset_columns_injected(shared_data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# REQ-217 scenario binding
+# REQ-215 scenario binding
 # ---------------------------------------------------------------------------
 
 
 @scenario(
-    "../features/REQ-217.feature",
-    "REQ-217 default behaviour",
+    "../features/REQ-215.feature",
+    "REQ-215 default behaviour",
 )
-def test_req_217_default_behaviour() -> None:
-    """Verify REQ-217 default behaviour."""
+def test_req_215_default_behaviour() -> None:
+    """Bind the REQ-215 inherited roles scenario."""
 
 
-@given("a GraphQL request containing multiple mutations")
-def _given_multiple_mutations_request(shared_data: dict) -> None:
-    si = _build_schema_input(source_type="postgresql")
-    ctx = build_context(si)
+@given("roles configured with parent_role_id forming a hierarchy")
+def _given_roles_with_parent_role_id(shared_data: dict) -> None:
+    """Configure a three-level role hierarchy using parent_role_id."""
+    role_dicts = [
+        {
+            "id": "base_viewer",
+            "capabilities": ["read"],
+            "domain_access": ["public"],
+            "parent_role_id": None,
+        },
+        {
+            "id": "analyst",
+            "capabilities": ["aggregate"],
+            "domain_access": ["analytics"],
+            "parent_role_id": "base_viewer",
+        },
+        {
+            "id": "senior_analyst",
+            "capabilities": ["export"],
+            "domain_access": ["finance"],
+            "parent_role_id": "analyst",
+        },
+    ]
 
-    doc = parse(
-        """
-        mutation {
-            insertOrders(input: {id: 1, amount: 100, region: "US"}) { id }
-            updateOrders(set: {amount: 200}, where: {id: {eq: 1}}) { amount }
-        }
-        """
+    role_models = [
+        _role("base_viewer", caps=["read"], domains=["public"], parent=None),
+        _role("analyst", caps=["aggregate"], domains=["analytics"], parent="base_viewer"),
+        _role("senior_analyst", caps=["export"], domains=["finance"], parent="analyst"),
+    ]
+
+    shared_data["role_dicts"] = role_dicts
+    shared_data["role_models"] = role_models
+
+
+@when("the system starts up")
+def _when_system_starts_up(shared_data: dict) -> None:
+    """Simulate the startup flattening step by calling flatten_roles."""
+    role_models: list[Role] = shared_data["role_models"]
+    role_dicts: list[dict] = shared_data["role_dicts"]
+
+    flattened_models: dict[str, Role] = flatten_roles(role_models)
+    shared_data["flattened_models"] = flattened_models
+
+    flattened_dicts: dict[str, dict] = _flatten_roles_from_dicts(role_dicts)
+    shared_data["flattened_dicts"] = flattened_dicts
+
+
+@then(
+    "capabilities and domain_access are flattened up the chain so lookups remain O(1)"
+)
+def _then_capabilities_and_domain_access_flattened(shared_data: dict) -> None:
+    """Assert that flattening produced correct merged capabilities and domain_access."""
+    flattened_models: dict[str, Role] = shared_data["flattened_models"]
+    flattened_dicts: dict[str, dict] = shared_data["flattened_dicts"]
+
+    expected_role_ids = {"base_viewer", "analyst", "senior_analyst"}
+
+    assert set(flattened_models.keys()) >= expected_role_ids, (
+        f"flatten_roles (model path) is missing role ids. "
+        f"Expected at least {expected_role_ids}, got {set(flattened_models.keys())}"
+    )
+    assert set(flattened_dicts.keys()) >= expected_role_ids, (
+        f"flatten_roles (dict path) is missing role ids. "
+        f"Expected at least {expected_role_ids}, got {set(flattened_dicts.keys())}"
     )
 
-    shared_data["batch_document"] = doc
-    shared_data["batch_ctx"] = ctx
-    shared_data["batch_source_types"] = {"sales-pg": "postgresql"}
+    def _caps(entry: object) -> set[str]:
+        if isinstance(entry, dict):
+            return set(entry.get("capabilities") or [])
+        return set(getattr(entry, "capabilities", None) or [])
 
+    def _domains(entry: object) -> set[str]:
+        if isinstance(entry, dict):
+            return set(entry.get("domain_access") or [])
+        return set(getattr(entry, "domain_access", None) or [])
 
-@when("the request is executed")
-def _when_batch_request_executed(shared_data: dict) -> None:
-    from provisa.compiler.mutation_gen import compile_mutation
+    bv_model = flattened_models["base_viewer"]
+    bv_dict = flattened_dicts["base_viewer"]
 
-    doc = shared_data["batch_document"]
-    ctx = shared_data["batch_ctx"]
-    source_types = shared_data["batch_source_types"]
-
-    results = compile_mutation(doc, ctx, source_types, variables=None)
-
-    shared_data["batch_results"] = results
-
-
-@then("mutations execute sequentially per the GraphQL spec")
-def _then_mutations_execute_sequentially(shared_data: dict) -> None:
-    results: list[MutationResult] = shared_data["batch_results"]
-
-    assert len(results) == 2, (
-        f"Expected 2 mutation results for a batch of 2 mutations; got {len(results)}"
+    assert _caps(bv_model) == {"read"}, (
+        f"base_viewer (model) capabilities must be {{'read'}}; got {_caps(bv_model)}"
+    )
+    assert _domains(bv_model) == {"public"}, (
+        f"base_viewer (model) domain_access must be {{'public'}}; got {_domains(bv_model)}"
+    )
+    assert _caps(bv_dict) == {"read"}, (
+        f"base_viewer (dict) capabilities must be {{'read'}}; got {_caps(bv_dict)}"
+    )
+    assert _domains(bv_dict) == {"public"}, (
+        f"base_viewer (dict) domain_access must be {{'public'}}; got {_domains(bv_dict)}"
     )
 
-    assert results[0].mutation_type == "insert", (
-        f"First mutation must be 'insert' (selection-set order); got {results[0].mutation_type!r}"
-    )
-    assert results[1].mutation_type == "update", (
-        f"Second mutation must be 'update' (selection-set order); got {results[1].mutation_type!r}"
-    )
+    an_model = flattened_models["analyst"]
+    an_dict = flattened_dicts["analyst"]
 
-    insert_sql = results[0].sql.upper()
-    assert "INSERT INTO" in insert_sql, (
-        f"First result must be an INSERT statement; got:\n{results[0].sql}"
+    assert _caps(an_model) >= {"aggregate", "read"}, (
+        f"analyst (model) capabilities must include {{'aggregate','read'}}; got {_caps(an_model)}"
     )
-
-    update_sql = results[1].sql.upper()
-    assert "UPDATE" in update_sql, (
-        f"Second result must be an UPDATE statement; got:\n{results[1].sql}"
+    assert _domains(an_model) >= {"analytics", "public"}, (
+        f"analyst (model) domain_access must include {{'analytics','public'}}; "
+        f"got {_domains(an_model)}"
     )
+    assert _caps(an_dict) >= {"aggregate", "read"}, (
+        f"analyst (dict) capabilities must include {{'aggregate','read'}}; got {_caps(an_dict)}"
+    )
+    assert _domains(an_dict) >= {"analytics", "public"}, (
+        f"analyst (dict) domain_access must include {{'analytics','public'}}; "
+        f"got {_domains

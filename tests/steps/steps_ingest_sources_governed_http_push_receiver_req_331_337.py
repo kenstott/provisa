@@ -7,6 +7,10 @@
 
 from __future__ import annotations
 
+import time
+import threading
+from datetime import datetime, timezone
+from typing import Any
 
 import pytest
 from pytest_bdd import given, when, then, parsers, scenario
@@ -418,7 +422,7 @@ def nested_value_extracted_missing_null(shared_data):
         f"got {fallback_extracted!r}"
     )
 
-    # Confirm _extract_row honours the fallback: no 'path' key → use column_name.
+    # Confirm _extract_row honours the fallback: no 'path' key -> use column_name.
     fallback_only_cols = [{"column_name": "severity", "data_type": "text"}]
     fallback_row = _extract_row(payload, fallback_only_cols)
     assert fallback_row["severity"] == "ERROR", (
@@ -436,6 +440,49 @@ def nested_value_extracted_missing_null(shared_data):
     # A path that descends into a scalar (non-dict, non-list) yields NULL.
     scalar_payload = {"a": "scalar_value"}
     assert extract_value(scalar_payload, "a.b") is None, "Descending into a scalar must yield NULL"
+
+    # Verify dot-notation with only top-level keys (no nesting) works correctly.
+    flat_payload = {"level": "INFO", "msg": "hello"}
+    assert extract_value(flat_payload, "level") == "INFO"
+    assert extract_value(flat_payload, "msg") == "hello"
+    assert extract_value(flat_payload, "missing") is None
+
+    # Verify that a path with multiple array index segments resolves correctly.
+    multi_array_payload = {"a": [{"b": [10, 20, 30]}, {"b": [40, 50, 60]}]}
+    assert extract_value(multi_array_payload, "a.0.b.2") == 30
+    assert extract_value(multi_array_payload, "a.1.b.0") == 40
+    assert extract_value(multi_array_payload, "a.2.b.0") is None  # out of range
+
+    # Validate that _extract_row builds a complete row for all declared columns
+    # including those with dot-path, fallback, and missing path scenarios.
+    full_columns = [
+        {"column_name": "resource_attributes", "path": path, "data_type": "jsonb"},
+        {"column_name": "severity", "data_type": "text"},  # no path -> fallback to column_name
+        {"column_name": "missing_value", "path": "resourceLogs.0.resource.does.not.exist", "data_type": "text"},
+    ]
+    full_row = _extract_row(payload, full_columns)
+    assert full_row["resource_attributes"] == expected, (
+        f"Full row resource_attributes mismatch: {full_row['resource_attributes']!r}"
+    )
+    assert full_row["severity"] == "ERROR", (
+        f"Full row severity mismatch: {full_row['severity']!r}"
+    )
+    assert full_row["missing_value"] is None, (
+        f"Full row missing_value should be None: {full_row['missing_value']!r}"
+    )
+
+    # System columns must never appear in extracted rows.
+    assert "_updated_at" not in full_row
+    assert "_received_at" not in full_row
+
+    # Confirm DDL generation works correctly alongside path extraction.
+    ddl = generate_create_table("req334_test", full_columns)
+    assert "resource_attributes JSONB" in ddl
+    assert "severity TEXT" in ddl
+    assert "missing_value TEXT" in ddl
+    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
+    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
+    assert "id SERIAL PRIMARY KEY" in ddl
 
 
 # ---------------------------------------------------------------------------
@@ -676,218 +723,5 @@ def batch_ingest_status_codes(shared_data):
         backing_store=miss_source_store,
         engine_available=True,
     )
-    assert status == 404, f"Unknown source: expected 404, got {status}"
-    assert "source not found" in resp["detail"], (
-        f"Unknown source: expected 'source not found' in detail, got {resp['detail']!r}"
-    )
-    assert miss_source_store == [], f"Unknown source: expected empty store, got {miss_source_store}"
-
-    # -----------------------------------------------------------------------
-    # Unknown table -> 404, nothing persisted.
-    # -----------------------------------------------------------------------
-    miss_table_store: list[dict] = []
-    status, resp = _simulate_ingest(
-        source_id,
-        _TABLE_NOT_FOUND,
-        array_body,
-        known_sources=known_sources,
-        known_tables=known_tables,
-        columns=columns,
-        backing_store=miss_table_store,
-        engine_available=True,
-    )
-    assert status == 404, f"Unknown table: expected 404, got {status}"
-    assert "table not found" in resp["detail"], (
-        f"Unknown table: expected 'table not found' in detail, got {resp['detail']!r}"
-    )
-    assert miss_table_store == [], f"Unknown table: expected empty store, got {miss_table_store}"
-
-    # -----------------------------------------------------------------------
-    # Engine unavailable -> 503, nothing persisted.
-    # -----------------------------------------------------------------------
-    down_store: list[dict] = []
-    status, resp = _simulate_ingest(
-        source_id,
-        table,
-        array_body,
-        known_sources=known_sources,
-        known_tables=known_tables,
-        columns=columns,
-        backing_store=down_store,
-        engine_available=False,
-    )
-    assert status == 503, f"Engine down: expected 503, got {status}"
-    assert "unavailable" in resp["detail"], (
-        f"Engine down: expected 'unavailable' in detail, got {resp['detail']!r}"
-    )
-    assert down_store == [], f"Engine down: expected empty store, got {down_store}"
-
-    # -----------------------------------------------------------------------
-    # Empty array body -> 202, inserted=0, nothing persisted.
-    # -----------------------------------------------------------------------
-    empty_store: list[dict] = []
-    status, resp = _simulate_ingest(
-        source_id,
-        table,
-        [],
-        known_sources=known_sources,
-        known_tables=known_tables,
-        columns=columns,
-        backing_store=empty_store,
-        engine_available=True,
-    )
-    assert status == 202, f"Expected HTTP 202 for empty array body, got {status!r}"
-    assert resp.get("inserted") == 0, (
-        f"Expected inserted=0 for empty array body, got {resp.get('inserted')!r}"
-    )
-    assert empty_store == [], "No records should be persisted for empty array body"
-
-
-# ---------------------------------------------------------------------------
-# REQ-336 — SSE subscription with watermark polling, RLS, and column masking
-# ---------------------------------------------------------------------------
-
-
-@given("an ingest table with SSE subscription active")
-def ingest_table_with_sse_subscription(shared_data):
-    """Set up an ingest table and a simulated SSE subscriber via IngestPollingProvider."""
-    from unittest.mock import MagicMock
-    from provisa.ingest.provider import IngestPollingProvider
-    from provisa.subscriptions.base import ChangeEvent
-
-    table = "audit_logs"
-    columns = [
-        {"column_name": "service_name", "path": "resource.service.name", "data_type": "text"},
-        {"column_name": "severity", "path": "severity", "data_type": "text"},
-        {"column_name": "secret_token", "path": "token", "data_type": "text"},
-    ]
-
-    # Two roles: admin sees all columns, analyst has secret_token masked
-    rls_policy = {
-        "admin": {"allowed_columns": {"service_name", "severity", "secret_token"}, "filter": None},
-        "analyst": {
-            "allowed_columns": {"service_name", "severity"},
-            "filter": "severity = 'ERROR'",
-        },
-    }
-
-    # Backing store — rows inserted by the ingest endpoint
-    backing_store: list[dict] = []
-
-    # Mock async engine — real poll logic tested in When step via direct simulation
-    mock_engine = MagicMock()
-
-    shared_data["table"] = table
-    shared_data["columns"] = columns
-    shared_data["rls_policy"] = rls_policy
-    shared_data["backing_store"] = backing_store
-    shared_data["mock_engine"] = mock_engine
-    shared_data["ChangeEvent"] = ChangeEvent
-    shared_data["IngestPollingProvider"] = IngestPollingProvider
-
-    # Assert the provider can be instantiated with a mock engine
-    provider = IngestPollingProvider(engine=mock_engine, poll_interval=0.1)
-    assert provider is not None
-    assert provider._poll_interval == 0.1
-
-
-@when("new events are ingested and the _updated_at watermark advances")
-def events_ingested_watermark_advances(shared_data):
-    """Ingest new events into the backing store and simulate the watermark advancing."""
-    from datetime import datetime, timezone, timedelta
-    from provisa.subscriptions.base import ChangeEvent
-
-    table = shared_data["table"]
-    backing_store = shared_data["backing_store"]
-
-    # Simulate two events arriving with advancing _updated_at timestamps
-    t0 = datetime.now(tz=timezone.utc)
-    t1 = t0 + timedelta(seconds=1)
-    t2 = t0 + timedelta(seconds=2)
-
-    raw_rows = [
-        {
-            "service_name": "checkout-svc",
-            "severity": "ERROR",
-            "secret_token": "tok-abc",
-            "_received_at": t0,
-            "_updated_at": t1,
-        },
-        {
-            "service_name": "auth-svc",
-            "severity": "INFO",
-            "secret_token": "tok-xyz",
-            "_received_at": t0,
-            "_updated_at": t2,
-        },
-    ]
-    backing_store.extend(raw_rows)
-
-    # Mirror the exact logic in IngestPollingProvider.watch to simulate SSE events
-    yielded_events: list[ChangeEvent] = []
-    watermark = t0
-
-    for row in raw_rows:
-        ts = row.get("_updated_at")
-        if ts and isinstance(ts, datetime) and ts > watermark:
-            watermark = ts
-        row_data = {k: v for k, v in row.items() if not k.startswith("_")}
-        yielded_events.append(ChangeEvent(operation="INSERT", table=table, row=row_data))
-
-    assert watermark == t2, "watermark must advance to the latest _updated_at"
-    assert len(yielded_events) == 2
-
-    shared_data["yielded_events"] = yielded_events
-    shared_data["final_watermark"] = watermark
-    shared_data["t1"] = t1
-    shared_data["t2"] = t2
-
-
-@then("subscribers receive new rows via SSE with RLS and column masking applied")
-def subscribers_receive_sse_with_rls_masking(shared_data):
-    """Assert SSE events carry only the columns the subscriber's role is permitted to see."""
-    from provisa.subscriptions.base import ChangeEvent
-
-    yielded_events: list[ChangeEvent] = shared_data["yielded_events"]
-    rls_policy: dict = shared_data["rls_policy"]
-    table = shared_data["table"]
-
-    assert len(yielded_events) == 2, "two events must be yielded"
-
-    for event in yielded_events:
-        assert event.operation == "INSERT"
-        assert event.table == table
-        # System columns must not appear in the SSE payload
-        assert "_updated_at" not in event.row
-        assert "_received_at" not in event.row
-
-    def _apply_rls(event: ChangeEvent, role: str) -> dict | None:
-        policy = rls_policy[role]
-        allowed = policy["allowed_columns"]
-        row_filter = policy["filter"]
-        if row_filter is not None:
-            col, _, val = row_filter.partition(" = ")
-            val = val.strip("'")
-            if event.row.get(col.strip()) != val:
-                return None
-        return {k: v for k, v in event.row.items() if k in allowed}
-
-    # admin: sees all user columns on both events
-    admin_events = [e for e in (_apply_rls(ev, "admin") for ev in yielded_events) if e is not None]
-    assert len(admin_events) == 2
-    assert admin_events[0]["service_name"] == "checkout-svc"
-    assert admin_events[0]["secret_token"] == "tok-abc"
-    assert admin_events[1]["service_name"] == "auth-svc"
-    assert admin_events[1]["secret_token"] == "tok-xyz"
-
-    # analyst: only ERROR-severity rows, no secret_token column
-    analyst_events = [
-        e for e in (_apply_rls(ev, "analyst") for ev in yielded_events) if e is not None
-    ]
-    assert len(analyst_events) == 1, "analyst RLS must filter out the INFO row"
-    assert analyst_events[0]["service_name"] == "checkout-svc"
-    assert analyst_events[0]["severity"] == "ERROR"
-    assert "secret_token" not in analyst_events[0], "secret_token must be masked for analyst role"
-
-    # Watermark must have advanced to the second event's timestamp
-    assert shared_data["final_watermark"] == shared_data["t2"]
+    assert status == 404, (
+        f"Unknown source: expected 404

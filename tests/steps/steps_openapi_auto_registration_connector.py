@@ -38,14 +38,29 @@ governance rules applied on top are preserved.
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
+import os
+import pathlib
+import tempfile
+import time
+from unittest.mock import MagicMock, patch, call
 
 import pytest
 from pytest_bdd import given, when, then, parsers, scenarios
 
-from provisa.openapi.loader import parse_text
+from provisa.openapi.loader import load_spec, parse_text
 from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, parse_spec as map_operations
 from provisa.openapi.register import _operation_id_to_alias
+from provisa.api_source.trino_cache import (
+    CacheLocation,
+    cache_location,
+    cache_table_name,
+    table_exists,
+    table_known_live,
+    _TABLE_EXISTS_CACHE,
+)
 
 scenarios("../features/REQ-601.feature")
 scenarios("../features/REQ-316.feature")
@@ -208,550 +223,70 @@ def _parse_and_register_spec(
         return virtual_tables, mutations
 
 
-# ---------------------------------------------------------------------------
-# REQ-601 Steps
-# ---------------------------------------------------------------------------
-@given(parsers.parse('an OpenAPI spec with operationId "{op_id}"'))
-def given_spec_with_operation_id(shared_data, op_id):
-    spec_text = f"""
-openapi: "3.0.0"
-info:
-  title: Pet Store API
-  version: "1.0.0"
-components:
-  schemas:
-    Pet:
-      type: object
-      properties:
-        id:
-          type: integer
-        name:
-          type: string
-        status:
-          type: string
-paths:
-  /pets/findByStatus:
-    get:
-      operationId: {op_id}
-      summary: Finds pets by status
-      responses:
-        "200":
-          description: ok
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Pet"
-"""
-    spec = parse_text(spec_text)
-    assert spec["openapi"] == "3.0.0"
+def _build_registry_from_spec(spec: dict) -> dict:
+    """Build a registry dict from a spec dict.
 
-    # Locate the operation we just declared and confirm its operationId.
-    get_op = spec["paths"]["/pets/findByStatus"]["get"]
-    assert get_op["operationId"] == op_id
-
-    shared_data["spec"] = spec
-    shared_data["operation_id"] = op_id
-    shared_data["path"] = "/pets/findByStatus"
+    Returns a dict keyed by operation_id with entries containing:
+      - 'descriptor': OpenAPIQuery or OpenAPIMutation
+      - 'kind': 'virtual_table' or 'mutation'
+      - 'governance_rules': list (empty by default, populated separately)
+    """
+    registry: dict[str, dict] = {}
+    virtual_tables, mutations = _parse_and_register_spec(spec)
+    for op_id, vt in virtual_tables.items():
+        registry[op_id] = {
+            "descriptor": vt,
+            "kind": "virtual_table",
+            "governance_rules": [],
+        }
+    for op_id, mut in mutations.items():
+        registry[op_id] = {
+            "descriptor": mut,
+            "kind": "mutation",
+            "governance_rules": [],
+        }
+    return registry
 
 
-@when("the spec is registered")
-def when_spec_registered(shared_data):
-    spec = shared_data["spec"]
-    registrations: dict = {}
-    mutations: dict = {}
+def _apply_governance_rules(registry: dict, rules: dict[str, list[str]]) -> dict:
+    """Apply governance rules to a registry.
 
-    for path, methods in spec.get("paths", {}).items():
-        for method, op in methods.items():
-            if not isinstance(op, dict):
-                continue
-            op_id = op.get("operationId")
-            if not op_id:
-                op_id = f"{method}_{path}"
-
-            if method.lower() == "get":
-                query = OpenAPIQuery(
-                    operation_id=op_id,
-                    path=path,
-                    method=method.upper(),
-                    summary=op.get("summary"),
-                )
-                alias = _operation_id_to_alias(op_id)
-                registrations[op_id] = {
-                    "descriptor": query,
-                    "alias": alias,
-                }
-            elif method.lower() in ("post", "put", "patch", "delete"):
-                # Extract input schema from requestBody
-                input_schema = None
-                request_body = op.get("requestBody", {})
-                if request_body:
-                    content = request_body.get("content", {})
-                    media = content.get(
-                        "application/json",
-                        content.get(next(iter(content), ""), {}),
-                    )
-                    raw_schema = media.get("schema")
-                    if raw_schema:
-                        if "$ref" in raw_schema:
-                            input_schema = _resolve_ref_from_spec(spec, raw_schema["$ref"])
-                        else:
-                            input_schema = raw_schema
-
-                # Extract response schema
-                response_schema = None
-                responses = op.get("responses", {})
-                for status_key in ("200", "201", "2xx", "default"):
-                    resp = responses.get(status_key)
-                    if not resp:
-                        continue
-                    content = resp.get("content", {})
-                    if not content:
-                        continue
-                    media = content.get(
-                        "application/json",
-                        content.get(next(iter(content), ""), {}),
-                    )
-                    raw_schema = media.get("schema")
-                    if raw_schema:
-                        if "$ref" in raw_schema:
-                            response_schema = _resolve_ref_from_spec(spec, raw_schema["$ref"])
-                        else:
-                            response_schema = raw_schema
-                        break
-
-                mutation = OpenAPIMutation(
-                    operation_id=op_id,
-                    path=path,
-                    method=method.upper(),
-                    summary=op.get("summary"),
-                    input_schema=input_schema,
-                    response_schema=response_schema,
-                )
-                mutations[op_id] = {
-                    "descriptor": mutation,
-                }
-
-    # For REQ-601 scenario the spec only has GET ops; ensure at least one was registered.
-    # For REQ-317 scenario the spec may only have non-GET ops.
-    has_gets = any(
-        method.lower() == "get"
-        for path, methods in spec.get("paths", {}).items()
-        for method in methods
-        if isinstance(methods.get(method), dict)
-    )
-    has_mutations = any(
-        method.lower() in ("post", "put", "patch", "delete")
-        for path, methods in spec.get("paths", {}).items()
-        for method in methods
-        if isinstance(methods.get(method), dict)
-    )
-
-    if has_gets:
-        assert registrations, "no GET operations were registered as virtual tables"
-    if has_mutations:
-        assert mutations, "no non-GET operations were registered as mutations"
-
-    shared_data["registrations"] = registrations
-    shared_data["mutations"] = mutations
+    *rules* maps operation_id -> list of rule strings.
+    Returns the mutated registry (in place, also returned for convenience).
+    """
+    for op_id, rule_list in rules.items():
+        if op_id in registry:
+            registry[op_id]["governance_rules"] = list(rule_list)
+    return registry
 
 
-@then(
-    parsers.parse('the virtual table alias is "{alias}" used as the consumer-facing GraphQL name')
-)
-def then_alias_is(shared_data, alias):
-    registrations = shared_data["registrations"]
-    op_id = shared_data["operation_id"]
+def _perform_spec_refresh(
+    old_registry: dict,
+    new_spec: dict,
+) -> dict:
+    """Simulate the on-demand spec refresh admin mutation.
 
-    assert op_id in registrations, f"operation {op_id} was not registered"
-    derived_alias = registrations[op_id]["alias"]
+    Builds a new registry from *new_spec*, then re-applies any governance rules
+    that were present in *old_registry* for the same operation IDs (preserving
+    governance rules).  New operations from the updated spec are added without
+    rules; operations removed from the spec are dropped.
 
-    # The verb segment is stripped and the noun singularized.
-    assert derived_alias == alias, (
-        f"expected alias {alias!r} for operationId {op_id!r}, got {derived_alias!r}"
-    )
+    Returns the refreshed registry.
+    """
+    new_registry = _build_registry_from_spec(new_spec)
 
-    # The alias is a valid consumer-facing GraphQL field name (snake_case, no verb).
-    assert derived_alias.replace("_", "").isalnum()
-    assert not derived_alias.startswith("find_")
-    assert "pets" not in derived_alias.split("_"), "noun was not singularized"
+    # Preserve governance rules for operations that still exist after refresh.
+    for op_id, old_entry in old_registry.items():
+        if op_id in new_registry and old_entry.get("governance_rules"):
+            new_registry[op_id]["governance_rules"] = list(old_entry["governance_rules"])
 
-    # Direct confirmation against the registration helper used by Provisa.
-    assert _operation_id_to_alias(op_id) == alias
+    return new_registry
 
 
 # ---------------------------------------------------------------------------
-# REQ-316 Steps
-# ---------------------------------------------------------------------------
-@given("an OpenAPI spec is registered")
-def given_openapi_spec_is_registered(shared_data):
-    """Build and register a representative OpenAPI 3.x spec with multiple GET
-    operations, path parameters, query parameters, and a non-GET operation to
-    confirm selective registration."""
-    spec_text = """
-openapi: "3.0.0"
-info:
-  title: Widget API
-  version: "1.0.0"
-components:
-  schemas:
-    Widget:
-      type: object
-      properties:
-        id:
-          type: integer
-        name:
-          type: string
-        colour:
-          type: string
-    WidgetPart:
-      type: object
-      properties:
-        part_id:
-          type: integer
-        description:
-          type: string
-paths:
-  /widgets:
-    get:
-      operationId: listWidgets
-      summary: List widgets
-      parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-        - name: colour
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: ok
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Widget"
-    post:
-      operationId: createWidget
-      summary: Create a widget
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Widget"
-      responses:
-        "200":
-          description: created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Widget"
-  /widgets/{id}:
-    get:
-      operationId: getWidget
-      summary: Get a single widget
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: ok
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Widget"
-    delete:
-      operationId: deleteWidget
-      summary: Delete a widget
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "204":
-          description: deleted
-  /widgets/{id}/parts:
-    get:
-      operationId: listWidgetParts
-      summary: List parts of a widget
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-        - name: active
-          in: query
-          schema:
-            type: boolean
-      responses:
-        "200":
-          description: ok
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/WidgetPart"
-"""
-    spec = parse_text(spec_text)
-    assert spec["openapi"] == "3.0.0", "spec must be valid OpenAPI 3.0"
-    shared_data["spec"] = spec
-
-
-@when("Provisa parses the spec")
-def when_provisa_parses_the_spec(shared_data):
-    """Use the Provisa mapper to extract all GET operations from the spec and
-    build OpenAPIQuery descriptors that represent virtual query tables."""
-    spec = shared_data["spec"]
-
-    # Use the official Provisa mapper when available; fall back to inline logic
-    # so the step works even if map_operations is not yet wired up in the
-    # importable module (progressive implementation pattern).
-    try:
-        queries, mutations = map_operations(spec)
-        virtual_tables = {q.operation_id: q for q in queries}
-    except Exception:
-        # Inline reference implementation so the step never silently passes
-        # on an empty result set.
-        virtual_tables: dict[str, OpenAPIQuery] = {}
-        for path, path_item in spec.get("paths", {}).items():
-            for method, operation in path_item.items():
-                if method.lower() != "get":
-                    continue
-                if not isinstance(operation, dict):
-                    continue
-
-                op_id = operation.get("operationId") or f"get_{path}"
-
-                # Collect path parameters.
-                path_params = []
-                for param in operation.get("parameters", []):
-                    if param.get("in") == "path":
-                        p_schema = param.get("schema", {})
-                        path_params.append(
-                            {"name": param["name"], "type": p_schema.get("type", "string")}
-                        )
-
-                # Collect query parameters.
-                query_params = []
-                for param in operation.get("parameters", []):
-                    if param.get("in") == "query":
-                        p_schema = param.get("schema", {})
-                        query_params.append(
-                            {"name": param["name"], "type": p_schema.get("type", "string")}
-                        )
-
-                # Resolve response schema from 200 / 2xx / default.
-                response_schema = None
-                is_list = False
-                responses = operation.get("responses", {})
-                raw_schema = None
-                for status_key in ("200", "2xx", "default"):
-                    resp = responses.get(status_key)
-                    if resp:
-                        content = resp.get("content", {})
-                        media = content.get(
-                            "application/json", content.get(next(iter(content), ""), {})
-                        )
-                        raw_schema = media.get("schema")
-                        if raw_schema:
-                            break
-
-                if raw_schema:
-
-                    def resolve_ref(ref_str: str) -> dict:
-                        parts = ref_str.lstrip("#/").split("/")
-                        node = spec
-                        for part in parts:
-                            node = node.get(part, {}) if isinstance(node, dict) else {}
-                        return node if isinstance(node, dict) else {}
-
-                    if raw_schema.get("type") == "array":
-                        is_list = True
-                        items = raw_schema.get("items", {})
-                        if "$ref" in items:
-                            response_schema = resolve_ref(items["$ref"])
-                        else:
-                            response_schema = items
-                    elif "$ref" in raw_schema:
-                        resolved = resolve_ref(raw_schema["$ref"])
-                        if resolved.get("type") == "array":
-                            is_list = True
-                            items = resolved.get("items", {})
-                            if "$ref" in items:
-                                response_schema = resolve_ref(items["$ref"])
-                            else:
-                                response_schema = items
-                        else:
-                            response_schema = resolved
-                    else:
-                        response_schema = raw_schema
-
-                virtual_tables[op_id] = OpenAPIQuery(
-                    operation_id=op_id,
-                    path=path,
-                    method="GET",
-                    summary=operation.get("summary"),
-                    path_params=path_params,
-                    query_params=query_params,
-                    response_schema=response_schema,
-                    is_list=is_list,
-                )
-
-    assert virtual_tables, "Provisa must produce at least one virtual query table from the spec"
-    shared_data["virtual_tables"] = virtual_tables
-
-
-@then(
-    "all GET operations are auto-registered as virtual query tables with path/query params as GraphQL arguments"
-)
-def then_get_operations_auto_registered(shared_data):
-    """Assert that every GET operation in the spec is represented as a virtual
-    query table with the correct path params, query params, and response schema."""
-    spec = shared_data["spec"]
-    virtual_tables: dict[str, OpenAPIQuery] = shared_data["virtual_tables"]
-
-    # 1. Collect the expected GET operations directly from the spec.
-    expected_get_ops: dict[str, dict] = {}
-    for path, path_item in spec.get("paths", {}).items():
-        for method, operation in path_item.items():
-            if method.lower() == "get" and isinstance(operation, dict):
-                op_id = operation.get("operationId") or f"get_{path}"
-                expected_get_ops[op_id] = {"path": path, "operation": operation}
-
-    assert expected_get_ops, "The test spec must contain at least one GET operation"
-
-    # 2. Verify non-GET operations (POST, DELETE) are NOT registered as virtual tables.
-    non_get_op_ids = set()
-    for path, path_item in spec.get("paths", {}).items():
-        for method, operation in path_item.items():
-            if method.lower() != "get" and isinstance(operation, dict):
-                op_id = operation.get("operationId") or f"{method}_{path}"
-                non_get_op_ids.add(op_id)
-
-    for non_get_id in non_get_op_ids:
-        assert non_get_id not in virtual_tables, (
-            f"Non-GET operation '{non_get_id}' must NOT be registered as a virtual query table"
-        )
-
-    # 3. For every expected GET operation, verify the registration is correct.
-    for op_id, info in expected_get_ops.items():
-        assert op_id in virtual_tables, (
-            f"GET operation '{op_id}' (path: {info['path']}) was not auto-registered as a virtual table"
-        )
-        table: OpenAPIQuery = virtual_tables[op_id]
-
-        # The descriptor must carry the correct path.
-        assert table.path == info["path"], (
-            f"Virtual table for '{op_id}' has wrong path: expected {info['path']!r}, got {table.path!r}"
-        )
-
-        # The method must be GET.
-        assert table.method.upper() == "GET", (
-            f"Virtual table '{op_id}' must have method GET, got {table.method!r}"
-        )
-
-        operation = info["operation"]
-        declared_params = operation.get("parameters", [])
-
-        # -- Path parameters --
-        declared_path_params = {p["name"] for p in declared_params if p.get("in") == "path"}
-        registered_path_param_names = {p["name"] for p in table.path_params}
-        assert declared_path_params == registered_path_param_names, (
-            f"Virtual table '{op_id}' path params mismatch: "
-            f"expected {sorted(declared_path_params)}, got {sorted(registered_path_param_names)}"
-        )
-
-        # -- Query parameters --
-        declared_query_params = {p["name"] for p in declared_params if p.get("in") == "query"}
-        registered_query_param_names = {p["name"] for p in table.query_params}
-        assert declared_query_params == registered_query_param_names, (
-            f"Virtual table '{op_id}' query params mismatch: "
-            f"expected {sorted(declared_query_params)}, got {sorted(registered_query_param_names)}"
-        )
-
-        # -- Parameter types are preserved --
-        for param in declared_params:
-            if param.get("in") not in ("path", "query"):
-                continue
-            param_list = table.path_params if param["in"] == "path" else table.query_params
-            registered_param = next((p for p in param_list if p["name"] == param["name"]), None)
-            assert registered_param is not None, (
-                f"Parameter '{param['name']}' not found in virtual table '{op_id}'"
-            )
-            expected_type = param.get("schema", {}).get("type", "string")
-            assert registered_param["type"] == expected_type, (
-                f"Parameter '{param['name']}' in '{op_id}' has type {registered_param['type']!r}, "
-                f"expected {expected_type!r}"
-            )
-
-        # -- Response schema determines column set --
-        # Every operation in our test spec has a 200 response with a schema.
-        responses = operation.get("responses", {})
-        has_response_schema = any(
-            resp.get("content", {}) for resp in responses.values() if isinstance(resp, dict)
-        )
-        if has_response_schema:
-            assert table.response_schema is not None, (
-                f"Virtual table '{op_id}' must have a response_schema derived from the 200 response"
-            )
-            # The response schema must describe an object (it may be the unwrapped item schema).
-            assert isinstance(table.response_schema, dict), (
-                f"response_schema for '{op_id}' must be a dict, got {type(table.response_schema)}"
-            )
-            # The schema must have properties (i.e. usable columns).
-            assert "properties" in table.response_schema, (
-                f"response_schema for '{op_id}' must contain 'properties' to define the column set; "
-                f"got keys: {list(table.response_schema.keys())}"
-            )
-            assert table.response_schema["properties"], (
-                f"response_schema 'properties' for '{op_id}' must not be empty"
-            )
-
-    # 4. Spot-check the specific operations from the test spec.
-
-    # listWidgets — array response, two query params, no path params.
-    assert "listWidgets" in virtual_tables
-    list_widgets = virtual_tables["listWidgets"]
-    assert list_widgets.is_list is True, "listWidgets should be flagged as a list response"
-    assert {p["name"] for p in list_widgets.query_params} == {"limit", "colour"}
-    assert list_widgets.path_params == []
-    assert "id" in list_widgets.response_schema["properties"]
-    assert "name" in list_widgets.response_schema["properties"]
-
-    # getWidget — single-object response, one path param, no query params.
-    assert "getWidget" in virtual_tables
-    get_widget = virtual_tables["getWidget"]
-    assert {p["name"] for p in get_widget.path_params} == {"id"}
-    assert get_widget.query_params == []
-    assert "properties" in get_widget.response_schema
-    assert "colour" in get_widget.response_schema["properties"]
-
-    # listWidgetParts — array response, one path param, one query param.
-    assert "listWidgetParts" in virtual_tables
-    list_parts = virtual_tables["listWidgetParts"]
-    assert list_parts.is_list is True, "listWidgetParts should be flagged as a list response"
-    assert {p["name"] for p in list_parts.path_params} == {"id"}
-    assert {p["name"] for p in list_parts.query_params} == {"active"}
-    assert "part_id" in list_parts.response_schema["properties"]
-    assert "description" in list_parts.response_schema["properties"]
-
-
-# ---------------------------------------------------------------------------
-# REQ-315 Steps
+# REQ-315 — static spec content used across steps
 # ---------------------------------------------------------------------------
 
-# Minimal OpenAPI 3.x spec used across all REQ-315 steps.
 _REQ315_SPEC_YAML = """\
 openapi: "3.0.0"
 info:
@@ -772,12 +307,12 @@ paths:
   /items:
     get:
       operationId: listItems
-      summary: List all inventory items
+      summary: List inventory items
       parameters:
-        - name: category
+        - name: limit
           in: query
           schema:
-            type: string
+            type: integer
       responses:
         "200":
           description: ok
@@ -787,10 +322,25 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Item"
+    post:
+      operationId: createItem
+      summary: Create an inventory item
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Item"
+      responses:
+        "200":
+          description: created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
   /items/{id}:
     get:
       operationId: getItem
-      summary: Get a single inventory item
+      summary: Get a single item
       parameters:
         - name: id
           in: path
@@ -806,483 +356,466 @@ paths:
                 $ref: "#/components/schemas/Item"
 """
 
-_REQ315_SPEC_JSON = json.dumps(
-    {
-        "openapi": "3.0.0",
-        "info": {"title": "Private Inventory API", "version": "1.0.0"},
-        "components": {
-            "schemas": {
-                "Item": {
-                    "type": "object",
-                    "properties": {
-                        "sku": {"type": "string"},
-                        "qty": {"type": "integer"},
-                    },
-                }
+_REQ315_SPEC_JSON_DICT = {
+    "openapi": "3.0.0",
+    "info": {"title": "Private Inventory API", "version": "1.0.0"},
+    "components": {
+        "schemas": {
+            "Item": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "sku": {"type": "string"},
+                    "quantity": {"type": "integer"},
+                },
             }
-        },
-        "paths": {
-            "/items": {
-                "get": {
-                    "operationId": "listItems",
-                    "summary": "List items",
-                    "responses": {
-                        "200": {
-                            "description": "ok",
-                            "content": {
-                                "application/json": {
-                                    "schema": {"$ref": "#/components/schemas/Item"}
+        }
+    },
+    "paths": {
+        "/items": {
+            "get": {
+                "operationId": "listItems",
+                "summary": "List inventory items",
+                "parameters": [
+                    {"name": "limit", "in": "query", "schema": {"type": "integer"}}
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/Item"},
                                 }
-                            },
+                            }
+                        },
+                    }
+                },
+            },
+            "post": {
+                "operationId": "createItem",
+                "summary": "Create an inventory item",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/Item"}
                         }
-                    },
-                }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "created",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Item"}
+                            }
+                        },
+                    }
+                },
+            },
+        },
+        "/items/{id}": {
+            "get": {
+                "operationId": "getItem",
+                "summary": "Get a single item",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Item"}
+                            }
+                        },
+                    }
+                },
             }
         },
-    }
-)
+    },
+}
+
+
+def _assert_spec_treated_identically_to_fetched(
+    stored_spec: dict,
+    stored_path: pathlib.Path,
+) -> None:
+    """Core assertion logic shared between YAML and JSON upload paths.
+
+    Verifies that a manually uploaded/authored spec stored at *stored_path*:
+      1. Can be round-tripped through ``load_spec`` identically to a spec
+         fetched from a URL.
+      2. Produces identical virtual tables and mutations when parsed by the
+         Provisa mapper (i.e. it is treated identically to a fetched spec).
+      3. Contains the expected operations from the Private Inventory API.
+    """
+    # 1. load_spec must be able to load the file from disk.
+    loaded = load_spec(str(stored_path))
+    assert loaded["openapi"] == "3.0.0", (
+        f"Loaded spec must declare openapi 3.0.0, got {loaded.get('openapi')!r}"
+    )
+    assert loaded["info"]["title"] == "Private Inventory API"
+    assert "paths" in loaded
+    assert loaded["paths"], "paths must not be empty after loading"
+
+    # 2. The stored spec must parse to the same virtual tables / mutations as
+    #    the reference dict (simulating what a fetched spec would produce).
+    ref_virtual_tables, ref_mutations = _parse_and_register_spec(stored_spec)
+    loaded_virtual_tables, loaded_mutations = _parse_and_register_spec(loaded)
+
+    assert set(loaded_virtual_tables.keys()) == set(ref_virtual_tables.keys()), (
+        f"Virtual table operation IDs differ after round-trip load: "
+        f"expected {sorted(ref_virtual_tables)}, got {sorted(loaded_virtual_tables)}"
+    )
+    assert set(loaded_mutations.keys()) == set(ref_mutations.keys()), (
+        f"Mutation operation IDs differ after round-trip load: "
+        f"expected {sorted(ref_mutations)}, got {sorted(loaded_mutations)}"
+    )
+
+    # 3. Spot-check key operations.
+    assert "listItems" in loaded_virtual_tables, "listItems GET must be a virtual table"
+    assert "getItem" in loaded_virtual_tables, "getItem GET must be a virtual table"
+    assert "createItem" in loaded_mutations, "createItem POST must be a mutation"
+
+    list_items: OpenAPIQuery = loaded_virtual_tables["listItems"]
+    assert list_items.is_list is True, "listItems must be flagged as a list response"
+    assert list_items.response_schema is not None
+    assert "properties" in list_items.response_schema
+    assert "sku" in list_items.response_schema["properties"]
+    assert "quantity" in list_items.response_schema["properties"]
+
+    get_item: OpenAPIQuery = loaded_virtual_tables["getItem"]
+    assert {p["name"] for p in get_item.path_params} == {"id"}
+    assert get_item.response_schema is not None
+    assert "sku" in get_item.response_schema.get("properties", {})
+
+    create_item: OpenAPIMutation = loaded_mutations["createItem"]
+    assert create_item.method == "POST"
+    assert create_item.input_schema is not None
+    assert "properties" in create_item.input_schema
+    assert "sku" in create_item.input_schema["properties"]
+
+
+# ---------------------------------------------------------------------------
+# REQ-315 Steps
+# ---------------------------------------------------------------------------
 
 
 @given("an API with no public spec endpoint")
 def given_api_with_no_public_spec_endpoint(shared_data):
-    """Record that the target API has no discoverable spec endpoint.
+    """Establish the context of an API that has no auto-discoverable spec."""
+    api_base_url = "https://internal.example.com/inventory"
+    shared_data["api_base_url"] = api_base_url
+    shared_data["has_public_spec"] = False
 
-    The steward must supply the spec manually (YAML or JSON text upload).
-    """
-    shared_data["has_public_spec_endpoint"] = False
-    shared_data["api_base_url"] = "https://internal.example.com/api/v1"
-    assert not shared_data["has_public_spec_endpoint"]
+    candidate_spec_paths = [
+        "/nonexistent/openapi.yaml",
+        "/nonexistent/openapi.json",
+        "/nonexistent/swagger.json",
+    ]
+    for candidate in candidate_spec_paths:
+        with pytest.raises(FileNotFoundError):
+            load_spec(candidate)
+
+    shared_data["stored_spec_path"] = None
+    shared_data["uploaded_spec"] = None
 
 
 @when("a steward manually uploads a YAML/JSON OpenAPI 3.x spec")
-def when_steward_manually_uploads_spec(shared_data):
-    """Parse both the YAML and JSON flavours via parse_text and store results."""
-    yaml_spec = parse_text(_REQ315_SPEC_YAML)
-    json_spec = parse_text(_REQ315_SPEC_JSON)
+def when_steward_manually_uploads_spec(shared_data, tmp_path):
+    """Simulate a steward uploading a hand-authored OpenAPI 3.x spec."""
+    yaml_file = tmp_path / "inventory_api.yaml"
+    yaml_file.write_text(_REQ315_SPEC_YAML, encoding="utf-8")
+    assert yaml_file.exists(), "YAML spec file must be written to local storage"
 
-    assert yaml_spec["openapi"] == "3.0.0", "YAML spec must parse to a valid OpenAPI 3.0 dict"
-    assert json_spec["openapi"] == "3.0.0", "JSON spec must parse to a valid OpenAPI 3.0 dict"
+    yaml_spec = load_spec(str(yaml_file))
+    assert yaml_spec is not None
+    assert yaml_spec.get("openapi") == "3.0.0", (
+        f"Manually uploaded YAML spec must declare openapi 3.0.0; got {yaml_spec.get('openapi')!r}"
+    )
 
-    shared_data["uploaded_specs"] = {"yaml": yaml_spec, "json": json_spec}
+    json_content = json.dumps(_REQ315_SPEC_JSON_DICT, indent=2)
+    json_file = tmp_path / "inventory_api.json"
+    json_file.write_text(json_content, encoding="utf-8")
+    assert json_file.exists(), "JSON spec file must be written to local storage"
+
+    json_spec = load_spec(str(json_file))
+    assert json_spec is not None
+    assert json_spec.get("openapi") == "3.0.0", (
+        f"Manually uploaded JSON spec must declare openapi 3.0.0; got {json_spec.get('openapi')!r}"
+    )
+
+    parsed_from_yaml_text = parse_text(_REQ315_SPEC_YAML)
+    assert parsed_from_yaml_text.get("openapi") == "3.0.0", (
+        "parse_text must handle inline YAML authored in the admin UI"
+    )
+
+    parsed_from_json_text = parse_text(json.dumps(_REQ315_SPEC_JSON_DICT))
+    assert parsed_from_json_text.get("openapi") == "3.0.0", (
+        "parse_text must handle inline JSON authored in the admin UI"
+    )
+
+    shared_data["yaml_file"] = yaml_file
+    shared_data["json_file"] = json_file
+    shared_data["yaml_spec"] = yaml_spec
+    shared_data["json_spec"] = json_spec
+    shared_data["stored_spec_path"] = str(yaml_file)
+    shared_data["uploaded_spec"] = yaml_spec
 
 
 @then("it is stored locally and treated identically to a fetched spec")
 def then_stored_locally_and_treated_identically(shared_data):
-    """Verify both manually uploaded specs are processed through the same pipeline
-    as a fetched spec — producing identical virtual table descriptors.
-    """
-    uploaded = shared_data["uploaded_specs"]
+    """Assert that the manually uploaded spec is stored and treated identically."""
+    yaml_file: pathlib.Path = shared_data["yaml_file"]
+    json_file: pathlib.Path = shared_data["json_file"]
+    yaml_spec: dict = shared_data["yaml_spec"]
+    json_spec: dict = shared_data["json_spec"]
 
-    for fmt, spec in uploaded.items():
-        queries, mutations = map_operations(spec)
-        assert queries, f"{fmt} spec produced no virtual tables"
+    assert yaml_file.exists(), (
+        "Manually uploaded YAML spec must be persisted to local storage"
+    )
+    _assert_spec_treated_identically_to_fetched(yaml_spec, yaml_file)
 
-        op_ids = {q.operation_id for q in queries}
-        assert "listItems" in op_ids, f"{fmt}: listItems not registered"
+    assert json_file.exists(), (
+        "Manually uploaded JSON spec must be persisted to local storage"
+    )
+    _assert_spec_treated_identically_to_fetched(json_spec, json_file)
 
-        list_items = next(q for q in queries if q.operation_id == "listItems")
-        assert list_items.path == "/items"
-        assert list_items.method.upper() == "GET"
-        assert list_items.response_schema is not None
-        assert "properties" in list_items.response_schema
+    yaml_vt, yaml_mut = _parse_and_register_spec(yaml_spec)
+    json_vt, json_mut = _parse_and_register_spec(json_spec)
+
+    assert set(yaml_vt.keys()) == set(json_vt.keys()), (
+        f"YAML and JSON uploads must produce the same virtual table operation IDs; "
+        f"YAML: {sorted(yaml_vt)}, JSON: {sorted(json_vt)}"
+    )
+    assert set(yaml_mut.keys()) == set(json_mut.keys()), (
+        f"YAML and JSON uploads must produce the same mutation operation IDs; "
+        f"YAML: {sorted(yaml_mut)}, JSON: {sorted(json_mut)}"
+    )
+
+    yaml_registry = _build_registry_from_spec(yaml_spec)
+    json_registry = _build_registry_from_spec(json_spec)
+
+    assert set(yaml_registry.keys()) == set(json_registry.keys()), (
+        "Both upload formats must produce the same governance registry entries"
+    )
+
+    for op_id, entry in yaml_registry.items():
+        assert entry["kind"] in ("virtual_table", "mutation"), (
+            f"Registry entry for {op_id!r} must have a valid kind"
+        )
+        assert isinstance(entry["governance_rules"], list), (
+            f"Registry entry for {op_id!r} must have a governance_rules list"
+        )
+        assert entry["descriptor"] is not None, (
+            f"Registry entry for {op_id!r} must have a non-None descriptor"
+        )
+
+    assert yaml_registry["listItems"]["kind"] == "virtual_table"
+    assert yaml_registry["getItem"]["kind"] == "virtual_table"
+    assert yaml_registry["createItem"]["kind"] == "mutation"
+
+    fetched_simulation_spec = copy.deepcopy(yaml_spec)
+    fetched_registry = _build_registry_from_spec(fetched_simulation_spec)
+
+    assert set(yaml_registry.keys()) == set(fetched_registry.keys()), (
+        "Manually stored spec registry must match registry built from a simulated fetched spec"
+    )
+    for op_id in yaml_registry:
+        assert yaml_registry[op_id]["kind"] == fetched_registry[op_id]["kind"], (
+            f"Kind mismatch for {op_id!r}: "
+            f"stored={yaml_registry[op_id]['kind']!r}, "
+            f"fetched={fetched_registry[op_id]['kind']!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
-# REQ-317 Steps
+# REQ-316 — static spec used for auto-registration tests
 # ---------------------------------------------------------------------------
 
-_REQ317_SPEC_YAML = """\
-openapi: "3.0.0"
-info:
-  title: Order API
-  version: "1.0.0"
-components:
-  schemas:
-    Order:
-      type: object
-      properties:
-        id:
-          type: integer
-        product:
-          type: string
-        quantity:
-          type: integer
-    OrderStatus:
-      type: object
-      properties:
-        order_id:
-          type: integer
-        status:
-          type: string
-paths:
-  /orders:
-    post:
-      operationId: createOrder
-      summary: Create a new order
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Order"
-      responses:
-        "200":
-          description: created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Order"
-  /orders/{id}:
-    put:
-      operationId: updateOrder
-      summary: Update an order
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Order"
-      responses:
-        "200":
-          description: updated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Order"
-    patch:
-      operationId: patchOrder
-      summary: Partially update an order
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Order"
-      responses:
-        "200":
-          description: patched
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OrderStatus"
-    delete:
-      operationId: deleteOrder
-      summary: Delete an order
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "204":
-          description: deleted
-"""
+_REQ316_SPEC: dict = {
+    "openapi": "3.0.0",
+    "info": {"title": "Order Management API", "version": "2.0.0"},
+    "components": {
+        "schemas": {
+            "Order": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "customer_id": {"type": "integer"},
+                    "status": {"type": "string"},
+                    "total": {"type": "number"},
+                },
+            },
+            "OrderItem": {
+                "type": "object",
+                "properties": {
+                    "item_id": {"type": "integer"},
+                    "quantity": {"type": "integer"},
+                    "price": {"type": "number"},
+                },
+            },
+        }
+    },
+    "paths": {
+        "/orders": {
+            "get": {
+                "operationId": "listOrders",
+                "summary": "List all orders",
+                "parameters": [
+                    {"name": "status", "in": "query", "schema": {"type": "string"}},
+                    {"name": "limit", "in": "query", "schema": {"type": "integer"}},
+                    {"name": "offset", "in": "query", "schema": {"type": "integer"}},
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/Order"},
+                                }
+                            }
+                        },
+                    }
+                },
+            },
+            "post": {
+                "operationId": "createOrder",
+                "summary": "Create an order",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/Order"}
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "created",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Order"}
+                            }
+                        },
+                    }
+                },
+            },
+        },
+        "/orders/{order_id}": {
+            "get": {
+                "operationId": "getOrder",
+                "summary": "Get a single order by ID",
+                "parameters": [
+                    {
+                        "name": "order_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    },
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Order"},
+                            }
+                        },
+                    }
+                },
+            },
+            "put": {
+                "operationId": "updateOrder",
+                "summary": "Update an order",
+                "parameters": [
+                    {
+                        "name": "order_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    },
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/Order"}
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "updated",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Order"}
+                            }
+                        },
+                    }
+                },
+            },
+        },
+        "/orders/{order_id}/items": {
+            "get": {
+                "operationId": "listOrderItems",
+                "summary": "List items for an order",
+                "parameters": [
+                    {
+                        "name": "order_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    },
+                    {"name": "include_prices", "in": "query", "schema": {"type": "boolean"}},
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/OrderItem"},
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    },
+}
 
 
-@given("an OpenAPI spec with POST/PUT/PATCH/DELETE operations")
-def given_spec_with_mutation_operations(shared_data):
-    spec = parse_text(_REQ317_SPEC_YAML)
-    assert spec["openapi"] == "3.0.0"
+# ---------------------------------------------------------------------------
+# REQ-316 Steps
+# ---------------------------------------------------------------------------
 
-    non_get_methods = set()
-    for path_item in spec.get("paths", {}).values():
+
+@given("an OpenAPI spec is registered")
+def given_openapi_spec_is_registered(shared_data):
+    """Register the REQ-316 Order Management API spec into shared_data."""
+    spec = copy.deepcopy(_REQ316_SPEC)
+
+    # Verify the spec is structurally valid before storing it
+    assert spec.get("openapi") == "3.0.0", (
+        f"Spec must declare openapi 3.0.0, got {spec.get('openapi')!r}"
+    )
+    assert "paths" in spec and spec["paths"], "Spec must have a non-empty paths section"
+
+    # Enumerate the GET operations the spec declares
+    expected_get_ops = set()
+    for path, path_item in spec["paths"].items():
         for method in path_item:
-            if method.lower() in ("post", "put", "patch", "delete"):
-                non_get_methods.add(method.lower())
-
-    assert non_get_methods, "Spec must contain at least one non-GET operation"
-    shared_data["spec"] = spec
-
-
-@then(
-    "those operations are auto-registered as tracked functions with request body properties as mutation input arguments"
-)
-def then_non_get_operations_registered_as_mutations(shared_data):
-    spec = shared_data["spec"]
-    raw_mutations = shared_data["mutations"]
-
-    # when_spec_registered stores mutations as {"descriptor": OpenAPIMutation(...)}
-    def _unwrap(v):
-        return v["descriptor"] if isinstance(v, dict) and "descriptor" in v else v
-
-    mutations_map: dict[str, OpenAPIMutation] = {k: _unwrap(v) for k, v in raw_mutations.items()}
-
-    expected_mutation_ids = set()
-    for path, path_item in spec.get("paths", {}).items():
-        for method, operation in path_item.items():
-            if method.lower() in ("post", "put", "patch", "delete") and isinstance(operation, dict):
-                op_id = operation.get("operationId") or f"{method}_{path}"
-                expected_mutation_ids.add(op_id)
-
-    assert expected_mutation_ids, "Spec must declare at least one non-GET operation"
-
-    for op_id in expected_mutation_ids:
-        assert op_id in mutations_map, (
-            f"Non-GET operation '{op_id}' was not registered as a tracked function"
-        )
-        mut: OpenAPIMutation = mutations_map[op_id]
-        assert mut.method.upper() in ("POST", "PUT", "PATCH", "DELETE"), (
-            f"Tracked function '{op_id}' has unexpected HTTP method: {mut.method}"
-        )
-
-    assert "createOrder" in mutations_map
-    create_order = mutations_map["createOrder"]
-    assert create_order.input_schema is not None, "createOrder must have an input_schema"
-    assert "properties" in create_order.input_schema, (
-        "createOrder input_schema must expose requestBody properties"
-    )
-    assert "product" in create_order.input_schema["properties"]
-    assert "quantity" in create_order.input_schema["properties"]
-
-    assert "updateOrder" in mutations_map
-    update_order = mutations_map["updateOrder"]
-    assert update_order.input_schema is not None, "updateOrder must have an input_schema"
-    assert "properties" in update_order.input_schema
-
-    assert "deleteOrder" in mutations_map
-    delete_order = mutations_map["deleteOrder"]
-    assert delete_order.method.upper() == "DELETE"
-
-
-# ---------------------------------------------------------------------------
-# REQ-318 Steps
-# ---------------------------------------------------------------------------
-
-import hashlib
-from unittest.mock import MagicMock
-
-
-def _cache_key(source_id: str, path: str, args: dict) -> str:
-    """Replicate Provisa's SHA-256 cache key: source_id + path + sorted args."""
-    raw = f"{source_id}:{path}:{json.dumps(args, sort_keys=True)}"
-    return hashlib.sha256(raw.encode()).hexdigest()
-
-
-@given("a GET operation result cached in Trino Iceberg on S3")
-def given_get_result_cached_in_trino(shared_data):
-    """Simulate a pre-populated Trino Iceberg cache for a GET operation."""
-    source_id = "test-source-001"
-    op_path = "/items"
-    args = {"category": "electronics"}
-    cache_key = _cache_key(source_id, op_path, args)
-
-    cached_rows = [{"id": 1, "sku": "ELEC-001", "quantity": 42}]
-
-    mock_trino = MagicMock()
-    mock_trino.execute.return_value = cached_rows
-    mock_trino.table_exists.return_value = True
-
-    shared_data["source_id"] = source_id
-    shared_data["op_path"] = op_path
-    shared_data["args"] = args
-    shared_data["cache_key"] = cache_key
-    shared_data["cached_rows"] = cached_rows
-    shared_data["mock_trino"] = mock_trino
-    shared_data["upstream_call_count"] = 0
-
-    assert mock_trino.table_exists(f"results.api_cache.{cache_key}"), (
-        "cache table must appear present before the repeat query"
-    )
-
-
-@when("the same query with identical args is issued within TTL")
-def when_same_query_issued_within_ttl(shared_data):
-    """Issue the identical query again and route through the cache check."""
-    source_id = shared_data["source_id"]
-    op_path = shared_data["op_path"]
-    args = shared_data["args"]
-    expected_key = shared_data["cache_key"]
-    mock_trino = shared_data["mock_trino"]
-
-    derived_key = _cache_key(source_id, op_path, args)
-    assert derived_key == expected_key, "cache key must be deterministic for identical inputs"
-
-    cache_table = f"results.api_cache.{derived_key}"
-    if mock_trino.table_exists(cache_table):
-        result = mock_trino.execute(f"SELECT * FROM {cache_table}")
-    else:
-        shared_data["upstream_call_count"] += 1
-        result = []
-
-    shared_data["query_result"] = result
-
-
-@then("results are served from Trino directly with zero upstream REST calls")
-def then_results_served_from_trino_no_upstream_calls(shared_data):
-    result = shared_data["query_result"]
-    upstream_calls = shared_data["upstream_call_count"]
-    mock_trino = shared_data["mock_trino"]
-
-    assert upstream_calls == 0, (
-        f"Expected zero upstream REST calls within TTL, got {upstream_calls}"
-    )
-    assert result == shared_data["cached_rows"], (
-        "Cache hit must return the rows that were materialized into Trino"
-    )
-    mock_trino.execute.assert_called_once()
-    mock_trino.table_exists.assert_called()
-
-
-# ---------------------------------------------------------------------------
-# REQ-321 Steps
-# ---------------------------------------------------------------------------
-
-_REQ321_SPEC_V1_YAML = """\
-openapi: "3.0.0"
-info:
-  title: Catalog API
-  version: "1.0.0"
-components:
-  schemas:
-    Product:
-      type: object
-      properties:
-        id:
-          type: integer
-        name:
-          type: string
-paths:
-  /products:
-    get:
-      operationId: listProducts
-      summary: List products
-      responses:
-        "200":
-          description: ok
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Product"
-"""
-
-_REQ321_SPEC_V2_YAML = """\
-openapi: "3.0.0"
-info:
-  title: Catalog API
-  version: "2.0.0"
-components:
-  schemas:
-    Product:
-      type: object
-      properties:
-        id:
-          type: integer
-        name:
-          type: string
-        description:
-          type: string
-        price:
-          type: number
-paths:
-  /products:
-    get:
-      operationId: listProducts
-      summary: List products (expanded)
-      responses:
-        "200":
-          description: ok
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Product"
-  /products/{id}:
-    get:
-      operationId: getProduct
-      summary: Get single product
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: ok
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Product"
-"""
-
-
-@given("an OpenAPI spec that has been updated upstream")
-def given_spec_updated_upstream(shared_data):
-    """Register the v1 spec and record a governance rule, then make v2 available."""
-    spec_v1 = parse_text(_REQ321_SPEC_V1_YAML)
-    assert spec_v1["openapi"] == "3.0.0"
-
-    queries_v1, _ = map_operations(spec_v1)
-    assert queries_v1, "v1 spec must produce at least one virtual table"
-
-    governance_rules = {
-        "listProducts": {"visible_to": ["analysts", "admins"], "row_filter": "active = true"}
-    }
-
-    shared_data["spec_v1"] = spec_v1
-    shared_data["spec_v2"] = parse_text(_REQ321_SPEC_V2_YAML)
-    shared_data["registrations_v1"] = {q.operation_id: q for q in queries_v1}
-    shared_data["governance_rules"] = governance_rules
-
-
-@when("a steward triggers the spec refresh admin mutation")
-def when_steward_triggers_spec_refresh(shared_data):
-    """Simulate the admin refresh mutation: re-parse the updated spec and upsert registrations."""
-    spec_v2 = shared_data["spec_v2"]
-    queries_v2, mutations_v2 = map_operations(spec_v2)
-
-    assert queries_v2, "v2 spec must produce virtual tables after refresh"
-
-    new_registrations = {q.operation_id: q for q in queries_v2}
-    shared_data["registrations_v2"] = new_registrations
-    shared_data["mutations_v2"] = {m.operation_id: m for m in mutations_v2}
-
-
-@then("registrations are updated and governance rules applied on top are preserved")
-def then_registrations_updated_governance_preserved(shared_data):
-    regs_v1 = shared_data["registrations_v1"]
-    regs_v2 = shared_data["registrations_v2"]
-    governance_rules = shared_data["governance_rules"]
-
-    assert "listProducts" in regs_v1, "listProducts must exist in v1 registrations"
-    assert "listProducts" in regs_v2, "listProducts must persist after refresh"
-    assert "getProduct" in regs_v2, "new operation getProduct must appear after refresh"
-    assert "getProduct" not in regs_v1, "getProduct must not have existed before refresh"
-
-    list_v1 = regs_v1["listProducts"]
-    list_v2 = regs_v2["listProducts"]
-    assert list_v2.response_schema is not None
-    assert "properties" in list_v2.response_schema
-    v2_props = list_v2.response_schema["properties"]
-    assert "description" in v2_props, "v2 schema must add 'description' column"
-    assert "price" in v2_props, "v2 schema must add 'price' column"
-
-    v1_props = list_v1.response_schema["properties"] if list_v1.response_schema else {}
-    assert "description" not in v1_props, "v1 schema must not have had 'description'"
-
-    for op_id, rule in governance_rules.items():
-        assert op_id in regs_v2, (
-            f"Operation '{op_id}' with governance rules must still be registered after refresh"
-        )
-        preserved_rule = governance_rules[op_id]
-        assert preserved_rule["visible_to"] == rule["visible_to"], (
-            f"Governance visible_to for '{op_id}' must be preserved after refresh"
-        )
-        assert preserved_rule["row_filter"] == rule["row_filter"], (
-            f"Governance row_filter for '{op_id}' must be preserved after refresh"
-        )
+            if method.lower() == "get":
+                op = path_item[method]
+                op_id = op.get("operationId") or f"{method}_{path}"
+                expected_get_ops.

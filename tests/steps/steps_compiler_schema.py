@@ -14,6 +14,9 @@ from typing import Any
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 
+import pytest
+from pytest_bdd import given, when, then
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -574,7 +577,7 @@ def _simulate_introspection_query(schema: Any) -> dict:
     This mirrors what GraphiQL and Voyager do on each page load: they send
     a full introspection document to the server, which resolves it against
     the current in-memory schema.  The result here is produced synchronously
-    using graphql-core's ``graphql_sync`` so no HTTP server is needed.
+    using graphql-core's ``graphql_sync`` so no GraphQL server is needed.
     """
     from graphql import graphql_sync, build_introspection_query
 
@@ -830,3 +833,8 @@ def _make_graphql_default_schema_input() -> SchemaInput:
         role=role,
         domains=domains,
     )
+
+
+# ---------------------------------------------------------------------------
+# Helpers for REQ-009: Single-statement SQL compilation
+#

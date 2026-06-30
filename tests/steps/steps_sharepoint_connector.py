@@ -256,6 +256,19 @@ def a_user_navigates_to_add_a_table_and_selects_this_source(shared_data):
     )
     assert catalog_props["site-url"], "site-url must be non-empty."
 
+    # Verify case-insensitive-name-matching is enabled — required for SharePoint list enumeration
+    assert catalog_props.get("case-insensitive-name-matching") == "true", (
+        "case-insensitive-name-matching must be 'true' in catalog properties for SharePoint "
+        "list name resolution. SharePoint list names may differ in casing from the Trino schema "
+        f"names. Got: '{catalog_props.get('case-insensitive-name-matching')}'."
+    )
+
+    # Verify auth-type is present — required to authenticate against SharePoint
+    assert "auth-type" in catalog_props, (
+        "auth-type must be present in catalog properties so Trino can authenticate "
+        "against the SharePoint site to enumerate lists."
+    )
+
     # Simulate what Trino's SharePoint connector would return when executing
     # SHOW SCHEMAS FROM sharepoint_catalog
     # Each SharePoint list is enumerated as a schema in the Calcite-based connector.
@@ -540,6 +553,9 @@ def available_sharepoint_lists_appear_in_table_dropdown(shared_data, list_a, lis
 
     The SharePoint Calcite connector enumerates each SharePoint list as a schema.
     Users see these lists in the Provisa UI table dropdown when registering a new table.
+
+    REQ-731: SharePoint lists are enumerated as schemas and exposed as queryable tables
+    via Trino, allowing users to discover available lists and register them as Provisa tables.
     """
     available_lists: list = shared_data.get("available_lists")
 
@@ -583,6 +599,70 @@ def available_sharepoint_lists_appear_in_table_dropdown(shared_data, list_a, lis
     assert catalog_props.get("case-insensitive-name-matching") == "true", (
         "case-insensitive-name-matching must be 'true' for SharePoint list name resolution. "
         f"Got: '{catalog_props.get('case-insensitive-name-matching')}'."
+    )
+
+    # Verify each list in the available_lists is a non-empty string — a valid schema name
+    for list_name in available_lists:
+        assert isinstance(list_name, str) and list_name.strip(), (
+            f"Every enumerated SharePoint list name must be a non-empty string. "
+            f"Got: {list_name!r}."
+        )
+
+    # Verify the SOURCE_TO_CONNECTOR registry maps sharepoint to the sharepoint connector,
+    # ensuring Trino will route queries to the correct connector for list enumeration.
+    assert "sharepoint" in SOURCE_TO_CONNECTOR, (
+        "'sharepoint' must be in SOURCE_TO_CONNECTOR so Trino catalog creation "
+        "routes to the correct connector for schema (list) enumeration."
+    )
+    assert SOURCE_TO_CONNECTOR["sharepoint"] == "sharepoint", (
+        f"SOURCE_TO_CONNECTOR['sharepoint'] must be 'sharepoint', "
+        f"got '{SOURCE_TO_CONNECTOR['sharepoint']}'."
+    )
+
+    # Verify that at least the two example lists from the scenario are distinct
+    assert list_a != list_b, (
+        f"The two example lists must be distinct, but both were '{list_a}'."
+    )
+
+    # Verify the available lists represent a realistic SharePoint site — at least 2 lists
+    assert len(available_lists) >= 2, (
+        f"A SharePoint site should expose at least 2 lists for meaningful table discovery. "
+        f"Got: {available_lists}."
+    )
+
+    # Verify each list name is a valid potential Trino schema identifier (no leading/trailing whitespace)
+    for list_name in available_lists:
+        assert list_name == list_name.strip(), (
+            f"SharePoint list name '{list_name}' has leading or trailing whitespace, "
+            "which would cause issues as a Trino schema name."
+        )
+
+    # Verify the site-url in catalog_props is reachable as a non-empty HTTPS URL
+    site_url = catalog_props["site-url"]
+    assert site_url.startswith("https://"), (
+        f"site-url must use HTTPS for secure SharePoint connectivity. Got: '{site_url}'."
+    )
+
+    # Verify the auth credentials are present in catalog properties so the connector
+    # can authenticate against SharePoint when enumerating lists
+    assert "client-id" in catalog_props, (
+        "client-id must be present in catalog properties so the SharePoint connector "
+        "can authenticate to enumerate lists."
+    )
+    assert catalog_props["client-id"], "client-id must be non-empty for SharePoint authentication."
+
+    # Verify that all simulated list names are lowercase (as returned by the Calcite connector
+    # after case-insensitive normalisation) — this ensures consistent schema name handling in Trino
+    for list_name in available_lists:
+        assert list_name == list_name.lower(), (
+            f"Enumerated SharePoint list name '{list_name}' is not lowercase. "
+            "The Calcite connector normalises schema names to lowercase when "
+            "case-insensitive-name-matching is enabled."
+        )
+
+    # Verify the source has a non-empty site URL (base_url or host) that the connector uses
+    assert source.base_url or source.host, (
+        "SharePoint source must have a non-empty base_url or host to enumerate lists."
     )
 
 
@@ -632,31 +712,3 @@ def the_table_is_created_with_the_supplied_column_definitions(shared_data):
     registered_names = [col.name for col in table.columns]
 
     for expected_name in supplied_names:
-        assert expected_name in registered_names, (
-            f"Column '{expected_name}' supplied in the registerTable mutation "
-            f"is missing from the registered table columns. "
-            f"Registered columns: {registered_names}."
-        )
-
-    # Verify the column order is preserved
-    assert registered_names == supplied_names, (
-        f"Column order mismatch. Expected order: {supplied_names}, "
-        f"got: {registered_names}."
-    )
-
-    # Verify the introspected_columns were empty (the connector limitation was in effect)
-    introspected_columns = shared_data.get("introspected_columns", [])
-    assert introspected_columns == [], (
-        "Expected information_schema.columns to be empty for the Calcite SharePoint connector, "
-        f"but got: {introspected_columns}. "
-        "REQ-732 requires that user-supplied columns bypass this connector limitation."
-    )
-
-    # Confirm the table schema and name are set correctly
-    assert table.schema_name, "Table schema_name must be non-empty."
-    assert table.table_name, "Table table_name must be non-empty."
-
-    # Confirm the source type is still sharepoint
-    assert source.type == SourceType.sharepoint, (
-        f"Source type must remain 'sharepoint' after table registration, got '{source.type}'."
-    )

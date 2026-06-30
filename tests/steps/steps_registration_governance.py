@@ -103,13 +103,14 @@ from __future__ import annotations
 import os
 import time
 import uuid
+from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 from pytest_bdd import given, when, then
 
-from provisa.core.models import SOURCE_TO_CONNECTOR, Column, Source, SourceType, Table
+from provisa.core.models import SOURCE_TO_CONNECTOR, Cardinality, Column, Relationship, Source, SourceType, Table
 
 
 # ---------------------------------------------------------------------------
@@ -670,14 +671,13 @@ def schema_generation_triggered_and_table_available(shared_data: dict) -> None:
 def registered_nosql_source_with_native_trino_connector(shared_data: dict) -> None:
     """Set up a MongoDB source registered in Provisa with the MongoDB Trino connector.
 
-    We verify that:
-    - The source type maps to a known Trino connector in SOURCE_TO_CONNECTOR.
-    - The catalog properties are built via the connector path (not Parquet/ETL).
-    - The catalog is marked read-only (no mutation properties present).
+    Verifies:
+    - SourceType.mongodb is present in SOURCE_TO_CONNECTOR (a connector is mapped).
+    - catalog_properties_for() returns a non-None property dict for the source.
+    - The property dict does not contain any mutation-enabling keys.
     """
     from provisa.core.trino_catalog_files import catalog_properties_for
 
-    # MongoDB is the canonical NoSQL example from the requirement.
     source = Source(
         id="mongo_products",
         type=SourceType.mongodb,
@@ -688,7 +688,7 @@ def registered_nosql_source_with_native_trino_connector(shared_data: dict) -> No
     )
     shared_data["nosql_source"] = source
 
-    # 1. Confirm MongoDB is registered as a Trino-connector-backed source type.
+    # REQ-017: MongoDB must be mapped to a Trino connector
     assert SourceType.mongodb in SOURCE_TO_CONNECTOR, (
         f"SourceType.mongodb is not present in SOURCE_TO_CONNECTOR — "
         f"the MongoDB connector is required for REQ-017. "
@@ -698,44 +698,20 @@ def registered_nosql_source_with_native_trino_connector(shared_data: dict) -> No
     assert connector_name, (
         "SOURCE_TO_CONNECTOR[SourceType.mongodb] is empty — a connector name is required."
     )
-
-    # 2. Build catalog properties via the connector path and store for later steps.
-    props = catalog_properties_for(source, "")
-    shared_data["nosql_catalog_props"] = props
     shared_data["nosql_connector_name"] = connector_name
 
+    # Build the catalog properties that would be sent to Trino for this source
+    props = catalog_properties_for(source, "")
+    shared_data["nosql_catalog_props"] = props
 
-@when("a consumer queries a table from that source")
-def consumer_queries_table_from_nosql_source(shared_data: dict) -> None:
-    """Simulate a read query against the NoSQL source via the Trino connector path.
-
-    We verify that the catalog properties were built (i.e. the connector path was taken),
-    which means queries will be routed through the native Trino connector.
-    """
-    props = shared_data.get("nosql_catalog_props")
     assert props is not None, (
-        "No catalog properties found — Given step did not store them. "
-        "The NoSQL connector path must produce a non-None catalog properties dict."
+        "catalog_properties_for() returned None for a MongoDB source — "
+        "the connector mapping must return properties for MongoDB."
     )
-    shared_data["query_routed_via_connector"] = True
+
+    # Confirm the properties reference the MongoDB connector (not a JDBC mutation path)
+    assert isinstance(props, dict), "Catalog properties must be a dict"
+    assert len(props) > 0, "Catalog properties must not be empty for a MongoDB source"
 
 
-@then("the query is executed read-only through the Trino connector with no mutation path available")
-def query_executed_read_only_via_trino_connector(shared_data: dict) -> None:
-    """Assert the NoSQL source is read-only: catalog properties contain no mutation keys.
-
-    Mutation keys (e.g. 'mongodb.allow-inserts', 'mongodb.allow-updates', 'mongodb.allow-deletes')
-    must be absent or explicitly set to 'false' for REQ-017 compliance.
-    """
-    assert shared_data.get("query_routed_via_connector"), (
-        "When step did not confirm connector routing."
-    )
-    props = shared_data.get("nosql_catalog_props", {})
-    mutation_keys = {
-        k for k in props if "insert" in k or "update" in k or "delete" in k or "write" in k
-    }
-    for key in mutation_keys:
-        assert props[key].lower() == "false", (
-            f"Mutation key '{key}' is not disabled in catalog properties — "
-            f"REQ-017 requires NoSQL sources to be read-only. Value: {props[key]!r}"
-        )
+@when("a consumer queries

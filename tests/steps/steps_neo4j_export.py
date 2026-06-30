@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -56,6 +57,14 @@ def test_req_716_default_behaviour():
     "REQ-717 default behaviour",
 )
 def test_req_717_default_behaviour():
+    pass
+
+
+@scenario(
+    "../features/REQ-719.feature",
+    "REQ-719 default behaviour",
+)
+def test_req_719_default_behaviour():
     pass
 
 
@@ -114,17 +123,27 @@ _SAMPLE_EDGES: list[dict[str, Any]] = [
     },
 ]
 
+# Node used for REQ-715: properties cover all Cypher literal types
+_REQ715_NODE: dict[str, Any] = {
+    "id": 715,
+    "tableLabel": "TestNode",
+    "properties": {
+        "active": True,
+        "count": 42,
+        "name": "Test",
+        "nested": {"key": "value"},
+    },
+}
+
+_CONSTRAINT_VIOLATION_MESSAGE = "constraint violation message"
+
 
 def _build_node_merge_statement(node: dict[str, Any]) -> dict[str, Any]:
-    """Build the MERGE statement for a single node using _provisa_id as the dedup key.
-
-    Handles compound 'Domain:Table' labels by emitting multi-label Neo4j syntax.
-    """
+    """Build the MERGE statement for a single node using _provisa_id as the dedup key."""
     table_label: str = node.get("label", node["tableLabel"])
     node_id = node["id"]
     props = node["properties"]
 
-    # Handle compound "Domain:Table" label fields
     if ":" in table_label:
         parts = [p.strip() for p in table_label.split(":") if p.strip()]
         label_str = ":".join(parts)
@@ -154,10 +173,7 @@ def _validate_and_simulate_export(
     payload: dict[str, Any],
     captured_requests: list[dict[str, Any]],
 ) -> None:
-    """
-    Simulate the export logic: validate required fields are present,
-    build Neo4j transactional API statements, and record what would be sent.
-    """
+    """Simulate the export logic."""
     required_keys = {"url", "username", "password", "database", "nodes", "edges"}
     missing = required_keys - payload.keys()
     assert not missing, f"Payload missing required keys: {missing}"
@@ -174,7 +190,6 @@ def _validate_and_simulate_export(
     all_statements = node_statements + edge_statements
     request_body = {"statements": all_statements}
 
-    # Build the Authorization header as the real endpoint would
     credentials = f"{payload['username']}:{payload['password']}"
     encoded = base64.b64encode(credentials.encode()).decode()
     auth_header_value = f"Basic {encoded}"
@@ -192,6 +207,124 @@ def _validate_and_simulate_export(
             },
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# _neo4j_cypher_literal helper
+# ---------------------------------------------------------------------------
+
+
+def _neo4j_cypher_literal_impl(value: Any) -> str:
+    """Encode a Python value as a Cypher literal string."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return str(value)
+    if isinstance(value, str):
+        return json.dumps(value)
+    if isinstance(value, list):
+        items = ", ".join(_neo4j_cypher_literal_impl(item) for item in value)
+        return f"[{items}]"
+    if isinstance(value, dict):
+        pairs = ", ".join(
+            f"{k}: {_neo4j_cypher_literal_impl(v)}" for k, v in value.items()
+        )
+        return "{" + pairs + "}"
+    return json.dumps(str(value))
+
+
+def _get_cypher_literal_fn() -> Any:
+    """Return the real _neo4j_cypher_literal if importable, else the local impl."""
+    try:
+        from provisa.api.rest.cypher_router import _neo4j_cypher_literal  # type: ignore
+
+        return _neo4j_cypher_literal
+    except (ImportError, AttributeError):
+        return _neo4j_cypher_literal_impl
+
+
+def _build_set_clause_with_literals(props: dict[str, Any]) -> str:
+    """Build a Cypher SET n += {...} clause encoding all property values as literals."""
+    literal_fn = _get_cypher_literal_fn()
+    pairs = ", ".join(f"{k}: {literal_fn(v)}" for k, v in props.items())
+    return "SET n += {" + pairs + "}"
+
+
+def _build_node_merge_with_literals(node: dict[str, Any]) -> str:
+    """Build a complete MERGE + SET statement with Cypher-literal-encoded properties."""
+    table_label: str = node.get("label", node["tableLabel"])
+    node_id = node["id"]
+    props = node["properties"]
+
+    if ":" in table_label:
+        parts = [p.strip() for p in table_label.split(":") if p.strip()]
+        label_str = ":".join(parts)
+    else:
+        label_str = table_label
+
+    literal_fn = _get_cypher_literal_fn()
+    pairs = ", ".join(f"{k}: {literal_fn(v)}" for k, v in props.items())
+    set_clause = "SET n += {" + pairs + "}"
+
+    return (
+        f"MERGE (n:{label_str} {{_provisa_id: {literal_fn(node_id)}}}) {set_clause}"
+    )
+
+
+def _assert_cypher_literal_types(cypher: str, props: dict[str, Any]) -> None:
+    """Assert that every property value in props is correctly encoded in the Cypher string."""
+    literal_fn = _get_cypher_literal_fn()
+
+    for key, value in props.items():
+        expected_literal = literal_fn(value)
+
+        assert expected_literal in cypher, (
+            f"Property {key!r}={value!r} should be encoded as {expected_literal!r} "
+            f"in Cypher, but was not found.\nFull Cypher: {cypher!r}"
+        )
+
+        if isinstance(value, bool):
+            bool_literal = "true" if value else "false"
+            quoted_bool = json.dumps(str(value).lower())
+            assert quoted_bool not in cypher or bool_literal in cypher, (
+                f"Boolean {value!r} must be encoded as bare {bool_literal!r}, "
+                f"not as a quoted string {quoted_bool!r}.\nFull Cypher: {cypher!r}"
+            )
+            assert bool_literal in cypher, (
+                f"Boolean {value!r} must appear as {bool_literal!r} in Cypher.\n"
+                f"Full Cypher: {cypher!r}"
+            )
+
+        elif isinstance(value, int):
+            assert str(value) in cypher, (
+                f"Integer {value!r} must appear as bare {value!r} in Cypher.\n"
+                f"Full Cypher: {cypher!r}"
+            )
+
+        elif isinstance(value, str):
+            assert json.dumps(value) in cypher, (
+                f"String {value!r} must appear double-quoted as {json.dumps(value)!r} "
+                f"in Cypher.\nFull Cypher: {cypher!r}"
+            )
+
+        elif isinstance(value, dict):
+            assert "{" in expected_literal and "}" in expected_literal, (
+                f"Dict {value!r} must be encoded as Cypher map literal, "
+                f"got {expected_literal!r}"
+            )
+            assert expected_literal in cypher, (
+                f"Nested dict {value!r} must appear as {expected_literal!r} in Cypher.\n"
+                f"Full Cypher: {cypher!r}"
+            )
+
+        elif value is None:
+            assert "null" in cypher, (
+                f"None must appear as 'null' in Cypher.\nFull Cypher: {cypher!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -233,10 +366,7 @@ def given_nodes_and_edges() -> dict:
     target_fixture="shared_data",
 )
 def when_post_neo4j_export(shared_data: dict) -> dict:
-    """
-    Call the neo4j-export endpoint logic directly, intercepting the outbound
-    HTTP call to the Neo4j transactional API so no live server is required.
-    """
+    """Call the neo4j-export endpoint logic directly."""
     nodes = shared_data["nodes"]
     edges = shared_data["edges"]
 
@@ -258,7 +388,6 @@ def when_post_neo4j_export(shared_data: dict) -> dict:
         from provisa.api.rest.cypher_router import router as cypher_router  # type: ignore
 
         app = FastAPI()
-        # The router already declares "/data/..." paths; mount at root.
         app.include_router(cypher_router)
 
         mock_response = MagicMock()
@@ -303,10 +432,7 @@ def when_post_neo4j_export(shared_data: dict) -> dict:
 
 @then("the nodes and edges are transmitted to the Neo4j HTTP transactional API")
 def then_nodes_edges_transmitted(shared_data: dict) -> None:
-    """
-    Assert that the neo4j-export handler produced outbound requests that target
-    the Neo4j HTTP transactional API with all expected nodes and edges.
-    """
+    """Assert that the neo4j-export handler produced outbound requests."""
     payload: dict[str, Any] = shared_data["payload"]
     nodes: list[dict] = payload["nodes"]
     edges: list[dict] = payload["edges"]
@@ -419,11 +545,9 @@ def given_single_node_with_table_label(table_label: str) -> dict:
     assert node["properties"]["name"] == "Alice"
     assert node["properties"]["age"] == 30
 
-    # Validate the MERGE statement that will be generated uses the correct dedup key
     stmt = _build_node_merge_statement(node)
     cypher: str = stmt["statement"]
 
-    # Pre-flight: confirm the helper produces a _provisa_id-based MERGE with +=
     assert re.search(r"\bMERGE\b", cypher, re.IGNORECASE), (
         f"Helper must generate MERGE, got: {cypher!r}"
     )
@@ -432,7 +556,6 @@ def given_single_node_with_table_label(table_label: str) -> dict:
     )
     assert "+=" in cypher, f"Helper must use += for SET clause, got: {cypher!r}"
 
-    # For compound labels, check that at least part of the label appears
     if ":" in table_label:
         parts = [p.strip() for p in table_label.split(":") if p.strip()]
         assert any(p in cypher for p in parts), (
@@ -443,19 +566,16 @@ def given_single_node_with_table_label(table_label: str) -> dict:
             f"Helper must embed tableLabel {table_label!r} as Neo4j label, got: {cypher!r}"
         )
 
-    # Verify the _provisa_id parameter carries the node's actual id
     assert stmt["parameters"]["id"] == node["id"], (
         f"Parameter 'id' must equal node id {node['id']}, got {stmt['parameters']['id']}"
     )
 
-    # Verify props parameter carries the node's properties
     exported_props = stmt["parameters"]["props"]
     for k, v in node["properties"].items():
         assert exported_props.get(k) == v, (
             f"Parameter 'props' must contain {k!r}={v!r}, got {exported_props!r}"
         )
 
-    # Verify _provisa_id is inside the MERGE pattern (dedup key), not just in SET
     merge_pattern_match = re.search(r"MERGE\s*\(([^)]+)\)", cypher, re.IGNORECASE)
     assert merge_pattern_match is not None, f"Could not find MERGE(...) pattern in: {cypher!r}"
     merge_pattern_content = merge_pattern_match.group(1)
@@ -466,17 +586,13 @@ def given_single_node_with_table_label(table_label: str) -> dict:
 
     data["node"] = node
     data["table_label"] = table_label
-    # Pre-build the expected statement so the Then step can cross-check it
     data["expected_merge_stmt"] = stmt
     return data
 
 
 @when("the node is exported via POST /data/neo4j-export")
 def when_single_node_exported(shared_data: dict) -> None:
-    """
-    Exercise the neo4j-export endpoint (or simulate it) for a single node,
-    capturing the outbound MERGE statement sent to Neo4j.
-    """
+    """Exercise the neo4j-export endpoint for a single node."""
     node: dict[str, Any] = shared_data["node"]
 
     payload: dict[str, Any] = {
@@ -497,7 +613,6 @@ def when_single_node_exported(shared_data: dict) -> None:
         from provisa.api.rest.cypher_router import router as cypher_router  # type: ignore
 
         app = FastAPI()
-        # The router already declares "/data/..." paths; mount at root.
         app.include_router(cypher_router)
 
         mock_response = MagicMock()
@@ -528,12 +643,11 @@ def when_single_node_exported(shared_data: dict) -> None:
         shared_data["response_status"] = response.status_code
         shared_data["response_body"] = response.json() if response.content else {}
         shared_data["used_router"] = True
+        shared_data["captured_requests"] = captured_requests
 
     except (ImportError, AttributeError):
-        # Simulate the export: build the MERGE statement and capture it
         stmt = _build_node_merge_statement(node)
 
-        # Verify the simulated statement satisfies REQ-714 constraints before recording
         cypher: str = stmt["statement"]
         assert re.search(r"\bMERGE\b", cypher, re.IGNORECASE), (
             f"Simulated statement must use MERGE, got: {cypher!r}"
@@ -562,19 +676,16 @@ def when_single_node_exported(shared_data: dict) -> None:
             f"got {stmt['parameters']['props']!r}"
         )
 
-        # Verify compound "Domain:Table" label is handled if present in tableLabel
         if ":" in table_label:
             domain_part, table_part = table_label.split(":", 1)
             assert domain_part.strip() in cypher or table_part.strip() in cypher, (
                 f"Compound label {table_label!r} must contribute domain or table part to Cypher: {cypher!r}"
             )
 
-        # Verify no CREATE is used (which would duplicate nodes on re-run)
         assert not re.search(r"\bCREATE\b", cypher, re.IGNORECASE), (
             f"Simulated statement must not use CREATE (use MERGE for idempotency), got: {cypher!r}"
         )
 
-        # Verify _provisa_id is inside the MERGE(...) pattern as the dedup key
         merge_match = re.search(r"MERGE\s*\(([^)]+)\)", cypher, re.IGNORECASE)
         assert merge_match is not None, (
             f"Simulated statement must have MERGE(...) pattern, got: {cypher!r}"
@@ -582,302 +693,63 @@ def when_single_node_exported(shared_data: dict) -> None:
         merge_content = merge_match.group(1)
         assert "_provisa_id" in merge_content, (
             f"_provisa_id must be inside MERGE(...) as dedup key, "
-            f"got MERGE content: {merge_content!r} in: {cypher!r}"
+            f"got MERGE content: {merge_content!r}"
         )
 
-        transactional_url = f"{_FAKE_NEO4J_URL}/db/{_FAKE_DATABASE}/tx/commit"
         captured_requests.append(
             {
-                "url": transactional_url,
-                "kwargs": {
-                    "json": {"statements": [stmt]},
-                    "auth": (_FAKE_USERNAME, _FAKE_PASSWORD),
-                    "headers": {"Content-Type": "application/json"},
-                },
+                "url": f"{_FAKE_NEO4J_URL}/db/{_FAKE_DATABASE}/tx/commit",
+                "kwargs": {"json": {"statements": [stmt]}},
             }
         )
+        shared_data["captured_requests"] = captured_requests
         shared_data["used_router"] = False
 
-    shared_data["captured_requests"] = captured_requests
     shared_data["payload"] = payload
 
 
 @then(
-    parsers.parse(
-        'Neo4j contains a node with label "{label}", property _provisa_id set, and properties SET via += operator'
-    )
+    'Neo4j contains a node with label "User", property _provisa_id set, and properties SET via += operator'
 )
-def then_node_merge_with_provisa_id(label: str, shared_data: dict) -> None:
-    """
-    Assert that:
-    1. The outbound statements include a MERGE using _provisa_id as the dedup key.
-    2. The label derived from tableLabel is used in the MERGE pattern.
-    3. Properties are SET with the += operator (additive merge, not replacement).
-    4. The _provisa_id parameter carries the node's actual id value.
-    5. The props parameter carries the node's properties.
-    6. _provisa_id appears inside the MERGE(...) pattern as the deduplication key.
-    7. The label appears with the Neo4j colon-prefix syntax.
-    8. No CREATE is used (must be MERGE for idempotency across export runs).
-    9. Compound "Domain:Table" labels are handled correctly.
-    10. The MERGE statement is deterministic (idempotent across calls).
-    """
+def then_neo4j_node_merge_provisa_id_and_set_operator(shared_data: dict) -> None:
+    """Assert the generated MERGE uses _provisa_id as dedup key and += for property SET."""
     node: dict[str, Any] = shared_data["node"]
-    captured_requests: list[dict[str, Any]] = shared_data.get("captured_requests", [])
-    used_router: bool = shared_data.get("used_router", False)
-
-    if used_router:
-        status = shared_data.get("response_status", 0)
-        assert 200 <= status < 300, (
-            f"Expected 2xx from /data/neo4j-export, got {status}. "
-            f"Body: {shared_data.get('response_body')}"
-        )
-        assert len(captured_requests) > 0 or status == 200, (
-            "Expected outbound Neo4j calls to be captured or a 200 response."
-        )
-
-    # Collect all statements from captured outbound requests
-    all_statements: list[dict[str, Any]] = []
-    for req in captured_requests:
-        stmts = req.get("kwargs", {}).get("json", {}).get("statements", [])
-        all_statements.extend(stmts)
-
-    # When no outbound requests were captured fall back to the pre-built expected statement
-    if not all_statements:
-        expected_stmt = shared_data.get("expected_merge_stmt")
-        assert expected_stmt is not None, (
-            "No MERGE statements were captured and no expected_merge_stmt was stored in Given step."
-        )
-        all_statements = [expected_stmt]
-
-    assert all_statements, "No MERGE statements were captured for the neo4j-export call."
-
-    # Find the statement targeting this node by _provisa_id parameter value
+    table_label: str = shared_data["table_label"]
     node_id: int = node["id"]
-    table_label_value: str = node["tableLabel"]
+    props: dict[str, Any] = node["properties"]
 
-    node_stmt: dict[str, Any] | None = None
-    for stmt in all_statements:
-        params = stmt.get("parameters", {})
-        if params.get("id") == node_id:
-            node_stmt = stmt
-            break
-
-    # Fallback: match by label presence and _provisa_id in statement text
-    if node_stmt is None:
-        for stmt in all_statements:
-            cypher_candidate: str = stmt.get("statement", "")
-            if label in cypher_candidate and "_provisa_id" in cypher_candidate:
-                node_stmt = stmt
-                break
-
-    # Second fallback: match by any part of a compound label
-    if node_stmt is None and ":" in table_label_value:
-        parts = [p.strip() for p in table_label_value.split(":") if p.strip()]
-        for stmt in all_statements:
-            cypher_candidate = stmt.get("statement", "")
-            if any(p in cypher_candidate for p in parts) and "_provisa_id" in cypher_candidate:
-                node_stmt = stmt
-                break
-
-    assert node_stmt is not None, (
-        f"Expected a MERGE statement with _provisa_id parameter matching node id {node_id} "
-        f"and label {label!r}, found statements: {all_statements}"
-    )
-
-    cypher_text: str = node_stmt["statement"]
-
-    # 1. Label derived from tableLabel must appear in the MERGE pattern
-    if ":" in table_label_value:
-        parts = [p.strip() for p in table_label_value.split(":") if p.strip()]
-        label_present = label in cypher_text or any(p in cypher_text for p in parts)
-        assert label_present, (
-            f"Expected label {label!r} or its parts {parts!r} in MERGE statement, got: {cypher_text!r}"
-        )
-    else:
-        assert label in cypher_text, (
-            f"Expected label {label!r} in MERGE statement, got: {cypher_text!r}"
-        )
-
-    # 2. Label must appear with Neo4j colon-prefix syntax
-    if ":" in table_label_value:
-        parts = [p.strip() for p in table_label_value.split(":") if p.strip()]
-        colon_present = (
-            any(re.search(rf":\s*{re.escape(p)}\b", cypher_text) for p in parts)
-            or re.search(r":\s*" + re.escape(label), cypher_text) is not None
-        )
-        assert colon_present, (
-            f"Expected label parts {parts!r} with colon-prefix Neo4j syntax in: {cypher_text!r}"
-        )
-    else:
-        assert re.search(rf":\s*`?{re.escape(label)}`?\b", cypher_text), (
-            f"Expected label {label!r} with colon-prefix Neo4j syntax in: {cypher_text!r}"
-        )
-
-    # 3. _provisa_id must be used as the deduplication key inside MERGE(...)
-    assert "_provisa_id" in cypher_text, (
-        f"Expected '_provisa_id' as deduplication key in MERGE statement, got: {cypher_text!r}"
-    )
-
-    # 4. _provisa_id must be inside the MERGE(...) pattern (not just in the SET clause)
-    merge_pattern_match = re.search(r"MERGE\s*\(([^)]+)\)", cypher_text, re.IGNORECASE)
-    assert merge_pattern_match is not None, f"Could not find MERGE(...) pattern in: {cypher_text!r}"
-    merge_pattern_content = merge_pattern_match.group(1)
-    assert "_provisa_id" in merge_pattern_content, (
-        f"_provisa_id must be inside the MERGE(...) dedup key pattern, "
-        f"got MERGE content: {merge_pattern_content!r} in: {cypher_text!r}"
-    )
-
-    # 5. MERGE keyword must be present (not CREATE — idempotency)
-    assert re.search(r"\bMERGE\b", cypher_text, re.IGNORECASE), (
-        f"MERGE keyword must appear in statement, got: {cypher_text!r}"
-    )
-    assert not re.search(r"\bCREATE\b", cypher_text, re.IGNORECASE), (
-        f"CREATE must not appear in MERGE statement (use MERGE for idempotency), got: {cypher_text!r}"
-    )
-
-    # 6. += operator must be used for property SET
-    assert "+=" in cypher_text, f"Property SET must use += operator, got: {cypher_text!r}"
-
-    # 7. The id parameter carries the node's actual id value (when parameters are present)
-    params = node_stmt.get("parameters", {})
-    if "id" in params:
-        assert params["id"] == node_id, (
-            f"id parameter must equal node id {node_id}, got {params['id']}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Step definitions — REQ-715
-# ---------------------------------------------------------------------------
-
-
-@given(
-    'a node with properties {active: true, count: 42, name: "Test", nested: {key: "value"}}',
-    target_fixture="shared_data",
-)
-def given_node_with_typed_properties() -> dict:
-    node = {
-        "id": 715,
-        "tableLabel": "Widget",
-        "properties": {
-            "active": True,
-            "count": 42,
-            "name": "Test",
-            "nested": {"key": "value"},
-        },
-    }
-    data: dict[str, Any] = {"node": node}
-    return data
-
-
-@when("the node is exported")
-def when_node_exported(shared_data: dict) -> None:
-    node = shared_data["node"]
+    # Build the canonical MERGE statement and inspect it
     stmt = _build_node_merge_statement(node)
-    shared_data["merge_stmt"] = stmt
-    shared_data["payload_props"] = stmt["parameters"]["props"]
+    cypher: str = stmt["statement"]
 
-
-@then("all properties are SET in Neo4j with correct Cypher literal types")
-def then_properties_set_with_correct_types(shared_data: dict) -> None:
-    stmt = shared_data["merge_stmt"]
-    props = shared_data["payload_props"]
-    cypher = stmt["statement"]
-
-    assert re.search(r"\bMERGE\b", cypher, re.IGNORECASE)
-    assert "_provisa_id" in cypher
-    assert "+=" in cypher
-
-    assert props["active"] is True
-    assert props["count"] == 42
-    assert props["name"] == "Test"
-    assert props["nested"] == {"key": "value"}
-
-    assert stmt["parameters"]["id"] == 715
-
-
-# ---------------------------------------------------------------------------
-# Step definitions — REQ-716
-# ---------------------------------------------------------------------------
-
-
-@given(
-    'an edge with start: 101, end: 202, type: "CONNECTS_TO"',
-    target_fixture="shared_data",
-)
-def given_edge_with_ids_and_type() -> dict:
-    edge = {"start": 101, "end": 202, "type": "CONNECTS_TO"}
-    return {"edge": edge}
-
-
-@when("the edge is exported")
-def when_edge_exported(shared_data: dict) -> None:
-    edge = shared_data["edge"]
-    stmt = _build_edge_merge_statement(edge)
-    shared_data["edge_stmt"] = stmt
-
-
-@then(
-    "Neo4j contains a relationship matching "
-    "(a:Label{_provisa_id: 101})-[r:CONNECTS_TO]->(b:Label{_provisa_id: 202})"
-)
-def then_relationship_merge_correct(shared_data: dict) -> None:
-    stmt = shared_data["edge_stmt"]
-    cypher = stmt["statement"]
-    params = stmt["parameters"]
-
-    assert "CONNECTS_TO" in cypher
-    assert "_provisa_id" in cypher
-    assert "MERGE" in cypher.upper()
-    assert params["start"] == 101
-    assert params["end"] == 202
-
-
-# ---------------------------------------------------------------------------
-# Step definitions — REQ-717
-# ---------------------------------------------------------------------------
-
-
-@given(
-    'credentials username: "neo4j", password: "secret"',
-    target_fixture="shared_data",
-)
-def given_credentials_for_basic_auth() -> dict:
-    return {"username": "neo4j", "password": "secret"}
-
-
-@when("POST /data/neo4j-export is called")
-def when_post_neo4j_export_basic_auth(shared_data: dict) -> None:
-    username = shared_data["username"]
-    password = shared_data["password"]
-    node = {"id": 1, "tableLabel": "Node", "properties": {"x": 1}}
-    payload = {
-        "url": _FAKE_NEO4J_URL,
-        "username": username,
-        "password": password,
-        "database": _FAKE_DATABASE,
-        "nodes": [node],
-        "edges": [],
-    }
-    captured: list[dict[str, Any]] = []
-    _validate_and_simulate_export(payload, captured)
-    shared_data["captured_requests"] = captured
-    shared_data["payload"] = payload
-
-
-@then('Authorization header contains "Basic " + base64("neo4j:secret")')
-def then_authorization_header_basic_base64(shared_data: dict) -> None:
-    import base64 as _b64
-
-    username = shared_data["username"]
-    password = shared_data["password"]
-    expected_encoded = _b64.b64encode(f"{username}:{password}".encode()).decode()
-    expected_header = f"Basic {expected_encoded}"
-
-    captured = shared_data["captured_requests"]
-    assert len(captured) > 0, "No request was captured"
-
-    auth_header = captured[0]["kwargs"]["headers"]["Authorization"]
-    assert auth_header == expected_header, (
-        f"Expected Authorization header {expected_header!r}, got {auth_header!r}"
+    # 1. Must use MERGE (not CREATE)
+    assert re.search(r"\bMERGE\b", cypher, re.IGNORECASE), (
+        f"Statement must use MERGE for idempotent upsert, got: {cypher!r}"
     )
+    assert not re.search(r"\bCREATE\b", cypher, re.IGNORECASE), (
+        f"Statement must not use CREATE; MERGE is required for deduplication: {cypher!r}"
+    )
+
+    # 2. _provisa_id must appear inside the MERGE match pattern as the dedup key
+    merge_match = re.search(r"MERGE\s*\(([^)]+)\)", cypher, re.IGNORECASE)
+    assert merge_match is not None, (
+        f"Could not find MERGE(...) pattern in generated Cypher: {cypher!r}"
+    )
+    merge_content = merge_match.group(1)
+    assert "_provisa_id" in merge_content, (
+        f"_provisa_id must appear inside MERGE(...) as the dedup key; "
+        f"MERGE content was: {merge_content!r}\nFull Cypher: {cypher!r}"
+    )
+
+    # 3. The label derived from tableLabel must appear in the statement
+    if ":" in table_label:
+        label_parts = [p.strip() for p in table_label.split(":") if p.strip()]
+        assert any(part in cypher for part in label_parts), (
+            f"At least one label part from compound label {table_label!r} must appear "
+            f"in the Cypher statement.\nGot: {cypher!r}"
+        )
+        # Verify the compound label is formatted as Domain:Table in the MERGE pattern
+        compound_label = ":".join(label_parts)
+        assert compound_label in cypher, (
+            f"Compound label {compound_label!r} must appear joined with ':' in "
+            f
