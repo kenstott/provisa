@@ -80,18 +80,31 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
     file_chunk = getattr(state, "otel_compact_file_chunk", 50)
     trino_conn = state.trino_conn
 
+    loop = asyncio.get_event_loop()
     for signal in ("logs", "metrics", "traces"):
-        await asyncio.to_thread(
-            _compact_signal,
-            signal,
-            target,
-            s3_endpoint,
-            access_key,
-            secret_key,
-            otel_bucket,
-            file_chunk,
-            trino_conn,
-        )
+        if loop.is_closed() or not loop.is_running():
+            logger.warning("compact_otel: event loop shutting down, skipping %s", signal)
+            return
+        try:
+            await asyncio.to_thread(
+                _compact_signal,
+                signal,
+                target,
+                s3_endpoint,
+                access_key,
+                secret_key,
+                otel_bucket,
+                file_chunk,
+                trino_conn,
+            )
+        except asyncio.CancelledError:
+            logger.warning("compact_otel: cancelled during shutdown, skipping %s", signal)
+            return
+        except RuntimeError as e:
+            if "shutdown" in str(e).lower() or "closed" in str(e).lower():
+                logger.warning("compact_otel: executor shutting down, skipping %s", signal)
+                return
+            raise
 
 
 def _compact_signal(

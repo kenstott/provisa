@@ -181,7 +181,7 @@ def _ordered_filter_fields(scalar: GraphQLScalarType) -> dict[str, GraphQLInputF
 StringFilter = GraphQLInputObjectType(
     "StringFilter",
     lambda: {
-        **_filter_fields(GraphQLString),
+        **_ordered_filter_fields(GraphQLString),
         "like": GraphQLInputField(GraphQLString),
     },
 )

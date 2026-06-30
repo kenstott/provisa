@@ -3241,7 +3241,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     """App lifespan: load config and build schemas at startup."""
     import logging
 
-    _log = logging.getLogger(__name__)
+    _log = logging.getLogger("uvicorn.error")
     state.schema_boot_id = uuid.uuid4().hex
     try:
         await _load_and_build()
