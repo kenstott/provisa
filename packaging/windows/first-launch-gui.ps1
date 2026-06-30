@@ -363,7 +363,7 @@ $btnInstall.Add_Click({
         }
         Log 'Federation Engine installed.'
       } else {
-        Log "Federation Engine: $VBoxManage"
+        Log 'Federation Engine: ready.'
       }
 
       # Check federation driver is loaded
@@ -500,11 +500,11 @@ $btnInstall.Add_Click({
           $req                  = [System.Net.WebRequest]::Create($uri)
           $req.Method           = 'POST'
           $req.ContentType      = 'application/x-tar'
-          $req.SendChunked      = $true
+          $req.ContentLength    = $fs.Length
           $req.Timeout          = -1
           $req.ReadWriteTimeout = -1
           $reqStream = $req.GetRequestStream()
-          $fs.CopyTo($reqStream)
+          $fs.CopyTo($reqStream, 1MB)
           $reqStream.Close()
           $resp   = $req.GetResponse()
           $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
