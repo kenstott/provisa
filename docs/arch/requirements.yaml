@@ -3636,6 +3636,7 @@
   - tests/integration/test_introspect.py
   - tests/unit/test_core_registration.py
   - tests/unit/test_native_introspect.py
+  - tests/unit/test_compiler_introspect.py
   since: 2026-01
   scenario: 'Given a source type with a Trino connector configured
 
@@ -6163,12 +6164,16 @@
   category: Registration & Governance
   priority: SHOULD
   type: structural
-  description: File-based sources (`csv`, `parquet`, `sqlite`) use the `path` config field to specify
-    the local file path instead of `host`/`port` connection parameters.
-  use_case: File path config for file-based sources lets stewards register local files as governed tables
-    using the same config structure as network-connected sources.
+  description: File-based sources (`csv`, `parquet`, `sqlite`) use the `path` config field instead of
+    `host`/`port` connection parameters. The `path` may be a local filesystem path or an fsspec-supported
+    remote object-storage URL (`s3://`, `ftp://`, `sftp://`); the crawler detects fsspec URIs via
+    `fsspec.core.url_to_fs` and walks them the same way as local directories.
+  use_case: File path config for file-based sources lets stewards register local files and remote
+    object-storage files as governed tables using the same config structure as network-connected sources.
   code:
   - provisa/core/models.py
+  - provisa/file_source/source.py
+  - provisa/file_source/crawler.py
   tests:
   - tests/integration/test_schema_gen.py
   - tests/unit/test_core_registration.py
@@ -11231,7 +11236,7 @@
   - app-developer
   - data-engineer
 - id: REQ-595
-  status: in-progress
+  status: complete
   group: 6. Execution, Routing, Caching & Performance
   category: Caching
   priority: MUST
@@ -11239,13 +11244,14 @@
   description: In multi-tenant mode, RedisCacheStore prefixes every cache key with the tenant_id (`provisa:cache:<tenant_id>:<sha256_key>`).
     Table invalidation keys follow `provisa:table:<tenant_id>:<table_id>`. The APQ cache uses `provisa:apq:<tenant_id>:<sha256_hex>`.
     Default APQ TTL is 86400 seconds, configurable via `PROVISA_APQ_TTL`. One tenant's cache flush never
-    touches another tenant's cached results. Implementation gap — RedisCacheStore.get/set accept tenant_id
-    but check_cache/store_result in cache/middleware.py omit the parameter, so the query path never passes
-    tenant_id to the store and prefix isolation is not active for query result caching.
+    touches another tenant's cached results. check_cache and store_result in cache/middleware.py pass
+    tenant_id (org_id) through to RedisCacheStore.get/set, so prefix isolation is active for query result
+    caching.
   use_case: Tenant-prefixed cache keys guarantee that cache invalidation, eviction, and key collisions
     cannot cross tenant boundaries on shared Redis infrastructure.
   code:
   - provisa/cache/store.py
+  - provisa/cache/middleware.py
   - provisa/apq/cache.py
   tests:
   - tests/e2e/test_caching.py
@@ -19162,27 +19168,27 @@
   e2e_reason: The configurable port for adbc_connect() can only be verified by establishing a real Arrow
     Flight connection to a server running on a non-default port, which requires a live stack.
 - id: REQ-712
-  status: proposed
+  status: complete
   group: 6. Execution, Routing, Caching & Performance
   category: Cache
   priority: MUST
   type: constraint
-  description: check_cache and store_result in provisa/cache/middleware.py must pass tenant_id through
-    to RedisCacheStore.get/set. The per-tenant cache key prefix is implemented in the store but omitted
-    at the call site, leaving multi-tenant cache key isolation inactive for query result caching.
-  use_case: Without tenant-prefixed cache keys at the middleware layer, one tenant's cached query results
-    can be returned to another tenant.
+  description: check_cache and store_result in provisa/cache/middleware.py pass tenant_id (org_id) through
+    to RedisCacheStore.get/set, so the per-tenant cache key prefix implemented in the store is applied at
+    the call site and multi-tenant cache key isolation is active for query result caching.
+  use_case: Tenant-prefixed cache keys at the middleware layer ensure one tenant's cached query results
+    can never be returned to another tenant.
   code:
   - provisa/cache/middleware.py
-  target: 2026-Q3
+  since: 2026-06
   stakeholders:
   - ops
   - compliance
   competitive_position:
-    status: gap
+    status: ahead
     rationale: Redis-backed query result caches that do not partition by tenant are a known security risk
-      in multi-tenant SaaS deployments. Snowflake and BigQuery enforce result isolation at the tenant
-      account level by design.
+      in multi-tenant SaaS deployments. Provisa partitions every query result cache key by tenant_id at
+      the middleware layer, matching the tenant-account result isolation Snowflake and BigQuery enforce.
   tests:
   - tests/integration/test_cache_store.py
   - tests/unit/test_apq_cache.py
@@ -21771,6 +21777,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
+  - tests/unit/test_cypher_mutations.py
   - tests/integration/test_mutations.py
   - tests/steps/steps_cypher_mutations.py
   since: 2026-06
@@ -21787,9 +21794,9 @@
     And all post-mutation hooks fire (cache invalidation, MV stale marking, Kafka events, hot-table reload)
 
     '
-  e2e: true
-  e2e_reason: Full write pipeline with hook execution can only be verified through live-stack round-trip
-    from API call to backend state change and cache/topic updates.
+  e2e: false
+  e2e_reason: Backend write pipeline with no browser surface; transpilation/RLS covered by unit, full
+    hook execution covered by integration round-trip.
   related_reqs:
   - REQ-666
   - REQ-667
@@ -21828,7 +21835,7 @@
   e2e_reason: UI interaction with proto parsing, method selection, request submission, and response
     rendering requires live browser execution.
   tests:
-  - tests/e2e/test_grpc_explorer.py
+  - provisa-ui/e2e/grpc-explorer.spec.ts
   stakeholders:
   - app-developer
 - id: REQ-800
@@ -21862,7 +21869,7 @@
   e2e_reason: UI state management, table/field selection, query composition, and response rendering with
     pagination require live browser execution and network interaction.
   tests:
-  - tests/e2e/test_jsonapi_explorer.py
+  - provisa-ui/e2e/jsonapi-explorer.spec.ts
   stakeholders:
   - app-developer
 - id: REQ-801
@@ -21896,7 +21903,7 @@
   e2e_reason: Iframe loading, DOM manipulation to find/expand opblocks, and Swagger UI interaction require
     live browser execution.
   tests:
-  - tests/e2e/test_openapi_explorer.py
+  - provisa-ui/e2e/openapi-explorer.spec.ts
   stakeholders:
   - app-developer
 - id: REQ-802
@@ -21934,8 +21941,9 @@
   integration_test: required
   integration_test_reason: Bolt handshake, query compilation, governance application, and PackStream
     serialization require live Bolt client and backend state interaction.
-  e2e: true
-  e2e_reason: Full Cypher→SQL pipeline with governance requires live backend and DBeaver-like client.
+  e2e: false
+  e2e_reason: Bolt is a TCP binary protocol with no browser surface; full Cypher→SQL pipeline verified
+    by live-client integration test (tests/integration/test_bolt_server.py).
   stakeholders:
   - app-developer
   - data-engineer
@@ -21970,6 +21978,7 @@
   e2e: false
   e2e_reason: UI-driven execution covered by REQ-799 gRPC Explorer e2e.
   tests:
+  - tests/unit/test_grpc_proxy_translation.py
   - tests/integration/test_grpc_proxy.py
   stakeholders:
   - app-developer
@@ -22107,6 +22116,7 @@
   - provisa/cypher/assembler.py
   - provisa/api/rest/cypher_router.py
   tests:
+  - tests/unit/test_bolt_domain_ceiling.py
   - tests/integration/test_bolt_domain_ceiling.py
   since: 2026-06
   scenario: |
@@ -22117,3 +22127,105 @@
     Then DatabaseNotFound error is returned (not a fallback to provisa_sales)
     When db.labels is called
     Then only labels in domain_access ∩ view are returned
+- id: REQ-809
+  status: complete
+  group: 5. Query Languages, Compilation & Operations
+  category: SQLGlot Transpilation
+  priority: SHOULD
+  type: behavioral
+  description: Correlated scalar subqueries in PG-style canonical SQL are lifted into CTEs before the query
+    is forwarded to Trino. rewrite_correlated_subqueries_for_trino in provisa/transpiler/transpile.py
+    rewrites any correlated scalar subquery into a set-based CTE join so the federation engine receives
+    a form it can execute across sources.
+  use_case: Correlated-subquery-to-CTE rewriting keeps cross-source SQL correct on Trino, which does not
+    execute arbitrary correlated scalar subqueries the way a single RDBMS would.
+  code:
+  - provisa/transpiler/transpile.py
+  tests:
+  - tests/unit/test_transpile.py
+  since: 2026-03
+  scenario: |
+    Given a PG-style query containing a correlated scalar subquery
+    When the query is transpiled to Trino SQL
+    Then the correlated subquery is lifted into a CTE joined on the correlation key
+    And the forwarded SQL contains no correlated scalar subquery
+  stakeholders:
+  - data-engineer
+- id: REQ-810
+  status: complete
+  group: 6. Execution, Routing, Caching & Performance
+  category: Materialized Views
+  priority: SHOULD
+  type: behavioral
+  description: Materialized-view transparent rewriting supports partial join-pattern matches. rewrite_if_mv_match
+    in provisa/mv/rewriter.py matches a query's joins against an MV per-join; when the MV covers only a
+    subset of the query's joins, _partial_rewrite_to_mv removes the covered joins and preserves the
+    remaining joins so the rewritten query reads the MV for the matched portion and joins the rest live.
+  use_case: Partial MV matching lets a materialized view accelerate queries that join additional tables
+    beyond the MV's definition, instead of only queries whose join pattern matches the MV exactly.
+  code:
+  - provisa/mv/rewriter.py
+  tests:
+  - tests/integration/test_execution_routing.py
+  - tests/e2e/test_mv_optimization.py
+  since: 2026-03
+  scenario: |
+    Given a materialized view covering a subset of a query's joins
+    When the query is compiled
+    Then the joins covered by the MV are rewritten to read the MV
+    And the joins not covered by the MV are preserved and executed live
+  stakeholders:
+  - data-engineer
+- id: REQ-811
+  status: complete
+  group: 6. Execution, Routing, Caching & Performance
+  category: Federation Performance
+  priority: SHOULD
+  type: behavioral
+  description: The `# @provisa key=value` GraphQL comment hint vocabulary includes a `route=federated|direct`
+    directive parsed by extract_graphql_hints in provisa/compiler/hints.py. `route=federated` forces the
+    query through the federation engine; `route=direct` forces single-source direct execution. This is
+    distinct from the `/*+ BROADCAST(...) */` SQL block-hint family (REQ-279) and source-level
+    federation_hints (REQ-281).
+  use_case: A per-query route hint lets query authors override automatic routing for a specific query
+    without changing source configuration.
+  code:
+  - provisa/compiler/hints.py
+  tests:
+  - tests/unit/test_routing.py
+  since: 2026-03
+  scenario: |
+    Given a GraphQL query annotated with the comment hint "# @provisa route=direct"
+    When the query is compiled
+    Then the query is routed to single-source direct execution
+    And a query annotated with "# @provisa route=federated" is routed through the federation engine
+  related_reqs:
+  - REQ-279
+  - REQ-281
+  stakeholders:
+  - data-engineer
+- id: REQ-812
+  status: complete
+  group: 8. Client Access & Protocols
+  category: API & Integration
+  priority: SHOULD
+  type: behavioral
+  description: The `X-Provisa-Sink` request header on a subscription request redirects the subscription's
+    change-event output to a Kafka sink instead of the SSE response stream. subscription_sse.py parses
+    the header and launches a Kafka sink consumer for the subscription, returning 202 Accepted rather
+    than an open SSE stream.
+  use_case: An X-Provisa-Sink header lets a client wire a live subscription directly into a Kafka topic
+    for downstream stream processing without holding an SSE connection.
+  code:
+  - provisa/api/data/subscription_sse.py
+  tests:
+  - tests/integration/test_kafka_sink.py
+  since: 2026-04
+  scenario: |
+    Given a subscription request with the header "X-Provisa-Sink" set to a Kafka target
+    When the request is accepted
+    Then the response status is 202 Accepted
+    And subscription change events are delivered to the Kafka sink instead of an SSE stream
+  stakeholders:
+  - data-engineer
+  - app-developer
