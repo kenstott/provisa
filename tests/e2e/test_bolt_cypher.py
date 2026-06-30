@@ -79,11 +79,15 @@ async def _recv_msg(reader) -> tuple[int, object]:
 class TestBoltHandshake:
     async def test_server_reachable(self):
         try:
-            _, writer = await _bolt_connect()
-            writer.close()
-            await writer.wait_closed()
+            reader, writer = await _bolt_connect()
         except (ConnectionRefusedError, OSError):
             pytest.skip(f"Bolt server not reachable at {_BOLT_HOST}:{_BOLT_PORT}")
+        try:
+            assert writer.get_extra_info("peername") is not None
+            assert not reader.at_eof()
+        finally:
+            writer.close()
+            await writer.wait_closed()
 
     async def test_magic_accepted(self):
         try:

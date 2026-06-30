@@ -705,13 +705,13 @@ def test_session_handle_logon_transitions_to_ready():
     fw = _FakeWriter()
     session = BoltSession(fw, bolt_version=(5, 4))
 
-    # Patch _resolve_role to always succeed
-    session._resolve_role = lambda principal, credentials: "test_role"  # type: ignore[method-assign]
+    # Patch _resolve_user to always succeed
+    session._resolve_user = lambda principal, credentials: (principal, [principal])  # type: ignore[method-assign]
 
     session.handle_logon([{"principal": "alice", "credentials": "secret"}])
 
     assert session.state == State.READY
-    assert session.role_id == "test_role"
+    assert session.role_id == "alice"
 
 
 def test_session_handle_logon_bad_credentials_stays_authentication():
@@ -732,8 +732,8 @@ def test_session_handle_logon_bad_credentials_stays_authentication():
     fw = _FakeWriter()
     session = BoltSession(fw, bolt_version=(5, 4))
 
-    # Patch _resolve_role to always fail
-    session._resolve_role = lambda principal, credentials: None  # type: ignore[method-assign]
+    # Patch _resolve_user to always fail
+    session._resolve_user = lambda principal, credentials: None  # type: ignore[method-assign]
 
     session.handle_logon([{"principal": "nobody", "credentials": "wrong"}])
 
@@ -763,7 +763,7 @@ def test_session_handle_begin_and_commit():
     session.state = State.READY
     session.role_id = "admin"
 
-    session.handle_begin()
+    session.handle_begin([{}])
     assert session.state == State.TX_READY
 
     session.handle_commit()
@@ -820,4 +820,4 @@ def test_session_handle_logoff():
 
 def test_packstream_pack_message_pull():
     """PULL message must encode correctly with n=-1 metadata dict."""
-    from provisa.bolt.packstream import pack_message
+    from provisa.bolt.packstream import pack_

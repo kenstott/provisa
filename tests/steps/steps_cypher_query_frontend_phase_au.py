@@ -86,12 +86,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 import pytest
 import sqlglot
 from pytest_bdd import given, when, then, scenarios, parsers
 
-from provisa.cypher.parser import parse_cypher, CypherParseError
+from provisa.cypher.parser import parse_cypher, CypherParseError, extract_parameters
 from provisa.cypher.label_map import (
     CypherLabelMap,
     NodeMapping,
@@ -332,12 +333,7 @@ def _make_governance_label_map() -> CypherLabelMap:
 
 
 def _make_clause_mapping_label_map() -> CypherLabelMap:
-    """Label map for REQ-347 clause-mapping tests.
-
-    Provides Person and Company nodes with a WORKS_AT relationship so that a
-    query exercising MATCH, WHERE, RETURN, ORDER BY, and LIMIT can be translated
-    and each clause's SQL equivalent verified.
-    """
+    """Label map for REQ-347 clause-mapping tests."""
     person_meta = NodeMapping(
         label="Person",
         type_name="Person",
@@ -381,11 +377,7 @@ def _make_clause_mapping_label_map() -> CypherLabelMap:
 
 
 def _make_path_label_map() -> CypherLabelMap:
-    """Label map for REQ-348 path query tests.
-
-    Provides a Person→Person self-referential KNOWS relationship suitable for
-    variable-length traversal and shortestPath queries.
-    """
+    """Label map for REQ-348 path query tests."""
     person_meta = NodeMapping(
         label="Person",
         type_name="Person",
@@ -415,11 +407,7 @@ def _make_path_label_map() -> CypherLabelMap:
 
 
 def _make_node_return_label_map() -> CypherLabelMap:
-    """Label map for REQ-349 whole-node RETURN tests.
-
-    Provides a Person node with several properties so the Stage 3 rewrite has
-    multiple columns to wrap into a JSON object.
-    """
+    """Label map for REQ-349 whole-node RETURN tests."""
     person_meta = NodeMapping(
         label="Person",
         type_name="Person",
@@ -441,12 +429,7 @@ def _make_node_return_label_map() -> CypherLabelMap:
 
 
 def _make_introspection_label_map() -> CypherLabelMap:
-    """Label map for REQ-572 introspection procedure tests.
-
-    Provides Person and Company nodes with domain labels, properties, and a
-    WORKS_AT relationship so that all three introspection procedures
-    (db.labels, db.relationshipTypes, db.propertyKeys) return meaningful data.
-    """
+    """Label map for REQ-572 introspection procedure tests."""
     person_meta = NodeMapping(
         label="Person",
         type_name="Person",
@@ -490,12 +473,7 @@ def _make_introspection_label_map() -> CypherLabelMap:
 
 
 def _make_correlated_call_label_map() -> CypherLabelMap:
-    """Label map for REQ-573 correlated CALL subquery tests.
-
-    Provides Person nodes with a self-referential KNOWS relationship so that
-    a correlated CALL { WITH p MATCH (p)-[:KNOWS]->(f:Person) RETURN f.name AS friend }
-    can be translated to a CROSS JOIN LATERAL expression.
-    """
+    """Label map for REQ-573 correlated CALL subquery tests."""
     person_meta = NodeMapping(
         label="Person",
         type_name="Person",
@@ -525,12 +503,7 @@ def _make_correlated_call_label_map() -> CypherLabelMap:
 
 
 def _make_bidirectional_label_map() -> CypherLabelMap:
-    """Label map for REQ-575 bidirectional traversal tests.
-
-    Provides Person and Company nodes with a directional WORKS_AT relationship.
-    The bidirectional syntax (a)-[]-(b) should expand to both the forward
-    (Person→Company) and backward (Company→Person) directions via UNION ALL.
-    """
+    """Label map for REQ-575 bidirectional traversal tests."""
     person_meta = NodeMapping(
         label="Person",
         type_name="Person",
@@ -574,13 +547,7 @@ def _make_bidirectional_label_map() -> CypherLabelMap:
 
 
 def _make_heterogeneous_shortest_path_label_map() -> CypherLabelMap:
-    """Label map for REQ-576: heterogeneous shortestPath with no self-referential rel.
-
-    Person and Company are different node types.  The only relationship is
-    WORKS_AT (Person → Company).  There is no Person→Person or Company→Company
-    self-referential relationship, so the translator must emit a flat JOIN chain
-    rather than a recursive CTE.
-    """
+    """Label map for REQ-576: heterogeneous shortestPath with no self-referential rel."""
     person_meta = NodeMapping(
         label="Person",
         type_name="Person",
@@ -617,8 +584,6 @@ def _make_heterogeneous_shortest_path_label_map() -> CypherLabelMap:
         join_target_column="id",
         field_name="works_at",
     )
-    # Deliberately NO self-referential relationship (no KNOWS Person→Person,
-    # no SUBSIDIARY Company→Company, etc.)
     return CypherLabelMap(
         nodes={"Person": person_meta, "Company": company_meta},
         relationships={"WORKS_AT": works_at_rel},
@@ -626,11 +591,7 @@ def _make_heterogeneous_shortest_path_label_map() -> CypherLabelMap:
 
 
 def _make_graph_var_label_map() -> CypherLabelMap:
-    """Label map for REQ-750 graph variable serialization tests.
-
-    Provides Person and Company nodes with a WORKS_AT relationship, suitable
-    for constructing node, edge, and path graph variables.
-    """
+    """Label map for REQ-750 graph variable serialization tests."""
     person_meta = NodeMapping(
         label="Person",
         type_name="Person",
@@ -674,12 +635,7 @@ def _make_graph_var_label_map() -> CypherLabelMap:
 
 
 def _make_variable_length_label_map() -> CypherLabelMap:
-    """Label map for REQ-751 variable-length path tests.
-
-    Provides a Person→Person self-referential KNOWS relationship suitable for
-    variable-length traversal queries with [*1..n] patterns that compile to
-    recursive CTEs enforcing max-hop bounds.
-    """
+    """Label map for REQ-751 variable-length path tests."""
     person_meta = NodeMapping(
         label="Person",
         type_name="Person",
@@ -709,12 +665,7 @@ def _make_variable_length_label_map() -> CypherLabelMap:
 
 
 def _make_multi_hop_label_map() -> CypherLabelMap:
-    """Label map for REQ-752 multi-hop intermediate node property access tests.
-
-    Provides Person, Company, and Department nodes with WORKS_AT (Person→Company)
-    and HAS_DEPT (Company→Department) relationships so that a 3-node path query
-    can exercise intermediate node property access without aliasing conflicts.
-    """
+    """Label map for REQ-752 multi-hop intermediate node property access tests."""
     person_meta = NodeMapping(
         label="Person",
         type_name="Person",
@@ -787,12 +738,7 @@ def _make_multi_hop_label_map() -> CypherLabelMap:
 
 
 def _make_path_object_label_map() -> CypherLabelMap:
-    """Label map for REQ-753 path object RETURN tests.
-
-    Provides a Person→Person self-referential KNOWS relationship so that
-    MATCH p = (a:Person)-[:KNOWS]->(b:Person) RETURN p generates a path
-    object with nodes, edges, start, end, and length fields.
-    """
+    """Label map for REQ-753 path object RETURN tests."""
     person_meta = NodeMapping(
         label="Person",
         type_name="Person",
@@ -830,7 +776,58 @@ def _make_path_object_label_map() -> CypherLabelMap:
 def given_graph_user_submitting_cypher_query(shared_data: dict) -> None:
     """Set up a representative Cypher SELECT query and the label map it targets.
 
-    We use a MATCH … RETURN pattern that exercises JOIN translation so that the
+    We use a MATCH ... RETURN pattern that exercises JOIN translation so that the
     governance pipeline has a realistic SQL statement to act upon.
     """
     label_map = _make_governance_label_map()
+    # A realistic Cypher SELECT query that a graph-native user would write.
+    # It references a relationship so the compiler must emit a JOIN.
+    cypher_query = (
+        "MATCH (p:Person)-[:WORKS_AT]->(c:Company) "
+        "WHERE p.age > $min_age "
+        "RETURN p.name AS person_name, c.name AS company_name, p.salary AS salary"
+    )
+    params = {"min_age": 25}
+    shared_data["cypher_query"] = cypher_query
+    shared_data["label_map"] = label_map
+    shared_data["params"] = params
+
+
+@when("the compiler processes it")
+def when_compiler_processes_cypher_query(shared_data: dict) -> None:
+    """Invoke the Cypher-to-SQL compiler and capture the full translation result.
+
+    cypher_to_sql returns a 3-tuple: (sql_expression, param_names, graph_vars).
+    We store all three so the Then step can make assertions about each.
+    """
+    cypher_query = shared_data["cypher_query"]
+    label_map = shared_data["label_map"]
+    params = shared_data["params"]
+
+    ast = parse_cypher(cypher_query)
+    result = cypher_to_sql(ast, label_map, params)
+    # Unpack the 3-tuple returned by cypher_to_sql.
+    sql_ast, param_names, graph_vars = result
+
+    # Render to a SQL string using the Trino dialect so we can make text assertions.
+    if hasattr(sql_ast, "sql"):
+        sql_string = sql_ast.sql(dialect="trino")
+    else:
+        sql_string = str(sql_ast)
+
+    shared_data["sql_ast"] = sql_ast
+    shared_data["sql_string"] = sql_string
+    shared_data["param_names"] = param_names
+    shared_data["graph_vars"] = graph_vars
+    shared_data["compile_error"] = None
+
+
+@then(
+    "it compiles to SQL, executes via Trino, and applies Stage 2 governance identically to\n"
+    "    GraphQL queries"
+)
+def then_compiles_to_sql_and_applies_governance(shared_data: dict) -> None:
+    """Assert that:
+
+    1. The compiler produced a non-empty SQL string (compilation succeeded).
+    2. The SQL

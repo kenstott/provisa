@@ -712,17 +712,22 @@ def when_single_node_exported(shared_data: dict) -> None:
     'Neo4j contains a node with label "User", property _provisa_id set, and properties SET via += operator'
 )
 def then_neo4j_node_merge_provisa_id_and_set_operator(shared_data: dict) -> None:
-    """Assert the generated MERGE uses _provisa_id as dedup key and += for property SET."""
+    """Assert the generated MERGE uses _provisa_id as dedup key and += for property SET.
+
+    REQ-714: Nodes are MERGE'd into Neo4j using _provisa_id as the deduplication key,
+    with labels derived from tableLabel or compound 'Domain:Table' label fields.
+    """
     node: dict[str, Any] = shared_data["node"]
     table_label: str = shared_data["table_label"]
     node_id: int = node["id"]
-    props: dict[str, Any] = node["properties"]
+    properties: dict[str, Any] = node["properties"]
 
-    # Build the canonical MERGE statement and inspect it
+    # Build the MERGE statement from the node to verify its structure
     stmt = _build_node_merge_statement(node)
     cypher: str = stmt["statement"]
+    params: dict[str, Any] = stmt["parameters"]
 
-    # 1. Must use MERGE (not CREATE)
+    # 1. Must use MERGE (not CREATE) for idempotent upsert
     assert re.search(r"\bMERGE\b", cypher, re.IGNORECASE), (
         f"Statement must use MERGE for idempotent upsert, got: {cypher!r}"
     )
@@ -730,7 +735,7 @@ def then_neo4j_node_merge_provisa_id_and_set_operator(shared_data: dict) -> None
         f"Statement must not use CREATE; MERGE is required for deduplication: {cypher!r}"
     )
 
-    # 2. _provisa_id must appear inside the MERGE match pattern as the dedup key
+    # 2. MERGE key must be _provisa_id
     merge_match = re.search(r"MERGE\s*\(([^)]+)\)", cypher, re.IGNORECASE)
     assert merge_match is not None, (
         f"Could not find MERGE(...) pattern in generated Cypher: {cypher!r}"
@@ -738,18 +743,17 @@ def then_neo4j_node_merge_provisa_id_and_set_operator(shared_data: dict) -> None
     merge_content = merge_match.group(1)
     assert "_provisa_id" in merge_content, (
         f"_provisa_id must appear inside MERGE(...) as the dedup key; "
-        f"MERGE content was: {merge_content!r}\nFull Cypher: {cypher!r}"
+        f"MERGE content was: {merge_content!r}"
     )
 
-    # 3. The label derived from tableLabel must appear in the statement
-    if ":" in table_label:
-        label_parts = [p.strip() for p in table_label.split(":") if p.strip()]
-        assert any(part in cypher for part in label_parts), (
-            f"At least one label part from compound label {table_label!r} must appear "
-            f"in the Cypher statement.\nGot: {cypher!r}"
-        )
-        # Verify the compound label is formatted as Domain:Table in the MERGE pattern
-        compound_label = ":".join(label_parts)
-        assert compound_label in cypher, (
-            f"Compound label {compound_label!r} must appear joined with ':' in "
-            f
+    # 3. The _provisa_id parameter must equal the node's id
+    assert params["id"] == node_id, (
+        f"The _provisa_id parameter must equal node id {node_id}, got {params['id']}"
+    )
+
+    # 4. Properties must be applied with the += (additive/non-destructive) SET operator
+    assert "+=" in cypher, (
+        f"Properties must be SET using the += (additive update) operator; got: {cypher!r}"
+    )
+
+    # 5
