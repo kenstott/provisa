@@ -530,6 +530,7 @@ if [ "$DEMO" = true ]; then
   echo "  Backend: http://localhost:8000  (logs: tail -f $LOG_DIR/backend.log)"
   echo "  UI:      http://localhost:3000"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
+  [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
   echo ""
   echo "Demo sources:"
   echo "  - pet-store-pg       (PostgreSQL, pet_store schema)"
@@ -541,6 +542,7 @@ else
   echo "  Backend: http://localhost:8000  (logs: tail -f $LOG_DIR/backend.log)"
   echo "  UI:      http://localhost:3000"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
+  [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
   echo ""
   echo "No demo services started. Use --demo to include petstore-mock, graphql-demo, and SQLite ETL."
 fi

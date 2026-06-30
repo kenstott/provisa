@@ -2925,6 +2925,31 @@ async def _start_servers(_log: logging.Logger) -> None:
         except Exception:
             _log.exception("pgwire server startup failed")
 
+    bolt_port = int(os.environ.get("PROVISA_BOLT_PORT", "0"))
+    if bolt_port:
+        try:
+            import ssl as _ssl_bolt
+            from provisa.bolt.server import start_bolt_server
+
+            _bolt_ssl_ctx: _ssl_bolt.SSLContext | None = None
+            _bolt_cert = os.environ.get("PROVISA_BOLT_CERT")
+            _bolt_key = os.environ.get("PROVISA_BOLT_KEY")
+            if _bolt_cert and _bolt_key:
+                _bolt_ssl_ctx = _ssl_bolt.SSLContext(_ssl_bolt.PROTOCOL_TLS_SERVER)
+                _bolt_ssl_ctx.load_cert_chain(_bolt_cert, _bolt_key)
+
+            start_bolt_server(
+                host="0.0.0.0",  # nosec B104 - bolt server intentionally binds all interfaces
+                port=bolt_port,
+                ssl_ctx=_bolt_ssl_ctx,
+                loop=asyncio.get_running_loop(),
+            )
+            _log.info(
+                "bolt server listening on 0.0.0.0:%d (TLS=%s)", bolt_port, _bolt_ssl_ctx is not None
+            )
+        except Exception:
+            _log.exception("bolt server startup failed")
+
     try:
         from provisa.live.engine import LiveEngine
 
