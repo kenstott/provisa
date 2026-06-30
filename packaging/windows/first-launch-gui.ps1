@@ -497,7 +497,7 @@ $btnInstall.Add_Click({
       foreach ($tb in $tarballs) {
         $idx++
         Log "Installing service package $idx of ${total}..."
-        $out = & $curlExe --silent --show-error --max-time 3600 `
+        $out = & $curlExe --silent --show-error --max-time 3600 --keepalive-time 1 `
           -X POST 'http://127.0.0.1:2375/images/load' `
           -H 'Content-Type: application/x-tar' `
           --data-binary "@$($tb.FullName)" 2>&1
