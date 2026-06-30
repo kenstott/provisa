@@ -491,18 +491,46 @@ $btnInstall.Add_Click({
       $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
       if (-not (Test-Path $curlExe)) { throw 'curl.exe not found — Windows 10 version 1803 or later required.' }
 
+      # Brief settle time after Coordination Engine reports ready
+      Start-Sleep 10
+
       $tarballs = Get-ChildItem -Path $ExtractDir -Filter '*.tar.gz' | Sort-Object Name
       $total    = $tarballs.Count
       $idx      = 0
       foreach ($tb in $tarballs) {
         $idx++
         Log "Installing service package $idx of ${total}..."
+
+        $imgsBefore = 0
+        try {
+          $imgsBefore = (& $curlExe --silent 'http://127.0.0.1:2375/images/json' | ConvertFrom-Json).Count
+        } catch {}
+
         $out = & $curlExe --silent --show-error --max-time 3600 --keepalive-time 1 `
           -X POST 'http://127.0.0.1:2375/images/load' `
           -H 'Content-Type: application/x-tar' `
           --data-binary "@$($tb.FullName)" 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "Failed to install service package $($tb.Name) (curl exit $LASTEXITCODE): $out" }
-        if ($out) { Log "  $($out.Trim())" }
+        $curlExit = $LASTEXITCODE
+
+        if ($curlExit -eq 56) {
+          # Data sent successfully; Docker reset the response connection while processing.
+          # Poll until image count increases (up to 5 min).
+          Log "  Package transmitted — waiting for processing..."
+          $waited = 0
+          $loaded = $false
+          while ($waited -lt 300 -and -not $loaded) {
+            Start-Sleep 5; $waited += 5
+            try {
+              $imgsNow = (& $curlExe --silent 'http://127.0.0.1:2375/images/json' | ConvertFrom-Json).Count
+              if ($imgsNow -gt $imgsBefore) { $loaded = $true }
+            } catch {}
+          }
+          if (-not $loaded) { throw "Service package $($tb.Name) did not appear in Docker after 300s." }
+        } elseif ($curlExit -ne 0) {
+          throw "Failed to install service package $($tb.Name) (curl exit $curlExit): $out"
+        } else {
+          if ($out) { Log "  $($out.Trim())" }
+        }
         $sync.Progress = 78 + [int](($idx / $total) * 7)
       }
       Log 'All service packages installed.'
