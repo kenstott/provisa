@@ -64,8 +64,8 @@ domains:
 
 ```yaml
 naming:
-  convention: camelCase   # none, snake_case (default), camelCase, PascalCase
-  domain_prefix: true     # prepend domain_id__ to all GraphQL names
+  convention: apollo_graphql   # snake, hasura_graphql, apollo_graphql (default)
+  domain_prefix: true          # prepend domain_id__ to all GraphQL names
   rules:
     - pattern: "^prod_pg_"
       replace: ""
@@ -73,22 +73,27 @@ naming:
 
 ### Naming Convention
 
-Controls how database column names are auto-aliased in the GraphQL schema. (REQ-194) Configurable at three levels (most specific wins): table → source → global. (REQ-194)
+The naming authority is the single source of truth for client-facing names; physical backend column names are never exposed to clients. (REQ-194) Each query language derives a column's name from its `column.alias` if set, otherwise from the physical column name via its configured convention. (REQ-194)
 
-| Convention | DB Column `user_id` | DB Column `created_at` |
-|------------|--------------------|-----------------------|
-| `none` | `user_id` (no alias) | `created_at` |
-| `snake_case` | `user_id` (no alias) | `created_at` |
-| `camelCase` | `userId` | `createdAt` |
-| `PascalCase` | `UserId` | `CreatedAt` |
+The GraphQL convention is one of three preset enums. (REQ-416) Old free-form strings (`none`, `snake_case`, `camelCase`, `PascalCase`) are deprecated. (REQ-416)
 
-Explicit `column.alias` always takes precedence over convention. (REQ-194)
+| Preset | Default | Type names | Field names | Mutation names |
+|--------|---------|------------|-------------|----------------|
+| `apollo_graphql` | yes | PascalCase | camelCase | camelCase |
+| `hasura_graphql` | | PascalCase | camelCase | snake_case |
+| `snake` | | PascalCase | snake_case | snake_case |
+
+The default GraphQL convention is `apollo_graphql`, which produces camelCase field and mutation names. (REQ-194, REQ-416) The SQL convention is separate, with default `snake_case`, applied via `apply_sql_name()`; the GraphQL convention is applied via `apply_gql_name()`, and the CQL name is derived from the GraphQL name. (REQ-194)
+
+`domain_prefix: bool` is an orthogonal option that applies regardless of the chosen preset. (REQ-416)
+
+Explicit `column.alias` is the canonical name: SQL uses it verbatim with no convention applied, GraphQL applies its convention to it, and CQL derives from the GraphQL name. (REQ-194)
 
 Per-source override:
 ```yaml
 sources:
   - id: legacy-db
-    naming_convention: camelCase  # overrides global for this source
+    naming_convention: hasura_graphql  # overrides global for this source
 ```
 
 Per-table override:
@@ -96,7 +101,7 @@ Per-table override:
 tables:
   - source_id: legacy-db
     table: orders
-    naming_convention: PascalCase  # overrides source for this table
+    naming_convention: snake  # overrides source for this table
 ```
 
 ### Domain Prefix

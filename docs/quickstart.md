@@ -47,7 +47,7 @@ Provisa running:
 - Docker Compose dev overlay (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry (REQ-055)
 - Backend API on port 8001 (hot-reload on changes to `provisa/` and `config/`) (REQ-618)
 - Vite UI dev server on port 3000 (HMR)
-- OpenTelemetry tracing and Grafana at `http://localhost:3100` (observability is on by default) (REQ-302, REQ-303, REQ-330)
+- OpenTelemetry tracing and Grafana at `http://localhost:3100`. The observability stack is an opt-in docker-compose `observability` profile (OTel Collector, Prometheus, Tempo, Grafana), not on by default at the platform level; `start-ui.sh` enables it as a dev-script convenience unless you pass `--no-observability`. (REQ-302, REQ-303, REQ-330)
 
 **Ctrl+C** stops everything — backend, UI, and all Docker services — and reverts any config patches. (REQ-619)
 

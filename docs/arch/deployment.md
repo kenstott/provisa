@@ -8,8 +8,8 @@ The three packages map directly to the three docker-compose layers: (REQ-630)
 
 | Package | Services | docker-compose file |
 |---------|----------|---------------------|
-| **Core** | postgres, pgbouncer, redis, trino, zaychik + Python backend + UI | `docker-compose.core.yml` |
-| **Observability (Obs)** | minio, otlp2parquet, otel-collector, prometheus, tempo, grafana | `docker-compose.observability.yml` |
+| **Core** | postgres, pgbouncer, redis, minio, trino, zaychik + Python backend + UI | `docker-compose.core.yml` |
+| **Observability (Obs)** | otlp2parquet, otel-collector, prometheus, tempo, grafana | `docker-compose.observability.yml` |
 | **Demo** | petstore-mock, graphql-demo | `docker-compose.demo.yml` |
 
 **Dependency chain**: Core ← Obs ← Demo (demo requires obs; obs requires core). (REQ-631)
@@ -74,10 +74,7 @@ the expanded file list. (REQ-633) Trino picks up the OTel `JAVA_TOOL_OPTIONS` ov
 
 ### Core DMG (`Provisa-<version>.dmg`)
 
-**Current state**: `packaging/macos/build-dmg.sh` — fully implemented, builds
-everything into one DMG.
-
-**Target state**: Core only.
+`packaging/macos/build-dmg.sh` builds the Core DMG (Core package only).
 
 **Contents of DMG**:
 - `Provisa.app` — signed + notarized SwiftUI launcher (ProvisaLauncher) (REQ-227)
@@ -86,6 +83,7 @@ everything into one DMG.
   - `postgres-16.tar.gz`
   - `pgbouncer-latest.tar.gz`
   - `redis-7-alpine.tar.gz`
+  - `minio-latest.tar.gz`
   - `trino-480.tar.gz`
   - `zaychik-local.tar.gz`
 - `nerdctl/` — `nerdctl-full-2.2.2-linux-arm64.tar.gz` (hidden) (REQ-228)
@@ -96,19 +94,16 @@ everything into one DMG.
 - `config/`, `db/`, `trino/`, `observability/` (trino-otel dir + OTel Java agent jar)
 - `provisa-source/` (Dockerfile, main.py, pyproject.toml, provisa/, static UI, wheels)
 
-**`first-launch.sh` changes needed**:
-- Copy `observability/` configs but NOT start obs services (no obs images yet)
-- Copy `demo/` source but NOT start demo services
+**`first-launch.sh`**:
+- Copies `observability/` configs but does not start obs services (no obs images yet)
+- Copies `demo/` source but does not start demo services
 
 ### Obs DMG (`Provisa-Obs-<version>.dmg`)
-
-**New package**.
 
 **Contents**:
 - `install-obs.sh` — installer script (no `.app`, just a shell script run via
   a minimal DMG or a signed pkg)
 - `images/` (hidden):
-  - `minio-latest.tar.gz`
   - `otlp2parquet-latest.tar.gz`
   - `otel-collector-contrib-0.99.0.tar.gz`
   - `prometheus-v2.51.2.tar.gz`
@@ -129,7 +124,7 @@ everything into one DMG.
 
 ### Demo DMG (`Provisa-Demo-<version>.dmg`)
 
-**New package**. Requires Obs to be installed. (REQ-631)
+Requires Obs to be installed. (REQ-631)
 
 **Contents**:
 - `install-demo.sh`
@@ -148,10 +143,11 @@ everything into one DMG.
 
 ### ProvisaLauncher changes (`ServiceStatus.swift` / `ScriptRunner.swift`)
 
-The launcher's `provisa start` path needs to:
-1. Enumerate `~/.provisa/extensions/*/docker-compose.*.yml` at startup. (REQ-633)
-2. Append each found file to the compose file list. (REQ-633)
-3. Set `PROVISA_REDIRECT_ENABLED`, MinIO, and OTel env vars only when obs
+The launcher's `provisa start` path:
+
+1. Enumerates `~/.provisa/extensions/*/docker-compose.*.yml` at startup. (REQ-633)
+2. Appends each found file to the compose file list. (REQ-633)
+3. Sets `PROVISA_REDIRECT_ENABLED`, MinIO, and OTel env vars only when the obs
    extension is present. (REQ-633)
 
 ---
@@ -163,14 +159,10 @@ Docker daemon by `first-launch.ps1` post-VM-boot. (REQ-228)
 
 ### Core Installer (`Provisa-Setup-<version>.exe`)
 
-**Current state**: `packaging/windows/build-installer.ps1` + `installer.nsi` —
-builds one installer. Needs obs + demo images removed.
-
-**Target images** (same set as macOS core, minus obs/demo).
+`packaging/windows/build-installer.ps1` + `installer.nsi` build the Core
+installer. Image set is the same as macOS core (obs/demo excluded).
 
 ### Obs Installer (`Provisa-Obs-Setup-<version>.exe`)
-
-**New package**.
 
 **`install-obs.ps1` steps**:
 1. Check VM `Provisa` exists and is running. (REQ-633)
@@ -182,7 +174,7 @@ builds one installer. Needs obs + demo images removed.
 
 ### Demo Installer (`Provisa-Demo-Setup-<version>.exe`)
 
-**New package**. Requires Obs installer. (REQ-631)
+Requires Obs installer. (REQ-631)
 
 Same pattern as obs — loads demo images, writes extension compose file. (REQ-633)
 
@@ -198,11 +190,9 @@ compose file list. (REQ-633)
 
 ## Linux AppImage
 
-**Current state**: `packaging/linux/build-appimage.sh` — bundles core images
-only (postgres, pgbouncer, minio, redis, trino). Minio is currently in this
-list but should move to obs.
-
-**Target state**: Bundle core + obs images. No demo. (REQ-632)
+`packaging/linux/build-appimage.sh` bundles core images (postgres, pgbouncer,
+minio, redis, trino, zaychik) plus obs images. MinIO is a core service
+(REQ-561) and is bundled with the core image set. No demo. (REQ-632)
 
 ### `save_images()` target list
 
@@ -211,11 +201,11 @@ list but should move to obs.
 "postgres:16"
 "edoburu/pgbouncer:latest"
 "redis:7-alpine"
+"minio/minio:latest"
 "trinodb/trino:480"
 "provisa/zaychik:local"   # built from source
 
 # Obs (bundled directly — no separate download on Linux)
-"minio/minio:latest"
 "ghcr.io/smithclay/otlp2parquet:latest"
 "otel/opentelemetry-collector-contrib:0.99.0"
 "prom/prometheus:v2.51.2"
@@ -223,16 +213,16 @@ list but should move to obs.
 "grafana/grafana:10.4.2"
 ```
 
-### `build_appdir()` changes
+### `build_appdir()`
 
-- Copy `docker-compose.core.yml` + `docker-compose.observability.yml` into
+- Copies `docker-compose.core.yml` + `docker-compose.observability.yml` into
   `${APPDIR}/compose/`
 - `AppRun` / `first-launch.sh` always starts core + obs (no flag needed) (REQ-632)
-- Remove demo compose file from bundle entirely (REQ-632)
+- No demo compose file in the bundle (REQ-632)
 
-### `first-launch.sh` (Linux) changes
+### `first-launch.sh` (Linux)
 
-Start command becomes:
+Start command:
 ```bash
 docker compose \
   -f compose/docker-compose.core.yml \
@@ -310,9 +300,9 @@ via `localhost`. (REQ-634)
 | 6432 | pgbouncer | `dev-install.yml` |
 | 6379 | redis | `dev-install.yml` |
 | 8080 | trino | `dev-install.yml` |
-| 8480 | zaychik (Flight) | `dev-install.yml` |
-| 9000 | minio S3 | `observability.yml` |
-| 9001 | minio console | `observability.yml` |
+| 8815 | zaychik (Flight) | `dev-install.yml` |
+| 9000 | minio S3 | `dev-install.yml` |
+| 9001 | minio console | `dev-install.yml` |
 | 4317 | otel-collector gRPC | `observability.yml` |
 | 4318 | otel-collector HTTP | `observability.yml` |
 | 4319 | otlp2parquet HTTP | `observability.yml` |
@@ -354,20 +344,24 @@ useful. (REQ-634) The flag may be added later if needed.
 
 ---
 
-## Implementation Order
+## Shipped Components
 
-1. **`docker-compose.observability.yml`** — make self-contained (done)
-2. **`docker-compose.dev-install.yml`** — remove minio ports (done)
-3. **`start-ui-install.sh`** — dynamic compose assembly, demo-conditional env vars (done)
-3a. **`start-ui-install.sh`** — add `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4319` + `OTEL_SERVICE_NAME` to backend env when demo active
-4. **`build-dmg.sh`** — strip obs + demo images; obs/demo configs stay in Resources
-5. **`build-dmg-obs.sh`** — new script: pull obs images, build obs DMG
-6. **`build-dmg-demo.sh`** — new script: pull demo images, build demo DMG
-7. **ProvisaLauncher** — extension detection in `ServiceStatus.swift` / compose assembly
-8. **`first-launch.sh` (macOS)** — copy obs/demo configs but don't start services
-9. **`build-installer.ps1`** — strip obs + demo images
-10. **`build-installer-obs.ps1`** — new script: Windows obs installer
-11. **`build-installer-demo.ps1`** — new script: Windows demo installer
-12. **`provisa.ps1`** — extension detection
-13. **`build-appimage.sh`** — add obs images, always-on obs compose, remove demo
-14. **CI workflow** — split into parallel jobs
+The three-package split, the extension/detection model, the per-OS installers,
+and the parallel CI jobs are shipped. (REQ-630, REQ-631, REQ-632, REQ-633)
+
+- **`docker-compose.observability.yml`** is self-contained.
+- **`docker-compose.dev-install.yml`** binds core service ports (including minio).
+- **`start-ui-install.sh`** does dynamic compose assembly with demo-conditional env vars,
+  and sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4319` + `OTEL_SERVICE_NAME`
+  on the backend env when demo is active.
+- **`build-dmg.sh`** builds the Core DMG; obs/demo configs stay in Resources.
+- **`build-dmg-obs.sh`** pulls obs images and builds the obs DMG.
+- **`build-dmg-demo.sh`** pulls demo images and builds the demo DMG.
+- **ProvisaLauncher** does extension detection in `ServiceStatus.swift` / compose assembly.
+- **`first-launch.sh` (macOS)** copies obs/demo configs without starting their services.
+- **`build-installer.ps1`** builds the Core installer (obs/demo images excluded).
+- **`build-installer-obs.ps1`** builds the Windows obs installer.
+- **`build-installer-demo.ps1`** builds the Windows demo installer.
+- **`provisa.ps1`** does extension detection.
+- **`build-appimage.sh`** bundles core + obs images with always-on obs compose, no demo.
+- **CI workflow** runs three parallel build jobs per platform.

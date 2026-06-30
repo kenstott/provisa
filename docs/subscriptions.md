@@ -61,7 +61,7 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 
 ### LISTEN/NOTIFY
 
-Provisa issues `LISTEN <channel>` on a persistent PG connection. (REQ-258) Provisa mutations fire `NOTIFY` automatically. (REQ-569) External writers must call `NOTIFY <channel>, '<payload>'` after writes. No additional infrastructure required.
+Provisa issues `LISTEN <channel>` on a persistent PG connection. (REQ-258) Provisa mutations fire `NOTIFY` automatically. (REQ-565) External writers must call `NOTIFY <channel>, '<payload>'` after writes. No additional infrastructure required.
 
 ### Polling
 
@@ -96,7 +96,7 @@ sources:
 
 ## Kafka Sink Redirect
 
-Any GraphQL subscription can be redirected to a Kafka topic instead of streaming back to the client. (REQ-570) Add the `X-Provisa-Sink` header to the subscription request:
+Any GraphQL subscription can be redirected to a Kafka topic instead of streaming back to the client. (REQ-812) Add the `X-Provisa-Sink` header to the subscription request:
 
 ```
 POST /data/graphql
@@ -105,16 +105,16 @@ Content-Type: application/json
 X-Provisa-Sink: kafka://broker:9092/my-topic
 ```
 
-The server responds `202 Accepted` immediately and starts a background task that: (REQ-570)
+The server responds `202 Accepted` immediately and starts a background task that: (REQ-812)
 1. Watches for table changes using the same provider resolution as SSE (LISTEN/NOTIFY → asyncpg poll → federated poll)
 2. Re-executes the equivalent query on each change
 3. Publishes the result as a JSON message to the named Kafka topic
 
-The sink runs for the lifetime of the server process. (REQ-570) Restart the server to stop it (persistent sink registration via the admin API is planned).
+The sink runs for the lifetime of the server process. (REQ-812) Restart the server to stop it (persistent sink registration via the admin API is planned).
 
 **URI format:** `kafka://[broker:port]/topic`
 
-- If `broker:port` is omitted, `KAFKA_BOOTSTRAP_SERVERS` env var is used (default: `localhost:9092`) (REQ-570)
+- If `broker:port` is omitted, `KAFKA_BOOTSTRAP_SERVERS` env var is used (default: `localhost:9092`) (REQ-812)
 - `topic` is required
 
 **Example (curl):**

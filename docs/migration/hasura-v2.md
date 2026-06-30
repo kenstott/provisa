@@ -30,8 +30,7 @@ python -m provisa.hasura_v2 <metadata-dir> -o provisa.yaml
 | `-o, --output FILE` | stdout | Output YAML file path |
 | `--source-overrides FILE` | None | YAML file with per-source connection overrides |
 | `--domain-map KEY=VAL ...` | None | Schema-to-domain mappings (e.g., `public=core hr=people`) |
-| `--governance-default` | `pre-approved` | Default governance level: `pre-approved` or `registry-required` |
-| `--auth-env-file FILE` | None | Path to `.env` file with auth provider configuration |
+| `--auth-env-file FILE` | None | Path to `.env` file with JWT/admin-secret auth configuration |
 | `--dry-run` | off | Parse and validate without writing output |
 
 ### Source Overrides File
@@ -49,15 +48,13 @@ default:
 
 ### Auth Env File
 
-A `.env`-style file defining the auth provider:
+A `.env`-style file holding the Hasura auth configuration to convert. The converter
+maps:
 
-```
-AUTH_PROVIDER=firebase
-FIREBASE_PROJECT_ID=my-project-123
-```
-
-Supported providers: `firebase` (requires `FIREBASE_PROJECT_ID`),
-`keycloak` (requires `KEYCLOAK_URL`, `KEYCLOAK_REALM`).
+- JWT with `jwk_url` -> Provisa `provider: oauth`.
+- JWT `claims_map` -> Provisa `role_mapping[]`.
+- Admin secret -> Provisa `superuser`.
+- Webhook auth -> warning emitted (no Provisa equivalent).
 
 ## Feature Parity Matrix
 
@@ -74,12 +71,12 @@ Supported providers: `firebase` (requires `FIREBASE_PROJECT_ID`),
 | **Array relationships** | `relationships[]` with `cardinality: one-to-many` | Column mapping preserved. |
 | **Computed fields** | `functions[]` | Mapped to Function with `returns` pointing to the parent table ID. |
 | **Tracked functions** | `functions[]` | `exposed_as` defaults to mutation. Schema preserved. |
-| **Actions** (HTTP handler) | `webhooks[]` | URL, method (POST), arguments, and `visible_to` roles preserved. |
-| **Actions** (non-HTTP handler) | `functions[]` | Placeholder function created. Warning emitted. |
-| **Cron triggers** | `scheduled_triggers[]` | Cron expression, webhook URL, and enabled state preserved. |
-| **Event triggers** | `event_triggers[]` | Operations, webhook URL, retry config (max retries, interval) preserved. Warning about limited fidelity. |
+| **Actions** (stored-procedure handler) | `functions[]` | Converted to a Function config where backed by a stored procedure. |
+| **Actions** (webhook handler) | Not converted | Warning emitted, including the handler URL. |
+| **Cron triggers** | Not converted | Warning emitted. (Runtime scheduled triggers exist, but the converter does not map them.) |
+| **Event triggers** | Not converted | Warning emitted. (Runtime event triggers exist, but the converter does not map them.) |
 | **Inherited roles** | `roles[].parent_role_id` | First role in `role_set` becomes parent. All child roles created. |
-| **Remote schemas** | Skipped | Warning emitted. No Provisa equivalent. |
+| **Remote schemas** | `sources[]` (`graphql_remote`) | Registered as a `graphql_remote` source. Name, URL, headers, and authentication configuration preserved. |
 | **Enum tables** | Table created | `is_enum` flag not carried over (no Provisa equivalent). |
 | **Allow lists** | Skipped | Not present in metadata model. |
 
@@ -93,7 +90,7 @@ Supported providers: `firebase` (requires `FIREBASE_PROJECT_ID`),
 4. **Check RLS rules.** Filters are converted to SQL approximations. Complex boolean
    expressions (nested `_and`/`_or`/`_exists`) should be reviewed manually.
 5. **Review warnings.** The converter prints a warning summary to stderr for features
-   with limited conversion fidelity (event triggers, non-HTTP actions, remote schemas).
+   the converter does not map (event triggers, cron triggers, webhook-backed actions).
 6. **Set up auth.** If your Hasura instance uses JWT/webhook auth, create an auth env
    file and re-run with `--auth-env-file`.
 7. **Test.** Start the Provisa server and verify queries against your data sources.
@@ -140,7 +137,6 @@ hasura metadata export --endpoint http://localhost:8080
 python -m provisa.hasura_v2 metadata/ \
   -o provisa.yaml \
   --domain-map public=core hr=people \
-  --governance-default pre-approved \
   --source-overrides overrides.yaml \
   --auth-env-file auth.env
 
@@ -166,7 +162,6 @@ tables:
     domain_id: core
     schema_name: public
     table_name: users
-    governance: pre-approved
     columns:
       - name: id
         visible_to: [user, admin]

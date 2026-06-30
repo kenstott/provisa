@@ -9,13 +9,15 @@ Provisa follows the Hasura V2 PLG model: **connect a source, register tables, su
 | SKU | Delivery | Price | Target |
 |---|---|---|---|
 | **Community Edition (CE)** | Self-hosted | Free | Developers, small teams |
-| **SaaS** | Managed cloud | Subscription | SMB |
+| **SaaS** (in development) | Managed cloud | Subscription | SMB |
 | **Enterprise** | Self-hosted or private cloud | Contract | Regulated enterprise |
 | **Vertical Packages** | Config artifacts (any tier) | Bundled or add-on | Domain-specific buyers |
 
+The SaaS SKU is not yet generally available. It requires the productized multi-tenant platform (REQ-073), which is partial today: tenant context (JWT `tenant_id` claim), Postgres RLS on meta tables, tenant-prefixed cache isolation, and Stripe billing/org provisioning are in place; per-org schema isolation (REQ-695/702) and at-rest per-tenant config encryption (REQ-684/685/694) are not. Until the platform is complete, SaaS customers are served manually (see GTM Motion 2).
+
 ### CE vs Enterprise gate
 
-CE is full-featured. Enterprise adds: RLS enforcement, column masking, audit log, ABAC hooks, SLA-backed support, SSO. No bait-and-switch — CE stays genuinely capable. The GraphQL/Hasura community has a sharp nose for hobbled community editions; trust is the asset.
+CE is full-featured. Governance ships in the open-source core: RLS enforcement, column masking, the append-only query audit log, ABAC hooks, and SSO (Firebase, Keycloak OIDC) are all CE features, not paywalled. Enterprise adds only: SLA guarantees, dedicated support, advanced audit logging, and compliance reporting. No bait-and-switch — CE stays genuinely capable. The GraphQL/Hasura community has a sharp nose for hobbled community editions; trust is the asset.
 
 BSL 1.1 license: source-available, converts to Apache 2 after time window, prevents commercial cloud hosting without a deal. Explicitly communicated in docs and marketing.
 

@@ -204,12 +204,12 @@ A dataset may also be referenced by name inside a query payload. Each query lang
 | Cypher | PascalCase node label or relationship type | `PetByStatus` |
 | GraphQL | camelCase field name | `petByStatus` |
 
-The primary control over query-language naming is the **alias** set at registration time (`registered_tables.alias`). When an alias is present it is the authoritative name for all query languages — it is not a hint, it is the name. The naming convention (`snake_case`, `camelCase`, `PascalCase`, `none`, `inherit`) is then applied to the alias (or to `tableName` when no alias is set) to produce the correct cased form for each language.
+The primary control over query-language naming is the **alias** set at registration time (`registered_tables.alias`). When an alias is present it is the authoritative name — it is not a hint, it is the name. The alias is consumed differently per language: **SQL uses the alias verbatim** (no convention applied); **GQL applies its configured convention** to the alias; **Cypher derives from the GQL name** (per REQ-351 the Cypher node label is the PascalCase GraphQL `type_name`), not directly from the alias. When no alias is set, each language derives its name from `tableName` (normalized) via its configured convention.
 
 Resolution priority for the query-language name of a dataset:
 
-1. `alias` (if set) → apply active naming convention per language
-2. `tableName` (normalized) → apply active naming convention per language
+1. `alias` (if set) → SQL verbatim; GQL applies convention; Cypher derived from the GQL name
+2. `tableName` (normalized) → each language applies its configured convention
 
 Any name extracted from a SQL, Cypher, or GraphQL query must be resolvable to a physical dataset through the same centralized identity service. Resolution de-normalizes from query-language form → checks alias match first → falls back to tableName match → returns `(sourceId, physicalName)`.
 
@@ -221,4 +221,4 @@ Any name extracted from a SQL, Cypher, or GraphQL query must be resolvable to a 
   - `to_query_name(identity, lang) -> str` — applies the active naming convention to produce the correct form for a given query language.
 - Frontend: shared utility in `provisa-ui/src/utils/datasetIdentity.ts` — no per-component name-matching logic.
 - All inline normalization (`_normalize_op_id`, ad-hoc `toSnakeCase` comparisons, etc.) must be replaced by calls to these utilities.
-- The service reads the active naming convention from `registered_tables.naming_convention` → `domains.naming_convention` → `sources.naming_convention` → global default, in that priority order.
+- The service reads the active naming convention from `registered_tables.naming_convention` → `sources.naming_convention` → global default, in that priority order (three levels: table, source, global).

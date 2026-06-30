@@ -177,7 +177,9 @@ Governance violations on `POST /data/sql` return HTTP 403. (REQ-002, REQ-266)
 
 ### `POST /data/query`
 
-Unified query endpoint. Accepts GraphQL, SQL, or Cypher — syntax is auto-detected. (REQ-345, REQ-267) [tool-verified: `provisa/api/data/endpoint_dev.py:509`]
+Unified query endpoint. Accepts GraphQL, SQL, or Cypher — syntax is auto-detected. (REQ-267) [tool-verified: `provisa/api/data/endpoint_dev.py:509`]
+
+Cypher queries can also be submitted to the Cypher-only `POST /query/cypher` endpoint. (REQ-345)
 
 **Request body:**
 ```json
@@ -193,16 +195,16 @@ Returns `{"data": ...}` for GraphQL, `{"columns": [...], "rows": [...]}` for SQL
 
 ---
 
-### `POST /data/nl-to-sql`
+### `POST /query/nl`
 
-Translate a natural-language question to semantic SQL using Claude. Requires `ANTHROPIC_API_KEY` to be set. (REQ-354) [tool-verified: `provisa/api/data/endpoint_dev.py:266`]
+Submit a natural-language question. The service starts an async job and returns a `job_id` immediately. Requires `ANTHROPIC_API_KEY` to be set. (REQ-354) [tool-verified: `provisa/api/data/endpoint_dev.py:266`]
 
 **Request body:**
 ```json
 {"question": "How many orders were placed last month?", "role": "admin"}
 ```
 
-Returns the generated SQL string.
+Returns `{"job_id": "<id>"}`. The consumer polls `GET /query/nl/{job_id}` for the result or receives it via SSE when complete.
 
 ---
 
@@ -259,11 +261,11 @@ Each registered table produces a proto `message`. Relationships produce nested m
 
 ---
 
-### `GET /subscribe/{table}`
+### `GET /data/subscribe/{table}`
 
 Server-Sent Events stream for real-time change notifications from a table. (REQ-219, REQ-258) [tool-verified: `provisa/api/data/subscribe.py:239`]
 
-Uses PostgreSQL `LISTEN/NOTIFY` for pre-approved PostgreSQL-backed tables. (REQ-258) WebSocket and RSS sources are also supported. (REQ-338, REQ-342) Requires the table to have a pg_notify trigger installed (automatic for pre-approved tables).
+Notification delivery uses a pluggable provider chosen per source type: PostgreSQL sources use `LISTEN/NOTIFY` (via asyncpg), MongoDB sources use Change Streams (`collection.watch()`), and Kafka sources use consumer groups. Each provider implements a common async watch interface. RLS filtering and schema validation apply regardless of provider. (REQ-258) WebSocket and RSS sources are also supported. (REQ-338, REQ-342)
 
 ---
 
@@ -758,4 +760,4 @@ Supported directions: `asc`, `desc`, `asc_nulls_first`, `asc_nulls_last`, `desc_
 
 ## Subscriptions
 
-SSE subscriptions are available at `GET /subscribe/{table}` for tables with installed LISTEN/NOTIFY triggers (all pre-approved PostgreSQL-backed tables get these automatically at startup). (REQ-219, REQ-258) WebSocket and RSS sources are also supported via the same endpoint. (REQ-338, REQ-342) [tool-verified: `provisa/api/data/subscribe.py:239`, `provisa/api/app.py` `_rebuild_schemas`]
+SSE subscriptions are available at `GET /data/subscribe/{table}`. (REQ-219, REQ-258) Notification delivery uses a pluggable provider selected per source type: PostgreSQL sources use `LISTEN/NOTIFY`, MongoDB sources use Change Streams, and Kafka sources use consumer groups. RLS filtering and schema validation apply regardless of provider. WebSocket and RSS sources are also supported via the same endpoint. (REQ-338, REQ-342) [tool-verified: `provisa/api/data/subscribe.py:239`, `provisa/subscriptions/registry.py`, `provisa/api/app.py` `_rebuild_schemas`]

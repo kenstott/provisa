@@ -27,8 +27,14 @@ A steward can claim tables privately and expose only curated views as public-fac
 
 ### View Composition
 
-Views are strictly intradomain. A view may reference:
+A view always belongs to a single domain — there is only one view type, always intradomain. A view exists for one of two purposes:
+
+- **Cross-domain import** — the source is outside the domain. Cross-domain data may only enter a domain via a view, which acts as a read-only adapter naming the external data as a domain business concept.
+- **Local derivation** — the source is same-domain. The view derives new or calculated data from existing domain assets. New or derived data may only exist as a view.
+
+A view may reference:
 - Claimed tables within the same domain
+- Fields imported from another domain under a field access grant
 - One other view within the same domain, where the variation is purposeful: field restriction, aggregation, or enrichment via an additional join
 
 Composition depth is not technically enforced — steward judgment during HITL review is the quality control mechanism.
@@ -224,34 +230,18 @@ The Modeling tool may show all registered tables for structural exploration, eve
 
 ### Query Audit Trail
 
-Every query that touches a domain asset is logged:
-- Identity and timestamp
-- Fields accessed and query volume
-- Access grant under which it was authorised
-- Per-query purpose statement (where required)
+Every query that touches a domain asset is recorded in an append-only `query_audit_log`. Each entry captures:
+
+- `tenant_id`, `user_id`, `role_id` — the identity context
+- A SHA-256 hash of the query — the verbatim query text is never stored
+- `table_ids` — the domain assets the query touched
+- `source`, `status_code`, `duration_ms`
+- `logged_at` — the timestamp
+
+The log is append-only (DELETE and UPDATE blocked at the database level) and indexed by `(tenant_id, logged_at)` and `(user_id, logged_at)`.
 
 The steward's query history report is an aggregated view over this log, filterable by asset, role, and time window. The catalog is a live governance instrument — stewards maintain awareness of how their assets are used as it happens, not after the fact.
 
 **Two visibility mechanisms:**
 - **Push** — post-use notifications for structural acts (a new view was created using your fields)
 - **Pull** — query history for runtime usage patterns
-
-### Per-Query Business Purpose
-
-Certain identities, roles, or domains can be configured to require a purpose statement on every query execution. Applicable to:
-- High-privilege roles
-- External contractors
-- Audited identities
-- Domains containing regulated or sensitive data
-
-The purpose is expressed as a value within the query itself — no separate API call or protocol change:
-- **GraphQL**: `@purpose(reason: "regulatory reporting Q1 2026")`
-- **SQL**: `/* @provisa:purpose="regulatory reporting Q1 2026" */`
-- **Cypher**: `// @provisa:purpose="regulatory reporting Q1 2026"`
-
-**Rules:**
-- The compiler extracts the purpose before execution and logs it against the query
-- If required but absent, the query is rejected
-- Purpose requirements apply only to domains whose assets are **directly referenced** in the query — indirect domain involvement through relationship paths is not traced; doing so is unbounded and unenforceable
-- Per-query purpose statements serve as an anomaly detection signal — divergence between stated purpose and fields accessed is flagged for steward review
-- Whether to require per-query purposes, and for which roles, is a steward decision (HITL)

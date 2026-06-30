@@ -38,7 +38,6 @@ python -m provisa.ddn <hml-dir> -o provisa.yaml
 | `-o, --output FILE` | stdout | Output YAML file path |
 | `--source-overrides FILE` | None | YAML file with per-source connection overrides |
 | `--domain-map KEY=VAL ...` | None | Subgraph-to-domain mappings (e.g., `app=core analytics=reporting`) |
-| `--governance-default` | `pre-approved` | Default governance level: `pre-approved` or `registry-required` |
 | `--dry-run` | off | Parse and validate without writing output |
 
 ### Source Overrides File
@@ -61,12 +60,12 @@ my_pg_connector:
 |---|---|---|
 | **DataConnectorLink** | `sources[]` | Source type inferred from connector URL (postgres, mysql, mssql, mongo, clickhouse, snowflake, bigquery). Connection details default to placeholders; use `--source-overrides` to set actual values. |
 | **ObjectType** | Column definitions on `tables[]` | Fields become columns. `dataConnectorTypeMapping.fieldMapping` resolves GraphQL field names to physical column names. |
-| **Model** | `tables[]` | Each Model produces one table. `source_id` from connector, `table_name` from collection. `graphql_type_name` becomes `alias`. |
+| **Model** | `tables[]` | Each Model produces one table. `source_id` from connector, `table_name` from collection. `graphql_type_name` becomes `alias`. Subgraph (and thus `domain_id`) is derived from the file's directory: the first directory component under the project root. |
 | **Relationship** | `relationships[]` | Object type -> `many-to-one`, Array type -> `one-to-many`. Field mapping resolved through physical column lookup. |
 | **TypePermissions** | `columns[].visible_to[]` | `allowedFields` determines which roles can see each column. |
 | **ModelPermissions** | `rls_rules[]` | Filter predicates converted to SQL WHERE clauses. Supports `_eq`, `_neq`, `_gt`, `_lt`, `_gte`, `_lte`, `_in`, `_nin`, `_like`, `_is_null`, `_and`, `_or`, `_not`. Session variable references preserved as `${x-hasura-...}`. |
 | **Command** | `functions[]` | Both functions and procedures mapped. Arguments, return type, and GraphQL root field name preserved. `domain_id` set from subgraph. |
-| **AggregateExpression** | Table description annotation | Count, count_distinct, and per-field aggregate functions appended to table description as `[aggregates: ...]`. |
+| **AggregateExpression** | `provisa-aggregates.yaml` sidecar | Count, count_distinct, and per-field aggregate functions preserved in a sidecar file and converted to Provisa aggregate config. |
 | **BooleanExpressionType** | Skipped (silently) | Used internally by DDN for filtering; no direct Provisa equivalent needed. |
 | **AuthConfig** | Skipped (silently) | DDN auth config not mapped; configure Provisa auth separately. |
 | **ScalarType** | Skipped | Warning emitted with count. |
@@ -93,14 +92,14 @@ and sets `columns[].alias` to the GraphQL field name when they differ.
 2. **Configure source connections.** Connectors only provide a URL hint for type
    detection. Actual host/port/database/credentials must be supplied via
    `--source-overrides` or by editing the output.
-3. **Verify domain assignments.** Without `--domain-map`, each subgraph name becomes
-   a domain ID directly. Use `--domain-map` to rename them.
+3. **Verify domain assignments.** Subgraph names are derived from directory structure
+   (the first directory component under the project root). Without `--domain-map`, each
+   subgraph name becomes a domain ID directly. Use `--domain-map` to rename them.
 4. **Check RLS rules.** DDN filter predicates are converted to SQL approximations.
    Nested boolean logic (`_and`/`_or`/`_not`) is supported but complex
    relationship-traversing filters may need manual review.
-5. **Review aggregate annotations.** Aggregate expressions are stored as table
-   description text, not as structured config. If you need programmatic access,
-   parse the `[aggregates: ...]` annotation or configure aggregates separately.
+5. **Review aggregate config.** Aggregate expressions are written to a sidecar
+   `provisa-aggregates.yaml` file and converted to Provisa aggregate config.
 6. **Review warnings.** The converter prints a summary to stderr listing skipped
    DDN Kinds and any models referencing unknown ObjectTypes.
 7. **Test.** Start the Provisa server and verify queries against your data sources.
@@ -121,8 +120,10 @@ in the scanned directory.
 
 ### Subgraph discovery
 
-Subgraphs are discovered from the HML documents themselves (the `subgraph` field
-in each Kind definition). The directory structure is not used for subgraph inference.
+Subgraphs are derived from the directory structure: the first directory component
+under the project root is taken as the subgraph name. The `subgraph` field inside
+HML documents is not used. Files under a `globals/` directory are assigned the
+`globals` subgraph and excluded from domain discovery.
 
 ### Relationship source resolution
 
@@ -137,9 +138,9 @@ an `alias` in the output. This is correct behavior -- `name` is the physical col
 
 ### Aggregate expressions
 
-Aggregate expressions are not a first-class Provisa config section. They are appended
-to the table's `description` field as `[aggregates: count, count_distinct, Revenue(sum,avg)]`.
-This preserves the information but requires parsing if you need structured access.
+Aggregate expressions are preserved in a sidecar `provisa-aggregates.yaml` file written
+alongside the output and converted to Provisa aggregate config. They are not stored on
+the table `description`.
 
 ## Example: Converting a Chinook DDN Project
 
@@ -148,7 +149,6 @@ This preserves the information but requires parsing if you need structured acces
 python -m provisa.ddn ./chinook-ddn/ \
   -o provisa.yaml \
   --domain-map app=music \
-  --governance-default pre-approved \
   --source-overrides overrides.yaml
 
 # Dry run to check warnings first
@@ -172,7 +172,6 @@ tables:
     domain_id: music
     schema_name: public
     table_name: Album
-    governance: pre-approved
     columns:
       - name: AlbumId
         visible_to: [admin, user]
@@ -181,12 +180,10 @@ tables:
       - name: ArtistId
         visible_to: [admin, user]
     alias: Albums
-    description: "[aggregates: count, Title(min,max)]"
   - source_id: chinook_pg
     domain_id: music
     schema_name: public
     table_name: Artist
-    governance: pre-approved
     columns:
       - name: artist_id
         visible_to: [admin, user]

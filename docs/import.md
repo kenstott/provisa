@@ -48,15 +48,15 @@ mutation {
 | Select permission | Role visibility + RLS filter |
 | Column permission | `visible_to` / `writable_by` |
 | Insert/update/delete permission | Mutation `writable_by` + RLS |
-| Remote schema | `api_source` entry |
-| Computed field | `views[]` entry |
+| Remote schema | `graphql_remote` source registration |
+| Computed field | `functions[]` entry with `kind: query` |
 
 ### Limitations
 
 - **Actions** are not automatically converted — create equivalent webhook mutations manually
 - **Event triggers** map to Provisa webhook config but require manual URL configuration
-- **Custom SQL functions** require review — simple cases convert to `views[]`, complex ones need manual work
-- **Scheduled triggers** map to `scheduler` config entries (intervals only, no cron expressions yet)
+- **Custom SQL functions** require review — simple cases convert to `functions[]` entries, complex ones need manual work
+- **Scheduled triggers** map to `scheduler` config entries, including cron expressions
 
 ---
 

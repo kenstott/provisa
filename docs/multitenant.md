@@ -82,7 +82,9 @@ Each tenant maps to an org. The `orgs` table [tool-verified: `provisa/core/schem
 
 ## AWS KMS Setup
 
-Each tenant gets a dedicated Customer Master Key (CMK). At signup, `create_tenant_key(tenant_id)` calls `kms.create_key()` with `KeyUsage="ENCRYPT_DECRYPT"` and returns the key ARN [tool-verified: `provisa/api/billing/kms.py` lines 21–31]:
+Status: planned, not yet wired. The KMS envelope-encryption model described here is the designed model for at-rest per-tenant config encryption (tracked by REQ-684, REQ-685, REQ-694, all status `proposed`). The cryptographic primitives and the decrypt/read path exist in code, but the encryption write path is not yet wired: no code path generates or stores a DEK or writes encrypted `tenant_config`. As a result, at-rest per-tenant config encryption is not yet active.
+
+The designed model gives each tenant a dedicated Customer Master Key (CMK). At signup, `create_tenant_key(tenant_id)` calls `kms.create_key()` with `KeyUsage="ENCRYPT_DECRYPT"` and returns the key ARN [tool-verified: `provisa/api/billing/kms.py` lines 21–31]:
 
 ```python
 response = kms_client.create_key(
@@ -92,7 +94,7 @@ response = kms_client.create_key(
 return response["KeyMetadata"]["Arn"]
 ```
 
-Per-request encryption uses envelope encryption: `generate_data_key()` calls KMS to produce a 256-bit AES data encryption key (DEK). The plaintext DEK encrypts config payload with AES-256-GCM via `aes_encrypt()`. Only the encrypted DEK is persisted in `tenant_config` alongside the ciphertext and IV [tool-verified: `provisa/api/billing/kms.py` lines 34–65, `provisa/api/billing/tenant_db.py` lines 15–37].
+The designed per-request encryption uses envelope encryption: `generate_data_key()` calls KMS to produce a 256-bit AES data encryption key (DEK). The plaintext DEK encrypts the config payload with AES-256-GCM via `aes_encrypt()`. Only the encrypted DEK is persisted in `tenant_config` alongside the ciphertext and IV. These primitives exist [tool-verified: `provisa/api/billing/kms.py` lines 34–65, `provisa/api/billing/tenant_db.py` lines 15–37], but `generate_data_key`, `aes_encrypt`, and `upsert_config_entity` currently have no callers, so `tenant_config` is never populated.
 
 ### Required IAM permissions
 

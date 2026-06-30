@@ -61,8 +61,8 @@ pgwire uses cleartext password auth bridged to Provisa's configured auth provide
 ### Limitations
 
 - SQL only. GraphQL and Cypher are not accepted over pgwire.
-- Read-only. Mutations are not supported.
-- `COPY`, DDL (`CREATE TABLE`, etc.) are intercepted and rejected with a permission error.
+- Not read-only. `COPY ... FROM STDIN` inserts rows into `postgresql`, `mysql`, `sqlite`, and `mariadb` sources, and DDL is supported (see below).
+- DDL (`CREATE`, `ALTER`, `DROP`) is supported and dispatched to the Trino or direct path; the new table is registered into the compilation context and is immediately queryable. `COPY ... TO STDOUT` (export) and `COPY ... FROM STDIN` (import) are supported in `text` and `csv` formats.
 - `information_schema` and `pg_catalog` queries are intercepted and answered from a DuckDB catalog shim — schema discovery tools work correctly.
 
 ---
@@ -135,9 +135,11 @@ See [docs/python-client.md](python-client.md) for the full reference including D
 import pyarrow.flight as flight
 
 client = flight.connect("grpc://localhost:8815")
-ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders", "role": "analyst"}')
+ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
+
+The ticket carries no role. The server assigns the role from the configured auth provider. Where role selection is allowed, pass it in the gRPC call metadata under the `x-provisa-role` key (for example `flight.FlightCallOptions(headers=[(b"x-provisa-role", b"analyst")])`), not in the ticket JSON.
 
 ### ADBC
 
@@ -156,7 +158,7 @@ table = cursor.fetch_arrow_table()
 import duckdb, pyarrow.flight as flight
 
 client = flight.connect("grpc://localhost:8815")
-ticket = flight.Ticket(b'{"query": "SELECT * FROM sales.orders", "role": "analyst"}')
+ticket = flight.Ticket(b'{"query": "SELECT * FROM sales.orders"}')
 arrow_table = client.do_get(ticket).read_all()
 
 conn = duckdb.connect()

@@ -52,7 +52,7 @@ Multiple endpoints under the same port, distinguished by path:
 | `POST /data/sql` | SQL | Read-only; requires `query_development` capability |
 | `POST /data/query` | Cypher | Read-only; standard role |
 | `GET /data/nl` | Natural language | Translates to SQL/GraphQL/Cypher based on source type |
-| `GET /data/subscribe` | GraphQL | SSE subscription stream |
+| `GET /data/subscribe/{table}` | GraphQL | SSE subscription stream |
 | `GET /neo4j/...` | Cypher (Neo4j compat) | Neo4j HTTP API compatibility shim |
 | `POST /admin/graphql` | GraphQL | Admin API (superuser/admin role required) |
 
@@ -382,7 +382,7 @@ These endpoints apply the same security pipeline (RLS, masking, role checks) as 
 
 ## Subscriptions
 
-SSE subscriptions are served at `POST /data/subscribe`. Three delivery modes: (REQ-258)
+SSE subscriptions are served at `GET /data/subscribe/{table}`. Three delivery modes: (REQ-258)
 
 | Mode | Mechanism | When used |
 |------|-----------|-----------|
@@ -525,7 +525,7 @@ The admin UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) embeds GraphQL Voyager 
 2. **Schema Visibility**: Per-role schema hides unauthorized tables/columns (REQ-039)
 3. **RLS**: Per-table per-role WHERE clause injection (REQ-040, REQ-041)
 4. **Column Masking**: Per-column per-role data transformation (REQ-263)
-5. **Sampling**: LIMIT cap for non-full_results roles (REQ-263, REQ-005)
+5. **Row cap (LIMIT)**: Row-count cap for non-full_results roles (REQ-263, REQ-005); random statistical sampling is a separate user query feature (REQ-478)
 6. **Governance**: Test mode vs production (registry-required) (REQ-004)
 
 All three query interfaces (HTTP, Flight, gRPC) enforce the same security pipeline. (REQ-002, REQ-038)

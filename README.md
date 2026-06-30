@@ -4,42 +4,6 @@ Config-driven data virtualization platform. A single governed API over 30+ heter
 
 GraphQL, Cypher, and SQL are all first-class over federated data — something no federated engine offers natively. Arrow Flight columnar streaming is built in, not bolted on. Distributed traces, metrics, and logs are automatically registered as queryable tables in the same schema as your business data, so observability is just another join.
 
-## Screenshots
-
-> Run `make screenshots` to regenerate these from a live instance.
-
-### Query Language Explorer
-
-![Query Language Explorer](docs/images/query-explorer.png)
-
-### Natural Language Query
-
-![Natural Language Query](docs/images/natural-language.png)
-
-### Graph Visualization
-
-![Graph Visualization](docs/images/graph-view.png)
-
-### Schema Voyager
-
-![Schema Voyager](docs/images/schema-voyager.png)
-
-### Data Sources
-
-![Data Sources](docs/images/data-sources.png)
-
-### Table Registration
-
-![Table Registration](docs/images/table-registration.png)
-
-### Relationships
-
-![Relationships](docs/images/relationships.png)
-
-### Security Roles
-
-![Security Roles](docs/images/security-roles.png)
-
 ## Features
 
 ### Query Interfaces
@@ -53,11 +17,21 @@ These are the languages and structured APIs you write queries in. Each has its o
 - **JSON:API** — Structured query API at `/data/jsonapi/{table}`, HTTP-only by design. Supports JSON:API 1.1: sparse fieldsets (`fields[table]=col1,col2`), filter expressions (`filter[field][op]=value`), compound documents (`include=relation`), and sort. Not a general-purpose query language — queries one table at a time with standardized filter syntax rather than an ad-hoc query string.
 - **Query Language Explorer** — Write a GraphQL query and see live **Semantic SQL** and **Cypher** translations in side panels; copy either or jump directly into the SQL or Graph editor. A practical workflow is to sketch query fragments in GraphQL, then stitch the resulting SQL into complex views or reports.
 
+The Explorer shows a GraphQL query alongside its live SQL and Cypher translations:
+
+![Query Language Explorer](docs/images/query-explorer.png)
+
+The same federated schema is explorable as a live graph — domain and node labels, relationship types, and variable-length traversals:
+
+![Graph Visualization](docs/images/graph-view.png)
+
 ### Query Composition Tools
 
 These tools help you write queries in the above languages — they are not query languages themselves.
 
 - **Natural language query** — NL→SQL/Cypher/GraphQL pipeline powered by Claude. Describe what you want in plain English; the pipeline produces a query in your chosen language with an interactive validation loop before execution.
+
+![Natural Language Query](docs/images/natural-language.png)
 
 ### Wire Protocols
 
@@ -79,6 +53,12 @@ These are the connection protocols. SQL, GraphQL, and Cypher ride over them — 
 - **Scheduled triggers** — Cron and interval triggers (APScheduler) that fire webhooks, mutations, or Kafka sink publishes
 - **Federation performance hints** — SQL-comment routing hints override automatic routing decisions
 
+![Data Sources](docs/images/data-sources.png)
+
+Sources, files, and remote endpoints are registered as governed tables from the UI:
+
+![Table Registration](docs/images/table-registration.png)
+
 ### Security & Governance
 
 - **Row-level security** — Per-table, per-role WHERE clause injection
@@ -90,6 +70,8 @@ These are the connection protocols. SQL, GraphQL, and Cypher ride over them — 
 - **Tracked functions & webhooks** — DB functions and outbound webhooks exposed as GraphQL mutations with typed return shapes
 - **ABAC approval hook** — Pre-execution authorization hook; webhook, gRPC, or unix_socket transport; per-table, per-source, or global scope; configurable fallback policy
 - **Pluggable auth** — Firebase, Keycloak, OAuth 2.0, simple (testing)
+
+![Security Roles](docs/images/security-roles.png)
 
 ### Delivery & Performance
 
@@ -108,6 +90,14 @@ These are the connection protocols. SQL, GraphQL, and Cypher ride over them — 
 - **Data ingestion** — HTTP endpoints for pushing JSON event data into the platform
 - **Hasura v2 / DDN import** — Convert Hasura v2 metadata or DDN supergraph YAML to Provisa config
 - **Apollo Federation** — Expose Provisa as an Apollo Federation v2 subgraph
+
+Role-scoped schema visualized as an entity-relationship diagram (GraphQL Voyager):
+
+![Schema Voyager](docs/images/schema-voyager.png)
+
+Relationships are registered, approved, and enforced as the only legal JOIN paths:
+
+![Relationships](docs/images/relationships.png)
 
 ## Security Model
 
