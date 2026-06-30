@@ -503,10 +503,10 @@ class _EngineUnavailable(Exception):
 def _simulate_ingest(
     source_id: str,
     table: str,
-    body,
+    body: Any,
     *,
-    known_sources: set[str],
-    known_tables: set[str],
+    known_sources: set,
+    known_tables: set,
     columns: list[dict],
     backing_store: list[dict],
     engine_available: bool,
@@ -723,5 +723,4 @@ def batch_ingest_status_codes(shared_data):
         backing_store=miss_source_store,
         engine_available=True,
     )
-    assert status == 404, (
-        f"Unknown source: expected 404
+    assert status == 404, f"Unknown source: expected 404, got {status}"

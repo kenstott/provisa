@@ -85,6 +85,8 @@ not found in any scanned .hml file, that table is skipped and a warning is emitt
 the WarningCollector; the conversion continues rather than aborting.
 """
 
+import io
+import sys
 import textwrap
 from pathlib import Path
 
@@ -931,4 +933,3 @@ def _build_hasura_v2_metadata_with_write_permissions(base: Path) -> Path:
                 },
             },
         ],
-        "insert_permissions

@@ -796,26 +796,36 @@ _REQ316_SPEC: dict = {
 
 
 # ---------------------------------------------------------------------------
-# REQ-316 Steps
+# REQ-317 — static spec used for mutation auto-registration tests
 # ---------------------------------------------------------------------------
 
-
-@given("an OpenAPI spec is registered")
-def given_openapi_spec_is_registered(shared_data):
-    """Register the REQ-316 Order Management API spec into shared_data."""
-    spec = copy.deepcopy(_REQ316_SPEC)
-
-    # Verify the spec is structurally valid before storing it
-    assert spec.get("openapi") == "3.0.0", (
-        f"Spec must declare openapi 3.0.0, got {spec.get('openapi')!r}"
-    )
-    assert "paths" in spec and spec["paths"], "Spec must have a non-empty paths section"
-
-    # Enumerate the GET operations the spec declares
-    expected_get_ops = set()
-    for path, path_item in spec["paths"].items():
-        for method in path_item:
-            if method.lower() == "get":
-                op = path_item[method]
-                op_id = op.get("operationId") or f"{method}_{path}"
-                expected_get_ops.
+_REQ317_SPEC: dict = {
+    "openapi": "3.0.0",
+    "info": {"title": "Product Catalogue API", "version": "1.0.0"},
+    "components": {
+        "schemas": {
+            "Product": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "name": {"type": "string"},
+                    "price": {"type": "number"},
+                    "stock": {"type": "integer"},
+                },
+            },
+            "ProductPatch": {
+                "type": "object",
+                "properties": {
+                    "price": {"type": "number"},
+                    "stock": {"type": "integer"},
+                },
+            },
+        }
+    },
+    "paths": {
+        "/products": {
+            "get": {
+                "operationId": "listProducts",
+                "summary": "List all products",
+                "parameters": [
+                    {"

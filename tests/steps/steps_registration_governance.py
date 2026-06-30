@@ -104,6 +104,7 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -135,7 +136,6 @@ def privileged_steward_with_registration_rights(shared_data: dict) -> None:
     shared_data["steward_roles"] = ["steward", "source_registrar"]
     shared_data["has_registration_rights"] = True
 
-    # Build a valid source registration payload representing a new PostgreSQL source
     source = Source(
         id="new_pg_source",
         type=SourceType.postgresql,
@@ -151,11 +151,7 @@ def privileged_steward_with_registration_rights(shared_data: dict) -> None:
     shared_data["source_available"] = False
     shared_data["restart_required"] = False
 
-    # Confirm the steward has the required privilege
-    assert shared_data["has_registration_rights"] is True, (
-        "Steward does not have source registration rights"
-    )
-    # Confirm the source model is valid
+    assert shared_data["has_registration_rights"] is True
     assert source.id == "new_pg_source"
     assert source.type == SourceType.postgresql
     assert source.host == "db.example.com"
@@ -169,15 +165,11 @@ def submit_new_source_registration(shared_data: dict) -> None:
 
     source: Source = shared_data["source"]
 
-    # --- Step 1: Validate the Source model (connection field validation) ---
     catalog_name = _to_catalog_name(source.id)
-    assert catalog_name == "new_pg_source", (
-        f"Catalog name conversion failed: expected 'new_pg_source', got {catalog_name!r}"
-    )
+    assert catalog_name == "new_pg_source"
     shared_data["connection_validated"] = True
     shared_data["catalog_name"] = catalog_name
 
-    # --- Step 2: Simulate Trino dynamic catalog API call ---
     trino_call_log: list[str] = []
 
     mock_cursor = MagicMock()
@@ -201,33 +193,25 @@ def submit_new_source_registration(shared_data: dict) -> None:
     ):
         catalog_props = _build_catalog_properties(source, resolved_password)
 
-    assert isinstance(catalog_props, dict), "Catalog properties must be a dict"
-    assert len(catalog_props) > 0, "Catalog properties must not be empty"
+    assert isinstance(catalog_props, dict)
+    assert len(catalog_props) > 0
 
     props_sql_parts = ", ".join(f"'{k}' = '{v}'" for k, v in catalog_props.items())
     create_catalog_sql = f"CREATE CATALOG {catalog_name} USING postgresql WITH ({props_sql_parts})"
     mock_cursor.execute(create_catalog_sql)
 
-    assert len(trino_call_log) == 1, (
-        f"Expected exactly one Trino catalog API call, got: {trino_call_log}"
-    )
-    assert "CREATE CATALOG" in trino_call_log[0], (
-        f"Trino call did not include CREATE CATALOG: {trino_call_log[0]!r}"
-    )
-    assert catalog_name in trino_call_log[0], (
-        f"Trino call did not reference catalog name '{catalog_name}': {trino_call_log[0]!r}"
-    )
+    assert len(trino_call_log) == 1
+    assert "CREATE CATALOG" in trino_call_log[0]
+    assert catalog_name in trino_call_log[0]
 
     shared_data["trino_catalog_called"] = True
     shared_data["trino_call_log"] = trino_call_log
     shared_data["catalog_props"] = catalog_props
 
     shared_data["registration_start_time"] = time.monotonic()
-
     shared_data["source_available"] = True
     shared_data["restart_required"] = False
     shared_data["registration_submitted"] = True
-
     shared_data["registration_end_time"] = time.monotonic()
 
 
@@ -236,55 +220,31 @@ def submit_new_source_registration(shared_data: dict) -> None:
 def provisa_validates_connection_calls_trino_and_makes_source_available(
     shared_data: dict,
 ) -> None:
-    """Assert that:
-    1. The connection payload was validated.
-    2. The Trino dynamic catalog API was called (CREATE CATALOG).
-    3. The source is marked available.
-    4. No server restart was required.
-    5. The entire registration completed within an acceptable time window.
-    """
-    assert shared_data["connection_validated"] is True, (
-        "Provisa did not validate the source connection before registration"
-    )
-
-    assert shared_data["trino_catalog_called"] is True, (
-        "Provisa did not call the Trino dynamic catalog API during registration"
-    )
+    """Assert all REQ-012 postconditions."""
+    assert shared_data["connection_validated"] is True
+    assert shared_data["trino_catalog_called"] is True
 
     trino_call_log: list[str] = shared_data["trino_call_log"]
-    assert len(trino_call_log) >= 1, "No Trino catalog API calls were recorded"
+    assert len(trino_call_log) >= 1
 
     create_catalog_calls = [sql for sql in trino_call_log if "CREATE CATALOG" in sql]
-    assert len(create_catalog_calls) >= 1, (
-        f"Expected CREATE CATALOG in Trino call log, got: {trino_call_log}"
-    )
+    assert len(create_catalog_calls) >= 1
 
     catalog_name = shared_data["catalog_name"]
-    assert catalog_name in create_catalog_calls[0], (
-        f"Expected catalog name '{catalog_name}' in CREATE CATALOG SQL: {create_catalog_calls[0]!r}"
-    )
+    assert catalog_name in create_catalog_calls[0]
 
-    assert shared_data["source_available"] is True, (
-        "Source was not marked available after registration"
-    )
-
-    assert shared_data["restart_required"] is False, (
-        "Registration incorrectly required a server restart. "
-        "Dynamic catalog registration must not require a restart."
-    )
+    assert shared_data["source_available"] is True
+    assert shared_data["restart_required"] is False
 
     start = shared_data.get("registration_start_time")
     end = shared_data.get("registration_end_time")
-    assert start is not None and end is not None, "Registration timing was not recorded"
+    assert start is not None and end is not None
     elapsed_seconds = end - start
-    assert elapsed_seconds < 5.0, (
-        f"Registration took {elapsed_seconds:.3f}s — expected completion within 5 seconds. "
-        "Dynamic catalog registration should be near-instantaneous."
-    )
+    assert elapsed_seconds < 5.0
 
     catalog_props: dict[str, str] = shared_data["catalog_props"]
-    assert isinstance(catalog_props, dict), "Catalog properties must be a dict"
-    assert len(catalog_props) > 0, "Catalog properties sent to Trino must not be empty"
+    assert isinstance(catalog_props, dict)
+    assert len(catalog_props) > 0
 
     source: Source = shared_data["source"]
     assert source.id == "new_pg_source"
@@ -300,9 +260,7 @@ def provisa_validates_connection_calls_trino_and_makes_source_available(
 
 @given("any registered table or view")
 def any_registered_table_or_view(shared_data: dict) -> None:
-    """Register a representative set of tables and views to demonstrate that
-    no per-table governance mode field exists on any of them, and that all
-    are governed by the same uniform Stage 2 model."""
+    """Register a representative set of tables and views."""
     tables = [
         Table(
             source_id="sales_pg",
@@ -346,26 +304,16 @@ def any_registered_table_or_view(shared_data: dict) -> None:
     shared_data["governance_modes_observed"] = set()
 
     for table in tables:
-        assert not hasattr(table, "governance_mode"), (
-            f"Table '{table.table_name}' has a 'governance_mode' attribute — "
-            "REQ-015 forbids per-table governance modes."
-        )
-        assert not hasattr(table, "registry_required"), (
-            f"Table '{table.table_name}' has a 'registry_required' attribute — "
-            "REQ-015 forbids registry-required mode."
-        )
-        assert not hasattr(table, "access_mode"), (
-            f"Table '{table.table_name}' has an 'access_mode' attribute — "
-            "REQ-015 forbids per-table access mode distinctions."
-        )
+        assert not hasattr(table, "governance_mode")
+        assert not hasattr(table, "registry_required")
+        assert not hasattr(table, "access_mode")
 
-    assert len(tables) >= 2, "Need at least two registered tables/views to test uniformity"
+    assert len(tables) >= 2
 
 
 @when("a user with the appropriate rights queries it")
 def user_with_appropriate_rights_queries_it(shared_data: dict) -> None:
-    """Simulate a user with table/view rights + relationship rights querying
-    each registered table and view."""
+    """Simulate a user with table/view rights + relationship rights querying each registered table."""
     from provisa.compiler.schema_gen import SchemaInput, generate_schema
 
     tables: list[Table] = shared_data["registered_tables"]
@@ -448,39 +396,21 @@ def stage2_governance_applied_uniformly(shared_data: dict) -> None:
     governance_paths_taken: list[str] = shared_data.get("governance_paths_taken", [])
     governance_modes_observed: set = shared_data.get("governance_modes_observed", set())
 
-    assert len(generated_schemas) == len(tables), (
-        f"Expected {len(tables)} generated schemas (one per registered table/view), "
-        f"got {len(generated_schemas)}: {list(generated_schemas.keys())}"
-    )
+    assert len(generated_schemas) == len(tables)
 
     for table_name, schema in generated_schemas.items():
-        assert_valid_schema(schema), (f"Generated schema for '{table_name}' is not valid GraphQL.")
+        assert_valid_schema(schema)
         query_type = schema.query_type
-        assert query_type is not None, (
-            f"Schema for '{table_name}' has no Query type — table is not queryable. "
-            "Under REQ-015 every registered table must be queryable by users with rights."
-        )
-        assert len(query_type.fields) > 0, (
-            f"Query type for '{table_name}' has no fields — table produces no queryable output."
-        )
+        assert query_type is not None
+        assert len(query_type.fields) > 0
 
-    assert len(governance_modes_observed) == 1, (
-        f"Expected exactly one governance code path across all tables (stage2_uniform), "
-        f"but observed: {governance_modes_observed}. "
-        "REQ-015 mandates uniform Stage 2 governance with no per-table mode distinctions."
-    )
-    assert "stage2_uniform" in governance_modes_observed, (
-        f"The observed governance path is not 'stage2_uniform': {governance_modes_observed}. "
-        "Every table must go through Stage 2 governance."
-    )
+    assert len(governance_modes_observed) == 1
+    assert "stage2_uniform" in governance_modes_observed
 
     forbidden_attrs = ["governance_mode", "registry_required", "access_mode", "gov_mode"]
     for table in tables:
         for attr in forbidden_attrs:
-            assert not hasattr(table, attr), (
-                f"Table '{table.table_name}' has forbidden per-table governance attribute "
-                f"'{attr}'. REQ-015 forbids per-table governance modes."
-            )
+            assert not hasattr(table, attr)
 
     customers_schema = generated_schemas.get("customers")
     if customers_schema is not None:
@@ -498,28 +428,13 @@ def stage2_governance_applied_uniformly(shared_data: dict) -> None:
 
             if hasattr(return_type, "fields"):
                 visible_fields = set(return_type.fields.keys())
-                assert "name" not in visible_fields, (
-                    "Field 'name' (admin-only) is visible to analyst role — "
-                    "Stage 2 governance column filtering failed for 'customers'."
-                )
-                assert "email" not in visible_fields, (
-                    "Field 'email' (admin-only) is visible to analyst role — "
-                    "Stage 2 governance column filtering failed for 'customers'."
-                )
-                assert "id" in visible_fields or "region" in visible_fields, (
-                    "Neither 'id' nor 'region' (analyst-visible) appear in customers schema — "
-                    "Stage 2 governance may have filtered too aggressively."
-                )
+                assert "name" not in visible_fields
+                assert "email" not in visible_fields
+                assert "id" in visible_fields or "region" in visible_fields
 
-    assert len(governance_paths_taken) == len(tables), (
-        f"Governance path count ({len(governance_paths_taken)}) does not match "
-        f"table count ({len(tables)}). Every table must be individually governed."
-    )
+    assert len(governance_paths_taken) == len(tables)
     for i, path in enumerate(governance_paths_taken):
-        assert path == "stage2_uniform", (
-            f"Table at index {i} took governance path '{path}' instead of 'stage2_uniform'. "
-            "All tables must follow the same uniform Stage 2 governance path."
-        )
+        assert path == "stage2_uniform"
 
 
 # ---------------------------------------------------------------------------
@@ -610,9 +525,7 @@ def publication_completes(shared_data: dict) -> None:
 
     elapsed_ms = (t1 - t0) * 1000.0
 
-    assert generated_schema is not None, (
-        "generate_schema() returned None — schema generation pass did not produce output"
-    )
+    assert generated_schema is not None
 
     shared_data["published"] = True
     shared_data["schema_generation_triggered"] = True
@@ -629,53 +542,52 @@ def schema_generation_triggered_and_table_available(shared_data: dict) -> None:
     """Assert all REQ-016 postconditions."""
     from graphql import assert_valid_schema
 
-    assert shared_data["published"] is True, "Table was not marked as published"
-    assert shared_data["schema_generation_triggered"] is True, (
-        "Schema generation pass was not triggered on publication"
-    )
-    assert shared_data["query_builder_available"] is True, (
-        "Table was not made available in query builder after publication"
-    )
+    assert shared_data["published"] is True
+    assert shared_data["schema_generation_triggered"] is True
+    assert shared_data["query_builder_available"] is True
 
     generated_schema = shared_data["generated_schema"]
-    assert generated_schema is not None, "No schema was generated"
+    assert generated_schema is not None
 
     assert_valid_schema(generated_schema)
 
     query_type = generated_schema.query_type
-    assert query_type is not None, "Generated schema has no Query type"
-    assert len(query_type.fields) > 0, "Query type has no fields"
+    assert query_type is not None
+    assert len(query_type.fields) > 0
 
     elapsed_ms = shared_data["schema_generation_elapsed_ms"]
-    assert elapsed_ms < 2000.0, (
-        f"Schema generation took {elapsed_ms:.1f}ms — expected < 2000ms for immediate availability"
-    )
+    assert elapsed_ms < 2000.0
 
     table: Table = shared_data["table"]
     type_map = generated_schema.type_map
     table_type_found = any(
         table.table_name.lower() in type_name.lower() for type_name in type_map.keys()
     )
-    assert table_type_found, (
-        f"Table '{table.table_name}' not found in generated schema type map: "
-        f"{list(type_map.keys())}"
-    )
+    assert table_type_found
 
 
 # ---------------------------------------------------------------------------
 # REQ-017 — NoSQL sources exposed read-only via native Trino connector
 # ---------------------------------------------------------------------------
 
+# Mutation-enabling property keys that must never appear in a read-only connector config
+_MUTATION_PROPERTY_KEYS = frozenset({
+    "mongodb.allow-inserts",
+    "mongodb.allow-updates",
+    "mongodb.allow-deletes",
+    "mongodb.allow-drop-table",
+    "allow-write",
+    "write-enabled",
+    "connector.allow-mutations",
+})
+
+# DML keywords that must never appear in queries routed through a read-only connector
+_DML_KEYWORDS = frozenset({"INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE", "CREATE TABLE", "ALTER"})
+
 
 @given("a registered NoSQL source with a native Trino connector")
 def registered_nosql_source_with_native_trino_connector(shared_data: dict) -> None:
-    """Set up a MongoDB source registered in Provisa with the MongoDB Trino connector.
-
-    Verifies:
-    - SourceType.mongodb is present in SOURCE_TO_CONNECTOR (a connector is mapped).
-    - catalog_properties_for() returns a non-None property dict for the source.
-    - The property dict does not contain any mutation-enabling keys.
-    """
+    """Set up a MongoDB source registered in Provisa with the MongoDB Trino connector."""
     from provisa.core.trino_catalog_files import catalog_properties_for
 
     source = Source(
@@ -688,7 +600,6 @@ def registered_nosql_source_with_native_trino_connector(shared_data: dict) -> No
     )
     shared_data["nosql_source"] = source
 
-    # REQ-017: MongoDB must be mapped to a Trino connector
     assert SourceType.mongodb in SOURCE_TO_CONNECTOR, (
         f"SourceType.mongodb is not present in SOURCE_TO_CONNECTOR — "
         f"the MongoDB connector is required for REQ-017. "
@@ -700,7 +611,6 @@ def registered_nosql_source_with_native_trino_connector(shared_data: dict) -> No
     )
     shared_data["nosql_connector_name"] = connector_name
 
-    # Build the catalog properties that would be sent to Trino for this source
     props = catalog_properties_for(source, "")
     shared_data["nosql_catalog_props"] = props
 
@@ -708,10 +618,121 @@ def registered_nosql_source_with_native_trino_connector(shared_data: dict) -> No
         "catalog_properties_for() returned None for a MongoDB source — "
         "the connector mapping must return properties for MongoDB."
     )
-
-    # Confirm the properties reference the MongoDB connector (not a JDBC mutation path)
     assert isinstance(props, dict), "Catalog properties must be a dict"
     assert len(props) > 0, "Catalog properties must not be empty for a MongoDB source"
 
+    mutation_keys_present = _MUTATION_PROPERTY_KEYS & set(props.keys())
+    assert not mutation_keys_present, (
+        f"Catalog properties for MongoDB source contain mutation-enabling keys: "
+        f"{mutation_keys_present}. REQ-017 requires read-only access — no mutations allowed."
+    )
 
-@when("a consumer queries
+    shared_data["nosql_source_registered"] = True
+    shared_data["nosql_query_executed"] = False
+    shared_data["nosql_query_sql"] = None
+    shared_data["nosql_mutation_attempted"] = False
+    shared_data["nosql_mutation_blocked"] = False
+
+
+@when("a consumer queries a table from that source")
+def consumer_queries_table_from_nosql_source(shared_data: dict) -> None:
+    """Simulate a consumer executing a SELECT query through the Trino connector."""
+    from provisa.core.catalog import _to_catalog_name
+
+    source: Source = shared_data["nosql_source"]
+    props: dict[str, str] = shared_data["nosql_catalog_props"]
+    connector_name: str = shared_data["nosql_connector_name"]
+
+    catalog_name = _to_catalog_name(source.id)
+    shared_data["nosql_catalog_name"] = catalog_name
+
+    select_sql = (
+        f"SELECT _id, name, price, category "
+        f"FROM {catalog_name}.products_db.products "
+        f"LIMIT 100"
+    )
+    shared_data["nosql_query_sql"] = select_sql
+
+    sql_upper = select_sql.upper()
+    dml_found = [kw for kw in _DML_KEYWORDS if kw in sql_upper]
+    assert not dml_found, (
+        f"Consumer query contains DML keywords {dml_found} — "
+        "REQ-017 requires read-only queries through the Trino connector."
+    )
+
+    executed_statements: list[str] = []
+    rejected_statements: list[str] = []
+
+    def _mock_execute(sql: str) -> None:
+        sql_up = sql.strip().upper()
+        for dml_kw in _DML_KEYWORDS:
+            if sql_up.startswith(dml_kw) or f" {dml_kw} " in sql_up:
+                rejected_statements.append(sql)
+                raise PermissionError(
+                    f"Mutation statement rejected by read-only connector guard: {sql!r}"
+                )
+        executed_statements.append(sql)
+
+    mock_cursor = MagicMock()
+    mock_cursor.execute = MagicMock(side_effect=_mock_execute)
+    mock_cursor.fetchall = MagicMock(return_value=[
+        {"_id": "64abc", "name": "Widget A", "price": 9.99, "category": "widgets"},
+        {"_id": "64def", "name": "Widget B", "price": 14.99, "category": "widgets"},
+    ])
+    mock_cursor.description = [
+        ("_id", None), ("name", None), ("price", None), ("category", None)
+    ]
+
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value = mock_cursor
+
+    mock_cursor.execute(select_sql)
+    rows = mock_cursor.fetchall()
+
+    assert len(executed_statements) == 1, (
+        f"Expected exactly one executed statement, got: {executed_statements}"
+    )
+    assert executed_statements[0] == select_sql
+    assert len(rows) == 2, f"Expected 2 result rows, got {len(rows)}"
+
+    shared_data["nosql_query_executed"] = True
+    shared_data["nosql_query_rows"] = rows
+    shared_data["nosql_executed_statements"] = executed_statements
+    shared_data["nosql_rejected_statements"] = rejected_statements
+    shared_data["nosql_mock_cursor"] = mock_cursor
+    shared_data["nosql_mock_execute_fn"] = _mock_execute
+
+    mutation_sql = (
+        f"INSERT INTO {catalog_name}.products_db.products (_id, name) "
+        f"VALUES ('99999', 'Injected')"
+    )
+    shared_data["nosql_mutation_sql"] = mutation_sql
+
+    mutation_blocked = False
+    mutation_error_msg = None
+    try:
+        mock_cursor.execute(mutation_sql)
+    except PermissionError as exc:
+        mutation_blocked = True
+        mutation_error_msg = str(exc)
+
+    shared_data["nosql_mutation_attempted"] = True
+    shared_data["nosql_mutation_blocked"] = mutation_blocked
+    shared_data["nosql_mutation_error_msg"] = mutation_error_msg
+
+
+@then(
+    "the query is executed read-only through the Trino connector with no mutation path available"
+)
+def query_executed_readonly_through_trino_connector_no_mutation_path(shared_data: dict) -> None:
+    """Assert REQ-017 postconditions."""
+    assert shared_data["nosql_source_registered"] is True
+    assert shared_data["nosql_query_executed"] is True
+
+    connector_name: str = shared_data["nosql_connector_name"]
+    assert connector_name, "Connector name must be non-empty"
+
+    props: dict[str, str] = shared_data["nosql_catalog_props"]
+    mutation_keys_present = _MUTATION_PROPERTY_KEYS & set(props.keys())
+    assert not mutation_keys_present, (
+        f"Catalog properties

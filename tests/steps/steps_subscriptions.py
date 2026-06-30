@@ -6,7 +6,7 @@
 #
 # NOTICE: Use of this software for training artificial intelligence or
 # machine learning models is strictly prohibited without explicit written
-# permission from the copyright holder.
+# permission from the COPYRIGHT holder.
 
 """BDD step implementations for auto-installed PostgreSQL notify triggers and
 Debezium CDC subscriptions.

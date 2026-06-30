@@ -27,6 +27,7 @@ BASE = "http://localhost:8001"
 
 # ── adbc_connect() ────────────────────────────────────────────────────────────
 
+
 @respx.mock
 def test_adbc_connect_authenticates():
     respx.post(f"{BASE}/auth/login").mock(
@@ -53,31 +54,29 @@ def test_adbc_connect_falls_back_to_user_as_role_when_auth_fails():
 
 @respx.mock
 def test_adbc_connect_creates_flight_client():
-    respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "tok"})
-    )
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
     mock_flight = MagicMock()
     with patch("pyarrow.flight.connect", return_value=mock_flight) as mock_connect:
         conn = adbc_connect(BASE, user="u", password="p")
-    mock_connect.assert_called_once_with("grpc://localhost:8815")
+    assert mock_connect.call_count == 1
+    assert mock_connect.call_args.args == ("grpc://localhost:8815",)
+    assert conn._flight_client is mock_flight
+    assert conn._token == "tok"
 
 
 # ── AdbcConnection ────────────────────────────────────────────────────────────
 
+
 def test_adbc_connection_cursor():
     mock_flight = MagicMock()
-    conn = AdbcConnection(
-        flight_client=mock_flight, role="admin", token="tok", base_url=BASE
-    )
+    conn = AdbcConnection(flight_client=mock_flight, role="admin", token="tok", base_url=BASE)
     cur = conn.cursor()
     assert isinstance(cur, AdbcCursor)
 
 
 def test_adbc_connection_context_manager():
     mock_flight = MagicMock()
-    conn = AdbcConnection(
-        flight_client=mock_flight, role="admin", token="tok", base_url=BASE
-    )
+    conn = AdbcConnection(flight_client=mock_flight, role="admin", token="tok", base_url=BASE)
     with conn as c:
         assert not c._closed
     assert conn._closed
@@ -85,9 +84,7 @@ def test_adbc_connection_context_manager():
 
 def test_adbc_connection_closed_raises_on_cursor():
     mock_flight = MagicMock()
-    conn = AdbcConnection(
-        flight_client=mock_flight, role="admin", token=None, base_url=BASE
-    )
+    conn = AdbcConnection(flight_client=mock_flight, role="admin", token=None, base_url=BASE)
     conn.close()
     with pytest.raises(RuntimeError, match="closed"):
         conn.cursor()
@@ -95,11 +92,10 @@ def test_adbc_connection_closed_raises_on_cursor():
 
 # ── AdbcCursor.execute() ──────────────────────────────────────────────────────
 
+
 def test_cursor_execute_builds_correct_ticket():
     mock_flight = MagicMock()
-    conn = AdbcConnection(
-        flight_client=mock_flight, role="analyst", token="tok", base_url=BASE
-    )
+    conn = AdbcConnection(flight_client=mock_flight, role="analyst", token="tok", base_url=BASE)
     mock_reader = MagicMock()
     mock_flight.do_get.return_value = mock_reader
 
@@ -116,9 +112,7 @@ def test_cursor_execute_builds_correct_ticket():
 
 def test_cursor_execute_ticket_no_token_when_none():
     mock_flight = MagicMock()
-    conn = AdbcConnection(
-        flight_client=mock_flight, role="guest", token=None, base_url=BASE
-    )
+    conn = AdbcConnection(flight_client=mock_flight, role="guest", token=None, base_url=BASE)
     mock_reader = MagicMock()
     mock_flight.do_get.return_value = mock_reader
 
@@ -133,6 +127,7 @@ def test_cursor_execute_ticket_no_token_when_none():
 
 # ── fetch_arrow_table() ───────────────────────────────────────────────────────
 
+
 def test_fetch_arrow_table_returns_table():
     mock_flight = MagicMock()
     expected_table = pa.table({"id": [1, 2, 3], "name": ["a", "b", "c"]})
@@ -140,9 +135,7 @@ def test_fetch_arrow_table_returns_table():
     mock_reader.read_all.return_value = expected_table
     mock_flight.do_get.return_value = mock_reader
 
-    conn = AdbcConnection(
-        flight_client=mock_flight, role="admin", token=None, base_url=BASE
-    )
+    conn = AdbcConnection(flight_client=mock_flight, role="admin", token=None, base_url=BASE)
     cur = conn.cursor()
     cur.execute("{ items { id name } }")
     tbl = cur.fetch_arrow_table()
@@ -152,6 +145,7 @@ def test_fetch_arrow_table_returns_table():
 
 # ── fetchone() / fetchall() ───────────────────────────────────────────────────
 
+
 def test_fetchall_returns_tuples():
     mock_flight = MagicMock()
     expected_table = pa.table({"id": [10, 20], "val": ["x", "y"]})
@@ -159,9 +153,7 @@ def test_fetchall_returns_tuples():
     mock_reader.read_all.return_value = expected_table
     mock_flight.do_get.return_value = mock_reader
 
-    conn = AdbcConnection(
-        flight_client=mock_flight, role="admin", token=None, base_url=BASE
-    )
+    conn = AdbcConnection(flight_client=mock_flight, role="admin", token=None, base_url=BASE)
     cur = conn.cursor()
     cur.execute("{ items { id val } }")
     rows = cur.fetchall()
@@ -175,9 +167,7 @@ def test_fetchone_iterates_rows():
     mock_reader.read_all.return_value = expected_table
     mock_flight.do_get.return_value = mock_reader
 
-    conn = AdbcConnection(
-        flight_client=mock_flight, role="admin", token=None, base_url=BASE
-    )
+    conn = AdbcConnection(flight_client=mock_flight, role="admin", token=None, base_url=BASE)
     cur = conn.cursor()
     cur.execute("{ items { id } }")
     assert cur.fetchone() == (1,)
@@ -187,6 +177,7 @@ def test_fetchone_iterates_rows():
 
 # ── description ───────────────────────────────────────────────────────────────
 
+
 def test_description_returns_column_tuples():
     mock_flight = MagicMock()
     expected_table = pa.table({"id": [1], "status": ["ok"]})
@@ -194,9 +185,7 @@ def test_description_returns_column_tuples():
     mock_reader.read_all.return_value = expected_table
     mock_flight.do_get.return_value = mock_reader
 
-    conn = AdbcConnection(
-        flight_client=mock_flight, role="admin", token=None, base_url=BASE
-    )
+    conn = AdbcConnection(flight_client=mock_flight, role="admin", token=None, base_url=BASE)
     cur = conn.cursor()
     cur.execute("{ items { id status } }")
     # Trigger read
@@ -208,20 +197,17 @@ def test_description_returns_column_tuples():
 
 def test_description_none_before_execute():
     mock_flight = MagicMock()
-    conn = AdbcConnection(
-        flight_client=mock_flight, role="admin", token=None, base_url=BASE
-    )
+    conn = AdbcConnection(flight_client=mock_flight, role="admin", token=None, base_url=BASE)
     cur = conn.cursor()
     assert cur.description is None
 
 
 # ── context manager ───────────────────────────────────────────────────────────
 
+
 def test_cursor_context_manager():
     mock_flight = MagicMock()
-    conn = AdbcConnection(
-        flight_client=mock_flight, role="admin", token=None, base_url=BASE
-    )
+    conn = AdbcConnection(flight_client=mock_flight, role="admin", token=None, base_url=BASE)
     with conn.cursor() as cur:
         assert not cur._closed
     assert cur._closed
