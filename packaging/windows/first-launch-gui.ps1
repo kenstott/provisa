@@ -488,9 +488,8 @@ $btnInstall.Add_Click({
       [System.IO.Compression.ZipFile]::ExtractToDirectory($CoreZip, $ExtractDir)
       $sync.Progress = 78
 
-      Add-Type -AssemblyName System.Net.Http
-      $httpClient = New-Object System.Net.Http.HttpClient
-      $httpClient.Timeout = [System.Threading.Timeout]::InfiniteTimeSpan
+      $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
+      if (-not (Test-Path $curlExe)) { throw 'curl.exe not found — Windows 10 version 1803 or later required.' }
 
       $tarballs = Get-ChildItem -Path $ExtractDir -Filter '*.tar.gz' | Sort-Object Name
       $total    = $tarballs.Count
@@ -498,20 +497,14 @@ $btnInstall.Add_Click({
       foreach ($tb in $tarballs) {
         $idx++
         Log "Installing service package $idx of ${total}..."
-        $uri = 'http://127.0.0.1:2375/images/load'
-        $fs  = [System.IO.File]::OpenRead($tb.FullName)
-        try {
-          $content = New-Object System.Net.Http.StreamContent($fs)
-          $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/x-tar')
-          $resp = $httpClient.PostAsync($uri, $content).GetAwaiter().GetResult()
-          $out  = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-          Log "  $($out.Trim())"
-        } finally {
-          $fs.Close()
-        }
+        $out = & $curlExe --silent --show-error --max-time 3600 `
+          -X POST 'http://127.0.0.1:2375/images/load' `
+          -H 'Content-Type: application/x-tar' `
+          --data-binary "@$($tb.FullName)" 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "Failed to install service package $($tb.Name) (curl exit $LASTEXITCODE): $out" }
+        if ($out) { Log "  $($out.Trim())" }
         $sync.Progress = 78 + [int](($idx / $total) * 7)
       }
-      $httpClient.Dispose()
       Log 'All service packages installed.'
       Remove-Item -Recurse -Force $ExtractDir -ErrorAction SilentlyContinue
       $sync.Progress = 85
