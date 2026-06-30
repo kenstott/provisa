@@ -29,9 +29,16 @@ $ProvisaHome  = Join-Path $env:USERPROFILE '.provisa'
 $Sentinel     = Join-Path $ProvisaHome '.first-launch-complete'
 
 if (Test-Path $Sentinel) {
+  $own = New-Object System.Windows.Forms.Form
+  $own.TopMost       = $true
+  $own.ShowInTaskbar = $false
+  $own.Size          = New-Object System.Drawing.Size(0,0)
+  $own.Show()
   [System.Windows.Forms.MessageBox]::Show(
-    'Provisa is already set up. Run: provisa start',
-    'Provisa', 'OK', 'Information') | Out-Null
+    $own,
+    "Provisa is already installed and ready.`r`n`r`nTo start Provisa: open a terminal and run`r`n    provisa start`r`n`r`n(If you need to reinstall, delete $Sentinel and rerun this setup.)",
+    'Provisa Setup', 'OK', 'Information') | Out-Null
+  $own.Dispose()
   exit 0
 }
 
@@ -506,15 +513,22 @@ $btnInstall.Add_Click({
           $imgsBefore = (& $curlExe --silent 'http://127.0.0.1:2375/images/json' | ConvertFrom-Json).Count
         } catch {}
 
-        $out = & $curlExe --silent --show-error --max-time 3600 --keepalive-time 1 `
+        $respFile = Join-Path $env:TEMP "provisa-load-$idx.txt"
+        Remove-Item $respFile -ErrorAction SilentlyContinue
+        $out = & $curlExe --silent --show-error --max-time 3600 `
           -X POST 'http://127.0.0.1:2375/images/load' `
           -H 'Content-Type: application/x-tar' `
+          --output $respFile `
           --data-binary "@$($tb.FullName)" 2>&1
         $curlExit = $LASTEXITCODE
+        $respBody = if (Test-Path $respFile) { Get-Content $respFile -Raw -ErrorAction SilentlyContinue } else { '' }
+        Remove-Item $respFile -ErrorAction SilentlyContinue
 
-        if ($curlExit -eq 56) {
-          # Data sent successfully; Docker reset the response connection while processing.
-          # Poll until image count increases (up to 5 min).
+        if ($curlExit -eq 0 -or ($curlExit -eq 56 -and $respBody -match '"stream"\s*:\s*"Loaded image')) {
+          # Success: either clean exit or connection reset after Docker confirmed load
+          Log "  Package installed."
+        } elseif ($curlExit -eq 56) {
+          # Data sent but no confirmation in partial response — poll image count.
           Log "  Package transmitted — waiting for processing..."
           $waited = 0
           $loaded = $false
@@ -525,11 +539,9 @@ $btnInstall.Add_Click({
               if ($imgsNow -gt $imgsBefore) { $loaded = $true }
             } catch {}
           }
-          if (-not $loaded) { throw "Service package $($tb.Name) did not appear in Docker after 300s." }
-        } elseif ($curlExit -ne 0) {
-          throw "Failed to install service package $($tb.Name) (curl exit $curlExit): $out"
+          if (-not $loaded) { throw "Service package $($tb.Name) did not confirm in Docker after 300s." }
         } else {
-          if ($out) { Log "  $($out.Trim())" }
+          throw "Failed to install service package $($tb.Name) (curl exit $curlExit): $out"
         }
         $sync.Progress = 78 + [int](($idx / $total) * 7)
       }
