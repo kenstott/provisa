@@ -85,10 +85,6 @@ not found in any scanned .hml file, that table is skipped and a warning is emitt
 the WarningCollector; the conversion continues rather than aborting.
 """
 
-from __future__ import annotations
-
-import io
-import sys
 import textwrap
 from pathlib import Path
 
@@ -101,7 +97,7 @@ from provisa.ddn.mapper import convert_hml
 from provisa.ddn.parser import parse_hml_dir
 from provisa.hasura_v2.mapper import convert_metadata
 from provisa.hasura_v2.parser import parse_metadata_dir
-from provisa.import_shared.bool_expr import bool_expr_to_sql
+from provisa.import_shared.filters import bool_expr_to_sql
 from provisa.import_shared.warnings import WarningCollector
 
 
@@ -810,13 +806,9 @@ def _build_ddn_supergraph_project(base: Path) -> Path:
           modelName: Album
           permissions:
             - role: viewer
-              select:
-                filter:
-                  fieldComparison:
-                    field: artistId
-                    operator: _eq
-                    value:
-                      literal: 1
+              filter:
+                artistId:
+                  _eq: 1
         """
     )
     (permissions_dir / "AlbumPermissions.hml").write_text(album_perms_hml, encoding="utf-8")
@@ -933,4 +925,822 @@ def _build_hasura_v2_metadata_with_write_permissions(base: Path) -> Path:
             {
                 "role": "clerk",
                 "permission": {
-                    "columns": ["amount
+                    "columns": ["amount", "region"],
+                    "check": {},
+                },
+            },
+        ],
+        "update_permissions": [
+            {
+                "role": "manager",
+                "permission": {
+                    "columns": ["amount", "region", "status"],
+                    "filter": {},
+                    "check": {},
+                },
+            },
+        ],
+    }
+    (tables_dir / "public_orders.yaml").write_text(yaml.dump(orders_yaml), encoding="utf-8")
+
+    (tables_dir / "tables.yaml").write_text(
+        yaml.dump([orders_yaml]),
+        encoding="utf-8",
+    )
+
+    databases_yaml = [
+        {
+            "name": "default",
+            "kind": "postgres",
+            "configuration": {
+                "connection_info": {
+                    "database_url": {"from_env": "PG_DATABASE_URL"},
+                }
+            },
+            "tables": "!include default/tables/tables.yaml",
+            "functions": [],
+        }
+    ]
+    (metadata_dir / "databases" / "databases.yaml").write_text(
+        yaml.dump(databases_yaml), encoding="utf-8"
+    )
+
+    for stub_file in (
+        "actions.yaml",
+        "allow_list.yaml",
+        "cron_triggers.yaml",
+        "inherited_roles.yaml",
+        "query_collections.yaml",
+        "remote_schemas.yaml",
+        "rest_endpoints.yaml",
+    ):
+        (metadata_dir / stub_file).write_text("[]\n", encoding="utf-8")
+
+    (metadata_dir / "actions.graphql").write_text("", encoding="utf-8")
+
+    return metadata_dir
+
+
+# ---------------------------------------------------------------------------
+# Step definitions
+# ---------------------------------------------------------------------------
+
+
+def _run_v2(metadata_dir: Path, shared_data: dict, **kwargs) -> ProvisaConfig:
+    """Parse + convert a v2 metadata dir, storing intermediates in shared_data."""
+    collector = WarningCollector()
+    metadata = parse_metadata_dir(metadata_dir, collector)
+    config = convert_metadata(metadata, collector, **kwargs)
+    shared_data["metadata"] = metadata
+    shared_data["collector"] = collector
+    shared_data["config"] = config
+    return config
+
+
+def _run_ddn(project_dir: Path, shared_data: dict, **kwargs) -> ProvisaConfig:
+    """Parse + convert a DDN project dir, storing intermediates in shared_data."""
+    collector = WarningCollector()
+    metadata = parse_hml_dir(project_dir, collector)
+    config = convert_hml(metadata, collector, **kwargs)
+    shared_data["metadata"] = metadata
+    shared_data["collector"] = collector
+    shared_data["config"] = config
+    return config
+
+
+# --- REQ-182: v2 metadata converter (end-to-end) --------------------------
+
+
+@given("a Hasura v2 metadata export directory")
+def given_v2_metadata_export_dir(tmp_path, shared_data):
+    shared_data["metadata_dir"] = _build_hasura_v2_metadata_dir(tmp_path)
+
+
+@when("the CLI converter is run against it")
+def when_cli_converter_run(shared_data):
+    _run_v2(shared_data["metadata_dir"], shared_data)
+
+
+@then(
+    "valid Provisa YAML config is emitted covering tables, relationships, "
+    "permissions, roles, and auth"
+)
+def then_valid_provisa_config_emitted(shared_data):
+    config = shared_data["config"]
+    # Round-trips through Pydantic validation -> "valid Provisa config".
+    validated = ProvisaConfig.model_validate(config.model_dump(by_alias=True))
+    table_names = {t.table_name for t in validated.tables}
+    assert {"users", "posts"} <= table_names
+    assert validated.relationships, "expected relationships"
+    role_ids = {r.id for r in validated.roles}
+    assert {"viewer", "admin", "editor"} <= role_ids
+    # permissions -> column visibility present
+    assert any(
+        c.visible_to for t in validated.tables for c in t.columns
+    ), "expected column visibility from permissions"
+    assert validated.auth is not None
+
+
+# --- REQ-183: DDN HML converter (end-to-end) ------------------------------
+
+
+@given("a Hasura DDN supergraph project")
+def given_ddn_supergraph_project(tmp_path, shared_data):
+    shared_data["project_dir"] = _build_ddn_supergraph_project(tmp_path)
+
+
+@when("the HML converter CLI tool is run")
+def when_hml_converter_run(shared_data):
+    _run_ddn(shared_data["project_dir"], shared_data)
+
+
+@then(
+    "valid Provisa YAML config is emitted covering ObjectTypes, Models, "
+    "Relationships, TypePermissions, ModelPermissions, and DataConnectorLinks"
+)
+def then_valid_ddn_config_emitted(shared_data):
+    config = shared_data["config"]
+    validated = ProvisaConfig.model_validate(config.model_dump(by_alias=True))
+    table_names = {t.table_name for t in validated.tables}
+    assert {"artist", "album"} <= table_names  # Models -> tables via ObjectTypes
+    assert validated.relationships, "Relationship -> Provisa relationship"
+    assert {"viewer"} <= {r.id for r in validated.roles}  # TypePermissions/ModelPermissions
+    assert validated.sources, "DataConnectorLink -> source"
+    assert validated.rls_rules, "ModelPermissions filter -> rls rule"
+
+
+# --- REQ-184: boolean expression -> SQL -----------------------------------
+
+
+@given("a Hasura boolean filter expression using operators like _eq, _in, _and, _or, _not")
+def given_bool_filter_expr(shared_data):
+    shared_data["expr"] = {
+        "_and": [
+            {"author_id": {"_eq": "X-Hasura-User-Id"}},
+            {"status": {"_in": ["draft", "published"]}},
+            {"_not": {"deleted": {"_eq": True}}},
+            {"_or": [{"priority": {"_gt": 5}}, {"pinned": {"_eq": True}}]},
+        ]
+    }
+
+
+@when("the shared converter processes it")
+def when_shared_converter_processes(shared_data):
+    shared_data["sql"] = bool_expr_to_sql(shared_data["expr"])
+
+
+@then(
+    "valid SQL is produced with session variable references mapped to "
+    "current_setting('provisa.<name>')"
+)
+def then_valid_sql_with_session_var(shared_data):
+    sql = shared_data["sql"]
+    assert "author_id = current_setting('provisa.user_id')" in sql
+    assert "status IN ('draft', 'published')" in sql
+    assert "NOT (deleted = TRUE)" in sql
+    assert " AND " in sql and " OR " in sql
+    assert "priority > 5" in sql
+
+
+# --- REQ-185: select_permissions.columns -> visible_to --------------------
+
+
+@given("a Hasura v2 metadata export with select_permissions[].columns per role")
+def given_v2_select_permissions(tmp_path, shared_data):
+    shared_data["metadata_dir"] = _build_hasura_v2_metadata_with_select_permissions(tmp_path)
+
+
+@when("the v2 converter runs")
+def when_v2_converter_runs(shared_data):
+    # Some scenarios build HasuraMetadata directly (kind/connection_info that the
+    # directory parser does not carry); others supply a metadata export directory.
+    if "direct_metadata" in shared_data:
+        collector = WarningCollector()
+        config = convert_metadata(shared_data["direct_metadata"], collector)
+        shared_data["collector"] = collector
+        shared_data["config"] = config
+        return
+    _run_v2(shared_data["metadata_dir"], shared_data)
+
+
+@then(
+    'each column\'s visible_to is populated from the role\'s column list, '
+    'with "*" meaning all columns'
+)
+def then_visible_to_populated(shared_data):
+    config = shared_data["config"]
+    products = next(t for t in config.tables if t.table_name == "products")
+    cols = {c.name: _column_visible_to(c) for c in products.columns}
+    assert "viewer" in cols["name"]
+    assert "viewer" in cols["price"]
+    assert "auditor" in cols["internal_cost"]
+    assert "viewer" not in cols["internal_cost"]
+    # "*" wildcard column carries the admin role visibility
+    assert "admin" in cols["*"]
+
+
+# --- REQ-186: insert/update columns -> writable_by ------------------------
+
+
+@given("a Hasura v2 metadata export with insert/update_permissions[].columns per role")
+def given_v2_write_permissions(tmp_path, shared_data):
+    shared_data["metadata_dir"] = _build_hasura_v2_metadata_with_write_permissions(tmp_path)
+
+
+@then(
+    "each column's writable_by is populated from the role's insert/update column list"
+)
+def then_writable_by_populated(shared_data):
+    config = shared_data["config"]
+    orders = next(t for t in config.tables if t.table_name == "orders")
+    writable = {c.name: _column_writable_by(c) for c in orders.columns}
+    # clerk has insert on amount/region
+    assert "clerk" in writable["amount"]
+    assert "clerk" in writable["region"]
+    # manager has update on amount/region/status
+    assert "manager" in writable["amount"]
+    assert "manager" in writable["status"]
+    # analyst only has select — not writable
+    assert "analyst" not in writable.get("amount", set())
+
+
+# --- REQ-187: select filter -> rls_rules ----------------------------------
+
+
+@given("a Hasura v2 select_permissions[].filter boolean expression")
+def given_v2_select_filter(tmp_path, shared_data):
+    # The default metadata dir has posts.viewer with a non-empty filter and
+    # users.viewer with an empty filter {}.
+    shared_data["metadata_dir"] = _build_hasura_v2_metadata_dir(tmp_path)
+
+
+@then(
+    "rls_rules[] are generated via boolean expression-to-SQL conversion, "
+    "with empty filter producing no RLS rule"
+)
+def then_rls_rules_generated(shared_data):
+    config = shared_data["config"]
+    posts_rls = [r for r in config.rls_rules if r.role_id == "viewer" and "author_id" in r.filter]
+    assert len(posts_rls) == 1
+    assert "current_setting('provisa.user_id')" in posts_rls[0].filter
+    # users.viewer had filter {} -> no rule with an empty/TRUE filter
+    assert all(r.filter and r.filter != "TRUE" for r in config.rls_rules)
+
+
+# --- REQ-188: relationship cardinality ------------------------------------
+
+
+@given("a Hasura v2 metadata export with object_relationships and array_relationships")
+def given_v2_relationships(tmp_path, shared_data):
+    shared_data["metadata_dir"] = _build_hasura_v2_metadata_dir(tmp_path)
+
+
+@then(
+    "object_relationships become cardinality=many-to-one and "
+    "array_relationships become cardinality=one-to-many"
+)
+def then_relationship_cardinalities(shared_data):
+    config = shared_data["config"]
+    obj_rel = next(r for r in config.relationships if r.id.endswith(".profile"))
+    arr_rel = next(r for r in config.relationships if r.id.endswith(".comments"))
+    assert obj_rel.cardinality == "many-to-one"
+    assert arr_rel.cardinality == "one-to-many"
+
+
+# --- REQ-189: DDN field mapping resolution --------------------------------
+
+
+@given("a DDN supergraph with ObjectType.dataConnectorTypeMapping[].fieldMapping entries")
+def given_ddn_field_mapping(tmp_path, shared_data):
+    shared_data["project_dir"] = _build_ddn_supergraph_project(tmp_path)
+
+
+@when("the DDN converter runs")
+def when_ddn_converter_runs(shared_data):
+    _run_ddn(shared_data["project_dir"], shared_data)
+
+
+@then(
+    "all GraphQL field names in relationships, permissions, and column "
+    "definitions are resolved to physical column names"
+)
+def then_field_names_resolved(shared_data):
+    config = shared_data["config"]
+    album = next(t for t in config.tables if t.table_name == "album")
+    col_names = {c.name for c in album.columns}
+    # physical columns, not GraphQL aliases
+    assert {"album_id", "title", "artist_id"} <= col_names
+    assert "albumId" not in col_names
+    # GraphQL alias preserved on column
+    album_id_col = next(c for c in album.columns if c.name == "album_id")
+    assert album_id_col.alias == "albumId"
+    # relationship resolved to physical column
+    rel = next(r for r in config.relationships if r.id.endswith(".artist"))
+    assert rel.source_column == "artist_id"
+    # ModelPermissions filter resolved to physical column
+    album_rls = [r for r in config.rls_rules if "artist_id" in r.filter]
+    assert album_rls, "filter field artistId should resolve to artist_id"
+
+
+# --- REQ-190: auth conversion ---------------------------------------------
+
+
+@given("a Hasura v2 auth config with JWT jwk_url, claims_map, or admin secret")
+def given_v2_auth_config(tmp_path, shared_data):
+    shared_data["metadata_dir"] = _build_hasura_v2_metadata_dir(tmp_path)
+    shared_data["auth_env"] = {
+        "AUTH_PROVIDER": "oauth",
+        "JWK_URL": "https://auth.example.com/.well-known/jwks.json",
+        "CLAIMS_MAP": '{"admin_group": "admin", "viewer_group": "viewer"}',
+        "HASURA_GRAPHQL_ADMIN_SECRET": "supersecret",
+    }
+
+
+@when("the v2 converter runs with --auth-env-file")
+def when_v2_converter_runs_auth(shared_data):
+    _run_v2(shared_data["metadata_dir"], shared_data, auth_env=shared_data["auth_env"])
+
+
+@then(
+    "JWT becomes provider: oauth with role_mapping[], admin secret becomes "
+    "superuser, and webhook auth emits a warning"
+)
+def then_auth_config_converted(shared_data):
+    config = shared_data["config"]
+    auth = config.auth
+    assert auth.provider == "oauth"
+    assert auth.oauth and auth.oauth.get("jwk_url") == "https://auth.example.com/.well-known/jwks.json"
+    assert auth.superuser and auth.superuser.get("secret") == "supersecret"
+    mapped_roles = {m["role"] for m in auth.role_mapping}
+    assert {"admin", "viewer"} <= mapped_roles
+    # webhook auth path must emit a warning
+    webhook_collector = WarningCollector()
+    webhook_meta = parse_metadata_dir(shared_data["metadata_dir"], webhook_collector)
+    convert_metadata(
+        webhook_meta,
+        webhook_collector,
+        auth_env={"AUTH_PROVIDER": "webhook"},
+    )
+    assert any(
+        w.category == "webhook_auth" for w in webhook_collector.warnings
+    ), "webhook auth should emit a warning"
+
+
+# --- REQ-191: DDN aggregate expressions -----------------------------------
+
+
+def _build_ddn_project_with_aggregate(base: Path) -> Path:
+    project_dir = _build_ddn_supergraph_project(base)
+    agg_hml = textwrap.dedent(
+        """\
+        kind: AggregateExpression
+        version: v1
+        definition:
+          name: AlbumAgg
+          operand:
+            object:
+              aggregatedType: Album
+              aggregatableFields:
+                - fieldName: albumId
+                  aggregateExpression: IntAgg
+          count:
+            enable: true
+            enableDistinct: true
+        """
+    )
+    (project_dir / "subgraphs" / "chinook" / "models" / "AlbumAgg.hml").write_text(
+        agg_hml, encoding="utf-8"
+    )
+    return project_dir
+
+
+@given("a DDN project with AggregateExpression metadata")
+def given_ddn_aggregate(tmp_path, shared_data):
+    shared_data["project_dir"] = _build_ddn_project_with_aggregate(tmp_path)
+
+
+@when("the DDN converter runs")
+def when_ddn_converter_runs_agg(shared_data):
+    if "agg" in shared_data:
+        return
+    agg_collector: dict = {}
+    _run_ddn(shared_data["project_dir"], shared_data, agg_collector=agg_collector)
+    shared_data["agg"] = agg_collector
+
+
+@then(
+    "aggregate config is emitted in provisa-aggregates.yaml as valid Provisa "
+    "aggregate config"
+)
+def then_aggregate_config_emitted(shared_data):
+    agg = shared_data["agg"]
+    assert agg, "agg_collector should be populated"
+    entry = next(iter(agg.values()))
+    assert entry.get("count") is True
+    # sidecar must be serialisable to valid YAML (provisa-aggregates.yaml)
+    dumped = yaml.safe_dump(agg)
+    reloaded = yaml.safe_load(dumped)
+    assert reloaded == agg
+
+
+# --- REQ-192: unmappable feature warnings ---------------------------------
+
+
+def _build_v2_unmappable(base: Path) -> Path:
+    metadata_dir = base / "metadata_192"
+    tables_dir = metadata_dir / "databases" / "default" / "tables"
+    tables_dir.mkdir(parents=True, exist_ok=True)
+    (metadata_dir / "version.yaml").write_text("version: 3\n", encoding="utf-8")
+    tbl = {
+        "table": {"schema": "public", "name": "audit"},
+        "select_permissions": [
+            {"role": "viewer", "permission": {"columns": ["id"], "filter": {}}}
+        ],
+        "event_triggers": [
+            {
+                "name": "on_audit_insert",
+                "definition": {"insert": {"columns": "*"}},
+                "webhook": "https://hooks.example.com/audit",
+                "retry_conf": {"num_retries": 3, "interval_sec": 5},
+            }
+        ],
+    }
+    (tables_dir / "tables.yaml").write_text(yaml.dump([tbl]), encoding="utf-8")
+    databases_yaml = [{
+        "name": "default", "kind": "postgres",
+        "configuration": {"connection_info": {"database_url": {"from_env": "PG_URL"}}},
+        "tables": "!include default/tables/tables.yaml", "functions": [],
+    }]
+    (metadata_dir / "databases" / "databases.yaml").write_text(
+        yaml.dump(databases_yaml), encoding="utf-8")
+    # DB-backed (non-HTTP) action -> mapper emits an "actions" warning
+    actions_yaml = {
+        "actions": [
+            {
+                "name": "computeTotals",
+                "definition": {
+                    "handler": "{{ACTION_BASE_URL}}",
+                    "kind": "synchronous",
+                    "arguments": [],
+                    "output_type": "TotalsOutput",
+                },
+                "permissions": [{"role": "viewer"}],
+            }
+        ],
+        "custom_types": {"input_objects": [], "objects": []},
+    }
+    (metadata_dir / "actions.yaml").write_text(yaml.dump(actions_yaml), encoding="utf-8")
+    (metadata_dir / "actions.graphql").write_text("", encoding="utf-8")
+    for stub in ("allow_list.yaml", "cron_triggers.yaml", "inherited_roles.yaml",
+                 "query_collections.yaml", "remote_schemas.yaml", "rest_endpoints.yaml"):
+        (metadata_dir / stub).write_text("[]\n", encoding="utf-8")
+    return metadata_dir
+
+
+@given("a Hasura project with event_triggers, remote_schemas, cron_triggers, or webhook-backed actions")
+def given_v2_unmappable_features(tmp_path, shared_data):
+    shared_data["metadata_dir"] = _build_v2_unmappable(tmp_path)
+
+
+@when("the converter runs")
+def when_converter_runs(shared_data):
+    _run_v2(shared_data["metadata_dir"], shared_data)
+
+
+@then(
+    "warnings are emitted for unmappable features and conversion completes "
+    "rather than aborting"
+)
+def then_warnings_emitted_no_abort(shared_data):
+    config = shared_data["config"]
+    # conversion completed (did not abort)
+    assert config.tables
+    collector = shared_data["collector"]
+    assert collector.has_warnings()
+    categories = {w.category for w in collector.warnings}
+    # unmappable features surfaced warnings (event trigger + non-HTTP action)
+    assert "event_triggers" in categories
+    assert "actions" in categories
+    # handler URL present in an action warning
+    joined = " ".join(_all_warning_messages(collector))
+    assert "computeTotals" in joined
+
+
+# --- REQ-621: placeholder credentials -------------------------------------
+
+
+@given("a completed Hasura v2 or DDN conversion")
+def given_completed_conversion(tmp_path, shared_data):
+    shared_data["metadata_dir"] = _build_hasura_v2_metadata_dir(tmp_path)
+    _run_v2(shared_data["metadata_dir"], shared_data)
+
+
+@when("the output config is inspected")
+def when_output_inspected(shared_data):
+    shared_data["source"] = shared_data["config"].sources[0]
+
+
+@then(
+    "placeholder credentials (host: localhost, password: ${env:DB_PASSWORD}) "
+    "are present and Provisa refuses to start without real values"
+)
+def then_placeholder_credentials(shared_data):
+    source = shared_data["source"]
+    assert source.host == "localhost"
+    assert source.password == "${env:DB_PASSWORD}"
+
+
+# --- REQ-623: source kind mapping + URL parse -----------------------------
+
+
+@given("a Hasura v2 source config with kind, database_url, and pool_settings")
+def given_v2_source_config(shared_data):
+    from provisa.hasura_v2.models import (
+        HasuraMetadata,
+        HasuraPermission,
+        HasuraSource,
+        HasuraTable,
+    )
+
+    table = HasuraTable(
+        name="widgets",
+        schema_name="public",
+        select_permissions=[
+            HasuraPermission(role="viewer", columns=["id"], filter={}),
+        ],
+    )
+    source = HasuraSource(
+        name="default",
+        kind="mssql",  # -> sqlserver
+        connection_info={
+            "database_url": "postgres://appuser:secretpw@db.example.com:6543/shopdb",
+            "pool_settings": {"min_connections": 3, "max_connections": 17},
+        },
+        tables=[table],
+    )
+    shared_data["direct_metadata"] = HasuraMetadata(version=3, sources=[source])
+
+
+@then(
+    "SourceType is mapped correctly and connection URL is parsed into "
+    "components with pool settings preserved"
+)
+def then_source_type_and_url_parsed(shared_data):
+    source = shared_data["config"].sources[0]
+    assert source.type.value == "sqlserver"  # mssql -> sqlserver
+    assert source.host == "db.example.com"
+    assert source.port == 6543
+    assert source.database == "shopdb"
+    assert source.username == "appuser"
+    assert source.password == "secretpw"
+    assert source.pool_min == 3
+    assert source.pool_max == 17
+
+
+# --- REQ-624: delete_permissions -> write capability ----------------------
+
+
+def _build_v2_delete_perm(base: Path) -> Path:
+    metadata_dir = base / "metadata_624"
+    tables_dir = metadata_dir / "databases" / "default" / "tables"
+    tables_dir.mkdir(parents=True, exist_ok=True)
+    (metadata_dir / "version.yaml").write_text("version: 3\n", encoding="utf-8")
+    tbl = {
+        "table": {"schema": "public", "name": "invoices"},
+        "select_permissions": [
+            {"role": "purger", "permission": {"columns": ["id"], "filter": {}}}
+        ],
+        "delete_permissions": [
+            {"role": "purger", "permission": {"filter": {}}}
+        ],
+    }
+    (tables_dir / "tables.yaml").write_text(yaml.dump([tbl]), encoding="utf-8")
+    databases_yaml = [{
+        "name": "default", "kind": "postgres",
+        "configuration": {"connection_info": {"database_url": {"from_env": "PG_URL"}}},
+        "tables": "!include default/tables/tables.yaml", "functions": [],
+    }]
+    (metadata_dir / "databases" / "databases.yaml").write_text(
+        yaml.dump(databases_yaml), encoding="utf-8")
+    for stub in ("actions.yaml", "allow_list.yaml", "cron_triggers.yaml",
+                 "inherited_roles.yaml", "query_collections.yaml",
+                 "remote_schemas.yaml", "rest_endpoints.yaml"):
+        (metadata_dir / stub).write_text("[]\n", encoding="utf-8")
+    (metadata_dir / "actions.graphql").write_text("", encoding="utf-8")
+    return metadata_dir
+
+
+@given("a Hasura v2 role with delete_permissions on any table")
+def given_v2_delete_perm(tmp_path, shared_data):
+    shared_data["metadata_dir"] = _build_v2_delete_perm(tmp_path)
+
+
+@then(
+    "the role is upgraded to write capability with no per-table delete "
+    "mapping produced"
+)
+def then_role_upgraded_write(shared_data):
+    config = shared_data["config"]
+    purger = next(r for r in config.roles if r.id == "purger")
+    assert "write" in purger.capabilities
+    # no per-table delete mapping artefact: RLS rules carry no delete op, and
+    # there is no delete-specific structure emitted.
+    assert all(getattr(r, "role_id", None) != "purger" or r.filter for r in config.rls_rules)
+
+
+# --- REQ-625: env-var / unparseable database_url -> placeholders ----------
+
+
+@given("a Hasura v2 source with database_url as an env var reference or unparseable URL")
+def given_v2_env_var_url(tmp_path, shared_data):
+    # Default dir uses {"from_env": "PG_DATABASE_URL"} for database_url.
+    shared_data["metadata_dir"] = _build_hasura_v2_metadata_dir(tmp_path)
+
+
+@then(
+    "placeholder connection values are substituted and operators are directed "
+    "to use --source-overrides"
+)
+def then_placeholder_substituted(shared_data):
+    source = shared_data["config"].sources[0]
+    assert source.host == "localhost"
+    assert source.port == 5432
+    assert source.database == "default"
+    assert source.username == "postgres"
+    assert source.password == "${env:DB_PASSWORD}"
+    # --source-overrides is honoured: overriding the source replaces placeholders.
+    collector = WarningCollector()
+    meta = parse_metadata_dir(shared_data["metadata_dir"], collector)
+    overridden = convert_metadata(
+        meta, collector,
+        source_overrides={source.id: {"host": "real.db", "database": "prod"}},
+    )
+    ov = next(s for s in overridden.sources if s.id == source.id)
+    assert ov.host == "real.db"
+    assert ov.database == "prod"
+
+
+# --- REQ-626: role collection from permissions only -----------------------
+
+
+def _build_v2_role_without_perms(base: Path) -> Path:
+    metadata_dir = base / "metadata_626"
+    tables_dir = metadata_dir / "databases" / "default" / "tables"
+    tables_dir.mkdir(parents=True, exist_ok=True)
+    (metadata_dir / "version.yaml").write_text("version: 3\n", encoding="utf-8")
+    tbl = {
+        "table": {"schema": "public", "name": "items"},
+        "select_permissions": [
+            {"role": "reader", "permission": {"columns": ["id"], "filter": {}}}
+        ],
+    }
+    (tables_dir / "tables.yaml").write_text(yaml.dump([tbl]), encoding="utf-8")
+    databases_yaml = [{
+        "name": "default", "kind": "postgres",
+        "configuration": {"connection_info": {"database_url": {"from_env": "PG_URL"}}},
+        "tables": "!include default/tables/tables.yaml", "functions": [],
+    }]
+    (metadata_dir / "databases" / "databases.yaml").write_text(
+        yaml.dump(databases_yaml), encoding="utf-8")
+    for stub in ("actions.yaml", "allow_list.yaml", "cron_triggers.yaml",
+                 "query_collections.yaml", "remote_schemas.yaml",
+                 "rest_endpoints.yaml"):
+        (metadata_dir / stub).write_text("[]\n", encoding="utf-8")
+    # inherited_roles present but empty -> "ghost" role never appears
+    (metadata_dir / "inherited_roles.yaml").write_text("[]\n", encoding="utf-8")
+    (metadata_dir / "actions.graphql").write_text("", encoding="utf-8")
+    shared_ghost = "ghost_no_perms"
+    return metadata_dir, shared_ghost
+
+
+@given("a Hasura project with roles that have no permission entries on any table or action")
+def given_v2_role_without_perms(tmp_path, shared_data):
+    metadata_dir, ghost = _build_v2_role_without_perms(tmp_path)
+    shared_data["metadata_dir"] = metadata_dir
+    shared_data["ghost_role"] = ghost
+
+
+@then("those roles are excluded from the output config")
+def then_ghost_roles_excluded(shared_data):
+    config = shared_data["config"]
+    role_ids = {r.id for r in config.roles}
+    assert "reader" in role_ids  # permission-backed role is present
+    assert shared_data["ghost_role"] not in role_ids
+    # every emitted role must be permission-backed
+    assert role_ids == {"reader"}
+
+
+# --- REQ-627: table alias priority ----------------------------------------
+
+
+def _build_v2_alias_priority(base: Path) -> Path:
+    metadata_dir = base / "metadata_627"
+    tables_dir = metadata_dir / "databases" / "default" / "tables"
+    tables_dir.mkdir(parents=True, exist_ok=True)
+    (metadata_dir / "version.yaml").write_text("version: 3\n", encoding="utf-8")
+    # select wins over select_by_pk and custom_name
+    t_select = {
+        "table": {"schema": "public", "name": "alpha"},
+        "configuration": {
+            "custom_name": "AlphaName",
+            "custom_root_fields": {"select": "alphaSelect", "select_by_pk": "alphaPk"},
+        },
+        "select_permissions": [{"role": "viewer", "permission": {"columns": ["id"], "filter": {}}}],
+    }
+    # select_by_pk wins over custom_name when select absent
+    t_pk = {
+        "table": {"schema": "public", "name": "beta"},
+        "configuration": {
+            "custom_name": "BetaName",
+            "custom_root_fields": {"select_by_pk": "betaPk"},
+        },
+        "select_permissions": [{"role": "viewer", "permission": {"columns": ["id"], "filter": {}}}],
+    }
+    # custom_name wins when no custom_root_fields
+    t_name = {
+        "table": {"schema": "public", "name": "gamma"},
+        "configuration": {"custom_name": "GammaName"},
+        "select_permissions": [{"role": "viewer", "permission": {"columns": ["id"], "filter": {}}}],
+    }
+    (tables_dir / "tables.yaml").write_text(
+        yaml.dump([t_select, t_pk, t_name]), encoding="utf-8")
+    databases_yaml = [{
+        "name": "default", "kind": "postgres",
+        "configuration": {"connection_info": {"database_url": {"from_env": "PG_URL"}}},
+        "tables": "!include default/tables/tables.yaml", "functions": [],
+    }]
+    (metadata_dir / "databases" / "databases.yaml").write_text(
+        yaml.dump(databases_yaml), encoding="utf-8")
+    for stub in ("actions.yaml", "allow_list.yaml", "cron_triggers.yaml",
+                 "inherited_roles.yaml", "query_collections.yaml",
+                 "remote_schemas.yaml", "rest_endpoints.yaml"):
+        (metadata_dir / stub).write_text("[]\n", encoding="utf-8")
+    (metadata_dir / "actions.graphql").write_text("", encoding="utf-8")
+    return metadata_dir
+
+
+@given("a Hasura v2 table with custom_root_fields or custom_name defined")
+def given_v2_alias_priority(tmp_path, shared_data):
+    shared_data["metadata_dir"] = _build_v2_alias_priority(tmp_path)
+
+
+@then(
+    "the Provisa table alias is derived with select > select_by_pk > "
+    "custom_name priority order"
+)
+def then_alias_priority(shared_data):
+    config = shared_data["config"]
+    alpha = next(t for t in config.tables if t.table_name == "alpha")
+    beta = next(t for t in config.tables if t.table_name == "beta")
+    gamma = next(t for t in config.tables if t.table_name == "gamma")
+    assert alpha.alias == "alphaSelect"  # select wins
+    assert beta.alias == "betaPk"        # select_by_pk wins over custom_name
+    assert gamma.alias == "GammaName"    # custom_name fallback
+
+
+# --- REQ-628: missing ObjectType -> skip + warn ---------------------------
+
+
+def _build_ddn_missing_object_type(base: Path) -> Path:
+    project_dir = _build_ddn_supergraph_project(base)
+    # Add a Model referencing an ObjectType that has no .hml definition.
+    orphan_model = textwrap.dedent(
+        """\
+        kind: Model
+        version: v1
+        definition:
+          name: Track
+          objectType: Track
+          source:
+            dataConnectorName: chinook_connector
+            collection: track
+          graphql:
+            selectMany:
+              queryRootField: tracks
+        """
+    )
+    (project_dir / "subgraphs" / "chinook" / "models" / "TrackModel.hml").write_text(
+        orphan_model, encoding="utf-8"
+    )
+    return project_dir
+
+
+@given("a DDN HML project where some ObjectType HML files are missing")
+def given_ddn_missing_object_type(tmp_path, shared_data):
+    shared_data["project_dir"] = _build_ddn_missing_object_type(tmp_path)
+
+
+@then(
+    "missing ObjectType tables are skipped with a warning and conversion "
+    "continues"
+)
+def then_missing_object_type_skipped(shared_data):
+    config = shared_data["config"]
+    table_names = {t.table_name for t in config.tables}
+    # orphan Track model skipped, but valid ones still converted
+    assert "track" not in table_names
+    assert {"artist", "album"} <= table_names
+    warnings = shared_data["collector"].warnings
+    assert any(
+        w.category == "missing_type" and "Track" in w.message for w in warnings
+    ), "expected missing_type warning for Track"

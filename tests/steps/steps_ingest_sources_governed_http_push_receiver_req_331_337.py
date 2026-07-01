@@ -7,10 +7,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import datetime
-import threading
-import time
 from typing import Any
 
 import pytest
@@ -726,4 +722,239 @@ def batch_ingest_status_codes(shared_data):
         backing_store=miss_source_store,
         engine_available=True,
     )
-    assert status == 404, f"Unknown source: expected 404,
+    assert status == 404, f"Unknown source: expected 404, got {status}"
+    assert resp["detail"] == f"source not found: {_SOURCE_NOT_FOUND}", (
+        f"Unknown source: detail mismatch: {resp['detail']!r}"
+    )
+    assert len(miss_source_store) == 0, (
+        f"Unknown source: expected nothing persisted, got {len(miss_source_store)} rows"
+    )
+
+    # -----------------------------------------------------------------------
+    # Unknown table -> 404, nothing persisted.
+    # -----------------------------------------------------------------------
+    miss_table_store: list[dict] = []
+    status, resp = _simulate_ingest(
+        source_id,
+        _TABLE_NOT_FOUND,
+        array_body,
+        known_sources=known_sources,
+        known_tables=known_tables,
+        columns=columns,
+        backing_store=miss_table_store,
+        engine_available=True,
+    )
+    assert status == 404, f"Unknown table: expected 404, got {status}"
+    assert resp["detail"] == f"table not found: {_TABLE_NOT_FOUND}", (
+        f"Unknown table: detail mismatch: {resp['detail']!r}"
+    )
+    assert len(miss_table_store) == 0, (
+        f"Unknown table: expected nothing persisted, got {len(miss_table_store)} rows"
+    )
+
+    # -----------------------------------------------------------------------
+    # Engine unavailable -> 503, nothing persisted.
+    # -----------------------------------------------------------------------
+    engine_down_store: list[dict] = []
+    status, resp = _simulate_ingest(
+        source_id,
+        table,
+        array_body,
+        known_sources=known_sources,
+        known_tables=known_tables,
+        columns=columns,
+        backing_store=engine_down_store,
+        engine_available=False,
+    )
+    assert status == 503, f"Engine unavailable: expected 503, got {status}"
+    assert len(engine_down_store) == 0, (
+        f"Engine unavailable: expected nothing persisted, got {len(engine_down_store)} rows"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-336 — Ingest tables subscribable via SSE: watermark advances on ingest,
+# subscribers receive new rows with RLS and column masking applied.
+# ---------------------------------------------------------------------------
+import asyncio  # noqa: E402
+import json  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from provisa.api.data.subscribe import _stream_provider_events  # noqa: E402
+from provisa.compiler.rls import RLSContext  # noqa: E402
+from provisa.ingest.provider import IngestPollingProvider  # noqa: E402
+from provisa.security.masking import MaskingRule, MaskType  # noqa: E402
+
+
+class _StoreBackedIngestProvider(IngestPollingProvider):
+    """Real IngestPollingProvider whose SQL boundary (`_poll`) reads an in-memory
+    backing store instead of Postgres.
+
+    Everything else — the watermark-advance loop, ``_``-prefixed system-column
+    stripping, and ChangeEvent construction — is the unmodified production code
+    from :class:`provisa.ingest.provider.IngestPollingProvider`. Overriding only
+    ``_poll`` swaps the ``SELECT ... WHERE _updated_at > :since`` query for an
+    equivalent read against a list of rows, exercising the real watermark logic.
+    """
+
+    def __init__(self, backing_store: list[dict], poll_interval: float = 0.0) -> None:
+        super().__init__(engine=None, poll_interval=poll_interval)  # type: ignore[arg-type]
+        self._store = backing_store
+
+    async def _poll(self, table: str, since: datetime) -> list[dict]:  # type: ignore[override]
+        # Mirror the production query: rows strictly newer than the watermark,
+        # ordered by _updated_at, capped at the batch limit.
+        newer = [r for r in self._store if r["_updated_at"] > since]
+        newer.sort(key=lambda r: r["_updated_at"])
+        return newer[:100]
+
+
+@given("an ingest table with SSE subscription active")
+def ingest_table_sse_active(shared_data):
+    """Stand up an ingest backing store and an active SSE subscription over it.
+
+    The subscription is a real :class:`IngestPollingProvider` (watermark polling
+    on ``_updated_at``) wired to the production SSE serving-layer generator
+    ``_stream_provider_events``, which enforces RLS row filtering and column
+    masking on every streamed change event (REQ-336).
+    """
+    table = "otel_logs"
+    columns = [
+        {"column_name": "region", "path": "region", "data_type": "text"},
+        {"column_name": "ssn", "path": "ssn", "data_type": "text"},
+        {"column_name": "message", "path": "body", "data_type": "text"},
+    ]
+
+    # DDL confirms _updated_at is the injected watermark column the provider polls.
+    ddl = generate_create_table(table, columns)
+    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
+
+    backing_store: list[dict] = []
+
+    # Subscriber is role "analyst": RLS restricts to region = 'us', and the
+    # ssn column is masked (regex) for this role — mirroring local-table policy.
+    role_id = "analyst"
+    table_id = 7
+    rls_ctx = RLSContext(rules={table_id: "region = 'us'"})
+    rls_contexts = {role_id: rls_ctx}
+    masking_rules = {
+        (table_id, role_id): {
+            "ssn": (MaskingRule(mask_type=MaskType.regex, pattern=r"\d", replace="X"), "varchar"),
+        }
+    }
+
+    provider = _StoreBackedIngestProvider(backing_store, poll_interval=0.0)
+
+    shared_data["table"] = table
+    shared_data["table_id"] = table_id
+    shared_data["columns"] = columns
+    shared_data["backing_store"] = backing_store
+    shared_data["role_id"] = role_id
+    shared_data["rls_contexts"] = rls_contexts
+    shared_data["masking_rules"] = masking_rules
+    shared_data["provider"] = provider
+    # Baseline watermark: the provider starts polling from "now"; only rows
+    # ingested after this point (with a later _updated_at) must be delivered.
+    shared_data["baseline"] = datetime.now(tz=timezone.utc)
+
+
+@when("new events are ingested and the _updated_at watermark advances")
+def new_events_ingested_watermark_advances(shared_data):
+    """Ingest new events with strictly-advancing ``_updated_at`` watermarks.
+
+    Rows are projected through the real ingest ``_extract_row`` path, then
+    Provisa stamps the system watermark column ``_updated_at`` (owned by Provisa,
+    per the DDL default of NOW()) with monotonically increasing timestamps.
+    """
+    columns = shared_data["columns"]
+    backing_store = shared_data["backing_store"]
+    base = shared_data["baseline"]
+
+    events = [
+        {"region": "us", "ssn": "123-45-6789", "body": "us row kept"},
+        {"region": "eu", "ssn": "999-88-7777", "body": "eu row filtered by RLS"},
+        {"region": "us", "ssn": "555-44-3333", "body": "second us row"},
+    ]
+
+    watermarks = []
+    for i, event in enumerate(events, start=1):
+        row = _extract_row(event, columns)
+        # Producers cannot set system columns; Provisa owns _updated_at / _received_at.
+        assert "_updated_at" not in row
+        assert "_received_at" not in row
+        ts = base + timedelta(seconds=i)
+        row["_updated_at"] = ts
+        row["_received_at"] = ts
+        watermarks.append(ts)
+        backing_store.append(row)
+
+    # Watermark must strictly advance across ingested rows.
+    assert watermarks == sorted(watermarks)
+    assert watermarks[-1] > watermarks[0]
+    shared_data["ingested_events"] = events
+
+
+@then("subscribers receive new rows via SSE with RLS and column masking applied")
+def subscribers_receive_rls_masked_rows(shared_data):
+    """Drive the production SSE generator and assert RLS + masking on delivered rows.
+
+    ``_stream_provider_events`` is the real serving-layer function used by the
+    ``GET /data/subscribe/{table}`` endpoint. It consumes the provider's
+    watermark-polled ChangeEvents, drops rows failing the role's RLS predicate,
+    and masks governed columns before emitting SSE ``data:`` frames.
+    """
+    provider = shared_data["provider"]
+    table = shared_data["table"]
+    table_id = shared_data["table_id"]
+    role_id = shared_data["role_id"]
+    rls_contexts = shared_data["rls_contexts"]
+    masking_rules = shared_data["masking_rules"]
+
+    async def _collect() -> list[dict]:
+        disconnect = asyncio.Event()
+        frames: list[str] = []
+        gen = _stream_provider_events(
+            provider,
+            table,
+            table_id,
+            role_id,
+            rls_contexts,
+            masking_rules,
+            disconnect,
+        )
+        try:
+            async for chunk in gen:
+                frames.append(chunk)
+                # Stop once both surviving (region='us') rows have streamed.
+                data_frames = [f for f in frames if f.startswith("data:")]
+                if len(data_frames) >= 2:
+                    disconnect.set()
+                    break
+        finally:
+            await gen.aclose()
+        return [
+            json.loads(f.removeprefix("data: ").strip())
+            for f in frames
+            if f.startswith("data:")
+        ]
+
+    delivered = asyncio.run(asyncio.wait_for(_collect(), timeout=10.0))
+
+    # RLS: only the two region='us' rows are delivered; the eu row is filtered.
+    assert len(delivered) == 2, f"Expected 2 RLS-passing rows, got {delivered!r}"
+    regions = {d["row"]["region"] for d in delivered}
+    assert regions == {"us"}, f"RLS leaked non-us rows: {regions}"
+
+    # Column masking: ssn digits are masked for the analyst role.
+    for d in delivered:
+        assert d["op"] == "INSERT"
+        assert d["row"]["ssn"] == "XXX-XX-XXXX", (
+            f"ssn not masked in streamed row: {d['row']['ssn']!r}"
+        )
+        # System watermark columns are stripped from the delivered row.
+        assert "_updated_at" not in d["row"]
+        assert "_received_at" not in d["row"]
+
+    # The two surviving rows carry the expected non-masked business payloads.
+    messages = {d["row"]["message"] for d in delivered}
+    assert messages == {"us row kept", "second us row"}, f"Unexpected messages: {messages}"

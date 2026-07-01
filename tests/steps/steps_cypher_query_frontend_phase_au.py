@@ -813,8 +813,7 @@ def when_compiler_processes_cypher_query(shared_data: dict) -> None:
 
 
 @then(
-    "it compiles to SQL, executes via Trino, and applies Stage 2 governance "
-    "identically to GraphQL queries"
+    "it compiles to SQL, executes via Trino, and applies Stage 2 governance identically to GraphQL queries"
 )
 def then_compiles_to_sql_and_applies_governance(shared_data: dict) -> None:
     """Assert that:
@@ -824,3 +823,429 @@ def then_compiles_to_sql_and_applies_governance(shared_data: dict) -> None:
        WORKS_AT relationship (REQ-347: MATCH -> JOIN).
     3. The named parameter $min_age was captured for Trino positional binding
        (REQ-352), which is what lets Stage 2 governance apply identically to the
+       GraphQL path — governance operates on the compiled SQL, not the frontend.
+    4. The compiled SQL targets the governed physical tables (persons/companies)
+       so Stage 2 row/column policies bind to the same relations GraphQL uses.
+    """
+    # Compilation must have succeeded without error.
+    assert shared_data["compile_error"] is None
+
+    sql_string = shared_data["sql_string"]
+    assert sql_string, "compiler produced an empty SQL string"
+
+    # MATCH across the WORKS_AT relationship must translate to a JOIN.
+    assert "JOIN" in sql_string.upper()
+
+    # The compiled SQL must reference the governed physical tables so that
+    # Stage 2 governance binds to the same relations the GraphQL frontend uses.
+    lowered = sql_string.lower()
+    assert "persons" in lowered
+    assert "companies" in lowered
+
+    # The named parameter must be captured for Trino positional binding so that
+    # governance applies identically to the GraphQL path.
+    param_names = shared_data["param_names"]
+    assert "min_age" in param_names
+
+
+# ---------------------------------------------------------------------------
+# REQ-347 — Cypher clauses map to SQL (MATCH/WHERE/RETURN/ORDER BY/LIMIT)
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query with MATCH, WHERE, RETURN, ORDER BY, and LIMIT clauses")
+def given_cypher_with_all_clauses(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_clause_mapping_label_map()
+    shared_data["cypher_query"] = (
+        "MATCH (p:Person)-[:WORKS_AT]->(c:Company) "
+        "WHERE p.age > 30 "
+        "RETURN p.name AS person_name, c.name AS company_name "
+        "ORDER BY p.name "
+        "LIMIT 10"
+    )
+
+
+@when("the translator processes it")
+def when_translator_processes(shared_data: dict) -> None:
+    shared_data["sql_string"] = _translate(
+        shared_data["cypher_query"], shared_data["label_map"], shared_data.get("params")
+    )
+
+
+@then("it emits SQL with JOIN, WHERE, SELECT, ORDER BY, and LIMIT clauses respectively")
+def then_emits_all_clauses(shared_data: dict) -> None:
+    sql = shared_data["sql_string"].upper()
+    assert "SELECT" in sql  # RETURN -> SELECT
+    assert "INNER JOIN" in sql  # MATCH -> JOIN
+    assert "WHERE" in sql  # WHERE -> WHERE
+    assert '"AGE" > 30' in sql  # WHERE predicate translated
+    assert "ORDER BY" in sql  # ORDER BY -> ORDER BY
+    assert "LIMIT 10" in sql  # LIMIT -> LIMIT
+
+
+# ---------------------------------------------------------------------------
+# REQ-348 — shortestPath / [*1..n] -> WITH RECURSIVE; unbounded [*] rejected
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query with shortestPath or [*1..n] variable-length pattern")
+def given_variable_length_query(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_path_label_map()
+    shared_data["cypher_query"] = (
+        "MATCH (a:Person)-[:KNOWS*1..3]->(b:Person) "
+        "RETURN a.name AS an, b.name AS bn"
+    )
+    shared_data["unbounded_query"] = (
+        "MATCH (a:Person)-[:KNOWS*]->(b:Person) RETURN a.name AS an"
+    )
+
+
+@then("it emits a WITH RECURSIVE CTE and rejects unbounded [*] patterns at compile time")
+def then_recursive_and_reject_unbounded(shared_data: dict) -> None:
+    # The bounded [*1..3] pattern was translated by the shared @when step.
+    sql = shared_data["sql_string"].upper()
+    assert "WITH RECURSIVE" in sql  # variable-length -> recursive CTE
+    assert "HOPS < 3" in sql  # max-hop depth enforced
+    # The unbounded [*] variant is rejected at compile time.
+    with pytest.raises(CypherParseError):
+        _translate(shared_data["unbounded_query"], shared_data["label_map"])
+
+
+# ---------------------------------------------------------------------------
+# REQ-349 — whole-node RETURN wrapped into JSON object (Stage 3 rewrite)
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher RETURN clause referencing a whole node variable")
+def given_whole_node_return(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_node_return_label_map()
+    shared_data["cypher_query"] = "MATCH (p:Person) RETURN p"
+
+
+@when("Stage 3 rewrite runs")
+def when_stage3_rewrite_runs(shared_data: dict) -> None:
+    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+
+    label_map = shared_data["label_map"]
+    ast = parse_cypher(shared_data["cypher_query"])
+    sql_ast, _params, graph_vars = cypher_to_sql(ast, label_map, {})
+    shared_data["graph_vars"] = graph_vars
+    # Capture pre-rewrite projection so we can prove the rewrite changed it.
+    shared_data["pre_rewrite_sql"] = sql_ast.copy().sql(dialect="trino")
+    rewritten = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+    shared_data["sql_string"] = rewritten.sql(dialect="trino")
+
+
+@then("the node columns are wrapped into a single JSON object via CAST(ROW(...) AS JSON)")
+def then_node_wrapped_in_json(shared_data: dict) -> None:
+    # The RETURN referenced the whole node variable p (not a scalar property).
+    assert shared_data["graph_vars"].get("p") is GraphVarKind.NODE
+    # Before the Stage 3 rewrite the node projected as raw columns (p.*).
+    assert "P.*" in shared_data["pre_rewrite_sql"].upper()
+    sql = shared_data["sql_string"].upper()
+    # Stage 3 collapses the node columns into a single JSON object projection
+    # keyed by the canonical node shape (id/label/tableLabel + properties).
+    assert "P.*" not in sql
+    assert "JSON_OBJECT(" in sql
+    assert "'ID'" in sql and "'LABEL'" in sql and "'TABLELABEL'" in sql
+
+
+# ---------------------------------------------------------------------------
+# REQ-352 — missing $param with no default rejected at compile time
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query with $param and no default")
+def given_query_with_param(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_param_label_map()
+    shared_data["cypher_query"] = (
+        "MATCH (p:Person) WHERE p.age > $min_age RETURN p.name AS n"
+    )
+
+
+@when("the parameter is missing from the request")
+def when_parameter_missing(shared_data: dict) -> None:
+    ast = parse_cypher(shared_data["cypher_query"])
+    _sql, param_names, _gv = cypher_to_sql(ast, shared_data["label_map"], {})
+    shared_data["param_names"] = param_names
+    # No values provided for the referenced parameters.
+    shared_data["provided_params"] = {}
+
+
+@then("it is rejected at compile time")
+def then_rejected_at_compile_time(shared_data: dict) -> None:
+    assert "min_age" in shared_data["param_names"]
+    with pytest.raises(CypherParamError) as exc:
+        bind_params(shared_data["param_names"], shared_data["provided_params"])
+    assert "min_age" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# REQ-353 — cross-catalog labels translate to a normal cross-catalog JOIN
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query whose node labels resolve to tables on different Trino catalogs")
+def given_cross_catalog_query(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_cross_catalog_label_map()
+    shared_data["cypher_query"] = (
+        "MATCH (p:Person)-[:WORKS_AT]->(c:Company) "
+        "RETURN p.name AS pn, c.name AS cn"
+    )
+
+
+@then("it generates a cross-catalog JOIN and executes normally without error")
+def then_cross_catalog_join(shared_data: dict) -> None:
+    sql = shared_data["sql_string"]
+    upper = sql.upper()
+    assert "INNER JOIN" in upper
+    # The two catalogs are distinct; both must appear in the join.
+    assert "postgresql" in sql
+    assert "mysql" in sql
+    # No cross-source restriction is enforced (REQ-353 WITHDRAWN): translation succeeds.
+    assert "persons" in sql and "companies" in sql
+
+
+# ---------------------------------------------------------------------------
+# REQ-572 — CALL db.labels() introspection without SQL
+# ---------------------------------------------------------------------------
+
+
+@given("a client issuing CALL db.labels()")
+def given_call_db_labels(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_introspection_label_map()
+    shared_data["proc_query"] = "CALL db.labels()"
+
+
+@when("the cypher router handles it")
+def when_router_handles_procedure(shared_data: dict) -> None:
+    import json
+
+    proc = _detect_procedure(shared_data["proc_query"])
+    assert proc == "db.labels"
+    response = _handle_procedure(proc, shared_data["label_map"])
+    shared_data["proc_response"] = json.loads(response.body)
+
+
+@then("it returns label data from CypherLabelMap without generating or executing SQL")
+def then_returns_label_data(shared_data: dict) -> None:
+    body = shared_data["proc_response"]
+    assert body["columns"] == ["label"]
+    labels = {row["label"] for row in body["rows"]}
+    # Derived purely from CypherLabelMap (table labels + domain labels).
+    assert {"Person", "Company", "PersonDomain", "CompanyDomain"} <= labels
+
+
+# ---------------------------------------------------------------------------
+# REQ-573 — correlated CALL subquery -> CROSS JOIN LATERAL
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher CALL subquery with WITH importing an outer variable")
+def given_correlated_call(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_correlated_call_label_map()
+    shared_data["cypher_query"] = (
+        "MATCH (x:Person) "
+        "CALL { WITH x MATCH (x)-[:KNOWS]->(n:Person) RETURN n.name AS friend } "
+        "RETURN x.name AS xn, friend"
+    )
+
+
+@then("it emits a CROSS JOIN LATERAL expression")
+def then_cross_join_lateral(shared_data: dict) -> None:
+    sql = shared_data["sql_string"].upper()
+    assert "CROSS JOIN LATERAL" in sql
+
+
+# ---------------------------------------------------------------------------
+# REQ-575 — bidirectional (a)-[]-(b) -> UNION ALL of both directions
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query with bidirectional traversal (a)-[]-(b)")
+def given_bidirectional_query(shared_data: dict) -> None:
+    # A self-referential relationship makes both directions valid so the
+    # bidirectional expansion produces genuine forward + backward branches.
+    shared_data["label_map"] = _make_path_label_map()
+    shared_data["cypher_query"] = (
+        "MATCH (a:Person)-[:KNOWS]-(b:Person) "
+        "RETURN a.name AS an, b.name AS bn"
+    )
+
+
+@then("it emits a UNION ALL of forward and backward directed relationship joins")
+def then_union_all_directions(shared_data: dict) -> None:
+    sql = shared_data["sql_string"].upper()
+    assert "UNION ALL" in sql
+    # Forward: a.person_id = b.id ; backward: b.person_id = a.id
+    assert 'A."PERSON_ID" = B."ID"' in sql
+    assert 'B."PERSON_ID" = A."ID"' in sql
+
+
+# ---------------------------------------------------------------------------
+# REQ-576 — heterogeneous shortestPath -> flat JOIN chain (no recursive CTE)
+# ---------------------------------------------------------------------------
+
+
+@given("a shortestPath query between two different node types with a unique schema path")
+def given_heterogeneous_shortest_path(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_heterogeneous_shortest_path_label_map()
+    shared_data["cypher_query"] = (
+        "MATCH p = shortestPath((a:Person)-[*..5]-(b:Company)) RETURN p"
+    )
+
+
+@then("it emits a flat JOIN chain instead of a recursive CTE")
+def then_flat_join_chain(shared_data: dict) -> None:
+    sql = shared_data["sql_string"].upper()
+    assert "INNER JOIN" in sql  # structurally shortest schema path as a flat chain
+    assert "WITH RECURSIVE" not in sql  # no recursive CTE for heterogeneous endpoints
+    assert "persons".upper() in sql and "companies".upper() in sql
+
+
+# ---------------------------------------------------------------------------
+# REQ-577 — multiple equal-hop paths -> UNION ALL branches (no dedup)
+# ---------------------------------------------------------------------------
+
+
+@given("multiple schema paths of equal hop count between the same node types")
+def given_multiple_equal_paths(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_multi_path_label_map()
+    shared_data["cypher_query"] = (
+        "MATCH p = shortestPath((a:Person)-[*..5]-(b:Company)) RETURN p"
+    )
+
+
+@when("the translator processes a shortestPath query")
+def when_translator_processes_shortest_path(shared_data: dict) -> None:
+    shared_data["sql_string"] = _translate(
+        shared_data["cypher_query"], shared_data["label_map"]
+    )
+
+
+@then("all matching paths are emitted as UNION ALL branches without deduplication")
+def then_paths_union_all(shared_data: dict) -> None:
+    sql = shared_data["sql_string"].upper()
+    assert "UNION ALL" in sql
+    # Both equal-hop schema paths (WORKS_AT and MANAGES) appear as branches.
+    assert 'A."COMPANY_ID" = B."ID"' in sql
+    assert 'A."MANAGED_COMPANY_ID" = B."ID"' in sql
+    # No DISTINCT / dedup applied across branches.
+    assert "UNION ALL SELECT" in sql.replace("\n", " ")
+
+
+# ---------------------------------------------------------------------------
+# REQ-750 — graph variables (node/edge/path) serialized as canonical JSON
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query RETURN n, r, p where n is a node, r is an edge, p is a path")
+def given_return_node_edge_path(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_graph_var_label_map()
+    shared_data["cypher_query"] = (
+        "MATCH p = (n:Person)-[r:WORKS_AT]->(c:Company) RETURN n, r, p"
+    )
+
+
+@when("the Cypher router executes the query")
+def when_router_executes_query(shared_data: dict) -> None:
+    ast = parse_cypher(shared_data["cypher_query"])
+    sql_ast, _params, graph_vars = cypher_to_sql(ast, shared_data["label_map"], {})
+    shared_data["graph_vars"] = graph_vars
+    shared_data["sql_string"] = sql_ast.sql(dialect="trino")
+
+
+@then("the response includes JSON objects for each graph variable with the canonical keys")
+def then_json_objects_canonical_keys(shared_data: dict) -> None:
+    gv = shared_data["graph_vars"]
+    assert gv.get("n") is GraphVarKind.NODE
+    assert gv.get("r") is GraphVarKind.EDGE
+    assert gv.get("p") is GraphVarKind.PATH
+    sql = shared_data["sql_string"]
+    # Node canonical keys.
+    assert "'id'" in sql and "'label'" in sql and "'tableLabel'" in sql and "'properties'" in sql
+    # Edge canonical keys.
+    assert "'identity'" in sql and "'start'" in sql and "'end'" in sql and "'type'" in sql
+    assert "'startNode'" in sql and "'endNode'" in sql
+    # Path canonical keys.
+    assert "'nodes'" in sql and "'edges'" in sql and "'length'" in sql
+
+
+# ---------------------------------------------------------------------------
+# REQ-751 — [*1..5] -> recursive CTE with hop-count guards
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query with [*1..5] pattern between two node types")
+def given_variable_length_1_5(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_variable_length_label_map()
+    shared_data["cypher_query"] = (
+        "MATCH (a:Person)-[:KNOWS*1..5]->(b:Person) "
+        "RETURN a.name AS an, b.name AS bn"
+    )
+
+
+@then("it emits a WITH RECURSIVE CTE with hop-count guards and JSON_ARRAY edges")
+def then_recursive_cte_hop_guards(shared_data: dict) -> None:
+    sql = shared_data["sql_string"].upper()
+    assert "WITH RECURSIVE" in sql  # variable-length -> recursive CTE
+    assert "HOPS < 5" in sql  # max-hop bound enforced
+    assert "HOPS + 1" in sql  # hop counter increments each recursive step
+
+
+# ---------------------------------------------------------------------------
+# REQ-752 — 3+ node variables: all aliases resolve; intermediate props work
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query with 3+ node variables in a path")
+def given_three_node_path(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_multi_hop_label_map()
+    shared_data["cypher_query"] = (
+        "MATCH (p:Person)-[:WORKS_AT]->(c:Company)-[:HAS_DEPT]->(d:Department) "
+        "WHERE c.founded > 1990 "
+        "RETURN p.name AS pn, c.name AS cn, d.name AS dn"
+    )
+
+
+@then(
+    "all node aliases are available in WHERE and RETURN, and intermediate property "
+    "access resolves correctly"
+)
+def then_all_aliases_resolve(shared_data: dict) -> None:
+    sql = shared_data["sql_string"].upper()
+    # Three distinct table aliases in a flat join chain.
+    assert "AS P " in sql or 'AS P\n' in sql or sql.endswith("AS P")
+    assert "AS C " in sql
+    assert "AS D " in sql
+    # Intermediate node (c:Company) property used in WHERE with no aliasing conflict.
+    assert 'C."FOUNDED" > 1990' in sql
+    # All three aliases projected in RETURN.
+    assert 'P."NAME" AS PN' in sql
+    assert 'C."NAME" AS CN' in sql
+    assert 'D."NAME" AS DN' in sql
+
+
+# ---------------------------------------------------------------------------
+# REQ-753 — MATCH p = (...) RETURN p -> JSON_OBJECT with nodes/edges/length
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher query MATCH p = (...) RETURN p")
+def given_path_object_return(shared_data: dict) -> None:
+    shared_data["label_map"] = _make_path_object_label_map()
+    shared_data["cypher_query"] = (
+        "MATCH p = (a:Person)-[:KNOWS]->(b:Person) RETURN p"
+    )
+
+
+@then("it emits JSON_OBJECT with nodes, edges, and length fields")
+def then_path_json_object(shared_data: dict) -> None:
+    ast = parse_cypher(shared_data["cypher_query"])
+    sql_ast, _params, graph_vars = cypher_to_sql(ast, shared_data["label_map"], {})
+    assert graph_vars.get("p") is GraphVarKind.PATH
+    sql = sql_ast.sql(dialect="trino").upper()
+    assert "JSON_OBJECT(" in sql
+    assert "'NODES'" in sql
+    assert "'EDGES'" in sql
+    assert "'LENGTH'" in sql

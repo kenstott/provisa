@@ -756,4 +756,346 @@ def then_neo4j_node_merge_provisa_id_and_set_operator(shared_data: dict) -> None
         f"Properties must be SET using the += (additive update) operator; got: {cypher!r}"
     )
 
-    # 5
+    # 5. The exported node label must be derived from tableLabel.
+    assert table_label in cypher, (
+        f"Node label {table_label!r} must appear in generated Cypher: {cypher!r}"
+    )
+    # Properties must be forwarded to the SET clause.
+    for k, v in properties.items():
+        assert params["props"].get(k) == v, (
+            f"Property {k!r}={v!r} must be forwarded to the SET params, got {params['props']!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Shared router driver
+# ---------------------------------------------------------------------------
+
+
+def _drive_neo4j_export(
+    payload: dict[str, Any],
+    neo4j_response: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """POST *payload* to the real /data/neo4j-export router with httpx mocked out.
+
+    Returns a dict with response_status, response_body, and captured_requests
+    (each captured request records the outbound url + kwargs, including headers).
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from provisa.api.rest.cypher_router import router as cypher_router
+
+    if neo4j_response is None:
+        neo4j_response = {"results": [{"columns": [], "data": []}], "errors": []}
+
+    captured_requests: list[dict[str, Any]] = []
+
+    app = FastAPI()
+    app.include_router(cypher_router)
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = neo4j_response
+    mock_response.text = json.dumps(neo4j_response)
+    mock_response.raise_for_status = MagicMock()
+
+    async def _fake_post_async(url: str, **kwargs: Any) -> MagicMock:
+        captured_requests.append({"url": url, "kwargs": kwargs})
+        return mock_response
+
+    mock_async_client = AsyncMock()
+    mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
+    mock_async_client.__aexit__ = AsyncMock(return_value=False)
+    mock_async_client.post = AsyncMock(side_effect=_fake_post_async)
+
+    with patch("httpx.AsyncClient", return_value=mock_async_client):
+        client = TestClient(app)
+        response = client.post(
+            "/data/neo4j-export",
+            json=payload,
+            headers={"X-Role": "DEV"},
+        )
+
+    return {
+        "response_status": response.status_code,
+        "response_body": response.json() if response.content else {},
+        "captured_requests": captured_requests,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-715
+# ---------------------------------------------------------------------------
+
+
+@given(
+    parsers.parse(
+        'a node with properties {{active: true, count: 42, name: "Test", nested: {{key: "value"}}}}'
+    ),
+    target_fixture="shared_data",
+)
+def given_node_with_typed_properties() -> dict:
+    """Set up a node whose properties cover the full range of Cypher literal types."""
+    node = dict(_REQ715_NODE)
+    props = node["properties"]
+    assert props["active"] is True
+    assert props["count"] == 42
+    assert props["name"] == "Test"
+    assert props["nested"] == {"key": "value"}
+    return {"node": node}
+
+
+@when("the node is exported")
+def when_node_exported_typed(shared_data: dict) -> None:
+    """Export the node through the real router and capture the emitted Cypher."""
+    node = shared_data["node"]
+    payload = {
+        "url": _FAKE_NEO4J_URL,
+        "username": _FAKE_USERNAME,
+        "password": _FAKE_PASSWORD,
+        "database": _FAKE_DATABASE,
+        "nodes": [node],
+        "edges": [],
+    }
+    result = _drive_neo4j_export(payload)
+    assert 200 <= result["response_status"] < 300, (
+        f"Export must succeed, got {result['response_status']}: {result['response_body']}"
+    )
+    captured = result["captured_requests"]
+    assert captured, "Export must produce an outbound transactional request"
+
+    statements = captured[0]["kwargs"]["json"]["statements"]
+    cypher = " ".join(s["statement"] for s in statements)
+    shared_data["cypher"] = cypher
+    shared_data["payload"] = payload
+
+
+@then("all properties are SET in Neo4j with correct Cypher literal types")
+def then_properties_set_with_literal_types(shared_data: dict) -> None:
+    """Assert each property is encoded with the correct Cypher literal type (REQ-715)."""
+    cypher: str = shared_data["cypher"]
+    props: dict[str, Any] = shared_data["node"]["properties"]
+
+    # Uses SET n += {...}
+    assert "SET n +=" in cypher, f"Must use additive SET n += clause, got: {cypher!r}"
+
+    # Each value encoded exactly as the real _neo4j_cypher_literal would encode it.
+    _assert_cypher_literal_types(cypher, props)
+
+    literal_fn = _get_cypher_literal_fn()
+    # Boolean bare, integer bare, string quoted.
+    assert f"active: {literal_fn(True)}" in cypher
+    assert "active: true" in cypher
+    assert "count: 42" in cypher
+    assert 'name: "Test"' in cypher
+    # Nested object encoded via the literal encoder (not left as a Python repr).
+    assert f"nested: {literal_fn({'key': 'value'})}" in cypher, (
+        f"Nested dict must be encoded via the Cypher literal encoder; got: {cypher!r}"
+    )
+    assert "'key'" not in cypher, (
+        f"Nested object must not leak a Python repr with single quotes: {cypher!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-716
+# ---------------------------------------------------------------------------
+
+
+@given(
+    parsers.parse('an edge with start: {start:d}, end: {end:d}, type: "{rel_type}"'),
+    target_fixture="shared_data",
+)
+def given_edge(start: int, end: int, rel_type: str) -> dict:
+    """Set up a single edge plus the two endpoint nodes it references."""
+    edge = {
+        "start": start,
+        "end": end,
+        "type": rel_type,
+        "startNodeLabel": "Label",
+        "endNodeLabel": "Label",
+    }
+    nodes = [
+        {"id": start, "tableLabel": "Label", "properties": {}},
+        {"id": end, "tableLabel": "Label", "properties": {}},
+    ]
+    return {"edge": edge, "nodes": nodes}
+
+
+@when("the edge is exported")
+def when_edge_exported(shared_data: dict) -> None:
+    """Export the edge (with its endpoint nodes) through the real router."""
+    edge = shared_data["edge"]
+    nodes = shared_data["nodes"]
+    payload = {
+        "url": _FAKE_NEO4J_URL,
+        "username": _FAKE_USERNAME,
+        "password": _FAKE_PASSWORD,
+        "database": _FAKE_DATABASE,
+        "nodes": nodes,
+        "edges": [edge],
+    }
+    result = _drive_neo4j_export(payload)
+    assert 200 <= result["response_status"] < 300, (
+        f"Export must succeed, got {result['response_status']}: {result['response_body']}"
+    )
+    captured = result["captured_requests"]
+    assert captured, "Edge export must produce an outbound transactional request"
+    statements = [s["statement"] for s in captured[0]["kwargs"]["json"]["statements"]]
+    shared_data["statements"] = statements
+    shared_data["payload"] = payload
+
+
+@then(
+    parsers.parse(
+        "Neo4j contains a relationship matching (a:Label{{_provisa_id: {start:d}}})"
+        "-[r:{rel_type}]->(b:Label{{_provisa_id: {end:d}}})"
+    )
+)
+def then_relationship_merged(shared_data: dict, start: int, end: int, rel_type: str) -> None:
+    """Assert the emitted Cypher MERGEs the relationship keyed on _provisa_id (REQ-716)."""
+    statements: list[str] = shared_data["statements"]
+    edge_stmts = [s for s in statements if rel_type in s and "MERGE" in s and "->" in s]
+    assert edge_stmts, (
+        f"Expected a relationship MERGE statement for type {rel_type!r}, got: {statements!r}"
+    )
+    stmt = edge_stmts[0]
+
+    # Matches source and target nodes on _provisa_id.
+    assert re.search(rf"MATCH\s*\(a[^)]*_provisa_id:\s*{start}\b", stmt), (
+        f"Source node must be MATCHed on _provisa_id {start}; got: {stmt!r}"
+    )
+    assert re.search(rf"_provisa_id:\s*{end}\b", stmt), (
+        f"Target node must be MATCHed on _provisa_id {end}; got: {stmt!r}"
+    )
+    # Relationship type preserved and directed source→target.
+    assert re.search(rf"MERGE\s*\(a\)-\[[^]]*{rel_type}[^]]*\]->\(b\)", stmt), (
+        f"Relationship type {rel_type!r} must be preserved with direction (a)->(b); got: {stmt!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-717
+# ---------------------------------------------------------------------------
+
+
+@given(
+    parsers.parse('credentials username: "{username}", password: "{password}"'),
+    target_fixture="shared_data",
+)
+def given_credentials(username: str, password: str) -> dict:
+    """Set up the Neo4j credentials to be used for HTTP Basic auth."""
+    assert username and password
+    return {"username": username, "password": password}
+
+
+@when("POST /data/neo4j-export is called")
+def when_export_called_for_auth(shared_data: dict) -> None:
+    """Call the export endpoint and capture the outbound Authorization header."""
+    payload = {
+        "url": _FAKE_NEO4J_URL,
+        "username": shared_data["username"],
+        "password": shared_data["password"],
+        "database": _FAKE_DATABASE,
+        "nodes": [{"id": 1, "tableLabel": "N", "properties": {"x": 1}}],
+        "edges": [],
+    }
+    result = _drive_neo4j_export(payload)
+    assert 200 <= result["response_status"] < 300, (
+        f"Export must succeed, got {result['response_status']}: {result['response_body']}"
+    )
+    captured = result["captured_requests"]
+    assert captured, "Export must produce an outbound request carrying auth"
+    shared_data["outbound_headers"] = captured[0]["kwargs"].get("headers", {})
+
+
+@then(parsers.parse('Authorization header contains "Basic " + base64("{creds}")'))
+def then_authorization_header(shared_data: dict, creds: str) -> None:
+    """Assert the Authorization header is HTTP Basic with base64(username:password) (REQ-717)."""
+    headers: dict[str, str] = shared_data["outbound_headers"]
+    auth = headers.get("Authorization")
+    assert auth is not None, f"Outbound request must carry an Authorization header; got {headers!r}"
+
+    expected_token = base64.b64encode(creds.encode()).decode()
+    expected_header = f"Basic {expected_token}"
+    assert auth == expected_header, (
+        f"Authorization must be {expected_header!r}, got {auth!r}"
+    )
+    # Confirm it round-trips back to the supplied credentials.
+    decoded = base64.b64decode(auth.split(" ", 1)[1]).decode()
+    assert decoded == creds, f"Decoded credentials must equal {creds!r}, got {decoded!r}"
+    assert decoded == f"{shared_data['username']}:{shared_data['password']}"
+
+
+# ---------------------------------------------------------------------------
+# Step definitions — REQ-719
+# ---------------------------------------------------------------------------
+
+
+@given(
+    parsers.parse(
+        "an export with {total:d} nodes, where {failures:d} node fails due to a "
+        "Neo4j constraint violation"
+    ),
+    target_fixture="shared_data",
+)
+def given_export_with_partial_failure(total: int, failures: int) -> dict:
+    """Set up an N-node export where a subset fail with a constraint violation."""
+    nodes = [
+        {"id": i, "tableLabel": "Item", "properties": {"seq": i}} for i in range(total)
+    ]
+    # Simulate the Neo4j transactional API returning one error per failing statement.
+    neo4j_response = {
+        "results": [],
+        "errors": [
+            {
+                "code": "Neo.ClientError.Schema.ConstraintValidationFailed",
+                "message": _CONSTRAINT_VIOLATION_MESSAGE,
+            }
+            for _ in range(failures)
+        ],
+    }
+    return {
+        "nodes": nodes,
+        "total": total,
+        "failures": failures,
+        "neo4j_response": neo4j_response,
+    }
+
+
+@when("POST /data/neo4j-export completes")
+def when_export_completes_partial(shared_data: dict) -> None:
+    """Run the export with a mocked Neo4j response reporting the constraint failure."""
+    payload = {
+        "url": _FAKE_NEO4J_URL,
+        "username": _FAKE_USERNAME,
+        "password": _FAKE_PASSWORD,
+        "database": _FAKE_DATABASE,
+        "nodes": shared_data["nodes"],
+        "edges": [],
+    }
+    result = _drive_neo4j_export(payload, neo4j_response=shared_data["neo4j_response"])
+    assert 200 <= result["response_status"] < 300, (
+        f"Export must return 2xx even on partial failure, got {result['response_status']}: "
+        f"{result['response_body']}"
+    )
+    shared_data["response_body"] = result["response_body"]
+
+
+@then(
+    parsers.parse(
+        'the response contains imported: {imported:d}, errors: ["{error_message}"]'
+    )
+)
+def then_partial_success_response(shared_data: dict, imported: int, error_message: str) -> None:
+    """Assert {imported: N, errors: [...]} reflects the partial success (REQ-719)."""
+    body: dict[str, Any] = shared_data["response_body"]
+    assert "imported" in body, f"Response must contain 'imported'; got {body!r}"
+    assert "errors" in body, f"Response must contain 'errors'; got {body!r}"
+
+    assert body["imported"] == imported, (
+        f"Expected imported={imported} (total statements minus failures), got {body['imported']}"
+    )
+    assert body["errors"] == [error_message], (
+        f"Expected errors=[{error_message!r}], got {body['errors']!r}"
+    )

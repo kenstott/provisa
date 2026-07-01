@@ -38,13 +38,43 @@ def client():
 
 
 def test_cypher_endpoint_reachable(client):
-    """Verify the /data/cypher endpoint exists and responds."""
-    resp = client.post("/data/cypher", json={"query": "MATCH (n) RETURN n LIMIT 1"})
-    # 200 or 400 (no schema) or 503 (schema not loaded) — not 404
+    """Verify the /data/cypher endpoint exists and responds.
+
+    Uses a schema-inspection procedure (db.labels) rather than `MATCH (n)`: the
+    latter fans out across every registered node label and can exceed the 30s
+    client timeout on a cold cache, which would make a pure reachability check
+    flaky. db.labels is handled in-process from the label map (no federation
+    scan), so it proves the route exists and processes Cypher deterministically.
+    """
+    resp = client.post("/data/cypher", json={"query": "CALL db.labels()"})
+    # 200 (labels returned) or 503 (schema not loaded) — never 404
     assert resp.status_code != 404, f"Endpoint not found: {resp.text}"
 
 
-def test_write_clause_rejected(client):
+def test_unsupported_write_pattern_rejected(client):
+    """Cypher is NOT read-only, but writes are constrained to direct table writes.
+
+    CREATE/DELETE/SET execute through the same write pipeline as any other write
+    (REQ-670). MERGE (upsert), DETACH DELETE (cascade), and REMOVE are not direct
+    table writes and are unsupported — they must be rejected, and the rejection
+    must NOT claim Cypher is read-only.
+    """
+    resp = client.post(
+        "/data/cypher",
+        json={"query": "MERGE (n:Person {name: 'Eve'})"},
+    )
+    assert resp.status_code == 400
+    data = resp.json()
+    assert "error" in data
+    err = data["error"]
+    # Behavior: MERGE is an unsupported write pattern and is rejected by name.
+    assert "MERGE" in err.upper(), err
+
+
+def test_supported_write_reaches_write_pipeline(client):
+    """A supported direct write (CREATE) against an unregistered label is routed to
+    the write pipeline (REQ-670) and rejected there for the missing label, NOT with a
+    read-only/write-clause error. Confirms CREATE is executed as a direct table write."""
     resp = client.post(
         "/data/cypher",
         json={"query": "CREATE (n:Person {name: 'Eve'})"},
@@ -52,7 +82,8 @@ def test_write_clause_rejected(client):
     assert resp.status_code == 400
     data = resp.json()
     assert "error" in data
-    assert "CREATE" in data["error"].upper() or "write" in data["error"].lower()
+    assert "label" in data["error"].lower() and "Person" in data["error"]
+    assert "read-only" not in data["error"].lower()
 
 
 def test_apoc_rejected(client):
@@ -75,14 +106,16 @@ def test_parse_error_returns_400(client):
 
 
 def test_valid_query_returns_columns_and_rows(client):
-    """Query that should succeed if any table is registered."""
-    try:
-        resp = client.post(
-            "/data/cypher",
-            json={"query": "MATCH (n) RETURN n LIMIT 1"},
-        )
-    except httpx.ReadTimeout:
-        pytest.skip("cypher endpoint timed out — server may be under load")
+    """Query that should succeed if any table is registered.
+
+    A ReadTimeout is NOT skipped: the module-scoped client uses a 30s timeout
+    and the endpoint responds well within it under normal load, so a timeout
+    is a real performance/correctness defect that must surface as a failure.
+    """
+    resp = client.post(
+        "/data/cypher",
+        json={"query": "MATCH (n) RETURN n LIMIT 1"},
+    )
     # Either success or schema-not-loaded — not a 500 from a bug
     if resp.status_code == 200:
         data = resp.json()

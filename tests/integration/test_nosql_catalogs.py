@@ -70,10 +70,7 @@ async def test_prometheus_catalog_created_and_queryable():
     from provisa.core.catalog import create_catalog
     from provisa.core.models import Source, SourceType
 
-    try:
-        conn, cur = _trino_cursor()
-    except Exception:
-        pytest.skip("Trino not reachable on localhost:8080")
+    conn, cur = _trino_cursor()
 
     catalog = "prom_itest"
     _drop(cur, catalog)

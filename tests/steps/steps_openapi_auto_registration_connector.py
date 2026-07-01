@@ -40,23 +40,13 @@ from __future__ import annotations
 
 import copy
 import json
-import os
 import pathlib
-import time
-from unittest.mock import MagicMock, patch
 
 import pytest
-from pytest_bdd import given, when, then, scenarios
+from pytest_bdd import given, when, then, parsers, scenarios
 
 from provisa.openapi.loader import load_spec, parse_text
 from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, parse_spec as map_operations
-from provisa.api_source.trino_cache import (
-    CacheLocation,
-    cache_location,
-    cache_table_name,
-    table_exists,
-    _TABLE_EXISTS_CACHE,
-)
 
 scenarios("../features/REQ-601.feature")
 scenarios("../features/REQ-316.feature")
@@ -772,46 +762,505 @@ _REQ316_SPEC: dict = {
 
 
 # ---------------------------------------------------------------------------
-# REQ-317 — static spec used for mutation auto-registration tests
+# REQ-316 Steps
+# ---------------------------------------------------------------------------
+
+
+@given("an OpenAPI spec is registered")
+def given_openapi_spec_is_registered(shared_data):
+    """Register the REQ-316 Order Management OpenAPI spec in shared state.
+
+    Simulates a steward registering a spec with Provisa by storing it in the
+    shared_data dict. The spec contains GET, POST, and PUT operations across
+    multiple paths with path parameters, query parameters, and $ref response
+    schemas.
+    """
+    spec = copy.deepcopy(_REQ316_SPEC)
+
+    # Verify the spec is structurally valid before "registering" it.
+    assert spec.get("openapi") == "3.0.0", (
+        f"Registered spec must be OpenAPI 3.0.0, got {spec.get('openapi')!r}"
+    )
+    assert "paths" in spec and spec["paths"], "Registered spec must have at least one path"
+
+    # Count the GET operations that should be registered as virtual tables.
+    expected_get_operations = set()
+    expected_non_get_operations = set()
+    for path, path_item in spec["paths"].items():
+        for method, operation in path_item.items():
+            if not isinstance(operation, dict):
+                continue
+            op_id = operation.get("operationId") or f"{method}_{path}"
+            if method.lower() == "get":
+                expected_get_operations.add(op_id)
+            elif method.lower() in ("post", "put", "patch", "delete"):
+                expected_non_get_operations.add(op_id)
+
+    # At least one GET operation must exist for REQ-316 to be meaningful.
+    assert expected_get_operations, "REQ-316 spec must contain at least one GET operation"
+
+    shared_data["registered_spec"] = spec
+    shared_data["expected_get_operations"] = expected_get_operations
+    shared_data["expected_non_get_operations"] = expected_non_get_operations
+
+
+@when("Provisa parses the spec")
+def when_provisa_parses_the_spec(shared_data):
+    """Drive the real Provisa mapper against the registered spec (REQ-316)."""
+    spec = shared_data["registered_spec"]
+    queries, mutations = map_operations(spec)
+    shared_data["queries"] = {q.operation_id: q for q in queries}
+    shared_data["mutations"] = {m.operation_id: m for m in mutations}
+
+
+@then(
+    "all GET operations are auto-registered as virtual query tables with "
+    "path/query params as GraphQL arguments"
+)
+def then_all_get_ops_are_virtual_tables(shared_data):
+    """Assert every GET op became a virtual table and params became arguments."""
+    queries: dict[str, OpenAPIQuery] = shared_data["queries"]
+    mutations: dict[str, OpenAPIMutation] = shared_data["mutations"]
+    expected_get = shared_data["expected_get_operations"]
+    expected_non_get = shared_data["expected_non_get_operations"]
+
+    # Every GET operation is registered as a virtual query table.
+    assert set(queries.keys()) == expected_get, (
+        f"GET operations must become virtual tables; "
+        f"expected {sorted(expected_get)}, got {sorted(queries)}"
+    )
+    # Non-GET operations must NOT be virtual tables (they are mutations).
+    assert expected_non_get.isdisjoint(queries.keys()), (
+        f"Non-GET operations must not be virtual tables; overlap: "
+        f"{expected_non_get & queries.keys()}"
+    )
+    assert expected_non_get <= mutations.keys(), (
+        f"Non-GET operations must be registered as mutations; missing: "
+        f"{expected_non_get - mutations.keys()}"
+    )
+
+    spec = shared_data["registered_spec"]
+    for path, path_item in spec["paths"].items():
+        get_op = path_item.get("get")
+        if not get_op:
+            continue
+        op_id = get_op.get("operationId") or f"get_{path}"
+        q = queries[op_id]
+
+        # Path parameters become GraphQL arguments (path_params).
+        spec_path_params = {
+            p["name"] for p in get_op.get("parameters", []) if p.get("in") == "path"
+        }
+        got_path_params = {p["name"] for p in q.path_params}
+        assert got_path_params == spec_path_params, (
+            f"{op_id}: path params must become arguments; "
+            f"expected {spec_path_params}, got {got_path_params}"
+        )
+
+        # Query parameters become GraphQL arguments (query_params).
+        spec_query_params = {
+            p["name"] for p in get_op.get("parameters", []) if p.get("in") == "query"
+        }
+        got_query_params = {p["name"] for p in q.query_params}
+        assert got_query_params == spec_query_params, (
+            f"{op_id}: query params must become arguments; "
+            f"expected {spec_query_params}, got {got_query_params}"
+        )
+
+    # Spot-check listOrders: three query params, array response → column set.
+    list_orders = queries["listOrders"]
+    assert {p["name"] for p in list_orders.query_params} == {"status", "limit", "offset"}
+    assert list_orders.is_list is True
+    assert set(list_orders.response_schema["properties"]) == {
+        "id",
+        "customer_id",
+        "status",
+        "total",
+    }
+    # getOrder: path param, object response.
+    get_order = queries["getOrder"]
+    assert {p["name"] for p in get_order.path_params} == {"order_id"}
+    assert get_order.is_list is False
+
+
+# ---------------------------------------------------------------------------
+# REQ-317 — POST/PUT/PATCH/DELETE spec
 # ---------------------------------------------------------------------------
 
 _REQ317_SPEC: dict = {
     "openapi": "3.0.0",
-    "info": {"title": "Product Catalogue API", "version": "1.0.0"},
+    "info": {"title": "Mutation API", "version": "1.0.0"},
     "components": {
         "schemas": {
-            "Product": {
+            "User": {
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
+                    "email": {"type": "string"},
                     "name": {"type": "string"},
-                    "price": {"type": "number"},
-                    "stock": {"type": "integer"},
                 },
-            },
-            "ProductPatch": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"},
-                    "price": {"type": "number"},
-                },
-            },
+            }
         }
     },
     "paths": {
-        "/products": {
-            "get": {
-                "operationId": "listProducts",
-                "summary": "List all products",
+        "/users": {
+            "post": {
+                "operationId": "createUser",
+                "summary": "Create a user",
+                "requestBody": {
+                    "content": {
+                        "application/json": {"schema": {"$ref": "#/components/schemas/User"}}
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "created",
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/User"}}
+                        },
+                    }
+                },
+            }
+        },
+        "/users/{id}": {
+            "put": {
+                "operationId": "replaceUser",
                 "parameters": [
-                    {"name": "limit", "in": "query", "schema": {"type": "integer"}},
+                    {"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}
                 ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {"schema": {"$ref": "#/components/schemas/User"}}
+                    }
+                },
                 "responses": {
                     "200": {
                         "description": "ok",
                         "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {"$ref": "#/components/schemas/Product"},
+                            "application/json": {"schema": {"$ref": "#/components/schemas/User"}}
+                        },
+                    }
+                },
+            },
+            "patch": {
+                "operationId": "patchUser",
+                "parameters": [
+                    {"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {"schema": {"$ref": "#/components/schemas/User"}}
+                    }
+                },
+                "responses": {"200": {"description": "ok"}},
+            },
+            "delete": {
+                "operationId": "deleteUser",
+                "parameters": [
+                    {"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}
+                ],
+                "responses": {"200": {"description": "deleted"}},
+            },
+        },
+    },
+}
+
+
+@given("an OpenAPI spec with POST/PUT/PATCH/DELETE operations")
+def given_spec_with_mutating_operations(shared_data):
+    """Register a spec containing all four mutating HTTP methods (REQ-317)."""
+    spec = copy.deepcopy(_REQ317_SPEC)
+    methods = {
+        method.upper()
+        for path_item in spec["paths"].values()
+        for method in path_item
+        if isinstance(path_item[method], dict)
+    }
+    assert {"POST", "PUT", "PATCH", "DELETE"} <= methods, (
+        f"REQ-317 spec must contain all mutating methods; found {methods}"
+    )
+    shared_data["spec_to_register"] = spec
+
+
+@given(parsers.parse('an OpenAPI spec with operationId "{operation_id}"'))
+def given_spec_with_operation_id(shared_data, operation_id):
+    """Register a single-GET spec whose operation carries *operation_id* (REQ-601)."""
+    spec = {
+        "openapi": "3.0.0",
+        "info": {"title": "Pet API", "version": "1.0.0"},
+        "paths": {
+            "/pets/findByStatus": {
+                "get": {
+                    "operationId": operation_id,
+                    "parameters": [
+                        {"name": "status", "in": "query", "schema": {"type": "string"}}
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": "ok",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {"id": {"type": "integer"}},
+                                        },
+                                    }
                                 }
+                            },
+                        }
+                    },
+                }
+            }
+        },
+    }
+    shared_data["spec_to_register"] = spec
+    shared_data["operation_id"] = operation_id
+
+
+@when("the spec is registered")
+def when_the_spec_is_registered(shared_data):
+    """Parse the pending spec with the real mapper (REQ-317, REQ-601)."""
+    spec = shared_data["spec_to_register"]
+    queries, mutations = map_operations(spec)
+    shared_data["queries"] = {q.operation_id: q for q in queries}
+    shared_data["mutations"] = {m.operation_id: m for m in mutations}
+
+
+@then(
+    "those operations are auto-registered as tracked functions with request "
+    "body properties as mutation input arguments"
+)
+def then_mutating_ops_are_tracked_functions(shared_data):
+    """Assert non-GET ops became mutations with request-body-derived inputs (REQ-317)."""
+    mutations: dict[str, OpenAPIMutation] = shared_data["mutations"]
+    queries: dict[str, OpenAPIQuery] = shared_data["queries"]
+
+    expected = {"createUser", "replaceUser", "patchUser", "deleteUser"}
+    assert expected <= mutations.keys(), (
+        f"All mutating operations must become tracked functions; missing "
+        f"{expected - mutations.keys()}"
+    )
+    assert expected.isdisjoint(queries.keys()), (
+        "Mutating operations must not be registered as virtual query tables"
+    )
+
+    # Methods preserved.
+    assert mutations["createUser"].method == "POST"
+    assert mutations["replaceUser"].method == "PUT"
+    assert mutations["patchUser"].method == "PATCH"
+    assert mutations["deleteUser"].method == "DELETE"
+
+    # Request body properties become mutation input arguments.
+    create = mutations["createUser"]
+    assert create.input_schema is not None, "createUser must expose an input schema"
+    assert set(create.input_schema["properties"]) == {"id", "email", "name"}, (
+        f"Request body properties must become input arguments; got "
+        f"{sorted(create.input_schema.get('properties', {}))}"
+    )
+    # DELETE has no request body → no input schema.
+    assert mutations["deleteUser"].input_schema is None
+    # 200 response schema becomes the return_schema.
+    assert set(create.response_schema["properties"]) == {"id", "email", "name"}
+
+
+@then(
+    parsers.parse(
+        'the virtual table alias is "{alias}" used as the consumer-facing GraphQL name'
+    )
+)
+def then_virtual_table_alias(shared_data, alias):
+    """Assert the derived alias matches, using real register.py logic (REQ-601)."""
+    from provisa.openapi.register import _operation_id_to_alias
+
+    op_id = shared_data["operation_id"]
+    queries: dict[str, OpenAPIQuery] = shared_data["queries"]
+    assert op_id in queries, f"{op_id} must be registered as a virtual table"
+
+    derived = _operation_id_to_alias(op_id)
+    assert derived == alias, (
+        f"Alias for operationId {op_id!r} must be {alias!r}, got {derived!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-318 — cache-hit serves from Trino with zero upstream REST calls
+# ---------------------------------------------------------------------------
+
+
+@given("a GET operation result cached in Trino Iceberg on S3")
+def given_get_result_cached(shared_data):
+    """Prime the OpenAPI cache freshness for a params combination (REQ-318)."""
+    from provisa.openapi import pg_cache
+
+    pg_schema = "results"
+    pg_table = "api_cache"
+    params = {"status": "available", "limit": 10}
+    ttl = 300
+
+    # Clear any prior in-memory freshness for a clean start.
+    pg_cache._mem_fresh.clear()
+    phash = pg_cache._hash_params(params)
+
+    # Cache key is a hash of the fetch params (source path + native args).
+    assert not pg_cache.is_mem_fresh(pg_schema, pg_table, params), (
+        "Cache must start cold before priming"
+    )
+    pg_cache._mark_fresh(pg_schema, pg_table, phash, ttl)
+    assert pg_cache.is_mem_fresh(pg_schema, pg_table, params), (
+        "After caching, the params combination must be fresh"
+    )
+
+    shared_data["pg_cache"] = pg_cache
+    shared_data["pg_schema"] = pg_schema
+    shared_data["pg_table"] = pg_table
+    shared_data["params"] = params
+    shared_data["ttl"] = ttl
+    shared_data["phash"] = phash
+
+
+@when("the same query with identical args is issued within TTL")
+def when_same_query_within_ttl(shared_data):
+    """Re-issue the identical query while cache is fresh, counting upstream calls (REQ-318)."""
+    import asyncio
+    from unittest.mock import MagicMock, patch
+
+    pg_cache = shared_data["pg_cache"]
+
+    # A fresh in-memory hash short-circuits fill_api_table before any PG or HTTP work.
+    # asyncpg conn is only touched on a miss; MagicMock proves it is never used.
+    fake_conn = MagicMock()
+
+    with patch("provisa.openapi.pg_cache.httpx.get") as mock_get:
+        rows_inserted = asyncio.run(
+            pg_cache.fill_api_table(
+                base_url="https://api.example.com",
+                path="/pets/findByStatus",
+                params=shared_data["params"],
+                pg_conn=fake_conn,
+                pg_schema=shared_data["pg_schema"],
+                pg_table=shared_data["pg_table"],
+                ttl=shared_data["ttl"],
+            )
+        )
+        shared_data["upstream_calls"] = mock_get.call_count
+        shared_data["rows_inserted"] = rows_inserted
+        shared_data["fake_conn"] = fake_conn
+
+
+@then("results are served from Trino directly with zero upstream REST calls")
+def then_served_from_trino_zero_upstream(shared_data):
+    """Assert the cache hit made no upstream REST call and no DB fetch (REQ-318)."""
+    assert shared_data["upstream_calls"] == 0, (
+        f"A cache hit within TTL must make zero upstream REST calls, "
+        f"got {shared_data['upstream_calls']}"
+    )
+    assert shared_data["rows_inserted"] == 0, (
+        "A cache hit must insert no new rows (served from existing cache)"
+    )
+    # No PG round-trip on the freshness fast-path: connection was never queried.
+    fake_conn = shared_data["fake_conn"]
+    assert fake_conn.fetchval.call_count == 0, (
+        "A fresh in-memory cache hit must not query PostgreSQL"
+    )
+    assert fake_conn.execute.call_count == 0
+    # Still fresh after the read.
+    pg_cache = shared_data["pg_cache"]
+    assert pg_cache.is_mem_fresh(
+        shared_data["pg_schema"], shared_data["pg_table"], shared_data["params"]
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-321 — spec refresh preserves governance rules
+# ---------------------------------------------------------------------------
+
+
+@given("an OpenAPI spec that has been updated upstream")
+def given_spec_updated_upstream(shared_data):
+    """Register an initial spec + governance, then stage an updated upstream spec (REQ-321)."""
+    old_spec = copy.deepcopy(_REQ316_SPEC)
+    old_registry = _build_registry_from_spec(old_spec)
+
+    # Steward applies governance rules on top of the initial registrations.
+    governance = {
+        "listOrders": ["mask:total", "row_filter:status='shipped'"],
+        "getOrder": ["mask:total"],
+        "createOrder": ["require_role:admin"],
+    }
+    _apply_governance_rules(old_registry, governance)
+    for op_id, rules in governance.items():
+        assert old_registry[op_id]["governance_rules"] == rules
+
+    # Upstream update: drop updateOrder, add a new getOrderStatus GET operation,
+    # add a query param to listOrders. Governance on surviving ops must persist.
+    new_spec = copy.deepcopy(_REQ316_SPEC)
+    del new_spec["paths"]["/orders/{order_id}"]["put"]  # updateOrder removed
+    new_spec["paths"]["/orders"]["get"]["parameters"].append(
+        {"name": "sort", "in": "query", "schema": {"type": "string"}}
+    )
+    new_spec["paths"]["/orders/{order_id}/status"] = {
+        "get": {
+            "operationId": "getOrderStatus",
+            "parameters": [
+                {"name": "order_id", "in": "path", "required": True, "schema": {"type": "integer"}}
+            ],
+            "responses": {
+                "200": {
+                    "description": "ok",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {"status": {"type": "string"}},
+                            }
+                        }
+                    },
+                }
+            },
+        }
+    }
+
+    shared_data["old_registry"] = old_registry
+    shared_data["new_spec"] = new_spec
+    shared_data["governance"] = governance
+
+
+@when("a steward triggers the spec refresh admin mutation")
+def when_steward_triggers_refresh(shared_data):
+    """Perform the refresh, rebuilding registrations from the updated spec (REQ-321)."""
+    shared_data["new_registry"] = _perform_spec_refresh(
+        shared_data["old_registry"], shared_data["new_spec"]
+    )
+
+
+@then("registrations are updated and governance rules applied on top are preserved")
+def then_registrations_updated_governance_preserved(shared_data):
+    """Assert refreshed registrations reflect the new spec and keep governance (REQ-321)."""
+    new_registry = shared_data["new_registry"]
+    governance = shared_data["governance"]
+
+    # New operation is registered.
+    assert "getOrderStatus" in new_registry, "New upstream operation must be registered"
+    assert new_registry["getOrderStatus"]["kind"] == "virtual_table"
+
+    # Removed operation is dropped.
+    assert "updateOrder" not in new_registry, "Removed upstream operation must be dropped"
+
+    # Updated operation reflects the new param.
+    list_orders = new_registry["listOrders"]["descriptor"]
+    assert "sort" in {p["name"] for p in list_orders.query_params}, (
+        "Refreshed registration must reflect the added query parameter"
+    )
+
+    # Governance rules on surviving operations are preserved.
+    for op_id, rules in governance.items():
+        if op_id == "updateOrder":
+            continue
+        assert new_registry[op_id]["governance_rules"] == rules, (
+            f"Governance rules for {op_id!r} must survive refresh; "
+            f"expected {rules}, got {new_registry[op_id]['governance_rules']}"
+        )
+    # New operation starts with no rules.
+    assert new_registry["getOrderStatus"]["governance_rules"] == []

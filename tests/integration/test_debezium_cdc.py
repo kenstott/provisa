@@ -181,6 +181,13 @@ def debezium_connector(pg_pool):
     debezium_pg_host = os.environ.get("DEBEZIUM_PG_HOST", "postgres")
     debezium_pg_port = int(os.environ.get("DEBEZIUM_PG_PORT", "5432"))
 
+    # Reachability probe only: skip if the Connect REST API is genuinely down.
+    # Any other failure (registration error, connector not RUNNING) must fail loudly.
+    try:
+        httpx.get(f"{DEBEZIUM_URL}/connectors", timeout=5)
+    except httpx.HTTPError as exc:
+        pytest.skip(f"Debezium Connect not reachable at {DEBEZIUM_URL}: {exc}")
+
     _register_connector(
         pg_host=debezium_pg_host,
         pg_port=debezium_pg_port,
@@ -188,10 +195,7 @@ def debezium_connector(pg_pool):
         pg_password=os.environ.get("PG_PASSWORD", "provisa"),
     )
 
-    try:
-        _wait_connector_running(timeout=120)
-    except RuntimeError as exc:
-        pytest.skip(str(exc))
+    _wait_connector_running(timeout=120)
 
     yield
 
@@ -252,8 +256,12 @@ class TestDebeziumInsertEvents:
         marker = f"debezium-test-{uuid.uuid4().hex[:8]}"
 
         async def do_insert():
-            # Give the consumer a moment to subscribe before the insert
-            await asyncio.sleep(3)
+            # Give the consumer time to join the group, get its partition
+            # assignment, and seek to the latest offset before the insert.
+            # With auto_offset_reset="latest", any change made before the
+            # consumer's position is established is lost, so this delay must
+            # exceed the group-join + assignment latency (~5s observed).
+            await asyncio.sleep(6)
             async with pg_pool.acquire() as conn:
                 pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
                 await conn.execute(
@@ -286,7 +294,10 @@ class TestDebeziumInsertEvents:
         marker = f"ts-test-{uuid.uuid4().hex[:8]}"
 
         async def do_insert():
-            await asyncio.sleep(2)
+            # See test_insert_yields_insert_event: consumer group-join +
+            # partition assignment must complete before the DML or the
+            # (latest-offset) consumer misses the event.
+            await asyncio.sleep(6)
             async with pg_pool.acquire() as conn:
                 pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
                 await conn.execute(
@@ -297,7 +308,7 @@ class TestDebeziumInsertEvents:
                     marker,
                 )
 
-        events_task = asyncio.create_task(_collect_events(provider, "orders", count=3, timeout=25))
+        events_task = asyncio.create_task(_collect_events(provider, "orders", count=3, timeout=30))
         await do_insert()
         events = await events_task
 
@@ -334,7 +345,9 @@ class TestDebeziumUpdateEvents:
         await asyncio.sleep(2)
 
         async def do_update():
-            await asyncio.sleep(2)
+            # Consumer must finish group-join + partition assignment before
+            # the UPDATE (latest-offset consumer misses earlier changes).
+            await asyncio.sleep(6)
             async with pg_pool.acquire() as conn:
                 await conn.execute(
                     "UPDATE orders SET amount = $1 WHERE id = $2",
@@ -342,7 +355,7 @@ class TestDebeziumUpdateEvents:
                     row_id,
                 )
 
-        events_task = asyncio.create_task(_collect_events(provider, "orders", count=5, timeout=30))
+        events_task = asyncio.create_task(_collect_events(provider, "orders", count=5, timeout=35))
         await do_update()
         events = await events_task
 
@@ -374,11 +387,13 @@ class TestDebeziumDeleteEvents:
         await asyncio.sleep(2)
 
         async def do_delete():
-            await asyncio.sleep(2)
+            # Consumer must finish group-join + partition assignment before
+            # the DELETE (latest-offset consumer misses earlier changes).
+            await asyncio.sleep(6)
             async with pg_pool.acquire() as conn:
                 await conn.execute("DELETE FROM orders WHERE id = $1", row_id)
 
-        events_task = asyncio.create_task(_collect_events(provider, "orders", count=5, timeout=30))
+        events_task = asyncio.create_task(_collect_events(provider, "orders", count=5, timeout=35))
         await do_delete()
         events = await events_task
 
@@ -433,10 +448,7 @@ class TestDebeziumProviderLifecycle:
             group_id=f"snapshot-earliest-{uuid.uuid4().hex[:8]}",
             auto_offset_reset="earliest",
         )
-        try:
-            await consumer.start()
-        except Exception as exc:
-            pytest.skip(f"Kafka not reachable for snapshot consumer: {exc}")
+        await consumer.start()
         try:
             async with asyncio.timeout(15):
                 async for msg in consumer:

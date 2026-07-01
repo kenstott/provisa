@@ -103,8 +103,6 @@ from __future__ import annotations
 import os
 import time
 import uuid
-from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -113,9 +111,7 @@ from pytest_bdd import given, when, then
 
 from provisa.core.models import (
     SOURCE_TO_CONNECTOR,
-    Cardinality,
     Column,
-    Relationship,
     Source,
     SourceType,
     Table,
@@ -743,4 +739,47 @@ def query_executed_readonly_through_trino_connector_no_mutation_path(shared_data
     assert connector_name, "Connector name must be non-empty"
 
     props: dict[str, str] = shared_data["nosql_catalog_props"]
-    mutation_keys_present = _MUTATION_PROPERTY_KEYS & set(props.
+    mutation_keys_present = _MUTATION_PROPERTY_KEYS & set(props.keys())
+    assert not mutation_keys_present, (
+        f"Connector config exposes mutation-enabling keys {mutation_keys_present}. "
+        "REQ-017 requires a read-only Trino connector with no mutation path."
+    )
+
+    # The SELECT query must have been routed through the connector and executed.
+    select_sql: str = shared_data["nosql_query_sql"]
+    assert select_sql, "No query SQL was recorded for the read-only connector query"
+
+    executed_statements: list[str] = shared_data["nosql_executed_statements"]
+    assert executed_statements == [select_sql], (
+        f"Expected exactly the SELECT to execute, got: {executed_statements}"
+    )
+    sql_upper = select_sql.upper()
+    dml_found = [kw for kw in _DML_KEYWORDS if kw in sql_upper]
+    assert not dml_found, (
+        f"Executed query contains DML keywords {dml_found} — reads only under REQ-017."
+    )
+
+    rows = shared_data["nosql_query_rows"]
+    assert len(rows) == 2, f"Expected 2 rows from the read-only SELECT, got {len(rows)}"
+
+    # The mutation attempt must have been blocked with no mutation path available.
+    assert shared_data["nosql_mutation_attempted"] is True, (
+        "The scenario must attempt a mutation to prove it is blocked"
+    )
+    assert shared_data["nosql_mutation_blocked"] is True, (
+        "Mutation was not blocked — REQ-017 requires DML rejection on a read-only connector"
+    )
+
+    rejected_statements: list[str] = shared_data["nosql_rejected_statements"]
+    mutation_sql: str = shared_data["nosql_mutation_sql"]
+    assert rejected_statements == [mutation_sql], (
+        f"Expected the mutation to be the only rejected statement, got: {rejected_statements}"
+    )
+    assert mutation_sql not in executed_statements, (
+        "Mutation statement must never reach the executed set on a read-only connector"
+    )
+
+    error_msg: str = shared_data["nosql_mutation_error_msg"]
+    assert error_msg and "read-only" in error_msg.lower(), (
+        f"Mutation rejection must cite the read-only connector guard, got: {error_msg!r}"
+    )

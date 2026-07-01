@@ -11,9 +11,6 @@ import re
 from typing import Any
 
 
-import pytest
-from pytest_bdd import given, when, then
-
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 
@@ -839,4 +836,26 @@ def _make_graphql_default_schema_input() -> SchemaInput:
 # ---------------------------------------------------------------------------
 
 
-def _build_req009
+def _build_req009_graphql_query() -> str:
+    """
+    Return a GraphQL query that joins orders to their customer.
+
+    Pairs with :func:`_make_req009_schema_input` (orders → customers,
+    many-to-one on customer_id).  Selecting a nested relationship field is
+    what forces the compiler to emit a single PG-style SQL statement (a
+    JOIN) rather than a resolver chain / N+1 pattern.
+    """
+    return (
+        "query {\n"
+        "  orders {\n"
+        "    id\n"
+        "    amount\n"
+        "    status\n"
+        "    customer {\n"
+        "      id\n"
+        "      name\n"
+        "      email\n"
+        "    }\n"
+        "  }\n"
+        "}"
+    )

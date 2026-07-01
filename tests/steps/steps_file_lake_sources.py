@@ -28,7 +28,9 @@ from provisa.core.models import TIME_TRAVEL_SOURCES
 from provisa.file_source.source import (
     FileSourceConfig,
     discover_schema,
+    execute_query,
     generate_table_definitions,
+    _camel_to_snake,
 )
 from provisa.file_source.crawler import crawl_directory
 
@@ -737,4 +739,177 @@ def then_table_dropdown_lists_csv_tables(shared_data):
     config = shared_data["ui_file_source_config"]
     for td in tables_in_schema:
         assert td.source_id == config.id, (
-            f"Table '{td.table_name}' in schema '{selected
+            f"Table '{td.table_name}' in schema '{selected_schema}' references "
+            f"source_id '{td.source_id}', expected '{config.id}'"
+        )
+
+
+# ---------------------------------------------------------------------------
+# REQ-791 steps
+#
+# Registered file-based tables are queryable via the data GraphQL endpoint.
+# The scenario is driven end-to-end through the real production layers:
+#   * register  -> crawl_directory + generate_table_definitions + discover_schema
+#   * GraphQL   -> generate_schema (SDL) + compile_query (GraphQL -> SQL)
+#   * data path -> execute_query (DuckDB, REQ-229) fetches the actual rows, whose
+#                  camelCase headers are mapped to snake_case via the same
+#                  _camel_to_snake contract the connector applies (REQ-789).
+# ---------------------------------------------------------------------------
+
+
+@given("a registered customers table created from CSV files via file connector")
+def given_registered_customers_table_from_csv(shared_data, tmp_path):
+    """Register a customers table from a CSV file using the real file connector."""
+    csv_dir = tmp_path / "lake791"
+    csv_dir.mkdir(parents=True, exist_ok=True)
+
+    # camelCase headers so we can prove snake_case conversion end-to-end
+    raw_headers = ["customerId", "companyName", "contactName", "city", "country"]
+    rows = [
+        ["C001", "Acme Corp", "Alice", "London", "UK"],
+        ["C002", "Globex", "Bob", "Berlin", "DE"],
+        ["C003", "Initech", "Carol", "Austin", "US"],
+    ]
+    csv_path = _write_csv(csv_dir, "customers.csv", raw_headers, rows)
+    assert csv_path.exists()
+
+    config = FileSourceConfig(id="lake791-source", source_type="csv", path=str(csv_dir))
+
+    # Register: discover the files and generate table definitions (production).
+    discovered_entries = crawl_directory(str(csv_dir), pattern="*.csv", recursive=False)
+    table_defs = generate_table_definitions(config, discovered_entries)
+    customers_td = next(td for td in table_defs if td.table_name == "customers")
+
+    # Introspect the schema — column names normalized to snake_case (REQ-789).
+    schema_columns = discover_schema(config, customers_td)
+    assert schema_columns, "discover_schema returned no columns for customers"
+
+    shared_data["config_791"] = config
+    shared_data["customers_td_791"] = customers_td
+    shared_data["schema_columns_791"] = schema_columns
+    shared_data["csv_path_791"] = csv_path
+    shared_data["raw_headers_791"] = raw_headers
+    shared_data["csv_rows_791"] = rows
+    shared_data["snake_columns_791"] = [c.column_name for c in schema_columns]
+
+
+@when("a GraphQL query is issued against the data endpoint for customers")
+def when_graphql_query_issued_for_customers(shared_data):
+    """Compile a real GraphQL query to SQL and execute it against the CSV data."""
+    config = shared_data["config_791"]
+    customers_td = shared_data["customers_td_791"]
+    schema_columns = shared_data["schema_columns_791"]
+    snake_columns = shared_data["snake_columns_791"]
+
+    # Build the production GraphQL schema for the registered table (snake_case fields).
+    columns_for_schema = [
+        {"column_name": c.column_name, "visible_to": ["admin"]} for c in schema_columns
+    ]
+    tables = [
+        {
+            "id": 791,
+            "source_id": config.id,
+            "domain_id": "datalake",
+            "schema_name": "db",
+            "table_name": customers_td.table_name,
+            "governance": "pre-approved",
+            "columns": columns_for_schema,
+            "gql_naming_convention": "snake",
+        }
+    ]
+    role = {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
+    domains = [{"id": "datalake", "description": "Data Lake"}]
+    si = SchemaInput(
+        tables=tables,
+        relationships=[],
+        column_types={791: list(schema_columns)},
+        naming_rules=[],
+        role=role,
+        domains=domains,
+        source_types={config.id: "csv"},
+    )
+    gql_schema = generate_schema(si)
+    shared_data["gql_sdl_791"] = print_schema(gql_schema)
+
+    ctx = build_context(si)
+
+    # Issue a GraphQL query for customers selecting every snake_case column.
+    field_selection = " ".join(snake_columns)
+    query = parse("{ customers { %s } }" % field_selection)
+    compiled = compile_query(query, ctx)
+    sql = compiled[0].sql
+    shared_data["compiled_sql_791"] = sql
+
+    # Every selected snake_case field must appear in the compiled SQL.
+    for col in snake_columns:
+        assert f'"{col}"' in sql, f"Column {col!r} missing from compiled SQL: {sql}"
+
+    # Execute the data query against the CSV via the production execute_query
+    # (DuckDB, REQ-229). The raw CSV headers are camelCase; map them to
+    # snake_case using the same connector contract that named the columns.
+    csv_path = shared_data["csv_path_791"]
+    file_config = FileSourceConfig(id=config.id, source_type="csv", path=str(csv_path))
+    raw_rows = execute_query(file_config, f'SELECT * FROM "{csv_path.stem}"')  # noqa: S608
+    result_rows = [
+        {_camel_to_snake(k): v for k, v in row.items()} for row in raw_rows
+    ]
+    shared_data["result_rows_791"] = result_rows
+
+
+@then("the query returns all rows from the CSV files with all columns")
+def then_query_returns_all_rows_all_columns(shared_data):
+    """Assert every CSV data row is returned with every CSV column present."""
+    result_rows = shared_data["result_rows_791"]
+    csv_rows = shared_data["csv_rows_791"]
+    snake_columns = shared_data["snake_columns_791"]
+
+    assert len(result_rows) == len(csv_rows), (
+        f"Expected {len(csv_rows)} rows from CSV, got {len(result_rows)}: {result_rows}"
+    )
+
+    for row in result_rows:
+        for col in snake_columns:
+            assert col in row, (
+                f"Column '{col}' missing from returned row {row}; "
+                f"expected all columns {snake_columns}"
+            )
+
+    # Verify actual values round-tripped: the first CSV row's values must appear.
+    expected_first = set(csv_rows[0])
+    returned_first = set(str(v) for v in result_rows[0].values())
+    assert expected_first <= returned_first, (
+        f"First CSV row values {expected_first} not fully present in "
+        f"returned row values {returned_first}"
+    )
+
+
+@then("the response matches the CSV schema with snake_case column names")
+def then_response_matches_schema_snake_case(shared_data):
+    """Assert returned column keys are snake_case and match the discovered schema."""
+    result_rows = shared_data["result_rows_791"]
+    snake_columns = shared_data["snake_columns_791"]
+    raw_headers = shared_data["raw_headers_791"]
+    sdl = shared_data["gql_sdl_791"]
+
+    returned_keys = set(result_rows[0].keys())
+    assert returned_keys == set(snake_columns), (
+        f"Returned columns {sorted(returned_keys)} do not match discovered schema "
+        f"{sorted(snake_columns)}"
+    )
+
+    # No returned key may retain a camelCase boundary.
+    camel_boundary = re.compile(r"[a-z][A-Z]")
+    camel_keys = [k for k in returned_keys if camel_boundary.search(k)]
+    assert not camel_keys, f"Returned columns still contain camelCase: {camel_keys}"
+
+    # The expected snake_case mapping of each raw header must be a returned column.
+    for header in raw_headers:
+        expected = _camel_to_snake(header)
+        assert expected in returned_keys, (
+            f"Header {header!r} expected snake_case column {expected!r}, "
+            f"returned columns: {sorted(returned_keys)}"
+        )
+
+    # The GraphQL data endpoint schema must expose the same snake_case fields.
+    for col in snake_columns:
+        assert col in sdl, f"snake_case field {col!r} absent from GraphQL SDL"

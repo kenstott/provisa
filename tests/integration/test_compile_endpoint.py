@@ -19,7 +19,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import httpx
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -54,107 +53,6 @@ async def _compile(
 
 
 _FIXTURE_CONFIG = Path(__file__).parent.parent / "fixtures" / "sample_config.yaml"
-_LIVE_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
-
-
-@pytest_asyncio.fixture(scope="module", loop_scope="session", autouse=True)
-async def _register_demo_data_on_live_server():
-    """Register demo sources/tables/relationships on the live server for TestFlatCypherReturn."""
-    try:
-        httpx.get(f"{_LIVE_URL}/health", timeout=3)
-    except Exception:
-        yield
-        return
-
-    async with httpx.AsyncClient(base_url=_LIVE_URL, timeout=120) as ac:
-
-        async def _gql(query: str) -> dict:
-            resp = await ac.post("/admin/graphql", json={"query": query})
-            resp.raise_for_status()
-            return resp.json()
-
-        await _gql(
-            'mutation { createSource(input: {id: "inquiries-sqlite", type: "sqlite"}) { success } }'
-        )
-        await _gql(
-            'mutation { createSource(input: {id: "shelter", type: "graphql_remote"}) { success } }'
-        )
-        await _gql(
-            'mutation { createDomain(input: {id: "shelter", description: "Animal shelter"}) { success } }'
-        )
-        await _gql("""
-            mutation {
-                registerTable(input: {
-                    sourceId: "inquiries-sqlite", domainId: "pet-store",
-                    schemaName: "default", tableName: "inquiries",
-                    governance: "pre-approved",
-                    columns: [
-                        {name: "id", visibleTo: ["admin", "analyst"]},
-                        {name: "pet_id", visibleTo: ["admin", "analyst"]},
-                        {name: "inquiry_type", visibleTo: ["admin", "analyst"]},
-                        {name: "message", visibleTo: ["admin", "analyst"]},
-                        {name: "status", visibleTo: ["admin", "analyst"]},
-                        {name: "submitted_at", visibleTo: ["admin", "analyst"]}
-                    ]
-                }) { success message }
-            }
-        """)
-        await _gql("""
-            mutation {
-                registerTable(input: {
-                    sourceId: "shelter", domainId: "shelter",
-                    schemaName: "default", tableName: "assignments",
-                    alias: "shelter__assignments",
-                    governance: "pre-approved",
-                    columns: [
-                        {name: "id", visibleTo: ["admin", "analyst"]},
-                        {name: "breedName", visibleTo: ["admin", "analyst"]}
-                    ]
-                }) { success message }
-            }
-        """)
-        await _gql("""
-            mutation {
-                upsertRelationship(input: {
-                    id: "inquiries-to-pets",
-                    sourceTableId: "inquiries",
-                    targetTableId: "pets",
-                    sourceColumn: "pet_id",
-                    targetColumn: "id",
-                    cardinality: "many-to-one",
-                    alias: "HAS_PETS"
-                }) { success message }
-            }
-        """)
-        await _gql("""
-            mutation {
-                upsertRelationship(input: {
-                    id: "pets-to-shelter-assignments",
-                    sourceTableId: "pets",
-                    targetTableId: "shelter__assignments",
-                    sourceColumn: "breed_name",
-                    targetColumn: "breedName",
-                    cardinality: "many-to-one"
-                }) { success message }
-            }
-        """)
-
-        yield
-
-        for rel_id in ("pets-to-shelter-assignments", "inquiries-to-pets"):
-            await ac.post(
-                "/admin/graphql",
-                json={"query": f'mutation {{ deleteRelationship(id: "{rel_id}") {{ success }} }}'},
-            )
-        for src_id in ("inquiries-sqlite", "shelter"):
-            await ac.post(
-                "/admin/graphql",
-                json={"query": f'mutation {{ deleteSource(id: "{src_id}") {{ success }} }}'},
-            )
-        await ac.post(
-            "/admin/graphql",
-            json={"query": 'mutation { deleteDomain(id: "shelter") { success } }'},
-        )
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
@@ -358,14 +256,9 @@ class TestFlatCypherReturn:
         )
         assert resp.status_code == 200
         body = resp.json()
-        if "errors" in body:
-            msgs = [e.get("message", "") for e in (body["errors"] or [])]
-            if any("ps__pets" in m for m in msgs):
-                pytest.skip("ps__pets not in schema — pet-store domain not loaded")
         assert "errors" not in body, body.get("errors")
         cypher = body["data"]["compileQuery"][0]["compiledCypher"]
-        if not cypher:
-            pytest.skip("compiledCypher not produced for this query")
+        assert cypher, "compiledCypher must be produced for flatCypher query"
         import re
 
         bare = re.search(r"\b[a-z]\s+AS\s+\w+\b", cypher)
@@ -380,14 +273,9 @@ class TestFlatCypherReturn:
         )
         assert resp.status_code == 200
         body = resp.json()
-        if "errors" in body:
-            msgs = [e.get("message", "") for e in (body["errors"] or [])]
-            if any("ps__pets" in m for m in msgs):
-                pytest.skip("ps__pets not in schema — pet-store domain not loaded")
         assert "errors" not in body, body.get("errors")
         cypher = body["data"]["compileQuery"][0]["compiledCypher"]
-        if not cypher:
-            pytest.skip("compiledCypher not produced for this query")
+        assert cypher, "compiledCypher must be produced for flatCypher query"
         assert "RETURN" in cypher
         # Relationship fields must be expanded with per-field dotted paths
         assert "." in cypher.split("RETURN")[-1], f"RETURN must use dotted paths: {cypher}"

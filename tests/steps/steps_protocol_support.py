@@ -819,4 +819,9 @@ def test_session_handle_logoff():
 def test_packstream_pack_message_pull():
     """PULL message must encode correctly with n=-1 metadata dict."""
     from provisa.bolt.packstream import pack_message
-    from provisa.bolt.
+    from provisa.bolt.messages import PULL
+
+    data = pack_message(PULL, {"n": -1})
+    # tiny struct header with 1 field: 0xB1
+    assert data[0] == 0xB1
+    assert data[1] == PULL

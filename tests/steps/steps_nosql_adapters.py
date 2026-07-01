@@ -55,54 +55,68 @@ def given_running_mongodb_with_seeded_docs(shared_data):
     if not os.getenv("PROVISA_INTEGRATION"):
         pytest.skip("integration only")
 
+    # A motor AsyncIOMotorClient binds to the event loop it is created in, so it
+    # cannot be shared across the separate asyncio.run() loops of the
+    # given/when/then steps. Each step creates and closes its own client; only
+    # plain data (connection params, filter, result dicts) crosses step
+    # boundaries.
+    host = os.environ.get("MONGO_HOST", "localhost")
+    port = int(os.environ.get("MONGO_PORT", "27017"))
+    db_name = "provisa_test"
+    col_name = "bdd_test_collection"
+
     async def _body():
         import motor.motor_asyncio  # noqa: PLC0415
-
-        host = os.environ.get("MONGO_HOST", "localhost")
-        port = int(os.environ.get("MONGO_PORT", "27017"))
 
         client = motor.motor_asyncio.AsyncIOMotorClient(
             host=host,
             port=port,
             serverSelectionTimeoutMS=3000,
         )
-
         try:
-            await client.admin.command("ping")
-        except Exception as exc:  # noqa: BLE001
+            try:
+                await client.admin.command("ping")
+            except Exception as exc:  # noqa: BLE001
+                pytest.skip(f"MongoDB not reachable: {exc}")
+
+            col = client[db_name][col_name]
+            await col.delete_many({})
+            await col.insert_many(
+                [
+                    {"item": "alpha", "qty": 10, "category": "widget"},
+                    {"item": "beta", "qty": 25, "category": "widget"},
+                    {"item": "gamma", "qty": 3, "category": "gadget"},
+                ]
+            )
+        finally:
             client.close()
-            pytest.skip(f"MongoDB not reachable: {exc}")
-
-        db = client["provisa_test"]
-        col = db["bdd_test_collection"]
-
-        await col.delete_many({})
-        await col.insert_many(
-            [
-                {"item": "alpha", "qty": 10, "category": "widget"},
-                {"item": "beta", "qty": 25, "category": "widget"},
-                {"item": "gamma", "qty": 3, "category": "gadget"},
-            ]
-        )
-
-        shared_data["mongo_client"] = client
-        shared_data["mongo_collection"] = col
-        shared_data["filter_criteria"] = {"qty": {"$gt": 5}}
 
     asyncio.run(_body())
+    shared_data["mongo_conn"] = {"host": host, "port": port, "db": db_name, "col": col_name}
+    shared_data["filter_criteria"] = {"qty": {"$gt": 5}}
 
 
 @when("the adapter queries the collection with filter criteria")
 def when_adapter_queries_collection(shared_data):
-    """Execute the filtered query via the motor async client."""
+    """Execute the filtered query via a fresh motor async client."""
     if not os.getenv("PROVISA_INTEGRATION"):
         pytest.skip("integration only")
 
+    conn = shared_data["mongo_conn"]
+    criteria = shared_data["filter_criteria"]
+
     async def _body():
-        col = shared_data["mongo_collection"]
-        criteria = shared_data["filter_criteria"]
-        docs = await col.find(criteria).to_list(length=100)
-        shared_data["query_result"] = docs
+        import motor.motor_asyncio  # noqa: PLC0415
+
+        client = motor.motor_asyncio.AsyncIOMotorClient(
+            host=conn["host"], port=conn["port"], serverSelectionTimeoutMS=3000
+        )
+        try:
+            col = client[conn["db"]][conn["col"]]
+            docs = await col.find(criteria).to_list(length=100)
+            shared_data["query_result"] = docs
+        finally:
+            client.close()
 
     asyncio.run(_body())
 
@@ -113,26 +127,30 @@ def then_documents_matching_filter_returned(shared_data):
     if not os.getenv("PROVISA_INTEGRATION"):
         pytest.skip("integration only")
 
-    async def _body():
-        docs = shared_data.get("query_result", [])
+    docs = shared_data.get("query_result", [])
 
-        assert len(docs) == 2, f"Expected 2 documents matching qty > 5, got {len(docs)}: {docs}"
+    assert len(docs) == 2, f"Expected 2 documents matching qty > 5, got {len(docs)}: {docs}"
 
-        items = {d["item"] for d in docs}
-        assert "alpha" in items, f"'alpha' missing from results: {items}"
-        assert "beta" in items, f"'beta' missing from results: {items}"
-        assert "gamma" not in items, f"'gamma' should not match qty > 5 but was in: {items}"
+    items = {d["item"] for d in docs}
+    assert "alpha" in items, f"'alpha' missing from results: {items}"
+    assert "beta" in items, f"'beta' missing from results: {items}"
+    assert "gamma" not in items, f"'gamma' should not match qty > 5 but was in: {items}"
 
-        for doc in docs:
-            assert doc["qty"] > 5, (
-                f"Document {doc['item']} has qty={doc['qty']} which fails qty > 5"
-            )
+    for doc in docs:
+        assert doc["qty"] > 5, f"Document {doc['item']} has qty={doc['qty']} which fails qty > 5"
 
-        client = shared_data.get("mongo_client")
-        col = shared_data.get("mongo_collection")
-        if col is not None:
-            await col.delete_many({})
-        if client is not None:
+    # Cleanup in a fresh client bound to this step's loop.
+    conn = shared_data["mongo_conn"]
+
+    async def _cleanup():
+        import motor.motor_asyncio  # noqa: PLC0415
+
+        client = motor.motor_asyncio.AsyncIOMotorClient(
+            host=conn["host"], port=conn["port"], serverSelectionTimeoutMS=3000
+        )
+        try:
+            await client[conn["db"]][conn["col"]].delete_many({})
+        finally:
             client.close()
 
-    asyncio.run(_body())
+    asyncio.run(_cleanup())

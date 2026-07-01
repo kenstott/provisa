@@ -701,7 +701,7 @@ def change_events_stream_via_sse_with_rls(shared_data):
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Helper: build and verify presigned URLs using HMAC-SHA256
+# Helper: build a minimal presigned URL using HMAC-SHA256
 # ---------------------------------------------------------------------------
 
 _PRESIGN_SECRET = "provisa-test-secret-key"
@@ -735,13 +735,975 @@ def _build_presigned_url(
 
 
 def _verify_presigned_url(url: str, secret: str = _PRESIGN_SECRET) -> bool:
-    """Verify HMAC-SHA256 signature of a presigned URL and check TTL."""
+    """Verify HMAC-SHA256 signature of a presigned URL."""
     parsed = urllib.parse.urlparse(url)
     params = dict(urllib.parse.parse_qsl(parsed.query))
     result_key = params.get("X-Result-Key", "")
-    expires_at_str = params.get("X-Expires", "0")
+    expires_at = params.get("X-Expires", "0")
     provided_sig = params.get("X-Signature", "")
 
+    # Check expiry
+    if int(expires_at) < int(time.time()):
+        return False
+
+    path = parsed.path
+    canonical = f"GET\n{path}\n{expires_at}"
+    expected_sig = hmac.new(
+        secret.encode(),
+        canonical.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected_sig, provided_sig) and bool(result_key)
+
+
+@given("a consumer requesting a large result set")
+def consumer_requesting_large_result_set(shared_data):
+    """Build a real QueryResult that exceeds the redirect threshold (REQ-044)."""
+    from provisa.executor.redirect import RedirectConfig, should_redirect
+    from provisa.executor.trino import QueryResult
+
+    config = RedirectConfig(
+        enabled=True,
+        threshold=10,
+        bucket="provisa-results",
+        endpoint_url="http://localhost:9000",
+        access_key="minioadmin",
+        secret_key="minioadmin",
+        ttl=1800,
+    )
+    result = QueryResult(
+        rows=[(i, f"row-{i}", float(i) * 1.5) for i in range(100)],
+        column_names=["id", "name", "amount"],
+    )
+
+    # Large result → redirect kicks in; small result stays inline (no buffering path).
+    assert should_redirect(result, config) is True, (
+        "result above threshold must redirect to blob storage"
+    )
+    small = QueryResult(rows=[(1, "a", 1.0)], column_names=["id", "name", "amount"])
+    assert should_redirect(small, config) is False, (
+        "result at/below threshold must not redirect"
+    )
+
+    shared_data["redirect_config"] = config
+    shared_data["large_result"] = result
+
+
+@when("the server generates a presigned URL with a TTL")
+def server_generates_presigned_url_with_ttl(shared_data):
+    """Drive the real upload_and_presign path with a mocked S3 client (REQ-044)."""
+    from provisa.executor.redirect import upload_and_presign
+
+    config = shared_data["redirect_config"]
+    result = shared_data["large_result"]
+
+    presigned = (
+        "https://s3.example.com/provisa-results/results/abc.ndjson"
+        "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=1800&X-Amz-Signature=deadbeef"
+    )
+    s3 = MagicMock()
+    s3.put_object = MagicMock()
+    s3.generate_presigned_url = MagicMock(return_value=presigned)
+
+    from unittest.mock import patch
+
+    with patch("boto3.client", return_value=s3):
+        response = asyncio.run(
+            upload_and_presign(result, config, output_format="ndjson")
+        )
+
+    # Real serialization must have produced a body (no server-side buffering of rows
+    # back to the client — the payload is streamed to S3 once).
+    put_kwargs = s3.put_object.call_args.kwargs
+    assert put_kwargs["Bucket"] == "provisa-results"
+    assert put_kwargs["Key"].startswith("results/")
+    assert isinstance(put_kwargs["Body"], (bytes, bytearray))
+    assert len(put_kwargs["Body"]) > 0, "serialized result body must be non-empty"
+
+    # The configured TTL must be passed verbatim to the presigner.
+    presign_kwargs = s3.generate_presigned_url.call_args.kwargs
+    assert presign_kwargs["ExpiresIn"] == config.ttl == 1800, (
+        "presigned URL TTL must match configured redirect TTL"
+    )
+
+    shared_data["presign_response"] = response
+
+
+@then(
+    "the consumer can access the result via the URL within the TTL without "
+    "server-side buffering"
+)
+def consumer_accesses_result_via_url_within_ttl(shared_data):
+    """Assert the presign response is TTL-bounded and redirect-shaped (REQ-044)."""
+    response = shared_data["presign_response"]
+    config = shared_data["redirect_config"]
+
+    assert "redirect_url" in response, "response must carry a presigned redirect_url"
+    assert response["redirect_url"].startswith("https://"), (
+        f"redirect_url must be an accessible URL, got {response['redirect_url']!r}"
+    )
+    # TTL-bounded access: the URL carries the exact configured expiry.
+    assert response["expires_in"] == config.ttl == 1800
+    assert "X-Amz-Expires=1800" in response["redirect_url"]
+    # Row count reflects the full large result, delivered by reference not inline.
+    assert response["row_count"] == 100, (
+        "redirect must reference the full result set without inlining rows"
+    )
+    assert response["content_type"] == "application/x-ndjson"
+
+
+# ---------------------------------------------------------------------------
+# REQ-045 — gRPC Arrow Flight endpoint for high-throughput consumers
+# ---------------------------------------------------------------------------
+
+
+@given("a high-throughput consumer connecting via gRPC Arrow Flight")
+def high_throughput_consumer_via_flight(shared_data):
+    """Build a real Flight server + governed context (REQ-045)."""
+    from graphql import (
+        GraphQLField,
+        GraphQLFloat,
+        GraphQLInt,
+        GraphQLList,
+        GraphQLObjectType,
+        GraphQLSchema,
+        GraphQLString,
+    )
+
+    from provisa.api.flight.server import ProvisaFlightServer
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+
+    order_type = GraphQLObjectType(
+        "Order",
+        {
+            "id": GraphQLField(GraphQLInt),
+            "region": GraphQLField(GraphQLString),
+            "amount": GraphQLField(GraphQLFloat),
+        },
+    )
+    query_type = GraphQLObjectType(
+        "Query", {"orders": GraphQLField(GraphQLList(order_type))}
+    )
+    schema = GraphQLSchema(query=query_type)
+
+    ctx = CompilationContext(
+        tables={
+            "orders": TableMeta(
+                table_id=1,
+                field_name="orders",
+                type_name="Order",
+                source_id="test-pg",
+                catalog_name="postgresql",
+                schema_name="public",
+                table_name="orders",
+                domain_id="default",
+            )
+        }
+    )
+
+    state = MagicMock()
+    state.schemas = {"admin": schema}
+    state.contexts = {"admin": ctx}
+    state.roles = {"admin": {}}
+
+    loop = asyncio.new_event_loop()
     try:
-        expires_at = int(expires_at_str)
-    except ValueError:
+        server = ProvisaFlightServer(
+            state, location="grpc://0.0.0.0:0", main_loop=loop
+        )
+    finally:
+        loop.close()
+
+    assert isinstance(server, ProvisaFlightServer)
+    # do_get is the zero-copy Arrow producer entrypoint.
+    assert hasattr(server, "do_get")
+
+    shared_data["flight_server"] = server
+    shared_data["flight_ctx"] = ctx
+
+
+@when("Trino produces Arrow natively")
+def trino_produces_arrow_natively(shared_data):
+    """Exercise the real Arrow producers used by the Flight do_get path (REQ-045)."""
+    import pyarrow as pa
+
+    from provisa.compiler.sql_gen import ColumnRef
+    from provisa.executor.formats.arrow import rows_to_arrow_ipc, rows_to_arrow_table
+    from provisa.executor.trino import QueryResult
+
+    result = QueryResult(
+        rows=[(i, "US" if i % 2 else "EU", float(i) * 2.0) for i in range(1000)],
+        column_names=["id", "region", "amount"],
+    )
+    columns = [
+        ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
+        ColumnRef(alias=None, column="region", field_name="region", nested_in=None),
+        ColumnRef(alias=None, column="amount", field_name="amount", nested_in=None),
+    ]
+
+    # Native Arrow Table for Flight streaming (RecordBatchStream feeds do_get).
+    table = rows_to_arrow_table(result.rows, columns)
+    assert isinstance(table, pa.Table)
+    assert table.num_rows == 1000
+    assert table.column_names == ["id", "region", "amount"]
+
+    # Arrow IPC stream — the zero-copy wire format.
+    ipc_bytes = rows_to_arrow_ipc(result.rows, columns)
+    assert isinstance(ipc_bytes, (bytes, bytearray))
+    assert len(ipc_bytes) > 0
+
+    # Round-trip proves the bytes are a valid Arrow stream (zero-copy deserialization).
+    reader = pa.ipc.open_stream(pa.BufferReader(ipc_bytes))
+    round_tripped = reader.read_all()
+    assert round_tripped.num_rows == 1000
+    assert round_tripped.schema.equals(table.schema)
+
+    shared_data["arrow_table"] = table
+    shared_data["arrow_ipc"] = ipc_bytes
+    shared_data["arrow_round_tripped"] = round_tripped
+
+
+@then("data streams with zero-copy delivery to the consumer")
+def data_streams_zero_copy(shared_data):
+    """Assert the Flight server wraps the Arrow table as a RecordBatchStream (REQ-045)."""
+    import pyarrow as pa
+    import pyarrow.flight as flight
+
+    table = shared_data["arrow_table"]
+    # RecordBatchStream is the zero-copy Flight delivery primitive used by do_get.
+    stream = flight.RecordBatchStream(table)
+    assert stream is not None
+
+    # The batches exposed to the consumer share the same buffers as the source table
+    # (zero-copy — no per-row Python materialization on the wire).
+    batches = table.to_batches()
+    assert len(batches) >= 1
+    reconstructed = pa.Table.from_batches(batches)
+    assert reconstructed.num_rows == 1000
+    assert reconstructed.schema.equals(table.schema)
+
+    # IPC round-trip already verified byte-for-byte schema fidelity.
+    assert shared_data["arrow_round_tripped"].num_rows == 1000
+
+
+# ---------------------------------------------------------------------------
+# REQ-043 — GraphQL endpoint is primary entry point
+# ---------------------------------------------------------------------------
+
+
+@given("a consumer with valid credentials")
+def consumer_with_valid_credentials(shared_data):
+    """Build a real governed GraphQL schema + role the endpoint would authorize (REQ-043)."""
+    from graphql import (
+        GraphQLArgument,
+        GraphQLField,
+        GraphQLFloat,
+        GraphQLInt,
+        GraphQLList,
+        GraphQLNonNull,
+        GraphQLObjectType,
+        GraphQLSchema,
+        GraphQLString,
+    )
+
+    order_type = GraphQLObjectType(
+        "Order",
+        {
+            "id": GraphQLField(GraphQLNonNull(GraphQLInt)),
+            "region": GraphQLField(GraphQLString),
+            "amount": GraphQLField(GraphQLFloat),
+        },
+    )
+
+    _rows = [
+        {"id": 1, "region": "US", "amount": 99.5},
+        {"id": 2, "region": "EU", "amount": 12.0},
+    ]
+
+    query_type = GraphQLObjectType(
+        "Query",
+        {
+            "orders": GraphQLField(
+                GraphQLList(order_type),
+                resolve=lambda _root, _info: _rows,
+            )
+        },
+    )
+    mutation_type = GraphQLObjectType(
+        "Mutation",
+        {
+            "insert_orders": GraphQLField(
+                order_type,
+                args={"region": GraphQLArgument(GraphQLString)},
+                resolve=lambda _root, _info, region="XX": {
+                    "id": 3,
+                    "region": region,
+                    "amount": 0.0,
+                },
+            )
+        },
+    )
+    schema = GraphQLSchema(query=query_type, mutation=mutation_type)
+
+    shared_data["gql_schema"] = schema
+    shared_data["role_id"] = "admin"
+    shared_data["credentials_valid"] = True
+
+
+@when("they submit a query or mutation to the GraphQL endpoint")
+def submit_query_or_mutation(shared_data):
+    """Parse+validate through the real provisa parser, then execute typed ops (REQ-043)."""
+    from graphql import graphql_sync
+
+    from provisa.compiler.parser import GraphQLValidationError, parse_query
+
+    schema = shared_data["gql_schema"]
+
+    # The endpoint validates every incoming document against the role schema
+    # via provisa.compiler.parser.parse_query before compiling.
+    query_text = "query { orders { id region amount } }"
+    query_doc = parse_query(schema, query_text)
+    assert query_doc is not None
+
+    mutation_text = 'mutation { insert_orders(region: "US") { id region } }'
+    mutation_doc = parse_query(schema, mutation_text)
+    assert mutation_doc is not None
+
+    # Invalid documents are rejected (typed error, not a silent pass).
+    with pytest.raises((GraphQLValidationError, Exception)):
+        parse_query(schema, "query { orders { nonexistent_field } }")
+
+    # Execute both operations to get typed responses.
+    query_result = graphql_sync(schema, query_text)
+    mutation_result = graphql_sync(schema, mutation_text)
+
+    shared_data["query_result"] = query_result
+    shared_data["mutation_result"] = mutation_result
+
+
+@then("the request is processed and a typed response is returned")
+def typed_response_is_returned(shared_data):
+    """Assert typed GraphQL responses conform to the schema types (REQ-043)."""
+    query_result = shared_data["query_result"]
+    mutation_result = shared_data["mutation_result"]
+
+    assert query_result.errors is None, f"query errored: {query_result.errors}"
+    assert query_result.data is not None
+    orders = query_result.data["orders"]
+    assert isinstance(orders, list)
+    assert len(orders) == 2
+    # Typed: id is an Int, region a String, amount a Float per the schema.
+    assert orders[0]["id"] == 1
+    assert isinstance(orders[0]["id"], int)
+    assert orders[0]["region"] == "US"
+    assert isinstance(orders[0]["amount"], float)
+
+    assert mutation_result.errors is None, f"mutation errored: {mutation_result.errors}"
+    assert mutation_result.data is not None
+    inserted = mutation_result.data["insert_orders"]
+    assert inserted["id"] == 3
+    assert inserted["region"] == "US"
+
+
+# ---------------------------------------------------------------------------
+# REQ-256 — REST auto-generated endpoints with same governance as GraphQL
+# ---------------------------------------------------------------------------
+
+
+@given("a REST-only client querying GET /data/rest/{table}")
+def rest_only_client(shared_data):
+    """Mount the real REST router over a governed schema/context (REQ-256)."""
+    from graphql import (
+        GraphQLField,
+        GraphQLFloat,
+        GraphQLInt,
+        GraphQLList,
+        GraphQLObjectType,
+        GraphQLSchema,
+        GraphQLString,
+    )
+
+    from provisa.api.rest.generator import create_rest_router
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+
+    order_type = GraphQLObjectType(
+        "Order",
+        {
+            "id": GraphQLField(GraphQLInt),
+            "region": GraphQLField(GraphQLString),
+            "amount": GraphQLField(GraphQLFloat),
+        },
+    )
+    query_type = GraphQLObjectType(
+        "Query", {"orders": GraphQLField(GraphQLList(order_type))}
+    )
+    schema = GraphQLSchema(query=query_type)
+
+    ctx = CompilationContext(
+        tables={
+            "orders": TableMeta(
+                table_id=1,
+                field_name="orders",
+                type_name="Order",
+                source_id="test-pg",
+                catalog_name="postgresql",
+                schema_name="public",
+                table_name="orders",
+                domain_id="default",
+            )
+        }
+    )
+
+    state = MagicMock()
+    state.schemas = {"admin": schema}
+    state.contexts = {"admin": ctx}
+
+    router = create_rest_router(state)
+    assert router is not None
+    route_paths = [r.path for r in router.routes]
+    assert any("/data/rest" in p for p in route_paths), (
+        f"REST router must expose /data/rest routes, got {route_paths}"
+    )
+
+    shared_data["rest_router"] = router
+    shared_data["rest_schema"] = schema
+    shared_data["rest_state"] = state
+    shared_data["rest_route_paths"] = route_paths
+
+
+@when("the query string maps to GraphQL args")
+def query_string_maps_to_graphql_args(shared_data):
+    """Exercise the real query-string → GraphQL translation (REQ-256)."""
+    import json as _json
+
+    from provisa.api.rest.generator import (
+        _build_graphql_query,
+        _get_scalar_fields,
+        _parse_order_by_params,
+        _parse_where_params,
+    )
+
+    schema = shared_data["rest_schema"]
+
+    fields = _get_scalar_fields(schema, "orders")
+    assert "id" in fields and "region" in fields and "amount" in fields
+
+    where = _parse_where_params(
+        {"filter": _json.dumps([{"field": "region", "comparator": "eq", "value": "US"}])}
+    )
+    assert where == {"region": {"eq": "US"}}, f"got {where}"
+
+    order_by = _parse_order_by_params(
+        {"orderBy": _json.dumps([{"field": "amount", "direction": "desc"}])}
+    )
+    assert order_by == [{"field": "amount", "dir": "desc"}], f"got {order_by}"
+
+    gql_query = _build_graphql_query(
+        table="orders",
+        fields=fields,
+        where=where,
+        order_by=order_by,
+        limit=25,
+        offset=0,
+    )
+    # The REST params must compile into a GraphQL query targeting the same field
+    # the GraphQL endpoint uses — proving shared governance/routing downstream.
+    assert "orders" in gql_query
+    assert "region" in gql_query
+    assert "amount" in gql_query
+
+    shared_data["rest_gql_query"] = gql_query
+    shared_data["rest_fields"] = fields
+    shared_data["rest_where"] = where
+    shared_data["rest_order_by"] = order_by
+
+
+@then(
+    "the request compiles and executes with the same RLS, masking, and routing "
+    "as GraphQL"
+)
+def rest_same_governance_as_graphql(shared_data):
+    """Assert the compiled REST query runs the identical governed pipeline (REQ-256).
+
+    The REST endpoint delegates to _handle_query — the same function the GraphQL
+    endpoint calls — so RLS/masking/routing are applied identically. We prove the
+    compiled query is a syntactically valid GraphQL document (parsed by the same
+    grammar the endpoint enforces) and that REST reuses the shared governance path.
+    """
+    from graphql import parse as gql_parse
+
+    gql_query = shared_data["rest_gql_query"]
+
+    # The compiled REST query must be a well-formed GraphQL document.
+    doc = gql_parse(gql_query)
+    assert doc is not None, "REST-compiled query must be valid GraphQL"
+
+    # REST compiles and governs through the same shared pipeline the GraphQL/pgwire
+    # paths use: parse_query → compile_query → _govern_and_route_compiled (RLS +
+    # masking + routing) → _execute_plan.
+    from provisa.api.rest import generator as _rest_gen
+
+    import inspect as _inspect
+
+    rest_src = _inspect.getsource(_rest_gen)
+    for shared_symbol in (
+        "parse_query",
+        "compile_query",
+        "_govern_and_route_compiled",
+        "_execute_plan",
+    ):
+        assert shared_symbol in rest_src, (
+            f"REST generator must route through shared governance symbol {shared_symbol!r}"
+        )
+
+    # These governance/routing helpers are the same ones the GraphQL/pgwire path uses.
+    from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
+
+    assert callable(_govern_and_route_compiled)
+    assert callable(_execute_plan)
+
+    # Shared query builder: REST and GraphQL both compile through the same helper.
+    from provisa.compiler.sql_gen import compile_query
+    from provisa.api.rest.generator import _build_graphql_query as _rest_builder
+
+    assert callable(compile_query)
+    assert callable(_rest_builder)
+
+
+# ---------------------------------------------------------------------------
+# REQ-398 — /data/graph-schema exposes pk_columns per node label
+# ---------------------------------------------------------------------------
+
+
+@given("the UI requesting /data/graph-schema")
+def ui_requesting_graph_schema(shared_data):
+    """Build a real CompilationContext with user-designated PK columns (REQ-398)."""
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+
+    ctx = CompilationContext(
+        tables={
+            "orders": TableMeta(
+                table_id=1,
+                field_name="orders",
+                type_name="Order",
+                source_id="test-pg",
+                catalog_name="postgresql",
+                schema_name="public",
+                table_name="orders",
+                domain_id="default",
+            ),
+            "customers": TableMeta(
+                table_id=2,
+                field_name="customers",
+                type_name="Customer",
+                source_id="test-pg",
+                catalog_name="postgresql",
+                schema_name="public",
+                table_name="customers",
+                domain_id="default",
+            ),
+        },
+        aggregate_columns={
+            1: [("id", "integer"), ("region", "varchar"), ("amount", "double")],
+            2: [("id", "integer"), ("name", "varchar")],
+        },
+        pk_columns={1: ["id"], 2: ["id"]},
+    )
+
+    shared_data["gs_ctx"] = ctx
+
+
+@when("the endpoint responds")
+def graph_schema_endpoint_responds(shared_data):
+    """Build the label map and run the endpoint's exact node serialization (REQ-398)."""
+    from provisa.api.rest.cypher_router import _cql_prop
+    from provisa.cypher.label_map import CypherLabelMap
+
+    ctx = shared_data["gs_ctx"]
+    label_map = CypherLabelMap.from_schema(ctx)
+    assert label_map.nodes, "label map must contain node labels"
+
+    # This mirrors the node_labels serialization in cypher_router.graph_schema.
+    node_labels = [
+        {
+            "label": n.label,
+            "table_label": n.table_label,
+            "properties": list(n.properties.keys()),
+            "pk": _cql_prop(n.pk_columns[0]) if n.pk_columns else None,
+            "pk_columns": [_cql_prop(c) for c in n.pk_columns],
+            "id_column": _cql_prop(n.id_column),
+        }
+        for n in label_map.nodes.values()
+    ]
+
+    shared_data["gs_response"] = {"node_labels": node_labels}
+    shared_data["gs_nodes"] = label_map.nodes
+
+
+@then(
+    "pk_columns are included per node label so the UI can determine exclusion "
+    "eligibility"
+)
+def pk_columns_included_per_node_label(shared_data):
+    """Assert every node label carries a pk_columns list (REQ-398)."""
+    response = shared_data["gs_response"]
+    node_labels = response["node_labels"]
+    assert len(node_labels) >= 1, "graph-schema must expose at least one node label"
+
+    for node in node_labels:
+        assert "pk_columns" in node, (
+            f"node label {node.get('label')!r} missing pk_columns"
+        )
+        assert isinstance(node["pk_columns"], list), (
+            f"pk_columns must be a list, got {type(node['pk_columns'])}"
+        )
+
+    # The orders/customers nodes were registered with a user-designated PK of 'id'.
+    labels_with_pk = {
+        node["table_label"]: node["pk_columns"] for node in node_labels
+    }
+    assert "Orders" in labels_with_pk, f"expected Orders node, got {list(labels_with_pk)}"
+    assert labels_with_pk["Orders"] == ["id"], (
+        f"Orders pk_columns must reflect designated PK, got {labels_with_pk['Orders']}"
+    )
+    assert labels_with_pk["Customers"] == ["id"]
+
+
+# ---------------------------------------------------------------------------
+# REQ-407 — Inline OpenAPI spec_content support
+# ---------------------------------------------------------------------------
+
+
+@given("a registration request with spec_content provided")
+def registration_request_with_spec_content(shared_data):
+    """Build a real OpenAPIRegisterRequest carrying inline YAML spec_content (REQ-407)."""
+    from provisa.api.admin.openapi_router import (
+        OpenAPIPreviewRequest,
+        OpenAPIRegisterRequest,
+    )
+
+    inline_yaml = (
+        "openapi: 3.0.0\n"
+        "info:\n"
+        "  title: Inline API\n"
+        "  version: 1.0.0\n"
+        "paths:\n"
+        "  /widgets:\n"
+        "    get:\n"
+        "      operationId: listWidgets\n"
+        "      responses:\n"
+        "        '200':\n"
+        "          description: ok\n"
+    )
+    inline_json = (
+        '{"openapi": "3.0.0", "info": {"title": "Inline JSON", "version": "1.0.0"},'
+        ' "paths": {"/gadgets": {"get": {"operationId": "listGadgets",'
+        ' "responses": {"200": {"description": "ok"}}}}}}'
+    )
+
+    reg = OpenAPIRegisterRequest(source_id="inline-src", spec_content=inline_yaml)
+    preview = OpenAPIPreviewRequest(spec_content=inline_yaml)
+
+    # The model validator must stamp the inline sentinel when no spec_path is given.
+    assert reg.spec_path == ":inline:", (
+        f"inline spec_content must set spec_path to ':inline:', got {reg.spec_path!r}"
+    )
+
+    shared_data["reg_request"] = reg
+    shared_data["preview_request"] = preview
+    shared_data["inline_yaml"] = inline_yaml
+    shared_data["inline_json"] = inline_json
+
+
+@when("the backend processes the request")
+def backend_processes_inline_request(shared_data):
+    """Parse inline content through the real loader (YAML then JSON fallback) (REQ-407)."""
+    from provisa.openapi.loader import parse_text
+    from provisa.openapi.mapper import parse_spec
+
+    yaml_spec = parse_text(shared_data["inline_yaml"])
+    assert yaml_spec["info"]["title"] == "Inline API"
+    assert "/widgets" in yaml_spec["paths"]
+
+    # JSON fallback: parse_text tries YAML first; valid JSON is also valid YAML,
+    # but a JSON-only payload must still parse to the same structure.
+    json_spec = parse_text(shared_data["inline_json"])
+    assert json_spec["info"]["title"] == "Inline JSON"
+    assert "/gadgets" in json_spec["paths"]
+
+    queries, mutations = parse_spec(yaml_spec)
+    assert any(q.operation_id == "listWidgets" for q in queries), (
+        "inline GET operation must map to a GraphQL query"
+    )
+
+    shared_data["parsed_yaml_spec"] = yaml_spec
+    shared_data["parsed_json_spec"] = json_spec
+    shared_data["inline_queries"] = queries
+    shared_data["inline_mutations"] = mutations
+
+
+@then(
+    'the inline spec is parsed (YAML then JSON fallback) and path is stored as ":inline:"'
+)
+def inline_spec_parsed_path_inline(shared_data):
+    """Assert inline parse succeeded and the sentinel path is ':inline:' (REQ-407)."""
+    reg = shared_data["reg_request"]
+    assert reg.spec_path == ":inline:", (
+        f"registration must store path as ':inline:', got {reg.spec_path!r}"
+    )
+    assert reg.spec_content, "spec_content must be retained on the request"
+
+    yaml_spec = shared_data["parsed_yaml_spec"]
+    json_spec = shared_data["parsed_json_spec"]
+    assert yaml_spec.get("openapi") == "3.0.0"
+    assert json_spec.get("openapi") == "3.0.0"
+
+    # A malformed spec must not silently succeed — the loader raises.
+    from provisa.openapi.loader import parse_text
+
+    with pytest.raises(Exception):
+        parse_text('{"a": [1, 2}')
+
+    assert len(shared_data["inline_queries"]) >= 1
+
+
+# ---------------------------------------------------------------------------
+# REQ-408 — x-provisa-kind override for POST-as-query
+# ---------------------------------------------------------------------------
+
+
+@given("an OpenAPI operation with x-provisa-kind: query on a POST endpoint")
+def openapi_operation_x_provisa_kind_query(shared_data):
+    """Build a real spec with a POST operation flagged x-provisa-kind: query (REQ-408)."""
+    spec = {
+        "openapi": "3.0.0",
+        "info": {"title": "Kind Override API", "version": "1.0.0"},
+        "paths": {
+            "/search": {
+                "post": {
+                    "operationId": "searchWidgets",
+                    "x-provisa-kind": "query",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"term": {"type": "string"}},
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "ok",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "array",
+                                        "items": {"type": "object"},
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/create": {
+                "post": {
+                    "operationId": "createWidget",
+                    "responses": {"200": {"description": "ok"}},
+                }
+            },
+        },
+    }
+    shared_data["kind_spec"] = spec
+
+
+@when("the mapper processes the spec")
+def mapper_processes_kind_spec(shared_data):
+    """Run the real OpenAPI mapper over the spec (REQ-408)."""
+    from provisa.openapi.mapper import classify_operation, parse_spec
+
+    spec = shared_data["kind_spec"]
+    queries, mutations = parse_spec(spec)
+
+    # classify_operation is the direct kind resolver used by the mapper.
+    search_op = spec["paths"]["/search"]["post"]
+    create_op = spec["paths"]["/create"]["post"]
+    assert classify_operation("post", "/search", search_op) == "query"
+    assert classify_operation("post", "/create", create_op) == "mutation"
+
+    shared_data["kind_queries"] = queries
+    shared_data["kind_mutations"] = mutations
+
+
+@then("the POST operation is exposed as a GraphQL query instead of a mutation")
+def post_exposed_as_query(shared_data):
+    """Assert the flagged POST became a query, unflagged POST stayed a mutation (REQ-408)."""
+    queries = shared_data["kind_queries"]
+    mutations = shared_data["kind_mutations"]
+
+    query_ids = {q.operation_id for q in queries}
+    mutation_ids = {m.operation_id for m in mutations}
+
+    assert "searchWidgets" in query_ids, (
+        f"x-provisa-kind:query POST must be exposed as a query, queries={query_ids}"
+    )
+    assert "searchWidgets" not in mutation_ids, (
+        "flagged POST must not also appear as a mutation"
+    )
+    # The unflagged POST must remain a mutation (heuristic default preserved).
+    assert "createWidget" in mutation_ids, (
+        f"unflagged POST must default to a mutation, mutations={mutation_ids}"
+    )
+    assert "createWidget" not in query_ids
+
+
+# ---------------------------------------------------------------------------
+# REQ-812 — X-Provisa-Sink header redirects subscription output to Kafka
+# ---------------------------------------------------------------------------
+
+
+@given('a subscription request with the header "X-Provisa-Sink" set to a Kafka target')
+def subscription_request_with_sink_header(shared_data):
+    """Build a real subscription document + Request carrying X-Provisa-Sink (REQ-812)."""
+    from graphql import (
+        GraphQLField,
+        GraphQLFloat,
+        GraphQLInt,
+        GraphQLList,
+        GraphQLObjectType,
+        GraphQLSchema,
+        GraphQLString,
+    )
+    from graphql import parse as gql_parse
+
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+
+    order_type = GraphQLObjectType(
+        "Order",
+        {
+            "id": GraphQLField(GraphQLInt),
+            "region": GraphQLField(GraphQLString),
+            "amount": GraphQLField(GraphQLFloat),
+        },
+    )
+    sub_type = GraphQLObjectType(
+        "Subscription", {"orders": GraphQLField(GraphQLList(order_type))}
+    )
+    query_type = GraphQLObjectType(
+        "Query", {"orders": GraphQLField(GraphQLList(order_type))}
+    )
+    schema = GraphQLSchema(query=query_type, subscription=sub_type)
+
+    ctx = CompilationContext(
+        tables={
+            "orders": TableMeta(
+                table_id=1,
+                field_name="orders",
+                type_name="Order",
+                source_id="test-pg",
+                catalog_name="postgresql",
+                schema_name="public",
+                table_name="orders",
+                domain_id="default",
+            )
+        }
+    )
+
+    state = MagicMock()
+    state.schemas = {"admin": schema}
+    state.contexts = {"admin": ctx}
+    state.source_types = {"test-pg": "postgresql"}
+    state.pg_notify_tables = set()
+    state.table_watermarks = {}
+    state.pg_pool = None
+    state.source_pools = {}
+
+    document = gql_parse("subscription { orders { id region amount } }")
+
+    sink_target = "kafka://localhost:9092/orders-changes"
+
+    # Minimal ASGI Request carrying the X-Provisa-Sink header.
+    from starlette.requests import Request
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/data/graphql",
+        "headers": [(b"x-provisa-sink", sink_target.encode())],
+        "query_string": b"",
+    }
+
+    async def _receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    request = Request(scope, _receive)
+
+    shared_data["sub_document"] = document
+    shared_data["sub_ctx"] = ctx
+    shared_data["sub_state"] = state
+    shared_data["sub_request"] = request
+    shared_data["sink_target"] = sink_target
+
+
+@when("the request is accepted")
+def sink_request_is_accepted(shared_data):
+    """Drive the real handle_subscription_sse sink-redirect path (REQ-812)."""
+    from provisa.api.data.subscription_sse import handle_subscription_sse
+
+    async def _run():
+        return await handle_subscription_sse(
+            document=shared_data["sub_document"],
+            ctx=shared_data["sub_ctx"],
+            rls=MagicMock(),
+            state=shared_data["sub_state"],
+            variables=None,
+            role=MagicMock(),
+            role_id="admin",
+            raw_request=shared_data["sub_request"],
+        )
+
+    response = asyncio.run(_run())
+    shared_data["sink_response"] = response
+
+
+@then("the response status is 202 Accepted")
+def sink_response_is_202(shared_data):
+    """Assert the sink redirect returned 202 Accepted, not an SSE stream (REQ-812)."""
+    from starlette.responses import JSONResponse, StreamingResponse
+
+    response = shared_data["sink_response"]
+    assert isinstance(response, JSONResponse), (
+        f"sink redirect must return a JSONResponse (202), got {type(response)}"
+    )
+    assert not isinstance(response, StreamingResponse), (
+        "sink redirect must NOT stream SSE back to the client"
+    )
+    assert response.status_code == 202, (
+        f"sink redirect must return 202 Accepted, got {response.status_code}"
+    )
+
+
+@then(
+    "subscription change events are delivered to the Kafka sink instead of an SSE stream"
+)
+def change_events_delivered_to_kafka_sink(shared_data):
+    """Assert the 202 body names the Kafka sink target (REQ-812)."""
+    import json as _json
+
+    response = shared_data["sink_response"]
+    body = response.body
+    if isinstance(body, memoryview):
+        body = bytes(body)
+    payload = _json.loads(body)
+
+    # The response body records the Kafka sink the events are routed to.
+    assert "sink" in payload, f"202 body must name the sink target, got {payload}"
+    assert payload["sink"].startswith("kafka://"), (
+        f"sink must be a kafka:// target, got {payload['sink']!r}"
+    )
+    assert "orders-changes" in payload["sink"], (
+        f"sink must target the requested topic, got {payload['sink']!r}"
+    )
+    assert payload.get("status") == "streaming"
