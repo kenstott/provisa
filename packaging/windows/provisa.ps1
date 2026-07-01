@@ -24,6 +24,7 @@ function Read-Config {
     Runtime    = 'virtualbox'
     VmName     = 'Provisa'
     DockerHost = 'tcp://127.0.0.1:2375'
+    Demo       = $false
   }
 
   foreach ($line in Get-Content $ConfigPath) {
@@ -33,6 +34,7 @@ function Read-Config {
     if ($line -match '^\s*runtime\s*:\s*"?([^"]+)"?\s*$')      { $cfg.Runtime    = $Matches[1].Trim() }
     if ($line -match '^\s*vm_name\s*:\s*"?([^"]+)"?\s*$')      { $cfg.VmName     = $Matches[1].Trim() }
     if ($line -match '^\s*docker_host\s*:\s*"?([^"]+)"?\s*$')  { $cfg.DockerHost = $Matches[1].Trim() }
+    if ($line -match '^\s*demo\s*:\s*(true|false)\s*$')        { $cfg.Demo       = ($Matches[1] -eq 'true') }
   }
 
   if (-not $cfg.ProjectDir) {
@@ -121,10 +123,14 @@ function Stop-Vm {
 function Invoke-Compose {
   param([hashtable]$Config, [string[]]$ComposeArgs)
   $env:DOCKER_HOST = $Config.DockerHost
-  $compose1 = Join-Path $Config.ProjectDir 'docker-compose.core.yml'
-  $compose2 = Join-Path $Config.ProjectDir 'docker-compose.app.yml'
-  $compose3 = Join-Path $Config.ProjectDir 'docker-compose.airgap.yml'
-  docker compose -f $compose1 -f $compose2 -f $compose3 @ComposeArgs
+  $files = @(
+    Join-Path $Config.ProjectDir 'docker-compose.core.yml'
+    Join-Path $Config.ProjectDir 'docker-compose.app.yml'
+    Join-Path $Config.ProjectDir 'docker-compose.airgap.yml'
+  )
+  if ($Config.Demo) { $files += Join-Path $Config.ProjectDir 'docker-compose.demo.yml' }
+  $fileArgs = @(); foreach ($f in $files) { $fileArgs += '-f'; $fileArgs += $f }
+  docker compose @fileArgs @ComposeArgs
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
@@ -220,7 +226,9 @@ function cmd-runtime {
   $c1 = Join-Path $Config.ProjectDir 'docker-compose.core.yml'
   $c2 = Join-Path $Config.ProjectDir 'docker-compose.app.yml'
   $c3 = Join-Path $Config.ProjectDir 'docker-compose.airgap.yml'
-  docker compose -f $c1 -f $c2 -f $c3 down 2>$null
+  $dArgs = @('-f', $c1, '-f', $c2, '-f', $c3)
+  if ($Config.Demo) { $dArgs += '-f'; $dArgs += (Join-Path $Config.ProjectDir 'docker-compose.demo.yml') }
+  docker compose @dArgs down 2>$null
   Stop-Vm $Config
 
   Set-ConfigRuntime $Target

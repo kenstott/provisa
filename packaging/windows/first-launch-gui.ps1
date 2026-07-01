@@ -236,6 +236,13 @@ $nudPort.Location = New-Object System.Drawing.Point(20, 202)
 $nudPort.Width    = 100
 $pConfig.Controls.Add($nudPort)
 
+$cbDemo          = New-Object System.Windows.Forms.CheckBox
+$cbDemo.Text     = 'Install demo dataset && services'
+$cbDemo.AutoSize = $true
+$cbDemo.Checked  = $false
+$cbDemo.Location = New-Object System.Drawing.Point(160, 204)
+$pConfig.Controls.Add($cbDemo)
+
 Lbl 'Runtime' 20 238 $true
 
 # Runtime radios live in their own panel so WinForms treats them as a separate
@@ -493,6 +500,7 @@ $btnInstall.Add_Click({
   else                       { $budgetGb = [int]($ramText -replace 'GB', '') }
 
   $backend = if ($rbDocker.Checked) { 'docker' } else { 'virtualbox' }
+  $demo    = [bool]$cbDemo.Checked
 
   # Docker Desktop mode is single-node dev/demo: coordinator-only, no workers.
   # VirtualBox mode sizes worker count from the VM's RAM budget.
@@ -542,6 +550,7 @@ $btnInstall.Add_Click({
   $rs.SessionStateProxy.SetVariable('UiPort',          $uiPort)
   $rs.SessionStateProxy.SetVariable('EmbeddedVersion', $EmbeddedVersion)
   $rs.SessionStateProxy.SetVariable('Backend',         $backend)
+  $rs.SessionStateProxy.SetVariable('Demo',            $demo)
 
   $ps = [powershell]::Create()
   $ps.Runspace = $rs
@@ -940,6 +949,64 @@ $btnInstall.Add_Click({
       }
       $sync.Progress = 90
 
+      # Step 6c: Demo dataset / services --------------------------------------
+      $CatalogDir = Join-Path $ComposeDir 'trino\catalog'
+      if ($Demo) {
+        # Load the demo images (petstore-mock + graphql-demo) so the demo
+        # overlay can start without pulling/building on the user's machine.
+        $sync.Status = 'Locating demo services...'
+        $DemoTar = $null
+        foreach ($searchDir in @($ScriptDir, (Split-Path -Parent $ScriptDir))) {
+          $found = Get-ChildItem -Path $searchDir -Filter 'provisa-demo-images-*.tar.gz' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) { $DemoTar = $found.FullName; break }
+        }
+        if (-not $DemoTar -and $EmbeddedVersion) {
+          $dUrl  = "https://github.com/kenstott/provisa/releases/download/$EmbeddedVersion/provisa-demo-images-$EmbeddedVersion.tar.gz"
+          $dDest = Join-Path $env:TEMP "provisa-demo-images-$EmbeddedVersion.tar.gz"
+          Log "Downloading demo services ($EmbeddedVersion)..."
+          $dreq = [System.Net.HttpWebRequest]::Create($dUrl)
+          $dreq.UserAgent = 'Provisa-Installer/1.0'
+          $dresp = $dreq.GetResponse()
+          $din   = $dresp.GetResponseStream()
+          $dfs   = [System.IO.File]::Create($dDest)
+          $dbuf  = New-Object byte[] 65536
+          while (($dread = $din.Read($dbuf, 0, $dbuf.Length)) -gt 0) { $dfs.Write($dbuf, 0, $dread) }
+          $dfs.Close(); $din.Close(); $dresp.Close()
+          $DemoTar = $dDest
+        }
+        if ($DemoTar) {
+          Log 'Installing demo services...'
+          $DemoExtract = Join-Path $env:TEMP 'provisa-demo-extract'
+          if (Test-Path $DemoExtract) { Remove-Item -Recurse -Force $DemoExtract }
+          New-Item -ItemType Directory -Path $DemoExtract -Force | Out-Null
+          if ($DemoTar -match '\.tar\.gz$') {
+            & $tarExe -xzf $DemoTar -C $DemoExtract 2>&1 | ForEach-Object { }
+          } else {
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($DemoTar, $DemoExtract)
+          }
+          foreach ($img in (Get-ChildItem -Path $DemoExtract -Filter '*.tar.gz')) {
+            if ($UseDockerCli) {
+              & $DockerCli load -i $img.FullName 2>&1 | ForEach-Object { }
+            } else {
+              & $curlExe --silent --show-error --max-time 3600 -X POST "$DockerApiBase/images/load" `
+                -H 'Content-Type: application/x-tar' --data-binary "@$($img.FullName)" | Out-Null
+            }
+          }
+          Remove-Item -Recurse -Force $DemoExtract -ErrorAction SilentlyContinue
+          Log 'Demo services installed.'
+        } else {
+          Log 'WARNING: demo images not found - demo services may not start.'
+        }
+      } else {
+        # Core install: drop the demo source catalogs so Trino stays a clean,
+        # empty platform (Provisa creates catalogs dynamically per source).
+        $keep = @('provisa_admin', 'files', 'otel', 'results')
+        Get-ChildItem -Path $CatalogDir -Filter '*.properties' -ErrorAction SilentlyContinue | ForEach-Object {
+          if ($keep -notcontains $_.BaseName) { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
+        }
+      }
+      $sync.Progress = 91
+
       # Step 7: Write config
       Log 'Writing config...'
       New-Item -ItemType Directory -Path $ProvisaHome -Force | Out-Null
@@ -967,6 +1034,7 @@ api_port: $ApiPort
 auto_open_browser: true
 $runtimeLines
 federation_workers: $Workers
+demo: $($Demo.ToString().ToLower())
 "@ | Set-Content -Path $cfgPath -Encoding UTF8
       $sync.Progress = 92
 

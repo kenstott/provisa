@@ -21,11 +21,36 @@ Copy-Item (Join-Path $RepoRoot 'docker-compose.app.yml')    $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'docker-compose.airgap.yml') $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'config')  (Join-Path $BuildCompose 'config')  -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'db')      (Join-Path $BuildCompose 'db')      -Recurse -Force
+
+# Demo overlay: rewrite graphql-demo's build: to the prebuilt image so no build
+# context is needed on the user's machine (image ships via provisa-demo-images).
+$DemoComposeSrc = Join-Path $RepoRoot 'docker-compose.demo.yml'
+$DemoComposeDst = Join-Path $BuildCompose 'docker-compose.demo.yml'
+(Get-Content $DemoComposeSrc -Raw) -replace 'build:\s*\./demo/graphql_server', 'image: provisa/graphql-demo:local' |
+  Set-Content -Path $DemoComposeDst -Encoding UTF8
+
 # Copy trino WITHOUT plugins/ — plugins (925 MB) download at first launch.
 $TrinoSrc = Join-Path $RepoRoot 'trino'
 $TrinoDst = Join-Path $BuildCompose 'trino'
 New-Item -ItemType Directory -Path $TrinoDst -Force | Out-Null
 Get-ChildItem -Path $TrinoSrc -Exclude 'plugins' | Copy-Item -Destination $TrinoDst -Recurse -Force
+
+# Trino health on the desktop stack:
+#  1. Drop dev-only catalogs whose services (mongodb/kafka) no compose defines -
+#     they eager-connect at startup and can wedge the coordinator.
+foreach ($stale in 'mongodb', 'support_kafka', 'reviews_mongo') {
+  Remove-Item (Join-Path $TrinoDst "catalog\$stale.properties") -Force -ErrorAction SilentlyContinue
+}
+#  2. Disable OTLP tracing - the otel-collector only exists in the dev/obs stack,
+#     never on the desktop, so tracing.enabled=true points at a dead endpoint.
+foreach ($cfgRel in 'etc\config.properties', 'etc\worker\config.properties') {
+  $cfgFile = Join-Path $TrinoDst $cfgRel
+  if (Test-Path $cfgFile) {
+    (Get-Content $cfgFile) |
+      Where-Object { $_ -notmatch '^\s*(tracing\.enabled|otel\.exporter\.endpoint)\s*=' } |
+      Set-Content -Path $cfgFile -Encoding ASCII
+  }
+}
 
 # Support dirs the trino service bind-mounts (parity with the macOS bundle).
 Copy-Item (Join-Path $RepoRoot 'observability') (Join-Path $BuildCompose 'observability') -Recurse -Force
