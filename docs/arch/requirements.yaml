@@ -22447,8 +22447,13 @@
     in multi-tenant deployments by isolating task memory failures and enabling graceful task retry.
   code:
   - docker-compose.core.yml
-  - kubernetes/charts/trino/values.yaml
-  - kubernetes/charts/trino/templates/exchange-manager-config.yaml
+  - trino/etc/config.properties
+  - trino/etc/worker/config.properties
+  - trino/etc/exchange-manager.properties
+  - helm/provisa/templates/trino-exchange-secret.yaml
+  - helm/provisa/templates/trino-exchange-bucket-job.yaml
+  tests:
+  - tests/integration/test_trino_fte_exchange.py
   since: "2026-07"
   stakeholders:
   - ops
