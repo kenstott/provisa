@@ -58,6 +58,17 @@ function Test-DockerReady {
 }
 $DockerReady = Test-DockerReady
 
+# The Docker daemon's real memory ceiling (the WSL2 VM's RAM, set in
+# %USERPROFILE%\.wslconfig) - NOT system RAM. 0 if unknown.
+function Get-DockerMemGb {
+  $docker = Get-Command docker -ErrorAction SilentlyContinue
+  if (-not $docker) { return 0 }
+  $bytes = & $docker.Source info --format '{{.MemTotal}}' 2>$null
+  if ($LASTEXITCODE -ne 0 -or -not ($bytes -match '^\d+$')) { return 0 }
+  return [int][Math]::Floor([long]$bytes / 1GB)
+}
+$DockerMemGb = if ($DockerReady) { Get-DockerMemGb } else { 0 }
+
 # -- Windows Hypervisor detection ---------------------------------------------
 # Hyper-V / WSL2 claims VT-x; VirtualBox then runs the guest through a slow
 # compat layer and the runtime often never boots. Docker Desktop REQUIRES it.
@@ -134,7 +145,12 @@ function Lbl { param($Text, $X, $Y, $Bold)
 }
 
 Lbl 'RAM Budget' 20 18 $true
-Lbl "How much RAM can Provisa use?  (system: ${totalGb} GB)" 20 44 $false
+$lbRamQ          = New-Object System.Windows.Forms.Label
+$lbRamQ.AutoSize = $false
+$lbRamQ.Size     = New-Object System.Drawing.Size(560, 18)
+$lbRamQ.Location = New-Object System.Drawing.Point(20, 44)
+$lbRamQ.Text     = "How much RAM can Provisa use?  (system: ${totalGb} GB)"
+$pConfig.Controls.Add($lbRamQ)
 
 $radios = @()
 $rx = 20
@@ -195,8 +211,8 @@ $lbNotice.Size     = New-Object System.Drawing.Size(560, 40)
 $lbNotice.Location = New-Object System.Drawing.Point(20, 288)
 $pConfig.Controls.Add($lbNotice)
 
-# Shown only in the conflicted state (Hyper-V on, no Docker): let the user
-# either install Docker Desktop or disable Hyper-V for the bundled VM.
+# Escape-hatch actions: install Docker Desktop when it's absent, or disable
+# Hyper-V so the bundled VM can boot. Visibility is set in Update-BackendUi.
 $btnInstallDocker           = New-Object System.Windows.Forms.Button
 $btnInstallDocker.Text      = 'Install Docker Desktop'
 $btnInstallDocker.Size      = New-Object System.Drawing.Size(170, 26)
@@ -239,35 +255,56 @@ $btnDisableHyperV.Add_Click({
   Start-Process powershell.exe -ArgumentList @('-NoProfile','-Command',$disable) -Verb RunAs
 })
 
-# Applies current detection results to the runtime radios + notice text.
+# Picks the initial radio from detection (setting Checked fires the handler).
+function Set-DefaultBackend {
+  if ($DockerReady) { $rbDocker.Checked = $true } else { $rbVBox.Checked = $true }
+}
+
+# Refreshes notice, RAM-question label, and button visibility for the CURRENT
+# selection - so the text tracks the radio, not just the last detection.
 function Update-BackendUi {
   $rbDocker.Enabled = $DockerReady
-  $conflicted = ($HyperVActive -and -not $DockerReady)
-  $btnInstallDocker.Visible = $conflicted
-  $btnDisableHyperV.Visible = $conflicted
-  if ($DockerReady) {
-    $rbDocker.Checked = $true
+  # Offer the Docker install whenever no daemon is reachable.
+  $btnInstallDocker.Visible = (-not $DockerReady)
+  # Offer the Hyper-V disable only when the VM path is chosen and Hyper-V is on.
+  $btnDisableHyperV.Visible = ($rbVBox.Checked -and $HyperVActive)
+
+  if ($rbDocker.Checked) {
+    # Docker's memory ceiling is the WSL2 VM's RAM, not system RAM. The RAM
+    # radios only pick federation worker count in this mode.
+    $lbRamQ.Text = if ($DockerMemGb -gt 0) {
+      "Docker Desktop memory: ${DockerMemGb} GB (set in .wslconfig). This picks federation workers only."
+    } else {
+      'Memory is governed by Docker Desktop (.wslconfig). This picks federation workers only.'
+    }
     $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(0, 140, 0)
-    $lbNotice.Text = 'Docker Desktop detected. Provisa will use it - no VM, no Hyper-V conflict.'
-  } elseif ($HyperVActive) {
-    $rbVBox.Checked = $true
-    $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(190, 90, 0)
-    $lbNotice.Text = 'Hyper-V / WSL2 is active. The bundled VM may not boot. Choose one below, ' +
-                     'then Re-check:'
+    $lbNotice.Text = 'Docker runtime: uses Docker Desktop, which requires Hyper-V / WSL2 (currently enabled). No VM.'
   } else {
-    $rbVBox.Checked = $true
-    $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 90)
-    $lbNotice.Text = if ($VBoxFound) { 'No Docker detected. Provisa will run in the bundled VM (VirtualBox installed).' }
-                     else            { 'No Docker detected. Provisa will run in the bundled VM (VirtualBox will be installed).' }
+    $lbRamQ.Text = "How much RAM can Provisa use?  (system: ${totalGb} GB)"
+    if ($HyperVActive) {
+      $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(190, 90, 0)
+      $lbNotice.Text = 'Bundled VM (VirtualBox) needs Hyper-V / WSL2 OFF; it is currently ON, so the VM may not boot. ' +
+                       'Disabling Hyper-V (below) will stop Docker Desktop from working.'
+    } else {
+      $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 90)
+      $lbNotice.Text = if ($VBoxFound) { 'Bundled VM (VirtualBox): Hyper-V is off, so the VM gets native VT-x. (VirtualBox installed.)' }
+                       else            { 'Bundled VM (VirtualBox): Hyper-V is off, so the VM gets native VT-x. (VirtualBox will be installed.)' }
+    }
   }
 }
+
+# Re-evaluate the selected backend's text whenever the user toggles runtime.
+$rbDocker.Add_CheckedChanged({ Update-BackendUi })
 
 $btnRecheck.Add_Click({
   $script:DockerReady  = Test-DockerReady
   $script:HyperVActive = Test-HyperVActive
+  $script:DockerMemGb  = if ($script:DockerReady) { Get-DockerMemGb } else { 0 }
+  Set-DefaultBackend
   Update-BackendUi
 })
 
+Set-DefaultBackend
 Update-BackendUi
 
 $btnInstall            = New-Object System.Windows.Forms.Button
@@ -398,16 +435,21 @@ $btnInstall.Add_Click({
   if ($ramText -like 'All*') { $budgetGb = $totalGb }
   else                       { $budgetGb = [int]($ramText -replace 'GB', '') }
 
-  if ($budgetGb -ge 96)    { $workers = 4 }
-  elseif ($budgetGb -ge 48){ $workers = 2 }
-  elseif ($budgetGb -ge 24){ $workers = 1 }
+  $backend = if ($rbDocker.Checked) { 'docker' } else { 'virtualbox' }
+
+  # Worker count scales with usable RAM. In Docker mode the real ceiling is the
+  # WSL2 VM's memory, not system RAM, so scale off that instead.
+  $workerGb = if ($backend -eq 'docker' -and $script:DockerMemGb -gt 0) {
+    [Math]::Min($budgetGb, $script:DockerMemGb)
+  } else { $budgetGb }
+  if ($workerGb -ge 96)    { $workers = 4 }
+  elseif ($workerGb -ge 48){ $workers = 2 }
+  elseif ($workerGb -ge 24){ $workers = 1 }
   else                     { $workers = 0 }
 
   $hostname = $tbHost.Text.Trim()
   if ([string]::IsNullOrEmpty($hostname)) { $hostname = 'localhost' }
   $uiPort = [int]$nudPort.Value
-
-  $backend = if ($rbDocker.Checked) { 'docker' } else { 'virtualbox' }
 
   # Warn before committing to the VM path on a machine where Hyper-V will
   # cripple it.
