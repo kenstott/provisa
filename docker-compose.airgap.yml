@@ -9,15 +9,15 @@
 services:
   zaychik:
     build: null
-    image: provisa/zaychik@sha256:${ZAYCHIK_IMAGE_DIGEST}
+    image: provisa/zaychik:local
 
   provisa:
     build: null
-    image: provisa/provisa@sha256:${PROVISA_IMAGE_DIGEST}
+    image: provisa/provisa:local
 
   provisa-ui:
     build: null
-    image: provisa/provisa@sha256:${PROVISA_IMAGE_DIGEST}
+    image: provisa/provisa:local
 
   trino:
     environment:
