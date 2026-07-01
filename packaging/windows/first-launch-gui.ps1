@@ -47,6 +47,34 @@ if (-not $VBoxFound) {
   if ($cmd) { $VBoxFound = $true }
 }
 
+# -- Docker Desktop detection -------------------------------------------------
+# A reachable host Docker daemon lets Provisa skip the bundled VM entirely,
+# sidestepping the Hyper-V / VirtualBox conflict.
+function Test-DockerReady {
+  $docker = Get-Command docker -ErrorAction SilentlyContinue
+  if (-not $docker) { return $false }
+  & $docker.Source version --format '{{.Server.Version}}' 2>$null | Out-Null
+  return ($LASTEXITCODE -eq 0)
+}
+$DockerReady = Test-DockerReady
+
+# -- Windows Hypervisor detection ---------------------------------------------
+# Hyper-V / WSL2 claims VT-x; VirtualBox then runs the guest through a slow
+# compat layer and the runtime often never boots. Docker Desktop REQUIRES it.
+function Test-HyperVActive {
+  if (Get-Process -Name 'vmmem','vmmemWSL','vmmemProxy' -ErrorAction SilentlyContinue) { return $true }
+  $bcd = (& "$env:SystemRoot\System32\bcdedit.exe" /enum '{current}' 2>$null) -join ' '
+  if ($bcd -match 'hypervisorlaunchtype\s+(\w+)') { return ($Matches[1] -ne 'Off') }
+  return $false
+}
+$HyperVActive = Test-HyperVActive
+
+# -- Recommended backend ------------------------------------------------------
+# docker: use the running Docker Desktop.  virtualbox: bundled VM/OVA.
+if ($DockerReady)          { $RecommendedBackend = 'docker' }
+elseif (-not $HyperVActive){ $RecommendedBackend = 'virtualbox' }
+else                       { $RecommendedBackend = 'virtualbox' }  # conflicted; UI warns
+
 # -- RAM options ---------------------------------------------------------------
 $totalBytes = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
 $totalGb    = [int][Math]::Floor($totalBytes / 1GB)
@@ -140,24 +168,66 @@ $nudPort.Location = New-Object System.Drawing.Point(20, 202)
 $nudPort.Width    = 100
 $pConfig.Controls.Add($nudPort)
 
-Lbl 'Federation Engine' 20 238 $true
-$lbVBoxStatus           = New-Object System.Windows.Forms.Label
-$lbVBoxStatus.AutoSize  = $true
-$lbVBoxStatus.Location  = New-Object System.Drawing.Point(20, 258)
-if ($VBoxFound) {
-  $lbVBoxStatus.Text      = 'Installed'
-  $lbVBoxStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 160, 0)
-} else {
-  $lbVBoxStatus.Text      = 'Not found - will install from bundled installer'
-  $lbVBoxStatus.ForeColor = [System.Drawing.Color]::FromArgb(180, 100, 0)
+Lbl 'Runtime' 20 238 $true
+
+$rbDocker          = New-Object System.Windows.Forms.RadioButton
+$rbDocker.Text     = 'Use existing Docker Desktop'
+$rbDocker.AutoSize = $true
+$rbDocker.Location = New-Object System.Drawing.Point(20, 262)
+$pConfig.Controls.Add($rbDocker)
+
+$rbVBox          = New-Object System.Windows.Forms.RadioButton
+$rbVBox.Text     = 'Bundled VM (VirtualBox)'
+$rbVBox.AutoSize = $true
+$rbVBox.Location = New-Object System.Drawing.Point(230, 262)
+$pConfig.Controls.Add($rbVBox)
+
+$btnRecheck          = New-Object System.Windows.Forms.Button
+$btnRecheck.Text     = 'Re-check'
+$btnRecheck.Size     = New-Object System.Drawing.Size(90, 24)
+$btnRecheck.Location = New-Object System.Drawing.Point(470, 260)
+$btnRecheck.FlatStyle = 'System'
+$pConfig.Controls.Add($btnRecheck)
+
+$lbNotice          = New-Object System.Windows.Forms.Label
+$lbNotice.AutoSize = $false
+$lbNotice.Size     = New-Object System.Drawing.Size(560, 52)
+$lbNotice.Location = New-Object System.Drawing.Point(20, 290)
+$pConfig.Controls.Add($lbNotice)
+
+# Applies current detection results to the runtime radios + notice text.
+function Update-BackendUi {
+  $rbDocker.Enabled = $DockerReady
+  if ($DockerReady) {
+    $rbDocker.Checked = $true
+    $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(0, 140, 0)
+    $lbNotice.Text = 'Docker Desktop detected. Provisa will use it - no VM, no Hyper-V conflict.'
+  } elseif ($HyperVActive) {
+    $rbVBox.Checked = $true
+    $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(190, 90, 0)
+    $lbNotice.Text = 'Hyper-V / WSL2 is active. The bundled VM will run slowly and may not boot. ' +
+                     'Recommended: start Docker Desktop, then Re-check. Otherwise disable Hyper-V (see docs) before using the VM.'
+  } else {
+    $rbVBox.Checked = $true
+    $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 90)
+    $lbNotice.Text = if ($VBoxFound) { 'No Docker detected. Provisa will run in the bundled VM (VirtualBox installed).' }
+                     else            { 'No Docker detected. Provisa will run in the bundled VM (VirtualBox will be installed).' }
+  }
 }
-$pConfig.Controls.Add($lbVBoxStatus)
+
+$btnRecheck.Add_Click({
+  $script:DockerReady  = Test-DockerReady
+  $script:HyperVActive = Test-HyperVActive
+  Update-BackendUi
+})
+
+Update-BackendUi
 
 $btnInstall            = New-Object System.Windows.Forms.Button
 $btnInstall.Text       = 'Install'
 $btnInstall.Font       = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
 $btnInstall.Size       = New-Object System.Drawing.Size(110, 36)
-$btnInstall.Location   = New-Object System.Drawing.Point(470, 310)
+$btnInstall.Location   = New-Object System.Drawing.Point(470, 352)
 $btnInstall.BackColor  = [System.Drawing.Color]::FromArgb(0, 120, 215)
 $btnInstall.ForeColor  = [System.Drawing.Color]::White
 $btnInstall.FlatStyle  = 'Flat'
@@ -290,6 +360,20 @@ $btnInstall.Add_Click({
   if ([string]::IsNullOrEmpty($hostname)) { $hostname = 'localhost' }
   $uiPort = [int]$nudPort.Value
 
+  $backend = if ($rbDocker.Checked) { 'docker' } else { 'virtualbox' }
+
+  # Warn before committing to the VM path on a machine where Hyper-V will
+  # cripple it.
+  if ($backend -eq 'virtualbox' -and $HyperVActive) {
+    $resp = [System.Windows.Forms.MessageBox]::Show(
+      $form,
+      "Hyper-V / WSL2 is active. The bundled VM usually fails to boot in this state.`r`n`r`n" +
+      "Recommended: click No, start Docker Desktop, then Re-check to use the Docker runtime instead.`r`n`r`n" +
+      "Continue with the VM anyway?",
+      'Provisa Setup', 'YesNo', 'Warning')
+    if ($resp -ne 'Yes') { return }
+  }
+
   $pConfig.Visible = $false
   $pProg.Visible   = $true
 
@@ -310,6 +394,7 @@ $btnInstall.Add_Click({
   $rs.SessionStateProxy.SetVariable('Hostname',        $hostname)
   $rs.SessionStateProxy.SetVariable('UiPort',          $uiPort)
   $rs.SessionStateProxy.SetVariable('EmbeddedVersion', $EmbeddedVersion)
+  $rs.SessionStateProxy.SetVariable('Backend',         $backend)
 
   $ps = [powershell]::Create()
   $ps.Runspace = $rs
@@ -319,6 +404,58 @@ $btnInstall.Add_Click({
       $sync.Status = $Msg
     }
     try {
+      # Remedy text shared between the early warning and the /_ping timeout.
+      $HyperVRemedy = @(
+        'The Windows Hypervisor (Hyper-V / WSL2 / Virtual Machine Platform) is active.',
+        'It claims hardware virtualization (VT-x), forcing the Federation Engine to run',
+        'the guest through a slow compatibility layer - the runtime often never finishes',
+        'booting. Disable it in an ELEVATED PowerShell, then reboot:',
+        '',
+        '    bcdedit /set hypervisorlaunchtype off',
+        '    dism.exe /Online /Disable-Feature:Microsoft-Hyper-V-All /NoRestart',
+        '    dism.exe /Online /Disable-Feature:VirtualMachinePlatform /NoRestart',
+        '    shutdown /r /t 0',
+        '',
+        '(Re-enable later with: bcdedit /set hypervisorlaunchtype auto)'
+      )
+      function Test-HyperVActive {
+        # A running vmmem/vmmemWSL process means the hypervisor is live now.
+        if (Get-Process -Name 'vmmem','vmmemWSL','vmmemProxy' -ErrorAction SilentlyContinue) { return $true }
+        # Otherwise consult the boot configuration.
+        $bcd = (& "$env:SystemRoot\System32\bcdedit.exe" /enum '{current}' 2>$null) -join ' '
+        if ($bcd -match 'hypervisorlaunchtype\s+(\w+)') {
+          return ($Matches[1] -ne 'Off')
+        }
+        return $false
+      }
+
+      # $DockerApiBase is the Docker Engine endpoint the image-load and
+      # config-write steps talk to. VirtualBox backend forwards it on 2375;
+      # the Docker backend uses the docker CLI instead (curl can't reach the
+      # Windows named pipe), so it stays $null there.
+      $DockerApiBase = $null
+      $UseDockerCli  = ($Backend -eq 'docker')
+
+      if ($Backend -eq 'docker') {
+        # ---- Docker backend: reuse the host's Docker Desktop --------------
+        Log 'Using existing Docker Desktop - no VM required.'
+        $dockerCmd = Get-Command docker -ErrorAction SilentlyContinue
+        if (-not $dockerCmd) { throw 'Docker CLI not found. Start Docker Desktop and rerun setup.' }
+        $DockerCli = $dockerCmd.Source
+        & $DockerCli version --format '{{.Server.Version}}' 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Docker daemon not responding. Is Docker Desktop running?' }
+        $srvVer = (& $DockerCli version --format '{{.Server.Version}}' 2>$null)
+        Log "Docker Engine $srvVer ready."
+        $sync.Progress = 55
+      }
+      else {
+
+      # Step 0: Detect Windows Hypervisor conflict --------------------------
+      if (Test-HyperVActive) {
+        Log 'WARNING: Windows Hypervisor detected - the runtime may fail to boot.'
+        $HyperVRemedy | ForEach-Object { Log "  $_" }
+      }
+
       # Step 1: Ensure Federation Engine -------------------------------------------
       Log 'Checking Federation Engine...'
       $sync.Progress = 5
@@ -448,9 +585,19 @@ $btnInstall.Add_Click({
         if ($i % 10 -eq 9) { Log "  Still waiting... ($([int](($i+1)*3))s elapsed)" }
         $sync.Progress = 55 + [int](($i / 120) * 30)
       }
-      if (-not $ready) { throw 'Coordination Engine did not respond to /_ping within 360s.' }
+      if (-not $ready) {
+        if (Test-HyperVActive) {
+          Log 'Coordination Engine did not respond within 360s.'
+          $HyperVRemedy | ForEach-Object { Log "  $_" }
+          throw 'Coordination Engine did not respond to /_ping within 360s - Windows Hypervisor conflict (see remedy above).'
+        }
+        throw 'Coordination Engine did not respond to /_ping within 360s.'
+      }
       Log 'Coordination Engine ready.'
+      $DockerApiBase = 'http://127.0.0.1:2375'
       $sync.Progress = 60
+
+      } # end virtualbox backend
 
       # Step 6: Find or download core images zip, then load into Docker -----
       $sync.Status = 'Locating service packages...'
@@ -499,9 +646,13 @@ $btnInstall.Add_Click({
       [System.IO.Compression.ZipFile]::ExtractToDirectory($CoreZip, $ExtractDir)
       $sync.Progress = 78
 
-      # curlExe was located in Step 5. Also need tar.exe to read image manifests.
+      # tar.exe reads image manifests; curl.exe drives the VirtualBox Docker API.
       $tarExe = Join-Path $env:SystemRoot 'System32\tar.exe'
       if (-not (Test-Path $tarExe)) { throw 'tar.exe not found - Windows 10 version 1803 or later required.' }
+      $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
+      if (-not $UseDockerCli -and -not (Test-Path $curlExe)) {
+        throw 'curl.exe not found - Windows 10 version 1803 or later required.'
+      }
 
       # Returns the RepoTags an image tarball is expected to load (from its
       # embedded manifest.json), or @() if it can't be determined.
@@ -520,7 +671,7 @@ $btnInstall.Add_Click({
       function Test-TagsPresent { param($Tags)
         if (-not $Tags -or $Tags.Count -eq 0) { return $false }
         try {
-          $present = (& $curlExe --silent --max-time 15 'http://127.0.0.1:2375/images/json' | ConvertFrom-Json) |
+          $present = (& $curlExe --silent --max-time 15 "$DockerApiBase/images/json" | ConvertFrom-Json) |
                      ForEach-Object { $_.RepoTags } | Where-Object { $_ }
         } catch { return $false }
         foreach ($t in $Tags) { if ($present -notcontains $t) { return $false } }
@@ -534,6 +685,15 @@ $btnInstall.Add_Click({
         $idx++
         Log "Installing service package $idx of ${total}..."
         $expectedTags = Get-ExpectedTags $tb.FullName
+
+        if ($UseDockerCli) {
+          # Docker backend: load straight through the CLI (no NAT flakiness).
+          $out = & $DockerCli load -i $tb.FullName 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "Failed to install service package $($tb.Name): $out" }
+          Log "  Package installed."
+          $sync.Progress = 78 + [int](($idx / $total) * 7)
+          continue
+        }
 
         $respFile = Join-Path $env:TEMP "provisa-load-$idx.txt"
         Remove-Item $respFile -ErrorAction SilentlyContinue
@@ -584,6 +744,18 @@ $btnInstall.Add_Click({
       $cfgPath = Join-Path $ProvisaHome 'config.yaml'
       $ApiPort = $UiPort + 1
       $fwd = $ComposeDir -replace '\\', '/'
+      if ($Backend -eq 'docker') {
+        $runtimeLines = @(
+          'runtime: docker'
+          'docker_host: npipe:////./pipe/docker_engine'
+        ) -join "`n"
+      } else {
+        $runtimeLines = @(
+          'runtime: virtualbox'
+          'vm_name: Provisa'
+          'docker_host: tcp://127.0.0.1:2375'
+        ) -join "`n"
+      }
 @"
 # Provisa configuration - generated by Windows installer
 project_dir: "$fwd"
@@ -591,9 +763,7 @@ hostname: $Hostname
 ui_port: $UiPort
 api_port: $ApiPort
 auto_open_browser: true
-runtime: virtualbox
-vm_name: Provisa
-docker_host: tcp://127.0.0.1:2375
+$runtimeLines
 federation_workers: $Workers
 "@ | Set-Content -Path $cfgPath -Encoding UTF8
       $sync.Progress = 92
