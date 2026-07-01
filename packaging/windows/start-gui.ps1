@@ -32,6 +32,8 @@ $form.FormBorderStyle = 'FixedSingle'
 $form.MaximizeBox     = $false
 $form.BackColor       = [System.Drawing.Color]::White
 $form.Font            = New-Object System.Drawing.Font('Segoe UI', 9)
+$iconPath = Join-Path $ScriptDir 'provisa.ico'
+if (Test-Path $iconPath) { $form.Icon = New-Object System.Drawing.Icon $iconPath }
 
 $header           = New-Object System.Windows.Forms.Panel
 $header.Dock      = 'Top'
