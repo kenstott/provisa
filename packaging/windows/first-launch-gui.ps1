@@ -883,7 +883,7 @@ $btnInstall.Add_Click({
       # release asset - find it next to the installer or download it, then
       # extract into the compose dir.
       $PluginsDir = Join-Path $ComposeDir 'trino\plugins'
-      $pluginsPresent = (Test-Path (Join-Path $PluginsDir 'trino-calcite'))
+      $pluginsPresent = (Test-Path (Join-Path $PluginsDir 'trino-file'))
       if (-not $pluginsPresent) {
         $sync.Status = 'Locating query engine plugins...'
         $PluginsTar = $null
@@ -920,11 +920,11 @@ $btnInstall.Add_Click({
         }
         Log 'Installing query engine plugins...'
         New-Item -ItemType Directory -Path $PluginsDir -Force | Out-Null
-        # Tarball expands to trino-calcite/, trino-file/, ... directly.
+        # Tarball expands to trino-file/, trino-sharepoint/, trino-splunk/ directly.
         & $tarExe -xzf $PluginsTar -C $PluginsDir 2>&1 | ForEach-Object { }
         if ($LASTEXITCODE -ne 0) { throw "Failed to extract query engine plugins (tar exit $LASTEXITCODE)." }
-        if (-not (Test-Path (Join-Path $PluginsDir 'trino-calcite'))) {
-          throw 'Query engine plugins did not extract correctly (trino-calcite missing).'
+        if (-not (Test-Path (Join-Path $PluginsDir 'trino-file'))) {
+          throw 'Query engine plugins did not extract correctly (trino-file missing).'
         }
         Log 'Query engine plugins installed.'
       } else {
