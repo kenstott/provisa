@@ -2476,6 +2476,55 @@ async def _bg_hydrate_api_endpoints() -> None:
     asyncio.create_task(_bg_hydrate())
 
 
+async def _reconcile_live_engine(conn: asyncpg.Connection) -> None:  # REQ-565
+    """Drive the LiveEngine poll jobs from persisted per-table live config.
+
+    Reads ``registered_tables.live`` and reconciles the engine to the tables
+    whose delivery is ``poll``. Data polls are qualified for Trino
+    (``catalog.schema.table``) so any federated source is pollable. CDC-delivered
+    tables (``delivery=cdc``) are handled by subscription providers, not here.
+    """
+    from provisa.live.engine import LiveSpec
+
+    engine = state.live_engine
+    if engine is None:
+        return
+
+    rows = await conn.fetch(
+        "SELECT source_id, schema_name, table_name, live FROM registered_tables "
+        "WHERE live IS NOT NULL"
+    )
+    specs: list[LiveSpec] = []
+    for row in rows:
+        live = row["live"]
+        if not live or live.get("delivery", "poll") != "poll":
+            continue
+        watermark = live.get("watermark_column")
+        if not watermark:
+            continue
+        catalog = row["source_id"].replace("-", "_")
+        sql = f'SELECT * FROM {catalog}."{row["schema_name"]}"."{row["table_name"]}"'
+        kafka_outputs = [
+            {
+                "bootstrap_servers": o["bootstrap_servers"],
+                "topic": o["topic"],
+                "key_column": o.get("key_column"),
+            }
+            for o in live.get("outputs", [])
+            if o.get("type") == "kafka" and o.get("topic") and o.get("bootstrap_servers")
+        ]
+        specs.append(
+            LiveSpec(
+                query_id=f"{row['source_id']}.{row['table_name']}",
+                sql=sql,
+                watermark_column=watermark,
+                poll_interval=int(live.get("poll_interval", 10)),
+                kafka_outputs=kafka_outputs,
+            )
+        )
+    engine.reconcile(specs)
+
+
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     """Re-introspect Trino and rebuild schemas for all roles from current DB state.
 
@@ -2680,6 +2729,15 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         "physical_table_map": {**_META_TABLE_ALIAS, **(kafka_physical or {})},
     }
     state.schema_version += 1
+
+    # Re-drive the live poll engine from the now-current DB state so admin edits
+    # to per-table live config take effect without a restart (REQ-565).
+    if state.live_engine is not None and state.pg_pool is not None:
+        try:
+            async with state.pg_pool.acquire() as _lc:
+                await _reconcile_live_engine(cast(asyncpg.Connection, _lc))
+        except Exception:
+            _rebuild_log.exception("live engine reconcile failed")
 
     # Compile inline view SQLs now that a context is available
     if state.view_sql_map and state.contexts:
@@ -2960,34 +3018,16 @@ async def _start_servers(_log: logging.Logger) -> None:
     try:
         from provisa.live.engine import LiveEngine
 
-        live_engine = LiveEngine(pg_pool=state.pg_pool)
+        live_engine = LiveEngine(pg_pool=state.pg_pool, trino_conn=state.trino_conn)
         await live_engine.start()
         state.live_engine = live_engine
         _log.info("Live Query Engine started")
 
-        # Register tables with live delivery config (Phase AY)
-        for _table in state.config.tables:
-            if _table.live is None:
-                continue
-            _kafka_outs = []
-            for _out in _table.live.outputs:
-                if _out.type == "kafka" and _out.topic and _out.bootstrap_servers:
-                    from provisa.live.outputs.kafka import KafkaSinkOutput
-
-                    _kafka_outs.append(
-                        KafkaSinkOutput(
-                            bootstrap_servers=_out.bootstrap_servers,
-                            topic=_out.topic,
-                            key_column=_out.key_column,
-                        )
-                    )
-            live_engine.register(
-                query_id=f"{_table.source_id}.{_table.table_name}",
-                sql=f'SELECT * FROM "{_table.schema_name}"."{_table.table_name}"',
-                watermark_column=_table.live.watermark_column,
-                poll_interval=_table.live.poll_interval,
-                kafka_outputs=_kafka_outs,
-            )
+        # Reconcile poll jobs from persisted per-table live config (Phase AY).
+        # Data polls route through Trino; CDC-delivered tables are driven by
+        # subscription providers, not the poll engine.
+        async with state.pg_pool.acquire() as _lc:
+            await _reconcile_live_engine(cast(asyncpg.Connection, _lc))
     except Exception:
         _log.exception("Live Query Engine startup failed")
 

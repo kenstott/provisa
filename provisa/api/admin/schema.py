@@ -23,8 +23,6 @@ from strawberry.types.info import Info as StrawberryInfo
 
 from provisa.compiler.naming import source_to_catalog
 from provisa.otel_compat import get_tracer as _get_tracer
-
-_tracer = _get_tracer(__name__)
 from provisa.api.admin._config_io import config_path as _config_path, read_config
 from provisa.api.admin.db_queries import derive_graphql_alias as _derive_graphql_alias_fn
 from provisa.cypher.label_map import _to_rel_type as _to_cypher_rel_type
@@ -56,6 +54,8 @@ from provisa.api.admin.types import (
     TableColumnType,
     TableInput,
 )
+
+_tracer = _get_tracer(__name__)
 
 
 _SOURCE_TYPE_DISPLAY_NAMES: dict[str, str] = {
@@ -237,6 +237,7 @@ def _parse_mapping_json(mapping_json: str | None) -> dict:
     if not mapping_json:
         return {}
     import json as _json
+
     try:
         return _json.loads(mapping_json)
     except Exception:
@@ -245,6 +246,7 @@ def _parse_mapping_json(mapping_json: str | None) -> dict:
 
 def _source_from_row(row) -> SourceType:
     import json as _json
+
     raw_mapping = row.get("mapping") or {}
     mapping_json = _json.dumps(raw_mapping) if isinstance(raw_mapping, dict) else str(raw_mapping)
     return SourceType(
@@ -462,6 +464,53 @@ async def _fetch_table_with_columns(
         enable_aggregates=bool(row.get("enable_aggregates", False)),
         enable_group_by=bool(row.get("enable_group_by", False)),
         can_deploy_to_db=can_deploy,
+        live=_live_type_from_row(row.get("live")),
+    )
+
+
+def _live_type_from_row(raw):  # REQ-565
+    """Build a LiveDeliveryConfigType from a persisted JSONB dict (None when unset)."""
+    from provisa.api.admin.types import LiveDeliveryConfigType, LiveOutputConfigType
+
+    if not raw:
+        return None
+    return LiveDeliveryConfigType(
+        query_id=raw["query_id"],
+        watermark_column=raw["watermark_column"],
+        poll_interval=int(raw.get("poll_interval", 10)),
+        delivery=raw.get("delivery", "poll"),
+        outputs=[
+            LiveOutputConfigType(
+                type=o["type"],
+                topic=o.get("topic"),
+                key_column=o.get("key_column"),
+                bootstrap_servers=o.get("bootstrap_servers"),
+            )
+            for o in raw.get("outputs", [])
+        ],
+    )
+
+
+def _live_model_from_input(inp):  # REQ-565
+    """Convert a LiveDeliveryConfigInput into a LiveDeliveryConfig model (None when unset)."""
+    if inp is None:
+        return None
+    from provisa.core.models import LiveDeliveryConfig, LiveOutputConfig
+
+    return LiveDeliveryConfig(
+        query_id=inp.query_id,
+        watermark_column=inp.watermark_column,
+        poll_interval=inp.poll_interval,
+        delivery=inp.delivery,
+        outputs=[
+            LiveOutputConfig(
+                type=o.type,
+                topic=o.topic,
+                key_column=o.key_column,
+                bootstrap_servers=o.bootstrap_servers,
+            )
+            for o in inp.outputs
+        ],
     )
 
 
@@ -741,7 +790,9 @@ async def _ensure_view_column_types(conn, view_sql: str, columns: list) -> list:
 @strawberry.type
 class Query:  # REQ-021, REQ-042
     @strawberry.field
-    async def creation_requests(self, info: StrawberryInfo) -> list[CreationRequestType]:  # REQ-434, REQ-063  # pyright: ignore[reportUnusedParameter]
+    async def creation_requests(
+        self, info: StrawberryInfo
+    ) -> list[CreationRequestType]:  # REQ-434, REQ-063  # pyright: ignore[reportUnusedParameter]
         """REQ-434/063: pending creation requests, for users holding a create capability."""
         import json as _json
 
@@ -810,6 +861,7 @@ class Query:  # REQ-021, REQ-042
         identity = getattr(request.state, "identity", None)
         from provisa.api.admin.capabilities import _resolved_capabilities
         from provisa.api.app import state as _state
+
         caps = _resolved_capabilities(identity, _state) if identity else set()
         is_admin = bool(caps & {"superadmin", "admin"})
         pool = await _get_pool()
@@ -824,7 +876,9 @@ class Query:  # REQ-021, REQ-042
             return [_domain_from_row(r) for r in rows]
 
     @strawberry.field
-    async def tables(self, info: StrawberryInfo) -> list[RegisteredTableType]:  # REQ-016, REQ-021, REQ-042
+    async def tables(
+        self, info: StrawberryInfo
+    ) -> list[RegisteredTableType]:  # REQ-016, REQ-021, REQ-042
         with _tracer.start_as_current_span("admin.schema_introspect"):
             from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
             from provisa.api.app import state as _state
@@ -892,12 +946,15 @@ class Query:  # REQ-021, REQ-042
             return [_rel_from_row(r, convention) for r in rows]
 
     @strawberry.field
-    async def roles(self, info: StrawberryInfo) -> list[RoleType]:  # REQ-042, REQ-059, REQ-060, REQ-215
+    async def roles(
+        self, info: StrawberryInfo
+    ) -> list[RoleType]:  # REQ-042, REQ-059, REQ-060, REQ-215
         request = info.context["request"]
         active_org_id = getattr(request.state, "active_org_id", "root") or "root"
         identity = getattr(request.state, "identity", None)
         from provisa.api.admin.capabilities import _resolved_capabilities
         from provisa.api.app import state as _state
+
         caps = _resolved_capabilities(identity, _state) if identity else set()
         is_admin = bool(caps & {"superadmin", "admin"})
         pool = await _get_pool()
@@ -945,7 +1002,11 @@ class Query:  # REQ-021, REQ-042
                 f'SELECT schema_name FROM "{catalog}".information_schema.schemata '
                 f"ORDER BY schema_name"
             )
-            return [row[0].lower() for row in cursor.fetchall() if not is_provisa_internal(row[0].lower())]
+            return [
+                row[0].lower()
+                for row in cursor.fetchall()
+                if not is_provisa_internal(row[0].lower())
+            ]
         except Exception:
             return []
 
@@ -1625,7 +1686,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return MutationResult(success=True, message="Schemas rebuilt")
 
     @strawberry.mutation
-    async def create_source(self, info: StrawberryInfo, input: SourceInput) -> MutationResult:  # REQ-012, REQ-013
+    async def create_source(
+        self, info: StrawberryInfo, input: SourceInput
+    ) -> MutationResult:  # REQ-012, REQ-013
         from provisa.api.admin.capabilities import require_capability
 
         require_capability(info, "source_registration")
@@ -1684,7 +1747,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return MutationResult(success=True, message=f"Source {input.id!r} created")
 
     @strawberry.mutation
-    async def update_source(self, info: StrawberryInfo, input: SourceInput) -> MutationResult:  # REQ-012
+    async def update_source(
+        self, info: StrawberryInfo, input: SourceInput
+    ) -> MutationResult:  # REQ-012
         from provisa.api.admin.capabilities import require_capability
 
         require_capability(info, "source_registration")
@@ -1830,7 +1895,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return MutationResult(success=False, message=f"Domain {id!r} not found")
 
     @strawberry.mutation
-    async def create_role(self, input: RoleInput) -> MutationResult:  # REQ-042, REQ-059, REQ-060, REQ-215
+    async def create_role(
+        self, input: RoleInput
+    ) -> MutationResult:  # REQ-042, REQ-059, REQ-060, REQ-215
         from provisa.core.models import Role as RoleModel
         from provisa.core.repositories import role as role_repo
 
@@ -1845,7 +1912,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return MutationResult(success=True, message=f"Role {input.id!r} created")
 
     @strawberry.mutation
-    async def register_table(self, info: StrawberryInfo, input: TableInput) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434
+    async def register_table(
+        self, info: StrawberryInfo, input: TableInput
+    ) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434
         import logging
 
         logging.getLogger(__name__).warning(
@@ -1941,6 +2010,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             data_product=input.data_product,
             enable_aggregates=input.enable_aggregates,
             enable_group_by=input.enable_group_by,
+            live=_live_model_from_input(input.live),
         )
         async with pool.acquire() as conn:
             _conn = cast(asyncpg.Connection, conn)
@@ -2018,7 +2088,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def update_table(self, info: StrawberryInfo, input: TableInput) -> MutationResult:  # REQ-016, REQ-020, REQ-155, REQ-156
+    async def update_table(
+        self, info: StrawberryInfo, input: TableInput
+    ) -> MutationResult:  # REQ-016, REQ-020, REQ-155, REQ-156
         """Update an existing table's alias, description, and column metadata."""
         from provisa.api.admin.capabilities import require_capability
 
@@ -2067,6 +2139,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             data_product=input.data_product,
             enable_aggregates=input.enable_aggregates,
             enable_group_by=input.enable_group_by,
+            live=_live_model_from_input(input.live),
         )
         async with pool.acquire() as conn:
             _conn = cast(asyncpg.Connection, conn)
@@ -2201,7 +2274,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         if req["request_type"] == "relationship":
             result = await self.upsert_relationship(
-                info, _rebuild_relationship_input(req["payload"])  # pyright: ignore[reportCallIssue]
+                info,
+                _rebuild_relationship_input(req["payload"]),  # pyright: ignore[reportCallIssue]
             )
         elif req["request_type"] == "view":
             result = await self.register_table(info, _rebuild_table_input(req["payload"]))  # pyright: ignore[reportCallIssue]
@@ -2385,7 +2459,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     # ── Admin: Naming Convention ──
 
     @strawberry.mutation
-    async def update_gql_naming_convention(self, convention: str) -> MutationResult:  # REQ-253, REQ-416
+    async def update_gql_naming_convention(
+        self, convention: str
+    ) -> MutationResult:  # REQ-253, REQ-416
         """Set the global naming convention and rebuild schemas for all roles."""
         from provisa.api.app import state
 

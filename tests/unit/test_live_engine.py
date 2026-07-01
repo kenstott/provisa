@@ -207,13 +207,13 @@ class TestLiveEngine:
         assert mock_sched.add_job.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_poll_delivers_to_fanout(self):
-        mock_rows = [{"id": 1, "updated_at": "2026-01-02"}]
+    async def test_poll_routes_through_trino_and_delivers(self):
+        # Poll data comes from Trino (federated), not the PG pool. PG is used
+        # only for watermark bookkeeping.
+        from provisa.executor.trino import QueryResult
 
-        # Build a proper async context manager mock for pool.acquire()
+        # PG pool: watermark bookkeeping only.
         conn_mock = AsyncMock()
-        conn_mock.fetch = AsyncMock(return_value=mock_rows)
-
         pool = MagicMock()
         pool.acquire = MagicMock(
             return_value=AsyncMock(
@@ -221,8 +221,8 @@ class TestLiveEngine:
                 __aexit__=AsyncMock(return_value=False),
             )
         )
-
-        engine = LiveEngine(pg_pool=pool)
+        trino_conn = MagicMock()
+        engine = LiveEngine(pg_pool=pool, trino_conn=trino_conn)
 
         with patch("provisa.live.engine.AsyncIOScheduler") as mock_sched_cls:
             mock_sched = MagicMock()
@@ -232,17 +232,130 @@ class TestLiveEngine:
 
         engine.register(
             "q1",
-            sql="SELECT id, updated_at FROM orders",
+            sql='SELECT * FROM cat."public"."orders"',
             watermark_column="updated_at",
             poll_interval=5,
         )
         q = engine.subscribe("q1")
 
+        trino_result = QueryResult(rows=[(1, "2026-01-02")], column_names=["id", "updated_at"])
+        exec_mock = MagicMock(return_value=trino_result)
         with (
+            patch("provisa.executor.trino.execute_trino", exec_mock),
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
             patch("provisa.live.watermark.set_watermark", AsyncMock()),
         ):
             await engine._poll("q1")
 
+        # Data query ran against the Trino connection, never the PG pool.
+        assert exec_mock.call_args.args[0] is trino_conn
+        conn_mock.fetch.assert_not_called()
         received = q.get_nowait()
-        assert received == [dict(r) for r in mock_rows]
+        assert received == [{"id": 1, "updated_at": "2026-01-02"}]
+
+    @pytest.mark.asyncio
+    async def test_poll_without_trino_conn_raises_and_is_caught(self):
+        # No Trino connection → poll logs and swallows (never crashes scheduler).
+        pool = MagicMock()
+        pool.acquire = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=AsyncMock()),
+                __aexit__=AsyncMock(return_value=False),
+            )
+        )
+        engine = LiveEngine(pg_pool=pool, trino_conn=None)
+        with patch("provisa.live.engine.AsyncIOScheduler") as mock_sched_cls:
+            mock_sched = MagicMock()
+            mock_sched.add_job.return_value = MagicMock(id="live_q1")
+            mock_sched_cls.return_value = mock_sched
+            await engine.start()
+        engine.register(
+            "q1",
+            sql="SELECT * FROM cat.public.orders",
+            watermark_column="updated_at",
+            poll_interval=5,
+        )
+        q = engine.subscribe("q1")
+        with (
+            patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
+            patch("provisa.live.watermark.set_watermark", AsyncMock()),
+        ):
+            await engine._poll("q1")  # must not raise
+        assert q.empty()
+
+
+class TestReconcile:
+    def _started_engine(self, stack) -> LiveEngine:
+        engine = LiveEngine(pg_pool=AsyncMock(), trino_conn=MagicMock())
+        mock_sched = MagicMock()
+        mock_sched.add_job.return_value = MagicMock(id="live_x")
+        stack.enter_context(patch("provisa.live.engine.AsyncIOScheduler", return_value=mock_sched))
+        return engine
+
+    @pytest.mark.asyncio
+    async def test_reconcile_registers_and_unregisters(self):
+        from contextlib import ExitStack
+        from provisa.live.engine import LiveSpec
+
+        with ExitStack() as stack:
+            engine = self._started_engine(stack)
+            await engine.start()
+
+            engine.reconcile(
+                [LiveSpec(query_id="a", sql="SELECT * FROM cat.s.a", watermark_column="ts")]
+            )
+            assert engine.is_registered("a")
+
+            # 'a' dropped, 'b' added
+            engine.reconcile(
+                [LiveSpec(query_id="b", sql="SELECT * FROM cat.s.b", watermark_column="ts")]
+            )
+            assert not engine.is_registered("a")
+            assert engine.is_registered("b")
+
+    @pytest.mark.asyncio
+    async def test_reconcile_unchanged_preserves_job_and_subscribers(self):
+        from contextlib import ExitStack
+        from provisa.live.engine import LiveSpec
+
+        with ExitStack() as stack:
+            engine = self._started_engine(stack)
+            await engine.start()
+            spec = LiveSpec(query_id="a", sql="SELECT * FROM cat.s.a", watermark_column="ts")
+            engine.reconcile([spec])
+            q = engine.subscribe("a")
+            engine.reconcile([spec])  # identical signature → no churn
+            # Same fanout queue survived (subscriber preserved).
+            assert q in engine._jobs["a"].fanout._queues
+
+    @pytest.mark.asyncio
+    async def test_reconcile_changed_signature_reregisters(self):
+        from contextlib import ExitStack
+        from provisa.live.engine import LiveSpec
+
+        with ExitStack() as stack:
+            engine = self._started_engine(stack)
+            await engine.start()
+            engine.reconcile(
+                [
+                    LiveSpec(
+                        query_id="a",
+                        sql="SELECT * FROM cat.s.a",
+                        watermark_column="ts",
+                        poll_interval=10,
+                    )
+                ]
+            )
+            first_fanout = engine._jobs["a"].fanout
+            engine.reconcile(
+                [
+                    LiveSpec(
+                        query_id="a",
+                        sql="SELECT * FROM cat.s.a",
+                        watermark_column="ts",
+                        poll_interval=30,
+                    )
+                ]
+            )
+            assert engine._jobs["a"].poll_interval == 30
+            assert engine._jobs["a"].fanout is not first_fanout

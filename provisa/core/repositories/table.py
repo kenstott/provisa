@@ -28,8 +28,8 @@ async def upsert(
     table_id = await conn.fetchval(
         """
         INSERT INTO registered_tables
-            (source_id, domain_id, schema_name, table_name, alias, description, watermark_column, column_presets, view_sql, data_product, materialize, mv_refresh_interval, enable_aggregates, enable_group_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            (source_id, domain_id, schema_name, table_name, alias, description, watermark_column, column_presets, view_sql, data_product, materialize, mv_refresh_interval, enable_aggregates, enable_group_by, live)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         ON CONFLICT (source_id, schema_name, table_name) DO UPDATE SET
             domain_id = EXCLUDED.domain_id,
             alias = EXCLUDED.alias,
@@ -41,7 +41,8 @@ async def upsert(
             materialize = EXCLUDED.materialize,
             mv_refresh_interval = EXCLUDED.mv_refresh_interval,
             enable_aggregates = EXCLUDED.enable_aggregates,
-            enable_group_by = EXCLUDED.enable_group_by
+            enable_group_by = EXCLUDED.enable_group_by,
+            live = EXCLUDED.live
         RETURNING id
         """,
         table.source_id,
@@ -58,6 +59,7 @@ async def upsert(
         getattr(table, "mv_refresh_interval", 300),
         getattr(table, "enable_aggregates", False),
         getattr(table, "enable_group_by", False),
+        json.dumps(table.live.model_dump()) if table.live else None,
     )
 
     # Replace columns: delete existing, insert new

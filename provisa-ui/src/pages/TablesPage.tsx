@@ -38,7 +38,8 @@ import {
   useSuggestTableAlias,
   useAllRelationships,
 } from "../hooks/useAdminQueries";
-import type { RegisteredTable } from "../types/admin";
+import type { RegisteredTable, LiveDeliveryConfig, LiveOutputConfig } from "../types/admin";
+import { liveCapability } from "../liveCapability";
 import { ColumnPresetsEditor } from "../components/admin/ColumnPresetsEditor";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useDomainFilter } from "../context/DomainFilterContext";
@@ -89,8 +90,6 @@ function DescriptionField({
     </div>
   );
 }
-
-
 
 function normalizeDomain(domain: string): string {
   return domain.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
@@ -594,6 +593,20 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         dataProduct: editingTable.dataProduct,
         enableAggregates: editingTable.enableAggregates,
         enableGroupBy: editingTable.enableGroupBy,
+        live: editingTable.live
+          ? {
+              queryId: editingTable.live.queryId,
+              watermarkColumn: editingTable.live.watermarkColumn,
+              pollInterval: editingTable.live.pollInterval,
+              delivery: editingTable.live.delivery,
+              outputs: editingTable.live.outputs.map((o) => ({
+                type: o.type,
+                topic: o.topic ?? undefined,
+                keyColumn: o.keyColumn ?? undefined,
+                bootstrapServers: o.bootstrapServers ?? undefined,
+              })),
+            }
+          : null,
         columnPresets: editingTable.columnPresets,
         columns: editingTable.columns.map((c) => ({
           name: c.columnName,
@@ -643,7 +656,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         />
         <div className="page-actions">
           {!viewsOnly && (
-            <button onClick={() => setShowForm(!showForm)}>{showForm ? "Cancel" : "+ Table"}</button>
+            <button onClick={() => setShowForm(!showForm)}>
+              {showForm ? "Cancel" : "+ Table"}
+            </button>
           )}
           <button onClick={() => navigate("/sql")} title="Create a new view in the SQL Explorer">
             + View
@@ -717,8 +732,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               const isRegistered = (t: { name: string }) =>
                 tables.some(
                   (rt) =>
-                    rt.sourceId === sourceId &&
-                    toSnakeCase(rt.tableName) === toSnakeCase(t.name),
+                    rt.sourceId === sourceId && toSnakeCase(rt.tableName) === toSnakeCase(t.name),
                 );
               const allRegistered =
                 !loadingTables &&
@@ -954,51 +968,63 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             )
               .filter(([col]) => domainsEnabled || col !== "domain")
               .map(([col, label]) => {
-              const isGroupable = col === "source" || col === "domain";
-              const groupLevel = groupBy.indexOf(col as "source" | "domain");
-              const isGrouped = groupLevel !== -1;
-              return (
-                <th key={col} style={{ whiteSpace: "nowrap" }}>
-                  <span
-                    onClick={() => {
-                      if (sortCol !== col) { setSortCol(col); setSortDir("asc"); }
-                      else if (sortDir === "asc") setSortDir("desc");
-                      else { setSortCol(null); setSortDir("asc"); }
-                    }}
-                    style={{ cursor: "pointer", userSelect: "none" }}
-                  >
-                    {label}{" "}
-                    <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
-                      {sortCol === col ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
-                    </span>
-                  </span>
-                  {isGroupable && (
+                const isGroupable = col === "source" || col === "domain";
+                const groupLevel = groupBy.indexOf(col as "source" | "domain");
+                const isGrouped = groupLevel !== -1;
+                return (
+                  <th key={col} style={{ whiteSpace: "nowrap" }}>
                     <span
-                      title={isGrouped ? `Ungroup (level ${groupLevel + 1})` : `Group by ${label}`}
-                      onClick={() => toggleGroupBy(col)}
-                      style={{
-                        marginLeft: "0.3rem",
-                        fontSize: "0.65rem",
-                        cursor: "pointer",
-                        userSelect: "none",
-                        opacity: isGrouped ? 1 : 0.35,
-                        color: isGrouped ? "var(--primary, #6366f1)" : undefined,
+                      onClick={() => {
+                        if (sortCol !== col) {
+                          setSortCol(col);
+                          setSortDir("asc");
+                        } else if (sortDir === "asc") setSortDir("desc");
+                        else {
+                          setSortCol(null);
+                          setSortDir("asc");
+                        }
                       }}
+                      style={{ cursor: "pointer", userSelect: "none" }}
                     >
-                      {isGrouped ? `⊞${groupLevel + 1}` : "⊞"}
+                      {label}{" "}
+                      <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
+                        {sortCol === col ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
+                      </span>
                     </span>
-                  )}
-                </th>
-              );
-            })}
+                    {isGroupable && (
+                      <span
+                        title={
+                          isGrouped ? `Ungroup (level ${groupLevel + 1})` : `Group by ${label}`
+                        }
+                        onClick={() => toggleGroupBy(col)}
+                        style={{
+                          marginLeft: "0.3rem",
+                          fontSize: "0.65rem",
+                          cursor: "pointer",
+                          userSelect: "none",
+                          opacity: isGrouped ? 1 : 0.35,
+                          color: isGrouped ? "var(--primary, #6366f1)" : undefined,
+                        }}
+                      >
+                        {isGrouped ? `⊞${groupLevel + 1}` : "⊞"}
+                      </span>
+                    )}
+                  </th>
+                );
+              })}
             <th>Naming</th>
             <th>Cache TTL</th>
             <th>Effective TTL</th>
             <th
               onClick={() => {
-                if (sortCol !== "cols") { setSortCol("cols"); setSortDir("asc"); }
-                else if (sortDir === "asc") setSortDir("desc");
-                else { setSortCol(null); setSortDir("asc"); }
+                if (sortCol !== "cols") {
+                  setSortCol("cols");
+                  setSortDir("asc");
+                } else if (sortDir === "asc") setSortDir("desc");
+                else {
+                  setSortCol(null);
+                  setSortDir("asc");
+                }
               }}
               style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
             >
@@ -1027,17 +1053,19 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               filtered.sort((a, b) => {
                 let cmp = 0;
                 if (sortCol === "source") cmp = a.sourceId.localeCompare(b.sourceId);
-                else if (sortCol === "domain") cmp = (a.domainId ?? "").localeCompare(b.domainId ?? "");
-                else if (sortCol === "table") cmp = (a.alias || a.tableName).localeCompare(b.alias || b.tableName);
+                else if (sortCol === "domain")
+                  cmp = (a.domainId ?? "").localeCompare(b.domainId ?? "");
+                else if (sortCol === "table")
+                  cmp = (a.alias || a.tableName).localeCompare(b.alias || b.tableName);
                 else if (sortCol === "cols") cmp = a.columns.length - b.columns.length;
                 return sortDir === "asc" ? cmp : -cmp;
               });
             }
 
             const getGroupKey = (t: RegisteredTable, col: "source" | "domain") =>
-              col === "source" ? t.sourceId : (t.domainId ? normalizeDomain(t.domainId) : "(none)");
+              col === "source" ? t.sourceId : t.domainId ? normalizeDomain(t.domainId) : "(none)";
 
-            const colLabel = (col: "source" | "domain") => col === "source" ? "Source" : "Domain";
+            const colLabel = (col: "source" | "domain") => (col === "source" ? "Source" : "Domain");
 
             type GroupItem =
               | { type: "header"; level: 1 | 2; key: string; label: string; count: number }
@@ -1059,8 +1087,16 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 if (!l1Map.has(k)) l1Map.set(k, []);
                 l1Map.get(k)!.push(t);
               }
-              for (const [l1Key, l1Tables] of [...l1Map.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-                items.push({ type: "header", level: 1, key: l1Key, label: `${colLabel(l1Col)}: ${l1Key}`, count: l1Tables.length });
+              for (const [l1Key, l1Tables] of [...l1Map.entries()].sort(([a], [b]) =>
+                a.localeCompare(b),
+              )) {
+                items.push({
+                  type: "header",
+                  level: 1,
+                  key: l1Key,
+                  label: `${colLabel(l1Col)}: ${l1Key}`,
+                  count: l1Tables.length,
+                });
                 if (collapsedGroups.has(l1Key)) continue;
                 if (!l2Col) {
                   for (const t of l1Tables) items.push({ type: "row", t });
@@ -1071,9 +1107,17 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     if (!l2Map.has(k)) l2Map.set(k, []);
                     l2Map.get(k)!.push(t);
                   }
-                  for (const [l2Key, l2Tables] of [...l2Map.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+                  for (const [l2Key, l2Tables] of [...l2Map.entries()].sort(([a], [b]) =>
+                    a.localeCompare(b),
+                  )) {
                     const compositeKey = `${l1Key}|${l2Key}`;
-                    items.push({ type: "header", level: 2, key: compositeKey, label: `${colLabel(l2Col)}: ${l2Key}`, count: l2Tables.length });
+                    items.push({
+                      type: "header",
+                      level: 2,
+                      key: compositeKey,
+                      label: `${colLabel(l2Col)}: ${l2Key}`,
+                      count: l2Tables.length,
+                    });
                     if (collapsedGroups.has(compositeKey)) continue;
                     for (const t of l2Tables) items.push({ type: "row", t });
                   }
@@ -1101,7 +1145,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                         fontSize: isL1 ? "0.8rem" : "0.75rem",
                         padding: isL1 ? "0.35rem 0.75rem" : "0.25rem 1.5rem",
                         color: isL1 ? "var(--text-muted)" : "var(--text-muted)",
-                        background: isL1 ? "var(--surface)" : "var(--surface-raised, var(--surface))",
+                        background: isL1
+                          ? "var(--surface)"
+                          : "var(--surface-raised, var(--surface))",
                         borderTop: isL1 ? "2px solid var(--border)" : "1px solid var(--border)",
                         cursor: "pointer",
                         userSelect: "none",
@@ -1125,9 +1171,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     className="clickable"
                   >
                     <td>{t.sourceId}</td>
-                    {domainsEnabled && (
-                      <td>{t.domainId ? normalizeDomain(t.domainId) : ""}</td>
-                    )}
+                    {domainsEnabled && <td>{t.domainId ? normalizeDomain(t.domainId) : ""}</td>}
                     <td
                       style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
                       title={t.description || undefined}
@@ -1277,7 +1321,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                           </span>
                                         )}
                                       </td>
-                                      <td style={{ color: c.alias ? "white" : "var(--text-muted)" }}>{c.computedSqlAlias}</td>
+                                      <td
+                                        style={{ color: c.alias ? "white" : "var(--text-muted)" }}
+                                      >
+                                        {c.computedSqlAlias}
+                                      </td>
                                       <td className="reasoning-cell">{c.description || ""}</td>
                                       <td>
                                         {c.visibleTo.length > 0 ? c.visibleTo.join(", ") : "all"}
@@ -1439,7 +1487,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                 title="View RLS policies for this table"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate("/security/rls", { state: { tableFilter: t.tableName } });
+                                  navigate("/security/rls", {
+                                    state: { tableFilter: t.tableName },
+                                  });
                                 }}
                               >
                                 Policies
@@ -1539,7 +1589,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                                 {c.col}
                                               </td>
                                               <td>
-                                                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                                                <div
+                                                  style={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    gap: "0.4rem",
+                                                  }}
+                                                >
                                                   <div
                                                     style={{
                                                       width: 52,
@@ -1601,13 +1657,28 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                                 {c.mean !== null ? c.mean.toFixed(2) : "—"}
                                               </td>
                                               <td>
-                                                <div style={{ display: "flex", flexDirection: "column", gap: "0.18rem", minWidth: 140 }}>
+                                                <div
+                                                  style={{
+                                                    display: "flex",
+                                                    flexDirection: "column",
+                                                    gap: "0.18rem",
+                                                    minWidth: 140,
+                                                  }}
+                                                >
                                                   {c.topValues.map(({ value, count }) => {
-                                                    const barPct = c.topValues[0].count > 0
-                                                      ? (count / c.topValues[0].count) * 100
-                                                      : 0;
+                                                    const barPct =
+                                                      c.topValues[0].count > 0
+                                                        ? (count / c.topValues[0].count) * 100
+                                                        : 0;
                                                     return (
-                                                      <div key={value} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                                                      <div
+                                                        key={value}
+                                                        style={{
+                                                          display: "flex",
+                                                          alignItems: "center",
+                                                          gap: "0.3rem",
+                                                        }}
+                                                      >
                                                         <div
                                                           style={{
                                                             width: 52,
@@ -1643,7 +1714,14 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                                         >
                                                           {value.slice(0, 22)}
                                                         </span>
-                                                        <span style={{ color: "var(--text-muted)", fontSize: "0.65rem", marginLeft: "auto", flexShrink: 0 }}>
+                                                        <span
+                                                          style={{
+                                                            color: "var(--text-muted)",
+                                                            fontSize: "0.65rem",
+                                                            marginLeft: "auto",
+                                                            flexShrink: 0,
+                                                          }}
+                                                        >
                                                           ×{count}
                                                         </span>
                                                       </div>
@@ -1823,7 +1901,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                       style={{ width: "auto" }}
                                     />
                                     Materialized View
-                                    <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
+                                    <span
+                                      style={{ fontWeight: "normal", color: "var(--text-muted)" }}
+                                    >
                                       (CTAS into mv_cache, refreshed periodically)
                                     </span>
                                   </label>
@@ -1993,6 +2073,264 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                 </label>
                               }
                             </div>
+                            {(() => {
+                              const src = sources.find((s) => s.id === editingTable.sourceId);
+                              const stype = (src?.type ?? "").toLowerCase();
+                              const { pollAvail, cdcAvail, liveCapable } = liveCapability(stype);
+                              const live = editingTable.live;
+                              const setLive = (patch: Partial<LiveDeliveryConfig>) =>
+                                setEditingTable(
+                                  live
+                                    ? { ...editingTable, live: { ...live, ...patch } }
+                                    : editingTable,
+                                );
+                              const wmCols = editingTable.columns.filter((c) => {
+                                const dt = editingColumnTypes[c.columnName];
+                                return !dt || isWatermarkEligible(dt);
+                              });
+                              const kafkaOut =
+                                live?.outputs.find((o) => o.type === "kafka") ?? null;
+                              const setKafkaOut = (patch: Partial<LiveOutputConfig>) => {
+                                if (!live) return;
+                                const others = live.outputs.filter((o) => o.type !== "kafka");
+                                const base: LiveOutputConfig = kafkaOut ?? {
+                                  type: "kafka",
+                                  topic: "",
+                                  keyColumn: null,
+                                  bootstrapServers: "",
+                                };
+                                setLive({ outputs: [...others, { ...base, ...patch }] });
+                              };
+                              const defaultLive: LiveDeliveryConfig = {
+                                queryId: `${editingTable.sourceId}.${editingTable.tableName}`,
+                                watermarkColumn:
+                                  editingTable.watermarkColumn || wmCols[0]?.columnName || "",
+                                pollInterval: 10,
+                                delivery: pollAvail ? "poll" : "cdc",
+                                outputs: [],
+                              };
+                              return (
+                                <fieldset
+                                  className="live-delivery"
+                                  style={{
+                                    gridColumn: "1 / -1",
+                                    border: "1px solid var(--border)",
+                                    borderRadius: "0.4rem",
+                                    padding: "0.5rem 0.75rem",
+                                    margin: "0.5rem 0",
+                                    opacity: liveCapable ? 1 : 0.55,
+                                  }}
+                                >
+                                  <legend style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                                    Live Delivery{live ? " — active" : ""}
+                                  </legend>
+                                  {!liveCapable ? (
+                                    <p
+                                      style={{
+                                        margin: 0,
+                                        fontSize: "0.75rem",
+                                        color: "var(--text-muted)",
+                                      }}
+                                    >
+                                      Live delivery is not available for{" "}
+                                      <code>{stype || "this"}</code> sources — no CDC provider and
+                                      not watermark-pollable through Trino.
+                                    </p>
+                                  ) : (
+                                    <>
+                                      <label
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "0.4rem",
+                                          fontWeight: "normal",
+                                        }}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={!!live}
+                                          onChange={(e) =>
+                                            setEditingTable({
+                                              ...editingTable,
+                                              live: e.target.checked ? defaultLive : null,
+                                            })
+                                          }
+                                        />
+                                        Enable live delivery
+                                      </label>
+                                      {live && (
+                                        <div
+                                          style={{
+                                            display: "grid",
+                                            gap: "0.5rem",
+                                            marginTop: "0.5rem",
+                                          }}
+                                        >
+                                          <label>
+                                            Delivery
+                                            <select
+                                              value={live.delivery}
+                                              onChange={(e) =>
+                                                setLive({
+                                                  delivery: e.target.value as "poll" | "cdc",
+                                                })
+                                              }
+                                            >
+                                              {pollAvail && (
+                                                <option value="poll">
+                                                  Poll (Trino, watermark)
+                                                </option>
+                                              )}
+                                              {cdcAvail && <option value="cdc">CDC (push)</option>}
+                                            </select>
+                                          </label>
+                                          <label>
+                                            Query ID
+                                            <input
+                                              value={live.queryId}
+                                              onChange={(e) => setLive({ queryId: e.target.value })}
+                                            />
+                                          </label>
+                                          {live.delivery === "poll" && (
+                                            <>
+                                              <label>
+                                                Watermark column
+                                                <select
+                                                  value={live.watermarkColumn}
+                                                  onChange={(e) =>
+                                                    setLive({ watermarkColumn: e.target.value })
+                                                  }
+                                                >
+                                                  <option value="">Select…</option>
+                                                  {wmCols.map((c) => (
+                                                    <option key={c.columnName} value={c.columnName}>
+                                                      {c.columnName}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              </label>
+                                              <label>
+                                                Poll interval (s)
+                                                <input
+                                                  type="number"
+                                                  min={1}
+                                                  value={live.pollInterval}
+                                                  onChange={(e) =>
+                                                    setLive({
+                                                      pollInterval: Number(e.target.value) || 10,
+                                                    })
+                                                  }
+                                                />
+                                              </label>
+                                            </>
+                                          )}
+                                          {live.delivery === "cdc" && (
+                                            <p
+                                              style={{
+                                                margin: 0,
+                                                fontSize: "0.75rem",
+                                                color: "var(--text-muted)",
+                                              }}
+                                            >
+                                              CDC connection is inherited from the source. No extra
+                                              per-table config.
+                                            </p>
+                                          )}
+                                          <div>
+                                            <div
+                                              style={{
+                                                fontSize: "0.75rem",
+                                                fontWeight: 600,
+                                                marginBottom: "0.25rem",
+                                              }}
+                                            >
+                                              Outputs
+                                            </div>
+                                            <label
+                                              style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "0.4rem",
+                                                fontWeight: "normal",
+                                              }}
+                                            >
+                                              <input type="checkbox" checked readOnly disabled />
+                                              SSE fanout (always on)
+                                            </label>
+                                            <label
+                                              style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "0.4rem",
+                                                fontWeight: "normal",
+                                              }}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={!!kafkaOut}
+                                                onChange={(e) => {
+                                                  if (e.target.checked) setKafkaOut({});
+                                                  else
+                                                    setLive({
+                                                      outputs: live.outputs.filter(
+                                                        (o) => o.type !== "kafka",
+                                                      ),
+                                                    });
+                                                }}
+                                              />
+                                              Kafka sink
+                                            </label>
+                                            {kafkaOut && (
+                                              <div
+                                                style={{
+                                                  display: "grid",
+                                                  gap: "0.4rem",
+                                                  marginTop: "0.35rem",
+                                                  paddingLeft: "1.4rem",
+                                                }}
+                                              >
+                                                <label>
+                                                  Bootstrap servers
+                                                  <input
+                                                    value={kafkaOut.bootstrapServers ?? ""}
+                                                    placeholder="kafka:9092"
+                                                    onChange={(e) =>
+                                                      setKafkaOut({
+                                                        bootstrapServers: e.target.value,
+                                                      })
+                                                    }
+                                                  />
+                                                </label>
+                                                <label>
+                                                  Topic
+                                                  <input
+                                                    value={kafkaOut.topic ?? ""}
+                                                    onChange={(e) =>
+                                                      setKafkaOut({ topic: e.target.value })
+                                                    }
+                                                  />
+                                                </label>
+                                                <label>
+                                                  Key column
+                                                  <input
+                                                    value={kafkaOut.keyColumn ?? ""}
+                                                    onChange={(e) =>
+                                                      setKafkaOut({
+                                                        keyColumn: e.target.value || null,
+                                                      })
+                                                    }
+                                                  />
+                                                </label>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                </fieldset>
+                              );
+                            })()}
                             {(() => {
                               const NOSQL = new Set(["mongodb", "cassandra"]);
                               const src = sources.find((s) => s.id === editingTable.sourceId);

@@ -22498,3 +22498,155 @@
   stakeholders:
   - data-engineer
   - compliance
+- id: REQ-819
+  status: complete
+  group: 6. Real-Time & Live Data
+  category: Live Delivery Configuration
+  priority: MUST
+  type: behavioral
+  description: >-
+    Per-table live delivery configuration is now configurable via the admin GraphQL API and admin UI
+    (TablesPage). Configuration is persisted on registered_tables.live (JSONB column). Configuration includes:
+    query_id (identifies the live query), watermark_column (tracks delivery progress), poll_interval (frequency
+    in seconds), delivery mode ("poll" or "cdc"), and outputs array (SSE or Kafka sinks). Previously configuration
+    was YAML-only.
+  use_case: >-
+    UI-based configuration makes live delivery settings accessible to non-YAML-fluent operators and enables
+    runtime changes without server restart.
+  code:
+  - provisa/api/admin/types.py
+  - provisa/api/admin/schema.py
+  - provisa/core/repositories/table.py
+  - provisa/core/schema.sql
+  - provisa-ui/src/pages/TablesPage.tsx
+  tests:
+  - tests/integration/test_live_delivery_graphql_api.py
+  since: "2026-07"
+  scenario: |
+    Given the admin GraphQL API for table mutations
+    When updateTable is called with live configuration (query_id, watermark_column, poll_interval, delivery, outputs)
+    Then the configuration is persisted to registered_tables.live and the live engine is notified
+
+    Given the admin UI TablesPage
+    When an operator edits live config for a table
+    Then changes are reflected in the database and take effect without server restart
+  stakeholders:
+  - ops
+  - data-engineer
+- id: REQ-820
+  status: complete
+  group: 6. Real-Time & Live Data
+  category: Live Query Routing
+  priority: MUST
+  type: behavioral
+  description: >-
+    Live poll execution routes through Trino (federated query), not the PostgreSQL connection pool.
+    Any federated SQL source with a watermark column is pollable. The engine's pg_pool is used only
+    for watermark bookkeeping (live_query_state table). This enables polling over remote sources
+    (not just PostgreSQL) via Trino's federation layer.
+  use_case: >-
+    Routing through Trino enables live polling of any federated SQL source (e.g., BigQuery, Snowflake,
+    S3 via Iceberg) without embedding source-specific clients into the live engine.
+  code:
+  - provisa/live/engine.py
+  - provisa/api/app.py
+  tests:
+  - tests/integration/test_live_federated_sources.py
+  since: "2026-07"
+  scenario: |
+    Given a live poll query targeting a federated BigQuery table
+    When the poll interval triggers
+    Then the query executes through Trino (not the PostgreSQL pool)
+    And the watermark is persisted to live_query_state in PostgreSQL
+  stakeholders:
+  - data-engineer
+- id: REQ-821
+  status: complete
+  group: 6. Real-Time & Live Data
+  category: Live Delivery Mechanisms
+  priority: MUST
+  type: constraint
+  description: >-
+    PostgreSQL data is never polled for live delivery. PostgreSQL live delivery uses delivery=cdc
+    (LISTEN/NOTIFY with database triggers). Poll delivery (delivery=poll) is reserved for non-push
+    federated sources reached through Trino. This prevents duplicate load on PostgreSQL replication
+    and uses push mechanisms where available.
+  use_case: >-
+    PostgreSQL's native LISTEN/NOTIFY is more efficient than polling. Restricting poll to federated
+    sources avoids duplicate query load on the primary database.
+  code:
+  - provisa/live/engine.py
+  - provisa/live/cdc_provider.py
+  tests:
+  - tests/integration/test_live_delivery_mechanisms.py
+  since: "2026-07"
+  scenario: |
+    Given a registered table backed by PostgreSQL
+    When live delivery is configured
+    Then delivery must be set to "cdc", not "poll"
+    And a parse-time or runtime validation rejects delivery=poll for PostgreSQL sources
+  stakeholders:
+  - data-engineer
+  - ops
+- id: REQ-822
+  status: complete
+  group: 6. Real-Time & Live Data
+  category: Live Delivery Mechanisms
+  priority: MUST
+  type: constraint
+  description: >-
+    delivery=cdc is restricted to source types with a real push provider in the subscription registry:
+    postgresql (LISTEN/NOTIFY triggers), debezium and kafka (Kafka consumers), mongodb (change streams).
+    All other sources default to delivery=poll. CDC connection config is inherited from the source definition,
+    never per-table. This ensures CDC is only used when a push mechanism is available.
+  use_case: >-
+    Restricting CDC to sources with native push mechanisms prevents attempts to use CDC on sources
+    that don't support it. Connection config inheritance avoids credential duplication per table.
+  code:
+  - provisa/core/subscription_registry.py
+  - provisa/live/cdc_provider.py
+  tests:
+  - tests/integration/test_live_delivery_mechanisms.py
+  since: "2026-07"
+  scenario: |
+    Given a source of type S3 (no native push mechanism)
+    When live delivery config is created with delivery=cdc
+    Then it is rejected or silently downgraded to delivery=poll
+
+    Given a PostgreSQL source with connection credentials
+    When CDC is enabled on any table from that source
+    Then the CDC provider uses the source's connection config, not per-table overrides
+  stakeholders:
+  - data-engineer
+  - ops
+- id: REQ-823
+  status: complete
+  group: 6. Real-Time & Live Data
+  category: Live Delivery Configuration
+  priority: MUST
+  type: behavioral
+  description: >-
+    The LiveEngine reconciles poll jobs from the database at startup and after every admin mutation
+    via _rebuild_schemas(). This ensures that admin-set live config takes effect without server restart.
+    Configuration changes trigger immediate engine reconciliation.
+  use_case: >-
+    Startup reconciliation catches live jobs even if the engine crashes mid-execution. Admin mutations
+    trigger immediate reconciliation so operators see changes reflected in real-time without restart overhead.
+  code:
+  - provisa/live/engine.py
+  - provisa/api/app.py
+  tests:
+  - tests/integration/test_live_engine_reconciliation.py
+  since: "2026-07"
+  scenario: |
+    Given live config stored in registered_tables.live
+    When the LiveEngine starts
+    Then it queries the database for all active live configs and rebuilds poll jobs
+
+    Given live config modified via admin GraphQL API
+    When the mutation completes
+    Then _rebuild_schemas() is called to reconcile the engine immediately
+    And the new poll schedule takes effect without restart
+  stakeholders:
+  - ops
+  - data-engineer

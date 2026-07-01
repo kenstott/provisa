@@ -116,6 +116,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_refresh_interval INTEGER NOT NULL DEFAULT 300;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_aggregates BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_group_by BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS live JSONB;
     ALTER TABLE registered_tables DROP CONSTRAINT IF EXISTS registered_tables_governance_check;
     ALTER TABLE registered_tables ALTER COLUMN governance SET DEFAULT 'pre-approved';
 EXCEPTION WHEN OTHERS THEN NULL;

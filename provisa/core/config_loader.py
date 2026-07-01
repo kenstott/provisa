@@ -675,7 +675,11 @@ def _validate_table_kafka_sinks(config) -> None:
                 raise ValueError(f"Table {table.table_name!r}: unknown kafka_sink trigger {t!r}")
 
 
-_CDC_SUPPORTED_SOURCE_TYPES = {"postgresql", "mysql", "mariadb", "mssql", "oracle"}
+# CDC-capable source types (delivery=cdc) — those with a real push provider in
+# the subscription registry: PostgreSQL (LISTEN/NOTIFY triggers), Debezium and
+# generic Kafka (Kafka consumers), and MongoDB (change streams). Every other
+# source uses delivery=poll (watermark polling routed through Trino).
+_CDC_SUPPORTED_SOURCE_TYPES = {"postgresql", "debezium", "kafka", "mongodb"}
 
 
 def _validate_table_live_delivery(config) -> None:

@@ -25,11 +25,24 @@ vi.mock("react-router-dom", () => ({
 import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../../context/DomainFilterContext", () => ({
-  useDomainFilter: () => ({ checkedDomains: new Set<string>(), domains: [], domainsEnabled: true, setDomains: vi.fn(), selectedDomain: null, setSelectedDomain: vi.fn(), toggleDomain: vi.fn() }),
+  useDomainFilter: () => ({
+    checkedDomains: new Set<string>(),
+    domains: [],
+    domainsEnabled: true,
+    setDomains: vi.fn(),
+    selectedDomain: null,
+    setSelectedDomain: vi.fn(),
+    toggleDomain: vi.fn(),
+  }),
 }));
 
 vi.mock("../../context/AuthContext", () => ({
-  useAuth: () => ({ role: "admin", selectedRoles: ["admin"], capabilities: ["admin"], domainAccess: ["*"] }),
+  useAuth: () => ({
+    role: "admin",
+    selectedRoles: ["admin"],
+    capabilities: ["admin"],
+    domainAccess: ["*"],
+  }),
 }));
 
 vi.mock("../../components/admin/FilterInput", () => ({
@@ -48,7 +61,9 @@ vi.mock("../../api/admin", () => ({
 }));
 
 // Module-level hook spies so tests can assert call args directly.
-const mockUseAvailableSchemas = vi.fn().mockReturnValue({ schemas: ["public", "private"], loading: false });
+const mockUseAvailableSchemas = vi
+  .fn()
+  .mockReturnValue({ schemas: ["public", "private"], loading: false });
 const mockUseAvailableTables = vi.fn().mockReturnValue({
   tables: [
     { name: "customers", comment: "Registered customer accounts" },
@@ -58,12 +73,36 @@ const mockUseAvailableTables = vi.fn().mockReturnValue({
   loading: false,
 });
 const getAvailableColumnsMetadata = vi.fn().mockResolvedValue([
-  { name: "id", dataType: "integer", comment: "Primary key", nativeFilterType: null, isPrimaryKey: true },
-  { name: "name", dataType: "varchar", comment: "Customer name", nativeFilterType: null, isPrimaryKey: false },
+  {
+    name: "id",
+    dataType: "integer",
+    comment: "Primary key",
+    nativeFilterType: null,
+    isPrimaryKey: true,
+  },
+  {
+    name: "name",
+    dataType: "varchar",
+    comment: "Customer name",
+    nativeFilterType: null,
+    isPrimaryKey: false,
+  },
 ]);
 
 const SALES_PG_SOURCE = {
-  id: "sales-pg", type: "postgresql", host: "localhost", port: 5432, database: "sales", username: "admin", dialect: "postgresql", cacheEnabled: false, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "",
+  id: "sales-pg",
+  type: "postgresql",
+  host: "localhost",
+  port: 5432,
+  database: "sales",
+  username: "admin",
+  dialect: "postgresql",
+  cacheEnabled: false,
+  cacheTtl: null,
+  allowedDomains: [],
+  namingConvention: null,
+  path: null,
+  description: "",
 };
 // Mutable so individual tests can override the source list for one render.
 let sourcesData: Array<Record<string, unknown>> = [SALES_PG_SOURCE];
@@ -96,7 +135,8 @@ vi.mock("../../hooks/useAdminQueries", () => ({
   useSources: () => ({ sources: sourcesData, loading: false, refetch: refetchSources }),
   useDomains: () => ({ domains: DOMAINS, loading: false, refetch: refetchDomains }),
   useRoles: () => ({ roles: ROLES, loading: false, refetch: refetchRoles }),
-  useAvailableSchemas: (...args: Parameters<typeof mockUseAvailableSchemas>) => mockUseAvailableSchemas(...args),
+  useAvailableSchemas: (...args: Parameters<typeof mockUseAvailableSchemas>) =>
+    mockUseAvailableSchemas(...args),
   useAvailableTables: (...args: unknown[]) => mockUseAvailableTables(...args),
   useAvailableColumnsMetadataLazy: () => getAvailableColumnsMetadata,
   useGenerateTableDescription: () => ({ generateTableDescription, loading: false }),
@@ -109,6 +149,7 @@ vi.mock("../../hooks/useAdminQueries", () => ({
   usePurgeCacheByTable: () => ({ purgeCacheByTable, loading: false }),
   useInvalidateFileSource: () => ({ invalidateFileSource, loading: false }),
   useDeployViewToDb: () => ({ deployViewToDb, loading: false }),
+  useAllRelationships: () => ({ relationships: [], loading: false, refetch: vi.fn() }),
   useSuggestTableAlias: () => ({
     suggestTableAlias: async (tableName: string) => tableName,
     loading: false,
@@ -121,7 +162,7 @@ function renderPage() {
   return render(
     <MemoryRouter>
       <TablesPage />
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 }
 
@@ -140,8 +181,20 @@ function resetSpies() {
     loading: false,
   });
   getAvailableColumnsMetadata.mockResolvedValue([
-    { name: "id", dataType: "integer", comment: "Primary key", nativeFilterType: null, isPrimaryKey: true },
-    { name: "name", dataType: "varchar", comment: "Customer name", nativeFilterType: null, isPrimaryKey: false },
+    {
+      name: "id",
+      dataType: "integer",
+      comment: "Primary key",
+      nativeFilterType: null,
+      isPrimaryKey: true,
+    },
+    {
+      name: "name",
+      dataType: "varchar",
+      comment: "Customer name",
+      nativeFilterType: null,
+      isPrimaryKey: false,
+    },
   ]);
 }
 
@@ -279,7 +332,21 @@ describe("Schema population — source type routing", () => {
 
   it("auto-selects single schema returned by backend for fixed-schema sources", async () => {
     sourcesData = [
-      { id: "my-gql", type: "graphql", host: "", port: 0, database: "", username: "", dialect: "graphql", cacheEnabled: false, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
+      {
+        id: "my-gql",
+        type: "graphql",
+        host: "",
+        port: 0,
+        database: "",
+        username: "",
+        dialect: "graphql",
+        cacheEnabled: false,
+        cacheTtl: null,
+        allowedDomains: [],
+        namingConvention: null,
+        path: null,
+        description: "",
+      },
     ];
     mockUseAvailableSchemas.mockReturnValue({ schemas: ["default"], loading: false });
 
@@ -299,7 +366,21 @@ describe("Schema population — source type routing", () => {
 
   it("auto-selects single schema returned by backend for kafka sources", async () => {
     sourcesData = [
-      { id: "my-kafka", type: "kafka", host: "", port: 0, database: "", username: "", dialect: "kafka", cacheEnabled: false, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
+      {
+        id: "my-kafka",
+        type: "kafka",
+        host: "",
+        port: 0,
+        database: "",
+        username: "",
+        dialect: "kafka",
+        cacheEnabled: false,
+        cacheTtl: null,
+        allowedDomains: [],
+        namingConvention: null,
+        path: null,
+        description: "",
+      },
     ];
     mockUseAvailableSchemas.mockReturnValue({ schemas: ["default"], loading: false });
 

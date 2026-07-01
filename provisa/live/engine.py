@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -59,18 +59,46 @@ class _LiveJob:
     fanout: SSEFanout
     kafka_outputs: list[KafkaSinkOutput]
     scheduler_job_id: str = ""
+    signature: tuple = ()
+
+
+@dataclass
+class LiveSpec:  # REQ-565
+    """Declarative desired-state for one live poll job (used by reconcile)."""
+
+    query_id: str
+    sql: str
+    watermark_column: str
+    poll_interval: int = 10
+    kafka_outputs: list[dict] = field(default_factory=list)
+
+    def signature(self) -> tuple:
+        return (
+            self.sql,
+            self.watermark_column,
+            self.poll_interval,
+            tuple(
+                (k.get("bootstrap_servers"), k.get("topic"), k.get("key_column"))
+                for k in self.kafka_outputs
+            ),
+        )
 
 
 class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
     """APScheduler-backed live query engine.
 
     Args:
-        pg_pool: asyncpg connection pool for watermark persistence and query
-                 execution (queries run via direct PG route).
+        pg_pool: asyncpg connection pool used ONLY for watermark bookkeeping
+                 (``live_query_state``). Data polls never hit this pool.
+        trino_conn: Trino DBAPI connection used to execute every data poll.
+                 Routing through Trino makes any federated source pollable —
+                 PostgreSQL sources use ``delivery=cdc`` (LISTEN/NOTIFY) and are
+                 never polled here.
     """
 
-    def __init__(self, pg_pool) -> None:
+    def __init__(self, pg_pool, trino_conn=None) -> None:
         self._pg_pool = pg_pool
+        self._trino_conn = trino_conn
         self._jobs: dict[str, _LiveJob] = {}
         self._scheduler = None
 
@@ -101,6 +129,7 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
         watermark_column: str,
         poll_interval: int,
         kafka_outputs: list | None = None,
+        signature: tuple = (),
     ) -> None:
         """Register a live query for polling.
 
@@ -110,6 +139,7 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
             watermark_column: column whose MAX value is tracked as watermark.
             poll_interval: seconds between polls.
             kafka_outputs: list of KafkaSinkOutput instances to receive rows.
+            signature: opaque config fingerprint used by reconcile() to detect changes.
         """
         if query_id in self._jobs:
             log.debug("[LIVE ENGINE] query %s already registered", query_id)
@@ -123,6 +153,7 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
             poll_interval=poll_interval,
             fanout=fanout,
             kafka_outputs=kafka_outputs or [],
+            signature=signature,
         )
         self._jobs[query_id] = job
 
@@ -137,6 +168,37 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
             )
             job.scheduler_job_id = sched_job.id
             log.info("[LIVE ENGINE] registered query %s (interval=%ds)", query_id, poll_interval)
+
+    def reconcile(self, specs: list[LiveSpec]) -> None:  # REQ-565
+        """Drive engine poll jobs to match *specs* (desired state from the DB).
+
+        Registers new jobs, unregisters removed ones, and re-registers a job
+        whose config fingerprint changed. Unchanged jobs are left untouched so
+        their SSE subscribers are preserved. CDC-delivered tables are handled by
+        subscription providers, not here — callers pass poll jobs only.
+        """
+        desired = {s.query_id: s for s in specs}
+        for qid in list(self._jobs):
+            if qid not in desired:
+                self.unregister(qid)
+        for qid, spec in desired.items():
+            sig = spec.signature()
+            existing = self._jobs.get(qid)
+            if existing is not None and existing.signature == sig:
+                continue
+            if existing is not None:
+                self.unregister(qid)
+            kouts = [
+                KafkaSinkOutput(
+                    bootstrap_servers=k["bootstrap_servers"],
+                    topic=k["topic"],
+                    key_column=k.get("key_column"),
+                )
+                for k in spec.kafka_outputs
+            ]
+            self.register(
+                qid, spec.sql, spec.watermark_column, spec.poll_interval, kouts, signature=sig
+            )
 
     def unregister(self, query_id: str) -> None:  # REQ-565
         """Remove a live query from the engine."""
@@ -174,29 +236,40 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
         try:
             from provisa.live.watermark import get_watermark, set_watermark
 
+            # Watermark bookkeeping lives in PG (live_query_state), independent of
+            # where the data query runs.
             async with self._pg_pool.acquire() as conn:
-                # Get per-output watermarks
                 sse_watermark = await get_watermark(conn, query_id, "sse")
                 kafka_watermark = (
                     await get_watermark(conn, query_id, "kafka") if job.kafka_outputs else None
                 )
 
-                # Use the earliest watermark as the query lower bound
-                watermarks = [w for w in [sse_watermark, kafka_watermark] if w is not None]
-                query_watermark = min(watermarks) if watermarks else None
+            # Use the earliest watermark as the query lower bound
+            watermarks = [w for w in [sse_watermark, kafka_watermark] if w is not None]
+            query_watermark = min(watermarks) if watermarks else None
 
-                incremental_sql = _build_incremental_sql(
-                    job.sql,
-                    job.watermark_column,
-                    query_watermark,
-                )
+            incremental_sql = _build_incremental_sql(
+                job.sql,
+                job.watermark_column,
+                query_watermark,
+            )
 
-                rows_raw = await conn.fetch(incremental_sql)
-                if not rows_raw:
-                    return
+            # Data poll always routes through Trino (federated). execute_trino is
+            # blocking, so run it off the event loop.
+            if self._trino_conn is None:
+                raise RuntimeError("LiveEngine has no Trino connection for polling")
+            from provisa.executor.trino import execute_trino
 
-                rows = [dict(r) for r in rows_raw]
-                max_val = max(str(r.get(job.watermark_column, "")) for r in rows)
+            _trino_conn = self._trino_conn
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None, lambda: execute_trino(_trino_conn, incremental_sql)
+            )
+            if not result.rows:
+                return
+
+            rows = [dict(zip(result.column_names, r)) for r in result.rows]
+            max_val = max(str(r.get(job.watermark_column, "")) for r in rows)
 
             # Deliver to outputs independently (neither blocks the other)
             async def _deliver_sse():
