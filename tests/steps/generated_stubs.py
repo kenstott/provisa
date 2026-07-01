@@ -5142,3 +5142,73 @@ def step_and_results_are_executed_and_returned_as_bolt_structures_nodes_r():
 @then("response is serialized via PackStream and framed for TCP")
 def step_and_response_is_serialized_via_packstream_and_framed_for_tcp():
     pytest.skip("step not implemented: response is serialized via PackStream and framed for TCP")
+
+# REQ-809
+@given("a PG-style query containing a correlated scalar subquery")
+def step_given_a_pg_style_query_containing_a_correlated_scalar_subquery():
+    pytest.skip("step not implemented: a PG-style query containing a correlated scalar subquery")
+
+# REQ-809
+@when("the query is transpiled to Trino SQL")
+def step_when_the_query_is_transpiled_to_trino_sql():
+    pytest.skip("step not implemented: the query is transpiled to Trino SQL")
+
+# REQ-809
+@then("the correlated subquery is lifted into a CTE joined on the correlation key")
+def step_then_the_correlated_subquery_is_lifted_into_a_cte_joined_on_the_c():
+    pytest.skip("step not implemented: the correlated subquery is lifted into a CTE joined on the c")
+
+# REQ-809
+@then("the forwarded SQL contains no correlated scalar subquery")
+def step_and_the_forwarded_sql_contains_no_correlated_scalar_subquery():
+    pytest.skip("step not implemented: the forwarded SQL contains no correlated scalar subquery")
+
+# REQ-810
+@given("a materialized view covering a subset of a query's joins")
+def step_given_a_materialized_view_covering_a_subset_of_a_query_s_joins():
+    pytest.skip("step not implemented: a materialized view covering a subset of a query's joins")
+
+# REQ-810
+@then("the joins covered by the MV are rewritten to read the MV")
+def step_then_the_joins_covered_by_the_mv_are_rewritten_to_read_the_mv():
+    pytest.skip("step not implemented: the joins covered by the MV are rewritten to read the MV")
+
+# REQ-810
+@then("the joins not covered by the MV are preserved and executed live")
+def step_and_the_joins_not_covered_by_the_mv_are_preserved_and_executed_l():
+    pytest.skip("step not implemented: the joins not covered by the MV are preserved and executed l")
+
+# REQ-811
+@given("a GraphQL query annotated with the comment hint \"# @provisa route=direct\"")
+def step_given_a_graphql_query_annotated_with_the_comment_hint_provisa_rout():
+    pytest.skip("step not implemented: a GraphQL query annotated with the comment hint \"# @provisa ")
+
+# REQ-811
+@then("the query is routed to single-source direct execution")
+def step_then_the_query_is_routed_to_single_source_direct_execution():
+    pytest.skip("step not implemented: the query is routed to single-source direct execution")
+
+# REQ-811
+@then("a query annotated with \"# @provisa route=federated\" is routed through the federation engine")
+def step_and_a_query_annotated_with_provisa_route_federated_is_routed_thr():
+    pytest.skip("step not implemented: a query annotated with \"# @provisa route=federated\" is route")
+
+# REQ-812
+@given("a subscription request with the header \"X-Provisa-Sink\" set to a Kafka target")
+def step_given_a_subscription_request_with_the_header_x_provisa_sink_set_to():
+    pytest.skip("step not implemented: a subscription request with the header \"X-Provisa-Sink\" set ")
+
+# REQ-812
+@when("the request is accepted")
+def step_when_the_request_is_accepted():
+    pytest.skip("step not implemented: the request is accepted")
+
+# REQ-812
+@then("the response status is 202 Accepted")
+def step_then_the_response_status_is_202_accepted():
+    pytest.skip("step not implemented: the response status is 202 Accepted")
+
+# REQ-812
+@then("subscription change events are delivered to the Kafka sink instead of an SSE stream")
+def step_and_subscription_change_events_are_delivered_to_the_kafka_sink_i():
+    pytest.skip("step not implemented: subscription change events are delivered to the Kafka sink i")

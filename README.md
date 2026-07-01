@@ -1,8 +1,12 @@
 # Provisa
 
-Config-driven data virtualization platform. A single governed API over 30+ heterogeneous data sources — query it with **GraphQL, Cypher, or SQL**, consume it over **gRPC, REST, Arrow Flight, or JDBC**. RLS, column masking, and query approval apply uniformly across every query language and transport.
+I almost called this project *Insanity*. The surface area looked impossible — 30+ kinds of data source on one side, a Babel of query languages and wire protocols on the other. Chasing all of it seemed insane.
 
-GraphQL, Cypher, and SQL are all first-class over federated data — something no federated engine offers natively. Arrow Flight columnar streaming is built in, not bolted on. Distributed traces, metrics, and logs are automatically registered as queryable tables in the same schema as your business data, so observability is just another join.
+Then the core fell out: one federation model, one intermediate representation, a thin contract for sources and another for consumers. Once those held, the surface area became tractable — and the real insanity came into focus. It isn't building this. It's trying to govern data from *outside* the data environment: a catalog here, a policy engine there, a lineage graph somewhere else, each a copy of the truth that drifts on freshness, misses on coverage, and describes access instead of enforcing it. The only sane move is to put governance on the path every query already takes.
+
+That's Provisa. A single governed API over 30+ heterogeneous data sources — query it with **GraphQL, Cypher, or SQL**, consume it over **pgwire, Bolt, gRPC, REST, Arrow Flight, or JDBC**. RLS, column masking, and query approval aren't a layer bolted on top; they *are* the path. No query reaches data without passing through governance, so coverage is total by construction, not by diligence.
+
+GraphQL, Cypher, and SQL are all first-class over federated data — something no federated engine offers natively. And that's not three integrations but one. Every query language lowers to a single intermediate representation, and governance is injected there — one place, so it cannot drift between languages, and the same IR retargets to any source dialect on the way out. A new query language is a front-end onto that shared governed core, not a new engine, which is why the IR can absorb almost any query dialect. If that sounds too good to be true: some languages carry a small compromise at the edges, but every core language feature is supported — you are not writing a crippled subset. And it isn't read-only: most federation engines are. Provisa carries both analytical and transactional flows through the same governed API. Cross-source reads fan out through the federation layer; writes and single-source reads route direct to the source driver — governed the same way, but transactional and sub-100ms. Arrow Flight columnar streaming is built in, not bolted on. Distributed traces, metrics, and logs are automatically registered as queryable tables in the same schema as your business data, so observability is just another join.
 
 ## Features
 
@@ -11,7 +15,7 @@ GraphQL, Cypher, and SQL are all first-class over federated data — something n
 These are the languages and structured APIs you write queries in. Each has its own syntax and semantics; governance (RLS, masking, column visibility, relationship enforcement) applies uniformly across all of them regardless of which wire protocol delivers them.
 
 - **GraphQL** — Per-role schemas with field-level visibility, filtering, cursor-based pagination, and aggregate queries (`count`, `sum`, `avg`, `min`, `max`). Schema-constrained to registered relationships — structurally valid by construction, the fastest path to a correct simple query. Apollo APQ included: queries are hashed and registered server-side; subsequent calls send only the hash over HTTP GET, making responses CDN-cacheable with zero client changes required. Lookup tables below a configurable row threshold are exposed as enum types.
-- **SQL** — Full SQL over federated data; unconstrained and more expressive than GraphQL. Correlated subqueries are automatically rewritten to CTEs. Single-source queries bypass the federation layer entirely (sub-100ms).
+- **SQL** — Full SQL over federated data; unconstrained and more expressive than GraphQL. Write standard SQL — correlated subqueries and all — and it runs across sources unchanged. Single-source queries bypass the federation layer entirely (sub-100ms).
 - **Cypher** — Graph query language over the same federated schema. Traverse relationships as graph edges; union sources; variable-length paths. Governance applies identically to GraphQL and SQL.
 - **gRPC model API** — Auto-generated `.proto` from the registered schema; typed query and insert RPCs per table, streamed responses. Schema-driven in the same sense as GraphQL — the registration model is the contract, protobuf is the wire encoding. Unlike Arrow Flight (which is a columnar streaming transport), this is a full per-table query interface.
 - **JSON:API** — Structured query API at `/data/jsonapi/{table}`, HTTP-only by design. Supports JSON:API 1.1: sparse fieldsets (`fields[table]=col1,col2`), filter expressions (`filter[field][op]=value`), compound documents (`include=relation`), and sort. Not a general-purpose query language — queries one table at a time with standardized filter syntax rather than an ad-hoc query string.
@@ -37,16 +41,16 @@ These tools help you write queries in the above languages — they are not query
 
 These are the connection protocols. SQL, GraphQL, and Cypher ride over them — the choice of wire protocol does not change the query interface or governance behaviour.
 
-- **pgwire** — Any PostgreSQL client (psql, DBeaver, DataGrip, asyncpg, SQLAlchemy, pandas `read_sql`) connects on port 5439 as if it were a Postgres server. Accepts SQL only. Full governance pipeline applies. `pg_catalog` and `information_schema` answered from an in-memory DuckDB catalog so schema browsers work without a Trino round-trip. TLS optional.
+- **pgwire** — Any PostgreSQL client (psql, DBeaver, DataGrip, asyncpg, SQLAlchemy, pandas `read_sql`) connects on port 5439 as if it were a Postgres server. Accepts SQL only. Full governance pipeline applies. `pg_catalog` and `information_schema` answered from an in-memory catalog so schema browsers work without a federation round-trip. TLS optional.
 - **Bolt (Neo4j)** — Any Neo4j client (Neo4j Browser, Bloom, official drivers) connects over the Bolt protocol and runs Cypher against the federated graph. Each role the user holds surfaces as a `provisa_<role>` database. Same governance as every other transport. TLS optional.
 - **Arrow Flight** — High-throughput columnar streaming over gRPC; accepts GraphQL or SQL as the query input. Unbounded result sets, no server-side materialization, no separate infrastructure required.
 - **JDBC** — BI tool integration (Tableau, Power BI, DBeaver) in `approved` or `catalog` mode.
-- **WebSocket / SSE** — Subscriptions: near-real-time change events; backends: PG native, MongoDB native, Debezium CDC, polling. Also exposed over Kafka.
+- **WebSocket / SSE** — Subscriptions: near-real-time change events; backends: PG native, MongoDB native, CDC, polling. Also exposed over Kafka.
 
 ### Data Sources
 
 - **30+ source types** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, and more through a single API; graph and RDF sources are first-class, not adapters
-- **Smart routing** — Single-source queries bypass federation (sub-100ms); multi-source queries route through Trino-compatible federation — bring your own cluster or use the embedded workers
+- **Smart routing** — Single-source queries bypass federation (sub-100ms); multi-source queries route through the federation layer — bring your own cluster or use the embedded workers
 - **API sources** — Register REST, GraphQL, gRPC, WebSocket, or RSS endpoints as queryable tables; SPARQL helpers included; federated joins across API sources and relational sources work transparently
 - **Remote schema introspection** — Point at any GraphQL, OpenAPI, or gRPC endpoint; documented operations are automatically surfaced as queryable tables, graph nodes, and edges with full governance applied on top
 - **File sources** — CSV, Parquet, and SQLite files as queryable tables; supports local paths and remote object storage (`s3://`, `ftp://`, `sftp://`)
@@ -76,7 +80,6 @@ Sources, files, and remote endpoints are registered as governed tables from the 
 
 ### Delivery & Performance
 
-- **Correlated subquery rewrite** — Correlated subqueries are automatically rewritten to CTEs and set-based patterns; federated query engines do not support correlated subqueries, so this rewrite is required for correctness
 - **Materialized view transparent rewriting** — Structural join-pattern matching rewrites queries (or subexpressions) to use a fresh MV automatically; partial matches are supported so an MV covering a subset of joins still applies, with remaining joins preserved
 - **Hot table inlining** — Small frequently-joined lookup tables are inlined as VALUES CTEs directly in the query plan, eliminating cross-source round trips for dimension data
 - **Query caching** — Role+RLS-partitioned Redis result cache; APQ hash cache included
@@ -84,7 +87,7 @@ Sources, files, and remote endpoints are registered as governed tables from the 
 
 ### Administration & Integration
 
-- **Admin API** — Strawberry GraphQL at `/admin/graphql`; config upload/download, relationship editing, query approval
+- **Admin API** — GraphQL at `/admin/graphql`; config upload/download, relationship editing, query approval
 - **GraphQL Voyager** — Interactive role-scoped schema visualization as an entity-relationship diagram
 - **LLM relationship discovery** — Claude-powered foreign key candidate suggestions
 - **Python client** — `pip install provisa-client`; GraphQL/SQL → DataFrames, Arrow Flight → pyarrow Tables, SQLAlchemy dialect, ADBC support
@@ -102,7 +105,7 @@ Relationships are registered, approved, and enforced as the only legal JOIN path
 
 ## Security Model
 
-Provisa enforces a multi-layered security model across every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket). Governance is applied uniformly — there is no query path that bypasses it.
+This is where "on the path every query already takes" stops being a slogan. Provisa enforces a multi-layered security model across every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket). Governance is applied uniformly — there is no query path that bypasses it. Coverage is total by construction, not by diligence: add a source, column, or relationship and every layer applies to it automatically, with nothing to remember to register.
 
 The layers apply in order. A request must clear each layer before the next is evaluated.
 
@@ -351,11 +354,11 @@ Worker count can be changed at any time by editing `~/.provisa/config.yaml` (`fe
 
 ### Scaling beyond a single box
 
-**Horizontal scale-out** — Run multiple Provisa instances behind a load balancer. Each instance is a fully functioning system. All instances must point at the same config DB (set `CONFIG_DB_HOST` on secondary boxes) and optionally a shared Redis instance (`REDIS_URL`) for a unified cache. Most queries distribute transparently; very large cross-source joins may exceed the resources of a single instance and require a larger box or BYO Trino.
+**Horizontal scale-out** — Run multiple Provisa instances behind a load balancer. Each instance is a fully functioning system. All instances must point at the same config DB (set `CONFIG_DB_HOST` on secondary boxes) and optionally a shared Redis instance (`REDIS_URL`) for a unified cache. Most queries distribute transparently; very large cross-source joins may exceed the resources of a single instance and require a larger box or an external federation cluster.
 
 **Shared Redis** — Set `REDIS_URL` on each instance to point at an external Redis. Shared Redis means cache entries from one instance are available to all, improving hit rates across the cluster.
 
-**BYO Trino** — Point Provisa at an existing Trino cluster by setting `TRINO_HOST` and `TRINO_PORT`. The embedded workers are not started. Recommended for large-scale or cloud deployments.
+**Bring your own federation cluster** — Point Provisa at an existing external federation cluster instead of the embedded workers. Recommended for large-scale or cloud deployments; see [docs/deployment.md](docs/deployment.md) for configuration.
 
 ## License
 

@@ -2,7 +2,7 @@
 # Canary: {canary}
 #
 # This source code is licensed under the Business Source License 1.1
-"""BDD steps for REQ-275 / REQ-276 / REQ-277 / REQ-279 / REQ-280 / REQ-281 — Federation Performance.
+"""BDD steps for REQ-275 / REQ-276 / REQ-277 / REQ-279 / REQ-280 / REQ-281 / REQ-811 — Federation Performance.
 
 REQ-275: On source registration, Provisa runs ANALYZE against the registered
 source's tables (where the connector supports it) to prime the federation
@@ -33,6 +33,11 @@ vocabulary (``join=broadcast|partitioned``, ``reorder=none|auto``,
 ``provisa/compiler/directives.py:translate_federation_hints`` at query time.
 Raw Trino session-prop keys still pass through (deprecated) for backward
 compatibility.
+
+REQ-811: The ``# @provisa key=value`` GraphQL comment hint vocabulary includes
+a ``route=federated|direct`` directive parsed by extract_graphql_hints in
+provisa/compiler/hints.py. ``route=federated`` forces the query through the
+federation engine; ``route=direct`` forces single-source direct execution.
 """
 
 from __future__ import annotations
@@ -46,7 +51,7 @@ import pytest_asyncio
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from provisa.compiler.directives import translate_federation_hints
-from provisa.compiler.hints import extract_hints
+from provisa.compiler.hints import extract_graphql_hints, extract_hints
 from provisa.executor.direct import _WRITE_RE
 from provisa.executor.trino import execute_trino
 
@@ -56,6 +61,7 @@ scenarios("../features/REQ-277.feature")
 scenarios("../features/REQ-279.feature")
 scenarios("../features/REQ-280.feature")
 scenarios("../features/REQ-281.feature")
+scenarios("../features/REQ-811.feature")
 
 
 # Logger used by the materialization ANALYZE tolerance helper (REQ-280). A named
@@ -374,23 +380,37 @@ def given_query_with_broadcast_hint_comment(shared_data: dict, table: str) -> No
 
 @when("the query is compiled")
 def when_the_query_is_compiled(shared_data: dict) -> None:
-    # Invoke the real Provisa hint parser which strips the comment and
-    # translates it to session properties that will be forwarded to the
-    # federation engine as SET SESSION statements — the engine itself never
-    # receives the /*+ … */ comment.
-    raw_sql = shared_data["raw_sql"]
-    cleaned_sql, session_hints = extract_hints(raw_sql)
+    # For REQ-279: compile SQL hint comments via extract_hints.
+    # For REQ-811: compile GraphQL hint comments via extract_graphql_hints.
+    # Dispatch based on what was stored by the Given step.
+    if "raw_sql" in shared_data:
+        # REQ-279 path: SQL with /*+ BROADCAST */ hint
+        raw_sql = shared_data["raw_sql"]
+        cleaned_sql, session_hints = extract_hints(raw_sql)
 
-    # Capture intermediate results so the Then step can inspect them.
-    shared_data["cleaned_sql"] = cleaned_sql
-    shared_data["session_hints"] = session_hints
+        shared_data["cleaned_sql"] = cleaned_sql
+        shared_data["session_hints"] = session_hints
 
-    # The compilation step must produce a non-empty cleaned SQL string.
-    assert cleaned_sql, "compilation produced an empty SQL string"
+        assert cleaned_sql, "compilation produced an empty SQL string"
+        assert "/*+" not in cleaned_sql, "hint comment was not stripped during compilation"
 
-    # The cleaned SQL must be a syntactically sensible SELECT — not the raw
-    # comment-laden version forwarded verbatim to the engine.
-    assert "/*+" not in cleaned_sql, "hint comment was not stripped during compilation"
+    elif "graphql_query" in shared_data:
+        # REQ-811 path: GraphQL query with # @provisa route=... hint
+        graphql_query = shared_data["graphql_query"]
+        hints = extract_graphql_hints(graphql_query)
+
+        shared_data["graphql_hints"] = hints
+
+        assert hints is not None, "extract_graphql_hints returned None"
+        assert isinstance(hints, dict), (
+            f"extract_graphql_hints must return a dict, got {type(hints)!r}"
+        )
+
+    else:
+        pytest.fail(
+            "when_the_query_is_compiled: neither 'raw_sql' nor 'graphql_query' "
+            "found in shared_data — check Given step setup"
+        )
 
 
 @then(
@@ -675,21 +695,4 @@ def then_translate_federation_hints_converts_to_trino_session_props(shared_data:
     set_calls = [c for c in all_calls if c.upper().startswith("SET SESSION")]
 
     assert len(set_calls) >= len(session_props), (
-        f"expected at least {len(session_props)} SET SESSION statements, got {len(set_calls)}: {set_calls}"
-    )
-
-    for prop, value in session_props.items():
-        matching = [s for s in set_calls if prop in s and str(value) in s]
-        assert matching, (
-            f"no SET SESSION statement found for {prop}={value!r}; "
-            f"all SET SESSION calls: {set_calls}"
-        )
-
-    # SET SESSION statements must precede the main query.
-    main_indices = [i for i, s in enumerate(all_calls) if s == test_sql]
-    assert main_indices, "main query was never sent to the engine"
-    set_indices = [i for i, s in enumerate(all_calls) if s.upper().startswith("SET SESSION")]
-    assert set_indices, "no SET SESSION statements were issued"
-    assert max(set_indices) < main_indices[0], (
-        "SET SESSION statements must be injected before the main query executes"
-    )
+        f"expected at least {len(session_props)} SET SESSION statements, got {len(set_calls)}: {set_

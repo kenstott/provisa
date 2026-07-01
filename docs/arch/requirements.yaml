@@ -6166,10 +6166,10 @@
   type: structural
   description: File-based sources (`csv`, `parquet`, `sqlite`) use the `path` config field instead of
     `host`/`port` connection parameters. The `path` may be a local filesystem path or an fsspec-supported
-    remote object-storage URL (`s3://`, `ftp://`, `sftp://`); the crawler detects fsspec URIs via
-    `fsspec.core.url_to_fs` and walks them the same way as local directories.
-  use_case: File path config for file-based sources lets stewards register local files and remote
-    object-storage files as governed tables using the same config structure as network-connected sources.
+    remote object-storage URL (`s3://`, `ftp://`, `sftp://`); the crawler detects fsspec URIs via `fsspec.core.url_to_fs`
+    and walks them the same way as local directories.
+  use_case: File path config for file-based sources lets stewards register local files and remote object-storage
+    files as governed tables using the same config structure as network-connected sources.
   code:
   - provisa/core/models.py
   - provisa/file_source/source.py
@@ -19174,8 +19174,8 @@
   priority: MUST
   type: constraint
   description: check_cache and store_result in provisa/cache/middleware.py pass tenant_id (org_id) through
-    to RedisCacheStore.get/set, so the per-tenant cache key prefix implemented in the store is applied at
-    the call site and multi-tenant cache key isolation is active for query result caching.
+    to RedisCacheStore.get/set, so the per-tenant cache key prefix implemented in the store is applied
+    at the call site and multi-tenant cache key isolation is active for query result caching.
   use_case: Tenant-prefixed cache keys at the middleware layer ensure one tenant's cached query results
     can never be returned to another tenant.
   code:
@@ -21813,27 +21813,34 @@
   type: ui
   description: Browser-based gRPC Explorer UI page at /grpc allows interactive query execution against
     gRPC service methods. Proto schema displayed inline, request bodies edited as JSON, responses rendered
-    as JSON. Method selection filters by operation type (query vs mutation). Auto-selects first query method
-    on navigation.
+    as JSON. Method selection filters by operation type (query vs mutation). Auto-selects first query
+    method on navigation.
   use_case: Developers can explore and test gRPC queries without native gRPC client tools, using the same
     governance pipeline as the gRPC servicer.
   code:
   - provisa/api/data/endpoint_grpc_proxy.py
   - provisa-ui/src/pages/GrpcPage.tsx
   since: 2026-06
-  scenario: |
-    Given a role with read access to a table
+  scenario: 'Given a role with read access to a table
+
     When navigating to /grpc
+
     Then the proto schema is fetched and parsed
+
     And methods are grouped by operation type (query vs mutation)
+
     And selecting a method displays a JSON request template
+
     And submitting a request routes through /data/grpc/{TypeName} endpoint
+
     And response is rendered as formatted JSON
+
+    '
   integration_test: not_required
   integration_test_reason: UI-only; backend proxy compilation and governance tested under REQ-803.
   e2e: true
-  e2e_reason: UI interaction with proto parsing, method selection, request submission, and response
-    rendering requires live browser execution.
+  e2e_reason: UI interaction with proto parsing, method selection, request submission, and response rendering
+    requires live browser execution.
   tests:
   - provisa-ui/e2e/grpc-explorer.spec.ts
   stakeholders:
@@ -21854,15 +21861,23 @@
   - provisa/api/jsonapi/spec.py
   - provisa-ui/src/pages/JsonApiPage.tsx
   since: 2026-06
-  scenario: |
-    Given a role with read access to tables across multiple domains
+  scenario: 'Given a role with read access to tables across multiple domains
+
     When navigating to /jsonapi
+
     Then tables are listed grouped by domain
+
     And selecting a table allows field selection and include (relationship) selection
+
     And filter/sort/pagination controls compose a query URL
+
     And executing the query fetches from /data/jsonapi/{domain}/{table}
+
     And response is rendered in summary view (resource cards) or raw JSON
+
     And pagination links (first, prev, next, last) are clickable
+
+    '
   integration_test: not_required
   integration_test_reason: UI-only; JSON:API endpoint and spec generation tested under REQ-805.
   e2e: true
@@ -21888,15 +21903,23 @@
   - provisa/api/rest/openapi_spec.py
   - provisa-ui/src/pages/OpenApiPage.tsx
   since: 2026-06
-  scenario: |
-    Given a role with governance applied to REST endpoints
+  scenario: 'Given a role with governance applied to REST endpoints
+
     When navigating to /openapi
+
     Then Swagger UI loads the /data/rest/docs spec
+
     And per-table paths are visible with parameter documentation
+
     And optional autoRun navigation targets a specific method+path
+
     And the opblock is scrolled into view and expanded
+
     And try-it-out is activated and execute is clicked
+
     Then response is displayed in Swagger UI
+
+    '
   integration_test: not_required
   integration_test_reason: UI-only iframe embed; spec generation tested under REQ-804.
   e2e: true
@@ -21913,9 +21936,9 @@
   priority: MUST
   type: behavioral
   description: Bolt protocol (Neo4j binary protocol) TCP server at port 5251 accepts Cypher queries and
-    mutations, transpiles through Provisa query pipeline (compile, govern, route, execute). PackStream codec
-    encodes/decodes scalars, lists, dicts, nodes, relationships, and messages. Framing layer chunks messages
-    for TCP transport.
+    mutations, transpiles through Provisa query pipeline (compile, govern, route, execute). PackStream
+    codec encodes/decodes scalars, lists, dicts, nodes, relationships, and messages. Framing layer chunks
+    messages for TCP transport.
   use_case: Neo4j-compatible clients (DBeaver, Cypher shells, drivers) can execute Cypher queries against
     Provisa schema with full governance applied, expanding query language surface beyond GraphQL/SQL/gRPC/REST.
   code:
@@ -21930,17 +21953,24 @@
   - tests/integration/test_bolt_server.py
   - tests/e2e/test_bolt_cypher.py
   since: 2026-06
-  scenario: |
-    Given a Cypher client connecting to Bolt port 5251
+  scenario: 'Given a Cypher client connecting to Bolt port 5251
+
     When the client sends Cypher query "MATCH (n:Person) RETURN n"
+
     Then the server accepts the handshake (magic + version negotiation)
+
     And the query is transpiled to SQL via WriteTranslator
+
     And governance (RLS, masking, visibility) is applied at compile time
+
     And results are executed and returned as Bolt structures (nodes, relationships)
+
     And response is serialized via PackStream and framed for TCP
+
+    '
   integration_test: required
-  integration_test_reason: Bolt handshake, query compilation, governance application, and PackStream
-    serialization require live Bolt client and backend state interaction.
+  integration_test_reason: Bolt handshake, query compilation, governance application, and PackStream serialization
+    require live Bolt client and backend state interaction.
   e2e: false
   e2e_reason: Bolt is a TCP binary protocol with no browser surface; full Cypher→SQL pipeline verified
     by live-client integration test (tests/integration/test_bolt_server.py).
@@ -21953,25 +21983,34 @@
   category: Protocol Support
   priority: MUST
   type: structural
-  description: HTTP→gRPC proxy endpoint POST /data/grpc/{TypeName} translates JSON request body into
-    GraphQL query using the gRPC schema, compiles and executes through the full query pipeline, returns
-    JSON rows. Supports read_mask with dot-notation for field filtering and native filter args (path_param,
-    query_param) from request body["filter"].
+  description: HTTP→gRPC proxy endpoint POST /data/grpc/{TypeName} translates JSON request body into GraphQL
+    query using the gRPC schema, compiles and executes through the full query pipeline, returns JSON rows.
+    Supports read_mask with dot-notation for field filtering and native filter args (path_param, query_param)
+    from request body["filter"].
   use_case: Browser-based gRPC Explorer and programmatic gRPC clients can query via HTTP+JSON without
-    requiring native gRPC/Protobuf tooling, while applying the same governance and backend routing as native
-    gRPC.
+    requiring native gRPC/Protobuf tooling, while applying the same governance and backend routing as
+    native gRPC.
   code:
   - provisa/api/data/endpoint_grpc_proxy.py
   since: 2026-06
-  scenario: |
-    Given a gRPC type "Pets" with Query method and fields (id, name, age, owner)
-    When POST /data/grpc/Pets with body {filter: {owner: "Alice"}, limit: 20, read_mask: {paths: ["name", "age"]}}
+  scenario: 'Given a gRPC type "Pets" with Query method and fields (id, name, age, owner)
+
+    When POST /data/grpc/Pets with body {filter: {owner: "Alice"}, limit: 20, read_mask: {paths: ["name",
+    "age"]}}
+
     Then the type is resolved to GraphQL field name (pascal→snake)
+
     And field selections are built for scalars (and scalar sub-fields for nested types)
+
     And read_mask paths filter top-level and nested fields
+
     And native filter args are extracted from body["filter"]
+
     And GraphQL query is compiled and executed with governance
+
     Then response rows are serialized and returned as JSON
+
+    '
   integration_test: required
   integration_test_reason: JSON→GraphQL translation, read_mask filtering, and governance pipeline require
     live backend with compiled schema.
@@ -21989,24 +22028,22 @@
   priority: MUST
   type: structural
   description: Dynamic OpenAPI 3.1 spec generator for /data/rest endpoints. Generates per-table paths,
-    typed query parameters (limit, offset, fields, filter, orderBy), response schemas with attributes and
-    relationships. Supports domain filtering, describes limit/offset pagination and sparse fieldsets.
+    typed query parameters (limit, offset, fields, filter, orderBy), response schemas with attributes
+    and relationships. Supports domain filtering, describes limit/offset pagination and sparse fieldsets.
   use_case: Swagger UI and REST API consumers can discover and understand auto-generated REST endpoints
     with parameter types, filter operators, pagination, and output schemas derived from the GraphQL schema.
   code:
   - provisa/api/rest/openapi_spec.py
   since: 2026-06
-  scenario: |
-    Given a schema with tables in multiple domains
-    When GET /data/rest/openapi.json?role=<role_id>&domains=<domain_list>
-    Then spec is generated with one path per visible table
-    And parameters include limit (int, min 1), offset (int, min 0), fields (array of column names),
-        filter (array of field/comparator/value objects), orderBy (array of field/direction objects)
-    And response schema includes data (array of resources) with attributes and relationships
-    And domain filtering restricts paths to requested domains
-    Then Swagger UI renders spec with try-it-out support
+  scenario: "Given a schema with tables in multiple domains\nWhen GET /data/rest/openapi.json?role=<role_id>&domains=<domain_list>\n\
+    Then spec is generated with one path per visible table\nAnd parameters include limit (int, min 1),\
+    \ offset (int, min 0), fields (array of column names),\n    filter (array of field/comparator/value\
+    \ objects), orderBy (array of field/direction objects)\nAnd response schema includes data (array of\
+    \ resources) with attributes and relationships\nAnd domain filtering restricts paths to requested\
+    \ domains\nThen Swagger UI renders spec with try-it-out support\n"
   integration_test: required
-  integration_test_reason: Spec generation from live GraphQL schema with domain filtering requires live backend.
+  integration_test_reason: Spec generation from live GraphQL schema with domain filtering requires live
+    backend.
   e2e: false
   e2e_reason: Spec rendering in Swagger UI covered by REQ-801 OpenAPI Explorer e2e.
   tests:
@@ -22021,24 +22058,19 @@
   priority: SHOULD
   type: ui
   description: Dynamic JSON:API OpenAPI 3.1 spec generator accessible at /data/jsonapi/openapi.json. Generates
-    per-table paths with sparse fieldsets (fields[table]), filtering (filter[col], filter[col][op] for all
-    filter operators), sorting (sort ± prefix), pagination (page[size], page[number]), and include (relationship
-    names). Returns application/vnd.api+json in spec.
+    per-table paths with sparse fieldsets (fields[table]), filtering (filter[col], filter[col][op] for
+    all filter operators), sorting (sort ± prefix), pagination (page[size], page[number]), and include
+    (relationship names). Returns application/vnd.api+json in spec.
   use_case: Tools and developers can discover JSON:API endpoints and their constraints (filter operators,
     field lists, relationship names) without manual inspection.
   code:
   - provisa/api/jsonapi/spec.py
   since: 2026-06
-  scenario: |
-    Given a schema with Pets table having columns (id, name, owner_id)
-    When GET /data/jsonapi/openapi.json?role=<role_id>&domains=<domain_list>
-    Then spec includes path /domain/Pets with parameters:
-        page[size] (int, min 1), page[number] (int, min 1)
-        fields[Pets] (comma-separated column names)
-        sort (field name, ± prefix for desc)
-        include (comma-separated relationship names, e.g. owner)
-        filter[name], filter[name][eq|neq|gt|gte|lt|lte|like] for each column
-    And response schema describes JSON:API document with data array and included array
+  scenario: "Given a schema with Pets table having columns (id, name, owner_id)\nWhen GET /data/jsonapi/openapi.json?role=<role_id>&domains=<domain_list>\n\
+    Then spec includes path /domain/Pets with parameters:\n    page[size] (int, min 1), page[number] (int,\
+    \ min 1)\n    fields[Pets] (comma-separated column names)\n    sort (field name, ± prefix for desc)\n\
+    \    include (comma-separated relationship names, e.g. owner)\n    filter[name], filter[name][eq|neq|gt|gte|lt|lte|like]\
+    \ for each column\nAnd response schema describes JSON:API document with data array and included array\n"
   integration_test: required
   integration_test_reason: Spec generation from live schema with field discovery, filter operators, and
     relationship names requires live backend.
@@ -22055,62 +22087,78 @@
   category: Bolt Protocol
   priority: MUST
   type: structural
-  description: Bolt relationships receive durable integer IDs via a `rel_ids` Postgres table
-    (BIGSERIAL id, composite_id "Type:startPk-endPk" UNIQUE, rel_type, properties JSONB),
-    mirroring the `node_ids` design. The `register_rel_ids` function upserts edges and replaces
-    composite identities with integer IDs.
-  use_case: Bolt clients require stable relationship identity across browser sessions and multiple
-    query paths (Bolt native, REST cypher, REST impute); numeric IDs enable efficient indexing
-    and relationship traversal.
+  description: Bolt relationships receive durable integer IDs via a `rel_ids` Postgres table (BIGSERIAL
+    id, composite_id "Type:startPk-endPk" UNIQUE, rel_type, properties JSONB), mirroring the `node_ids`
+    design. The `register_rel_ids` function upserts edges and replaces composite identities with integer
+    IDs.
+  use_case: Bolt clients require stable relationship identity across browser sessions and multiple query
+    paths (Bolt native, REST cypher, REST impute); numeric IDs enable efficient indexing and relationship
+    traversal.
   code:
   - provisa/core/schema.sql
   - provisa/bolt/session.py
   - provisa/bolt/packstream.py
+  tests:
+  - tests/unit/test_bolt_rel_ids.py
+  - tests/integration/test_bolt_rel_ids.py
   since: 2026-06
-  scenario: |
-    Given a Bolt relationship created by cypher MATCH (a)-[r:OWNS]->(b) RETURN r
+  scenario: 'Given a Bolt relationship created by cypher MATCH (a)-[r:OWNS]->(b) RETURN r
+
     When register_rel_ids is called with edge (node_start_pk, node_end_pk, rel_type)
+
     Then the composite_id "OWNS:pk1-pk2" is upserted into rel_ids table
-    And the relationship's id field is populated with the BIGSERIAL value
+
+    And the relationship''s id field is populated with the BIGSERIAL value
+
     And subsequent queries return the same numeric id for that relationship edge
+
+    '
 - id: REQ-807
   status: complete
   group: 1. Access Governance & Security
   category: Protocol Support
   priority: MUST
   type: structural
-  description: Bolt auth model establishes principal = user, database = role. A user holds
-    a set of roles; SHOW DATABASES lists one database per (view × role) pair. Database names
-    follow the pattern `provisa_<role>` (business domains only) and `provisa_ops_<role>`
-    (includes system/meta/ops domains). The Bolt Browser's database dropdown / `:use` command
-    selects the active role and view. Home database defaults to the user's first role.
-  use_case: Bolt Browser users can switch contexts by role and view (ops vs business) without
-    reauthenticating. The database abstraction maps cleanly to role-based domain visibility.
+  description: Bolt auth model establishes principal = user, database = role. A user holds a set of roles;
+    SHOW DATABASES lists one database per (view × role) pair. Database names follow the pattern `provisa_<role>`
+    (business domains only) and `provisa_ops_<role>` (includes system/meta/ops domains). The Bolt Browser's
+    database dropdown / `:use` command selects the active role and view. Home database defaults to the
+    user's first role.
+  use_case: Bolt Browser users can switch contexts by role and view (ops vs business) without reauthenticating.
+    The database abstraction maps cleanly to role-based domain visibility.
   code:
   - provisa/bolt/session.py
   - provisa/bolt/packstream.py
+  tests:
+  - tests/unit/test_bolt_show_databases.py
   since: 2026-06
-  scenario: |
-    Given a user "alice" holding roles ["sales", "finance"]
+  scenario: 'Given a user "alice" holding roles ["sales", "finance"]
+
     When SHOW DATABASES is issued
+
     Then the result includes: provisa_sales, provisa_ops_sales, provisa_finance, provisa_ops_finance
+
     And HOME DATABASE = provisa_sales
+
     When :use provisa_ops_sales is issued
+
     Then subsequent queries execute in the ops view with finance role
+
+    '
 - id: REQ-808
   status: complete
   group: 1. Access Governance & Security
   category: Query Governance
   priority: MUST
   type: constraint
-  description: The Bolt endpoint must never subvert the connecting user's domain rights. The
-    active role's `domain_access` is the hard ceiling for every query, catalog call (db.labels),
-    relationship counts, and relationship imputation. The ops/business view only narrows within
-    that ceiling. Unknown or unauthorized `db` values return DatabaseNotFound error (no silent
-    fallback). System, meta, and ops domains are identified by domain_id in {"", "meta", "ops"}.
-  use_case: Bolt's flexible query language (cypher) could bypass view/role filtering if not
-    enforced at the session/catalog level. This requirement ensures domain visibility is the
-    immovable constraint, not an advisory filter.
+  description: The Bolt endpoint must never subvert the connecting user's domain rights. The active role's
+    `domain_access` is the hard ceiling for every query, catalog call (db.labels), relationship counts,
+    and relationship imputation. The ops/business view only narrows within that ceiling. Unknown or unauthorized
+    `db` values return DatabaseNotFound error (no silent fallback). System, meta, and ops domains are
+    identified by domain_id in {"", "meta", "ops"}.
+  use_case: Bolt's flexible query language (cypher) could bypass view/role filtering if not enforced at
+    the session/catalog level. This requirement ensures domain visibility is the immovable constraint,
+    not an advisory filter.
   code:
   - provisa/bolt/session.py
   - provisa/cypher/assembler.py
@@ -22119,22 +22167,29 @@
   - tests/unit/test_bolt_domain_ceiling.py
   - tests/integration/test_bolt_domain_ceiling.py
   since: 2026-06
-  scenario: |
-    Given a user in role "sales" with domain_access ["public", "sales"]
+  scenario: 'Given a user in role "sales" with domain_access ["public", "sales"]
+
     When a cypher query attempts MATCH (n:Node) in ops domain
+
     Then the query is rejected or the result set excludes ops nodes
+
     When :use provisa_ops_unknown is issued
+
     Then DatabaseNotFound error is returned (not a fallback to provisa_sales)
+
     When db.labels is called
+
     Then only labels in domain_access ∩ view are returned
+
+    '
 - id: REQ-809
   status: complete
   group: 5. Query Languages, Compilation & Operations
   category: SQLGlot Transpilation
   priority: SHOULD
   type: behavioral
-  description: Correlated scalar subqueries in PG-style canonical SQL are lifted into CTEs before the query
-    is forwarded to Trino. rewrite_correlated_subqueries_for_trino in provisa/transpiler/transpile.py
+  description: Correlated scalar subqueries in PG-style canonical SQL are lifted into CTEs before the
+    query is forwarded to Trino. rewrite_correlated_subqueries_for_trino in provisa/transpiler/transpile.py
     rewrites any correlated scalar subquery into a set-based CTE join so the federation engine receives
     a form it can execute across sources.
   use_case: Correlated-subquery-to-CTE rewriting keeps cross-source SQL correct on Trino, which does not
@@ -22144,11 +22199,15 @@
   tests:
   - tests/unit/test_transpile.py
   since: 2026-03
-  scenario: |
-    Given a PG-style query containing a correlated scalar subquery
+  scenario: 'Given a PG-style query containing a correlated scalar subquery
+
     When the query is transpiled to Trino SQL
+
     Then the correlated subquery is lifted into a CTE joined on the correlation key
+
     And the forwarded SQL contains no correlated scalar subquery
+
+    '
   stakeholders:
   - data-engineer
 - id: REQ-810
@@ -22158,8 +22217,8 @@
   priority: SHOULD
   type: behavioral
   description: Materialized-view transparent rewriting supports partial join-pattern matches. rewrite_if_mv_match
-    in provisa/mv/rewriter.py matches a query's joins against an MV per-join; when the MV covers only a
-    subset of the query's joins, _partial_rewrite_to_mv removes the covered joins and preserves the
+    in provisa/mv/rewriter.py matches a query's joins against an MV per-join; when the MV covers only
+    a subset of the query's joins, _partial_rewrite_to_mv removes the covered joins and preserves the
     remaining joins so the rewritten query reads the MV for the matched portion and joins the rest live.
   use_case: Partial MV matching lets a materialized view accelerate queries that join additional tables
     beyond the MV's definition, instead of only queries whose join pattern matches the MV exactly.
@@ -22168,12 +22227,17 @@
   tests:
   - tests/integration/test_execution_routing.py
   - tests/e2e/test_mv_optimization.py
+  - tests/unit/test_mv_partial_rewrite.py
   since: 2026-03
-  scenario: |
-    Given a materialized view covering a subset of a query's joins
+  scenario: 'Given a materialized view covering a subset of a query''s joins
+
     When the query is compiled
+
     Then the joins covered by the MV are rewritten to read the MV
+
     And the joins not covered by the MV are preserved and executed live
+
+    '
   stakeholders:
   - data-engineer
 - id: REQ-811
@@ -22185,8 +22249,8 @@
   description: The `# @provisa key=value` GraphQL comment hint vocabulary includes a `route=federated|direct`
     directive parsed by extract_graphql_hints in provisa/compiler/hints.py. `route=federated` forces the
     query through the federation engine; `route=direct` forces single-source direct execution. This is
-    distinct from the `/*+ BROADCAST(...) */` SQL block-hint family (REQ-279) and source-level
-    federation_hints (REQ-281).
+    distinct from the `/*+ BROADCAST(...) */` SQL block-hint family (REQ-279) and source-level federation_hints
+    (REQ-281).
   use_case: A per-query route hint lets query authors override automatic routing for a specific query
     without changing source configuration.
   code:
@@ -22194,11 +22258,15 @@
   tests:
   - tests/unit/test_routing.py
   since: 2026-03
-  scenario: |
-    Given a GraphQL query annotated with the comment hint "# @provisa route=direct"
+  scenario: 'Given a GraphQL query annotated with the comment hint "# @provisa route=direct"
+
     When the query is compiled
+
     Then the query is routed to single-source direct execution
+
     And a query annotated with "# @provisa route=federated" is routed through the federation engine
+
+    '
   related_reqs:
   - REQ-279
   - REQ-281
@@ -22221,11 +22289,15 @@
   tests:
   - tests/integration/test_kafka_sink.py
   since: 2026-04
-  scenario: |
-    Given a subscription request with the header "X-Provisa-Sink" set to a Kafka target
+  scenario: 'Given a subscription request with the header "X-Provisa-Sink" set to a Kafka target
+
     When the request is accepted
+
     Then the response status is 202 Accepted
+
     And subscription change events are delivered to the Kafka sink instead of an SSE stream
+
+    '
   stakeholders:
   - data-engineer
   - app-developer

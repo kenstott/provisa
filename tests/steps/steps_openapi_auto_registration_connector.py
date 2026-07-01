@@ -801,31 +801,30 @@ _REQ316_SPEC: dict = {
 
 _REQ317_SPEC: dict = {
     "openapi": "3.0.0",
-    "info": {"title": "Product Catalogue API", "version": "1.0.0"},
+    "info": {"title": "Pet Store API", "version": "1.0.0"},
     "components": {
         "schemas": {
-            "Product": {
+            "Pet": {
                 "type": "object",
                 "properties": {
                     "id": {"type": "integer"},
                     "name": {"type": "string"},
-                    "price": {"type": "number"},
-                    "stock": {"type": "integer"},
+                    "species": {"type": "string"},
+                    "age": {"type": "integer"},
+                    "owner_id": {"type": "integer"},
                 },
             },
-            "ProductPatch": {
+            "PetUpdate": {
                 "type": "object",
                 "properties": {
-                    "price": {"type": "number"},
-                    "stock": {"type": "integer"},
+                    "name": {"type": "string"},
+                    "species": {"type": "string"},
+                    "age": {"type": "integer"},
                 },
             },
         }
     },
     "paths": {
-        "/products": {
+        "/pets": {
             "get": {
-                "operationId": "listProducts",
-                "summary": "List all products",
-                "parameters": [
-                    {"
+                "operationId

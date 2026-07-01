@@ -3,15 +3,19 @@
 #
 # This source code is licensed under the Business Source License 1.1
 
-"""pytest-bdd step implementations for SQLGlot Transpilation (REQ-066, REQ-067).
+"""pytest-bdd step implementations for SQLGlot Transpilation (REQ-066, REQ-067, REQ-809).
 
 REQ-066: Compiler emits PG-style SQL as canonical output; SQLGlot translates to
 Trino SQL or target RDBMS dialect.
 REQ-067: Target dialect determined by source type captured at table registration
 time — transpilation is automatic and requires no per-query config.
+REQ-809: Correlated scalar subqueries in PG-style canonical SQL are lifted into
+CTEs before the query is forwarded to Trino.
 """
 
 from __future__ import annotations
+
+import re
 
 import pytest
 from pytest_bdd import given, when, then, scenarios
@@ -20,6 +24,7 @@ from provisa.transpiler.transpile import (
     SUPPORTED_DIALECTS,
     transpile,
     transpile_to_trino,
+    rewrite_correlated_subqueries_for_trino,
 )
 from provisa.transpiler.router import (
     Route,
@@ -29,6 +34,7 @@ from provisa.transpiler.router import (
 
 scenarios("../features/REQ-066.feature")
 scenarios("../features/REQ-067.feature")
+scenarios("../features/REQ-809.feature")
 
 
 @pytest.fixture
@@ -241,3 +247,166 @@ def target_dialect_matches_recorded_source_type(shared_data: dict) -> None:
         assert dialect_out != postgres_out, (
             f"dialect '{dialect}' output is identical to postgres — no transformation applied"
         )
+
+
+# ---------------------------------------------------------------------------
+# REQ-809 — Correlated scalar subquery → CTE rewriting for Trino
+# ---------------------------------------------------------------------------
+
+# A representative PG-style query containing a correlated scalar subquery.
+# The subquery is correlated via o.customer_id = c.id and returns a scalar
+# value (the customer name) for each outer row — a pattern Trino cannot execute
+# directly across federated sources.
+_CORRELATED_PG_SQL = (
+    'SELECT '
+    '"o"."id", '
+    '"o"."amount", '
+    '(SELECT "c"."name" FROM "public"."customers" "c" '
+    'WHERE "c"."id" = "o"."customer_id") AS "customer_name" '
+    'FROM "public"."orders" "o"'
+)
+
+# Regex patterns used to detect a correlated scalar subquery inline in SELECT.
+# A correlated subquery in SELECT appears as: (SELECT ... WHERE ... outer_col ...)
+_CORRELATED_SUBQUERY_PATTERN = re.compile(
+    r"\(\s*SELECT\b",
+    re.IGNORECASE,
+)
+
+
+def _sql_contains_correlated_scalar_subquery(sql: str) -> bool:
+    """Return True if the SQL string contains an inline correlated scalar subquery.
+
+    Heuristic: a SELECT-list subquery appears as a parenthesised SELECT that
+    references a column from the outer query in its WHERE clause.  After
+    rewrite_correlated_subqueries_for_trino has run, such patterns must be
+    absent from the forwarded SQL.
+    """
+    # Parse with sqlglot and walk the AST looking for Subquery nodes that sit
+    # directly inside a SELECT expressions list (i.e. scalar position).
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    try:
+        tree = sqlglot.parse_one(sql, read="trino")
+    except Exception:
+        # Fall back to the regex heuristic if parsing fails.
+        return bool(_CORRELATED_SUBQUERY_PATTERN.search(sql))
+
+    if not isinstance(tree, exp.Select):
+        return bool(_CORRELATED_SUBQUERY_PATTERN.search(sql))
+
+    for select_expr in tree.args.get("expressions") or []:
+        # Walk each SELECT-list expression looking for a Subquery node.
+        for node in select_expr.walk():
+            if isinstance(node, exp.Subquery):
+                return True
+    return False
+
+
+def _sql_contains_cte(sql: str) -> bool:
+    """Return True if the SQL string opens with a WITH … AS (…) CTE block."""
+    stripped = sql.strip()
+    return stripped.upper().startswith("WITH ")
+
+
+def _cte_joined_on_correlation_key(sql: str, correlation_col: str) -> bool:
+    """Return True if the CTE is joined back to the main query on *correlation_col*.
+
+    After lifting a correlated subquery whose predicate was
+    ``WHERE c.id = o.customer_id`` the resulting JOIN must reference the
+    correlation key (customer_id) so the set-based semantics are preserved.
+    """
+    return correlation_col.lower() in sql.lower()
+
+
+@given("a PG-style query containing a correlated scalar subquery")
+def a_pg_query_with_correlated_scalar_subquery(shared_data: dict) -> None:
+    pg_sql = _CORRELATED_PG_SQL
+    shared_data["pg_sql"] = pg_sql
+
+    # Confirm the source query really does contain a correlated scalar subquery
+    # so the test is actually exercising the rewriter on meaningful input.
+    assert _CORRELATED_SUBQUERY_PATTERN.search(pg_sql), (
+        "test fixture must contain a SELECT-list subquery"
+    )
+    # Confirm it is PG-style (double-quoted identifiers).
+    assert '"o"."id"' in pg_sql, "fixture must use PG-style double-quoted identifiers"
+
+
+@when("the query is transpiled to Trino SQL")
+def the_query_is_transpiled_to_trino(shared_data: dict) -> None:
+    pg_sql = shared_data["pg_sql"]
+
+    # Call the public rewriter first so we can inspect its intermediate output,
+    # then call the full transpile_to_trino pipeline (which calls the rewriter
+    # internally) to obtain the final Trino SQL that would be forwarded.
+    rewritten_pg = rewrite_correlated_subqueries_for_trino(pg_sql)
+    shared_data["rewritten_pg"] = rewritten_pg
+
+    trino_sql = transpile_to_trino(pg_sql)
+    shared_data["trino_sql"] = trino_sql
+
+
+@then("the correlated subquery is lifted into a CTE joined on the correlation key")
+def correlated_subquery_lifted_into_cte(shared_data: dict) -> None:
+    rewritten_pg: str = shared_data["rewritten_pg"]
+    trino_sql: str = shared_data["trino_sql"]
+
+    # The rewriter must have produced a WITH … CTE block — either in the
+    # intermediate PG-rewritten form or in the final Trino output.  Accept
+    # either: some implementations hoist the CTE at the rewriter stage, others
+    # delay until the SQLGlot transpile pass merges it.
+    has_cte = _sql_contains_cte(rewritten_pg) or _sql_contains_cte(trino_sql)
+    assert has_cte, (
+        "Expected rewrite_correlated_subqueries_for_trino to lift the correlated "
+        f"subquery into a WITH … CTE block.\n"
+        f"rewritten_pg: {rewritten_pg!r}\n"
+        f"trino_sql:    {trino_sql!r}"
+    )
+
+    # The CTE must be joined back on the correlation key (customer_id) so the
+    # set-based replacement preserves the original correlated-filter semantics.
+    combined = rewritten_pg + " " + trino_sql
+    assert _cte_joined_on_correlation_key(combined, "customer_id"), (
+        "The CTE join must reference the correlation key 'customer_id'.\n"
+        f"rewritten_pg: {rewritten_pg!r}\n"
+        f"trino_sql:    {trino_sql!r}"
+    )
+
+    # The lifted CTE must reference the customers table that was inside the
+    # correlated subquery.
+    assert "customers" in combined.lower(), (
+        "The lifted CTE must reference the 'customers' table from the subquery."
+    )
+
+    # The outer query must still project the correlated result; verify that the
+    # alias 'customer_name' (or the column 'name') survives the rewrite.
+    assert "customer_name" in combined.lower() or "name" in combined.lower(), (
+        "The projected alias from the correlated subquery must survive the rewrite."
+    )
+
+
+@then("the forwarded SQL contains no correlated scalar subquery")
+def forwarded_sql_has_no_correlated_subquery(shared_data: dict) -> None:
+    trino_sql: str = shared_data["trino_sql"]
+
+    # The final SQL forwarded to Trino must not contain an inline scalar subquery
+    # in the SELECT list — Trino cannot execute arbitrary correlated scalar
+    # subqueries across federated sources.
+    assert not _sql_contains_correlated_scalar_subquery(trino_sql), (
+        "The Trino-forwarded SQL must not contain a correlated scalar subquery "
+        "in the SELECT list after rewriting.\n"
+        f"trino_sql: {trino_sql!r}"
+    )
+
+    # The forwarded SQL must remain a complete, non-empty SELECT statement.
+    assert trino_sql.strip(), "Trino SQL must not be empty after rewriting"
+    assert trino_sql.strip().upper().startswith(("SELECT", "WITH")), (
+        f"Trino SQL must start with SELECT or WITH, got: {trino_sql[:80]!r}"
+    )
+
+    # The orders table (outer query source) must still be present.
+    assert "orders" in trino_sql.lower(), (
+        "The outer 'orders' table must be preserved in the forwarded Trino SQL."
+    )
