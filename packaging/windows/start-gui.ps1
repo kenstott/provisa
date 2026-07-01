@@ -10,6 +10,13 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
+# Own taskbar identity so the button uses our window icon, not powershell.exe's.
+Add-Type -Namespace Win32 -Name Taskbar -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("shell32.dll", SetLastError=true)]
+public static extern int SetCurrentProcessExplicitAppUserModelID(string AppID);
+'@
+try { [Win32.Taskbar]::SetCurrentProcessExplicitAppUserModelID('Provisa.Start') | Out-Null } catch {}
+
 $ScriptDir  = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 $ProvisaPs1 = Join-Path $ScriptDir 'provisa.ps1'
 $ConfigPath = Join-Path $env:USERPROFILE '.provisa\config.yaml'

@@ -11,6 +11,14 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
+# Give the process its own taskbar identity so the taskbar button uses our
+# window icon instead of inheriting powershell.exe's.
+Add-Type -Namespace Win32 -Name Taskbar -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("shell32.dll", SetLastError=true)]
+public static extern int SetCurrentProcessExplicitAppUserModelID(string AppID);
+'@
+try { [Win32.Taskbar]::SetCurrentProcessExplicitAppUserModelID('Provisa.Setup') | Out-Null } catch {}
+
 
 $ScriptDir    = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 $VersionFile  = Join-Path $ScriptDir 'VERSION'
