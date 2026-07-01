@@ -89,11 +89,15 @@ else                       { $RecommendedBackend = 'virtualbox' }  # conflicted;
 # -- RAM options ---------------------------------------------------------------
 $totalBytes = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
 $totalGb    = [int][Math]::Floor($totalBytes / 1GB)
+# "All" leaves headroom for the Windows host - it can't hand the full system
+# RAM to the VM without starving the OS.
+$hostReserveGb = 4
+$allGb         = [Math]::Max(4, $totalGb - $hostReserveGb)
 $ramOptions = [System.Collections.ArrayList]::new()
 foreach ($s in @(4, 8, 16, 32, 64, 128)) {
-  if ($s -le $totalGb) { $null = $ramOptions.Add("${s}GB") }
+  if ($s -lt $allGb) { $null = $ramOptions.Add("${s}GB") }
 }
-$null = $ramOptions.Add("All (${totalGb}GB)")
+$null = $ramOptions.Add("All (${allGb}GB)")
 
 # -- Form ----------------------------------------------------------------------
 $form = New-Object System.Windows.Forms.Form
@@ -144,10 +148,16 @@ function Lbl { param($Text, $X, $Y, $Bold)
   $pConfig.Controls.Add($l)
 }
 
-Lbl 'RAM Budget' 20 18 $true
+$lbRamHdr          = New-Object System.Windows.Forms.Label
+$lbRamHdr.AutoSize = $true
+$lbRamHdr.Location = New-Object System.Drawing.Point(20, 18)
+$lbRamHdr.Font     = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+$lbRamHdr.Text     = 'RAM Budget'
+$pConfig.Controls.Add($lbRamHdr)
+
 $lbRamQ          = New-Object System.Windows.Forms.Label
 $lbRamQ.AutoSize = $false
-$lbRamQ.Size     = New-Object System.Drawing.Size(560, 18)
+$lbRamQ.Size     = New-Object System.Drawing.Size(560, 20)
 $lbRamQ.Location = New-Object System.Drawing.Point(20, 44)
 $lbRamQ.Text     = "How much RAM can Provisa use?  (system: ${totalGb} GB)"
 $pConfig.Controls.Add($lbRamQ)
@@ -277,17 +287,24 @@ function Update-BackendUi {
   $btnDisableHyperV.Visible = ($rbVBox.Checked -and $HyperVActive)
 
   if ($rbDocker.Checked) {
-    # Docker's memory ceiling is the WSL2 VM's RAM, not system RAM. The RAM
-    # radios only pick federation worker count in this mode.
+    # Docker Desktop mode is single-node dev/demo: Docker governs memory & CPU
+    # and Provisa runs coordinator-only. The RAM/worker control is meaningless
+    # here, so hide it entirely and just state the mode.
+    $lbRamHdr.Visible = $false
+    foreach ($rb in $radios) { $rb.Visible = $false }
+    $lbRamQ.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 90)
     $lbRamQ.Text = if ($DockerMemGb -gt 0) {
-      "Docker Desktop memory: ${DockerMemGb} GB (set in .wslconfig). This picks federation workers only."
+      "Docker Desktop mode: single-node (dev/demo). Docker manages resources (${DockerMemGb} GB via .wslconfig)."
     } else {
-      'Memory is governed by Docker Desktop (.wslconfig). This picks federation workers only.'
+      'Docker Desktop mode: single-node (dev/demo). Docker Desktop manages memory & CPU.'
     }
     $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(0, 140, 0)
     $lbNotice.Text = 'Docker runtime: uses Docker Desktop, which requires Hyper-V / WSL2 (currently enabled). No VM.'
   } else {
-    $lbRamQ.Text = "How much RAM can Provisa use?  (system: ${totalGb} GB)"
+    $lbRamHdr.Visible = $true
+    foreach ($rb in $radios) { $rb.Visible = $true }
+    $lbRamQ.ForeColor = [System.Drawing.SystemColors]::ControlText
+    $lbRamQ.Text = "How much RAM can the VM use?  (system: ${totalGb} GB)"
     if ($HyperVActive) {
       $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(190, 90, 0)
       $lbNotice.Text = 'Bundled VM (VirtualBox) needs Hyper-V / WSL2 OFF; it is currently ON, so the VM may not boot. ' +
@@ -440,20 +457,21 @@ $btnInstall.Add_Click({
   $sel = $radios | Where-Object { $_.Checked } | Select-Object -First 1
   if (-not $sel) { $sel = $radios[0] }
   $ramText = $sel.Text
-  if ($ramText -like 'All*') { $budgetGb = $totalGb }
+  if ($ramText -like 'All*') { $budgetGb = $allGb }
   else                       { $budgetGb = [int]($ramText -replace 'GB', '') }
 
   $backend = if ($rbDocker.Checked) { 'docker' } else { 'virtualbox' }
 
-  # Worker count scales with usable RAM. In Docker mode the real ceiling is the
-  # WSL2 VM's memory, not system RAM, so scale off that instead.
-  $workerGb = if ($backend -eq 'docker' -and $script:DockerMemGb -gt 0) {
-    [Math]::Min($budgetGb, $script:DockerMemGb)
-  } else { $budgetGb }
-  if ($workerGb -ge 96)    { $workers = 4 }
-  elseif ($workerGb -ge 48){ $workers = 2 }
-  elseif ($workerGb -ge 24){ $workers = 1 }
-  else                     { $workers = 0 }
+  # Docker Desktop mode is single-node dev/demo: coordinator-only, no workers.
+  # VirtualBox mode sizes worker count from the VM's RAM budget.
+  if ($backend -eq 'docker') {
+    $workers = 0
+  } else {
+    if ($budgetGb -ge 96)    { $workers = 4 }
+    elseif ($budgetGb -ge 48){ $workers = 2 }
+    elseif ($budgetGb -ge 24){ $workers = 1 }
+    else                     { $workers = 0 }
+  }
 
   $hostname = $tbHost.Text.Trim()
   if ([string]::IsNullOrEmpty($hostname)) { $hostname = 'localhost' }
