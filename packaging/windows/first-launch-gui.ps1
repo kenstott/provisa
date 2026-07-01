@@ -86,18 +86,11 @@ if ($DockerReady)          { $RecommendedBackend = 'docker' }
 elseif (-not $HyperVActive){ $RecommendedBackend = 'virtualbox' }
 else                       { $RecommendedBackend = 'virtualbox' }  # conflicted; UI warns
 
-# -- RAM options ---------------------------------------------------------------
+# -- RAM ceiling ---------------------------------------------------------------
+# System RAM; the actual "All" ceiling is per-runtime (Docker's allocation vs
+# the whole machine) and is applied when the radios are (re)built.
 $totalBytes = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
 $totalGb    = [int][Math]::Floor($totalBytes / 1GB)
-# "All" leaves headroom for the Windows host - it can't hand the full system
-# RAM to the VM without starving the OS.
-$hostReserveGb = 4
-$allGb         = [Math]::Max(4, $totalGb - $hostReserveGb)
-$ramOptions = [System.Collections.ArrayList]::new()
-foreach ($s in @(4, 8, 16, 32, 64, 128)) {
-  if ($s -lt $allGb) { $null = $ramOptions.Add("${s}GB") }
-}
-$null = $ramOptions.Add("All (${allGb}GB)")
 
 # -- Form ----------------------------------------------------------------------
 $form = New-Object System.Windows.Forms.Form
@@ -159,22 +152,50 @@ $lbRamQ          = New-Object System.Windows.Forms.Label
 $lbRamQ.AutoSize = $false
 $lbRamQ.Size     = New-Object System.Drawing.Size(560, 20)
 $lbRamQ.Location = New-Object System.Drawing.Point(20, 44)
-$lbRamQ.Text     = "How much RAM can Provisa use?  (system: ${totalGb} GB)"
+$lbRamQ.Text     = 'How much RAM can Provisa use?'
 $pConfig.Controls.Add($lbRamQ)
 
-$radios = @()
-$rx = 20
-foreach ($opt in $ramOptions) {
-  $rb          = New-Object System.Windows.Forms.RadioButton
-  $rb.Text     = $opt
-  $rb.AutoSize = $true
-  $rb.Location = New-Object System.Drawing.Point($rx, 70)
-  $rb.Checked  = ($opt -eq '16GB')
-  $pConfig.Controls.Add($rb)
-  $radios += $rb
-  $rx += [int]($rb.PreferredSize.Width) + 12
+# RAM radios are rebuilt whenever the ceiling changes: system RAM for the VM,
+# Docker's allocated memory for Docker mode. $script:ramCeiling holds the
+# current "All" value (used by Install).
+$script:radios     = @()
+$script:ramCeiling = $totalGb
+function Set-RamOptions {
+  param([int]$CeilingGb)
+  if ($CeilingGb -lt 4) { $CeilingGb = 4 }
+  if ($script:ramCeiling -eq $CeilingGb -and $script:radios.Count -gt 0) { return }
+  $script:ramCeiling = $CeilingGb
+
+  $prev = ($script:radios | Where-Object { $_.Checked } | Select-Object -First 1)
+  $prevText = if ($prev) { $prev.Text } else { '16GB' }
+  foreach ($rb in $script:radios) { $pConfig.Controls.Remove($rb); $rb.Dispose() }
+  $script:radios = @()
+
+  $rx = 20
+  foreach ($v in @(4, 8, 16, 32, 64, 128)) {
+    if ($v -lt $CeilingGb) {
+      $rb          = New-Object System.Windows.Forms.RadioButton
+      $rb.Text     = "${v}GB"
+      $rb.AutoSize = $true
+      $rb.Location = New-Object System.Drawing.Point($rx, 70)
+      $pConfig.Controls.Add($rb)
+      $script:radios += $rb
+      $rx += [int]($rb.PreferredSize.Width) + 12
+    }
+  }
+  $rbAll          = New-Object System.Windows.Forms.RadioButton
+  $rbAll.Text     = "All (${CeilingGb}GB)"
+  $rbAll.AutoSize = $true
+  $rbAll.Location = New-Object System.Drawing.Point($rx, 70)
+  $pConfig.Controls.Add($rbAll)
+  $script:radios += $rbAll
+
+  $keep = $script:radios | Where-Object { $_.Text -eq $prevText } | Select-Object -First 1
+  if (-not $keep) { $keep = $script:radios | Where-Object { $_.Text -eq '16GB' } | Select-Object -First 1 }
+  if (-not $keep) { $keep = $script:radios[0] }
+  $keep.Checked = $true
 }
-if (-not ($radios | Where-Object { $_.Checked })) { $radios[0].Checked = $true }
+Set-RamOptions $totalGb
 
 Lbl 'Hostname' 20 118 $true
 $tbHost          = New-Object System.Windows.Forms.TextBox
@@ -286,25 +307,15 @@ function Update-BackendUi {
   # Offer the Hyper-V disable only when the VM path is chosen and Hyper-V is on.
   $btnDisableHyperV.Visible = ($rbVBox.Checked -and $HyperVActive)
 
+  # RAM ceiling: Docker's allocated memory in Docker mode, whole machine for
+  # the VM. Rebuilds the radios only when the ceiling actually changes.
+  if ($rbDocker.Checked -and $DockerMemGb -gt 0) { Set-RamOptions $DockerMemGb }
+  else                                           { Set-RamOptions $totalGb }
+
   if ($rbDocker.Checked) {
-    # Docker Desktop mode is single-node dev/demo: Docker governs memory & CPU
-    # and Provisa runs coordinator-only. The RAM/worker control is meaningless
-    # here, so hide it entirely and just state the mode.
-    $lbRamHdr.Visible = $false
-    foreach ($rb in $radios) { $rb.Visible = $false }
-    $lbRamQ.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 90)
-    $lbRamQ.Text = if ($DockerMemGb -gt 0) {
-      "Docker Desktop mode: single-node (dev/demo). Docker manages resources (${DockerMemGb} GB via .wslconfig)."
-    } else {
-      'Docker Desktop mode: single-node (dev/demo). Docker Desktop manages memory & CPU.'
-    }
     $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(0, 140, 0)
     $lbNotice.Text = 'Docker runtime: uses Docker Desktop, which requires Hyper-V / WSL2 (currently enabled). No VM.'
   } else {
-    $lbRamHdr.Visible = $true
-    foreach ($rb in $radios) { $rb.Visible = $true }
-    $lbRamQ.ForeColor = [System.Drawing.SystemColors]::ControlText
-    $lbRamQ.Text = "How much RAM can the VM use?  (system: ${totalGb} GB)"
     if ($HyperVActive) {
       $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(190, 90, 0)
       $lbNotice.Text = 'Bundled VM (VirtualBox) needs Hyper-V / WSL2 OFF; it is currently ON, so the VM may not boot. ' +
@@ -454,10 +465,10 @@ $timer.Add_Tick({
 
 # -- Install click ------------------------------------------------------------
 $btnInstall.Add_Click({
-  $sel = $radios | Where-Object { $_.Checked } | Select-Object -First 1
-  if (-not $sel) { $sel = $radios[0] }
+  $sel = $script:radios | Where-Object { $_.Checked } | Select-Object -First 1
+  if (-not $sel) { $sel = $script:radios[0] }
   $ramText = $sel.Text
-  if ($ramText -like 'All*') { $budgetGb = $allGb }
+  if ($ramText -like 'All*') { $budgetGb = $script:ramCeiling }
   else                       { $budgetGb = [int]($ramText -replace 'GB', '') }
 
   $backend = if ($rbDocker.Checked) { 'docker' } else { 'virtualbox' }
