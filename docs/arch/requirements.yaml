@@ -22520,7 +22520,7 @@
   - provisa/core/schema.sql
   - provisa-ui/src/pages/TablesPage.tsx
   tests:
-  - tests/integration/test_live_delivery_graphql_api.py
+  - tests/unit/test_live_delivery_config.py
   since: "2026-07"
   scenario: |
     Given the admin GraphQL API for table mutations
@@ -22551,7 +22551,7 @@
   - provisa/live/engine.py
   - provisa/api/app.py
   tests:
-  - tests/integration/test_live_federated_sources.py
+  - tests/unit/test_live_engine.py
   since: "2026-07"
   scenario: |
     Given a live poll query targeting a federated BigQuery table
@@ -22576,9 +22576,9 @@
     sources avoids duplicate query load on the primary database.
   code:
   - provisa/live/engine.py
-  - provisa/live/cdc_provider.py
+  - provisa/core/config_loader.py
   tests:
-  - tests/integration/test_live_delivery_mechanisms.py
+  - tests/unit/test_live_delivery_config.py
   since: "2026-07"
   scenario: |
     Given a registered table backed by PostgreSQL
@@ -22603,10 +22603,10 @@
     Restricting CDC to sources with native push mechanisms prevents attempts to use CDC on sources
     that don't support it. Connection config inheritance avoids credential duplication per table.
   code:
-  - provisa/core/subscription_registry.py
-  - provisa/live/cdc_provider.py
+  - provisa/core/config_loader.py
+  - provisa/subscriptions/registry.py
   tests:
-  - tests/integration/test_live_delivery_mechanisms.py
+  - tests/unit/test_live_delivery_config.py
   since: "2026-07"
   scenario: |
     Given a source of type S3 (no native push mechanism)
@@ -22636,7 +22636,8 @@
   - provisa/live/engine.py
   - provisa/api/app.py
   tests:
-  - tests/integration/test_live_engine_reconciliation.py
+  - tests/unit/test_live_engine.py
+  - tests/unit/test_live_delivery_config.py
   since: "2026-07"
   scenario: |
     Given live config stored in registered_tables.live
