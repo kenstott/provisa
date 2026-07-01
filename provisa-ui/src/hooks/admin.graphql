@@ -90,6 +90,18 @@ query TablesQuery {
     enableAggregates
     enableGroupBy
     canDeployToDb
+    live {
+      queryId
+      watermarkColumn
+      pollInterval
+      delivery
+      outputs {
+        type
+        topic
+        keyColumn
+        bootstrapServers
+      }
+    }
     columns {
       ...ColumnFields
     }

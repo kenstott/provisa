@@ -52,6 +52,23 @@ class ColumnPresetType:
 
 
 @strawberry.type
+class LiveOutputConfigType:  # REQ-565
+    type: str  # "sse" | "kafka"
+    topic: str | None = None
+    key_column: str | None = None
+    bootstrap_servers: str | None = None
+
+
+@strawberry.type
+class LiveDeliveryConfigType:  # REQ-565
+    query_id: str
+    watermark_column: str
+    poll_interval: int = 10
+    delivery: str = "poll"  # "poll" | "cdc"
+    outputs: list[LiveOutputConfigType] = strawberry.field(default_factory=list)
+
+
+@strawberry.type
 class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     id: int
     source_id: str
@@ -73,6 +90,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     enable_aggregates: bool = False
     enable_group_by: bool = False
     can_deploy_to_db: bool = False
+    live: LiveDeliveryConfigType | None = None
 
 
 @strawberry.type
@@ -209,6 +227,23 @@ class ColumnPresetInput:  # REQ-533
 
 
 @strawberry.input
+class LiveOutputConfigInput:  # REQ-565
+    type: str  # "sse" | "kafka"
+    topic: str | None = None
+    key_column: str | None = None
+    bootstrap_servers: str | None = None
+
+
+@strawberry.input
+class LiveDeliveryConfigInput:  # REQ-565
+    query_id: str
+    watermark_column: str
+    poll_interval: int = 10
+    delivery: str = "poll"  # "poll" | "cdc"
+    outputs: list[LiveOutputConfigInput] = strawberry.field(default_factory=list)
+
+
+@strawberry.input
 class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     source_id: str
     domain_id: str
@@ -226,6 +261,7 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     enable_aggregates: bool = False
     enable_group_by: bool = False
     discover: bool = False  # REQ-252: infer columns from the live NoSQL source at registration
+    live: LiveDeliveryConfigInput | None = None  # REQ-565: live delivery config
 
 
 @strawberry.input

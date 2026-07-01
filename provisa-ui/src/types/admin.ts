@@ -35,14 +35,14 @@ export interface Domain {
 
 export function domainGqlAlias(domain: Domain): string {
   if (domain.graphqlAlias) return domain.graphqlAlias.toLowerCase();
-  if (!domain.id) return '';
+  if (!domain.id) return "";
   const parts = domain.id.split(/[^a-zA-Z0-9]+/);
   const acronym = parts
     .filter((p) => p && /[a-zA-Z]/.test(p[0]))
     .map((p) => p[0])
-    .join('')
+    .join("")
     .toLowerCase();
-  return acronym || domain.id[0]?.toLowerCase() || '';
+  return acronym || domain.id[0]?.toLowerCase() || "";
 }
 
 export interface TableColumn {
@@ -69,10 +69,25 @@ export interface TableColumn {
 
 export interface ColumnPreset {
   column: string;
-  source: 'now' | 'header' | 'literal';
+  source: "now" | "header" | "literal";
   name: string | null;
   value: string | null;
   dataType: string | null;
+}
+
+export interface LiveOutputConfig {
+  type: "sse" | "kafka";
+  topic: string | null;
+  keyColumn: string | null;
+  bootstrapServers: string | null;
+}
+
+export interface LiveDeliveryConfig {
+  queryId: string;
+  watermarkColumn: string;
+  pollInterval: number;
+  delivery: "poll" | "cdc";
+  outputs: LiveOutputConfig[];
 }
 
 export interface RegisteredTable {
@@ -96,6 +111,7 @@ export interface RegisteredTable {
   enableAggregates: boolean;
   enableGroupBy: boolean;
   canDeployToDb: boolean;
+  live: LiveDeliveryConfig | null;
 }
 
 export interface Relationship {
@@ -132,7 +148,7 @@ export interface GovernedQuery {
   id: number;
   name: string;
   queryText: string;
-  status: 'submitted' | 'approved' | 'deprecated' | 'flagged';
+  status: "submitted" | "approved" | "deprecated" | "flagged";
   submittedBy: string;
   approvedBy: string | null;
   rejectionReason: string | null;

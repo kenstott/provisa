@@ -57,10 +57,27 @@ def _make_conn():
     return conn
 
 
-def _make_engine(pool=None) -> LiveEngine:
+def _make_engine(pool=None, trino_conn=None) -> LiveEngine:
     if pool is None:
         pool = MagicMock()
-    return LiveEngine(pg_pool=pool)
+    if trino_conn is None:
+        trino_conn = MagicMock()
+    return LiveEngine(pg_pool=pool, trino_conn=trino_conn)
+
+
+def _trino_qr(rows):
+    """Build a Trino QueryResult from a list of dict rows."""
+    from provisa.executor.trino import QueryResult
+
+    if not rows:
+        return QueryResult(rows=[], column_names=[])
+    cols = list(rows[0].keys())
+    return QueryResult(rows=[tuple(r[c] for c in cols) for r in rows], column_names=cols)
+
+
+def _patch_trino(rows):
+    """Patch execute_trino to return *rows* as a Trino QueryResult."""
+    return patch("provisa.executor.trino.execute_trino", MagicMock(return_value=_trino_qr(rows)))
 
 
 def _sched_ctx():
@@ -403,7 +420,6 @@ class TestLiveEnginePoll:
 
     async def test_poll_with_no_rows_does_not_deliver(self):
         conn = _make_conn()
-        conn.fetch = AsyncMock(return_value=[])
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
         engine.register(
@@ -412,7 +428,7 @@ class TestLiveEnginePoll:
         q = engine.subscribe("q1")
 
         p1, p2 = self._patch_poll_deps(watermark="2026-01-01", _rows=[])
-        with p1, p2:
+        with _patch_trino([]), p1, p2:
             await engine._poll("q1")
 
         assert q.empty()
@@ -420,7 +436,6 @@ class TestLiveEnginePoll:
     async def test_poll_fetches_rows_and_delivers_to_fanout(self):
         raw_rows = [{"id": 1, "ts": "2026-02-01"}, {"id": 2, "ts": "2026-02-02"}]
         conn = _make_conn()
-        conn.fetch = AsyncMock(return_value=raw_rows)
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
         engine.register(
@@ -429,7 +444,7 @@ class TestLiveEnginePoll:
         q = engine.subscribe("q1")
 
         p1, p2 = self._patch_poll_deps(watermark="2026-01-01")
-        with p1, p2:
+        with _patch_trino(raw_rows), p1, p2:
             await engine._poll("q1")
 
         received = q.get_nowait()
@@ -438,7 +453,6 @@ class TestLiveEnginePoll:
     async def test_poll_updates_watermark_to_max_value(self):
         raw_rows = [{"id": 1, "ts": "2026-02-01"}, {"id": 2, "ts": "2026-02-10"}]
         conn = _make_conn()
-        conn.fetch = AsyncMock(return_value=raw_rows)
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
         engine.register(
@@ -447,6 +461,7 @@ class TestLiveEnginePoll:
 
         mock_set_wm = AsyncMock()
         with (
+            _patch_trino(raw_rows),
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
             patch("provisa.live.watermark.set_watermark", mock_set_wm),
         ):
@@ -461,7 +476,6 @@ class TestLiveEnginePoll:
     async def test_poll_delivers_rows_to_kafka_outputs(self):
         raw_rows = [{"id": 1, "ts": "2026-02-01"}]
         conn = _make_conn()
-        conn.fetch = AsyncMock(return_value=raw_rows)
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
 
@@ -476,6 +490,7 @@ class TestLiveEnginePoll:
         )
 
         with (
+            _patch_trino(raw_rows),
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
             patch("provisa.live.watermark.set_watermark", AsyncMock()),
         ):
@@ -488,7 +503,6 @@ class TestLiveEnginePoll:
     async def test_poll_handles_exception_gracefully(self):
         """_poll must catch exceptions and not propagate them."""
         conn = _make_conn()
-        conn.fetch = AsyncMock(side_effect=RuntimeError("DB exploded"))
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
         engine.register(
@@ -497,6 +511,10 @@ class TestLiveEnginePoll:
         q = engine.subscribe("q1")
 
         with (
+            patch(
+                "provisa.executor.trino.execute_trino",
+                MagicMock(side_effect=RuntimeError("Trino exploded")),
+            ),
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
             patch("provisa.live.watermark.set_watermark", AsyncMock()),
         ):
@@ -517,6 +535,7 @@ class TestLiveEnginePoll:
         q = engine.subscribe("q1")
 
         with (
+            _patch_trino([]),
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
             patch("provisa.live.watermark.set_watermark", AsyncMock()),
         ):
@@ -525,23 +544,24 @@ class TestLiveEnginePoll:
         assert q.empty()
 
     async def test_poll_incremental_sql_uses_watermark(self):
-        """Verify that the SQL passed to conn.fetch includes the watermark filter."""
+        """Verify that the SQL passed to execute_trino includes the watermark filter."""
         raw_rows = [{"id": 1, "ts": "2026-03-01"}]
         conn = _make_conn()
-        conn.fetch = AsyncMock(return_value=raw_rows)
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
         engine.register(
             "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
         )
 
+        exec_mock = MagicMock(return_value=_trino_qr(raw_rows))
         with (
+            patch("provisa.executor.trino.execute_trino", exec_mock),
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value="2026-01-15")),
             patch("provisa.live.watermark.set_watermark", AsyncMock()),
         ):
             await engine._poll("q1")
 
-        executed_sql = conn.fetch.call_args[0][0]
+        executed_sql = exec_mock.call_args.args[1]
         assert "ts > '2026-01-15'" in executed_sql
 
 
