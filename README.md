@@ -37,7 +37,8 @@ These tools help you write queries in the above languages — they are not query
 
 These are the connection protocols. SQL, GraphQL, and Cypher ride over them — the choice of wire protocol does not change the query interface or governance behaviour.
 
-- **pgwire** — Any PostgreSQL client (psql, DBeaver, asyncpg, SQLAlchemy, pandas `read_sql`) connects on port 5439 as if it were a Postgres server. Accepts SQL only. Full governance pipeline applies. `pg_catalog` and `information_schema` answered from an in-memory DuckDB catalog so schema browsers work without a Trino round-trip. TLS optional.
+- **pgwire** — Any PostgreSQL client (psql, DBeaver, DataGrip, asyncpg, SQLAlchemy, pandas `read_sql`) connects on port 5439 as if it were a Postgres server. Accepts SQL only. Full governance pipeline applies. `pg_catalog` and `information_schema` answered from an in-memory DuckDB catalog so schema browsers work without a Trino round-trip. TLS optional.
+- **Bolt (Neo4j)** — Any Neo4j client (Neo4j Browser, Bloom, official drivers) connects over the Bolt protocol and runs Cypher against the federated graph. Each role the user holds surfaces as a `provisa_<role>` database. Same governance as every other transport. TLS optional.
 - **Arrow Flight** — High-throughput columnar streaming over gRPC; accepts GraphQL or SQL as the query input. Unbounded result sets, no server-side materialization, no separate infrastructure required.
 - **JDBC** — BI tool integration (Tableau, Power BI, DBeaver) in `approved` or `catalog` mode.
 - **WebSocket / SSE** — Subscriptions: near-real-time change events; backends: PG native, MongoDB native, Debezium CDC, polling. Also exposed over Kafka.
@@ -101,7 +102,7 @@ Relationships are registered, approved, and enforced as the only legal JOIN path
 
 ## Security Model
 
-Provisa enforces a multi-layered security model across every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, pgwire, WebSocket). Governance is applied uniformly — there is no query path that bypasses it.
+Provisa enforces a multi-layered security model across every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket). Governance is applied uniformly — there is no query path that bypasses it.
 
 The layers apply in order. A request must clear each layer before the next is evaluated.
 
@@ -231,7 +232,21 @@ df = pd.read_sql("SELECT * FROM orders", engine)
 
 All queries run through the full governance pipeline — domain access, RLS, masking, and predicate guard apply exactly as they do for GraphQL and REST. Schema browsers (DBeaver, DataGrip, pgAdmin) work out of the box: `pg_catalog` and `information_schema` queries are answered from an in-memory catalog scoped to the role's domain access, so users see only the tables and columns they are permitted to query.
 
+DataGrip browsing the governed schema and its foreign-key diagram over pgwire — no driver, no adapter:
+
+![Provisa in DataGrip over pgwire](docs/images/pgwire-datagrip.png)
+
 TLS is enabled by setting `PROVISA_PGWIRE_CERT` and `PROVISA_PGWIRE_KEY`. The port is configurable via `PROVISA_PGWIRE_PORT` (default `5439`).
+
+### Bolt (Neo4j Wire Protocol)
+
+Provisa also speaks the Neo4j **Bolt** protocol, so graph-native tools connect directly and run Cypher against the federated graph — no export, no separate graph database. Point **Neo4j Browser** or **Bloom** at Provisa and traverse relationships across sources with the same governance (domain access, RLS, masking) applied.
+
+Neo4j Browser running Cypher against Provisa — node labels, relationship types, and property keys come straight from the registered schema:
+
+![Provisa in Neo4j Browser over Bolt](docs/images/bolt-neo4j-browser.png)
+
+Enable it by setting `PROVISA_BOLT_PORT` (Neo4j's default is `7687`). TLS is enabled with `PROVISA_BOLT_CERT` and `PROVISA_BOLT_KEY`. Each Provisa role the authenticated user holds surfaces as a selectable `provisa_<role>` database (the `provisa_admin` selector above) — choosing one narrows the session to that role's domain rights; the user can never exceed the roles they hold.
 
 ### Python Client
 

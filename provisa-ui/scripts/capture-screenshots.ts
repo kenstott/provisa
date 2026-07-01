@@ -39,8 +39,11 @@ const GQL_QUERY = `query InquiryCountByUser @noCache {
   }
 }`;
 
-// Domain-scoped so it routes to a single source — avoids cross-catalog warmup.
-const CYPHER_QUERY = "MATCH (p:Pets) RETURN p LIMIT 25";
+// Cross-source path query plus a second domain — renders a connected graph of
+// pets, breeds, and inquiries alongside the shelter assignments cluster.
+const CYPHER_QUERY = `MATCH p=()-[:BREED_INFO]-()-[r:HAS_INQUIRY]->()
+OPTIONAL MATCH (mAssignments:Shelter:Assignments)
+RETURN p, mAssignments`;
 
 // Cross-source so it actually exercises the Trino coordinator (single-source
 // queries bypass federation). Avoids the all-domain path that touches the
@@ -142,6 +145,9 @@ const SCREENS: Screen[] = [
       // Mount /graph fresh with router state so the editor seeds CYPHER_QUERY.
       await page.goto(`${FRONTEND_URL}/sources`, { waitUntil: "domcontentloaded", timeout: 15_000 });
       await page.waitForTimeout(800);
+      // Turn on imputed relationships so the graph shows inferred edges between
+      // visible nodes, not just those returned by the query.
+      await page.evaluate(() => localStorage.setItem("provisa.graph.autoImpute", "true"));
       await page.evaluate((query) => {
         const idx = ((window.history.state && window.history.state.idx) || 0) + 1;
         const st = { usr: { query }, key: "shot", idx };
@@ -150,6 +156,17 @@ const SCREENS: Screen[] = [
       }, CYPHER_QUERY);
       await page.waitForTimeout(1800);
       await page.click(".graph-run-btn");
+      // Federated path query takes several seconds — wait for the results frame
+      // to report rendered nodes, then let the force layout settle.
+      await page
+        .waitForFunction(
+          () => /Displaying\s+\d+\s+node/.test(document.body.textContent || ""),
+          { timeout: 30_000 },
+        )
+        .catch(() => {});
+      await page.waitForTimeout(2500);
+      // Group nodes by domain to show off the clustering (hulls per domain).
+      await page.selectOption(".gf-attr-select", "domain").catch(() => {});
       await page.waitForTimeout(4500);
     },
   },
