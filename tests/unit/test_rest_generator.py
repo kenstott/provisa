@@ -10,8 +10,6 @@
 
 """Unit tests for REST auto-generation (Phase AB5, REQ-222)."""
 
-import pytest
-
 from provisa.api.rest.generator import (
     _build_graphql_query,
     _get_scalar_fields,
@@ -99,49 +97,67 @@ def _build_test_schema():
 
 class TestParseWhereParams:
     def test_single_eq(self):
-        result = _parse_where_params({"where.region.eq": "US"})
+        result = _parse_where_params(
+            {"filter": '[{"field": "region", "comparator": "eq", "value": "US"}]'}
+        )
         assert result == {"region": {"eq": "US"}}
 
     def test_multiple_ops(self):
-        result = _parse_where_params({
-            "where.amount.gt": "100",
-            "where.amount.lt": "500",
-            "where.region.eq": "US",
-        })
+        result = _parse_where_params(
+            {
+                "filter": (
+                    '[{"field": "amount", "comparator": "gt", "value": "100"},'
+                    '{"field": "amount", "comparator": "lt", "value": "500"},'
+                    '{"field": "region", "comparator": "eq", "value": "US"}]'
+                )
+            }
+        )
         assert result == {
             "amount": {"gt": "100", "lt": "500"},
             "region": {"eq": "US"},
         }
 
     def test_in_operator(self):
-        result = _parse_where_params({"where.region.in": "US,EU,APAC"})
+        result = _parse_where_params(
+            {"filter": '[{"field": "region", "comparator": "in", "value": ["US", "EU", "APAC"]}]'}
+        )
         assert result == {"region": {"in": ["US", "EU", "APAC"]}}
 
     def test_invalid_op_ignored(self):
-        result = _parse_where_params({"where.region.banana": "US"})
+        result = _parse_where_params(
+            {"filter": '[{"field": "region", "comparator": "banana", "value": "US"}]'}
+        )
         assert result == {}
 
     def test_non_where_ignored(self):
-        result = _parse_where_params({"limit": "10", "where.x.eq": "1"})
+        result = _parse_where_params(
+            {"limit": "10", "filter": '[{"field": "x", "comparator": "eq", "value": "1"}]'}
+        )
         assert result == {"x": {"eq": "1"}}
 
 
 class TestParseOrderBy:
     def test_single_order(self):
-        result = _parse_order_by_params({"order_by.created_at": "desc"})
+        result = _parse_order_by_params(
+            {"orderBy": '[{"field": "created_at", "direction": "desc"}]'}
+        )
         assert result == [{"field": "created_at", "dir": "desc"}]
 
     def test_multiple_orders(self):
-        result = _parse_order_by_params({
-            "order_by.created_at": "desc",
-            "order_by.amount": "asc",
-        })
+        result = _parse_order_by_params(
+            {
+                "orderBy": (
+                    '[{"field": "created_at", "direction": "desc"},'
+                    '{"field": "amount", "direction": "asc"}]'
+                )
+            }
+        )
         assert len(result) == 2
         fields = {o["field"] for o in result}
         assert fields == {"created_at", "amount"}
 
     def test_invalid_direction_defaults_asc(self):
-        result = _parse_order_by_params({"order_by.id": "banana"})
+        result = _parse_order_by_params({"orderBy": '[{"field": "id", "direction": "banana"}]'})
         assert result == [{"field": "id", "dir": "asc"}]
 
 
@@ -157,33 +173,47 @@ class TestBuildGraphQLQuery:
 
     def test_with_where(self):
         q = _build_graphql_query(
-            "orders", ["id"],
-            {"region": {"eq": "US"}}, [], None, None,
+            "orders",
+            ["id"],
+            {"region": {"eq": "US"}},
+            [],
+            None,
+            None,
         )
         assert "where:" in q
         assert 'region: {eq: "US"}' in q
 
     def test_with_numeric_where(self):
         q = _build_graphql_query(
-            "orders", ["id"],
-            {"amount": {"gt": "100"}}, [], None, None,
+            "orders",
+            ["id"],
+            {"amount": {"gt": "100"}},
+            [],
+            None,
+            None,
         )
         assert "amount: {gt: 100}" in q
 
     def test_with_order_by(self):
         q = _build_graphql_query(
-            "orders", ["id"], {},
-            [{"field": "created_at", "dir": "desc"}], None, None,
+            "orders",
+            ["id"],
+            {},
+            [{"field": "created_at", "dir": "desc"}],
+            None,
+            None,
         )
         assert "order_by:" in q
         assert "created_at: desc" in q
 
     def test_combined(self):
         q = _build_graphql_query(
-            "orders", ["id", "amount"],
+            "orders",
+            ["id", "amount"],
             {"region": {"eq": "US"}},
             [{"field": "amount", "dir": "desc"}],
-            5, 10,
+            5,
+            10,
         )
         assert "limit: 5" in q
         assert "offset: 10" in q

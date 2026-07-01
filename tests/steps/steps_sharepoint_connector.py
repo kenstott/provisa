@@ -5,7 +5,6 @@
 
 """pytest-bdd step definitions for REQ-726, REQ-727, REQ-728, REQ-731, and REQ-732 — SharePoint Connector."""
 
-import os
 import re
 
 import pytest
@@ -613,7 +612,11 @@ def certificate_fields_included_when_present_in_mapping(shared_data):
     )
 
 
-@then(parsers.parse('available SharePoint lists (e.g., "{list_a}", "{list_b}") appear in the table dropdown'))
+@then(
+    parsers.parse(
+        'available SharePoint lists (e.g., "{list_a}", "{list_b}") appear in the table dropdown'
+    )
+)
 def available_sharepoint_lists_appear_in_table_dropdown(shared_data, list_a, list_b):
     """
     Assert that the enumerated SharePoint lists include the expected list names
@@ -673,8 +676,7 @@ def available_sharepoint_lists_appear_in_table_dropdown(shared_data, list_a, lis
     # Verify each list in the available_lists is a non-empty string — a valid schema name
     for list_name in available_lists:
         assert isinstance(list_name, str) and list_name.strip(), (
-            f"Every enumerated SharePoint list name must be a non-empty string. "
-            f"Got: {list_name!r}."
+            f"Every enumerated SharePoint list name must be a non-empty string. Got: {list_name!r}."
         )
 
     # Verify the SOURCE_TO_CONNECTOR registry maps sharepoint to the sharepoint connector,
@@ -689,9 +691,7 @@ def available_sharepoint_lists_appear_in_table_dropdown(shared_data, list_a, lis
     )
 
     # Verify that at least the two example lists from the scenario are distinct
-    assert list_a != list_b, (
-        f"The two example lists must be distinct, but both were '{list_a}'."
-    )
+    assert list_a != list_b, f"The two example lists must be distinct, but both were '{list_a}'."
 
     # Verify the available lists represent a realistic SharePoint site — at least 2 lists
     assert len(available_lists) >= 2, (
@@ -701,4 +701,5 @@ def available_sharepoint_lists_appear_in_table_dropdown(shared_data, list_a, lis
 
     # Verify each list name is a valid potential Trino schema identifier
     # (no leading/trailing whitespace, all lowercase, valid identifier characters)
-    valid_schema_name_pattern = re.compile(r"^[a-z][a-z0-9_]*$
+    valid_schema_name_pattern = re.compile(r"^[a-z][a-z0-9_]*$")
+    for

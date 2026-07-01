@@ -57,11 +57,27 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
     from provisa.compiler.sql_gen import _get_default_row_limit
     from provisa.api.app import state
 
+    from provisa.core.models import ProvisaConfig
+
     rc = RedirectConfig.from_env()
     cfg = read_config()
     naming_cfg = cfg.get("naming", {})
     otel_cfg = cfg.get("observability", {})
+
+    def _eng(key: str):
+        # Default lives in one place — the ProvisaConfig field default.
+        return cfg.get(key, ProvisaConfig.model_fields[key].default)
+
     return {
+        "engine": {
+            "jvm_heap_gb": int(_eng("jvm_heap_gb")),
+            "query_max_memory": _eng("query_max_memory"),
+            "query_max_memory_per_node": _eng("query_max_memory_per_node"),
+            "query_max_total_memory": _eng("query_max_total_memory"),
+            "fault_tolerant_execution": bool(_eng("fault_tolerant_execution")),
+            "fault_tolerant_task_memory": _eng("fault_tolerant_task_memory"),
+            "exchange_spool_dir": _eng("exchange_spool_dir"),
+        },
         "redirect": {
             "enabled": rc.enabled,
             "threshold": rc.threshold,
@@ -105,6 +121,63 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
     }
 
 
+def _apply_redirect(r: dict, updated: list) -> None:
+    """Apply the `redirect` settings block (env-var backed)."""
+    if "enabled" in r:
+        os.environ["PROVISA_REDIRECT_ENABLED"] = str(r["enabled"]).lower()
+        updated.append("redirect.enabled")
+    if "threshold" in r:
+        os.environ["PROVISA_REDIRECT_THRESHOLD"] = str(r["threshold"])
+        updated.append("redirect.threshold")
+    if "default_format" in r:
+        os.environ["PROVISA_REDIRECT_FORMAT"] = r["default_format"]
+        updated.append("redirect.default_format")
+    if "ttl" in r:
+        os.environ["PROVISA_REDIRECT_TTL"] = str(r["ttl"])
+        updated.append("redirect.ttl")
+
+
+def _apply_otel(o: dict, updated: list) -> None:
+    """Apply the `otel` observability block (config file + env + live exporters)."""
+    path = config_path()
+    try:
+        cfg = read_config()
+        cfg.setdefault("observability", {})
+        if "endpoint" in o:
+            cfg["observability"]["endpoint"] = o["endpoint"]
+            os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = o["endpoint"]
+            updated.append("otel.endpoint")
+        if "service_name" in o:
+            cfg["observability"]["service_name"] = o["service_name"]
+            os.environ["OTEL_SERVICE_NAME"] = o["service_name"]
+            updated.append("otel.service_name")
+        if "sample_rate" in o:
+            cfg["observability"]["sample_rate"] = float(o["sample_rate"])
+            updated.append("otel.sample_rate")
+        if "support_endpoint" in o:
+            cfg["observability"]["support_endpoint"] = o["support_endpoint"]
+            os.environ["PROVISA_SUPPORT_OTLP_ENDPOINT"] = o["support_endpoint"]
+            updated.append("otel.support_endpoint")
+        if "support_redact_sql_literals" in o:
+            cfg["observability"].setdefault("support_telemetry_filter", {})[
+                "redact_sql_literals"
+            ] = bool(o["support_redact_sql_literals"])
+            updated.append("otel.support_redact_sql_literals")
+        if "support_redact_attributes" in o:
+            cfg["observability"].setdefault("support_telemetry_filter", {})["redact_attributes"] = (
+                list(o["support_redact_attributes"])
+            )
+            updated.append("otel.support_redact_attributes")
+        write_config(path, cfg)
+        if "endpoint" in o and o["endpoint"]:
+            from provisa.api.otel_setup import attach_otlp_exporters
+
+            service = cfg["observability"].get("service_name", "provisa")
+            attach_otlp_exporters(o["endpoint"], service)
+    except Exception:
+        pass
+
+
 @router.put("/admin/settings")
 async def update_settings(request: Request):  # REQ-165, REQ-194, REQ-253, REQ-302, REQ-303, REQ-416
     """Update platform settings at runtime."""
@@ -112,21 +185,39 @@ async def update_settings(request: Request):  # REQ-165, REQ-194, REQ-253, REQ-3
 
     body = await request.json()
     updated = []
+    restart_required = False
+
+    if "engine" in body:
+        # Execution-engine (federation) sizing + fault-tolerant execution. These are
+        # written to the config file and regenerate the engine's config.properties, but
+        # only take effect on an engine restart — the caller is told so.
+        e = body["engine"]
+        engine_keys = (
+            "jvm_heap_gb",
+            "query_max_memory",
+            "query_max_memory_per_node",
+            "query_max_total_memory",
+            "fault_tolerant_execution",
+            "fault_tolerant_task_memory",
+            "exchange_spool_dir",
+        )
+        path = config_path()
+        cfg = read_config()
+        changed = False
+        for k in engine_keys:
+            if k in e:
+                cfg[k] = int(e[k]) if k == "jvm_heap_gb" else e[k]
+                updated.append(f"engine.{k}")
+                changed = True
+        if changed:
+            write_config(path, cfg)
+            from provisa.api.trino_setup import write_trino_config
+
+            write_trino_config(str(path))
+            restart_required = True
 
     if "redirect" in body:
-        r = body["redirect"]
-        if "enabled" in r:
-            os.environ["PROVISA_REDIRECT_ENABLED"] = str(r["enabled"]).lower()
-            updated.append("redirect.enabled")
-        if "threshold" in r:
-            os.environ["PROVISA_REDIRECT_THRESHOLD"] = str(r["threshold"])
-            updated.append("redirect.threshold")
-        if "default_format" in r:
-            os.environ["PROVISA_REDIRECT_FORMAT"] = r["default_format"]
-            updated.append("redirect.default_format")
-        if "ttl" in r:
-            os.environ["PROVISA_REDIRECT_TTL"] = str(r["ttl"])
-            updated.append("redirect.ttl")
+        _apply_redirect(body["redirect"], updated)
 
     if "limits" in body:
         s = body["limits"]
@@ -175,46 +266,9 @@ async def update_settings(request: Request):  # REQ-165, REQ-194, REQ-253, REQ-3
             updated.append("relationships.auto_track_fk")
 
     if "otel" in body:
-        o = body["otel"]
-        path = config_path()
-        try:
-            cfg = read_config()
-            cfg.setdefault("observability", {})
-            if "endpoint" in o:
-                cfg["observability"]["endpoint"] = o["endpoint"]
-                os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = o["endpoint"]
-                updated.append("otel.endpoint")
-            if "service_name" in o:
-                cfg["observability"]["service_name"] = o["service_name"]
-                os.environ["OTEL_SERVICE_NAME"] = o["service_name"]
-                updated.append("otel.service_name")
-            if "sample_rate" in o:
-                cfg["observability"]["sample_rate"] = float(o["sample_rate"])
-                updated.append("otel.sample_rate")
-            if "support_endpoint" in o:
-                cfg["observability"]["support_endpoint"] = o["support_endpoint"]
-                os.environ["PROVISA_SUPPORT_OTLP_ENDPOINT"] = o["support_endpoint"]
-                updated.append("otel.support_endpoint")
-            if "support_redact_sql_literals" in o:
-                cfg["observability"].setdefault("support_telemetry_filter", {})[
-                    "redact_sql_literals"
-                ] = bool(o["support_redact_sql_literals"])
-                updated.append("otel.support_redact_sql_literals")
-            if "support_redact_attributes" in o:
-                cfg["observability"].setdefault("support_telemetry_filter", {})[
-                    "redact_attributes"
-                ] = list(o["support_redact_attributes"])
-                updated.append("otel.support_redact_attributes")
-            write_config(path, cfg)
-            if "endpoint" in o and o["endpoint"]:
-                from provisa.api.otel_setup import attach_otlp_exporters
+        _apply_otel(body["otel"], updated)
 
-                service = cfg["observability"].get("service_name", "provisa")
-                attach_otlp_exporters(o["endpoint"], service)
-        except Exception:
-            pass
-
-    return {"success": True, "updated": updated}
+    return {"success": True, "updated": updated, "restart_required": restart_required}
 
 
 @router.post("/admin/domain-policy")

@@ -17,11 +17,11 @@ from __future__ import annotations
 import time
 
 import pytest
-from pytest_bdd import given, parsers, scenario, then, when
+from pytest_bdd import given, scenario, then, when
 
 from provisa.compiler.sql_gen import ColumnRef, CompiledQuery
 from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
-from provisa.mv.rewriter import _partial_rewrite_to_mv, rewrite_if_mv_match
+from provisa.mv.rewriter import rewrite_if_mv_match
 
 
 # ---------------------------------------------------------------------------
@@ -40,7 +40,7 @@ def shared_data() -> dict:
 
 
 @scenario(
-    "../../features/req_810.feature",
+    "../features/REQ-810.feature",
     "REQ-810 default behaviour",
 )
 def test_req_810_default_behaviour():
@@ -186,6 +186,7 @@ def then_covered_joins_rewritten_to_mv(shared_data):
     # The MV replaces the JOIN to 'covered_table', so there should be no
     # 'JOIN ... "customers"' remaining in the rewritten SQL
     import re
+
     covered_join_pattern = rf'JOIN\s+"[^"]*"\."(?:{covered_table})"\s+"t\d+"'
     assert not re.search(covered_join_pattern, rewritten_sql, re.IGNORECASE), (
         f"JOIN to covered table '{covered_table}' should be removed from rewritten SQL, "
@@ -203,6 +204,7 @@ def then_uncovered_joins_preserved(shared_data):
 
     # The uncovered table's JOIN must still be present
     import re
+
     uncovered_join_pattern = rf'JOIN\s+"[^"]*"\."(?:{uncovered_table})"\s+"t\d+"'
     assert re.search(uncovered_join_pattern, rewritten_sql, re.IGNORECASE), (
         f"JOIN to uncovered table '{uncovered_table}' should be preserved in rewritten SQL, "
@@ -216,6 +218,5 @@ def then_uncovered_joins_preserved(shared_data):
 
     # The uncovered table itself must be referenced in the SQL
     assert uncovered_table in rewritten_sql, (
-        f"Uncovered table '{uncovered_table}' must appear in rewritten SQL, "
-        f"got:\n{rewritten_sql}"
+        f"Uncovered table '{uncovered_table}' must appear in rewritten SQL, got:\n{rewritten_sql}"
     )

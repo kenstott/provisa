@@ -37,6 +37,10 @@ REQ-261 — Debezium CDC subscription provider for non-PG RDBMS sources (MySQL,
 MariaDB, SQL Server, Oracle). Debezium captures changes from the source's
 transaction log and publishes to Kafka topics. Provisa's Kafka notification
 provider consumes these CDC events and streams them as SSE subscriptions.
+
+REQ-814 — Provider selection (get_provider in provisa/subscriptions/registry.py)
+must dispatch on `live.strategy` and its nested params, NOT on source_type.
+Validation capability-gates strategy by source_type.
 """
 
 from __future__ import annotations
@@ -67,6 +71,7 @@ scenarios("../features/REQ-566.feature")
 scenarios("../features/REQ-567.feature")
 scenarios("../features/REQ-260.feature")
 scenarios("../features/REQ-261.feature")
+scenarios("../features/REQ-814.feature")
 
 
 # ---------------------------------------------------------------------------
@@ -805,14 +810,7 @@ def when_poll_subscription_created(shared_data: dict) -> None:
     - The provider accepts the table config with a watermark_column.
     - Polling returns ChangeEvents for rows newer than the last watermark.
     - The watermark advances after each poll so rows are not re-delivered.
-    - A table without a watermark_column raises ValueError immediately.
+    - A table without a watermark_column raises ValueError.
     """
-    table_config = shared_data["table_config"]
-    table = shared_data["table"]
     backend = shared_data["backend"]
-    baseline_wm = shared_data["baseline_watermark"]
-
-    provider = _PollSubscriptionProvider(
-        backend=backend,
-        table_config=table_config,
-        poll_interval_seconds=0.01,
+    table_config = shared_data["table_config

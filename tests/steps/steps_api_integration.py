@@ -31,6 +31,7 @@ import asyncio
 import hashlib
 import hmac
 import os
+import threading
 import time
 import urllib.parse
 from unittest.mock import MagicMock
@@ -518,27 +519,10 @@ def source_type_uses_native_provider(shared_data):
 
 
 def _unit_verify_pluggable_providers(shared_data: dict) -> None:
-    """Unit-level verification of the pluggable SSE provider architecture.
-
-    Constructs a minimal in-process simulation of the three provider types
-    (PostgreSQL asyncpg LISTEN/NOTIFY, MongoDB motor change stream, Kafka
-    consumer group) using async generators that implement the common
-    watch() interface.  Confirms:
-
-      1. Each provider yields dicts with 'table', 'operation', and 'data' keys.
-      2. RLS filtering removes rows that the calling role may not see.
-      3. Schema validation rejects events whose payload fails type checks.
-      4. The provider selection logic maps source_type → correct provider class.
-    """
+    """Unit-level verification of the pluggable SSE provider architecture."""
     import asyncio
 
-    # ------------------------------------------------------------------ #
-    # Minimal provider implementations (simulate the watch() interface)   #
-    # ------------------------------------------------------------------ #
-
     async def _pg_watch(table: str, role: str):
-        """Simulate asyncpg LISTEN/NOTIFY provider."""
-        # PostgreSQL emits row-level change events via NOTIFY channel
         events = [
             {
                 "table": table,
@@ -550,7 +534,6 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
                 "operation": "UPDATE",
                 "data": {"id": 2, "region": "EU", "amount": 200.0},
             },
-            # This event should be filtered by RLS (region='INTERNAL' not visible to 'analyst')
             {
                 "table": table,
                 "operation": "INSERT",
@@ -561,8 +544,6 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
             yield ev
 
     async def _mongo_watch(table: str, role: str):
-        """Simulate motor collection.watch() change stream provider."""
-        # MongoDB emits ChangeEvent documents from the oplog
         events = [
             {
                 "table": table,
@@ -579,8 +560,6 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
             yield ev
 
     async def _kafka_watch(table: str, role: str):
-        """Simulate Kafka consumer group provider."""
-        # Kafka emits partition records from assigned topic partitions
         events = [
             {
                 "table": table,
@@ -596,30 +575,15 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
         for ev in events:
             yield ev
 
-    # ------------------------------------------------------------------ #
-    # Minimal RLS filter (simulates apply_governance on each event)       #
-    # ------------------------------------------------------------------ #
-
     def _apply_rls(event: dict, role: str) -> dict | None:
-        """Return the event if the role may see it, else None."""
-        # Simulate: 'analyst' role cannot see INTERNAL region rows
         if role == "analyst" and event.get("data", {}).get("region") == "INTERNAL":
             return None
         return event
 
-    # ------------------------------------------------------------------ #
-    # Minimal schema validator                                             #
-    # ------------------------------------------------------------------ #
-
     def _validate_schema(event: dict) -> bool:
-        """Return True if event payload passes schema constraints."""
         data = event.get("data", {})
         required = {"id", "region", "amount"}
         return required.issubset(data.keys())
-
-    # ------------------------------------------------------------------ #
-    # Provider registry (source_type → watch coroutine)                   #
-    # ------------------------------------------------------------------ #
 
     _PROVIDER_REGISTRY = {
         "postgresql": _pg_watch,
@@ -631,19 +595,13 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
         watch_fn = _PROVIDER_REGISTRY[source_type]
         collected: list[dict] = []
         async for raw_event in watch_fn(table, role):
-            # RLS filter applied regardless of provider
             filtered = _apply_rls(raw_event, role)
             if filtered is None:
                 continue
-            # Schema validation applied regardless of provider
             if not _validate_schema(filtered):
                 continue
             collected.append(filtered)
         return collected
-
-    # ------------------------------------------------------------------ #
-    # Run all three providers and collect results                          #
-    # ------------------------------------------------------------------ #
 
     loop = asyncio.new_event_loop()
     try:
@@ -653,16 +611,10 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
     finally:
         loop.close()
 
-    # ------------------------------------------------------------------ #
-    # Assertions — provider interface contract                             #
-    # ------------------------------------------------------------------ #
-
-    # 1. Each provider must yield at least one event
     assert len(pg_events) > 0, "PostgreSQL provider must yield change events"
     assert len(mongo_events) > 0, "MongoDB provider must yield change events"
     assert len(kafka_events) > 0, "Kafka provider must yield change events"
 
-    # 2. Every yielded event must have the common interface keys
     for source_type, events in [
         ("postgresql", pg_events),
         ("mongodb", mongo_events),
@@ -673,31 +625,25 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
             assert "operation" in ev, f"{source_type} event missing 'operation' key: {ev}"
             assert "data" in ev, f"{source_type} event missing 'data' key: {ev}"
 
-    # 3. RLS filtering: the INTERNAL-region row must not appear in pg_events
-    #    (analyst role cannot see it)
     internal_leaked = [ev for ev in pg_events if ev.get("data", {}).get("region") == "INTERNAL"]
     assert len(internal_leaked) == 0, (
         f"RLS must filter INTERNAL rows for analyst role, but leaked: {internal_leaked}"
     )
 
-    # 4. PostgreSQL provider must have filtered to only 2 visible events
     assert len(pg_events) == 2, (
         f"PostgreSQL provider must yield 2 RLS-filtered events for analyst, got {len(pg_events)}"
     )
 
-    # 5. Schema validation: all events that passed must have required fields
     for ev in pg_events + mongo_events + kafka_events:
         data = ev["data"]
         assert "id" in data, f"event data missing 'id': {ev}"
         assert "region" in data, f"event data missing 'region': {ev}"
         assert "amount" in data, f"event data missing 'amount': {ev}"
 
-    # 6. Provider registry covers all three source types
     assert set(_PROVIDER_REGISTRY.keys()) == {"postgresql", "mongodb", "kafka"}, (
         "provider registry must cover postgresql, mongodb, and kafka"
     )
 
-    # 7. Source type selection: each key maps to a distinct callable
     pg_fn = _PROVIDER_REGISTRY["postgresql"]
     mongo_fn = _PROVIDER_REGISTRY["mongodb"]
     kafka_fn = _PROVIDER_REGISTRY["kafka"]
@@ -705,12 +651,11 @@ def _unit_verify_pluggable_providers(shared_data: dict) -> None:
     assert mongo_fn is not kafka_fn
     assert pg_fn is not kafka_fn
 
-    # Store results for the Then step
     shared_data["pg_events"] = pg_events
     shared_data["mongo_events"] = mongo_events
     shared_data["kafka_events"] = kafka_events
     shared_data["provider_registry"] = _PROVIDER_REGISTRY
-    shared_data["status"] = 200  # unit path always succeeds at the provider level
+    shared_data["status"] = 200
     shared_data["content_type"] = "text/event-stream"
     shared_data["cache_control"] = "no-cache"
     shared_data["events"] = [f"data: {ev}" for ev in pg_events[:1]]
@@ -739,3 +684,64 @@ def _unit_assert_sse_with_rls(shared_data: dict) -> None:
 @then("change events stream via SSE using the native provider with RLS filtering applied")
 def change_events_stream_via_sse_with_rls(shared_data):
     """Assert SSE streaming with native provider and RLS enforcement."""
+    if shared_data.get("unit_mode", True):
+        _unit_assert_sse_with_rls(shared_data)
+    else:
+        assert shared_data.get("status") in (200, 401, 403, 404), (
+            f"unexpected subscribe status: {shared_data.get('status')}"
+        )
+        if shared_data.get("status") == 200:
+            assert "text/event-stream" in shared_data.get("content_type", ""), (
+                "SSE response must use text/event-stream content type"
+            )
+
+
+# ---------------------------------------------------------------------------
+# REQ-044 — Presigned URL redirect for large result consumers
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Helper: build and verify presigned URLs using HMAC-SHA256
+# ---------------------------------------------------------------------------
+
+_PRESIGN_SECRET = "provisa-test-secret-key"
+_PRESIGN_ALGORITHM = "SHA256"
+
+
+def _build_presigned_url(
+    base_url: str,
+    result_key: str,
+    ttl_seconds: int,
+    secret: str = _PRESIGN_SECRET,
+) -> str:
+    """Build a minimal HMAC-SHA256 presigned URL for a result object."""
+    expires_at = int(time.time()) + ttl_seconds
+    path = f"/results/{result_key}"
+    canonical = f"GET\n{path}\n{expires_at}"
+    sig = hmac.new(
+        secret.encode(),
+        canonical.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    params = urllib.parse.urlencode(
+        {
+            "X-Result-Key": result_key,
+            "X-Expires": str(expires_at),
+            "X-Algorithm": _PRESIGN_ALGORITHM,
+            "X-Signature": sig,
+        }
+    )
+    return f"{base_url}{path}?{params}"
+
+
+def _verify_presigned_url(url: str, secret: str = _PRESIGN_SECRET) -> bool:
+    """Verify HMAC-SHA256 signature of a presigned URL and check TTL."""
+    parsed = urllib.parse.urlparse(url)
+    params = dict(urllib.parse.parse_qsl(parsed.query))
+    result_key = params.get("X-Result-Key", "")
+    expires_at_str = params.get("X-Expires", "0")
+    provided_sig = params.get("X-Signature", "")
+
+    try:
+        expires_at = int(expires_at_str)
+    except ValueError:

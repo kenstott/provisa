@@ -85,6 +85,8 @@ not found in any scanned .hml file, that table is skipped and a warning is emitt
 the WarningCollector; the conversion continues rather than aborting.
 """
 
+from __future__ import annotations
+
 import io
 import sys
 import textwrap
@@ -98,14 +100,8 @@ from provisa.core.models import ProvisaConfig
 from provisa.ddn.mapper import convert_hml
 from provisa.ddn.parser import parse_hml_dir
 from provisa.hasura_v2.mapper import convert_metadata
-from provisa.hasura_v2.models import (
-    HasuraMetadata,
-    HasuraPermission,
-    HasuraSource,
-    HasuraTable,
-)
 from provisa.hasura_v2.parser import parse_metadata_dir
-from provisa.import_shared.filters import bool_expr_to_sql
+from provisa.import_shared.bool_expr import bool_expr_to_sql
 from provisa.import_shared.warnings import WarningCollector
 
 
@@ -933,3 +929,8 @@ def _build_hasura_v2_metadata_with_write_permissions(base: Path) -> Path:
                 },
             },
         ],
+        "insert_permissions": [
+            {
+                "role": "clerk",
+                "permission": {
+                    "columns": ["amount

@@ -85,8 +85,25 @@ trino:
       minAvailable: 1
   image:
     repository: trinodb/trino
-    tag: "439"
+    tag: "481"
   port: 8080
+  memory:
+    maxMemory: 4GB
+    maxMemoryPerNode: 2GB
+    maxTotalMemory: 8GB
+  # Fault-tolerant execution (replaces legacy spill-to-disk). Requires an
+  # exchange manager backed by shared object storage (below).
+  fte:
+    taskMemory: 5GB
+  exchange:
+    bucket: provisa-exchange
+    region: us-east-1
+    s3:
+      # endpoint empty → use the in-cluster MinIO service (needs minio.enabled).
+      # Set to an external S3 endpoint (+accessKey/secretKey) to use managed storage.
+      endpoint: ""
+      accessKey: ""
+      secretKey: ""
 
 postgresql:
   enabled: true

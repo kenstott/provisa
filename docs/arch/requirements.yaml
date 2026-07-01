@@ -22302,3 +22302,194 @@
   stakeholders:
   - data-engineer
   - app-developer
+- id: REQ-813
+  status: accepted
+  group: 9. Live Data & Events
+  category: Subscriptions
+  priority: MUST
+  type: structural
+  description: >-
+    The `live` block (LiveDeliveryConfig on Table) becomes a unified change-feed / CDC abstraction.
+    Replace the binary `delivery: poll|cdc` field with a multi-strategy model: `strategy: poll|native|debezium|kafka`,
+    each with its own discriminated-union params (poll: watermark_column/poll_interval; native: none; debezium:
+    bootstrap_servers/topic_prefix/schema_registry_url/consumer_group_id; kafka: bootstrap_servers/topic/format/field_mapping/key_column).
+    Fold Table.watermark_column into live.poll.watermark_column. Make query_id and outputs optional so `live`
+    covers both raw table change-feeds (no persisted query) and live persisted-query output fan-out. Topic names
+    for debezium are derived (not per-table): {topic_prefix}.{schema}.{table}.
+  use_case: >-
+    A single `live` config abstraction unifies all capture mechanisms (polling, PostgreSQL LISTEN/NOTIFY,
+    MongoDB change streams, Debezium, arbitrary Kafka deltas), eliminating the misleading binary of "poll vs CDC"
+    where poll IS a change-feed mechanism. Strategy-specific params prevent schema pollution. Optional query_id
+    and outputs enable both low-level table subscriptions and high-level live persisted-query delivery.
+  code:
+  - provisa/core/models.py
+  tests:
+  - tests/unit/test_live_config_model.py
+  target: 2026-Q3
+  related_reqs:
+  - REQ-565
+  - REQ-260
+  - REQ-261
+  - REQ-285
+  - REQ-176
+  - REQ-258
+  stakeholders:
+  - data-engineer
+  - ops
+- id: REQ-814
+  status: accepted
+  group: 9. Live Data & Events
+  category: Subscriptions
+  priority: MUST
+  type: behavioral
+  description: >-
+    Provider selection (get_provider in provisa/subscriptions/registry.py) must dispatch on
+    `live.strategy` and its nested params, NOT on source_type. Validation capability-gates strategy by source_type:
+    warehouses → poll only; MongoDB → native/poll; PostgreSQL → native/debezium/poll/kafka; non-PG RDBMS
+    (MySQL, MariaDB, SQL Server, Oracle) + Debezium connector → debezium/poll/kafka; Kafka topics → kafka only.
+    This removes the synthetic "debezium" source_type (currently at registry.py:34) that conflates delta-transport
+    with query-transport.
+  use_case: >-
+    Dispatching on strategy instead of source_type correctly models that strategy is a choice of delta-capture
+    mechanism (independent of where the data is queried from), not a data source type. Capability-gating per
+    source_type prevents misconfiguration (e.g., native change streams on Snowflake).
+  code:
+  - provisa/subscriptions/registry.py
+  - provisa/core/models.py
+  tests:
+  - tests/unit/test_provider_strategy_dispatch.py
+  - tests/unit/test_live_strategy_validation.py
+  - tests/integration/test_live_provider_selection.py
+  target: 2026-Q3
+  scenario: |
+    Given a PostgreSQL table with live.strategy=native
+    When get_provider() is called
+    Then PgNotificationProvider is instantiated
+    And the source_type is not used to dispatch
+  related_reqs:
+  - REQ-565
+  - REQ-260
+  - REQ-261
+  - REQ-285
+  stakeholders:
+  - data-engineer
+  - ops
+- id: REQ-815
+  status: accepted
+  group: 8. Deployment & Infrastructure
+  category: Docker Compose Organization
+  priority: MUST
+  type: infrastructure
+  description: >-
+    Telemetry sink services (otel-collector, prometheus, tempo, grafana, otlp2parquet) are organized
+    into an independently start/stoppable compose project (provisa-observability) separate from the core
+    runtime stack. The app degrades gracefully (fire-and-forget) when no OTLP collector is listening.
+    MinIO base definitions move to docker-compose.core.yml; Trino and trino-worker remain core with
+    observability-specific env/exporter overlays applied only when telemetry is enabled.
+  use_case: >-
+    Telemetry infrastructure is optional overhead for test and CI runs. Isolating telemetry sinks
+    reduces startup time and resource consumption while ensuring app correctness does not depend on
+    collector availability.
+  code:
+  - docker-compose.core.yml
+  - docker-compose.observability.yml
+  - provisa/telemetry/exporter.py
+  related_reqs:
+  - REQ-813
+  - REQ-814
+  target: 2026-Q3
+  stakeholders:
+  - ops
+- id: REQ-816
+  status: accepted
+  group: 8. Deployment & Infrastructure
+  category: Docker Compose Organization
+  priority: SHOULD
+  type: infrastructure
+  description: >-
+    Demo/sample upstream sources (graphql-demo, petstore-mock) are organized into an independently
+    start/stoppable compose project separate from the core runtime, categorized alongside other
+    test-only services (neo4j, elasticsearch, kafka, schema-registry, fuseki, mongodb). Integration tests
+    requiring these fixtures bring them up via harness markers rather than assuming they are already running
+    in the dev stack.
+  use_case: >-
+    Demo sources serve as test fixtures for federation and remote-source integration tests.
+    Organizing them with other test services ensures test harness controls their lifecycle and
+    reduces assumptions about the dev environment state.
+  code:
+  - docker-compose.demo.yml
+  - docker-compose.test.yml
+  - tests/conftest.py
+  tests:
+  - tests/integration/test_openapi_pet_by_status.py
+  - tests/integration/test_graphql_remote_integration.py
+  related_reqs:
+  - REQ-813
+  - REQ-814
+  target: 2026-Q3
+  stakeholders:
+  - ops
+  - data-engineer
+- id: REQ-817
+  status: complete
+  group: 8. Deployment & Infrastructure
+  category: Trino Memory Management
+  priority: MUST
+  type: infrastructure
+  description: >-
+    Trino memory overflow handling uses Fault-Tolerant Execution (FTE) with task.retry-policy=TASK
+    and task.low-memory-killer.policy=total-reservation-on-blocked-nodes. Docker deployments use
+    a shared named-volume filesystem exchange manager (trino/etc/exchange-manager.properties,
+    /data/trino/exchange). Helm deployments require an S3/MinIO-backed exchange manager with a MinIO
+    bucket-init Job or external S3 endpoint+credentials, enforced by a fail-loud guard.
+  use_case: >-
+    FTE replaces legacy spill-to-disk (deprecated in Trino 481) and mitigates noisy-neighbor OOM
+    in multi-tenant deployments by isolating task memory failures and enabling graceful task retry.
+  code:
+  - docker-compose.core.yml
+  - kubernetes/charts/trino/values.yaml
+  - kubernetes/charts/trino/templates/exchange-manager-config.yaml
+  since: "2026-07"
+  stakeholders:
+  - ops
+  - data-engineer
+- id: REQ-818
+  status: accepted
+  group: 5. Query Languages, Compilation & Operations
+  category: Cypher Mutations
+  priority: MUST
+  type: behavioral
+  description: >-
+    Cypher supports WRITES via the /data/cypher endpoint. CREATE, DELETE, and SET statements execute
+    as direct table writes through the same write pipeline as GraphQL and SQL mutations, with RLS injection,
+    dialect transpilation, and post-mutation hooks. Non-direct write patterns (MERGE, DETACH, REMOVE)
+    are unsupported and rejected. All writes are governed by table/view write rights like any other write.
+    This supersedes REQ-346 (read-only constraint), which is now inaccurate.
+  use_case: >-
+    Write support enables graph users to mutate data via Cypher while maintaining governance consistency
+    with SQL and GraphQL mutations.
+  code:
+  - provisa/api/rest/cypher_router.py
+  - provisa/cypher/write_translator.py
+  - provisa/cypher/parser.py
+  tests:
+  - tests/integration/test_cypher_endpoint.py
+  - tests/unit/test_cypher_parser.py
+  - tests/unit/test_cypher_translator.py
+  related_reqs:
+  - REQ-346
+  - REQ-670
+  - REQ-345
+  - REQ-003
+  target: 2026-Q3
+  scenario: |
+    Given a valid CREATE statement targeting a table with write rights
+    When executed via the /data/cypher endpoint
+    Then it executes as a direct table write, returns affected_rows, and applies RLS + post-mutation hooks
+
+    Given a MERGE or DETACH statement
+    When parsed
+    Then it is rejected at parse time with a precise error
+  stakeholders:
+  - data-engineer
+  - compliance

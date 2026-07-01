@@ -44,10 +44,7 @@ catalog.management=dynamic
 query.max-memory={query_max_memory}
 query.max-memory-per-node={query_max_memory_per_node}
 query.max-total-memory={query_max_total_memory}
-spill-enabled={spill_enabled}
-spiller-spill-path={spill_path}
-spill-encryption-enabled=true
-tracing.enabled=true
+{fte_block}tracing.enabled=true
 otel.exporter.endpoint=http://otel-collector:4317
 """
 
@@ -56,9 +53,28 @@ http-server.http.port=8080
 discovery.uri=http://trino:8080
 catalog.management=dynamic
 query.max-memory-per-node={query_max_memory_per_node}
-spill-enabled={spill_enabled}
-spiller-spill-path={spill_path}
-spill-encryption-enabled=true
+{fte_block}"""
+
+# Fault-tolerant execution replaces legacy spill-to-disk. Rendered into both node
+# configs when enabled; requires a spool (exchange manager) — see below.
+_FTE_TEMPLATE = """retry-policy=TASK
+task.low-memory-killer.policy=total-reservation-on-blocked-nodes
+fault-tolerant-execution-task-memory={task_memory}
+"""
+
+# Local filesystem spool (single host / shared volume).
+_EXCHANGE_FILESYSTEM_TEMPLATE = """exchange-manager.name=filesystem
+exchange.base-directories={spool_dir}
+"""
+
+# S3-backed spool (multi-host: a local dir is not shared across hosts).
+_EXCHANGE_S3_TEMPLATE = """exchange-manager.name=filesystem
+exchange.base-directories=s3://{bucket}
+exchange.s3.endpoint={endpoint}
+exchange.s3.region={region}
+exchange.s3.aws-access-key={access_key}
+exchange.s3.aws-secret-key={secret_key}
+exchange.s3.path-style-access=true
 """
 
 _RESOURCE_GROUPS_PROPERTIES_TEMPLATE = """resource-groups.configuration-manager=file
@@ -70,6 +86,28 @@ resource-groups.config-file=/etc/trino/resource-groups.json
 #   - ./trino/etc/resource-groups.properties:/etc/trino/resource-groups.properties:ro
 
 
+def _cfg(cfg: dict, key: str) -> Any:
+    """Read a config value, falling back to the single source of truth for its
+    default — the ProvisaConfig field default in models.py — never a literal here."""
+    from provisa.core.models import ProvisaConfig
+
+    return cfg.get(key, ProvisaConfig.model_fields[key].default)
+
+
+def _exchange_manager_config(cfg: dict) -> str:
+    """Render exchange-manager.properties from config: S3 spool when an endpoint is
+    set (multi-host), otherwise a local filesystem spool."""
+    if _cfg(cfg, "exchange_spool_s3_endpoint"):
+        return _EXCHANGE_S3_TEMPLATE.format(
+            bucket=_cfg(cfg, "exchange_spool_bucket"),
+            endpoint=_cfg(cfg, "exchange_spool_s3_endpoint"),
+            region=_cfg(cfg, "exchange_spool_s3_region"),
+            access_key=_cfg(cfg, "exchange_spool_s3_access_key"),
+            secret_key=_cfg(cfg, "exchange_spool_s3_secret_key"),
+        )
+    return _EXCHANGE_FILESYSTEM_TEMPLATE.format(spool_dir=_cfg(cfg, "exchange_spool_dir"))
+
+
 def write_trino_config(config_path: str) -> None:  # REQ-055, REQ-250
     """Regenerate trino/etc/jvm.config and trino/etc/config.properties from provisa config."""
     cfg: dict = {}
@@ -79,12 +117,16 @@ def write_trino_config(config_path: str) -> None:  # REQ-055, REQ-250
     except Exception:
         pass
 
-    heap_gb = int(cfg.get("jvm_heap_gb", 8))
-    spill_enabled = str(cfg.get("spill_enabled", True)).lower()
-    spill_path = cfg.get("spill_path", "/tmp/provisa-spill")  # nosec B108 - Trino spill dir default, config-overridable
-    query_max_memory = cfg.get("query_max_memory", "4GB")
-    query_max_memory_per_node = cfg.get("query_max_memory_per_node", "2GB")
-    query_max_total_memory = cfg.get("query_max_total_memory", "8GB")
+    heap_gb = int(_cfg(cfg, "jvm_heap_gb"))
+    query_max_memory = _cfg(cfg, "query_max_memory")
+    query_max_memory_per_node = _cfg(cfg, "query_max_memory_per_node")
+    query_max_total_memory = _cfg(cfg, "query_max_total_memory")
+
+    fte_block = (
+        _FTE_TEMPLATE.format(task_memory=_cfg(cfg, "fault_tolerant_task_memory"))
+        if _cfg(cfg, "fault_tolerant_execution")
+        else ""
+    )
 
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(config_path)))
     trino_etc = os.path.join(project_root, "trino", "etc")
@@ -99,18 +141,21 @@ def write_trino_config(config_path: str) -> None:  # REQ-055, REQ-250
             query_max_memory=query_max_memory,
             query_max_memory_per_node=query_max_memory_per_node,
             query_max_total_memory=query_max_total_memory,
-            spill_enabled=spill_enabled,
-            spill_path=spill_path,
+            fte_block=fte_block,
         ),
     )
     _write(
         os.path.join(trino_etc, "worker", "config.properties"),
         _WORKER_TEMPLATE.format(
             query_max_memory_per_node=query_max_memory_per_node,
-            spill_enabled=spill_enabled,
-            spill_path=spill_path,
+            fte_block=fte_block,
         ),
     )
+    if fte_block:
+        _write(
+            os.path.join(trino_etc, "exchange-manager.properties"),
+            _exchange_manager_config(cfg),
+        )
     _write(
         os.path.join(trino_etc, "resource-groups.properties"),
         _RESOURCE_GROUPS_PROPERTIES_TEMPLATE,

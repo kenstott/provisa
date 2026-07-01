@@ -60,6 +60,7 @@ services:
       - "8080:8080"
     volumes:
       - ./trino/etc/config.properties:/etc/trino/config.properties:ro
+      - ./trino/etc/exchange-manager.properties:/etc/trino/exchange-manager.properties:ro
       - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
       - ./trino/etc/node.properties:/etc/trino/node.properties:ro
       - ./trino/etc/resource-groups.json:/etc/trino/resource-groups.json:ro
@@ -67,6 +68,7 @@ services:
       - ./trino/catalog:/etc/trino/catalog
       - ./trino/kafka:/etc/trino/kafka:ro
       - trino_cache:/data/trino/cache
+      - provisa_exchange:/data/provisa/exchange
       - ./observability/trino-otel:/etc/trino/otel:ro
       - trino_logs:/var/log/trino
       - ./trino/plugins/trino-sharepoint:/usr/lib/trino/plugin/trino-sharepoint:ro
@@ -92,11 +94,13 @@ services:
     entrypoint: ["/etc/trino/worker/entrypoint.sh"]
     volumes:
       - ./trino/etc/worker/config.properties:/etc/trino/config.properties:ro
+      - ./trino/etc/exchange-manager.properties:/etc/trino/exchange-manager.properties:ro
       - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
       - ./trino/etc/worker/entrypoint.sh:/etc/trino/worker/entrypoint.sh:ro
       - ./trino/catalog:/etc/trino/catalog
       - ./trino/kafka:/etc/trino/kafka:ro
       - trino_worker_cache:/data/trino/cache
+      - provisa_exchange:/data/provisa/exchange
       - ./observability/trino-otel:/etc/trino/otel:ro
       - trino_worker_logs:/var/log/trino
       - ./trino/plugins/trino-sharepoint:/usr/lib/trino/plugin/trino-sharepoint:ro
@@ -148,5 +152,6 @@ volumes:
   redis_data:
   trino_cache:
   trino_worker_cache:
+  provisa_exchange:
   trino_logs:
   trino_worker_logs:

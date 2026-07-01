@@ -36,6 +36,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from graphql import (
+    DocumentNode,
     FieldNode,
     OperationDefinitionNode,
     parse,
@@ -282,6 +283,18 @@ def _role(
     )
 
 
+def _make_scheduled_trigger(**kwargs: object) -> ScheduledTrigger:
+    """Build a ScheduledTrigger with sensible defaults."""
+    defaults: dict[str, object] = dict(
+        id="trigger-1",
+        cron="* * * * *",
+        url="https://example.com/hook",
+        enabled=True,
+    )
+    defaults.update(kwargs)
+    return ScheduledTrigger(**defaults)  # type: ignore[arg-type]
+
+
 # ---------------------------------------------------------------------------
 # REQ-212 scenario binding
 # ---------------------------------------------------------------------------
@@ -439,12 +452,8 @@ def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
             return str(getattr(result, "query"))
         return str(result)
 
-    assert pg_result is not None, (
-        "PostgreSQL compile_query result must not be None"
-    )
-    assert trino_result is not None, (
-        "Trino compile_query result must not be None"
-    )
+    assert pg_result is not None, "PostgreSQL compile_query result must not be None"
+    assert trino_result is not None, "Trino compile_query result must not be None"
 
     pg_sql = _sql(pg_result)
     pg_sql_upper = pg_sql.upper()
@@ -696,16 +705,14 @@ def _when_system_starts_up(shared_data: dict) -> None:
     role_models: list[Role] = shared_data["role_models"]
     role_dicts: list[dict] = shared_data["role_dicts"]
 
-    flattened_models: dict[str, Role] = flatten_roles(role_models)
+    flattened_models: dict[str, Role] = {r.id: r for r in flatten_roles(role_models)}
     shared_data["flattened_models"] = flattened_models
 
     flattened_dicts: dict[str, dict] = _flatten_roles_from_dicts(role_dicts)
     shared_data["flattened_dicts"] = flattened_dicts
 
 
-@then(
-    "capabilities and domain_access are flattened up the chain so lookups remain O(1)"
-)
+@then("capabilities and domain_access are flattened up the chain so lookups remain O(1)")
 def _then_capabilities_and_domain_access_flattened(shared_data: dict) -> None:
     """Assert that flattening produced correct merged capabilities and domain_access."""
     flattened_models: dict[str, Role] = shared_data["flattened_models"]
@@ -756,11 +763,3 @@ def _then_capabilities_and_domain_access_flattened(shared_data: dict) -> None:
     )
     assert _domains(an_model) >= {"analytics", "public"}, (
         f"analyst (model) domain_access must include {{'analytics','public'}}; "
-        f"got {_domains(an_model)}"
-    )
-    assert _caps(an_dict) >= {"aggregate", "read"}, (
-        f"analyst (dict) capabilities must include {{'aggregate','read'}}; got {_caps(an_dict)}"
-    )
-    assert _domains(an_dict) >= {"analytics", "public"}, (
-        f"analyst (dict) domain_access must include {{'analytics','public'}}; "
-        f"got {_domains

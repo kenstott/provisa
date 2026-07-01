@@ -53,6 +53,9 @@ spec:
             - name: config
               mountPath: /etc/trino/config.properties
               subPath: coordinator-config.properties
+            - name: exchange
+              mountPath: /etc/trino/exchange-manager.properties
+              subPath: exchange-manager.properties
             {{- if .Values.postgresql.enabled }}
             - name: catalog-secret
               mountPath: /etc/trino/catalog/sales_pg.properties
@@ -86,6 +89,9 @@ spec:
         - name: config
           configMap:
             name: {{ .Release.Name }}-trino-config
+        - name: exchange
+          secret:
+            secretName: {{ .Release.Name }}-trino-exchange
         {{- if .Values.postgresql.enabled }}
         - name: catalog-secret
           secret:

@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import csv
-import os
 import re
 from pathlib import Path
 
@@ -477,6 +476,9 @@ def then_graphql_fields_reflect_snake_case(shared_data):
             "table_name": customers_td.table_name,
             "governance": "pre-approved",
             "columns": columns_for_schema,
+            # REQ-789: request snake_case GraphQL field naming so the SDL field
+            # names mirror the snake_case column names produced by the connector.
+            "gql_naming_convention": "snake",
         }
     ]
     role = {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
@@ -735,10 +737,4 @@ def then_table_dropdown_lists_csv_tables(shared_data):
     config = shared_data["ui_file_source_config"]
     for td in tables_in_schema:
         assert td.source_id == config.id, (
-            f"Table '{td.table_name}' in schema '{selected_schema}' has wrong source_id "
-            f"'{td.source_id}'; expected '{config.id}'"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Helpers (REQ-791)
+            f"Table '{td.table_name}' in schema '{selected

@@ -84,29 +84,19 @@ counts intermediate hops.
 
 from __future__ import annotations
 
-import json
-import os
-import re
 
 import pytest
-import sqlglot
-from pytest_bdd import given, when, then, scenarios, parsers
+from pytest_bdd import given, when, then, scenarios
 
-from provisa.cypher.parser import parse_cypher, CypherParseError, extract_parameters
+from provisa.cypher.parser import parse_cypher, CypherParseError
 from provisa.cypher.label_map import (
     CypherLabelMap,
     NodeMapping,
     RelationshipMapping,
 )
-from provisa.cypher.translator import cypher_to_sql
-from provisa.cypher.assembler import (
-    Node,
-    Edge,
-    Path,
-    assemble_rows,
-    to_serializable,
-)
-from provisa.cypher.translator import GraphVarKind
+from provisa.cypher.translator import cypher_to_sql, GraphVarKind
+from provisa.cypher.params import bind_params, CypherParamError
+from provisa.api.rest.cypher_router import _detect_procedure, _handle_procedure
 
 
 scenarios("../features/REQ-345.feature")
@@ -823,11 +813,14 @@ def when_compiler_processes_cypher_query(shared_data: dict) -> None:
 
 
 @then(
-    "it compiles to SQL, executes via Trino, and applies Stage 2 governance identically to\n"
-    "    GraphQL queries"
+    "it compiles to SQL, executes via Trino, and applies Stage 2 governance "
+    "identically to GraphQL queries"
 )
 def then_compiles_to_sql_and_applies_governance(shared_data: dict) -> None:
     """Assert that:
 
     1. The compiler produced a non-empty SQL string (compilation succeeded).
-    2. The SQL
+    2. The SQL contains a JOIN, since the Cypher pattern traverses the
+       WORKS_AT relationship (REQ-347: MATCH -> JOIN).
+    3. The named parameter $min_age was captured for Trino positional binding
+       (REQ-352), which is what lets Stage 2 governance apply identically to the

@@ -5,5 +5,4 @@ Feature: REQ-119 — JSONB & API Sources
   Scenario: REQ-119 default behaviour
     Given a JSONB column with nested fields
     When a steward promotes a nested field via dot-path
-    Then a PostgreSQL generated column is created that is filterable, indexable, and
-    relationship-eligible
+    Then a PostgreSQL generated column is created that is filterable, indexable, and relationship-eligible

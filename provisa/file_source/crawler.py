@@ -18,6 +18,7 @@ Returns a list of discovered table descriptors ready for bulk registration.
 
 from __future__ import annotations
 
+import fnmatch
 import logging
 from pathlib import Path
 from typing import Any
@@ -161,8 +162,14 @@ def _build_table_entry(file_path: str, source_type: str, columns: list[dict]) ->
         }
 
 
-def crawl_directory(root: str, depth: int | None = None) -> list[dict]:  # REQ-012, REQ-016, REQ-250
-    """Crawl *root* recursively and return discovered table descriptors.
+def crawl_directory(
+    root: str,
+    depth: int | None = None,
+    *,
+    pattern: str | None = None,
+    recursive: bool = True,
+) -> list[dict]:  # REQ-012, REQ-016, REQ-250, REQ-788
+    """Crawl *root* and return discovered table descriptors.
 
     Parameters
     ----------
@@ -170,6 +177,13 @@ def crawl_directory(root: str, depth: int | None = None) -> list[dict]:  # REQ-0
         Local filesystem path or fsspec URI (e.g. ``s3://bucket/prefix/``).
     depth:
         Maximum recursion depth. ``None`` means unlimited.
+    pattern:
+        Optional filename glob (e.g. ``"*.csv"``) applied to each discovered
+        file's basename. ``None`` matches every supported file.
+    recursive:
+        When ``False``, only the top-level directory is scanned (equivalent to
+        ``depth=0``). When ``True`` (default), subdirectories are walked up to
+        ``depth``.
 
     Returns
     -------
@@ -190,15 +204,19 @@ def crawl_directory(root: str, depth: int | None = None) -> list[dict]:  # REQ-0
     Raises ``ValueError`` if *root* is not a directory.
     Raises ``OSError`` / fsspec errors for inaccessible paths.
     """
+    effective_depth = 0 if not recursive else depth
+
     if _is_fsspec_uri(root):
-        file_paths = _walk_fsspec(root, depth)
+        file_paths = _walk_fsspec(root, effective_depth)
     else:
-        file_paths = _walk_local(root, depth)
+        file_paths = _walk_local(root, effective_depth)
 
     results: list[dict] = []
     for fp in file_paths:
         source_type = _source_type_for_path(fp)
         if source_type is None:
+            continue
+        if pattern is not None and not fnmatch.fnmatch(Path(fp).name, pattern):
             continue
         columns = _introspect_file(fp, source_type)
         entry = _build_table_entry(fp, source_type, columns)

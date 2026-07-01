@@ -5,5 +5,4 @@ Feature: REQ-279 — Federation Performance
   Scenario: REQ-279 default behaviour
     Given a query containing a /*+ BROADCAST(table) */ hint comment
     When the query is compiled
-    Then the comment is stripped and translated to the equivalent Trino session property before
-    forwarding
+    Then the comment is stripped and translated to the equivalent Trino session property before forwarding

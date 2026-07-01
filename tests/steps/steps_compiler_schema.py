@@ -11,11 +11,11 @@ import re
 from typing import Any
 
 
-from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.schema_gen import SchemaInput, generate_schema
-
 import pytest
 from pytest_bdd import given, when, then
+
+from provisa.compiler.introspect import ColumnMetadata
+from provisa.compiler.schema_gen import SchemaInput, generate_schema
 
 
 # ---------------------------------------------------------------------------

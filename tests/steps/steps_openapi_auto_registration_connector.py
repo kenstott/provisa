@@ -39,26 +39,22 @@ governance rules applied on top are preserved.
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import os
 import pathlib
-import tempfile
 import time
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, scenarios
 
 from provisa.openapi.loader import load_spec, parse_text
 from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, parse_spec as map_operations
-from provisa.openapi.register import _operation_id_to_alias
 from provisa.api_source.trino_cache import (
     CacheLocation,
     cache_location,
     cache_table_name,
     table_exists,
-    table_known_live,
     _TABLE_EXISTS_CACHE,
 )
 
@@ -376,9 +372,7 @@ _REQ315_SPEC_JSON_DICT = {
             "get": {
                 "operationId": "listItems",
                 "summary": "List inventory items",
-                "parameters": [
-                    {"name": "limit", "in": "query", "schema": {"type": "integer"}}
-                ],
+                "parameters": [{"name": "limit", "in": "query", "schema": {"type": "integer"}}],
                 "responses": {
                     "200": {
                         "description": "ok",
@@ -398,18 +392,14 @@ _REQ315_SPEC_JSON_DICT = {
                 "summary": "Create an inventory item",
                 "requestBody": {
                     "content": {
-                        "application/json": {
-                            "schema": {"$ref": "#/components/schemas/Item"}
-                        }
+                        "application/json": {"schema": {"$ref": "#/components/schemas/Item"}}
                     }
                 },
                 "responses": {
                     "200": {
                         "description": "created",
                         "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/Item"}
-                            }
+                            "application/json": {"schema": {"$ref": "#/components/schemas/Item"}}
                         },
                     }
                 },
@@ -431,9 +421,7 @@ _REQ315_SPEC_JSON_DICT = {
                     "200": {
                         "description": "ok",
                         "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/Item"}
-                            }
+                            "application/json": {"schema": {"$ref": "#/components/schemas/Item"}}
                         },
                     }
                 },
@@ -578,14 +566,10 @@ def then_stored_locally_and_treated_identically(shared_data):
     yaml_spec: dict = shared_data["yaml_spec"]
     json_spec: dict = shared_data["json_spec"]
 
-    assert yaml_file.exists(), (
-        "Manually uploaded YAML spec must be persisted to local storage"
-    )
+    assert yaml_file.exists(), "Manually uploaded YAML spec must be persisted to local storage"
     _assert_spec_treated_identically_to_fetched(yaml_spec, yaml_file)
 
-    assert json_file.exists(), (
-        "Manually uploaded JSON spec must be persisted to local storage"
-    )
+    assert json_file.exists(), "Manually uploaded JSON spec must be persisted to local storage"
     _assert_spec_treated_identically_to_fetched(json_spec, json_file)
 
     yaml_vt, yaml_mut = _parse_and_register_spec(yaml_spec)
@@ -693,18 +677,14 @@ _REQ316_SPEC: dict = {
                 "summary": "Create an order",
                 "requestBody": {
                     "content": {
-                        "application/json": {
-                            "schema": {"$ref": "#/components/schemas/Order"}
-                        }
+                        "application/json": {"schema": {"$ref": "#/components/schemas/Order"}}
                     }
                 },
                 "responses": {
                     "200": {
                         "description": "created",
                         "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/Order"}
-                            }
+                            "application/json": {"schema": {"$ref": "#/components/schemas/Order"}}
                         },
                     }
                 },
@@ -746,18 +726,14 @@ _REQ316_SPEC: dict = {
                 ],
                 "requestBody": {
                     "content": {
-                        "application/json": {
-                            "schema": {"$ref": "#/components/schemas/Order"}
-                        }
+                        "application/json": {"schema": {"$ref": "#/components/schemas/Order"}}
                     }
                 },
                 "responses": {
                     "200": {
                         "description": "updated",
                         "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/Order"}
-                            }
+                            "application/json": {"schema": {"$ref": "#/components/schemas/Order"}}
                         },
                     }
                 },
@@ -796,26 +772,46 @@ _REQ316_SPEC: dict = {
 
 
 # ---------------------------------------------------------------------------
-# REQ-316 Steps
+# REQ-317 — static spec used for mutation auto-registration tests
 # ---------------------------------------------------------------------------
 
-
-@given("an OpenAPI spec is registered")
-def given_openapi_spec_is_registered(shared_data):
-    """Register the REQ-316 Order Management spec for parsing."""
-    spec = copy.deepcopy(_REQ316_SPEC)
-    shared_data["registered_spec"] = spec
-
-    assert spec.get("openapi") == "3.0.0", (
-        f"Test spec must declare openapi 3.0.0, got {spec.get('openapi')!r}"
-    )
-    assert "paths" in spec and spec["paths"], "Test spec must have a non-empty paths object"
-
-    expected_get_ops = []
-    for path, path_item in spec["paths"].items():
-        for method, operation in path_item.items():
-            if method.lower() == "get" and isinstance(operation, dict):
-                op_id = operation.get("operationId") or f"{method}_{path}"
-                expected_get_ops.append(op_id)
-
-    shared_data["expected_get_ops
+_REQ317_SPEC: dict = {
+    "openapi": "3.0.0",
+    "info": {"title": "Product Catalogue API", "version": "1.0.0"},
+    "components": {
+        "schemas": {
+            "Product": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "name": {"type": "string"},
+                    "price": {"type": "number"},
+                    "stock": {"type": "integer"},
+                },
+            },
+            "ProductPatch": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "price": {"type": "number"},
+                },
+            },
+        }
+    },
+    "paths": {
+        "/products": {
+            "get": {
+                "operationId": "listProducts",
+                "summary": "List all products",
+                "parameters": [
+                    {"name": "limit", "in": "query", "schema": {"type": "integer"}},
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/Product"},
+                                }

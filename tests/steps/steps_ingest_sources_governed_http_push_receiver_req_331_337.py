@@ -7,10 +7,10 @@
 
 from __future__ import annotations
 
-import os
-import time
+import asyncio
+import datetime
 import threading
-from datetime import datetime, timezone
+import time
 from typing import Any
 
 import pytest
@@ -459,15 +459,17 @@ def nested_value_extracted_missing_null(shared_data):
     full_columns = [
         {"column_name": "resource_attributes", "path": path, "data_type": "jsonb"},
         {"column_name": "severity", "data_type": "text"},  # no path -> fallback to column_name
-        {"column_name": "missing_value", "path": "resourceLogs.0.resource.does.not.exist", "data_type": "text"},
+        {
+            "column_name": "missing_value",
+            "path": "resourceLogs.0.resource.does.not.exist",
+            "data_type": "text",
+        },
     ]
     full_row = _extract_row(payload, full_columns)
     assert full_row["resource_attributes"] == expected, (
         f"Full row resource_attributes mismatch: {full_row['resource_attributes']!r}"
     )
-    assert full_row["severity"] == "ERROR", (
-        f"Full row severity mismatch: {full_row['severity']!r}"
-    )
+    assert full_row["severity"] == "ERROR", f"Full row severity mismatch: {full_row['severity']!r}"
     assert full_row["missing_value"] is None, (
         f"Full row missing_value should be None: {full_row['missing_value']!r}"
     )
@@ -724,4 +726,4 @@ def batch_ingest_status_codes(shared_data):
         backing_store=miss_source_store,
         engine_available=True,
     )
-    assert status == 404, f"Unknown source: expected 404, got
+    assert status == 404, f"Unknown source: expected 404,

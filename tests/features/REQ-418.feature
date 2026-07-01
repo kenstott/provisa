@@ -5,5 +5,4 @@ Feature: REQ-418 — Domain Model
   Scenario: REQ-418 default behaviour
     Given an analyst building a cross-domain report
     When they import cross-domain data
-    Then it must be done via views; all calculations and relationships are defined only within the
-    analyst's own domain
+    Then it must be done via views; all calculations and relationships are defined only within the analyst's own domain

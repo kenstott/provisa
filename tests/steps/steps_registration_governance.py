@@ -111,7 +111,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pytest_bdd import given, when, then
 
-from provisa.core.models import SOURCE_TO_CONNECTOR, Cardinality, Column, Relationship, Source, SourceType, Table
+from provisa.core.models import (
+    SOURCE_TO_CONNECTOR,
+    Cardinality,
+    Column,
+    Relationship,
+    Source,
+    SourceType,
+    Table,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +224,8 @@ def submit_new_source_registration(shared_data: dict) -> None:
 
 
 @then(
-    "Provisa validates the connection, calls the Trino dynamic catalog API, and makes the source\n    available within seconds without a server restart")
+    "Provisa validates the connection, calls the Trino dynamic catalog API, and makes the source"
+    " available within seconds without a server restart")
 def provisa_validates_connection_calls_trino_and_makes_source_available(
     shared_data: dict,
 ) -> None:
@@ -537,7 +546,8 @@ def publication_completes(shared_data: dict) -> None:
 
 
 @then(
-    "a schema generation pass is triggered and the table is immediately available in the query\n    builder")
+    "a schema generation pass is triggered and the table is immediately available in the query"
+    " builder")
 def schema_generation_triggered_and_table_available(shared_data: dict) -> None:
     """Assert all REQ-016 postconditions."""
     from graphql import assert_valid_schema
@@ -733,6 +743,4 @@ def query_executed_readonly_through_trino_connector_no_mutation_path(shared_data
     assert connector_name, "Connector name must be non-empty"
 
     props: dict[str, str] = shared_data["nosql_catalog_props"]
-    mutation_keys_present = _MUTATION_PROPERTY_KEYS & set(props.keys())
-    assert not mutation_keys_present, (
-        f"Catalog properties
+    mutation_keys_present = _MUTATION_PROPERTY_KEYS & set(props.

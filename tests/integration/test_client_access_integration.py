@@ -36,6 +36,7 @@ Requirements satisfied at unit level only (no integration coverage needed):
 
 from __future__ import annotations
 
+import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -147,6 +148,17 @@ def _make_app_state_with_orders():
     state.table_cache = {}
     state.view_sql_map = {}
     state.kafka_table_configs = {}
+    state.table_path_maps = {
+        "admin": {
+            "orders": {
+                "schema_name": "public",
+                "table_name": "orders",
+                "domain_id": "default",
+                "table_description": None,
+                "domain_description": None,
+            }
+        }
+    }
     return state
 
 
@@ -367,7 +379,7 @@ class TestRESTAutoGenEndpoint:
 
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/data/rest/orders")
+                resp = await client.get("/data/rest/default/orders")
             assert resp.status_code == 200
             body = resp.json()
             assert "data" in body
@@ -401,8 +413,12 @@ class TestRESTAutoGenEndpoint:
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get(
-                    "/data/rest/orders",
-                    params={"where.id.eq": "99999999"},
+                    "/data/rest/default/orders",
+                    params={
+                        "filter": json.dumps(
+                            [{"field": "id", "comparator": "eq", "value": 99999999}]
+                        )
+                    },
                 )
             assert resp.status_code == 200
             rows = resp.json().get("data", [])
@@ -435,7 +451,7 @@ class TestRESTAutoGenEndpoint:
             app.include_router(create_rest_router(state))
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/data/rest/orders")
+                resp = await client.get("/data/rest/default/orders")
             # Governance must not crash; 200 or 403 are both valid
             assert resp.status_code in (200, 403)
         finally:

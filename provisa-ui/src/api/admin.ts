@@ -300,6 +300,15 @@ export async function uploadConfig(yaml: string): Promise<{ success: boolean; me
 // --- Platform Settings ---
 
 export interface PlatformSettings {
+  engine: {
+    jvm_heap_gb: number;
+    query_max_memory: string;
+    query_max_memory_per_node: string;
+    query_max_total_memory: string;
+    fault_tolerant_execution: boolean;
+    fault_tolerant_task_memory: string;
+    exchange_spool_dir: string;
+  };
   redirect: {
     enabled: boolean;
     threshold: number;
@@ -336,7 +345,7 @@ export async function fetchSettings(): Promise<PlatformSettings> {
 
 export async function updateSettings(
   settings: Partial<PlatformSettings>,
-): Promise<{ success: boolean; updated: string[] }> {
+): Promise<{ success: boolean; updated: string[]; restart_required: boolean }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/settings`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

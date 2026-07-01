@@ -11,13 +11,12 @@
 
 """Unit tests for provisa/nl/runner.py."""
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from provisa.nl.job import BranchResult, InMemoryJobStore, NlJob, new_job_id
-from provisa.nl.loop import CompileResult, LLMClient
+from provisa.nl.job import InMemoryJobStore, NlJob, new_job_id
+from provisa.nl.loop import LLMClient
 from provisa.nl.runner import run_nl_job
 
 
@@ -48,7 +47,7 @@ def _make_app_state(has_schema: bool = False) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_three_branches_launched():
-    """All three targets are attempted."""
+    """All six targets are attempted."""
     store = InMemoryJobStore()
     job_id = new_job_id()
     await store.put(NlJob(job_id=job_id, nl_query="test", role="default"))
@@ -69,8 +68,8 @@ async def test_three_branches_launched():
 
     job = await store.get(job_id)
     assert job.state == "complete"
-    # All three branches present (may have errors if schema missing, but attempted)
-    assert len(job.branches) == 3
+    # All six branches present (may have errors if schema missing, but attempted)
+    assert len(job.branches) == 6
 
 
 @pytest.mark.asyncio
@@ -99,7 +98,7 @@ async def test_one_branch_exhausted_others_complete():
 
     job = await store.get(job_id)
     assert job.state == "complete"
-    assert len(job.branches) == 3
+    assert len(job.branches) == 6
 
 
 @pytest.mark.asyncio
@@ -151,4 +150,4 @@ async def test_job_store_updated_with_partial_results():
     with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
         await run_nl_job(job_id, "test", "default", state, store, _ValidLLM())
 
-    assert len(update_calls) == 3
+    assert len(update_calls) == 6

@@ -31,60 +31,10 @@ services:
     ports:
       - "8480:8480"
 
-  mongodb:
-    profiles: ["test"]
-    restart: unless-stopped
-    image: mongo:7
-    ports:
-      - "27017:27017"
-    volumes:
-      - ./db/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
-      - mongo_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
-
-  kafka:
-    profiles: ["test"]
-    restart: unless-stopped
-    image: confluentinc/cp-kafka:7.6.0
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,HOST://localhost:9092
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,HOST://0.0.0.0:9092
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
-      KAFKA_PROCESS_ROLES: broker,controller
-      CLUSTER_ID: 3W4Vn7JTS4yUfx7dcvUlPg
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_LOG_RETENTION_HOURS: 168
-    volumes:
-      - kafka_data:/var/lib/kafka/data
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
-      interval: 10s
-      timeout: 10s
-      retries: 42
-      start_period: 120s
-
-  schema-registry:
-    profiles: ["test"]
-    restart: unless-stopped
-    image: confluentinc/cp-schema-registry:7.6.0
-    environment:
-      SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
-    depends_on:
-      kafka:
-        condition: service_healthy
-
+  # Test-only services (kafka, schema-registry, mongodb, elasticsearch, neo4j,
+  # fuseki) now live in the isolated provisa-test project — see
+  # docker-compose.test.yml. debezium-connect stays here (core) and reaches the
+  # test-project kafka by its shared-network alias.
   debezium-connect:
     profiles: ["test"]
     restart: unless-stopped
@@ -100,9 +50,10 @@ services:
       CONFIG_STORAGE_REPLICATION_FACTOR: 1
       OFFSET_STORAGE_REPLICATION_FACTOR: 1
       STATUS_STORAGE_REPLICATION_FACTOR: 1
+    # kafka lives in the provisa-test project (shared network alias `kafka`),
+    # so it cannot be a compose depends_on here; the healthcheck retries cover
+    # kafka not yet being reachable at first start.
     depends_on:
-      kafka:
-        condition: service_healthy
       postgres:
         condition: service_healthy
     healthcheck:
@@ -111,58 +62,6 @@ services:
       timeout: 5s
       retries: 30
       start_period: 120s
-
-  elasticsearch:
-    profiles: ["test"]
-    restart: unless-stopped
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
-    ports:
-      - "9200:9200"
-    environment:
-      discovery.type: single-node
-      xpack.security.enabled: "false"
-      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
-    volumes:
-      - es_data:/usr/share/elasticsearch/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 120s
-
-  neo4j:
-    profiles: ["test"]
-    restart: unless-stopped
-    image: neo4j:5.19
-    ports:
-      - "7474:7474"
-      - "7687:7687"
-    environment:
-      NEO4J_AUTH: none
-      NEO4J_PLUGINS: '["apoc"]'
-    volumes:
-      - neo4j_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:7474 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 120s
-
-  fuseki:
-    profiles: ["test"]
-    restart: unless-stopped
-    image: atomgraph/fuseki:latest
-    ports:
-      - "3030:3030"
-    command: ["--mem", "/provisa"]
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null 'http://localhost:3030/provisa/query?query=ASK%7B%7D' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 18
-      start_period: 60s
 
   # Expose core observability service ports for direct host access
   otel-collector:
@@ -208,9 +107,5 @@ services:
       - tempo
 
 volumes:
-  mongo_data:
-  kafka_data:
-  es_data:
-  neo4j_data:
   tempo_data:
   grafana_data:

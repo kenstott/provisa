@@ -190,6 +190,20 @@ def then_no_capability_gate(shared_data):
     for forbidden_name in ("APPROVE_QUERY", "QUERY_APPROVAL", "QUERY_REGISTRY", "REGISTRY"):
         assert forbidden_name not in capability_names
 
+    minimal_role = {
+        "id": shared_data.get("role_name", "analyst"),
+        "capabilities": [Capability.QUERY_DEVELOPMENT.value],
+    }
+    empty_role = {"id": "empty", "capabilities": []}
+    for forbidden_cap_name in ("QUERY", "EXECUTE_QUERY", "RUN_QUERY", "QUERY_EXECUTION"):
+        assert forbidden_cap_name not in capability_names, (
+            f"Capability {forbidden_cap_name} must not exist — it would constitute a query gate"
+        )
+    for role_under_test in (minimal_role, empty_role):
+        for cap in Capability:
+            if cap.name in ("QUERY", "EXECUTE_QUERY", "RUN_QUERY", "QUERY_EXECUTION"):
+                assert cap.value not in role_under_test.get("capabilities", [])
+
 
 # ---------------------------------------------------------------------------
 # REQ-003 — Query and mutation governance is rights-based only.
@@ -520,25 +534,20 @@ def then_large_result_redirect_and_arrow_output_available(shared_data):
 
     role = shared_data["role"]
 
-    # Below-threshold result must not activate either transport.
     below_transport = _evaluate_large_result(role, _LARGE_RESULT_ROW_THRESHOLD - 1)
     assert below_transport["redirect_available"] is False
     assert below_transport["arrow_available"] is False
     assert below_transport["redirect_url"] is None
     assert below_transport["arrow_content_type"] is None
 
-    # A role with zero extra capabilities still gets both transports when threshold exceeded.
     minimal_role = {
         "id": "minimal",
         "capabilities": [Capability.QUERY_DEVELOPMENT.value],
     }
-    minimal_transport = _evaluate_large_result(
-        minimal_role, _LARGE_RESULT_ROW_THRESHOLD + 1
-    )
+    minimal_transport = _evaluate_large_result(minimal_role, _LARGE_RESULT_ROW_THRESHOLD + 1)
     assert minimal_transport["redirect_available"] is True
     assert minimal_transport["arrow_available"] is True
 
-    # No transport-specific capability exists in the model.
     capability_names = {c.name for c in Capability}
     for forbidden in ("LARGE_RESULT", "ARROW_OUTPUT", "STREAMING", "REDIRECT"):
         assert forbidden not in capability_names
@@ -561,6 +570,7 @@ def _build_v002_compilation_context(
     """Build minimal CompilationContext and GovernanceContext for V002 testing."""
     orders_meta = TableMeta(
         table_id=1,
+        field_name="orders",
         type_name="Order",
         schema_name="public",
         table_name="orders",
@@ -570,6 +580,7 @@ def _build_v002_compilation_context(
     )
     customers_meta = TableMeta(
         table_id=2,
+        field_name="customers",
         type_name="Customer",
         schema_name="public",
         table_name="customers",
@@ -589,7 +600,9 @@ def _build_v002_compilation_context(
             target=customers_meta,
             source_column="customer_id",
             target_column="id",
-            field_name="customer",
+            source_column_type="integer",
+            target_column_type="integer",
+            cardinality="many-to-one",
         )
         joins[("Order", "customer")] = join_meta
 
@@ -625,17 +638,8 @@ def _make_permissive_role() -> dict:
 @given("a SQL or Cypher query with a JOIN ON condition")
 def given_sql_or_cypher_query_with_join(shared_data):
     """Prepare both an approved-join SQL and an unapproved-join SQL for V002 testing."""
-    approved_sql = (
-        "SELECT o.id, c.name "
-        "FROM orders o "
-        "JOIN customers c ON o.customer_id = c.id"
-    )
-
-    unapproved_sql = (
-        "SELECT o.id, c.name "
-        "FROM orders o "
-        "JOIN customers c ON o.id = c.order_ref"
-    )
+    approved_sql = "SELECT o.id, c.name FROM orders o JOIN customers c ON o.customer_id = c.id"
+    unapproved_sql = "SELECT o.id, c.name FROM orders o JOIN customers c ON o.id = c.order_ref"
 
     shared_data["approved_sql"] = approved_sql
     shared_data["unapproved_sql"] = unapproved_sql
@@ -662,7 +666,6 @@ def when_compiler_validates_query(shared_data):
     role = _make_permissive_role()
     raw_tables: list[dict] = []
 
-    # --- Approved join: registered relationship present ---
     ctx_registered, gov_ctx_registered = _build_v002_compilation_context(registered=True)
 
     approved_violations = validate_sql(
@@ -676,7 +679,6 @@ def when_compiler_validates_query(shared_data):
     )
     shared_data["approved_violations"] = approved_violations
 
-    # --- Unapproved join: empty relationship registry ---
     ctx_empty, gov_ctx_empty = _build_v002_compilation_context(registered=False)
 
     unapproved_violations = validate_sql(
@@ -690,7 +692,6 @@ def when_compiler_validates_query(shared_data):
     )
     shared_data["unapproved_violations"] = unapproved_violations
 
-    # Also validate the approved SQL against the empty registry.
     approved_against_empty_violations = validate_sql(
         shared_data["approved_sql"],
         ctx_empty,
@@ -702,7 +703,6 @@ def when_compiler_validates_query(shared_data):
     )
     shared_data["approved_against_empty_violations"] = approved_against_empty_violations
 
-    # bypass_relationship_guard=True must suppress V002 for any query.
     bypassed_violations = validate_sql(
         shared_data["unapproved_sql"],
         ctx_empty,
@@ -712,9 +712,7 @@ def when_compiler_validates_query(shared_data):
         discovery_mode=False,
         bypass_relationship_guard=True,
     )
-    shared_data["bypassed_v002_violations"] = [
-        v for v in bypassed_violations if v.code == "V002"
-    ]
+    shared_data["bypassed_v002_violations"] = [v for v in bypassed_violations if v.code == "V002"]
 
     shared_data["compiler_ran"] = True
 
@@ -724,37 +722,31 @@ def then_rejected_if_join_not_registered(shared_data):
     """Assert V002 compile-time rejection semantics."""
     assert shared_data.get("compiler_ran"), "When step must have run the compiler"
 
-    # 1. Approved join (registered relationship) → no V002 violations.
     approved_v002 = [v for v in shared_data["approved_violations"] if v.code == "V002"]
-    assert approved_v002 == [], (
-        f"Approved join must pass V002; got violations: {approved_v002}"
-    )
+    assert approved_v002 == [], f"Approved join must pass V002; got violations: {approved_v002}"
 
-    # 2. Unapproved join (no registered relationship) → at least one V002 violation.
     unapproved_v002 = [v for v in shared_data["unapproved_violations"] if v.code == "V002"]
     assert len(unapproved_v002) >= 1, (
-        "Unapproved join must be rejected at compile time with a V002 violation"
+        "Unapproved join must produce at least one V002 violation; got none"
     )
 
-    # 3. Approved SQL against empty registry → also rejected (registry is the sole arbiter).
-    approved_empty_v002 = [
+    for violation in unapproved_v002:
+        assert violation.code == "V002"
+        assert violation.severity in ("error", "ERROR", "critical", "CRITICAL"), (
+            f"V002 must be fatal severity; got {violation.severity!r}"
+        )
+
+    approved_against_empty_v002 = [
         v for v in shared_data["approved_against_empty_violations"] if v.code == "V002"
     ]
-    assert len(approved_empty_v002) >= 1, (
-        "Approved SQL must fail V002 when relationship is absent from registry"
+    assert len(approved_against_empty_v002) >= 1, (
+        "Even an approved-looking join must fail V002 when no relationship is registered"
     )
 
-    # 4. bypass_relationship_guard=True suppresses V002.
     assert shared_data["bypassed_v002_violations"] == [], (
         "bypass_relationship_guard=True must suppress all V002 violations"
     )
 
 
 # ---------------------------------------------------------------------------
-# REQ-613 — Append-only query audit log (SOC2 compliance).
-#
-# Every query touching a domain asset is logged in query_audit_log with:
-#   user_id, role_id, query_hash, table_ids, source, status_code, duration_ms,
-#   logged_at.
-# The table is protected by PostgreSQL rules preventing DELETE and UPDATE.
-# Indexed by (tenant_id, logged_at) and (user_id, logged_at).
+# REQ-613 — Append-only query audit log (SOC2-
