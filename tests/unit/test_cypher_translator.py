@@ -644,7 +644,7 @@ def test_domain_union_excludes_nodes_with_native_filter_columns():
         schema_name="graphql_remote",
         table_name="schedule_by_employee",
         properties={"id": "id"},
-        native_filter_columns={"employee_id"},
+        native_filter_columns={"employeeId": "employee_id"},
     )
     lm.domains["Sales"].append("Schedule")
     ast = parse_cypher("MATCH (n:Sales) RETURN n LIMIT 25")
@@ -2273,3 +2273,111 @@ def test_union_all_branch_includes_all_subsequent_optional_match_joins():
     assert "mUsers" in from_clause, (
         f"mUsers JOIN missing from UNION ALL branch FROM clause: {from_clause[:300]}"
     )
+
+
+def _make_label_map_breed_chain() -> CypherLabelMap:
+    """Pets-AnimalBreeds via BREED_INFO (pets.breed_name = animal_breeds.name) and
+    Pets→Inquiries via HAS_INQUIRY (pets.id = inquiries.pet_id)."""
+    pets = NodeMapping(
+        label="Pets",
+        type_name="Pets",
+        domain_label=None,
+        table_label="Pets",
+        table_id=1,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="pets",
+        properties={"breedName": "breed_name", "id": "id"},
+    )
+    breeds = NodeMapping(
+        label="AnimalBreeds",
+        type_name="AnimalBreeds",
+        domain_label=None,
+        table_label="AnimalBreeds",
+        table_id=2,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="animal_breeds",
+        properties={"name": "name"},
+    )
+    inq = NodeMapping(
+        label="Inquiries",
+        type_name="Inquiries",
+        domain_label=None,
+        table_label="Inquiries",
+        table_id=3,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="inquiries",
+        properties={"message": "message", "id": "id"},
+    )
+    rels = {
+        "BREED_INFO": RelationshipMapping(
+            rel_type="BREED_INFO",
+            source_label="Pets",
+            target_label="AnimalBreeds",
+            join_source_column="breed_name",
+            join_target_column="name",
+            field_name="breed_info",
+        ),
+        "HAS_INQUIRY": RelationshipMapping(
+            rel_type="HAS_INQUIRY",
+            source_label="Pets",
+            target_label="Inquiries",
+            join_source_column="id",
+            join_target_column="pet_id",
+            field_name="has_inquiry",
+        ),
+    }
+    return CypherLabelMap(
+        nodes={"Pets": pets, "AnimalBreeds": breeds, "Inquiries": inq}, relationships=rels
+    )
+
+
+def test_undirected_non_self_ref_rel_uses_correct_join_columns():
+    """REQ-575 regression: undirected traversal of a non-self-referential rel must keep
+    the source column on the source table, not swap it onto the target table.
+
+    Bug: MATCH ()-[:BREED_INFO]-()-[:HAS_INQUIRY]->() produced
+    'animal_breeds.breed_name = pets.name' (COLUMN_NOT_FOUND) in the backward UNION branch.
+    """
+    lm = _make_label_map_breed_chain()
+    ast = parse_cypher("MATCH p=()-[:BREED_INFO]-()-[r:HAS_INQUIRY]->() RETURN p LIMIT 25")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+
+    # Correct join only; never the swapped (invalid) form
+    assert 'pets."breed_name" = animal_breeds."name"' in sql
+    assert 'animal_breeds."breed_name"' not in sql
+    assert 'pets."name"' not in sql
+    # Single non-self-ref mapping: no redundant duplicated branch
+    assert "UNION ALL" not in sql.upper()
+
+
+def test_undirected_anonymous_path_includes_all_nodes_and_edges():
+    """Path p over anonymous nodes + an unnamed relationship must serialize every segment.
+
+    Bug: ()-[:BREED_INFO]-()-[r:HAS_INQUIRY]->() dropped the BREED_INFO edge and the
+    AnimalBreeds node from the path JSON because path building required node/rel variables.
+    """
+    import re
+
+    lm = _make_label_map_breed_chain()
+    ast = parse_cypher("MATCH p=()-[:BREED_INFO]-()-[r:HAS_INQUIRY]->() RETURN p LIMIT 25")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+
+    edge_types = set(re.findall(r"'type',\s*'([^']+)'", sql))
+    assert edge_types == {"BREED_INFO", "HAS_INQUIRY"}, edge_types
+
+    node_labels = set(re.findall(r"'label',\s*'([^']+)'", sql))
+    assert node_labels == {"Pets", "AnimalBreeds", "Inquiries"}, node_labels

@@ -142,6 +142,15 @@ def _make_rel_join(
 ) -> dict:
     """Build a join dict for a single relationship mapping candidate."""
     jt = _node_table_expr(tgt_nm, tgt_alias)
+    # The join condition between two fixed tables is identical regardless of which way
+    # the pattern is traversed; orientation is determined by which label the source
+    # table holds, not the traversal flag. For an undirected pattern the candidate
+    # resolver emits a backward variant without swapping src_nm/tgt_nm, so is_bwd alone
+    # would place the source column on the target table (REQ-575 regression). Recompute
+    # from labels for non-self-referential rels; keep is_bwd for self-refs (same label
+    # on both sides, where direction genuinely selects the column pair).
+    if rm.source_label != rm.target_label and src_nm is not None:
+        is_bwd = src_nm.type_name == rm.target_label
     if is_bwd:
         if rm.source_constant is not None:
             cond = exp.EQ(
@@ -408,6 +417,10 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._rel_var_types: dict[str, str] = {}
         # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm, is_reversed)
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
+        # id(RelPattern) → (rel_type, src_alias, src_nm, tgt_alias, tgt_nm, is_reversed) for
+        # every resolved rel step, including anonymous/unnamed ones, so flat-JOIN path
+        # building can reconstruct full {nodes, edges} even when endpoints have no variable.
+        self._rel_step_endpoints: dict[int, tuple] = {}
         # vars that are pre-built JSON from an all-rels union subquery
         self._passthrough_vars: set[str] = set()
         # relationship variables whose value is JSON_OBJECT({id,type,startNode,endNode})
@@ -985,6 +998,14 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             for m in alias_matches:
                 fwd_ok = _is_bwd_for_candidate(m, False, False, src_nm, tgt_nm, tgt_nm_explicit)
                 bwd_ok = _is_bwd_for_candidate(m, False, True, src_nm, tgt_nm, tgt_nm_explicit)
+                if m.source_label != m.target_label:
+                    # Non-self-referential: forward and backward resolve to the same fixed
+                    # tables and collapse to an identical join (orientation is derived from
+                    # labels in _make_rel_join). Emit a single branch — emitting both would
+                    # duplicate every matched path in the UNION ALL.
+                    if fwd_ok is not None or bwd_ok is not None:
+                        candidates.append((m, False))
+                    continue
                 if fwd_ok is not None:
                     candidates.append((m, False))
                 if bwd_ok is not None:
@@ -1120,10 +1141,26 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             src_table_ref = src_var or src_nm.table_name
 
         primary_rm, primary_bwd = candidates[0]
+        _src_alias = src_var or src_nm.table_name
+        _tgt_alias = tgt_var or tgt_nm.table_name
+        # _make_rel_join derives orientation from labels for non-self-ref rels; mirror that
+        # here so the captured edge's start/end nodes match the emitted join.
+        _eff_bwd = (
+            (src_nm.type_name == primary_rm.target_label)
+            if primary_rm.source_label != primary_rm.target_label
+            else primary_bwd
+        )
+        if _src_alias and _tgt_alias:
+            self._rel_step_endpoints[id(rel)] = (
+                primary_rm.rel_type,
+                _src_alias,
+                src_nm,
+                _tgt_alias,
+                tgt_nm,
+                _eff_bwd,
+            )
         if rel.variable:
             self._rel_var_types[rel.variable] = primary_rm.rel_type
-            _src_alias = src_var or src_nm.table_name
-            _tgt_alias = tgt_var or tgt_nm.table_name
             if _src_alias and _tgt_alias:
                 self._rel_var_endpoints[rel.variable] = (
                     _src_alias,
@@ -1316,36 +1353,34 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 ):
                     _step_nodes: list[tuple[str, NodeMapping]] = []
                     _step_edges: list[tuple] = []
+                    _seen_aliases: set[str] = set()
+
+                    def _add_step_node(_alias: str, _nm: "NodeMapping | None") -> None:
+                        if _nm and _alias and _alias not in _seen_aliases:
+                            _seen_aliases.add(_alias)
+                            _step_nodes.append((_alias, _nm))
+
                     for _node in nodes:
                         if _node.variable:
                             _node_info = self._var_table.get(_node.variable)
                             if _node_info and _node_info[1]:
-                                _step_nodes.append((_node_info[0], _node_info[1]))
+                                _add_step_node(_node_info[0], _node_info[1])
                     for _rel in rels:
-                        if _rel.variable and _rel.variable in self._rel_var_endpoints:
-                            _ep = self._rel_var_endpoints[_rel.variable]
-                            _sa, _snm, _ta, _tnm, _rev = _ep
+                        # Prefer captured per-step endpoints — covers anonymous nodes and
+                        # unnamed relationships that have no variable to look up.
+                        _ep = self._rel_step_endpoints.get(id(_rel))
+                        if _ep is not None:
+                            _rt, _sa, _snm, _ta, _tnm, _rev = _ep
+                            _add_step_node(_sa, _snm)
+                            _add_step_node(_ta, _tnm)
+                            _step_edges.append(_ep)
+                        elif _rel.variable and _rel.variable in self._rel_var_endpoints:
+                            _vep = self._rel_var_endpoints[_rel.variable]
+                            _sa, _snm, _ta, _tnm, _rev = _vep
                             _rt = self._rel_var_types.get(_rel.variable, "")
+                            _add_step_node(_sa, _snm)
+                            _add_step_node(_ta, _tnm)
                             _step_edges.append((_rt, _sa, _snm, _ta, _tnm, _rev))
-                        elif _rel.types:
-                            _si = rels.index(_rel)
-                            _src_node = nodes[_si]
-                            _tgt_node = nodes[_si + 1] if _si + 1 < len(nodes) else None
-                            if _src_node.variable and _tgt_node and _tgt_node.variable:
-                                _src_info = self._var_table.get(_src_node.variable)
-                                _tgt_info = self._var_table.get(_tgt_node.variable)
-                                if _src_info and _src_info[1] and _tgt_info and _tgt_info[1]:
-                                    _rt = _rel.types[0].upper()
-                                    _step_edges.append(
-                                        (
-                                            _rt,
-                                            _src_info[0],
-                                            _src_info[1],
-                                            _tgt_info[0],
-                                            _tgt_info[1],
-                                            False,
-                                        )
-                                    )
                     if _step_nodes or _step_edges:
                         self._path_steps[clause.variable] = (_step_nodes, _step_edges)
 
