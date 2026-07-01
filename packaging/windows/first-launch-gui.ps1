@@ -423,22 +423,32 @@ $btnInstall.Add_Click({
       }
       $sync.Progress = 55
 
-      # Step 5: Wait for Docker TCP -----------------------------------------
+      # Step 5: Wait for Docker daemon to actually serve requests -----------
+      # A raw TCP connect is a false positive: VirtualBox's NAT port-forward
+      # proxy accepts the handshake on the host side before dockerd inside the
+      # guest is listening. Gate on a real HTTP 200 from /_ping instead.
       Log 'Waiting for Coordination Engine to become ready...'
-      $ready = $false
+      $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
+      if (-not (Test-Path $curlExe)) { throw 'curl.exe not found - Windows 10 version 1803 or later required.' }
+      $ready     = $false
+      $okStreak  = 0
       for ($i = 0; $i -lt 120; $i++) {
         try {
-          $tcp = New-Object System.Net.Sockets.TcpClient
-          $tcp.Connect('localhost', 2375)
-          $tcp.Close()
-          $ready = $true
-          break
-        } catch {}
+          $ping = & $curlExe --silent --max-time 5 'http://127.0.0.1:2375/_ping' 2>$null
+          if ($LASTEXITCODE -eq 0 -and $ping -match 'OK') {
+            # Require two consecutive successes so a flapping NAT proxy
+            # doesn't read as ready.
+            $okStreak++
+            if ($okStreak -ge 2) { $ready = $true; break }
+          } else {
+            $okStreak = 0
+          }
+        } catch { $okStreak = 0 }
         Start-Sleep 3
         if ($i % 10 -eq 9) { Log "  Still waiting... ($([int](($i+1)*3))s elapsed)" }
         $sync.Progress = 55 + [int](($i / 120) * 30)
       }
-      if (-not $ready) { throw 'Coordination Engine did not respond within 360s.' }
+      if (-not $ready) { throw 'Coordination Engine did not respond to /_ping within 360s.' }
       Log 'Coordination Engine ready.'
       $sync.Progress = 60
 
@@ -489,11 +499,33 @@ $btnInstall.Add_Click({
       [System.IO.Compression.ZipFile]::ExtractToDirectory($CoreZip, $ExtractDir)
       $sync.Progress = 78
 
-      $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
-      if (-not (Test-Path $curlExe)) { throw 'curl.exe not found - Windows 10 version 1803 or later required.' }
+      # curlExe was located in Step 5. Also need tar.exe to read image manifests.
+      $tarExe = Join-Path $env:SystemRoot 'System32\tar.exe'
+      if (-not (Test-Path $tarExe)) { throw 'tar.exe not found - Windows 10 version 1803 or later required.' }
 
-      # Brief settle time after Coordination Engine reports ready
-      Start-Sleep 10
+      # Returns the RepoTags an image tarball is expected to load (from its
+      # embedded manifest.json), or @() if it can't be determined.
+      function Get-ExpectedTags { param($TarPath)
+        try {
+          $json = (& $tarExe -xzOf $TarPath 'manifest.json' 2>$null) -join "`n"
+          if (-not $json) { return @() }
+          $m = $json | ConvertFrom-Json
+          return @($m | ForEach-Object { $_.RepoTags } | Where-Object { $_ })
+        } catch { return @() }
+      }
+
+      # True only when every tag in $Tags is present in the daemon's image list.
+      # Exact tag match, not a count delta: counts miss shared-layer/retag loads
+      # and /images/json hides dangling images by default.
+      function Test-TagsPresent { param($Tags)
+        if (-not $Tags -or $Tags.Count -eq 0) { return $false }
+        try {
+          $present = (& $curlExe --silent --max-time 15 'http://127.0.0.1:2375/images/json' | ConvertFrom-Json) |
+                     ForEach-Object { $_.RepoTags } | Where-Object { $_ }
+        } catch { return $false }
+        foreach ($t in $Tags) { if ($present -notcontains $t) { return $false } }
+        return $true
+      }
 
       $tarballs = Get-ChildItem -Path $ExtractDir -Filter '*.tar.gz' | Sort-Object Name
       $total    = $tarballs.Count
@@ -501,11 +533,7 @@ $btnInstall.Add_Click({
       foreach ($tb in $tarballs) {
         $idx++
         Log "Installing service package $idx of ${total}..."
-
-        $imgsBefore = 0
-        try {
-          $imgsBefore = (& $curlExe --silent 'http://127.0.0.1:2375/images/json' | ConvertFrom-Json).Count
-        } catch {}
+        $expectedTags = Get-ExpectedTags $tb.FullName
 
         $respFile = Join-Path $env:TEMP "provisa-load-$idx.txt"
         Remove-Item $respFile -ErrorAction SilentlyContinue
@@ -518,22 +546,29 @@ $btnInstall.Add_Click({
         $respBody = if (Test-Path $respFile) { Get-Content $respFile -Raw -ErrorAction SilentlyContinue } else { '' }
         Remove-Item $respFile -ErrorAction SilentlyContinue
 
-        if ($curlExit -eq 0 -or ($curlExit -eq 56 -and $respBody -match '"stream"\s*:\s*"Loaded image')) {
-          # Success: either clean exit or connection reset after Docker confirmed load
+        if ($curlExit -eq 0 -and $respBody -match '"stream"\s*:\s*"Loaded image') {
+          # Clean load with explicit daemon confirmation.
           Log "  Package installed."
-        } elseif ($curlExit -eq 56) {
-          # Data sent but no confirmation in partial response - poll image count.
+        } elseif (Test-TagsPresent $expectedTags) {
+          # Connection reset (exit 56) or truncated response, but the daemon
+          # finished loading - confirmed by exact tag presence.
+          Log "  Package installed."
+        } elseif ($curlExit -eq 56 -or $curlExit -eq 0) {
+          # Data sent but not yet confirmed - poll for the expected tags with a
+          # visible heartbeat so the UI isn't frozen.
+          if ($expectedTags.Count -eq 0) {
+            throw "Service package $($tb.Name) could not be confirmed (no manifest tags; curl exit $curlExit): $respBody"
+          }
           Log "  Package transmitted - waiting for processing..."
           $waited = 0
           $loaded = $false
           while ($waited -lt 300 -and -not $loaded) {
             Start-Sleep 5; $waited += 5
-            try {
-              $imgsNow = (& $curlExe --silent 'http://127.0.0.1:2375/images/json' | ConvertFrom-Json).Count
-              if ($imgsNow -gt $imgsBefore) { $loaded = $true }
-            } catch {}
+            $sync.Status = "Installing service package $idx of ${total} - loading... (${waited}s)"
+            if (Test-TagsPresent $expectedTags) { $loaded = $true }
           }
           if (-not $loaded) { throw "Service package $($tb.Name) did not confirm in Docker after 300s." }
+          Log "  Package installed."
         } else {
           throw "Failed to install service package $($tb.Name) (curl exit $curlExit): $out"
         }
