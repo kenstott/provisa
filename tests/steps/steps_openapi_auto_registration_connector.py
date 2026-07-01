@@ -796,35 +796,26 @@ _REQ316_SPEC: dict = {
 
 
 # ---------------------------------------------------------------------------
-# REQ-317 — static spec used for mutation auto-registration tests
+# REQ-316 Steps
 # ---------------------------------------------------------------------------
 
-_REQ317_SPEC: dict = {
-    "openapi": "3.0.0",
-    "info": {"title": "Pet Store API", "version": "1.0.0"},
-    "components": {
-        "schemas": {
-            "Pet": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "integer"},
-                    "name": {"type": "string"},
-                    "species": {"type": "string"},
-                    "age": {"type": "integer"},
-                    "owner_id": {"type": "integer"},
-                },
-            },
-            "PetUpdate": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"},
-                    "species": {"type": "string"},
-                    "age": {"type": "integer"},
-                },
-            },
-        }
-    },
-    "paths": {
-        "/pets": {
-            "get": {
-                "operationId
+
+@given("an OpenAPI spec is registered")
+def given_openapi_spec_is_registered(shared_data):
+    """Register the REQ-316 Order Management spec for parsing."""
+    spec = copy.deepcopy(_REQ316_SPEC)
+    shared_data["registered_spec"] = spec
+
+    assert spec.get("openapi") == "3.0.0", (
+        f"Test spec must declare openapi 3.0.0, got {spec.get('openapi')!r}"
+    )
+    assert "paths" in spec and spec["paths"], "Test spec must have a non-empty paths object"
+
+    expected_get_ops = []
+    for path, path_item in spec["paths"].items():
+        for method, operation in path_item.items():
+            if method.lower() == "get" and isinstance(operation, dict):
+                op_id = operation.get("operationId") or f"{method}_{path}"
+                expected_get_ops.append(op_id)
+
+    shared_data["expected_get_ops

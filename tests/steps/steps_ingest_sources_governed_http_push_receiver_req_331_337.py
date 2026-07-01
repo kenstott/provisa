@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 import threading
 from datetime import datetime, timezone
@@ -723,4 +724,4 @@ def batch_ingest_status_codes(shared_data):
         backing_store=miss_source_store,
         engine_available=True,
     )
-    assert status == 404, f"Unknown source: expected 404, got {status}"
+    assert status == 404, f"Unknown source: expected 404, got

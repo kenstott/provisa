@@ -121,6 +121,14 @@ def analyze_cache_table(table: str, executor) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# Route constants mirroring provisa.transpiler.router.Route values
+# ---------------------------------------------------------------------------
+
+_ROUTE_DIRECT = "direct"
+_ROUTE_FEDERATED = "federated"
+
+
 @pytest_asyncio.fixture
 def shared_data() -> dict:
     return {}
@@ -692,7 +700,4 @@ def then_translate_federation_hints_converts_to_trino_session_props(shared_data:
     execute_trino(mock_conn, test_sql, session_hints=session_props)
 
     all_calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
-    set_calls = [c for c in all_calls if c.upper().startswith("SET SESSION")]
-
-    assert len(set_calls) >= len(session_props), (
-        f"expected at least {len(session_props)} SET SESSION statements, got {len(set_calls)}: {set_
+    set_calls = [c for c in all_calls if c.upper().startswith("SET

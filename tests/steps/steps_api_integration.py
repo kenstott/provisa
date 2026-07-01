@@ -28,7 +28,11 @@ Also includes BDD steps for REQ-812 — X-Provisa-Sink header redirects subscrip
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import os
+import time
+import urllib.parse
 from unittest.mock import MagicMock
 
 import httpx
@@ -734,6 +738,4 @@ def _unit_assert_sse_with_rls(shared_data: dict) -> None:
 
 @then("change events stream via SSE using the native provider with RLS filtering applied")
 def change_events_stream_via_sse_with_rls(shared_data):
-    """Assert SSE streaming with native provider and RLS enforcement.
-
-    In unit mode: verifies provider interface compliance, RLS filtering
+    """Assert SSE streaming with native provider and RLS enforcement."""

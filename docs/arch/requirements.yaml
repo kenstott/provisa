@@ -22287,6 +22287,7 @@
   code:
   - provisa/api/data/subscription_sse.py
   tests:
+  - tests/unit/test_subscription_sink_header.py
   - tests/integration/test_kafka_sink.py
   since: 2026-04
   scenario: 'Given a subscription request with the header "X-Provisa-Sink" set to a Kafka target
