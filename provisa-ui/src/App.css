@@ -34,10 +34,17 @@ body {
   gap: 1rem;
 }
 .navbar-brand a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--primary);
   text-decoration: none;
+}
+.navbar-brand-mark {
+  flex: 0 0 auto;
+  display: block;
 }
 .navbar-links {
   display: flex;

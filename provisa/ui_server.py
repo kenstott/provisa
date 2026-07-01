@@ -32,7 +32,16 @@ STATIC_DIR = Path(__file__).parent.parent / "static"
 API_BASE_URL = os.environ.get("PROVISA_API_URL", "http://provisa:8000")
 
 # Paths that are always served from static files (never proxied).
-_STATIC_PREFIXES = ("/assets/", "/monacoeditorwork/", "/favicon")
+_STATIC_PREFIXES = (
+    "/assets/",
+    "/monacoeditorwork/",
+    "/favicon",
+    "/icon.svg",
+    "/icon-192.png",
+    "/icon-512.png",
+    "/apple-touch-icon.png",
+    "/site.webmanifest",
+)
 
 app = FastAPI()
 
