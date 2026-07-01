@@ -10,6 +10,14 @@
 
 /** Types matching provisa/api/admin/types.py */
 
+// REQ-824: source-level CDC transport (Debezium/Kafka), entered once per source.
+export interface SourceCdcConfig {
+  bootstrapServers: string;
+  topicPrefix: string;
+  schemaRegistryUrl?: string | null;
+  consumerGroupId?: string;
+}
+
 export interface Source {
   id: string;
   type: string;
@@ -25,6 +33,7 @@ export interface Source {
   allowedDomains: string[];
   description: string;
   mappingJson?: string | null;
+  cdc?: SourceCdcConfig | null;
 }
 
 export interface Domain {

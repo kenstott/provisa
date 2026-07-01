@@ -48,6 +48,7 @@ from provisa.api.admin.types import (
     RoleInput,
     RoleType,
     ScheduledTaskType,
+    SourceCdcConfigType,
     SourceInput,
     SourceType,
     SystemHealthType,
@@ -244,6 +245,36 @@ def _parse_mapping_json(mapping_json: str | None) -> dict:
         return {}
 
 
+def _cdc_from_row(row):  # REQ-824
+    """Deserialize the sources.cdc JSONB column into a SourceCdcConfigType."""
+    import json as _json
+
+    raw = row.get("cdc")
+    if not raw:
+        return None
+    data = _json.loads(raw) if isinstance(raw, str) else raw
+    return SourceCdcConfigType(
+        bootstrap_servers=data["bootstrap_servers"],
+        topic_prefix=data["topic_prefix"],
+        schema_registry_url=data.get("schema_registry_url"),
+        consumer_group_id=data.get("consumer_group_id", "provisa-debezium"),
+    )
+
+
+def _cdc_model_from_input(input: SourceInput):  # REQ-824
+    """Map SourceCdcConfigInput → core SourceCdcConfig model, or None when absent."""
+    from provisa.core.models import SourceCdcConfig
+
+    if input.cdc is None:
+        return None
+    return SourceCdcConfig(
+        bootstrap_servers=input.cdc.bootstrap_servers,
+        topic_prefix=input.cdc.topic_prefix,
+        schema_registry_url=input.cdc.schema_registry_url,
+        consumer_group_id=input.cdc.consumer_group_id,
+    )
+
+
 def _source_from_row(row) -> SourceType:
     import json as _json
 
@@ -264,6 +295,7 @@ def _source_from_row(row) -> SourceType:
         allowed_domains=list(row.get("allowed_domains") or []),
         description=row.get("description") or "",
         mapping_json=mapping_json,
+        cdc=_cdc_from_row(row),
     )
 
 
@@ -1711,6 +1743,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             path=input.path,
             description=input.description,
             mapping=_parse_mapping_json(input.mapping_json),
+            cdc=_cdc_model_from_input(input),
         )
         from provisa.api.app import state
 
@@ -1773,6 +1806,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 path=input.path,
                 description=input.description,
                 mapping=_parse_mapping_json(input.mapping_json),
+                cdc=_cdc_model_from_input(input),
             )
             await source_repo.upsert(_conn, model)
             if input.allowed_domains is not None:

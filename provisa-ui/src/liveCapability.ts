@@ -51,3 +51,17 @@ export function liveCapability(sourceType: string | null | undefined): LiveCapab
   const cdcAvail = CDC_DELIVERY_TYPES.has(t);
   return { pollAvail, cdcAvail, liveCapable: pollAvail || cdcAvail };
 }
+
+// REQ-824: non-PG RDBMS have no native push mechanism and reach CDC only through a
+// Debezium connector. Their delta-transport (bootstrap_servers/topic_prefix/...) is
+// configured once on the source. PostgreSQL uses native LISTEN/NOTIFY and needs none.
+export const CDC_TRANSPORT_SOURCE_TYPES = new Set([
+  "mysql",
+  "mariadb",
+  "sqlserver",
+  "oracle",
+]);
+
+export function cdcTransportApplicable(sourceType: string | null | undefined): boolean {
+  return CDC_TRANSPORT_SOURCE_TYPES.has((sourceType ?? "").toLowerCase());
+}

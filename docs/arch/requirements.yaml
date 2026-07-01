@@ -22651,3 +22651,57 @@
   stakeholders:
   - ops
   - data-engineer
+- id: REQ-824
+  status: complete
+  group: 6. Real-Time & Live Data
+  category: Live Delivery Mechanisms
+  priority: MUST
+  type: behavioral
+  since: 2026-07
+  description: >-
+    Source-level CDC transport configuration. Debezium/Kafka delta-transport (bootstrap_servers,
+    topic_prefix, schema_registry_url, consumer_group_id) is entered ONCE per source via a `cdc`
+    block on the Source model (persisted to sources.cdc JSONB), never repeated per-table. Per-table
+    live config only selects delivery=cdc; the runtime inherits transport from the source. A
+    source-level cdc block is only valid on CDC-capable RDBMS sources (postgresql uses native
+    LISTEN/NOTIFY and needs no transport; mysql/mariadb/sqlserver/oracle require it to enable
+    delivery=cdc via Debezium). Provider dispatch routes non-PG RDBMS sources with a cdc block to
+    the Debezium provider. Polling remains per-table (watermark_column, poll_interval).
+  use_case: >-
+    Eliminates repeated data entry of Debezium/Kafka connection details across every table of a
+    source; transport is a per-source connector property, not a per-table one.
+  code:
+  - provisa/core/models.py
+  - provisa/core/config_loader.py
+  - provisa/core/repositories/source.py
+  - provisa/core/schema.sql
+  - provisa/api/app.py
+  - provisa/api/data/subscribe.py
+  - provisa/api/admin/types.py
+  - provisa/api/admin/schema.py
+  - provisa-ui/src/liveCapability.ts
+  - provisa-ui/src/pages/SourcesPage.tsx
+  - provisa-ui/src/types/admin.ts
+  - provisa-ui/src/hooks/admin.graphql
+  tests:
+  - tests/unit/test_source_cdc_config.py
+  - provisa-ui/src/__tests__/liveCapability.test.ts
+  scenario: |
+    Given a MySQL source with a source-level cdc block (bootstrap_servers, topic_prefix)
+    When a table from that source sets live.delivery=cdc
+    Then validation passes and the runtime routes the subscription to the Debezium provider using the source's transport
+
+    Given a MySQL source WITHOUT a cdc block
+    When a table sets live.delivery=cdc
+    Then config validation rejects it (no push mechanism)
+
+    Given a warehouse source (e.g. snowflake)
+    When a cdc block is set on it
+    Then validation rejects the cdc block as unsupported for that source type
+  related_reqs:
+  - REQ-813
+  - REQ-814
+  - REQ-819
+  - REQ-821
+  - REQ-822
+  - REQ-565

@@ -138,6 +138,47 @@ def _build_fallback_config(state, tbl_meta) -> dict:
     return config
 
 
+# REQ-824: non-PG RDBMS reached via a Debezium connector (no native push mechanism).
+# PostgreSQL uses LISTEN/NOTIFY, Kafka/MongoDB use their own consumers — none of them
+# route here even when a source-level cdc block is present.
+_CDC_DEBEZIUM_SOURCE_TYPES = {"mysql", "mariadb", "sqlserver", "oracle"}
+
+
+def _build_cdc_config(state, source_id: str) -> dict:  # REQ-824
+    """Build the Debezium provider config from source-level CDC transport.
+
+    Transport (bootstrap_servers/topic_prefix/schema_registry_url/consumer_group_id)
+    is entered once on the source, never per-table. Fails loud if a table selects
+    Debezium CDC on a source that never declared a cdc block.
+    """
+    src = state.cdc_sources.get(source_id) if state.cdc_sources else None
+    if src is None or src.cdc is None:
+        raise ValueError(
+            f"Source {source_id!r} routes live delivery through Debezium but has no source-level "
+            f"cdc transport config (bootstrap_servers/topic_prefix)."
+        )
+    cdc = src.cdc
+    return {
+        "bootstrap_servers": cdc.bootstrap_servers,
+        "topic_prefix": cdc.topic_prefix,
+        "schema_registry_url": cdc.schema_registry_url,
+        "consumer_group_id": cdc.consumer_group_id,
+        "database": src.database,
+        "source_type": src.type.value,
+    }
+
+
+def _resolve_provider_type(source_type: str, source_id: str, state) -> str:  # REQ-824
+    """Route non-PG RDBMS sources with a source-level cdc block to the Debezium provider."""
+    if (
+        source_type in _CDC_DEBEZIUM_SOURCE_TYPES
+        and state.cdc_sources
+        and source_id in state.cdc_sources
+    ):
+        return "debezium"
+    return source_type
+
+
 def _build_provider_config(  # REQ-258
     source_type: str,
     source_id: str,
@@ -157,6 +198,8 @@ def _build_provider_config(  # REQ-258
         return _build_rss_config(state, source_id)
     if source_type == "websocket":
         return _build_websocket_config(state, source_id)
+    if source_type == "debezium":  # REQ-824
+        return _build_cdc_config(state, source_id)
     return _build_fallback_config(state, tbl_meta)
 
 
@@ -209,8 +252,9 @@ async def _provider_sse_generator(  # REQ-258, REQ-260
 
     tbl_meta = _resolve_tbl_meta(table, state)
     table_id = getattr(tbl_meta, "table_id", None) if tbl_meta else None
-    provider_config = _build_provider_config(source_type, source_id, table, tbl_meta, state)
-    provider = get_provider(source_type, provider_config)
+    provider_type = _resolve_provider_type(source_type, source_id, state)  # REQ-824
+    provider_config = _build_provider_config(provider_type, source_id, table, tbl_meta, state)
+    provider = get_provider(provider_type, provider_config)
 
     async for chunk in _stream_provider_events(
         provider, table, table_id, role_id, rls_contexts, masking_rules, disconnect

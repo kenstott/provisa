@@ -154,6 +154,20 @@ TIME_TRAVEL_SOURCES: set[str] = {"iceberg", "delta_lake"}
 _SAFE_ID_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 
 
+class SourceCdcConfig(BaseModel):  # REQ-824
+    """Source-level CDC transport config (Debezium/Kafka), entered once per source.
+
+    Holds the delta-transport connection that is common to every table captured
+    from this source, so per-table live config never repeats it. Per-table poll
+    settings (watermark_column, poll_interval) stay on LiveDeliveryConfig.
+    """
+
+    bootstrap_servers: str  # Kafka bootstrap servers for the Debezium/Kafka delta stream
+    topic_prefix: str  # Debezium connector topic prefix; topics derived {prefix}.{schema}.{table}
+    schema_registry_url: str | None = None  # Confluent Schema Registry URL (Avro); None = JSON
+    consumer_group_id: str = "provisa-debezium"  # Kafka consumer group for this source's stream
+
+
 class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250, REQ-251, REQ-281
     model_config = ConfigDict(populate_by_name=True)
 
@@ -199,6 +213,9 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         default_factory=list
     )  # restrict this source to specific domains; empty = unrestricted
     description: str = ""
+    # REQ-824: source-level CDC transport (Debezium/Kafka), entered once per source.
+    # Only meaningful for CDC-capable RDBMS sources; None for everything else.
+    cdc: SourceCdcConfig | None = None
 
     @property
     def connector(self) -> str:

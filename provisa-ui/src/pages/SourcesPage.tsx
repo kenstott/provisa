@@ -29,6 +29,7 @@ import { SchemaDiscovery } from "../components/SchemaDiscovery";
 import { TableMappingBuilder } from "../components/TableMappingBuilder";
 import type { TableMapping } from "../components/TableMappingBuilder";
 import type { Source } from "../types/admin";
+import { cdcTransportApplicable } from "../liveCapability";
 
 /** Source types that support schema discovery via adapter. */
 const DISCOVERABLE_TYPES = new Set(["mongodb", "elasticsearch", "cassandra", "prometheus"]);
@@ -225,6 +226,14 @@ export function SourcesPage() {
     allowedDomains: "" as string,
     description: "" as string,
   });
+  // REQ-824: source-level CDC transport (Debezium), entered once per source
+  const emptyCdc = {
+    bootstrapServers: "",
+    topicPrefix: "",
+    schemaRegistryUrl: "",
+    consumerGroupId: "provisa-debezium",
+  };
+  const [cdc, setCdc] = useState({ ...emptyCdc });
   const [authType, setAuthType] = useState("none");
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
@@ -393,6 +402,16 @@ export function SourcesPage() {
       description: s.description ?? "",
     });
     setFilesTransport(s.type === "files" ? parseFilesPath(s.path ?? "").transport : "file://");
+    setCdc(
+      s.cdc
+        ? {
+            bootstrapServers: s.cdc.bootstrapServers ?? "",
+            topicPrefix: s.cdc.topicPrefix ?? "",
+            schemaRegistryUrl: s.cdc.schemaRegistryUrl ?? "",
+            consumerGroupId: s.cdc.consumerGroupId ?? "provisa-debezium",
+          }
+        : { ...emptyCdc },
+    );
     setAuthType("none");
     setAuthFields({});
     if (s.type === "sharepoint" && s.mappingJson) {
@@ -467,6 +486,7 @@ export function SourcesPage() {
     setFilesAuthMode("userpass");
     setFilesCertPath("");
     setFilesCertPassword("");
+    setCdc({ ...emptyCdc });
     setAuthType("none");
     setAuthFields({});
     resetSpFields();
@@ -513,6 +533,16 @@ export function SourcesPage() {
               ).join(",")
             : coreForm.database,
         ...(spMappingJson !== undefined ? { mappingJson: spMappingJson } : {}),
+        // REQ-824: attach source-level CDC transport only for Debezium-captured RDBMS
+        cdc:
+          cdcTransportApplicable(form.type) && cdc.bootstrapServers && cdc.topicPrefix
+            ? {
+                bootstrapServers: cdc.bootstrapServers,
+                topicPrefix: cdc.topicPrefix,
+                schemaRegistryUrl: cdc.schemaRegistryUrl || null,
+                consumerGroupId: cdc.consumerGroupId || "provisa-debezium",
+              }
+            : null,
       };
       if (editingSourceId) {
         const effectiveId = form.id.trim() || editingSourceId;
@@ -2244,6 +2274,47 @@ export function SourcesPage() {
                 placeholder="comma-separated domain IDs, blank = unrestricted"
               />
             </label>
+          )}
+          {cdcTransportApplicable(form.type) && (
+            <fieldset style={{ border: "1px solid #333", borderRadius: 4, padding: "0.75rem" }}>
+              <legend style={{ padding: "0 0.4rem" }}>CDC Transport (Debezium)</legend>
+              <p style={{ margin: "0 0 0.6rem", fontSize: "0.8rem", opacity: 0.7 }}>
+                Entered once per source. Tables from this source only choose delivery=cdc; they
+                inherit this transport.
+              </p>
+              <label>
+                Bootstrap Servers
+                <input
+                  value={cdc.bootstrapServers}
+                  onChange={(e) => setCdc({ ...cdc, bootstrapServers: e.target.value })}
+                  placeholder="broker1:9092,broker2:9092"
+                />
+              </label>
+              <label>
+                Topic Prefix
+                <input
+                  value={cdc.topicPrefix}
+                  onChange={(e) => setCdc({ ...cdc, topicPrefix: e.target.value })}
+                  placeholder="dbserver1 (topics: {prefix}.{schema}.{table})"
+                />
+              </label>
+              <label>
+                Schema Registry URL
+                <input
+                  value={cdc.schemaRegistryUrl}
+                  onChange={(e) => setCdc({ ...cdc, schemaRegistryUrl: e.target.value })}
+                  placeholder="blank = JSON; set for Avro"
+                />
+              </label>
+              <label>
+                Consumer Group ID
+                <input
+                  value={cdc.consumerGroupId}
+                  onChange={(e) => setCdc({ ...cdc, consumerGroupId: e.target.value })}
+                  placeholder="provisa-debezium"
+                />
+              </label>
+            </fieldset>
           )}
         </>
       )}

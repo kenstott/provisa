@@ -22,8 +22,8 @@ from provisa.core.models import Source
 async def upsert(conn: asyncpg.Connection, source: Source) -> None:  # REQ-012, REQ-250
     await conn.execute(
         """
-        INSERT INTO sources (id, type, host, port, database, username, dialect, path, description, mapping)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+        INSERT INTO sources (id, type, host, port, database, username, dialect, path, description, mapping, cdc)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb)
         ON CONFLICT (id) DO UPDATE SET
             type = EXCLUDED.type,
             host = EXCLUDED.host,
@@ -33,7 +33,8 @@ async def upsert(conn: asyncpg.Connection, source: Source) -> None:  # REQ-012, 
             dialect = EXCLUDED.dialect,
             path = EXCLUDED.path,
             description = EXCLUDED.description,
-            mapping = EXCLUDED.mapping
+            mapping = EXCLUDED.mapping,
+            cdc = EXCLUDED.cdc
         """,
         source.id,
         source.type.value,
@@ -45,6 +46,7 @@ async def upsert(conn: asyncpg.Connection, source: Source) -> None:  # REQ-012, 
         source.path,
         source.description,
         _json.dumps(source.mapping or {}),
+        _json.dumps(source.cdc.model_dump()) if source.cdc else None,  # REQ-824
     )
 
 

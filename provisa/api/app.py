@@ -17,6 +17,8 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
+import json
 import logging
 import os
 import uuid
@@ -146,6 +148,8 @@ class AppState:
     websocket_sources: dict[str, Source] = {}  # source_id → Source
     # RSS/Atom feed sources
     rss_sources: dict[str, Source] = {}  # source_id → Source
+    # REQ-824: sources with source-level CDC transport (Debezium/Kafka), entered once per source
+    cdc_sources: dict[str, Source] = {}  # source_id → Source (only those with .cdc set)
     pg_notify_tables: set[str] = set()  # table_names with pg_notify triggers installed
     table_watermarks: dict[str, str] = {}  # table_name → watermark_column (for polling fallback)
     _scheduler: Any | None = None  # APScheduler instance for scheduled queries
@@ -174,11 +178,7 @@ state = AppState()
 
 
 def _setup_approval_hook(st: AppState) -> None:
-    """REQ-247: build the ABAC approval hook + scope dicts from config.
-
-    Reads ``auth.approval_hook`` and per-source/per-table ``approval_hook`` flags from
-    the parsed config. No-op (hook stays disabled) when no block is configured.
-    """
+    """REQ-247: build ABAC approval hook + scope dicts from config (no-op when unconfigured)."""
     from provisa.auth.approval_hook import create_hook, load_approval_hook_config
 
     config = getattr(st, "config", None)
@@ -833,10 +833,7 @@ async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
 
 
 async def _compute_and_store_clusters(conn: asyncpg.Connection) -> int:  # REQ-510
-    """Run Louvain on the schema graph and write l1/l2/l3_cluster onto registered_tables.
-
-    Returns the number of tables clustered.
-    """
+    """Run Louvain on the schema graph and write l1/l2/l3_cluster onto registered_tables."""
     from provisa.schema_clusters import compute_clusters
 
     rows = await conn.fetch("SELECT id FROM registered_tables")
@@ -923,9 +920,7 @@ def _seed_ops_trino(  # REQ-016
     trino_conn: trino.dbapi.Connection, snapshot_retention_hours: int | None = None
 ) -> None:
     """Create Iceberg schema/tables/views in Trino for the ops domain (idempotent)."""
-    import logging as _ops_log
-
-    _log = _ops_log.getLogger(__name__)
+    _log = logging.getLogger(__name__)
 
     def _exec(ddl: str) -> None:
         cur = trino_conn.cursor()
@@ -987,7 +982,7 @@ def _seed_ops_trino(  # REQ-016
         for tbl_name in _OPS_TABLES:
             try:
                 _exec(f'ALTER TABLE otel.signals.{tbl_name} ADD PARTITION FIELD "table_name"')
-            except Exception:
+            except trino.exceptions.TrinoQueryError:
                 pass  # already present or not supported — not fatal
 
         # Warm up Iceberg metadata: first query on a cold Iceberg table can take >60s;
@@ -1018,10 +1013,9 @@ def _seed_ops_trino(  # REQ-016
 
     # Expire old Iceberg snapshots and orphan files when retention is configured.
     if snapshot_retention_hours is not None:
-        import datetime as _dt
-
         threshold = (
-            _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=snapshot_retention_hours)
+            datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(hours=snapshot_retention_hours)
         ).strftime("%Y-%m-%d %H:%M:%S.000")
         for tbl_name in _OPS_TABLES:
             for proc, arg in [
@@ -1226,8 +1220,6 @@ async def _connect_flight_and_object_store() -> None:  # REQ-143, REQ-171
         )
 
     async def _setup_object_store() -> None:
-        import logging as _os_log
-
         # MinIO results bucket (REQ-171) — already async.
         from provisa.executor.redirect import RedirectConfig, ensure_results_bucket
 
@@ -1251,12 +1243,12 @@ async def _connect_flight_and_object_store() -> None:  # REQ-143, REQ-171
             existing = [b["Name"] for b in _s3.list_buckets().get("Buckets", [])]
             if _otel_bucket not in existing:
                 _s3.create_bucket(Bucket=_otel_bucket)
-                _os_log.getLogger(__name__).info("Created MinIO bucket: %s", _otel_bucket)
+                logging.getLogger(__name__).info("Created MinIO bucket: %s", _otel_bucket)
 
         try:
             await asyncio.to_thread(_ensure_otel_bucket)
         except Exception:
-            _os_log.getLogger(__name__).warning(
+            logging.getLogger(__name__).warning(
                 "Could not ensure OTEL bucket — otlp2parquet storage may fail", exc_info=True
             )
 
@@ -1267,7 +1259,7 @@ async def _connect_flight_and_object_store() -> None:  # REQ-143, REQ-171
             assert state.trino_conn is not None
             await asyncio.to_thread(ensure_results_schema, state.trino_conn)
         except Exception:
-            _os_log.getLogger(__name__).warning(
+            logging.getLogger(__name__).warning(
                 "Could not create results schema — CTAS redirect unavailable", exc_info=True
             )
 
@@ -1383,9 +1375,7 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
                     pgbouncer_port=src.pgbouncer_port,
                 )
             except Exception as _pool_err:
-                import logging as _pool_log
-
-                _pool_log.getLogger(__name__).warning(
+                logging.getLogger(__name__).warning(
                     "Direct pool for %r (%s:%s) failed: %s — Trino-routed queries still work.",
                     src.id,
                     resolved_host,
@@ -1413,6 +1403,9 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
             state.websocket_sources[_src.id] = _src
         elif _src.type.value == "rss":
             state.rss_sources[_src.id] = _src
+        # REQ-824: register source-level CDC transport once per source
+        if _src.cdc is not None:
+            state.cdc_sources[_src.id] = _src
 
     # REQ-221: Fetch enum types from all PostgreSQL sources
     from provisa.compiler.enum_detect import build_enum_types
@@ -1433,9 +1426,7 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
 async def _resolve_pk_from_sources() -> None:
     """Second pass — resolve PRIMARY KEYs from each native RDBMS source's information_schema."""
     assert state.pg_pool is not None
-    import logging as _pk_logging
-
-    _startup_log = _pk_logging.getLogger("uvicorn.error")
+    _startup_log = logging.getLogger("uvicorn.error")
     _PK_RDBMS_TYPES = ("postgresql", "mysql", "mariadb", "singlestore", "sqlserver", "redshift")
     _PK_SOURCE_TYPES = _PK_RDBMS_TYPES + ("sqlite",)
     async with state.pg_pool.acquire() as _pk_conn:
@@ -1517,8 +1508,6 @@ async def _load_openapi_specs() -> None:
                 "cache_ttl": 300,
             }
         except Exception as exc:
-            import logging
-
             logging.getLogger(__name__).warning(
                 "Failed to reload OpenAPI spec for %s: %s", _row["id"], exc
             )
@@ -1578,8 +1567,6 @@ def _load_mv_and_views_config(
     # Process views — governed computed datasets
     views_config = raw_config.get("views", [])
     if views_config:
-        import logging
-
         _view_log = logging.getLogger(__name__)
         for view_cfg in views_config:
             view_id = view_cfg["id"]
@@ -1660,8 +1647,6 @@ def _load_mv_and_views_config(
                 join_pattern=jp,
             )
             state.mv_registry.register(mv)
-            import logging
-
             logging.getLogger(__name__).info(
                 "Auto-materialized cross-source relationship %s (%s.%s → %s.%s)",
                 rel_cfg["id"],
@@ -1679,9 +1664,8 @@ async def _init_ingest_engines() -> None:
         from provisa.ingest.engine import get_engine as _get_ingest_engine
         from provisa.ingest.ddl import generate_create_table as _gen_ddl
         from provisa.core.secrets import resolve_secrets as _resolve_secrets
-        import logging as _logging
 
-        _ingest_log = _logging.getLogger(__name__)
+        _ingest_log = logging.getLogger(__name__)
         async with state.pg_pool.acquire() as _pg_conn:
             _ingest_sources = await _pg_conn.fetch(
                 "SELECT id, host, port, database, username, dialect FROM sources WHERE type = 'ingest'"
@@ -1729,9 +1713,7 @@ async def _init_ingest_engines() -> None:
                 except Exception as _exc:
                     _ingest_log.warning("Ingest DDL failed for %s.%s: %s", _sid, _tn, _exc)
     except Exception:
-        import logging as _logging
-
-        _logging.getLogger(__name__).warning("Ingest source init failed", exc_info=True)
+        logging.getLogger(__name__).warning("Ingest source init failed", exc_info=True)
 
 
 async def _load_and_build(
@@ -1741,16 +1723,13 @@ async def _load_and_build(
     if config_path is None:
         config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
 
-    import logging as _startup_logging
-    import time as _startup_time
-
     # Use uvicorn's console logger — the root logger's only handler is the OTLP
     # exporter, so provisa.* logs never reach the console / backend.log.
-    _startup_log = _startup_logging.getLogger("uvicorn.error")
-    _startup_marks = [_startup_time.perf_counter()]
+    _startup_log = logging.getLogger("uvicorn.error")
+    _startup_marks = [time.perf_counter()]
 
     def _mark(name: str) -> None:
-        now = _startup_time.perf_counter()
+        now = time.perf_counter()
         _startup_log.warning(
             "startup phase %-20s +%6.2fs (total %6.2fs)",
             name,
@@ -1952,8 +1931,6 @@ async def _load_graphql_remote_sources_from_db() -> None:
                     )
                     columns = []
                     required_args: list[dict] = []
-                    import json as _json
-
                     for cr in col_rows:
                         if cr["native_filter_type"] == "query_param":
                             required_args.append(
@@ -1972,7 +1949,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                         if raw_of:
                             try:
                                 col_dict["gql_object_fields"] = (
-                                    _json.loads(raw_of) if isinstance(raw_of, str) else raw_of
+                                    json.loads(raw_of) if isinstance(raw_of, str) else raw_of
                                 )
                             except Exception:
                                 pass
@@ -2019,13 +1996,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
 
 
 def _assert_domain_table_unique(tables: list[dict]) -> None:
-    """Enforce (domain_id, table_name) uniqueness across all registered tables.
-
-    The DB constraint only guarantees uniqueness per (source_id, schema_name, table_name),
-    but every higher layer (GraphQL, Cypher, view SQL) addresses a table as domain.table —
-    so two same-named tables in one domain make that reference ambiguous. Fail loud rather
-    than build an unresolvable schema; a manual DB/config edit must be corrected upstream.
-    """
+    """Raise if two tables share (domain_id, effective_name) — ambiguous for GraphQL/Cypher."""
     locs: dict[tuple[str, str], list[str]] = {}
     for t in tables:
         effective_name = t.get("alias") or t["table_name"]
@@ -2310,12 +2281,10 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
         ORDER BY w.name
         """
     )
-    import json as _json
-
     tracked_functions = [
         {
             **dict(r),
-            "arguments": _json.loads(r["arguments"])
+            "arguments": json.loads(r["arguments"])
             if isinstance(r["arguments"], str)
             else (r["arguments"] or []),
             "visible_to": list(r["visible_to"] or []),
@@ -2325,10 +2294,10 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     tracked_webhooks = [
         {
             **dict(r),
-            "arguments": _json.loads(r["arguments"])
+            "arguments": json.loads(r["arguments"])
             if isinstance(r["arguments"], str)
             else (r["arguments"] or []),
-            "inline_return_type": _json.loads(r["inline_return_type"])
+            "inline_return_type": json.loads(r["inline_return_type"])
             if isinstance(r["inline_return_type"], str)
             else (r["inline_return_type"] or []),
             "visible_to": list(r["visible_to"] or []),
@@ -2420,9 +2389,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
                 role["id"],
             )
         except ValueError as _schema_err:
-            import logging as _log
-
-            _log.getLogger(__name__).error(
+            logging.getLogger(__name__).error(
                 "generate_schema failed for role %r: %s", role["id"], _schema_err
             )
 
@@ -2444,10 +2411,7 @@ async def _bg_hydrate_api_endpoints() -> None:
     if not _zero_param_eps:
         return
 
-    import logging as _hydrate_logging
-
-    _hydrate_log = _hydrate_logging.getLogger(__name__)
-
+    _hydrate_log = logging.getLogger(__name__)
     assert state.pg_pool is not None
 
     async def _bg_hydrate(
@@ -2477,13 +2441,7 @@ async def _bg_hydrate_api_endpoints() -> None:
 
 
 async def _reconcile_live_engine(conn: asyncpg.Connection) -> None:  # REQ-565
-    """Drive the LiveEngine poll jobs from persisted per-table live config.
-
-    Reads ``registered_tables.live`` and reconciles the engine to the tables
-    whose delivery is ``poll``. Data polls are qualified for Trino
-    (``catalog.schema.table``) so any federated source is pollable. CDC-delivered
-    tables (``delivery=cdc``) are handled by subscription providers, not here.
-    """
+    """Reconcile LiveEngine poll jobs from registered_tables.live (delivery=poll only)."""
     from provisa.live.engine import LiveSpec
 
     engine = state.live_engine
@@ -2525,15 +2483,72 @@ async def _reconcile_live_engine(conn: asyncpg.Connection) -> None:  # REQ-565
     engine.reconcile(specs)
 
 
+async def _register_user_views_in_state(_pg: asyncpg.Connection, raw_config: dict | None) -> None:
+    """Register __provisa__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal."""
+    _log = logging.getLogger(__name__)
+    try:
+        _view_rows = await _pg.fetch(
+            "SELECT table_name, view_sql, materialize, mv_refresh_interval FROM registered_tables"
+            " WHERE source_id = '__provisa__' AND view_sql IS NOT NULL"
+        )
+        # REQ-199: MVs without an explicit interval fall back to the configured default TTL.
+        _mv_default_ttl = int(
+            (raw_config or {}).get("materialized_views", {}).get("default_ttl", 300)
+        )
+        for _vr in _view_rows:
+            if _vr.get("materialize"):
+                from provisa.mv.models import MVDefinition, MVStatus
+
+                _mv_id = f"view-{_vr['table_name']}"
+                if state.mv_registry.get(_mv_id) is None:
+                    state.mv_registry.register(
+                        MVDefinition(
+                            id=_mv_id,
+                            source_tables=[],
+                            target_catalog="postgresql",
+                            target_schema=f"org_{state.org_id}_mv_cache",
+                            target_table=f"mv_{_vr['table_name']}",
+                            refresh_interval=int(_vr.get("mv_refresh_interval") or _mv_default_ttl),
+                            enabled=True,
+                            sql=_vr["view_sql"].rstrip().rstrip(";"),
+                            expose_in_sdl=False,
+                            status=MVStatus.STALE,
+                        )
+                    )
+            else:
+                state.view_sql_map[_vr["table_name"]] = _vr["view_sql"].rstrip().rstrip(";")
+    except Exception as _e:
+        _log.warning("Failed to load user views for inline expansion: %s", _e)
+
+
+async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
+    """Reconcile live engine (REQ-565) and compile view SQLs after a schema rebuild."""
+    # Re-drive the live poll engine from the now-current DB state so admin edits
+    # to per-table live config take effect without a restart (REQ-565).
+    if state.live_engine is not None and state.pg_pool is not None:
+        try:
+            async with state.pg_pool.acquire() as _lc:
+                await _reconcile_live_engine(cast(asyncpg.Connection, _lc))
+        except Exception:
+            _rebuild_log.exception("live engine reconcile failed")
+
+    # Compile inline view SQLs now that a context is available
+    if state.view_sql_map and state.contexts:
+        from provisa.compiler.sql_gen import (
+            normalize_table_refs,
+            rewrite_semantic_to_trino_physical,
+        )
+
+        ctx = next(iter(state.contexts.values()))
+        state.view_sql_map = {
+            name: rewrite_semantic_to_trino_physical(normalize_table_refs(sql, ctx), ctx)
+            for name, sql in state.view_sql_map.items()
+        }
+
+
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
-    """Re-introspect Trino and rebuild schemas for all roles from current DB state.
-
-    Called after _load_and_build() during startup, and independently after
-    admin mutations that change tables/relationships/roles.
-    """
-    import logging as _rl
-
-    _rebuild_log = _rl.getLogger(__name__)
+    """Re-introspect Trino and rebuild schemas for all roles from current DB state."""
+    _rebuild_log = logging.getLogger(__name__)
     _rebuild_log.info("_rebuild_schemas called")
     if state.pg_pool is None or state.trino_conn is None:
         _rebuild_log.warning("_rebuild_schemas: pg_pool or trino_conn is None, returning")
@@ -2578,87 +2593,35 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         state.table_cache = {r["id"]: r["cache_ttl"] for r in cache_rows}
         domains = [dict(r) for r in await conn.fetch("SELECT id, description FROM domains")]
         sources = {r["id"]: dict(r) for r in await conn.fetch("SELECT * FROM sources")}
-        # Backfill state.source_types from DB for sources registered via UI after server start
-        for _sid, _src_row in sources.items():
-            if _sid not in state.source_types and _src_row.get("type"):
-                state.source_types[_sid] = _src_row["type"]
-        # PostgreSQL sources store database=<pg_db_name>, but Trino accesses them via
-        # a catalog named source_to_catalog(source_id). Patch all postgresql-type sources
-        # so introspect_tables uses the right Trino catalog name.
-        # Use the DB-fetched type field (not state.source_types) so system sources like
-        # provisa-admin (not in config.sources) are also patched.
+        # Backfill state.source_types; patch postgresql sources to use Trino catalog names.
         for _sid, _src_dict in list(sources.items()):
+            if _sid not in state.source_types and _src_dict.get("type"):
+                state.source_types[_sid] = _src_dict["type"]
             if _src_dict.get("type") == "postgresql":
                 sources[_sid] = {**_src_dict, "database": source_to_catalog(_sid)}
         roles = [
             dict(r) for r in await conn.fetch("SELECT id, capabilities, domain_access FROM roles")
         ]
 
-        # Inject source-level naming convention into table dicts for hierarchical resolution
-        # Also merge PG-stored allowed_domains into state (PG overrides config-file values).
+        # Merge PG-stored allowed_domains into state; inject source naming into table dicts.
         for src_id, src_row in sources.items():
-            pg_domains = list(src_row.get("allowed_domains") or [])
-            if pg_domains:
+            if pg_domains := list(src_row.get("allowed_domains") or []):
                 state.source_allowed_domains[src_id] = pg_domains
         for tbl in tables:
-            src = sources.get(tbl["source_id"], {})
-            tbl["source_gql_naming_convention"] = src.get("gql_naming_convention")
+            tbl["source_gql_naming_convention"] = sources.get(tbl["source_id"], {}).get(
+                "gql_naming_convention"
+            )
 
         # Ensure ops Iceberg tables exist before introspection — idempotent, self-healing
         # if _seed_ops_trino failed at startup because the otel catalog wasn't ready yet.
         _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
 
-        # Register user-created views (source __provisa__) for inline expansion — the
-        # same mechanism as config views. Their references resolve to the synthetic
-        # __provisa__ source, which is not a Trino catalog, so they are inlined into
-        # queries (rewritten to physical refs below, then expanded at query time by
-        # expand_views / expand_view_refs) rather than materialized as physical Trino
-        # views (which would require a writable view catalog and physicalized SQL).
-        import logging as _prov_log
-
-        _prov_logger = _prov_log.getLogger(__name__)
-        try:
-            _view_rows = await _pg.fetch(
-                "SELECT table_name, view_sql, materialize, mv_refresh_interval FROM registered_tables"
-                " WHERE source_id = '__provisa__' AND view_sql IS NOT NULL"
-            )
-            # REQ-199: MVs without an explicit interval fall back to the configured default TTL.
-            _mv_default_ttl = int(
-                (raw_config or {}).get("materialized_views", {}).get("default_ttl", 300)
-            )
-            for _vr in _view_rows:
-                if _vr.get("materialize"):
-                    from provisa.mv.models import MVDefinition, MVStatus
-
-                    _mv_id = f"view-{_vr['table_name']}"
-                    if state.mv_registry.get(_mv_id) is None:
-                        state.mv_registry.register(
-                            MVDefinition(
-                                id=_mv_id,
-                                source_tables=[],
-                                target_catalog="postgresql",
-                                target_schema=f"org_{state.org_id}_mv_cache",
-                                target_table=f"mv_{_vr['table_name']}",
-                                refresh_interval=int(
-                                    _vr.get("mv_refresh_interval") or _mv_default_ttl
-                                ),
-                                enabled=True,
-                                sql=_vr["view_sql"].rstrip().rstrip(";"),
-                                expose_in_sdl=False,
-                                status=MVStatus.STALE,
-                            )
-                        )
-                else:
-                    state.view_sql_map[_vr["table_name"]] = _vr["view_sql"].rstrip().rstrip(";")
-        except Exception as _e:
-            _prov_logger.warning("Failed to load user views for inline expansion: %s", _e)
+        await _register_user_views_in_state(_pg, raw_config)
 
         # Introspect Trino metadata
-        kafka_physical = getattr(state, "kafka_table_physical", {})
-        column_types = introspect_tables(
+        col_types_converted: dict[int, list[ColumnMetadata]] = introspect_tables(
             state.trino_conn, tables, sources, {**_META_TABLE_ALIAS, **(kafka_physical or {})}
         )
-        col_types_converted: dict[int, list[ColumnMetadata]] = column_types
 
         _gql_remote_srcs = getattr(state, "graphql_remote_sources", {})
 
@@ -2729,32 +2692,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         "physical_table_map": {**_META_TABLE_ALIAS, **(kafka_physical or {})},
     }
     state.schema_version += 1
-
-    # Re-drive the live poll engine from the now-current DB state so admin edits
-    # to per-table live config take effect without a restart (REQ-565).
-    if state.live_engine is not None and state.pg_pool is not None:
-        try:
-            async with state.pg_pool.acquire() as _lc:
-                await _reconcile_live_engine(cast(asyncpg.Connection, _lc))
-        except Exception:
-            _rebuild_log.exception("live engine reconcile failed")
-
-    # Compile inline view SQLs now that a context is available
-    if state.view_sql_map and state.contexts:
-        from provisa.compiler.sql_gen import (
-            normalize_table_refs,
-            rewrite_semantic_to_trino_physical,
-        )
-
-        ctx = next(iter(state.contexts.values()))
-        # User-authored view SQL uses unquoted semantic refs (e.g. pet_store.inquiries).
-        # rewrite_semantic_to_trino_physical only literal-matches quoted refs, so normalize
-        # first (sqlglot parse-based) to resolve domain-qualified names to quoted physical
-        # refs the Trino rewrite can catalog-qualify.
-        state.view_sql_map = {
-            name: rewrite_semantic_to_trino_physical(normalize_table_refs(sql, ctx), ctx)
-            for name, sql in state.view_sql_map.items()
-        }
+    await _finalize_rebuild_state(_rebuild_log)
 
 
 def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
@@ -2768,14 +2706,13 @@ def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
 
     def _prewarm_jvm():
         try:
-            import os as _os
             from provisa.govdata.source import _jvm_lock as _lock
             from askamerica.engine import DEFAULT_SCHEMAS as _DS, start_jvm as _start_jvm  # type: ignore[import-untyped]
 
             with _lock:
-                if "ASKAMERICA_SCHEMAS" not in _os.environ:
-                    _os.environ["ASKAMERICA_SCHEMAS"] = _DS
-                api_key = _os.environ.get("ASKAMERICA_API_KEY", "")
+                if "ASKAMERICA_SCHEMAS" not in os.environ:
+                    os.environ["ASKAMERICA_SCHEMAS"] = _DS
+                api_key = os.environ.get("ASKAMERICA_API_KEY", "")
                 _start_jvm(api_key)
         except Exception:
             _log.exception("GovData JVM pre-warm failed")
@@ -3279,8 +3216,6 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, reportUnusedVariable]
     """App lifespan: load config and build schemas at startup."""
-    import logging
-
     _log = logging.getLogger("uvicorn.error")
     state.schema_boot_id = uuid.uuid4().hex
     try:
@@ -3513,85 +3448,45 @@ def create_app() -> FastAPI:
         return response
 
     from provisa.api.admin.discovery import router as discovery_router
-
     app.include_router(discovery_router)
-
     from provisa.api.admin.discovery_schema import router as schema_discovery_router
-
     app.include_router(schema_discovery_router)
-
     from provisa.api.admin.api_discovery import router as api_discovery_router
-
     app.include_router(api_discovery_router)
-
     from provisa.api.admin.neo4j_router import router as neo4j_router
-
     app.include_router(neo4j_router)
-
     from provisa.api.admin.sparql_router import router as sparql_router
-
     app.include_router(sparql_router)
-
     from provisa.api.admin.graphql_remote_router import router as graphql_remote_router
-
     app.include_router(graphql_remote_router)
-
     from provisa.api.admin.openapi_router import router as openapi_router
-
     app.include_router(openapi_router)
-
     from provisa.api.admin.grpc_remote_router import router as grpc_remote_router
-
     app.include_router(grpc_remote_router)
-
     from provisa.api.admin.actions_router import router as actions_router
-
     app.include_router(actions_router)
-
     from provisa.api.admin.crawl_router import router as crawl_router
-
     app.include_router(crawl_router)
-
     from provisa.api.admin.settings_router import router as settings_router
-
     app.include_router(settings_router)
-
     from provisa.api.admin.source_meta_router import router as source_meta_router
-
     app.include_router(source_meta_router)
-
     from provisa.api.admin.table_profile_router import router as table_profile_router
-
     app.include_router(table_profile_router)
-
     from provisa.api.admin.table_search_router import router as table_search_router
-
     app.include_router(table_search_router)
-
     from provisa.api.admin.local_users_router import router as local_users_router
-
     app.include_router(local_users_router)
-
     from provisa.api.admin.orgs_router import router as orgs_router
-
     app.include_router(orgs_router)
-
     from provisa.api.admin.invites_router import router as invites_router
-
     app.include_router(invites_router)
-
     from provisa.api.admin.roles_router import router as roles_router
-
     app.include_router(roles_router)
-
     from provisa.api.admin.creation_requests_router import router as creation_requests_router
-
     app.include_router(creation_requests_router)
-
     from provisa.api.auth_router import router as auth_router
-
     app.include_router(auth_router)
-
     from provisa.api.setup_router import router as setup_router
 
     app.include_router(setup_router)

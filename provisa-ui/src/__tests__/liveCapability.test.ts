@@ -4,7 +4,7 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { describe, it, expect } from "vitest";
-import { liveCapability } from "../liveCapability";
+import { liveCapability, cdcTransportApplicable } from "../liveCapability";
 
 describe("liveCapability", () => {
   it("postgresql supports both poll and cdc", () => {
@@ -63,5 +63,29 @@ describe("liveCapability", () => {
     expect(liveCapability(null).liveCapable).toBe(false);
     expect(liveCapability(undefined).liveCapable).toBe(false);
     expect(liveCapability("").liveCapable).toBe(false);
+  });
+});
+
+describe("cdcTransportApplicable (REQ-824)", () => {
+  it("applies to non-PG RDBMS reached via Debezium", () => {
+    for (const t of ["mysql", "mariadb", "sqlserver", "oracle"]) {
+      expect(cdcTransportApplicable(t)).toBe(true);
+    }
+  });
+
+  it("does not apply to postgres (native LISTEN/NOTIFY needs no transport)", () => {
+    expect(cdcTransportApplicable("postgresql")).toBe(false);
+  });
+
+  it("does not apply to non-RDBMS / poll-only sources", () => {
+    for (const t of ["kafka", "mongodb", "snowflake", "csv", "neo4j"]) {
+      expect(cdcTransportApplicable(t)).toBe(false);
+    }
+  });
+
+  it("is case-insensitive and null-safe", () => {
+    expect(cdcTransportApplicable("MySQL")).toBe(true);
+    expect(cdcTransportApplicable(null)).toBe(false);
+    expect(cdcTransportApplicable(undefined)).toBe(false);
   });
 });

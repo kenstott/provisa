@@ -681,9 +681,26 @@ def _validate_table_kafka_sinks(config) -> None:
 # source uses delivery=poll (watermark polling routed through Trino).
 _CDC_SUPPORTED_SOURCE_TYPES = {"postgresql", "debezium", "kafka", "mongodb"}
 
+# REQ-824: non-PG RDBMS have no native push mechanism; they become CDC-capable only
+# when the source declares a source-level cdc transport block (Debezium). This is
+# also the exhaustive set of source types on which a cdc block is meaningful,
+# alongside "postgresql" (which uses native LISTEN/NOTIFY and needs no transport).
+_CDC_DEBEZIUM_SOURCE_TYPES = {"mysql", "mariadb", "sqlserver", "oracle"}
+_CDC_BLOCK_ALLOWED_SOURCE_TYPES = _CDC_DEBEZIUM_SOURCE_TYPES | {"postgresql"}
+
 
 def _validate_table_live_delivery(config) -> None:
-    """Validate live delivery config on all tables (REQ-282–287)."""
+    """Validate live delivery config on all tables (REQ-282–287, REQ-824)."""
+    for source in config.sources:
+        # REQ-824: a source-level cdc block only makes sense on CDC-capable RDBMS sources.
+        if getattr(source, "cdc", None) is not None:
+            stype = getattr(source, "type", None)
+            if stype not in _CDC_BLOCK_ALLOWED_SOURCE_TYPES:
+                raise ValueError(
+                    f"Source {source.id!r}: cdc transport config not supported for source type "
+                    f"{stype!r} (only PostgreSQL and Debezium-captured RDBMS)"
+                )
+
     for table in config.tables:
         if table.live is None:
             continue
@@ -693,10 +710,19 @@ def _validate_table_live_delivery(config) -> None:
             )
         if table.live.delivery == "cdc":
             source = next((s for s in config.sources if s.id == table.source_id), None)
-            if source and getattr(source, "type", None) not in _CDC_SUPPORTED_SOURCE_TYPES:
+            if source is None:
+                continue
+            stype = getattr(source, "type", None)
+            has_cdc_block = getattr(source, "cdc", None) is not None
+            # Natively CDC-capable (PostgreSQL/Kafka/MongoDB), or a non-PG RDBMS that
+            # declares a source-level Debezium transport (REQ-824). A non-PG RDBMS
+            # without a cdc block has no push mechanism and is rejected.
+            if stype not in _CDC_SUPPORTED_SOURCE_TYPES and not (
+                stype in _CDC_DEBEZIUM_SOURCE_TYPES and has_cdc_block
+            ):
                 raise ValueError(
                     f"Table {table.table_name!r}: live.delivery=cdc not supported for source type "
-                    f"{getattr(source, 'type', 'unknown')!r}"
+                    f"{stype!r}"
                 )
 
 

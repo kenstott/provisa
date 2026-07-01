@@ -59,6 +59,12 @@ query SourcesQuery {
     allowedDomains
     description
     mappingJson
+    cdc {
+      bootstrapServers
+      topicPrefix
+      schemaRegistryUrl
+      consumerGroupId
+    }
   }
 }
 

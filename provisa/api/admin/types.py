@@ -18,6 +18,14 @@ import strawberry
 
 
 @strawberry.type
+class SourceCdcConfigType:  # REQ-824
+    bootstrap_servers: str
+    topic_prefix: str
+    schema_registry_url: str | None = None
+    consumer_group_id: str = "provisa-debezium"
+
+
+@strawberry.type
 class SourceType:  # REQ-012
     id: str
     type: str
@@ -33,6 +41,7 @@ class SourceType:  # REQ-012
     allowed_domains: list[str] = strawberry.field(default_factory=list)
     description: str = ""
     mapping_json: str = "{}"
+    cdc: SourceCdcConfigType | None = None  # REQ-824: source-level CDC transport
 
 
 @strawberry.type
@@ -176,6 +185,14 @@ class RLSRuleType:  # REQ-041, REQ-402
 
 
 @strawberry.input
+class SourceCdcConfigInput:  # REQ-824
+    bootstrap_servers: str
+    topic_prefix: str
+    schema_registry_url: str | None = None
+    consumer_group_id: str = "provisa-debezium"
+
+
+@strawberry.input
 class SourceInput:  # REQ-012
     id: str
     type: str
@@ -188,6 +205,7 @@ class SourceInput:  # REQ-012
     description: str = ""
     allowed_domains: list[str] = strawberry.field(default_factory=list)
     mapping_json: str | None = None
+    cdc: SourceCdcConfigInput | None = None  # REQ-824: source-level CDC transport
 
 
 @strawberry.input
