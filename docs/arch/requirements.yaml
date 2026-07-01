@@ -22705,3 +22705,89 @@
   - REQ-821
   - REQ-822
   - REQ-565
+- id: REQ-825
+  status: proposed
+  group: 6. Execution, Routing, Caching & Performance
+  category: Execution & Routing
+  priority: SHOULD
+  type: structural
+  target: "2026-Q4"
+  description: >-
+    The Provisa storage platform is an abstract SQL execution backend behind a single contract
+    (SqlBackend). The compiler produces a dialect-neutral SQL intermediate representation; the
+    physical step is per-backend dispatch, where SQLGlot transpiles the IR to the backend's declared
+    dialect (execute(ir_sql, params) + a dialect() capability). No governance/compilation logic is
+    duplicated per backend. Backends fall into two postures: (1) a Federation Engine, whose catalogs
+    resolve to live connectors and which federates over the wire (has_connectors=True, current Trino
+    behavior); and (2) a resident/warehouse backend, which has no live connectors
+    (has_connectors=False) — every catalog resolves to storage in the backend (see REQ-826).
+    Concrete backends span the size spectrum: an embedded engine (DuckDB) small enough to run on a
+    developer desktop with no Trino dependency; the current Trino federation engine; and external
+    warehouses reused as backends (Snowflake, Databricks, Dremio) to leverage a customer's existing
+    infrastructure. The backend is selected at deployment time via top-level config
+    (backend: duckdb | trino | snowflake | databricks | dremio | ...), not per-source. All query
+    dispatch that today reads the hardcoded Trino singleton (provisa/api/app.py,
+    provisa/api/data/endpoint.py, provisa/executor/trino.py) must route through the SqlBackend
+    contract. The IR->physical mapping is intentionally thin; the divergence is confined to dialect
+    transpilation and how catalogs are made resident (REQ-826).
+  use_case: >-
+    Decouples Provisa's governed data layer from any single execution vendor. The same compiler, IR,
+    governance, and multi-protocol query surface run on an embedded desktop engine (DuckDB, no
+    Trino), the Trino federation engine, or a customer's existing warehouse (Snowflake/Databricks/
+    Dremio) — making the execution substrate a swappable deployment choice and concentrating Provisa's
+    IP in the governance, compilation, planning, and residency layers rather than the engine.
+  code:
+  - provisa/api/app.py
+  - provisa/api/data/endpoint.py
+  - provisa/executor/trino.py
+  - provisa/transpiler/router.py
+  - provisa/core/config_loader.py
+  related_reqs:
+  - REQ-826
+- id: REQ-826
+  status: proposed
+  group: 6. Execution, Routing, Caching & Performance
+  category: Caching
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Residency and freshness management for the warehouse backend (REQ-825). A backend with no live
+    connectors must make every referenced source table resident in backend storage before it can be
+    queried (ensure_resident): RDBMS, NoSQL, and API sources are loaded/refreshed into the backend
+    rather than federated. This unifies today's three separate residency mechanisms — OpenAPI PG
+    response cache (provisa/openapi/pg_cache.py), NoSQL mapping catalogs, and warm-tables/MV
+    materialization — into one operation on the warehouse backend. On a federation backend
+    ensure_resident is a no-op for federatable RDBMS sources and preserves current PG-cache behavior
+    for NoSQL/API. Because a warehouse has no live path, cache_ttl changes semantics per backend:
+    on federation it bounds staleness of a live pull; on warehouse it is the reload interval, making
+    freshness a load-scheduling and invalidation concern rather than a query-time one. The router
+    must refuse DIRECT and live-TRINO routes when the active backend reports has_connectors=False and
+    force the resident/cached path.
+  use_case: >-
+    Concentrates the real complexity of the storage-platform abstraction — residency, reload
+    scheduling, and invalidation — in one contract method, so non-federatable sources (NoSQL, APIs)
+    are served from local storage on a warehouse deployment with predictable freshness.
+  code:
+  - provisa/executor/trino.py
+  - provisa/transpiler/router.py
+  - provisa/openapi/pg_cache.py
+  - provisa/mv/registry.py
+  - provisa/cache/warm_tables.py
+  - provisa/cache/hot_tables.py
+  - provisa/core/config_loader.py
+  scenario: |
+    Given the platform is deployed with backend=warehouse (has_connectors=False)
+    When a query references an OpenAPI source table
+    Then the table is loaded/refreshed into backend storage via ensure_resident and queried in place
+    And the router does not attempt a live federated pull
+
+    Given backend=warehouse and a table with cache_ttl=300
+    When the table has not been reloaded within 300 seconds
+    Then ensure_resident reloads it before the query executes (ttl means reload interval)
+
+    Given the platform is deployed with backend=federation
+    When a query references a single RDBMS source table
+    Then ensure_resident is a no-op and the query routes DIRECT or live-TRINO as today
+  related_reqs:
+  - REQ-825

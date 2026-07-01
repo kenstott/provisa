@@ -21,6 +21,7 @@ import datetime
 import json
 import logging
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -2485,7 +2486,6 @@ async def _reconcile_live_engine(conn: asyncpg.Connection) -> None:  # REQ-565
 
 async def _register_user_views_in_state(_pg: asyncpg.Connection, raw_config: dict | None) -> None:
     """Register __provisa__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal."""
-    _log = logging.getLogger(__name__)
     try:
         _view_rows = await _pg.fetch(
             "SELECT table_name, view_sql, materialize, mv_refresh_interval FROM registered_tables"
@@ -2518,7 +2518,7 @@ async def _register_user_views_in_state(_pg: asyncpg.Connection, raw_config: dic
             else:
                 state.view_sql_map[_vr["table_name"]] = _vr["view_sql"].rstrip().rstrip(";")
     except Exception as _e:
-        _log.warning("Failed to load user views for inline expansion: %s", _e)
+        log.warning("Failed to load user views for inline expansion: %s", _e)
 
 
 async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
@@ -3448,44 +3448,64 @@ def create_app() -> FastAPI:
         return response
 
     from provisa.api.admin.discovery import router as discovery_router
+
     app.include_router(discovery_router)
     from provisa.api.admin.discovery_schema import router as schema_discovery_router
+
     app.include_router(schema_discovery_router)
     from provisa.api.admin.api_discovery import router as api_discovery_router
+
     app.include_router(api_discovery_router)
     from provisa.api.admin.neo4j_router import router as neo4j_router
+
     app.include_router(neo4j_router)
     from provisa.api.admin.sparql_router import router as sparql_router
+
     app.include_router(sparql_router)
     from provisa.api.admin.graphql_remote_router import router as graphql_remote_router
+
     app.include_router(graphql_remote_router)
     from provisa.api.admin.openapi_router import router as openapi_router
+
     app.include_router(openapi_router)
     from provisa.api.admin.grpc_remote_router import router as grpc_remote_router
+
     app.include_router(grpc_remote_router)
     from provisa.api.admin.actions_router import router as actions_router
+
     app.include_router(actions_router)
     from provisa.api.admin.crawl_router import router as crawl_router
+
     app.include_router(crawl_router)
     from provisa.api.admin.settings_router import router as settings_router
+
     app.include_router(settings_router)
     from provisa.api.admin.source_meta_router import router as source_meta_router
+
     app.include_router(source_meta_router)
     from provisa.api.admin.table_profile_router import router as table_profile_router
+
     app.include_router(table_profile_router)
     from provisa.api.admin.table_search_router import router as table_search_router
+
     app.include_router(table_search_router)
     from provisa.api.admin.local_users_router import router as local_users_router
+
     app.include_router(local_users_router)
     from provisa.api.admin.orgs_router import router as orgs_router
+
     app.include_router(orgs_router)
     from provisa.api.admin.invites_router import router as invites_router
+
     app.include_router(invites_router)
     from provisa.api.admin.roles_router import router as roles_router
+
     app.include_router(roles_router)
     from provisa.api.admin.creation_requests_router import router as creation_requests_router
+
     app.include_router(creation_requests_router)
     from provisa.api.auth_router import router as auth_router
+
     app.include_router(auth_router)
     from provisa.api.setup_router import router as setup_router
 
