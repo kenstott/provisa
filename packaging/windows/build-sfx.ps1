@@ -21,11 +21,23 @@ Copy-Item (Join-Path $RepoRoot 'docker-compose.app.yml')    $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'docker-compose.airgap.yml') $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'config')  (Join-Path $BuildCompose 'config')  -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'db')      (Join-Path $BuildCompose 'db')      -Recurse -Force
-# Copy trino WITHOUT plugins/ — plugins ship as a separate release asset.
+# Copy trino WITHOUT plugins/ — plugins (925 MB) download at first launch.
 $TrinoSrc = Join-Path $RepoRoot 'trino'
 $TrinoDst = Join-Path $BuildCompose 'trino'
 New-Item -ItemType Directory -Path $TrinoDst -Force | Out-Null
 Get-ChildItem -Path $TrinoSrc -Exclude 'plugins' | Copy-Item -Destination $TrinoDst -Recurse -Force
+
+# Support dirs the trino service bind-mounts (parity with the macOS bundle).
+Copy-Item (Join-Path $RepoRoot 'observability') (Join-Path $BuildCompose 'observability') -Recurse -Force
+if (Test-Path (Join-Path $RepoRoot 'sharepoint.pfx')) {
+  Copy-Item (Join-Path $RepoRoot 'sharepoint.pfx') $BuildCompose
+}
+$DemoFilesSrc = Join-Path $RepoRoot 'demo\files'
+if (Test-Path $DemoFilesSrc) {
+  $DemoDst = Join-Path $BuildCompose 'demo\files'
+  New-Item -ItemType Directory -Path $DemoDst -Force | Out-Null
+  Copy-Item -Path (Join-Path $DemoFilesSrc '*') -Destination $DemoDst -Recurse -Force
+}
 
 $BuildSrc = Join-Path $BuildDir 'provisa-source'
 New-Item -ItemType Directory -Path $BuildSrc -Force | Out-Null
@@ -39,6 +51,8 @@ Copy-Item (Join-Path $ScriptDir 'first-launch-gui.ps1') $BuildDir
 Copy-Item (Join-Path $ScriptDir 'launch-gui.vbs')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.ps1')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.cmd')       $BuildDir
+Copy-Item (Join-Path $ScriptDir 'start-gui.ps1')     $BuildDir
+Copy-Item (Join-Path $ScriptDir 'start-gui.vbs')     $BuildDir
 Copy-Item (Join-Path $ScriptDir 'install.ps1')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'uninstall.ps1')     $BuildDir
 Copy-Item (Join-Path $ScriptDir 'enable-hyperv.ps1')   $BuildDir

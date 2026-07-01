@@ -864,6 +864,61 @@ $btnInstall.Add_Click({
       Remove-Item -Recurse -Force $ExtractDir -ErrorAction SilentlyContinue
       $sync.Progress = 85
 
+      # Step 6b: Trino plugins ---------------------------------------------
+      # The trino service bind-mounts ./trino/plugins/trino-*; an empty plugin
+      # dir makes Trino fail to boot. Plugins (925 MB) ship as a separate
+      # release asset - find it next to the installer or download it, then
+      # extract into the compose dir.
+      $PluginsDir = Join-Path $ComposeDir 'trino\plugins'
+      $pluginsPresent = (Test-Path (Join-Path $PluginsDir 'trino-calcite'))
+      if (-not $pluginsPresent) {
+        $sync.Status = 'Locating query engine plugins...'
+        $PluginsTar = $null
+        foreach ($searchDir in @($ScriptDir, (Split-Path -Parent $ScriptDir))) {
+          $found = Get-ChildItem -Path $searchDir -Filter 'provisa-trino-plugins-*.tar.gz' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) { $PluginsTar = $found.FullName; break }
+        }
+        if (-not $PluginsTar) {
+          if (-not $EmbeddedVersion) { throw 'VERSION file missing - cannot download query engine plugins.' }
+          $pUrl  = "https://github.com/kenstott/provisa/releases/download/$EmbeddedVersion/provisa-trino-plugins-$EmbeddedVersion.tar.gz"
+          $pDest = Join-Path $env:TEMP "provisa-trino-plugins-$EmbeddedVersion.tar.gz"
+          Log "Downloading query engine plugins ($EmbeddedVersion)..."
+          $preq = [System.Net.HttpWebRequest]::Create($pUrl)
+          $preq.UserAgent = 'Provisa-Installer/1.0'
+          $presp = $preq.GetResponse()
+          $ptot  = $presp.ContentLength
+          $pin   = $presp.GetResponseStream()
+          $pfs   = [System.IO.File]::Create($pDest)
+          $pbuf  = New-Object byte[] 65536
+          $pdl   = [long]0
+          while (($pread = $pin.Read($pbuf, 0, $pbuf.Length)) -gt 0) {
+            $pfs.Write($pbuf, 0, $pread)
+            $pdl += $pread
+            if ($ptot -gt 0) {
+              $ppct = [int](($pdl / $ptot) * 100)
+              $sync.Status = "Downloading query engine plugins: $ppct% ($([int]($pdl/1MB)) / $([int]($ptot/1MB)) MB)"
+            }
+          }
+          $pfs.Close(); $pin.Close(); $presp.Close()
+          Log 'Plugin download complete.'
+          $PluginsTar = $pDest
+        } else {
+          Log 'Found bundled query engine plugins.'
+        }
+        Log 'Installing query engine plugins...'
+        New-Item -ItemType Directory -Path $PluginsDir -Force | Out-Null
+        # Tarball expands to trino-calcite/, trino-file/, ... directly.
+        & $tarExe -xzf $PluginsTar -C $PluginsDir 2>&1 | ForEach-Object { }
+        if ($LASTEXITCODE -ne 0) { throw "Failed to extract query engine plugins (tar exit $LASTEXITCODE)." }
+        if (-not (Test-Path (Join-Path $PluginsDir 'trino-calcite'))) {
+          throw 'Query engine plugins did not extract correctly (trino-calcite missing).'
+        }
+        Log 'Query engine plugins installed.'
+      } else {
+        Log 'Query engine plugins already present.'
+      }
+      $sync.Progress = 90
+
       # Step 7: Write config
       Log 'Writing config...'
       New-Item -ItemType Directory -Path $ProvisaHome -Force | Out-Null
@@ -900,8 +955,10 @@ federation_workers: $Workers
       New-Item -ItemType Directory -Path $smDir -Force | Out-Null
       $wsh  = New-Object -ComObject WScript.Shell
       $link = $wsh.CreateShortcut("$smDir\Start Provisa.lnk")
-      $link.TargetPath       = 'powershell.exe'
-      $link.Arguments        = "-NoExit -ExecutionPolicy Bypass -Command `"& '$ScriptDir\provisa.cmd' start`""
+      # Launch the GUI dialog (hidden console via wscript) instead of leaving a
+      # bare PowerShell window open.
+      $link.TargetPath       = 'wscript.exe'
+      $link.Arguments        = "/nologo `"$ScriptDir\start-gui.vbs`""
       $link.WorkingDirectory = $ScriptDir
       $link.Save()
 
