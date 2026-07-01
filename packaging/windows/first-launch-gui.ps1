@@ -191,13 +191,60 @@ $pConfig.Controls.Add($btnRecheck)
 
 $lbNotice          = New-Object System.Windows.Forms.Label
 $lbNotice.AutoSize = $false
-$lbNotice.Size     = New-Object System.Drawing.Size(560, 52)
-$lbNotice.Location = New-Object System.Drawing.Point(20, 290)
+$lbNotice.Size     = New-Object System.Drawing.Size(560, 40)
+$lbNotice.Location = New-Object System.Drawing.Point(20, 288)
 $pConfig.Controls.Add($lbNotice)
+
+# Shown only in the conflicted state (Hyper-V on, no Docker): let the user
+# either install Docker Desktop or disable Hyper-V for the bundled VM.
+$btnInstallDocker           = New-Object System.Windows.Forms.Button
+$btnInstallDocker.Text      = 'Install Docker Desktop'
+$btnInstallDocker.Size      = New-Object System.Drawing.Size(170, 26)
+$btnInstallDocker.Location  = New-Object System.Drawing.Point(20, 330)
+$btnInstallDocker.FlatStyle = 'System'
+$btnInstallDocker.Visible   = $false
+$pConfig.Controls.Add($btnInstallDocker)
+
+$btnDisableHyperV           = New-Object System.Windows.Forms.Button
+$btnDisableHyperV.Text      = 'Disable Hyper-V (reboot)'
+$btnDisableHyperV.Size      = New-Object System.Drawing.Size(170, 26)
+$btnDisableHyperV.Location  = New-Object System.Drawing.Point(200, 330)
+$btnDisableHyperV.FlatStyle = 'System'
+$btnDisableHyperV.Visible   = $false
+$pConfig.Controls.Add($btnDisableHyperV)
+
+$btnInstallDocker.Add_Click({
+  # winget elevates the Docker Desktop MSI itself; run in a visible window so
+  # the user sees progress, then they click Re-check when it's up.
+  Start-Process powershell.exe -ArgumentList @(
+    '-NoExit','-Command',
+    'winget install -e --id Docker.DockerDesktop --accept-source-agreements --accept-package-agreements'
+  )
+  [System.Windows.Forms.MessageBox]::Show($form,
+    "Docker Desktop is installing in a separate window.`r`n`r`n" +
+    "When it finishes and Docker Desktop is running, click Re-check to select the Docker runtime.",
+    'Provisa Setup', 'OK', 'Information') | Out-Null
+})
+
+$btnDisableHyperV.Add_Click({
+  $c = [System.Windows.Forms.MessageBox]::Show($form,
+    "This disables Hyper-V / WSL2 / Virtual Machine Platform and reboots.`r`n`r`n" +
+    "Docker Desktop will not run until you re-enable them (enable-hyperv.ps1).`r`n`r`nContinue?",
+    'Provisa Setup', 'YesNo', 'Warning')
+  if ($c -ne 'Yes') { return }
+  $disable = 'bcdedit /set hypervisorlaunchtype off; ' +
+             'dism.exe /Online /Disable-Feature /FeatureName:Microsoft-Hyper-V-All /NoRestart; ' +
+             'dism.exe /Online /Disable-Feature /FeatureName:VirtualMachinePlatform /NoRestart; ' +
+             'shutdown /r /t 10 /c "Provisa: rebooting to disable Hyper-V"'
+  Start-Process powershell.exe -ArgumentList @('-NoProfile','-Command',$disable) -Verb RunAs
+})
 
 # Applies current detection results to the runtime radios + notice text.
 function Update-BackendUi {
   $rbDocker.Enabled = $DockerReady
+  $conflicted = ($HyperVActive -and -not $DockerReady)
+  $btnInstallDocker.Visible = $conflicted
+  $btnDisableHyperV.Visible = $conflicted
   if ($DockerReady) {
     $rbDocker.Checked = $true
     $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(0, 140, 0)
@@ -205,8 +252,8 @@ function Update-BackendUi {
   } elseif ($HyperVActive) {
     $rbVBox.Checked = $true
     $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(190, 90, 0)
-    $lbNotice.Text = 'Hyper-V / WSL2 is active. The bundled VM will run slowly and may not boot. ' +
-                     'Recommended: start Docker Desktop, then Re-check. Otherwise disable Hyper-V (see docs) before using the VM.'
+    $lbNotice.Text = 'Hyper-V / WSL2 is active. The bundled VM may not boot. Choose one below, ' +
+                     'then Re-check:'
   } else {
     $rbVBox.Checked = $true
     $lbNotice.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 90)

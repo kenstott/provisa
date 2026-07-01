@@ -21,7 +21,7 @@ if ($LASTEXITCODE -ge 8) { throw "robocopy failed: $LASTEXITCODE" }
 $UninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa'
 New-Item -Path $UninstallKey -Force | Out-Null
 Set-ItemProperty -Path $UninstallKey -Name 'DisplayName'      -Value "Provisa $env:PROVISA_VERSION"
-Set-ItemProperty -Path $UninstallKey -Name 'UninstallString'  -Value "$InstallDir\uninstall.ps1"
+Set-ItemProperty -Path $UninstallKey -Name 'UninstallString'  -Value "powershell.exe -ExecutionPolicy Bypass -File `"$InstallDir\uninstall.ps1`""
 Set-ItemProperty -Path $UninstallKey -Name 'DisplayVersion'   -Value "$env:PROVISA_VERSION"
 Set-ItemProperty -Path $UninstallKey -Name 'Publisher'        -Value 'Provisa'
 

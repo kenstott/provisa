@@ -172,17 +172,73 @@ function cmd-logs {
   Invoke-Compose $Config @('logs', '--follow')
 }
 
+# -- Rewrite the runtime block of config.yaml ----------------------------------
+function Set-ConfigRuntime {
+  param([string]$Target)
+  $lines = Get-Content $ConfigPath | Where-Object {
+    $_ -notmatch '^\s*(runtime|vm_name|docker_host)\s*:'
+  }
+  if ($Target -eq 'docker') {
+    $lines += 'runtime: docker'
+    $lines += 'docker_host: npipe:////./pipe/docker_engine'
+  } else {
+    $lines += 'runtime: virtualbox'
+    $lines += 'vm_name: Provisa'
+    $lines += 'docker_host: tcp://127.0.0.1:2375'
+  }
+  $lines | Set-Content -Path $ConfigPath -Encoding UTF8
+}
+
+function cmd-runtime {
+  param([hashtable]$Config, [string]$Target)
+  if ($Target -notin @('docker', 'virtualbox')) {
+    Write-Info "Current runtime: $($Config.Runtime)"
+    Write-Err  'Usage: provisa runtime <docker|virtualbox>'
+    exit 1
+  }
+  if ($Target -eq $Config.Runtime) { Write-Info "Already using runtime: $Target"; return }
+
+  # Verify the target backend is actually usable before touching config.
+  if ($Target -eq 'docker') {
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+      Write-Err 'Docker CLI not found. Install and start Docker Desktop first.'; exit 1
+    }
+    docker version --format '{{.Server.Version}}' 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Err 'Docker daemon not responding. Start Docker Desktop.'; exit 1 }
+  } else {
+    $vbox = Find-VBoxManage
+    if (-not $vbox) { Write-Err 'VirtualBox not found. Re-run first-launch setup.'; exit 1 }
+    & $vbox showvminfo $Config.VmName --machinereadable 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Err "VM '$($Config.VmName)' not provisioned. Re-run first-launch setup to build it."; exit 1
+    }
+  }
+
+  # Best-effort teardown of the current backend so nothing is orphaned.
+  Write-Info 'Stopping current services before switching...'
+  $env:DOCKER_HOST = $Config.DockerHost
+  $c1 = Join-Path $Config.ProjectDir 'docker-compose.core.yml'
+  $c2 = Join-Path $Config.ProjectDir 'docker-compose.app.yml'
+  $c3 = Join-Path $Config.ProjectDir 'docker-compose.airgap.yml'
+  docker compose -f $c1 -f $c2 -f $c3 down 2>$null
+  Stop-Vm $Config
+
+  Set-ConfigRuntime $Target
+  Write-Ok "Runtime switched to $Target. Run 'provisa start' to launch."
+}
+
 function cmd-help {
   Write-Host 'Usage: provisa <command>'
   Write-Host ''
   Write-Host 'Commands:'
-  Write-Host '  start    Start Provisa VM and all services'
-  Write-Host '  stop     Stop all services and shut down VM'
-  Write-Host '  restart  Restart all services'
-  Write-Host '  status   Show service status'
-  Write-Host '  open     Open the UI in your browser'
-  Write-Host '  logs     Follow service logs'
-  Write-Host '  help     Show this help'
+  Write-Host '  start              Start Provisa VM and all services'
+  Write-Host '  stop               Stop all services and shut down VM'
+  Write-Host '  restart            Restart all services'
+  Write-Host '  status             Show service status'
+  Write-Host '  open               Open the UI in your browser'
+  Write-Host '  logs               Follow service logs'
+  Write-Host '  runtime <backend>  Switch runtime (docker | virtualbox)'
+  Write-Host '  help               Show this help'
 }
 
 # -- Dispatch ------------------------------------------------------------------
@@ -195,6 +251,7 @@ switch ($command) {
   'status'  { cmd-status  (Read-Config) }
   'open'    { cmd-open    (Read-Config) }
   'logs'    { cmd-logs    (Read-Config) }
+  'runtime' { cmd-runtime (Read-Config) ($(if ($args.Count -gt 1) { $args[1] } else { '' })) }
   'help'    { cmd-help }
   default {
     Write-Err "Unknown command: $command"

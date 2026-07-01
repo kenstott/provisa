@@ -41,6 +41,8 @@ Copy-Item (Join-Path $ScriptDir 'provisa.ps1')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.cmd')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'install.ps1')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'uninstall.ps1')     $BuildDir
+Copy-Item (Join-Path $ScriptDir 'enable-hyperv.ps1')   $BuildDir
+Copy-Item (Join-Path $ScriptDir 'diagnose-hyperv.ps1') $BuildDir
 
 $BuildRedist = Join-Path $BuildDir 'redist'
 New-Item -ItemType Directory -Path $BuildRedist -Force | Out-Null
