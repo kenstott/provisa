@@ -106,15 +106,26 @@ $form.Font            = New-Object System.Drawing.Font('Segoe UI', 9)
 $header           = New-Object System.Windows.Forms.Panel
 $header.Dock      = 'Top'
 $header.Height    = 72
-$header.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 24)
+$header.BackColor = [System.Drawing.Color]::FromArgb(31, 41, 51)
 $form.Controls.Add($header)
+
+# Brand mark
+$logoPath = Join-Path $ScriptDir 'provisa-mark.png'
+if (Test-Path $logoPath) {
+  $logo          = New-Object System.Windows.Forms.PictureBox
+  $logo.Image    = [System.Drawing.Image]::FromFile($logoPath)
+  $logo.SizeMode = 'Zoom'
+  $logo.Size     = New-Object System.Drawing.Size(48, 48)
+  $logo.Location = New-Object System.Drawing.Point(20, 12)
+  $header.Controls.Add($logo)
+}
 
 $lbTitle           = New-Object System.Windows.Forms.Label
 $lbTitle.Text      = 'Provisa'
 $lbTitle.Font      = New-Object System.Drawing.Font('Segoe UI', 22, [System.Drawing.FontStyle]::Bold)
 $lbTitle.ForeColor = [System.Drawing.Color]::White
 $lbTitle.AutoSize  = $true
-$lbTitle.Location  = New-Object System.Drawing.Point(20, 12)
+$lbTitle.Location  = New-Object System.Drawing.Point(80, 14)
 $header.Controls.Add($lbTitle)
 
 $lbSub            = New-Object System.Windows.Forms.Label
@@ -122,7 +133,7 @@ $lbSub.Text       = 'First-time Setup'
 $lbSub.Font       = New-Object System.Drawing.Font('Segoe UI', 10)
 $lbSub.ForeColor  = [System.Drawing.Color]::FromArgb(170, 170, 170)
 $lbSub.AutoSize   = $true
-$lbSub.Location   = New-Object System.Drawing.Point(130, 28)
+$lbSub.Location   = New-Object System.Drawing.Point(196, 30)
 $header.Controls.Add($lbSub)
 
 # -- Panel 1 : Config ---------------------------------------------------------
@@ -347,7 +358,7 @@ $btnInstall.Text       = 'Install'
 $btnInstall.Font       = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
 $btnInstall.Size       = New-Object System.Drawing.Size(110, 36)
 $btnInstall.Location   = New-Object System.Drawing.Point(470, 352)
-$btnInstall.BackColor  = [System.Drawing.Color]::FromArgb(0, 120, 215)
+$btnInstall.BackColor  = [System.Drawing.Color]::FromArgb(16, 185, 129)
 $btnInstall.ForeColor  = [System.Drawing.Color]::White
 $btnInstall.FlatStyle  = 'Flat'
 $btnInstall.FlatAppearance.BorderSize = 0
@@ -378,7 +389,7 @@ $rtb.Location      = New-Object System.Drawing.Point(20, 72)
 $rtb.Size          = New-Object System.Drawing.Size(560, 270)
 $rtb.ReadOnly      = $true
 $rtb.Font          = New-Object System.Drawing.Font('Consolas', 8)
-$rtb.BackColor     = [System.Drawing.Color]::FromArgb(18, 18, 18)
+$rtb.BackColor     = [System.Drawing.Color]::FromArgb(13, 20, 26)
 $rtb.ForeColor     = [System.Drawing.Color]::FromArgb(204, 204, 204)
 $rtb.BorderStyle   = 'None'
 $pProg.Controls.Add($rtb)
@@ -388,7 +399,7 @@ $btnFinish.Text       = 'Finish'
 $btnFinish.Font       = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
 $btnFinish.Size       = New-Object System.Drawing.Size(110, 36)
 $btnFinish.Location   = New-Object System.Drawing.Point(470, 358)
-$btnFinish.BackColor  = [System.Drawing.Color]::FromArgb(0, 120, 215)
+$btnFinish.BackColor  = [System.Drawing.Color]::FromArgb(16, 185, 129)
 $btnFinish.ForeColor  = [System.Drawing.Color]::White
 $btnFinish.FlatStyle  = 'Flat'
 $btnFinish.FlatAppearance.BorderSize = 0
@@ -402,7 +413,7 @@ $btnReboot.Text       = 'Reboot Now'
 $btnReboot.Font       = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
 $btnReboot.Size       = New-Object System.Drawing.Size(130, 36)
 $btnReboot.Location   = New-Object System.Drawing.Point(330, 358)
-$btnReboot.BackColor  = [System.Drawing.Color]::FromArgb(0, 120, 215)
+$btnReboot.BackColor  = [System.Drawing.Color]::FromArgb(16, 185, 129)
 $btnReboot.ForeColor  = [System.Drawing.Color]::White
 $btnReboot.FlatStyle  = 'Flat'
 $btnReboot.FlatAppearance.BorderSize = 0
@@ -960,6 +971,8 @@ federation_workers: $Workers
       $link.TargetPath       = 'wscript.exe'
       $link.Arguments        = "/nologo `"$ScriptDir\start-gui.vbs`""
       $link.WorkingDirectory = $ScriptDir
+      $iconPath = Join-Path $ScriptDir 'provisa.ico'
+      if (Test-Path $iconPath) { $link.IconLocation = $iconPath }
       $link.Save()
 
       $sync.Progress = 100

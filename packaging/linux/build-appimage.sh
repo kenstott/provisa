@@ -202,13 +202,12 @@ build_appdir() {
   chmod +x "${APPDIR}/AppRun"
   cp "${SCRIPT_DIR}/Provisa.desktop"        "${APPDIR}/Provisa.desktop"
 
-  # Generate icon
-  if command -v convert &>/dev/null; then
-    convert -size 256x256 xc:'#1a1a2e' \
-      -fill white -gravity Center -pointsize 80 -annotate 0 'P' \
-      "${APPDIR}/Provisa.png"
+  # Brand icon (graphite/emerald P mark).
+  if [ -f "${SCRIPT_DIR}/Provisa.png" ]; then
+    cp "${SCRIPT_DIR}/Provisa.png" "${APPDIR}/Provisa.png"
   else
-    touch "${APPDIR}/Provisa.png"
+    echo "ERROR: ${SCRIPT_DIR}/Provisa.png not found — run packaging/macos/generate-icon.py" >&2
+    exit 1
   fi
 
   ok "AppDir built at ${APPDIR}"
