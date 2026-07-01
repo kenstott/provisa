@@ -1,0 +1,146 @@
+# Dedicated test-only service stack. Everything that is not part of the
+# original core (docker-compose.core.yml) lives here, with one exception:
+# debezium-connect stays in the dev/core stack. Isolated as its own compose
+# project with `-test`-suffixed container names and its own volumes so it can
+# be started and torn down independently of the dev stack.
+#
+# These services join the shared `provisa_default` network (external) so they
+# keep their service-name DNS aliases (kafka, schema-registry, ...): the dev
+# stack's Trino kafka catalog (kafka:29092) and the core debezium-connect
+# resolve them by name across projects. The pytest process reaches each service
+# over localhost via the published host ports.
+#
+# Usage:
+#   up:    docker compose -p provisa-test -f docker-compose.test.yml up -d --wait
+#   clean: docker compose -p provisa-test -f docker-compose.test.yml down --volumes
+name: provisa-test
+
+services:
+  kafka:
+    container_name: provisa-kafka-test
+    hostname: kafka
+    restart: unless-stopped
+    image: confluentinc/cp-kafka:7.6.0
+    ports:
+      - "9092:9092"
+    networks:
+      default:
+        aliases:
+          - kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,HOST://0.0.0.0:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_PROCESS_ROLES: broker,controller
+      CLUSTER_ID: 3W4Vn7JTS4yUfx7dcvUlPg
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka_test_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 42
+      start_period: 120s
+
+  schema-registry:
+    container_name: provisa-schema-registry-test
+    hostname: schema-registry
+    restart: unless-stopped
+    image: confluentinc/cp-schema-registry:7.6.0
+    networks:
+      default:
+        aliases:
+          - schema-registry
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  mongodb:
+    container_name: provisa-mongodb-test
+    restart: unless-stopped
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./db/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+      - mongo_test_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  elasticsearch:
+    container_name: provisa-elasticsearch-test
+    restart: unless-stopped
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    ports:
+      - "9200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - es_test_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
+  neo4j:
+    container_name: provisa-neo4j-test
+    restart: unless-stopped
+    image: neo4j:5.19
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: none
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_test_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
+  fuseki:
+    container_name: provisa-fuseki-test
+    restart: unless-stopped
+    image: atomgraph/fuseki:latest
+    ports:
+      - "3030:3030"
+    command: ["--mem", "/provisa"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null 'http://localhost:3030/provisa/query?query=ASK%7B%7D' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 60s
+
+volumes:
+  kafka_test_data:
+  mongo_test_data:
+  es_test_data:
+  neo4j_test_data:
+
+# Join the dev stack's network so kafka/schema-registry keep their service-name
+# DNS aliases for the core debezium-connect and Trino kafka catalog.
+networks:
+  default:
+    name: provisa_default
+    external: true

@@ -569,19 +569,16 @@ class TestReq414DemoSchemaHasFKRelationship:
     def test_demo_script_references_fk_relationship(self):
         # REQ-414
         demo_script = "/Volumes/main/Users/kennethstott/PycharmProjects/provisa/demo/files/create_demo_files.py"
-        try:
-            with open(demo_script) as f:
-                content = f.read()
-            # Demo schema exercises FK auto-discovery: REFERENCES keyword in DDL
-            # or explicit relationship/foreign_key terms
-            assert (
-                "REFERENCES" in content
-                or "relationship" in content.lower()
-                or "foreign_key" in content.lower()
-                or "Relationship" in content
-            )
-        except FileNotFoundError:
-            pytest.skip("Demo script not present")
+        with open(demo_script) as f:
+            content = f.read()
+        # Demo schema exercises FK auto-discovery: REFERENCES keyword in DDL
+        # or explicit relationship/foreign_key terms
+        assert (
+            "REFERENCES" in content
+            or "relationship" in content.lower()
+            or "foreign_key" in content.lower()
+            or "Relationship" in content
+        )
 
 
 # ---------------------------------------------------------------------------

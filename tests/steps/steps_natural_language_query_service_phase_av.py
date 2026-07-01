@@ -148,8 +148,15 @@ def job_id_and_pollable_result(shared_data: dict) -> None:
         assert polled.job_id == job_id
         assert polled.state in ("complete", "failed")
 
-        assert len(polled.branches) == 3
-        assert set(polled.branches.keys()) == {"cypher", "graphql", "sql"}
+        assert len(polled.branches) == 6
+        assert set(polled.branches.keys()) == {
+            "cypher",
+            "graphql",
+            "sql",
+            "grpc",
+            "jsonapi",
+            "openapi",
+        }
 
         successful = [
             t for t, b in polled.branches.items() if b.result is not None and b.error is None
@@ -164,7 +171,14 @@ def job_id_and_pollable_result(shared_data: dict) -> None:
         assert "branches" in payload
         rebuilt = NlJob.from_dict(payload)
         assert rebuilt.job_id == job_id
-        assert set(rebuilt.branches.keys()) == {"cypher", "graphql", "sql"}
+        assert set(rebuilt.branches.keys()) == {
+            "cypher",
+            "graphql",
+            "sql",
+            "grpc",
+            "jsonapi",
+            "openapi",
+        }
 
     asyncio.run(_body())
 
@@ -336,7 +350,7 @@ def results_are_returned(shared_data: dict) -> None:
                 return {"data": {"persons": [{"id": "1", "name": "Alice"}]}}
             return {"columns": ["id", "name"], "rows": [{"id": 1, "name": "Alice"}]}
 
-        async def _fake_sql(nl_query, role, app_state):
+        async def _fake_sql(nl_query, role, app_state, pre_selected_types=None):
             return ("SELECT id, name FROM persons LIMIT 10", None)
 
         with patch("provisa.nl.runner._generate_sql_from_nl", side_effect=_fake_sql):
@@ -363,7 +377,16 @@ def response_includes_all_three_branches(shared_data: dict) -> None:
     job: NlJob = shared_data["job"]
 
     assert job.state in ("complete", "failed")
-    assert set(job.branches.keys()) == {"cypher", "graphql", "sql"}
+    # All six generation branches are attempted (REQ-799..804 added grpc,
+    # jsonapi, openapi); only the three query targets execute via Trino.
+    assert set(job.branches.keys()) == {
+        "cypher",
+        "graphql",
+        "sql",
+        "grpc",
+        "jsonapi",
+        "openapi",
+    }
 
     assert set(shared_data["executed_targets"]) == {"cypher", "graphql", "sql"}
 
@@ -382,7 +405,7 @@ def response_includes_all_three_branches(shared_data: dict) -> None:
 
     payload = job.to_dict()
     branches = payload["branches"]
-    assert set(branches.keys()) == {"cypher", "graphql", "sql"}
+    assert set(branches.keys()) == {"cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"}
     for target in ("cypher", "graphql", "sql"):
         b = branches[target]
         assert "query" in b and "result" in b and "error" in b
@@ -394,7 +417,14 @@ def response_includes_all_three_branches(shared_data: dict) -> None:
     assert "rows" in branches["sql"]["result"]
 
     rebuilt = NlJob.from_dict(payload)
-    assert set(rebuilt.branches.keys()) == {"cypher", "graphql", "sql"}
+    assert set(rebuilt.branches.keys()) == {
+        "cypher",
+        "graphql",
+        "sql",
+        "grpc",
+        "jsonapi",
+        "openapi",
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -797,11 +797,22 @@ class ProvisaConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     multitenancy: bool = False
     jvm_heap_gb: int = 8
-    spill_enabled: bool = True
-    spill_path: str = "/tmp/provisa-spill"  # nosec B108 - Trino spill dir default, config-overridable
     query_max_memory: str = "4GB"
     query_max_memory_per_node: str = "2GB"
     query_max_total_memory: str = "8GB"
+    # Fault-tolerant execution (replaces legacy spill-to-disk). All sizes/locations
+    # are config-driven and engine-agnostic — no execution-engine identifiers leak
+    # into the config vocabulary.
+    fault_tolerant_execution: bool = True
+    fault_tolerant_task_memory: str = "1GB"
+    exchange_spool_dir: str = "/data/provisa/exchange"
+    exchange_spool_bucket: str = "provisa-exchange"
+    # S3-backed spool for multi-host deployments (a local dir is not shared across
+    # hosts). Empty endpoint → local filesystem spool at exchange_spool_dir.
+    exchange_spool_s3_endpoint: str = ""
+    exchange_spool_s3_region: str = "us-east-1"
+    exchange_spool_s3_access_key: str = ""
+    exchange_spool_s3_secret_key: str = ""
     default_org_id: str = "root"
     sources: list[Source]
     domains: list[Domain]

@@ -36,6 +36,7 @@ Requirements satisfied at unit level only (no integration coverage needed):
 
 from __future__ import annotations
 
+import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -147,6 +148,17 @@ def _make_app_state_with_orders():
     state.table_cache = {}
     state.view_sql_map = {}
     state.kafka_table_configs = {}
+    state.table_path_maps = {
+        "admin": {
+            "orders": {
+                "schema_name": "public",
+                "table_name": "orders",
+                "domain_id": "default",
+                "table_description": None,
+                "domain_description": None,
+            }
+        }
+    }
     return state
 
 
@@ -367,7 +379,7 @@ class TestRESTAutoGenEndpoint:
 
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/data/rest/orders")
+                resp = await client.get("/data/rest/default/orders")
             assert resp.status_code == 200
             body = resp.json()
             assert "data" in body
@@ -401,8 +413,12 @@ class TestRESTAutoGenEndpoint:
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get(
-                    "/data/rest/orders",
-                    params={"where.id.eq": "99999999"},
+                    "/data/rest/default/orders",
+                    params={
+                        "filter": json.dumps(
+                            [{"field": "id", "comparator": "eq", "value": 99999999}]
+                        )
+                    },
                 )
             assert resp.status_code == 200
             rows = resp.json().get("data", [])
@@ -435,7 +451,7 @@ class TestRESTAutoGenEndpoint:
             app.include_router(create_rest_router(state))
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/data/rest/orders")
+                resp = await client.get("/data/rest/default/orders")
             # Governance must not crash; 200 or 403 are both valid
             assert resp.status_code in (200, 403)
         finally:
@@ -551,10 +567,7 @@ class TestSourceTypeCollapsing:
         # Probe the admin schema source types exposed to the UI / GraphQL layer.
         # The canonical values are 'graphql' and 'grpc' — the split remote/api
         # distinction is internal only.
-        try:
-            from provisa.api.admin.schema import _SOURCE_TYPE_DISPLAY_NAMES  # type: ignore[attr-defined]
-        except ImportError:
-            pytest.skip("_SOURCE_TYPE_DISPLAY_NAMES not exported from admin schema")
+        from provisa.api.admin.schema import _SOURCE_TYPE_DISPLAY_NAMES
 
         assert (
             "graphql" in _SOURCE_TYPE_DISPLAY_NAMES
@@ -563,10 +576,7 @@ class TestSourceTypeCollapsing:
 
     async def test_grpc_api_and_remote_collapse_to_grpc(self):
         """REQ-405: source_type 'grpc' represents both grpc_api and grpc_remote."""
-        try:
-            from provisa.api.admin.schema import _SOURCE_TYPE_DISPLAY_NAMES  # type: ignore[attr-defined]
-        except ImportError:
-            pytest.skip("_SOURCE_TYPE_DISPLAY_NAMES not exported from admin schema")
+        from provisa.api.admin.schema import _SOURCE_TYPE_DISPLAY_NAMES
 
         assert "grpc" in _SOURCE_TYPE_DISPLAY_NAMES or "grpc_api" not in _SOURCE_TYPE_DISPLAY_NAMES
 
@@ -619,10 +629,7 @@ class TestOpenAPIKindExtension:
 
     async def test_x_provisa_kind_query_maps_to_query(self):
         """REQ-408: POST endpoint with x-provisa-kind: query becomes a GraphQL query."""
-        try:
-            from provisa.openapi.mapper import classify_operation  # type: ignore[import]
-        except ImportError:
-            pytest.skip("classify_operation not exposed from openapi.mapper")
+        from provisa.openapi.mapper import classify_operation
 
         operation = {
             "x-provisa-kind": "query",
@@ -633,10 +640,7 @@ class TestOpenAPIKindExtension:
 
     async def test_x_provisa_kind_mutation_maps_to_mutation(self):
         """REQ-408: POST endpoint with x-provisa-kind: mutation stays a mutation."""
-        try:
-            from provisa.openapi.mapper import classify_operation  # type: ignore[import]
-        except ImportError:
-            pytest.skip("classify_operation not exposed from openapi.mapper")
+        from provisa.openapi.mapper import classify_operation
 
         operation = {
             "x-provisa-kind": "mutation",
@@ -647,10 +651,7 @@ class TestOpenAPIKindExtension:
 
     async def test_post_without_kind_defaults_to_mutation(self):
         """REQ-408: POST without x-provisa-kind is classified as mutation by default."""
-        try:
-            from provisa.openapi.mapper import classify_operation  # type: ignore[import]
-        except ImportError:
-            pytest.skip("classify_operation not exposed from openapi.mapper")
+        from provisa.openapi.mapper import classify_operation
 
         operation = {"operationId": "createOrder"}
         result = classify_operation("POST", "/orders", operation)
@@ -658,10 +659,7 @@ class TestOpenAPIKindExtension:
 
     async def test_get_without_kind_is_query(self):
         """REQ-408: GET without x-provisa-kind is classified as query."""
-        try:
-            from provisa.openapi.mapper import classify_operation  # type: ignore[import]
-        except ImportError:
-            pytest.skip("classify_operation not exposed from openapi.mapper")
+        from provisa.openapi.mapper import classify_operation
 
         operation = {"operationId": "getOrders"}
         result = classify_operation("GET", "/orders", operation)

@@ -1,0 +1,49 @@
+{{- if and .Values.trino.enabled .Values.minio.enabled (not .Values.trino.exchange.s3.endpoint) }}
+{{- /*
+  Creates the FTE exchange bucket in the in-cluster MinIO before Trino starts.
+  Only runs when the exchange manager targets in-cluster MinIO; for external S3
+  the bucket is expected to already exist.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-trino-exchange-bucket
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: trino
+        role: exchange-bucket-init
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: mc
+          image: minio/mc:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - >
+              until mc alias set x http://{{ .Release.Name }}-minio:9000 "$ACCESS_KEY" "$SECRET_KEY"; do
+                echo "waiting for minio"; sleep 2;
+              done &&
+              mc mb --ignore-existing x/{{ .Values.trino.exchange.bucket }}
+          env:
+            - name: ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: minio-access-key
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: minio-secret-key
+{{- end }}

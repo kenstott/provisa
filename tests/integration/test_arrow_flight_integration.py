@@ -333,13 +333,11 @@ class TestFlightDoGetWithRealData:
         }).encode()
         ticket = flight.Ticket(ticket_bytes)
 
-        try:
-            reader = client.do_get(ticket)
-            table = reader.read_all()
-        except flight.FlightServerError as exc:
-            pytest.skip(f"Flight server returned error (may need Trino): {exc}")
+        reader = client.do_get(ticket)
+        table = reader.read_all()
 
         assert isinstance(table, pa.Table)
+        assert set(("id", "region", "amount")).issubset(set(table.schema.names))
 
     async def test_flight_schema_matches_query(self, pg_backed_flight):
         """Returned schema field names match the queried columns."""
@@ -350,11 +348,8 @@ class TestFlightDoGetWithRealData:
         }).encode()
         ticket = flight.Ticket(ticket_bytes)
 
-        try:
-            reader = client.do_get(ticket)
-            table = reader.read_all()
-        except flight.FlightServerError:
-            raise
+        reader = client.do_get(ticket)
+        table = reader.read_all()
 
         schema_names = set(table.schema.names)
         for field_name in ("id", "region", "amount"):
@@ -373,11 +368,8 @@ class TestFlightDoGetWithRealData:
         }).encode()
         ticket = flight.Ticket(ticket_bytes)
 
-        try:
-            reader = client.do_get(ticket)
-            table = reader.read_all()
-        except flight.FlightServerError:
-            raise
+        reader = client.do_get(ticket)
+        table = reader.read_all()
 
         # The Flight server may apply sampling; row count <= pg_count
         assert table.num_rows <= pg_count

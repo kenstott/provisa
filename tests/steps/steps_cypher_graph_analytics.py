@@ -7,15 +7,14 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-from pytest_bdd import given, parsers, scenario, then, when
+from pytest_bdd import given, parsers, then, when
 
 from provisa.api.rest.cypher_router import ImputeRequest
-from provisa.cypher.assembler import Edge, Node, _parse_edge, _parse_node
+from provisa.cypher.assembler import Edge, _parse_edge
 
 
 # ---------------------------------------------------------------------------
@@ -246,9 +245,7 @@ def then_queries_each_relationship_pair(shared_data: dict) -> None:
         )
 
 
-@then(
-    "returns all discovered edges merged with the input nodes in standard Cypher response format"
-)
+@then("returns all discovered edges merged with the input nodes in standard Cypher response format")
 def then_returns_edges_merged_with_nodes(shared_data: dict) -> None:
     """Assert the response format and edge content are correct."""
     response = shared_data["impute_response"]
@@ -273,9 +270,7 @@ def then_returns_edges_merged_with_nodes(shared_data: dict) -> None:
         )
 
     edge_rows = [
-        r["node"]
-        for r in rows
-        if isinstance(r.get("node"), dict) and "identity" in r["node"]
+        r["node"] for r in rows if isinstance(r.get("node"), dict) and "identity" in r["node"]
     ]
 
     assert len(edge_rows) > 0, (
@@ -328,7 +323,8 @@ def then_returns_edges_merged_with_nodes(shared_data: dict) -> None:
     # Verify that the number of queries executed equals the number of qualifying relationship pairs
     visible_labels = {n["label"] for n in visible_nodes}
     qualifying_pairs = [
-        r for r in shared_data["schema_relationships"]
+        r
+        for r in shared_data["schema_relationships"]
         if r["src_label"] in visible_labels and r["tgt_label"] in visible_labels
     ]
     assert len(queries_executed) == len(qualifying_pairs), (
@@ -343,9 +339,9 @@ def then_returns_edges_merged_with_nodes(shared_data: dict) -> None:
 
 
 @given(
-    parsers.parse(
-        'a request with nodes: [{label: "Meta", id: 10}, {label: "Meta", id: 11}, ...]'
-    )
+    # Plain-string match: the step text contains literal ``{}`` braces which
+    # ``parsers.parse`` would misread as format fields, so it must not be wrapped.
+    'a request with nodes: [{label: "Meta", id: 10}, {label: "Meta", id: 11}, ...]'
 )
 def given_request_with_stable_integer_nodes(shared_data: dict) -> None:
     """Set up a request carrying Meta nodes with stable integer ids 10 and 11."""
@@ -371,11 +367,7 @@ def given_request_with_stable_integer_nodes(shared_data: dict) -> None:
     shared_data["expected_pk_map"] = {10: 42, 11: 99}
 
 
-@when(
-    parsers.parse(
-        "the endpoint fetches rows from node_ids WHERE id = ANY([10, 11, ...])"
-    )
-)
+@when(parsers.parse("the endpoint fetches rows from node_ids WHERE id = ANY([10, 11, ...])"))
 def when_endpoint_fetches_node_ids_rows(shared_data: dict) -> None:
     """Simulate the node_ids table lookup and extract raw PKs from composite_id."""
     stable_ids = shared_data["stable_ids"]
@@ -400,9 +392,7 @@ def when_endpoint_fetches_node_ids_rows(shared_data: dict) -> None:
     for row in fetched_rows:
         composite_id: str = row["composite_id"]
         parts = composite_id.split("|", 1)
-        assert len(parts) == 2, (
-            f"composite_id {composite_id!r} does not contain '|' separator"
-        )
+        assert len(parts) == 2, f"composite_id {composite_id!r} does not contain '|' separator"
         label_part, pk_str = parts
         assert label_part == row["label"], (
             f"Label part {label_part!r} of composite_id does not match row label {row['label']!r}"
@@ -413,11 +403,7 @@ def when_endpoint_fetches_node_ids_rows(shared_data: dict) -> None:
     shared_data["id_to_pk_map"] = id_to_pk
 
 
-@then(
-    parsers.parse(
-        'it extracts the raw PK from composite_id ("label|pk_value")'
-    )
-)
+@then(parsers.parse('it extracts the raw PK from composite_id ("label|pk_value")'))
 def then_extracts_raw_pk_from_composite_id(shared_data: dict) -> None:
     """Assert that the composite_id parsing produced the correct raw PK values."""
     id_to_pk = shared_data["id_to_pk_map"]
@@ -447,9 +433,7 @@ def then_extracts_raw_pk_from_composite_id(shared_data: dict) -> None:
         )
 
 
-@then(
-    "uses the raw PK values in the WHERE clause for relationship queries"
-)
+@then("uses the raw PK values in the WHERE clause for relationship queries")
 def then_uses_raw_pk_in_where_clause(shared_data: dict) -> None:
     """Assert that relationship queries are built using raw PKs, not stable ids."""
     id_to_pk = shared_data["id_to_pk_map"]
@@ -486,9 +470,7 @@ def then_uses_raw_pk_in_where_clause(shared_data: dict) -> None:
     shared_data["raw_pks"] = raw_pks
 
 
-@then(
-    "returns stable integer ids in the result edges (via register_node_ids)"
-)
+@then("returns stable integer ids in the result edges (via register_node_ids)")
 def then_returns_stable_integer_ids_in_result_edges(shared_data: dict) -> None:
     """Assert that result edges carry stable integer ids rather than raw PKs."""
     id_to_pk = shared_data["id_to_pk_map"]
@@ -516,9 +498,7 @@ def then_returns_stable_integer_ids_in_result_edges(shared_data: dict) -> None:
     assert isinstance(start_id, int), (
         f"startNode.id must be int, got {type(start_id)!r}: {start_id!r}"
     )
-    assert isinstance(end_id, int), (
-        f"endNode.id must be int, got {type(end_id)!r}: {end_id!r}"
-    )
+    assert isinstance(end_id, int), f"endNode.id must be int, got {type(end_id)!r}: {end_id!r}"
 
     assert start_id in stable_ids, (
         f"startNode.id {start_id} is not a stable id from {stable_ids}. "

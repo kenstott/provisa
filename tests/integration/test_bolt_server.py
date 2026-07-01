@@ -75,7 +75,7 @@ class TestPackStreamSession:
     async def test_pack_reset_message(self):
         from provisa.bolt.packstream import pack_message
 
-        data = pack_message(0x0F, [])
+        data = pack_message(0x0F)
         assert data[0] == 0xB0
         assert data[1] == 0x0F
 

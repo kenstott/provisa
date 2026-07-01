@@ -27,6 +27,45 @@ FEATURES_DIR = Path("tests/features")
 _SKIP_STATUSES = {Status.proposed, Status.rejected}
 
 
+# Tokens that begin a new Gherkin line; anything else is a wrapped
+# continuation of the preceding step and must be joined onto it (a step may
+# not span multiple physical lines — pytest-bdd's parser rejects it).
+_GHERKIN_KEYWORDS = (
+    "Given ",
+    "When ",
+    "Then ",
+    "And ",
+    "But ",
+    "* ",
+    "Feature:",
+    "Scenario:",
+    "Scenario Outline:",
+    "Background:",
+    "Rule:",
+    "Examples:",
+    "Scenarios:",
+)
+_GHERKIN_PREFIXES = ("|", "@", "#", '"""', "```")
+
+
+def _joined_scenario_lines(scenario: str) -> list[str]:
+    """Collapse wrapped continuation lines into their preceding step line."""
+    out: list[str] = []
+    for raw in scenario.rstrip().splitlines():
+        stripped = raw.strip()
+        if not stripped:
+            out.append("")
+            continue
+        starts_new = stripped.startswith(_GHERKIN_KEYWORDS) or stripped.startswith(
+            _GHERKIN_PREFIXES
+        )
+        if not starts_new and out and out[-1].strip():
+            out[-1] = f"{out[-1]} {stripped}"
+        else:
+            out.append(stripped)
+    return out
+
+
 def feature_content(req_id: str, category: str, description: str, scenario: str) -> str:
     desc_short = description[:120].replace("\n", " ").strip()
     if len(description) > 120:
@@ -38,8 +77,8 @@ def feature_content(req_id: str, category: str, description: str, scenario: str)
         "",
         f"  Scenario: {req_id} default behaviour",
     ]
-    for line in scenario.rstrip().splitlines():
-        lines.append(f"    {line}" if line.strip() else "")
+    for line in _joined_scenario_lines(scenario):
+        lines.append(f"    {line}" if line else "")
     lines.append("")
     return "\n".join(lines)
 

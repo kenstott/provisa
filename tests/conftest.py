@@ -24,6 +24,10 @@ _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 _CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
 _OBS_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.observability.yml")
 _DEV_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.dev.yml")
+# Test-only services live in their own compose project so they can be started
+# and torn down independently of the dev stack (see docker-compose.test.yml).
+_TEST_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.test.yml")
+_TEST_PROJECT = "provisa-test"
 
 _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_kafka": ["kafka", "schema-registry"],
@@ -33,7 +37,14 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_neo4j": ["neo4j"],
     "requires_sparql": ["fuseki"],
 }
+# Shared services provided by the dev stack (never torn down by the test run).
 _CORE_SERVICES = ["postgres", "trino", "redis", "pgbouncer", "minio"]
+# Kafka/Schema-Registry/Debezium are core: Trino's kafka catalog and the app's
+# CDC path reach them by service name on the dev network, so they come up with
+# the dev stack (via --profile test), not the isolated test project. debezium is
+# the sole exception: it is a core service but reaches the (test-project) kafka
+# by its shared-network alias.
+_DEV_TEST_PROFILE_SERVICES = {"debezium-connect"}
 
 
 class _DockerServiceManager:
@@ -44,22 +55,62 @@ class _DockerServiceManager:
         if not integration:
             return
 
-        needed: set[str] = set(_CORE_SERVICES)
-        needs_test_profile = False
+        # Partition the services the run needs into dev-stack (shared network)
+        # and isolated test-project services.
+        marker_services: set[str] = set()
         for item in session.items:
             for marker, services in _MARKER_SERVICES.items():
                 if item.get_closest_marker(marker):
-                    needed.update(services)
-                    needs_test_profile = True
+                    marker_services.update(services)
 
-        cmd = ["docker", "compose", "-f", _CORE_COMPOSE, "-f", _OBS_COMPOSE, "-f", _DEV_COMPOSE]
-        if needs_test_profile:
-            cmd += ["--profile", "test"]
-        cmd += ["up", "-d", "--wait"] + sorted(needed)
-        subprocess.run(cmd, cwd=_REPO_ROOT, check=True)
+        dev_extras = sorted(marker_services & _DEV_TEST_PROFILE_SERVICES)
+        isolated_services = sorted(marker_services - _DEV_TEST_PROFILE_SERVICES)
 
-    def pytest_sessionfinish(self, session, exitstatus):  # pyright: ignore
-        if os.environ.get("PYTEST_DOCKER_DOWN"):
+        # Phase 1 — dev-stack core services (creates the shared provisa_default
+        # network the isolated project attaches to). Idempotent.
+        subprocess.run(
+            [
+                "docker",
+                "compose",
+                "-f",
+                _CORE_COMPOSE,
+                "-f",
+                _OBS_COMPOSE,
+                "-f",
+                _DEV_COMPOSE,
+                "up",
+                "-d",
+                "--wait",
+                *_CORE_SERVICES,
+            ],
+            cwd=_REPO_ROOT,
+            check=True,
+        )
+
+        # Phase 2 — isolated test-only services (kafka, schema-registry, neo4j,
+        # elasticsearch, fuseki, mongodb) in the provisa-test project. Brought up
+        # before any dev extras so debezium can reach kafka on first start.
+        if isolated_services:
+            subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "-p",
+                    _TEST_PROJECT,
+                    "-f",
+                    _TEST_COMPOSE,
+                    "up",
+                    "-d",
+                    "--wait",
+                    *isolated_services,
+                ],
+                cwd=_REPO_ROOT,
+                check=True,
+            )
+
+        # Phase 3 — dev-stack extras that depend on the isolated services
+        # (debezium-connect needs kafka, which is now up on the shared network).
+        if dev_extras:
             subprocess.run(
                 [
                     "docker",
@@ -72,7 +123,28 @@ class _DockerServiceManager:
                     _DEV_COMPOSE,
                     "--profile",
                     "test",
+                    "up",
+                    "-d",
+                    "--wait",
+                    *dev_extras,
+                ],
+                cwd=_REPO_ROOT,
+                check=True,
+            )
+
+    def pytest_sessionfinish(self, session, exitstatus):  # pyright: ignore
+        # Only the isolated test project is torn down; the dev stack is left intact.
+        if os.environ.get("PYTEST_DOCKER_DOWN"):
+            subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "-p",
+                    _TEST_PROJECT,
+                    "-f",
+                    _TEST_COMPOSE,
                     "down",
+                    "--volumes",
                 ],
                 cwd=_REPO_ROOT,
                 check=False,
@@ -112,13 +184,23 @@ def _reset_naming_convention():  # pyright: ignore
 
 
 def _server_reachable(url: str) -> bool:
+    """True if the server answers liveness within a short retry budget.
+
+    Probes the dependency-free /live endpoint (not /health, which acquires a PG
+    connection and can block for several seconds when the pool is saturated by
+    concurrent fixture/UI traffic). Retries so a transiently-busy but healthy
+    server is not misclassified as dead.
+    """
     import urllib.request
 
-    try:
-        urllib.request.urlopen(f"{url}/health", timeout=3)
-        return True
-    except Exception:
-        return False
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        try:
+            urllib.request.urlopen(f"{url}/live", timeout=5)
+            return True
+        except Exception:
+            time.sleep(1)
+    return False
 
 
 def _tcp_reachable(host: str, port: int) -> bool:

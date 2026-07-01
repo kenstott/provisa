@@ -255,24 +255,21 @@ class TestGrpcQueryExecution:
         )
         schema = GraphQLSchema(query=cast(GraphQLObjectType, query_type))
 
-        try:
-            from provisa.compiler.sql_gen import CompilationContext, TableMeta
-            ctx = CompilationContext(
-                tables={
-                    "order": TableMeta(
-                        table_id=1,
-                        field_name="order",
-                        type_name="Order",
-                        source_id="test-pg",
-                        catalog_name="postgresql",
-                        schema_name="public",
-                        table_name="orders",
-                        domain_id="default",
-                    )
-                }
-            )
-        except Exception:
-            pytest.skip("Cannot build CompilationContext with TableMeta")
+        from provisa.compiler.sql_gen import CompilationContext, TableMeta
+        ctx = CompilationContext(
+            tables={
+                "order": TableMeta(
+                    table_id=1,
+                    field_name="order",
+                    type_name="Order",
+                    source_id="test-pg",
+                    catalog_name="postgresql",
+                    schema_name="public",
+                    table_name="orders",
+                    domain_id="default",
+                )
+            }
+        )
 
         source_pool = SourcePool()
         await source_pool.add(
@@ -307,15 +304,14 @@ class TestGrpcQueryExecution:
         )
 
         channel = grpc.aio.insecure_channel(f"localhost:{port}")
-        stub_cls = None
-        for attr in dir(pb2_grpc):
-            if attr.endswith("Stub"):
-                stub_cls = getattr(pb2_grpc, attr)
-                break
-        if stub_cls is None:
-            await server.stop(grace=0)
-            pytest.skip("No stub class found in generated grpc module")
-
+        stub_cls = next(
+            (getattr(pb2_grpc, attr) for attr in dir(pb2_grpc) if attr.endswith("Stub")),
+            None,
+        )
+        assert stub_cls is not None, (
+            f"No Stub class in generated {Path(pb2_grpc_path).stem}; "
+            f"available: {[a for a in dir(pb2_grpc) if not a.startswith('_')]}"
+        )
         stub = stub_cls(channel)
 
         yield stub, pb2

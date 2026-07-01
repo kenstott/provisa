@@ -36,15 +36,25 @@ $form.Font            = New-Object System.Drawing.Font('Segoe UI', 9)
 $header           = New-Object System.Windows.Forms.Panel
 $header.Dock      = 'Top'
 $header.Height    = 56
-$header.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 24)
+$header.BackColor = [System.Drawing.Color]::FromArgb(31, 41, 51)
 $form.Controls.Add($header)
+
+$logoPath = Join-Path $ScriptDir 'provisa-mark.png'
+if (Test-Path $logoPath) {
+  $logo          = New-Object System.Windows.Forms.PictureBox
+  $logo.Image    = [System.Drawing.Image]::FromFile($logoPath)
+  $logo.SizeMode = 'Zoom'
+  $logo.Size     = New-Object System.Drawing.Size(38, 38)
+  $logo.Location = New-Object System.Drawing.Point(16, 9)
+  $header.Controls.Add($logo)
+}
 
 $lbTitle           = New-Object System.Windows.Forms.Label
 $lbTitle.Text      = 'Provisa'
 $lbTitle.Font      = New-Object System.Drawing.Font('Segoe UI', 18, [System.Drawing.FontStyle]::Bold)
 $lbTitle.ForeColor = [System.Drawing.Color]::White
 $lbTitle.AutoSize  = $true
-$lbTitle.Location  = New-Object System.Drawing.Point(16, 10)
+$lbTitle.Location  = New-Object System.Drawing.Point(62, 12)
 $header.Controls.Add($lbTitle)
 
 $lbStatus          = New-Object System.Windows.Forms.Label
@@ -64,7 +74,7 @@ $rtb.Location    = New-Object System.Drawing.Point(16, 118)
 $rtb.Size        = New-Object System.Drawing.Size(428, 120)
 $rtb.ReadOnly    = $true
 $rtb.Font        = New-Object System.Drawing.Font('Consolas', 8)
-$rtb.BackColor   = [System.Drawing.Color]::FromArgb(18, 18, 18)
+$rtb.BackColor   = [System.Drawing.Color]::FromArgb(13, 20, 26)
 $rtb.ForeColor   = [System.Drawing.Color]::FromArgb(204, 204, 204)
 $rtb.BorderStyle = 'None'
 $form.Controls.Add($rtb)
@@ -74,7 +84,7 @@ $btnOpen.Text      = 'Open Provisa'
 $btnOpen.Font      = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
 $btnOpen.Size      = New-Object System.Drawing.Size(140, 34)
 $btnOpen.Location  = New-Object System.Drawing.Point(16, 250)
-$btnOpen.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+$btnOpen.BackColor = [System.Drawing.Color]::FromArgb(16, 185, 129)
 $btnOpen.ForeColor = [System.Drawing.Color]::White
 $btnOpen.FlatStyle = 'Flat'
 $btnOpen.FlatAppearance.BorderSize = 0

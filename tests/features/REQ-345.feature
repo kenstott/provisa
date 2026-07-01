@@ -5,5 +5,4 @@ Feature: REQ-345 — Cypher Query Frontend (Phase AU)
   Scenario: REQ-345 default behaviour
     Given a graph user submitting a Cypher SELECT query to POST /query/cypher
     When the compiler processes it
-    Then it compiles to SQL, executes via Trino, and applies Stage 2 governance identically to
-    GraphQL queries
+    Then it compiles to SQL, executes via Trino, and applies Stage 2 governance identically to GraphQL queries

@@ -852,8 +852,10 @@ def parse_cypher(query: str) -> CypherAST:  # REQ-345, REQ-346, REQ-571
     for tok in tokens_raw:
         if tok.upper() in _WRITE_KEYWORDS:
             raise CypherParseError(
-                f"Write clause {tok.upper()!r} is not allowed. "
-                "Provisa Cypher supports read-only queries only."
+                f"Write clause {tok.upper()!r} is not supported. "
+                "Provisa Cypher executes CREATE, DELETE, and SET as direct table "
+                "writes (governed like any other write); MERGE, DETACH DELETE, and "
+                "REMOVE are not supported."
             )
 
     # Reject APOC references

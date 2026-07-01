@@ -5,5 +5,4 @@ Feature: REQ-642 — Graph Analytics Pipeline
   Scenario: REQ-642 default behaviour
     Given a POST /data/graph-analytics request with a Cypher query and algorithm name
     When the endpoint processes it
-    Then it builds a NetworkX DiGraph, runs the algorithm, and returns augmented nodes and edges
-    with elapsed_ms
+    Then it builds a NetworkX DiGraph, runs the algorithm, and returns augmented nodes and edges with elapsed_ms

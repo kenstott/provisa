@@ -13,13 +13,14 @@ Tests the full Bolt handshake, HELLO, and RUN/PULL pipeline.
 from __future__ import annotations
 
 import asyncio
+import os
 
 import pytest
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
 _BOLT_HOST = "localhost"
-_BOLT_PORT = 5251
+_BOLT_PORT = int(os.environ.get("PROVISA_BOLT_PORT", "5251"))
 _MAGIC = b"\x60\x60\xb0\x17"
 _TIMEOUT = 10.0
 
@@ -58,7 +59,10 @@ async def _send_msg(writer, tag: int, fields) -> None:
     from provisa.bolt.framing import write_message
     from provisa.bolt.packstream import pack_message
 
-    payload = pack_message(tag, fields)
+    # pack_message takes each Bolt field as a positional arg. Callers pass a list
+    # for multi-field messages (e.g. RUN: query, params, extra) or a single dict.
+    args = fields if isinstance(fields, list) else [fields]
+    payload = pack_message(tag, *args)
     write_message(writer, payload)  # type: ignore[arg-type]
     await writer.drain()
 
@@ -78,10 +82,7 @@ async def _recv_msg(reader) -> tuple[int, object]:
 @pytest.mark.requires_provisa_server
 class TestBoltHandshake:
     async def test_server_reachable(self):
-        try:
-            reader, writer = await _bolt_connect()
-        except (ConnectionRefusedError, OSError):
-            pytest.skip(f"Bolt server not reachable at {_BOLT_HOST}:{_BOLT_PORT}")
+        reader, writer = await _bolt_connect()
         try:
             assert writer.get_extra_info("peername") is not None
             assert not reader.at_eof()
@@ -90,11 +91,7 @@ class TestBoltHandshake:
             await writer.wait_closed()
 
     async def test_magic_accepted(self):
-        try:
-            reader, writer = await _bolt_connect()
-        except (ConnectionRefusedError, OSError):
-            pytest.skip(f"Bolt server not reachable at {_BOLT_HOST}:{_BOLT_PORT}")
-
+        reader, writer = await _bolt_connect()
         try:
             major, _ = await _handshake(reader, writer)
             assert major > 0, "Server rejected all versions (returned 0.0)"
@@ -103,11 +100,7 @@ class TestBoltHandshake:
             await writer.wait_closed()
 
     async def test_negotiates_supported_version(self):
-        try:
-            reader, writer = await _bolt_connect()
-        except (ConnectionRefusedError, OSError):
-            pytest.skip(f"Bolt server not reachable at {_BOLT_HOST}:{_BOLT_PORT}")
-
+        reader, writer = await _bolt_connect()
         try:
             from provisa.bolt.messages import SUPPORTED_VERSIONS
 
@@ -121,10 +114,7 @@ class TestBoltHandshake:
 @pytest.mark.requires_provisa_server
 class TestBoltHello:
     async def _connect_and_handshake(self):
-        try:
-            reader, writer = await _bolt_connect()
-        except (ConnectionRefusedError, OSError):
-            pytest.skip(f"Bolt server not reachable at {_BOLT_HOST}:{_BOLT_PORT}")
+        reader, writer = await _bolt_connect()
         await _handshake(reader, writer)
         return reader, writer
 
@@ -166,20 +156,22 @@ class TestBoltHello:
 @pytest.mark.requires_provisa_server
 class TestBoltCypherExecution:
     async def _authenticated_session(self):
-        try:
-            reader, writer = await _bolt_connect()
-        except (ConnectionRefusedError, OSError):
-            pytest.skip(f"Bolt server not reachable at {_BOLT_HOST}:{_BOLT_PORT}")
-
-        await _handshake(reader, writer)
+        reader, writer = await _bolt_connect()
+        major, _ = await _handshake(reader, writer)
         await _send_msg(
             writer,
             0x01,
             {"user_agent": "test/1.0", "scheme": "none", "principal": "", "credentials": ""},
         )
-        tag, _ = await _recv_msg(reader)
-        if tag != 0x70:
-            pytest.skip("HELLO did not return SUCCESS — auth may be required")
+        tag, fields = await _recv_msg(reader)
+        assert tag == 0x70, f"HELLO expected SUCCESS(0x70), got 0x{tag:02X}: {fields!r}"
+        # Bolt 5.x authenticates via a separate LOGON (0x6A); HELLO does not carry auth.
+        if major >= 5:
+            await _send_msg(writer, 0x6A, [{"scheme": "none"}])
+            logon_tag, logon_fields = await _recv_msg(reader)
+            assert (
+                logon_tag == 0x70
+            ), f"LOGON expected SUCCESS(0x70), got 0x{logon_tag:02X}: {logon_fields!r}"
         return reader, writer
 
     async def test_run_match_returns_success(self):
@@ -196,9 +188,8 @@ class TestBoltCypherExecution:
         reader, writer = await self._authenticated_session()
         try:
             await _send_msg(writer, 0x10, ["MATCH (n) RETURN n LIMIT 5", {}, {}])
-            run_tag, _ = await _recv_msg(reader)
-            if run_tag != 0x70:
-                pytest.skip("RUN did not succeed")
+            run_tag, run_fields = await _recv_msg(reader)
+            assert run_tag == 0x70, f"RUN expected SUCCESS(0x70), got 0x{run_tag:02X}: {run_fields!r}"
 
             await _send_msg(writer, 0x3F, [{"n": 5, "qid": -1}])
             tags = []

@@ -5,5 +5,4 @@ Feature: REQ-034 — Mutation Execution
   Scenario: REQ-034 default behaviour
     Given a user whose role excludes certain columns
     When a mutation input type is generated for that role
-    Then excluded columns are absent from the input type and references to them are rejected at
-    parse time
+    Then excluded columns are absent from the input type and references to them are rejected at parse time

@@ -24,10 +24,13 @@ For SQLite, the standard sqlite3 module is used directly.
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from provisa.compiler.introspect import ColumnMetadata
 
 # Requirements: REQ-012, REQ-016, REQ-229, REQ-250, REQ-252
 
@@ -60,24 +63,73 @@ class FileSourceConfig:  # REQ-012, REQ-250
     options: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class TableDefinition:  # REQ-788, REQ-790
+    """A single table discovered from a file connector source."""
+
+    table_name: str
+    source_id: str
+    path: str  # file path / URI backing this table
+    schema_name: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# camelCase → snake_case (REQ-789, LINQ4J convention)
+# ---------------------------------------------------------------------------
+
+
+def _camel_to_snake(name: str) -> str:  # REQ-789
+    """Convert a camelCase/PascalCase identifier to snake_case (LINQ4J convention)."""
+    s1 = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    s2 = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", s1)
+    return s2.lower()
+
+
 # ---------------------------------------------------------------------------
 # Schema discovery
 # ---------------------------------------------------------------------------
 
 
-def discover_schema(config: FileSourceConfig) -> list[dict]:  # REQ-252, REQ-016
+def discover_schema(
+    config: FileSourceConfig,
+    table_def: TableDefinition | None = None,
+) -> Any:  # REQ-252, REQ-016, REQ-789
     """Infer columns from a file-based source.
 
-    Returns list of dicts: {"name": str, "type": str, "nullable": bool}.
-    Raises ValueError for unsupported source_type.
+    When *table_def* is ``None`` (crawler/internal use), returns the raw
+    ``list[dict]`` form ``{"name", "type", "nullable"}`` — column names are left
+    verbatim.
+
+    When *table_def* is provided, returns ``list[ColumnMetadata]`` for that
+    specific table with column names normalized to snake_case per the LINQ4J
+    convention (REQ-789).
     """
-    if config.source_type == "sqlite":
-        return _discover_sqlite(config)
-    if config.source_type == "csv":
-        return _discover_csv(config)
-    if config.source_type == "parquet":
-        return _discover_parquet(config)
-    raise ValueError(f"Unsupported file source type: {config.source_type!r}")
+    if table_def is not None:
+        raw = _discover_for_path(config, table_def.path)
+        return [
+            ColumnMetadata(
+                column_name=_camel_to_snake(col["name"]),
+                data_type=col["type"],
+                is_nullable=col.get("nullable", True),
+            )
+            for col in raw
+            if col.get("table", table_def.table_name) == table_def.table_name
+        ]
+    return _discover_for_path(config, config.path)
+
+
+def _discover_for_path(config: FileSourceConfig, path: str) -> list[dict]:
+    """Dispatch schema discovery for *path* using *config*'s source_type."""
+    effective = FileSourceConfig(
+        id=config.id, source_type=config.source_type, path=path, options=config.options
+    )
+    if effective.source_type == "sqlite":
+        return _discover_sqlite(effective)
+    if effective.source_type == "csv":
+        return _discover_csv(effective)
+    if effective.source_type == "parquet":
+        return _discover_parquet(effective)
+    raise ValueError(f"Unsupported file source type: {effective.source_type!r}")
 
 
 def _discover_sqlite(config: FileSourceConfig) -> list[dict]:
@@ -241,8 +293,32 @@ def generate_catalog_properties(config: FileSourceConfig) -> dict[str, str]:  # 
     return {}
 
 
-def generate_table_definitions(config: FileSourceConfig) -> list[dict]:  # REQ-250, REQ-016
-    """Return table definitions inferred from the file schema."""
+def generate_table_definitions(
+    config: FileSourceConfig,
+    discovered_entries: list[dict] | None = None,
+) -> Any:  # REQ-250, REQ-016, REQ-788
+    """Return table definitions for a file source.
+
+    When *discovered_entries* is provided (output of ``crawl_directory``), returns
+    a ``list[TableDefinition]`` — one per discovered table, carrying the backing
+    file path and source id (REQ-788).
+
+    When omitted, returns the legacy ``list[dict]`` (``{"tableName", "columns"}``)
+    inferred directly from ``config.path``'s own schema.
+    """
+    if discovered_entries is not None:
+        defs: list[TableDefinition] = []
+        for entry in discovered_entries:
+            for tbl in entry["tables"]:
+                defs.append(
+                    TableDefinition(
+                        table_name=tbl["name"],
+                        source_id=config.id,
+                        path=entry["path"],
+                    )
+                )
+        return defs
+
     columns = discover_schema(config)
     # Group by table (sqlite has multiple tables; csv/parquet have one)
     by_table: dict[str, list[dict]] = {}

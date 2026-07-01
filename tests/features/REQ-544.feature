@@ -5,5 +5,4 @@ Feature: REQ-544 — Cache
   Scenario: REQ-544 default behaviour
     Given cache TTL configured at table, source, and global levels
     When a cache key is resolved
-    Then table-level TTL takes precedence, and cache keys include role_id and RLS context for
-    security partitioning
+    Then table-level TTL takes precedence, and cache keys include role_id and RLS context for security partitioning

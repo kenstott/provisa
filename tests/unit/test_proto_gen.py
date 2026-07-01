@@ -129,17 +129,19 @@ class TestGenerateProto:
 
     def test_no_timestamp_import_when_unneeded(self):
         si = _make_si(
-            tables=[{
-                "id": 1,
-                "source_id": "pg1",
-                "domain_id": "sales",
-                "schema_name": "public",
-                "table_name": "users",
-                "columns": [
-                    {"column_name": "id", "visible_to": ["admin"]},
-                    {"column_name": "name", "visible_to": ["admin"]},
-                ],
-            }],
+            tables=[
+                {
+                    "id": 1,
+                    "source_id": "pg1",
+                    "domain_id": "sales",
+                    "schema_name": "public",
+                    "table_name": "users",
+                    "columns": [
+                        {"column_name": "id", "visible_to": ["admin"]},
+                        {"column_name": "name", "visible_to": ["admin"]},
+                    ],
+                }
+            ],
             column_types={
                 1: [
                     ColumnMetadata(column_name="id", data_type="integer", is_nullable=False),
@@ -191,18 +193,20 @@ class TestGenerateProto:
 class TestRoleFiltering:
     def test_invisible_columns_excluded(self):
         si = _make_si(
-            tables=[{
-                "id": 1,
-                "source_id": "pg1",
-                "domain_id": "sales",
-                "schema_name": "public",
-                "table_name": "orders",
-                "columns": [
-                    {"column_name": "id", "visible_to": ["admin", "viewer"]},
-                    {"column_name": "amount", "visible_to": ["admin"]},
-                    {"column_name": "secret", "visible_to": ["admin"]},
-                ],
-            }],
+            tables=[
+                {
+                    "id": 1,
+                    "source_id": "pg1",
+                    "domain_id": "sales",
+                    "schema_name": "public",
+                    "table_name": "orders",
+                    "columns": [
+                        {"column_name": "id", "visible_to": ["admin", "viewer"]},
+                        {"column_name": "amount", "visible_to": ["admin"]},
+                        {"column_name": "secret", "visible_to": ["admin"]},
+                    ],
+                }
+            ],
             column_types={
                 1: [
                     ColumnMetadata(column_name="id", data_type="integer", is_nullable=False),
@@ -265,34 +269,39 @@ class TestRelationships:
 
     def test_many_to_one_singular_field(self):
         tables, column_types = self._two_table_si()
-        relationships = [{
-            "id": 1,
-            "source_table_id": 1,
-            "target_table_id": 2,
-            "source_column": "customer_id",
-            "target_column": "id",
-            "cardinality": "many-to-one",
-        }]
+        relationships = [
+            {
+                "id": 1,
+                "source_table_id": 1,
+                "target_table_id": 2,
+                "source_column": "customer_id",
+                "target_column": "id",
+                "cardinality": "many-to-one",
+            }
+        ]
         si = _make_si(
             tables=tables,
             column_types=column_types,
             relationships=relationships,
         )
         proto = generate_proto(si)
-        # Many-to-one: singular, not repeated
+        # Many-to-one: singular, not repeated (the Query message legitimately
+        # has repeated root fields; assert the relationship field is singular)
         assert "Customers customers = 3;" in proto
-        assert "repeated Customers" not in proto
+        assert "repeated Customers customers = 3" not in proto
 
     def test_one_to_many_repeated_field(self):
         tables, column_types = self._two_table_si()
-        relationships = [{
-            "id": 1,
-            "source_table_id": 2,
-            "target_table_id": 1,
-            "source_column": "id",
-            "target_column": "customer_id",
-            "cardinality": "one-to-many",
-        }]
+        relationships = [
+            {
+                "id": 1,
+                "source_table_id": 2,
+                "target_table_id": 1,
+                "source_column": "id",
+                "target_column": "customer_id",
+                "cardinality": "one-to-many",
+            }
+        ]
         si = _make_si(
             tables=tables,
             column_types=column_types,

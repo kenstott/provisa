@@ -79,7 +79,7 @@ def step_when_the_schema_generation_pass_runs():
     pytest.skip("step not implemented: the schema generation pass runs")
 
 # REQ-008
-@then("it queries Trino INFORMATION_SCHEMA, applies per-role column visibility, incorporates")
+@then("it queries Trino INFORMATION_SCHEMA, applies per-role column visibility, incorporates relationships, and produces GraphQL SDL")
 def step_then_it_queries_trino_information_schema_applies_per_role_column_():
     pytest.skip("step not implemented: it queries Trino INFORMATION_SCHEMA, applies per-role column")
 
@@ -109,7 +109,7 @@ def step_when_they_submit_a_new_source_registration():
     pytest.skip("step not implemented: they submit a new source registration")
 
 # REQ-012
-@then("Provisa validates the connection, calls the Trino dynamic catalog API, and makes the source")
+@then("Provisa validates the connection, calls the Trino dynamic catalog API, and makes the source available within seconds without a server restart")
 def step_then_provisa_validates_the_connection_calls_the_trino_dynamic_cat():
     pytest.skip("step not implemented: Provisa validates the connection, calls the Trino dynamic ca")
 
@@ -139,7 +139,7 @@ def step_when_the_publication_completes():
     pytest.skip("step not implemented: the publication completes")
 
 # REQ-016
-@then("a schema generation pass is triggered and the table is immediately available in the query")
+@then("a schema generation pass is triggered and the table is immediately available in the query builder")
 def step_then_a_schema_generation_pass_is_triggered_and_the_table_is_immed():
     pytest.skip("step not implemented: a schema generation pass is triggered and the table is immed")
 
@@ -269,7 +269,7 @@ def step_when_a_mutation_input_type_is_generated_for_that_role():
     pytest.skip("step not implemented: a mutation input type is generated for that role")
 
 # REQ-034
-@then("excluded columns are absent from the input type and references to them are rejected at")
+@then("excluded columns are absent from the input type and references to them are rejected at parse time")
 def step_then_excluded_columns_are_absent_from_the_input_type_and_referenc():
     pytest.skip("step not implemented: excluded columns are absent from the input type and referenc")
 
@@ -474,7 +474,7 @@ def step_when_a_steward_promotes_a_nested_field_via_dot_path():
     pytest.skip("step not implemented: a steward promotes a nested field via dot-path")
 
 # REQ-119
-@then("a PostgreSQL generated column is created that is filterable, indexable, and")
+@then("a PostgreSQL generated column is created that is filterable, indexable, and relationship-eligible")
 def step_then_a_postgresql_generated_column_is_created_that_is_filterable_():
     pytest.skip("step not implemented: a PostgreSQL generated column is created that is filterable,")
 
@@ -639,7 +639,7 @@ def step_when_the_view_is_queried():
     pytest.skip("step not implemented: the view is queried")
 
 # REQ-135
-@then("it is served from the periodically refreshed materialized view; views without that flag")
+@then("it is served from the periodically refreshed materialized view; views without that flag run as live subqueries")
 def step_then_it_is_served_from_the_periodically_refreshed_materialized_vi():
     pytest.skip("step not implemented: it is served from the periodically refreshed materialized vi")
 
@@ -1134,7 +1134,7 @@ def step_when_the_schema_compiler_runs():
     pytest.skip("step not implemented: the schema compiler runs")
 
 # REQ-196
-@then("a <table>_aggregate root field is generated with sum/avg/stddev/variance on numeric columns,")
+@then("a <table>_aggregate root field is generated with sum/avg/stddev/variance on numeric columns, min/max on comparable columns, and count on all columns")
 def step_then_a_table_aggregate_root_field_is_generated_with_sum_avg_stdde():
     pytest.skip("step not implemented: a <table>_aggregate root field is generated with sum/avg/std")
 
@@ -1419,7 +1419,7 @@ def step_given_a_table_designated_as_hot():
     pytest.skip("step not implemented: a table designated as hot")
 
 # REQ-230
-@then("the cached JSON blob is injected as a VALUES CTE and governance is applied by Stage-2 at")
+@then("the cached JSON blob is injected as a VALUES CTE and governance is applied by Stage-2 at query time")
 def step_then_the_cached_json_blob_is_injected_as_a_values_cte_and_governa():
     pytest.skip("step not implemented: the cached JSON blob is injected as a VALUES CTE and governa")
 
@@ -1444,7 +1444,7 @@ def step_given_a_query_that_joins_a_hot_table():
     pytest.skip("step not implemented: a query that JOINs a hot table")
 
 # REQ-232
-@then("the hot table data is injected as a VALUES-based CTE and the DB engine sees no table")
+@then("the hot table data is injected as a VALUES-based CTE and the DB engine sees no table reference")
 def step_then_the_hot_table_data_is_injected_as_a_values_based_cte_and_the():
     pytest.skip("step not implemented: the hot table data is injected as a VALUES-based CTE and the")
 
@@ -1529,7 +1529,7 @@ def step_given_a_mongodb_source_with_discover_true():
     pytest.skip("step not implemented: a MongoDB source with discover: true")
 
 # REQ-252
-@then("it introspects the connector and generates a starting column list, with explicit definitions")
+@then("it introspects the connector and generates a starting column list, with explicit definitions taking precedence")
 def step_then_it_introspects_the_connector_and_generates_a_starting_column():
     pytest.skip("step not implemented: it introspects the connector and generates a starting column")
 
@@ -1544,7 +1544,7 @@ def step_when_rebuild_schemas_completes():
     pytest.skip("step not implemented: _rebuild_schemas() completes")
 
 # REQ-253
-@then("the in-memory GraphQL schema is regenerated and fresh introspection is returned on the next")
+@then("the in-memory GraphQL schema is regenerated and fresh introspection is returned on the next request")
 def step_then_the_in_memory_graphql_schema_is_regenerated_and_fresh_intros():
     pytest.skip("step not implemented: the in-memory GraphQL schema is regenerated and fresh intros")
 
@@ -1599,7 +1599,7 @@ def step_given_apollo_federation_v2_support_is_enabled():
     pytest.skip("step not implemented: Apollo Federation v2 support is enabled")
 
 # REQ-259
-@then("@key directives, _service, and _entities fields are present and entity resolution respects")
+@then("@key directives, _service, and _entities fields are present and entity resolution respects RLS and masking")
 def step_then_key_directives_service_and_entities_fields_are_present_and_e():
     pytest.skip("step not implemented: @key directives, _service, and _entities fields are present ")
 
@@ -1629,7 +1629,7 @@ def step_when_a_row_is_inserted_updated_or_deleted_in_mysql():
     pytest.skip("step not implemented: a row is inserted, updated, or deleted in MySQL")
 
 # REQ-261
-@then("the change is captured by Debezium, published to Kafka, consumed by Provisa, and streamed")
+@then("the change is captured by Debezium, published to Kafka, consumed by Provisa, and streamed as an SSE event to subscribers")
 def step_then_the_change_is_captured_by_debezium_published_to_kafka_consum():
     pytest.skip("step not implemented: the change is captured by Debezium, published to Kafka, cons")
 
@@ -1699,7 +1699,7 @@ def step_when_arbitrary_sql_is_executed():
     pytest.skip("step not implemented: arbitrary SQL is executed")
 
 # REQ-269
-@then("only tables and views permitted by the user's rights are accessible with uniform Stage 2")
+@then("only tables and views permitted by the user's rights are accessible with uniform Stage 2 governance")
 def step_then_only_tables_and_views_permitted_by_the_user_s_rights_are_acc():
     pytest.skip("step not implemented: only tables and views permitted by the user's rights are acc")
 
@@ -1804,7 +1804,7 @@ def step_when_the_query_is_compiled():
     pytest.skip("step not implemented: the query is compiled")
 
 # REQ-279
-@then("the comment is stripped and translated to the equivalent Trino session property before")
+@then("the comment is stripped and translated to the equivalent Trino session property before forwarding")
 def step_then_the_comment_is_stripped_and_translated_to_the_equivalent_tri():
     pytest.skip("step not implemented: the comment is stripped and translated to the equivalent Tri")
 
@@ -1889,7 +1889,7 @@ def step_given_an_apollo_client_sending_only_a_hash():
     pytest.skip("step not implemented: an Apollo client sending only a hash")
 
 # REQ-288
-@when("the server has the query cached it executes immediately; when not it returns")
+@when("the server has the query cached it executes immediately; when not it returns PersistedQueryNotFound")
 def step_when_the_server_has_the_query_cached_it_executes_immediately_when():
     pytest.skip("step not implemented: the server has the query cached it executes immediately; whe")
 
@@ -2319,7 +2319,7 @@ def step_given_a_graph_user_submitting_a_cypher_select_query_to_post_query_():
     pytest.skip("step not implemented: a graph user submitting a Cypher SELECT query to POST /query")
 
 # REQ-345
-@then("it compiles to SQL, executes via Trino, and applies Stage 2 governance identically to")
+@then("it compiles to SQL, executes via Trino, and applies Stage 2 governance identically to GraphQL queries")
 def step_then_it_compiles_to_sql_executes_via_trino_and_applies_stage_2_go():
     pytest.skip("step not implemented: it compiles to SQL, executes via Trino, and applies Stage 2 ")
 
@@ -2414,7 +2414,7 @@ def step_when_the_three_generation_loops_run():
     pytest.skip("step not implemented: the three generation loops run")
 
 # REQ-355
-@then("each independently generates and validates a Cypher, GraphQL, and SQL candidate with")
+@then("each independently generates and validates a Cypher, GraphQL, and SQL candidate with compiler-driven refinement")
 def step_then_each_independently_generates_and_validates_a_cypher_graphql_():
     pytest.skip("step not implemented: each independently generates and validates a Cypher, GraphQL")
 
@@ -2504,7 +2504,7 @@ def step_when_get_table_names_or_get_columns_is_called():
     pytest.skip("step not implemented: get_table_names() or get_columns() is called")
 
 # REQ-363
-@then("the results are filtered through the governed GraphQL introspection endpoint and only")
+@then("the results are filtered through the governed GraphQL introspection endpoint and only permitted tables and columns are returned")
 def step_then_the_results_are_filtered_through_the_governed_graphql_intros():
     pytest.skip("step not implemented: the results are filtered through the governed GraphQL intros")
 
@@ -2519,7 +2519,7 @@ def step_when_they_submit_the_view_creation():
     pytest.skip("step not implemented: they submit the view creation")
 
 # REQ-366
-@then("an approval workflow is triggered unless the originator already holds rights to all")
+@then("an approval workflow is triggered unless the originator already holds rights to all underlying tables and joins")
 def step_then_an_approval_workflow_is_triggered_unless_the_originator_alre():
     pytest.skip("step not implemented: an approval workflow is triggered unless the originator alre")
 
@@ -2619,7 +2619,7 @@ def step_when_the_relationship_is_persisted():
     pytest.skip("step not implemented: the relationship is persisted")
 
 # REQ-400
-@then("the target_column is marked is_primary_key=true; if a PK already exists it is marked")
+@then("the target_column is marked is_primary_key=true; if a PK already exists it is marked is_alternate_key=true")
 def step_then_the_target_column_is_marked_is_primary_key_true_if_a_pk_alre():
     pytest.skip("step not implemented: the target_column is marked is_primary_key=true; if a PK alr")
 
@@ -2754,7 +2754,7 @@ def step_when_the_migration_tool_runs():
     pytest.skip("step not implemented: the migration tool runs")
 
 # REQ-417
-@then("each Remote Schema is mapped to a graphql_remote source registration preserving name, URL,")
+@then("each Remote Schema is mapped to a graphql_remote source registration preserving name, URL, headers, and auth")
 def step_then_each_remote_schema_is_mapped_to_a_graphql_remote_source_regi():
     pytest.skip("step not implemented: each Remote Schema is mapped to a graphql_remote source regi")
 
@@ -2769,7 +2769,7 @@ def step_when_they_import_cross_domain_data():
     pytest.skip("step not implemented: they import cross-domain data")
 
 # REQ-418
-@then("it must be done via views; all calculations and relationships are defined only within the")
+@then("it must be done via views; all calculations and relationships are defined only within the analyst's own domain")
 def step_then_it_must_be_done_via_views_all_calculations_and_relationships():
     pytest.skip("step not implemented: it must be done via views; all calculations and relationship")
 
@@ -2869,7 +2869,7 @@ def step_when_a_domain_owner_claims_a_table():
     pytest.skip("step not implemented: a domain owner claims a table")
 
 # REQ-433
-@then("no other domain may claim that same physical table; the UI greys it out for all other")
+@then("no other domain may claim that same physical table; the UI greys it out for all other domains")
 def step_then_no_other_domain_may_claim_that_same_physical_table_the_ui_gr():
     pytest.skip("step not implemented: no other domain may claim that same physical table; the UI g")
 
@@ -2884,7 +2884,7 @@ def step_when_they_submit_the_creation():
     pytest.skip("step not implemented: they submit the creation")
 
 # REQ-434
-@then("a persisted request is created in the queue rather than an error; an authorized user may")
+@then("a persisted request is created in the queue rather than an error; an authorized user may execute or reject it")
 def step_then_a_persisted_request_is_created_in_the_queue_rather_than_an_e():
     pytest.skip("step not implemented: a persisted request is created in the queue rather than an e")
 
@@ -2924,7 +2924,7 @@ def step_when_the_server_starts():
     pytest.skip("step not implemented: the server starts")
 
 # REQ-527
-@then("the pgwire listener does not bind; when the variable is set to a non-zero integer it binds")
+@then("the pgwire listener does not bind; when the variable is set to a non-zero integer it binds to 0.0.0.0")
 def step_then_the_pgwire_listener_does_not_bind_when_the_variable_is_set_t():
     pytest.skip("step not implemented: the pgwire listener does not bind; when the variable is set ")
 
@@ -2999,7 +2999,7 @@ def step_when_it_is_executed():
     pytest.skip("step not implemented: it is executed")
 
 # REQ-534
-@then("each root field is compiled and executed independently and results are merged into one")
+@then("each root field is compiled and executed independently and results are merged into one response")
 def step_then_each_root_field_is_compiled_and_executed_independently_and_r():
     pytest.skip("step not implemented: each root field is compiled and executed independently and r")
 
@@ -3119,7 +3119,7 @@ def step_when_a_cache_key_is_resolved():
     pytest.skip("step not implemented: a cache key is resolved")
 
 # REQ-544
-@then("table-level TTL takes precedence, and cache keys include role_id and RLS context for")
+@then("table-level TTL takes precedence, and cache keys include role_id and RLS context for security partitioning")
 def step_then_table_level_ttl_takes_precedence_and_cache_keys_include_role():
     pytest.skip("step not implemented: table-level TTL takes precedence, and cache keys include rol")
 
@@ -3374,7 +3374,7 @@ def step_given_a_ddl_statement_submitted_over_pgwire():
     pytest.skip("step not implemented: a DDL statement submitted over pgwire")
 
 # REQ-582
-@when("ddl_catalog is a Trino catalog only CREATE TABLE and CREATE VIEW are allowed; when it is a")
+@when("ddl_catalog is a Trino catalog only CREATE TABLE and CREATE VIEW are allowed; when it is a registered source ID full DDL is supported")
 def step_when_ddl_catalog_is_a_trino_catalog_only_create_table_and_create_():
     pytest.skip("step not implemented: ddl_catalog is a Trino catalog only CREATE TABLE and CREATE ")
 
@@ -3614,7 +3614,7 @@ def step_given_a_provisaclient_caller():
     pytest.skip("step not implemented: a ProvisaClient caller")
 
 # REQ-607
-@when("query() receives a 4xx/5xx response it raises httpx.HTTPStatusError; when query_df()")
+@when("query() receives a 4xx/5xx response it raises httpx.HTTPStatusError; when query_df() receives a GraphQL errors field it raises RuntimeError")
 def step_when_query_receives_a_4xx_5xx_response_it_raises_httpx_httpstatus():
     pytest.skip("step not implemented: query() receives a 4xx/5xx response it raises httpx.HTTPStat")
 
@@ -3779,7 +3779,7 @@ def step_when_available_schemas_are_listed():
     pytest.skip("step not implemented: available schemas are listed")
 
 # REQ-635
-@then("the native schema names are presented; for flat/API sources a fixed source-type constant")
+@then("the native schema names are presented; for flat/API sources a fixed source-type constant is used")
 def step_then_the_native_schema_names_are_presented_for_flat_api_sources_a():
     pytest.skip("step not implemented: the native schema names are presented; for flat/API sources ")
 
@@ -3794,7 +3794,7 @@ def step_when_schema_or_table_introspection_is_triggered():
     pytest.skip("step not implemented: schema or table introspection is triggered")
 
 # REQ-636
-@then("Trino is used as the introspection path; native driver is used only when no connector")
+@then("Trino is used as the introspection path; native driver is used only when no connector exists")
 def step_then_trino_is_used_as_the_introspection_path_native_driver_is_use():
     pytest.skip("step not implemented: Trino is used as the introspection path; native driver is us")
 
@@ -3824,7 +3824,7 @@ def step_when_the_endpoint_processes_it():
     pytest.skip("step not implemented: the endpoint processes it")
 
 # REQ-642
-@then("it builds a NetworkX DiGraph, runs the algorithm, and returns augmented nodes and edges")
+@then("it builds a NetworkX DiGraph, runs the algorithm, and returns augmented nodes and edges with elapsed_ms")
 def step_then_it_builds_a_networkx_digraph_runs_the_algorithm_and_returns_():
     pytest.skip("step not implemented: it builds a NetworkX DiGraph, runs the algorithm, and return")
 
@@ -4099,7 +4099,7 @@ def step_when_a_user_registers_the_splunk_source_with_host_port_and_auth_t():
     pytest.skip("step not implemented: a user registers the Splunk source with host, port, and auth")
 
 # REQ-721
-@then("the source is added to the catalog and Splunk's search tables (internal_server)")
+@then("the source is added to the catalog and Splunk's search tables (internal_server) are enumerable")
 def step_then_the_source_is_added_to_the_catalog_and_splunk_s_search_table():
     pytest.skip("step not implemented: the source is added to the catalog and Splunk's search table")
 
@@ -4179,7 +4179,7 @@ def step_then_provisa_sends_certificate_path_and_certificate_password_inst():
     pytest.skip("step not implemented: Provisa sends certificate-path and certificate-password inst")
 
 # REQ-728
-@given("a SharePoint source with base_url=\"https://kenstott.sharepoint.com\",")
+@given("a SharePoint source with base_url=\"https://kenstott.sharepoint.com\", username=\"client-id-value\", password=\"secret\", database=\"tenant-uuid\"")
 def step_given_a_sharepoint_source_with_base_url_https_kenstott_sharepoint_():
     pytest.skip("step not implemented: a SharePoint source with base_url=\"https://kenstott.sharepoi")
 
@@ -5212,3 +5212,23 @@ def step_then_the_response_status_is_202_accepted():
 @then("subscription change events are delivered to the Kafka sink instead of an SSE stream")
 def step_and_subscription_change_events_are_delivered_to_the_kafka_sink_i():
     pytest.skip("step not implemented: subscription change events are delivered to the Kafka sink i")
+
+# REQ-814
+@given("a PostgreSQL table with live.strategy=native")
+def step_given_a_postgresql_table_with_live_strategy_native():
+    pytest.skip("step not implemented: a PostgreSQL table with live.strategy=native")
+
+# REQ-814
+@when("get_provider() is called")
+def step_when_get_provider_is_called():
+    pytest.skip("step not implemented: get_provider() is called")
+
+# REQ-814
+@then("PgNotificationProvider is instantiated")
+def step_then_pgnotificationprovider_is_instantiated():
+    pytest.skip("step not implemented: PgNotificationProvider is instantiated")
+
+# REQ-814
+@then("the source_type is not used to dispatch")
+def step_and_the_source_type_is_not_used_to_dispatch():
+    pytest.skip("step not implemented: the source_type is not used to dispatch")

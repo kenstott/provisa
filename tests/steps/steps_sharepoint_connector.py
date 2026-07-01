@@ -5,7 +5,6 @@
 
 """pytest-bdd step definitions for REQ-726, REQ-727, REQ-728, REQ-731, and REQ-732 — SharePoint Connector."""
 
-import os
 import re
 
 import pytest
@@ -361,34 +360,51 @@ def a_user_registers_a_table_via_graphql_registertable_mutation_with_columns(sha
 
     source: Source = shared_data["source"]
 
+    from provisa.api.admin.schema import _build_column_models
+    from provisa.api.admin.types import ColumnInput, TableInput
+
     # These are the columns the user obtained from the Microsoft Graph API
-    # and is supplying manually in the registerTable mutation input.
-    user_supplied_columns = [
-        Column(name="ID", data_type="VARCHAR", visible_to=[], writable_by=[]),
-        Column(name="Title", data_type="VARCHAR", visible_to=[], writable_by=[]),
-        Column(name="EventDate", data_type="VARCHAR", visible_to=[], writable_by=[]),
-        Column(name="EndDate", data_type="VARCHAR", visible_to=[], writable_by=[]),
-        Column(name="Description", data_type="VARCHAR", visible_to=[], writable_by=[]),
-        Column(name="Location", data_type="VARCHAR", visible_to=[], writable_by=[]),
+    # and is supplying manually in the registerTable mutation input, because the
+    # Calcite SharePoint connector does not expose information_schema.columns.
+    column_names = ["ID", "Title", "EventDate", "EndDate", "Description", "Location"]
+    column_inputs = [
+        ColumnInput(name=name, visible_to=["analyst"], writable_by=["admin"])
+        for name in column_names
     ]
 
-    assert len(user_supplied_columns) > 0, (
+    assert len(column_inputs) > 0, (
         "User must supply at least one column definition when registering a table "
         "whose connector does not expose information_schema.columns."
     )
 
-    # Simulate the registerTable GraphQL mutation: construct the Table model
-    # that would be persisted by the Provisa catalog service.
-    table = Table(
+    # Drive the real registerTable input path: build the GraphQL TableInput exactly
+    # as the mutation receives it, then run the production column-model builder that
+    # register_table uses to turn supplied column definitions into persisted columns.
+    table_input = TableInput(
         source_id=source.id,
         domain_id="default",
         schema_name="calendar",
         table_name="Events",
-        columns=user_supplied_columns,
+        columns=column_inputs,
+    )
+
+    columns = _build_column_models(table_input.columns)
+    assert all(isinstance(c, Column) for c in columns), (
+        "Production _build_column_models must yield core Column models."
+    )
+
+    # Construct the Table model exactly as register_table does from the built columns.
+    table = Table(
+        source_id=table_input.source_id,
+        domain_id=table_input.domain_id,
+        schema_name=table_input.schema_name,
+        table_name=table_input.table_name,
+        columns=columns,
     )
 
     shared_data["registered_table"] = table
-    shared_data["supplied_columns"] = user_supplied_columns
+    shared_data["supplied_column_names"] = column_names
+    shared_data["supplied_columns"] = column_inputs
 
 
 # ---------------------------------------------------------------------------
@@ -613,7 +629,11 @@ def certificate_fields_included_when_present_in_mapping(shared_data):
     )
 
 
-@then(parsers.parse('available SharePoint lists (e.g., "{list_a}", "{list_b}") appear in the table dropdown'))
+@then(
+    parsers.parse(
+        'available SharePoint lists (e.g., "{list_a}", "{list_b}") appear in the table dropdown'
+    )
+)
 def available_sharepoint_lists_appear_in_table_dropdown(shared_data, list_a, list_b):
     """
     Assert that the enumerated SharePoint lists include the expected list names
@@ -673,8 +693,7 @@ def available_sharepoint_lists_appear_in_table_dropdown(shared_data, list_a, lis
     # Verify each list in the available_lists is a non-empty string — a valid schema name
     for list_name in available_lists:
         assert isinstance(list_name, str) and list_name.strip(), (
-            f"Every enumerated SharePoint list name must be a non-empty string. "
-            f"Got: {list_name!r}."
+            f"Every enumerated SharePoint list name must be a non-empty string. Got: {list_name!r}."
         )
 
     # Verify the SOURCE_TO_CONNECTOR registry maps sharepoint to the sharepoint connector,
@@ -689,9 +708,7 @@ def available_sharepoint_lists_appear_in_table_dropdown(shared_data, list_a, lis
     )
 
     # Verify that at least the two example lists from the scenario are distinct
-    assert list_a != list_b, (
-        f"The two example lists must be distinct, but both were '{list_a}'."
-    )
+    assert list_a != list_b, f"The two example lists must be distinct, but both were '{list_a}'."
 
     # Verify the available lists represent a realistic SharePoint site — at least 2 lists
     assert len(available_lists) >= 2, (
@@ -701,4 +718,67 @@ def available_sharepoint_lists_appear_in_table_dropdown(shared_data, list_a, lis
 
     # Verify each list name is a valid potential Trino schema identifier
     # (no leading/trailing whitespace, all lowercase, valid identifier characters)
-    valid_schema_name_pattern = re.compile(r"^[a-z][a-z0-9_]*$
+    valid_schema_name_pattern = re.compile(r"^[a-z][a-z0-9_]*$")
+    for list_name in available_lists:
+        normalised = list_name.replace("-", "_").replace(" ", "_")
+        assert valid_schema_name_pattern.match(normalised), (
+            f"SharePoint list '{list_name}' (normalised: '{normalised}') does not map to a "
+            f"valid Trino schema identifier. Schema names must be lowercase, start with a "
+            f"letter, and contain only letters, digits, and underscores."
+        )
+
+
+@then("the table is created with the supplied column definitions")
+def the_table_is_created_with_the_supplied_column_definitions(shared_data):
+    """
+    Assert that the registerTable path produced a Table whose columns are exactly
+    the user-supplied definitions, carried through the production _build_column_models
+    transform (REQ-732: columns must come from the mutation input because the Calcite
+    SharePoint connector does not expose information_schema.columns).
+    """
+    table: Table = shared_data["registered_table"]
+    supplied_names: list[str] = shared_data["supplied_column_names"]
+    supplied_inputs = shared_data["supplied_columns"]
+
+    assert table is not None, "registerTable did not produce a Table model."
+
+    # The table must be created for the SharePoint source/list from the scenario.
+    assert table.source_id == shared_data["source"].id, (
+        f"Table source_id '{table.source_id}' does not match registered source "
+        f"'{shared_data['source'].id}'."
+    )
+    assert table.schema_name == "calendar", (
+        f"Expected schema_name 'calendar', got '{table.schema_name}'."
+    )
+    assert table.table_name == "Events", (
+        f"Expected table_name 'Events', got '{table.table_name}'."
+    )
+
+    # The columns must be exactly the supplied definitions — none discovered/dropped —
+    # because the connector cannot supply them via information_schema.columns.
+    assert len(table.columns) == len(supplied_names), (
+        f"Table must be created with exactly the {len(supplied_names)} supplied columns, "
+        f"got {len(table.columns)}: {[c.name for c in table.columns]}."
+    )
+    assert [c.name for c in table.columns] == supplied_names, (
+        f"Table columns must match the supplied column names in order. "
+        f"Supplied: {supplied_names}; got: {[c.name for c in table.columns]}."
+    )
+
+    # Each column must be a real core Column model and preserve the supplied
+    # visible_to / writable_by governance definitions from the mutation input.
+    for column, supplied in zip(table.columns, supplied_inputs, strict=True):
+        assert isinstance(column, Column), (
+            f"Column '{column}' must be a core Column model, got {type(column)}."
+        )
+        assert column.name == supplied.name, (
+            f"Column name mismatch: expected '{supplied.name}', got '{column.name}'."
+        )
+        assert column.visible_to == supplied.visible_to, (
+            f"Column '{column.name}' visible_to mismatch: expected {supplied.visible_to}, "
+            f"got {column.visible_to}."
+        )
+        assert column.writable_by == supplied.writable_by, (
+            f"Column '{column.name}' writable_by mismatch: expected {supplied.writable_by}, "
+            f"got {column.writable_by}."
+        )

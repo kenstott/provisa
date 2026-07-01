@@ -14,7 +14,7 @@ import struct
 from typing import Any
 
 import pytest
-from pytest_bdd import given, parsers, scenario, then, when
+from pytest_bdd import given, parsers, then, when
 
 # ---------------------------------------------------------------------------
 # Shared fixture
@@ -59,7 +59,7 @@ def _build_run_message(cypher: str) -> bytes:
     from provisa.bolt.messages import RUN
 
     # RUN fields: query, parameters, metadata
-    return pack_message(RUN, [cypher, {}, {}])
+    return pack_message(RUN, cypher, {}, {})
 
 
 # ---------------------------------------------------------------------------
@@ -202,9 +202,7 @@ def step_query_transpiled_to_sql(shared_data: dict) -> None:
     assert tag != FAILURE, (
         f"Server returned FAILURE for RUN; transpilation failed. raw={run_response.hex()}"
     )
-    assert tag == SUCCESS, (
-        f"Expected SUCCESS(0x70) for RUN response, got 0x{tag:02X}"
-    )
+    assert tag == SUCCESS, f"Expected SUCCESS(0x70) for RUN response, got 0x{tag:02X}"
 
 
 @pytest.mark.integration
@@ -377,7 +375,7 @@ def test_pack_message_run():
     from provisa.bolt.packstream import pack_message
     from provisa.bolt.messages import RUN
 
-    data = pack_message(RUN, ["MATCH (n) RETURN n", {}, {}])
+    data = pack_message(RUN, "MATCH (n) RETURN n", {}, {})
     # tiny struct header with 3 fields: 0xB3
     assert data[0] == 0xB3
     assert data[1] == RUN
@@ -592,8 +590,8 @@ def test_encode_version_proposal_structure():
     proposal = _encode_version_proposal(5, 4)
     assert proposal[0] == 0x00  # reserved
     assert proposal[1] == 0x00  # range
-    assert proposal[2] == 4     # minor
-    assert proposal[3] == 5     # major
+    assert proposal[2] == 4  # minor
+    assert proposal[3] == 5  # major
 
 
 def test_build_hello_message_structure():
@@ -820,4 +818,10 @@ def test_session_handle_logoff():
 
 def test_packstream_pack_message_pull():
     """PULL message must encode correctly with n=-1 metadata dict."""
-    from provisa.bolt.packstream import pack_
+    from provisa.bolt.packstream import pack_message
+    from provisa.bolt.messages import PULL
+
+    data = pack_message(PULL, {"n": -1})
+    # tiny struct header with 1 field: 0xB1
+    assert data[0] == 0xB1
+    assert data[1] == PULL

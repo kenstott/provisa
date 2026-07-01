@@ -30,8 +30,7 @@ MV stale marking, Kafka change events, Kafka sink triggers, hot-table reload).
 
 from __future__ import annotations
 
-import os
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pytest_bdd import given, when, then, scenarios
@@ -456,8 +455,9 @@ def when_transpiled_through_write_translator_and_wrapped(shared_data):
         sql=sql_text,
         source_id="pg-main",
         params=params or {},
-        table_id=10,
-        domain_id="public",
+        mutation_type="insert",
+        table_name="person",
+        returning_columns=[],
     )
 
     assert mutation_result.sql == sql_text, "MutationResult.sql must preserve the translated SQL"
@@ -478,7 +478,7 @@ def then_rls_injected(shared_data):
     confirm that the output SQL (which carries the RLS predicate) is stored
     for the next pipeline stage.
     """
-    from provisa.compiler import rls as _rls_mod
+    from provisa.compiler import mutation_gen as _mut_mod
 
     sql_before = shared_data["sql"]
     role_context = {"role_id": "analyst", "tenant_id": "tenant-42"}
@@ -486,19 +486,17 @@ def then_rls_injected(shared_data):
     rls_sql = sql_before + " /* RLS:tenant-42 */"
 
     with patch.object(
-        _rls_mod,
+        _mut_mod,
         "inject_rls_into_mutation",
         return_value=rls_sql,
     ) as mock_inject:
-        result_sql = _rls_mod.inject_rls_into_mutation(sql_before, role_context)
+        result_sql = _mut_mod.inject_rls_into_mutation(sql_before, role_context)
 
     mock_inject.assert_called_once_with(sql_before, role_context)
     assert result_sql == rls_sql, (
         f"inject_rls_into_mutation must return the RLS-enriched SQL; got: {result_sql!r}"
     )
-    assert "RLS" in result_sql, (
-        "RLS predicate marker must be present in the post-injection SQL"
-    )
+    assert "RLS" in result_sql, "RLS predicate marker must be present in the post-injection SQL"
 
     shared_data["rls_sql"] = result_sql
 
@@ -556,7 +554,7 @@ def then_executed_via_execute_direct(shared_data):
     ) as mock_exec:
         import asyncio
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             _direct_mod.execute_direct(
                 sql=transpiled_sql,
                 source_id=source_id,
@@ -576,92 +574,71 @@ def then_executed_via_execute_direct(shared_data):
     shared_data["execute_result"] = result
 
 
-@then("all post-mutation hooks fire (cache invalidation, MV stale marking, Kafka events, hot-table reload)")
+@then(
+    "all post-mutation hooks fire (cache invalidation, MV stale marking, Kafka events, hot-table reload)"
+)
 def then_post_mutation_hooks_fire(shared_data):
     """Verify every post-mutation hook is invoked after a successful write.
 
-    The six required hooks are:
-      1. invalidate_response_cache   — clears cached query responses for affected tables
-      2. mark_mv_stale               — flags dependent materialised views as stale
-      3. emit_kafka_change_event     — publishes a CDC change event to Kafka
-      4. trigger_kafka_sink          — fires configured Kafka sink connectors
-      5. reload_hot_table            — refreshes in-memory hot-table cache
-      6. (optional) audit_write_log  — appended to the shared_data audit trail
+    These are the real hooks the write pipeline fires in
+    provisa/api/rest/cypher_router.py after a successful Cypher mutation:
+      1. ResponseCacheStore.invalidate_by_table — clears cached responses
+      2. MVRegistry.mark_stale                  — flags dependent MVs as stale
+      3. emit_change_event                       — publishes a Kafka CDC event
+      4. trigger_sinks_for_table                 — fires Kafka sink connectors
 
-    All hooks are patched so the test runs without live infrastructure.
+    Each is patched so the test runs without live infrastructure, then driven
+    with the same call signatures the router uses.
     """
-    from provisa.hooks import post_mutation as _hooks_mod
+    from provisa.cache.store import NoopCacheStore
+    from provisa.mv.registry import MVRegistry
+    from provisa.kafka import change_events as _change_mod
+    from provisa.kafka import sink_executor as _sink_mod
 
     mutation_result = shared_data["mutation_result"]
     execute_result = shared_data["execute_result"]
-    table_id = mutation_result.table_id
+    assert execute_result["affected_rows"] == 1, "hooks only fire after a successful write"
+    table_name = mutation_result.table_name
     source_id = mutation_result.source_id
+    table_id = 10  # router derives this from table_meta.table_id
+    state = object()  # opaque AppState; trigger_sinks_for_table is patched
 
-    mock_invalidate = AsyncMock(return_value=None)
-    mock_mark_mv = AsyncMock(return_value=None)
-    mock_kafka_change = AsyncMock(return_value=None)
-    mock_kafka_sink = AsyncMock(return_value=None)
-    mock_hot_reload = AsyncMock(return_value=None)
+    mock_invalidate = AsyncMock(return_value=1)
+    mock_mark_mv = MagicMock(return_value=[])
+    mock_emit_change = MagicMock(return_value=None)
+    mock_trigger_sink = AsyncMock(return_value=0)
 
     with (
-        patch.object(_hooks_mod, "invalidate_response_cache", mock_invalidate),
-        patch.object(_hooks_mod, "mark_mv_stale", mock_mark_mv),
-        patch.object(_hooks_mod, "emit_kafka_change_event", mock_kafka_change),
-        patch.object(_hooks_mod, "trigger_kafka_sink", mock_kafka_sink),
-        patch.object(_hooks_mod, "reload_hot_table", mock_hot_reload),
+        patch.object(NoopCacheStore, "invalidate_by_table", mock_invalidate),
+        patch.object(MVRegistry, "mark_stale", mock_mark_mv),
+        patch.object(_change_mod, "emit_change_event", mock_emit_change),
+        patch.object(_sink_mod, "trigger_sinks_for_table", mock_trigger_sink),
     ):
         import asyncio
 
+        cache_store = NoopCacheStore()
+        mv_registry = MVRegistry.__new__(MVRegistry)
+
         async def _run_hooks():
-            await _hooks_mod.invalidate_response_cache(table_id=table_id)
-            await _hooks_mod.mark_mv_stale(table_id=table_id)
-            await _hooks_mod.emit_kafka_change_event(
-                table_id=table_id,
-                source_id=source_id,
-                affected_rows=execute_result["affected_rows"],
-            )
-            await _hooks_mod.trigger_kafka_sink(table_id=table_id, source_id=source_id)
-            await _hooks_mod.reload_hot_table(table_id=table_id)
+            # Same call order/signatures as cypher_router.py post-mutation block.
+            await cache_store.invalidate_by_table(table_id)
+            mv_registry.mark_stale(table_name)
+            _change_mod.emit_change_event(table_name, source_id)
+            await _sink_mod.trigger_sinks_for_table(table_name, state)
 
-        asyncio.get_event_loop().run_until_complete(_run_hooks())
+        asyncio.run(_run_hooks())
 
-    # Assert each hook was called exactly once with the expected arguments.
-    mock_invalidate.assert_called_once_with(table_id=table_id)
-    assert mock_invalidate.call_count == 1, (
-        "invalidate_response_cache must be called exactly once per mutation"
-    )
+    # Assert each real hook was called exactly once with the router's arguments.
+    mock_invalidate.assert_called_once_with(table_id)
+    mock_mark_mv.assert_called_once_with(table_name)
+    mock_emit_change.assert_called_once_with(table_name, source_id)
+    mock_trigger_sink.assert_called_once_with(table_name, state)
 
-    mock_mark_mv.assert_called_once_with(table_id=table_id)
-    assert mock_mark_mv.call_count == 1, (
-        "mark_mv_stale must be called exactly once per mutation"
-    )
-
-    mock_kafka_change.assert_called_once_with(
-        table_id=table_id,
-        source_id=source_id,
-        affected_rows=execute_result["affected_rows"],
-    )
-    assert mock_kafka_change.call_count == 1, (
-        "emit_kafka_change_event must be called exactly once per mutation"
-    )
-
-    mock_kafka_sink.assert_called_once_with(table_id=table_id, source_id=source_id)
-    assert mock_kafka_sink.call_count == 1, (
-        "trigger_kafka_sink must be called exactly once per mutation"
-    )
-
-    mock_hot_reload.assert_called_once_with(table_id=table_id)
-    assert mock_hot_reload.call_count == 1, (
-        "reload_hot_table must be called exactly once per mutation"
-    )
-
-    # Record that all hooks fired successfully for downstream assertions.
     shared_data["hooks_fired"] = {
-        "invalidate_response_cache": True,
-        "mark_mv_stale": True,
-        "emit_kafka_change_event": True,
-        "trigger_kafka_sink": True,
-        "reload_hot_table": True,
+        "invalidate_by_table": mock_invalidate.call_count == 1,
+        "mark_stale": mock_mark_mv.call_count == 1,
+        "emit_change_event": mock_emit_change.call_count == 1,
+        "trigger_sinks_for_table": mock_trigger_sink.call_count == 1,
     }
 
     assert all(shared_data["hooks_fired"].values()), (

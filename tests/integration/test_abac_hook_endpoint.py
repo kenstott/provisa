@@ -107,8 +107,9 @@ def _orders_field(schema) -> str:
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
 async def client_field():
     os.environ.setdefault("PG_PASSWORD", "provisa")
-    if not await _pg_ready():
-        pytest.skip("Postgres source with public.orders not reachable on localhost:5432")
+    assert await _pg_ready(), (
+        "Postgres source with public.orders not reachable on localhost:5432"
+    )
 
     import provisa.api.app as appmod
     from fastapi import FastAPI

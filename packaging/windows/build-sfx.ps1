@@ -57,6 +57,8 @@ Copy-Item (Join-Path $ScriptDir 'install.ps1')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'uninstall.ps1')     $BuildDir
 Copy-Item (Join-Path $ScriptDir 'enable-hyperv.ps1')   $BuildDir
 Copy-Item (Join-Path $ScriptDir 'diagnose-hyperv.ps1') $BuildDir
+Copy-Item (Join-Path $ScriptDir 'provisa.ico')       $BuildDir
+Copy-Item (Join-Path $ScriptDir 'provisa-mark.png')  $BuildDir
 
 $BuildRedist = Join-Path $BuildDir 'redist'
 New-Item -ItemType Directory -Path $BuildRedist -Force | Out-Null
@@ -118,14 +120,15 @@ OutputBaseFilename=Provisa-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 PrivilegesRequired=lowest
+SetupIconFile=$BuildDir\provisa.ico
 UninstallDisplayName=Provisa
-UninstallDisplayIcon={app}\uninstall.ps1
+UninstallDisplayIcon={app}\provisa.ico
 
 [Files]
 Source: "$BuildDir\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Provisa First Launch"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -WindowStyle Normal -File ""{app}\first-launch-gui.ps1"""
+Name: "{group}\Provisa First Launch"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -WindowStyle Normal -File ""{app}\first-launch-gui.ps1"""; IconFilename: "{app}\provisa.ico"
 
 [Run]
 Filename: "wscript.exe"; Parameters: "/nologo ""{app}\launch-gui.vbs"""; Description: "Launch Provisa first-run setup (download and configure)"; Flags: postinstall nowait

@@ -22,7 +22,6 @@ tests/unit/test_abac_hook.py.  They focus on:
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -31,7 +30,6 @@ import pytest
 from provisa.auth.approval_hook import (
     ApprovalHookConfig,
     ApprovalRequest,
-    ApprovalResponse,
     CircuitBreaker,
     FallbackPolicy,
     GrpcApprovalHook,

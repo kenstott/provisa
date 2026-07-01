@@ -8,34 +8,90 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Tests for query timeout enforcement.
+"""Query-timeout enforcement (REQ-064).
 
-# NOTE — NO DEDICATED QUERY TIMEOUT SOURCE IMPLEMENTATION FOUND
-#
-# A search of provisa/executor/ (pool.py, direct.py, drivers/postgresql.py,
-# drivers/base.py) and provisa/api/data/endpoint.py found no implementation
-# of a per-query timeout, asyncio.wait_for wrapper, or REQ-064 fail-fast
-# timeout for GraphQL/SQL queries.
-#
-# Timeouts that DO exist in the codebase are limited to:
-#   - HTTP-level request_timeout on the Trino DBAPI connection (app.py:149)
-#   - httpx.Timeout on webhook delivery (webhooks/executor.py)
-#   - asyncio.wait_for(queue.get(), timeout=30) in subscription streaming
-#     (api/data/subscribe.py, subscriptions/pg_provider.py)
-#
-# None of these constitute a query-level timeout with cancellation and cleanup
-# semantics matching the "Timeout fires and cancels the query / Cleanup after
-# timeout / Error message format (REQ-064)" requirements.
-#
-# Tests will be added here when a source implementation lands.
-# See: provisa/executor/pool.py, provisa/executor/direct.py
+Runaway Trino queries are bounded by the ``query_max_execution_time`` session
+property, which ``execute_trino`` always injects. The timeout value resolves
+from ``server_limits['trino_query_timeout']``, else the
+``PROVISA_TRINO_QUERY_TIMEOUT`` env var, else a 120-second default
+(``provisa/executor/trino.py``).
 """
+
+from __future__ import annotations
 
 import pytest
 
-# Placeholder: this file intentionally contains no test functions.
-# When a query-timeout feature is implemented, remove this module-level
-# skip and add tests below.
-pytestmark = pytest.mark.skip(
-    reason="Query timeout source implementation not yet present (see module docstring)"
-)
+
+from provisa.executor.trino import _trino_query_timeout, execute_trino
+
+
+@pytest.fixture
+def _clean_limits(monkeypatch):
+    """Force _trino_query_timeout to resolve from env/default, not app state."""
+    monkeypatch.delenv("PROVISA_TRINO_QUERY_TIMEOUT", raising=False)
+    import provisa.api.app as app_mod
+
+    monkeypatch.setattr(app_mod.state, "server_limits", {}, raising=False)
+    return app_mod
+
+
+class _FakeCursor:
+    def __init__(self) -> None:
+        self.executed: list[str] = []
+        self.description = [("n",)]
+
+    def execute(self, sql, params=None):  # noqa: D401
+        self.executed.append(sql)
+
+    def fetchone(self):
+        return (1,)
+
+    def fetchall(self):
+        return [(1,)]
+
+
+class _FakeConn:
+    def __init__(self) -> None:
+        self.cursor_obj = _FakeCursor()
+
+    def cursor(self):
+        return self.cursor_obj
+
+
+class TestTrinoQueryTimeoutValue:
+    def test_default_is_120_seconds(self, _clean_limits):
+        assert _trino_query_timeout() == 120
+
+    def test_env_var_override(self, _clean_limits, monkeypatch):
+        monkeypatch.setenv("PROVISA_TRINO_QUERY_TIMEOUT", "45")
+        assert _trino_query_timeout() == 45
+
+    def test_server_limit_takes_precedence(self, _clean_limits, monkeypatch):
+        monkeypatch.setenv("PROVISA_TRINO_QUERY_TIMEOUT", "45")
+        monkeypatch.setattr(
+            _clean_limits.state, "server_limits", {"trino_query_timeout": 77}, raising=False
+        )
+        assert _trino_query_timeout() == 77
+
+
+class TestExecuteTrinoInjectsTimeout:
+    def test_timeout_hint_always_injected(self, _clean_limits):
+        conn = _FakeConn()
+        execute_trino(conn, "SELECT 1 AS n")
+        set_stmts = [s for s in conn.cursor_obj.executed if s.upper().startswith("SET SESSION")]
+        assert any(
+            "query_max_execution_time" in s and "'120s'" in s for s in set_stmts
+        ), f"expected query_max_execution_time='120s' SET SESSION; got {set_stmts}"
+
+    def test_explicit_hint_not_overridden(self, _clean_limits):
+        conn = _FakeConn()
+        execute_trino(conn, "SELECT 1 AS n", session_hints={"query_max_execution_time": "5s"})
+        timeout_sets = [
+            s
+            for s in conn.cursor_obj.executed
+            if "query_max_execution_time" in s and s.upper().startswith("SET SESSION")
+        ]
+        # setdefault must not clobber the caller-supplied value.
+        assert timeout_sets, "timeout hint missing"
+        assert all("'5s'" in s for s in timeout_sets), timeout_sets
+        assert not any("'120s'" in s for s in timeout_sets), timeout_sets

@@ -45,13 +45,6 @@ class TestLiveAdbcExecution:
         from provisa_client.adbc import adbc_connect  # pyright: ignore[reportMissingImports]
 
         c = adbc_connect(self.PROVISA_URL, user="admin", password="provisa")
-        try:
-            cur = c.cursor()
-            cur.execute("SELECT * FROM sa__orders LIMIT 0")
-            cur.fetchall()
-        except Exception as exc:
-            c.close()
-            pytest.skip(f"sa__orders not available in live server: {exc}")
         yield c
         c.close()
 

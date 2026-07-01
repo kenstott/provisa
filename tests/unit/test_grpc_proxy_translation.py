@@ -17,80 +17,26 @@ Covers:
 - field selection building for scalars and nested types
 """
 
-import re
-
-
-from provisa.api.data.endpoint_grpc_proxy import _pascal_to_snake, _proto_type_name
 from provisa.grpc.proto_gen import _to_proto_type_name, _to_proto_field_name
 
 
 # ---------------------------------------------------------------------------
-# _pascal_to_snake
-# ---------------------------------------------------------------------------
-
-
-def test_pascal_to_snake_simple():
-    assert _pascal_to_snake("Pets") == "pets"
-
-
-def test_pascal_to_snake_multi_word():
-    assert _pascal_to_snake("PetOwners") == "pet_owners"
-
-
-def test_pascal_to_snake_already_snake():
-    assert _pascal_to_snake("pet_owners") == "pet_owners"
-
-
-def test_pascal_to_snake_all_caps_acronym():
-    # The regex only inserts _ before an uppercase preceded by a lowercase/digit,
-    # so consecutive caps like "API" are kept together as a run.
-    assert _pascal_to_snake("MyAPIKey") == "my_apikey"
-
-
-def test_pascal_to_snake_single_char():
-    assert _pascal_to_snake("X") == "x"
-
-
-def test_pascal_to_snake_lowercase_unchanged():
-    assert _pascal_to_snake("pets") == "pets"
-
-
-def test_pascal_to_snake_mixed_with_digits():
-    # digit before uppercase triggers insertion
-    assert _pascal_to_snake("Pet3Owners") == "pet3_owners"
-
-
-def test_pascal_to_snake_multiple_words():
-    assert _pascal_to_snake("UserProfileData") == "user_profile_data"
-
-
-# ---------------------------------------------------------------------------
-# _proto_type_name (endpoint_grpc_proxy) and _to_proto_type_name (proto_gen)
-# They must agree: both convert GQL name → proto PascalCase
+# _to_proto_type_name (proto_gen) — the single naming authority the proxy defers
+# to for GQL type name → proto PascalCase.  The proxy no longer owns a local copy.
 # ---------------------------------------------------------------------------
 
 
 def test_proto_type_name_domain_prefixed():
-    assert _proto_type_name("PS__Pets") == "PsPets"
+    assert _to_proto_type_name("PS__Pets") == "PsPets"
 
 
 def test_proto_type_name_no_prefix():
-    assert _proto_type_name("Pets") == "Pets"
+    assert _to_proto_type_name("Pets") == "Pets"
 
 
 def test_proto_type_name_lowercase_prefix():
     # prefix.capitalize() lowercases the rest of the prefix, so "ps" → "Ps"; "pets" unchanged.
-    assert _proto_type_name("ps__pets") == "Pspets"
-
-
-def test_to_proto_type_name_agrees_with_proxy_helper():
-    """Both modules must produce identical output for same input."""
-    cases = ["PS__Pets", "Pets", "ps__pets", "my__Type"]
-    for name in cases:
-        assert _proto_type_name(name) == _to_proto_type_name(name), (
-            f"Mismatch for {name!r}: proxy={_proto_type_name(name)!r} "
-            f"proto_gen={_to_proto_type_name(name)!r}"
-        )
+    assert _to_proto_type_name("ps__pets") == "Pspets"
 
 
 def test_to_proto_field_name_replaces_double_underscore():
@@ -102,111 +48,104 @@ def test_to_proto_field_name_no_double_underscore():
 
 
 # ---------------------------------------------------------------------------
-# read_mask filtering logic (extracted inline — the logic lives in grpc_proxy
-# but we test it directly as a pure function extracted here)
+# read_mask projection logic. The proxy applies the mask to proto-keyed output
+# rows (mask paths are proto field names, and output is re-keyed to proto names),
+# so this replicates that projection over row dicts.
 # ---------------------------------------------------------------------------
 
 
-def _apply_read_mask(field_selections: list[str], mask_paths: list[str]) -> list[str]:
-    """Replicate the read_mask filtering block from endpoint_grpc_proxy.grpc_proxy."""
-    if not mask_paths:
-        return field_selections
-
-    top_level_map: dict[str, set[str] | None] = {}
+def _apply_read_mask(rows: list[dict], mask_paths: list[str]) -> list[dict]:
+    """Replicate the read_mask projection block from endpoint_grpc_proxy.grpc_proxy."""
+    mask_map: dict[str, set[str] | None] = {}
     for p in mask_paths:
         parts = p.split(".", 1)
         top = parts[0]
         sub = parts[1] if len(parts) > 1 else None
-        if top not in top_level_map:
-            top_level_map[top] = set() if sub else None
-        if sub and top_level_map[top] is not None:
-            top_level_map[top].add(sub)  # type: ignore[union-attr]
+        if top not in mask_map:
+            mask_map[top] = set() if sub else None
+        if sub and mask_map[top] is not None:
+            mask_map[top].add(sub)  # type: ignore[union-attr]
         elif not sub:
-            top_level_map[top] = None
+            mask_map[top] = None
 
-    filtered: list[str] = []
-    for sel in field_selections:
-        sel_name = sel.split()[0]
-        snake_name = _pascal_to_snake(sel_name)
-        key = (
-            snake_name
-            if snake_name in top_level_map
-            else (sel_name if sel_name in top_level_map else None)
-        )
-        if key is None:
-            continue
-        sub_filter = top_level_map[key]
-        if sub_filter is None or "{" not in sel:
-            filtered.append(sel)
-        else:
-            current_subs = re.findall(r"\b(\w+)\b", sel.split("{", 1)[1].rstrip("}").strip())
-            restricted = [
-                s for s in current_subs if s in sub_filter or _pascal_to_snake(s) in sub_filter
-            ]
-            if restricted:
-                filtered.append(f"{sel_name} {{ {' '.join(restricted)} }}")
-    return filtered
+    if not mask_map:
+        return rows
+
+    def _restrict(v: object, subs: set[str]) -> object:
+        if isinstance(v, dict):
+            return {sk: sv for sk, sv in v.items() if sk in subs}
+        if isinstance(v, list):
+            return [_restrict(item, subs) for item in v]
+        return v
+
+    out: list[dict] = []
+    for row in rows:
+        kept: dict = {}
+        for k, v in row.items():
+            if k not in mask_map:
+                continue
+            subs = mask_map[k]
+            kept[k] = v if subs is None else _restrict(v, subs)
+        out.append(kept)
+    return out
 
 
 def test_read_mask_top_level_scalar():
-    sels = ["id", "name", "status"]
-    result = _apply_read_mask(sels, ["id", "status"])
-    assert result == ["id", "status"]
+    rows = [{"id": 1, "name": "Fido", "status": "active"}]
+    result = _apply_read_mask(rows, ["id", "status"])
+    assert result == [{"id": 1, "status": "active"}]
 
 
 def test_read_mask_excludes_unlisted_fields():
-    sels = ["id", "name", "status"]
-    result = _apply_read_mask(sels, ["name"])
-    assert result == ["name"]
-    assert "id" not in result
-    assert "status" not in result
+    rows = [{"id": 1, "name": "Fido", "status": "active"}]
+    result = _apply_read_mask(rows, ["name"])
+    assert result == [{"name": "Fido"}]
 
 
 def test_read_mask_nested_all_subfields():
-    """No dot → include nested field with all its sub-selections."""
-    sels = ["id", "_meta { source_id created_at }"]
-    result = _apply_read_mask(sels, ["_meta"])
-    assert result == ["_meta { source_id created_at }"]
-    assert "id" not in result
+    """No dot → include nested field with all its sub-fields."""
+    rows = [{"id": 1, "_meta": {"source_id": "s", "created_at": "c"}}]
+    result = _apply_read_mask(rows, ["_meta"])
+    assert result == [{"_meta": {"source_id": "s", "created_at": "c"}}]
 
 
 def test_read_mask_nested_specific_subfield():
-    """dot-notation → restrict nested selection to named sub-field only."""
-    sels = ["id", "_meta { source_id created_at }"]
-    result = _apply_read_mask(sels, ["_meta.source_id"])
-    assert len(result) == 1
-    assert result[0] == "_meta { source_id }"
-    assert "created_at" not in result[0]
+    """dot-notation → restrict nested object to the named sub-field only."""
+    rows = [{"id": 1, "_meta": {"source_id": "s", "created_at": "c"}}]
+    result = _apply_read_mask(rows, ["_meta.source_id"])
+    assert result == [{"_meta": {"source_id": "s"}}]
 
 
 def test_read_mask_nested_multiple_subfields():
-    sels = ["_meta { source_id created_at updated_at }"]
-    result = _apply_read_mask(sels, ["_meta.source_id", "_meta.created_at"])
-    assert len(result) == 1
-    assert "source_id" in result[0]
-    assert "created_at" in result[0]
-    assert "updated_at" not in result[0]
+    rows = [{"_meta": {"source_id": "s", "created_at": "c", "updated_at": "u"}}]
+    result = _apply_read_mask(rows, ["_meta.source_id", "_meta.created_at"])
+    assert result == [{"_meta": {"source_id": "s", "created_at": "c"}}]
+
+
+def test_read_mask_nested_list_of_objects():
+    """Restriction applies element-wise to a repeated (list) nested field."""
+    rows = [{"pets": [{"id": 1, "name": "Fido"}, {"id": 2, "name": "Rex"}]}]
+    result = _apply_read_mask(rows, ["pets.name"])
+    assert result == [{"pets": [{"name": "Fido"}, {"name": "Rex"}]}]
 
 
 def test_read_mask_empty_paths_returns_all():
-    sels = ["id", "name", "status"]
-    result = _apply_read_mask(sels, [])
-    assert result == sels
+    rows = [{"id": 1, "name": "Fido", "status": "active"}]
+    result = _apply_read_mask(rows, [])
+    assert result == rows
 
 
 def test_read_mask_top_level_then_nested_dot_overrides_to_all():
-    """If top-level path appears before dot path, result is None (all sub-fields)."""
-    # "_meta" seen first → None (all). Then "_meta.source_id" should not narrow.
-    sels = ["_meta { source_id created_at }"]
-    result = _apply_read_mask(sels, ["_meta", "_meta.source_id"])
-    # None means include all subs, so the full nested selection is kept
-    assert result == ["_meta { source_id created_at }"]
+    """If a bare top-level path appears first, its value is None (all sub-fields)."""
+    rows = [{"_meta": {"source_id": "s", "created_at": "c"}}]
+    result = _apply_read_mask(rows, ["_meta", "_meta.source_id"])
+    assert result == [{"_meta": {"source_id": "s", "created_at": "c"}}]
 
 
 def test_read_mask_unknown_field_excluded():
-    sels = ["id", "name"]
-    result = _apply_read_mask(sels, ["nonexistent"])
-    assert result == []
+    rows = [{"id": 1, "name": "Fido"}]
+    result = _apply_read_mask(rows, ["nonexistent"])
+    assert result == [{}]
 
 
 # ---------------------------------------------------------------------------

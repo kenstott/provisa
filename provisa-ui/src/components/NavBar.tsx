@@ -180,7 +180,24 @@ export function NavBar() {
     <>
       <nav className="navbar" ref={navRef}>
         <div className="navbar-brand">
-          <NavLink to="/">Provisa</NavLink>
+          <NavLink to="/" aria-label="Provisa home">
+            <svg
+              className="navbar-brand-mark"
+              viewBox="0 0 100 100"
+              width="24"
+              height="24"
+              role="img"
+              aria-hidden="true"
+            >
+              <g fill="currentColor">
+                <rect x="30" y="18" width="15" height="64" rx="7" />
+                <circle cx="52" cy="35" r="22" />
+              </g>
+              <circle cx="52" cy="34" r="10.5" fill="var(--surface)" />
+              <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+            </svg>
+            <span>Provisa</span>
+          </NavLink>
         </div>
         <div className="navbar-links">
           <CapabilityGate capability="source_registration">

@@ -149,6 +149,16 @@ def _make_app_state(schema=None):
     state.trino_conn = None
     state.schema_build_cache = {"column_types": {1: []}, "tables": []}
     state.tables = []
+    # Domain-scoped path map (REQ-799..804): gql field name → {domain_id, table_name}
+    state.table_path_maps = {
+        "admin": {
+            "orders": {
+                "domain_id": "default",
+                "table_name": "orders",
+                "schema_name": "public",
+            }
+        }
+    }
     return state
 
 
@@ -359,17 +369,17 @@ class TestJSONAPIPagination:
 
 
 class TestJSONAPIGeneratorRoutes:
-    """REQ-257: Router registers /data/jsonapi/{table} for each schema table."""
+    """REQ-257: Router registers /data/jsonapi/{domain_id}/{table_name} for each schema table."""
 
     def test_router_registered_for_orders(self):
-        # REQ-257: route /data/jsonapi/{table} is present in the created router
+        # REQ-257 / REQ-799..804: domain-scoped route /data/jsonapi/{domain_id}/{table_name}
         from provisa.api.jsonapi.generator import create_jsonapi_router
 
         state = _make_app_state()
         router = create_jsonapi_router(state)
 
         paths = [route.path for route in router.routes]  # type: ignore[attr-defined]
-        assert any("{table}" in p for p in paths)
+        assert any("{domain_id}" in p and "{table_name}" in p for p in paths)
 
     def test_router_has_prefix(self):
         # REQ-257: router is mounted under /data/jsonapi
@@ -626,7 +636,7 @@ class TestJSONAPIPaginationHTTP:
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             response = await client.get(
-                "/data/jsonapi/orders",
+                "/data/jsonapi/default/orders",
                 params={"page[number]": "1", "page[size]": "2"},
                 headers={"accept": "application/vnd.api+json"},
             )
@@ -677,7 +687,7 @@ class TestJSONAPIPaginationHTTP:
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             response = await client.get(
-                "/data/jsonapi/orders",
+                "/data/jsonapi/default/orders",
                 params={"page[number]": "1", "page[size]": "2"},
                 headers={"accept": "application/vnd.api+json"},
             )
@@ -724,7 +734,7 @@ class TestJSONAPIPaginationHTTP:
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             response = await client.get(
-                "/data/jsonapi/orders",
+                "/data/jsonapi/default/orders",
                 headers={"accept": "application/vnd.api+json"},
             )
 
@@ -746,7 +756,7 @@ class TestJSONAPIPaginationHTTP:
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             response = await client.get(
-                "/data/jsonapi/nonexistent",
+                "/data/jsonapi/default/nonexistent",
                 headers={"accept": "application/vnd.api+json"},
             )
 
@@ -795,7 +805,7 @@ class TestJSONAPIPaginationHTTP:
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             response = await client.get(
-                "/data/jsonapi/orders",
+                "/data/jsonapi/default/orders",
                 headers={"accept": "application/vnd.api+json"},
             )
 

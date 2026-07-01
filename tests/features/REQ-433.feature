@@ -5,5 +5,4 @@ Feature: REQ-433 — Registration & Governance
   Scenario: REQ-433 default behaviour
     Given a datasource shared across multiple domains
     When a domain owner claims a table
-    Then no other domain may claim that same physical table; the UI greys it out for all other
-    domains
+    Then no other domain may claim that same physical table; the UI greys it out for all other domains

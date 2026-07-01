@@ -8,13 +8,19 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration tests for gRPC server reflection.
+"""Unit tests for gRPC server reflection wiring.
 
-Requires a running gRPC server (Docker Compose stack).
+Exercises the real ``enable_server_reflection`` aio branch against a
+``MagicMock(spec=grpc.aio.Server)`` rather than a live ``grpc.aio.server()``.
+Instantiating a real cygrpc server here corrupts the shared C gRPC runtime and
+segfaults on teardown once enough of the suite has run; the mock keeps full
+coverage of our wrapper (name assembly + forwarding + registration path)
+without touching the C server lifecycle.
 """
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
 
 import grpc
 import grpc.aio
@@ -24,21 +30,24 @@ reflection = pytest.importorskip("grpc_reflection.v1alpha.reflection")
 
 from provisa.grpc.reflection import enable_reflection
 
-pytestmark = [pytest.mark.asyncio(loop_scope="session")]
+
+def _mock_server() -> MagicMock:
+    """A stand-in that satisfies ``isinstance(server, grpc.aio.Server)``."""
+    return MagicMock(spec=grpc.aio.Server)
 
 
 class TestEnableReflection:
-    async def test_reflection_adds_service_names(self):
+    def test_reflection_adds_service_names(self):
         """Verify enable_reflection registers services plus the reflection service."""
-        server = grpc.aio.server()
+        server = _mock_server()
         service_names = ["provisa.v1.ProvisaService"]
 
         captured: dict[str, list[str]] = {}
         original_enable = reflection.enable_server_reflection
 
-        def spy(names: list[str], srv: grpc.aio.Server) -> None:
+        def spy(names, srv, pool=None):
             captured["names"] = list(names)
-            return original_enable(names, srv)
+            return original_enable(names, srv, pool=pool)
 
         with pytest.MonkeyPatch.context() as m:
             m.setattr(reflection, "enable_server_reflection", spy)
@@ -47,20 +56,20 @@ class TestEnableReflection:
         assert result is None
         assert "provisa.v1.ProvisaService" in captured["names"]
         assert reflection.SERVICE_NAME in captured["names"]
-        await server.stop(grace=0)
+        # Real aio branch ran: the servicer was registered on the server.
+        assert server.add_generic_rpc_handlers.called
 
-    async def test_reflection_includes_reflection_service(self):
+    def test_reflection_includes_reflection_service(self):
         """The reflection service itself should be listed."""
-        server = grpc.aio.server()
+        server = _mock_server()
         service_names = ["provisa.v1.ProvisaService"]
 
-        # Capture what gets passed to enable_server_reflection
-        captured = {}
+        captured: dict[str, list[str]] = {}
         original_enable = reflection.enable_server_reflection
 
-        def spy(names, srv):
+        def spy(names, srv, pool=None):
             captured["names"] = list(names)
-            return original_enable(names, srv)
+            return original_enable(names, srv, pool=pool)
 
         with pytest.MonkeyPatch.context() as m:
             m.setattr(reflection, "enable_server_reflection", spy)
@@ -68,21 +77,18 @@ class TestEnableReflection:
 
         assert reflection.SERVICE_NAME in captured["names"]
         assert "provisa.v1.ProvisaService" in captured["names"]
-        await server.stop(grace=0)
 
-    async def test_multiple_services_registered(self):
+    def test_multiple_services_registered(self):
         """Multiple service names should all be registered."""
-        server = grpc.aio.server()
-        service_names = [
-            "provisa.v1.ProvisaService",
-            "provisa.v1.AdminService"]
+        server = _mock_server()
+        service_names = ["provisa.v1.ProvisaService", "provisa.v1.AdminService"]
 
-        captured = {}
+        captured: dict[str, list[str]] = {}
         original_enable = reflection.enable_server_reflection
 
-        def spy(names, srv):
+        def spy(names, srv, pool=None):
             captured["names"] = list(names)
-            return original_enable(names, srv)
+            return original_enable(names, srv, pool=pool)
 
         with pytest.MonkeyPatch.context() as m:
             m.setattr(reflection, "enable_server_reflection", spy)
@@ -92,4 +98,3 @@ class TestEnableReflection:
         assert "provisa.v1.ProvisaService" in captured["names"]
         assert "provisa.v1.AdminService" in captured["names"]
         assert reflection.SERVICE_NAME in captured["names"]
-        await server.stop(grace=0)

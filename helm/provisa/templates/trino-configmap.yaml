@@ -9,10 +9,20 @@ data:
     node-scheduler.include-coordinator=false
     http-server.http.port={{ .Values.trino.port }}
     discovery.uri=http://{{ .Release.Name }}-trino-coordinator:{{ .Values.trino.port }}
+    query.max-memory={{ .Values.trino.memory.maxMemory }}
+    query.max-memory-per-node={{ .Values.trino.memory.maxMemoryPerNode }}
+    query.max-total-memory={{ .Values.trino.memory.maxTotalMemory }}
+    retry-policy=TASK
+    task.low-memory-killer.policy=total-reservation-on-blocked-nodes
+    fault-tolerant-execution-task-memory={{ .Values.trino.fte.taskMemory }}
   worker-config.properties: |
     coordinator=false
     http-server.http.port={{ .Values.trino.port }}
     discovery.uri=http://{{ .Release.Name }}-trino-coordinator:{{ .Values.trino.port }}
+    query.max-memory-per-node={{ .Values.trino.memory.maxMemoryPerNode }}
+    retry-policy=TASK
+    task.low-memory-killer.policy=total-reservation-on-blocked-nodes
+    fault-tolerant-execution-task-memory={{ .Values.trino.fte.taskMemory }}
   {{- if .Values.mongodb.enabled }}
   reviews_mongo.properties: |
     connector.name=mongodb
