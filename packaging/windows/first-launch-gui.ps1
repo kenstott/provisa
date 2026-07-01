@@ -186,17 +186,24 @@ $pConfig.Controls.Add($nudPort)
 
 Lbl 'Runtime' 20 238 $true
 
+# Runtime radios live in their own panel so WinForms treats them as a separate
+# radio group from the RAM-budget radios (radios group by immediate parent).
+$pRuntime          = New-Object System.Windows.Forms.Panel
+$pRuntime.Location  = New-Object System.Drawing.Point(18, 258)
+$pRuntime.Size      = New-Object System.Drawing.Size(440, 28)
+$pConfig.Controls.Add($pRuntime)
+
 $rbDocker          = New-Object System.Windows.Forms.RadioButton
 $rbDocker.Text     = 'Use existing Docker Desktop'
 $rbDocker.AutoSize = $true
-$rbDocker.Location = New-Object System.Drawing.Point(20, 262)
-$pConfig.Controls.Add($rbDocker)
+$rbDocker.Location = New-Object System.Drawing.Point(2, 4)
+$pRuntime.Controls.Add($rbDocker)
 
 $rbVBox          = New-Object System.Windows.Forms.RadioButton
 $rbVBox.Text     = 'Bundled VM (VirtualBox)'
 $rbVBox.AutoSize = $true
-$rbVBox.Location = New-Object System.Drawing.Point(230, 262)
-$pConfig.Controls.Add($rbVBox)
+$rbVBox.Location = New-Object System.Drawing.Point(212, 4)
+$pRuntime.Controls.Add($rbVBox)
 
 $btnRecheck          = New-Object System.Windows.Forms.Button
 $btnRecheck.Text     = 'Re-check'
@@ -431,6 +438,7 @@ $timer.Add_Tick({
 # -- Install click ------------------------------------------------------------
 $btnInstall.Add_Click({
   $sel = $radios | Where-Object { $_.Checked } | Select-Object -First 1
+  if (-not $sel) { $sel = $radios[0] }
   $ramText = $sel.Text
   if ($ramText -like 'All*') { $budgetGb = $totalGb }
   else                       { $budgetGb = [int]($ramText -replace 'GB', '') }
