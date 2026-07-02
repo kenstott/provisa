@@ -2365,9 +2365,7 @@ async def _bg_hydrate_api_endpoints() -> None:
     _hydrate_log = logging.getLogger(__name__)
     assert state.pg_pool is not None
 
-    async def _bg_hydrate(
-        eps=_zero_param_eps, pool: asyncpg.Pool = state.pg_pool, _log=_hydrate_log
-    ):
+    async def _bg_hydrate(eps=_zero_param_eps, pool: Database = state.pg_pool, _log=_hydrate_log):
         from provisa.openapi.pg_cache import fill_api_table
 
         async with pool.acquire() as _conn:
