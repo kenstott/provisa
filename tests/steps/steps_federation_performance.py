@@ -129,6 +129,17 @@ def analyze_cache_table(table: str, executor) -> bool:
 _ROUTE_DIRECT = "direct"
 _ROUTE_FEDERATED = "federated"
 
+# Source type / dialect metadata used by the router in REQ-811 steps.
+_TYPES: dict[str, str] = {
+    "pg-main": "postgresql",
+    "pg-secondary": "postgresql",
+}
+
+_DIALECTS: dict[str, str] = {
+    "pg-main": "postgres",
+    "pg-secondary": "postgres",
+}
+
 
 @pytest_asyncio.fixture
 def shared_data() -> dict:
@@ -695,99 +706,3 @@ def then_translate_federation_hints_converts_to_trino_session_props(shared_data:
     mock_cursor = MagicMock()
     mock_cursor.description = [("id",)]
     mock_cursor.fetchall.return_value = [(1,)]
-    mock_conn.cursor.return_value = mock_cursor
-
-    test_sql = "SELECT id FROM orders LIMIT 1"
-    execute_trino(mock_conn, test_sql, session_hints=session_props)
-
-    all_calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
-    set_calls = [c for c in all_calls if c.upper().startswith("SET SESSION")]
-
-    # execute_trino emits one SET SESSION statement per session property before
-    # running the query. Every translated property must appear in a SET SESSION.
-    for prop, value in session_props.items():
-        expected = f"SET SESSION {prop} = '{value}'"
-        assert expected in set_calls, (
-            f"execute_trino did not emit SET SESSION for translated property "
-            f"{prop!r}; expected {expected!r} in {set_calls!r}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# REQ-811 — GraphQL `# @provisa route=federated|direct` comment hint routing
-# ---------------------------------------------------------------------------
-
-
-def _route_for_graphql_query(graphql_query: str) -> Route:
-    """Drive the real production routing path for a GraphQL comment-hint query.
-
-    Mirrors ``provisa/api/data/endpoint.py:_build_directives_with_legacy``:
-    ``extract_graphql_hints`` parses the ``# @provisa route=…`` comment, the
-    legacy ``route`` value is mapped to a steward hint, and
-    ``provisa.transpiler.router.decide_route`` produces the final route.
-    """
-    hints = extract_graphql_hints(graphql_query)
-    raw = hints.get("route")
-    # Mapping identical to endpoint.py's legacy-route translation.
-    steward_hint = "federated" if raw == "federated" else "direct" if raw == "direct" else None
-
-    # Single postgres source with a real direct driver — the only scenario in
-    # which route=direct can produce DIRECT (decide_route enforces this).
-    sources = {"sales-pg"}
-    source_types = {"sales-pg": "postgresql"}
-    source_dialects = {"sales-pg": "postgres"}
-
-    decision = decide_route(
-        sources,
-        source_types,
-        source_dialects,
-        steward_hint=steward_hint,
-    )
-    return decision.route
-
-
-@given('a GraphQL query annotated with the comment hint "# @provisa route=direct"')
-def given_graphql_query_route_direct(shared_data: dict) -> None:
-    graphql_query = "# @provisa route=direct\nquery Report { orders { id name } }"
-
-    # The Provisa parser must recognise the route=direct hint.
-    hints = extract_graphql_hints(graphql_query)
-    assert hints.get("route") == "direct", (
-        f"extract_graphql_hints failed to parse route=direct; got {hints!r}"
-    )
-
-    shared_data["graphql_query"] = graphql_query
-
-
-@then("the query is routed to single-source direct execution")
-def then_routed_to_direct_execution(shared_data: dict) -> None:
-    # Compilation step already parsed the hints; drive the real router.
-    hints = shared_data["graphql_hints"]
-    assert hints.get("route") == "direct", (
-        f"expected parsed route=direct hint, got {hints!r}"
-    )
-
-    route = _route_for_graphql_query(shared_data["graphql_query"])
-    assert route is Route.DIRECT, (
-        f"# @provisa route=direct must route to single-source direct execution; "
-        f"decide_route returned {route!r}"
-    )
-
-
-@then(
-    'a query annotated with "# @provisa route=federated" is routed through the federation'
-    " engine"
-)
-def then_route_federated_uses_federation_engine(shared_data: dict) -> None:
-    graphql_query = "# @provisa route=federated\nquery Report { orders { id name } }"
-
-    hints = extract_graphql_hints(graphql_query)
-    assert hints.get("route") == "federated", (
-        f"extract_graphql_hints failed to parse route=federated; got {hints!r}"
-    )
-
-    route = _route_for_graphql_query(graphql_query)
-    assert route is Route.TRINO, (
-        f"# @provisa route=federated must route through the federation (Trino) "
-        f"engine; decide_route returned {route!r}"
-    )

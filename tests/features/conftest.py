@@ -151,4 +151,6 @@ import tests.steps.steps_hasura_v2_parity_low_complexity_features  # type: ignor
 
 import tests.steps.steps_hasura_v2_parity_medium_complexity_features  # type: ignore[import]  # noqa: F401
 
+import tests.steps.steps_live_strategy_dispatch  # type: ignore[import]  # noqa: F401
+
 scenarios(".")

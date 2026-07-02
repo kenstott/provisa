@@ -8,13 +8,10 @@
 from __future__ import annotations
 
 import asyncio
-import os
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import pytest_asyncio
-from pytest_bdd import given, when, then, parsers, scenario
+from pytest_bdd import given, when, then, scenario
 
 # ---------------------------------------------------------------------------
 # Shared fixture
@@ -33,7 +30,7 @@ def shared_data() -> dict:
 
 
 @scenario(
-    "../features/req_820.feature",
+    "../features/REQ-820.feature",
     "REQ-820 default behaviour",
 )
 def test_req_820_default_behaviour():
@@ -81,7 +78,9 @@ def _make_fake_trino_connection(rows: list[dict] | None = None) -> MagicMock:
     cursor = MagicMock()
     cursor.execute = MagicMock()
     cursor.fetchall = MagicMock(return_value=rows)
-    cursor.description = [(col, None, None, None, None, None, None) for col in rows[0].keys()] if rows else []
+    cursor.description = (
+        [(col, None, None, None, None, None, None) for col in rows[0].keys()] if rows else []
+    )
 
     conn = MagicMock()
     conn.cursor = MagicMock(return_value=cursor)
@@ -156,7 +155,9 @@ class _REQ820Engine:
 
         # Convert rows using cursor.description
         columns = [d[0] for d in cursor.description]
-        rows = [dict(zip(columns, row.values() if isinstance(row, dict) else row)) for row in raw_rows]
+        rows = [
+            dict(zip(columns, row.values() if isinstance(row, dict) else row)) for row in raw_rows
+        ]
 
         if not rows:
             return rows
