@@ -775,10 +775,18 @@ $btnInstall.Add_Click({
         $found = Get-ChildItem -Path $searchDir -Filter 'provisa-core-images-amd64-*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($found) { $CoreZip = $found.FullName; break }
       }
+      $CoreZipDownloaded = $false
       if (-not $CoreZip) {
         if (-not $EmbeddedVersion) { throw 'VERSION file missing - cannot determine download URL.' }
+        # Core zip + extraction need ~4 GB of transient space on the TEMP drive.
+        $tempDrive = [System.IO.Path]::GetPathRoot($env:TEMP)
+        $freeGb = [int]((New-Object System.IO.DriveInfo $tempDrive).AvailableFreeSpace / 1GB)
+        if ($freeGb -lt 5) {
+          throw "Not enough disk space: $freeGb GB free on $tempDrive, need ~5 GB. Free space (del %TEMP%\provisa-*.zip; docker system prune -af) and retry."
+        }
         $downloadUrl  = "https://github.com/kenstott/provisa/releases/download/$EmbeddedVersion/provisa-core-images-amd64-$EmbeddedVersion.zip"
         $localZipPath = Join-Path $env:TEMP "provisa-core-images-amd64-$EmbeddedVersion.zip"
+        $CoreZipDownloaded = $true
         Log "Downloading Core Services ($EmbeddedVersion)..."
         $request = [System.Net.HttpWebRequest]::Create($downloadUrl)
         $request.UserAgent = 'Provisa-Installer/1.0'
@@ -813,6 +821,9 @@ $btnInstall.Add_Click({
       New-Item -ItemType Directory -Path $ExtractDir -Force | Out-Null
       Add-Type -AssemblyName System.IO.Compression.FileSystem
       [System.IO.Compression.ZipFile]::ExtractToDirectory($CoreZip, $ExtractDir)
+      # Free the ~1.5 GB zip immediately once extracted (don't leave it in TEMP
+      # across repeated installs - that is what filled the disk).
+      if ($CoreZipDownloaded) { Remove-Item $CoreZip -Force -ErrorAction SilentlyContinue }
       $sync.Progress = 78
 
       # tar.exe reads image manifests; curl.exe drives the VirtualBox Docker API.
@@ -850,7 +861,7 @@ $btnInstall.Add_Click({
       # Find (next to the installer) or download a release image tarball, then
       # load every *.tar.gz inside it into the daemon. Used for demo + obs.
       function Install-ReleaseImages { param($Pattern, $Asset, $Label)
-        $tar = $null
+        $tar = $null; $dst = $null
         foreach ($searchDir in @($ScriptDir, (Split-Path -Parent $ScriptDir))) {
           $f = Get-ChildItem -Path $searchDir -Filter $Pattern -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($f) { $tar = $f.FullName; break }
@@ -876,6 +887,7 @@ $btnInstall.Add_Click({
           else { & $curlExe --silent --show-error --max-time 3600 -X POST "$DockerApiBase/images/load" -H 'Content-Type: application/x-tar' --data-binary "@$($img.FullName)" | Out-Null }
         }
         Remove-Item -Recurse -Force $ex -ErrorAction SilentlyContinue
+        if ($dst) { Remove-Item $dst -Force -ErrorAction SilentlyContinue }
         Log "$Label installed."
       }
 
@@ -989,6 +1001,7 @@ $btnInstall.Add_Click({
       if (-not $pluginsPresent) {
         $sync.Status = 'Locating query engine plugins...'
         $PluginsTar = $null
+        $pDest      = $null
         foreach ($searchDir in @($ScriptDir, (Split-Path -Parent $ScriptDir))) {
           $found = Get-ChildItem -Path $searchDir -Filter 'provisa-trino-plugins-*.tar.gz' -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($found) { $PluginsTar = $found.FullName; break }
@@ -1028,6 +1041,7 @@ $btnInstall.Add_Click({
         if (-not (Test-Path (Join-Path $PluginsDir 'trino-file'))) {
           throw 'Query engine plugins did not extract correctly (trino-file missing).'
         }
+        if ($PluginsTar -eq $pDest) { Remove-Item $pDest -Force -ErrorAction SilentlyContinue }
         Log 'Query engine plugins installed.'
       } else {
         Log 'Query engine plugins already present.'
