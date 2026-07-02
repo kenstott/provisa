@@ -27,9 +27,9 @@ async def me(request: Request):
 
     identity = getattr(request.state, "identity", None)
 
-    pg_pool = state.pg_pool
-    assert pg_pool is not None
-    async with pg_pool.acquire() as conn:
+    tenant_db = state.tenant_db
+    assert tenant_db is not None
+    async with tenant_db.acquire() as conn:
         role_rows = await conn.fetch("SELECT id FROM roles")
     all_role_ids = {r["id"] for r in role_rows}
 

@@ -62,7 +62,7 @@ def _make_engine(pool=None, trino_conn=None) -> LiveEngine:
         pool = MagicMock()
     if trino_conn is None:
         trino_conn = MagicMock()
-    return LiveEngine(pg_pool=pool, trino_conn=trino_conn)
+    return LiveEngine(tenant_db=pool, trino_conn=trino_conn)
 
 
 def _trino_qr(rows):
@@ -413,7 +413,7 @@ class TestLiveEnginePoll:
         engine = _make_engine()
         # No query registered — _poll must return without touching pool
         pool = MagicMock()
-        engine._pg_pool = pool
+        engine._tenant_db = pool
         await engine._poll("nonexistent-q")
         pool.acquire.assert_not_called()
         assert pool.acquire.call_count == 0

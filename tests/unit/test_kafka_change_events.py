@@ -426,7 +426,7 @@ class TestTriggerSinksForTable:
 
     async def test_returns_zero_when_pg_pool_is_none(self):
         state = MagicMock()
-        state.pg_pool = None
+        state.tenant_db = None
         assert await trigger_sinks_for_table("orders", state) == 0
 
     async def test_returns_zero_and_does_not_read_registry(self):
@@ -435,7 +435,7 @@ class TestTriggerSinksForTable:
         mock_pool = _mock_pool_with_conn(mock_conn)
 
         state = MagicMock()
-        state.pg_pool = mock_pool
+        state.tenant_db = mock_pool
 
         result = await trigger_sinks_for_table("orders", state)
 

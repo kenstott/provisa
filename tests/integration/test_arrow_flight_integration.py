@@ -33,7 +33,7 @@ import pytest
 pa = pytest.importorskip("pyarrow")
 flight = pytest.importorskip("pyarrow.flight")
 
-from provisa.api.flight.server import ProvisaFlightServer
+from provisa.api.flight.server import ProvisaFlightServer  # noqa: E402
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -98,6 +98,7 @@ def flight_server_and_client():
 
     # Give the server a moment to bind
     import time
+
     for _ in range(20):
         if _port_in_use(_TEST_FLIGHT_PORT):
             break
@@ -150,16 +151,20 @@ class TestFlightServerStartsAndConnects:
     async def test_flight_unknown_role_raises_error(self, flight_server_and_client):
         """Ticket with unknown role raises FlightServerError."""
         client, _, _ = flight_server_and_client
-        ticket_bytes = json.dumps({
-            "query": "{ orders { id } }",
-            "role": "nonexistent_role",
-        }).encode()
+        ticket_bytes = json.dumps(
+            {
+                "query": "{ orders { id } }",
+                "role": "nonexistent_role",
+            }
+        ).encode()
         bad_ticket = flight.Ticket(ticket_bytes)
         with pytest.raises(flight.FlightServerError):
             reader = client.do_get(bad_ticket)
             reader.read_all()
 
-    async def test_flight_handshake_returns_token_for_valid_mode(self, flight_server_and_client: object):
+    async def test_flight_handshake_returns_token_for_valid_mode(
+        self, flight_server_and_client: object
+    ):
         """do_handshake with valid mode completes without error."""
         _ = flight_server_and_client  # ensures server is running for fresh client below
         # We connect a fresh client that goes through the handshake implicitly
@@ -186,9 +191,9 @@ class TestFlightDoGetWithRealData:
     """
 
     @pytest.fixture(scope="class")
-    def pg_backed_flight(self, pg_pool):
+    def pg_backed_flight(self, tenant_db):
         """Start a PG-backed Flight server on a separate port."""
-        _ = pg_pool  # requested for side-effect: ensures PG pool is ready before server starts
+        _ = tenant_db  # requested for side-effect: ensures PG pool is ready before server starts
         port = _TEST_FLIGHT_PORT + 1
         location = f"grpc://localhost:{port}"
 
@@ -225,6 +230,7 @@ class TestFlightDoGetWithRealData:
 
         try:
             from provisa.compiler.sql_gen import CompilationContext, TableMeta
+
             ctx = CompilationContext(
                 tables={
                     "orders": TableMeta(
@@ -276,9 +282,7 @@ class TestFlightDoGetWithRealData:
         ).result(timeout=15)
 
         state_placeholder = MagicMock()
-        server = ProvisaFlightServer(
-            state_placeholder, location=location, main_loop=main_loop
-        )
+        server = ProvisaFlightServer(state_placeholder, location=location, main_loop=main_loop)
 
         state = MagicMock()
         state.schemas = {"admin": schema}
@@ -297,6 +301,7 @@ class TestFlightDoGetWithRealData:
         flight_thread.start()
 
         import time
+
         for _ in range(20):
             if _port_in_use(port):
                 break
@@ -327,10 +332,12 @@ class TestFlightDoGetWithRealData:
     async def test_flight_do_get_returns_record_batches(self, pg_backed_flight):
         """do_get with a valid GraphQL ticket returns Arrow RecordBatches."""
         client, _, _, _, _ = pg_backed_flight
-        ticket_bytes = json.dumps({
-            "query": "{ orders { id region amount } }",
-            "role": "admin",
-        }).encode()
+        ticket_bytes = json.dumps(
+            {
+                "query": "{ orders { id region amount } }",
+                "role": "admin",
+            }
+        ).encode()
         ticket = flight.Ticket(ticket_bytes)
 
         reader = client.do_get(ticket)
@@ -342,10 +349,12 @@ class TestFlightDoGetWithRealData:
     async def test_flight_schema_matches_query(self, pg_backed_flight):
         """Returned schema field names match the queried columns."""
         client, _, _, _, _ = pg_backed_flight
-        ticket_bytes = json.dumps({
-            "query": "{ orders { id region amount } }",
-            "role": "admin",
-        }).encode()
+        ticket_bytes = json.dumps(
+            {
+                "query": "{ orders { id region amount } }",
+                "role": "admin",
+            }
+        ).encode()
         ticket = flight.Ticket(ticket_bytes)
 
         reader = client.do_get(ticket)
@@ -355,17 +364,19 @@ class TestFlightDoGetWithRealData:
         for field_name in ("id", "region", "amount"):
             assert field_name in schema_names
 
-    async def test_flight_row_count_matches_sql(self, pg_backed_flight, pg_pool):
+    async def test_flight_row_count_matches_sql(self, pg_backed_flight, tenant_db):
         """Row count from Flight matches direct PG count."""
         client, _, _, _, _ = pg_backed_flight
 
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             pg_count = await conn.fetchval('SELECT COUNT(*) FROM "public"."orders"')
 
-        ticket_bytes = json.dumps({
-            "query": "{ orders { id } }",
-            "role": "admin",
-        }).encode()
+        ticket_bytes = json.dumps(
+            {
+                "query": "{ orders { id } }",
+                "role": "admin",
+            }
+        ).encode()
         ticket = flight.Ticket(ticket_bytes)
 
         reader = client.do_get(ticket)

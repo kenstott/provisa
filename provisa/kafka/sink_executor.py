@@ -58,8 +58,8 @@ async def trigger_sinks_for_table(table_name: str, state: AppState) -> int:  # R
 
 async def _execute_and_publish_table_sink(table, state: AppState) -> None:  # REQ-176, REQ-181
     """Execute a SELECT on the table and publish rows to its Kafka sink."""
-    if state.pg_pool is None:
-        log.warning("No pg_pool for sink execution on %s", table.table_name)
+    if state.tenant_db is None:
+        log.warning("No tenant_db for sink execution on %s", table.table_name)
         return
     sink = table.kafka_sink
     assert sink is not None
@@ -72,7 +72,7 @@ async def _execute_and_publish_table_sink(table, state: AppState) -> None:  # RE
         log.warning("No Kafka bootstrap for sink on %s", table.table_name)
         return
 
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         rows_raw = await conn.fetch(
             f'SELECT * FROM "{table.schema_name}"."{table.table_name}" LIMIT 1000'
         )

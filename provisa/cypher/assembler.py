@@ -356,15 +356,15 @@ def _apply_rel_id_map(v: Any, rel_map: dict[str, int]) -> Any:
     return v
 
 
-async def register_rel_ids(serializable_rows: list[dict], pg_pool: Any) -> None:
+async def register_rel_ids(serializable_rows: list[dict], tenant_db: Any) -> None:
     """Upsert all graph relationships to rel_ids; replace composite edge identities with ints.
 
-    Mutates serializable_rows in place.  No-op if pg_pool is None or no edges found.
+    Mutates serializable_rows in place.  No-op if tenant_db is None or no edges found.
     Mirrors register_node_ids so relationships get durable IDs the same way nodes do.
     """
     import json as _json
 
-    if pg_pool is None:
+    if tenant_db is None:
         return
 
     edges: dict[str, tuple[str, dict]] = {}
@@ -381,7 +381,7 @@ async def register_rel_ids(serializable_rows: list[dict], pg_pool: Any) -> None:
         _json.dumps({k: v for k, v in edges[c][1].items() if v is not None}) for c in composite_ids
     ]
 
-    async with pg_pool.acquire() as conn:
+    async with tenant_db.acquire() as conn:
         db_rows = await conn.fetch(
             """
             INSERT INTO rel_ids (composite_id, rel_type, properties)
@@ -403,14 +403,14 @@ async def register_rel_ids(serializable_rows: list[dict], pg_pool: Any) -> None:
         serializable_rows[i] = {k: _apply_rel_id_map(v, rel_map) for k, v in row.items()}
 
 
-async def register_node_ids(serializable_rows: list[dict], pg_pool: Any) -> None:  # REQ-394
+async def register_node_ids(serializable_rows: list[dict], tenant_db: Any) -> None:  # REQ-394
     """Upsert all graph nodes to node_ids table; replace composite string IDs with integers.
 
-    Mutates serializable_rows in place.  No-op if pg_pool is None or no nodes found.
+    Mutates serializable_rows in place.  No-op if tenant_db is None or no nodes found.
     """
     import json as _json
 
-    if pg_pool is None:
+    if tenant_db is None:
         return
 
     nodes: dict[str, tuple[str, dict]] = {}
@@ -427,7 +427,7 @@ async def register_node_ids(serializable_rows: list[dict], pg_pool: Any) -> None
         _json.dumps({k: v for k, v in nodes[c][1].items() if v is not None}) for c in composite_ids
     ]
 
-    async with pg_pool.acquire() as conn:
+    async with tenant_db.acquire() as conn:
         db_rows = await conn.fetch(
             """
             INSERT INTO node_ids (composite_id, label, properties)

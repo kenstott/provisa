@@ -251,9 +251,9 @@ def call_whitelisted_and_protected(shared_data):
     from provisa.api.app import state as _state, create_app
 
     # Clear stale module state left by previous tests that ran a full lifespan.
-    # The pg_pool from a prior test is closed; auth_config must be reset so this
+    # The tenant_db from a prior test is closed; auth_config must be reset so this
     # fresh app starts with no assumed auth configuration.
-    _state.pg_pool = None
+    _state.tenant_db = None
     _state.auth_config = None
     _state.auth_middleware_active = False
 

@@ -29,25 +29,25 @@ CREATE TABLE IF NOT EXISTS rel_ids (
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
-async def _ensure_rel_ids_table(pg_pool):
+async def _ensure_rel_ids_table(tenant_db):
     """Create rel_ids if the test-DB snapshot pre-dates REQ-806."""
-    async with pg_pool.acquire() as conn:
+    async with tenant_db.acquire() as conn:
         await conn.execute(_REL_IDS_DDL)
     yield
 
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestRelIdsTable:
-    async def test_rel_ids_table_exists(self, pg_pool):
-        async with pg_pool.acquire() as conn:
+    async def test_rel_ids_table_exists(self, tenant_db):
+        async with tenant_db.acquire() as conn:
             count = await conn.fetchval(
                 "SELECT COUNT(*) FROM information_schema.tables "
                 "WHERE table_name = 'rel_ids' AND table_schema = 'public'"
             )
         assert count == 1
 
-    async def test_rel_ids_has_bigserial_id(self, pg_pool):
-        async with pg_pool.acquire() as conn:
+    async def test_rel_ids_has_bigserial_id(self, tenant_db):
+        async with tenant_db.acquire() as conn:
             col = await conn.fetchrow(
                 "SELECT data_type FROM information_schema.columns "
                 "WHERE table_name = 'rel_ids' AND column_name = 'id'"
@@ -55,8 +55,8 @@ class TestRelIdsTable:
         assert col is not None
         assert col["data_type"] == "bigint"
 
-    async def test_rel_ids_composite_id_unique(self, pg_pool):
-        async with pg_pool.acquire() as conn:
+    async def test_rel_ids_composite_id_unique(self, tenant_db):
+        async with tenant_db.acquire() as conn:
             constraints = await conn.fetch(
                 "SELECT constraint_type FROM information_schema.table_constraints "
                 "WHERE table_name = 'rel_ids' AND constraint_type = 'UNIQUE'"
@@ -66,10 +66,10 @@ class TestRelIdsTable:
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestRegisterRelIds:
-    async def test_upsert_assigns_integer_id(self, pg_pool):
+    async def test_upsert_assigns_integer_id(self, tenant_db):
         """Registering an edge inserts a row with a BIGSERIAL integer id."""
         composite_id = "TEST_REL:unit-integ-1"
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             await conn.execute("DELETE FROM rel_ids WHERE composite_id = $1", composite_id)
 
         rows = [
@@ -85,9 +85,9 @@ class TestRegisterRelIds:
         ]
         from provisa.cypher.assembler import register_rel_ids
 
-        await register_rel_ids(rows, pg_pool)
+        await register_rel_ids(rows, tenant_db)
 
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT id, composite_id, rel_type FROM rel_ids WHERE composite_id = $1",
                 composite_id,
@@ -97,10 +97,10 @@ class TestRegisterRelIds:
         assert row["composite_id"] == composite_id
         assert row["rel_type"] == "TEST_REL"
 
-    async def test_upsert_idempotent_returns_same_id(self, pg_pool):
+    async def test_upsert_idempotent_returns_same_id(self, tenant_db):
         """Re-registering the same edge returns the same integer id (ON CONFLICT DO UPDATE)."""
         composite_id = "TEST_REL:idem-potent-1"
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             await conn.execute("DELETE FROM rel_ids WHERE composite_id = $1", composite_id)
 
         edge_row = {
@@ -115,22 +115,22 @@ class TestRegisterRelIds:
         from provisa.cypher.assembler import register_rel_ids
 
         rows1 = [dict(edge_row)]
-        await register_rel_ids(rows1, pg_pool)
+        await register_rel_ids(rows1, tenant_db)
 
         rows2 = [dict(edge_row)]
-        await register_rel_ids(rows2, pg_pool)
+        await register_rel_ids(rows2, tenant_db)
 
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             all_rows = await conn.fetch(
                 "SELECT id FROM rel_ids WHERE composite_id = $1", composite_id
             )
         assert len(all_rows) == 1
         assert isinstance(all_rows[0]["id"], int)
 
-    async def test_register_replaces_composite_identity_with_integer(self, pg_pool):
+    async def test_register_replaces_composite_identity_with_integer(self, tenant_db):
         """After register_rel_ids, the edge dict's 'identity' field is an integer."""
         composite_id = "TEST_REL:replace-check-1"
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             await conn.execute("DELETE FROM rel_ids WHERE composite_id = $1", composite_id)
 
         rows = [
@@ -146,20 +146,20 @@ class TestRegisterRelIds:
         ]
         from provisa.cypher.assembler import register_rel_ids
 
-        await register_rel_ids(rows, pg_pool)
+        await register_rel_ids(rows, tenant_db)
         identity = rows[0]["r"]["identity"]
         assert isinstance(identity, int), f"expected int, got {type(identity)}: {identity!r}"
 
-    async def test_noop_when_no_edges(self, pg_pool):
+    async def test_noop_when_no_edges(self, tenant_db):
         """register_rel_ids is a no-op when rows contain no edge dicts."""
         rows: list[dict] = [{"scalar": 42}]
         from provisa.cypher.assembler import register_rel_ids
 
-        await register_rel_ids(rows, pg_pool)
+        await register_rel_ids(rows, tenant_db)
         assert rows == [{"scalar": 42}]
 
     async def test_noop_when_pg_pool_is_none(self):
-        """register_rel_ids is a no-op when pg_pool is None."""
+        """register_rel_ids is a no-op when tenant_db is None."""
         rows = [
             {
                 "r": {
@@ -176,10 +176,10 @@ class TestRegisterRelIds:
         await register_rel_ids(rows, None)
         assert rows[0]["r"]["identity"] == "TEST_REL:null-pool-1"
 
-    async def test_properties_stored_in_rel_ids(self, pg_pool):
+    async def test_properties_stored_in_rel_ids(self, tenant_db):
         """Properties JSONB is stored in rel_ids on upsert."""
         composite_id = "TEST_REL:props-stored-1"
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             await conn.execute("DELETE FROM rel_ids WHERE composite_id = $1", composite_id)
 
         rows = [
@@ -195,9 +195,9 @@ class TestRegisterRelIds:
         ]
         from provisa.cypher.assembler import register_rel_ids
 
-        await register_rel_ids(rows, pg_pool)
+        await register_rel_ids(rows, tenant_db)
 
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT properties FROM rel_ids WHERE composite_id = $1",
                 composite_id,

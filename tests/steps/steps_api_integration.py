@@ -141,7 +141,7 @@ def client_querying_jsonapi_endpoint(shared_data):
     state = MagicMock()
     state.schemas = {"admin": schema}
     state.contexts = {"admin": ctx}
-    state.pg_pool = None
+    state.tenant_db = None
 
     shared_data["schema"] = schema
     shared_data["ctx"] = ctx
@@ -743,7 +743,7 @@ def _verify_presigned_url(url: str, secret: str = _PRESIGN_SECRET) -> bool:
     """Verify HMAC-SHA256 signature and TTL of a presigned URL."""
     parsed = urllib.parse.urlparse(url)
     params = dict(urllib.parse.parse_qsl(parsed.query))
-    result_key = params.get("X-Result-Key", "")
+    params.get("X-Result-Key", "")
     expires_at_str = params.get("X-Expires", "0")
     provided_sig = params.get("X-Signature", "")
 
@@ -791,10 +791,7 @@ def server_generates_presigned_url(shared_data):
     shared_data["expires_at"] = int(params["X-Expires"])
 
 
-@then(
-    "the consumer can access the result via the URL within the TTL "
-    "without server-side buffering"
-)
+@then("the consumer can access the result via the URL within the TTL without server-side buffering")
 def consumer_accesses_result_within_ttl(shared_data):
     """Assert the signed URL verifies within TTL and expires afterward."""
     url = shared_data["presigned_url"]
@@ -831,9 +828,7 @@ def consumer_accesses_result_within_ttl(shared_data):
         result_key=shared_data["result_key"],
         ttl_seconds=-10,
     )
-    assert not _verify_presigned_url(expired_url), (
-        "expired presigned URL must fail TTL check"
-    )
+    assert not _verify_presigned_url(expired_url), "expired presigned URL must fail TTL check"
 
 
 # ---------------------------------------------------------------------------
@@ -919,7 +914,11 @@ def _resolve_orders_field(schema):
     assert query_type is not None, "schema must have a query type"
     for fname in query_type.fields:
         if fname == "orders" or fname.endswith("_orders") or fname.endswith("orders"):
-            if "aggregate" not in fname and "connection" not in fname and "group" not in fname.lower():
+            if (
+                "aggregate" not in fname
+                and "connection" not in fname
+                and "group" not in fname.lower()
+            ):
                 return fname
     # Fallback: first non-aggregate/connection field
     for fname in query_type.fields:
@@ -1018,9 +1017,7 @@ def consumer_via_arrow_flight(shared_data):
             CatalogColumn(
                 name="amount", data_type="decimal(10,2)", is_nullable=True, description=""
             ),
-            CatalogColumn(
-                name="region", data_type="varchar(50)", is_nullable=True, description=""
-            ),
+            CatalogColumn(name="region", data_type="varchar(50)", is_nullable=True, description=""),
         ],
     )
     shared_data["catalog_table"] = table
@@ -1143,16 +1140,16 @@ def rest_query_string_maps_to_graphql(shared_data):
     shared_data["rest_compiled"] = compiled[0]
 
     # Compile the equivalent hand-written GraphQL query directly.
-    direct_query = f"{{ {field}(where: {{region: {{eq: \"US\"}}}}, limit: 10) {{ {' '.join(fields)} }} }}"
+    direct_query = (
+        f'{{ {field}(where: {{region: {{eq: "US"}}}}, limit: 10) {{ {" ".join(fields)} }} }}'
+    )
     direct_doc = parse_query(schema, direct_query)
     direct_compiled = compile_query(direct_doc, ctx)
     assert direct_compiled
     shared_data["direct_compiled"] = direct_compiled[0]
 
 
-@then(
-    "the request compiles and executes with the same RLS, masking, and routing as GraphQL"
-)
+@then("the request compiles and executes with the same RLS, masking, and routing as GraphQL")
 def rest_same_governance_as_graphql(shared_data):
     """Assert REST and GraphQL feed the identical governance/routing pipeline."""
     import inspect
@@ -1172,8 +1169,7 @@ def rest_same_governance_as_graphql(shared_data):
     rest_fields = {c.field_name for c in rest_compiled.columns}
     direct_fields = {c.field_name for c in direct_compiled.columns}
     assert rest_fields == direct_fields, (
-        f"REST and GraphQL must select the same typed columns: "
-        f"{rest_fields} vs {direct_fields}"
+        f"REST and GraphQL must select the same typed columns: {rest_fields} vs {direct_fields}"
     )
 
     # Governance/routing is applied by the SAME function for both entry points.
@@ -1236,9 +1232,7 @@ def graph_schema_endpoint_responds(shared_data):
     shared_data["node_labels"] = node_labels
 
 
-@then(
-    "pk_columns are included per node label so the UI can determine exclusion eligibility"
-)
+@then("pk_columns are included per node label so the UI can determine exclusion eligibility")
 def graph_schema_includes_pk_columns(shared_data):
     """Assert every node label carries a pk_columns list reflecting designated PKs."""
     node_labels = shared_data["node_labels"]
@@ -1252,9 +1246,7 @@ def graph_schema_includes_pk_columns(shared_data):
     with_pk = [n for n in node_labels if n["pk_columns"]]
     assert with_pk, f"at least one node must expose pk_columns, got: {node_labels}"
     for node in with_pk:
-        assert "id" in node["pk_columns"], (
-            f"designated PK 'id' must appear in pk_columns: {node}"
-        )
+        assert "id" in node["pk_columns"], f"designated PK 'id' must appear in pk_columns: {node}"
         # The singular pk field is derived from pk_columns[0].
         assert node["pk"] == node["pk_columns"][0]
 
@@ -1304,7 +1296,7 @@ def backend_processes_inline_request(shared_data):
     shared_data["parsed_json_spec"] = parse_text(json_spec)
 
 
-@then("the inline spec is parsed (YAML then JSON fallback) and path is stored as \":inline:\"")
+@then('the inline spec is parsed (YAML then JSON fallback) and path is stored as ":inline:"')
 def inline_spec_parsed_and_path_inline(shared_data):
     """Assert YAML+JSON parse correctly and spec_path is the :inline: sentinel."""
     req = shared_data["register_request"]
@@ -1480,7 +1472,7 @@ def subscription_request_accepted(shared_data):
     state.schemas = {role_id: schema}
     state.contexts = {role_id: ctx}
     state.source_types = {"sales-pg": "postgresql"}
-    state.pg_pool = None
+    state.tenant_db = None
     state.pg_notify_tables = set()
     state.table_watermarks = {}
     state.source_pools = {}
@@ -1540,9 +1532,7 @@ def response_status_202(shared_data):
     )
 
 
-@then(
-    "subscription change events are delivered to the Kafka sink instead of an SSE stream"
-)
+@then("subscription change events are delivered to the Kafka sink instead of an SSE stream")
 def events_delivered_to_kafka_sink(shared_data):
     """Assert the 202 body reflects a Kafka-sink redirect (not an SSE stream)."""
     import json as _json

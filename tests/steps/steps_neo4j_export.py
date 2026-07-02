@@ -257,7 +257,7 @@ def _make_graph_schema_state() -> Any:
     state.roles = {"admin": {"id": "admin", "domain_access": ["*"]}}
     state.contexts = {"admin": MagicMock()}
     state.schema_build_cache = {"tables": [], "column_types": {}}
-    state.pg_pool = None
+    state.tenant_db = None
     state.rls_contexts = {}
     state.tables = []
     state.source_catalogs = None

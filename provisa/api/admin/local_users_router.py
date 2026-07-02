@@ -65,8 +65,8 @@ def _pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParamet
     # user_role_assignments lives in the tenant control plane.
     from provisa.api.app import state
 
-    assert state.pg_pool is not None
-    return state.pg_pool
+    assert state.tenant_db is not None
+    return state.tenant_db
 
 
 def _admin_pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParameter]

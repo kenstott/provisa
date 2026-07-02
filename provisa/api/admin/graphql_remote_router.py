@@ -115,17 +115,17 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
     source_id: str,
     domain_id: str,
     tables: list[dict],
-    pg_pool,
+    tenant_db,
 ) -> None:
     """Write discovered GraphQL tables into registered_tables with descriptions."""
     from provisa.core.models import Column, Table
     from provisa.core.repositories import table as table_repo
     from provisa.api.admin.actions_router import _ensure_tables
 
-    await _ensure_tables(pg_pool)
+    await _ensure_tables(tenant_db)
     from provisa.compiler.naming import apply_sql_name
 
-    async with pg_pool.acquire() as conn:
+    async with tenant_db.acquire() as conn:
         # Delete stale rows (e.g. pre-fix camelCase names) before upserting fresh sql-convention set
         await conn.execute(
             "DELETE FROM registered_tables WHERE source_id = $1 AND schema_name = 'graphql'",
@@ -164,14 +164,14 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
 
 async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
     relationships: list[dict],
-    pg_pool,
+    tenant_db,
     state=None,
 ) -> None:
     """Upsert detected intra-source relationships, then retry any config relationships deferred at startup."""
     from provisa.core.models import Cardinality, Relationship
     from provisa.core.repositories import relationship as rel_repo
 
-    async with pg_pool.acquire() as conn:
+    async with tenant_db.acquire() as conn:
         for r in relationships or []:
             try:
                 await rel_repo.upsert(
@@ -236,9 +236,9 @@ async def register_graphql_remote_source(  # REQ-307, REQ-308, REQ-311, REQ-312,
     reg_dict["field_overrides"] = body.field_overrides or {}
     state.graphql_remote_sources[body.source_id] = reg_dict
 
-    _pg_pool = state.pg_pool
-    if _pg_pool is not None:
-        async with _pg_pool.acquire() as _conn:
+    _tenant_db = state.tenant_db
+    if _tenant_db is not None:
+        async with _tenant_db.acquire() as _conn:
             await _conn.execute(
                 """
                 INSERT INTO sources (id, type, host, port, database, username, dialect, path, description)
@@ -258,9 +258,9 @@ async def register_graphql_remote_source(  # REQ-307, REQ-308, REQ-311, REQ-312,
             body.source_id,
             body.domain_id,
             tables,
-            _pg_pool,
+            _tenant_db,
         )
-        await _upsert_relationships_to_semantic_layer(all_relationships, _pg_pool, state)
+        await _upsert_relationships_to_semantic_layer(all_relationships, _tenant_db, state)
         try:
             from provisa.api.app import _rebuild_schemas
 
@@ -316,15 +316,15 @@ async def refresh_graphql_remote_source(source_id: str):  # REQ-311, REQ-598
     reg["relationships"] = all_relationships
     state.graphql_remote_sources[source_id] = reg
 
-    _pg_pool = state.pg_pool
-    if _pg_pool is not None:
+    _tenant_db = state.tenant_db
+    if _tenant_db is not None:
         await _upsert_tables_to_semantic_layer(
             source_id,
             reg.get("domain_id", ""),
             tables,
-            _pg_pool,
+            _tenant_db,
         )
-        await _upsert_relationships_to_semantic_layer(all_relationships, _pg_pool, state)
+        await _upsert_relationships_to_semantic_layer(all_relationships, _tenant_db, state)
         try:
             from provisa.api.app import _rebuild_schemas
 

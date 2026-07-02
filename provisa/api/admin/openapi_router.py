@@ -91,12 +91,12 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
         if servers:
             resolved_base_url = servers[0].get("url", "")
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    await _ensure_tables(state.pg_pool)
+    await _ensure_tables(state.tenant_db)
 
-    pool = state.pg_pool
+    pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
         from provisa.core.models import Source, SourceType
@@ -120,7 +120,7 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
     if relationships:
         from provisa.api.admin.graphql_remote_router import _upsert_relationships_to_semantic_layer
 
-        await _upsert_relationships_to_semantic_layer(relationships, state.pg_pool, state)
+        await _upsert_relationships_to_semantic_layer(relationships, state.tenant_db, state)
 
     if not hasattr(state, "openapi_specs"):
         state.openapi_specs = {}
@@ -281,10 +281,10 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-316, REQ-31
     from provisa.openapi.register import auto_register_openapi_source
     from provisa.api.admin.actions_router import _ensure_tables
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    put_pool = state.pg_pool
+    put_pool = state.tenant_db
     await _ensure_tables(put_pool)
 
     specs = getattr(state, "openapi_specs", {})

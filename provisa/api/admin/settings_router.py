@@ -450,9 +450,9 @@ async def recompute_schema_clusters():  # REQ-510
     """Rerun Louvain clustering on the schema graph and refresh schema_clusters."""
     from provisa.api.app import state, _compute_and_store_clusters
 
-    if not state.pg_pool:
+    if not state.tenant_db:
         raise HTTPException(status_code=503, detail="Database not available")
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         count = await _compute_and_store_clusters(conn)  # type: ignore[arg-type]
     return {"success": True, "tables_clustered": count}
 

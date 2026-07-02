@@ -56,7 +56,7 @@ async def discover(req: DiscoverRequest):  # REQ-307, REQ-314, REQ-322
     with _tracer.start_as_current_span("admin.api_discovery"):
         from provisa.api.app import state
 
-        if state.pg_pool is None:
+        if state.tenant_db is None:
             raise HTTPException(status_code=503, detail="Database not connected")
 
         if req.type == ApiSourceType.openapi:
@@ -74,7 +74,7 @@ async def discover(req: DiscoverRequest):  # REQ-307, REQ-314, REQ-322
         parsed = urlparse(req.spec_url)
         base_url = req.base_url or f"{parsed.scheme}://{parsed.netloc}"
 
-        pool = state.pg_pool
+        pool = state.tenant_db
         assert pool is not None
         async with pool.acquire() as _conn:
             conn = cast(asyncpg.Connection, _conn)
@@ -102,10 +102,10 @@ async def get_candidates(source_id: str | None = None):  # REQ-308, REQ-316, REQ
     """List discovered (pending) candidates."""
     from provisa.api.app import state
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    pool = state.pg_pool
+    pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
         candidates = await list_candidates(cast(asyncpg.Connection, _conn), source_id)
@@ -118,11 +118,11 @@ async def accept(candidate_id: int, req: AcceptRequest | None = None):  # REQ-31
     """Accept a candidate and register it as an endpoint."""
     from provisa.api.app import state
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
     overrides = req.overrides if req else None
-    pool = state.pg_pool
+    pool = state.tenant_db
     assert pool is not None
     try:
         async with pool.acquire() as _conn:
@@ -142,10 +142,10 @@ async def reject(candidate_id: int):  # REQ-311, REQ-321, REQ-329
     """Reject a candidate."""
     from provisa.api.app import state
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    pool = state.pg_pool
+    pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
         await reject_candidate(cast(asyncpg.Connection, _conn), candidate_id)

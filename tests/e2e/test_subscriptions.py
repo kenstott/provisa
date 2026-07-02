@@ -45,16 +45,16 @@ class TestSubscribeSSE:
         assert resp.status_code in (200, 404, 503)
 
     async def test_subscribe_503_without_pool(self, client):
-        """Endpoint returns 503 when pg_pool is unavailable."""
+        """Endpoint returns 503 when tenant_db is unavailable."""
         from provisa.api.app import state
 
-        original_pool = state.pg_pool
-        state.pg_pool = None
+        original_pool = state.tenant_db
+        state.tenant_db = None
         try:
             resp = await client.get("/data/subscribe/orders")
             assert resp.status_code == 503
         finally:
-            state.pg_pool = original_pool
+            state.tenant_db = original_pool
 
 
 class TestSubscribeValidation:
@@ -71,7 +71,7 @@ class TestSubscribeValidation:
         mock_ctx.tables = {"users": MagicMock()}
 
         with patch("provisa.api.app.state") as mock_state:
-            mock_state.pg_pool = MagicMock()
+            mock_state.tenant_db = MagicMock()
             mock_state.rls_contexts = {}
             mock_state.contexts = {"analyst": mock_ctx}
             mock_state.source_types = {"pg": "postgresql"}

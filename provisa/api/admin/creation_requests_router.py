@@ -55,8 +55,8 @@ _REQUIRED_APPROVALS: dict[str, int] = {
 def _get_pool() -> asyncpg.Pool:
     from provisa.api.app import state
 
-    assert state.pg_pool is not None
-    return state.pg_pool
+    assert state.tenant_db is not None
+    return state.tenant_db
 
 
 def _user_id(request: Request) -> str | None:

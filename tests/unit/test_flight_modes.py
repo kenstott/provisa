@@ -46,7 +46,7 @@ class FakeState:
         self.source_pools = None
         self.source_types = {}
         self.source_dialects = {}
-        self.pg_pool = None
+        self.tenant_db = None
         self.trino_conn = None
         self.flight_client = None
 
@@ -314,11 +314,11 @@ class TestParseWhereVariables:
 
 class TestDoGet:
     def test_missing_query_falls_through_to_catalog(self, fake_state):
-        """No query in ticket routes to catalog fetch (pg_pool=None → empty)."""
+        """No query in ticket routes to catalog fetch (tenant_db=None → empty)."""
         server = ProvisaFlightServer.__new__(ProvisaFlightServer)
         server._state = fake_state
         ticket = flight.Ticket(json.dumps({"role": "admin"}).encode())
-        # pg_pool is None, so _do_get_catalog returns empty table stream
+        # tenant_db is None, so _do_get_catalog returns empty table stream
         stream = server.do_get(None, ticket)
         assert stream is not None
 

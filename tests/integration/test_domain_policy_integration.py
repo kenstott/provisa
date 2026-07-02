@@ -46,24 +46,24 @@ MAIN_CONFIG = Path(
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
-async def _init_schema(pg_pool):
-    async with pg_pool.acquire() as conn:
+async def _init_schema(tenant_db):
+    async with tenant_db.acquire() as conn:
         await conn.execute(SCHEMA_SQL)
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session", autouse=True)
-async def _restore_config_after_module(pg_pool, _init_schema):
+async def _restore_config_after_module(tenant_db, _init_schema):
     yield
     domain_policy.reset()
-    async with pg_pool.acquire() as conn:
+    async with tenant_db.acquire() as conn:
         await load_config_from_yaml(MAIN_CONFIG, conn, replace=True)
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def _clean_and_reset(pg_pool, _init_schema):
+async def _clean_and_reset(tenant_db, _init_schema):
     """Truncate config tables and reset the global policy before each test."""
     domain_policy.reset()
-    async with pg_pool.acquire() as conn:
+    async with tenant_db.acquire() as conn:
         await conn.execute(
             """
             TRUNCATE rls_rules, relationships, relationship_candidates, table_columns,
@@ -110,28 +110,28 @@ async def _stored_domain(conn, table_name: str = "orders") -> str:
 
 class TestSingleDomainMode:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_empty_table_domain_coerced_to_default(self, pg_pool):
+    async def test_empty_table_domain_coerced_to_default(self, tenant_db):
         cfg = parse_config_dict(_config({"use_domains": False, "default_domain": "global"}, [], ""))
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             await load_config(cfg, conn)
             assert await _stored_domain(conn) == "global"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_default_domain_seeded(self, pg_pool):
+    async def test_default_domain_seeded(self, tenant_db):
         cfg = parse_config_dict(
             _config({"use_domains": False, "default_domain": "global"}, [], "global")
         )
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             await load_config(cfg, conn)
             domains = {d["id"] for d in await domain_repo.list_all(conn)}
         assert "global" in domains
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_repo_upsert_rejects_foreign_domain(self, pg_pool):
+    async def test_repo_upsert_rejects_foreign_domain(self, tenant_db):
         cfg = parse_config_dict(
             _config({"use_domains": False, "default_domain": "global"}, [], "global")
         )
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             await load_config(cfg, conn)
             # Policy is now single-domain "global"; a foreign domain is a hard error.
             bad = Table(
@@ -147,10 +147,10 @@ class TestSingleDomainMode:
 
 class TestLegacyMode:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_no_impact_on_stored_domain(self, pg_pool):
+    async def test_no_impact_on_stored_domain(self, tenant_db):
         # use_domains absent: declared domain_id stored verbatim, domains list allowed.
         cfg = parse_config_dict(_config({}, [{"id": "sales"}], "sales"))
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             await load_config(cfg, conn)
             assert await _stored_domain(conn) == "sales"
             assert domain_policy.use_domains() is None
@@ -158,19 +158,19 @@ class TestLegacyMode:
 
 class TestNamespacedMode:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_declared_domain_stored(self, pg_pool):
+    async def test_declared_domain_stored(self, tenant_db):
         cfg = parse_config_dict(_config({"use_domains": True}, [{"id": "sales"}], "sales"))
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             await load_config(cfg, conn)
             assert await _stored_domain(conn) == "sales"
 
 
 class TestReloadValidationSweep:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_sweep_rejects_preexisting_foreign_domain(self, pg_pool):
+    async def test_sweep_rejects_preexisting_foreign_domain(self, tenant_db):
         # Simulate a dynamically-registered table left behind with a foreign domain,
         # then switch to single-domain mode and run the sweep.
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             await conn.execute(
                 "INSERT INTO sources (id, type, dialect) VALUES ('pg1', 'postgresql', 'postgres') "
                 "ON CONFLICT (id) DO NOTHING"
@@ -186,8 +186,8 @@ class TestReloadValidationSweep:
                 await _validate_existing_domains(conn, "global")
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_sweep_passes_when_all_default(self, pg_pool):
-        async with pg_pool.acquire() as conn:
+    async def test_sweep_passes_when_all_default(self, tenant_db):
+        async with tenant_db.acquire() as conn:
             await conn.execute(
                 "INSERT INTO sources (id, type, dialect) VALUES ('pg1', 'postgresql', 'postgres') "
                 "ON CONFLICT (id) DO NOTHING"

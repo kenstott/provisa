@@ -226,11 +226,11 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
             lambda: execute_trino(_trino_conn, _trino_sql, params=plan.exec_params),
         )
     elif plan.source_id == "provisa-admin" or not state.source_pools.has(plan.source_id):
-        # Admin-owned tables (meta.*) live in the provisa pg_pool, not source_pools.
-        pg_pool = state.pg_pool
-        if pg_pool is None:
-            raise RuntimeError("Admin pg_pool not available")
-        async with pg_pool.acquire() as _conn:
+        # Admin-owned tables (meta.*) live in the provisa tenant_db, not source_pools.
+        tenant_db = state.tenant_db
+        if tenant_db is None:
+            raise RuntimeError("Admin tenant_db not available")
+        async with tenant_db.acquire() as _conn:
             _conn = _conn  # type: ignore[assignment]
             _rows = await _conn.fetch(plan.sql)
             if _rows:

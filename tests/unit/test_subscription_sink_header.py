@@ -95,7 +95,7 @@ def _make_state(table_name: str = "orders", source_id: str = "pg1"):
     state.source_types = {source_id: "postgresql"}
     state.contexts = {"role1": ctx}
     state.schemas = {"role1": MagicMock()}
-    state.pg_pool = None
+    state.tenant_db = None
     state.pg_notify_tables = set()
     state.table_watermarks = {}
     state.source_pools = {}

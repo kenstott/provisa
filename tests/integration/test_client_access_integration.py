@@ -352,7 +352,7 @@ class TestPresignedURLRedirect:
 class TestRESTAutoGenEndpoint:
     """REQ-256: GET /data/rest/{table} auto-generated from registered tables."""
 
-    async def test_rest_list_endpoint_exists(self, pg_pool):
+    async def test_rest_list_endpoint_exists(self, tenant_db):
         """REQ-256: /data/rest/orders returns 200 with a data array."""
         httpx = pytest.importorskip("httpx")
         from fastapi import FastAPI
@@ -387,7 +387,7 @@ class TestRESTAutoGenEndpoint:
         finally:
             await source_pool.close_all()
 
-    async def test_rest_where_filter_applied(self, pg_pool):
+    async def test_rest_where_filter_applied(self, tenant_db):
         """REQ-256: WHERE filter in query string restricts results."""
         httpx = pytest.importorskip("httpx")
         from fastapi import FastAPI
@@ -426,7 +426,7 @@ class TestRESTAutoGenEndpoint:
         finally:
             await source_pool.close_all()
 
-    async def test_rest_endpoint_same_governance_as_graphql(self, pg_pool):
+    async def test_rest_endpoint_same_governance_as_graphql(self, tenant_db):
         """REQ-256: REST path applies RLS/masking (no unguarded access)."""
         httpx = pytest.importorskip("httpx")
         from fastapi import FastAPI

@@ -91,8 +91,8 @@ _SOURCE_TYPE_DISPLAY_NAMES: dict[str, str] = {
 async def _get_pool() -> asyncpg.Pool:
     from provisa.api.app import state
 
-    assert state.pg_pool is not None
-    return state.pg_pool
+    assert state.tenant_db is not None
+    return state.tenant_db
 
 
 async def _dynamic_openapi_columns(base_url: str, query) -> list[dict]:
@@ -231,7 +231,7 @@ async def _rebuild_schemas():
     logging.getLogger(__name__).warning("[DEBUG] _rebuild_schemas completed")
 
 
-from provisa.api.admin._row_mappers import (
+from provisa.api.admin._row_mappers import (  # noqa: E402
     _parse_mapping_json,
     _cdc_model_from_input,
     _source_from_row,
@@ -379,7 +379,7 @@ async def _fetch_table_with_columns(
     )
 
 
-from provisa.api.admin._live_mappers import live_model_from_input as _live_model_from_input
+from provisa.api.admin._live_mappers import live_model_from_input as _live_model_from_input  # noqa: E402
 
 
 async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
@@ -1192,9 +1192,9 @@ class Query:  # REQ-021, REQ-042
                 pass
 
         pg_size, pg_free = 0, 0
-        if state.pg_pool is not None:
-            pg_size = state.pg_pool.get_size()
-            pg_free = state.pg_pool.get_idle_size()
+        if state.tenant_db is not None:
+            pg_size = state.tenant_db.get_size()
+            pg_free = state.tenant_db.get_idle_size()
 
         cache_ok = False
         if isinstance(state.response_cache_store, RedisCacheStore):

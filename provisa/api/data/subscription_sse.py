@@ -217,12 +217,12 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
 
             provider_config: dict = {}
             if use_polling_fallback:
-                provider_config["pool"] = state.pg_pool
+                provider_config["pool"] = state.tenant_db
                 provider_config["watermark_column"] = effective_watermark
             elif use_trino_polling:
                 pass
-            elif source_type == "postgresql" and state.pg_pool:
-                provider_config["pool"] = state.pg_pool
+            elif source_type == "postgresql" and state.tenant_db:
+                provider_config["pool"] = state.tenant_db
             elif source_type == "mongodb":
                 source_pool = state.source_pools.get(source_id) if state.source_pools else None
                 provider_config["database"] = source_pool
@@ -388,7 +388,7 @@ async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
                 from provisa.subscriptions.polling_provider import PollingNotificationProvider
 
                 provider = PollingNotificationProvider(
-                    pool=state.pg_pool,
+                    pool=state.tenant_db,
                     watermark_column=state.table_watermarks[table_name],
                 )
             elif use_trino_polling:
@@ -406,8 +406,8 @@ async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
                 from provisa.subscriptions.registry import get_provider
 
                 provider_config: dict = {}
-                if source_type == "postgresql" and state.pg_pool:
-                    provider_config["pool"] = state.pg_pool
+                if source_type == "postgresql" and state.tenant_db:
+                    provider_config["pool"] = state.tenant_db
                 elif source_type == "mongodb":
                     source_pool = state.source_pools.get(source_id) if state.source_pools else None
                     provider_config["database"] = source_pool

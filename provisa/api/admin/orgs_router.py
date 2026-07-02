@@ -39,8 +39,8 @@ def _pool() -> Database:
     # Tenant control plane — used for org schema (de)provisioning.
     from provisa.api.app import state
 
-    assert state.pg_pool is not None
-    return state.pg_pool
+    assert state.tenant_db is not None
+    return state.tenant_db
 
 
 def _admin_pool() -> Database:

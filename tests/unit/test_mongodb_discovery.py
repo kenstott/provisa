@@ -26,6 +26,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_source_row(source_id: str = "mongo-src", source_type: str = "mongodb") -> dict:
     """Return a minimal fake DB row for a MongoDB source."""
     return {
@@ -45,6 +46,7 @@ def _make_source_row(source_id: str = "mongo-src", source_type: str = "mongodb")
 # ---------------------------------------------------------------------------
 # _call_discover: MongoDB with no live connection must raise 503
 # ---------------------------------------------------------------------------
+
 
 class TestCallDiscoverMongoDBNoPool:
     """_call_discover for MongoDB must raise 503 when no pool entry exists."""
@@ -106,6 +108,7 @@ class TestCallDiscoverMongoDBNoPool:
 # discover_source_schema endpoint: issue #13 regression
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 class TestDiscoverSourceSchemaMongoIssue13:
     """End-to-end test of the FastAPI handler for issue #13."""
@@ -136,16 +139,17 @@ class TestDiscoverSourceSchemaMongoIssue13:
         empty_source_pools.has.return_value = False
 
         mock_state = MagicMock()
-        mock_state.pg_pool = mock_pg_pool
+        mock_state.tenant_db = mock_pg_pool
 
         with (
-            patch("provisa.api.admin.discovery_schema._get_source_pool", return_value=empty_source_pools),
+            patch(
+                "provisa.api.admin.discovery_schema._get_source_pool",
+                return_value=empty_source_pools,
+            ),
             patch("provisa.api.app.state", mock_state),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await discover_source_schema(
-                    source_id, DiscoverRequest(collection="products")
-                )
+                await discover_source_schema(source_id, DiscoverRequest(collection="products"))
 
         assert exc_info.value.status_code == 503
         assert "no live connection" in exc_info.value.detail.lower()
@@ -178,10 +182,13 @@ class TestDiscoverSourceSchemaMongoIssue13:
         live_source_pools.get.return_value = mock_driver
 
         mock_state = MagicMock()
-        mock_state.pg_pool = mock_pg_pool
+        mock_state.tenant_db = mock_pg_pool
 
         with (
-            patch("provisa.api.admin.discovery_schema._get_source_pool", return_value=live_source_pools),
+            patch(
+                "provisa.api.admin.discovery_schema._get_source_pool",
+                return_value=live_source_pools,
+            ),
             patch("provisa.api.app.state", mock_state),
         ):
             response = await discover_source_schema(

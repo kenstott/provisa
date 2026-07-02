@@ -21,7 +21,7 @@ Architecture:
 
 Usage::
 
-    engine = LiveEngine(pg_pool=pool)
+    engine = LiveEngine(tenant_db=pool)
     await engine.start()
     await engine.register(live_cfg, stable_id="abc-123")
     queue = engine.subscribe("abc-123")  # returns asyncio.Queue for SSE
@@ -88,7 +88,7 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
     """APScheduler-backed live query engine.
 
     Args:
-        pg_pool: asyncpg connection pool used ONLY for watermark bookkeeping
+        tenant_db: asyncpg connection pool used ONLY for watermark bookkeeping
                  (``live_query_state``). Data polls never hit this pool.
         trino_conn: Trino DBAPI connection used to execute every data poll.
                  Routing through Trino makes any federated source pollable —
@@ -96,8 +96,8 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
                  never polled here.
     """
 
-    def __init__(self, pg_pool, trino_conn=None) -> None:
-        self._pg_pool = pg_pool
+    def __init__(self, tenant_db, trino_conn=None) -> None:
+        self._tenant_db = tenant_db
         self._trino_conn = trino_conn
         self._jobs: dict[str, _LiveJob] = {}
         self._scheduler = None
@@ -238,7 +238,7 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
 
             # Watermark bookkeeping lives in PG (live_query_state), independent of
             # where the data query runs.
-            async with self._pg_pool.acquire() as conn:
+            async with self._tenant_db.acquire() as conn:
                 sse_watermark = await get_watermark(conn, query_id, "sse")
                 kafka_watermark = (
                     await get_watermark(conn, query_id, "kafka") if job.kafka_outputs else None
@@ -274,13 +274,13 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
             # Deliver to outputs independently (neither blocks the other)
             async def _deliver_sse():
                 await job.fanout.send(rows)
-                async with self._pg_pool.acquire() as conn:
+                async with self._tenant_db.acquire() as conn:
                     await set_watermark(conn, query_id, "sse", max_val)
 
             async def _deliver_kafka():
                 for kout in job.kafka_outputs:
                     await kout.send(rows)
-                async with self._pg_pool.acquire() as conn:
+                async with self._tenant_db.acquire() as conn:
                     await set_watermark(conn, query_id, "kafka", max_val)
 
             tasks = [_deliver_sse()]

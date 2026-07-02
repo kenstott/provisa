@@ -78,11 +78,11 @@ async def discover_source_schema(
     """Look up source, call adapter.discover_schema(), return columns."""
     from provisa.api.app import state
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
     # Fetch source record from DB
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", source_id)
 
     if row is None:

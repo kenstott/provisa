@@ -90,7 +90,7 @@ def _make_fake_trino_connection(rows: list[dict] | None = None) -> MagicMock:
 
 # ---------------------------------------------------------------------------
 # A minimal LiveEngine subclass that uses Trino for query execution
-# and pg_pool only for watermark bookkeeping — matching REQ-820.
+# and tenant_db only for watermark bookkeeping — matching REQ-820.
 # ---------------------------------------------------------------------------
 
 
@@ -98,11 +98,11 @@ class _REQ820Engine:
     """Minimal live-engine implementation that satisfies REQ-820 routing rules.
 
     - Federated query → Trino connection
-    - Watermark bookkeeping → pg_pool (live_query_state table)
+    - Watermark bookkeeping → tenant_db (live_query_state table)
     """
 
-    def __init__(self, pg_pool, trino_conn) -> None:
-        self._pg_pool = pg_pool
+    def __init__(self, tenant_db, trino_conn) -> None:
+        self._tenant_db = tenant_db
         self._trino_conn = trino_conn
         self._jobs: dict[str, dict] = {}
         self._poll_calls_on_trino: list[str] = []
@@ -129,14 +129,14 @@ class _REQ820Engine:
 
         Routing:
           - SQL execution → Trino (federated, regardless of source type)
-          - Watermark read/write → pg_pool only
+          - Watermark read/write → tenant_db only
         """
         job = self._jobs[query_id]
         sql = job["sql"]
         wm_col = job["watermark_column"]
 
-        # --- Watermark read from pg_pool (bookkeeping) ---
-        async with self._pg_pool.acquire() as pg_conn:
+        # --- Watermark read from tenant_db (bookkeeping) ---
+        async with self._tenant_db.acquire() as pg_conn:
             last_wm = await pg_conn.fetchval(
                 "SELECT last_watermark FROM live_query_state WHERE query_id = $1",
                 query_id,
@@ -162,9 +162,9 @@ class _REQ820Engine:
         if not rows:
             return rows
 
-        # --- Watermark write to pg_pool (bookkeeping) ---
+        # --- Watermark write to tenant_db (bookkeeping) ---
         new_wm = str(max(str(r.get(wm_col, "")) for r in rows))
-        async with self._pg_pool.acquire() as pg_conn:
+        async with self._tenant_db.acquire() as pg_conn:
             await pg_conn.execute(
                 """
                 INSERT INTO live_query_state (query_id, output_type, last_watermark)
@@ -197,7 +197,7 @@ class _REQ820Engine:
 @given("a live poll query targeting a federated BigQuery table")
 def given_live_poll_query_bigquery(shared_data: dict) -> None:
     """Set up a live query configuration pointing at a federated BigQuery table."""
-    pg_pool = _make_fake_pg_pool(watermark_value=None)  # no previous watermark
+    tenant_db = _make_fake_pg_pool(watermark_value=None)  # no previous watermark
     trino_conn = _make_fake_trino_connection(
         rows=[
             {"id": 1, "updated_at": "2026-06-01T10:00:00", "metric": 42},
@@ -205,7 +205,7 @@ def given_live_poll_query_bigquery(shared_data: dict) -> None:
         ]
     )
 
-    engine = _REQ820Engine(pg_pool=pg_pool, trino_conn=trino_conn)
+    engine = _REQ820Engine(tenant_db=tenant_db, trino_conn=trino_conn)
     engine.register(
         query_id="bq-live-001",
         sql="SELECT id, updated_at, metric FROM bigquery.dataset.events",
@@ -216,7 +216,7 @@ def given_live_poll_query_bigquery(shared_data: dict) -> None:
 
     shared_data["engine"] = engine
     shared_data["query_id"] = "bq-live-001"
-    shared_data["pg_pool"] = pg_pool
+    shared_data["tenant_db"] = tenant_db
     shared_data["trino_conn"] = trino_conn
     shared_data["rows"] = None
 
@@ -251,9 +251,9 @@ def then_query_via_trino_not_pg(shared_data: dict) -> None:
     trino_cursor = trino_conn._cursor
     trino_cursor.execute.assert_called_once()
 
-    # The pg_pool's fetch should NOT have been called for the main query —
+    # The tenant_db's fetch should NOT have been called for the main query —
     # only fetchval (watermark read) and execute (watermark write) are expected.
-    pg_conn = shared_data["pg_pool"]._conn
+    pg_conn = shared_data["tenant_db"]._conn
     pg_conn.fetch.assert_not_called()
 
     # Sanity: rows were returned
@@ -266,11 +266,11 @@ def then_query_via_trino_not_pg(shared_data: dict) -> None:
 def then_watermark_persisted_to_pg(shared_data: dict) -> None:
     """Assert watermark bookkeeping happened via the PostgreSQL pool."""
     engine: _REQ820Engine = shared_data["engine"]
-    pg_conn = shared_data["pg_pool"]._conn
+    pg_conn = shared_data["tenant_db"]._conn
 
-    # pg_pool.execute was called with the live_query_state upsert
+    # tenant_db.execute was called with the live_query_state upsert
     assert engine.pg_pool_was_used_for_watermark, (
-        "Expected watermark to be persisted via pg_pool but set_watermark not recorded"
+        "Expected watermark to be persisted via tenant_db but set_watermark not recorded"
     )
 
     # Verify the execute call included live_query_state

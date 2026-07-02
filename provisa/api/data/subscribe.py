@@ -61,7 +61,7 @@ def _resolve_table_source(table: str) -> tuple[str, str] | None:
 
 
 def _build_postgresql_config(state) -> dict:
-    return {"pool": state.pg_pool}
+    return {"pool": state.tenant_db}
 
 
 def _build_mongodb_config(state, source_id: str) -> dict:
@@ -130,7 +130,7 @@ def _build_websocket_config(state, source_id: str) -> dict:  # REQ-338, REQ-341
 
 
 def _build_fallback_config(state, tbl_meta) -> dict:
-    config: dict = {"pool": state.pg_pool}
+    config: dict = {"pool": state.tenant_db}
     if tbl_meta is not None:
         wc = getattr(tbl_meta, "watermark_column", None)
         if wc:
@@ -480,7 +480,7 @@ async def subscribe(
     # stream ends, in the return path below).
     _sse_slot = await _acquire_sse_slot(state, role_id)
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database pool not available")
 
     # Validate table exists in role's schema
@@ -529,7 +529,7 @@ async def subscribe(
                 )
             else:
                 gen = _sse_generator(
-                    state.pg_pool,
+                    state.tenant_db,
                     table,
                     table_id,
                     role_id,

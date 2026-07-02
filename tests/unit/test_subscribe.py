@@ -29,6 +29,7 @@ from provisa.api.data.subscribe import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class FakeConnection:
     """Minimal stand-in for an asyncpg connection with listener support."""
 
@@ -40,9 +41,7 @@ class FakeConnection:
 
     async def remove_listener(self, channel: str, callback):
         if channel in self._listeners:
-            self._listeners[channel] = [
-                cb for cb in self._listeners[channel] if cb is not callback
-            ]
+            self._listeners[channel] = [cb for cb in self._listeners[channel] if cb is not callback]
 
     def fire(self, channel: str, payload: str):
         for cb in self._listeners.get(channel, []):
@@ -65,6 +64,7 @@ class FakePool:
 # ---------------------------------------------------------------------------
 # _rls_matches
 # ---------------------------------------------------------------------------
+
 
 class TestRLSMatches:
     def test_no_rules_passes(self):
@@ -97,6 +97,7 @@ class TestRLSMatches:
 # ---------------------------------------------------------------------------
 # _sse_generator
 # ---------------------------------------------------------------------------
+
 
 class TestSSEGenerator:
     @pytest.mark.asyncio
@@ -141,7 +142,7 @@ class TestSSEGenerator:
         await gen.__anext__()  # connected
 
         # Patch wait_for to simulate timeout quickly
-        original_wait_for = asyncio.wait_for
+        asyncio.wait_for
 
         async def fast_timeout(coro, timeout):
             coro.close()
@@ -243,10 +244,7 @@ class TestSSEGenerator:
         await gen.__anext__()  # connected
 
         channel = f"{CHANNEL_PREFIX}orders"
-        payloads = [
-            json.dumps({"op": "INSERT", "row": {"id": i}})
-            for i in range(3)
-        ]
+        payloads = [json.dumps({"op": "INSERT", "row": {"id": i}}) for i in range(3)]
         for p in payloads:
             conn.fire(channel, p)
 
@@ -265,19 +263,21 @@ class TestSSEGenerator:
 # subscribe endpoint (integration-style with mocked state)
 # ---------------------------------------------------------------------------
 
+
 class TestSubscribeEndpoint:
     @pytest.mark.asyncio
     async def test_returns_503_without_pool(self):
-        """Endpoint returns 503 when pg_pool is None."""
+        """Endpoint returns 503 when tenant_db is None."""
         from fastapi.testclient import TestClient
         from fastapi import FastAPI
 
         app = FastAPI()
         from provisa.api.data.subscribe import router
+
         app.include_router(router)
 
         with patch("provisa.api.app.state") as mock_state:
-            mock_state.pg_pool = None
+            mock_state.tenant_db = None
             mock_state.rls_contexts = {}
             client = TestClient(app)
             resp = client.get("/data/subscribe/orders")

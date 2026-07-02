@@ -663,7 +663,7 @@ async def _promote_joined_from_pg(
     import json as _json
 
     try:
-        async with state.pg_pool.acquire() as _pg_conn:
+        async with state.tenant_db.acquire() as _pg_conn:
             _raw = await _pg_conn.fetch(f'SELECT * FROM "default"."{ep.table_name}"')
         _col_set = set(col_names)
         rows = []
@@ -873,10 +873,10 @@ async def _mat_fetch_rows_from_pg(ep, col_names: list, _META_COLS: set, state) -
     """
     rows: list[dict] = []
     pg_ok = False
-    if getattr(state, "pg_pool", None) is None:
+    if getattr(state, "tenant_db", None) is None:
         return rows, pg_ok
     try:
-        async with state.pg_pool.acquire() as _pg_conn:
+        async with state.tenant_db.acquire() as _pg_conn:
             _raw = await _pg_conn.fetch(f'SELECT * FROM "default"."{ep.table_name}"')
         col_set = set(col_names)
         for r in _raw:
@@ -1054,7 +1054,7 @@ async def _mat_api_ep_table(
             cache_tbl,
         )
         cache_rewrites[tn] = (_cache_loc, cache_tbl)
-        if hot_mgr is not None and getattr(state, "pg_pool", None) is not None:
+        if hot_mgr is not None and getattr(state, "tenant_db", None) is not None:
             asyncio.create_task(
                 _promote_joined_from_pg(
                     state, ep, tn, hot_mgr, col_names, _META_COLS, _cache_loc, _hot_threshold
@@ -1072,7 +1072,7 @@ async def _mat_api_ep_table(
             cache_tbl,
         )
         cache_rewrites[tn] = (_cache_loc, cache_tbl)
-        if hot_mgr is not None and getattr(state, "pg_pool", None) is not None:
+        if hot_mgr is not None and getattr(state, "tenant_db", None) is not None:
             asyncio.create_task(
                 _promote_joined_from_pg(
                     state, ep, tn, hot_mgr, col_names, _META_COLS, _cache_loc, _hot_threshold
@@ -1150,7 +1150,7 @@ async def _materialize_api_to_trino_cache(
     if not table_names:
         return cache_rewrites, values_cte_entries, dropped_tables
 
-    _has_pg_pool = getattr(state, "pg_pool", None) is not None
+    _has_pg_pool = getattr(state, "tenant_db", None) is not None
     _META_COLS = {"_params_hash", "_cached_at"}
     _hot_threshold = hot_mgr.auto_threshold if hot_mgr is not None else 500
 
@@ -1225,7 +1225,7 @@ async def _materialize_api_to_trino_cache(
             continue
 
         if not _has_pg_pool:
-            log.warning("[MAT] pg_pool is None — skipping API table %s", tn)
+            log.warning("[MAT] tenant_db is None — skipping API table %s", tn)
             continue
 
         await _mat_api_ep_table(
@@ -1261,7 +1261,7 @@ async def _hydrate_dataloader(
     """DataLoader branch: batch-fetch via query param list from parent PKs."""
     from provisa.openapi.pg_cache import fill_api_table
 
-    async with state.pg_pool.acquire() as pg_conn:
+    async with state.tenant_db.acquire() as pg_conn:
         p_table = dataloader_parent_table_meta.table_name
         p_schema = (
             "default"
@@ -1317,7 +1317,7 @@ async def _hydrate_collection(
     if is_mem_fresh("default", pg_table, query_params):
         cache_hit_sources.add(source_id)
         return
-    async with state.pg_pool.acquire() as pg_conn:
+    async with state.tenant_db.acquire() as pg_conn:
         n = await fill_api_table(
             src.base_url,
             endpoint.path,
@@ -1367,7 +1367,7 @@ async def _hydrate_path_param(
         log.warning("No parent join for path-param table %s — skipping hydration", pg_table)
         return False
 
-    async with state.pg_pool.acquire() as pg_conn:
+    async with state.tenant_db.acquire() as pg_conn:
         p_table = parent_table_meta.table_name
         p_schema = "default" if p_table in state.api_endpoints else parent_table_meta.schema_name
         try:
@@ -1417,7 +1417,7 @@ async def _hydrate_api_tables_before_trino(
     cache_hit_sources: set = set()
     if not hasattr(state, "api_endpoints") or not state.api_endpoints:
         return dataloader_sources, hydration_times, hydration_rows, cache_hit_sources
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         return dataloader_sources, hydration_times, hydration_rows, cache_hit_sources
 
     for source_id in compiled.sources:

@@ -58,7 +58,7 @@ async def _build_tenant_context(
     from provisa.core.config_loader import parse_config_dict
     import json
 
-    pool = request.app.state.pg_pool
+    pool = request.app.state.tenant_db
     entity_rows = await fetch_config_entities(pool, tenant_id, "config")
     if not entity_rows:
         return None

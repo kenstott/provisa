@@ -17,7 +17,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 
-
 # ---------------------------------------------------------------------------
 # Helpers / Stubs
 # ---------------------------------------------------------------------------
@@ -77,10 +76,14 @@ def _make_state(
     schema_build_cache: dict | None = None,
 ) -> MagicMock:
     state = MagicMock()
-    state.roles = roles if roles is not None else {"admin": {"id": "admin", "capabilities": [], "domain_access": ["*"]}}
+    state.roles = (
+        roles
+        if roles is not None
+        else {"admin": {"id": "admin", "capabilities": [], "domain_access": ["*"]}}
+    )
     state.contexts = contexts or {}
     state.schema_build_cache = schema_build_cache or {"tables": [], "column_types": {}}
-    state.pg_pool = None
+    state.tenant_db = None
     state.rls_contexts = {}
     state.tables = []
     state.source_catalogs = None
@@ -97,6 +100,7 @@ class TestResolveRoleId:
 
     def _resolve(self, request, state):
         from provisa.api.rest.cypher_router import _resolve_role_id
+
         return _resolve_role_id(request, state)
 
     def test_role_from_x_provisa_role_header(self):
@@ -229,6 +233,7 @@ class TestDetectProcedure:
 
     def _detect(self, query: str):
         from provisa.api.rest.cypher_router import _detect_procedure
+
         return _detect_procedure(query)
 
     def test_detects_db_labels(self):
@@ -258,6 +263,7 @@ class TestHandleProcedure:
 
     def _handle(self, proc: str, label_map):
         from provisa.api.rest.cypher_router import _handle_procedure
+
         return _handle_procedure(proc, label_map)
 
     def _label_map(self):
@@ -339,7 +345,13 @@ class TestQueryResultIntrospection:
 
     def test_node_distinguishable_from_edge_by_label_key(self):
         node = {"label": "Orders", "id": "Orders|1", "properties": {}}
-        edge = {"identity": "PLACED_BY:1:2", "start": 1, "end": 2, "type": "PLACED_BY", "properties": {}}
+        edge = {
+            "identity": "PLACED_BY:1:2",
+            "start": 1,
+            "end": 2,
+            "type": "PLACED_BY",
+            "properties": {},
+        }
         assert "label" in node
         assert "identity" in edge
         assert "label" not in edge
@@ -363,6 +375,7 @@ class TestNeo4jExportEdgeOnly:
 
     def _cypher_literal(self, v: Any) -> str:
         from provisa.api.rest.cypher_router import _neo4j_cypher_literal
+
         return _neo4j_cypher_literal(v)
 
     def _build_statements(self, nodes: list[dict], edges: list[dict]) -> list[str]:
@@ -377,18 +390,14 @@ class TestNeo4jExportEdgeOnly:
             effective_domain = parts[0] if len(parts) == 2 else ""
             node_id = n.get("id")
             props: dict = n.get("properties", {})
-            set_parts = ", ".join(
-                f"{k}: {self._cypher_literal(v)}" for k, v in props.items()
-            )
+            set_parts = ", ".join(f"{k}: {self._cypher_literal(v)}" for k, v in props.items())
             set_str = f" SET n += {{{set_parts}}}" if set_parts else ""
             label_str = (
                 f"`{effective_table}`:`{effective_domain}`"
                 if effective_domain and effective_domain != effective_table
                 else f"`{effective_table}`"
             )
-            statements.append(
-                f"MERGE (n:{label_str} {{_provisa_id: {node_id}}}){set_str}"
-            )
+            statements.append(f"MERGE (n:{label_str} {{_provisa_id: {node_id}}}){set_str}")
 
         for e in edges:
             start = e.get("start")
@@ -406,7 +415,13 @@ class TestNeo4jExportEdgeOnly:
 
     def test_edge_only_produces_no_merge_node_statements(self):
         edges = [
-            {"start": 1, "end": 2, "type": "PLACED_BY", "startNodeLabel": "Orders", "endNodeLabel": "Customers"}
+            {
+                "start": 1,
+                "end": 2,
+                "type": "PLACED_BY",
+                "startNodeLabel": "Orders",
+                "endNodeLabel": "Customers",
+            }
         ]
         stmts = self._build_statements([], edges)
         assert len(stmts) == 1
@@ -416,7 +431,13 @@ class TestNeo4jExportEdgeOnly:
 
     def test_edge_only_contains_match_and_rel_merge(self):
         edges = [
-            {"start": 10, "end": 20, "type": "PLACED_BY", "startNodeLabel": "Orders", "endNodeLabel": "Customers"}
+            {
+                "start": 10,
+                "end": 20,
+                "type": "PLACED_BY",
+                "startNodeLabel": "Orders",
+                "endNodeLabel": "Customers",
+            }
         ]
         stmts = self._build_statements([], edges)
         assert "MATCH" in stmts[0]
@@ -438,7 +459,9 @@ class TestNeo4jExportEdgeOnly:
         assert all(s.startswith("MATCH") for s in stmts)
 
     def test_node_merge_uses_provisa_id(self):
-        nodes = [{"label": "Orders", "tableLabel": "Orders", "id": 99, "properties": {"amount": 50}}]
+        nodes = [
+            {"label": "Orders", "tableLabel": "Orders", "id": 99, "properties": {"amount": 50}}
+        ]
         stmts = self._build_statements(nodes, [])
         assert "_provisa_id: 99" in stmts[0]
         assert stmts[0].startswith("MERGE")
@@ -450,7 +473,15 @@ class TestNeo4jExportEdgeOnly:
 
     def test_mixed_nodes_and_edges_count(self):
         nodes = [{"label": "Orders", "tableLabel": "Orders", "id": 1, "properties": {}}]
-        edges = [{"start": 1, "end": 2, "type": "REL", "startNodeLabel": "Orders", "endNodeLabel": "Customers"}]
+        edges = [
+            {
+                "start": 1,
+                "end": 2,
+                "type": "REL",
+                "startNodeLabel": "Orders",
+                "endNodeLabel": "Customers",
+            }
+        ]
         stmts = self._build_statements(nodes, edges)
         assert len(stmts) == 2
 
@@ -465,6 +496,7 @@ class TestNeo4jCypherLiteral:
 
     def _lit(self, v: Any) -> str:
         from provisa.api.rest.cypher_router import _neo4j_cypher_literal
+
         return _neo4j_cypher_literal(v)
 
     def test_none_renders_as_null(self):
@@ -500,6 +532,7 @@ class TestXRoleHeaderAccess:
 
     def _resolve(self, request, state):
         from provisa.api.rest.cypher_router import _resolve_role_id
+
         return _resolve_role_id(request, state)
 
     def test_viewer_role_resolved_from_header(self):
@@ -574,8 +607,20 @@ class TestNeo4jExportGraphIntegrity:
 
     def test_all_edge_statements_reference_start_provisa_id(self):
         edges = [
-            {"start": 10, "end": 20, "type": "PLACED_BY", "startNodeLabel": "Orders", "endNodeLabel": "Customers"},
-            {"start": 30, "end": 40, "type": "BELONGS_TO", "startNodeLabel": "Items", "endNodeLabel": "Orders"},
+            {
+                "start": 10,
+                "end": 20,
+                "type": "PLACED_BY",
+                "startNodeLabel": "Orders",
+                "endNodeLabel": "Customers",
+            },
+            {
+                "start": 30,
+                "end": 40,
+                "type": "BELONGS_TO",
+                "startNodeLabel": "Items",
+                "endNodeLabel": "Orders",
+            },
         ]
         stmts = self._build_statements([], edges)
         for i, stmt in enumerate(stmts):
@@ -584,7 +629,12 @@ class TestNeo4jExportGraphIntegrity:
     def test_all_node_statements_use_merge_with_provisa_id(self):
         nodes = [
             {"label": "Orders", "tableLabel": "Orders", "id": 1, "properties": {"amount": 100}},
-            {"label": "Customers", "tableLabel": "Customers", "id": 2, "properties": {"name": "Alice"}},
+            {
+                "label": "Customers",
+                "tableLabel": "Customers",
+                "id": 2,
+                "properties": {"name": "Alice"},
+            },
         ]
         stmts = self._build_statements(nodes, [])
         for stmt in stmts:
@@ -597,10 +647,16 @@ class TestNeo4jExportGraphIntegrity:
             {"label": "Customers", "tableLabel": "Customers", "id": 2, "properties": {}},
         ]
         edges = [
-            {"start": 1, "end": 2, "type": "PLACED_BY", "startNodeLabel": "Orders", "endNodeLabel": "Customers"}
+            {
+                "start": 1,
+                "end": 2,
+                "type": "PLACED_BY",
+                "startNodeLabel": "Orders",
+                "endNodeLabel": "Customers",
+            }
         ]
         stmts = self._build_statements(nodes, edges)
-        node_ids = {n["id"] for n in nodes}
+        {n["id"] for n in nodes}
         edge_stmt = stmts[2]  # index 2 = after 2 node statements
         assert "_provisa_id: 1" in edge_stmt
         assert "_provisa_id: 2" in edge_stmt
@@ -624,7 +680,14 @@ class TestNeo4jExportGraphIntegrity:
         assert "`OWNS`" in stmts[0]
 
     def test_node_properties_serialized_in_set_clause(self):
-        nodes = [{"label": "Orders", "tableLabel": "Orders", "id": 1, "properties": {"amount": 99, "status": "open"}}]
+        nodes = [
+            {
+                "label": "Orders",
+                "tableLabel": "Orders",
+                "id": 1,
+                "properties": {"amount": 99, "status": "open"},
+            }
+        ]
         stmts = self._build_statements(nodes, [])
         assert "amount" in stmts[0]
         assert "99" in stmts[0]

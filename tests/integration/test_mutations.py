@@ -11,7 +11,7 @@
 """Integration tests for GraphQL mutation compilation and execution.
 
 Tests INSERT, UPDATE, DELETE, and UPSERT against the real PostgreSQL instance.
-All test data is cleaned up after each test using the pg_pool fixture.
+All test data is cleaned up after each test using the tenant_db fixture.
 """
 
 import os
@@ -40,6 +40,7 @@ _TEST_REGION = "integration-test-mutations"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> ColumnMetadata:
     return ColumnMetadata(column_name=name, data_type=data_type, is_nullable=nullable)
@@ -96,6 +97,7 @@ def _build_schema_and_ctx():
 # Session-scoped source pool
 # ---------------------------------------------------------------------------
 
+
 @pytest_asyncio.fixture(scope="session")
 async def mut_pool():
     sp = SourcePool()
@@ -112,30 +114,28 @@ async def mut_pool():
     await sp.close_all()
 
 
-async def _cleanup(pg_pool):
+async def _cleanup(tenant_db):
     """Delete all rows inserted by mutation tests using the sentinel region."""
-    async with pg_pool.acquire() as conn:
-        await conn.execute(
-            "DELETE FROM orders WHERE region = $1", _TEST_REGION
-        )
+    async with tenant_db.acquire() as conn:
+        await conn.execute("DELETE FROM orders WHERE region = $1", _TEST_REGION)
 
 
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestInsertMutation:
 
-    async def test_insert_mutation(self, mut_pool, pg_pool):
+class TestInsertMutation:
+    async def test_insert_mutation(self, mut_pool, tenant_db):
         """Compile + execute insert mutation; verify the row is persisted."""
         schema, ctx = _build_schema_and_ctx()
 
         # Get a valid customer_id from the DB
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             cid = await conn.fetchval("SELECT id FROM customers LIMIT 1")
 
         # Get a valid product_id from the DB
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
 
         doc = parse(f"""
@@ -160,25 +160,28 @@ class TestInsertMutation:
             assert len(result.rows) == 1
 
             # Verify row exists in the DB
-            async with pg_pool.acquire() as conn:
+            async with tenant_db.acquire() as conn:
                 count = await conn.fetchval(
                     "SELECT COUNT(*) FROM orders WHERE region = $1", _TEST_REGION
                 )
             assert count >= 1
         finally:
-            await _cleanup(pg_pool)
+            await _cleanup(tenant_db)
 
-    async def test_update_mutation(self, mut_pool, pg_pool):
+    async def test_update_mutation(self, mut_pool, tenant_db):
         """Compile + execute update mutation; verify affected rows are updated."""
         schema, ctx = _build_schema_and_ctx()
 
         # Insert a row to update
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             cid = await conn.fetchval("SELECT id FROM customers LIMIT 1")
             pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
             await conn.execute(
                 "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4)",
-                cid, pid, 50.00, _TEST_REGION,
+                cid,
+                pid,
+                50.00,
+                _TEST_REGION,
             )
 
         try:
@@ -204,19 +207,22 @@ class TestInsertMutation:
                 # Amount should be updated to 111.11
                 assert float(row[amount_idx]) == pytest.approx(111.11, abs=0.01)
         finally:
-            await _cleanup(pg_pool)
+            await _cleanup(tenant_db)
 
-    async def test_delete_mutation(self, mut_pool, pg_pool):
+    async def test_delete_mutation(self, mut_pool, tenant_db):
         """Compile + execute delete mutation; verify rows are removed."""
         schema, ctx = _build_schema_and_ctx()
 
         # Insert a row to delete
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             cid = await conn.fetchval("SELECT id FROM customers LIMIT 1")
             pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
             await conn.execute(
                 "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4)",
-                cid, pid, 77.77, _TEST_REGION,
+                cid,
+                pid,
+                77.77,
+                _TEST_REGION,
             )
 
         doc = parse(f"""
@@ -237,23 +243,26 @@ class TestInsertMutation:
         assert len(result.rows) >= 1
 
         # Verify rows are gone
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             count = await conn.fetchval(
                 "SELECT COUNT(*) FROM orders WHERE region = $1", _TEST_REGION
             )
         assert count == 0
 
-    async def test_upsert_mutation(self, mut_pool, pg_pool):
+    async def test_upsert_mutation(self, mut_pool, tenant_db):
         """Test the upsert path (ON CONFLICT ... DO UPDATE)."""
         schema, ctx = _build_schema_and_ctx()
 
         # Insert an initial row
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             cid = await conn.fetchval("SELECT id FROM customers LIMIT 1")
             pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
             inserted_id = await conn.fetchval(
                 "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4) RETURNING id",
-                cid, pid, 10.00, _TEST_REGION,
+                cid,
+                pid,
+                10.00,
+                _TEST_REGION,
             )
 
         try:
@@ -278,13 +287,13 @@ class TestInsertMutation:
             # RETURNING clause returns the upserted row
             assert len(result.rows) >= 1
         finally:
-            await _cleanup(pg_pool)
+            await _cleanup(tenant_db)
 
-    async def test_mutation_respects_column_preset(self, mut_pool, pg_pool):
+    async def test_mutation_respects_column_preset(self, mut_pool, tenant_db):
         """Column preset is applied automatically (test via checking inserted row)."""
         schema, ctx = _build_schema_and_ctx()
 
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             cid = await conn.fetchval("SELECT id FROM customers LIMIT 1")
             pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
 
@@ -310,16 +319,16 @@ class TestInsertMutation:
             vals_sql = ", ".join(placeholders)
             sql = (
                 f'INSERT INTO "public"."orders" ({cols_sql}) VALUES ({vals_sql})'
-                f' RETURNING {cols_sql}'
+                f" RETURNING {cols_sql}"
             )
             result = await execute_direct(mut_pool, "sales-pg", sql, collector.params)
             assert len(result.rows) == 1
             region_idx = result.column_names.index("region")
             assert result.rows[0][region_idx] == _TEST_REGION
         finally:
-            await _cleanup(pg_pool)
+            await _cleanup(tenant_db)
 
-    async def test_mutation_blocked_for_read_only_column(self, mut_pool, pg_pool):
+    async def test_mutation_blocked_for_read_only_column(self, mut_pool, tenant_db):
         """Mutation on a NoSQL (non-writable) source type raises an appropriate error."""
         schema, ctx = _build_schema_and_ctx()
 

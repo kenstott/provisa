@@ -35,7 +35,7 @@ import pytest
 grpc = pytest.importorskip("grpc")
 grpc_aio = pytest.importorskip("grpc.aio")
 
-from provisa.grpc.server import (
+from provisa.grpc.server import (  # noqa: E402
     ProvisaServicer,
     start_grpc_server,
 )
@@ -100,13 +100,15 @@ def compiled_proto_paths():
         proto_path = Path(tmpdir) / "test_grpc_service.proto"
         proto_path.write_text(MINIMAL_PROTO)
 
-        result = protoc.main([
-            "grpc_tools.protoc",
-            f"--proto_path={tmpdir}",
-            f"--python_out={tmpdir}",
-            f"--grpc_python_out={tmpdir}",
-            str(proto_path),
-        ])
+        result = protoc.main(
+            [
+                "grpc_tools.protoc",
+                f"--proto_path={tmpdir}",
+                f"--python_out={tmpdir}",
+                f"--grpc_python_out={tmpdir}",
+                str(proto_path),
+            ]
+        )
         if result != 0:
             raise RuntimeError(f"protoc compilation failed (exit code {result})")
 
@@ -173,8 +175,10 @@ class TestGrpcServerStarts:
 
         port = _TEST_GRPC_PORT + 1
         server = await start_grpc_server(
-            port=port, state=state,
-            pb2_path=pb2_path, pb2_grpc_path=pb2_grpc_path,
+            port=port,
+            state=state,
+            pb2_path=pb2_path,
+            pb2_grpc_path=pb2_grpc_path,
         )
         try:
             # Port should now be in use — verify by connecting to it
@@ -206,9 +210,9 @@ class TestGrpcQueryExecution:
     """
 
     @pytest.fixture(scope="class")
-    async def grpc_server_and_stub(self, compiled_proto_paths, pg_pool):
+    async def grpc_server_and_stub(self, compiled_proto_paths, tenant_db):
         """Start a gRPC server backed by a real PG pool and return a stub."""
-        _ = pg_pool  # requested for side-effect: ensures PG pool is ready before server starts
+        _ = tenant_db  # requested for side-effect: ensures PG pool is ready before server starts
         from provisa.executor.pool import SourcePool
         from provisa.compiler.rls import RLSContext
         from provisa.grpc.server import _load_module
@@ -256,6 +260,7 @@ class TestGrpcQueryExecution:
         schema = GraphQLSchema(query=cast(GraphQLObjectType, query_type))
 
         from provisa.compiler.sql_gen import CompilationContext, TableMeta
+
         ctx = CompilationContext(
             tables={
                 "order": TableMeta(
@@ -299,8 +304,10 @@ class TestGrpcQueryExecution:
 
         port = _TEST_GRPC_PORT + 2
         server = await start_grpc_server(
-            port=port, state=state,
-            pb2_path=pb2_path, pb2_grpc_path=pb2_grpc_path,
+            port=port,
+            state=state,
+            pb2_path=pb2_path,
+            pb2_grpc_path=pb2_grpc_path,
         )
 
         channel = grpc.aio.insecure_channel(f"localhost:{port}")

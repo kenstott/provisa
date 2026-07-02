@@ -109,12 +109,12 @@ async def list_actions():  # REQ-205, REQ-209
     """Return all tracked functions and webhooks."""
     from provisa.api.app import state
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    await _ensure_tables(state.pg_pool)
+    await _ensure_tables(state.tenant_db)
 
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         fn_rows = await conn.fetch("SELECT * FROM tracked_functions ORDER BY name")
         wh_rows = await conn.fetch("SELECT * FROM tracked_webhooks ORDER BY name")
 
@@ -162,10 +162,10 @@ async def create_function(
     from provisa.core.models import Function, FunctionArgument
     from provisa.core.repositories import function as function_repo
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    await _ensure_tables(state.pg_pool)
+    await _ensure_tables(state.tenant_db)
 
     func = Function(
         name=body.name,
@@ -182,7 +182,7 @@ async def create_function(
     )
     return_schema = json.dumps(body.returnSchema) if body.returnSchema is not None else None
 
-    async with state.pg_pool.acquire() as _conn:
+    async with state.tenant_db.acquire() as _conn:
         await function_repo.upsert_function(
             cast(asyncpg.Connection, _conn), func, return_schema=return_schema
         )
@@ -199,12 +199,12 @@ async def update_function(name: str, body: FunctionInput):  # REQ-205, REQ-253, 
     """Update a tracked DB function by name."""
     from provisa.api.app import state
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    await _ensure_tables(state.pg_pool)
+    await _ensure_tables(state.tenant_db)
 
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         result = await conn.execute(
             """
             UPDATE tracked_functions SET
@@ -251,12 +251,12 @@ async def delete_function(name: str):  # REQ-205, REQ-253
     """Delete a tracked DB function by name."""
     from provisa.api.app import state
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    await _ensure_tables(state.pg_pool)
+    await _ensure_tables(state.tenant_db)
 
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         result = await conn.execute("DELETE FROM tracked_functions WHERE name = $1", name)
 
     if result == "DELETE 0":
@@ -274,14 +274,14 @@ async def create_webhook(body: WebhookInput):  # REQ-209, REQ-210, REQ-211, REQ-
     """Create a tracked webhook."""
     from provisa.api.app import state
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    await _ensure_tables(state.pg_pool)
+    await _ensure_tables(state.tenant_db)
 
     from provisa.core.repositories import creation_request as cr_repo
 
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         await conn.execute(
             """
             INSERT INTO tracked_webhooks
@@ -346,12 +346,12 @@ async def update_webhook(name: str, body: WebhookInput):  # REQ-209, REQ-253
     """Update a tracked webhook by name."""
     from provisa.api.app import state
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    await _ensure_tables(state.pg_pool)
+    await _ensure_tables(state.tenant_db)
 
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         result = await conn.execute(
             """
             UPDATE tracked_webhooks SET
@@ -396,12 +396,12 @@ async def delete_webhook(name: str):  # REQ-209, REQ-253
     """Delete a tracked webhook by name."""
     from provisa.api.app import state
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    await _ensure_tables(state.pg_pool)
+    await _ensure_tables(state.tenant_db)
 
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         result = await conn.execute("DELETE FROM tracked_webhooks WHERE name = $1", name)
 
     if result == "DELETE 0":
@@ -511,13 +511,13 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
 
     from provisa.api.app import state
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    await _ensure_tables(state.pg_pool)
+    await _ensure_tables(state.tenant_db)
 
     if body.actionType == "function":
-        async with state.pg_pool.acquire() as conn:
+        async with state.tenant_db.acquire() as conn:
             row = await conn.fetchrow("SELECT * FROM tracked_functions WHERE name = $1", body.name)
         if not row:
             raise HTTPException(status_code=404, detail=f"Function '{body.name}' not found")
@@ -586,7 +586,7 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
         return {"rows": raw_rows}
 
     elif body.actionType == "webhook":
-        async with state.pg_pool.acquire() as conn:
+        async with state.tenant_db.acquire() as conn:
             row = await conn.fetchrow("SELECT * FROM tracked_webhooks WHERE name = $1", body.name)
         if not row:
             raise HTTPException(status_code=404, detail=f"Webhook '{body.name}' not found")

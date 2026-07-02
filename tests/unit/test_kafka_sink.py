@@ -274,10 +274,10 @@ class _MockAcquireCtx:
 class TestTriggerSinksForTable:
     """Tests for trigger_sinks_for_table real dispatch (REQ-176–180)."""
 
-    def _make_state(self, tables, pg_pool=None):
+    def _make_state(self, tables, tenant_db=None):
         state = MagicMock()
         state.config.tables = tables
-        state.pg_pool = pg_pool
+        state.tenant_db = tenant_db
         return state
 
     def _make_table(self, table_name="orders", kafka_sink=None):
@@ -312,7 +312,7 @@ class TestTriggerSinksForTable:
         pool = MagicMock()
         pool.acquire.return_value = _MockAcquireCtx(conn)
 
-        state = self._make_state([table], pg_pool=pool)
+        state = self._make_state([table], tenant_db=pool)
 
         with patch(
             "provisa.kafka.sink_executor._execute_and_publish_table_sink",
@@ -331,7 +331,7 @@ class TestTriggerSinksForTable:
         pool = MagicMock()
         pool.acquire.return_value = _MockAcquireCtx(conn)
 
-        state = self._make_state([table], pg_pool=pool)
+        state = self._make_state([table], tenant_db=pool)
 
         with (
             patch.dict("os.environ", {}, clear=True),

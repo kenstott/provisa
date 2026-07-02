@@ -67,7 +67,7 @@ async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413
             scope_id = body.domain_id
 
         all_candidates = []
-        pool = state.pg_pool
+        pool = state.tenant_db
         assert pool is not None
         trino_conn = state.trino_conn
         assert trino_conn is not None
@@ -109,7 +109,7 @@ async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413
 @router.get("/candidates")
 async def list_candidates():  # REQ-612
     """List pending relationship candidates."""
-    pool = state.pg_pool
+    pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
         return await candidates_repo.list_pending(cast(asyncpg.Connection, _conn))
@@ -118,7 +118,7 @@ async def list_candidates():  # REQ-612
 @router.post("/candidates/{candidate_id}/accept")
 async def accept_candidate(candidate_id: int, body: AcceptRequest | None = None):  # REQ-612
     """Accept a relationship candidate."""
-    pool = state.pg_pool
+    pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
         return await candidates_repo.accept(
@@ -129,7 +129,7 @@ async def accept_candidate(candidate_id: int, body: AcceptRequest | None = None)
 @router.post("/candidates/{candidate_id}/reject")
 async def reject_candidate(candidate_id: int, body: RejectRequest):  # REQ-612
     """Reject a relationship candidate."""
-    pool = state.pg_pool
+    pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
         await candidates_repo.reject(cast(asyncpg.Connection, _conn), candidate_id, body.reason)
@@ -139,7 +139,7 @@ async def reject_candidate(candidate_id: int, body: RejectRequest):  # REQ-612
 @router.get("/candidates/rejected/count")
 async def rejected_count():
     """Count rejected candidates."""
-    pool = state.pg_pool
+    pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as conn:
         count = await conn.fetchval(
@@ -151,7 +151,7 @@ async def rejected_count():
 @router.delete("/candidates/rejected")
 async def clear_rejections():
     """Delete all rejected candidates."""
-    pool = state.pg_pool
+    pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
         count = await candidates_repo.clear_rejections(cast(asyncpg.Connection, _conn))

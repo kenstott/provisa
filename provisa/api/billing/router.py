@@ -44,7 +44,7 @@ class CheckoutBody(BaseModel):
 
 
 def _pool(request: Request):
-    return request.app.state.pg_pool
+    return request.app.state.tenant_db
 
 
 @router.post("/signup")  # REQ-073

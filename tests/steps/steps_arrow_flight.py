@@ -87,7 +87,7 @@ def client_connects_to_flight_server_port_8815(shared_data: dict) -> None:
     state.masking_rules = {}
     state.flight_client = None
     state.trino_conn = None
-    state.pg_pool = None
+    state.tenant_db = None
 
     # Start a dedicated event loop in a daemon thread so that the server's
     # run_coroutine_threadsafe calls have a running loop to dispatch to.
@@ -108,6 +108,7 @@ def client_connects_to_flight_server_port_8815(shared_data: dict) -> None:
 
     # Wait up to 2 s for the server to bind.
     import socket
+
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline:
         try:
@@ -168,9 +169,7 @@ def query_is_submitted(shared_data: dict) -> None:
         shared_data["flight_error"] = exc
 
 
-@then(
-    "record batches are streamed via gRPC with the full Provisa security pipeline applied"
-)
+@then("record batches are streamed via gRPC with the full Provisa security pipeline applied")
 def record_batches_streamed_with_security_pipeline(shared_data: dict) -> None:
     """Assert that the Arrow Flight server applies the security pipeline.
 
@@ -230,16 +229,14 @@ def record_batches_streamed_with_security_pipeline(shared_data: dict) -> None:
         assert hasattr(state, "masking_rules"), (
             "AppState must expose masking_rules for the security pipeline"
         )
-        assert hasattr(state, "roles"), (
-            "AppState must expose roles for the security pipeline"
-        )
+        assert hasattr(state, "roles"), "AppState must expose roles for the security pipeline"
 
         shared_data["streamed_batches"] = batches
 
     else:
         # Security pipeline rejected the request: assert it's a known error type.
         assert error is not None
-        error_str = str(error).lower()
+        str(error).lower()
         # Accept any server-side error: security rejection, missing role, etc.
         assert isinstance(error, Exception), (
             f"Expected an Exception from the security pipeline, got {type(error)}"
@@ -341,9 +338,7 @@ def zaychik_receives_request(shared_data: dict) -> None:
     )
 
 
-@then(
-    "it translates the Flight SQL protocol to Trino JDBC and returns results as Arrow batches"
-)
+@then("it translates the Flight SQL protocol to Trino JDBC and returns results as Arrow batches")
 def returns_arrow_batches(shared_data: dict) -> None:
     """Confirm translation and Arrow batch delivery.
 
@@ -381,9 +376,7 @@ def returns_arrow_batches(shared_data: dict) -> None:
     from provisa.compiler.sql_gen import ColumnRef
 
     col_names = ["id", "name"]
-    col_refs = [
-        ColumnRef(field_name=c, column=c, alias=None, nested_in=None) for c in col_names
-    ]
+    col_refs = [ColumnRef(field_name=c, column=c, alias=None, nested_in=None) for c in col_names]
     rows = [
         (1, "alpha"),
         (2, "beta"),
@@ -397,9 +390,7 @@ def returns_arrow_batches(shared_data: dict) -> None:
     assert table.column_names == col_names, (
         f"Arrow table columns must match {col_names}, got {table.column_names}"
     )
-    assert table.num_rows == 2, (
-        f"Arrow table must contain 2 rows, got {table.num_rows}"
-    )
+    assert table.num_rows == 2, f"Arrow table must contain 2 rows, got {table.num_rows}"
 
     # Convert to record batches — the unit delivered over Arrow Flight.
     batches = table.to_batches()
@@ -408,9 +399,7 @@ def returns_arrow_batches(shared_data: dict) -> None:
         "All elements of to_batches() must be pa.RecordBatch instances"
     )
     total_rows = sum(b.num_rows for b in batches)
-    assert total_rows == 2, (
-        f"Total rows across all batches must be 2, got {total_rows}"
-    )
+    assert total_rows == 2, f"Total rows across all batches must be 2, got {total_rows}"
 
     # Verify each batch has a well-formed Arrow schema.
     for i, batch in enumerate(batches):
@@ -436,8 +425,7 @@ def returns_arrow_batches(shared_data: dict) -> None:
     reader = pa.ipc.open_stream(ipc_bytes)
     round_tripped = reader.read_all()
     assert round_tripped.num_rows == table.num_rows, (
-        f"Round-tripped table must have {table.num_rows} rows, "
-        f"got {round_tripped.num_rows}"
+        f"Round-tripped table must have {table.num_rows} rows, got {round_tripped.num_rows}"
     )
     assert round_tripped.column_names == table.column_names, (
         f"Round-tripped column names must match {table.column_names}, "
@@ -457,9 +445,7 @@ def returns_arrow_batches(shared_data: dict) -> None:
     assert "'EMEA'" in translated, (
         f"Trino JDBC SQL must contain quoted string literal 'EMEA': {translated!r}"
     )
-    assert "100" in translated, (
-        f"Trino JDBC SQL must contain numeric literal 100: {translated!r}"
-    )
+    assert "100" in translated, f"Trino JDBC SQL must contain numeric literal 100: {translated!r}"
 
     # Confirm the structural shape of the query survived translation.
     assert "WHERE" in translated.upper(), (
@@ -538,8 +524,8 @@ def zaychik_proxy_unavailable(shared_data: dict) -> None:
     from unittest.mock import MagicMock
 
     state = MagicMock()
-    state.flight_client = None          # Zaychik proxy not available
-    state.trino_conn = MagicMock()      # Trino REST connectivity remains available
+    state.flight_client = None  # Zaychik proxy not available
+    state.trino_conn = MagicMock()  # Trino REST connectivity remains available
     state.schemas = {}
     state.contexts = {}
     state.rls_contexts = {}
@@ -548,7 +534,7 @@ def zaychik_proxy_unavailable(shared_data: dict) -> None:
     state.source_types = {}
     state.source_dialects = {}
     state.masking_rules = {}
-    state.pg_pool = None
+    state.tenant_db = None
 
     shared_data["state"] = state
 
@@ -595,14 +581,10 @@ def flight_query_submitted(shared_data: dict) -> None:
 
     # Assert query is a non-empty string that the REST fallback can execute.
     assert isinstance(query, str) and query.strip(), "Query must be a non-empty string"
-    assert query.strip().upper().startswith("SELECT"), (
-        "Test query must be a SELECT statement"
-    )
+    assert query.strip().upper().startswith("SELECT"), "Test query must be a SELECT statement"
 
 
-@then(
-    "the Flight server falls back to materializing results via Trino REST API"
-)
+@then("the Flight server falls back to materializing results via Trino REST API")
 def falls_back_to_trino_rest(shared_data: dict) -> None:
     """Verify the fallback materializes a complete Arrow result set.
 
@@ -657,24 +639,18 @@ def falls_back_to_trino_rest(shared_data: dict) -> None:
     from provisa.compiler.sql_gen import ColumnRef
 
     col_names = ["id", "name"]
-    col_refs = [
-        ColumnRef(field_name=c, column=c, alias=None, nested_in=None) for c in col_names
-    ]
+    col_refs = [ColumnRef(field_name=c, column=c, alias=None, nested_in=None) for c in col_names]
     rest_rows = [
         (1, "alpha"),
         (2, "beta"),
     ]
     table = rows_to_arrow_table(rest_rows, col_refs)
 
-    assert isinstance(table, pa.Table), (
-        f"REST fallback must produce a pa.Table, got {type(table)}"
-    )
+    assert isinstance(table, pa.Table), f"REST fallback must produce a pa.Table, got {type(table)}"
     assert table.column_names == col_names, (
         f"Arrow table columns must be {col_names}, got {table.column_names}"
     )
-    assert table.num_rows == 2, (
-        f"Arrow table must contain 2 rows, got {table.num_rows}"
-    )
+    assert table.num_rows == 2, f"Arrow table must contain 2 rows, got {table.num_rows}"
 
     # --- Assertion 6: materialized result converts to Arrow Flight record batches ---
     batches = table.to_batches()
@@ -683,9 +659,7 @@ def falls_back_to_trino_rest(shared_data: dict) -> None:
         "All elements of to_batches() must be pa.RecordBatch instances"
     )
     total_rows = sum(b.num_rows for b in batches)
-    assert total_rows == 2, (
-        f"Total rows across all record batches must be 2, got {total_rows}"
-    )
+    assert total_rows == 2, f"Total rows across all record batches must be 2, got {total_rows}"
 
     # Confirm Arrow schema integrity: both columns present.
     schema = table.schema
@@ -703,16 +677,13 @@ def falls_back_to_trino_rest(shared_data: dict) -> None:
         writer.write_batch(batch)
     writer.close()
     ipc_bytes = sink.getvalue()
-    assert len(ipc_bytes) > 0, (
-        "Serialized Arrow IPC bytes must be non-empty for Flight delivery"
-    )
+    assert len(ipc_bytes) > 0, "Serialized Arrow IPC bytes must be non-empty for Flight delivery"
 
     # --- Assertion 8: IPC round-trip fidelity ---
     ipc_reader = pa.ipc.open_stream(ipc_bytes)
     round_tripped = ipc_reader.read_all()
     assert round_tripped.num_rows == table.num_rows, (
-        f"Round-tripped table must have {table.num_rows} rows, "
-        f"got {round_tripped.num_rows}"
+        f"Round-tripped table must have {table.num_rows} rows, got {round_tripped.num_rows}"
     )
     assert round_tripped.column_names == table.column_names, (
         f"Round-tripped column names must match {table.column_names}, "
@@ -723,9 +694,7 @@ def falls_back_to_trino_rest(shared_data: dict) -> None:
     rt_ids = round_tripped.column("id").to_pylist()
     rt_names = round_tripped.column("name").to_pylist()
     assert rt_ids == [1, 2], f"id column must be [1, 2], got {rt_ids}"
-    assert rt_names == ["alpha", "beta"], (
-        f"name column must be ['alpha', 'beta'], got {rt_names}"
-    )
+    assert rt_names == ["alpha", "beta"], f"name column must be ['alpha', 'beta'], got {rt_names}"
 
     # Store materialized artefacts for downstream steps or debugging.
     shared_data["materialized_table"] = table

@@ -171,9 +171,7 @@ def when_update_table_live_config(shared_data: dict) -> None:
         }
 
 
-@then(
-    "the configuration is persisted to registered_tables.live and the live engine is notified"
-)
+@then("the configuration is persisted to registered_tables.live and the live engine is notified")
 def then_config_persisted_and_engine_notified(shared_data: dict) -> None:
     """Assert persistence contract and engine-notification contract."""
     result = shared_data.get("mutation_result", {})
@@ -193,9 +191,7 @@ def then_config_persisted_and_engine_notified(shared_data: dict) -> None:
         schema_sql_path = core_path / "schema.sql"
         if schema_sql_path.exists():
             ddl = schema_sql_path.read_text()
-            assert "live" in ddl or True, (
-                "registered_tables.live column not found in schema.sql"
-            )
+            assert "live" in ddl or True, "registered_tables.live column not found in schema.sql"
     except Exception:
         pass
 
@@ -209,11 +205,11 @@ def then_config_persisted_and_engine_notified(shared_data: dict) -> None:
     try:
         from provisa.live import engine as live_engine  # type: ignore[import]
 
-        assert hasattr(live_engine, "notify") or hasattr(
-            live_engine, "reload"
-        ) or hasattr(live_engine, "refresh"), (
-            "live engine module lacks a notification hook (notify/reload/refresh)"
-        )
+        assert (
+            hasattr(live_engine, "notify")
+            or hasattr(live_engine, "reload")
+            or hasattr(live_engine, "refresh")
+        ), "live engine module lacks a notification hook (notify/reload/refresh)"
     except ImportError:
         pass
 
@@ -235,9 +231,7 @@ def given_admin_ui_tables_page(shared_data: dict) -> None:
         query_cls = getattr(admin_schema, "Query", None)
         tables_exposed = any("table" in a.lower() for a in module_attrs)
         if query_cls is not None:
-            tables_exposed = tables_exposed or any(
-                "table" in m.lower() for m in dir(query_cls)
-            )
+            tables_exposed = tables_exposed or any("table" in m.lower() for m in dir(query_cls))
         assert tables_exposed, (
             "Admin schema does not expose a tables query — TablesPage cannot function."
         )
@@ -257,7 +251,7 @@ def given_admin_ui_tables_page(shared_data: dict) -> None:
 @when("an operator edits live config for a table")
 def when_operator_edits_live_config(shared_data: dict) -> None:
     """Simulate the operator save action by calling the update mutation or repository."""
-    table_id = shared_data["ui_table_id"]
+    shared_data["ui_table_id"]
     live_config = shared_data["ui_live_config"]
 
     try:
@@ -293,9 +287,7 @@ def then_changes_reflected_without_restart(shared_data: dict) -> None:
     )
 
     outputs = live_config.get("outputs", [])
-    assert isinstance(outputs, list) and len(outputs) > 0, (
-        "outputs must be a non-empty list."
-    )
+    assert isinstance(outputs, list) and len(outputs) > 0, "outputs must be a non-empty list."
 
     for output in outputs:
         assert "type" in output, f"Output entry missing 'type': {output}"
@@ -351,17 +343,17 @@ def when_live_engine_starts(shared_data: dict) -> None:
     """Instantiate LiveEngine, start it, and drive startup reconciliation."""
     from provisa.live.engine import LiveEngine
 
-    pg_pool = shared_data["mock_pg_pool"]
-    engine = LiveEngine(pg_pool=pg_pool)
+    tenant_db = shared_data["mock_pg_pool"]
+    engine = LiveEngine(tenant_db=tenant_db)
 
     reconcile_calls: list[str] = []
     registered_queries: list[str] = []
-    db_live_rows = shared_data["db_live_rows"]
+    shared_data["db_live_rows"]
 
     async def _fake_rebuild_schemas() -> None:
         """Simulate querying DB for active live configs and registering poll jobs."""
         reconcile_calls.append("_rebuild_schemas")
-        conn = await pg_pool.acquire().__aenter__(None)
+        conn = await tenant_db.acquire().__aenter__(None)
         rows = await conn.fetch(
             "SELECT * FROM registered_tables WHERE live IS NOT NULL AND live->>'active' = 'true'"
         )
@@ -449,12 +441,12 @@ def given_live_config_modified_via_admin(shared_data: dict) -> None:
     }
 
     # Set up an engine with the old config already registered.
-    pg_pool = _make_mock_pg_pool()
-    shared_data["mutation_pg_pool"] = pg_pool
+    tenant_db = _make_mock_pg_pool()
+    shared_data["mutation_pg_pool"] = tenant_db
 
     from provisa.live.engine import LiveEngine
 
-    engine = LiveEngine(pg_pool=pg_pool)
+    engine = LiveEngine(tenant_db=tenant_db)
 
     async def _start_with_old_config() -> None:
         await engine.start()

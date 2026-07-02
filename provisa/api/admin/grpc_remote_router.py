@@ -95,12 +95,12 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
 
     queries, mutations = map_proto(proto_dict, namespace, source_id, domain_id, method_overrides)
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    await _ensure_tables(state.pg_pool)
+    await _ensure_tables(state.tenant_db)
 
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         n_tables, n_mutations = await _register_schema(
             source_id, queries, mutations, conn, namespace, domain_id
         )
@@ -108,7 +108,7 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
     if relationships:
         from provisa.api.admin.graphql_remote_router import _upsert_relationships_to_semantic_layer
 
-        await _upsert_relationships_to_semantic_layer(relationships, state.pg_pool, state)
+        await _upsert_relationships_to_semantic_layer(relationships, state.tenant_db, state)
 
     # Open gRPC channel
     if tls:
@@ -391,12 +391,12 @@ async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Proto compilation failed: {exc}") from exc
 
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    await _ensure_tables(state.pg_pool)
+    await _ensure_tables(state.tenant_db)
 
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         n_tables, n_mutations = await _register_schema(
             source_id,
             queries,

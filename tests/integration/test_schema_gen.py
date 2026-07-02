@@ -42,14 +42,14 @@ FIXTURE_CONFIG = Path(__file__).parent.parent / "fixtures" / "sample_config.yaml
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
-async def _init_schema(pg_pool):
-    await init_schema(pg_pool, SCHEMA_SQL)
+async def _init_schema(tenant_db):
+    await init_schema(tenant_db, SCHEMA_SQL)
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
-async def _load_config(pg_pool, _init_schema):
+async def _load_config(tenant_db, _init_schema):
     """Load sample config into PG once per module."""
-    async with pg_pool.acquire() as conn:
+    async with tenant_db.acquire() as conn:
         await conn.execute("SET search_path TO org_default")
         await conn.execute("""
             TRUNCATE rls_rules, relationships, table_columns,
@@ -61,15 +61,15 @@ async def _load_config(pg_pool, _init_schema):
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
-async def schema_input(pg_pool, trino_conn, _load_config) -> dict:
+async def schema_input(tenant_db, trino_conn, _load_config) -> dict:
     """Build SchemaInput from loaded config + real Trino metadata."""
-    async with pg_pool.acquire() as conn:
+    async with tenant_db.acquire() as conn:
         await conn.execute("SET search_path TO org_default")
         tables = await table_repo.list_all(conn)
         rels = await rel_repo.list_all(conn)
         roles = await role_repo.list_all(conn)
         domains = await domain_repo.list_all(conn)
-        sources = await source_repo.list_all(conn)
+        await source_repo.list_all(conn)
         naming_rules = [
             dict(r) for r in await conn.fetch("SELECT pattern, replacement FROM naming_rules")
         ]
@@ -266,7 +266,8 @@ class TestSchemaGenQueryArgs:
         # At least one column field should exist with OrderDirection enum type
         assert len(order_by_type.fields) > 0
         enum_fields = [
-            (name, f) for name, f in order_by_type.fields.items()
+            (name, f)
+            for name, f in order_by_type.fields.items()
             if isinstance(f.type, GraphQLEnumType)
         ]
         assert len(enum_fields) > 0

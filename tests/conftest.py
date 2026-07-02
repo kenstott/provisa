@@ -330,7 +330,7 @@ def pg_dsn() -> str:
 
 
 @pytest_asyncio.fixture(scope="session")
-async def pg_pool(pg_dsn):
+async def tenant_db(pg_dsn):
     pool = await asyncpg.create_pool(
         pg_dsn,
         min_size=1,
@@ -428,7 +428,7 @@ async def graphql_client(docker_postgres):
     _sp.remove = AsyncMock()
     _sp.close_all = AsyncMock()
     _sp.close = AsyncMock()
-    app_mod.state.pg_pool = pool
+    app_mod.state.tenant_db = pool
     app_mod.state.source_pools = _sp
 
     # Platform control plane (global org/user/invite registry). This fixture
@@ -447,7 +447,7 @@ async def graphql_client(docker_postgres):
 
     await pool.close()
     await admin_db.close()
-    app_mod.state.pg_pool = None
+    app_mod.state.tenant_db = None
     app_mod.state.admin_db = None
 
 
@@ -476,7 +476,7 @@ def test_client(docker_postgres):  # pyright: ignore[reportUnusedParameter]
     app_mod.state.source_pools = _sp
     with TestClient(the_app, raise_server_exceptions=False) as client:
         yield client
-    app_mod.state.pg_pool = None
+    app_mod.state.tenant_db = None
 
 
 @pytest.fixture(scope="session")

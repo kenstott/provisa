@@ -92,7 +92,7 @@ def build_catalog_tables(state) -> list[CatalogTable]:  # REQ-127, REQ-128
     """
     import asyncio
 
-    if not state.pg_pool:
+    if not state.tenant_db:
         return []
 
     loop = asyncio.new_event_loop()
@@ -104,7 +104,7 @@ def build_catalog_tables(state) -> list[CatalogTable]:  # REQ-127, REQ-128
 
 async def _build_catalog_tables_async(state) -> list[CatalogTable]:
     """Async implementation of build_catalog_tables."""
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, domain_id, table_name, description "
             "FROM registered_tables ORDER BY domain_id, table_name"

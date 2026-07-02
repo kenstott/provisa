@@ -467,7 +467,7 @@ class TestWebhookApprovalGate:
 
         conn = _FakeConn()
         fake_state = MagicMock()
-        fake_state.pg_pool = _FakePool(conn)
+        fake_state.tenant_db = _FakePool(conn)
 
         with (
             patch("provisa.api.app.state", fake_state),

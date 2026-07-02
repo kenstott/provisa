@@ -77,13 +77,12 @@ log = logging.getLogger(__name__)
 class AppState:
     """Shared application state populated at startup."""
 
-    # Control plane handles (SQLAlchemy-backed). ``pg_pool`` is retained as the
-    # org/tenant control-plane alias for existing call sites; ``admin_db`` is the
-    # platform control plane (orgs/users/invites/billing). In Phase 1 both share
-    # one engine/database; Phase 2 can repoint ``admin_db`` at a separate DB.
-    pg_pool: Database | None = None
+    # Control plane handles (SQLAlchemy-backed), two independent engines:
+    # ``tenant_db`` is the per-org/tenant control plane (schema-scoped);
+    # ``admin_db`` is the global platform control plane (orgs/users/invites/
+    # billing), backed by its own SQLAlchemy URI.
+    tenant_db: Database | None = None
     admin_db: Database | None = None
-    org_db: Database | None = None
     trino_conn: trino.dbapi.Connection | None = None
     trino_conn_kwargs: dict = {}  # kwargs used to create trino_conn (for reconnect)
     flight_client: Any | None = None  # pyarrow.flight.FlightClient
@@ -1000,7 +999,7 @@ async def _init_meta_rls(conn: asyncpg.Connection) -> None:  # REQ-041, REQ-402
         )
 
 
-async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:  # REQ-057
+async def _init_control_planes() -> tuple[str, int, str, str]:  # REQ-057
     """Connect to PG, init schema, audit, and billing. Returns (pg_host, pg_port, pg_database, pg_user)."""
     pg_host = os.environ.get("PG_HOST", "localhost")
     pg_port = int(os.environ.get("PG_PORT", "5432"))
@@ -1013,7 +1012,7 @@ async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:  # REQ-057
     org_id = os.environ.get("ORG_ID", "default")
     state.org_id = org_id
 
-    # Split control plane, two independent engines. Tenant (``org_db``/``pg_pool``)
+    # Split control plane, two independent engines. Tenant (``tenant_db``/``tenant_db``)
     # is scoped to schema ``org_<id>`` via ``search_path`` — the tenant-scope
     # mechanism. Platform (``admin_db``, see control_plane.bring_up_platform) is
     # the global registry + billing, never org-scoped, on its own SQLAlchemy URI.
@@ -1026,17 +1025,17 @@ async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:  # REQ-057
         pool_size=pg_pool_max,
         pool_min=pg_pool_min,
     )
-    state.org_db = state.pg_pool = Database(org_engine, name="org", search_path=f"org_{org_id}")
+    state.tenant_db = Database(org_engine, name="org", search_path=f"org_{org_id}")
     _plat_url = os.environ["PLATFORM_DATABASE_URL"]
     state.admin_db = await bring_up_platform(_plat_url, pool_size=pg_pool_max, pool_min=pg_pool_min)
 
     schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
     if schema_sql_path.exists():
-        await init_schema(state.pg_pool, schema_sql_path.read_text(), org_id=org_id)
+        await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
 
     from provisa.audit.query_log import init_audit_schema
 
-    await init_audit_schema(state.pg_pool, org_id=org_id)
+    await init_audit_schema(state.tenant_db, org_id=org_id)
 
     return pg_host, pg_port, pg_database, pg_user
 
@@ -1045,10 +1044,10 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     pg_host: str, pg_port: int, pg_database: str, pg_user: str
 ) -> None:
     """Seed provisa-admin, provisa-otel, and __provisa__ source rows; seed meta domain and ops; compute clusters."""
-    assert state.pg_pool is not None
+    assert state.tenant_db is not None
     trino_host_early = os.environ.get("TRINO_HOST", "localhost")
     trino_port_early = int(os.environ.get("TRINO_PORT", "8080"))
-    async with state.pg_pool.acquire() as _conn:
+    async with state.tenant_db.acquire() as _conn:
         await _conn.execute(
             """
             INSERT INTO sources (id, type, host, port, database, username, dialect, description)
@@ -1369,11 +1368,11 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
 
 async def _resolve_pk_from_sources() -> None:
     """Second pass — resolve PRIMARY KEYs from each native RDBMS source's information_schema."""
-    assert state.pg_pool is not None
+    assert state.tenant_db is not None
     _startup_log = logging.getLogger("uvicorn.error")
     _PK_RDBMS_TYPES = ("postgresql", "mysql", "mariadb", "singlestore", "sqlserver", "redshift")
     _PK_SOURCE_TYPES = _PK_RDBMS_TYPES + ("sqlite",)
-    async with state.pg_pool.acquire() as _pk_conn:
+    async with state.tenant_db.acquire() as _pk_conn:
         _pk_rows = await _pk_conn.fetch(
             "SELECT rt.id, rt.source_id, rt.schema_name, rt.table_name, s.type AS source_type "
             "FROM registered_tables rt JOIN sources s ON s.id = rt.source_id "
@@ -1420,8 +1419,8 @@ async def _resolve_pk_from_sources() -> None:
 
 async def _load_openapi_specs() -> None:
     """Reload OpenAPI specs from DB into state (survives hot reloads and restarts)."""
-    assert state.pg_pool is not None
-    async with state.pg_pool.acquire() as conn:
+    assert state.tenant_db is not None
+    async with state.tenant_db.acquire() as conn:
         openapi_rows = await conn.fetch(
             "SELECT id, path FROM sources WHERE type = 'openapi' AND path IS NOT NULL AND path != ''"
         )
@@ -1603,14 +1602,14 @@ def _load_mv_and_views_config(
 
 async def _init_ingest_engines() -> None:
     """Phase AS: Initialize ingest engines and DDL for ingest sources."""
-    assert state.pg_pool is not None
+    assert state.tenant_db is not None
     try:
         from provisa.ingest.engine import get_engine as _get_ingest_engine
         from provisa.ingest.ddl import generate_create_table as _gen_ddl
         from provisa.core.secrets import resolve_secrets as _resolve_secrets
 
         _ingest_log = logging.getLogger(__name__)
-        async with state.pg_pool.acquire() as _pg_conn:
+        async with state.tenant_db.acquire() as _pg_conn:
             _ingest_sources = await _pg_conn.fetch(
                 "SELECT id, host, port, database, username, dialect FROM sources WHERE type = 'ingest'"
             )
@@ -1627,7 +1626,7 @@ async def _init_ingest_engines() -> None:
                 password=_pw or "",
             )
             state.ingest_engines[_sid] = _eng
-            async with state.pg_pool.acquire() as _pg_conn:
+            async with state.tenant_db.acquire() as _pg_conn:
                 _itables = await _pg_conn.fetch(
                     """
                     SELECT rt.table_name, tc.column_name, tc.path, tc.data_type
@@ -1686,7 +1685,7 @@ async def _load_and_build(
 
     # Connect to PG and init schema unconditionally — pool must be available
     # even before a config file exists (admin UI needs it on first start).
-    pg_host, pg_port, pg_database, pg_user = await _init_pg_pool_and_schema()
+    pg_host, pg_port, pg_database, pg_user = await _init_control_planes()
 
     _mark("pg-pool")
     _mark("schema-init")
@@ -1731,9 +1730,9 @@ async def _load_and_build(
         from provisa.core.tenant_context import TenantContextCache
 
         state.tenant_context_cache = TenantContextCache()
-        pg_pool = state.pg_pool
-        assert pg_pool is not None
-        async with pg_pool.acquire() as _rls_conn:
+        tenant_db = state.tenant_db
+        assert tenant_db is not None
+        async with tenant_db.acquire() as _rls_conn:
             await _init_meta_rls(cast(asyncpg.Connection, _rls_conn))
 
     # Apply observability config to state
@@ -1761,9 +1760,9 @@ async def _load_and_build(
             state.response_cache_store = RedisCacheStore(redis_url)
         state.response_cache_default_ttl = cache_config.get("default_ttl", 300)
 
-    pg_pool = state.pg_pool
-    assert pg_pool is not None
-    async with pg_pool.acquire() as conn:
+    tenant_db = state.tenant_db
+    assert tenant_db is not None
+    async with tenant_db.acquire() as conn:
         _replace_mode = os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in ("1", "true", "yes")
         await load_config(
             config, cast(asyncpg.Connection, conn), state.trino_conn, replace=_replace_mode
@@ -1794,10 +1793,10 @@ async def _load_and_build(
     await _load_graphql_remote_sources_from_db()
 
     # Retry config relationships deferred at load_config time (graphql_remote tables now available)
-    if getattr(state, "config", None) is not None and state.pg_pool is not None:
+    if getattr(state, "config", None) is not None and state.tenant_db is not None:
         from provisa.core.repositories import relationship as _rel_repo
 
-        async with state.pg_pool.acquire() as _retry_conn:
+        async with state.tenant_db.acquire() as _retry_conn:
             for _rel in state.config.relationships:
                 try:
                     await _rel_repo.upsert(cast(asyncpg.Connection, _retry_conn), _rel)
@@ -1848,11 +1847,11 @@ def _filter_tables_by_schema_cfg(
 
 async def _load_graphql_remote_sources_from_db() -> None:
     """Load persisted graphql_remote sources from DB into state.graphql_remote_sources."""
-    if state.pg_pool is None:
-        log.warning("[GQL REMOTE] pg_pool is None — skipping DB load")
+    if state.tenant_db is None:
+        log.warning("[GQL REMOTE] tenant_db is None — skipping DB load")
         return
     try:
-        async with state.pg_pool.acquire() as _conn:
+        async with state.tenant_db.acquire() as _conn:
             src_rows = await _conn.fetch(
                 "SELECT id, path FROM sources WHERE type = 'graphql_remote'"
             )
@@ -2204,11 +2203,11 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     """Load tracked functions and webhooks from DB; populate state.tracked_functions/webhooks."""
     from provisa.api.admin.actions_router import _ensure_tables
 
-    await _ensure_tables(state.pg_pool)
+    await _ensure_tables(state.tenant_db)
 
     from provisa.discovery.catalog_cache import ensure_table as _ensure_catalog_cache
 
-    await _ensure_catalog_cache(state.pg_pool)
+    await _ensure_catalog_cache(state.tenant_db)
     fn_rows = await conn.fetch("SELECT * FROM tracked_functions ORDER BY name")
     # REQ-209: only steward-approved webhooks are exposed and callable. A webhook is approved
     # when its most recent "webhook" creation_request is executed (editing enqueues a fresh
@@ -2356,9 +2355,9 @@ async def _bg_hydrate_api_endpoints() -> None:
         return
 
     _hydrate_log = logging.getLogger(__name__)
-    assert state.pg_pool is not None
+    assert state.tenant_db is not None
 
-    async def _bg_hydrate(eps=_zero_param_eps, pool: Database = state.pg_pool, _log=_hydrate_log):
+    async def _bg_hydrate(eps=_zero_param_eps, pool: Database = state.tenant_db, _log=_hydrate_log):
         from provisa.openapi.pg_cache import fill_api_table
 
         async with pool.acquire() as _conn:
@@ -2430,9 +2429,9 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
     """Reconcile live engine (REQ-565) and compile view SQLs after a schema rebuild."""
     # Re-drive the live poll engine from the now-current DB state so admin edits
     # to per-table live config take effect without a restart (REQ-565).
-    if state.live_engine is not None and state.pg_pool is not None:
+    if state.live_engine is not None and state.tenant_db is not None:
         try:
-            async with state.pg_pool.acquire() as _lc:
+            async with state.tenant_db.acquire() as _lc:
                 await _reconcile_live_engine(cast(asyncpg.Connection, _lc))
         except Exception:
             _rebuild_log.exception("live engine reconcile failed")
@@ -2455,8 +2454,8 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     """Re-introspect Trino and rebuild schemas for all roles from current DB state."""
     _rebuild_log = logging.getLogger(__name__)
     _rebuild_log.info("_rebuild_schemas called")
-    if state.pg_pool is None or state.trino_conn is None:
-        _rebuild_log.warning("_rebuild_schemas: pg_pool or trino_conn is None, returning")
+    if state.tenant_db is None or state.trino_conn is None:
+        _rebuild_log.warning("_rebuild_schemas: tenant_db or trino_conn is None, returning")
         return
 
     kafka_physical = getattr(state, "kafka_table_physical", {})
@@ -2465,7 +2464,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     # Clear mutable state before rebuild
     state.masking_rules = {}
 
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         _pg = cast(asyncpg.Connection, conn)
         tables = await _fetch_tables(_pg)
         _assert_domain_table_unique(tables)
@@ -2723,9 +2722,9 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
         while True:
             await asyncio.sleep(_sqlite_check_interval)
             try:
-                if state.pg_pool is None:
+                if state.tenant_db is None:
                     continue
-                async with state.pg_pool.acquire() as conn:
+                async with state.tenant_db.acquire() as conn:
                     _sc = cast(asyncpg.Connection, conn)
                     rows = await _sc.fetch(
                         """SELECT rt.id, rt.table_name, rt.schema_name, s.path
@@ -2860,7 +2859,7 @@ async def _start_servers(_log: logging.Logger) -> None:
     try:
         from provisa.live.engine import LiveEngine
 
-        live_engine = LiveEngine(pg_pool=state.pg_pool, trino_conn=state.trino_conn)
+        live_engine = LiveEngine(tenant_db=state.tenant_db, trino_conn=state.trino_conn)
         await live_engine.start()
         state.live_engine = live_engine
         _log.info("Live Query Engine started")
@@ -2868,8 +2867,8 @@ async def _start_servers(_log: logging.Logger) -> None:
         # Reconcile poll jobs from persisted per-table live config (Phase AY).
         # Data polls route through Trino; CDC-delivered tables are driven by
         # subscription providers, not the poll engine.
-        if state.pg_pool is not None:
-            async with state.pg_pool.acquire() as _lc:
+        if state.tenant_db is not None:
+            async with state.tenant_db.acquire() as _lc:
                 await _reconcile_live_engine(cast(asyncpg.Connection, _lc))
     except Exception:
         _log.exception("Live Query Engine startup failed")
@@ -2980,7 +2979,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
             if not hasattr(state, "graphql_remote_sources"):
                 state.graphql_remote_sources = {}
             state.graphql_remote_sources["graphql-demo"] = reg.model_dump()
-            _demo_pool = state.pg_pool
+            _demo_pool = state.tenant_db
             if _demo_pool is not None:
                 async with _demo_pool.acquire() as _conn:
                     await _conn.execute(
@@ -3211,8 +3210,8 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     await state.response_cache_store.close()
     await state.source_pools.close_all()
-    if state.pg_pool:
-        await state.pg_pool.close()
+    if state.tenant_db:
+        await state.tenant_db.close()
     if state.flight_client:
         state.flight_client.close()
     if state.trino_conn:
@@ -3270,7 +3269,7 @@ def create_app() -> FastAPI:
     # Conditionally add auth middleware and routes
     from provisa.auth.wiring import wire_auth
 
-    wire_auth(app, state.auth_config, db_pool=state.pg_pool, admin_pool=state.admin_db)
+    wire_auth(app, state.auth_config, db_pool=state.tenant_db, admin_pool=state.admin_db)
 
     if state.multitenancy:
         from provisa.api.middleware.tenant_middleware import TenantMiddleware
@@ -3453,9 +3452,9 @@ def create_app() -> FastAPI:
     @app.api_route("/health", methods=["GET", "HEAD"])
     async def health():  # noqa: F841  # pyright: ignore[reportUnusedFunction]
         pg_status = "unavailable"
-        if state.pg_pool is not None:
+        if state.tenant_db is not None:
             try:
-                async with state.pg_pool.acquire() as conn:
+                async with state.tenant_db.acquire() as conn:
                     await conn.fetchval("SELECT 1")
                 pg_status = "ok"
             except Exception:

@@ -56,7 +56,7 @@ _ID_IN_LIST_RE = _re.compile(
 )
 
 
-async def _resolve_id_references(query: str, pg_pool: Any, label_map: "CypherLabelMap") -> str:
+async def _resolve_id_references(query: str, tenant_db: Any, label_map: "CypherLabelMap") -> str:
     """Rewrite id(var) IN [int1, int2, ...] replacing stable node ids with the
     id-column value looked up from node_ids.properties via the label_map."""
 
@@ -70,7 +70,7 @@ async def _resolve_id_references(query: str, pg_pool: Any, label_map: "CypherLab
     if not all_ints:
         return query
 
-    async with pg_pool.acquire() as _conn:
+    async with tenant_db.acquire() as _conn:
         rows = await _conn.fetch(
             "SELECT id, composite_id, label FROM node_ids WHERE id = ANY($1::int[])",
             sorted(all_ints),
@@ -378,10 +378,10 @@ async def _dispatch_execution_direct(
 
     try:
         if source_id == "provisa-admin" or not state.source_pools.has(source_id):
-            pg_pool = state.pg_pool
-            if pg_pool is None:
-                raise RuntimeError("Admin pg_pool not available")
-            async with pg_pool.acquire() as _conn:
+            tenant_db = state.tenant_db
+            if tenant_db is None:
+                raise RuntimeError("Admin tenant_db not available")
+            async with tenant_db.acquire() as _conn:
                 _rows = await _conn.fetch(exec_sql)
                 if _rows:
                     col_names = list(_rows[0].keys())
@@ -611,8 +611,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 
     # Resolve stable node ids in id(var) IN [...] to id-column values
     query_text = body.query
-    if state.pg_pool is not None:
-        query_text = await _resolve_id_references(query_text, state.pg_pool, label_map)
+    if state.tenant_db is not None:
+        query_text = await _resolve_id_references(query_text, state.tenant_db, label_map)
 
     # Stage 1: Parse
     try:
@@ -717,8 +717,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     # Register nodes and relationships, replacing composite string IDs with stable integers
     from provisa.cypher.assembler import register_node_ids, register_rel_ids
 
-    await register_node_ids(serializable_rows, state.pg_pool)
-    await register_rel_ids(serializable_rows, state.pg_pool)
+    await register_node_ids(serializable_rows, state.tenant_db)
+    await register_rel_ids(serializable_rows, state.tenant_db)
 
     content = _build_stats_content(columns, serializable_rows, trino_sql, stats_enabled, _t0)
     content["type"] = "cypher"
@@ -944,8 +944,8 @@ async def impute_relationships(
 
     # Resolve stable ids to id-column values via composite_id ("label|pk_value")
     by_label: dict[str, list[Any]] = {}
-    if int_ids and state.pg_pool:
-        async with state.pg_pool.acquire() as _pg_conn:
+    if int_ids and state.tenant_db:
+        async with state.tenant_db.acquire() as _pg_conn:
             _pg_rows = await _pg_conn.fetch(
                 "SELECT id, label, composite_id FROM node_ids WHERE id = ANY($1::int[])",
                 int_ids,
@@ -1005,8 +1005,8 @@ async def impute_relationships(
     from provisa.cypher.assembler import register_node_ids, register_rel_ids
 
     serializable_merged = [{"node": r} for r in list(all_nodes.values()) + list(all_edges.values())]
-    await register_node_ids(serializable_merged, state.pg_pool)
-    await register_rel_ids(serializable_merged, state.pg_pool)
+    await register_node_ids(serializable_merged, state.tenant_db)
+    await register_rel_ids(serializable_merged, state.tenant_db)
     return JSONResponse(content={"columns": ["node"], "rows": serializable_merged})
 
 

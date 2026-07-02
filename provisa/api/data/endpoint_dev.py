@@ -133,7 +133,7 @@ async def _execute_govdata(source_id: str, sql: str, state) -> "QueryResult":
     from provisa.executor.trino import QueryResult
     from provisa.govdata.source import execute_query
 
-    pool = state.pg_pool
+    pool = state.tenant_db
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT username, database FROM sources WHERE id = $1",

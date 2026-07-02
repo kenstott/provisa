@@ -706,7 +706,7 @@ class TestSSESubscriptionEndpoint:
         fake_state.schemas = {}
         fake_state.contexts = {}
         fake_state.live_engine = None
-        fake_state.pg_pool = None
+        fake_state.tenant_db = None
         fake_state.source_types = {}
         fake_state.pg_notify_tables = set()
         fake_state.table_watermarks = {}

@@ -11,7 +11,7 @@
 """BDD steps for REQ-814 — provider selection dispatches on live.strategy.
 
 Exercises the real dispatch path (_resolve_provider_type + get_provider). Only
-the pg_pool object is a stand-in; provider *selection* is production logic.
+the tenant_db object is a stand-in; provider *selection* is production logic.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def _r814_given() -> dict:
         "source_type": "postgresql",
         "source_id": "pg1",
         "tbl_meta": SimpleNamespace(live=SimpleNamespace(strategy="native")),
-        "state": SimpleNamespace(cdc_sources={}, pg_pool=MagicMock()),
+        "state": SimpleNamespace(cdc_sources={}, tenant_db=MagicMock()),
     }
 
 
@@ -45,7 +45,9 @@ def _r814_when(r814: dict) -> None:
     meta, state = r814["tbl_meta"], r814["state"]
     ptype = _resolve_provider_type(stype, sid, meta, state)
     r814["provider_type"] = ptype
-    r814["provider"] = get_provider(ptype, _build_provider_config(ptype, sid, "orders", meta, state))
+    r814["provider"] = get_provider(
+        ptype, _build_provider_config(ptype, sid, "orders", meta, state)
+    )
     # Same source_type, strategy=debezium -> different provider, proving strategy drives dispatch.
     meta_deb = SimpleNamespace(live=SimpleNamespace(strategy="debezium"))
     r814["debezium_type"] = _resolve_provider_type(stype, sid, meta_deb, state)

@@ -36,20 +36,20 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest_asyncio.fixture(scope="session")
-async def pg_pool(pg_dsn):
+async def tenant_db(pg_dsn):
     pool = await asyncpg.create_pool(pg_dsn, min_size=1, max_size=5)
     yield pool
     await pool.close()
 
 
 @pytest_asyncio.fixture
-async def scratch_table(pg_pool):
+async def scratch_table(tenant_db):
     """Create a scratch table for trigger installation, drop after test."""
     table = "provisa_evt_test"
-    async with pg_pool.acquire() as conn:
+    async with tenant_db.acquire() as conn:
         await conn.execute(f"CREATE TABLE IF NOT EXISTS {table} (id SERIAL PRIMARY KEY, val TEXT)")
     yield table
-    async with pg_pool.acquire() as conn:
+    async with tenant_db.acquire() as conn:
         # Drop the trigger function and trigger if they exist
         safe = _safe_name(table)
         await conn.execute(f"DROP TRIGGER IF EXISTS provisa_trigger_{safe} ON {table}")
@@ -58,7 +58,7 @@ async def scratch_table(pg_pool):
 
 
 class TestTriggerInstallation:
-    async def test_setup_installs_pg_function_and_trigger(self, pg_pool, scratch_table):
+    async def test_setup_installs_pg_function_and_trigger(self, tenant_db, scratch_table):
         """EventTriggerManager.setup() creates a real PG notify function and trigger."""
         trigger = EventTrigger(
             table_id=scratch_table,
@@ -66,10 +66,10 @@ class TestTriggerInstallation:
             webhook_url="https://example.com/hook",
         )
         mgr = EventTriggerManager([trigger])
-        await mgr.setup(pg_pool)
+        await mgr.setup(tenant_db)
 
         # Verify function exists in pg_proc
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             fn_name = f"provisa_notify_{_safe_name(scratch_table)}"
             row = await conn.fetchrow("SELECT proname FROM pg_proc WHERE proname = $1", fn_name)
             assert row is not None, f"PG function {fn_name!r} not found after setup"
@@ -81,9 +81,9 @@ class TestTriggerInstallation:
             )
             assert trig_row is not None, f"PG trigger {trig_name!r} not found after setup"
 
-        await mgr.teardown(pg_pool)
+        await mgr.teardown(tenant_db)
 
-    async def test_teardown_removes_pg_trigger_and_function(self, pg_pool, scratch_table):
+    async def test_teardown_removes_pg_trigger_and_function(self, tenant_db, scratch_table):
         """EventTriggerManager.teardown() drops the PG trigger and function."""
         trigger = EventTrigger(
             table_id=scratch_table,
@@ -91,15 +91,15 @@ class TestTriggerInstallation:
             webhook_url="https://example.com/hook",
         )
         mgr = EventTriggerManager([trigger])
-        await mgr.setup(pg_pool)
-        await mgr.teardown(pg_pool)
+        await mgr.setup(tenant_db)
+        await mgr.teardown(tenant_db)
 
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             fn_name = f"provisa_notify_{_safe_name(scratch_table)}"
             row = await conn.fetchrow("SELECT proname FROM pg_proc WHERE proname = $1", fn_name)
             assert row is None, f"PG function {fn_name!r} still present after teardown"
 
-    async def test_setup_multiple_triggers(self, pg_pool, scratch_table):
+    async def test_setup_multiple_triggers(self, tenant_db, scratch_table):
         """Multiple triggers are all installed without conflict."""
         triggers = [
             EventTrigger(
@@ -109,22 +109,22 @@ class TestTriggerInstallation:
             ),
         ]
         mgr = EventTriggerManager(triggers)
-        await mgr.setup(pg_pool)
+        await mgr.setup(tenant_db)
 
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             fn_name = f"provisa_notify_{_safe_name(scratch_table)}"
             row = await conn.fetchrow("SELECT proname FROM pg_proc WHERE proname = $1", fn_name)
             assert row is not None
 
-        await mgr.teardown(pg_pool)
+        await mgr.teardown(tenant_db)
 
 
 class TestNotifyDispatch:
     # integration: mock-justified — AsyncMock intercepts outbound HTTP POST to
     # "https://example.com/hook", a 3rd-party webhook URL not in docker-compose.
-    # Tests exercise the real PG path (pg_pool fixture) and real trigger logic.
+    # Tests exercise the real PG path (tenant_db fixture) and real trigger logic.
 
-    async def test_notify_triggers_webhook_dispatch(self, pg_pool, scratch_table):
+    async def test_notify_triggers_webhook_dispatch(self, tenant_db, scratch_table):
         """INSERT into table sends NOTIFY which dispatches to the webhook."""
         received: list[dict] = []
 
@@ -148,7 +148,7 @@ class TestNotifyDispatch:
 
         mock_client.post = AsyncMock(side_effect=capture_post)
 
-        await mgr.setup(pg_pool)
+        await mgr.setup(tenant_db)
         mgr._http_client = mock_client  # override after setup (setup creates a real client)
         mgr._running = True
 
@@ -168,9 +168,9 @@ class TestNotifyDispatch:
         assert received[0]["operation"] == "INSERT"
         assert received[0]["row"]["id"] == 42
 
-        await mgr.teardown(pg_pool)
+        await mgr.teardown(tenant_db)
 
-    async def test_notify_with_wrong_operation_not_dispatched(self, pg_pool, scratch_table):
+    async def test_notify_with_wrong_operation_not_dispatched(self, tenant_db, scratch_table):
         """DELETE notification is ignored when trigger only covers INSERT."""
         trigger = EventTrigger(
             table_id=scratch_table,
@@ -202,7 +202,7 @@ class TestRetryPolicy:
     # "https://example.com/hook" for retry policy testing. Error injection (503/500
     # responses) cannot be reproduced with a real docker-compose service.
 
-    async def test_webhook_retried_on_failure_then_success(self, pg_pool):
+    async def test_webhook_retried_on_failure_then_success(self, tenant_db):
         """Webhook is retried up to retry_max times on failure."""
         trigger = EventTrigger(
             table_id="orders",
@@ -226,7 +226,7 @@ class TestRetryPolicy:
 
         assert mock_client.post.call_count == 3
 
-    async def test_webhook_exhausted_retries_logs_but_does_not_raise(self, pg_pool):
+    async def test_webhook_exhausted_retries_logs_but_does_not_raise(self, tenant_db):
         """All retries exhausted — manager logs error and completes without raising."""
         trigger = EventTrigger(
             table_id="orders",

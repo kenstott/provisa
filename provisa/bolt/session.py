@@ -594,8 +594,8 @@ async def _impute_relationships(
     """
     from provisa.compiler.naming import apply_cql_property as _cql_prop
 
-    pg_pool = getattr(app_state, "pg_pool", None)
-    if pg_pool is None:
+    tenant_db = getattr(app_state, "tenant_db", None)
+    if tenant_db is None:
         return ["r"], []
 
     raw_ids = list(parameters.get("existingNodeIds") or []) + list(
@@ -613,7 +613,7 @@ async def _impute_relationships(
     label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
     nm_by_label = {nm.label: nm for nm in label_map.nodes.values()}
 
-    async with pg_pool.acquire() as conn:
+    async with tenant_db.acquire() as conn:
         pg_rows = await conn.fetch(
             "SELECT id, label, composite_id FROM node_ids WHERE id = ANY($1::int[])", int_ids
         )
@@ -765,9 +765,9 @@ async def _execute_cypher(
     assembled = assemble_rows(raw_rows, graph_vars)
     serializable = [to_serializable(r) for r in assembled]
 
-    _pg_pool = getattr(app_state, "pg_pool", None)
-    await register_node_ids(serializable, _pg_pool)
-    await register_rel_ids(serializable, _pg_pool)
+    _tenant_db = getattr(app_state, "tenant_db", None)
+    await register_node_ids(serializable, _tenant_db)
+    await register_rel_ids(serializable, _tenant_db)
 
     columns = list(raw_rows[0].keys()) if raw_rows else []
     rows = [[row.get(col) for col in columns] for row in serializable]

@@ -37,28 +37,28 @@ def _wait_for_trino():
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestPostgresConnectivity:
-    async def test_pg_connects(self, pg_pool):
-        async with pg_pool.acquire() as conn:
+    async def test_pg_connects(self, tenant_db):
+        async with tenant_db.acquire() as conn:
             result = await conn.fetchval("SELECT 1")
         assert result == 1
 
-    async def test_customers_table_exists(self, pg_pool):
-        async with pg_pool.acquire() as conn:
+    async def test_customers_table_exists(self, tenant_db):
+        async with tenant_db.acquire() as conn:
             count = await conn.fetchval("SELECT COUNT(*) FROM customers")
         assert count == 20
 
-    async def test_products_table_exists(self, pg_pool):
-        async with pg_pool.acquire() as conn:
+    async def test_products_table_exists(self, tenant_db):
+        async with tenant_db.acquire() as conn:
             count = await conn.fetchval("SELECT COUNT(*) FROM products")
         assert count == 15
 
-    async def test_orders_table_exists(self, pg_pool):
-        async with pg_pool.acquire() as conn:
+    async def test_orders_table_exists(self, tenant_db):
+        async with tenant_db.acquire() as conn:
             count = await conn.fetchval("SELECT COUNT(*) FROM orders")
         assert count >= 25  # seed data; CDC tests may add rows
 
-    async def test_orders_fk_to_customers(self, pg_pool):
-        async with pg_pool.acquire() as conn:
+    async def test_orders_fk_to_customers(self, tenant_db):
+        async with tenant_db.acquire() as conn:
             count = await conn.fetchval("""
                 SELECT COUNT(*)
                 FROM orders o

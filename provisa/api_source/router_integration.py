@@ -58,8 +58,8 @@ async def _apply_cache_promotions(
     from provisa.api_source.promotions import apply_promotions
 
     target = f'{loc.schema}."{tbl}"'
-    assert state.pg_pool is not None
-    async with state.pg_pool.acquire() as pgc:
+    assert state.tenant_db is not None
+    async with state.tenant_db.acquire() as pgc:
         await apply_promotions(pgc, target, endpoint.promotions, cast_source=True)
 
 

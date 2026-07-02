@@ -30,12 +30,12 @@ _TABLESAMPLE_PCT = 10  # BERNOULLI(10) — 10% of blocks
 
 @router.post("/{table_id}/profile")
 async def profile_table(table_id: int) -> dict:  # REQ-452
-    if state.pg_pool is None:
+    if state.tenant_db is None:
         raise HTTPException(503, "Database unavailable")
     if state.trino_conn is None:
         raise HTTPException(503, "Trino unavailable")
 
-    async with state.pg_pool.acquire() as conn:
+    async with state.tenant_db.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT source_id, schema_name, table_name, view_sql"
             " FROM registered_tables WHERE id = $1",

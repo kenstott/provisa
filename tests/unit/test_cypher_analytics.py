@@ -125,14 +125,14 @@ class TestImputeRelationshipsEdgeGeneration:
     def _make_mock_state(self, pg_rows: list[dict]) -> MagicMock:
         """Build a minimal AppState mock."""
         state = MagicMock()
-        state.pg_pool = MagicMock()
+        state.tenant_db = MagicMock()
 
         conn_ctx = AsyncMock()
         conn_ctx.fetch = AsyncMock(return_value=pg_rows)
         acquire_ctx = MagicMock()
         acquire_ctx.__aenter__ = AsyncMock(return_value=conn_ctx)
         acquire_ctx.__aexit__ = AsyncMock(return_value=False)
-        state.pg_pool.acquire = MagicMock(return_value=acquire_ctx)
+        state.tenant_db.acquire = MagicMock(return_value=acquire_ctx)
 
         state.contexts = {"default": MagicMock()}
         state.roles = {"default": {}}
@@ -146,7 +146,7 @@ class TestImputeRelationshipsEdgeGeneration:
 
         # Direct unit test of logic: no nodes → no queries → empty response
         req = ImputeRequest(nodes=[])
-        # No pg_pool calls needed for empty request
+        # No tenant_db calls needed for empty request
         state = self._make_mock_state([])
         state.contexts = {"default": MagicMock()}
 
@@ -463,18 +463,18 @@ class TestImputeStableIds:
         acquire_ctx.__aenter__ = AsyncMock(return_value=conn)
         acquire_ctx.__aexit__ = AsyncMock(return_value=False)
 
-        pg_pool = MagicMock()
-        pg_pool.acquire = MagicMock(return_value=acquire_ctx)
+        tenant_db = MagicMock()
+        tenant_db.acquire = MagicMock(return_value=acquire_ctx)
 
         rows = [{"node": {"id": "Person|5", "label": "Person", "properties": {}}}]
-        await register_node_ids(rows, pg_pool)
+        await register_node_ids(rows, tenant_db)
 
         conn.fetch.assert_called_once()
         assert rows[0]["node"]["id"] == 555
 
     @pytest.mark.asyncio
     async def test_register_node_ids_noop_without_pg_pool(self):
-        """register_node_ids is a no-op when pg_pool is None."""
+        """register_node_ids is a no-op when tenant_db is None."""
         from provisa.cypher.assembler import register_node_ids
 
         rows = [{"node": {"id": "Person|5", "label": "Person", "properties": {}}}]
