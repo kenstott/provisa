@@ -7,17 +7,13 @@
 
 from __future__ import annotations
 
-import os
 import re
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 import pytest
-from pytest_bdd import given, when, then, parsers
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.discovery.column_inference import merge_discovered_columns
 
 
 # ---------------------------------------------------------------------------
@@ -590,10 +586,10 @@ def _simulate_introspection_query(schema: Any) -> dict:
     the current in-memory schema.  The result here is produced synchronously
     using graphql-core's ``graphql_sync`` so no GraphQL server is needed.
     """
-    from graphql import graphql_sync, build_introspection_query
+    from graphql import graphql_sync, get_introspection_query
 
     # Standard introspection query
-    introspection_query = build_introspection_query()
+    introspection_query = get_introspection_query()
     result = graphql_sync(schema, introspection_query)
 
     assert result.errors is None or len(result.errors) == 0, (
@@ -838,4 +834,424 @@ def _make_graphql_default_schema_input() -> SchemaInput:
 
     return SchemaInput(
         tables=tables,
-        relationships
+        relationships=[],
+        column_types=column_types,
+        naming_rules=[],
+        role=role,
+        domains=domains,
+    )
+
+
+# ===========================================================================
+# Scenario bindings
+# ===========================================================================
+
+from graphql import print_schema, parse
+from pytest_bdd import given, when, then, scenarios
+
+from provisa.compiler.rls import build_rls_context, inject_rls
+from provisa.compiler.sql_gen import build_context, compile_query
+from provisa.cypher.translator import _coerce_ts_literals
+from provisa.grpc.proto_gen import generate_proto
+
+scenarios("../features/REQ-008.feature")
+scenarios("../features/REQ-253.feature")
+scenarios("../features/REQ-403.feature")
+scenarios("../features/REQ-409.feature")
+scenarios("../features/REQ-525.feature")
+scenarios("../features/REQ-534.feature")
+scenarios("../features/REQ-537.feature")
+scenarios("../features/REQ-654.feature")
+
+
+# ---------------------------------------------------------------------------
+# REQ-008: Schema generation pass
+# ---------------------------------------------------------------------------
+
+
+@given("a table is registered")
+def req008_table_registered(shared_data):
+    from provisa.compiler import naming as _naming
+
+    _naming.configure(gql="snake")
+    shared_data["req008_admin_input"] = _make_default_schema_input("admin")
+    shared_data["req008_analyst_input"] = _make_default_schema_input("analyst")
+
+
+@when("the schema generation pass runs")
+def req008_run_generation(shared_data):
+    admin_schema = generate_schema(shared_data["req008_admin_input"])
+    analyst_schema = generate_schema(shared_data["req008_analyst_input"])
+    shared_data["req008_admin_sdl"] = print_schema(admin_schema)
+    shared_data["req008_analyst_sdl"] = print_schema(analyst_schema)
+
+
+@then(
+    "it queries Trino INFORMATION_SCHEMA, applies per-role column visibility, "
+    "incorporates relationships, and produces GraphQL SDL"
+)
+def req008_assert_sdl(shared_data):
+    admin_sdl = shared_data["req008_admin_sdl"]
+    analyst_sdl = shared_data["req008_analyst_sdl"]
+
+    # Produces GraphQL SDL with the registered tables as types.
+    assert "type Query" in admin_sdl
+    assert "Orders" in admin_sdl
+    assert "Customers" in admin_sdl
+
+    # Per-role column visibility: 'amount'/'email' are visible only to admin.
+    assert "amount" in admin_sdl
+    assert "amount" not in analyst_sdl
+    assert "email" in admin_sdl
+    assert "email" not in analyst_sdl
+
+    # Columns visible to both roles appear for both.
+    assert "customer_id" in admin_sdl
+    assert "customer_id" in analyst_sdl
+
+    # Incorporates relationships: the many-to-one order->customer link surfaces
+    # a nested customers field on the Orders type.
+    assert "customers" in admin_sdl.lower()
+
+
+# ---------------------------------------------------------------------------
+# REQ-253: Immediate schema rebuild on naming convention changes
+# ---------------------------------------------------------------------------
+
+
+@given("a naming convention change is applied via admin mutation")
+def req253_naming_change(shared_data):
+    from provisa.compiler import naming as _naming
+
+    # Baseline schema under snake naming, then flip to graphql-default (camelCase
+    # fields, PascalCase types) to simulate an admin naming-convention mutation.
+    _naming.configure(gql="snake")
+    shared_data["req253_before"] = generate_schema(
+        _make_naming_convention_schema_input([])
+    )
+    _naming.configure(gql="graphql-default")
+    shared_data["req253_input"] = _make_naming_convention_schema_input([])
+
+
+@when("_rebuild_schemas() completes")
+def req253_rebuild(shared_data):
+    schemas = _simulate_rebuild_schemas([shared_data["req253_input"]])
+    shared_data["req253_after"] = schemas[0]
+
+
+@then(
+    "the in-memory GraphQL schema is regenerated and fresh introspection is "
+    "returned on the next request"
+)
+def req253_assert_fresh(shared_data):
+    before_sdl = print_schema(shared_data["req253_before"])
+    after = shared_data["req253_after"]
+    after_sdl = print_schema(after)
+
+    # Regenerated schema differs from the pre-change one (new naming applied).
+    assert before_sdl != after_sdl
+    # snake baseline had order_items; graphql-default converts to orderItems.
+    assert "order_items" in before_sdl.lower() or "orderItems" in before_sdl
+    assert "orderItems" in after_sdl
+
+    # Fresh introspection resolves against the regenerated in-memory schema.
+    data = _simulate_introspection_query(after)
+    type_names = {t["name"] for t in data["__schema"]["types"]}
+    # The camelCase-derived PascalCase type name is present after rebuild.
+    assert any("OrderItem" in n for n in type_names)
+
+
+# ---------------------------------------------------------------------------
+# REQ-403: RLS injection table-level precedence
+# ---------------------------------------------------------------------------
+
+
+@given("a table with both table-specific and domain-level RLS rules")
+def req403_rules(shared_data):
+    shared_data["req403_rls"] = build_rls_context(
+        [
+            {
+                "table_id": 1,
+                "domain_id": None,
+                "role_id": "analyst",
+                "filter_expr": "owner_id = current_user",
+            },
+            {
+                "table_id": None,
+                "domain_id": "sales",
+                "role_id": "analyst",
+                "filter_expr": "region = 'us'",
+            },
+        ],
+        "analyst",
+    )
+    meta = _make_rls_meta(domain_id="sales")
+    shared_data["req403_ctx"] = _make_rls_ctx(meta)
+    shared_data["req403_compiled"] = _make_rls_compiled()
+
+
+@when("inject_rls() runs")
+def req403_run(shared_data):
+    shared_data["req403_result"] = inject_rls(
+        shared_data["req403_compiled"],
+        shared_data["req403_ctx"],
+        shared_data["req403_rls"],
+    )
+
+
+@then("table-specific rules take precedence over domain-level rules")
+def req403_assert(shared_data):
+    sql = shared_data["req403_result"].sql
+    # Table-specific filter is applied.
+    assert "owner_id = current_user" in sql
+    # Domain-level filter is NOT applied (table rule wins, no fallback).
+    assert "region = 'us'" not in sql
+
+
+# ---------------------------------------------------------------------------
+# REQ-409: Cypher datetime coercion
+# ---------------------------------------------------------------------------
+
+
+@given("a Cypher WHERE clause with an ISO 8601 datetime string literal")
+def req409_where(shared_data):
+    shared_data["req409_where"] = "e.created_at = '2024-01-15T00:00:00'"
+
+
+@when("the translator processes it")
+def req409_process(shared_data):
+    shared_data["req409_out"] = _coerce_ts_literals(shared_data["req409_where"])
+
+
+@then("it wraps the literal as TIMESTAMP '...' before SQLGlot parsing")
+def req409_assert(shared_data):
+    out = shared_data["req409_out"]
+    assert out == "e.created_at = TIMESTAMP '2024-01-15T00:00:00'"
+    assert "TIMESTAMP '2024-01-15T00:00:00'" in out
+
+    # The coerced literal must be parseable by SQLGlot as a real TIMESTAMP.
+    import sqlglot
+
+    parsed = sqlglot.parse_one(f"SELECT * FROM t WHERE {out}", read="trino")
+    assert "TIMESTAMP" in parsed.sql(dialect="trino").upper()
+
+    # A plain non-datetime string literal is left untouched.
+    assert _coerce_ts_literals("e.name = 'alice'") == "e.name = 'alice'"
+
+
+# ---------------------------------------------------------------------------
+# REQ-525: Per-role proto generation
+# ---------------------------------------------------------------------------
+
+
+@given("two roles with different table and column visibility")
+def req525_roles(shared_data):
+    from provisa.compiler import naming as _naming
+
+    _naming.configure(gql="snake")
+    shared_data["req525_admin_input"] = _make_default_schema_input("admin")
+    shared_data["req525_analyst_input"] = _make_default_schema_input("analyst")
+
+
+@when("proto definitions are generated")
+def req525_generate(shared_data):
+    shared_data["req525_admin_proto"] = generate_proto(
+        shared_data["req525_admin_input"]
+    )
+    shared_data["req525_analyst_proto"] = generate_proto(
+        shared_data["req525_analyst_input"]
+    )
+
+
+@then("each role receives a proto reflecting only its visible tables and columns")
+def req525_assert(shared_data):
+    admin = shared_data["req525_admin_proto"]
+    analyst = shared_data["req525_analyst_proto"]
+
+    # Both protos are valid proto3 documents.
+    assert 'syntax = "proto3";' in admin
+    assert 'syntax = "proto3";' in analyst
+
+    # Admin-only columns appear in the admin proto but not the analyst proto.
+    assert "amount" in admin
+    assert "amount" not in analyst
+    assert "email" in admin
+    assert "email" not in analyst
+
+    # Columns visible to both roles are present in both protos.
+    assert "customer_id" in admin
+    assert "customer_id" in analyst
+
+
+# ---------------------------------------------------------------------------
+# REQ-534: Multi-root GraphQL query compilation
+# ---------------------------------------------------------------------------
+
+
+@given("a GraphQL query with multiple root fields")
+def req534_query(shared_data):
+    from provisa.compiler import naming as _naming
+
+    _naming.configure(gql="snake")
+    si = _make_req009_schema_input()
+    shared_data["req534_ctx"] = build_context(si)
+    shared_data["req534_doc"] = parse("{ orders { id } customers { name } }")
+
+
+@when("it is executed")
+def req534_execute(shared_data):
+    shared_data["req534_results"] = compile_query(
+        shared_data["req534_doc"], shared_data["req534_ctx"]
+    )
+
+
+@then(
+    "each root field is compiled and executed independently and results are "
+    "merged into one response"
+)
+def req534_assert(shared_data):
+    results = shared_data["req534_results"]
+
+    # One independent CompiledQuery per root field.
+    assert len(results) == 2
+    roots = {r.root_field for r in results}
+    assert roots == {"orders", "customers"}
+
+    orders = next(r for r in results if r.root_field == "orders")
+    customers = next(r for r in results if r.root_field == "customers")
+
+    # Each root field compiles to its own independent SQL statement.
+    assert '"orders"' in orders.sql
+    assert '"customers"' not in orders.sql
+    assert '"customers"' in customers.sql
+    assert '"orders"' not in customers.sql
+
+    # Each is a standalone single-statement query (mergeable into one response
+    # by root_field key).
+    assert orders.sql.strip().upper().startswith("SELECT")
+    assert customers.sql.strip().upper().startswith("SELECT")
+
+
+# ---------------------------------------------------------------------------
+# REQ-537: Schema version endpoint
+# ---------------------------------------------------------------------------
+
+
+@given("the schema is rebuilt after a naming convention change")
+def req537_rebuild(shared_data):
+    import uuid
+
+    import provisa.api.data.sdl as _sdl
+
+    class _FakeState:
+        schema_boot_id: str = ""
+        schema_version: int = 0
+
+    state = _FakeState()
+    state.schema_boot_id = uuid.uuid4().hex
+    state.schema_version = 0
+    setattr(_sdl, "state", state)
+    shared_data["req537_state"] = state
+    shared_data["req537_sdl_module"] = _sdl
+
+    # Capture the version before the rebuild-driven increment.
+    shared_data["req537_before"] = _call_schema_version(_sdl)
+
+    # A naming-convention rebuild bumps the monotonic counter (mirrors
+    # app._rebuild_schemas: state.schema_version += 1).
+    state.schema_version += 1
+
+
+def _call_schema_version(sdl_module) -> str:
+    import asyncio
+    import json
+
+    resp = asyncio.run(sdl_module.get_schema_version())
+    return json.loads(resp.body)["version"]
+
+
+@when("GET /data/schema-version is called")
+def req537_call(shared_data):
+    shared_data["req537_after"] = _call_schema_version(
+        shared_data["req537_sdl_module"]
+    )
+
+
+@then("it returns a new <boot-id>-<counter> string reflecting the rebuild")
+def req537_assert(shared_data):
+    state = shared_data["req537_state"]
+    before = shared_data["req537_before"]
+    after = shared_data["req537_after"]
+
+    # Format is <boot-id>-<counter>.
+    assert after == f"{state.schema_boot_id}-{state.schema_version}"
+    assert after.startswith(state.schema_boot_id + "-")
+    assert after.rsplit("-", 1)[1] == str(state.schema_version)
+
+    # The rebuild produced a strictly new version string.
+    assert after != before
+    assert int(after.rsplit("-", 1)[1]) == int(before.rsplit("-", 1)[1]) + 1
+
+    # Clean up the module-level state we injected.
+    del shared_data["req537_sdl_module"].state
+
+
+# ---------------------------------------------------------------------------
+# REQ-654: group_by root query field
+# ---------------------------------------------------------------------------
+
+
+@given("a registered table with numeric columns")
+def req654_table(shared_data):
+    si = _make_group_by_schema_input()
+    shared_data["req654_schema"] = generate_schema(si)
+    shared_data["req654_ctx"] = build_context(si)
+
+
+@when(
+    "a _group_by query is submitted with by: [category] and aggregate count"
+)
+def req654_submit(shared_data):
+    # 'region' is the categorical/grouping column on the orders table.
+    doc = parse(
+        """
+        query {
+            orders_group_by(by: [region]) {
+                groupKey
+                aggregate { count }
+            }
+        }
+        """
+    )
+    shared_data["req654_compiled"] = compile_query(
+        doc, shared_data["req654_ctx"], variables=None
+    )
+
+
+@then("the response contains one GroupByRow per distinct category value")
+def req654_assert_group(shared_data):
+    compiled = shared_data["req654_compiled"]
+    assert len(compiled) == 1
+    sql = compiled[0].sql
+    # GROUP BY the categorical column yields one row per distinct value.
+    assert 'GROUP BY "region"' in sql
+
+
+@then("each row includes groupKey and aggregates fields")
+def req654_assert_fields(shared_data):
+    schema = shared_data["req654_schema"]
+    compiled = shared_data["req654_compiled"]
+
+    # Schema: GroupByRow exposes groupKey + aggregate fields.
+    field = schema.query_type.fields["orders_group_by"]
+    row_type = field.type.of_type.of_type.of_type
+    assert "groupKey" in row_type.fields
+    assert "aggregate" in row_type.fields
+
+    # Compiled SQL projects the group key and the aggregate under their
+    # respective nested containers.
+    col_refs = compiled[0].columns
+    group_key_refs = [c for c in col_refs if c.nested_in == "groupKey"]
+    agg_refs = [c for c in col_refs if c.nested_in == "aggregate"]
+    assert any(c.field_name == "region" for c in group_key_refs)
+    assert any(c.field_name == "count" for c in agg_refs)

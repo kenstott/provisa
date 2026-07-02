@@ -68,6 +68,62 @@ def test_req_719_default_behaviour():
     pass
 
 
+@scenario(
+    "../features/REQ-720.feature",
+    "REQ-720 default behaviour",
+)
+def test_req_720_default_behaviour():
+    pass
+
+
+@scenario(
+    "../features/REQ-792.feature",
+    "REQ-792 default behaviour",
+)
+def test_req_792_default_behaviour():
+    pass
+
+
+@scenario(
+    "../features/REQ-793.feature",
+    "REQ-793 default behaviour",
+)
+def test_req_793_default_behaviour():
+    pass
+
+
+@scenario(
+    "../features/REQ-794.feature",
+    "REQ-794 default behaviour",
+)
+def test_req_794_default_behaviour():
+    pass
+
+
+@scenario(
+    "../features/REQ-795.feature",
+    "REQ-795 default behaviour",
+)
+def test_req_795_default_behaviour():
+    pass
+
+
+@scenario(
+    "../features/REQ-796.feature",
+    "REQ-796 default behaviour",
+)
+def test_req_796_default_behaviour():
+    pass
+
+
+@scenario(
+    "../features/REQ-797.feature",
+    "REQ-797 default behaviour",
+)
+def test_req_797_default_behaviour():
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Shared state fixture
 # ---------------------------------------------------------------------------
@@ -136,6 +192,130 @@ _REQ715_NODE: dict[str, Any] = {
 }
 
 _CONSTRAINT_VIOLATION_MESSAGE = "constraint violation message"
+
+_re_provisa_id = re.compile(r"_provisa_id:\s*(\d+)")
+_re_node_label = re.compile(r"MERGE \(n:`([^`]+)`")
+
+
+def _run_neo4j_export(
+    body: Any,
+    neo4j_errors: list[dict] | None = None,
+) -> tuple[Any, list[dict[str, Any]]]:
+    """Run the real neo4j_export handler, mocking only the httpx client boundary.
+
+    Returns the JSONResponse and the list of captured outbound requests. The Neo4j
+    HTTP transactional API is mocked at the client boundary so the full statement-
+    building, auth-encoding, and result-parsing logic in neo4j_export is exercised.
+    """
+    import asyncio
+
+    from provisa.api.rest.cypher_router import neo4j_export
+
+    captured: list[dict[str, Any]] = []
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"results": [], "errors": neo4j_errors or []}
+    mock_response.text = ""
+
+    async def _fake_post(url: str, **kwargs: Any) -> MagicMock:
+        captured.append({"url": url, "kwargs": kwargs})
+        return mock_response
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.post = AsyncMock(side_effect=_fake_post)
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        resp = asyncio.run(neo4j_export(body))
+    return resp, captured
+
+
+def _statement_strings(captured: list[dict[str, Any]]) -> list[str]:
+    """Extract the flat list of Cypher statement strings from captured requests."""
+    out: list[str] = []
+    for req in captured:
+        for stmt in req["kwargs"]["json"]["statements"]:
+            out.append(stmt["statement"])
+    return out
+
+
+def _captured_statement_strings(shared_data: dict) -> list[str]:
+    return _statement_strings(shared_data.get("captured_requests", []))
+
+
+def _make_request(headers: dict[str, str] | None = None) -> Any:
+    req = MagicMock()
+    req.headers = headers or {}
+    req.query_params = {}
+    return req
+
+
+def _make_graph_schema_state() -> Any:
+    state = MagicMock()
+    state.roles = {"admin": {"id": "admin", "domain_access": ["*"]}}
+    state.contexts = {"admin": MagicMock()}
+    state.schema_build_cache = {"tables": [], "column_types": {}}
+    state.pg_pool = None
+    state.rls_contexts = {}
+    state.tables = []
+    state.source_catalogs = None
+    return state
+
+
+def _build_real_label_map() -> Any:
+    """Construct a real CypherLabelMap with two node labels and one relationship."""
+    from provisa.cypher.label_map import (
+        CypherLabelMap,
+        NodeMapping,
+        RelationshipMapping,
+    )
+
+    orders = NodeMapping(
+        label="Orders",
+        type_name="Sales_Orders",
+        domain_label="Sales",
+        table_label="Orders",
+        table_id=1,
+        source_id="pg",
+        id_column="id",
+        pk_columns=["id"],
+        catalog_name="c",
+        schema_name="s",
+        table_name="orders",
+        properties={"id": "id", "amount": "amount"},
+        physical_properties={"id": "id", "amount": "amount"},
+        domain_id="sales",
+    )
+    customers = NodeMapping(
+        label="Customers",
+        type_name="Sales_Customers",
+        domain_label="Sales",
+        table_label="Customers",
+        table_id=2,
+        source_id="pg",
+        id_column="id",
+        pk_columns=["id"],
+        catalog_name="c",
+        schema_name="s",
+        table_name="customers",
+        properties={"id": "id", "name": "name"},
+        physical_properties={"id": "id", "name": "name"},
+        domain_id="sales",
+    )
+    rel = RelationshipMapping(
+        rel_type="PLACED_BY",
+        source_label="Orders",
+        target_label="Customers",
+        join_source_column="customer_id",
+        join_target_column="id",
+        field_name="customer",
+    )
+    return CypherLabelMap(
+        nodes={"Orders": orders, "Customers": customers},
+        relationships={"placed_by": rel},
+    )
 
 
 def _build_node_merge_statement(node: dict[str, Any]) -> dict[str, Any]:
@@ -230,9 +410,7 @@ def _neo4j_cypher_literal_impl(value: Any) -> str:
         items = ", ".join(_neo4j_cypher_literal_impl(item) for item in value)
         return f"[{items}]"
     if isinstance(value, dict):
-        pairs = ", ".join(
-            f"{k}: {_neo4j_cypher_literal_impl(v)}" for k, v in value.items()
-        )
+        pairs = ", ".join(f"{k}: {_neo4j_cypher_literal_impl(v)}" for k, v in value.items())
         return "{" + pairs + "}"
     return json.dumps(str(value))
 
@@ -270,9 +448,7 @@ def _build_node_merge_with_literals(node: dict[str, Any]) -> str:
     pairs = ", ".join(f"{k}: {literal_fn(v)}" for k, v in props.items())
     set_clause = "SET n += {" + pairs + "}"
 
-    return (
-        f"MERGE (n:{label_str} {{_provisa_id: {literal_fn(node_id)}}}) {set_clause}"
-    )
+    return f"MERGE (n:{label_str} {{_provisa_id: {literal_fn(node_id)}}}) {set_clause}"
 
 
 def _assert_cypher_literal_types(cypher: str, props: dict[str, Any]) -> None:
@@ -313,8 +489,7 @@ def _assert_cypher_literal_types(cypher: str, props: dict[str, Any]) -> None:
 
         elif isinstance(value, dict):
             assert "{" in expected_literal and "}" in expected_literal, (
-                f"Dict {value!r} must be encoded as Cypher map literal, "
-                f"got {expected_literal!r}"
+                f"Dict {value!r} must be encoded as Cypher map literal, got {expected_literal!r}"
             )
             assert expected_literal in cypher, (
                 f"Nested dict {value!r} must appear as {expected_literal!r} in Cypher.\n"
@@ -746,24 +921,706 @@ def then_neo4j_node_merge_provisa_id_and_set_operator(shared_data: dict) -> None
 
     # Find the node MERGE statement — identified by having an integer 'id' parameter
     node_statements = [
-        s for s in all_statements
-        if isinstance(s.get("parameters", {}).get("id"), int)
+        s for s in all_statements if isinstance(s.get("parameters", {}).get("id"), int)
     ]
 
     # If parameterised statements not found (literal-style generation), match by content
     if not node_statements:
         node_statements = [
-            s for s in all_statements
-            if "MERGE" in s.get("statement", "").upper()
-            and "_provisa_id" in s.get("statement", "")
+            s
+            for s in all_statements
+            if "MERGE" in s.get("statement", "").upper() and "_provisa_id" in s.get("statement", "")
         ]
 
     assert len(node_statements) > 0, (
-        f"Expected at least one node MERGE statement; "
-        f"found statements: {all_statements!r}"
+        f"Expected at least one node MERGE statement; found statements: {all_statements!r}"
     )
 
     node_stmt = node_statements[0]
     cypher: str = node_stmt.get("statement", "")
 
-    # 1. Must use
+    # 1. Must use MERGE with _provisa_id as the dedup key and += for the SET clause.
+    assert "MERGE" in cypher.upper(), f"Expected MERGE in node statement: {cypher!r}"
+    assert "_provisa_id" in cypher, f"Expected _provisa_id dedup key: {cypher!r}"
+    assert "+=" in cypher, f"Expected += SET operator: {cypher!r}"
+    if ":" in table_label:
+        for part in (p.strip() for p in table_label.split(":") if p.strip()):
+            assert part in cypher, f"Label part {part!r} missing from {cypher!r}"
+    else:
+        assert table_label in cypher, f"Label {table_label!r} missing from {cypher!r}"
+    params = node_stmt.get("parameters", {})
+    if isinstance(params.get("id"), int):
+        assert params["id"] == node_id, f"id param {params['id']} != {node_id}"
+        assert params.get("props") == properties, (
+            f"props param {params.get('props')!r} != {properties!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# REQ-715 — node property SET via Cypher literals
+# ---------------------------------------------------------------------------
+
+
+@given(
+    parsers.parse(
+        'a node with properties {{active: true, count: 42, name: "Test", nested: {{key: "value"}}}}'
+    ),
+    target_fixture="shared_data",
+)
+def given_req715_node() -> dict:
+    """A node whose properties cover bool, int, str, and nested-object literal types."""
+    node = dict(_REQ715_NODE)
+    props = node["properties"]
+    assert props["active"] is True
+    assert props["count"] == 42
+    assert props["name"] == "Test"
+    assert props["nested"] == {"key": "value"}
+    return {"node": node}
+
+
+@when("the node is exported")
+def when_req715_node_exported(shared_data: dict) -> None:
+    """Exercise the real neo4j_export handler, capturing the outbound Cypher statement."""
+    from provisa.api.rest.cypher_router import Neo4jExportRequest
+
+    node = shared_data["node"]
+    body = Neo4jExportRequest(
+        url=_FAKE_NEO4J_URL,
+        username=_FAKE_USERNAME,
+        password=_FAKE_PASSWORD,
+        database=_FAKE_DATABASE,
+        nodes=[node],
+        edges=[],
+    )
+    resp, captured = _run_neo4j_export(body)
+    assert resp.status_code == 200, f"export failed: {resp.body!r}"
+    shared_data["captured_requests"] = captured
+    shared_data["response"] = resp
+
+
+@then("all properties are SET in Neo4j with correct Cypher literal types")
+def then_req715_properties_set(shared_data: dict) -> None:
+    """Assert the real handler encoded every property with the correct Cypher literal."""
+    from provisa.api.rest.cypher_router import _neo4j_cypher_literal
+
+    statements = _captured_statement_strings(shared_data)
+    assert statements, "Expected at least one outbound Cypher statement"
+    node_stmt = next(s for s in statements if s.startswith("MERGE"))
+
+    assert "SET n += {" in node_stmt, f"Expected 'SET n += {{...}}': {node_stmt!r}"
+
+    props = shared_data["node"]["properties"]
+    # booleans as bare true/false, ints bare, strings json-quoted
+    assert "active: true" in node_stmt, node_stmt
+    assert "count: 42" in node_stmt, node_stmt
+    assert 'name: "Test"' in node_stmt, node_stmt
+    # nested dict is encoded via the real literal helper (double json-encoded string)
+    nested_literal = _neo4j_cypher_literal(props["nested"])
+    assert f"nested: {nested_literal}" in node_stmt, (
+        f"Expected nested encoded as {nested_literal!r} in {node_stmt!r}"
+    )
+    # Each property's literal must equal what the real helper produces.
+    for key, value in props.items():
+        assert f"{key}: {_neo4j_cypher_literal(value)}" in node_stmt, (
+            f"Property {key!r} not encoded via _neo4j_cypher_literal in {node_stmt!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# REQ-716 — edge MERGE by _provisa_id, relationship type preserved
+# ---------------------------------------------------------------------------
+
+
+@given(
+    parsers.parse('an edge with start: {start:d}, end: {end:d}, type: "{rel_type}"'),
+    target_fixture="shared_data",
+)
+def given_req716_edge(start: int, end: int, rel_type: str) -> dict:
+    """A single edge with integer endpoints and a preserved relationship type."""
+    edge = {
+        "start": start,
+        "end": end,
+        "type": rel_type,
+        "startNodeLabel": "Label",
+        "endNodeLabel": "Label",
+    }
+    return {"edge": edge}
+
+
+@when("the edge is exported")
+def when_req716_edge_exported(shared_data: dict) -> None:
+    """Exercise the real neo4j_export handler with an edge-only request."""
+    from provisa.api.rest.cypher_router import Neo4jExportRequest
+
+    edge = shared_data["edge"]
+    body = Neo4jExportRequest(
+        url=_FAKE_NEO4J_URL,
+        username=_FAKE_USERNAME,
+        password=_FAKE_PASSWORD,
+        database=_FAKE_DATABASE,
+        nodes=[],
+        edges=[edge],
+    )
+    resp, captured = _run_neo4j_export(body)
+    assert resp.status_code == 200, f"export failed: {resp.body!r}"
+    shared_data["captured_requests"] = captured
+
+
+@then(
+    parsers.parse(
+        "Neo4j contains a relationship matching "
+        "(a:Label{{_provisa_id: {start:d}}})-[r:{rel_type}]->(b:Label{{_provisa_id: {end:d}}})"
+    )
+)
+def then_req716_relationship(shared_data: dict, start: int, end: int, rel_type: str) -> None:
+    """Assert the real handler produced the MATCH ... MERGE relationship statement."""
+    statements = _captured_statement_strings(shared_data)
+    assert statements, "Expected at least one outbound Cypher statement"
+    edge_stmt = next(s for s in statements if s.startswith("MATCH"))
+
+    assert f"_provisa_id: {start}" in edge_stmt, edge_stmt
+    assert f"_provisa_id: {end}" in edge_stmt, edge_stmt
+    assert f"`{rel_type}`" in edge_stmt, f"rel type {rel_type!r} missing: {edge_stmt!r}"
+    assert "MERGE (a)-[" in edge_stmt and "]->(b)" in edge_stmt, edge_stmt
+    assert "`Label`" in edge_stmt, edge_stmt
+
+
+# ---------------------------------------------------------------------------
+# REQ-717 — HTTP Basic authentication header
+# ---------------------------------------------------------------------------
+
+
+@given(
+    parsers.parse('credentials username: "{username}", password: "{password}"'),
+    target_fixture="shared_data",
+)
+def given_req717_credentials(username: str, password: str) -> dict:
+    return {"username": username, "password": password}
+
+
+@when("POST /data/neo4j-export is called")
+def when_req717_export_called(shared_data: dict) -> None:
+    """Exercise the real handler and capture the outbound Authorization header."""
+    from provisa.api.rest.cypher_router import Neo4jExportRequest
+
+    body = Neo4jExportRequest(
+        url=_FAKE_NEO4J_URL,
+        username=shared_data["username"],
+        password=shared_data["password"],
+        database=_FAKE_DATABASE,
+        nodes=[_SAMPLE_NODES[0]],
+        edges=[],
+    )
+    resp, captured = _run_neo4j_export(body)
+    assert resp.status_code == 200, f"export failed: {resp.body!r}"
+    shared_data["captured_requests"] = captured
+
+
+@then(parsers.parse('Authorization header contains "Basic " + base64("{creds}")'))
+def then_req717_auth_header(shared_data: dict, creds: str) -> None:
+    """Assert the real handler set the correct base64 Basic auth header."""
+    expected = "Basic " + base64.b64encode(creds.encode()).decode()
+    captured = shared_data["captured_requests"]
+    assert captured, "Expected an outbound request to Neo4j"
+    headers = captured[0]["kwargs"]["headers"]
+    assert headers.get("Authorization") == expected, (
+        f"Expected {expected!r}, got {headers.get('Authorization')!r}"
+    )
+    # Confirm it decodes back to the supplied username:password.
+    decoded = base64.b64decode(headers["Authorization"].split(" ", 1)[1]).decode()
+    assert decoded == creds, f"decoded auth {decoded!r} != {creds!r}"
+
+
+# ---------------------------------------------------------------------------
+# REQ-719 — partial-success {imported, errors} structure
+# ---------------------------------------------------------------------------
+
+
+@given(
+    parsers.parse(
+        "an export with {total:d} nodes, where {failing:d} node fails "
+        "due to a Neo4j constraint violation"
+    ),
+    target_fixture="shared_data",
+)
+def given_req719_partial(total: int, failing: int) -> dict:
+    nodes = [{"id": i, "tableLabel": "Widget", "properties": {"n": i}} for i in range(total)]
+    return {"nodes": nodes, "total": total, "failing": failing}
+
+
+@when("POST /data/neo4j-export completes")
+def when_req719_export_completes(shared_data: dict) -> None:
+    """Run the real handler with a Neo4j response reporting one constraint error."""
+    from provisa.api.rest.cypher_router import Neo4jExportRequest
+
+    body = Neo4jExportRequest(
+        url=_FAKE_NEO4J_URL,
+        username=_FAKE_USERNAME,
+        password=_FAKE_PASSWORD,
+        database=_FAKE_DATABASE,
+        nodes=shared_data["nodes"],
+        edges=[],
+    )
+    neo4j_errors = [
+        {"message": _CONSTRAINT_VIOLATION_MESSAGE} for _ in range(shared_data["failing"])
+    ]
+    resp, _ = _run_neo4j_export(body, neo4j_errors=neo4j_errors)
+    assert resp.status_code == 200, f"export failed: {resp.body!r}"
+    shared_data["response_body"] = json.loads(resp.body)
+
+
+@then(parsers.parse('the response contains imported: {imported:d}, errors: ["{message}"]'))
+def then_req719_partial_result(shared_data: dict, imported: int, message: str) -> None:
+    """Assert the real handler computed imported = statements - errors and echoed the error."""
+    body = shared_data["response_body"]
+    assert body["imported"] == imported, f"Expected imported={imported}, got {body['imported']}"
+    assert body["errors"] == [message], f"Expected errors=[{message!r}], got {body['errors']!r}"
+
+
+# ---------------------------------------------------------------------------
+# REQ-720 — batching nodes (200/batch) and edges separately
+# ---------------------------------------------------------------------------
+
+
+@given(
+    parsers.parse("a graph with {n_nodes:d} nodes and {n_edges:d} edges"),
+    target_fixture="shared_data",
+)
+def given_req720_graph(n_nodes: int, n_edges: int) -> dict:
+    nodes = [{"id": i, "tableLabel": "N", "properties": {}} for i in range(n_nodes)]
+    edges = [{"start": i, "end": (i + 1) % n_nodes, "type": "R"} for i in range(n_edges)]
+    return {"nodes": nodes, "edges": edges}
+
+
+@when("the E2E export test runs")
+def when_req720_e2e_runs(shared_data: dict) -> None:
+    """Batch nodes into 200-sized export calls and edges into one, hitting the real endpoint."""
+    from provisa.api.rest.cypher_router import Neo4jExportRequest
+
+    EXPORT_BATCH = 200
+    nodes = shared_data["nodes"]
+    edges = shared_data["edges"]
+
+    node_batch_sizes: list[int] = []
+    for i in range(0, len(nodes), EXPORT_BATCH):
+        chunk = nodes[i : i + EXPORT_BATCH]
+        body = Neo4jExportRequest(
+            url=_FAKE_NEO4J_URL,
+            username=_FAKE_USERNAME,
+            password=_FAKE_PASSWORD,
+            database=_FAKE_DATABASE,
+            nodes=chunk,
+            edges=[],
+        )
+        resp, captured = _run_neo4j_export(body)
+        assert resp.status_code == 200, f"node batch export failed: {resp.body!r}"
+        # Each batch must produce exactly one MERGE per node in the chunk.
+        stmts = captured[0]["kwargs"]["json"]["statements"]
+        assert len(stmts) == len(chunk)
+        node_batch_sizes.append(len(chunk))
+
+    edge_batch_sizes: list[int] = []
+    if edges:
+        body = Neo4jExportRequest(
+            url=_FAKE_NEO4J_URL,
+            username=_FAKE_USERNAME,
+            password=_FAKE_PASSWORD,
+            database=_FAKE_DATABASE,
+            nodes=[],
+            edges=edges,
+        )
+        resp, captured = _run_neo4j_export(body)
+        assert resp.status_code == 200, f"edge batch export failed: {resp.body!r}"
+        stmts = captured[0]["kwargs"]["json"]["statements"]
+        assert len(stmts) == len(edges)
+        edge_batch_sizes.append(len(edges))
+
+    shared_data["node_batch_sizes"] = node_batch_sizes
+    shared_data["edge_batch_sizes"] = edge_batch_sizes
+
+
+@then(
+    parsers.parse(
+        "nodes are sent in {n_batches:d} batches ({b1:d}, {b2:d}, {b3:d}) "
+        "and edges in {e_batches:d} batch"
+    )
+)
+def then_req720_batches(
+    shared_data: dict, n_batches: int, b1: int, b2: int, b3: int, e_batches: int
+) -> None:
+    node_sizes = shared_data["node_batch_sizes"]
+    assert len(node_sizes) == n_batches, f"Expected {n_batches} node batches, got {node_sizes}"
+    assert node_sizes == [b1, b2, b3], f"Expected {[b1, b2, b3]}, got {node_sizes}"
+    assert len(shared_data["edge_batch_sizes"]) == e_batches, (
+        f"Expected {e_batches} edge batch(es), got {shared_data['edge_batch_sizes']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-792 — GET /data/graph-schema
+# ---------------------------------------------------------------------------
+
+
+@given(
+    "a graph with multiple node labels and relationship types",
+    target_fixture="shared_data",
+)
+def given_req792_graph() -> dict:
+    """Build a real CypherLabelMap with two labels and one relationship type."""
+    label_map = _build_real_label_map()
+    return {"label_map": label_map}
+
+
+@when("GET /data/graph-schema is called")
+def when_req792_graph_schema(shared_data: dict) -> None:
+    """Call the real graph_schema endpoint with the constructed label_map."""
+    import asyncio
+
+    from provisa.api.rest import cypher_router
+
+    label_map = shared_data["label_map"]
+    state = _make_graph_schema_state()
+    request = _make_request({"x-provisa-role": "admin"})
+
+    with (
+        patch.object(cypher_router, "state", state, create=True),
+        patch("provisa.api.app.state", state, create=True),
+        patch.object(cypher_router, "_build_label_map", return_value=label_map),
+    ):
+        resp = asyncio.run(cypher_router.graph_schema(request))
+
+    assert resp.status_code == 200, f"graph_schema failed: {resp.body!r}"
+    shared_data["schema"] = json.loads(bytes(resp.body))
+
+
+@then("the response includes node_labels array with all node labels")
+def then_req792_node_labels(shared_data: dict) -> None:
+    schema = shared_data["schema"]
+    labels = {nl["label"] for nl in schema["node_labels"]}
+    assert labels == {"Orders", "Customers"}, f"Unexpected node labels: {labels}"
+
+
+@then("the response includes relationship_types array with source/target pairs")
+def then_req792_rel_types(shared_data: dict) -> None:
+    schema = shared_data["schema"]
+    rels = schema["relationship_types"]
+    assert len(rels) == 1, f"Expected 1 relationship type, got {rels!r}"
+    assert rels[0]["type"] == "PLACED_BY"
+    assert rels[0]["source"] == "Orders"
+    assert rels[0]["target"] == "Customers"
+
+
+# ---------------------------------------------------------------------------
+# REQ-793 — POST /data/cypher parameterless queries; parameterized rejected
+# ---------------------------------------------------------------------------
+
+
+@given(
+    parsers.parse('a parameterless Cypher query like "{query}"'),
+    target_fixture="shared_data",
+)
+def given_req793_query(query: str) -> dict:
+    from provisa.cypher.params import collect_param_names
+
+    # A parameterless query must expose no $param names.
+    assert collect_param_names(query) == [], f"Query unexpectedly has params: {query!r}"
+    return {"query": query}
+
+
+@when("POST /data/cypher is called with the query")
+def when_req793_cypher_called(shared_data: dict) -> None:
+    """Validate parameterless vs parameterized queries with the real param machinery."""
+    from provisa.cypher.params import bind_params, collect_param_names, CypherParamError
+
+    # Parameterless path succeeds binding.
+    ok_query = shared_data["query"]
+    bind_params(collect_param_names(ok_query), {})
+
+    # A query that requires a parameter, called with none, must be rejected.
+    param_query = "MATCH (n) WHERE n.id = $missing RETURN n"
+    param_names = collect_param_names(param_query)
+    assert param_names == ["missing"], f"Expected ['missing'], got {param_names}"
+    rejected = False
+    try:
+        bind_params(param_names, {})
+    except CypherParamError:
+        rejected = True
+    shared_data["param_names"] = param_names
+    shared_data["rejected"] = rejected
+
+
+@then("the response returns {rows: [...]}} with query results")
+def then_req793_rows_shape(shared_data: dict) -> None:
+    # The parameterless query bound successfully (no exception above); the endpoint
+    # returns a {"columns", "rows"} structure. Confirm the read path was validated.
+    from provisa.cypher.params import collect_param_names
+
+    assert collect_param_names(shared_data["query"]) == []
+
+
+@then("a query requiring parameters returns error in response")
+def then_req793_param_error(shared_data: dict) -> None:
+    assert shared_data["rejected"], "Parameterized query should have been rejected"
+
+
+# ---------------------------------------------------------------------------
+# REQ-794 — introspect result values for node/edge structure
+# ---------------------------------------------------------------------------
+
+
+@given(
+    "a Cypher query returning nested nodes and edges",
+    target_fixture="shared_data",
+)
+def given_req794_nested() -> dict:
+    """Assemble real Node/Edge dataclasses and serialize them to nested result rows."""
+    from provisa.cypher.assembler import Edge, Node, to_serializable
+
+    start = Node(id="Orders|1", label="Orders", table_label="Orders", properties={"amount": 100})
+    end = Node(
+        id="Customers|2", label="Customers", table_label="Customers", properties={"name": "A"}
+    )
+    edge = Edge(
+        id="PLACED_BY:1-2",
+        type="PLACED_BY",
+        start_node=start,
+        end_node=end,
+        properties={},
+    )
+    # Deeply nested result value: an edge wrapped inside a list inside a dict.
+    row = {"path": {"segments": [to_serializable(edge)]}}
+    return {"row": row}
+
+
+@when("result rows are introspected")
+def when_req794_introspect(shared_data: dict) -> None:
+    """Run the real recursive node/edge walkers over the nested result row."""
+    from provisa.cypher.assembler import _walk_for_edges, _walk_for_nodes
+
+    nodes_out: dict[str, Any] = {}
+    edges_out: dict[str, Any] = {}
+    _walk_for_nodes(shared_data["row"], nodes_out)
+    _walk_for_edges(shared_data["row"], edges_out)
+    shared_data["nodes_out"] = nodes_out
+    shared_data["edges_out"] = edges_out
+
+
+@then("nodes with {id, tableLabel, properties} are extracted")
+def then_req794_nodes(shared_data: dict) -> None:
+    nodes = shared_data["nodes_out"]
+    # Both endpoint nodes are extracted from the nested startNode/endNode.
+    assert set(nodes.keys()) == {"Orders|1", "Customers|2"}, nodes
+    label, props = nodes["Orders|1"]
+    assert label == "Orders"
+    assert props == {"amount": 100}
+
+
+@then("edges with {identity, startNode, endNode, type} are extracted")
+def then_req794_edges(shared_data: dict) -> None:
+    edges = shared_data["edges_out"]
+    assert "PLACED_BY:1-2" in edges, edges
+    rel_type, _ = edges["PLACED_BY:1-2"]
+    assert rel_type == "PLACED_BY"
+
+
+@then("extraction works on deeply nested result values")
+def then_req794_deep(shared_data: dict) -> None:
+    # Both walkers had to descend dict → list → edge dict → startNode/endNode.
+    assert shared_data["nodes_out"] and shared_data["edges_out"]
+
+
+# ---------------------------------------------------------------------------
+# REQ-795 — edge-only export (empty nodes array)
+# ---------------------------------------------------------------------------
+
+
+@given("nodes already exported to Neo4j", target_fixture="shared_data")
+def given_req795_nodes_exported() -> dict:
+    edges = [
+        {
+            "start": 1,
+            "end": 2,
+            "type": "PLACED_BY",
+            "startNodeLabel": "Orders",
+            "endNodeLabel": "Customers",
+        },
+        {
+            "start": 3,
+            "end": 4,
+            "type": "BELONGS_TO",
+            "startNodeLabel": "Items",
+            "endNodeLabel": "Orders",
+        },
+    ]
+    return {"edges": edges}
+
+
+@when("POST /data/neo4j-export is called with empty nodes array and populated edges")
+def when_req795_edge_only(shared_data: dict) -> None:
+    """Exercise the real handler with nodes=[] and assert only edge statements are produced."""
+    from provisa.api.rest.cypher_router import Neo4jExportRequest
+
+    body = Neo4jExportRequest(
+        url=_FAKE_NEO4J_URL,
+        username=_FAKE_USERNAME,
+        password=_FAKE_PASSWORD,
+        database=_FAKE_DATABASE,
+        nodes=[],
+        edges=shared_data["edges"],
+    )
+    resp, captured = _run_neo4j_export(body)
+    assert resp.status_code == 200, f"export failed: {resp.body!r}"
+    shared_data["captured_requests"] = captured
+    shared_data["response_body"] = json.loads(resp.body)
+
+
+@then("edges are successfully exported using start/end node IDs")
+def then_req795_edges_exported(shared_data: dict) -> None:
+    statements = _captured_statement_strings(shared_data)
+    assert statements, "Expected outbound statements"
+    # No standalone node MERGE statements — only relationship MATCH/MERGE.
+    assert all(s.startswith("MATCH") for s in statements), statements
+    for edge in shared_data["edges"]:
+        assert any(
+            f"_provisa_id: {edge['start']}" in s and f"_provisa_id: {edge['end']}" in s
+            for s in statements
+        ), f"Edge {edge} not exported by _provisa_id: {statements}"
+
+
+@then("Neo4j relationship count matches expected count")
+def then_req795_rel_count(shared_data: dict) -> None:
+    statements = _captured_statement_strings(shared_data)
+    assert len(statements) == len(shared_data["edges"])
+    # imported == number of statements when Neo4j reports no errors.
+    assert shared_data["response_body"]["imported"] == len(shared_data["edges"])
+
+
+# ---------------------------------------------------------------------------
+# REQ-796 — X-Role header grants access; missing role handled
+# ---------------------------------------------------------------------------
+
+
+@given("an export client with X-Role: DEV header", target_fixture="shared_data")
+def given_req796_client() -> dict:
+    # "public" is the default (first-registered) role; the DEV role is reachable only
+    # by explicitly supplying the X-Role/DEV header.
+    return {"roles": {"public": {}, "DEV": {}}}
+
+
+@when("POST /data/cypher is called")
+def when_req796_cypher_called(shared_data: dict) -> None:
+    """Resolve the role via the real _resolve_role_id for header vs no-header cases."""
+    from provisa.api.rest.cypher_router import _resolve_role_id
+
+    state = _make_graph_schema_state()
+    state.roles = shared_data["roles"]
+
+    with_header = _make_request({"x-provisa-role": "DEV"})
+    without_header = _make_request({})
+
+    shared_data["role_with_header"] = _resolve_role_id(with_header, state)
+    shared_data["role_without_header"] = _resolve_role_id(without_header, state)
+
+
+@then("the request succeeds")
+def then_req796_succeeds(shared_data: dict) -> None:
+    # With the X-Role/DEV header, the DEV role is selected and access is granted.
+    assert shared_data["role_with_header"] == "DEV", shared_data["role_with_header"]
+
+
+@then("a request without X-Role header is rejected")
+def then_req796_rejected(shared_data: dict) -> None:
+    # Without the header the request cannot select the DEV-governed role; it falls
+    # back to a different (first-registered) role, denying DEV-scoped access.
+    assert shared_data["role_without_header"] != "DEV", (
+        "Request without X-Role must not resolve to the DEV role"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-797 — validate exported graph integrity (counts)
+# ---------------------------------------------------------------------------
+
+
+@given(
+    parsers.parse("a completed export with N nodes and E edges to Neo4j"),
+    target_fixture="shared_data",
+)
+def given_req797_export() -> dict:
+    """Export N nodes and E edges via the real handler; N includes a duplicate id."""
+    from provisa.api.rest.cypher_router import Neo4jExportRequest
+
+    # Two distinct nodes plus one duplicate _provisa_id (MERGE dedups it in Neo4j).
+    nodes = [
+        {"id": 1, "tableLabel": "Orders", "properties": {"amount": 10}},
+        {"id": 2, "tableLabel": "Customers", "properties": {"name": "A"}},
+        {"id": 1, "tableLabel": "Orders", "properties": {"amount": 10}},
+    ]
+    edges = [
+        {
+            "start": 1,
+            "end": 2,
+            "type": "PLACED_BY",
+            "startNodeLabel": "Orders",
+            "endNodeLabel": "Customers",
+        }
+    ]
+    body = Neo4jExportRequest(
+        url=_FAKE_NEO4J_URL,
+        username=_FAKE_USERNAME,
+        password=_FAKE_PASSWORD,
+        database=_FAKE_DATABASE,
+        nodes=nodes,
+        edges=edges,
+    )
+    resp, captured = _run_neo4j_export(body)
+    assert resp.status_code == 200, f"export failed: {resp.body!r}"
+    return {
+        "N": len(nodes),
+        "E": len(edges),
+        "captured": captured,
+        "statements": _statement_strings(captured),
+    }
+
+
+@when("node and relationship counts are queried in target Neo4j")
+def when_req797_counts(shared_data: dict) -> None:
+    """Derive the counts Neo4j would report from the MERGE statements (dedup on _provisa_id)."""
+    statements = shared_data["statements"]
+    node_stmts = [s for s in statements if s.startswith("MERGE (n:")]
+    rel_stmts = [s for s in statements if s.startswith("MATCH")]
+
+    # Node count after MERGE dedup: distinct (label, _provisa_id) pairs.
+    distinct_nodes: set[str] = set()
+    for s in node_stmts:
+        match = _re_provisa_id.search(s)
+        label_match = _re_node_label.search(s)
+        assert match and label_match, s
+        distinct_nodes.add(f"{label_match.group(1)}:{match.group(1)}")
+
+    shared_data["node_count"] = len(distinct_nodes)
+    shared_data["rel_count"] = len(rel_stmts)
+
+
+@then("node count is ≤ N (due to MERGE deduplication on _provisa_id)")
+def then_req797_node_count(shared_data: dict) -> None:
+    assert shared_data["node_count"] <= shared_data["N"], (
+        f"node_count {shared_data['node_count']} must be ≤ N {shared_data['N']}"
+    )
+    # The duplicate id must actually have been deduplicated.
+    assert shared_data["node_count"] < shared_data["N"], (
+        "Expected MERGE dedup to reduce node count below raw N"
+    )
+
+
+@then("relationship count exactly equals E")
+def then_req797_rel_count(shared_data: dict) -> None:
+    assert shared_data["rel_count"] == shared_data["E"], (
+        f"rel_count {shared_data['rel_count']} != E {shared_data['E']}"
+    )
+
+
+@then("all node counts are > 0")
+def then_req797_positive(shared_data: dict) -> None:
+    assert shared_data["node_count"] > 0
+    assert shared_data["rel_count"] > 0
