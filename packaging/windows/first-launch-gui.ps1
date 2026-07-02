@@ -900,6 +900,25 @@ $btnInstall.Add_Click({
         _toggleOtel (Join-Path $trinoEtc 'jvm.config') '-javaagent:.*opentelemetry|-Dotel\.' $Enabled
       }
 
+      # Fault-tolerant execution (retry-policy=TASK) spools every query to the
+      # exchange volume, which the trino user can't write on a single node -
+      # SELECT 1 dies with AccessDeniedException. FTE only makes sense with
+      # workers, so use TASK when workers>0, NONE otherwise.
+      function Set-TrinoFte { param([bool]$Enabled)
+        $val = if ($Enabled) { 'TASK' } else { 'NONE' }
+        $trinoEtc = Join-Path $ComposeDir 'trino\etc'
+        foreach ($rel in 'config.properties', 'worker\config.properties') {
+          $cf = Join-Path $trinoEtc $rel
+          if (-not (Test-Path $cf)) { continue }
+          $seen = $false
+          $out = foreach ($line in (Get-Content $cf)) {
+            if ($line -match '^\s*retry-policy\s*=') { $seen = $true; "retry-policy=$val" } else { $line }
+          }
+          if (-not $seen) { $out += "retry-policy=$val" }
+          $out | Set-Content -Path $cf -Encoding ASCII
+        }
+      }
+
       $tarballs = Get-ChildItem -Path $ExtractDir -Filter '*.tar.gz' | Sort-Object Name
       $total    = $tarballs.Count
       $idx      = 0
@@ -1036,6 +1055,7 @@ $btnInstall.Add_Click({
         Install-ReleaseImages 'provisa-obs-images-*.tar.gz' "provisa-obs-images-$EmbeddedVersion.tar.gz" 'observability stack'
       }
       Set-TrinoOtel -Enabled:$Obs
+      Set-TrinoFte  -Enabled:($Workers -gt 0)
       $sync.Progress = 91
 
       # Step 7: Write config
