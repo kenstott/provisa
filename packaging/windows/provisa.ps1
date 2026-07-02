@@ -25,6 +25,7 @@ function Read-Config {
     VmName     = 'Provisa'
     DockerHost = 'tcp://127.0.0.1:2375'
     Demo       = $false
+    Obs        = $false
   }
 
   foreach ($line in Get-Content $ConfigPath) {
@@ -35,6 +36,7 @@ function Read-Config {
     if ($line -match '^\s*vm_name\s*:\s*"?([^"]+)"?\s*$')      { $cfg.VmName     = $Matches[1].Trim() }
     if ($line -match '^\s*docker_host\s*:\s*"?([^"]+)"?\s*$')  { $cfg.DockerHost = $Matches[1].Trim() }
     if ($line -match '^\s*demo\s*:\s*(true|false)\s*$')        { $cfg.Demo       = ($Matches[1] -eq 'true') }
+    if ($line -match '^\s*obs\s*:\s*(true|false)\s*$')         { $cfg.Obs        = ($Matches[1] -eq 'true') }
   }
 
   if (-not $cfg.ProjectDir) {
@@ -128,6 +130,7 @@ function Invoke-Compose {
     Join-Path $Config.ProjectDir 'docker-compose.app.yml'
     Join-Path $Config.ProjectDir 'docker-compose.airgap.yml'
   )
+  if ($Config.Obs)  { $files += Join-Path $Config.ProjectDir 'docker-compose.observability.yml' }
   if ($Config.Demo) { $files += Join-Path $Config.ProjectDir 'docker-compose.demo.yml' }
   $fileArgs = @(); foreach ($f in $files) { $fileArgs += '-f'; $fileArgs += $f }
   docker compose @fileArgs @ComposeArgs
@@ -227,6 +230,7 @@ function cmd-runtime {
   $c2 = Join-Path $Config.ProjectDir 'docker-compose.app.yml'
   $c3 = Join-Path $Config.ProjectDir 'docker-compose.airgap.yml'
   $dArgs = @('-f', $c1, '-f', $c2, '-f', $c3)
+  if ($Config.Obs)  { $dArgs += '-f'; $dArgs += (Join-Path $Config.ProjectDir 'docker-compose.observability.yml') }
   if ($Config.Demo) { $dArgs += '-f'; $dArgs += (Join-Path $Config.ProjectDir 'docker-compose.demo.yml') }
   docker compose @dArgs down 2>$null
   Stop-Vm $Config

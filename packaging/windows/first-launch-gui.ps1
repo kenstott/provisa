@@ -30,19 +30,22 @@ $OvaPath      = Join-Path $ScriptDir 'provisa-runtime.ova'
 $ProvisaHome  = Join-Path $env:USERPROFILE '.provisa'
 $Sentinel     = Join-Path $ProvisaHome '.first-launch-complete'
 
-if (Test-Path $Sentinel) {
-  $own = New-Object System.Windows.Forms.Form
-  $own.TopMost       = $true
-  $own.ShowInTaskbar = $false
-  $own.Size          = New-Object System.Drawing.Size(0,0)
-  $own.Show()
-  [System.Windows.Forms.MessageBox]::Show(
-    $own,
-    "Provisa is already installed and ready.`r`n`r`nTo start Provisa: open a terminal and run`r`n    provisa start`r`n`r`n(If you need to reinstall, delete $Sentinel and rerun this setup.)",
-    'Provisa Setup', 'OK', 'Information') | Out-Null
-  $own.Dispose()
-  exit 0
+# A prior install is detected by the sentinel + config.yaml. Rather than exit,
+# we open the same panel in "manage" mode (upgrade or reconfigure) with the
+# current demo/obs/RAM pre-filled.
+$ConfigYaml         = Join-Path $ProvisaHome 'config.yaml'
+$ManageMode         = (Test-Path $Sentinel) -and (Test-Path $ConfigYaml)
+$CurDemo            = $false
+$CurObs             = $false
+$InstalledVersion   = $null
+if ($ManageMode) {
+  foreach ($line in Get-Content $ConfigYaml) {
+    if ($line -match '^\s*demo\s*:\s*(true|false)\s*$')    { $CurDemo          = ($Matches[1] -eq 'true') }
+    if ($line -match '^\s*obs\s*:\s*(true|false)\s*$')     { $CurObs           = ($Matches[1] -eq 'true') }
+    if ($line -match '^\s*version\s*:\s*"?([^"]+)"?\s*$')  { $InstalledVersion = $Matches[1].Trim() }
+  }
 }
+$IsUpgrade = $ManageMode -and $EmbeddedVersion -and ($InstalledVersion -ne $EmbeddedVersion)
 
 # -- VirtualBox detection -----------------------------------------------------
 $VBoxFound = $false
@@ -139,7 +142,7 @@ $lbTitle.Location  = New-Object System.Drawing.Point(80, 14)
 $header.Controls.Add($lbTitle)
 
 $lbSub            = New-Object System.Windows.Forms.Label
-$lbSub.Text       = 'First-time Setup'
+$lbSub.Text       = if ($IsUpgrade) { "Upgrade $InstalledVersion -> $EmbeddedVersion" } elseif ($ManageMode) { 'Reconfigure' } else { 'First-time Setup' }
 $lbSub.Font       = New-Object System.Drawing.Font('Segoe UI', 10)
 $lbSub.ForeColor  = [System.Drawing.Color]::FromArgb(170, 170, 170)
 $lbSub.AutoSize   = $true
@@ -237,11 +240,18 @@ $nudPort.Width    = 100
 $pConfig.Controls.Add($nudPort)
 
 $cbDemo          = New-Object System.Windows.Forms.CheckBox
-$cbDemo.Text     = 'Install demo dataset && services'
+$cbDemo.Text     = 'Demo dataset && services'
 $cbDemo.AutoSize = $true
-$cbDemo.Checked  = $false
-$cbDemo.Location = New-Object System.Drawing.Point(160, 204)
+$cbDemo.Checked  = $CurDemo
+$cbDemo.Location = New-Object System.Drawing.Point(160, 190)
 $pConfig.Controls.Add($cbDemo)
+
+$cbObs           = New-Object System.Windows.Forms.CheckBox
+$cbObs.Text      = 'Observability stack (metrics/traces)'
+$cbObs.AutoSize  = $true
+$cbObs.Checked   = $CurObs
+$cbObs.Location  = New-Object System.Drawing.Point(160, 214)
+$pConfig.Controls.Add($cbObs)
 
 Lbl 'Runtime' 20 238 $true
 
@@ -371,7 +381,7 @@ Set-DefaultBackend
 Update-BackendUi
 
 $btnInstall            = New-Object System.Windows.Forms.Button
-$btnInstall.Text       = 'Install'
+$btnInstall.Text       = if ($ManageMode) { 'Apply' } else { 'Install' }
 $btnInstall.Font       = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
 $btnInstall.Size       = New-Object System.Drawing.Size(110, 36)
 $btnInstall.Location   = New-Object System.Drawing.Point(470, 352)
@@ -501,6 +511,7 @@ $btnInstall.Add_Click({
 
   $backend = if ($rbDocker.Checked) { 'docker' } else { 'virtualbox' }
   $demo    = [bool]$cbDemo.Checked
+  $obs     = [bool]$cbObs.Checked
 
   # Docker Desktop mode is single-node dev/demo: coordinator-only, no workers.
   # VirtualBox mode sizes worker count from the VM's RAM budget.
@@ -551,6 +562,8 @@ $btnInstall.Add_Click({
   $rs.SessionStateProxy.SetVariable('EmbeddedVersion', $EmbeddedVersion)
   $rs.SessionStateProxy.SetVariable('Backend',         $backend)
   $rs.SessionStateProxy.SetVariable('Demo',            $demo)
+  $rs.SessionStateProxy.SetVariable('Obs',             $obs)
+  $rs.SessionStateProxy.SetVariable('ManageMode',      $ManageMode)
 
   $ps = [powershell]::Create()
   $ps.Runspace = $rs
@@ -834,6 +847,59 @@ $btnInstall.Add_Click({
         return $true
       }
 
+      # Find (next to the installer) or download a release image tarball, then
+      # load every *.tar.gz inside it into the daemon. Used for demo + obs.
+      function Install-ReleaseImages { param($Pattern, $Asset, $Label)
+        $tar = $null
+        foreach ($searchDir in @($ScriptDir, (Split-Path -Parent $ScriptDir))) {
+          $f = Get-ChildItem -Path $searchDir -Filter $Pattern -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($f) { $tar = $f.FullName; break }
+        }
+        if (-not $tar -and $EmbeddedVersion) {
+          $url = "https://github.com/kenstott/provisa/releases/download/$EmbeddedVersion/$Asset"
+          $dst = Join-Path $env:TEMP $Asset
+          Log "Downloading $Label ($EmbeddedVersion)..."
+          $req = [System.Net.HttpWebRequest]::Create($url); $req.UserAgent = 'Provisa-Installer/1.0'
+          $resp = $req.GetResponse(); $ins = $resp.GetResponseStream(); $fs = [System.IO.File]::Create($dst)
+          $buf = New-Object byte[] 65536
+          while (($r = $ins.Read($buf, 0, $buf.Length)) -gt 0) { $fs.Write($buf, 0, $r) }
+          $fs.Close(); $ins.Close(); $resp.Close(); $tar = $dst
+        }
+        if (-not $tar) { Log "WARNING: $Label images not found - services may not start."; return }
+        Log "Installing $Label..."
+        $ex = Join-Path $env:TEMP 'provisa-img-extract'
+        if (Test-Path $ex) { Remove-Item -Recurse -Force $ex }
+        New-Item -ItemType Directory -Path $ex -Force | Out-Null
+        & $tarExe -xzf $tar -C $ex 2>&1 | ForEach-Object { }
+        foreach ($img in (Get-ChildItem -Path $ex -Filter '*.tar.gz')) {
+          if ($UseDockerCli) { & $DockerCli load -i $img.FullName 2>&1 | ForEach-Object { } }
+          else { & $curlExe --silent --show-error --max-time 3600 -X POST "$DockerApiBase/images/load" -H 'Content-Type: application/x-tar' --data-binary "@$($img.FullName)" | Out-Null }
+        }
+        Remove-Item -Recurse -Force $ex -ErrorAction SilentlyContinue
+        Log "$Label installed."
+      }
+
+      # Comment (obs off) or uncomment (obs on) the OTel lines in the staged
+      # Trino config. The otel-collector only exists in the obs stack; without
+      # it Trino's OTel export throws and fails even SELECT 1.
+      function Set-TrinoOtel { param([bool]$Enabled)
+        $trinoEtc = Join-Path $ComposeDir 'trino\etc'
+        function _toggleOtel { param($Path, $Pat, $On)
+          if (-not (Test-Path $Path)) { return }
+          $out = foreach ($line in (Get-Content $Path)) {
+            if ($line -match "^\s*#?\s*($Pat)") {
+              $bare = $line -replace '^\s*#\s*', ''
+              if ($On) { $bare } else { "#$bare" }
+            } else { $line }
+          }
+          $out | Set-Content -Path $Path -Encoding ASCII
+        }
+        $tp = 'tracing\.enabled|otel\.exporter\.endpoint'
+        _toggleOtel (Join-Path $trinoEtc 'config.properties')        $tp $Enabled
+        _toggleOtel (Join-Path $trinoEtc 'worker\config.properties') $tp $Enabled
+        _toggleOtel (Join-Path $trinoEtc 'jvm.config') '-javaagent:.*opentelemetry|-Dotel\.' $Enabled
+      }
+
       $tarballs = Get-ChildItem -Path $ExtractDir -Filter '*.tar.gz' | Sort-Object Name
       $total    = $tarballs.Count
       $idx      = 0
@@ -949,62 +1015,27 @@ $btnInstall.Add_Click({
       }
       $sync.Progress = 90
 
-      # Step 6c: Demo dataset / services --------------------------------------
+      # Step 6c: Demo + Observability overlays --------------------------------
       $CatalogDir = Join-Path $ComposeDir 'trino\catalog'
       if ($Demo) {
-        # Load the demo images (petstore-mock + graphql-demo) so the demo
-        # overlay can start without pulling/building on the user's machine.
-        $sync.Status = 'Locating demo services...'
-        $DemoTar = $null
-        foreach ($searchDir in @($ScriptDir, (Split-Path -Parent $ScriptDir))) {
-          $found = Get-ChildItem -Path $searchDir -Filter 'provisa-demo-images-*.tar.gz' -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($found) { $DemoTar = $found.FullName; break }
-        }
-        if (-not $DemoTar -and $EmbeddedVersion) {
-          $dUrl  = "https://github.com/kenstott/provisa/releases/download/$EmbeddedVersion/provisa-demo-images-$EmbeddedVersion.tar.gz"
-          $dDest = Join-Path $env:TEMP "provisa-demo-images-$EmbeddedVersion.tar.gz"
-          Log "Downloading demo services ($EmbeddedVersion)..."
-          $dreq = [System.Net.HttpWebRequest]::Create($dUrl)
-          $dreq.UserAgent = 'Provisa-Installer/1.0'
-          $dresp = $dreq.GetResponse()
-          $din   = $dresp.GetResponseStream()
-          $dfs   = [System.IO.File]::Create($dDest)
-          $dbuf  = New-Object byte[] 65536
-          while (($dread = $din.Read($dbuf, 0, $dbuf.Length)) -gt 0) { $dfs.Write($dbuf, 0, $dread) }
-          $dfs.Close(); $din.Close(); $dresp.Close()
-          $DemoTar = $dDest
-        }
-        if ($DemoTar) {
-          Log 'Installing demo services...'
-          $DemoExtract = Join-Path $env:TEMP 'provisa-demo-extract'
-          if (Test-Path $DemoExtract) { Remove-Item -Recurse -Force $DemoExtract }
-          New-Item -ItemType Directory -Path $DemoExtract -Force | Out-Null
-          if ($DemoTar -match '\.tar\.gz$') {
-            & $tarExe -xzf $DemoTar -C $DemoExtract 2>&1 | ForEach-Object { }
-          } else {
-            [System.IO.Compression.ZipFile]::ExtractToDirectory($DemoTar, $DemoExtract)
-          }
-          foreach ($img in (Get-ChildItem -Path $DemoExtract -Filter '*.tar.gz')) {
-            if ($UseDockerCli) {
-              & $DockerCli load -i $img.FullName 2>&1 | ForEach-Object { }
-            } else {
-              & $curlExe --silent --show-error --max-time 3600 -X POST "$DockerApiBase/images/load" `
-                -H 'Content-Type: application/x-tar' --data-binary "@$($img.FullName)" | Out-Null
-            }
-          }
-          Remove-Item -Recurse -Force $DemoExtract -ErrorAction SilentlyContinue
-          Log 'Demo services installed.'
-        } else {
-          Log 'WARNING: demo images not found - demo services may not start.'
-        }
+        $sync.Status = 'Installing demo services...'
+        Install-ReleaseImages 'provisa-demo-images-*.tar.gz' "provisa-demo-images-$EmbeddedVersion.tar.gz" 'demo services'
       } else {
-        # Core install: drop the demo source catalogs so Trino stays a clean,
-        # empty platform (Provisa creates catalogs dynamically per source).
+        # Core: drop the demo source catalogs so Trino stays a clean, empty
+        # platform (Provisa creates catalogs dynamically per registered source).
         $keep = @('provisa_admin', 'files', 'otel', 'results')
         Get-ChildItem -Path $CatalogDir -Filter '*.properties' -ErrorAction SilentlyContinue | ForEach-Object {
           if ($keep -notcontains $_.BaseName) { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
         }
       }
+
+      # Observability: load its images and enable Trino OTel; otherwise strip
+      # OTel so the coordinator healthcheck can pass without a collector.
+      if ($Obs) {
+        $sync.Status = 'Installing observability stack...'
+        Install-ReleaseImages 'provisa-obs-images-*.tar.gz' "provisa-obs-images-$EmbeddedVersion.tar.gz" 'observability stack'
+      }
+      Set-TrinoOtel -Enabled:$Obs
       $sync.Progress = 91
 
       # Step 7: Write config
@@ -1035,6 +1066,8 @@ auto_open_browser: true
 $runtimeLines
 federation_workers: $Workers
 demo: $($Demo.ToString().ToLower())
+obs: $($Obs.ToString().ToLower())
+version: $EmbeddedVersion
 "@ | Set-Content -Path $cfgPath -Encoding UTF8
       $sync.Progress = 92
 
@@ -1053,8 +1086,18 @@ demo: $($Demo.ToString().ToLower())
       if (Test-Path $iconPath) { $link.IconLocation = $iconPath }
       $link.Save()
 
+      # Reconfigure/upgrade: full down + up so removed overlays are dropped
+      # (--remove-orphans) and Trino is recreated with the new OTel config.
+      if ($ManageMode) {
+        Log 'Applying changes (restarting services)...'
+        $provisaPs1 = Join-Path $ScriptDir 'provisa.ps1'
+        & powershell.exe -ExecutionPolicy Bypass -File $provisaPs1 stop  2>&1 | ForEach-Object { Log "  $_" }
+        & powershell.exe -ExecutionPolicy Bypass -File $provisaPs1 start 2>&1 | ForEach-Object { Log "  $_" }
+        Log 'Changes applied.'
+      }
+
       $sync.Progress = 100
-      Log 'Setup complete! Start Menu -> Provisa -> Start Provisa'
+      Log $(if ($ManageMode) { 'Done. Start Menu -> Provisa -> Start Provisa' } else { 'Setup complete! Start Menu -> Provisa -> Start Provisa' })
       $sync.Done = $true
     } catch {
       $sync.Error = $_.ToString()

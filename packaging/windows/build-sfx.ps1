@@ -41,26 +41,12 @@ Get-ChildItem -Path $TrinoSrc -Exclude 'plugins' | Copy-Item -Destination $Trino
 foreach ($stale in 'mongodb', 'support_kafka', 'reviews_mongo') {
   Remove-Item (Join-Path $TrinoDst "catalog\$stale.properties") -Force -ErrorAction SilentlyContinue
 }
-#  2. Disable OTLP telemetry - the otel-collector only exists in the dev/obs
-#     stack, never on the desktop. With it absent, Trino's native tracing and
-#     the OTel javaagent throw on export (UnknownHostException: otel-collector),
-#     which fails even a `SELECT 1` (GENERIC_INTERNAL_ERROR) - so the coordinator
-#     healthcheck never passes. Strip it from both config.properties and
-#     jvm.config so desktop Trino carries no telemetry at all.
-foreach ($cfgRel in 'etc\config.properties', 'etc\worker\config.properties') {
-  $cfgFile = Join-Path $TrinoDst $cfgRel
-  if (Test-Path $cfgFile) {
-    (Get-Content $cfgFile) |
-      Where-Object { $_ -notmatch '^\s*(tracing\.enabled|otel\.exporter\.endpoint)\s*=' } |
-      Set-Content -Path $cfgFile -Encoding ASCII
-  }
-}
-$jvmCfg = Join-Path $TrinoDst 'etc\jvm.config'
-if (Test-Path $jvmCfg) {
-  (Get-Content $jvmCfg) |
-    Where-Object { $_ -notmatch '^\s*-javaagent:.*opentelemetry' -and $_ -notmatch '^\s*-Dotel\.' } |
-    Set-Content -Path $jvmCfg -Encoding ASCII
-}
+#  2. OTel telemetry is stripped at INSTALL time when observability is OFF
+#     (the otel-collector only exists in the obs stack; without it Trino's
+#     export throws and fails even SELECT 1). See first-launch-gui.ps1.
+
+# Observability overlay (otel-collector, prometheus, grafana, tempo, minio).
+Copy-Item (Join-Path $RepoRoot 'docker-compose.observability.yml') $BuildCompose
 
 # Support dirs the trino service bind-mounts (parity with the macOS bundle).
 Copy-Item (Join-Path $RepoRoot 'observability') (Join-Path $BuildCompose 'observability') -Recurse -Force
