@@ -14,8 +14,12 @@
 
 import asyncio
 import json
+from typing import TYPE_CHECKING
 
 import asyncpg
+
+if TYPE_CHECKING:
+    from provisa.core.database import Database
 
 
 def _json_encoder(v):
@@ -87,7 +91,7 @@ def _validate_org_id(org_id: str) -> None:
         raise ValueError(f"org_id must be alphanumeric/underscore only, got: {org_id!r}")
 
 
-async def init_schema(pool: asyncpg.Pool, schema_sql: str, org_id: str = "default") -> None:
+async def init_schema(pool: "Database", schema_sql: str, org_id: str = "default") -> None:
     """Execute schema SQL scoped to org_<org_id> schema (REQ-697)."""
     _validate_org_id(org_id)
     schema_name = f"org_{org_id}"
@@ -97,6 +101,9 @@ async def init_schema(pool: asyncpg.Pool, schema_sql: str, org_id: str = "defaul
             await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
             await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}_mv_cache")
             await conn.execute(f"SET search_path TO {schema_name}")
+            # schema_sql is a multi-statement script (DO $$ blocks). Raw asyncpg
+            # runs it natively; the control-plane Database shim auto-detects the
+            # multi-statement case and routes to the raw driver.
             await conn.execute(schema_sql)
         finally:
             await conn.execute("SELECT pg_advisory_unlock(7337)")

@@ -15,8 +15,10 @@
 from __future__ import annotations
 
 import hashlib
+from typing import TYPE_CHECKING
 
-import asyncpg
+if TYPE_CHECKING:
+    from provisa.core.database import Database
 
 AUDIT_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS query_audit_log (
@@ -47,7 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_user_time ON query_audit_log (user_id, logg
 """
 
 
-async def init_audit_schema(pool: asyncpg.Pool, org_id: str = "default") -> None:  # REQ-074
+async def init_audit_schema(pool: "Database", org_id: str = "default") -> None:  # REQ-074
     from provisa.core.db import _validate_org_id
 
     _validate_org_id(org_id)
@@ -55,11 +57,13 @@ async def init_audit_schema(pool: asyncpg.Pool, org_id: str = "default") -> None
     async with pool.acquire() as conn:
         await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
         await conn.execute(f"SET search_path TO {schema_name}")
+        # multi-statement script (CREATE TABLE + DO $$ RULEs + indexes); raw
+        # asyncpg runs it natively, the Database shim auto-routes to the driver.
         await conn.execute(AUDIT_SCHEMA_SQL)
 
 
 async def log_query(  # REQ-074
-    pool: asyncpg.Pool,
+    pool: "Database",
     *,
     tenant_id: str | None,
     user_id: str,

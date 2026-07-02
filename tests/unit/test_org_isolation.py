@@ -138,6 +138,9 @@ class TestInitSchema:
 
         await init_schema(mock_pool, "CREATE TABLE t (id INT)", org_id="myorg")
 
+        # Invariant (REQ-697): search_path is set before the schema DDL runs.
+        # init_schema issues both via conn.execute (the control-plane Database
+        # shim auto-routes the multi-statement schema SQL to the raw driver).
         executed = [c.args[0] for c in mock_conn.execute.await_args_list if c.args]
         search_path_idx = next(
             i for i, s in enumerate(executed) if "SET search_path" in s and "org_myorg" in s

@@ -10,10 +10,12 @@
 from __future__ import annotations
 
 import uuid
-
-import asyncpg
+from typing import TYPE_CHECKING
 
 from provisa.api.billing.models import Plan, Tenant
+
+if TYPE_CHECKING:
+    from provisa.core.database import Database
 
 BILLING_SCHEMA_SQL = """
 CREATE SCHEMA IF NOT EXISTS platform;
@@ -54,16 +56,18 @@ def _row_to_tenant(row) -> Tenant:
     )
 
 
-async def init_billing_schema(pool: asyncpg.Pool) -> None:  # REQ-592, REQ-696
+async def init_billing_schema(pool: "Database") -> None:  # REQ-592, REQ-696
     async with pool.acquire() as conn:
         await conn.execute("SELECT pg_advisory_lock(7338)")
         try:
+            # multi-statement script (CREATE SCHEMA + tables + index); raw asyncpg
+            # runs it natively, the Database shim auto-routes to the driver.
             await conn.execute(BILLING_SCHEMA_SQL)
         finally:
             await conn.execute("SELECT pg_advisory_unlock(7338)")
 
 
-async def create_tenant(pool: asyncpg.Pool, kms_key_arn: str) -> Tenant:  # REQ-592
+async def create_tenant(pool: "Database", kms_key_arn: str) -> Tenant:  # REQ-592
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
@@ -76,7 +80,7 @@ async def create_tenant(pool: asyncpg.Pool, kms_key_arn: str) -> Tenant:  # REQ-
     return _row_to_tenant(row)
 
 
-async def get_tenant(pool: asyncpg.Pool, tenant_id: str) -> Tenant | None:  # REQ-592
+async def get_tenant(pool: "Database", tenant_id: str) -> Tenant | None:  # REQ-592
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
@@ -91,7 +95,7 @@ async def get_tenant(pool: asyncpg.Pool, tenant_id: str) -> Tenant | None:  # RE
 
 
 async def get_tenant_by_stripe_customer(  # REQ-592
-    pool: asyncpg.Pool, stripe_customer_id: str
+    pool: "Database", stripe_customer_id: str
 ) -> Tenant | None:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -107,7 +111,7 @@ async def get_tenant_by_stripe_customer(  # REQ-592
 
 
 async def update_tenant_plan(  # REQ-592
-    pool: asyncpg.Pool, tenant_id: str, plan: str, source_limit: int
+    pool: "Database", tenant_id: str, plan: str, source_limit: int
 ) -> None:
     async with pool.acquire() as conn:
         await conn.execute(
@@ -119,7 +123,7 @@ async def update_tenant_plan(  # REQ-592
 
 
 async def update_tenant_stripe_customer(  # REQ-592
-    pool: asyncpg.Pool, tenant_id: str, stripe_customer_id: str
+    pool: "Database", tenant_id: str, stripe_customer_id: str
 ) -> None:
     async with pool.acquire() as conn:
         await conn.execute(
@@ -130,7 +134,7 @@ async def update_tenant_stripe_customer(  # REQ-592
 
 
 async def upsert_config_entity(  # REQ-458
-    pool: asyncpg.Pool,
+    pool: "Database",
     tenant_id: str,
     entity_type: str,
     entity_id: str,
@@ -159,7 +163,7 @@ async def upsert_config_entity(  # REQ-458
 
 
 async def fetch_config_entities(
-    pool: asyncpg.Pool, tenant_id: str, entity_type: str
+    pool: "Database", tenant_id: str, entity_type: str
 ) -> list[dict]:  # REQ-458
     async with pool.acquire() as conn:
         rows = await conn.fetch(
