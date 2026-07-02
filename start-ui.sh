@@ -40,6 +40,7 @@ fi
 export PG_PASSWORD="${PG_PASSWORD:-provisa}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
 export PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
+export GRAPHQL_DEMO_URL="${GRAPHQL_DEMO_URL:-http://localhost:4000/graphql}"
 export GRAPHQL_DEMO_ENABLED="${GRAPHQL_DEMO_ENABLED:-$DEMO}"
 export PROVISA_DEMO="${DEMO}"
 export PROVISA_IDP="${IDP}"
@@ -55,7 +56,7 @@ export QUERY_ENGINE_CONTAINER="${QUERY_ENGINE_CONTAINER:-provisa-trino-1}"
 # Compose files for dev: core services + dev overlay (ports, kafka, mongo, elasticsearch, observability)
 COMPOSE_FILES="-f docker-compose.core.yml -f docker-compose.dev.yml"
 if [ "$DEMO" = true ]; then
-  COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.demo.yml"
+  # Demo servers (petstore-mock, graphql-demo) run as host processes, not Docker.
   echo "Resetting volumes for pristine demo environment..."
   docker compose $COMPOSE_FILES down -v 2>/dev/null || true
   if [ -f "$SCRIPT_DIR/demo/files/create_demo_files.py" ]; then
@@ -128,21 +129,8 @@ if [ "$OBSERVABILITY" = true ]; then
 fi
 
 if [ "$DEMO" = true ]; then
-  echo -n "Waiting for petstore-mock"
-  _petstore_ready=false
-  for i in $(seq 1 30); do
-    PET_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-petstore-mock-1 2>/dev/null || echo "missing")
-    if [ "$PET_OK" = "healthy" ]; then
-      echo " OK"
-      _petstore_ready=true
-      break
-    fi
-    if [ "$i" -eq 30 ]; then
-      echo " TIMEOUT (skipping user seed)"
-    fi
-    echo -n "."
-    sleep 2
-  done
+  "$SCRIPT_DIR/demo/run-demo-servers.sh" start
+  _petstore_ready=true
   if [ "$_petstore_ready" = true ]; then
     _users_seeded=false
     for _attempt in 1 2 3; do
@@ -188,20 +176,6 @@ if [ "$DEMO" = true ]; then
     done
     echo "Petstore orders seeded."
   fi
-
-  echo -n "Waiting for graphql-demo"
-  for i in $(seq 1 45); do
-    GQL_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-graphql-demo-1 2>/dev/null || echo "missing")
-    if [ "$GQL_OK" = "healthy" ]; then
-      echo " OK"
-      break
-    fi
-    if [ "$i" -eq 45 ]; then
-      echo " TIMEOUT (continuing anyway)"
-    fi
-    echo -n "."
-    sleep 2
-  done
 fi
 
 # Seed Kafka with demo data (only if --seed-data flag passed)
@@ -316,7 +290,7 @@ if [ "$DEMO" = true ]; then
   echo ""
   echo "Demo sources:"
   echo "  - pet-store-pg       (PostgreSQL, pet_store schema)"
-  echo "  - petstore-api       (OpenAPI, petstore3.swagger.io)"
+  echo "  - petstore-api       (OpenAPI, host process, http://localhost:18080/api/v3)"
   echo "  - inquiries-sqlite   (SQLite, demo/files/inquiries.sqlite)"
   echo "  - graphql-demo       (GraphQL remote, http://localhost:4000/graphql)"
 else
@@ -332,6 +306,9 @@ cleanup() {
   echo "Shutting down..."
   kill $BACKEND_PID $UI_PID "${KEY_READER_PID:-}" 2>/dev/null || true
   wait $BACKEND_PID $UI_PID 2>/dev/null || true
+  if [ "$DEMO" = true ]; then
+    "$SCRIPT_DIR/demo/run-demo-servers.sh" stop 2>/dev/null || true
+  fi
   if [ "$KEEP_DOCKER" = true ]; then
     echo "Leaving Docker Compose services running (--keep-docker)."
   else
