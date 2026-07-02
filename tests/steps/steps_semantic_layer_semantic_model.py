@@ -184,10 +184,7 @@ def when_introspect(shared_data: dict) -> None:
 
 
 @then(
-    parsers.parse(
-        "the results are filtered through the governed GraphQL introspection "
-        "endpoint and only\npermitted tables and columns are returned"
-    )
+    "the results are filtered through the governed GraphQL introspection endpoint and only permitted tables and columns are returned"
 )
 def then_results_governed(shared_data: dict) -> None:
     """Assert the introspection output is role-governed."""
@@ -227,9 +224,20 @@ def then_results_governed(shared_data: dict) -> None:
 @then(
     parsers.parse(
         "the results are filtered through the governed GraphQL introspection "
+        "endpoint and only\npermitted tables and columns are returned"
+    )
+)
+def then_results_governed_multiline(shared_data: dict) -> None:
+    """Multi-line whitespace variant of the governance assertion."""
+    then_results_governed(shared_data)
+
+
+@then(
+    parsers.parse(
+        "the results are filtered through the governed GraphQL introspection "
         "endpoint and only permitted tables and columns are returned"
     )
 )
-def then_results_governed_single_line(shared_data: dict) -> None:
-    """Single-line variant of the governance assertion (whitespace tolerant)."""
+def then_results_governed_parsed(shared_data: dict) -> None:
+    """parsers.parse variant of the governance assertion."""
     then_results_governed(shared_data)

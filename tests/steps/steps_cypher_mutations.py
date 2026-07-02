@@ -26,14 +26,22 @@ REQ-798 — Cypher mutations (CREATE/DELETE/UPDATE) must be transpiled through
 the full semantic SQL write pipeline, applying RLS injection, dialect
 transpilation, and all post-mutation hooks (response cache invalidation,
 MV stale marking, Kafka change events, Kafka sink triggers, hot-table reload).
+
+REQ-818 — Cypher supports WRITES via the /data/cypher endpoint. CREATE, DELETE,
+and SET statements execute as direct table writes through the same write pipeline
+as GraphQL and SQL mutations, with RLS injection, dialect transpilation, and
+post-mutation hooks. Non-direct write patterns (MERGE, DETACH, REMOVE) are
+unsupported and rejected.
 """
 
 from __future__ import annotations
 
+import asyncio
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pytest_bdd import given, when, then, scenarios
+from pytest_bdd import given, when, then, scenarios, parsers
 
 from provisa.cypher.label_map import (
     CypherLabelMap,
@@ -47,6 +55,7 @@ scenarios("../features/REQ-667.feature")
 scenarios("../features/REQ-668.feature")
 scenarios("../features/REQ-670.feature")
 scenarios("../features/REQ-798.feature")
+scenarios("../features/REQ-818.feature")
 
 
 @pytest.fixture
@@ -552,8 +561,6 @@ def then_executed_via_execute_direct(shared_data):
         "execute_direct",
         new=AsyncMock(return_value=execute_response),
     ) as mock_exec:
-        import asyncio
-
         result = asyncio.run(
             _direct_mod.execute_direct(
                 sql=transpiled_sql,
@@ -614,8 +621,6 @@ def then_post_mutation_hooks_fire(shared_data):
         patch.object(_change_mod, "emit_change_event", mock_emit_change),
         patch.object(_sink_mod, "trigger_sinks_for_table", mock_trigger_sink),
     ):
-        import asyncio
-
         cache_store = NoopCacheStore()
         mv_registry = MVRegistry.__new__(MVRegistry)
 
@@ -644,3 +649,47 @@ def then_post_mutation_hooks_fire(shared_data):
     assert all(shared_data["hooks_fired"].values()), (
         f"Not all post-mutation hooks fired: {shared_data['hooks_fired']}"
     )
+
+
+# ---------------------------------------------------------------------------
+# REQ-818 — Cypher supports WRITES via /data/cypher; CREATE/DELETE/SET execute
+# as direct table writes; MERGE/DETACH/REMOVE are rejected at parse time.
+# ---------------------------------------------------------------------------
+
+
+def _make_req818_label_map() -> CypherLabelMap:
+    """Label map with a write-enabled Person table for REQ-818 scenarios."""
+    person_meta = NodeMapping(
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=18,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=["id"],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
+        properties={"name": "name", "age": "age"},
+    )
+    return CypherLabelMap(
+        nodes={"Person": person_meta},
+        relationships={},
+    )
+
+
+@given("a valid CREATE statement targeting a table with write rights")
+def given_valid_create_statement_with_write_rights(shared_data):
+    """Set up a syntactically valid CREATE Cypher statement and its label map.
+
+    The label map registers Person with write rights; the statement must parse
+    cleanly through the write parser and produce a WriteAST with kind='create'.
+    """
+    label_map = _make_req818_label_map()
+    cypher = "CREATE (n:Person {name: 'Frank', age: 35})"
+    ast = parse_cypher(cypher)
+
+    assert ast is not None, "parse_cypher_write must return a non-None WriteAST"
+    assert ast.kind == "create", (
+        f"expected WriteAST.kind='create', got

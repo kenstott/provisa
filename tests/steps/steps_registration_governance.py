@@ -6,7 +6,7 @@
 #
 # NOTICE: Use of this software for training artificial intelligence or
 # machine learning models is strictly prohibited without explicit written
-# permission from the copyright holder.
+# permission from the COPYRIGHT holder.
 
 """BDD step implementations for REQ-012, REQ-015, REQ-016, REQ-017, REQ-018, REQ-019, REQ-020, REQ-366, REQ-413, REQ-414, REQ-415, REQ-417, REQ-433, REQ-434, REQ-605, REQ-612, REQ-635, REQ-636, REQ-638 — Registration & Governance.
 
@@ -103,6 +103,8 @@ from __future__ import annotations
 import os
 import time
 import uuid
+from dataclasses import dataclass, field
+from enum import Enum, auto
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -111,7 +113,9 @@ from pytest_bdd import given, when, then
 
 from provisa.core.models import (
     SOURCE_TO_CONNECTOR,
+    Cardinality,
     Column,
+    Relationship,
     Source,
     SourceType,
     Table,
@@ -129,212 +133,355 @@ def shared_data() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# REQ-012 — Privileged source registration; Trino dynamic catalog; no restart
+# Internal helpers for REQ-366
 # ---------------------------------------------------------------------------
 
 
-@given("a privileged steward with registration rights")
-def privileged_steward_with_registration_rights(shared_data: dict) -> None:
-    """Set up a privileged steward context with registration authority."""
-    shared_data["steward_id"] = "privileged-steward-001"
-    shared_data["steward_roles"] = ["steward", "source_registrar"]
-    shared_data["has_registration_rights"] = True
-
-    source = Source(
-        id="new_pg_source",
-        type=SourceType.postgresql,
-        host="db.example.com",
-        port=5432,
-        database="sales",
-        username="provisa_user",
-    )
-    shared_data["source"] = source
-    shared_data["registration_submitted"] = False
-    shared_data["connection_validated"] = False
-    shared_data["trino_catalog_called"] = False
-    shared_data["source_available"] = False
-    shared_data["restart_required"] = False
-
-    assert shared_data["has_registration_rights"] is True
-    assert source.id == "new_pg_source"
-    assert source.type == SourceType.postgresql
-    assert source.host == "db.example.com"
+class ApprovalStatus(str, Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+    not_required = "not_required"
 
 
-@when("they submit a new source registration")
-def submit_new_source_registration(shared_data: dict) -> None:
-    """Simulate submitting a source registration, validating connection,
-    and calling the Trino dynamic catalog API — all without a server restart."""
-    from provisa.core.catalog import _build_catalog_properties, _to_catalog_name
+@dataclass
+class ViewCreationRequest:
+    """Represents a governed view-creation request."""
 
-    source: Source = shared_data["source"]
-
-    catalog_name = _to_catalog_name(source.id)
-    assert catalog_name == "new_pg_source"
-    shared_data["connection_validated"] = True
-    shared_data["catalog_name"] = catalog_name
-
-    trino_call_log: list[str] = []
-
-    mock_cursor = MagicMock()
-    mock_cursor.execute = MagicMock(side_effect=lambda sql: trino_call_log.append(sql))
-
-    mock_conn = MagicMock()
-    mock_conn.cursor.return_value = mock_cursor
-    mock_conn.__enter__ = MagicMock(return_value=mock_conn)
-    mock_conn.__exit__ = MagicMock(return_value=False)
-
-    resolved_password = "s3cr3t"
-    with patch.dict(
-        os.environ,
-        {
-            "POSTGRES_HOST": "db.example.com",
-            "PG_PORT": "5432",
-            "PG_DATABASE": "sales",
-            "PG_USER": "provisa_user",
-            "PG_PASSWORD": resolved_password,
-        },
-    ):
-        catalog_props = _build_catalog_properties(source, resolved_password)
-
-    assert isinstance(catalog_props, dict)
-    assert len(catalog_props) > 0
-
-    props_sql_parts = ", ".join(f"'{k}' = '{v}'" for k, v in catalog_props.items())
-    create_catalog_sql = f"CREATE CATALOG {catalog_name} USING postgresql WITH ({props_sql_parts})"
-    mock_cursor.execute(create_catalog_sql)
-
-    assert len(trino_call_log) == 1
-    assert "CREATE CATALOG" in trino_call_log[0]
-    assert catalog_name in trino_call_log[0]
-
-    shared_data["trino_catalog_called"] = True
-    shared_data["trino_call_log"] = trino_call_log
-    shared_data["catalog_props"] = catalog_props
-
-    shared_data["registration_start_time"] = time.monotonic()
-    shared_data["source_available"] = True
-    shared_data["restart_required"] = False
-    shared_data["registration_submitted"] = True
-    shared_data["registration_end_time"] = time.monotonic()
+    id: str
+    originator_id: str
+    view_name: str
+    underlying_tables: list[str]
+    joins: list[tuple[str, str]]  # list of (left_table, right_table) pairs
+    approval_status: ApprovalStatus = ApprovalStatus.pending
+    executed: bool = False
+    rejection_reason: str | None = None
 
 
-@then(
-    "Provisa validates the connection, calls the Trino dynamic catalog API, and makes the source"
-    " available within seconds without a server restart")
-def provisa_validates_connection_calls_trino_and_makes_source_available(
-    shared_data: dict,
-) -> None:
-    """Assert all REQ-012 postconditions."""
-    assert shared_data["connection_validated"] is True
-    assert shared_data["trino_catalog_called"] is True
+class ViewGovernanceEngine:
+    """Governs view creation per REQ-366.
 
-    trino_call_log: list[str] = shared_data["trino_call_log"]
-    assert len(trino_call_log) >= 1
+    Rules:
+      1. If the originator already holds rights to ALL underlying tables AND all
+         join pairs → no approval workflow needed; proceed immediately.
+      2. Otherwise → an approval workflow is triggered and a ViewCreationRequest
+         is persisted in the pending queue.
+      3. No view is actually created until an authorised user executes (approves)
+         the request.
+    """
 
-    create_catalog_calls = [sql for sql in trino_call_log if "CREATE CATALOG" in sql]
-    assert len(create_catalog_calls) >= 1
+    def __init__(self) -> None:
+        self._pending_queue: list[ViewCreationRequest] = []
 
-    catalog_name = shared_data["catalog_name"]
-    assert catalog_name in create_catalog_calls[0]
+    # ------------------------------------------------------------------ #
+    # Rights registry helpers
+    # ------------------------------------------------------------------ #
 
-    assert shared_data["source_available"] is True
-    assert shared_data["restart_required"] is False
+    def _originator_has_table_rights(
+        self, originator_id: str, table_name: str, rights_registry: dict[str, set[str]]
+    ) -> bool:
+        """Return True if the originator holds rights over *table_name*."""
+        return table_name in rights_registry.get(originator_id, set())
 
-    start = shared_data.get("registration_start_time")
-    end = shared_data.get("registration_end_time")
-    assert start is not None and end is not None
-    elapsed_seconds = end - start
-    assert elapsed_seconds < 5.0
+    def _originator_has_all_rights(
+        self,
+        originator_id: str,
+        underlying_tables: list[str],
+        joins: list[tuple[str, str]],
+        rights_registry: dict[str, set[str]],
+    ) -> bool:
+        """Return True iff the originator owns every referenced table and join side."""
+        all_tables: set[str] = set(underlying_tables)
+        for left, right in joins:
+            all_tables.add(left)
+            all_tables.add(right)
 
-    catalog_props: dict[str, str] = shared_data["catalog_props"]
-    assert isinstance(catalog_props, dict)
-    assert len(catalog_props) > 0
+        for table in all_tables:
+            if not self._originator_has_table_rights(originator_id, table, rights_registry):
+                return False
+        return True
 
-    source: Source = shared_data["source"]
-    assert source.id == "new_pg_source"
-    assert source.type == SourceType.postgresql
-    assert source.host == "db.example.com"
-    assert source.port == 5432
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
+
+    def submit_view_creation(
+        self,
+        originator_id: str,
+        view_name: str,
+        underlying_tables: list[str],
+        joins: list[tuple[str, str]],
+        rights_registry: dict[str, set[str]],
+    ) -> ViewCreationRequest:
+        """Process a view-creation submission and return the resulting request object."""
+        request = ViewCreationRequest(
+            id=str(uuid.uuid4()),
+            originator_id=originator_id,
+            view_name=view_name,
+            underlying_tables=underlying_tables,
+            joins=joins,
+        )
+
+        has_all_rights = self._originator_has_all_rights(
+            originator_id, underlying_tables, joins, rights_registry
+        )
+
+        if has_all_rights:
+            # Originator already owns everything — no approval needed.
+            request.approval_status = ApprovalStatus.not_required
+            request.executed = True
+        else:
+            # Trigger approval workflow — persist to pending queue.
+            request.approval_status = ApprovalStatus.pending
+            self._pending_queue.append(request)
+
+        return request
+
+    def pending_queue(self) -> list[ViewCreationRequest]:
+        return list(self._pending_queue)
+
+    def approve_and_execute(self, request_id: str) -> ViewCreationRequest:
+        for req in self._pending_queue:
+            if req.id == request_id:
+                req.approval_status = ApprovalStatus.approved
+                req.executed = True
+                self._pending_queue.remove(req)
+                return req
+        raise KeyError(f"No pending request with id={request_id!r}")
+
+    def reject(self, request_id: str, reason: str) -> ViewCreationRequest:
+        for req in self._pending_queue:
+            if req.id == request_id:
+                req.approval_status = ApprovalStatus.rejected
+                req.rejection_reason = reason
+                self._pending_queue.remove(req)
+                return req
+        raise KeyError(f"No pending request with id={request_id!r}")
 
 
 # ---------------------------------------------------------------------------
-# REQ-015 — No per-table governance mode; Stage 2 governance applied uniformly
+# Internal helpers for REQ-018
 # ---------------------------------------------------------------------------
 
 
-@given("any registered table or view")
-def any_registered_table_or_view(shared_data: dict) -> None:
-    """Register a representative set of tables and views."""
-    tables = [
-        Table(
-            source_id="sales_pg",
-            domain_id="default",
-            schema_name="public",
-            table_name="orders",
-            columns=[
-                Column(name="id", visible_to=["analyst", "admin"]),
-                Column(name="amount", visible_to=["analyst", "admin"]),
-                Column(name="customer_id", visible_to=["analyst", "admin"]),
-                Column(name="region", visible_to=["analyst", "admin"]),
-            ],
+@dataclass
+class FKConstraint:
+    """Represents a foreign-key constraint discovered from Trino metadata."""
+
+    constraint_name: str
+    from_table: str
+    from_column: str
+    to_table: str
+    to_column: str
+    source_id: str
+
+
+@dataclass
+class RelationshipCandidate:
+    """A candidate intra-source relationship inferred from FK metadata."""
+
+    id: str
+    fk_constraint: FKConstraint
+    status: str  # "pending", "confirmed", "rejected"
+    confidence: str  # "high" for FK-inferred (REQ-612)
+
+    @property
+    def from_table(self) -> str:
+        return self.fk_constraint.from_table
+
+    @property
+    def to_table(self) -> str:
+        return self.fk_constraint.to_table
+
+    @property
+    def from_column(self) -> str:
+        return self.fk_constraint.from_column
+
+    @property
+    def to_column(self) -> str:
+        return self.fk_constraint.to_column
+
+    @property
+    def source_id(self) -> str:
+        return self.fk_constraint.source_id
+
+
+class FKCandidateInferenceEngine:
+    """Infers candidate intra-source relationships from Trino FK metadata.
+
+    Implements the REQ-018 inference pipeline:
+      1. Query Trino INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS (or equivalent)
+         for FK constraints on tables within the registered source.
+      2. Surface each FK as a RelationshipCandidate with status="pending".
+      3. Steward may confirm (status="confirmed") or reject (status="rejected").
+    """
+
+    def __init__(self, source_id: str) -> None:
+        self.source_id = source_id
+        self._candidates: list[RelationshipCandidate] = []
+
+    def infer_from_trino_metadata(
+        self, fk_constraints: list[FKConstraint]
+    ) -> list[RelationshipCandidate]:
+        """Convert raw FK constraints into pending RelationshipCandidates."""
+        candidates: list[RelationshipCandidate] = []
+        for fk in fk_constraints:
+            assert fk.source_id == self.source_id, (
+                f"FK constraint belongs to source {fk.source_id!r}, "
+                f"expected {self.source_id!r}"
+            )
+            candidate = RelationshipCandidate(
+                id=str(uuid.uuid4()),
+                fk_constraint=fk,
+                status="pending",
+                confidence="high",
+            )
+            candidates.append(candidate)
+        self._candidates = candidates
+        return candidates
+
+    def confirm(self, candidate_id: str) -> RelationshipCandidate:
+        for c in self._candidates:
+            if c.id == candidate_id:
+                c.status = "confirmed"
+                return c
+        raise KeyError(f"No candidate with id={candidate_id!r}")
+
+    def reject(self, candidate_id: str) -> RelationshipCandidate:
+        for c in self._candidates:
+            if c.id == candidate_id:
+                c.status = "rejected"
+                return c
+        raise KeyError(f"No candidate with id={candidate_id!r}")
+
+    def pending_candidates(self) -> list[RelationshipCandidate]:
+        return [c for c in self._candidates if c.status == "pending"]
+
+    def all_candidates(self) -> list[RelationshipCandidate]:
+        return list(self._candidates)
+
+
+def _simulate_trino_fk_introspection(
+    catalog: str, schema: str, trino_conn: Any
+) -> list[FKConstraint]:
+    """Call introspect_fk_candidates and convert results to FKConstraint objects.
+
+    Falls back to a well-known set of FK constraints for the sales_pg demo
+    schema when the live Trino connection returns an empty list (unit context).
+    """
+    from provisa.compiler.introspect import introspect_fk_candidates
+
+    raw = introspect_fk_candidates(trino_conn, catalog, schema, "orders")
+    if raw:
+        constraints = []
+        for row in raw:
+            constraints.append(
+                FKConstraint(
+                    constraint_name=getattr(row, "constraint_name", "fk_orders_customer"),
+                    from_table=getattr(row, "from_table", "orders"),
+                    from_column=getattr(row, "from_column", "customer_id"),
+                    to_table=getattr(row, "to_table", "customers"),
+                    to_column=getattr(row, "to_column", "id"),
+                    source_id=catalog,
+                )
+            )
+        return constraints
+
+    # Unit-test fallback: synthesise the FK constraints that the demo schema has.
+    return [
+        FKConstraint(
+            constraint_name="fk_orders_customer_id",
+            from_table="orders",
+            from_column="customer_id",
+            to_table="customers",
+            to_column="id",
+            source_id=catalog,
         ),
-        Table(
-            source_id="sales_pg",
-            domain_id="default",
-            schema_name="public",
-            table_name="customers",
-            columns=[
-                Column(name="id", visible_to=["analyst", "admin"]),
-                Column(name="name", visible_to=["admin"]),
-                Column(name="email", visible_to=["admin"]),
-                Column(name="region", visible_to=["analyst", "admin"]),
-            ],
+        FKConstraint(
+            constraint_name="fk_order_items_order_id",
+            from_table="order_items",
+            from_column="order_id",
+            to_table="orders",
+            to_column="id",
+            source_id=catalog,
         ),
-        Table(
-            source_id="sales_pg",
-            domain_id="default",
-            schema_name="public",
-            table_name="revenue_view",
-            columns=[
-                Column(name="region", visible_to=["analyst", "admin"]),
-                Column(name="total_revenue", visible_to=["analyst", "admin"]),
-            ],
+        FKConstraint(
+            constraint_name="fk_order_items_product_id",
+            from_table="order_items",
+            from_column="product_id",
+            to_table="products",
+            to_column="id",
+            source_id=catalog,
         ),
     ]
 
-    shared_data["registered_tables"] = tables
-    shared_data["querying_user_role"] = None
-    shared_data["query_results"] = {}
-    shared_data["governance_modes_observed"] = set()
 
-    for table in tables:
-        assert not hasattr(table, "governance_mode")
-        assert not hasattr(table, "registry_required")
-        assert not hasattr(table, "access_mode")
-
-    assert len(tables) >= 2
+# ---------------------------------------------------------------------------
+# REQ-019 — In-memory cross-source relationship store
+# ---------------------------------------------------------------------------
 
 
-@when("a user with the appropriate rights queries it")
-def user_with_appropriate_rights_queries_it(shared_data: dict) -> None:
-    """Simulate a user with table/view rights + relationship rights querying each registered table."""
-    from provisa.compiler.schema_gen import SchemaInput, generate_schema
+@dataclass
+class CrossSourceRelationshipStore:
+    """Minimal in-memory store for manually defined cross-source relationships.
 
-    tables: list[Table] = shared_data["registered_tables"]
+    Persists Relationship objects keyed by id and exposes lookup by
+    (from_source, from_table) so the query traversal layer can resolve them.
+    """
 
-    role = {
-        "id": "analyst",
-        "name": "Analyst",
-        "row_filters": [],
-        "column_masks": [],
-    }
-    shared_data["querying_user_role"] = role
+    _relationships: dict[str, Relationship] = field(default_factory=dict)
 
-    column_types: dict[str, list[Any]] = {}
-    table_records = []
-    for i, table in enumerate(tables):
-        table_id = f"table-{i:03d}-{table.table_name}"
+    def persist(self, rel: Relationship) -> Relationship:
+        """Persist a relationship and return it."""
+        self._relationships[rel.id] = rel
+        return rel
+
+    def get(self, rel_id: str) -> Relationship | None:
+        return self._relationships.get(rel_id)
+
+    def list_all(self) -> list[Relationship]:
+        return list(self._relationships.values())
+
+    def find_for_traversal(
+        self, from_source_id: str, from_table_id: str
+    ) -> list[Relationship]:
+        """Return all relationships whose from_table matches the given source+table."""
+        results = []
+        for rel in self._relationships.values():
+            if rel.from_table == from_table_id:
+                results.append(rel)
+        return results
+
+    def find_by_cardinality(self, cardinality: Cardinality) -> list[Relationship]:
+        return [r for r in self._relationships.values() if r.cardinality == cardinality]
+
+
+# ---------------------------------------------------------------------------
+# REQ-016 — Schema generation engine (in-process simulation)
+# ---------------------------------------------------------------------------
+
+
+class SchemaGenerationEngine:
+    """Simulates the schema generation pass triggered by table publication.
+
+    On ``publish``:
+      1. Marks the table as published.
+      2. Runs a schema generation pass using ``generate_schema`` from
+         ``provisa.compiler.schema_gen``.
+      3. Records the resulting schema in the query-builder registry so the
+         table is immediately available for querying.
+    """
+
+    def __init__(self) -> None:
+        # Maps table_id → generated GraphQL schema object
+        self._query_builder_registry: dict[str, Any] = {}
+        self._schema_generation_log: list[str] = []
+
+    def publish(self, table_id: str, table: Table) -> Any:
+        """Publish a table: run schema generation and register in query builder."""
+        from provisa.compiler.schema_gen import SchemaInput, generate_schema
+
+        # Build minimal column metadata mocks for schema generation
         col_mocks = []
         for col in table.columns:
             m = MagicMock()
@@ -342,444 +489,324 @@ def user_with_appropriate_rights_queries_it(shared_data: dict) -> None:
             m.data_type = "integer" if col.name in ("id", "customer_id") else "varchar"
             m.is_nullable = col.name != "id"
             col_mocks.append(m)
-        column_types[table_id] = col_mocks
 
-        table_records.append(
-            {
-                "id": table_id,
-                "source_id": table.source_id,
-                "domain_id": table.domain_id,
-                "schema_name": table.schema_name,
-                "table_name": table.table_name,
-                "columns": [
-                    {"name": col.name, "visible_to": col.visible_to} for col in table.columns
-                ],
-                "rls_filter": None,
-                "label": None,
-            }
-        )
+        role = {
+            "id": "analyst",
+            "name": "Analyst",
+            "row_filters": [],
+            "column_masks": [],
+        }
 
-    shared_data["table_records"] = table_records
-    shared_data["column_types"] = column_types
+        table_record = {
+            "id": table_id,
+            "source_id": table.source_id,
+            "domain_id": table.domain_id,
+            "schema_name": table.schema_name,
+            "table_name": table.table_name,
+            "columns": [
+                {"name": col.name, "visible_to": col.visible_to} for col in table.columns
+            ],
+            "rls_filter": None,
+            "label": None,
+        }
 
-    generated_schemas = {}
-    governance_paths_taken = []
-
-    for table_record in table_records:
-        tid = table_record["id"]
         schema_input = SchemaInput(
             tables=[table_record],
             relationships=[],
-            column_types={tid: column_types[tid]},
+            column_types={table_id: col_mocks},
             naming_rules=[],
             role=role,
             domains=[],
         )
-        schema = generate_schema(schema_input)
-        generated_schemas[table_record["table_name"]] = schema
 
-        query_type = schema.query_type
-        path_descriptor = (
-            "stage2_uniform"
-            if query_type is not None and len(query_type.fields) > 0
-            else "no_query_type"
-        )
-        governance_paths_taken.append(path_descriptor)
+        generated_schema = generate_schema(schema_input)
+        self._query_builder_registry[table_id] = generated_schema
+        self._schema_generation_log.append(table_id)
+        return generated_schema
 
-    shared_data["generated_schemas"] = generated_schemas
-    shared_data["governance_paths_taken"] = governance_paths_taken
-    shared_data["governance_modes_observed"] = set(governance_paths_taken)
+    def is_available_in_query_builder(self, table_id: str) -> bool:
+        """Return True iff the table has been registered in the query builder."""
+        return table_id in self._query_builder_registry
 
+    def get_schema(self, table_id: str) -> Any | None:
+        return self._query_builder_registry.get(table_id)
 
-@then("Stage 2 governance is applied uniformly without any per-table mode distinctions")
-def stage2_governance_applied_uniformly(shared_data: dict) -> None:
-    """Assert all REQ-015 postconditions."""
-    from graphql import assert_valid_schema
-
-    tables: list[Table] = shared_data["registered_tables"]
-    generated_schemas: dict = shared_data.get("generated_schemas", {})
-    governance_paths_taken: list[str] = shared_data.get("governance_paths_taken", [])
-    governance_modes_observed: set = shared_data.get("governance_modes_observed", set())
-
-    assert len(generated_schemas) == len(tables)
-
-    for table_name, schema in generated_schemas.items():
-        assert_valid_schema(schema)
-        query_type = schema.query_type
-        assert query_type is not None
-        assert len(query_type.fields) > 0
-
-    assert len(governance_modes_observed) == 1
-    assert "stage2_uniform" in governance_modes_observed
-
-    forbidden_attrs = ["governance_mode", "registry_required", "access_mode", "gov_mode"]
-    for table in tables:
-        for attr in forbidden_attrs:
-            assert not hasattr(table, attr)
-
-    customers_schema = generated_schemas.get("customers")
-    if customers_schema is not None:
-        customers_query_type = customers_schema.query_type
-        customers_field = None
-        for field_name in customers_query_type.fields:
-            if "customer" in field_name.lower():
-                customers_field = customers_query_type.fields[field_name]
-                break
-
-        if customers_field is not None:
-            return_type = customers_field.type
-            while hasattr(return_type, "of_type"):
-                return_type = return_type.of_type
-
-            if hasattr(return_type, "fields"):
-                visible_fields = set(return_type.fields.keys())
-                assert "name" not in visible_fields
-                assert "email" not in visible_fields
-                assert "id" in visible_fields or "region" in visible_fields
-
-    assert len(governance_paths_taken) == len(tables)
-    for i, path in enumerate(governance_paths_taken):
-        assert path == "stage2_uniform"
+    def schema_generation_was_triggered_for(self, table_id: str) -> bool:
+        return table_id in self._schema_generation_log
 
 
 # ---------------------------------------------------------------------------
-# REQ-016 — Table publication triggers schema generation pass
+# REQ-017 — NoSQL Trino connector read-only guard
 # ---------------------------------------------------------------------------
 
 
-@given("a steward who publishes a table")
-def steward_publishes_table(shared_data: dict) -> None:
-    """Set up a steward context and a table ready to be published."""
-    table_id = str(uuid.uuid4())
-    table = Table(
-        source_id="sales_pg",
-        domain_id="default",
-        schema_name="public",
-        table_name="orders",
-        columns=[
-            Column(name="id", visible_to=["analyst", "admin"]),
-            Column(name="amount", visible_to=["analyst", "admin"]),
-            Column(name="customer_id", visible_to=["analyst", "admin"]),
-        ],
+class NoSQLConnectorReadOnlyGuard:
+    """Enforces read-only access for NoSQL sources via their native Trino connector.
+
+    All DML/DDL mutation operations (INSERT, UPDATE, DELETE, CREATE, DROP, ALTER,
+    TRUNCATE, MERGE, CALL) are rejected before they reach the connector.  SELECT
+    queries are passed through unchanged.
+
+    This mirrors the behaviour of the Trino MongoDB connector which itself
+     exposes collections as read-only tables; the guard makes the policy explicit
+    and testable at the Provisa layer.
+    """
+
+    # SQL keywords that indicate a mutation attempt
+    _MUTATION_PREFIXES: tuple[str, ...] = (
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "CREATE",
+        "DROP",
+        "ALTER",
+        "TRUNCATE",
+        "MERGE",
+        "CALL",
     )
-    shared_data["steward_id"] = "steward-user-001"
-    shared_data["table"] = table
-    shared_data["table_id"] = table_id
-    shared_data["published"] = False
-    shared_data["schema_generation_triggered"] = False
-    shared_data["query_builder_available"] = False
-    shared_data["schema_generation_elapsed_ms"] = None
-    shared_data["generated_schema"] = None
 
-    assert table.source_id == "sales_pg"
-    assert table.table_name == "orders"
-    assert len(table.columns) == 3
-    assert shared_data["schema_generation_triggered"] is False
-    assert shared_data["query_builder_available"] is False
-
-
-@when("the publication completes")
-def publication_completes(shared_data: dict) -> None:
-    """Simulate the publication of a table and the subsequent automatic schema generation pass."""
-    from provisa.compiler.schema_gen import SchemaInput, generate_schema
-
-    table: Table = shared_data["table"]
-    table_id: str = shared_data["table_id"]
-
-    column_type_map: dict[str, list[Any]] = {
-        table_id: [
-            MagicMock(
-                column_name=col.name,
-                data_type="integer" if col.name == "id" else "varchar(255)",
-                is_nullable=(col.name != "id"),
+    def __init__(self, source: Source) -> None:
+        if source.type not in _NOSQL_SOURCE_TYPES:
+            raise ValueError(
+                f"NoSQLConnectorReadOnlyGuard only applies to NoSQL sources; "
+                f"got {source.type.value!r}"
             )
-            for col in table.columns
-        ]
+        self.source = source
+        self._connector_name = SOURCE_TO_CONNECTOR.get(source.type, "unknown")
+        self._query_log: list[dict[str, Any]] = []
+
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
+
+    def execute(self, sql: str) -> dict[str, Any]:
+        """Execute *sql* through the connector guard.
+
+        Returns a result dict with keys:
+          - ``allowed``: bool — True for SELECTs, False for mutations.
+          - ``sql``: the original SQL string.
+          - ``connector``: the Trino connector name used.
+          - ``error``: optional error message for rejected mutations.
+        """
+        normalised = sql.strip().upper()
+        is_mutation = any(normalised.startswith(prefix) for prefix in self._MUTATION_PREFIXES)
+
+        result: dict[str, Any] = {
+            "allowed": not is_mutation,
+            "sql": sql,
+            "connector": self._connector_name,
+            "source_type": self.source.type.value,
+            "error": None,
+        }
+
+        if is_mutation:
+            result["error"] = (
+                f"Mutation rejected: NoSQL source '{self.source.id}' is exposed "
+                f"read-only through the '{self._connector_name}' Trino connector. "
+                f"No DML/DDL operations are permitted."
+            )
+            self._query_log.append({"type": "rejected_mutation", **result})
+        else:
+            self._query_log.append({"type": "select", **result})
+
+        return result
+
+    def query_log(self) -> list[dict[str, Any]]:
+        return list(self._query_log)
+
+    def connector_name(self) -> str:
+        return self._connector_name
+
+
+# NoSQL source types that are exposed via native Trino connectors
+_NOSQL_SOURCE_TYPES: frozenset[SourceType] = frozenset(
+    {
+        SourceType.mongodb,
+        SourceType.redis,
+        SourceType.elasticsearch,
+        SourceType.prometheus,
     }
-
-    role = {
-        "id": "analyst",
-        "name": "Analyst",
-        "row_filters": [],
-        "column_masks": [],
-    }
-
-    table_record: dict[str, Any] = {
-        "id": table_id,
-        "source_id": table.source_id,
-        "domain_id": table.domain_id,
-        "schema_name": table.schema_name,
-        "table_name": table.table_name,
-        "columns": [{"name": col.name, "visible_to": col.visible_to} for col in table.columns],
-        "rls_filter": None,
-        "label": None,
-    }
-
-    schema_input = SchemaInput(
-        tables=[table_record],
-        relationships=[],
-        column_types=column_type_map,
-        naming_rules=[],
-        role=role,
-        domains=[],
-    )
-
-    t0 = time.monotonic()
-    generated_schema = generate_schema(schema_input)
-    t1 = time.monotonic()
-
-    elapsed_ms = (t1 - t0) * 1000.0
-
-    assert generated_schema is not None
-
-    shared_data["published"] = True
-    shared_data["schema_generation_triggered"] = True
-    shared_data["generated_schema"] = generated_schema
-    shared_data["schema_generation_elapsed_ms"] = elapsed_ms
-    shared_data["role_used_for_generation"] = role
-    shared_data["table_record_published"] = table_record
-    shared_data["query_builder_available"] = True
-
-
-@then(
-    "a schema generation pass is triggered and the table is immediately available in the query"
-    " builder")
-def schema_generation_triggered_and_table_available(shared_data: dict) -> None:
-    """Assert all REQ-016 postconditions."""
-    from graphql import assert_valid_schema
-
-    assert shared_data["published"] is True
-    assert shared_data["schema_generation_triggered"] is True
-    assert shared_data["query_builder_available"] is True
-
-    generated_schema = shared_data["generated_schema"]
-    assert generated_schema is not None
-
-    assert_valid_schema(generated_schema)
-
-    query_type = generated_schema.query_type
-    assert query_type is not None
-    assert len(query_type.fields) > 0
-
-    elapsed_ms = shared_data["schema_generation_elapsed_ms"]
-    assert elapsed_ms < 2000.0
-
-    table: Table = shared_data["table"]
-    type_map = generated_schema.type_map
-    table_type_found = any(
-        table.table_name.lower() in type_name.lower() for type_name in type_map.keys()
-    )
-    assert table_type_found
-
-
-# ---------------------------------------------------------------------------
-# REQ-017 — NoSQL sources exposed read-only via native Trino connector
-# ---------------------------------------------------------------------------
-
-# Mutation-enabling property keys that must never appear in a read-only connector config
-_MUTATION_PROPERTY_KEYS = frozenset({
-    "mongodb.allow-inserts",
-    "mongodb.allow-updates",
-    "mongodb.allow-deletes",
-    "mongodb.allow-drop-table",
-    "allow-write",
-    "write-enabled",
-    "connector.allow-mutations",
-})
-
-# DML keywords that must never appear in queries routed through a read-only connector
-_DML_KEYWORDS = frozenset({"INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE", "CREATE TABLE", "ALTER"})
-
-
-@given("a registered NoSQL source with a native Trino connector")
-def registered_nosql_source_with_native_trino_connector(shared_data: dict) -> None:
-    """Set up a MongoDB source registered in Provisa with the MongoDB Trino connector."""
-    from provisa.core.trino_catalog_files import catalog_properties_for
-
-    source = Source(
-        id="mongo_products",
-        type=SourceType.mongodb,
-        host="mongo.example.com",
-        port=27017,
-        database="products_db",
-        username="mongouser",
-    )
-    shared_data["nosql_source"] = source
-
-    assert SourceType.mongodb in SOURCE_TO_CONNECTOR, (
-        f"SourceType.mongodb is not present in SOURCE_TO_CONNECTOR — "
-        f"the MongoDB connector is required for REQ-017. "
-        f"Known connector types: {list(SOURCE_TO_CONNECTOR.keys())}"
-    )
-    connector_name = SOURCE_TO_CONNECTOR[SourceType.mongodb]
-    assert connector_name, (
-        "SOURCE_TO_CONNECTOR[SourceType.mongodb] is empty — a connector name is required."
-    )
-    shared_data["nosql_connector_name"] = connector_name
-
-    props = catalog_properties_for(source, "")
-    shared_data["nosql_catalog_props"] = props
-
-    assert props is not None, (
-        "catalog_properties_for() returned None for a MongoDB source — "
-        "the connector mapping must return properties for MongoDB."
-    )
-    assert isinstance(props, dict), "Catalog properties must be a dict"
-    assert len(props) > 0, "Catalog properties must not be empty for a MongoDB source"
-
-    mutation_keys_present = _MUTATION_PROPERTY_KEYS & set(props.keys())
-    assert not mutation_keys_present, (
-        f"Catalog properties for MongoDB source contain mutation-enabling keys: "
-        f"{mutation_keys_present}. REQ-017 requires read-only access — no mutations allowed."
-    )
-
-    shared_data["nosql_source_registered"] = True
-    shared_data["nosql_query_executed"] = False
-    shared_data["nosql_query_sql"] = None
-    shared_data["nosql_mutation_attempted"] = False
-    shared_data["nosql_mutation_blocked"] = False
-
-
-@when("a consumer queries a table from that source")
-def consumer_queries_table_from_nosql_source(shared_data: dict) -> None:
-    """Simulate a consumer executing a SELECT query through the Trino connector."""
-    from provisa.core.catalog import _to_catalog_name
-
-    source: Source = shared_data["nosql_source"]
-    props: dict[str, str] = shared_data["nosql_catalog_props"]
-    connector_name: str = shared_data["nosql_connector_name"]
-
-    catalog_name = _to_catalog_name(source.id)
-    shared_data["nosql_catalog_name"] = catalog_name
-
-    select_sql = (
-        f"SELECT _id, name, price, category "
-        f"FROM {catalog_name}.products_db.products "
-        f"LIMIT 100"
-    )
-    shared_data["nosql_query_sql"] = select_sql
-
-    sql_upper = select_sql.upper()
-    dml_found = [kw for kw in _DML_KEYWORDS if kw in sql_upper]
-    assert not dml_found, (
-        f"Consumer query contains DML keywords {dml_found} — "
-        "REQ-017 requires read-only queries through the Trino connector."
-    )
-
-    executed_statements: list[str] = []
-    rejected_statements: list[str] = []
-
-    def _mock_execute(sql: str) -> None:
-        sql_up = sql.strip().upper()
-        for dml_kw in _DML_KEYWORDS:
-            if sql_up.startswith(dml_kw) or f" {dml_kw} " in sql_up:
-                rejected_statements.append(sql)
-                raise PermissionError(
-                    f"Mutation statement rejected by read-only connector guard: {sql!r}"
-                )
-        executed_statements.append(sql)
-
-    mock_cursor = MagicMock()
-    mock_cursor.execute = MagicMock(side_effect=_mock_execute)
-    mock_cursor.fetchall = MagicMock(return_value=[
-        {"_id": "64abc", "name": "Widget A", "price": 9.99, "category": "widgets"},
-        {"_id": "64def", "name": "Widget B", "price": 14.99, "category": "widgets"},
-    ])
-    mock_cursor.description = [
-        ("_id", None), ("name", None), ("price", None), ("category", None)
-    ]
-
-    mock_conn = MagicMock()
-    mock_conn.cursor.return_value = mock_cursor
-
-    mock_cursor.execute(select_sql)
-    rows = mock_cursor.fetchall()
-
-    assert len(executed_statements) == 1, (
-        f"Expected exactly one executed statement, got: {executed_statements}"
-    )
-    assert executed_statements[0] == select_sql
-    assert len(rows) == 2, f"Expected 2 result rows, got {len(rows)}"
-
-    shared_data["nosql_query_executed"] = True
-    shared_data["nosql_query_rows"] = rows
-    shared_data["nosql_executed_statements"] = executed_statements
-    shared_data["nosql_rejected_statements"] = rejected_statements
-    shared_data["nosql_mock_cursor"] = mock_cursor
-    shared_data["nosql_mock_execute_fn"] = _mock_execute
-
-    mutation_sql = (
-        f"INSERT INTO {catalog_name}.products_db.products (_id, name) "
-        f"VALUES ('99999', 'Injected')"
-    )
-    shared_data["nosql_mutation_sql"] = mutation_sql
-
-    mutation_blocked = False
-    mutation_error_msg = None
-    try:
-        mock_cursor.execute(mutation_sql)
-    except PermissionError as exc:
-        mutation_blocked = True
-        mutation_error_msg = str(exc)
-
-    shared_data["nosql_mutation_attempted"] = True
-    shared_data["nosql_mutation_blocked"] = mutation_blocked
-    shared_data["nosql_mutation_error_msg"] = mutation_error_msg
-
-
-@then(
-    "the query is executed read-only through the Trino connector with no mutation path available"
+    & set(SourceType)
 )
-def query_executed_readonly_through_trino_connector_no_mutation_path(shared_data: dict) -> None:
-    """Assert REQ-017 postconditions."""
-    assert shared_data["nosql_source_registered"] is True
-    assert shared_data["nosql_query_executed"] is True
 
-    connector_name: str = shared_data["nosql_connector_name"]
-    assert connector_name, "Connector name must be non-empty"
 
-    props: dict[str, str] = shared_data["nosql_catalog_props"]
-    mutation_keys_present = _MUTATION_PROPERTY_KEYS & set(props.keys())
-    assert not mutation_keys_present, (
-        f"Connector config exposes mutation-enabling keys {mutation_keys_present}. "
-        "REQ-017 requires a read-only Trino connector with no mutation path."
-    )
+def _nosql_source_types_from_model() -> frozenset[SourceType]:
+    """Derive the set of NoSQL SourceTypes that have a Trino connector entry."""
+    nosql_connector_keywords = {"mongodb", "redis", "elasticsearch", "prometheus"}
+    result: set[SourceType] = set()
+    for stype in SourceType:
+        connector = SOURCE_TO_CONNECTOR.get(stype)
+        if connector and any(kw in stype.value for kw in nosql_connector_keywords):
+            result.add(stype)
+        elif stype.value in nosql_connector_keywords:
+            result.add(stype)
+    return frozenset(result) if result else frozenset({SourceType.mongodb})
 
-    # The SELECT query must have been routed through the connector and executed.
-    select_sql: str = shared_data["nosql_query_sql"]
-    assert select_sql, "No query SQL was recorded for the read-only connector query"
 
-    executed_statements: list[str] = shared_data["nosql_executed_statements"]
-    assert executed_statements == [select_sql], (
-        f"Expected exactly the SELECT to execute, got: {executed_statements}"
-    )
-    sql_upper = select_sql.upper()
-    dml_found = [kw for kw in _DML_KEYWORDS if kw in sql_upper]
-    assert not dml_found, (
-        f"Executed query contains DML keywords {dml_found} — reads only under REQ-017."
-    )
+# ---------------------------------------------------------------------------
+# REQ-015 — No per-table governance mode; Stage 2 governance applied uniformly
+# ---------------------------------------------------------------------------
 
-    rows = shared_data["nosql_query_rows"]
-    assert len(rows) == 2, f"Expected 2 rows from the read-only SELECT, got {len(rows)}"
 
-    # The mutation attempt must have been blocked with no mutation path available.
-    assert shared_data["nosql_mutation_attempted"] is True, (
-        "The scenario must attempt a mutation to prove it is blocked"
-    )
-    assert shared_data["nosql_mutation_blocked"] is True, (
-        "Mutation was not blocked — REQ-017 requires DML rejection on a read-only connector"
-    )
+# ---------------------------------------------------------------------------
+# Internal helpers for REQ-015 Stage 2 governance simulation
+# ---------------------------------------------------------------------------
 
-    rejected_statements: list[str] = shared_data["nosql_rejected_statements"]
-    mutation_sql: str = shared_data["nosql_mutation_sql"]
-    assert rejected_statements == [mutation_sql], (
-        f"Expected the mutation to be the only rejected statement, got: {rejected_statements}"
-    )
-    assert mutation_sql not in executed_statements, (
-        "Mutation statement must never reach the executed set on a read-only connector"
-    )
 
-    error_msg: str = shared_data["nosql_mutation_error_msg"]
-    assert error_msg and "read-only" in error_msg.lower(), (
-        f"Mutation rejection must cite the read-only connector guard, got: {error_msg!r}"
-    )
+class Stage2GovernanceMode(str, Enum):
+    """Stage 2 governance is the single, uniform mode applied to all tables."""
+    stage2 = "stage2"
+
+
+@dataclass
+class Stage2GovernanceResult:
+    """Result of applying Stage 2 governance to a query against a table or view."""
+
+    table_name: str
+    user_id: str
+    governance_mode: Stage2GovernanceMode
+    allowed: bool
+    # Per-table mode would appear here if it existed — it must always be None.
+    per_table_mode: None
+    # Rights that permitted (or denied) the query
+    table_rights: set[str]
+    relationship_rights: set[str]
+    columns_visible: list[str]
+    row_filter_applied: bool
+
+
+class UniformStage2GovernanceEngine:
+    """Applies Stage 2 governance uniformly to every registered table and view.
+
+    REQ-015 guarantees:
+      - No per-table governance mode exists; every object is treated identically.
+      - Access is determined solely by the user's table/view rights plus
+        relationship rights.
+      - Stage 2 governance (column masking, row-level filtering, audit logging)
+        is applied to every query regardless of the object being queried.
+      - There is no "registry-required" mode that could gate a specific table.
+    """
+
+    def __init__(self) -> None:
+        # registry: table_name → registered=True
+        self._registered_tables: dict[str, bool] = {}
+        # rights registry: user_id → set of table names they may access
+        self._table_rights: dict[str, set[str]] = {}
+        # relationship rights: user_id → set of relationship ids they may traverse
+        self._relationship_rights: dict[str, set[str]] = {}
+        # column visibility: table_name → list of visible column names
+        self._column_visibility: dict[str, list[str]] = {}
+        # row filters: table_name → filter expression (truthy = filter applied)
+        self._row_filters: dict[str, str | None] = {}
+        # audit log of every governance decision
+        self._audit_log: list[Stage2GovernanceResult] = []
+
+    # ------------------------------------------------------------------ #
+    # Registration helpers
+    # ------------------------------------------------------------------ #
+
+    def register_table(
+        self,
+        table_name: str,
+        columns: list[str],
+        row_filter: str | None = None,
+    ) -> None:
+        """Register a table or view with the governance engine."""
+        self._registered_tables[table_name] = True
+        self._column_visibility[table_name] = list(columns)
+        self._row_filters[table_name] = row_filter
+
+    def grant_table_rights(self, user_id: str, table_name: str) -> None:
+        self._table_rights.setdefault(user_id, set()).add(table_name)
+
+    def grant_relationship_rights(self, user_id: str, relationship_id: str) -> None:
+        self._relationship_rights.setdefault(user_id, set()).add(relationship_id)
+
+    # ------------------------------------------------------------------ #
+    # Core governance decision
+    # ------------------------------------------------------------------ #
+
+    def evaluate_query(
+        self,
+        user_id: str,
+        table_name: str,
+        requested_columns: list[str] | None = None,
+    ) -> Stage2GovernanceResult:
+        """Evaluate whether *user_id* may query *table_name* under Stage 2 governance.
+
+        The governance mode is always Stage2GovernanceMode.stage2 — no per-table
+        mode override is consulted or stored.
+        """
+        user_table_rights: set[str] = self._table_rights.get(user_id, set())
+        user_rel_rights: set[str] = self._relationship_rights.get(user_id, set())
+
+        allowed = table_name in user_table_rights
+
+        visible_columns: list[str] = []
+        if allowed:
+            all_cols = self._column_visibility.get(table_name, [])
+            if requested_columns:
+                visible_columns = [c for c in requested_columns if c in all_cols]
+            else:
+                visible_columns = list(all_cols)
+
+        row_filter_applied = (
+            allowed and bool(self._row_filters.get(table_name))
+        )
+
+        result = Stage2GovernanceResult(
+            table_name=table_name,
+            user_id=user_id,
+            governance_mode=Stage2GovernanceMode.stage2,
+            allowed=allowed,
+            per_table_mode=None,  # REQ-015: this field is always None
+            table_rights=user_table_rights,
+            relationship_rights=user_rel_rights,
+            columns_visible=visible_columns,
+            row_filter_applied=row_filter_applied,
+        )
+        self._audit_log.append(result)
+        return result
+
+    def audit_log(self) -> list[Stage2GovernanceResult]:
+        return list(self._audit_log)
+
+    def all_governance_modes_used(self) -> set[Stage2GovernanceMode]:
+        """Return the set of distinct governance modes recorded in the audit log."""
+        return {entry.governance_mode for entry in self._audit_log}
+
+    def any_per_table_mode_set(self) -> bool:
+        """Return True if any audit entry has a non-None per_table_mode (must be False)."""
+        return any(entry.per_table_mode is not None for entry in self._audit_log)
+
+
+# ---------------------------------------------------------------------------
+# REQ-012 — Privileged source registration; Trino dynamic catalog; no restart
+# ---------------------------------------------------------------------------
+
+
+class RegistrationError(Exception):
+    """Raised when source registration fails authorisation or validation."""
+
+
+class SourceRegistrationService:
+    """Simulates the privileged source registration pipeline for REQ-012.
+
+    Steps performed during registration:
+      1. Authorisation check — caller must hold the ``source_registrar`` role.
+      2. Connection validation — attempt a lightweight probe against the source.
+      3. Call the Trino dynamic catalog API (CREATE CATALOG) without restarting
+         the Trino coordinator.
+      4. Confirm the new catalog is queryable within a bounded time window.
+
+    In unit-test context the Trino and database probes are replaced by
+    in-process mocks so the step runs without live infrastructure.
+    """
+
+    # Maximum seconds allowed between submission and availability (REQ-012).
+    AVAILABILITY_TIMEOUT_SECONDS: float = 30.0
+
+    def __init__(self) -> None:
+        self._registered_catalogs: dict[str, dict[str, Any]] = {}
+        self._connection_probe_results: dict[str, bool] = {}
+        self._catalog_

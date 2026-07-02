@@ -7,12 +7,27 @@
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
+from unittest.mock import MagicMock, patch
 
+import pytest
+from pytest_bdd import given, when, then, parsers
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
+from provisa.discovery.column_inference import merge_discovered_columns
+
+
+# ---------------------------------------------------------------------------
+# Shared data fixture
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def shared_data():
+    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -758,8 +773,8 @@ def _make_graphql_default_schema_input() -> SchemaInput:
     Build a SchemaInput for testing graphql-default naming convention.
 
     Uses an orders table with multi-word column names so that camelCase
-    conversion is observable (e.g. customer_id → customerId,
-    order_total → orderTotal).  Also includes a second table (order_items)
+    conversion is observable (e.g. customer_id -> customerId,
+    order_total -> orderTotal).  Also includes a second table (order_items)
     so we can assert PascalCase type names for both.
     """
     from provisa.compiler import naming as _naming
@@ -823,39 +838,4 @@ def _make_graphql_default_schema_input() -> SchemaInput:
 
     return SchemaInput(
         tables=tables,
-        relationships=[],
-        column_types=column_types,
-        naming_rules=[],
-        role=role,
-        domains=domains,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Helpers for REQ-009: Single-statement SQL compilation
-# ---------------------------------------------------------------------------
-
-
-def _build_req009_graphql_query() -> str:
-    """
-    Return a GraphQL query that joins orders to their customer.
-
-    Pairs with :func:`_make_req009_schema_input` (orders → customers,
-    many-to-one on customer_id).  Selecting a nested relationship field is
-    what forces the compiler to emit a single PG-style SQL statement (a
-    JOIN) rather than a resolver chain / N+1 pattern.
-    """
-    return (
-        "query {\n"
-        "  orders {\n"
-        "    id\n"
-        "    amount\n"
-        "    status\n"
-        "    customer {\n"
-        "      id\n"
-        "      name\n"
-        "      email\n"
-        "    }\n"
-        "  }\n"
-        "}"
-    )
+        relationships

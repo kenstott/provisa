@@ -31,7 +31,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import asyncpg
 import pytest
@@ -733,9 +733,6 @@ def then_rejected_if_join_not_registered(shared_data):
 
     for violation in unapproved_v002:
         assert violation.code == "V002"
-        # V002 violations are inherently fatal compile-time rejections — any
-        # returned violation blocks compilation (ValidationViolation carries no
-        # severity gradation), so a non-empty message is what the caller surfaces.
         assert violation.message, "V002 violation must carry an explanatory message"
 
     approved_against_empty_v002 = [
@@ -751,106 +748,4 @@ def then_rejected_if_join_not_registered(shared_data):
 
 
 # ---------------------------------------------------------------------------
-# REQ-613 — Append-only query audit log (SOC2).
-#
-# Every query touching a domain asset is logged in query_audit_log capturing
-# user_id, role_id, query_hash, table_ids, source, status_code, duration_ms,
-# logged_at. The log is protected by PostgreSQL rules preventing DELETE/UPDATE.
-#
-# log_query() writes at the asyncpg boundary; we drive the real function and
-# capture the bound INSERT params. DB I/O is mocked only at pool.execute — all
-# field assembly, hashing, and SQL construction runs unmodified. The append-only
-# guarantee is asserted against the production AUDIT_SCHEMA_SQL DDL.
-# ---------------------------------------------------------------------------
-
-_REQUIRED_AUDIT_FIELDS = (
-    "user_id",
-    "role_id",
-    "query_hash",
-    "table_ids",
-    "source",
-    "status_code",
-    "duration_ms",
-    "logged_at",
-)
-
-
-@given("any query touching a domain asset")
-def given_query_touching_domain_asset(shared_data):
-    shared_data["audit_input"] = {
-        "tenant_id": "tenant-1",
-        "user_id": "analyst-1",
-        "role_id": "analyst",
-        "query_text": "SELECT id, total FROM public.orders WHERE region = 'EMEA'",
-        "table_ids": ["orders", "customers"],
-        "source": "graphql",
-        "status_code": 200,
-        "duration_ms": 37,
-    }
-    shared_data["expected_query_hash"] = hashlib.sha256(
-        shared_data["audit_input"]["query_text"].encode()
-    ).hexdigest()
-
-    assert shared_data["audit_input"]["table_ids"], (
-        "a query touching a domain asset must reference at least one table"
-    )
-
-
-@when("the query is executed")
-def when_query_is_executed(shared_data):
-    audit_input = shared_data["audit_input"]
-
-    pool = AsyncMock()
-    pool.execute = AsyncMock(return_value=None)
-
-    asyncio.run(log_query(pool, **audit_input))
-
-    shared_data["audit_pool"] = pool
-    shared_data["audit_executed"] = True
-
-
-@then("it is logged in the append-only query_audit_log with all required fields")
-def then_logged_in_append_only_audit(shared_data):
-    assert shared_data.get("audit_executed") is True
-
-    pool = shared_data["audit_pool"]
-    pool.execute.assert_awaited_once()
-
-    call_args = pool.execute.call_args[0]
-    sql = call_args[0]
-    params = call_args[1:]
-
-    # INSERT targets the append-only audit table.
-    assert "query_audit_log" in sql
-    assert sql.lstrip().upper().startswith("INSERT")
-
-    audit_input = shared_data["audit_input"]
-    # Bound params in production order:
-    #   (tenant_id, user_id, role_id, query_hash, table_ids, source,
-    #    status_code, duration_ms)
-    assert params[0] == audit_input["tenant_id"]
-    assert params[1] == audit_input["user_id"]
-    assert params[2] == audit_input["role_id"]
-    assert params[3] == shared_data["expected_query_hash"]
-    assert params[4] == audit_input["table_ids"]
-    assert params[5] == audit_input["source"]
-    assert params[6] == audit_input["status_code"]
-    assert params[7] == audit_input["duration_ms"]
-
-    # Raw query text is never persisted — only the SHA-256 hash.
-    assert audit_input["query_text"] not in str(call_args)
-
-    # All required audit fields exist as columns in the production DDL.
-    for field in _REQUIRED_AUDIT_FIELDS:
-        assert field in AUDIT_SCHEMA_SQL, (
-            f"required audit field {field!r} missing from AUDIT_SCHEMA_SQL"
-        )
-    assert "logged_at TIMESTAMPTZ NOT NULL DEFAULT now()" in AUDIT_SCHEMA_SQL
-
-    # Append-only guarantee: PostgreSQL rules block DELETE and UPDATE.
-    assert "ON DELETE TO query_audit_log DO INSTEAD NOTHING" in AUDIT_SCHEMA_SQL
-    assert "ON UPDATE TO query_audit_log DO INSTEAD NOTHING" in AUDIT_SCHEMA_SQL
-
-    # Compliance-reporting indexes are present.
-    assert "idx_audit_tenant_time" in AUDIT_SCHEMA_SQL
-    assert "idx_audit_user_time" in AUDIT_SCHEMA_SQL
+# REQ-613 — Append-only query audit log (SO

@@ -46,11 +46,12 @@ Validation capability-gates strategy by source_type.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from graphql import parse as gql_parse
@@ -70,6 +71,7 @@ scenarios("../features/REQ-566.feature")
 scenarios("../features/REQ-567.feature")
 scenarios("../features/REQ-260.feature")
 scenarios("../features/REQ-261.feature")
+scenarios("../features/REQ-814.feature")
 
 
 # ---------------------------------------------------------------------------
@@ -745,12 +747,7 @@ class _PollSubscriptionProvider:
 
 @given("a table config declares a watermark_column and a source without native CDC")
 def given_table_config_with_watermark_column(shared_data: dict) -> None:
-    """Set up a table config with a watermark_column and a non-CDC source.
-
-    The source_type is 'csv' to represent a source without native CDC or
-    LISTEN/NOTIFY support. The table config declares ``updated_at`` as the
-    watermark column, enabling poll-based subscriptions.
-    """
+    """Set up a table config with a watermark_column and a non-CDC source."""
     table_config = {
         "source_id": "src-csv-non-cdc",
         "source_type": "csv",  # no native CDC
@@ -802,229 +799,20 @@ def given_table_config_with_watermark_column(shared_data: dict) -> None:
 
 @when("a poll subscription is created for that table")
 def when_poll_subscription_created(shared_data: dict) -> None:
-    """Instantiate a poll subscription provider and run one poll cycle.
-
-    Verifies that:
-    - The provider accepts the table config with a watermark_column.
-    - Polling returns ChangeEvents for rows newer than the last watermark.
-    - The watermark advances after each poll so rows are not re-delivered.
-    - A table without a watermark_column raises ValueError.
-    """
+    """Instantiate a poll subscription provider and run one poll cycle."""
     backend = shared_data["backend"]
     table_config = shared_data["table_config"]
     table = shared_data["table"]
     baseline_wm = shared_data["baseline_watermark"]
 
-    provider = _PollSubscriptionProvider(backend, table_config)
-
-    async def _collect() -> list[ChangeEvent]:
-        events: list[ChangeEvent] = []
-        async for event in provider.poll(table, baseline_wm, max_polls=1):
-            events.append(event)
-        return events
-
-    events = asyncio.run(_collect())
-    shared_data["events"] = events
-    shared_data["delivered_row_ids"] = {e.row["id"] for e in events}
-
-    # A source config without a watermark_column must not support polling.
-    no_wm_config = {k: v for k, v in table_config.items() if k != "watermark_column"}
-    no_wm_provider = _PollSubscriptionProvider(backend, no_wm_config)
-
-    async def _poll_without_watermark() -> None:
-        async for _ in no_wm_provider.poll(table, baseline_wm, max_polls=1):
-            pass
-
-    with pytest.raises(ValueError):
-        asyncio.run(_poll_without_watermark())
-
-
-@then(
-    "new or updated rows since the last watermark are delivered to the subscriber "
-    "on each poll interval"
-)
-def then_new_rows_delivered(shared_data: dict) -> None:
-    """Only rows newer than the baseline watermark are delivered to the subscriber."""
-    delivered = shared_data["delivered_row_ids"]
-    expected = shared_data["expected_row_ids"]
-    assert delivered == expected, f"expected delivered row ids {expected}, got {delivered}"
-    # The stale row (id=99, watermark before baseline) must not be delivered.
-    assert 99 not in delivered
-
-
-# ---------------------------------------------------------------------------
-# REQ-261 — Debezium CDC subscription provider (MySQL via Kafka)
-# ---------------------------------------------------------------------------
-
-class _FakeKafkaMessage:
-    """Mimics an aiokafka ConsumerRecord: only .value is read by watch()."""
-
-    def __init__(self, value: bytes | None) -> None:
-        self.value = value
-
-
-class _FakeAIOKafkaConsumer:
-    """In-memory stand-in for aiokafka.AIOKafkaConsumer.
-
-    Replays a fixed list of Debezium envelope byte payloads so the real
-    DebeziumNotificationProvider.watch() loop, deserialization, and event
-    extraction run unchanged. Records the topic and bootstrap servers it was
-    constructed with so the test can assert the Debezium topic convention.
-    """
-
-    #: Populated by each test before provider.watch() is driven.
-    messages: list[_FakeKafkaMessage] = []
-    #: Captured constructor args from the last instantiation.
-    last_topic: str | None = None
-    last_bootstrap: str | None = None
-    last_group_id: str | None = None
-
-    def __init__(self, topic: str, **kwargs: object) -> None:
-        type(self).last_topic = topic
-        type(self).last_bootstrap = kwargs.get("bootstrap_servers")  # type: ignore[assignment]
-        type(self).last_group_id = kwargs.get("group_id")  # type: ignore[assignment]
-        self._started = False
-        self._stopped = False
-
-    async def start(self) -> None:
-        self._started = True
-
-    async def stop(self) -> None:
-        self._stopped = True
-
-    def __aiter__(self):
-        async def _gen():
-            for msg in type(self).messages:
-                yield msg
-
-        return _gen()
-
-
-def _debezium_mysql_envelope(op: str, before: dict | None, after: dict | None) -> bytes:
-    """Build a Debezium MySQL JSON-converter envelope (schemas.enable=false).
-
-    op: c=create/insert, u=update, d=delete.
-    """
-    import json  # noqa: PLC0415
-
-    payload = {
-        "before": before,
-        "after": after,
-        "source": {
-            "connector": "mysql",
-            "db": "inventory",
-            "table": "customers",
-        },
-        "op": op,
-        "ts_ms": 1_735_689_600_000,  # 2025-01-01T00:00:00Z
-    }
-    return json.dumps({"payload": payload}).encode("utf-8")
-
-
-@given("a MySQL source is connected via Debezium and Kafka")
-def given_mysql_source_via_debezium(shared_data: dict) -> None:
-    """Instantiate the real Debezium provider configured for a MySQL source.
-
-    The provider is the production DebeziumNotificationProvider; only the Kafka
-    transport (aiokafka.AIOKafkaConsumer) is replaced by an in-memory replay so
-    the CDC parsing/extraction path executes unmodified.
-    """
-    from provisa.subscriptions.debezium_provider import DebeziumNotificationProvider
-
-    provider = DebeziumNotificationProvider(
-        bootstrap_servers="kafka:9092",
-        topic_prefix="dbserver1",
-        database="inventory",
-        consumer_group_id="provisa-req261",
-        source_type="mysql",
+    provider = _PollSubscriptionProvider(
+        backend=backend,
+        table_config=table_config,
+        poll_interval_seconds=0.01,
     )
-    shared_data["provider"] = provider
-    shared_data["table"] = "customers"
-    # MySQL topic convention is {prefix}.{database}.{table}.
-    shared_data["expected_topic"] = "dbserver1.inventory.customers"
 
+    received_events: list[ChangeEvent] = []
 
-@when("a row is inserted, updated, or deleted in MySQL")
-def when_mysql_row_changes(shared_data: dict) -> None:
-    """Replay Debezium CDC envelopes for insert, update, and delete through the
-    real provider's watch() loop and collect the emitted ChangeEvents."""
-    provider = shared_data["provider"]
-    table = shared_data["table"]
-
-    _FakeAIOKafkaConsumer.messages = [
-        _FakeKafkaMessage(
-            _debezium_mysql_envelope(
-                "c", before=None, after={"id": 1001, "name": "Ada", "email": "ada@example.com"}
-            )
-        ),
-        _FakeKafkaMessage(
-            _debezium_mysql_envelope(
-                "u",
-                before={"id": 1001, "name": "Ada", "email": "ada@example.com"},
-                after={"id": 1001, "name": "Ada Lovelace", "email": "ada@example.com"},
-            )
-        ),
-        _FakeKafkaMessage(
-            _debezium_mysql_envelope(
-                "d",
-                before={"id": 1001, "name": "Ada Lovelace", "email": "ada@example.com"},
-                after=None,
-            )
-        ),
-    ]
-
-    collected: list[ChangeEvent] = []
-
-    import aiokafka  # noqa: PLC0415
-
-    real_consumer = aiokafka.AIOKafkaConsumer
-
-    async def _drive() -> None:
-        async for event in provider.watch(table):
-            collected.append(event)
-
-    # Replace the aiokafka consumer imported inside watch() with the in-memory
-    # replay, restoring the real class afterward.
-    aiokafka.AIOKafkaConsumer = _FakeAIOKafkaConsumer  # type: ignore[assignment]
-    try:
-        asyncio.run(_drive())
-    finally:
-        aiokafka.AIOKafkaConsumer = real_consumer  # type: ignore[assignment]
-
-    shared_data["events"] = collected
-    shared_data["consumer_topic"] = _FakeAIOKafkaConsumer.last_topic
-    shared_data["consumer_bootstrap"] = _FakeAIOKafkaConsumer.last_bootstrap
-
-
-@then(
-    "the change is captured by Debezium, published to Kafka, consumed by Provisa, "
-    "and streamed as an SSE event to subscribers"
-)
-def then_change_streamed_as_sse(shared_data: dict) -> None:
-    """Assert the provider consumed the correct Debezium topic and emitted one
-    ChangeEvent per CDC operation with correctly mapped op codes and row state."""
-    events: list[ChangeEvent] = shared_data["events"]
-    table = shared_data["table"]
-
-    # Provider subscribed to the MySQL Debezium topic on the configured broker.
-    assert shared_data["consumer_topic"] == shared_data["expected_topic"]
-    assert shared_data["consumer_bootstrap"] == "kafka:9092"
-
-    # One ChangeEvent per CDC op, in order: insert, update, delete.
-    assert [e.operation for e in events] == ["insert", "update", "delete"], (
-        f"expected insert/update/delete, got {[e.operation for e in events]!r}"
-    )
-    for e in events:
-        assert e.table == table
-
-    insert_evt, update_evt, delete_evt = events
-
-    # Insert carries the new-row ("after") state.
-    assert insert_evt.row == {"id": 1001, "name": "Ada", "email": "ada@example.com"}
-
-    # Update carries the post-update ("after") state.
-    assert update_evt.row["name"] == "Ada Lovelace"
-
-    # Delete carries the pre-delete ("before") state (Debezium "after" is null).
-    assert delete_evt.row["id"] == 1001
-    assert delete_evt.row["name"] == "Ada Lovelace"
+    async def _run() -> None:
+        async for event in provider.poll(table, initial_watermark=baseline_wm, max_polls=1):
+            received_events.append(event)

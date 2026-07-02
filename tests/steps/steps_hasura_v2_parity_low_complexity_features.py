@@ -31,12 +31,14 @@ REQ-217 — batch mutations: multiple mutations in a single GraphQL request exec
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from graphql import (
     FieldNode,
     OperationDefinitionNode,
     parse,
+    validate,
 )
 from pytest_bdd import given, scenario, then, when
 
@@ -44,11 +46,13 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import (
     MutationResult,
     apply_column_presets,
+    compile_mutation,
     compile_upsert,
 )
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import CompilationContext, TableMeta, build_context, compile_query
 from provisa.core.models import Role, ScheduledTrigger, flatten_roles
+from provisa.scheduler.jobs import _execute_webhook, build_scheduler
 
 
 # ---------------------------------------------------------------------------
@@ -757,32 +761,4 @@ def _then_capabilities_and_domain_access_flattened(shared_data: dict) -> None:
     )
     assert _domains(an_model) >= {"analytics", "public"}, (
         f"analyst (model) domain_access must include {{'analytics','public'}}; "
-        f"got {_domains(an_model)}"
-    )
-    assert _caps(an_dict) >= {"aggregate", "read"}, (
-        f"analyst (dict) capabilities must include {{'aggregate','read'}}; got {_caps(an_dict)}"
-    )
-    assert _domains(an_dict) >= {"analytics", "public"}, (
-        f"analyst (dict) domain_access must include {{'analytics','public'}}; "
-        f"got {_domains(an_dict)}"
-    )
-
-    sa_model = flattened_models["senior_analyst"]
-    sa_dict = flattened_dicts["senior_analyst"]
-
-    assert _caps(sa_model) >= {"export", "aggregate", "read"}, (
-        f"senior_analyst (model) capabilities must include the full inherited chain "
-        f"{{'export','aggregate','read'}}; got {_caps(sa_model)}"
-    )
-    assert _domains(sa_model) >= {"finance", "analytics", "public"}, (
-        f"senior_analyst (model) domain_access must include the full inherited chain "
-        f"{{'finance','analytics','public'}}; got {_domains(sa_model)}"
-    )
-    assert _caps(sa_dict) >= {"export", "aggregate", "read"}, (
-        f"senior_analyst (dict) capabilities must include the full inherited chain "
-        f"{{'export','aggregate','read'}}; got {_caps(sa_dict)}"
-    )
-    assert _domains(sa_dict) >= {"finance", "analytics", "public"}, (
-        f"senior_analyst (dict) domain_access must include the full inherited chain "
-        f"{{'finance','analytics','public'}}; got {_domains(sa_dict)}"
-    )
+        f"got {_domains(

@@ -43,8 +43,8 @@ def _encode_version_proposal(major: int, minor: int, rng: int = 0) -> bytes:
 
 def _build_hello_message() -> bytes:
     """Build a minimal Bolt HELLO message for Bolt 5.x (no credentials)."""
-    from provisa.bolt.packstream import pack_message
     from provisa.bolt.messages import HELLO
+    from provisa.bolt.packstream import pack_message
 
     meta = {
         "user_agent": "pytest-bdd/1.0",
@@ -55,8 +55,8 @@ def _build_hello_message() -> bytes:
 
 def _build_run_message(cypher: str) -> bytes:
     """Build a Bolt RUN message for the given Cypher query."""
-    from provisa.bolt.packstream import pack_message
     from provisa.bolt.messages import RUN
+    from provisa.bolt.packstream import pack_message
 
     # RUN fields: query, parameters, metadata
     return pack_message(RUN, cypher, {}, {})
@@ -137,8 +137,8 @@ def step_client_sends_cypher(cypher: str, shared_data: dict) -> None:
         shared_data["run_response"] = run_resp
 
         # 8. Send PULL all (-1)
-        from provisa.bolt.packstream import pack_message
         from provisa.bolt.messages import PULL
+        from provisa.bolt.packstream import pack_message
 
         pull_bytes = pack_message(PULL, {"n": -1})
         writer.write(_make_chunked(pull_bytes))
@@ -151,7 +151,7 @@ def step_client_sends_cypher(cypher: str, shared_data: dict) -> None:
             if not chunk:
                 break
             tag = chunk[1] if len(chunk) >= 2 else 0
-            from provisa.bolt.messages import RECORD, SUCCESS, FAILURE
+            from provisa.bolt.messages import FAILURE, RECORD, SUCCESS
 
             if tag == RECORD:
                 records.append(chunk)
@@ -196,7 +196,7 @@ def step_query_transpiled_to_sql(shared_data: dict) -> None:
     run_response = shared_data.get("run_response", b"")
     assert len(run_response) >= 2, "No RUN response received"
 
-    from provisa.bolt.messages import SUCCESS, FAILURE
+    from provisa.bolt.messages import FAILURE, SUCCESS
 
     tag = run_response[1]
     assert tag != FAILURE, (
@@ -219,7 +219,7 @@ def step_governance_applied(shared_data: dict) -> None:
 
     # A FAILURE here would mean governance raised an unhandled exception
     pull_final_tag = shared_data.get("pull_final_tag")
-    from provisa.bolt.messages import SUCCESS, FAILURE
+    from provisa.bolt.messages import FAILURE, SUCCESS
 
     assert pull_final_tag is not None, "No PULL response received"
     assert pull_final_tag != FAILURE, (
@@ -309,7 +309,7 @@ def test_supported_versions_non_empty():
 
 
 def test_encode_version_roundtrip():
-    from provisa.bolt.messages import encode_version, decode_version_proposal
+    from provisa.bolt.messages import decode_version_proposal, encode_version
 
     for major, minor in [(5, 4), (4, 4), (5, 1)]:
         encoded = encode_version(major, minor)
@@ -346,7 +346,7 @@ def test_framing_write_and_read_roundtrip():
     """Verify write_message + read_message round-trip preserves payload."""
     import asyncio as _asyncio
 
-    from provisa.bolt.framing import write_message, read_message
+    from provisa.bolt.framing import read_message, write_message
 
     payload = b"\xb1\x70\xa0"  # SUCCESS {}
 
@@ -372,8 +372,8 @@ def test_framing_write_and_read_roundtrip():
 
 
 def test_pack_message_run():
-    from provisa.bolt.packstream import pack_message
     from provisa.bolt.messages import RUN
+    from provisa.bolt.packstream import pack_message
 
     data = pack_message(RUN, "MATCH (n) RETURN n", {}, {})
     # tiny struct header with 3 fields: 0xB3
@@ -382,8 +382,8 @@ def test_pack_message_run():
 
 
 def test_pack_message_hello():
-    from provisa.bolt.packstream import pack_message
     from provisa.bolt.messages import HELLO
+    from provisa.bolt.packstream import pack_message
 
     data = pack_message(HELLO, {"user_agent": "test/1.0"})
     assert data[0] == 0xB1
@@ -631,8 +631,8 @@ def test_make_chunked_framing():
 
 def test_session_send_success_writes_success_tag():
     """BoltSession.send_success must write a message starting with SUCCESS tag."""
-    from provisa.bolt.session import BoltSession
     from provisa.bolt.messages import SUCCESS
+    from provisa.bolt.session import BoltSession
 
     class _FakeWriter:
         def __init__(self):
@@ -662,8 +662,8 @@ def test_session_send_success_writes_success_tag():
 
 def test_session_send_failure_writes_failure_tag_and_sets_failed_state():
     """BoltSession.send_failure must write FAILURE and transition to FAILED state."""
-    from provisa.bolt.session import BoltSession, State
     from provisa.bolt.messages import FAILURE
+    from provisa.bolt.session import BoltSession, State
 
     class _FakeWriter:
         def __init__(self):
@@ -714,8 +714,8 @@ def test_session_handle_logon_transitions_to_ready():
 
 def test_session_handle_logon_bad_credentials_stays_authentication():
     """LOGON with bad credentials must send FAILURE and stay in AUTHENTICATION."""
-    from provisa.bolt.session import BoltSession, State
     from provisa.bolt.messages import FAILURE
+    from provisa.bolt.session import BoltSession, State
 
     class _FakeWriter:
         def __init__(self):
@@ -818,10 +818,5 @@ def test_session_handle_logoff():
 
 def test_packstream_pack_message_pull():
     """PULL message must encode correctly with n=-1 metadata dict."""
-    from provisa.bolt.packstream import pack_message
     from provisa.bolt.messages import PULL
-
-    data = pack_message(PULL, {"n": -1})
-    # tiny struct header with 1 field: 0xB1
-    assert data[0] == 0xB1
-    assert data[1] == PULL
+    from provisa.bolt.packstream

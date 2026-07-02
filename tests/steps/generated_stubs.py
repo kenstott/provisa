@@ -5232,3 +5232,158 @@ def step_then_pgnotificationprovider_is_instantiated():
 @then("the source_type is not used to dispatch")
 def step_and_the_source_type_is_not_used_to_dispatch():
     pytest.skip("step not implemented: the source_type is not used to dispatch")
+
+# REQ-818
+@given("a valid CREATE statement targeting a table with write rights")
+def step_given_a_valid_create_statement_targeting_a_table_with_write_rights():
+    pytest.skip("step not implemented: a valid CREATE statement targeting a table with write rights")
+
+# REQ-818
+@when("executed via the /data/cypher endpoint")
+def step_when_executed_via_the_data_cypher_endpoint():
+    pytest.skip("step not implemented: executed via the /data/cypher endpoint")
+
+# REQ-818
+@then("it executes as a direct table write, returns affected_rows, and applies RLS + post-mutation hooks")
+def step_then_it_executes_as_a_direct_table_write_returns_affected_rows_an():
+    pytest.skip("step not implemented: it executes as a direct table write, returns affected_rows, ")
+
+# REQ-818
+@given("a MERGE or DETACH statement")
+def step_given_a_merge_or_detach_statement():
+    pytest.skip("step not implemented: a MERGE or DETACH statement")
+
+# REQ-818
+@when("parsed")
+def step_when_parsed():
+    pytest.skip("step not implemented: parsed")
+
+# REQ-818
+@then("it is rejected at parse time with a precise error")
+def step_then_it_is_rejected_at_parse_time_with_a_precise_error():
+    pytest.skip("step not implemented: it is rejected at parse time with a precise error")
+
+# REQ-819
+@given("the admin GraphQL API for table mutations")
+def step_given_the_admin_graphql_api_for_table_mutations():
+    pytest.skip("step not implemented: the admin GraphQL API for table mutations")
+
+# REQ-819
+@when("updateTable is called with live configuration (query_id, watermark_column, poll_interval, delivery, outputs)")
+def step_when_updatetable_is_called_with_live_configuration_query_id_water():
+    pytest.skip("step not implemented: updateTable is called with live configuration (query_id, wat")
+
+# REQ-819
+@then("the configuration is persisted to registered_tables.live and the live engine is notified")
+def step_then_the_configuration_is_persisted_to_registered_tables_live_and():
+    pytest.skip("step not implemented: the configuration is persisted to registered_tables.live and")
+
+# REQ-819
+@given("the admin UI TablesPage")
+def step_given_the_admin_ui_tablespage():
+    pytest.skip("step not implemented: the admin UI TablesPage")
+
+# REQ-819
+@when("an operator edits live config for a table")
+def step_when_an_operator_edits_live_config_for_a_table():
+    pytest.skip("step not implemented: an operator edits live config for a table")
+
+# REQ-819
+@then("changes are reflected in the database and take effect without server restart")
+def step_then_changes_are_reflected_in_the_database_and_take_effect_withou():
+    pytest.skip("step not implemented: changes are reflected in the database and take effect withou")
+
+# REQ-820
+@given("a live poll query targeting a federated BigQuery table")
+def step_given_a_live_poll_query_targeting_a_federated_bigquery_table():
+    pytest.skip("step not implemented: a live poll query targeting a federated BigQuery table")
+
+# REQ-820
+@when("the poll interval triggers")
+def step_when_the_poll_interval_triggers():
+    pytest.skip("step not implemented: the poll interval triggers")
+
+# REQ-820
+@then("the query executes through Trino (not the PostgreSQL pool)")
+def step_then_the_query_executes_through_trino_not_the_postgresql_pool():
+    pytest.skip("step not implemented: the query executes through Trino (not the PostgreSQL pool)")
+
+# REQ-820
+@then("the watermark is persisted to live_query_state in PostgreSQL")
+def step_and_the_watermark_is_persisted_to_live_query_state_in_postgresql():
+    pytest.skip("step not implemented: the watermark is persisted to live_query_state in PostgreSQL")
+
+# REQ-823
+@given("live config stored in registered_tables.live")
+def step_given_live_config_stored_in_registered_tables_live():
+    pytest.skip("step not implemented: live config stored in registered_tables.live")
+
+# REQ-823
+@when("the LiveEngine starts")
+def step_when_the_liveengine_starts():
+    pytest.skip("step not implemented: the LiveEngine starts")
+
+# REQ-823
+@then("it queries the database for all active live configs and rebuilds poll jobs")
+def step_then_it_queries_the_database_for_all_active_live_configs_and_rebu():
+    pytest.skip("step not implemented: it queries the database for all active live configs and rebu")
+
+# REQ-823
+@given("live config modified via admin GraphQL API")
+def step_given_live_config_modified_via_admin_graphql_api():
+    pytest.skip("step not implemented: live config modified via admin GraphQL API")
+
+# REQ-823
+@then("_rebuild_schemas() is called to reconcile the engine immediately")
+def step_then_rebuild_schemas_is_called_to_reconcile_the_engine_immediatel():
+    pytest.skip("step not implemented: _rebuild_schemas() is called to reconcile the engine immedia")
+
+# REQ-823
+@then("the new poll schedule takes effect without restart")
+def step_and_the_new_poll_schedule_takes_effect_without_restart():
+    pytest.skip("step not implemented: the new poll schedule takes effect without restart")
+
+# REQ-824
+@given("a MySQL source with a source-level cdc block (bootstrap_servers, topic_prefix)")
+def step_given_a_mysql_source_with_a_source_level_cdc_block_bootstrap_serve():
+    pytest.skip("step not implemented: a MySQL source with a source-level cdc block (bootstrap_serv")
+
+# REQ-824
+@when("a table from that source sets live.delivery=cdc")
+def step_when_a_table_from_that_source_sets_live_delivery_cdc():
+    pytest.skip("step not implemented: a table from that source sets live.delivery=cdc")
+
+# REQ-824
+@then("validation passes and the runtime routes the subscription to the Debezium provider using the source's transport")
+def step_then_validation_passes_and_the_runtime_routes_the_subscription_to():
+    pytest.skip("step not implemented: validation passes and the runtime routes the subscription to")
+
+# REQ-824
+@given("a MySQL source WITHOUT a cdc block")
+def step_given_a_mysql_source_without_a_cdc_block():
+    pytest.skip("step not implemented: a MySQL source WITHOUT a cdc block")
+
+# REQ-824
+@when("a table sets live.delivery=cdc")
+def step_when_a_table_sets_live_delivery_cdc():
+    pytest.skip("step not implemented: a table sets live.delivery=cdc")
+
+# REQ-824
+@then("config validation rejects it (no push mechanism)")
+def step_then_config_validation_rejects_it_no_push_mechanism():
+    pytest.skip("step not implemented: config validation rejects it (no push mechanism)")
+
+# REQ-824
+@given("a warehouse source (e.g. snowflake)")
+def step_given_a_warehouse_source_e_g_snowflake():
+    pytest.skip("step not implemented: a warehouse source (e.g. snowflake)")
+
+# REQ-824
+@when("a cdc block is set on it")
+def step_when_a_cdc_block_is_set_on_it():
+    pytest.skip("step not implemented: a cdc block is set on it")
+
+# REQ-824
+@then("validation rejects the cdc block as unsupported for that source type")
+def step_then_validation_rejects_the_cdc_block_as_unsupported_for_that_sou():
+    pytest.skip("step not implemented: validation rejects the cdc block as unsupported for that sou")
