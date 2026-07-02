@@ -894,6 +894,100 @@ def constant_output_valid(shared_data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# REQ-744 — Masking preserves query structure (ORDER BY/LIMIT/GROUP BY);
+#           immutable transformation (new object, input unmutated)
+# ---------------------------------------------------------------------------
+
+_R744_TABLE_ID = _CUSTOMERS_TABLE_ID  # reuse customers-table masking rule (email)
+
+
+@given("a query with ORDER BY, LIMIT, GROUP BY, or other clauses")
+def query_with_structural_clauses(shared_data: dict) -> None:
+    """Build a compiled query that masks 'email' and carries GROUP BY/ORDER BY/LIMIT.
+
+    Reuses the REQ-740 masking-rule fixture (regex mask on 'email' for analyst on
+    the customers table) so the @when("masking is injected") step can inject it.
+    """
+    role_id = "analyst"
+    shared_data["role_id"] = role_id
+
+    ctx_744 = CompilationContext()
+    ctx_744.tables = {"customers": _customers_meta_740()}
+    ctx_744.joins = {}
+    shared_data["ctx_744"] = ctx_744
+
+    mask_rule = MaskingRule(
+        mask_type=MaskType.regex,
+        pattern=r"^(.{2}).*(@.*)$",
+        replace=r"\1***\2",
+    )
+    masking_rules: MaskingRules = {
+        (_R744_TABLE_ID, role_id): {"email": (mask_rule, "varchar")},
+    }
+    shared_data["masking_rules"] = masking_rules
+
+    # A query with GROUP BY, ORDER BY, and LIMIT trailing the SELECT projection.
+    sql = (
+        'SELECT "email", COUNT(*) FROM "public"."customers" '
+        'GROUP BY "email" '
+        'ORDER BY "email" ASC '
+        "LIMIT 10"
+    )
+    shared_data["clauses_744"] = ' GROUP BY "email" ORDER BY "email" ASC LIMIT 10'
+    compiled_744 = CompiledQuery(
+        sql=sql,
+        params=[],
+        root_field="customers",
+        columns=[
+            ColumnRef(alias=None, column="email", field_name="email", nested_in=None),
+        ],
+        sources={"pg"},
+    )
+    shared_data["compiled_744"] = compiled_744
+    # Snapshot of the input SQL string to prove the input is not mutated.
+    shared_data["original_sql_744"] = sql
+
+    # Confirm the masking rule is registered for the column under test.
+    assert (_R744_TABLE_ID, role_id) in masking_rules
+    assert "email" in masking_rules[(_R744_TABLE_ID, role_id)]
+
+
+@then("the clauses remain unchanged; result is a new object, input is unchanged")
+def clauses_preserved_and_input_immutable(shared_data: dict) -> None:
+    from provisa.compiler.mask_inject import _find_select_end
+
+    original = shared_data["compiled_744"]
+    result = shared_data["result_744"]
+    clauses = shared_data["clauses_744"]
+
+    # (b) A NEW object is returned; the input object identity differs.
+    assert result is not original, "inject_masking must return a new CompiledQuery"
+
+    # The input SQL string is byte-identical to its pre-injection snapshot
+    # (proves the input CompiledQuery was not mutated in place).
+    assert original.sql == shared_data["original_sql_744"], "input SQL was mutated"
+
+    # Masking actually happened — the SELECT projection was rewritten.
+    assert result.sql != original.sql, "masking produced no change"
+    result_select = result.sql[: _find_select_end(result.sql)]
+    assert "REGEXP_REPLACE" in result_select.upper(), result_select
+
+    # (a) The trailing clauses (GROUP BY / ORDER BY / LIMIT) are byte-identical
+    # before and after masking — only the SELECT projection changed.
+    assert original.sql.endswith(clauses), original.sql
+    assert result.sql.endswith(clauses), result.sql
+
+    # The FROM..end tail (everything from FROM onward) is byte-identical, proving
+    # nothing outside the SELECT projection was touched.
+    assert (
+        result.sql[_find_select_end(result.sql) :] == original.sql[_find_select_end(original.sql) :]
+    ), "structure after SELECT changed"
+
+    # REGEXP_REPLACE must NOT leak into GROUP BY / ORDER BY / LIMIT.
+    assert "REGEXP_REPLACE" not in clauses.upper()
+
+
+# ---------------------------------------------------------------------------
 # REQ-745 — Role-based masking: different roles see different masks
 # ---------------------------------------------------------------------------
 
