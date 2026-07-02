@@ -143,6 +143,28 @@ async def _collect_events(
     return events
 
 
+async def _await_consumer_ready(
+    provider: DebeziumNotificationProvider, timeout: float = 30.0
+) -> None:
+    """Block until the provider's Kafka consumer holds a partition assignment.
+
+    watch() creates the consumer lazily; with auto_offset_reset="latest" any DML
+    issued before group-join + assignment completes is missed. A fixed sleep is a
+    guess that under-provisions under full-suite load (group-join can exceed 6s),
+    which is the flake this replaces. Polling the real assignment is deterministic.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        consumer = getattr(provider, "_consumer", None)
+        if consumer is not None and consumer.assignment():
+            return
+        await asyncio.sleep(0.25)
+    raise RuntimeError(
+        "Kafka consumer did not obtain a partition assignment within "
+        f"{timeout}s — cannot guarantee latest-offset capture"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -169,9 +191,9 @@ def _drop_inactive_replication_slots() -> None:
 
 
 @pytest.fixture(scope="module")
-def debezium_connector(pg_pool):
+def debezium_connector(tenant_db):
     """Register the Debezium connector once per module and tear it down after."""
-    _ = pg_pool
+    _ = tenant_db
     # Drop any inactive slots left by previous runs whose teardown was skipped.
     _drop_inactive_replication_slots()
 
@@ -249,20 +271,18 @@ class TestDebeziumConnectorRegistration:
 class TestDebeziumInsertEvents:
     pytestmark = [pytest.mark.requires_debezium]
 
-    async def test_insert_yields_insert_event(self, debezium_connector, provider, pg_pool):
+    async def test_insert_yields_insert_event(self, debezium_connector, provider, tenant_db):
         """Inserting a row in PG produces an insert ChangeEvent via Debezium."""
         _ = debezium_connector
         # Insert a unique row so we can identify our event
         marker = f"debezium-test-{uuid.uuid4().hex[:8]}"
 
         async def do_insert():
-            # Give the consumer time to join the group, get its partition
-            # assignment, and seek to the latest offset before the insert.
-            # With auto_offset_reset="latest", any change made before the
-            # consumer's position is established is lost, so this delay must
-            # exceed the group-join + assignment latency (~5s observed).
-            await asyncio.sleep(6)
-            async with pg_pool.acquire() as conn:
+            # Wait for the consumer's real partition assignment before the DML.
+            # With auto_offset_reset="latest", any change made before assignment
+            # completes is lost.
+            await _await_consumer_ready(provider)
+            async with tenant_db.acquire() as conn:
                 pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
                 await conn.execute(
                     "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4)",
@@ -288,7 +308,7 @@ class TestDebeziumInsertEvents:
         assert event.table == "orders"
         assert event.row["amount"] == pytest.approx(999.99, rel=0.01)
 
-    async def test_insert_event_has_timestamp(self, debezium_connector, provider, pg_pool):
+    async def test_insert_event_has_timestamp(self, debezium_connector, provider, tenant_db):
         """ChangeEvents from Debezium carry a UTC timestamp from ts_ms."""
         _ = debezium_connector
         marker = f"ts-test-{uuid.uuid4().hex[:8]}"
@@ -297,8 +317,8 @@ class TestDebeziumInsertEvents:
             # See test_insert_yields_insert_event: consumer group-join +
             # partition assignment must complete before the DML or the
             # (latest-offset) consumer misses the event.
-            await asyncio.sleep(6)
-            async with pg_pool.acquire() as conn:
+            await _await_consumer_ready(provider)
+            async with tenant_db.acquire() as conn:
                 pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
                 await conn.execute(
                     "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4)",
@@ -326,12 +346,12 @@ class TestDebeziumInsertEvents:
 class TestDebeziumUpdateEvents:
     pytestmark = [pytest.mark.requires_debezium]
 
-    async def test_update_yields_update_event(self, debezium_connector, provider, pg_pool):
+    async def test_update_yields_update_event(self, debezium_connector, provider, tenant_db):
         """Updating a row produces an update ChangeEvent."""
         _ = debezium_connector
         # Insert first, then update
         marker = f"upd-test-{uuid.uuid4().hex[:8]}"
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
             row_id = await conn.fetchval(
                 "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4) RETURNING id",
@@ -347,8 +367,8 @@ class TestDebeziumUpdateEvents:
         async def do_update():
             # Consumer must finish group-join + partition assignment before
             # the UPDATE (latest-offset consumer misses earlier changes).
-            await asyncio.sleep(6)
-            async with pg_pool.acquire() as conn:
+            await _await_consumer_ready(provider)
+            async with tenant_db.acquire() as conn:
                 await conn.execute(
                     "UPDATE orders SET amount = $1 WHERE id = $2",
                     123.45,
@@ -370,11 +390,11 @@ class TestDebeziumUpdateEvents:
 class TestDebeziumDeleteEvents:
     pytestmark = [pytest.mark.requires_debezium]
 
-    async def test_delete_yields_delete_event(self, debezium_connector, provider, pg_pool):
+    async def test_delete_yields_delete_event(self, debezium_connector, provider, tenant_db):
         """Deleting a row produces a delete ChangeEvent."""
         _ = debezium_connector
         marker = f"del-test-{uuid.uuid4().hex[:8]}"
-        async with pg_pool.acquire() as conn:
+        async with tenant_db.acquire() as conn:
             pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
             row_id = await conn.fetchval(
                 "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4) RETURNING id",
@@ -389,8 +409,8 @@ class TestDebeziumDeleteEvents:
         async def do_delete():
             # Consumer must finish group-join + partition assignment before
             # the DELETE (latest-offset consumer misses earlier changes).
-            await asyncio.sleep(6)
-            async with pg_pool.acquire() as conn:
+            await _await_consumer_ready(provider)
+            async with tenant_db.acquire() as conn:
                 await conn.execute("DELETE FROM orders WHERE id = $1", row_id)
 
         events_task = asyncio.create_task(_collect_events(provider, "orders", count=5, timeout=35))

@@ -104,6 +104,21 @@ def govdata_conn():
     if conn is None:
         pytest.skip("GovDataDriver.connect() returned null")
 
+    # connect() succeeds even against an empty parquet bucket — the Iceberg
+    # tables are loaded lazily and missing tables are logged, not raised. Verify
+    # the FEC data actually materialized; skip (data unavailable) if not, per the
+    # documented skip conditions, rather than failing every assertion downstream.
+    rs = conn.getMetaData().getSchemas()
+    schemas = []
+    while rs.next():
+        schemas.append(str(rs.getString("TABLE_SCHEM")))
+    rs.close()
+    if "FEC" not in schemas:
+        conn.close()
+        pytest.skip(
+            f"GovData FEC data not materialized (parquet bucket empty); schemas present: {schemas}"
+        )
+
     yield conn
     conn.close()
 

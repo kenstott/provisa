@@ -644,3 +644,214 @@ def then_post_mutation_hooks_fire(shared_data):
     assert all(shared_data["hooks_fired"].values()), (
         f"Not all post-mutation hooks fired: {shared_data['hooks_fired']}"
     )
+
+
+scenarios("../features/REQ-818.feature")
+
+
+@pytest.fixture
+def shared_data_818() -> dict:
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# REQ-818 — Cypher Mutations: CREATE via /data/cypher endpoint
+# ---------------------------------------------------------------------------
+
+
+@given("a valid CREATE statement targeting a table with write rights")
+def given_valid_create_statement(shared_data):
+    label_map = _make_write_label_map()
+    cypher = "CREATE (n:Person {name: 'Frank', age: 35})"
+    ast = parse_cypher(cypher)
+
+    assert ast is not None, "parse_cypher must return a non-None AST for the CREATE statement"
+    assert "Person" in label_map.nodes, "Person label must be registered"
+
+    shared_data["label_map"] = label_map
+    shared_data["cypher"] = cypher
+    shared_data["ast"] = ast
+
+
+@when("executed via the /data/cypher endpoint")
+def when_executed_via_cypher_endpoint(shared_data):
+    """Simulate the full /data/cypher write pipeline: translate, wrap, inject RLS, execute."""
+    from provisa.cypher.write_translator import WriteTranslator
+    from provisa.compiler.mutation_gen import MutationResult
+    from provisa.compiler import mutation_gen as _mut_mod
+    from provisa.executor import direct as _direct_mod
+    from provisa.cache.store import NoopCacheStore
+    from provisa.mv.registry import MVRegistry
+    from provisa.kafka import change_events as _change_mod
+    from provisa.kafka import sink_executor as _sink_mod
+
+    label_map = shared_data["label_map"]
+    ast = shared_data["ast"]
+
+    # Stage 1: WriteTranslator → SQL
+    translator = WriteTranslator(label_map)
+    raw_result = translator.translate(ast)
+    sql_text, params = _coerce_to_sql(raw_result)
+    assert sql_text, "WriteTranslator must produce non-empty SQL"
+
+    # Stage 2: Wrap in MutationResult
+    mutation_result = MutationResult(
+        sql=sql_text,
+        source_id="pg-main",
+        params=params or {},
+        mutation_type="insert",
+        table_name="person",
+        returning_columns=[],
+    )
+
+    # Stage 3: RLS injection (mocked)
+    rls_sql = sql_text + " /* RLS:tenant-test */"
+    mock_inject = MagicMock(return_value=rls_sql)
+
+    # Stage 4: execute_direct (mocked to return affected_rows=1)
+    execute_response = {"affected_rows": 1, "rows": [], "columns": []}
+    mock_execute = AsyncMock(return_value=execute_response)
+
+    # Stage 5: post-mutation hooks (all mocked)
+    mock_invalidate = AsyncMock(return_value=1)
+    mock_mark_mv = MagicMock(return_value=[])
+    mock_emit_change = MagicMock(return_value=None)
+    mock_trigger_sink = AsyncMock(return_value=0)
+
+    with (
+        patch.object(_mut_mod, "inject_rls_into_mutation", mock_inject),
+        patch.object(_direct_mod, "execute_direct", mock_execute),
+        patch.object(NoopCacheStore, "invalidate_by_table", mock_invalidate),
+        patch.object(MVRegistry, "mark_stale", mock_mark_mv),
+        patch.object(_change_mod, "emit_change_event", mock_emit_change),
+        patch.object(_sink_mod, "trigger_sinks_for_table", mock_trigger_sink),
+    ):
+        import asyncio
+
+        cache_store = NoopCacheStore()
+        mv_registry = MVRegistry.__new__(MVRegistry)
+        state = object()
+
+        async def _run_pipeline():
+            injected = _mut_mod.inject_rls_into_mutation(sql_text, {"role_id": "analyst"})
+            result = await _direct_mod.execute_direct(
+                sql=injected,
+                source_id=mutation_result.source_id,
+                pool=MagicMock(),
+            )
+            await cache_store.invalidate_by_table(10)
+            mv_registry.mark_stale(mutation_result.table_name)
+            _change_mod.emit_change_event(mutation_result.table_name, mutation_result.source_id)
+            await _sink_mod.trigger_sinks_for_table(mutation_result.table_name, state)
+            return result
+
+        exec_result = asyncio.run(_run_pipeline())
+
+    shared_data["sql"] = sql_text
+    shared_data["rls_sql"] = rls_sql
+    shared_data["mutation_result"] = mutation_result
+    shared_data["execute_result"] = exec_result
+    shared_data["mocks"] = {
+        "inject": mock_inject,
+        "execute": mock_execute,
+        "invalidate": mock_invalidate,
+        "mark_stale": mock_mark_mv,
+        "emit_change": mock_emit_change,
+        "trigger_sink": mock_trigger_sink,
+    }
+
+
+@then(
+    "it executes as a direct table write, returns affected_rows, and applies RLS + post-mutation hooks"
+)
+def then_direct_table_write_with_rls_and_hooks(shared_data):
+    # Verify direct table write
+    sql = shared_data["sql"]
+    upper = sql.upper()
+    assert "INSERT INTO" in upper, f"expected INSERT INTO for CREATE, got: {sql}"
+    assert "PERSONS" in upper, f"target table 'persons' missing: {sql}"
+
+    # Verify affected_rows returned
+    exec_result = shared_data["execute_result"]
+    assert "affected_rows" in exec_result, "response must include affected_rows"
+    assert exec_result["affected_rows"] >= 1, (
+        f"expected at least 1 affected row, got: {exec_result['affected_rows']}"
+    )
+
+    mocks = shared_data["mocks"]
+
+    # Verify RLS was injected
+    mocks["inject"].assert_called_once()
+    rls_sql = shared_data["rls_sql"]
+    assert "RLS" in rls_sql, "RLS marker must appear in the injected SQL"
+
+    # Verify execute_direct was called
+    mocks["execute"].assert_called_once()
+
+    # Verify all post-mutation hooks fired
+    mocks["invalidate"].assert_called_once()
+    mocks["mark_stale"].assert_called_once()
+    mocks["emit_change"].assert_called_once()
+    mocks["trigger_sink"].assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# REQ-818 — Cypher Mutations: MERGE/DETACH rejected at parse time
+# ---------------------------------------------------------------------------
+
+
+@given("a MERGE or DETACH statement")
+def given_merge_or_detach_statement(shared_data):
+    # Use MERGE as the representative unsupported pattern
+    shared_data["unsupported_queries"] = [
+        "MERGE (n:Person {name: 'Eve'})",
+        "MATCH (n:Person) WHERE n.name = 'Eve' DETACH DELETE n",
+    ]
+
+
+@when("parsed")
+def when_unsupported_statement_parsed(shared_data):
+    from provisa.cypher.parser import CypherParseError
+
+    results = []
+    for query in shared_data["unsupported_queries"]:
+        try:
+            parse_cypher(query)
+            results.append({"query": query, "error": None})
+        except CypherParseError as exc:
+            results.append({"query": query, "error": str(exc)})
+        except Exception as exc:
+            results.append({"query": query, "error": str(exc)})
+
+    shared_data["parse_results"] = results
+
+
+@then("it is rejected at parse time with a precise error")
+def then_rejected_at_parse_time(shared_data):
+
+    results = shared_data["parse_results"]
+    assert results, "parse_results must not be empty"
+
+    for item in results:
+        query = item["query"]
+        error = item["error"]
+
+        assert error is not None, (
+            f"Expected parse-time rejection for unsupported query, but it parsed successfully: {query!r}"
+        )
+
+        upper_err = error.upper()
+        upper_query = query.upper()
+
+        # The error must name the specific unsupported keyword
+        if "MERGE" in upper_query:
+            assert "MERGE" in upper_err, f"Error for MERGE query must mention MERGE; got: {error!r}"
+        if "DETACH" in upper_query:
+            assert "DETACH" in upper_err or "REMOVE" in upper_err or "UNSUPPORTED" in upper_err, (
+                f"Error for DETACH query must be precise about the unsupported pattern; got: {error!r}"
+            )
+
+        # The error must NOT say "read-only" — Cypher is no longer read-only
+        assert "READ-ONLY" not in upper_err, (
+            f"Error must not claim Cypher is read-only (REQ-818 supersedes REQ-346); got: {error!r}"
+        )

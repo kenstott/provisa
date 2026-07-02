@@ -52,6 +52,17 @@ services:
       retries: 30
       start_period: 60s
 
+  # A fresh provisa_exchange named volume is created root:root; Trino runs as
+  # uid 1000 and cannot write FTE (retry-policy=TASK) exchange spooling files,
+  # so every query fails with GENERIC_INTERNAL_ERROR. Chown the volume before
+  # Trino starts so the mount is writable regardless of volume recreation.
+  trino-exchange-init:
+    image: busybox
+    command: sh -c "mkdir -p /data/provisa/exchange && chown -R 1000:1000 /data/provisa/exchange"
+    volumes:
+      - provisa_exchange:/data/provisa/exchange
+    restart: "no"
+
   trino:
     restart: unless-stopped
     image: trinodb/trino:481
@@ -81,6 +92,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      trino-exchange-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "trino --execute 'SELECT 1' || exit 1"]
       interval: 10s
@@ -113,6 +126,8 @@ services:
     depends_on:
       trino:
         condition: service_healthy
+      trino-exchange-init:
+        condition: service_completed_successfully
     deploy:
       replicas: 0
 

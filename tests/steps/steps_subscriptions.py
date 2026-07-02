@@ -79,6 +79,7 @@ scenarios("../features/REQ-814.feature")
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def shared_data() -> dict:
     """Plain dict to pass state between Given/When/Then steps."""
@@ -118,6 +119,7 @@ async def _make_pool():
 # Unit-level verification: trigger SQL is well-formed and idempotent
 # ---------------------------------------------------------------------------
 
+
 def test_trigger_sql_is_idempotent_and_notifies() -> None:
     """The generated trigger SQL must use CREATE OR REPLACE / DROP IF EXISTS
     and call pg_notify on the provisa channel for INSERT/UPDATE/DELETE."""
@@ -144,6 +146,7 @@ def test_trigger_sql_is_idempotent_and_notifies() -> None:
 # REQ-565 — Given
 # ---------------------------------------------------------------------------
 
+
 @given("Provisa has started and registered a PostgreSQL subscription table")
 @pytest.mark.integration
 def given_provisa_registered_pg_table(shared_data: dict) -> None:
@@ -155,8 +158,7 @@ def given_provisa_registered_pg_table(shared_data: dict) -> None:
         try:
             async with pool.acquire() as conn:
                 await conn.execute(
-                    f"CREATE TABLE {schema}.{table} "
-                    f"(id integer PRIMARY KEY, amount numeric)"
+                    f"CREATE TABLE {schema}.{table} (id integer PRIMARY KEY, amount numeric)"
                 )
 
                 source_id = "src-pg"
@@ -173,9 +175,7 @@ def given_provisa_registered_pg_table(shared_data: dict) -> None:
                 assert table in installed, "trigger must be installed on the registered table"
 
                 # Idempotent: installing again must succeed and remain installed.
-                installed_again = await ensure_pg_notify_triggers(
-                    conn, tables, source_types
-                )
+                installed_again = await ensure_pg_notify_triggers(conn, tables, source_types)
                 assert table in installed_again
         finally:
             await pool.close()
@@ -189,6 +189,7 @@ def given_provisa_registered_pg_table(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 # REQ-565 — When
 # ---------------------------------------------------------------------------
+
 
 @when("an external process inserts a row directly into the table")
 @pytest.mark.integration
@@ -246,6 +247,7 @@ def when_external_insert(shared_data: dict) -> None:
 # REQ-565 — Then
 # ---------------------------------------------------------------------------
 
+
 @then("the trigger fires pg_notify and the SSE subscriber receives the change event")
 @pytest.mark.integration
 def then_subscriber_receives_event(shared_data: dict) -> None:
@@ -262,6 +264,7 @@ def then_subscriber_receives_event(shared_data: dict) -> None:
         assert evt.row["id"] == 7
         assert float(evt.row["amount"]) == 42.5
     finally:
+
         async def _cleanup() -> None:
             import asyncpg as _asyncpg  # noqa: PLC0415
 
@@ -287,6 +290,7 @@ def then_subscriber_receives_event(shared_data: dict) -> None:
 # REQ-566 — Graceful fallback to watermark polling on trigger install failure
 # ---------------------------------------------------------------------------
 
+
 class _PrivilegeError(Exception):
     """Stand-in for an asyncpg InsufficientPrivilegeError."""
 
@@ -299,9 +303,7 @@ class _FailingConn:
 
     async def execute(self, sql: str, *args) -> None:
         self.attempts.append(sql)
-        raise _PrivilegeError(
-            "permission denied: must be owner of relation to create trigger"
-        )
+        raise _PrivilegeError("permission denied: must be owner of relation to create trigger")
 
 
 class _LogCapture(logging.Handler):
@@ -315,9 +317,7 @@ class _LogCapture(logging.Handler):
         self.records.append(record)
 
 
-@given(
-    "a PostgreSQL table where Provisa lacks trigger creation privileges"
-)
+@given("a PostgreSQL table where Provisa lacks trigger creation privileges")
 def given_pg_table_without_privileges(shared_data: dict) -> None:
     source_id = "src-pg-restricted"
     schema = "public"
@@ -363,8 +363,7 @@ def when_provisa_starts_up(shared_data: dict) -> None:
     shared_data["log_records"] = capture.records
 
 
-@then(
-    "it logs a warning and uses watermark-based polling for that table instead of LISTEN/NOTIFY")
+@then("it logs a warning and uses watermark-based polling for that table instead of LISTEN/NOTIFY")
 def then_warning_logged_and_polling_used(shared_data: dict) -> None:
     table = shared_data["table"]
     installed: set[str] = shared_data["installed"]
@@ -378,10 +377,9 @@ def then_warning_logged_and_polling_used(shared_data: dict) -> None:
     assert warnings, "expected a warning log record on trigger install failure"
 
     # The warning message must reference the fallback to polling.
-    assert any(
-        "fall back to polling" in (r.getMessage() or "").lower()
-        for r in warnings
-    ), "warning must mention polling fallback"
+    assert any("fall back to polling" in (r.getMessage() or "").lower() for r in warnings), (
+        "warning must mention polling fallback"
+    )
 
     # The conn was actually exercised (an execute attempt was made and failed).
     assert shared_data["conn"].attempts, "trigger install should have been attempted"
@@ -393,6 +391,7 @@ def then_warning_logged_and_polling_used(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 # REQ-567 — Joined subscription tables are all watched
 # ---------------------------------------------------------------------------
+
 
 @given("a subscription that selects columns from a joined relationship")
 def given_subscription_with_join(shared_data: dict) -> None:
@@ -428,8 +427,7 @@ def when_resolve_watch_tables(shared_data: dict) -> None:
     shared_data["watch_tables"] = watch_tables
 
 
-@then(
-    "it watches every physical table referenced by the join so any change re-fires the query")
+@then("it watches every physical table referenced by the join so any change re-fires the query")
 def then_all_join_tables_watched(shared_data: dict) -> None:
     watch_tables = shared_data["watch_tables"]
     assert "orders" in watch_tables, "root table must be watched"
@@ -443,7 +441,10 @@ def then_all_join_tables_watched(shared_data: dict) -> None:
 # Then the subscription query re-fires and the updated result is streamed to the subscriber
 # ---------------------------------------------------------------------------
 
-def _make_join_ctx(root_table: str, joined_table: str, joined_field: str, root_type: str, joined_type: str) -> MagicMock:
+
+def _make_join_ctx(
+    root_table: str, joined_table: str, joined_field: str, root_type: str, joined_type: str
+) -> MagicMock:
     """Build a mock context with a registered join relationship."""
     join_meta = MagicMock()
     join_meta.target.table_name = joined_table
@@ -533,9 +534,7 @@ def given_subscription_joining_two_tables(shared_data: dict) -> None:
     related_tables = _collect_related_tables(inner_selection, root_type, ctx)
     all_watch_tables = [root_table] + sorted(related_tables - {root_table})
 
-    assert joined_table in related_tables, (
-        f"_collect_related_tables must include '{joined_table}'"
-    )
+    assert joined_table in related_tables, f"_collect_related_tables must include '{joined_table}'"
 
     # Build a mock schema (graphql-core schema not needed for this unit test)
     mock_schema = MagicMock()
@@ -565,9 +564,9 @@ def when_row_in_joined_table_changes(shared_data: dict) -> None:
     joined_table = shared_data["joined_table"]
     root_table = shared_data["root_table"]
     all_watch_tables = shared_data["all_watch_tables"]
-    role_id = shared_data["role_id"]
-    ctx = shared_data["ctx"]
-    state = shared_data["state"]
+    shared_data["role_id"]
+    shared_data["ctx"]
+    shared_data["state"]
 
     # The change event originates from the joined (non-root) table
     change_event = ChangeEvent(
@@ -673,15 +672,14 @@ def then_subscription_query_refires(shared_data: dict) -> None:
 # REQ-260 — Poll-based subscription provider (watermark polling)
 # ---------------------------------------------------------------------------
 
+
 class _FakeQueryBackend:
     """Simulates a query backend that returns rows newer than a given watermark."""
 
     def __init__(self, rows: list[dict]) -> None:
         self._rows = rows
 
-    async def fetch_since(
-        self, table: str, watermark_column: str, since: datetime
-    ) -> list[dict]:
+    async def fetch_since(self, table: str, watermark_column: str, since: datetime) -> list[dict]:
         """Return rows where the watermark column value is after ``since``."""
         result = []
         for row in self._rows:
@@ -959,9 +957,7 @@ def then_change_streamed_as_sse(shared_data: dict) -> None:
     assert insert_evt.operation == "insert"
     assert insert_evt.table == table
     assert insert_evt.row == {"id": 1, "name": "Alice"}
-    assert insert_evt.timestamp == datetime.fromtimestamp(
-        1_700_000_000, tz=timezone.utc
-    )
+    assert insert_evt.timestamp == datetime.fromtimestamp(1_700_000_000, tz=timezone.utc)
 
     # op code "u" -> update, row from "after".
     assert update_evt.operation == "update"
@@ -970,3 +966,91 @@ def then_change_streamed_as_sse(shared_data: dict) -> None:
     # op code "d" -> delete, row from "before" (after is null).
     assert delete_evt.operation == "delete"
     assert delete_evt.row == {"id": 1, "name": "Alicia"}
+
+
+from types import SimpleNamespace  # noqa: E402
+
+from provisa.api.data.subscribe import _resolve_provider_type  # noqa: E402
+from provisa.subscriptions.registry import get_provider  # noqa: E402
+
+
+@given("a PostgreSQL table with live.strategy=native")
+def given_pg_table_with_live_strategy_native(shared_data: dict) -> None:
+    live = SimpleNamespace(strategy="native")
+    tbl_meta = SimpleNamespace(live=live)
+    state = SimpleNamespace(
+        cdc_sources={},
+        source_pools=None,
+        kafka_table_configs={},
+        ingest_engines=None,
+        rss_sources=None,
+        websocket_sources=None,
+        tenant_db=MagicMock(),
+    )
+    shared_data["source_type"] = "postgresql"
+    shared_data["source_id"] = "src-pg"
+    shared_data["tbl_meta"] = tbl_meta
+    shared_data["state"] = state
+
+
+@when("get_provider() is called")
+def when_get_provider_is_called(shared_data: dict) -> None:
+    source_type = shared_data["source_type"]
+    source_id = shared_data["source_id"]
+    tbl_meta = shared_data["tbl_meta"]
+    state = shared_data["state"]
+
+    resolved = _resolve_provider_type(source_type, source_id, tbl_meta, state)
+    shared_data["resolved_provider_type"] = resolved
+
+    config = {"pool": state.tenant_db}
+    provider = get_provider(resolved, config)
+    shared_data["provider"] = provider
+
+
+@then("PgNotificationProvider is instantiated")
+def then_pg_notification_provider_instantiated(shared_data: dict) -> None:
+    provider = shared_data["provider"]
+    assert isinstance(provider, PgNotificationProvider), (
+        f"Expected PgNotificationProvider, got {type(provider).__name__!r}"
+    )
+
+
+@then("the source_type is not used to dispatch")
+def then_source_type_not_used_to_dispatch(shared_data: dict) -> None:
+    resolved = shared_data["resolved_provider_type"]
+    tbl_meta = shared_data["tbl_meta"]
+
+    live = getattr(tbl_meta, "live", None)
+    strategy = getattr(live, "strategy", None) if live is not None else None
+
+    assert strategy == "native", f"Expected strategy='native', got {strategy!r}"
+    assert resolved == "postgresql", (
+        f"Expected resolved provider type 'postgresql' (from strategy=native + source_type), "
+        f"got {resolved!r}"
+    )
+
+    fake_source_type = "snowflake"
+    fake_resolved = _resolve_provider_type(
+        fake_source_type,
+        shared_data["source_id"],
+        tbl_meta,
+        shared_data["state"],
+    )
+    assert fake_resolved == fake_source_type, (
+        "With strategy=native, the resolved type equals the passed source_type, "
+        "proving dispatch is strategy-driven (native passes through to source_type), "
+        f"but got {fake_resolved!r} instead of {fake_source_type!r}"
+    )
+
+    debezium_tbl = SimpleNamespace(live=SimpleNamespace(strategy="debezium"))
+    debezium_resolved = _resolve_provider_type(
+        "postgresql",
+        shared_data["source_id"],
+        debezium_tbl,
+        shared_data["state"],
+    )
+    assert debezium_resolved == "debezium", (
+        "strategy=debezium must resolve to 'debezium' regardless of source_type, "
+        f"got {debezium_resolved!r}"
+    )

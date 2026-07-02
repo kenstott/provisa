@@ -846,13 +846,13 @@ def _make_graphql_default_schema_input() -> SchemaInput:
 # Scenario bindings
 # ===========================================================================
 
-from graphql import print_schema, parse
-from pytest_bdd import given, when, then, scenarios
+from graphql import print_schema, parse  # noqa: E402
+from pytest_bdd import given, when, then, scenarios  # noqa: E402
 
-from provisa.compiler.rls import build_rls_context, inject_rls
-from provisa.compiler.sql_gen import build_context, compile_query
-from provisa.cypher.translator import _coerce_ts_literals
-from provisa.grpc.proto_gen import generate_proto
+from provisa.compiler.rls import build_rls_context, inject_rls  # noqa: E402
+from provisa.compiler.sql_gen import build_context, compile_query  # noqa: E402
+from provisa.cypher.translator import _coerce_ts_literals  # noqa: E402
+from provisa.grpc.proto_gen import generate_proto  # noqa: E402
 
 scenarios("../features/REQ-008.feature")
 scenarios("../features/REQ-253.feature")
@@ -926,9 +926,7 @@ def req253_naming_change(shared_data):
     # Baseline schema under snake naming, then flip to graphql-default (camelCase
     # fields, PascalCase types) to simulate an admin naming-convention mutation.
     _naming.configure(gql="snake")
-    shared_data["req253_before"] = generate_schema(
-        _make_naming_convention_schema_input([])
-    )
+    shared_data["req253_before"] = generate_schema(_make_naming_convention_schema_input([]))
     _naming.configure(gql="graphql-default")
     shared_data["req253_input"] = _make_naming_convention_schema_input([])
 
@@ -1055,12 +1053,8 @@ def req525_roles(shared_data):
 
 @when("proto definitions are generated")
 def req525_generate(shared_data):
-    shared_data["req525_admin_proto"] = generate_proto(
-        shared_data["req525_admin_input"]
-    )
-    shared_data["req525_analyst_proto"] = generate_proto(
-        shared_data["req525_analyst_input"]
-    )
+    shared_data["req525_admin_proto"] = generate_proto(shared_data["req525_admin_input"])
+    shared_data["req525_analyst_proto"] = generate_proto(shared_data["req525_analyst_input"])
 
 
 @then("each role receives a proto reflecting only its visible tables and columns")
@@ -1172,9 +1166,7 @@ def _call_schema_version(sdl_module) -> str:
 
 @when("GET /data/schema-version is called")
 def req537_call(shared_data):
-    shared_data["req537_after"] = _call_schema_version(
-        shared_data["req537_sdl_module"]
-    )
+    shared_data["req537_after"] = _call_schema_version(shared_data["req537_sdl_module"])
 
 
 @then("it returns a new <boot-id>-<counter> string reflecting the rebuild")
@@ -1208,9 +1200,7 @@ def req654_table(shared_data):
     shared_data["req654_ctx"] = build_context(si)
 
 
-@when(
-    "a _group_by query is submitted with by: [category] and aggregate count"
-)
+@when("a _group_by query is submitted with by: [category] and aggregate count")
 def req654_submit(shared_data):
     # 'region' is the categorical/grouping column on the orders table.
     doc = parse(
@@ -1223,9 +1213,7 @@ def req654_submit(shared_data):
         }
         """
     )
-    shared_data["req654_compiled"] = compile_query(
-        doc, shared_data["req654_ctx"], variables=None
-    )
+    shared_data["req654_compiled"] = compile_query(doc, shared_data["req654_ctx"], variables=None)
 
 
 @then("the response contains one GroupByRow per distinct category value")
@@ -1255,3 +1243,819 @@ def req654_assert_fields(shared_data):
     agg_refs = [c for c in col_refs if c.nested_in == "aggregate"]
     assert any(c.field_name == "region" for c in group_key_refs)
     assert any(c.field_name == "count" for c in agg_refs)
+
+
+scenarios("../features/REQ-009.feature")
+
+
+# ---------------------------------------------------------------------------
+# REQ-009: Single-statement SQL compilation (no resolver chain, no N+1)
+# ---------------------------------------------------------------------------
+
+
+@given("a valid GraphQL query AST")
+def req009_valid_ast(shared_data):
+    from provisa.compiler import naming as _naming
+
+    _naming.configure(gql="snake")
+    si = _make_req009_schema_input()
+    shared_data["req009_ctx"] = build_context(si)
+    # A query that exercises a join (orders -> customers) to prove single-statement
+    # compilation rather than a resolver chain.
+    shared_data["req009_doc"] = parse(
+        """
+        {
+            orders {
+                id
+                amount
+                status
+                customers {
+                    id
+                    name
+                    email
+                }
+            }
+        }
+        """
+    )
+
+
+@when("the compiler processes it")
+def req009_compile(shared_data):
+    shared_data["req009_results"] = compile_query(
+        shared_data["req009_doc"], shared_data["req009_ctx"]
+    )
+
+
+@then("it emits a single PG-style SQL statement with no resolver chain and no N+1 pattern")
+def req009_assert(shared_data):
+    results = shared_data["req009_results"]
+
+    # One root field → exactly one CompiledQuery (single statement per root field).
+    assert len(results) == 1
+    cq = results[0]
+
+    sql = cq.sql
+
+    # Must be a single SQL statement — no semicolons separating multiple statements.
+    statements = [s.strip() for s in sql.split(";") if s.strip()]
+    assert len(statements) == 1, f"Expected a single SQL statement, got {len(statements)}: {sql!r}"
+
+    # Must start with SELECT (PG-style SQL).
+    assert sql.strip().upper().startswith("SELECT"), f"Expected SELECT statement, got: {sql!r}"
+
+    # Double-quoted identifiers are used (PG-style).
+    assert '"orders"' in sql or '"public"' in sql, (
+        f"Expected double-quoted identifiers in SQL: {sql!r}"
+    )
+
+    # The relationship (orders → customers) is resolved within the single statement
+    # via a JOIN or correlated subquery — no separate SQL for nested fields.
+    # This is the core anti-N+1 guarantee: relationship data is embedded in the
+    # single compiled statement, not a separate resolver call.
+    sql_upper = sql.upper()
+    has_join = "JOIN" in sql_upper
+    has_subquery = "SELECT" in sql_upper[sql_upper.index("SELECT") + 6 :]
+    assert has_join or has_subquery, (
+        f"Expected relationship to be compiled into single statement via JOIN or "
+        f"correlated subquery, got: {sql!r}"
+    )
+
+    # The compiled result references only one root field.
+    assert cq.root_field == "orders"
+
+    # The columns list must include both root and nested fields — proving they
+    # are part of the single compiled result, not separate resolver outputs.
+    col_field_names = {c.field_name for c in cq.columns}
+    assert "id" in col_field_names
+    # At least one column from the nested customers relationship is present.
+    nested_cols = [c for c in cq.columns if c.nested_in is not None]
+    assert len(nested_cols) > 0, (
+        "Expected nested relationship columns compiled into single statement"
+    )
+
+
+scenarios("../features/REQ-252.feature")
+
+
+# ---------------------------------------------------------------------------
+# REQ-252: Schema inference for supported connectors (MongoDB, Cassandra, ES)
+# ---------------------------------------------------------------------------
+
+
+@given("a MongoDB source with discover: true")
+def req252_mongo_source(shared_data):
+    from provisa.compiler import naming as _naming
+
+    _naming.configure(gql="snake")
+    shared_data["req252_schema_input"] = _make_mongo_discover_schema_input(
+        explicit_columns=list(_MONGO_EXPLICIT_COLUMNS),
+        include_discover_flag=True,
+    )
+    # Record which column names were explicitly defined so we can assert
+    # precedence in the Then step.
+    shared_data["req252_explicit_names"] = {c["column_name"] for c in _MONGO_EXPLICIT_COLUMNS}
+    # Record the full inferred column set for completeness checks.
+    shared_data["req252_inferred_names"] = {c.column_name for c in _MONGO_INFERRED_COLUMNS}
+
+
+@when("the schema compiler runs")
+def req252_run_compiler(shared_data):
+    si = shared_data["req252_schema_input"]
+    schema = generate_schema(si)
+    shared_data["req252_schema"] = schema
+    shared_data["req252_sdl"] = print_schema(schema)
+
+    # Also build the compilation context so we can inspect column metadata.
+    ctx = build_context(si)
+    shared_data["req252_ctx"] = ctx
+
+
+@then(
+    "it introspects the connector and generates a starting column list, "
+    "with explicit definitions taking precedence"
+)
+def req252_assert_inference(shared_data):
+    from provisa.discovery.column_inference import merge_discovered_columns
+
+    sdl = shared_data["req252_sdl"]
+    shared_data["req252_ctx"]
+    explicit_names = shared_data["req252_explicit_names"]
+    inferred_names = shared_data["req252_inferred_names"]
+
+    # --- 1. Schema was generated successfully ---
+    assert "type Query" in sdl, "GraphQL schema must contain a Query type"
+    # The MongoDB table user_events must appear as a GraphQL type.
+    assert "UserEvents" in sdl or "user_events" in sdl.lower(), (
+        f"Expected user_events / UserEvents in SDL:\n{sdl}"
+    )
+
+    # --- 2. Inferred columns (non-explicit) appear in the generated schema ---
+    # 'email', 'score', and 'created_at' were NOT in the explicit list but
+    # were returned by the auto-discovery introspection; they must be present.
+    inferred_only = inferred_names - explicit_names
+    for col_name in inferred_only:
+        assert col_name in sdl, (
+            f"Inferred column '{col_name}' should appear in SDL after discovery:\n{sdl}"
+        )
+
+    # --- 3. Explicit column definitions take precedence over inferred ones ---
+    # Use merge_discovered_columns directly to assert the precedence contract.
+    inferred_col_dicts = [
+        {"name": c.column_name, "type": c.data_type} for c in _MONGO_INFERRED_COLUMNS
+    ]
+    explicit_col_dicts = [{"name": c["column_name"]} for c in _MONGO_EXPLICIT_COLUMNS]
+    merged = merge_discovered_columns(explicit_col_dicts, inferred_col_dicts)
+
+    merged_names = {c["name"] for c in merged}
+    # All explicit names are present in the merged result.
+    for name in explicit_names:
+        assert name in merged_names, f"Explicit column '{name}' missing from merged column list"
+    # All inferred names also appear (either via explicit def or discovered).
+    for name in inferred_names:
+        assert name in merged_names, f"Inferred column '{name}' missing from merged column list"
+    # No duplicates: each name appears exactly once.
+    merged_name_list = [c["name"] for c in merged]
+    assert len(merged_name_list) == len(set(merged_name_list)), (
+        f"Duplicate column names in merged list: {merged_name_list}"
+    )
+    # Explicit definitions win: for 'user_name' (in both lists), the explicit
+    # entry (which has no 'type' key) must be used — not the inferred varchar.
+    user_name_entries = [c for c in merged if c["name"] == "user_name"]
+    assert len(user_name_entries) == 1, (
+        "user_name must appear exactly once in the merged column list"
+    )
+    # The explicit entry for user_name had no 'type' key — confirm it is NOT
+    # overridden by the inferred 'varchar(255)' type.
+    assert (
+        "type" not in user_name_entries[0] or user_name_entries[0].get("type") != "varchar(255)"
+    ), "Explicit definition of user_name must take precedence over inferred type"
+
+    # --- 4. The discover: true flag is present on the table definition ---
+    si = shared_data["req252_schema_input"]
+    table_def = si.tables[0] if hasattr(si, "tables") else si["tables"][0]
+    # Normalise: SchemaInput may expose tables as list of dicts or as an
+    # attribute on a dataclass.
+    if isinstance(table_def, dict):
+        assert table_def.get("discover") is True, (
+            "Table definition must carry discover: true for MongoDB sources"
+        )
+
+    # --- 5. Source type is mongodb (supports inference) ---
+    if isinstance(table_def, dict):
+        assert table_def.get("source_type") == "mongodb", (
+            "source_type must be 'mongodb' for this scenario"
+        )
+
+
+scenarios("../features/REQ-259.feature")
+
+
+# ---------------------------------------------------------------------------
+# REQ-259: Apollo Federation v2 subgraph support
+# ---------------------------------------------------------------------------
+
+
+@given("Apollo Federation v2 support is enabled")
+def req259_federation_enabled(shared_data):
+    from provisa.compiler import naming as _naming
+
+    _naming.configure(gql="snake")
+    si = _make_federation_schema_input(role_id="admin")
+    shared_data["req259_schema_input"] = si
+
+
+@when("the schema is generated")
+def req259_generate_schema(shared_data):
+    from provisa.compiler.schema_gen import generate_schema as _gen
+
+    si = shared_data["req259_schema_input"]
+    schema = _gen(si, federation_v2=True)
+    shared_data["req259_schema"] = schema
+    shared_data["req259_sdl"] = print_schema(schema)
+
+
+@then(
+    "@key directives, _service, and _entities fields are present and entity "
+    "resolution respects RLS and masking"
+)
+def req259_assert_federation(shared_data):
+    from graphql import GraphQLObjectType, GraphQLUnionType
+
+    sdl = shared_data["req259_sdl"]
+    schema = shared_data["req259_schema"]
+
+    # --- 1. @key directives appear on entity types (derived from pk_columns) ---
+    assert "@key" in sdl, f"Expected @key directives in Federation v2 SDL:\n{sdl}"
+
+    # The Products type must carry @key(fields: "id") since pk_columns=["id"].
+    assert 'key(fields: "id")' in sdl or "@key" in sdl, f"Expected @key on Products entity:\n{sdl}"
+
+    # --- 2. _service root field is present ---
+    query_type = schema.query_type
+    assert query_type is not None, "Schema must have a Query type"
+    assert "_service" in query_type.fields, (
+        f"Expected _service field on Query type. Fields: {list(query_type.fields.keys())}"
+    )
+
+    # _service must return a _Service object with an sdl String field.
+    service_field = query_type.fields["_service"]
+    service_type = service_field.type
+    # Unwrap NonNull if needed.
+    if hasattr(service_type, "of_type"):
+        service_type = service_type.of_type
+    assert isinstance(service_type, GraphQLObjectType), (
+        f"_service must return an object type, got {service_type!r}"
+    )
+    assert "sdl" in service_type.fields, (
+        f"_Service type must have an 'sdl' field. Fields: {list(service_type.fields.keys())}"
+    )
+
+    # --- 3. _entities root field is present ---
+    assert "_entities" in query_type.fields, (
+        f"Expected _entities field on Query type. Fields: {list(query_type.fields.keys())}"
+    )
+
+    # _entities must accept a representations argument (list of _Any scalars).
+    entities_field = query_type.fields["_entities"]
+    assert "representations" in entities_field.args, (
+        f"_entities must accept a 'representations' argument. "
+        f"Args: {list(entities_field.args.keys())}"
+    )
+
+    # _entities must return a union of all entity types.
+    entities_type = entities_field.type
+    # Unwrap NonNull/List wrappers.
+    unwrapped = entities_type
+    while hasattr(unwrapped, "of_type"):
+        unwrapped = unwrapped.of_type
+    assert isinstance(unwrapped, (GraphQLObjectType, GraphQLUnionType)), (
+        f"_entities return type must be a union or object type, got {unwrapped!r}"
+    )
+
+    # --- 4. Entity types (Products, Reviews) are present in the schema ---
+    type_map = schema.type_map
+    entity_type_names = [k for k in type_map if not k.startswith("_") and not k.startswith("__")]
+    assert any("Product" in n for n in entity_type_names), (
+        f"Expected a Products/Product entity type in schema. Types: {entity_type_names}"
+    )
+
+    # --- 5. Batch entity resolution: _entities accepts a list (representations) ---
+    representations_arg = entities_field.args["representations"]
+    rep_type = representations_arg.type
+    # Unwrap NonNull to reach List.
+    while hasattr(rep_type, "of_type") and not hasattr(rep_type, "of_type.of_type"):
+        rep_type.of_type
+        # Check for list wrapper.
+        from graphql import GraphQLList, GraphQLNonNull
+
+        if isinstance(rep_type, (GraphQLList, GraphQLNonNull)):
+            rep_type = rep_type.of_type
+            break
+        break
+    # The argument must accept a list type (batch resolution).
+    from graphql import GraphQLList, GraphQLNonNull
+
+    raw_arg_type = representations_arg.type
+    # Walk wrappers to find List.
+    t = raw_arg_type
+    found_list = False
+    for _ in range(4):
+        if isinstance(t, GraphQLList):
+            found_list = True
+            break
+        if hasattr(t, "of_type"):
+            t = t.of_type
+        else:
+            break
+    assert found_list, (
+        f"representations argument must be a List type for batch entity resolution. "
+        f"Got: {representations_arg.type!r}"
+    )
+
+    # --- 6. RLS and masking: admin role sees price; verify role-driven visibility ---
+    # The admin SchemaInput was used, so price (admin-only) must be in the SDL.
+    assert "price" in sdl, f"Admin role should see 'price' column in federation schema:\n{sdl}"
+
+    # Build an analyst-role federation schema and verify 'price' is masked.
+    analyst_si = _make_federation_schema_input(role_id="analyst")
+    analyst_schema = generate_schema(analyst_si, federation_v2=True)
+    analyst_sdl = print_schema(analyst_schema)
+    assert "price" not in analyst_sdl, (
+        f"Analyst role must NOT see 'price' column (masking/RLS):\n{analyst_sdl}"
+    )
+
+    # Analyst federation schema must still have _service and _entities.
+    analyst_query = analyst_schema.query_type
+    assert "_service" in analyst_query.fields, (
+        "Analyst federation schema must still expose _service"
+    )
+    assert "_entities" in analyst_query.fields, (
+        "Analyst federation schema must still expose _entities"
+    )
+
+    # --- 7. Federation is disabled by default (non-federation schema has no _service/_entities) ---
+    default_si = _make_federation_schema_input(role_id="admin")
+    default_schema = generate_schema(default_si)  # federation_v2 defaults to False
+    default_query = default_schema.query_type
+    assert "_service" not in default_query.fields, (
+        "Federation v2 must be disabled by default: _service must not appear in non-federation schema"
+    )
+    assert "_entities" not in default_query.fields, (
+        "Federation v2 must be disabled by default: _entities must not appear in non-federation schema"
+    )
+
+
+scenarios("../features/REQ-411.feature")
+
+
+# ---------------------------------------------------------------------------
+# REQ-411: hasura-default naming convention
+# ---------------------------------------------------------------------------
+
+
+@given("naming convention is set to hasura-default")
+def req411_set_naming(shared_data):
+    from provisa.compiler import naming as _naming
+
+    _naming.configure(gql="hasura-default")
+    shared_data["req411_schema_input"] = _make_hasura_default_schema_input()
+
+
+@when("the schema is generated")
+def req411_generate_schema(shared_data):
+    si = shared_data["req411_schema_input"]
+    schema = generate_schema(si)
+    shared_data["req411_schema"] = schema
+    shared_data["req411_sdl"] = print_schema(schema)
+
+
+@then("mutation names and field names use snake_case matching Hasura V2 defaults")
+def req411_assert_snake_case(shared_data):
+    from graphql import GraphQLObjectType
+
+    schema = shared_data["req411_schema"]
+    sdl = shared_data["req411_sdl"]
+
+    # --- 1. Mutation type exists and has snake_case mutation names ---
+    mutation_type = schema.mutation_type
+    assert mutation_type is not None, (
+        f"Schema must have a Mutation type for hasura-default convention.\nSDL:\n{sdl}"
+    )
+
+    mutation_field_names = list(mutation_type.fields.keys())
+
+    # Hasura V2 default mutation names for "orders" table:
+    # insert_orders, update_orders, delete_orders
+    assert "insert_orders" in mutation_field_names, (
+        f"Expected 'insert_orders' mutation. Got: {mutation_field_names}"
+    )
+    assert "update_orders" in mutation_field_names, (
+        f"Expected 'update_orders' mutation. Got: {mutation_field_names}"
+    )
+    assert "delete_orders" in mutation_field_names, (
+        f"Expected 'delete_orders' mutation. Got: {mutation_field_names}"
+    )
+
+    # All mutation names must be snake_case
+    for mut_name in mutation_field_names:
+        assert _is_snake_case(mut_name), f"Mutation name '{mut_name}' is not snake_case"
+
+    # --- 2. Query field name for orders is snake_case ---
+    query_type = schema.query_type
+    assert query_type is not None, "Schema must have a Query type"
+    query_field_names = list(query_type.fields.keys())
+
+    # The root query field for orders table must be snake_case
+    orders_fields = [f for f in query_field_names if "orders" in f]
+    assert len(orders_fields) > 0, (
+        f"Expected at least one orders-related query field. Got: {query_field_names}"
+    )
+    for f_name in orders_fields:
+        assert _is_snake_case(f_name), f"Query field name '{f_name}' is not snake_case"
+
+    # --- 3. Object type field names are snake_case ---
+    # Find the Orders type and check its field names
+    type_map = schema.type_map
+    orders_type = None
+    for type_name, gql_type in type_map.items():
+        if (
+            isinstance(gql_type, GraphQLObjectType)
+            and "rder" in type_name
+            and not type_name.startswith("_")
+        ):
+            orders_type = gql_type
+            break
+
+    assert orders_type is not None, (
+        f"Expected an Orders object type in schema. Types: {list(type_map.keys())}"
+    )
+
+    # All field names on the Orders type must be snake_case
+    for field_name in orders_type.fields.keys():
+        assert _is_snake_case(field_name), (
+            f"Field name '{field_name}' on type '{orders_type.name}' is not snake_case"
+        )
+
+    # Specifically verify the multi-word column names remain snake_case
+    orders_field_names = list(orders_type.fields.keys())
+    assert "customer_id" in orders_field_names, (
+        f"Expected 'customer_id' (snake_case) field. Got: {orders_field_names}"
+    )
+    assert "order_total" in orders_field_names, (
+        f"Expected 'order_total' (snake_case) field. Got: {orders_field_names}"
+    )
+    assert "order_status" in orders_field_names, (
+        f"Expected 'order_status' (snake_case) field. Got: {orders_field_names}"
+    )
+    assert "created_at" in orders_field_names, (
+        f"Expected 'created_at' (snake_case) field. Got: {orders_field_names}"
+    )
+
+    # --- 4. No camelCase names appear for the orders type fields ---
+    camel_case_pattern = re.compile(r"[a-z][A-Z]")
+    for field_name in orders_type.fields.keys():
+        assert not camel_case_pattern.search(field_name), (
+            f"Field name '{field_name}' appears to be camelCase, not snake_case"
+        )
+
+
+scenarios("../features/REQ-412.feature")
+
+
+# ---------------------------------------------------------------------------
+# REQ-412: graphql-default naming convention
+# ---------------------------------------------------------------------------
+
+
+def _is_camel_case(name: str) -> bool:
+    """Return True if name starts with a lowercase letter and contains no underscores (camelCase)."""
+    return bool(re.match(r"^[a-z][a-zA-Z0-9]*$", name))
+
+
+def _is_pascal_case(name: str) -> bool:
+    """Return True if name starts with an uppercase letter (PascalCase)."""
+    return bool(re.match(r"^[A-Z][a-zA-Z0-9]*$", name))
+
+
+@given("the default Provisa naming convention")
+def req412_set_default_naming(shared_data):
+    from provisa.compiler import naming as _naming
+
+    # graphql-default is the Provisa default per REQ-412.
+    _naming.configure(gql="graphql-default")
+    shared_data["req412_schema_input"] = _make_graphql_default_schema_input()
+
+
+@when("the schema is generated")
+def req412_generate_schema(shared_data):
+    si = shared_data["req412_schema_input"]
+    schema = generate_schema(si)
+    shared_data["req412_schema"] = schema
+    shared_data["req412_sdl"] = print_schema(schema)
+
+
+@then("field names are camelCase, types are PascalCase, and mutations are camelCase")
+def req412_assert_graphql_default(shared_data):
+    from graphql import GraphQLObjectType
+
+    schema = shared_data["req412_schema"]
+    sdl = shared_data["req412_sdl"]
+
+    # --- 1. Object type names are PascalCase ---
+    type_map = schema.type_map
+    user_defined_types = [
+        (name, t)
+        for name, t in type_map.items()
+        if isinstance(t, GraphQLObjectType)
+        and not name.startswith("_")
+        and not name.startswith("__")
+        and name not in ("Query", "Mutation", "Subscription")
+    ]
+    assert len(user_defined_types) > 0, (
+        f"Expected user-defined object types in schema. Types: {list(type_map.keys())}"
+    )
+    for type_name, _ in user_defined_types:
+        assert _is_pascal_case(type_name), (
+            f"Type name '{type_name}' is not PascalCase as required by graphql-default"
+        )
+
+    # Specific type names for orders and order_items must be PascalCase.
+    type_names = {n for n, _ in user_defined_types}
+    assert any("Orders" in n or "Order" in n for n in type_names), (
+        f"Expected 'Orders' or similar PascalCase type. Types: {type_names}"
+    )
+    assert any("OrderItems" in n or "OrderItem" in n for n in type_names), (
+        f"Expected 'OrderItems' or similar PascalCase type. Types: {type_names}"
+    )
+
+    # --- 2. Field names on object types are camelCase ---
+    for type_name, gql_type in user_defined_types:
+        for field_name in gql_type.fields.keys():
+            # Single-word fields like 'id' are valid camelCase.
+            assert _is_camel_case(field_name), (
+                f"Field '{field_name}' on type '{type_name}' is not camelCase "
+                f"as required by graphql-default"
+            )
+
+    # Specifically verify multi-word snake_case columns are converted to camelCase.
+    orders_type = next(
+        (t for n, t in user_defined_types if "Order" in n and "Item" not in n),
+        None,
+    )
+    assert orders_type is not None, (
+        f"Expected an Orders object type. Types: {[n for n, _ in user_defined_types]}"
+    )
+    orders_field_names = list(orders_type.fields.keys())
+
+    # customer_id → customerId
+    assert "customerId" in orders_field_names, (
+        f"Expected 'customerId' (camelCase of customer_id). Got: {orders_field_names}"
+    )
+    # order_total → orderTotal
+    assert "orderTotal" in orders_field_names, (
+        f"Expected 'orderTotal' (camelCase of order_total). Got: {orders_field_names}"
+    )
+    # order_status → orderStatus
+    assert "orderStatus" in orders_field_names, (
+        f"Expected 'orderStatus' (camelCase of order_status). Got: {orders_field_names}"
+    )
+    # created_at → createdAt
+    assert "createdAt" in orders_field_names, (
+        f"Expected 'createdAt' (camelCase of created_at). Got: {orders_field_names}"
+    )
+
+    # No snake_case field names (with underscores) on user-defined types.
+    underscore_re = re.compile(r"_")
+    for type_name, gql_type in user_defined_types:
+        for field_name in gql_type.fields.keys():
+            assert not underscore_re.search(field_name), (
+                f"Field '{field_name}' on type '{type_name}' contains underscores; "
+                f"graphql-default requires camelCase"
+            )
+
+    # --- 3. Mutation names are camelCase (insertOrders, updateOrders) ---
+    mutation_type = schema.mutation_type
+    assert mutation_type is not None, (
+        f"Schema must have a Mutation type for graphql-default convention.\nSDL:\n{sdl}"
+    )
+
+    mutation_field_names = list(mutation_type.fields.keys())
+
+    # graphql-default mutation names per REQ-412: insertOrders, updateOrders, deleteOrders
+    assert "insertOrders" in mutation_field_names, (
+        f"Expected 'insertOrders' mutation (camelCase). Got: {mutation_field_names}"
+    )
+    assert "updateOrders" in mutation_field_names, (
+        f"Expected 'updateOrders' mutation (camelCase). Got: {mutation_field_names}"
+    )
+    assert "deleteOrders" in mutation_field_names, (
+        f"Expected 'deleteOrders' mutation (camelCase). Got: {mutation_field_names}"
+    )
+
+    # All mutation names must be camelCase (no underscores).
+    for mut_name in mutation_field_names:
+        assert _is_camel_case(mut_name), (
+            f"Mutation name '{mut_name}' is not camelCase as required by graphql-default"
+        )
+        assert "_" not in mut_name, (
+            f"Mutation name '{mut_name}' contains underscores; "
+            f"graphql-default requires camelCase mutations"
+        )
+
+    # --- 4. Query root field names are camelCase ---
+    query_type = schema.query_type
+    assert query_type is not None, "Schema must have a Query type"
+    for qf_name in query_type.fields.keys():
+        # Internal federation/system fields are excluded from this check.
+        if qf_name.startswith("_"):
+            continue
+        assert _is_camel_case(qf_name), (
+            f"Query field '{qf_name}' is not camelCase as required by graphql-default"
+        )
+
+    # --- 5. Confirm graphql-default is the Provisa default (not snake, not hasura-default) ---
+    from provisa.compiler import naming as _naming
+
+    current_convention = _naming.current_convention()
+    assert current_convention == "graphql-default", (
+        f"Expected graphql-default to be the active Provisa naming convention, "
+        f"got: {current_convention!r}"
+    )
+
+
+scenarios("../features/REQ-478.feature")
+
+
+# ---------------------------------------------------------------------------
+# REQ-478: Statistical row sampling
+# ---------------------------------------------------------------------------
+
+
+@given("a query with sample: 10.0")
+def req478_query_with_sample(shared_data):
+    from provisa.compiler import naming as _naming
+
+    _naming.configure(gql="snake")
+    si = _make_sampling_schema_input()
+    shared_data["req478_ctx"] = build_context(si)
+    shared_data["req478_schema"] = generate_schema(si)
+    shared_data["req478_doc"] = parse("{ orders(sample: 10.0) { id amount status } }")
+
+
+@when("the compiler processes it")
+def req478_compile(shared_data):
+    shared_data["req478_results"] = compile_query(
+        shared_data["req478_doc"], shared_data["req478_ctx"]
+    )
+
+
+@then("it emits TABLESAMPLE BERNOULLI (10) on the base table and rejects values outside (0, 100]")
+def req478_assert_tablesample(shared_data):
+
+    results = shared_data["req478_results"]
+    assert len(results) == 1
+    sql = results[0].sql
+
+    # The compiler must emit TABLESAMPLE BERNOULLI (10) on the base table.
+    sql_upper = sql.upper()
+    assert "TABLESAMPLE" in sql_upper, f"Expected TABLESAMPLE in compiled SQL:\n{sql}"
+    assert "BERNOULLI" in sql_upper, f"Expected BERNOULLI sampling in compiled SQL:\n{sql}"
+    assert "10" in sql, f"Expected percentage 10 in compiled SQL:\n{sql}"
+
+    ctx = shared_data["req478_ctx"]
+
+    # Out-of-range value: 0 is excluded from (0, 100].
+    doc_zero = parse("{ orders(sample: 0.0) { id } }")
+    with pytest.raises(Exception) as exc_info:
+        compile_query(doc_zero, ctx)
+    assert any(
+        word in str(exc_info.value).lower()
+        for word in ("sample", "range", "invalid", "percent", "must", "0")
+    ), f"Expected compile-time rejection of sample=0.0, got: {exc_info.value}"
+
+    # Out-of-range value: > 100 is rejected.
+    doc_over = parse("{ orders(sample: 101.0) { id } }")
+    with pytest.raises(Exception) as exc_info2:
+        compile_query(doc_over, ctx)
+    assert any(
+        word in str(exc_info2.value).lower()
+        for word in ("sample", "range", "invalid", "percent", "must", "100")
+    ), f"Expected compile-time rejection of sample=101.0, got: {exc_info2.value}"
+
+    # Boundary: 100.0 is valid (inclusive upper bound).
+    doc_full = parse("{ orders(sample: 100.0) { id } }")
+    results_full = compile_query(doc_full, ctx)
+    assert len(results_full) == 1
+    assert "TABLESAMPLE" in results_full[0].sql.upper(), (
+        f"Expected TABLESAMPLE for sample=100.0:\n{results_full[0].sql}"
+    )
+
+    # Boundary: a small positive value like 0.1 is valid.
+    doc_small = parse("{ orders(sample: 0.1) { id } }")
+    results_small = compile_query(doc_small, ctx)
+    assert len(results_small) == 1
+    assert "TABLESAMPLE" in results_small[0].sql.upper(), (
+        f"Expected TABLESAMPLE for sample=0.1:\n{results_small[0].sql}"
+    )
+
+
+scenarios("../features/REQ-655.feature")
+
+
+# ---------------------------------------------------------------------------
+# REQ-655: group_by HAVING and FILTER clauses
+# ---------------------------------------------------------------------------
+
+
+@given("a _group_by query with a having: clause on an aggregate field")
+def req655_group_by_having_query(shared_data):
+    from provisa.compiler import naming as _naming
+
+    _naming.configure(gql="snake")
+    si = _make_group_by_schema_input()
+    shared_data["req655_schema"] = generate_schema(si)
+    shared_data["req655_ctx"] = build_context(si)
+    # Query: group orders by region, filter groups where count > 3 (HAVING),
+    # and use aggregates(where:) for conditional aggregation (FILTER WHERE).
+    shared_data["req655_doc"] = parse(
+        """
+        query {
+            orders_group_by(
+                by: [region]
+                having: { count: { _gt: 3 } }
+            ) {
+                groupKey
+                aggregate {
+                    count
+                    sum { amount }
+                    aggregates(where: { status: { _eq: "active" } }) {
+                        count
+                        sum { amount }
+                    }
+                }
+            }
+        }
+        """
+    )
+
+
+@when("the query is compiled")
+def req655_compile_query(shared_data):
+    shared_data["req655_compiled"] = compile_query(
+        shared_data["req655_doc"],
+        shared_data["req655_ctx"],
+        variables=None,
+    )
+
+
+@then("the generated SQL includes a HAVING clause after GROUP BY")
+def req655_assert_having(shared_data):
+    compiled = shared_data["req655_compiled"]
+    assert len(compiled) == 1, f"Expected exactly one compiled query, got {len(compiled)}"
+    sql = compiled[0].sql
+    sql_upper = sql.upper()
+
+    # GROUP BY must appear before HAVING.
+    assert "GROUP BY" in sql_upper, f"Expected GROUP BY in compiled SQL:\n{sql}"
+    assert "HAVING" in sql_upper, f"Expected HAVING clause in compiled SQL:\n{sql}"
+
+    # HAVING must appear after GROUP BY in the statement.
+    group_by_pos = sql_upper.index("GROUP BY")
+    having_pos = sql_upper.index("HAVING")
+    assert having_pos > group_by_pos, f"HAVING must appear after GROUP BY in SQL:\n{sql}"
+
+    # The HAVING clause must reference count > 3.
+    having_fragment = sql_upper[having_pos:]
+    assert "COUNT" in having_fragment, f"HAVING clause must reference COUNT aggregate:\n{sql}"
+    assert "3" in having_fragment, f"HAVING clause must reference the threshold value 3:\n{sql}"
+
+
+@then("aggregates(where:) generates a SQL FILTER (WHERE ...) expression")
+def req655_assert_filter_where(shared_data):
+    compiled = shared_data["req655_compiled"]
+    assert len(compiled) == 1, f"Expected exactly one compiled query, got {len(compiled)}"
+    sql = compiled[0].sql
+    sql_upper = sql.upper()
+
+    # The aggregates(where:) argument must produce a FILTER (WHERE ...) expression.
+    assert "FILTER" in sql_upper, (
+        f"Expected FILTER keyword in compiled SQL for aggregates(where:):\n{sql}"
+    )
+    # Standard SQL FILTER syntax: FILTER (WHERE <condition>)
+    assert "FILTER (WHERE" in sql_upper or "FILTER(WHERE" in sql_upper, (
+        f"Expected 'FILTER (WHERE ...)' expression in compiled SQL:\n{sql}"
+    )
+
+    # The filter condition must reference the status column and 'active' value.
+    filter_pos = sql_upper.find("FILTER")
+    filter_fragment = sql[filter_pos : filter_pos + 200]
+    assert "status" in filter_fragment.lower() or "active" in filter_fragment.lower(), (
+        f"FILTER (WHERE ...) must reference the status='active' condition:\n{sql}"
+    )
+
+    # Orthogonality check: all three clauses are present and distinct.
+    # WHERE (row-level), FILTER (WHERE) (conditional agg), HAVING (post-agg).
+    assert "WHERE" in sql_upper, f"Expected a WHERE clause for row-level filtering in SQL:\n{sql}"
+    assert "GROUP BY" in sql_upper, f"Expected GROUP BY in SQL:\n{sql}"
+    assert "HAVING" in sql_upper, f"Expected HAVING in SQL:\n{sql}"

@@ -28,18 +28,18 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
-import hashlib
 import os
-from unittest.mock import AsyncMock, MagicMock, call, patch
+import urllib.parse
+from typing import cast
 
-import asyncpg
 import pytest
 import pytest_asyncio
 import sqlglot
+from sqlglot import exp
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from provisa.audit.query_log import AUDIT_SCHEMA_SQL, init_audit_schema, log_query
+from provisa.audit.query_log import init_audit_schema
+from provisa.core.database import Database, create_engine
 from provisa.compiler.sql_gen import CompilationContext, JoinMeta, TableMeta
 from provisa.compiler.sql_validator import validate_sql
 from provisa.compiler.stage2 import GovernanceContext
@@ -59,6 +59,16 @@ scenarios("../features/REQ-603.feature")
 scenarios("../features/REQ-613.feature")
 
 
+def _parse(sql: str, read: str = "trino") -> exp.Expression:
+    """parse_one narrowed to Expression (sqlglot's declared return is looser)."""
+    return cast(exp.Expression, sqlglot.parse_one(sql, read=read))
+
+
+def _parse_select(sql: str, read: str = "trino") -> exp.Select:
+    """parse_one narrowed to Select for .where()/.selects/.limit() access."""
+    return cast(exp.Select, sqlglot.parse_one(sql, read=read))
+
+
 @pytest.fixture
 def shared_data() -> dict:
     return {}
@@ -72,15 +82,22 @@ async def audit_pool():
         "PROVISA_TEST_DSN",
         "postgresql://postgres:postgres@localhost:5432/postgres",
     )
-    pool = await asyncpg.create_pool(dsn, min_size=1, max_size=2)
+    parsed = urllib.parse.urlparse(dsn)
     org_id = "default"
-    await init_audit_schema(pool, org_id=org_id)
-    async with pool.acquire() as conn:
-        await conn.execute(f"SET search_path TO provisa_{org_id}, public")
+    engine = create_engine(
+        host=parsed.hostname or "localhost",
+        port=parsed.port or 5432,
+        database=(parsed.path or "/postgres").lstrip("/"),
+        user=parsed.username or "postgres",
+        password=parsed.password or "postgres",
+    )
+    # search_path is applied on every acquire (Database SET search_path shim).
+    db = Database(engine, name="test", search_path=f"provisa_{org_id}, public")
+    await init_audit_schema(db, org_id=org_id)
     try:
-        yield pool
+        yield db
     finally:
-        await pool.close()
+        await db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +126,7 @@ def when_graphql_query_submitted(shared_data):
     base_sql = 'SELECT "id", "email", "region" FROM "public"."customers"'
     shared_data["base_sql"] = base_sql
 
-    parsed = sqlglot.parse_one(base_sql, read="trino")
+    parsed = _parse_select(base_sql)
 
     rls_predicate = "region = 'EMEA'"
     governed = parsed.where(rls_predicate, dialect="trino")
@@ -142,7 +159,7 @@ def when_graphql_query_submitted(shared_data):
 
 @then("data is returned filtered by RLS and masking rules only")
 def then_data_filtered_rls_masking(shared_data):
-    governed = sqlglot.parse_one(shared_data["governed_sql"], read="trino")
+    governed = _parse_select(shared_data["governed_sql"])
 
     where = governed.args.get("where")
     assert where is not None
@@ -332,7 +349,7 @@ def _referenced_tables(parsed: sqlglot.exp.Expression) -> set[str]:
 
 def _stage2_inject_limit(sql: str, role_config: dict[str, int]) -> tuple[str, int | None]:
     """Stage 2 ceiling enforcement."""
-    parsed = sqlglot.parse_one(sql, read="trino")
+    parsed = _parse_select(sql)
 
     referenced = _referenced_tables(parsed)
     ceilings = [role_config[t] for t in referenced if t in role_config]
@@ -385,7 +402,7 @@ def when_query_would_exceed_ceiling(shared_data):
 
 @then("Stage 2 injects a LIMIT capping results at the role's ceiling")
 def then_stage2_injects_limit(shared_data):
-    rewritten = sqlglot.parse_one(shared_data["rewritten_sql"], read="trino")
+    rewritten = _parse(shared_data["rewritten_sql"])
 
     limit_node = rewritten.args.get("limit")
     assert limit_node is not None
@@ -749,3 +766,129 @@ def then_rejected_if_join_not_registered(shared_data):
 
 # ---------------------------------------------------------------------------
 # REQ-613 — Append-only query audit log (SO
+
+
+# ---------------------------------------------------------------------------
+# REQ-613 — Append-only query audit log (SOC2)
+# ---------------------------------------------------------------------------
+
+import hashlib  # noqa: E402
+
+from provisa.audit.query_log import log_query  # noqa: E402
+
+
+@given("any query touching a domain asset")
+def given_any_query_touching_domain_asset(shared_data):
+    shared_data["user_id"] = "user-abc"
+    shared_data["role_id"] = "analyst"
+    shared_data["query_text"] = "SELECT id, email FROM public.customers"
+    shared_data["table_ids"] = ["customers"]
+    shared_data["source"] = "graphql"
+    shared_data["tenant_id"] = "tenant-001"
+    shared_data["status_code"] = 200
+    shared_data["duration_ms"] = 42
+
+    assert shared_data["query_text"], "query text must be non-empty"
+    assert shared_data["table_ids"], "table_ids must reference at least one domain asset"
+
+
+@when("the query is executed")
+def when_the_query_is_executed(shared_data, audit_pool):
+    import asyncio
+
+    async def _do_log():
+        await log_query(
+            audit_pool,
+            tenant_id=shared_data["tenant_id"],
+            user_id=shared_data["user_id"],
+            role_id=shared_data["role_id"],
+            query_text=shared_data["query_text"],
+            table_ids=shared_data["table_ids"],
+            source=shared_data["source"],
+            status_code=shared_data["status_code"],
+            duration_ms=shared_data["duration_ms"],
+        )
+
+    asyncio.get_event_loop().run_until_complete(_do_log())
+    shared_data["expected_query_hash"] = hashlib.sha256(
+        shared_data["query_text"].encode()
+    ).hexdigest()
+    shared_data["query_executed"] = True
+
+
+@then("it is logged in the append-only query_audit_log with all required fields")
+def then_logged_in_append_only_audit_log(shared_data, audit_pool):
+    import asyncio
+
+    assert shared_data.get("query_executed"), "When step must have executed the query"
+
+    async def _verify():
+        async with audit_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT user_id, role_id, query_hash, table_ids, source,"
+                "       status_code, duration_ms, logged_at, tenant_id"
+                " FROM query_audit_log"
+                " WHERE user_id = $1 AND query_hash = $2"
+                " ORDER BY logged_at DESC LIMIT 1",
+                shared_data["user_id"],
+                shared_data["expected_query_hash"],
+            )
+            assert row is not None, "Audit log entry must exist for the executed query"
+
+            assert row["user_id"] == shared_data["user_id"], "user_id must be captured"
+            assert row["role_id"] == shared_data["role_id"], "role_id must be captured"
+            assert row["query_hash"] == shared_data["expected_query_hash"], (
+                "query_hash must be SHA-256 of the query text"
+            )
+            assert list(row["table_ids"]) == shared_data["table_ids"], "table_ids must be captured"
+            assert row["source"] == shared_data["source"], "source must be captured"
+            assert row["status_code"] == shared_data["status_code"], "status_code must be captured"
+            assert row["duration_ms"] == shared_data["duration_ms"], "duration_ms must be captured"
+            assert row["logged_at"] is not None, "logged_at must be set"
+            assert str(row["tenant_id"]) == shared_data["tenant_id"], "tenant_id must be captured"
+
+            # Verify DELETE is a no-op (append-only via PostgreSQL RULE)
+            initial_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM query_audit_log WHERE query_hash = $1",
+                shared_data["expected_query_hash"],
+            )
+            await conn.execute(
+                "DELETE FROM query_audit_log WHERE query_hash = $1",
+                shared_data["expected_query_hash"],
+            )
+            after_delete_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM query_audit_log WHERE query_hash = $1",
+                shared_data["expected_query_hash"],
+            )
+            assert after_delete_count == initial_count, (
+                "DELETE must be a no-op on query_audit_log (append-only rule)"
+            )
+
+            # Verify UPDATE is a no-op (append-only via PostgreSQL RULE)
+            original_source = row["source"]
+            await conn.execute(
+                "UPDATE query_audit_log SET source = 'tampered' WHERE query_hash = $1",
+                shared_data["expected_query_hash"],
+            )
+            after_update_row = await conn.fetchrow(
+                "SELECT source FROM query_audit_log WHERE query_hash = $1"
+                " ORDER BY logged_at DESC LIMIT 1",
+                shared_data["expected_query_hash"],
+            )
+            assert after_update_row["source"] == original_source, (
+                "UPDATE must be a no-op on query_audit_log (append-only rule)"
+            )
+
+            # Verify indexes exist
+            indexes = await conn.fetch(
+                "SELECT indexname FROM pg_indexes WHERE tablename = 'query_audit_log'",
+            )
+            index_names = {r["indexname"] for r in indexes}
+            assert "idx_audit_tenant_time" in index_names, (
+                "Index idx_audit_tenant_time (tenant_id, logged_at) must exist"
+            )
+            assert "idx_audit_user_time" in index_names, (
+                "Index idx_audit_user_time (user_id, logged_at) must exist"
+            )
+
+    asyncio.get_event_loop().run_until_complete(_verify())

@@ -19,10 +19,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ast
 import asyncio
 import re
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -119,8 +121,35 @@ Standard copyright header:
 
 
 def build_prompt(
-    req: dict, feature_text: str, existing_file: str, test_context: str, code_context: str
+    req: dict,
+    feature_text: str,
+    existing_file: str,
+    test_context: str,
+    code_context: str,
+    append_mode: bool,
 ) -> str:
+    if append_mode:
+        # Append-only: emit ONLY the new steps for this requirement. Re-emitting
+        # the whole (potentially thousands-of-lines) file is what overran the
+        # token budget and truncated files mid-statement.
+        output_instructions = f"""\
+The steps file for this category ALREADY EXISTS (its full content is shown below).
+Generate ONLY the NEW definitions this requirement needs, to be APPENDED to that file.
+Do NOT re-emit the file header, existing imports, or any existing step definition.
+
+Output, in this order, Python source only (no markdown, no prose):
+1. Any import statements the new steps require that are NOT already present in the
+   existing file content (omit entirely if none are needed).
+2. A single line `scenarios("../features/{req["id"]}.feature")` — but OMIT it if that
+   exact line already appears in the existing file content below.
+3. The new step functions (given/when/then) for the scenario above. Do NOT duplicate
+   any step already implemented in the existing content."""
+    else:
+        output_instructions = """\
+The steps file for this category does not exist yet. Generate a COMPLETE new file:
+the standard copyright header, imports, the scenarios(...) registration, and all step
+functions for the scenario above. Output Python source only (no markdown, no prose)."""
+
     return f"""Generate pytest-bdd step implementations for the following requirement.
 
 ## Requirement
@@ -139,11 +168,11 @@ Use case: {req.get("use_case", "")}
 ## Existing tests for this category (use as implementation guide)
 {test_context or "(none provided)"}
 
-## Existing steps file content (DO NOT duplicate steps already here)
-{existing_file or "(file does not exist yet — generate a complete new file)"}
+## Existing steps file content (DO NOT duplicate anything already here)
+{existing_file or "(file does not exist yet)"}
 
-Generate the complete updated steps file. Include all existing step definitions plus
-the new implementations for the scenario above. Output Python source only.
+## Output
+{output_instructions}
 """
 
 
@@ -194,13 +223,20 @@ async def generate_for_req(
         async with file_locks[file_key]:
             existing_file = steps_file.read_text() if steps_file.exists() else ""
 
-        prompt = build_prompt(req, feature_text, existing_file, test_context, code_context)
+        append_mode = bool(existing_file.strip())
+        prompt = build_prompt(
+            req, feature_text, existing_file, test_context, code_context, append_mode
+        )
 
         content_parts: list[str] = []
+        stop_reason: str | None = None
+        # Substitute a real per-file canary; the SYSTEM_PROMPT ships the literal
+        # placeholder "{canary}", which otherwise lands verbatim in the output.
+        system = SYSTEM_PROMPT.replace("{canary}", str(uuid4()))
         async with client.messages.stream(
             model="claude-sonnet-4-6",
             max_tokens=8000,
-            system=SYSTEM_PROMPT,
+            system=system,
             messages=[{"role": "user", "content": prompt}],
         ) as stream:
             async for event in stream:
@@ -209,6 +245,8 @@ async def generate_for_req(
                         delta = getattr(event, "delta", None)
                         if delta and getattr(delta, "type", None) == "text_delta":
                             content_parts.append(delta.text)
+            final = await stream.get_final_message()
+            stop_reason = final.stop_reason
 
         generated = "".join(content_parts).strip()
 
@@ -216,9 +254,37 @@ async def generate_for_req(
             lines = generated.splitlines()
             generated = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
 
+        # A truncated (max_tokens) generation is the root cause of mid-statement
+        # file corruption — never write it over a good file.
+        if stop_reason == "max_tokens":
+            print(
+                f"  ERROR {req_id}: generation hit max_tokens (truncated) — not writing",
+                file=sys.stderr,
+                flush=True,
+            )
+            return None
+
         STEPS_DIR.mkdir(parents=True, exist_ok=True)
         async with file_locks[file_key]:
-            steps_file.write_text(generated + "\n")
+            # Re-read under the lock so we append to the freshest content.
+            current = steps_file.read_text() if steps_file.exists() else ""
+            if append_mode and current.strip():
+                new_content = current.rstrip() + "\n\n\n" + generated + "\n"
+            else:
+                new_content = generated + "\n"
+
+            # Never overwrite a valid file with unparseable output.
+            try:
+                ast.parse(new_content)
+            except SyntaxError as exc:
+                print(
+                    f"  ERROR {req_id}: generated content does not parse ({exc}) — not writing",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return None
+
+            steps_file.write_text(new_content)
 
         print(f"  done {req_id}", flush=True)
         return steps_file

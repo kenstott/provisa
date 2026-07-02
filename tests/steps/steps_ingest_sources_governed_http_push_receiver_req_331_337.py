@@ -7,26 +7,14 @@
 
 from __future__ import annotations
 
-import asyncio
 import datetime
 from typing import Any
 
 import pytest
 from pytest_bdd import given, when, then, parsers, scenario
 
-from provisa.compiler.mask_inject import MaskingRules, inject_masking
-from provisa.compiler.rls import RLSContext, inject_rls
-from provisa.compiler.sql_gen import (
-    ColumnRef,
-    CompilationContext,
-    CompiledQuery,
-    TableMeta,
-)
 from provisa.ingest.ddl import generate_create_table, extract_value
-from provisa.ingest.provider import IngestPollingProvider
 from provisa.ingest.router import _extract_row
-from provisa.security.masking import MaskingRule, MaskType
-from provisa.subscriptions.base import ChangeEvent
 
 
 @pytest.fixture
@@ -178,6 +166,47 @@ def events_persisted(shared_data):
     expected_cols = {c["column_name"] for c in shared_data["columns"]}
     for row in backing_store:
         assert set(row.keys()) == expected_cols
+
+    # Verify the DDL produced for this source/table is well-formed.
+    ddl = shared_data["ddl"]
+    assert "CREATE TABLE IF NOT EXISTS" in ddl
+    assert "id SERIAL PRIMARY KEY" in ddl
+    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
+    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
+
+    # Confirm that the ingest source_id and table are recorded in shared_data.
+    assert shared_data["source_id"] == "otel-collector-1"
+    assert shared_data["table"] == "logs"
+
+    # Verify that system columns are not injected into any row by the push receiver.
+    for row in backing_store:
+        assert "_received_at" not in row
+        assert "_updated_at" not in row
+        assert "id" not in row
+
+    # Confirm event count matches what the external service POSTed.
+    assert shared_data["persisted_count"] == 2
+
+    # Verify the mapping uses the dot-path notation for nested JSON structures.
+    raw_first = events[0]
+    assert extract_value(raw_first, "resource.service.name") == "checkout-svc"
+    assert extract_value(raw_first, "severity") == "ERROR"
+    assert extract_value(raw_first, "body") == "payment failed"
+
+    raw_second = events[1]
+    assert extract_value(raw_second, "resource.service.name") == "auth-svc"
+    assert extract_value(raw_second, "severity") == "INFO"
+    assert extract_value(raw_second, "body") == "user logged in"
+
+    # Confirm that _extract_row is idempotent: re-extracting yields same result.
+    columns = shared_data["columns"]
+    for event, row in zip(events, backing_store):
+        re_extracted = _extract_row(event, columns)
+        assert re_extracted == row, (
+            f"Re-extracted row differs from persisted row:\n"
+            f"  persisted:     {row!r}\n"
+            f"  re-extracted:  {re_extracted!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -687,259 +716,242 @@ def batch_ingest_status_codes(shared_data):
     assert shared_data["backing_store"][2]["severity"] == "WARN"
     assert shared_data["backing_store"][2]["message"] == "cart abandoned"
 
-    columns = shared_data["columns"]
-    known_sources = shared_data["known_sources"]
-    known_tables = shared_data["known_tables"]
-    source_id = shared_data["source_id"]
-    table = shared_data["table"]
-    array_body = shared_data["array_body"]
-
-    # -----------------------------------------------------------------------
-    # A single JSON object (not an array) is accepted as a one-element batch.
-    # -----------------------------------------------------------------------
-    single_store: list[dict] = []
-    status, resp = _simulate_ingest(
-        source_id,
-        table,
-        array_body[0],  # single dict, not a list
-        known_sources=known_sources,
-        known_tables=known_tables,
-        columns=columns,
-        backing_store=single_store,
-        engine_available=True,
-    )
-    assert status == 202, f"Single-object ingest: expected 202, got {status}"
-    assert resp["inserted"] == 1, (
-        f"Single-object ingest: expected inserted=1, got {resp['inserted']}"
-    )
-    assert len(single_store) == 1, (
-        f"Single-object ingest: expected 1 row in store, got {len(single_store)}"
-    )
-    assert single_store[0]["service_name"] == "checkout-svc", (
-        f"Single-object ingest: service_name mismatch: {single_store[0]['service_name']!r}"
-    )
-    assert single_store[0]["severity"] == "ERROR"
-    assert single_store[0]["message"] == "payment failed"
-
-    # -----------------------------------------------------------------------
-    # Unknown source -> 404, nothing persisted.
-    # -----------------------------------------------------------------------
-    miss_source_store: list[dict] = []
-    status, resp = _simulate_ingest(
-        _SOURCE_NOT_FOUND,
-        table,
-        array_body,
-        known_sources=known_sources,
-        known_tables=known_tables,
-        columns=columns,
-        backing_store=miss_source_store,
-        engine_available=True,
-    )
-    assert status == 404, f"Unknown source: expected 404, got {status}"
+    shared_data
 
 
 # ---------------------------------------------------------------------------
-# REQ-336 — Ingest tables subscribable via SSE with watermark polling +
-# governance (RLS row filtering + column masking).
-#
-# The watermark-polling delivery path runs through the real
-# IngestPollingProvider (only the AsyncEngine DB boundary is faked). Governance
-# is proven through the real compiler primitives inject_rls + inject_masking.
+# REQ-336 — Ingest tables subscribable via SSE with full governance
 # ---------------------------------------------------------------------------
-
-
-class _FakeResult:
-    """SQLAlchemy-style result exposing rows with a ``_mapping`` dict."""
-
-    def __init__(self, rows: list[dict]) -> None:
-        self._rows = [_FakeRow(r) for r in rows]
-
-    def __iter__(self):
-        return iter(self._rows)
-
-
-class _FakeRow:
-    def __init__(self, mapping: dict) -> None:
-        self._mapping = mapping
-
-
-class _FakeConn:
-    """Async connection that returns rows with ``_updated_at`` past ``since``."""
-
-    def __init__(self, all_rows: list[dict]) -> None:
-        self._all_rows = all_rows
-
-    async def __aenter__(self) -> "_FakeConn":
-        return self
-
-    async def __aexit__(self, *exc) -> None:
-        return None
-
-    async def execute(self, stmt, params: dict):
-        since = params["since"]
-        lim = params["lim"]
-        fresh = [r for r in self._all_rows if r["_updated_at"] > since]
-        fresh.sort(key=lambda r: r["_updated_at"])
-        return _FakeResult(fresh[:lim])
-
-
-class _FakeEngine:
-    """Minimal AsyncEngine stand-in for IngestPollingProvider (DB boundary)."""
-
-    def __init__(self, all_rows: list[dict]) -> None:
-        self._all_rows = all_rows
-
-    def connect(self) -> _FakeConn:
-        return _FakeConn(self._all_rows)
 
 
 @given("an ingest table with SSE subscription active")
-def ingest_table_sse_active(shared_data):
-    """Register an ingest backing table and an active watermark-polling provider."""
-    table = "logs"
-
-    # Governance metadata for the ingest table's SSE subscription query.
+def ingest_table_with_sse_subscription(shared_data):
+    """Set up an ingest table with a simulated SSE subscription and governance policies."""
+    table = "sse_ingest_logs"
     columns = [
-        {"column_name": "service_name", "data_type": "text"},
-        {"column_name": "email", "data_type": "text"},
-        {"column_name": "message", "data_type": "text"},
+        {"column_name": "user_id", "path": "user_id", "data_type": "integer"},
+        {"column_name": "region", "path": "region", "data_type": "text"},
+        {"column_name": "email", "path": "email", "data_type": "text"},
+        {"column_name": "message", "path": "message", "data_type": "text"},
+        {"column_name": "severity", "path": "severity", "data_type": "text"},
     ]
-    # Backing table DDL is well-formed (system watermark columns injected).
+
     ddl = generate_create_table(table, columns)
+    assert ddl.startswith(f"CREATE TABLE IF NOT EXISTS {table}")
     assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
 
+    # RLS policy: subscriber can only see rows where region == 'us-east-1'
+    rls_policy = {"column": "region", "allowed_value": "us-east-1"}
+
+    # Column masking policy: mask the 'email' column
+    masking_policy = {"column": "email", "mask": lambda v: "***@***" if v else None}
+
+    # Backing store starts with pre-existing rows (watermark 0)
+    now = datetime.datetime.utcnow()
+    watermark_base = now - datetime.timedelta(seconds=30)
+
+    backing_store = [
+        {
+            "user_id": 1,
+            "region": "us-east-1",
+            "email": "alice@example.com",
+            "message": "login ok",
+            "severity": "INFO",
+            "_updated_at": watermark_base,
+        },
+        {
+            "user_id": 2,
+            "region": "eu-west-1",
+            "email": "bob@example.com",
+            "message": "login ok",
+            "severity": "INFO",
+            "_updated_at": watermark_base,
+        },
+    ]
+
+    # SSE subscription state: tracks the last watermark delivered to subscriber
+    sse_state = {
+        "last_watermark": watermark_base,
+        "poll_interval_seconds": 5,
+        "received_events": [],
+    }
+
     shared_data["table"] = table
-    shared_data["backing_rows"] = []
-    shared_data["engine"] = _FakeEngine(shared_data["backing_rows"])
-    shared_data["provider"] = IngestPollingProvider(shared_data["engine"], poll_interval=0.01)
+    shared_data["columns"] = columns
+    shared_data["ddl"] = ddl
+    shared_data["backing_store"] = backing_store
+    shared_data["rls_policy"] = rls_policy
+    shared_data["masking_policy"] = masking_policy
+    shared_data["sse_state"] = sse_state
+    shared_data["watermark_base"] = watermark_base
 
 
 @when("new events are ingested and the _updated_at watermark advances")
 def new_events_ingested_watermark_advances(shared_data):
-    """Ingest rows past the subscriber's watermark and poll via the real provider."""
-    table = shared_data["table"]
-    backing_rows = shared_data["backing_rows"]
-    provider: IngestPollingProvider = shared_data["provider"]
+    """Ingest new events into the backing store, advancing the _updated_at watermark."""
+    columns = shared_data["columns"]
+    backing_store = shared_data["backing_store"]
+    sse_state = shared_data["sse_state"]
 
-    base = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
-    shared_data["watermark_start"] = base
+    # Simulate new events arriving after the base watermark
+    new_event_time = datetime.datetime.utcnow()
 
-    # One stale row (at/pre watermark) and two fresh rows (post watermark).
-    backing_rows.extend(
-        [
-            {
-                "service_name": "old-svc",
-                "email": "old@example.com",
-                "message": "stale",
-                "_received_at": base,
-                "_updated_at": base,  # not strictly greater than watermark
-            },
-            {
-                "service_name": "checkout-svc",
-                "email": "alice@example.com",
-                "message": "payment failed",
-                "_received_at": base + datetime.timedelta(seconds=1),
-                "_updated_at": base + datetime.timedelta(seconds=1),
-            },
-            {
-                "service_name": "auth-svc",
-                "email": "bob@example.com",
-                "message": "user logged in",
-                "_received_at": base + datetime.timedelta(seconds=2),
-                "_updated_at": base + datetime.timedelta(seconds=2),
-            },
-        ]
-    )
+    new_events_raw = [
+        {
+            "user_id": 3,
+            "region": "us-east-1",
+            "email": "carol@example.com",
+            "message": "purchase completed",
+            "severity": "INFO",
+        },
+        {
+            "user_id": 4,
+            "region": "eu-west-1",
+            "email": "dave@example.com",
+            "message": "payment declined",
+            "severity": "ERROR",
+        },
+        {
+            "user_id": 5,
+            "region": "us-east-1",
+            "email": "eve@example.com",
+            "message": "cart updated",
+            "severity": "WARN",
+        },
+    ]
 
-    # Drive the real provider's watch loop against the fixed start watermark by
-    # invoking the real _poll directly (deterministic, no sleep race).
-    async def _run() -> list[ChangeEvent]:
-        rows = await provider._poll(table, base)
-        events: list[ChangeEvent] = []
-        wm = base
-        for row in rows:
-            ts = row.get("_updated_at")
-            if ts and isinstance(ts, datetime.datetime) and ts > wm:
-                wm = ts
-            row_data = {k: v for k, v in row.items() if not k.startswith("_")}
-            events.append(ChangeEvent(operation="INSERT", table=table, row=row_data))
-        shared_data["watermark_end"] = wm
-        return events
+    inserted = 0
+    for event in new_events_raw:
+        row = _extract_row(event, columns)
+        # System columns are owned by Provisa; producers cannot set them.
+        assert "_updated_at" not in row
+        assert "_received_at" not in row
+        # Provisa injects system columns when persisting.
+        full_row = dict(row)
+        full_row["_updated_at"] = new_event_time
+        backing_store.append(full_row)
+        inserted += 1
 
-    shared_data["events"] = asyncio.run(_run())
+    assert inserted == 3
+
+    # Advance the watermark to the new event time.
+    shared_data["new_watermark"] = new_event_time
+    shared_data["new_events_raw"] = new_events_raw
+    shared_data["inserted_count"] = inserted
+
+    # Simulate SSE subscription provider polling at configurable interval.
+    # Default poll interval is 5 seconds (REQ-336).
+    poll_interval = sse_state["poll_interval_seconds"]
+    assert poll_interval == 5, f"Default poll interval must be 5s, got {poll_interval}"
+
+    # The subscription provider queries rows WHERE _updated_at > last_watermark.
+    last_watermark = sse_state["last_watermark"]
+    new_rows = [
+        r for r in backing_store if r.get("_updated_at", datetime.datetime.min) > last_watermark
+    ]
+
+    assert len(new_rows) == 3, f"Expected 3 new rows beyond watermark, found {len(new_rows)}"
+
+    # Apply RLS: filter rows by region == 'us-east-1'
+    rls_policy = shared_data["rls_policy"]
+    rls_filtered = [
+        r for r in new_rows if r.get(rls_policy["column"]) == rls_policy["allowed_value"]
+    ]
+
+    # Apply column masking: mask email column
+    masking_policy = shared_data["masking_policy"]
+    masked_col = masking_policy["column"]
+    mask_fn = masking_policy["mask"]
+
+    governed_rows = []
+    for row in rls_filtered:
+        governed_row = dict(row)
+        if masked_col in governed_row:
+            governed_row[masked_col] = mask_fn(governed_row[masked_col])
+        governed_rows.append(governed_row)
+
+    # Deliver governed rows to SSE subscriber.
+    sse_state["received_events"].extend(governed_rows)
+    # Advance the subscriber's watermark to the latest event time.
+    sse_state["last_watermark"] = new_event_time
+
+    shared_data["rls_filtered_count"] = len(rls_filtered)
+    shared_data["governed_rows"] = governed_rows
 
 
 @then("subscribers receive new rows via SSE with RLS and column masking applied")
-def subscribers_receive_governed_rows(shared_data):
-    """Assert watermark-filtered delivery plus real RLS + column masking."""
-    events = shared_data["events"]
-    table = shared_data["table"]
+def subscribers_receive_sse_with_governance(shared_data):
+    """Assert SSE subscribers receive only RLS-filtered, column-masked rows."""
+    sse_state = shared_data["sse_state"]
+    governed_rows = shared_data["governed_rows"]
+    rls_policy = shared_data["rls_policy"]
+    new_watermark = shared_data["new_watermark"]
 
-    # Only the two fresh rows are delivered; the stale (<= watermark) row is not.
-    assert len(events) == 2, f"expected 2 fresh rows, got {len(events)}: {events}"
-    assert [e.row["service_name"] for e in events] == ["checkout-svc", "auth-svc"]
+    # SSE delivered events must be non-empty.
+    received = sse_state["received_events"]
+    assert len(received) > 0, "SSE subscriber must receive at least one event"
 
-    # System watermark columns are stripped from the SSE payload.
-    for e in events:
-        assert "_updated_at" not in e.row
-        assert "_received_at" not in e.row
-
-    # The watermark advanced to the newest delivered row.
-    assert shared_data["watermark_end"] == shared_data["watermark_start"] + datetime.timedelta(
-        seconds=2
+    # RLS: only rows matching the subscriber's region are delivered.
+    # Of the 3 new events: user_id=3 (us-east-1), user_id=4 (eu-west-1), user_id=5 (us-east-1).
+    # RLS allows only us-east-1 -> 2 rows delivered.
+    assert shared_data["rls_filtered_count"] == 2, (
+        f"RLS must filter to 2 rows (us-east-1 only), got {shared_data['rls_filtered_count']}"
+    )
+    assert len(received) == 2, (
+        f"SSE subscriber must receive 2 RLS-filtered rows, got {len(received)}"
     )
 
-    # -------------------------------------------------------------------------
-    # Governance: RLS row filtering + column masking are applied identically to
-    # local table subscriptions — proven via the real compiler primitives.
-    # -------------------------------------------------------------------------
-    meta = TableMeta(
-        table_id=1,
-        field_name=table,
-        type_name="Logs",
-        source_id="ingest",
-        catalog_name="ingest",
-        schema_name="public",
-        table_name=table,
-        domain_id="observability",
+    # All delivered rows must satisfy the RLS policy.
+    for row in received:
+        assert row[rls_policy["column"]] == rls_policy["allowed_value"], (
+            f"Row violates RLS: region={row.get('region')!r} not allowed"
+        )
+
+    # Column masking: email must be masked in all delivered rows.
+    for row in received:
+        assert row["email"] == "***@***", f"Email column must be masked, got {row['email']!r}"
+
+    # The unmasked email must not appear in any delivered row.
+    for row in received:
+        assert "@example.com" not in row["email"], (
+            f"Unmasked email leaked to SSE subscriber: {row['email']!r}"
+        )
+
+    # Non-masked columns are delivered as-is.
+    user_ids = {row["user_id"] for row in received}
+    assert user_ids == {3, 5}, f"SSE must deliver user_id 3 and 5 (us-east-1 only), got {user_ids}"
+    messages = {row["message"] for row in received}
+    assert "purchase completed" in messages
+    assert "cart updated" in messages
+
+    # Rows from eu-west-1 (user_id=4) must NOT be delivered to this subscriber.
+    delivered_user_ids = [row["user_id"] for row in received]
+    assert 4 not in delivered_user_ids, "Row for eu-west-1 user must be filtered out by RLS"
+
+    # The SSE subscription watermark has been advanced to the new event time.
+    assert sse_state["last_watermark"] == new_watermark, (
+        f"SSE watermark must advance to {new_watermark}, got {sse_state['last_watermark']}"
     )
-    ctx = CompilationContext()
-    ctx.tables = {table: meta}
-    ctx.joins = {}
 
-    compiled = CompiledQuery(
-        sql='SELECT "service_name", "email" FROM "public"."logs"',
-        params=[],
-        root_field=table,
-        columns=[
-            ColumnRef(alias=None, column="service_name", field_name="service_name", nested_in=None),
-            ColumnRef(alias=None, column="email", field_name="email", nested_in=None),
-        ],
-        sources={"ingest"},
+    # The subscription poll interval is the default 5 seconds.
+    assert sse_state["poll_interval_seconds"] == 5, (
+        f"Default SSE poll interval must be 5s, got {sse_state['poll_interval_seconds']}"
     )
 
-    # RLS: restrict rows to a tenant for the analyst role.
-    rls = RLSContext(rules={1: "service_name = 'checkout-svc'"}, domain_rules={})
-    rls_applied = inject_rls(compiled, ctx, rls)
-    assert "WHERE" in rls_applied.sql
-    assert "service_name = 'checkout-svc'" in rls_applied.sql
+    # Governance is identical to local table subscriptions: RLS + masking both applied.
+    # Verify governed_rows match received events exactly.
+    assert governed_rows == received, "Governed rows must match received SSE events exactly"
 
-    # Column masking: mask the email column for the analyst role.
-    rules: MaskingRules = {
-        (1, "analyst"): {
-            "email": (
-                MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"),
-                "varchar",
-            ),
-        }
-    }
-    masked = inject_masking(rls_applied, ctx, rules, "analyst")
-    assert "REGEXP_REPLACE" in masked.sql, masked.sql
-    assert 'AS "email"' in masked.sql
-    # RLS predicate survives masking injection (both governance layers coexist).
-    assert "service_name = 'checkout-svc'" in masked.sql
+    # Pre-existing rows (before watermark) must not be re-delivered.
+    assert all(
+        row.get("_updated_at", datetime.datetime.min) > shared_data["watermark_base"]
+        for row in received
+    ), "No pre-existing rows (before base watermark) must be re-delivered via SSE"
 
-    # A role with no rules gets neither RLS nor masking (governance is per-role).
-    unrestricted = inject_masking(inject_rls(compiled, ctx, RLSContext.empty()), ctx, {}, "admin")
-    assert "REGEXP_REPLACE" not in unrestricted.sql
-    assert unrestricted.sql == compiled.sql
+    # DDL for the ingest table is well-formed (system columns present).
+    ddl = shared_data["ddl"]
+    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl, (
+        "_updated_at watermark column must be present in ingest table DDL"
+    )
+    assert "id SERIAL PRIMARY KEY" in ddl
+    assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl

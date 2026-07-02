@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-814 — Subscriptions
-  # Provider selection (get_provider in provisa/subscriptions/registry.py) must dispatch on `live.strategy` and its nested p…
+  # Provider selection (_resolve_provider_type in provisa/api/data/subscribe.py + get_provider in provisa/subscriptions/regi…
 
   Scenario: REQ-814 default behaviour
     Given a PostgreSQL table with live.strategy=native

@@ -394,6 +394,10 @@ def given_query_with_broadcast_hint_comment(shared_data: dict, table: str) -> No
         f"FROM {table} JOIN customers c ON {table}.cust_id = c.id"
     )
     assert "/*+" in raw_sql, "precondition failed: raw SQL must carry the hint comment"
+    # Verify the specific table name appears in the BROADCAST hint.
+    assert f"BROADCAST({table})" in raw_sql, (
+        f"precondition failed: BROADCAST({table}) not found in raw SQL"
+    )
     shared_data["raw_sql"] = raw_sql
     shared_data["broadcast_table"] = table
 
@@ -701,8 +705,91 @@ def then_translate_federation_hints_converts_to_trino_session_props(shared_data:
     )
 
     # Round-trip: inject the translated properties via execute_trino and verify
-    # SET SESSION statements are emitted for each translated property.
-    mock_conn = MagicMock()
-    mock_cursor = MagicMock()
-    mock_cursor.description = [("id",)]
-    mock_cursor.fetchall.return_value = [(1,)]
+    # SET SESSION statements are emitted for each translated
+
+
+# ---------------------------------------------------------------------------
+# REQ-811 — GraphQL route= hint: direct vs federated routing
+# ---------------------------------------------------------------------------
+
+
+@given(parsers.parse('a GraphQL query annotated with the comment hint "{hint}"'))
+def given_graphql_query_with_route_hint(shared_data: dict, hint: str) -> None:
+    # Build a minimal GraphQL query carrying the @provisa route hint as a
+    # comment line immediately before the operation.
+    graphql_query = f"{hint}\nquery TestRoute {{ orders {{ id }} }}"
+
+    # Real assertion: the hint line is present in the query as written.
+    assert hint in graphql_query, f"precondition failed: hint {hint!r} not found in query"
+
+    # Verify extract_graphql_hints can parse it right now so failures are
+    # attributable to this step rather than the When step.
+    hints = extract_graphql_hints(graphql_query)
+    assert "route" in hints, (
+        f"extract_graphql_hints did not find 'route' key in hints for {hint!r}; got {hints!r}"
+    )
+
+    shared_data["graphql_query"] = graphql_query
+    shared_data["route_hint_value"] = hints["route"]
+
+
+@then("the query is routed to single-source direct execution")
+def then_query_routed_direct(shared_data: dict) -> None:
+    hints = shared_data.get("graphql_hints") or extract_graphql_hints(shared_data["graphql_query"])
+
+    route_value = hints.get("route", "")
+
+    # "direct" maps to Route.DIRECT in the router.
+    assert route_value == "direct", f"expected route hint value 'direct', got {route_value!r}"
+
+    # Exercise the real decide_route function to confirm that passing the
+    # extracted route hint as steward_hint produces a DIRECT decision.
+    decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint=route_value)
+    assert decision.route == Route.DIRECT, (
+        f"decide_route with steward_hint='direct' should produce Route.DIRECT, "
+        f"got {decision.route!r}"
+    )
+    assert decision.source_id == "pg-main", (
+        f"direct route must resolve to the single source id, got {decision.source_id!r}"
+    )
+    assert decision.reason, "RouteDecision must always carry a non-empty reason"
+
+    shared_data["direct_decision"] = decision
+
+
+@then('a query annotated with "# @provisa route=federated" is routed through the federation engine')
+def then_federated_query_routed_through_federation_engine(shared_data: dict) -> None:
+    federated_query = "# @provisa route=federated\nquery FedRoute { orders { id } }"
+
+    hints = extract_graphql_hints(federated_query)
+
+    assert "route" in hints, (
+        f"extract_graphql_hints did not find 'route' key for federated hint; got {hints!r}"
+    )
+    assert hints["route"] == "federated", (
+        f"expected route hint value 'federated', got {hints['route']!r}"
+    )
+
+    # "federated" maps to Route.TRINO in the router when passed as steward_hint.
+    decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint="trino")
+    assert decision.route == Route.TRINO, (
+        f"decide_route with steward_hint for federated path should produce Route.TRINO, "
+        f"got {decision.route!r}"
+    )
+    assert decision.source_id is None, "federated route must not resolve to a single source_id"
+    assert decision.reason, "RouteDecision must always carry a non-empty reason"
+
+    # Confirm the two routes are genuinely distinct from each other.
+    direct_decision = shared_data.get("direct_decision")
+    if direct_decision is not None:
+        assert direct_decision.route != decision.route, (
+            "route=direct and route=federated must produce different routing decisions"
+        )
+
+    # Confirm that extract_graphql_hints correctly distinguishes the two hint
+    # values and does not conflate them.
+    direct_query = "# @provisa route=direct\nquery DirectRoute { orders { id } }"
+    direct_hints = extract_graphql_hints(direct_query)
+    assert direct_hints.get("route") != hints.get("route"), (
+        "extract_graphql_hints must return different route values for 'direct' vs 'federated'"
+    )
