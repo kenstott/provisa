@@ -1755,9 +1755,9 @@ async def _load_and_build(
         os.environ.get("PROVISA_APQ_TTL") or raw_config.get("apq", {}).get("ttl") or 86400
     )
     if cache_config.get("enabled"):
-        redis_url = state.redis_url or ""
-        if redis_url:
-            state.response_cache_store = RedisCacheStore(redis_url)
+        # REQ-829: RedisCacheStore(None) transparently uses embedded fakeredis, so
+        # desktop exercises the same result-cache code path as production.
+        state.response_cache_store = RedisCacheStore(state.redis_url)
         state.response_cache_default_ttl = cache_config.get("default_ttl", 300)
 
     tenant_db = state.tenant_db
@@ -2874,15 +2874,19 @@ async def _start_servers(_log: logging.Logger) -> None:
         _log.exception("Live Query Engine startup failed")
 
     # REQ-289: APQ cache uses the resolved cache.redis_url and apq.ttl (not raw env vars).
-    apq_redis_url = state.redis_url
-    if apq_redis_url:
-        try:
-            from provisa.apq.cache import RedisAPQCache
+    # REQ-829: with no URL, RedisAPQCache(None) uses embedded fakeredis so desktop
+    # exercises the same APQ code path as production.
+    try:
+        from provisa.apq.cache import RedisAPQCache
 
-            state.apq_cache = RedisAPQCache(apq_redis_url, ttl=state.apq_ttl)
-            _log.info("APQ cache initialized (Redis: %s, ttl=%ds)", apq_redis_url, state.apq_ttl)
-        except Exception:
-            _log.exception("APQ cache initialization failed")
+        state.apq_cache = RedisAPQCache(state.redis_url, ttl=state.apq_ttl)
+        _log.info(
+            "APQ cache initialized (Redis: %s, ttl=%ds)",
+            state.redis_url or "embedded fakeredis",
+            state.apq_ttl,
+        )
+    except Exception:
+        _log.exception("APQ cache initialization failed")
 
 
 def _start_scheduler(_log: logging.Logger) -> None:

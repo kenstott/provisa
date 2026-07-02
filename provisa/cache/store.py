@@ -115,8 +115,8 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
     PREFIX = "provisa:cache:"
     TABLE_PREFIX = "provisa:table:"
 
-    def __init__(self, redis_url: str):
-        if os.environ.get("PROVISA_REQUIRE_REDIS_TLS", "").lower() == "true":
+    def __init__(self, redis_url: str | None = None):  # REQ-829
+        if redis_url and os.environ.get("PROVISA_REQUIRE_REDIS_TLS", "").lower() == "true":
             if not redis_url.startswith("rediss://"):
                 raise RuntimeError(
                     "PROVISA_REQUIRE_REDIS_TLS is set but REDIS_URL does not use rediss://"
@@ -136,12 +136,9 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
 
     async def _connect(self):
         if self._redis is None:
-            import redis.asyncio as aioredis
+            from provisa.core.redis_factory import make_redis  # REQ-829
 
-            self._redis = aioredis.from_url(
-                self._redis_url,
-                decode_responses=False,
-            )
+            self._redis = make_redis(self._redis_url, decode_responses=False)
 
     async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:  # REQ-544
         with _tracer.start_as_current_span("cache.get") as span:

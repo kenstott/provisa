@@ -156,7 +156,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
 
     def __init__(
         self,
-        redis_url: str,
+        redis_url: str | None,  # REQ-829: None => embedded fakeredis
         auto_threshold: int,
         max_rows: int,
         ttl: int = 300,
@@ -173,12 +173,9 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
 
     async def _connect(self):
         if self._redis is None:
-            import redis.asyncio as aioredis
+            from provisa.core.redis_factory import make_redis  # REQ-829
 
-            self._redis = aioredis.from_url(
-                self._redis_url,
-                decode_responses=True,
-            )
+            self._redis = make_redis(self._redis_url, decode_responses=True)
 
     async def _store_rows(
         self,
@@ -595,8 +592,11 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         from provisa.core.secrets import resolve_secrets
 
         redis_url = resolve_secrets(redis_url)
-    if not redis_url or not cache_config.get("enabled"):
+    # REQ-829: with cache enabled but no Redis URL, run hot tables on embedded
+    # fakeredis (redis_url=None) so desktop exercises the same hot-cache path.
+    if not cache_config.get("enabled"):
         return None
+    redis_url = redis_url or None
 
     auto_threshold = hot_config.get("auto_threshold", 1_000)
     # REQ-231: hot TTL defaults to the materialized-views default TTL when not set explicitly.
