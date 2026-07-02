@@ -79,8 +79,8 @@ class RedisAPQCache(APQCache):  # REQ-288, REQ-289, REQ-290, REQ-291
 
     PREFIX = "provisa:apq:"
 
-    def __init__(self, redis_url: str, ttl: int = _DEFAULT_TTL) -> None:
-        if os.environ.get("PROVISA_REQUIRE_REDIS_TLS", "").lower() == "true":
+    def __init__(self, redis_url: str | None = None, ttl: int = _DEFAULT_TTL) -> None:  # REQ-829
+        if redis_url and os.environ.get("PROVISA_REQUIRE_REDIS_TLS", "").lower() == "true":
             if not redis_url.startswith("rediss://"):
                 raise RuntimeError(
                     "PROVISA_REQUIRE_REDIS_TLS is set but REDIS_URL does not use rediss://"
@@ -96,9 +96,9 @@ class RedisAPQCache(APQCache):  # REQ-288, REQ-289, REQ-290, REQ-291
 
     async def _connect(self):
         if self._redis is None:
-            import redis.asyncio as aioredis
+            from provisa.core.redis_factory import make_redis  # REQ-829
 
-            self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
+            self._redis = make_redis(self._redis_url, decode_responses=True)
 
     async def get(self, sha256_hash: str, tenant_id: str | None = None) -> str | None:
         try:

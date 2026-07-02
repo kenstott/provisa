@@ -74,9 +74,11 @@ class TestNoopLimiter:
         assert await lim.acquire("k", 1) is True
         assert await lim.release("k") is None
 
-    def test_build_without_redis_is_noop(self):
-        assert isinstance(build_rate_limiter(None), NoopRateLimiter)
-        assert isinstance(build_rate_limiter(""), NoopRateLimiter)
+    def test_build_without_redis_uses_fakeredis(self):  # REQ-829
+        # With no URL the limiter runs on embedded fakeredis (same code path as
+        # production Redis), not a no-op — desktop exercises real rate limiting.
+        assert isinstance(build_rate_limiter(None), RedisRateLimiter)
+        assert isinstance(build_rate_limiter(""), RedisRateLimiter)
 
 
 class TestSlidingWindow:

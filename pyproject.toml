@@ -21,6 +21,7 @@ dependencies = [
     "adbc-driver-manager",
     "httpx",
     "redis[hiredis]",
+    "fakeredis",
     "anthropic",
     "aisuite>=0.1",
     "apscheduler>=3.10",
