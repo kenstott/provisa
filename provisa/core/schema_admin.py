@@ -32,6 +32,8 @@ separate schema/engine.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -49,6 +51,9 @@ from sqlalchemy import (
     func,
     true,
 )
+
+if TYPE_CHECKING:
+    from provisa.core.database import Database
 
 metadata = MetaData()
 
@@ -133,3 +138,26 @@ tenant_config = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     UniqueConstraint("tenant_id", "entity_type", "entity_id"),
 )
+
+
+# The org/user/invite registry. ``tenants``/``tenant_config`` are bootstrapped
+# separately by the billing module (``platform`` PG schema), so they are excluded
+# here to avoid creating a duplicate copy in the default schema.
+REGISTRY_TABLES = [orgs, user_profiles, user_org_memberships, local_users, org_invites]
+
+
+async def init_registry_schema(db: "Database") -> None:  # REQ-696
+    """Create the platform registry tables on the platform control-plane engine.
+
+    Uses portable SQLAlchemy metadata (dialect-appropriate DDL) so the platform
+    control plane can be backed by any SQLAlchemy URI, not just PostgreSQL. The
+    tenant control plane keeps its raw ``schema.sql`` bootstrap (PostgreSQL).
+
+    Seeds the default ``root`` org (the on-prem/single-tenant namespace), which
+    was previously seeded by ``schema.sql`` when the registry lived per-org."""
+    async with db.engine.begin() as conn:
+        await conn.run_sync(lambda sc: metadata.create_all(sc, tables=REGISTRY_TABLES))
+    async with db.acquire() as conn:
+        exists = await conn.fetchval("SELECT id FROM orgs WHERE id = $1", "root")
+        if exists is None:
+            await conn.execute("INSERT INTO orgs (id, name) VALUES ($1, $2)", "root", "Enterprise")

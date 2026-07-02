@@ -37,14 +37,20 @@ from provisa.core import schema_admin, schema_org
 
 SCHEMA_SQL = Path(__file__).parents[2] / "provisa" / "core" / "schema.sql"
 
-# Tables from schema.sql that belong to the global admin/platform model.
-ADMIN_TABLES_IN_SCHEMA_SQL = {
+# The org/user/invite registry is authored ONLY as portable SQLAlchemy metadata
+# (schema_admin.REGISTRY_TABLES, created via metadata.create_all on the platform
+# control plane, which may be any SQLAlchemy backend). It has no raw-SQL DDL to
+# mirror, so it is excluded from SQL<->metadata parity and asserted structurally.
+REGISTRY_ONLY_TABLES = {
     "orgs",
     "user_profiles",
     "user_org_memberships",
     "local_users",
     "org_invites",
 }
+
+# Admin/platform tables that DO have raw SQL DDL (billing schema).
+ADMIN_TABLES_IN_SCHEMA_SQL = {"tenants", "tenant_config"}
 
 _CONSTRAINT_KW = {
     "unique",
@@ -213,8 +219,7 @@ def parsed() -> dict[str, ParsedTable]:
 
 
 def _bucket(parsed: dict[str, ParsedTable], admin: bool) -> set[str]:
-    admin_names = ADMIN_TABLES_IN_SCHEMA_SQL | {"tenants", "tenant_config"}
-    return {n for n in parsed if (n in admin_names) == admin}
+    return {n for n in parsed if (n in ADMIN_TABLES_IN_SCHEMA_SQL) == admin}
 
 
 @pytest.mark.parametrize(
@@ -223,6 +228,9 @@ def _bucket(parsed: dict[str, ParsedTable], admin: bool) -> set[str]:
 )
 def test_table_set_matches(parsed, meta_module, is_admin):
     expected = _bucket(parsed, is_admin)
+    if is_admin:
+        # Registry tables exist only in metadata (no SQL DDL to parse).
+        expected |= REGISTRY_ONLY_TABLES
     actual = set(meta_module.metadata.tables.keys())
     assert actual == expected, (
         f"table mismatch (admin={is_admin}): missing={expected - actual}, extra={actual - expected}"
@@ -232,6 +240,8 @@ def test_table_set_matches(parsed, meta_module, is_admin):
 @pytest.mark.parametrize("meta_module", [schema_org, schema_admin])
 def test_columns_and_pk_match(parsed, meta_module):
     for tname, table in meta_module.metadata.tables.items():
+        if tname in REGISTRY_ONLY_TABLES:
+            continue  # metadata-authoritative; no SQL counterpart
         pt = parsed[tname]
         meta_cols = set(table.columns.keys())
         sql_cols = set(pt.columns.keys())
@@ -245,6 +255,8 @@ def test_columns_and_pk_match(parsed, meta_module):
 @pytest.mark.parametrize("meta_module", [schema_org, schema_admin])
 def test_type_families_match(parsed, meta_module):
     for tname, table in meta_module.metadata.tables.items():
+        if tname in REGISTRY_ONLY_TABLES:
+            continue  # metadata-authoritative; no SQL counterpart
         pt = parsed[tname]
         for col in table.columns:
             expected = pt.columns[col.name]

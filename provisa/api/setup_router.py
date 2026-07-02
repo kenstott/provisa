@@ -81,9 +81,10 @@ async def setup_status():  # REQ-539
 
     idp = _idp_override()
 
+    # local_users lives in the platform control plane.
     if _is_demo():
-        if idp and state.pg_pool:
-            await _auto_configure_idp(idp, state.pg_pool)
+        if idp and state.admin_db:
+            await _auto_configure_idp(idp, state.admin_db)
             return {"needs_setup": False, "demo_mode": True}
         cfg = read_config()
         auth_cfg = cfg.get("auth")
@@ -91,8 +92,8 @@ async def setup_status():  # REQ-539
             return {"needs_setup": True, "demo_mode": True}
         return {"needs_setup": False, "demo_mode": True}
 
-    if idp and state.pg_pool:
-        await _auto_configure_idp(idp, state.pg_pool)
+    if idp and state.admin_db:
+        await _auto_configure_idp(idp, state.admin_db)
         return {"needs_setup": False, "demo_mode": False}
 
     cfg = read_config()
@@ -101,8 +102,8 @@ async def setup_status():  # REQ-539
         return {"needs_setup": True, "demo_mode": False}
 
     provider = auth_cfg.get("provider") if isinstance(auth_cfg, dict) else None
-    if provider == "basic" and state.pg_pool:
-        async with state.pg_pool.acquire() as conn:
+    if provider == "basic" and state.admin_db:
+        async with state.admin_db.acquire() as conn:
             count = await conn.fetchval("SELECT COUNT(*) FROM local_users")
         if count == 0:
             return {"needs_setup": True, "demo_mode": False}
@@ -174,9 +175,9 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
         pw_hash = bcrypt.hashpw(body.admin_password.encode("utf-8"), bcrypt.gensalt()).decode(
             "utf-8"
         )
-        pg_pool = state.pg_pool
-        assert pg_pool is not None
-        async with pg_pool.acquire() as conn:
+        admin_db = state.admin_db
+        assert admin_db is not None
+        async with admin_db.acquire() as conn:
             existing = await conn.fetchrow(
                 "SELECT id FROM local_users WHERE username = $1", body.admin_username
             )

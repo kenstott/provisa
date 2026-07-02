@@ -16,10 +16,11 @@ from __future__ import annotations
 
 from typing import Any
 
-import asyncpg
 import bcrypt
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+
+from provisa.core.database import Database
 
 router = APIRouter(prefix="/admin/users", tags=["admin"])
 
@@ -60,23 +61,38 @@ def _strip_hash(row) -> dict:
     return d
 
 
-def _pool(_request: Request) -> asyncpg.Pool:  # pyright: ignore[reportUnusedParameter]
+def _pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParameter]
+    # user_role_assignments lives in the tenant control plane.
     from provisa.api.app import state
 
     assert state.pg_pool is not None
     return state.pg_pool
 
 
+def _admin_pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParameter]
+    # local_users lives in the platform control plane.
+    from provisa.api.app import state
+
+    assert state.admin_db is not None
+    return state.admin_db
+
+
 @router.post("/")
 async def create_user(body: CreateUserBody, request: Request):  # REQ-124, REQ-125
-    pool = _pool(request)
+    import uuid
+
+    pool = _admin_pool(request)
     async with pool.acquire() as conn:
+        # id is generated app-side (portable) rather than via a PG-specific
+        # gen_random_uuid() server default — the platform control plane may be
+        # any SQLAlchemy backend.
         row = await conn.fetchrow(
             """
-            INSERT INTO local_users (username, password_hash, email, display_name, roles, attributes)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO local_users (id, username, password_hash, email, display_name, roles, attributes)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             """,
+            str(uuid.uuid4()),
             body.username,
             _hash(body.password),
             body.email,
@@ -89,7 +105,7 @@ async def create_user(body: CreateUserBody, request: Request):  # REQ-124, REQ-1
 
 @router.get("/")
 async def list_users(request: Request):
-    pool = _pool(request)
+    pool = _admin_pool(request)
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT * FROM local_users ORDER BY created_at")
     return [_strip_hash(r) for r in rows]
@@ -97,7 +113,7 @@ async def list_users(request: Request):
 
 @router.get("/{user_id}")
 async def get_user(user_id: str, request: Request):
-    pool = _pool(request)
+    pool = _admin_pool(request)
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM local_users WHERE id = $1", user_id)
     if row is None:
@@ -107,7 +123,7 @@ async def get_user(user_id: str, request: Request):
 
 @router.put("/{user_id}")
 async def update_user(user_id: str, body: UpdateUserBody, request: Request):
-    pool = _pool(request)
+    pool = _admin_pool(request)
     sets = []
     params: list[Any] = []
     idx = 1
@@ -147,7 +163,7 @@ async def update_user(user_id: str, body: UpdateUserBody, request: Request):
 
 @router.patch("/{user_id}/password")
 async def change_password(user_id: str, body: ChangePasswordBody, request: Request):  # REQ-124
-    pool = _pool(request)
+    pool = _admin_pool(request)
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "UPDATE local_users SET password_hash = $1, updated_at = NOW() WHERE id = $2 RETURNING id",
@@ -161,7 +177,7 @@ async def change_password(user_id: str, body: ChangePasswordBody, request: Reque
 
 @router.delete("/{user_id}")
 async def delete_user(user_id: str, request: Request):
-    pool = _pool(request)
+    pool = _admin_pool(request)
     async with pool.acquire() as conn:
         row = await conn.fetchrow("DELETE FROM local_users WHERE id = $1 RETURNING id", user_id)
     if row is None:

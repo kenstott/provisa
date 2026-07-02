@@ -22,16 +22,17 @@ from provisa.auth.superuser import resolve_superuser_config
 # Requirements: REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125
 
 
-# auth.provider: basic — uses local_users table; db_pool injected at startup
+# auth.provider: basic — reads the local_users table, which lives in the
+# platform control plane; the platform pool is injected at startup.
 def build_auth_provider(
-    auth_config: dict, db_pool=None
+    auth_config: dict, admin_pool=None
 ) -> AuthProvider:  # REQ-120, REQ-121, REQ-122, REQ-123, REQ-124
     """Instantiate the configured auth provider from the auth config section."""
     provider_name = auth_config["provider"]
     if provider_name == "basic":
         from provisa.auth.providers.basic import BasicAuthProvider
 
-        return BasicAuthProvider(db_pool=db_pool)
+        return BasicAuthProvider(db_pool=admin_pool)
     if provider_name == "simple":
         # REQ-124: simple username/password auth is for testing only and must be
         # explicitly opted into. Refuse to build it in the absence of the flag.
@@ -78,12 +79,18 @@ def build_auth_provider(
     raise ValueError(f"Unknown auth provider: {provider_name!r}")
 
 
-def wire_auth(app: FastAPI, auth_config: dict | None, db_pool=None) -> None:  # REQ-120, REQ-125
-    """Conditionally register AuthMiddleware and auth routes based on config."""
+def wire_auth(
+    app: FastAPI, auth_config: dict | None, db_pool=None, admin_pool=None
+) -> None:  # REQ-120, REQ-125
+    """Conditionally register AuthMiddleware and auth routes based on config.
+
+    ``db_pool`` is the tenant control plane (``user_role_assignments``);
+    ``admin_pool`` is the platform control plane (``local_users``,
+    ``user_profiles``, ``user_org_memberships``)."""
     if auth_config is None:
         return
 
-    provider = build_auth_provider(auth_config, db_pool=db_pool)
+    provider = build_auth_provider(auth_config, admin_pool=admin_pool)
     mapping_rules = auth_config.get("role_mapping", [])
     default_role = auth_config.get("default_role", "analyst")
 
@@ -103,6 +110,7 @@ def wire_auth(app: FastAPI, auth_config: dict | None, db_pool=None) -> None:  # 
         mapping_rules=mapping_rules,
         default_role=default_role,
         db_pool=db_pool,
+        admin_pool=admin_pool,
         assignments_source=auth_config.get("assignments_source", "claims"),
         default_assignments=auth_config.get("default_assignments", []),
         multitenancy=multitenancy,

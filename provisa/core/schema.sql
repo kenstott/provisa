@@ -424,60 +424,24 @@ CREATE TABLE IF NOT EXISTS file_source_mtimes (
     synced_at    DOUBLE PRECISION NOT NULL
 );
 
--- Orgs: tenant namespaces. 'root' is the default on-prem/single-tenant org.
-CREATE TABLE IF NOT EXISTS orgs (
-    id          TEXT PRIMARY KEY,
-    name        TEXT NOT NULL,
-    created_by  TEXT,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-INSERT INTO orgs (id, name) VALUES ('root', 'Enterprise') ON CONFLICT DO NOTHING;
+-- Orgs, users, memberships, invites are the PLATFORM control plane's global
+-- registry (see provisa/core/schema_admin.py). They are NOT created per-org
+-- here; they live in a separate control-plane database (init_registry_schema).
+-- The org_id columns below therefore hold a plain org identifier — no FK to
+-- orgs, which lives in a different physical database.
 
 -- Add org_id to domains (nullable; existing rows stamped to 'root')
 DO $$ BEGIN
-    ALTER TABLE domains ADD COLUMN IF NOT EXISTS org_id TEXT REFERENCES orgs(id) ON DELETE CASCADE;
+    ALTER TABLE domains ADD COLUMN IF NOT EXISTS org_id TEXT;
     UPDATE domains SET org_id = 'root' WHERE org_id IS NULL;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
 -- Add org_id to roles (nullable = system role: admin, superadmin)
 DO $$ BEGIN
-    ALTER TABLE roles ADD COLUMN IF NOT EXISTS org_id TEXT REFERENCES orgs(id) ON DELETE CASCADE;
+    ALTER TABLE roles ADD COLUMN IF NOT EXISTS org_id TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
-
--- Known users from any auth provider; upserted on every login
-CREATE TABLE IF NOT EXISTS user_profiles (
-    user_id      TEXT PRIMARY KEY,
-    email        TEXT,
-    display_name TEXT,
-    provider     TEXT,
-    last_seen    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- User:org membership pairs (Provisa-managed; not used for enterprise IdP claims)
-CREATE TABLE IF NOT EXISTS user_org_memberships (
-    user_id    TEXT NOT NULL,
-    org_id     TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (user_id, org_id)
-);
-
--- No auth tables needed — auth is config-driven, not DB-driven
-
-CREATE TABLE IF NOT EXISTS local_users (
-    id           TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    username     TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    email        TEXT,
-    display_name TEXT,
-    roles        TEXT[] NOT NULL DEFAULT '{}',
-    attributes   JSONB NOT NULL DEFAULT '{}',
-    is_active    BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
 
 -- User role:domain assignment pairs.
 -- domain_id = '*' means the user has this role across all domains.
@@ -502,16 +466,8 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- Org invite tokens for multi-tenant basic auth account creation
-CREATE TABLE IF NOT EXISTS org_invites (
-    token       TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    org_id      TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
-    role_id     TEXT REFERENCES roles(id) ON DELETE SET NULL,
-    created_by  TEXT NOT NULL,
-    expires_at  TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '7 days',
-    used_at     TIMESTAMPTZ,
-    used_by     TEXT
-);
+-- Org invite tokens live in the platform control plane (schema_admin.org_invites),
+-- not per-org here.
 
 -- Louvain cluster assignments as computed attributes on registered_tables
 DO $$ BEGIN

@@ -847,38 +847,34 @@ class TestReq591TenantContextTransactionScoped:
 
 
 # ---------------------------------------------------------------------------
-# REQ-592 — Each tenant maps to an org; root org seeded for single-tenant
-# schema.sql must define orgs table and seed root.
+# REQ-592 — Each tenant maps to an org; root org seeded for single-tenant.
+# The org registry is the platform control plane (schema_admin metadata), not
+# the per-org schema.sql; root is seeded by init_registry_schema.
 # ---------------------------------------------------------------------------
 
 
 class TestReq592OrgToTenantMapping:
-    def test_schema_sql_defines_orgs_table(self):
+    def test_platform_metadata_defines_orgs_table(self):
         # REQ-592
-        schema_path = (
-            "/Volumes/main/Users/kennethstott/PycharmProjects/provisa/provisa/core/schema.sql"
-        )
-        with open(schema_path) as f:
-            ddl = f.read()
-        assert "CREATE TABLE IF NOT EXISTS orgs" in ddl
+        from provisa.core import schema_admin
 
-    def test_schema_sql_seeds_root_org(self):
-        # REQ-592
-        schema_path = (
-            "/Volumes/main/Users/kennethstott/PycharmProjects/provisa/provisa/core/schema.sql"
-        )
-        with open(schema_path) as f:
-            ddl = f.read()
-        assert "'root'" in ddl
+        assert "orgs" in schema_admin.metadata.tables
+        assert schema_admin.orgs in schema_admin.REGISTRY_TABLES
 
-    def test_schema_sql_defines_user_org_memberships(self):
+    def test_init_registry_seeds_root_org(self):
+        # REQ-592 — init_registry_schema seeds the default 'root' org.
+        import inspect
+
+        from provisa.core import schema_admin
+
+        src = inspect.getsource(schema_admin.init_registry_schema)
+        assert "root" in src and "Enterprise" in src
+
+    def test_platform_metadata_defines_user_org_memberships(self):
         # REQ-592
-        schema_path = (
-            "/Volumes/main/Users/kennethstott/PycharmProjects/provisa/provisa/core/schema.sql"
-        )
-        with open(schema_path) as f:
-            ddl = f.read()
-        assert "user_org_memberships" in ddl
+        from provisa.core import schema_admin
+
+        assert "user_org_memberships" in schema_admin.metadata.tables
 
 
 # ---------------------------------------------------------------------------

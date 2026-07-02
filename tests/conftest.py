@@ -304,6 +304,18 @@ def _reserve_flight_port():  # pyright: ignore
     # don't exhaust PostgreSQL max_connections.
     os.environ.setdefault("PG_POOL_MIN", "1")
     os.environ.setdefault("PG_POOL_MAX", "3")
+    # Platform control plane URL (global org/user/invite registry + billing).
+    # Tests point it at the same Postgres server as the tenant plane but leave it
+    # unscoped (default schema) — a separate engine/pool, per the control-plane
+    # split. The subprocess server inherits this via {**os.environ}.
+    os.environ.setdefault(
+        "PLATFORM_DATABASE_URL",
+        f"postgresql+asyncpg://{os.environ.get('PG_USER', 'provisa')}"
+        f":{os.environ.get('PG_PASSWORD', 'provisa')}"
+        f"@{os.environ.get('PG_HOST', 'localhost')}"
+        f":{os.environ.get('PG_PORT', '5432')}"
+        f"/{os.environ.get('PG_DATABASE', 'provisa')}",
+    )
 
 
 @pytest.fixture(scope="session")
@@ -419,12 +431,24 @@ async def graphql_client(docker_postgres):
     app_mod.state.pg_pool = pool
     app_mod.state.source_pools = _sp
 
+    # Platform control plane (global org/user/invite registry). This fixture
+    # bypasses the app lifespan, so build + seed it here the way startup does.
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_admin import init_registry_schema
+
+    admin_engine = create_engine_from_url(os.environ["PLATFORM_DATABASE_URL"], pool_size=3)
+    admin_db = Database(admin_engine, name="platform")
+    await init_registry_schema(admin_db)
+    app_mod.state.admin_db = admin_db
+
     transport = ASGITransport(app=the_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
 
     await pool.close()
+    await admin_db.close()
     app_mod.state.pg_pool = None
+    app_mod.state.admin_db = None
 
 
 @pytest.fixture(scope="session")

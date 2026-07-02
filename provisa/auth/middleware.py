@@ -38,6 +38,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         mapping_rules: list[dict] | None = None,
         default_role: str = "analyst",
         db_pool=None,
+        admin_pool=None,
         assignments_source: str = "claims",
         default_assignments: list[dict] | None = None,
         multitenancy: bool = False,
@@ -48,7 +49,10 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         self._provider = provider
         self._mapping_rules = mapping_rules or []
         self._default_role = default_role
+        # Tenant control plane: user_role_assignments. Platform control plane
+        # (admin_pool): user_profiles, user_org_memberships.
         self._db_pool = db_pool
+        self._admin_pool = admin_pool
         self._assignments_source = assignments_source
         self._default_assignments = default_assignments or []
         self._multitenancy = multitenancy
@@ -155,13 +159,13 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                     content={"detail": f"Role {requested_role!r} is not assigned to this user"},
                 )
 
-        # Fire-and-forget upsert of user_profiles
-        if self._db_pool is not None:
-            _db_pool = self._db_pool
+        # Fire-and-forget upsert of user_profiles (platform control plane)
+        if self._admin_pool is not None:
+            _admin_pool = self._admin_pool
 
             async def _upsert():
                 try:
-                    async with _db_pool.acquire() as conn:
+                    async with _admin_pool.acquire() as conn:
                         await conn.execute(
                             """INSERT INTO user_profiles (user_id, email, display_name, provider, last_seen)
                                VALUES ($1, $2, $3, $4, NOW())
@@ -188,8 +192,8 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                 header_org = request.headers.get("x-org-id")
                 if header_org:
                     active_org_id = header_org
-                elif self._db_pool is not None:
-                    async with self._db_pool.acquire() as conn:
+                elif self._admin_pool is not None:
+                    async with self._admin_pool.acquire() as conn:
                         org_rows = await conn.fetch(
                             "SELECT org_id FROM user_org_memberships WHERE user_id = $1",
                             identity.user_id,

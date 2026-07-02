@@ -14,18 +14,20 @@
 
 from __future__ import annotations
 
-import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+
+from provisa.core.database import Database
 
 router = APIRouter(prefix="/admin/invites", tags=["admin"])
 
 
-def _pool(_request: Request) -> asyncpg.Pool:  # pyright: ignore[reportUnusedParameter]
+def _pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParameter]
+    # org_invites/orgs live in the platform control plane.
     from provisa.api.app import state
 
-    assert state.pg_pool is not None
-    return state.pg_pool
+    assert state.admin_db is not None
+    return state.admin_db
 
 
 class CreateInviteBody(BaseModel):
@@ -36,23 +38,35 @@ class CreateInviteBody(BaseModel):
 
 @router.post("/")
 async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
+    import datetime
+    import uuid
+    from datetime import timezone
+
     pool = _pool(request)
     identity = getattr(request.state, "identity", None)
     created_by = identity.user_id if identity else "system"
+    # token and expiry are computed app-side (portable) rather than via
+    # PG-specific gen_random_uuid()/interval defaults — the platform control
+    # plane may be any SQLAlchemy backend.
+    token = str(uuid.uuid4())
+    expires_at = datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(
+        days=body.expires_in_days
+    )
     async with pool.acquire() as conn:
         org = await conn.fetchrow("SELECT id FROM orgs WHERE id = $1", body.org_id)
         if not org:
             raise HTTPException(status_code=404, detail="Org not found")
         row = await conn.fetchrow(
             """
-            INSERT INTO org_invites (org_id, role_id, created_by, expires_at)
-            VALUES ($1, $2, $3, NOW() + ($4 || ' days')::INTERVAL)
+            INSERT INTO org_invites (token, org_id, role_id, created_by, expires_at)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING token, org_id, role_id, created_by, expires_at
             """,
+            token,
             body.org_id,
             body.role_id,
             created_by,
-            str(body.expires_in_days),
+            expires_at,
         )
     return dict(row)
 

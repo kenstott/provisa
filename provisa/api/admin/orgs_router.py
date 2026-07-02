@@ -14,9 +14,10 @@
 
 from __future__ import annotations
 
-import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+
+from provisa.core.database import Database
 
 router = APIRouter(prefix="/admin/orgs", tags=["admin"])
 
@@ -34,11 +35,20 @@ def _require_superadmin(request: Request) -> None:  # REQ-042, REQ-125
         raise HTTPException(status_code=403, detail="Superadmin required")
 
 
-def _pool() -> asyncpg.Pool:
+def _pool() -> Database:
+    # Tenant control plane — used for org schema (de)provisioning.
     from provisa.api.app import state
 
     assert state.pg_pool is not None
     return state.pg_pool
+
+
+def _admin_pool() -> Database:
+    # Platform control plane — orgs registry and org membership.
+    from provisa.api.app import state
+
+    assert state.admin_db is not None
+    return state.admin_db
 
 
 class CreateOrgBody(BaseModel):
@@ -57,7 +67,7 @@ class AddMemberBody(BaseModel):
 @router.get("/")
 async def list_orgs(request: Request):  # REQ-042, REQ-059
     _require_superadmin(request)
-    pool = _pool()
+    pool = _admin_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT id, name, created_by, created_at FROM orgs ORDER BY id")
     return [dict(r) for r in rows]
@@ -71,8 +81,8 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
 
     from provisa.core.org_provisioning import provision_org
 
-    pool = _pool()
-    async with pool.acquire() as conn:
+    # orgs registry -> platform control plane; org schema -> tenant control plane.
+    async with _admin_pool().acquire() as conn:
         row = await conn.fetchrow(
             "INSERT INTO orgs (id, name) VALUES ($1, $2) RETURNING id, name, created_by, created_at",
             body.id,
@@ -84,7 +94,7 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
     redis_url = os.environ.get("REDIS_URL")
     redis_password = os.environ.get("PROVISA_REDIS_ORG_PASSWORD")
     await provision_org(
-        pool,
+        _pool(),
         schema_sql,
         org_id=body.id,
         redis_url=redis_url,
@@ -96,7 +106,7 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
 @router.put("/{org_id}")
 async def rename_org(org_id: str, body: RenameOrgBody, request: Request):  # REQ-042, REQ-059
     _require_superadmin(request)
-    pool = _pool()
+    pool = _admin_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "UPDATE orgs SET name = $1 WHERE id = $2 RETURNING id, name, created_by, created_at",
@@ -117,20 +127,20 @@ async def delete_org(org_id: str, request: Request):  # REQ-042, REQ-059, REQ-70
 
     if org_id == "root":
         raise HTTPException(status_code=400, detail="Cannot delete the root org")
-    pool = _pool()
-    async with pool.acquire() as conn:
+    # orgs registry -> platform; org schema teardown -> tenant.
+    async with _admin_pool().acquire() as conn:
         result = await conn.execute("DELETE FROM orgs WHERE id = $1", org_id)
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Org not found")
     redis_url = os.environ.get("REDIS_URL")
-    await deprovision_org(pool, org_id, redis_url=redis_url)
+    await deprovision_org(_pool(), org_id, redis_url=redis_url)
     return {"deleted": org_id}
 
 
 @router.get("/{org_id}/members")
 async def list_members(org_id: str, request: Request):  # REQ-042, REQ-059
     _require_superadmin(request)
-    pool = _pool()
+    pool = _admin_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT m.user_id, p.email, p.display_name, p.provider, m.created_at "
@@ -145,7 +155,7 @@ async def list_members(org_id: str, request: Request):  # REQ-042, REQ-059
 @router.post("/{org_id}/members")
 async def add_member(org_id: str, body: AddMemberBody, request: Request):  # REQ-042, REQ-059
     _require_superadmin(request)
-    pool = _pool()
+    pool = _admin_pool()
     async with pool.acquire() as conn:
         org_exists = await conn.fetchval("SELECT 1 FROM orgs WHERE id = $1", org_id)
         if not org_exists:
@@ -161,7 +171,7 @@ async def add_member(org_id: str, body: AddMemberBody, request: Request):  # REQ
 @router.delete("/{org_id}/members/{user_id}")
 async def remove_member(org_id: str, user_id: str, request: Request):  # REQ-042, REQ-059
     _require_superadmin(request)
-    pool = _pool()
+    pool = _admin_pool()
     async with pool.acquire() as conn:
         result = await conn.execute(
             "DELETE FROM user_org_memberships WHERE user_id = $1 AND org_id = $2",

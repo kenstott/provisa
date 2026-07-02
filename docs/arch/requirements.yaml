@@ -23234,7 +23234,11 @@
   priority: MUST
   type: structural
   since: 2026-07
-  description: Control-plane database is accessed through a SQLAlchemy-Core abstraction (provisa/core/database.py: Database/Connection/Row) backed by an AsyncEngine, replacing raw asyncpg. Connection pool replaces asyncpg.create_pool with equivalent behavior.
+  description: >-
+    Control-plane database is accessed through a SQLAlchemy-Core abstraction
+    (provisa/core/database.py: Database/Connection/Row) backed by an AsyncEngine,
+    replacing raw asyncpg. Connection pool replaces asyncpg.create_pool with
+    equivalent behavior.
   use_case: Enables multi-database support (PostgreSQL Tier-1, SQLite/MySQL Tier-2) by centralizing SQL dialect translation and connection management in one module.
   code:
   - provisa/core/database.py
@@ -23261,6 +23265,8 @@
   use_case: Ensures Tier-1 PostgreSQL, Tier-2 SQLite ≥3.35, and Tier-2 MySQL 8 can all execute the same control-plane schema without migration.
   code:
   - provisa/core/database.py
+  tests:
+  - tests/unit/test_admin_database.py
 - id: REQ-835
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -23272,3 +23278,100 @@
   use_case: Prevents runtime errors when control plane is deployed on non-PostgreSQL backends by enforcing compile-time feature gating.
   code:
   - provisa/core/database.py
+  tests:
+  - tests/unit/test_admin_database.py
+- id: REQ-836
+  status: complete
+  group: 11. Platform, Infrastructure & Delivery
+  category: Docker Composition & Deployment
+  priority: MUST
+  type: infrastructure
+  since: 2026-07
+  description: >-
+    Trino FTE exchange spooling directory (provisa_exchange Docker named volume,
+    mounted at /data/provisa/exchange) must be owned by uid 1000 before Trino
+    starts. A trino-exchange-init busybox one-shot service in docker-compose.core.yml
+    chowns the volume and runs before both trino coordinator and trino-worker
+    via condition: service_completed_successfully.
+  use_case: >-
+    Trino runs as uid 1000 but freshly-created named volumes are owned root:root,
+    causing write failures and GENERIC_INTERNAL_ERROR on every FTE query
+    (retry-policy=TASK). Pre-initialization via service dependency ensures
+    filesystem readiness.
+  code:
+  - docker-compose.core.yml
+- id: REQ-837
+  status: complete
+  group: 11. Platform, Infrastructure & Delivery
+  category: Data Model & Persistence
+  priority: MUST
+  type: structural
+  since: 2026-07
+  description: >-
+    Platform control plane and tenant control plane use two independent SQLAlchemy
+    engines and connection pools (state.admin_db for platform registry; state.org_db
+    for per-tenant data). Platform database is configured by PLATFORM_DATABASE_URL
+    env var (full SQLAlchemy URI supporting any async backend: postgresql+asyncpg,
+    sqlite+aiosqlite, mysql+aiomysql); required at startup with no fallback.
+  use_case: >-
+    Enables deployment models where platform registry and per-tenant data live in
+    separate databases on different backends (platform on SQLite/MySQL, tenant on
+    PostgreSQL, or vice versa), allowing independent lifecycle and scaling.
+  code:
+  - provisa/core/database.py
+  - provisa/core/schema_admin.py
+  - provisa/api/app.py
+  - provisa/auth/wiring.py
+  - provisa/auth/middleware.py
+  - provisa/auth/providers/basic.py
+- id: REQ-838
+  status: complete
+  group: 11. Platform, Infrastructure & Delivery
+  category: Data Model & Persistence
+  priority: MUST
+  type: constraint
+  since: 2026-07
+  description: >-
+    Tenant control plane isolation is enforced via PostgreSQL SET search_path
+    to org_<org_id> schema per connection in state.org_db. No cross-org queries
+    are possible without explicitly connecting to a different tenant database
+    or changing org_id via schema recreation.
+  use_case: >-
+    Provides cryptographic isolation (schema-level, not row-level) for per-tenant
+    state without requiring row-level filtering logic on every query. Each tenant
+    connection automatically sees only its own schema.
+  code:
+  - provisa/core/database.py
+  - provisa/api/app.py
+  tests:
+  - tests/unit/test_org_isolation.py
+- id: REQ-839
+  status: complete
+  group: 11. Platform, Infrastructure & Delivery
+  category: Data Model & Persistence
+  priority: MUST
+  type: constraint
+  since: 2026-07
+  description: >-
+    Platform registry tables (orgs, user_profiles, user_org_memberships,
+    local_users, org_invites, tenants, tenant_config) are created from portable
+    SQLAlchemy metadata (schema_admin.init_registry_schema via metadata.create_all),
+    not raw SQL schema files. No cross-database foreign key constraints between
+    platform and tenant planes (FKs from domains.org_id, roles.org_id, etc. dropped
+    to plain columns). id/token generation for local_users and org_invites moved
+    app-side (uuid4) instead of PG-specific gen_random_uuid() server defaults.
+  use_case: >-
+    Ensures platform registry can run on any SQLAlchemy-supported async backend
+    (PostgreSQL, SQLite ≥3.35, MySQL 8) without migration or schema.sql maintenance.
+    Plain columns (no FK enforcement) allow platform and tenant planes to exist in
+    separate physical databases with independent schemas.
+  code:
+  - provisa/core/schema_admin.py
+  - provisa/api/auth_router.py
+  - provisa/api/setup_router.py
+  - provisa/api/admin/orgs_router.py
+  - provisa/api/admin/local_users_router.py
+  - provisa/api/admin/invites_router.py
+  tests:
+  - tests/unit/test_admin_database.py
+  - tests/integration/test_sqlalchemy_dialect.py

@@ -16,8 +16,10 @@ REQ-700, REQ-701
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
-import asyncpg
+if TYPE_CHECKING:
+    from provisa.core.database import Database
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +74,7 @@ async def deprovision_redis_acl(redis_url: str, org_id: str) -> None:  # REQ-701
 
 
 async def provision_org(  # REQ-701
-    pool: asyncpg.Pool,
+    pool: "Database",
     schema_sql: str,
     org_id: str,
     redis_url: str | None = None,
@@ -139,7 +141,7 @@ async def provision_org(  # REQ-701
 
 
 async def deprovision_org(  # REQ-701
-    pool: asyncpg.Pool,
+    pool: "Database",
     org_id: str,
     redis_url: str | None = None,
 ) -> None:

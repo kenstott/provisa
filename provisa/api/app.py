@@ -43,6 +43,7 @@ from provisa.compiler.sql_gen import CompilationContext, build_context
 from provisa.core.config_loader import load_config, parse_config_dict
 from provisa.core.db import init_schema
 from provisa.core.database import Database, create_engine
+from provisa.core.control_plane import bring_up_platform
 from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.core.secrets import resolve_secrets
 from provisa.executor.pool import SourcePool
@@ -1012,38 +1013,30 @@ async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:  # REQ-057
     org_id = os.environ.get("ORG_ID", "default")
     state.org_id = org_id
 
-    # Control plane now runs on SQLAlchemy (asyncpg driver) via the Database
-    # abstraction; the engine's pool replaces the former asyncpg pool. Org
-    # isolation is applied per-connection via search_path (Phase 1).
-    engine = create_engine(
+    # Split control plane, two independent engines. Tenant (``org_db``/``pg_pool``)
+    # is scoped to schema ``org_<id>`` via ``search_path`` — the tenant-scope
+    # mechanism. Platform (``admin_db``, see control_plane.bring_up_platform) is
+    # the global registry + billing, never org-scoped, on its own SQLAlchemy URI.
+    org_engine = create_engine(
         host=pg_host,
         port=pg_port,
         database=pg_database,
         user=pg_user,
         password=pg_password,
         pool_size=pg_pool_max,
-        max_overflow=max(pg_pool_max - pg_pool_min, 0),
+        pool_min=pg_pool_min,
     )
-    # Split control plane: org (tenant) + admin (platform) handles over one
-    # engine for now. ``pg_pool`` aliases org_db so existing call sites are
-    # unchanged; new/platform code uses state.admin_db.
-    state.org_db = Database(engine, name="org", search_path=f"org_{org_id}")
-    state.admin_db = Database(engine, name="admin", search_path=f"org_{org_id}")
-    state.pg_pool = state.org_db
+    state.org_db = state.pg_pool = Database(org_engine, name="org", search_path=f"org_{org_id}")
+    _plat_url = os.environ["PLATFORM_DATABASE_URL"]
+    state.admin_db = await bring_up_platform(_plat_url, pool_size=pg_pool_max, pool_min=pg_pool_min)
 
     schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
     if schema_sql_path.exists():
-        schema_sql = schema_sql_path.read_text()
-        await init_schema(state.pg_pool, schema_sql, org_id=org_id)
+        await init_schema(state.pg_pool, schema_sql_path.read_text(), org_id=org_id)
 
     from provisa.audit.query_log import init_audit_schema
 
     await init_audit_schema(state.pg_pool, org_id=org_id)
-
-    from provisa.api.billing.tenant_db import init_billing_schema
-
-    # Billing lives in the platform control plane.
-    await init_billing_schema(state.admin_db)
 
     return pg_host, pg_port, pg_database, pg_user
 
@@ -3277,7 +3270,7 @@ def create_app() -> FastAPI:
     # Conditionally add auth middleware and routes
     from provisa.auth.wiring import wire_auth
 
-    wire_auth(app, state.auth_config, db_pool=state.pg_pool)
+    wire_auth(app, state.auth_config, db_pool=state.pg_pool, admin_pool=state.admin_db)
 
     if state.multitenancy:
         from provisa.api.middleware.tenant_middleware import TenantMiddleware

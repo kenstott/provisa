@@ -500,12 +500,31 @@ def create_engine(
     user: str,
     password: str,
     pool_size: int = 5,
-    max_overflow: int = 5,
+    pool_min: int = 0,
     dialect: str = "postgresql+asyncpg",
 ) -> AsyncEngine:
-    """Create the control-plane AsyncEngine. On PostgreSQL, registers the
-    jsonb/json codecs the former asyncpg pool used."""
+    """Create the control-plane AsyncEngine. ``max_overflow`` is derived from
+    ``pool_size - pool_min``. On PostgreSQL, registers the jsonb/json codecs the
+    former asyncpg pool used."""
     url = build_url(dialect, host, port, database, user, password)
+    return create_engine_from_url(
+        url, pool_size=pool_size, max_overflow=max(pool_size - pool_min, 0)
+    )
+
+
+def create_engine_from_url(
+    url: str,
+    *,
+    pool_size: int = 5,
+    max_overflow: int = 5,
+) -> AsyncEngine:
+    """Create a control-plane AsyncEngine from a full SQLAlchemy async URL.
+
+    The platform and tenant control planes are each configured by an independent
+    SQLAlchemy URI (``postgresql+asyncpg://…``, ``sqlite+aiosqlite:///…``,
+    ``mysql+aiomysql://…``), so neither is tied to PostgreSQL. On PostgreSQL the
+    jsonb/json codecs the former asyncpg pool used are registered per connection.
+    """
     engine = create_async_engine(
         url,
         pool_pre_ping=True,
