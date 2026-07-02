@@ -190,6 +190,19 @@ def parse_cypher_write(query: str) -> WriteAST:
     """
     query = query.strip()
 
+    # REQ-818: only CREATE/DELETE/SET are supported as direct table writes.
+    # MERGE, DETACH DELETE, and REMOVE are non-direct write patterns and must be
+    # rejected at parse time with a precise error. This guard runs before the
+    # pattern regexes because a loose DELETE match would otherwise absorb a
+    # leading DETACH into the WHERE expression and silently accept it.
+    for _kw in ("MERGE", "DETACH", "REMOVE"):
+        if re.search(rf"\b{_kw}\b", query, re.IGNORECASE):
+            raise CypherWriteParseError(
+                f"Cypher write pattern {_kw.upper()!r} is not supported. Provisa "
+                "Cypher executes CREATE, DELETE, and SET as direct table writes; "
+                "MERGE, DETACH DELETE, and REMOVE are unsupported."
+            )
+
     m = _CREATE_RE.match(query)
     if m:
         variable = m.group(1)
@@ -290,9 +303,9 @@ def _rewrite_where(where_expr: str, variable: str, mapping: NodeMapping) -> str:
     def _replace(m: re.Match) -> str:
         var = m.group(1)
         prop = m.group(2)
-        if var.lower() != variable.lower():
+        if var is None or prop is None or var.lower() != variable.lower():
             return m.group(0)
-        col = mapping.properties.get(prop, prop)
+        col: str = mapping.properties.get(prop) or prop
         return _q(col)
 
     return _PROP_ACCESS_RE.sub(_replace, where_expr)

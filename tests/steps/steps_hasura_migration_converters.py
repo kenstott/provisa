@@ -515,7 +515,7 @@ def _given_v2_select_perms(shared_data: dict) -> None:
             ),
             HasuraPermission(
                 role="admin",
-                columns="*",
+                columns=["*"],
                 filter={},
             ),
             HasuraPermission(
@@ -965,9 +965,6 @@ def _then_ddn_fields_resolved(shared_data: dict) -> None:
     )
 
 
-from provisa.hasura_v2.auth import convert_auth  # noqa: F401,E402 — used indirectly via convert_metadata
-
-
 # ---------------------------------------------------------------------------
 # REQ-190 — v2 auth conversion (oauth/superuser/role_mapping/webhook warning)
 # ---------------------------------------------------------------------------
@@ -975,65 +972,28 @@ from provisa.hasura_v2.auth import convert_auth  # noqa: F401,E402 — used indi
 
 @given("a Hasura v2 auth config with JWT jwk_url, claims_map, or admin secret")
 def _given_v2_auth_config(shared_data: dict) -> None:
-    """Build three HasuraMetadata instances covering JWT jwk_url, admin secret, and webhook."""
+    """Build minimal metadata plus three auth-env-file variants.
+
+    v2 auth conversion is driven by --auth-env-file (auth_env dict), not by
+    metadata: JWK_URL -> provider oauth, HASURA_GRAPHQL_ADMIN_SECRET -> superuser,
+    CLAIMS_MAP -> role_mapping[], AUTH_PROVIDER=webhook -> warning.
+    """
+    import json
+
     from provisa.hasura_v2.models import HasuraMetadata, HasuraSource
 
-    # JWT config with jwk_url and claims_map
-    jwt_metadata = HasuraMetadata(
-        sources=[
-            HasuraSource(
-                name="default",
-                kind="postgres",
-                tables=[],
-            )
-        ],
-        auth_config={
-            "type": "jwt",
-            "jwt_secret": {
-                "type": "RS256",
-                "jwk_url": "https://auth.example.com/.well-known/jwks.json",
-                "claims_map": {
-                    "x-hasura-allowed-roles": {"path": "$.roles"},
-                    "x-hasura-default-role": {"path": "$.default_role"},
-                    "x-hasura-user-id": {"path": "$.sub"},
-                },
-            },
-        },
-    )
+    metadata = HasuraMetadata(sources=[HasuraSource(name="default", kind="postgres", tables=[])])
 
-    # Admin secret config
-    admin_metadata = HasuraMetadata(
-        sources=[
-            HasuraSource(
-                name="default",
-                kind="postgres",
-                tables=[],
-            )
-        ],
-        auth_config={
-            "type": "admin_secret",
-            "admin_secret": "super-secret-admin-key",
-        },
-    )
-
-    # Webhook auth config (no Provisa equivalent — must emit warning)
-    webhook_metadata = HasuraMetadata(
-        sources=[
-            HasuraSource(
-                name="default",
-                kind="postgres",
-                tables=[],
-            )
-        ],
-        auth_config={
-            "type": "webhook",
-            "webhook": "https://auth.example.com/webhook",
-        },
-    )
-
-    shared_data["jwt_metadata"] = jwt_metadata
-    shared_data["admin_metadata"] = admin_metadata
-    shared_data["webhook_metadata"] = webhook_metadata
+    shared_data["auth_metadata"] = metadata
+    shared_data["jwt_auth_env"] = {
+        "AUTH_PROVIDER": "oauth",
+        "JWK_URL": "https://auth.example.com/.well-known/jwks.json",
+        "CLAIMS_MAP": json.dumps({"sub": "user_id", "roles": "allowed_roles"}),
+    }
+    shared_data["admin_auth_env"] = {
+        "HASURA_GRAPHQL_ADMIN_SECRET": "super-secret-admin-key",
+    }
+    shared_data["webhook_auth_env"] = {"AUTH_PROVIDER": "webhook"}
     shared_data["jwt_collector"] = WarningCollector()
     shared_data["admin_collector"] = WarningCollector()
     shared_data["webhook_collector"] = WarningCollector()
@@ -1041,15 +1001,16 @@ def _given_v2_auth_config(shared_data: dict) -> None:
 
 @when("the v2 converter runs with --auth-env-file")
 def _when_v2_auth_converter_runs(shared_data: dict) -> None:
-    """Run convert_metadata for each auth config variant."""
+    """Run convert_metadata with each auth-env variant."""
+    metadata = shared_data["auth_metadata"]
     shared_data["jwt_config"] = convert_metadata(
-        shared_data["jwt_metadata"], shared_data["jwt_collector"]
+        metadata, shared_data["jwt_collector"], auth_env=shared_data["jwt_auth_env"]
     )
     shared_data["admin_config"] = convert_metadata(
-        shared_data["admin_metadata"], shared_data["admin_collector"]
+        metadata, shared_data["admin_collector"], auth_env=shared_data["admin_auth_env"]
     )
     shared_data["webhook_config"] = convert_metadata(
-        shared_data["webhook_metadata"], shared_data["webhook_collector"]
+        metadata, shared_data["webhook_collector"], auth_env=shared_data["webhook_auth_env"]
     )
 
 
@@ -1058,78 +1019,30 @@ def _when_v2_auth_converter_runs(shared_data: dict) -> None:
     "and webhook auth emits a warning"
 )
 def _then_v2_auth_converted(shared_data: dict) -> None:
-    # ── JWT with jwk_url -> provider: oauth ────────────────────────────────────
-    jwt_config: ProvisaConfig = shared_data["jwt_config"]
-    assert jwt_config.auth is not None, "JWT auth config must produce a Provisa auth section"
-    auth = jwt_config.auth
-
-    # provider must be oauth
-    provider = None
-    if hasattr(auth, "provider"):
-        provider = auth.provider
-    elif isinstance(auth, dict):
-        provider = auth.get("provider")
-    else:
-        auth_dict = auth.model_dump() if hasattr(auth, "model_dump") else dict(auth)
-        provider = auth_dict.get("provider")
-    assert provider == "oauth", (
-        f"JWT jwk_url must produce provider='oauth'; got provider={provider!r}"
+    # ── JWT with JWK_URL -> provider: oauth ────────────────────────────────────
+    jwt_auth = shared_data["jwt_config"].auth
+    assert jwt_auth.provider == "oauth", (
+        f"JWK_URL must produce provider='oauth'; got {jwt_auth.provider!r}"
     )
-
-    # jwk_url must be preserved in the auth config
-    jwk_url = None
-    if hasattr(auth, "jwk_url"):
-        jwk_url = auth.jwk_url
-    elif hasattr(auth, "model_dump"):
-        auth_dict = auth.model_dump()
-        jwk_url = auth_dict.get("jwk_url") or auth_dict.get("jwks_url")
-    if jwk_url is not None:
-        assert "auth.example.com" in jwk_url, (
-            f"jwk_url must be preserved in auth config; got {jwk_url!r}"
-        )
-
-    # claims_map -> role_mapping[]
-    role_mapping = None
-    if hasattr(auth, "role_mapping"):
-        role_mapping = auth.role_mapping
-    elif hasattr(auth, "model_dump"):
-        auth_dict = auth.model_dump()
-        role_mapping = auth_dict.get("role_mapping") or auth_dict.get("claims_map")
-    # role_mapping may be a list or dict — must be non-None and non-empty
-    assert role_mapping is not None and role_mapping != [] and role_mapping != {}, (
-        f"JWT claims_map must produce role_mapping in Provisa auth config; got {role_mapping!r}"
+    assert "auth.example.com" in jwt_auth.oauth.get("jwk_url", ""), (
+        f"jwk_url must be preserved in auth.oauth; got {jwt_auth.oauth!r}"
+    )
+    assert jwt_auth.role_mapping, (
+        f"CLAIMS_MAP must produce a non-empty role_mapping; got {jwt_auth.role_mapping!r}"
     )
 
     # ── Admin secret -> superuser ───────────────────────────────────────────────
-    admin_config: ProvisaConfig = shared_data["admin_config"]
-    assert admin_config.auth is not None, "Admin secret must produce a Provisa auth section"
-    admin_auth = admin_config.auth
-
-    superuser = None
-    if hasattr(admin_auth, "superuser"):
-        superuser = admin_auth.superuser
-    elif hasattr(admin_auth, "model_dump"):
-        admin_auth_dict = admin_auth.model_dump()
-        superuser = admin_auth_dict.get("superuser") or admin_auth_dict.get("admin_secret")
-    elif isinstance(admin_auth, dict):
-        superuser = admin_auth.get("superuser") or admin_auth.get("admin_secret")
-    assert superuser is not None, (
-        f"Admin secret must produce a superuser entry in Provisa auth config; "
-        f"got auth={admin_auth!r}"
+    admin_auth = shared_data["admin_config"].auth
+    assert admin_auth.superuser is not None, (
+        f"HASURA_GRAPHQL_ADMIN_SECRET must produce a superuser entry; got {admin_auth!r}"
     )
+    assert admin_auth.superuser.get("secret") == "super-secret-admin-key"
 
     # ── Webhook auth -> warning emitted ────────────────────────────────────────
-    webhook_collector: WarningCollector = shared_data["webhook_collector"]
-    webhook_warnings = webhook_collector.warnings if hasattr(webhook_collector, "warnings") else []
-    if not webhook_warnings and hasattr(webhook_collector, "get_warnings"):
-        webhook_warnings = webhook_collector.get_warnings()
-    if not webhook_warnings and hasattr(webhook_collector, "all"):
-        webhook_warnings = webhook_collector.all()
-
-    # At least one warning must mention 'webhook'
-    webhook_warning_texts = [str(w).lower() for w in webhook_warnings]
-    assert any("webhook" in w for w in webhook_warning_texts), (
-        f"Webhook auth must emit a warning containing 'webhook'; got warnings: {webhook_warnings!r}"
+    webhook_warnings = shared_data["webhook_collector"].warnings
+    warning_texts = [f"{w.category} {w.message}".lower() for w in webhook_warnings]
+    assert any("webhook" in t for t in warning_texts), (
+        f"AUTH_PROVIDER=webhook must emit a warning mentioning 'webhook'; got {webhook_warnings!r}"
     )
 
 
@@ -1326,15 +1239,8 @@ def _then_missing_object_type_skipped(shared_data: dict) -> None:
     )
 
     # A warning must have been emitted for the missing ObjectType.
-    all_warnings = []
-    if hasattr(collector, "warnings"):
-        all_warnings = collector.warnings
-    elif hasattr(collector, "get_warnings"):
-        all_warnings = collector.get_warnings()
-    elif hasattr(collector, "all"):
-        all_warnings = collector.all()
-
-    warning_texts = [str(w).lower() for w in all_warnings]
+    all_warnings = collector.warnings
+    warning_texts = [f"{w.category} {w.message}".lower() for w in all_warnings]
     assert any(
         "track" in w
         or "objecttype" in w.replace("_", "").replace(" ", "")

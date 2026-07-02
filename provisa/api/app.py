@@ -42,7 +42,7 @@ from provisa.compiler.rls import RLSContext, build_rls_context
 from provisa.compiler.sql_gen import CompilationContext, build_context
 from provisa.core.config_loader import load_config, parse_config_dict
 from provisa.core.db import init_schema
-from provisa.core.database import Database, create_engine
+from provisa.core.database import Database, create_engine_from_url
 from provisa.core.control_plane import bring_up_platform
 from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.core.secrets import resolve_secrets
@@ -999,35 +999,31 @@ async def _init_meta_rls(conn: asyncpg.Connection) -> None:  # REQ-041, REQ-402
         )
 
 
-async def _init_control_planes() -> tuple[str, int, str, str]:  # REQ-057
-    """Connect to PG, init schema, audit, and billing. Returns (pg_host, pg_port, pg_database, pg_user)."""
-    pg_host = os.environ.get("PG_HOST", "localhost")
-    pg_port = int(os.environ.get("PG_PORT", "5432"))
-    pg_database = os.environ.get("PG_DATABASE", "provisa")
-    pg_user = os.environ.get("PG_USER", "provisa")
-    pg_password = os.environ.get("PG_PASSWORD", "provisa")
-    pg_pool_min = int(os.environ.get("PG_POOL_MIN", "2"))
-    pg_pool_max = int(os.environ.get("PG_POOL_MAX", "10"))
+async def _init_control_planes(
+    config_path: str | None,
+) -> tuple[str, int, str, str]:  # REQ-057, REQ-837
+    """Bring up both control planes from config and init tenant schema + audit.
 
-    org_id = os.environ.get("ORG_ID", "default")
+    Returns the tenant DB connection parts (host, port, database, user) for the
+    Trino self-catalog. All connection details come from the config layer
+    (``control_plane``), which is the only place the environment is read — both
+    planes are driven purely by SQLAlchemy, each by its own URI."""
+    from provisa.core.config_loader import load_control_plane
+
+    cp = load_control_plane(config_path)
+    org_id = cp.resolved_org_id()
     state.org_id = org_id
 
-    # Split control plane, two independent engines. Tenant (``tenant_db``/``tenant_db``)
-    # is scoped to schema ``org_<id>`` via ``search_path`` — the tenant-scope
-    # mechanism. Platform (``admin_db``, see control_plane.bring_up_platform) is
-    # the global registry + billing, never org-scoped, on its own SQLAlchemy URI.
-    org_engine = create_engine(
-        host=pg_host,
-        port=pg_port,
-        database=pg_database,
-        user=pg_user,
-        password=pg_password,
-        pool_size=pg_pool_max,
-        pool_min=pg_pool_min,
+    # Tenant plane: schema-scoped to ``org_<id>`` via search_path (the tenant-scope
+    # mechanism). Platform plane (bring_up_platform): global registry + billing,
+    # never org-scoped. Two independent engines, each its own SQLAlchemy URI.
+    tenant_engine = create_engine_from_url(
+        cp.resolved_tenant_url(), pool_size=cp.pool_max, max_overflow=cp.max_overflow
     )
-    state.tenant_db = Database(org_engine, name="org", search_path=f"org_{org_id}")
-    _plat_url = os.environ["PLATFORM_DATABASE_URL"]
-    state.admin_db = await bring_up_platform(_plat_url, pool_size=pg_pool_max, pool_min=pg_pool_min)
+    state.tenant_db = Database(tenant_engine, name="org", search_path=f"org_{org_id}")
+    state.admin_db = await bring_up_platform(
+        cp.resolved_platform_url(), pool_size=cp.pool_max, pool_min=cp.pool_min
+    )
 
     schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
     if schema_sql_path.exists():
@@ -1037,7 +1033,11 @@ async def _init_control_planes() -> tuple[str, int, str, str]:  # REQ-057
 
     await init_audit_schema(state.tenant_db, org_id=org_id)
 
-    return pg_host, pg_port, pg_database, pg_user
+    host, port, database, username, _pw = cp.tenant_parts()
+    assert host and database and username, (
+        "control_plane.tenant_url must specify host, database, and user"
+    )
+    return host, port, database, username
 
 
 async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
@@ -1683,9 +1683,10 @@ async def _load_and_build(
 
     _startup_log.warning("startup phase %-20s begin", "lifespan")
 
-    # Connect to PG and init schema unconditionally — pool must be available
-    # even before a config file exists (admin UI needs it on first start).
-    pg_host, pg_port, pg_database, pg_user = await _init_control_planes()
+    # Bring up the control planes + init schema unconditionally — the DB must be
+    # available even before a full config exists (admin UI needs it on first
+    # start). Connection details come from the config's control_plane section.
+    pg_host, pg_port, pg_database, pg_user = await _init_control_planes(config_path)
 
     _mark("pg-pool")
     _mark("schema-init")

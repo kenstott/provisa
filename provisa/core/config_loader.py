@@ -20,7 +20,7 @@ import asyncpg
 import trino
 import yaml
 
-from provisa.core.models import Domain, ProvisaConfig, Source, Table
+from provisa.core.models import ControlPlaneConfig, Domain, ProvisaConfig, Source, Table
 from provisa.core import domain_policy
 from provisa.core.secrets import resolve_secrets
 from provisa.openapi.mapper import OpenAPIQuery
@@ -141,6 +141,20 @@ def parse_config(path: str | Path) -> ProvisaConfig:  # REQ-250
     with open(Path(path), encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     return ProvisaConfig.model_validate(raw)
+
+
+def load_control_plane(config_path: str | Path | None) -> ControlPlaneConfig:  # REQ-837
+    """Read just the ``control_plane`` config section (or defaults).
+
+    The control-plane database connections must be available before the full
+    config is loaded (the admin UI needs the DB on first start, possibly before a
+    config file exists), so this is parsed independently of ``parse_config``. It
+    is the config layer — env/secret resolution happens here, not in callers."""
+    if config_path and Path(config_path).exists():
+        with open(Path(config_path), encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+        return ControlPlaneConfig.model_validate(raw.get("control_plane", {}))
+    return ControlPlaneConfig()
 
 
 def parse_config_dict(data: dict) -> ProvisaConfig:  # REQ-250

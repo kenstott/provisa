@@ -835,8 +835,60 @@ class GovDataSubscription(BaseModel):  # REQ-540
     subjects: list[GovDataSubject] = Field(default_factory=list)
 
 
+class ControlPlaneConfig(BaseModel):
+    """Database connections for the two control planes.
+
+    The ONLY place database connection details enter Provisa. Both planes are
+    driven purely by SQLAlchemy, each by its own URI. Values may embed
+    ``${env:VAR}`` / ``${env:VAR:-default}`` references resolved through the
+    secrets provider — config is the single chokepoint that reads the
+    environment; everything else reads this resolved config.
+
+      * tenant plane  — per-org control plane, schema-scoped at runtime.
+      * platform plane — global registry (orgs/users/invites) + billing.
+    """
+
+    tenant_url: str = (
+        "${env:TENANT_DATABASE_URL:-postgresql+asyncpg://provisa:provisa@localhost:5432/provisa}"
+    )
+    platform_url: str = (
+        "${env:PLATFORM_DATABASE_URL:-postgresql+asyncpg://provisa:provisa@localhost:5432/provisa}"
+    )
+    org_id: str = "${env:ORG_ID:-default}"
+    pool_min: int = 2
+    pool_max: int = 10
+
+    @property
+    def max_overflow(self) -> int:
+        return max(self.pool_max - self.pool_min, 0)
+
+    def resolved_tenant_url(self) -> str:
+        from provisa.core.secrets import resolve_secrets
+
+        return resolve_secrets(self.tenant_url)
+
+    def resolved_platform_url(self) -> str:
+        from provisa.core.secrets import resolve_secrets
+
+        return resolve_secrets(self.platform_url)
+
+    def resolved_org_id(self) -> str:
+        from provisa.core.secrets import resolve_secrets
+
+        return resolve_secrets(self.org_id)
+
+    def tenant_parts(self) -> tuple[str | None, int, str | None, str | None, str | None]:
+        """(host, port, database, username, password) parsed from the tenant URL —
+        for the Trino self-catalog that points back at the control-plane DB."""
+        from sqlalchemy import make_url
+
+        u = make_url(self.resolved_tenant_url())
+        return u.host, u.port or 5432, u.database, u.username, u.password
+
+
 class ProvisaConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
+    control_plane: ControlPlaneConfig = Field(default_factory=ControlPlaneConfig)
     multitenancy: bool = False
     jvm_heap_gb: int = 8
     query_max_memory: str = "4GB"

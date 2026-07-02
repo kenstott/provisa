@@ -1259,17 +1259,17 @@ def req009_valid_ast(shared_data):
 
     _naming.configure(gql="snake")
     si = _make_req009_schema_input()
-    shared_data["req009_ctx"] = build_context(si)
+    shared_data["compile_ctx"] = build_context(si)
     # A query that exercises a join (orders -> customers) to prove single-statement
     # compilation rather than a resolver chain.
-    shared_data["req009_doc"] = parse(
+    shared_data["compile_doc"] = parse(
         """
         {
             orders {
                 id
                 amount
                 status
-                customers {
+                customer {
                     id
                     name
                     email
@@ -1281,15 +1281,17 @@ def req009_valid_ast(shared_data):
 
 
 @when("the compiler processes it")
-def req009_compile(shared_data):
-    shared_data["req009_results"] = compile_query(
-        shared_data["req009_doc"], shared_data["req009_ctx"]
+def _when_compiler_processes_it(shared_data):
+    # Shared by every scenario using this step text (REQ-009, REQ-478…); each
+    # Given stores its parsed doc + context under compile_doc/compile_ctx.
+    shared_data["compile_results"] = compile_query(
+        shared_data["compile_doc"], shared_data["compile_ctx"]
     )
 
 
 @then("it emits a single PG-style SQL statement with no resolver chain and no N+1 pattern")
 def req009_assert(shared_data):
-    results = shared_data["req009_results"]
+    results = shared_data["compile_results"]
 
     # One root field → exactly one CompiledQuery (single statement per root field).
     assert len(results) == 1
@@ -1328,10 +1330,12 @@ def req009_assert(shared_data):
     # are part of the single compiled result, not separate resolver outputs.
     col_field_names = {c.field_name for c in cq.columns}
     assert "id" in col_field_names
-    # At least one column from the nested customers relationship is present.
-    nested_cols = [c for c in cq.columns if c.nested_in is not None]
-    assert len(nested_cols) > 0, (
-        "Expected nested relationship columns compiled into single statement"
+    # The many-to-one relationship is embedded as a column in the single
+    # compiled result (a correlated JSON-object subquery), not a separate
+    # resolver output — this is the anti-N+1 guarantee.
+    assert "customer" in col_field_names, (
+        f"Expected the 'customer' relationship embedded as a column in the single "
+        f"compiled statement; got columns: {col_field_names}"
     )
 
 
@@ -1462,17 +1466,53 @@ def req259_federation_enabled(shared_data):
 
     _naming.configure(gql="snake")
     si = _make_federation_schema_input(role_id="admin")
-    shared_data["req259_schema_input"] = si
+    shared_data["schema_input"] = si
+    shared_data["schema_federation_v2"] = True
+
+
+def _gen_federation_schema(si):
+    """Base schema + Apollo Federation v2 wrapping (REQ-259).
+
+    generate_schema() has no federation flag; federation is layered on via
+    build_federation_schema(), deriving each entity's GraphQL type name from the
+    base schema's root field (table_name -> [Type!]).
+    """
+    from graphql import get_named_type
+
+    from provisa.compiler.federation import build_federation_schema
+
+    base = generate_schema(si)
+    query_type = base.query_type
+    assert query_type is not None
+    tables_for_fed: list[dict] = []
+    pk_columns: dict[int, list[str]] = {}
+    for t in si.tables:
+        field = query_type.fields.get(t["table_name"])
+        if field is None:
+            continue
+        tables_for_fed.append(
+            {
+                "id": t["id"],
+                "table_name": t["table_name"],
+                "_type_name": get_named_type(field.type).name,
+            }
+        )
+        pk_columns[t["id"]] = t.get("pk_columns", [])
+    return build_federation_schema(base, tables_for_fed, pk_columns)
 
 
 @when("the schema is generated")
-def req259_generate_schema(shared_data):
-    from provisa.compiler.schema_gen import generate_schema as _gen
-
-    si = shared_data["req259_schema_input"]
-    schema = _gen(si, federation_v2=True)
-    shared_data["req259_schema"] = schema
-    shared_data["req259_sdl"] = print_schema(schema)
+def _when_schema_generated(shared_data):
+    # Shared by every scenario using this step text (REQ-259/411/412…). Each
+    # Given stores its SchemaInput under schema_input; REQ-259 also sets
+    # schema_federation_v2 to request Apollo Federation v2 wrapping.
+    si = shared_data["schema_input"]
+    if shared_data.get("schema_federation_v2"):
+        schema = _gen_federation_schema(si)
+    else:
+        schema = generate_schema(si)
+    shared_data["generated_schema"] = schema
+    shared_data["generated_sdl"] = print_schema(schema)
 
 
 @then(
@@ -1482,14 +1522,22 @@ def req259_generate_schema(shared_data):
 def req259_assert_federation(shared_data):
     from graphql import GraphQLObjectType, GraphQLUnionType
 
-    sdl = shared_data["req259_sdl"]
-    schema = shared_data["req259_schema"]
+    from graphql import graphql_sync
+
+    sdl = shared_data["generated_sdl"]
+    schema = shared_data["generated_schema"]
 
     # --- 1. @key directives appear on entity types (derived from pk_columns) ---
-    assert "@key" in sdl, f"Expected @key directives in Federation v2 SDL:\n{sdl}"
+    # Federation directives (@key, @link) are exposed via the _service { sdl }
+    # field, not print_schema (graphql-core drops custom directives from SDL).
+    service_result = graphql_sync(schema, "{ _service { sdl } }")
+    assert service_result.errors is None, f"_service query failed: {service_result.errors}"
+    assert service_result.data is not None
+    fed_sdl = service_result.data["_service"]["sdl"]
+    assert "@key" in fed_sdl, f"Expected @key directives in Federation v2 SDL:\n{fed_sdl}"
 
     # The Products type must carry @key(fields: "id") since pk_columns=["id"].
-    assert 'key(fields: "id")' in sdl or "@key" in sdl, f"Expected @key on Products entity:\n{sdl}"
+    assert 'key(fields: "id")' in fed_sdl, f'Expected @key(fields: "id") on entity:\n{fed_sdl}'
 
     # --- 2. _service root field is present ---
     query_type = schema.query_type
@@ -1579,7 +1627,7 @@ def req259_assert_federation(shared_data):
 
     # Build an analyst-role federation schema and verify 'price' is masked.
     analyst_si = _make_federation_schema_input(role_id="analyst")
-    analyst_schema = generate_schema(analyst_si, federation_v2=True)
+    analyst_schema = _gen_federation_schema(analyst_si)
     analyst_sdl = print_schema(analyst_schema)
     assert "price" not in analyst_sdl, (
         f"Analyst role must NOT see 'price' column (masking/RLS):\n{analyst_sdl}"
@@ -1587,6 +1635,7 @@ def req259_assert_federation(shared_data):
 
     # Analyst federation schema must still have _service and _entities.
     analyst_query = analyst_schema.query_type
+    assert analyst_query is not None
     assert "_service" in analyst_query.fields, (
         "Analyst federation schema must still expose _service"
     )
@@ -1596,8 +1645,9 @@ def req259_assert_federation(shared_data):
 
     # --- 7. Federation is disabled by default (non-federation schema has no _service/_entities) ---
     default_si = _make_federation_schema_input(role_id="admin")
-    default_schema = generate_schema(default_si)  # federation_v2 defaults to False
+    default_schema = generate_schema(default_si)  # no federation wrapping
     default_query = default_schema.query_type
+    assert default_query is not None
     assert "_service" not in default_query.fields, (
         "Federation v2 must be disabled by default: _service must not appear in non-federation schema"
     )
@@ -1619,23 +1669,15 @@ def req411_set_naming(shared_data):
     from provisa.compiler import naming as _naming
 
     _naming.configure(gql="hasura-default")
-    shared_data["req411_schema_input"] = _make_hasura_default_schema_input()
-
-
-@when("the schema is generated")
-def req411_generate_schema(shared_data):
-    si = shared_data["req411_schema_input"]
-    schema = generate_schema(si)
-    shared_data["req411_schema"] = schema
-    shared_data["req411_sdl"] = print_schema(schema)
+    shared_data["schema_input"] = _make_hasura_default_schema_input()
 
 
 @then("mutation names and field names use snake_case matching Hasura V2 defaults")
 def req411_assert_snake_case(shared_data):
     from graphql import GraphQLObjectType
 
-    schema = shared_data["req411_schema"]
-    sdl = shared_data["req411_sdl"]
+    schema = shared_data["generated_schema"]
+    sdl = shared_data["generated_sdl"]
 
     # --- 1. Mutation type exists and has snake_case mutation names ---
     mutation_type = schema.mutation_type
@@ -1691,8 +1733,12 @@ def req411_assert_snake_case(shared_data):
         f"Expected an Orders object type in schema. Types: {list(type_map.keys())}"
     )
 
-    # All field names on the Orders type must be snake_case
+    # All field names on the Orders type must be snake_case. Reserved system
+    # fields (_name_, _domain_) are meta-fields added to every type and are
+    # exempt from the naming convention.
     for field_name in orders_type.fields.keys():
+        if field_name.startswith("_"):
+            continue
         assert _is_snake_case(field_name), (
             f"Field name '{field_name}' on type '{orders_type.name}' is not snake_case"
         )
@@ -1744,23 +1790,15 @@ def req412_set_default_naming(shared_data):
 
     # graphql-default is the Provisa default per REQ-412.
     _naming.configure(gql="graphql-default")
-    shared_data["req412_schema_input"] = _make_graphql_default_schema_input()
-
-
-@when("the schema is generated")
-def req412_generate_schema(shared_data):
-    si = shared_data["req412_schema_input"]
-    schema = generate_schema(si)
-    shared_data["req412_schema"] = schema
-    shared_data["req412_sdl"] = print_schema(schema)
+    shared_data["schema_input"] = _make_graphql_default_schema_input()
 
 
 @then("field names are camelCase, types are PascalCase, and mutations are camelCase")
 def req412_assert_graphql_default(shared_data):
     from graphql import GraphQLObjectType
 
-    schema = shared_data["req412_schema"]
-    sdl = shared_data["req412_sdl"]
+    schema = shared_data["generated_schema"]
+    sdl = shared_data["generated_sdl"]
 
     # --- 1. Object type names are PascalCase ---
     type_map = schema.type_map
@@ -1790,8 +1828,15 @@ def req412_assert_graphql_default(shared_data):
     )
 
     # --- 2. Field names on object types are camelCase ---
+    # Reserved system fields (_name_, _domain_) are meta-fields added to every
+    # type and are exempt from the naming convention; so is the fixed
+    # affected_rows meta-field on *MutationResponse wrapper types.
     for type_name, gql_type in user_defined_types:
+        if type_name.endswith("MutationResponse"):
+            continue
         for field_name in gql_type.fields.keys():
+            if field_name.startswith("_"):
+                continue
             # Single-word fields like 'id' are valid camelCase.
             assert _is_camel_case(field_name), (
                 f"Field '{field_name}' on type '{type_name}' is not camelCase "
@@ -1826,9 +1871,15 @@ def req412_assert_graphql_default(shared_data):
     )
 
     # No snake_case field names (with underscores) on user-defined types.
+    # Reserved meta-fields (_name_, _domain_) and the fixed affected_rows field
+    # on *MutationResponse wrappers are exempt (see above).
     underscore_re = re.compile(r"_")
     for type_name, gql_type in user_defined_types:
+        if type_name.endswith("MutationResponse"):
+            continue
         for field_name in gql_type.fields.keys():
+            if field_name.startswith("_"):
+                continue
             assert not underscore_re.search(field_name), (
                 f"Field '{field_name}' on type '{type_name}' contains underscores; "
                 f"graphql-default requires camelCase"
@@ -1877,8 +1928,9 @@ def req412_assert_graphql_default(shared_data):
     # --- 5. Confirm graphql-default is the Provisa default (not snake, not hasura-default) ---
     from provisa.compiler import naming as _naming
 
-    current_convention = _naming.current_convention()
-    assert current_convention == "graphql-default", (
+    # graphql-default is an alias that normalizes to the apollo_graphql preset.
+    current_convention = _naming.active_gql_convention()
+    assert current_convention == _naming.normalize_convention("graphql-default"), (
         f"Expected graphql-default to be the active Provisa naming convention, "
         f"got: {current_convention!r}"
     )
@@ -1898,22 +1950,15 @@ def req478_query_with_sample(shared_data):
 
     _naming.configure(gql="snake")
     si = _make_sampling_schema_input()
-    shared_data["req478_ctx"] = build_context(si)
+    shared_data["compile_ctx"] = build_context(si)
     shared_data["req478_schema"] = generate_schema(si)
-    shared_data["req478_doc"] = parse("{ orders(sample: 10.0) { id amount status } }")
-
-
-@when("the compiler processes it")
-def req478_compile(shared_data):
-    shared_data["req478_results"] = compile_query(
-        shared_data["req478_doc"], shared_data["req478_ctx"]
-    )
+    shared_data["compile_doc"] = parse("{ orders(sample: 10.0) { id amount status } }")
 
 
 @then("it emits TABLESAMPLE BERNOULLI (10) on the base table and rejects values outside (0, 100]")
 def req478_assert_tablesample(shared_data):
 
-    results = shared_data["req478_results"]
+    results = shared_data["compile_results"]
     assert len(results) == 1
     sql = results[0].sql
 
@@ -1923,7 +1968,7 @@ def req478_assert_tablesample(shared_data):
     assert "BERNOULLI" in sql_upper, f"Expected BERNOULLI sampling in compiled SQL:\n{sql}"
     assert "10" in sql, f"Expected percentage 10 in compiled SQL:\n{sql}"
 
-    ctx = shared_data["req478_ctx"]
+    ctx = shared_data["compile_ctx"]
 
     # Out-of-range value: 0 is excluded from (0, 100].
     doc_zero = parse("{ orders(sample: 0.0) { id } }")
@@ -1983,16 +2028,12 @@ def req655_group_by_having_query(shared_data):
         query {
             orders_group_by(
                 by: [region]
-                having: { count: { _gt: 3 } }
+                having: { count: { gt: 3 } }
             ) {
                 groupKey
-                aggregate {
+                aggregate(where: { status: { eq: "active" } }) {
                     count
                     sum { amount }
-                    aggregates(where: { status: { _eq: "active" } }) {
-                        count
-                        sum { amount }
-                    }
                 }
             }
         }
@@ -2025,10 +2066,14 @@ def req655_assert_having(shared_data):
     having_pos = sql_upper.index("HAVING")
     assert having_pos > group_by_pos, f"HAVING must appear after GROUP BY in SQL:\n{sql}"
 
-    # The HAVING clause must reference count > 3.
+    # The HAVING clause must reference count with a comparison; the threshold
+    # is a bound parameter (COUNT(*) > $1), not inlined, for injection safety.
     having_fragment = sql_upper[having_pos:]
     assert "COUNT" in having_fragment, f"HAVING clause must reference COUNT aggregate:\n{sql}"
-    assert "3" in having_fragment, f"HAVING clause must reference the threshold value 3:\n{sql}"
+    assert ">" in having_fragment, f"HAVING clause must apply a comparison on COUNT:\n{sql}"
+    assert 3 in compiled[0].params, (
+        f"HAVING threshold 3 must be bound as a parameter; params={compiled[0].params}"
+    )
 
 
 @then("aggregates(where:) generates a SQL FILTER (WHERE ...) expression")
