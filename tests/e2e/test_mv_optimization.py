@@ -188,7 +188,7 @@ class TestRLSOnMVQueries:
 
 
 class TestPartialMVMatch:
-    """Partial match: MV covers subset of JOINs, rest preserved (REQ-083)."""
+    """Partial match: MV covers subset of JOINs, rest preserved (REQ-849)."""
 
     def test_partial_match_rewrites_covered_join(self):
         sql = (

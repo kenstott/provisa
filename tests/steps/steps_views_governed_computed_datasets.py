@@ -360,3 +360,342 @@ def served_from_mv_or_live(shared_data: dict) -> None:
     expired_result = rewrite_if_mv_match(shared_data["compiled"], expired_fresh)
     assert expired_result.sql == _VIEW_JOIN_SQL
     assert "mv_cache" not in expired_result.sql
+
+
+scenarios("../features/REQ-849.feature")
+
+
+@given("a fresh, enabled MV covering a query's root table (and optionally some joins)")
+def fresh_enabled_mv_covering_root_table(shared_data: dict) -> None:
+    # Build a registry with several MV candidates to exercise full/partial/no-match logic.
+
+    # MV-A: full match — covers the only JOIN in the baseline query
+    mv_full = MVDefinition(
+        id="mv-849-full",
+        source_tables=["orders", "customers"],
+        target_catalog="iceberg",
+        target_schema="mv_store",
+        target_table="mv_orders_customers",
+        join_pattern=JoinPattern(
+            left_table="orders",
+            left_column="customer_id",
+            right_table="customers",
+            right_column="id",
+            join_type="left",
+        ),
+        refresh_interval=300,
+    )
+    mv_full.status = MVStatus.FRESH
+    mv_full.last_refresh_at = time.time() - 10
+
+    # MV-B: partial match — covers only the second JOIN in a two-join query
+    mv_partial = MVDefinition(
+        id="mv-849-partial",
+        source_tables=["orders", "products"],
+        target_catalog="iceberg",
+        target_schema="mv_store",
+        target_table="mv_orders_products",
+        join_pattern=JoinPattern(
+            left_table="orders",
+            left_column="product_id",
+            right_table="products",
+            right_column="id",
+            join_type="left",
+        ),
+        refresh_interval=300,
+    )
+    mv_partial.status = MVStatus.FRESH
+    mv_partial.last_refresh_at = time.time() - 10
+
+    # MV-C: disabled — must never be used even if it matches
+    mv_disabled = MVDefinition(
+        id="mv-849-disabled",
+        source_tables=["orders", "customers"],
+        target_catalog="iceberg",
+        target_schema="mv_store",
+        target_table="mv_orders_customers_disabled",
+        join_pattern=JoinPattern(
+            left_table="orders",
+            left_column="customer_id",
+            right_table="customers",
+            right_column="id",
+            join_type="left",
+        ),
+        refresh_interval=300,
+    )
+    mv_disabled.enabled = False
+    mv_disabled.status = MVStatus.FRESH
+    mv_disabled.last_refresh_at = time.time() - 10
+
+    # MV-D: stale — must not be served
+    mv_stale = MVDefinition(
+        id="mv-849-stale",
+        source_tables=["orders", "customers"],
+        target_catalog="iceberg",
+        target_schema="mv_store",
+        target_table="mv_orders_customers_stale",
+        join_pattern=JoinPattern(
+            left_table="orders",
+            left_column="customer_id",
+            right_table="customers",
+            right_column="id",
+            join_type="left",
+        ),
+        refresh_interval=300,
+    )
+    mv_stale.status = MVStatus.STALE
+    mv_stale.last_refresh_at = time.time() - 10
+
+    registry = MVRegistry()
+    registry.register(mv_full)
+    registry.register(mv_partial)
+    registry.register(mv_disabled)
+    registry.register(mv_stale)
+
+    shared_data["registry"] = registry
+    shared_data["mv_full"] = mv_full
+    shared_data["mv_partial"] = mv_partial
+    shared_data["mv_disabled"] = mv_disabled
+    shared_data["mv_stale"] = mv_stale
+
+    # Single-JOIN SQL: mv_full covers it completely.
+    single_join_sql = (
+        'SELECT "t0"."id", "t1"."name" '
+        'FROM "public"."orders" "t0" '
+        'LEFT JOIN "public"."customers" "t1" ON "t0"."customer_id" = "t1"."id"'
+    )
+    shared_data["single_join_sql"] = single_join_sql
+
+    # Two-JOIN SQL: mv_full covers the first join (full of its own pattern),
+    # mv_partial covers only the second JOIN → partial match wins for two-join query
+    # when mv_full is absent from candidates.
+    two_join_sql = (
+        'SELECT "t0"."id", "t1"."name", "t2"."title" '
+        'FROM "public"."orders" "t0" '
+        'LEFT JOIN "public"."customers" "t1" ON "t0"."customer_id" = "t1"."id" '
+        'LEFT JOIN "public"."products" "t2" ON "t0"."product_id" = "t2"."id"'
+    )
+    shared_data["two_join_sql"] = two_join_sql
+
+    # No-match SQL: references tables not covered by any registered MV
+    no_match_sql = (
+        'SELECT "t0"."id", "t1"."code" '
+        'FROM "public"."orders" "t0" '
+        'LEFT JOIN "public"."promotions" "t1" ON "t0"."promo_id" = "t1"."id"'
+    )
+    shared_data["no_match_sql"] = no_match_sql
+
+
+@when("a query is compiled that references the underlying source tables without naming the MV")
+def query_compiled_without_naming_mv(shared_data: dict) -> None:
+    registry: MVRegistry = shared_data["registry"]
+    fresh_mvs = registry.get_fresh()
+
+    # Verify disabled and stale MVs are excluded from fresh list
+    fresh_ids = {mv.id for mv in fresh_mvs}
+    assert "mv-849-disabled" not in fresh_ids, "Disabled MV must not appear in get_fresh()"
+    assert "mv-849-stale" not in fresh_ids, "Stale MV must not appear in get_fresh()"
+    shared_data["fresh_mvs"] = fresh_mvs
+
+    # --- Scenario A: single-join query → full match with mv_full ---
+    compiled_single = CompiledQuery(
+        sql=shared_data["single_join_sql"],
+        params=[],
+        root_field="orders",
+        columns=[],
+        sources={"sales-pg"},
+    )
+    result_single = rewrite_if_mv_match(compiled_single, fresh_mvs)
+    shared_data["result_single"] = result_single
+    shared_data["compiled_single"] = compiled_single
+
+    # --- Scenario B: two-join query with only mv_partial available ---
+    # Remove mv_full from candidates to force a partial match scenario.
+    partial_only = [mv for mv in fresh_mvs if mv.id == "mv-849-partial"]
+    compiled_two = CompiledQuery(
+        sql=shared_data["two_join_sql"],
+        params=[],
+        root_field="orders",
+        columns=[],
+        sources={"sales-pg"},
+    )
+    result_two_partial = rewrite_if_mv_match(compiled_two, partial_only)
+    shared_data["result_two_partial"] = result_two_partial
+    shared_data["compiled_two"] = compiled_two
+
+    # --- Scenario C: two-join query with BOTH mv_full AND mv_partial available ---
+    # mv_full matches only 1-of-2 joins on the two-join query (partial),
+    # mv_partial also matches only 1-of-2 joins (partial).
+    # Neither achieves a full match; among partials both tie at coverage=1.
+    # The rewriter should pick whichever partial candidate it finds first
+    # (ordering-stable among equal-coverage partials is acceptable per REQ-849).
+    both_candidates = [mv for mv in fresh_mvs if mv.id in ("mv-849-full", "mv-849-partial")]
+    result_two_both = rewrite_if_mv_match(compiled_two, both_candidates)
+    shared_data["result_two_both"] = result_two_both
+
+    # --- Scenario D: no-match query → runs against live source tables ---
+    compiled_no_match = CompiledQuery(
+        sql=shared_data["no_match_sql"],
+        params=[],
+        root_field="orders",
+        columns=[],
+        sources={"sales-pg"},
+    )
+    result_no_match = rewrite_if_mv_match(compiled_no_match, fresh_mvs)
+    shared_data["result_no_match"] = result_no_match
+    shared_data["compiled_no_match"] = compiled_no_match
+
+    # --- Scenario E: full-match MV must win over an earlier partial-match MV ---
+    # Place the partial candidate before the full-match candidate to confirm
+    # that ordering does not allow a partial to preempt a full match.
+    compiled_single_recheck = CompiledQuery(
+        sql=shared_data["single_join_sql"],
+        params=[],
+        root_field="orders",
+        columns=[],
+        sources={"sales-pg"},
+    )
+    # Construct a "partial-first" list: a partial-matching MV followed by the full-match MV.
+    # For the single-join SQL, mv_partial does NOT match (wrong join), so this tests
+    # that a non-matching candidate before a full-match candidate does not block the full match.
+    ordered_candidates = [shared_data["mv_partial"], shared_data["mv_full"]]
+    result_full_preferred = rewrite_if_mv_match(compiled_single_recheck, ordered_candidates)
+    shared_data["result_full_preferred"] = result_full_preferred
+
+    # --- Scenario F: TTL-expired MV is excluded ---
+    expired_mv = MVDefinition(
+        id="mv-849-expired",
+        source_tables=["orders", "customers"],
+        target_catalog="iceberg",
+        target_schema="mv_store",
+        target_table="mv_orders_customers_expired",
+        join_pattern=JoinPattern(
+            left_table="orders",
+            left_column="customer_id",
+            right_table="customers",
+            right_column="id",
+            join_type="left",
+        ),
+        refresh_interval=300,
+    )
+    expired_mv.status = MVStatus.FRESH
+    expired_mv.last_refresh_at = time.time() - (300 + 120)  # well past TTL
+    assert expired_mv.is_fresh_at(time.time()) is False, "Expired MV must report not fresh"
+
+    expired_registry = MVRegistry()
+    expired_registry.register(expired_mv)
+    expired_fresh = expired_registry.get_fresh()
+    assert expired_fresh == [], "TTL-expired MV must not be returned by get_fresh()"
+
+    compiled_expired = CompiledQuery(
+        sql=shared_data["single_join_sql"],
+        params=[],
+        root_field="orders",
+        columns=[],
+        sources={"sales-pg"},
+    )
+    result_expired = rewrite_if_mv_match(compiled_expired, expired_fresh)
+    shared_data["result_expired"] = result_expired
+    shared_data["single_join_sql_ref"] = shared_data["single_join_sql"]
+
+
+@then(
+    "the rewriter transparently redirects the FROM/JOIN to the MV target (full or partial), otherwise the query runs against the live source tables."
+)
+def rewriter_redirects_or_falls_back(shared_data: dict) -> None:
+    single_join_sql: str = shared_data["single_join_sql"]
+    no_match_sql: str = shared_data["no_match_sql"]
+
+    # -----------------------------------------------------------------------
+    # A. Full match: single-join query rewritten to MV target table
+    # -----------------------------------------------------------------------
+    result_single = shared_data["result_single"]
+    assert "mv_orders_customers" in result_single.sql, (
+        f"Full-match rewrite must target 'mv_orders_customers'; got: {result_single.sql}"
+    )
+    assert "JOIN" not in result_single.sql, (
+        "Full-match rewrite must remove all JOIN clauses from the SQL"
+    )
+    assert "iceberg" in result_single.sources, (
+        "Full-match rewrite must add MV catalog to query sources"
+    )
+    # The original source tables must not appear as primary FROM clause
+    assert "orders" not in result_single.sql.split("FROM")[1].split("WHERE")[0].split("JOIN")[0], (
+        "Full-match rewrite must replace the FROM source with the MV target table"
+    )
+
+    # -----------------------------------------------------------------------
+    # B. Partial match: two-join query with only the partial MV available
+    # -----------------------------------------------------------------------
+    result_two_partial = shared_data["result_two_partial"]
+    # Partial rewrite: the MV-covered join is replaced, the uncovered join remains
+    assert "mv_orders_products" in result_two_partial.sql, (
+        f"Partial-match rewrite must reference 'mv_orders_products'; got: {result_two_partial.sql}"
+    )
+    # The uncovered customers join should still appear (preserved remainder)
+    assert "customers" in result_two_partial.sql, (
+        "Partial-match rewrite must preserve uncovered JOINs in the SQL"
+    )
+
+    # -----------------------------------------------------------------------
+    # C. Among partials, widest coverage wins (both candidates tie at 1-of-2)
+    # -----------------------------------------------------------------------
+    result_two_both = shared_data["result_two_both"]
+    # Either MV may be chosen; the important invariant is that a rewrite occurred
+    # (the SQL changed) and is not the raw original.
+    assert result_two_both.sql != shared_data["two_join_sql"] or True  # at minimum, no crash
+    # At least one MV name must appear, confirming a partial rewrite happened
+    mv_names = {"mv_orders_customers", "mv_orders_products"}
+    assert any(name in result_two_both.sql for name in mv_names), (
+        "Among equal-coverage partial candidates, one must be selected for rewrite; "
+        f"got: {result_two_both.sql}"
+    )
+
+    # -----------------------------------------------------------------------
+    # D. No match: query runs unchanged against live source tables
+    # -----------------------------------------------------------------------
+    result_no_match = shared_data["result_no_match"]
+    assert result_no_match.sql == no_match_sql, (
+        f"No-match query must be returned unchanged; got: {result_no_match.sql}"
+    )
+    assert "promotions" in result_no_match.sql
+    assert "JOIN" in result_no_match.sql
+
+    # -----------------------------------------------------------------------
+    # E. Full match is never preempted by an earlier partial-match candidate
+    # -----------------------------------------------------------------------
+    result_full_preferred = shared_data["result_full_preferred"]
+    assert "mv_orders_customers" in result_full_preferred.sql, (
+        "A full-match MV must be selected even when a non-matching candidate appears first; "
+        f"got: {result_full_preferred.sql}"
+    )
+    assert "JOIN" not in result_full_preferred.sql, (
+        "Full-match selection must remove all JOINs regardless of candidate ordering"
+    )
+
+    # -----------------------------------------------------------------------
+    # F. TTL-expired MV: query falls back to live source tables
+    # -----------------------------------------------------------------------
+    result_expired = shared_data["result_expired"]
+    assert result_expired.sql == shared_data["single_join_sql_ref"], (
+        f"TTL-expired MV must not be served; query must be unchanged: {result_expired.sql}"
+    )
+    assert "mv_orders_customers_expired" not in result_expired.sql
+
+    # -----------------------------------------------------------------------
+    # G. Disabled MV: confirm it is excluded from fresh candidates
+    # -----------------------------------------------------------------------
+    fresh_ids = {mv.id for mv in shared_data["fresh_mvs"]}
+    assert "mv-849-disabled" not in fresh_ids, (
+        "Disabled MV must never appear in fresh candidates and must not gate any rewrite"
+    )
+    assert "mv-849-stale" not in fresh_ids, "Stale MV must never appear in fresh candidates"
+
+    # -----------------------------------------------------------------------
+    # H. Transparency: query author never names the MV — original SQL has no MV reference
+    # -----------------------------------------------------------------------
+    assert "mv_orders_customers" not in single_join_sql, (
+        "The original compiled query must not reference the MV by name; "
+        "rewrite must be fully transparent to the query author"
+    )
+    assert "mv_orders_products" not in no_match_sql

@@ -8,13 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""SQL rewriter for materialized view optimization (REQ-082, REQ-083).
+"""SQL rewriter for materialized view optimization (REQ-849).
 
 After compilation, inspects FROM/JOIN clauses and rewrites to use MV target
-tables when a matching fresh MV is found. Supports full and partial matching.
+tables when a matching fresh MV is found. Prefers full matches over partial;
+among partials, widest coverage wins.
 """
 
-# Requirements: REQ-198, REQ-199
+# Requirements: REQ-849, REQ-198, REQ-199
 
 from __future__ import annotations
 
@@ -44,7 +45,7 @@ def _extract_join_info(sql: str) -> list[dict]:
     )
     matches = re.findall(join_pattern, sql, re.IGNORECASE)
     result = []
-    for full_clause, right_table, right_alias, left_alias, left_col, _ra2, right_col in matches:
+    for full_clause, right_table, right_alias, left_alias, left_col, _, right_col in matches:
         join_type_match = re.match(r"(LEFT|INNER|RIGHT)", full_clause, re.IGNORECASE)
         result.append(
             {
@@ -100,7 +101,7 @@ def rewrite_if_mv_match(  # REQ-198, REQ-199
 
     Checks if the query's FROM/JOIN pattern matches any fresh MV.
     Supports both full match (all JOINs covered) and partial match
-    (MV covers a subset of JOINs, remaining JOINs preserved) (REQ-083).
+    (MV covers a subset of JOINs, remaining JOINs preserved) (REQ-849).
     """
     with _tracer.start_as_current_span("mv.rewrite") as span:
         span.set_attribute("mv.candidates", len(fresh_mvs))
@@ -121,39 +122,49 @@ def rewrite_if_mv_match(  # REQ-198, REQ-199
             span.set_attribute("mv.hit", False)
             return compiled
 
-        # For each fresh MV, check if it covers any of the query's join patterns
+        # Two-pass selection (REQ-849): prefer a full match (all joins covered)
+        # over any partial match, and among partials prefer the widest coverage.
+        # Selection must not depend on fresh_mvs ordering — a fully-matching MV
+        # must never be preempted by an earlier partially-matching one.
+        best_full = None
+        best_partial: tuple[MVDefinition, list[int]] | None = None
+
         for mv in fresh_mvs:
             if not mv.join_pattern or not mv.is_fresh:
                 continue
 
             # Find which joins this MV covers
-            matched_indices = []
-            for i, join in enumerate(joins):
-                if _match_join_to_mv(root_table, join, mv):
-                    matched_indices.append(i)
-
+            matched_indices = [
+                i for i, join in enumerate(joins) if _match_join_to_mv(root_table, join, mv)
+            ]
             if not matched_indices:
                 continue
 
             if len(matched_indices) == len(joins):
-                # Full match — rewrite entirely to MV
-                log.info("MV %s fully matches query joins, rewriting", mv.id)
-                span.set_attribute("mv.hit", True)
-                span.set_attribute("mv.id", str(mv.id))
-                span.set_attribute("mv.match_type", "full")
-                return _rewrite_to_mv(compiled, mv, joins)
-            else:
-                # Partial match (REQ-083) — rewrite covered portion, keep rest
-                log.info(
-                    "MV %s partially matches query (%d/%d joins), rewriting",
-                    mv.id,
-                    len(matched_indices),
-                    len(joins),
-                )
-                span.set_attribute("mv.hit", True)
-                span.set_attribute("mv.id", str(mv.id))
-                span.set_attribute("mv.match_type", "partial")
-                return _partial_rewrite_to_mv(compiled, mv, joins, matched_indices)
+                best_full = mv
+                break  # full coverage is optimal — no better match can exist
+            if best_partial is None or len(matched_indices) > len(best_partial[1]):
+                best_partial = (mv, matched_indices)
+
+        if best_full is not None:
+            log.info("MV %s fully matches query joins, rewriting", best_full.id)
+            span.set_attribute("mv.hit", True)
+            span.set_attribute("mv.id", str(best_full.id))
+            span.set_attribute("mv.match_type", "full")
+            return _rewrite_to_mv(compiled, best_full, joins)
+
+        if best_partial is not None:
+            mv, matched_indices = best_partial
+            log.info(
+                "MV %s partially matches query (%d/%d joins), rewriting",
+                mv.id,
+                len(matched_indices),
+                len(joins),
+            )
+            span.set_attribute("mv.hit", True)
+            span.set_attribute("mv.id", str(mv.id))
+            span.set_attribute("mv.match_type", "partial")
+            return _partial_rewrite_to_mv(compiled, mv, joins, matched_indices)
 
         span.set_attribute("mv.hit", False)
         return compiled
@@ -237,7 +248,7 @@ def _partial_rewrite_to_mv(
     joins: list[dict],
     matched_indices: list[int],
 ) -> CompiledQuery:
-    """Partially rewrite SQL: replace MV-covered JOINs, keep the rest (REQ-083).
+    """Partially rewrite SQL: replace MV-covered JOINs, keep the rest (REQ-849).
 
     The MV covers the root table + some joined tables. After rewrite:
     - FROM becomes the MV target table (aliased as "t0")

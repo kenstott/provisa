@@ -2170,6 +2170,9 @@
       views), and Denodo; this is a standard capability for data platforms.
   related_reqs:
   - REQ-826
+  - REQ-844
+  - REQ-843
+  - REQ-848
 - id: REQ-136
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2463,6 +2466,7 @@
       Denodo relies on manual cache configuration.
   related_reqs:
   - REQ-826
+  - REQ-844
 - id: REQ-159
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -4342,6 +4346,8 @@
   related_reqs:
   - REQ-826
   - REQ-825
+  - REQ-844
+  - REQ-845
 - id: REQ-310
   status: complete
   group: 4. Source Connectors
@@ -4693,6 +4699,8 @@
   related_reqs:
   - REQ-826
   - REQ-825
+  - REQ-844
+  - REQ-845
 - id: REQ-319
   status: complete
   group: 4. Source Connectors
@@ -5039,6 +5047,8 @@
   related_reqs:
   - REQ-826
   - REQ-825
+  - REQ-844
+  - REQ-845
 - id: REQ-328
   status: complete
   group: 4. Source Connectors
@@ -5862,6 +5872,7 @@
       competitor federation platform, which lack vector fallback infrastructure entirely.
   related_reqs:
   - REQ-826
+  - REQ-844
 - id: REQ-426
   status: complete
   group: 4. Source Connectors
@@ -23375,3 +23386,231 @@
   tests:
   - tests/unit/test_admin_database.py
   - tests/integration/test_sqlalchemy_dialect.py
+- id: REQ-840
+  status: proposed
+  group: 4. Source Connectors
+  category: Federation Engine Abstraction
+  priority: MUST
+  type: infrastructure
+  target: "2026-Q3"
+  description: >-
+    The federation engine is a pluggable abstraction with per-engine drivers.
+    Three driver classes exist: broad federators (Trino, reaches many external
+    source types), partial federators (DuckDB, attaches a subset of external
+    databases via extensions/scanners), and self-only warehouse-native engines
+    (Snowflake, Oracle, Databricks — reach only their own store). Reachability
+    is connector-presence-defined and binary: reachable(table) is true iff a
+    connector exists for (selected_engine, table.source.type). The connector's
+    mechanism — attach (reference in place) or land (materialize into the
+    engine's reachable store) — is an internal property of the connector, not a
+    reachability tier; warehouse-native engines have only land mechanisms
+    (into self), broad/partial federators use attach where a connector supports
+    it and land otherwise.
+  use_case: >-
+    Support deployments whose engine ranges from a broad federator to a
+    self-only data warehouse without changing planner or cache logic.
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Engine-pluggable federation (not hardwired to one engine) is uncommon;
+      Denodo, Dremio, and Trino each hardwire their own engine.
+- id: REQ-841
+  status: proposed
+  group: 4. Source Connectors
+  category: Federation Engine Abstraction
+  priority: MUST
+  type: behavioral
+  target: "2026-Q3"
+  description: >-
+    A reachable source (one with a connector for the selected engine) is exposed
+    by that connector's mechanism — attach (reference the source in place, no
+    data movement) or land (physically materialize the source into the engine's
+    reachable store). The mechanism is fixed by the connector, not chosen per
+    query; a source with no connector is rejected as unreachable.
+  scenario: |
+    Given a source reference and the configured federation engine
+    When the planner resolves it
+    Then if a connector exists it is exposed by that connector's mechanism
+    (attach in place, or land into db_cache), otherwise it is rejected as
+    unreachable.
+  related_reqs:
+  - REQ-840
+- id: REQ-842
+  status: proposed
+  group: 4. Source Connectors
+  category: Connector Abstraction
+  priority: MUST
+  type: structural
+  target: "2026-Q3"
+  description: >-
+    A Connector, indexed by (federation_engine, source_type), encapsulates all
+    engine-specific catalog operations — capability(), catalog_add(asset),
+    catalog_remove(asset), land(source), typemap(source->engine). For Trino,
+    catalog_add updates the Trino catalog; for DuckDB it issues ATTACH/scanner
+    setup plus view DDL; for warehouse-native engines it is a no-op (the asset
+    is already a native table). Adding a source type, a federation engine, or
+    a cache backend is a connector registration; planner, cache-role, and
+    freshness-gate logic are unchanged.
+  use_case: >-
+    A single extensibility seam so new engines/sources/backends require only
+    a connector, not core changes.
+  related_reqs:
+  - REQ-840
+- id: REQ-843
+  status: proposed
+  group: 4. Source Connectors
+  category: Connector Abstraction
+  priority: MUST
+  type: constraint
+  target: "2026-Q3"
+  description: >-
+    The asset registry is the source of truth for asset existence; the engine
+    catalog is derived, rebuildable state. Connectors project registry state
+    into the engine catalog on asset create/drop and on a full startup reconcile.
+    A missing or stale catalog entry triggers re-projection from the registry —
+    never a fallback or error-and-continue.
+  related_reqs:
+  - REQ-842
+  - REQ-135
+- id: REQ-844
+  status: proposed
+  group: 4. Source Connectors
+  category: Cache Abstraction (db_cache)
+  priority: SHOULD
+  type: structural
+  target: "2026-Q3"
+  description: >-
+    db_cache is the generalized cache abstraction over any federation-reachable
+    backend addressed by a SQLAlchemy URL (any SQLAlchemy dialect), configured
+    through the same ${env:...} secrets chokepoint as ControlPlaneConfig. It
+    subsumes two roles — api_cache (reactive pull-through proxy for
+    otherwise-unreachable sources) and mv_cache (proactive materialized views,
+    implicit relationship-generated or explicit view materialize:true). The
+    two roles MAY share one database connection but occupy distinct schemas
+    (distinct population and eviction semantics).
+  use_case: >-
+    One backend-agnostic cache abstraction replacing per-protocol hardcoded
+    caches; supports security-conscious tenants pointing the cache at their
+    own data plane.
+  related_reqs:
+  - REQ-135
+  - REQ-158
+  - REQ-309
+  - REQ-318
+  - REQ-327
+  - REQ-424
+- id: REQ-845
+  status: proposed
+  group: 4. Source Connectors
+  category: Cache Abstraction (db_cache)
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q3"
+  description: >-
+    The set of sources served through api_cache is engine-relative —
+    api_cache = { source : reach(source) == land } for the configured
+    federation engine — generalizing the previously hardcoded REST/GraphQL/gRPC
+    pull-through set. Pull-through is TTL/freshness-gated and single-flighted
+    to prevent upstream stampede on concurrent misses.
+  scenario: |
+    Given a source with no attach connector for the active engine
+    When it is referenced concurrently after TTL expiry
+    Then a single coalesced pull lands its rows into db_cache and the queries
+    are rewritten to read the cached rows.
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Treating the cached-source set as a function of engine reach (rather than
+      a fixed protocol list) is not present in competitors.
+  related_reqs:
+  - REQ-309
+  - REQ-318
+  - REQ-327
+  - REQ-841
+- id: REQ-846
+  status: proposed
+  group: 4. Source Connectors
+  category: Cache Abstraction (db_cache)
+  priority: MUST
+  type: constraint
+  target: "2026-Q3"
+  description: >-
+    A cache backend is valid iff a connector exists for it in the configured
+    engine AND a write face exists for landing into it. A land-target backend
+    must have a connector whose mechanism is attach (else the engine cannot read
+    what was landed — a land-into-land regress); config pointing db_cache at a
+    backend with no connector, or with only a land connector, is rejected at
+    startup (e.g., a separate Postgres db_cache is invalid under a self-only
+    warehouse-native engine, which has no connector for it).
+  related_reqs:
+  - REQ-844
+  - REQ-840
+- id: REQ-847
+  status: proposed
+  group: 4. Source Connectors
+  category: Cache Abstraction (db_cache)
+  priority: MUST
+  type: constraint
+  target: "2026-Q3"
+  description: >-
+    Read-through and write-back discipline. On a pull-through read, a pull
+    failure with no fresh cached data is a hard error; serving stale data is
+    permitted only under an explicit per-source freshness policy, never as a
+    silent fallback. Mutations on a pulled-through relation target the upstream
+    source of truth and invalidate the cache entry; the cache is never written
+    as if it were the system of record.
+  related_reqs:
+  - REQ-844
+- id: REQ-848
+  status: proposed
+  group: 4. Source Connectors
+  category: Cache Abstraction (db_cache)
+  priority: SHOULD
+  type: structural
+  target: "2026-Q3"
+  description: >-
+    The cache write face is pluggable — {engine-native CTAS/load, SQLAlchemy
+    upsert, app-side land}. It collapses into the federation engine when the
+    cache backend is the engine's own native store (DuckDB-as-engine caching
+    into DuckDB tables; a warehouse-native engine caching into itself), and
+    uses SQLAlchemy upsert when the backend is a separate but attach-able
+    relational store.
+  related_reqs:
+  - REQ-844
+- id: REQ-849
+  status: complete
+  group: "3. Source Registration & Data Modeling"
+  category: "Views (Governed Computed Datasets)"
+  priority: SHOULD
+  type: behavioral
+  since: "2026-07"
+  description: >-
+    After SQL compilation, the query rewriter inspects FROM/JOIN clauses and
+    transparently rewrites the query to read from a materialized view target
+    table when a matching MV exists — without the query author referencing the MV
+    by name. Rewrites are gated by MV enabled status, freshness, and TTL. Match
+    selection is coverage-optimal and independent of candidate ordering: a full
+    match (all query JOINs covered → entire query redirected to the MV) is always
+    preferred over any partial match, and among partial matches the widest
+    coverage (most MV-covered JOINs replaced, remainder preserved) wins. A
+    fully-matching MV is never preempted by an earlier partially-matching one.
+  use_case: >-
+    Transparent MV substitution improves query performance without requiring
+    application changes; TTL gating ensures stale data is not served without
+    explicit policy.
+  code:
+    - provisa/mv/rewriter.py
+    - provisa/mv/registry.py
+  tests:
+    - tests/unit/test_mv_partial_rewrite.py
+  related_reqs:
+    - REQ-135
+    - REQ-198
+    - REQ-199
+    - REQ-844
+    - REQ-845
+  scenario: |
+    Given a fresh, enabled MV covering a query's root table (and optionally some joins)
+    When a query is compiled that references the underlying source tables without naming the MV
+    Then the rewriter transparently redirects the FROM/JOIN to the MV target (full or partial),
+    otherwise the query runs against the live source tables.
