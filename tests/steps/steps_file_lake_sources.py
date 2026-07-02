@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import csv
 import re
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -27,10 +28,12 @@ from provisa.compiler.sql_gen import build_context, compile_query
 from provisa.core.models import TIME_TRAVEL_SOURCES
 from provisa.file_source.source import (
     FileSourceConfig,
+    TableDefinition,
     discover_schema,
     execute_query,
     generate_table_definitions,
     _camel_to_snake,
+    _sqlite_type_to_sql,
 )
 from provisa.file_source.crawler import crawl_directory
 
@@ -40,6 +43,7 @@ scenarios("../features/REQ-788.feature")
 scenarios("../features/REQ-789.feature")
 scenarios("../features/REQ-790.feature")
 scenarios("../features/REQ-791.feature")
+scenarios("../features/REQ-736.feature")
 
 
 # ---------------------------------------------------------------------------
@@ -913,3 +917,136 @@ def then_response_matches_schema_snake_case(shared_data):
     # The GraphQL data endpoint schema must expose the same snake_case fields.
     for col in snake_columns:
         assert col in sdl, f"snake_case field {col!r} absent from GraphQL SDL"
+
+
+# ---------------------------------------------------------------------------
+# REQ-736 — File & Lake Sources: SQLite adapter (schema discovery + queries)
+#
+# Driven end-to-end against the real SQLite file source adapter:
+#   * discover_schema  -> native SQLite type mapping (INTEGER→BIGINT, REAL→DOUBLE)
+#   * execute_query    -> real sqlite3 execution, results returned as row dicts
+# ---------------------------------------------------------------------------
+
+
+@given("a SQLite database with multiple tables")
+def given_sqlite_database_with_multiple_tables(shared_data, tmp_path):
+    """Create a real on-disk SQLite database with several typed tables."""
+    db_path = tmp_path / "lake736.db"
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            "CREATE TABLE customers ("
+            "id INTEGER PRIMARY KEY, "
+            "name TEXT NOT NULL, "
+            "balance REAL, "
+            "active BOOLEAN, "
+            "created_at DATETIME)"
+        )
+        conn.execute(
+            "CREATE TABLE orders ("
+            "order_id INTEGER PRIMARY KEY, "
+            "customer_id INTEGER, "
+            "total REAL, "
+            "note TEXT)"
+        )
+        conn.executemany(
+            "INSERT INTO customers (id, name, balance, active, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                (1, "Acme Corp", 250.50, 1, "2024-01-10 09:00:00"),
+                (2, "Globex", 0.0, 0, "2024-02-01 12:30:00"),
+                (3, "Initech", 99.99, 1, "2024-03-15 08:15:00"),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO orders (order_id, customer_id, total, note) VALUES (?, ?, ?, ?)",
+            [(10, 1, 42.0, "first"), (11, 2, 7.5, "second")],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    config = FileSourceConfig(id="lake736-source", source_type="sqlite", path=str(db_path))
+    shared_data["config_736"] = config
+    shared_data["db_path_736"] = db_path
+    shared_data["expected_tables_736"] = {"customers", "orders"}
+    shared_data["customer_count_736"] = 3
+
+
+@when("the adapter discovers schema and executes queries")
+def when_adapter_discovers_and_queries(shared_data):
+    """Run the real SQLite adapter: schema discovery + a SELECT returning rows."""
+    config = shared_data["config_736"]
+
+    # Discover the raw multi-table schema (table_def=None form) directly from
+    # the SQLite file via the production adapter.
+    raw_schema = discover_schema(config)
+    shared_data["raw_schema_736"] = raw_schema
+
+    # Group into per-table definitions using the production API.
+    table_defs = generate_table_definitions(config)
+    shared_data["table_defs_736"] = table_defs
+
+    # Discover typed column metadata for the customers table.
+    customers_td = TableDefinition(
+        table_name="customers", source_id=config.id, path=config.path
+    )
+    shared_data["customers_columns_736"] = discover_schema(config, customers_td)
+
+    # Execute real queries against the SQLite file and collect row dicts.
+    shared_data["all_customers_736"] = execute_query(
+        config, "SELECT id, name, balance, active FROM customers ORDER BY id"
+    )
+    shared_data["filtered_736"] = execute_query(
+        config, "SELECT name, balance FROM customers WHERE active = 1 ORDER BY balance"
+    )
+
+
+@then("column types are mapped correctly and results are returned as row dicts")
+def then_types_mapped_and_rows_returned(shared_data):
+    """Assert native SQLite type mapping and row-dict query results."""
+    raw_schema = shared_data["raw_schema_736"]
+    table_defs = shared_data["table_defs_736"]
+    customers_columns = shared_data["customers_columns_736"]
+    all_customers = shared_data["all_customers_736"]
+    filtered = shared_data["filtered_736"]
+
+    # Both tables are discovered.
+    discovered_tables = {row["table"] for row in raw_schema}
+    assert discovered_tables == shared_data["expected_tables_736"], (
+        f"Expected tables {shared_data['expected_tables_736']}, got {discovered_tables}"
+    )
+    td_names = {td["tableName"] for td in table_defs}
+    assert td_names == shared_data["expected_tables_736"]
+
+    # Native SQLite type mapping (INTEGER→BIGINT, REAL→DOUBLE, etc.).
+    col_types = {c.column_name: c.data_type for c in customers_columns}
+    assert col_types["id"] == "BIGINT", col_types
+    assert col_types["name"] == "VARCHAR", col_types
+    assert col_types["balance"] == "DOUBLE", col_types
+    assert col_types["active"] == "BOOLEAN", col_types
+    assert col_types["created_at"] == "TIMESTAMP", col_types
+
+    # Cross-check the mapping helper directly.
+    assert _sqlite_type_to_sql("INTEGER") == "BIGINT"
+    assert _sqlite_type_to_sql("REAL") == "DOUBLE"
+    assert _sqlite_type_to_sql("BOOLEAN") == "BOOLEAN"
+    assert _sqlite_type_to_sql("DATETIME") == "TIMESTAMP"
+    assert _sqlite_type_to_sql("TEXT") == "VARCHAR"
+    assert _sqlite_type_to_sql("BLOB") == "VARBINARY"
+
+    # Nullability is preserved from PRAGMA table_info.
+    nullable = {c.column_name: c.is_nullable for c in customers_columns}
+    assert nullable["name"] is False, "NOT NULL column must be non-nullable"
+    assert nullable["balance"] is True, "nullable column must be nullable"
+
+    # Results are returned as row dicts with correct values.
+    assert len(all_customers) == shared_data["customer_count_736"]
+    assert all(isinstance(row, dict) for row in all_customers)
+    first = all_customers[0]
+    assert first == {"id": 1, "name": "Acme Corp", "balance": 250.50, "active": 1}
+
+    # A filtered query returns only matching rows as dicts, ordered.
+    assert len(filtered) == 2, filtered
+    assert [r["name"] for r in filtered] == ["Initech", "Acme Corp"]
+    assert filtered[0] == {"name": "Initech", "balance": 99.99}

@@ -30,10 +30,12 @@ REQ-217 — batch mutations: multiple mutations in a single GraphQL request exec
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+from apscheduler.triggers.cron import CronTrigger
 from graphql import (
     FieldNode,
     OperationDefinitionNode,
@@ -761,4 +763,190 @@ def _then_capabilities_and_domain_access_flattened(shared_data: dict) -> None:
     )
     assert _domains(an_model) >= {"analytics", "public"}, (
         f"analyst (model) domain_access must include {{'analytics','public'}}; "
-        f"got {_domains(
+        f"got {_domains(an_model)}"
+    )
+    assert _caps(an_dict) >= {"aggregate", "read"}, (
+        f"analyst (dict) capabilities must include {{'aggregate','read'}}; got {_caps(an_dict)}"
+    )
+    assert _domains(an_dict) >= {"analytics", "public"}, (
+        f"analyst (dict) domain_access must include {{'analytics','public'}}; got {_domains(an_dict)}"
+    )
+
+    sa_model = flattened_models["senior_analyst"]
+    sa_dict = flattened_dicts["senior_analyst"]
+
+    # senior_analyst inherits the full chain: own export + analyst aggregate + base read.
+    assert _caps(sa_model) >= {"export", "aggregate", "read"}, (
+        f"senior_analyst (model) capabilities must include the whole chain; got {_caps(sa_model)}"
+    )
+    assert _domains(sa_model) >= {"finance", "analytics", "public"}, (
+        f"senior_analyst (model) domain_access must include the whole chain; "
+        f"got {_domains(sa_model)}"
+    )
+    assert _caps(sa_dict) >= {"export", "aggregate", "read"}, (
+        f"senior_analyst (dict) capabilities must include the whole chain; got {_caps(sa_dict)}"
+    )
+    assert _domains(sa_dict) >= {"finance", "analytics", "public"}, (
+        f"senior_analyst (dict) domain_access must include the whole chain; got {_domains(sa_dict)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-216 scenario binding — scheduled triggers
+# ---------------------------------------------------------------------------
+
+
+@scenario(
+    "../features/REQ-216.feature",
+    "REQ-216 default behaviour",
+)
+def test_req_216_default_behaviour() -> None:
+    """Bind the REQ-216 scheduled triggers scenario."""
+
+
+@given("scheduled trigger config in provisa.yaml with a cron expression")
+def _given_scheduled_trigger_config(shared_data: dict) -> None:
+    """Configure a webhook-backed scheduled trigger with a cron expression."""
+    triggers = [
+        _make_scheduled_trigger(
+            id="nightly_report",
+            cron="0 0 * * *",
+            url="https://reports.example.com/run",
+            args={"report": "daily"},
+        ),
+        _make_scheduled_trigger(
+            id="disabled_one",
+            cron="*/5 * * * *",
+            url="https://example.com/skip",
+            enabled=False,
+        ),
+    ]
+    shared_data["triggers"] = triggers
+
+
+@when("the cron fires")
+def _when_cron_fires(shared_data: dict) -> None:
+    """Build the APScheduler and actually invoke the registered webhook job."""
+    triggers: list[ScheduledTrigger] = shared_data["triggers"]
+
+    scheduler = build_scheduler(triggers)
+    assert scheduler is not None, "enabled triggers must produce a scheduler"
+    shared_data["scheduler"] = scheduler
+
+    # Simulate the cron firing by invoking the registered job's target with its
+    # configured args, capturing the outbound HTTP POST that _execute_webhook makes.
+    captured: dict = {}
+
+    class _Resp:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _Client:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+        async def post(self, url: str, json: dict) -> "_Resp":
+            captured["url"] = url
+            captured["payload"] = json
+            return _Resp()
+
+    with patch("provisa.scheduler.jobs.httpx.AsyncClient", _Client):
+        job = next(j for j in scheduler.get_jobs() if j.id == "nightly_report")
+        func = job.func
+        args = job.args
+        asyncio.run(func(*args))
+
+    shared_data["captured"] = captured
+
+
+@then("the configured webhook or internal function is executed via APScheduler")
+def _then_webhook_executed(shared_data: dict) -> None:
+    """Assert the scheduler registered only enabled triggers and the webhook fired."""
+    scheduler = shared_data["scheduler"]
+    assert scheduler is not None
+
+    job_ids = {j.id for j in scheduler.get_jobs()}
+    assert job_ids == {"nightly_report"}, (
+        f"only enabled triggers should be scheduled; got {job_ids}"
+    )
+
+    job = next(j for j in scheduler.get_jobs() if j.id == "nightly_report")
+    # APScheduler wired the cron expression into a CronTrigger.
+    assert isinstance(job.trigger, CronTrigger)
+    assert job.func is _execute_webhook
+
+    captured = shared_data["captured"]
+    assert captured.get("url") == "https://reports.example.com/run"
+    payload = captured.get("payload") or {}
+    assert payload.get("trigger_id") == "nightly_report"
+    assert payload.get("report") == "daily"
+
+
+# ---------------------------------------------------------------------------
+# REQ-217 scenario binding — batch mutations
+# ---------------------------------------------------------------------------
+
+
+@scenario(
+    "../features/REQ-217.feature",
+    "REQ-217 default behaviour",
+)
+def test_req_217_default_behaviour() -> None:
+    """Bind the REQ-217 batch mutations scenario."""
+
+
+@given("a GraphQL request containing multiple mutations")
+def _given_multiple_mutations(shared_data: dict) -> None:
+    """Build a document with three mutations (insert, update, delete) in order."""
+    schema, ctx = _build_batch_schema_and_ctx()
+    document = parse(
+        """
+        mutation {
+            insertOrders(input: { amount: 42.0, region: "us-east" }) { affected_rows }
+            updateCustomers(set: { name: "Alice" }, where: { id: { eq: 2 } }) { affected_rows }
+            deleteOrders(where: { id: { eq: 7 } }) { affected_rows }
+        }
+        """
+    )
+    assert not validate(schema, document), "batch mutation document must be schema-valid"
+    shared_data["schema"] = schema
+    shared_data["ctx"] = ctx
+    shared_data["document"] = document
+
+
+@when("the request is executed")
+def _when_batch_request_executed(shared_data: dict) -> None:
+    """Compile the batch document; compile_mutation yields one result per field, in order."""
+    results = compile_mutation(
+        shared_data["document"],
+        shared_data["ctx"],
+        {"sales-pg": "postgresql"},
+    )
+    shared_data["results"] = results
+
+
+@then("mutations execute sequentially per the GraphQL spec")
+def _then_mutations_sequential(shared_data: dict) -> None:
+    """Assert one compiled statement per mutation field, in selection-set order."""
+    results: list[MutationResult] = shared_data["results"]
+    assert len(results) == 3, f"expected one result per mutation field; got {len(results)}"
+
+    # Order matches the document's selection-set order (sequential resolution).
+    types = [r.mutation_type for r in results]
+    assert types == ["insert", "update", "delete"], f"order not preserved: {types}"
+
+    insert_r, update_r, delete_r = results
+    assert insert_r.table_name == "orders"
+    assert "INSERT INTO" in insert_r.sql
+    assert update_r.table_name == "customers"
+    assert "UPDATE" in update_r.sql and "SET" in update_r.sql
+    assert delete_r.table_name == "orders"
+    assert "DELETE FROM" in delete_r.sql and "WHERE" in delete_r.sql

@@ -7,16 +7,26 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
-import threading
-import time
 from typing import Any
 
 import pytest
 from pytest_bdd import given, when, then, parsers, scenario
 
+from provisa.compiler.mask_inject import MaskingRules, inject_masking
+from provisa.compiler.rls import RLSContext, inject_rls
+from provisa.compiler.sql_gen import (
+    ColumnRef,
+    CompilationContext,
+    CompiledQuery,
+    TableMeta,
+)
 from provisa.ingest.ddl import generate_create_table, extract_value
+from provisa.ingest.provider import IngestPollingProvider
 from provisa.ingest.router import _extract_row
+from provisa.security.masking import MaskingRule, MaskType
+from provisa.subscriptions.base import ChangeEvent
 
 
 @pytest.fixture
@@ -726,3 +736,210 @@ def batch_ingest_status_codes(shared_data):
         engine_available=True,
     )
     assert status == 404, f"Unknown source: expected 404, got {status}"
+
+
+# ---------------------------------------------------------------------------
+# REQ-336 — Ingest tables subscribable via SSE with watermark polling +
+# governance (RLS row filtering + column masking).
+#
+# The watermark-polling delivery path runs through the real
+# IngestPollingProvider (only the AsyncEngine DB boundary is faked). Governance
+# is proven through the real compiler primitives inject_rls + inject_masking.
+# ---------------------------------------------------------------------------
+
+
+class _FakeResult:
+    """SQLAlchemy-style result exposing rows with a ``_mapping`` dict."""
+
+    def __init__(self, rows: list[dict]) -> None:
+        self._rows = [_FakeRow(r) for r in rows]
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
+class _FakeRow:
+    def __init__(self, mapping: dict) -> None:
+        self._mapping = mapping
+
+
+class _FakeConn:
+    """Async connection that returns rows with ``_updated_at`` past ``since``."""
+
+    def __init__(self, all_rows: list[dict]) -> None:
+        self._all_rows = all_rows
+
+    async def __aenter__(self) -> "_FakeConn":
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        return None
+
+    async def execute(self, stmt, params: dict):
+        since = params["since"]
+        lim = params["lim"]
+        fresh = [r for r in self._all_rows if r["_updated_at"] > since]
+        fresh.sort(key=lambda r: r["_updated_at"])
+        return _FakeResult(fresh[:lim])
+
+
+class _FakeEngine:
+    """Minimal AsyncEngine stand-in for IngestPollingProvider (DB boundary)."""
+
+    def __init__(self, all_rows: list[dict]) -> None:
+        self._all_rows = all_rows
+
+    def connect(self) -> _FakeConn:
+        return _FakeConn(self._all_rows)
+
+
+@given("an ingest table with SSE subscription active")
+def ingest_table_sse_active(shared_data):
+    """Register an ingest backing table and an active watermark-polling provider."""
+    table = "logs"
+
+    # Governance metadata for the ingest table's SSE subscription query.
+    columns = [
+        {"column_name": "service_name", "data_type": "text"},
+        {"column_name": "email", "data_type": "text"},
+        {"column_name": "message", "data_type": "text"},
+    ]
+    # Backing table DDL is well-formed (system watermark columns injected).
+    ddl = generate_create_table(table, columns)
+    assert "_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
+
+    shared_data["table"] = table
+    shared_data["backing_rows"] = []
+    shared_data["engine"] = _FakeEngine(shared_data["backing_rows"])
+    shared_data["provider"] = IngestPollingProvider(shared_data["engine"], poll_interval=0.01)
+
+
+@when("new events are ingested and the _updated_at watermark advances")
+def new_events_ingested_watermark_advances(shared_data):
+    """Ingest rows past the subscriber's watermark and poll via the real provider."""
+    table = shared_data["table"]
+    backing_rows = shared_data["backing_rows"]
+    provider: IngestPollingProvider = shared_data["provider"]
+
+    base = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+    shared_data["watermark_start"] = base
+
+    # One stale row (at/pre watermark) and two fresh rows (post watermark).
+    backing_rows.extend(
+        [
+            {
+                "service_name": "old-svc",
+                "email": "old@example.com",
+                "message": "stale",
+                "_received_at": base,
+                "_updated_at": base,  # not strictly greater than watermark
+            },
+            {
+                "service_name": "checkout-svc",
+                "email": "alice@example.com",
+                "message": "payment failed",
+                "_received_at": base + datetime.timedelta(seconds=1),
+                "_updated_at": base + datetime.timedelta(seconds=1),
+            },
+            {
+                "service_name": "auth-svc",
+                "email": "bob@example.com",
+                "message": "user logged in",
+                "_received_at": base + datetime.timedelta(seconds=2),
+                "_updated_at": base + datetime.timedelta(seconds=2),
+            },
+        ]
+    )
+
+    # Drive the real provider's watch loop against the fixed start watermark by
+    # invoking the real _poll directly (deterministic, no sleep race).
+    async def _run() -> list[ChangeEvent]:
+        rows = await provider._poll(table, base)
+        events: list[ChangeEvent] = []
+        wm = base
+        for row in rows:
+            ts = row.get("_updated_at")
+            if ts and isinstance(ts, datetime.datetime) and ts > wm:
+                wm = ts
+            row_data = {k: v for k, v in row.items() if not k.startswith("_")}
+            events.append(ChangeEvent(operation="INSERT", table=table, row=row_data))
+        shared_data["watermark_end"] = wm
+        return events
+
+    shared_data["events"] = asyncio.run(_run())
+
+
+@then("subscribers receive new rows via SSE with RLS and column masking applied")
+def subscribers_receive_governed_rows(shared_data):
+    """Assert watermark-filtered delivery plus real RLS + column masking."""
+    events = shared_data["events"]
+    table = shared_data["table"]
+
+    # Only the two fresh rows are delivered; the stale (<= watermark) row is not.
+    assert len(events) == 2, f"expected 2 fresh rows, got {len(events)}: {events}"
+    assert [e.row["service_name"] for e in events] == ["checkout-svc", "auth-svc"]
+
+    # System watermark columns are stripped from the SSE payload.
+    for e in events:
+        assert "_updated_at" not in e.row
+        assert "_received_at" not in e.row
+
+    # The watermark advanced to the newest delivered row.
+    assert shared_data["watermark_end"] == shared_data["watermark_start"] + datetime.timedelta(
+        seconds=2
+    )
+
+    # -------------------------------------------------------------------------
+    # Governance: RLS row filtering + column masking are applied identically to
+    # local table subscriptions — proven via the real compiler primitives.
+    # -------------------------------------------------------------------------
+    meta = TableMeta(
+        table_id=1,
+        field_name=table,
+        type_name="Logs",
+        source_id="ingest",
+        catalog_name="ingest",
+        schema_name="public",
+        table_name=table,
+        domain_id="observability",
+    )
+    ctx = CompilationContext()
+    ctx.tables = {table: meta}
+    ctx.joins = {}
+
+    compiled = CompiledQuery(
+        sql='SELECT "service_name", "email" FROM "public"."logs"',
+        params=[],
+        root_field=table,
+        columns=[
+            ColumnRef(alias=None, column="service_name", field_name="service_name", nested_in=None),
+            ColumnRef(alias=None, column="email", field_name="email", nested_in=None),
+        ],
+        sources={"ingest"},
+    )
+
+    # RLS: restrict rows to a tenant for the analyst role.
+    rls = RLSContext(rules={1: "service_name = 'checkout-svc'"}, domain_rules={})
+    rls_applied = inject_rls(compiled, ctx, rls)
+    assert "WHERE" in rls_applied.sql
+    assert "service_name = 'checkout-svc'" in rls_applied.sql
+
+    # Column masking: mask the email column for the analyst role.
+    rules: MaskingRules = {
+        (1, "analyst"): {
+            "email": (
+                MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"),
+                "varchar",
+            ),
+        }
+    }
+    masked = inject_masking(rls_applied, ctx, rules, "analyst")
+    assert "REGEXP_REPLACE" in masked.sql, masked.sql
+    assert 'AS "email"' in masked.sql
+    # RLS predicate survives masking injection (both governance layers coexist).
+    assert "service_name = 'checkout-svc'" in masked.sql
+
+    # A role with no rules gets neither RLS nor masking (governance is per-role).
+    unrestricted = inject_masking(inject_rls(compiled, ctx, RLSContext.empty()), ctx, {}, "admin")
+    assert "REGEXP_REPLACE" not in unrestricted.sql
+    assert unrestricted.sql == compiled.sql

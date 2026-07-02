@@ -38,12 +38,11 @@ governance rules applied on top are preserved.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import hashlib
 import json
-import os
 import pathlib
-import time
 import unittest.mock as mock
 
 import pytest
@@ -803,3 +802,718 @@ _REQ316_SPEC: dict = {
                     }
                 },
             },
+        },
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# REQ-316 Steps — GET operations auto-register as virtual query tables
+# ---------------------------------------------------------------------------
+
+
+@given("an OpenAPI spec is registered")
+def given_openapi_spec_is_registered(shared_data):
+    """Register the Order Management spec (stored locally, ready to parse)."""
+    shared_data["spec"] = copy.deepcopy(_REQ316_SPEC)
+
+
+@when("Provisa parses the spec")
+def when_provisa_parses_the_spec(shared_data):
+    """Parse the spec with the real Provisa mapper."""
+    spec = shared_data["spec"]
+    queries, mutations = map_operations(spec)
+    shared_data["queries"] = {q.operation_id: q for q in queries}
+    shared_data["mutations"] = {m.operation_id: m for m in mutations}
+
+
+@then(
+    "all GET operations are auto-registered as virtual query tables with "
+    "path/query params as GraphQL arguments"
+)
+def then_get_operations_registered_as_virtual_tables(shared_data):
+    """Assert real mapper output: every GET is a query with its params surfaced."""
+    spec: dict = shared_data["spec"]
+    queries: dict[str, OpenAPIQuery] = shared_data["queries"]
+    mutations: dict[str, OpenAPIMutation] = shared_data["mutations"]
+
+    # Every GET operation in the spec must appear as a virtual query table.
+    expected_get_ids: set[str] = set()
+    for path_item in spec["paths"].values():
+        get_op = path_item.get("get")
+        if get_op:
+            expected_get_ids.add(get_op["operationId"])
+
+    assert expected_get_ids, "fixture must contain GET operations"
+    assert expected_get_ids <= set(queries), (
+        f"missing GET virtual tables: {expected_get_ids - set(queries)}"
+    )
+
+    # No GET may be classified as a mutation.
+    assert expected_get_ids.isdisjoint(mutations), (
+        f"GET operations wrongly classified as mutations: {expected_get_ids & set(mutations)}"
+    )
+
+    # listOrders: query params become GraphQL arguments.
+    list_orders = queries["listOrders"]
+    assert list_orders.method == "GET"
+    assert {p["name"] for p in list_orders.query_params} == {"status", "limit", "offset"}
+    assert list_orders.is_list is True
+    # responses.200 array-item schema determines the column set.
+    assert list_orders.response_schema is not None
+    assert set(list_orders.response_schema["properties"]) == {
+        "id",
+        "customer_id",
+        "status",
+        "total",
+    }
+
+    # getOrder: path parameter becomes a GraphQL argument.
+    get_order = queries["getOrder"]
+    assert {p["name"] for p in get_order.path_params} == {"order_id"}
+    assert get_order.is_list is False
+    assert get_order.response_schema is not None
+    assert "customer_id" in get_order.response_schema["properties"]
+
+    # listOrderItems: both path and query params surface as arguments.
+    list_items = queries["listOrderItems"]
+    assert {p["name"] for p in list_items.path_params} == {"order_id"}
+    assert {p["name"] for p in list_items.query_params} == {"include_prices"}
+
+
+# ---------------------------------------------------------------------------
+# REQ-317 Steps — non-GET operations auto-register as tracked functions
+# ---------------------------------------------------------------------------
+
+
+@given("an OpenAPI spec with POST/PUT/PATCH/DELETE operations")
+def given_spec_with_non_get_operations(shared_data):
+    """Provide a spec exercising POST, PUT, PATCH and DELETE."""
+    spec: dict = {
+        "openapi": "3.0.0",
+        "info": {"title": "Widget API", "version": "1.0.0"},
+        "components": {
+            "schemas": {
+                "Widget": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "integer"},
+                        "name": {"type": "string"},
+                        "weight": {"type": "number"},
+                    },
+                }
+            }
+        },
+        "paths": {
+            "/widgets": {
+                "post": {
+                    "operationId": "createWidget",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/Widget"}}
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/Widget"}
+                                }
+                            }
+                        }
+                    },
+                }
+            },
+            "/widgets/{widget_id}": {
+                "put": {
+                    "operationId": "replaceWidget",
+                    "parameters": [
+                        {
+                            "name": "widget_id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "integer"},
+                        }
+                    ],
+                    "requestBody": {
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/Widget"}}
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/Widget"}
+                                }
+                            }
+                        }
+                    },
+                },
+                "patch": {
+                    "operationId": "updateWidget",
+                    "parameters": [
+                        {
+                            "name": "widget_id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "integer"},
+                        }
+                    ],
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"name": {"type": "string"}},
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/Widget"}
+                                }
+                            }
+                        }
+                    },
+                },
+                "delete": {
+                    "operationId": "deleteWidget",
+                    "parameters": [
+                        {
+                            "name": "widget_id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "integer"},
+                        }
+                    ],
+                    "responses": {"204": {"description": "deleted"}},
+                },
+            },
+        },
+    }
+    shared_data["spec"] = spec
+
+
+@when("the spec is registered")
+def when_the_spec_is_registered(shared_data):
+    """Parse the spec with the real mapper (shared by REQ-317 and REQ-601).
+
+    When ``operation_id`` is present (REQ-601), also derive the consumer-facing
+    alias via the real register helper.
+    """
+    spec = shared_data["spec"]
+    queries, mutations = map_operations(spec)
+    shared_data["queries"] = {q.operation_id: q for q in queries}
+    shared_data["mutations"] = {m.operation_id: m for m in mutations}
+
+    op_id = shared_data.get("operation_id")
+    if op_id is not None:
+        from provisa.openapi.register import _operation_id_to_alias
+
+        shared_data["alias"] = _operation_id_to_alias(op_id)
+
+
+@then(
+    "those operations are auto-registered as tracked functions with request "
+    "body properties as mutation input arguments"
+)
+def then_non_get_registered_as_tracked_functions(shared_data):
+    """Assert real mapper output: every non-GET is a mutation with its input schema."""
+    mutations: dict[str, OpenAPIMutation] = shared_data["mutations"]
+    queries: dict[str, OpenAPIQuery] = shared_data["queries"]
+
+    expected = {"createWidget", "replaceWidget", "updateWidget", "deleteWidget"}
+    assert expected <= set(mutations), f"missing mutations: {expected - set(mutations)}"
+    assert expected.isdisjoint(queries), "non-GET ops must not be virtual tables"
+
+    assert mutations["createWidget"].method == "POST"
+    assert mutations["replaceWidget"].method == "PUT"
+    assert mutations["updateWidget"].method == "PATCH"
+    assert mutations["deleteWidget"].method == "DELETE"
+
+    # Request body schema properties become mutation input arguments.
+    create = mutations["createWidget"]
+    assert create.input_schema is not None
+    assert set(create.input_schema["properties"]) == {"id", "name", "weight"}
+
+    patch = mutations["updateWidget"]
+    assert patch.input_schema is not None
+    assert set(patch.input_schema["properties"]) == {"name"}
+
+    # responses.200 schema becomes the mutation return_schema.
+    assert create.response_schema is not None
+    assert set(create.response_schema["properties"]) == {"id", "name", "weight"}
+
+    # DELETE with no request body → no input schema.
+    assert mutations["deleteWidget"].input_schema is None
+
+
+# ---------------------------------------------------------------------------
+# REQ-601 Steps — virtual table alias derivation
+# ---------------------------------------------------------------------------
+
+
+@given(parsers.parse('an OpenAPI spec with operationId "{operation_id}"'))
+def given_spec_with_operation_id(shared_data, operation_id):
+    """Build a minimal spec whose single GET carries *operation_id*."""
+    shared_data["operation_id"] = operation_id
+    shared_data["spec"] = {
+        "openapi": "3.0.0",
+        "info": {"title": "Pet API", "version": "1.0.0"},
+        "components": {
+            "schemas": {
+                "Pet": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "integer"},
+                        "name": {"type": "string"},
+                        "status": {"type": "string"},
+                    },
+                }
+            }
+        },
+        "paths": {
+            "/pets/findByStatus": {
+                "get": {
+                    "operationId": operation_id,
+                    "parameters": [{"name": "status", "in": "query", "schema": {"type": "string"}}],
+                    "responses": {
+                        "200": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "array",
+                                        "items": {"$ref": "#/components/schemas/Pet"},
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    }
+
+
+@then(
+    parsers.parse('the virtual table alias is "{alias}" used as the consumer-facing GraphQL name')
+)
+def then_virtual_table_alias(shared_data, alias):
+    """Assert the real alias derivation matches the expected consumer-facing name."""
+    op_id = shared_data["operation_id"]
+    assert op_id in shared_data["queries"], "operation must register as a virtual table"
+    assert shared_data["alias"] == alias, (
+        f"alias for {op_id!r} was {shared_data['alias']!r}, expected {alias!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-318 Steps — GET results served from Trino cache within TTL
+# ---------------------------------------------------------------------------
+
+
+@given("a GET operation result cached in Trino Iceberg on S3")
+def given_get_result_cached_in_trino(shared_data):
+    """Populate the in-process table-exists cache to simulate a live Iceberg table."""
+    loc = cache_location(_REQ318_SOURCE_ID, cache_catalog="results")
+    assert loc.backend == "iceberg", "results catalog must map to the Iceberg backend"
+
+    table_name = cache_table_name(_REQ318_SOURCE_ID, _REQ318_OPERATION_PATH, _REQ318_NATIVE_ARGS)
+    assert table_name.startswith("r_"), "cache table name must be the SHA-256-derived r_ name"
+
+    # First access: a live Trino probe materializes the positive result into the
+    # in-process TTL cache (matching real table_exists behaviour on cache miss).
+    conn = _make_fake_trino_conn(table_name, loc, _REQ318_TTL)
+    _TABLE_EXISTS_CACHE.pop((loc.catalog, loc.schema, table_name), None)
+    assert table_exists(conn, loc, table_name, ttl=_REQ318_TTL) is True
+    assert conn.cursor.called, "first access must probe Trino (cache miss)"
+
+    shared_data["loc"] = loc
+    shared_data["table_name"] = table_name
+    shared_data["probe_conn"] = conn
+
+
+@when("the same query with identical args is issued within TTL")
+def when_same_query_issued_within_ttl(shared_data):
+    """Re-issue the identical query; recompute the cache key from identical args."""
+    loc: CacheLocation = shared_data["loc"]
+    # Recomputing the cache table name from identical args yields the same table.
+    recomputed = cache_table_name(
+        _REQ318_SOURCE_ID, _REQ318_OPERATION_PATH, dict(_REQ318_NATIVE_ARGS)
+    )
+    assert recomputed == shared_data["table_name"], (
+        "identical args must resolve to the identical cache table"
+    )
+    # A fresh connection stands in for the second request path.
+    shared_data["second_conn"] = _make_fake_trino_conn(recomputed, loc, _REQ318_TTL)
+
+
+@then("results are served from Trino directly with zero upstream REST calls")
+def then_served_from_trino_zero_rest(shared_data):
+    """Assert the second call is a cache hit — no Trino probe, no REST fetch."""
+    loc: CacheLocation = shared_data["loc"]
+    table_name: str = shared_data["table_name"]
+    second_conn: mock.MagicMock = shared_data["second_conn"]
+
+    # Within TTL the in-process cache confirms the table is live without any probe.
+    assert table_known_live(loc, table_name) is True
+
+    # table_exists returns True from cache without touching the connection.
+    assert table_exists(second_conn, loc, table_name, ttl=_REQ318_TTL) is True
+    assert not second_conn.cursor.called, (
+        "cache hit must not issue any Trino probe (zero upstream calls)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-321 Steps — on-demand spec refresh preserves governance rules
+# ---------------------------------------------------------------------------
+
+
+@given("an OpenAPI spec that has been updated upstream")
+def given_spec_updated_upstream(shared_data):
+    """Register an initial spec, apply governance rules, then stage an updated spec."""
+    initial_spec = copy.deepcopy(_REQ316_SPEC)
+    registry = _build_registry_from_spec(initial_spec)
+
+    # Steward applies governance rules on top of the derived registrations.
+    _apply_governance_rules(
+        registry,
+        {
+            "listOrders": ["mask:total", "row_filter:status='shipped'"],
+            "getOrder": ["mask:customer_id"],
+        },
+    )
+    assert registry["listOrders"]["governance_rules"], "governance rules must be applied"
+
+    # Upstream update: add a new GET operation and drop updateOrder (PUT).
+    updated_spec = copy.deepcopy(_REQ316_SPEC)
+    del updated_spec["paths"]["/orders/{order_id}"]["put"]
+    updated_spec["paths"]["/orders/{order_id}/history"] = {
+        "get": {
+            "operationId": "getOrderHistory",
+            "parameters": [
+                {
+                    "name": "order_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "integer"},
+                }
+            ],
+            "responses": {
+                "200": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "array",
+                                "items": {"$ref": "#/components/schemas/Order"},
+                            }
+                        }
+                    }
+                }
+            },
+        }
+    }
+
+    shared_data["old_registry"] = registry
+    shared_data["updated_spec"] = updated_spec
+
+
+@when("a steward triggers the spec refresh admin mutation")
+def when_steward_triggers_spec_refresh(shared_data):
+    """Perform the on-demand refresh, preserving governance rules."""
+    shared_data["new_registry"] = _perform_spec_refresh(
+        shared_data["old_registry"], shared_data["updated_spec"]
+    )
+
+
+@then("registrations are updated and governance rules applied on top are preserved")
+def then_registrations_updated_governance_preserved(shared_data):
+    """Assert refresh updates registrations while keeping governance rules intact."""
+    new_registry: dict = shared_data["new_registry"]
+
+    # New operation from the updated spec is registered.
+    assert "getOrderHistory" in new_registry
+    assert new_registry["getOrderHistory"]["kind"] == "virtual_table"
+
+    # Operation removed upstream is dropped.
+    assert "updateOrder" not in new_registry
+
+    # Governance rules on surviving operations are preserved verbatim.
+    assert new_registry["listOrders"]["governance_rules"] == [
+        "mask:total",
+        "row_filter:status='shipped'",
+    ]
+    assert new_registry["getOrder"]["governance_rules"] == ["mask:customer_id"]
+
+    # Newly added operation starts with no rules.
+    assert new_registry["getOrderHistory"]["governance_rules"] == []
+
+
+# ---------------------------------------------------------------------------
+# REQ-739 — API source discovery endpoint (orphaned REQ; real code in
+# provisa/api_source/introspect.py + provisa/api_source/candidates.py)
+# ---------------------------------------------------------------------------
+
+scenarios("../features/REQ-739.feature")
+
+
+class _FakeCandidateConn:
+    """Minimal in-memory stand-in for an asyncpg connection.
+
+    Backs the real candidates repository (store/list/accept/reject) against an
+    in-memory ``api_endpoint_candidates`` table so the round-trip exercises the
+    real repository code and real Pydantic models — only the live PG boundary
+    is replaced.
+    """
+
+    def __init__(self) -> None:
+        self.rows: list[dict] = []
+        self._next_id = 1
+
+    async def fetchrow(self, sql: str, *args):
+        sql_l = " ".join(sql.split())
+        if sql_l.startswith("INSERT INTO api_endpoint_candidates"):
+            source_id, path, method, table_name, columns_json = args
+            for r in self.rows:
+                if r["source_id"] == source_id and r["path"] == path and r["method"] == method:
+                    r["table_name"] = table_name
+                    r["columns"] = columns_json
+                    if r["status"] != "registered":
+                        r["status"] = "discovered"
+                    return {"id": r["id"]}
+            row = {
+                "id": self._next_id,
+                "source_id": source_id,
+                "path": path,
+                "method": method,
+                "table_name": table_name,
+                "columns": columns_json,
+                "status": "discovered",
+            }
+            self._next_id += 1
+            self.rows.append(row)
+            return {"id": row["id"]}
+        if sql_l.startswith("SELECT * FROM api_endpoint_candidates WHERE id"):
+            (candidate_id,) = args
+            for r in self.rows:
+                if r["id"] == candidate_id:
+                    return dict(r)
+            return None
+        if sql_l.startswith("INSERT INTO api_endpoints"):
+            # accept_candidate registers an endpoint; return a synthetic id.
+            self._endpoint_id = getattr(self, "_endpoint_id", 0) + 1
+            return {"id": self._endpoint_id}
+        raise AssertionError(f"unexpected fetchrow SQL: {sql_l}")
+
+    async def fetch(self, sql: str, *args):
+        sql_l = " ".join(sql.split())
+        if "WHERE source_id = $1 AND status = 'discovered'" in sql_l:
+            (source_id,) = args
+            return [
+                dict(r)
+                for r in self.rows
+                if r["source_id"] == source_id and r["status"] == "discovered"
+            ]
+        if "WHERE status = 'discovered'" in sql_l:
+            return [dict(r) for r in self.rows if r["status"] == "discovered"]
+        raise AssertionError(f"unexpected fetch SQL: {sql_l}")
+
+    async def execute(self, sql: str, *args):
+        sql_l = " ".join(sql.split())
+        if "SET status = 'rejected'" in sql_l:
+            (candidate_id,) = args
+            for r in self.rows:
+                if r["id"] == candidate_id and r["status"] == "discovered":
+                    r["status"] = "rejected"
+                    return "UPDATE 1"
+            return "UPDATE 0"
+        if "SET status = 'registered'" in sql_l:
+            (candidate_id,) = args
+            for r in self.rows:
+                if r["id"] == candidate_id:
+                    r["status"] = "registered"
+                    return "UPDATE 1"
+            return "UPDATE 0"
+        raise AssertionError(f"unexpected execute SQL: {sql_l}")
+
+
+_REQ739_SPEC = {
+    "openapi": "3.0.0",
+    "info": {"title": "Discovery API", "version": "1.0.0"},
+    "components": {
+        "schemas": {
+            "User": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "email": {"type": "string"},
+                    "active": {"type": "boolean"},
+                },
+            }
+        }
+    },
+    "paths": {
+        "/users": {
+            "get": {
+                "operationId": "listUsers",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/User"},
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        },
+        "/users/{id}": {
+            "get": {
+                "operationId": "getUser",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/User"}}
+                        }
+                    }
+                },
+            }
+        },
+    },
+}
+
+
+def _make_fake_httpx_response(spec: dict) -> mock.MagicMock:
+    """Build a mock httpx response that serves *spec* as JSON."""
+    resp = mock.MagicMock()
+    resp.json.return_value = spec
+    resp.raise_for_status.return_value = None
+    return resp
+
+
+def _make_fake_async_client(spec: dict) -> mock.MagicMock:
+    """Return a mock httpx.AsyncClient context manager serving *spec*.
+
+    Only the live HTTP fetch of the spec (the true external boundary) is mocked;
+    all parsing/candidate generation runs through the real introspect_openapi.
+    """
+    resp = _make_fake_httpx_response(spec)
+    client = mock.MagicMock()
+    client.get = mock.AsyncMock(return_value=resp)
+
+    ctx = mock.MagicMock()
+    ctx.__aenter__ = mock.AsyncMock(return_value=client)
+    ctx.__aexit__ = mock.AsyncMock(return_value=None)
+    return ctx
+
+
+@given("an OpenAPI spec URL")
+def given_openapi_spec_url(shared_data):
+    """Provide a spec URL; stage the fake HTTP client that serves its content."""
+    shared_data["spec_url"] = "https://api.example.com/openapi.json"
+    shared_data["fake_client"] = _make_fake_async_client(_REQ739_SPEC)
+    shared_data["source_id"] = "discovery-src"
+
+
+@when("the discovery endpoint introspects it")
+def when_discovery_endpoint_introspects(shared_data):
+    """Run the real introspect_openapi over the served spec and store candidates."""
+    from provisa.api_source import candidates as candidates_repo
+    from provisa.api_source import introspect as introspect_mod
+
+    async def _run():
+        with mock.patch.object(
+            introspect_mod.httpx, "AsyncClient", return_value=shared_data["fake_client"]
+        ):
+            candidates = await introspect_mod.introspect_openapi(shared_data["spec_url"])
+        source_id = shared_data["source_id"]
+        for c in candidates:
+            c.source_id = source_id
+
+        conn = _FakeCandidateConn()
+        ids = await candidates_repo.store_candidates(conn, source_id, candidates)  # type: ignore[arg-type]
+        stored = await candidates_repo.list_candidates(conn, source_id)  # type: ignore[arg-type]
+        return candidates, ids, stored, conn
+
+    candidates, ids, stored, conn = asyncio.run(_run())
+    shared_data["candidates"] = candidates
+    shared_data["stored_ids"] = ids
+    shared_data["stored"] = stored
+    shared_data["conn"] = conn
+
+
+@then("discovered operation candidates are stored and queryable via admin API")
+def then_candidates_stored_and_queryable(shared_data):
+    """Assert real introspection produced GET candidates that round-trip via the repo."""
+    candidates = shared_data["candidates"]
+    stored = shared_data["stored"]
+
+    # introspect_openapi generates one candidate per GET operation with columns.
+    by_path = {c.path: c for c in candidates}
+    assert set(by_path) == {"/users", "/users/{id}"}, (
+        f"unexpected discovered paths: {sorted(by_path)}"
+    )
+    assert by_path["/users"].method == "GET"
+    assert by_path["/users"].table_name == "users"
+    assert by_path["/users/{id}"].table_name == "users"
+
+    users_cols = {c.name for c in by_path["/users"].columns}
+    assert users_cols == {"id", "email", "active"}, (
+        f"column set derived from response schema: {users_cols}"
+    )
+
+    # Stored candidates are queryable and carry discovered status + IDs.
+    assert len(stored) == 2
+    assert all(c.id is not None for c in stored)
+    assert all(c.status == "discovered" for c in stored)
+    assert {c.path for c in stored} == {"/users", "/users/{id}"}
+
+
+@then("stewards can accept or reject each candidate")
+def then_stewards_accept_or_reject(shared_data):
+    """Exercise the real accept/reject repository code against stored candidates."""
+    from provisa.api_source import candidates as candidates_repo
+
+    conn: _FakeCandidateConn = shared_data["conn"]
+    stored = shared_data["stored"]
+    assert len(stored) == 2
+
+    accept_id = stored[0].id
+    reject_id = stored[1].id
+    assert accept_id is not None and reject_id is not None
+
+    async def _run():
+        endpoint = await candidates_repo.accept_candidate(conn, accept_id)  # type: ignore[arg-type]
+        await candidates_repo.reject_candidate(conn, reject_id)  # type: ignore[arg-type]
+        remaining = await candidates_repo.list_candidates(conn, shared_data["source_id"])  # type: ignore[arg-type]
+        return endpoint, remaining
+
+    endpoint, remaining = asyncio.run(_run())
+
+    # Accepted candidate becomes a registered endpoint.
+    assert endpoint.table_name == stored[0].table_name
+    assert endpoint.source_id == shared_data["source_id"]
+
+    # Both candidates leave the 'discovered' queue (one registered, one rejected).
+    assert remaining == []
+
+    accepted_row = next(r for r in conn.rows if r["id"] == accept_id)
+    rejected_row = next(r for r in conn.rows if r["id"] == reject_id)
+    assert accepted_row["status"] == "registered"
+    assert rejected_row["status"] == "rejected"

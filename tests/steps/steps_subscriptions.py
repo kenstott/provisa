@@ -51,7 +51,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from graphql import parse as gql_parse
@@ -60,6 +60,7 @@ from pytest_bdd import given, scenarios, then, when
 
 from provisa.api.data.subscription_sse import _collect_related_tables
 from provisa.subscriptions.base import ChangeEvent
+from provisa.subscriptions.debezium_provider import DebeziumNotificationProvider
 from provisa.subscriptions.pg_provider import CHANNEL_PREFIX, PgNotificationProvider
 from provisa.subscriptions.pg_triggers import (
     _trigger_sql,
@@ -527,6 +528,7 @@ def given_subscription_joining_two_tables(shared_data: dict) -> None:
     root_field_sel = sub_selection.selections[0]
     assert isinstance(root_field_sel, FieldNode)
     inner_selection = root_field_sel.selection_set
+    assert inner_selection is not None, "root field must have a selection set"
 
     related_tables = _collect_related_tables(inner_selection, root_type, ctx)
     all_watch_tables = [root_table] + sorted(related_tables - {root_table})
@@ -816,3 +818,155 @@ def when_poll_subscription_created(shared_data: dict) -> None:
     async def _run() -> None:
         async for event in provider.poll(table, initial_watermark=baseline_wm, max_polls=1):
             received_events.append(event)
+
+    asyncio.run(_run())
+    shared_data["received_events"] = received_events
+
+
+@then(
+    "new or updated rows since the last watermark are delivered to the subscriber "
+    "on each poll interval"
+)
+def then_only_newer_rows_delivered(shared_data: dict) -> None:
+    """Assert the poll provider delivered exactly the rows past the watermark."""
+    received_events = shared_data["received_events"]
+    expected_ids = shared_data["expected_row_ids"]
+
+    delivered_ids = {evt.row["id"] for evt in received_events}
+    assert delivered_ids == expected_ids, (
+        f"Expected rows {expected_ids} delivered, got {delivered_ids}"
+    )
+    # The stale row (before the baseline watermark) must NOT be delivered.
+    assert 99 not in delivered_ids, "stale pre-watermark row must not be delivered"
+    for evt in received_events:
+        assert evt.table == shared_data["table"]
+
+
+# ---------------------------------------------------------------------------
+# REQ-261 — Debezium CDC subscription provider for non-PG RDBMS (MySQL)
+#
+# Driven against the real DebeziumNotificationProvider. Only the Kafka client
+# boundary (AIOKafkaConsumer) is faked; envelope parsing, op-code mapping,
+# topic naming, and ChangeEvent construction all run through production code.
+# ---------------------------------------------------------------------------
+
+
+class _FakeKafkaConsumer:
+    """Async-iterable stand-in for aiokafka's AIOKafkaConsumer (the sole
+    external boundary). Yields the pre-seeded Debezium messages then stops."""
+
+    def __init__(self, messages: list) -> None:
+        self._messages = list(messages)
+        self.started = False
+        self.stopped = False
+
+    async def start(self) -> None:
+        self.started = True
+
+    async def stop(self) -> None:
+        self.stopped = True
+
+    def __aiter__(self) -> "_FakeKafkaConsumer":
+        return self
+
+    async def __anext__(self):
+        if not self._messages:
+            raise StopAsyncIteration
+        return self._messages.pop(0)
+
+
+def _kafka_msg(value_dict: dict, ts_ms: int) -> MagicMock:
+    """Build a fake Kafka message whose .value is a JSON-encoded Debezium envelope."""
+    msg = MagicMock()
+    msg.value = json.dumps({"payload": {**value_dict, "ts_ms": ts_ms}}).encode("utf-8")
+    return msg
+
+
+@given("a MySQL source is connected via Debezium and Kafka")
+def given_mysql_source_via_debezium(shared_data: dict) -> None:
+    """Configure a real Debezium provider for a MySQL source."""
+    provider = DebeziumNotificationProvider(
+        bootstrap_servers="kafka:9092",
+        topic_prefix="dbserver1",
+        database="inventory",
+        source_type="mysql",
+    )
+    shared_data["provider"] = provider
+    shared_data["table"] = "customers"
+
+    # MySQL uses {prefix}.{database}.{table} topic naming (not schema-based).
+    assert provider._build_topic("customers") == "dbserver1.inventory.customers"
+
+
+@when("a row is inserted, updated, or deleted in MySQL")
+def when_row_changed_in_mysql(shared_data: dict) -> None:
+    """Feed insert/update/delete Debezium envelopes through the real provider."""
+    # Debezium op codes: c=create(insert), u=update, d=delete.
+    messages = [
+        _kafka_msg(
+            {"op": "c", "after": {"id": 1, "name": "Alice"}},
+            ts_ms=1_700_000_000_000,
+        ),
+        _kafka_msg(
+            {"op": "u", "before": {"id": 1, "name": "Alice"}, "after": {"id": 1, "name": "Alicia"}},
+            ts_ms=1_700_000_001_000,
+        ),
+        _kafka_msg(
+            {"op": "d", "before": {"id": 1, "name": "Alicia"}, "after": None},
+            ts_ms=1_700_000_002_000,
+        ),
+    ]
+    consumer = _FakeKafkaConsumer(messages)
+
+    fake_aiokafka = MagicMock()
+    fake_aiokafka.AIOKafkaConsumer = lambda *a, **kw: consumer
+
+    provider = shared_data["provider"]
+    table = shared_data["table"]
+
+    async def _collect() -> list[ChangeEvent]:
+        events: list[ChangeEvent] = []
+        async for event in provider.watch(table):
+            events.append(event)
+        return events
+
+    with patch.dict("sys.modules", {"aiokafka": fake_aiokafka}):
+        events = asyncio.run(_collect())
+
+    shared_data["events"] = events
+    shared_data["consumer"] = consumer
+
+
+@then(
+    "the change is captured by Debezium, published to Kafka, consumed by Provisa, "
+    "and streamed as an SSE event to subscribers"
+)
+def then_change_streamed_as_sse(shared_data: dict) -> None:
+    """Assert each CDC op produced a correct ChangeEvent from real parsing."""
+    events = shared_data["events"]
+    table = shared_data["table"]
+    consumer = shared_data["consumer"]
+
+    # The Kafka consumer (external boundary) was started and stopped.
+    assert consumer.started, "provider must start the Kafka consumer"
+    assert consumer.stopped, "provider must stop the Kafka consumer"
+
+    assert len(events) == 3, f"expected 3 CDC events, got {len(events)}: {events}"
+
+    insert_evt, update_evt, delete_evt = events
+
+    # op code "c" -> insert, row from "after".
+    assert insert_evt.operation == "insert"
+    assert insert_evt.table == table
+    assert insert_evt.row == {"id": 1, "name": "Alice"}
+    assert insert_evt.timestamp == datetime.fromtimestamp(
+        1_700_000_000, tz=timezone.utc
+    )
+
+    # op code "u" -> update, row from "after".
+    assert update_evt.operation == "update"
+    assert update_evt.row == {"id": 1, "name": "Alicia"}
+
+    # op code "d" -> delete, row from "before" (after is null).
+    assert delete_evt.operation == "delete"
+    assert delete_evt.row == {"id": 1, "name": "Alicia"}
