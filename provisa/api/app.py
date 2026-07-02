@@ -983,8 +983,8 @@ def _seed_ops_trino(  # REQ-016
         for tbl_name in _OPS_TABLES:
             try:
                 _exec(f'ALTER TABLE otel.signals.{tbl_name} ADD PARTITION FIELD "table_name"')
-            except trino.exceptions.TrinoQueryError:
-                pass  # already present or not supported — not fatal
+            except trino.exceptions.Error:
+                pass  # already present, unsupported, or Trino transient — best-effort, not fatal
 
         # Warm up Iceberg metadata: first query on a cold Iceberg table can take >60s;
         # running a zero-row scan here ensures metadata is loaded before user requests arrive.
