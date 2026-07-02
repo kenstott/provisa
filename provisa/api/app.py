@@ -41,7 +41,9 @@ from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.rls import RLSContext, build_rls_context
 from provisa.compiler.sql_gen import CompilationContext, build_context
 from provisa.core.config_loader import load_config, parse_config_dict
-from provisa.core.db import create_pool, init_schema
+from provisa.core.db import init_schema
+from provisa.core.database import Database, create_engine
+from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.core.secrets import resolve_secrets
 from provisa.executor.pool import SourcePool
 from provisa.compiler.mask_inject import MaskingRules
@@ -74,7 +76,13 @@ log = logging.getLogger(__name__)
 class AppState:
     """Shared application state populated at startup."""
 
-    pg_pool: asyncpg.Pool | None = None
+    # Control plane handles (SQLAlchemy-backed). ``pg_pool`` is retained as the
+    # org/tenant control-plane alias for existing call sites; ``admin_db`` is the
+    # platform control plane (orgs/users/invites/billing). In Phase 1 both share
+    # one engine/database; Phase 2 can repoint ``admin_db`` at a separate DB.
+    pg_pool: Database | None = None
+    admin_db: Database | None = None
+    org_db: Database | None = None
     trino_conn: trino.dbapi.Connection | None = None
     trino_conn_kwargs: dict = {}  # kwargs used to create trino_conn (for reconnect)
     flight_client: Any | None = None  # pyarrow.flight.FlightClient
@@ -210,73 +218,6 @@ def _setup_approval_hook(st: AppState) -> None:
     st.table_approval_hooks = table_hooks
 
 
-# Views replace tables that have text[] columns Trino can't surface; arrays cast to JSON text.
-_META_TABLE_VIEWS: dict[str, str] = {
-    "registered_tables": """
-        DROP VIEW IF EXISTS registered_tables_meta CASCADE;
-        CREATE VIEW registered_tables_meta AS
-        SELECT id, source_id, domain_id, schema_name, table_name,
-               alias, description, cache_ttl, gql_naming_convention, watermark_column,
-               column_presets::text AS column_presets,
-               view_sql, data_product, materialize, mv_refresh_interval,
-               l1_cluster, l2_cluster, l3_cluster, clusters_computed_at,
-               tenant_id
-        FROM registered_tables
-    """,
-    "table_columns": """
-        DROP VIEW IF EXISTS table_columns_meta CASCADE;
-        CREATE VIEW table_columns_meta AS
-        SELECT id, table_id, column_name, data_type, is_primary_key,
-               alias, description, path, scope,
-               mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
-               native_filter_type, is_foreign_key, is_alternate_key,
-               object_fields::text AS object_fields,
-               array_to_json(visible_to)::text  AS visible_to,
-               array_to_json(unmasked_to)::text AS unmasked_to,
-               array_to_json(writable_by)::text AS writable_by,
-               tenant_id
-        FROM table_columns
-    """,
-    "roles": """
-        DROP VIEW IF EXISTS roles_meta CASCADE;
-        CREATE VIEW roles_meta AS
-        SELECT id, parent_role_id, org_id,
-               array_to_json(capabilities)::text AS capabilities,
-               tenant_id,
-               'meta'::text AS domain_id
-        FROM roles
-    """,
-    "roles_domain_access": """
-        DROP VIEW IF EXISTS roles_domain_access CASCADE;
-        CREATE VIEW roles_domain_access AS
-        SELECT r.id || ':' || d.id AS id,
-               r.id AS role_id, 'meta'::text AS domain_id, d.id AS accessed_domain_id
-        FROM roles r
-        CROSS JOIN domains d
-        WHERE d.id <> ''
-    """,
-    "tracked_webhooks": """
-        DROP VIEW IF EXISTS tracked_webhooks_meta CASCADE;
-        CREATE VIEW tracked_webhooks_meta AS
-        SELECT id, name, url, method, timeout_ms, returns, kind,
-               inline_return_type::text AS inline_return_type,
-               arguments::text AS arguments,
-               array_to_json(visible_to)::text AS visible_to,
-               domain_id, description, created_at, updated_at
-        FROM tracked_webhooks
-    """,
-    "tracked_functions": """
-        DROP VIEW IF EXISTS tracked_functions_meta CASCADE;
-        CREATE VIEW tracked_functions_meta AS
-        SELECT id, name, source_id, schema_name, function_name, returns, kind,
-               arguments::text AS arguments,
-               return_schema::text AS return_schema,
-               array_to_json(visible_to)::text AS visible_to,
-               array_to_json(writable_by)::text AS writable_by,
-               domain_id, description, created_at, updated_at
-        FROM tracked_functions
-    """,
-}
 # Maps original table name → view name (or itself if no view needed).
 _META_TABLE_ALIAS: dict[str, str] = {
     "registered_tables": "registered_tables_meta",
@@ -1071,16 +1012,24 @@ async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:  # REQ-057
     org_id = os.environ.get("ORG_ID", "default")
     state.org_id = org_id
 
-    state.pg_pool = await create_pool(
-        pg_host,
-        pg_port,
-        pg_database,
-        pg_user,
-        pg_password,
-        min_size=pg_pool_min,
-        max_size=pg_pool_max,
-        org_id=org_id,
+    # Control plane now runs on SQLAlchemy (asyncpg driver) via the Database
+    # abstraction; the engine's pool replaces the former asyncpg pool. Org
+    # isolation is applied per-connection via search_path (Phase 1).
+    engine = create_engine(
+        host=pg_host,
+        port=pg_port,
+        database=pg_database,
+        user=pg_user,
+        password=pg_password,
+        pool_size=pg_pool_max,
+        max_overflow=max(pg_pool_max - pg_pool_min, 0),
     )
+    # Split control plane: org (tenant) + admin (platform) handles over one
+    # engine for now. ``pg_pool`` aliases org_db so existing call sites are
+    # unchanged; new/platform code uses state.admin_db.
+    state.org_db = Database(engine, name="org", search_path=f"org_{org_id}")
+    state.admin_db = Database(engine, name="admin", search_path=f"org_{org_id}")
+    state.pg_pool = state.org_db
 
     schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
     if schema_sql_path.exists():
@@ -1093,7 +1042,8 @@ async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:  # REQ-057
 
     from provisa.api.billing.tenant_db import init_billing_schema
 
-    await init_billing_schema(state.pg_pool)
+    # Billing lives in the platform control plane.
+    await init_billing_schema(state.admin_db)
 
     return pg_host, pg_port, pg_database, pg_user
 

@@ -9,25 +9,33 @@
 
 import pytest
 
-from provisa.api.admin.schema import _derive_graphql_alias
+from provisa.api.admin._row_mappers import _derive_graphql_alias
 
 
-@pytest.mark.parametrize("target,cardinality,alias,expected", [
-    # one-to-many: pluralise
-    ("review", "one-to-many", None, "reviews"),
-    ("order", "one-to-many", None, "orders"),
-    ("line_item", "one-to-many", None, "lineItems"),
-    ("category", "one-to-many", None, "categories"),   # y → ies
-    ("address", "one-to-many", None, "addresses"),      # s → es
-    ("box", "one-to-many", None, "boxes"),              # x → es
-    ("match", "one-to-many", None, "matches"),          # ch → es
-    # many-to-one: singular
-    ("customer", "many-to-one", None, "customer"),
-    ("order", "many-to-one", None, "order"),
-    ("ProductCategory", "many-to-one", None, "productCategory"),  # PascalCase normalized to snake then compound-noun rule
-    ("product_category", "many-to-one", None, "productCategory"),
-    # empty target
-    ("", "one-to-many", None, None),
-])
+@pytest.mark.parametrize(
+    "target,cardinality,alias,expected",
+    [
+        # one-to-many: pluralise
+        ("review", "one-to-many", None, "reviews"),
+        ("order", "one-to-many", None, "orders"),
+        ("line_item", "one-to-many", None, "lineItems"),
+        ("category", "one-to-many", None, "categories"),  # y → ies
+        ("address", "one-to-many", None, "addresses"),  # s → es
+        ("box", "one-to-many", None, "boxes"),  # x → es
+        ("match", "one-to-many", None, "matches"),  # ch → es
+        # many-to-one: singular
+        ("customer", "many-to-one", None, "customer"),
+        ("order", "many-to-one", None, "order"),
+        (
+            "ProductCategory",
+            "many-to-one",
+            None,
+            "productCategory",
+        ),  # PascalCase normalized to snake then compound-noun rule
+        ("product_category", "many-to-one", None, "productCategory"),
+        # empty target
+        ("", "one-to-many", None, None),
+    ],
+)
 def test_derive_graphql_alias(target, cardinality, alias, expected):
     assert _derive_graphql_alias(target, cardinality, alias) == expected

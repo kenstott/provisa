@@ -1,0 +1,525 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""Control-plane database abstraction backed by SQLAlchemy Core.
+
+This is the ``AdminDatabase`` contract that decouples the Provisa control plane
+from raw asyncpg. It wraps a SQLAlchemy :class:`AsyncEngine` (whose connection
+pool replaces the former ``asyncpg.create_pool``) and exposes an asyncpg-shaped
+async API so the ~586 existing call sites keep working with minimal churn:
+
+    async with db.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", sid)
+        await conn.execute("DELETE FROM sources WHERE id = $1", sid)
+
+Two instances back the split control plane (see ``schema_admin`` /
+``schema_org``): the **platform control plane** (``admin``) and the **tenant
+control plane** (``org``, per-org).
+
+Semantics deliberately mirror asyncpg:
+
+- Positional ``$1``/``$2`` placeholders are translated to SQLAlchemy ``:pN``
+  named binds; call sites pass positional args unchanged.
+- Statements outside an explicit :meth:`Connection.transaction` are committed
+  immediately (asyncpg's default autocommit). Inside ``transaction()`` they are
+  grouped and committed/rolled back together; nested blocks use savepoints.
+- :meth:`Connection.execute` returns an asyncpg-style status string
+  (``"DELETE 1"``, ``"UPDATE 3"``, ``"INSERT 0 1"``) so status parsing at call
+  sites (e.g. ``repositories/source.py``) is preserved.
+- ``jsonb``/``json`` columns are (de)serialized via the same codec the old pool
+  registered, so ``row['mapping']`` is a ``dict`` not a JSON string.
+
+Portability (Tier-2: SQLite >=3.35, MySQL 8) is layered on in later phases via
+:class:`Capabilities` gating; on PostgreSQL behavior is identical to the former
+asyncpg pool.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import urllib.parse
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from typing import Any, AsyncGenerator
+
+from sqlalchemy import Table, event, text
+from sqlalchemy.dialects.mysql import insert as _mysql_insert
+from sqlalchemy.dialects.postgresql import insert as _pg_insert
+from sqlalchemy.dialects.sqlite import insert as _sqlite_insert
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
+
+
+def _json_encoder(v: Any) -> str:
+    return v if isinstance(v, str) else json.dumps(v)
+
+
+async def _register_json_codecs(conn: Any) -> None:
+    """Match the codec the former asyncpg pool installed (provisa/core/db.py)."""
+    await conn.set_type_codec(
+        "jsonb", encoder=_json_encoder, decoder=json.loads, schema="pg_catalog"
+    )
+    await conn.set_type_codec(
+        "json", encoder=_json_encoder, decoder=json.loads, schema="pg_catalog"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# capabilities
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class Capabilities:
+    """Per-dialect feature flags. PostgreSQL supports everything; Tier-2
+    backends gate PG-only features (LISTEN/NOTIFY, advisory locks, arrays,
+    append-only RULEs, RETURNING) so callers can branch."""
+
+    dialect: str
+    listen_notify: bool
+    advisory_lock: bool
+    arrays: bool
+    rules: bool
+    returning: bool
+
+    @classmethod
+    def for_dialect(cls, dialect: str) -> "Capabilities":
+        d = dialect.split("+", 1)[0]
+        if d == "postgresql":
+            return cls(
+                d, listen_notify=True, advisory_lock=True, arrays=True, rules=True, returning=True
+            )
+        if d == "sqlite":
+            return cls(
+                d,
+                listen_notify=False,
+                advisory_lock=False,
+                arrays=False,
+                rules=False,
+                returning=True,
+            )
+        if d in ("mysql", "mariadb"):
+            return cls(
+                d,
+                listen_notify=False,
+                advisory_lock=True,
+                arrays=False,
+                rules=False,
+                returning=False,
+            )
+        return cls(
+            d, listen_notify=False, advisory_lock=False, arrays=False, rules=False, returning=False
+        )
+
+
+# --------------------------------------------------------------------------- #
+# row adapter
+# --------------------------------------------------------------------------- #
+class Row:
+    """Wraps a SQLAlchemy ``Row`` to mimic ``asyncpg.Record``: ``row['col']``,
+    ``row[0]``, ``dict(row)``, ``.get()``, ``.keys()``, and value-iteration."""
+
+    __slots__ = ("_row", "_mapping")
+
+    def __init__(self, row: Any) -> None:
+        self._row = row
+        self._mapping = row._mapping
+
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, int):
+            return self._row[key]
+        return self._mapping[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._mapping.get(key, default)
+
+    def keys(self):
+        return self._mapping.keys()
+
+    def values(self):
+        return self._mapping.values()
+
+    def items(self):
+        return self._mapping.items()
+
+    def __iter__(self):
+        # asyncpg.Record iterates values; dict(row) uses keys()+__getitem__.
+        return iter(self._mapping.values())
+
+    def __contains__(self, key: Any) -> bool:
+        return key in self._mapping
+
+    def __len__(self) -> int:
+        return len(self._mapping)
+
+    def __repr__(self) -> str:
+        return f"Row({dict(self._mapping)!r})"
+
+
+# --------------------------------------------------------------------------- #
+# placeholder translation
+# --------------------------------------------------------------------------- #
+_PLACEHOLDER = re.compile(r"\$(\d+)")
+# A PG cast (``::jsonb``, ``::text[]`` …) applied directly to a placeholder.
+# SQLAlchemy's text() bind regex has a ``(?!:)`` lookahead, so it refuses to
+# bind ``:pN`` when ``::`` follows. We drop the cast on the placeholder: PG
+# infers the param type from the target column/context, and the jsonb codec
+# (registered on the connection) still (de)serializes correctly. Standalone
+# casts like ``col::text`` are left untouched.
+_CAST_ON_BIND = re.compile(r"(:p\d+)::\w+(?:\[\])?")
+
+
+def _translate(sql: str, args: tuple) -> tuple[str, dict[str, Any]]:
+    """Convert asyncpg ``$1``-style SQL + positional args to SQLAlchemy
+    ``:pN``-style SQL + a param dict."""
+    if not args:
+        return sql, {}
+    params = {f"p{i + 1}": a for i, a in enumerate(args)}
+    sql = _PLACEHOLDER.sub(lambda m: f":p{m.group(1)}", sql)
+    sql = _CAST_ON_BIND.sub(lambda m: m.group(1), sql)
+    return sql, params
+
+
+_DOLLAR_QUOTE = re.compile(r"\$\$.*?\$\$", re.DOTALL)
+_SQL_STRING = re.compile(r"'(?:[^']|'')*'")
+_LINE_COMMENT = re.compile(r"--[^\n]*")
+
+
+def _is_multi_statement(sql: str) -> bool:
+    """True if *sql* contains more than one top-level statement (separated by
+    ``;``), ignoring ``$$``-quoted blocks, string literals, and line comments.
+
+    asyncpg's extended/prepared protocol (what SQLAlchemy ``text()`` uses)
+    rejects multiple commands with "cannot insert multiple commands into a
+    prepared statement"; such scripts must run on the raw driver connection.
+    A single ``DO $$ ... $$`` block is NOT multi-statement."""
+    s = _DOLLAR_QUOTE.sub("", sql)
+    s = _SQL_STRING.sub("", s)
+    s = _LINE_COMMENT.sub("", s)
+    s = s.strip().rstrip(";").strip()
+    return ";" in s
+
+
+_VERB = re.compile(r"^\s*(\w+)")
+
+
+def _status(sql: str, rowcount: int) -> str:
+    """Synthesize an asyncpg-style command status tag from the verb + rowcount."""
+    m = _VERB.match(sql)
+    verb = m.group(1).upper() if m else ""
+    if verb == "INSERT":
+        return f"INSERT 0 {max(rowcount, 0)}"
+    if verb in ("UPDATE", "DELETE", "SELECT"):
+        return f"{verb} {max(rowcount, 0)}"
+    return verb
+
+
+def build_upsert(
+    dialect: str,
+    table: Table,
+    values: dict[str, Any],
+    *,
+    index_elements: list[str],
+    update_columns: list[str] | None = None,
+):
+    """Build a portable INSERT ... ON CONFLICT DO UPDATE statement.
+
+    Replaces hand-written PG-only ``ON CONFLICT`` SQL with a dialect-aware Core
+    construct so the same repository code targets PostgreSQL, SQLite (>=3.35),
+    and MySQL 8. ``update_columns`` defaults to all inserted columns except the
+    conflict keys."""
+    d = dialect.split("+", 1)[0]
+    cols = (
+        update_columns
+        if update_columns is not None
+        else [c for c in values if c not in index_elements]
+    )
+    if d == "postgresql":
+        stmt = _pg_insert(table).values(**values)
+        return stmt.on_conflict_do_update(
+            index_elements=index_elements,
+            set_={c: getattr(stmt.excluded, c) for c in cols},
+        )
+    if d == "sqlite":
+        stmt = _sqlite_insert(table).values(**values)
+        return stmt.on_conflict_do_update(
+            index_elements=index_elements,
+            set_={c: getattr(stmt.excluded, c) for c in cols},
+        )
+    if d in ("mysql", "mariadb"):
+        stmt = _mysql_insert(table).values(**values)
+        return stmt.on_duplicate_key_update(**{c: getattr(stmt.inserted, c) for c in cols})
+    raise ValueError(f"upsert not supported for dialect {dialect!r}")
+
+
+# --------------------------------------------------------------------------- #
+# connection
+# --------------------------------------------------------------------------- #
+class Connection:
+    """asyncpg-shaped wrapper over a SQLAlchemy :class:`AsyncConnection`."""
+
+    def __init__(self, ac: AsyncConnection, caps: Capabilities) -> None:
+        self._ac = ac
+        self.capabilities = caps
+        self._tx_depth = 0
+
+    async def _run(self, sql: str, args: tuple):
+        stmt, params = _translate(sql, args)
+        return await self._ac.execute(text(stmt), params)
+
+    async def _commit_if_autocommit(self) -> None:
+        if self._tx_depth == 0:
+            await self._ac.commit()
+
+    async def execute(self, sql: str, *args: Any) -> str:
+        # No-arg DDL scripts (multiple statements) can't go through the prepared
+        # protocol; route them to the raw driver. Parameterized statements never
+        # reach here as multi-statement (they carry args).
+        if not args and _is_multi_statement(sql):
+            await self.execute_script(sql)
+            await self._commit_if_autocommit()
+            return ""
+        result = await self._run(sql, args)
+        rowcount = result.rowcount if result.rowcount is not None else -1
+        await self._commit_if_autocommit()
+        return _status(sql, rowcount)
+
+    async def executemany(self, sql: str, args_seq: list) -> None:
+        stmt, _ = _translate(sql, tuple(args_seq[0]) if args_seq else ())
+        param_list = [{f"p{i + 1}": v for i, v in enumerate(row)} for row in args_seq]
+        if param_list:
+            await self._ac.execute(text(stmt), param_list)
+        await self._commit_if_autocommit()
+
+    async def fetch(self, sql: str, *args: Any) -> list[Row]:
+        result = await self._run(sql, args)
+        rows = [Row(r) for r in result.fetchall()]
+        await self._commit_if_autocommit()
+        return rows
+
+    async def fetchrow(self, sql: str, *args: Any) -> Row | None:
+        result = await self._run(sql, args)
+        r = result.fetchone()
+        await self._commit_if_autocommit()
+        return Row(r) if r is not None else None
+
+    async def fetchval(self, sql: str, *args: Any, column: int = 0) -> Any:
+        result = await self._run(sql, args)
+        r = result.fetchone()
+        await self._commit_if_autocommit()
+        return r[column] if r is not None else None
+
+    # -- portable Core helpers (dialect-agnostic; used by migrated repositories) --
+    async def execute_core(self, stmt: Any) -> Any:
+        """Execute a SQLAlchemy Core statement (e.g. from :func:`build_upsert`)
+        and return the CursorResult. Autocommits outside a transaction."""
+        result = await self._ac.execute(stmt)
+        await self._commit_if_autocommit()
+        return result
+
+    async def upsert(
+        self,
+        table: Table,
+        values: dict[str, Any],
+        *,
+        index_elements: list[str],
+        update_columns: list[str] | None = None,
+    ) -> None:
+        """Portable INSERT ... ON CONFLICT DO UPDATE (see :func:`build_upsert`)."""
+        stmt = build_upsert(
+            self.capabilities.dialect,
+            table,
+            values,
+            index_elements=index_elements,
+            update_columns=update_columns,
+        )
+        await self.execute_core(stmt)
+
+    async def insert_returning(self, table: Table, values: dict[str, Any], returning: str) -> Any:
+        """INSERT and return one generated column value, portably.
+
+        Uses ``RETURNING`` where supported (PostgreSQL, SQLite >=3.35); falls
+        back to ``lastrowid`` on MySQL 8, which lacks RETURNING."""
+        from sqlalchemy import insert as _insert
+
+        if self.capabilities.returning:
+            stmt = _insert(table).values(**values).returning(table.c[returning])
+            result = await self.execute_core(stmt)
+            row = result.fetchone()
+            return row[0] if row is not None else None
+        result = await self.execute_core(_insert(table).values(**values))
+        return result.lastrowid
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncGenerator[None]:
+        """Group statements; commit on success, roll back on exception.
+
+        Mirrors ``asyncpg.Connection.transaction``: the outermost block is a
+        real transaction; nested blocks use savepoints.
+        """
+        if self._tx_depth == 0:
+            self._tx_depth += 1
+            try:
+                yield
+                await self._ac.commit()
+            except BaseException:
+                await self._ac.rollback()
+                raise
+            finally:
+                self._tx_depth -= 1
+        else:
+            self._tx_depth += 1
+            sp = await self._ac.begin_nested()
+            try:
+                yield
+                await sp.commit()
+            except BaseException:
+                await sp.rollback()
+                raise
+            finally:
+                self._tx_depth -= 1
+
+    async def execute_script(self, sql: str) -> None:
+        """Run a multi-statement SQL script (DDL bootstrap) on the raw asyncpg
+        driver connection.
+
+        SQLAlchemy ``text()`` uses the extended protocol, which rejects multiple
+        statements and ``DO $$`` blocks in a single call; asyncpg's simple query
+        protocol allows them. PostgreSQL only — Tier-2 backends build DDL from
+        metadata instead (Phase 2)."""
+        conn = await self._driver_connection()
+        await conn.execute(sql)
+
+    async def prepare(self, sql: str) -> Any:
+        """Prepare a statement on the raw asyncpg driver connection and return
+        the asyncpg ``PreparedStatement`` (used for describe-empty-result paths
+        via ``stmt.get_attributes()`` in cypher_router / pgwire). PostgreSQL
+        only — these paths are PG-protocol specific."""
+        conn = await self._driver_connection()
+        return await conn.prepare(sql)
+
+    # -- raw driver access for PG-only LISTEN/NOTIFY (subscriptions, triggers) --
+    async def _driver_connection(self) -> Any:
+        raw = await self._ac.get_raw_connection()
+        return raw.driver_connection
+
+    async def add_listener(self, channel: str, callback: Any) -> None:
+        conn = await self._driver_connection()
+        await conn.add_listener(channel, callback)
+
+    async def remove_listener(self, channel: str, callback: Any) -> None:
+        conn = await self._driver_connection()
+        await conn.remove_listener(channel, callback)
+
+
+# --------------------------------------------------------------------------- #
+# database
+# --------------------------------------------------------------------------- #
+class Database:
+    """A control-plane database handle backed by one SQLAlchemy AsyncEngine.
+
+    ``search_path`` (PostgreSQL only) scopes every acquired connection to the
+    org schema, preserving the isolation the former asyncpg pool provided via
+    its ``setup`` callback. Raw ``text()`` SQL uses unqualified table names, so
+    ``schema_translate_map`` cannot substitute here; ``SET search_path`` is the
+    Phase-1 mechanism (replaced by translate-map + Core statements in Tier-2).
+    """
+
+    def __init__(self, engine: AsyncEngine, name: str, search_path: str | None = None) -> None:
+        self._engine = engine
+        self.name = name
+        self.search_path = search_path
+        self.dialect = engine.dialect.name
+        self.capabilities = Capabilities.for_dialect(self.dialect)
+
+    @property
+    def engine(self) -> AsyncEngine:
+        return self._engine
+
+    @asynccontextmanager
+    async def acquire(self) -> AsyncGenerator[Connection]:
+        async with self._engine.connect() as ac:
+            if self.search_path and self.dialect == "postgresql":
+                await ac.execute(text(f"SET search_path TO {self.search_path}"))
+                await ac.commit()
+            yield Connection(ac, self.capabilities)
+
+    # Pool-style passthrough (asyncpg pools proxy connection methods). Used by
+    # the few call sites that call db.execute(...) / db.fetch(...) directly.
+    async def execute(self, sql: str, *args: Any) -> str:
+        async with self.acquire() as conn:
+            return await conn.execute(sql, *args)
+
+    async def fetch(self, sql: str, *args: Any) -> list[Row]:
+        async with self.acquire() as conn:
+            return await conn.fetch(sql, *args)
+
+    async def fetchrow(self, sql: str, *args: Any) -> Row | None:
+        async with self.acquire() as conn:
+            return await conn.fetchrow(sql, *args)
+
+    async def fetchval(self, sql: str, *args: Any, column: int = 0) -> Any:
+        async with self.acquire() as conn:
+            return await conn.fetchval(sql, *args, column=column)
+
+    async def close(self) -> None:
+        await self._engine.dispose()
+
+
+# --------------------------------------------------------------------------- #
+# factory
+# --------------------------------------------------------------------------- #
+def build_url(
+    dialect: str,
+    host: str,
+    port: int,
+    database: str,
+    username: str,
+    password: str,
+) -> str:
+    """Build a SQLAlchemy async URL (mirrors ingest/engine.py::_build_url)."""
+    if not dialect:
+        dialect = "postgresql+asyncpg"
+    if not host:
+        host = "localhost"
+    if not port:
+        port = 5432
+    pw = urllib.parse.quote_plus(password or "")
+    return f"{dialect}://{username}:{pw}@{host}:{port}/{database}"
+
+
+def create_engine(
+    *,
+    host: str,
+    port: int,
+    database: str,
+    user: str,
+    password: str,
+    pool_size: int = 5,
+    max_overflow: int = 5,
+    dialect: str = "postgresql+asyncpg",
+) -> AsyncEngine:
+    """Create the control-plane AsyncEngine. On PostgreSQL, registers the
+    jsonb/json codecs the former asyncpg pool used."""
+    url = build_url(dialect, host, port, database, user, password)
+    engine = create_async_engine(
+        url,
+        pool_pre_ping=True,
+        pool_size=pool_size,
+        max_overflow=max_overflow,
+    )
+    if engine.dialect.name == "postgresql":
+        event.listen(engine.sync_engine, "connect", _on_pg_connect)
+
+    return engine
+
+
+def _on_pg_connect(dbapi_conn: Any, connection_record: Any) -> None:
+    """SQLAlchemy ``connect`` listener: install the jsonb/json codecs on each
+    new asyncpg connection (matches the former asyncpg pool ``init``)."""
+    del connection_record
+    dbapi_conn.run_async(_register_json_codecs)
