@@ -790,24 +790,43 @@ $btnInstall.Add_Click({
         Log "Downloading Core Services ($EmbeddedVersion)..."
         $request = [System.Net.HttpWebRequest]::Create($downloadUrl)
         $request.UserAgent = 'Provisa-Installer/1.0'
-        $response   = $request.GetResponse()
-        $totalBytes = $response.ContentLength
-        $respStream = $response.GetResponseStream()
-        $fs         = [System.IO.File]::Create($localZipPath)
-        $buf        = New-Object byte[] 65536
-        $downloaded = [long]0
-        while (($read = $respStream.Read($buf, 0, $buf.Length)) -gt 0) {
-          $fs.Write($buf, 0, $read)
-          $downloaded += $read
-          if ($totalBytes -gt 0) {
-            $pct = [int](($downloaded / $totalBytes) * 100)
-            $sync.Progress = 60 + [int]($pct * 0.15)
-            $sync.Status   = "Downloading Core Services: $pct% ($([int]($downloaded/1MB)) / $([int]($totalBytes/1MB)) MB)"
+        $response = $null; $respStream = $null; $fs = $null
+        try {
+          $response   = $request.GetResponse()
+          $totalBytes = $response.ContentLength
+          $respStream = $response.GetResponseStream()
+          $fs         = [System.IO.File]::Create($localZipPath)
+          $buf        = New-Object byte[] 65536
+          $downloaded = [long]0
+          while (($read = $respStream.Read($buf, 0, $buf.Length)) -gt 0) {
+            $fs.Write($buf, 0, $read)
+            $downloaded += $read
+            if ($totalBytes -gt 0) {
+              $pct = [int](($downloaded / $totalBytes) * 100)
+              $sync.Progress = 60 + [int]($pct * 0.15)
+              $sync.Status   = "Downloading Core Services: $pct% ($([int]($downloaded/1MB)) / $([int]($totalBytes/1MB)) MB)"
+            }
           }
         }
-        $fs.Close()
-        $respStream.Close()
-        $response.Close()
+        catch {
+          # Free the partial download immediately - a half-written zip left in TEMP
+          # consumes the very space a retry needs. Then surface an actionable error
+          # instead of the raw ".Write() - not enough space on the disk" exception.
+          if ($fs) { try { $fs.Close() } catch {} ; $fs = $null }
+          Remove-Item $localZipPath -Force -ErrorAction SilentlyContinue
+          $isDiskFull = ($_.Exception.Message -match 'not enough space') -or
+                        ($_.Exception.InnerException -and $_.Exception.InnerException.Message -match 'not enough space')
+          if ($isDiskFull) {
+            $freeNow = [int]((New-Object System.IO.DriveInfo $tempDrive).AvailableFreeSpace / 1GB)
+            throw "Ran out of disk space while downloading Core Services ($freeNow GB free on $tempDrive, need ~5 GB clear). Free space (del %TEMP%\provisa-*.zip; docker system prune -af) and retry."
+          }
+          throw
+        }
+        finally {
+          if ($fs)         { try { $fs.Close() } catch {} }
+          if ($respStream) { try { $respStream.Close() } catch {} }
+          if ($response)   { try { $response.Close() } catch {} }
+        }
         Log "Download complete."
         $CoreZip = $localZipPath
       } else {
