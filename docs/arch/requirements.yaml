@@ -1876,6 +1876,8 @@
     status: parity
     rationale: Read-only NoSQL access via native connectors is standard in Trino/Presto (MongoDB, Elasticsearch,
       Redis connectors) and Dremio; no differentiation here.
+  related_reqs:
+  - REQ-825
 - id: REQ-018
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2166,6 +2168,8 @@
     status: parity
     rationale: Materialized vs live view duality exists in Dremio (reflections), Snowflake (materialized
       views), and Denodo; this is a standard capability for data platforms.
+  related_reqs:
+  - REQ-826
 - id: REQ-136
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2457,6 +2461,8 @@
     rationale: Automatic MV generation at startup for cross-source materialized relationships is unique.
       Dremio's reflections are single-source; Hasura DDN has no automatic cross-source materialization;
       Denodo relies on manual cache configuration.
+  related_reqs:
+  - REQ-826
 - id: REQ-159
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2489,6 +2495,8 @@
     status: ahead
     rationale: Selective MV generation only for cross-source joins (not same-source) avoids unnecessary
       materialization overhead — Denodo and Dremio materialize more aggressively.
+  related_reqs:
+  - REQ-826
 - id: REQ-160
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2637,6 +2645,8 @@
     rationale: Config-YAML-driven Trino catalog generation with zero manual .properties file management
       is unique. Trino itself requires manual catalog .properties files; Dremio has a GUI but no YAML-as-single-source-of-truth
       model; Denodo has its own admin console.
+  related_reqs:
+  - REQ-825
 - id: REQ-251
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2675,6 +2685,8 @@
     rationale: Type-specific mapping DSLs for NoSQL sources (Redis, Elasticsearch, Prometheus) are supported
       natively by Trino connectors and Dremio source plugins; the DSL is Provisa's configuration layer
       on top of standard connector capability.
+  related_reqs:
+  - REQ-825
 - id: REQ-363
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -3658,6 +3670,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  related_reqs:
+  - REQ-825
 - id: REQ-637
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -3766,6 +3780,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  related_reqs:
+  - REQ-825
 - id: REQ-640
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -4002,6 +4018,8 @@
     rationale: Multi-dialect expansion (Clickhouse, MariaDB, Redshift, Databricks, Hive, etc.) is standard
       for Trino and Presto which already ship these connectors natively. Denodo also supports a wide range
       of RDBMS dialects.
+  related_reqs:
+  - REQ-825
 - id: REQ-295
   status: complete
   group: 4. Source Connectors
@@ -4321,6 +4339,9 @@
     rationale: Materializing remote GraphQL results as Parquet in S3/Iceberg via Trino with TTL-based
       caching and zero-hop repeat queries is not present in Hasura (which proxies every request to the
       remote) or Denodo (in-memory cache only). This enables federated SQL over cached remote data.
+  related_reqs:
+  - REQ-826
+  - REQ-825
 - id: REQ-310
   status: complete
   group: 4. Source Connectors
@@ -4491,6 +4512,8 @@
     rationale: Cross-source relationships between remote schema virtual tables and local tables with federation
       routing are not natively supported in Hasura (remote schema joins require explicit join hints) and
       absent in Trino and Denodo without manual ETL. Provisa provides transparent federation.
+  related_reqs:
+  - REQ-826
 - id: REQ-314
   status: complete
   group: 4. Source Connectors
@@ -4519,6 +4542,8 @@
     rationale: OpenAPI 3.x/Swagger 2.0 spec registration with remote URL fetch is supported by Hasura
       Actions and Denodo's REST data service adapter. Most enterprise virtualization platforms support
       OpenAPI discovery.
+  related_reqs:
+  - REQ-826
 - id: REQ-315
   status: complete
   group: 4. Source Connectors
@@ -4665,6 +4690,9 @@
     rationale: S3/Iceberg caching of REST GET results via Trino with SHA-256 keyed TTL and zero-hop repeated
       calls is not present in Hasura Actions (proxies each call) or Denodo (in-memory cache). This enables
       full SQL analytics over materialized REST data.
+  related_reqs:
+  - REQ-826
+  - REQ-825
 - id: REQ-319
   status: complete
   group: 4. Source Connectors
@@ -5008,6 +5036,9 @@
     rationale: S3/Iceberg materialization of gRPC query results with channel reuse and TTL invalidation
       is a unique architectural capability; no competitor supports gRPC sources at all, let alone with
       intelligent caching to enable federated SQL over gRPC data.
+  related_reqs:
+  - REQ-826
+  - REQ-825
 - id: REQ-328
   status: complete
   group: 4. Source Connectors
@@ -5156,6 +5187,8 @@
     status: ahead
     rationale: Governed HTTP push receiver with per-source AsyncEngine pooling is more operationally complete
       than ad-hoc ingestion in Hasura Actions or Dremio.
+  related_reqs:
+  - REQ-828
 - id: REQ-333
   status: complete
   group: 4. Source Connectors
@@ -5602,6 +5635,9 @@
     rationale: Time-travel queries (FOR TIMESTAMP AS OF / FOR VERSION AS OF) on Iceberg and Delta Lake
       are natively supported by Trino and Dremio. Snowflake also has time-travel; this is expected on
       any lakehouse-capable platform.
+  related_reqs:
+  - REQ-826
+  - REQ-825
 - id: REQ-419
   status: complete
   group: 4. Source Connectors
@@ -5824,6 +5860,8 @@
     rationale: Multi-strategy cache invalidation (TTL, mutation-triggered, manual refresh, row count drift
       detection) for the vector fallback cache is a sophisticated operational feature not present in any
       competitor federation platform, which lack vector fallback infrastructure entirely.
+  related_reqs:
+  - REQ-826
 - id: REQ-426
   status: complete
   group: 4. Source Connectors
@@ -7300,6 +7338,8 @@
     rationale: Automatic query rewriting to materialized views when the aggregate pattern matches is not
       available in Hasura (no query rewriter) or Denodo's standard tier. Dremio has reflections (similar
       concept) but requires manual configuration; Provisa's catalog-driven automatic rewrite is more transparent.
+  related_reqs:
+  - REQ-826
 - id: REQ-199
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7344,6 +7384,8 @@
       Trino; Dremio Reflections require explicit definition and do not fall back automatically to live
       execution on staleness. Provisa's TTL-based auto-MV with transparent fallback is a genuine differentiator
       for query performance.
+  related_reqs:
+  - REQ-826
 - id: REQ-200
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7768,6 +7810,8 @@
     rationale: Schema inference via connector introspection (MongoDB, Cassandra) is a standard capability
       offered by Trino connectors and Denodo's schema discovery tooling. The discover:true flag simplifies
       it but does not uniquely differentiate Provisa.
+  related_reqs:
+  - REQ-825
 - id: REQ-253
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -10149,6 +10193,8 @@
     status: parity
     rationale: Cross-source routing through a distributed query engine (Trino) is the standard architecture
       for open-source federation; Trino/Presto pioneered this and Dremio uses a similar Arrow-based planner.
+  related_reqs:
+  - REQ-825
 - id: REQ-029
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10328,6 +10374,8 @@
   competitive_position:
     status: parity
     rationale: PgBouncer opt-in per source is standard practice for PostgreSQL connection pooling.
+  related_reqs:
+  - REQ-828
 - id: REQ-054
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10406,6 +10454,8 @@
       at query time over the CTE — is not a native feature of Trino, Hasura, or Denodo. Competitors either
       scan the lookup table at execution time or require manual denormalization, incurring cross-source
       round-trips that Provisa eliminates.
+  related_reqs:
+  - REQ-826
 - id: REQ-231
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10445,6 +10495,8 @@
     rationale: TTL-based refresh with stale fallback and mutation-triggered invalidation is available
       in Hasura's caching layer and Dremio's reflection refresh; the pattern is industry-standard for
       materialized caches.
+  related_reqs:
+  - REQ-826
 - id: REQ-232
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10490,6 +10542,8 @@
       works transparently across Trino, Snowflake, and ClickHouse via SQLGlot is not offered by Trino,
       Denodo, or Hasura natively; those platforms always issue a second connector scan for the lookup
       side of a join.
+  related_reqs:
+  - REQ-826
 - id: REQ-233
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10519,6 +10573,8 @@
     status: ahead
     rationale: Dual-bound hot cache (max_rows AND max_bytes) prevents cache bloat from wide tables — more
       robust than Hasura's unbounded query caching or Redis TTL-only strategies.
+  related_reqs:
+  - REQ-826
 - id: REQ-234
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10558,6 +10614,8 @@
     rationale: Automated MV lifecycle (drop on removal, orphan detection, periodic cleanup) is available
       in Dremio via reflection garbage collection and in Snowflake's dynamic table lifecycle; no competitive
       differentiation.
+  related_reqs:
+  - REQ-826
 - id: REQ-235
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10587,6 +10645,8 @@
     rationale: MV size guards (row count probe before CTAS) are standard in Dremio's reflection planner
       and Snowflake dynamic tables; falling back to live execution on oversized results is a common safety
       pattern.
+  related_reqs:
+  - REQ-826
 - id: REQ-236
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10623,6 +10683,8 @@
     rationale: Automatic hot-table detection via schema relationship analysis (many-to-one targets) combined
       with row-count probing at schema build time is not a built-in feature of Trino, Denodo, or Dremio;
       those require explicit manual designation of cached lookup tables.
+  related_reqs:
+  - REQ-826
 - id: REQ-237
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10660,6 +10722,8 @@
     status: ahead
     rationale: 'Auto-hot detection with explicit opt-out (hot: false) and override (hot: true) gives stewards
       declarative cache control beyond what Hasura, Dremio, or Trino offer natively.'
+  related_reqs:
+  - REQ-826
 - id: REQ-238
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10700,6 +10764,9 @@
     rationale: Materializing frequently queried tables into a local-SSD-backed columnar store (Iceberg/Parquet)
       for low-latency reads is the core value proposition of Dremio's reflections and Snowflake's result
       cache; Provisa is at parity here.
+  related_reqs:
+  - REQ-826
+  - REQ-825
 - id: REQ-239
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10740,6 +10807,9 @@
     rationale: Automatic frequency-based promotion and demotion between live and warm-materialized tiers
       — without manual operator action — is not offered by Trino or Denodo; Dremio's acceleration recommendations
       are advisory, not automatic promotion/demotion.
+  related_reqs:
+  - REQ-826
+  - REQ-825
 - id: REQ-240
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10771,6 +10841,9 @@
     status: ahead
     rationale: Warm tables via Trino file cache with row/refresh limits and opt-in/opt-out per table is
       a governed caching tier not present in Hasura or standard Trino setups.
+  related_reqs:
+  - REQ-826
+  - REQ-825
 - id: REQ-241
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10800,6 +10873,9 @@
     rationale: Strict tier exclusivity enforced at the code level (warm manager skips hot-managed tables)
       prevents subtle double-caching bugs; competitors with multi-tier caches (Dremio reflections + result
       cache) do not enforce this constraint programmatically.
+  related_reqs:
+  - REQ-826
+  - REQ-825
 - id: REQ-275
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11197,6 +11273,8 @@
   - ops
   - data-engineer
   - compliance
+  related_reqs:
+  - REQ-826
 - id: REQ-552
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -12338,6 +12416,8 @@
     rationale: Pluggable SSE subscriptions with RLS filtering that use each source's native change mechanism
       (LISTEN/NOTIFY, MongoDB Change Streams, Kafka) is significantly more capable than Hasura's subscription
       model (PostgreSQL-only) and not available at all in Trino, Dremio, or Denodo.
+  related_reqs:
+  - REQ-828
 - id: REQ-268
   status: complete
   group: 8. Client Access & Protocols
@@ -13544,6 +13624,8 @@
     rationale: Binary parameter encoding for the extended-query protocol (Bind/Execute) with a defined
       set of supported OIDs is standard for any serious pgwire implementation. Buenavista and other shims
       handle this.
+  related_reqs:
+  - REQ-828
 - id: REQ-590
   status: complete
   group: 8. Client Access & Protocols
@@ -13888,6 +13970,8 @@
     status: parity
     rationale: Cache invalidation and MV staleness marking on mutation is standard in Hasura and materialized
       view systems.
+  related_reqs:
+  - REQ-826
 - id: REQ-174
   status: complete
   group: 9. Live Data & Events
@@ -14385,6 +14469,8 @@
     status: parity
     rationale: Idempotent AFTER INSERT/UPDATE/DELETE trigger installation for PostgreSQL LISTEN/NOTIFY
       is the standard pattern used by Hasura and others.
+  related_reqs:
+  - REQ-828
 - id: REQ-566
   status: complete
   group: 9. Live Data & Events
@@ -17985,6 +18071,8 @@
   competitive_position:
     status: parity
     rationale: SSE subscriptions with PostgreSQL LISTEN/NOTIFY are available in Hasura's live queries.
+  related_reqs:
+  - REQ-828
 - id: REQ-220
   status: complete
   group: 12. Migration & Compatibility (Hasura)
@@ -18024,6 +18112,8 @@
   competitive_position:
     status: parity
     rationale: Database event triggers firing webhooks on table changes are a core Hasura feature.
+  related_reqs:
+  - REQ-828
 - id: REQ-221
   status: complete
   group: 12. Migration & Compatibility (Hasura)
@@ -18726,6 +18816,8 @@
   tests:
   - tests/unit/test_org_isolation.py
   - tests/unit/test_table_search.py
+  related_reqs:
+  - REQ-828
 - id: REQ-696
   status: accepted
   group: 11. Platform, Infrastructure & Delivery
@@ -18748,6 +18840,8 @@
   tests:
   - tests/unit/test_org_isolation.py
   - tests/unit/test_table_search.py
+  related_reqs:
+  - REQ-828
 - id: REQ-697
   status: accepted
   group: 11. Platform, Infrastructure & Delivery
@@ -18819,6 +18913,8 @@
       beyond row-level security used by Hasura Cloud.
   tests:
   - tests/unit/test_org_isolation.py
+  related_reqs:
+  - REQ-828
 - id: REQ-700
   status: accepted
   group: 11. Platform, Infrastructure & Delivery
@@ -18897,6 +18993,8 @@
     rationale: ''
   tests:
   - tests/unit/test_org_isolation.py
+  related_reqs:
+  - REQ-828
 - id: REQ-703
   status: complete
   group: 10. Execution & Query Planning
@@ -22328,12 +22426,11 @@
   type: structural
   description: 'The `live` block (LiveDeliveryConfig on Table) is a unified change-feed / CDC abstraction.
     The binary `delivery: poll|cdc` field is replaced by a multi-strategy model: `strategy: poll|native|debezium|kafka`.
-    Per-table params: poll → watermark_column/poll_interval; native → none; kafka → LiveKafkaParams
-    (topic/format/key_column/field_mapping). Reconciled with REQ-824: Debezium/Kafka delta-transport
-    (bootstrap_servers/topic_prefix/schema_registry_url/consumer_group_id) is inherited from Source.cdc,
-    entered once per source — NOT repeated in per-table debezium params. query_id and outputs are optional
-    so `live` covers both raw table change-feeds and live persisted-query output fan-out. Debezium topic
-    names are derived from the source transport: {topic_prefix}.{schema}.{table}.'
+    Per-table params: poll → watermark_column/poll_interval; native → none; kafka → LiveKafkaParams (topic/format/key_column/field_mapping).
+    Reconciled with REQ-824: Debezium/Kafka delta-transport (bootstrap_servers/topic_prefix/schema_registry_url/consumer_group_id)
+    is inherited from Source.cdc, entered once per source — NOT repeated in per-table debezium params.
+    query_id and outputs are optional so `live` covers both raw table change-feeds and live persisted-query
+    output fan-out. Debezium topic names are derived from the source transport: {topic_prefix}.{schema}.{table}.'
   use_case: A single `live` config abstraction unifies all capture mechanisms (polling, PostgreSQL LISTEN/NOTIFY,
     MongoDB change streams, Debezium, arbitrary Kafka deltas), eliminating the misleading binary of "poll
     vs CDC" where poll IS a change-feed mechanism. Strategy-specific params prevent schema pollution.
@@ -22343,7 +22440,7 @@
   - provisa/core/models.py
   tests:
   - tests/unit/test_live_delivery_config.py
-  since: "2026-07"
+  since: 2026-07
   related_reqs:
   - REQ-565
   - REQ-814
@@ -22364,8 +22461,8 @@
   type: behavioral
   description: 'Provider selection (_resolve_provider_type in provisa/api/data/subscribe.py + get_provider
     in provisa/subscriptions/registry.py) dispatches on `live.strategy`, NOT on source_type. Validation
-    capability-gates strategy by source_type: warehouses → poll only; MongoDB → native/poll; PostgreSQL →
-    native/debezium/poll/kafka; non-PG RDBMS (MySQL, MariaDB, SQL Server, Oracle) → debezium/poll/kafka
+    capability-gates strategy by source_type: warehouses → poll only; MongoDB → native/poll; PostgreSQL
+    → native/debezium/poll/kafka; non-PG RDBMS (MySQL, MariaDB, SQL Server, Oracle) → debezium/poll/kafka
     (debezium/kafka require source-level cdc transport per REQ-824); Kafka topics → kafka only. No source
     is registered with a synthetic "debezium" type; strategy=debezium routes to the Debezium provider.'
   use_case: Dispatching on strategy instead of source_type correctly models that strategy is a choice
@@ -22380,7 +22477,7 @@
   - tests/unit/test_source_cdc_config.py
   - tests/unit/test_live_delivery_config.py
   - tests/steps/steps_subscriptions.py
-  since: "2026-07"
+  since: 2026-07
   scenario: 'Given a PostgreSQL table with live.strategy=native
 
     When get_provider() is called
@@ -22760,49 +22857,59 @@
   priority: SHOULD
   type: structural
   target: 2026-Q4
-  description: >-
-    The Provisa FederationEngine is a pluggable, abstract execution substrate behind a single contract.
-    It is one of four primitives composed as a data-flow pipeline:
-    DATASOURCES → FEDERATION ENGINE → SEMANTIC LAYER → EXECUTION PIPELINE. DATASOURCES are external
-    systems with a capability profile. The FEDERATION ENGINE (this requirement) federates those
-    datasources into one raw unified queryable surface; the method per source is the federation strategy
-    (REQ-826). The SEMANTIC LAYER is the governed virtual model projected over that surface —
-    registered tables/columns, relationships, domains, RLS, masking — engine-independent; it is where
-    governance is DEFINED and the thing queries target. The EXECUTION PIPELINE turns a governed query
-    into results in two stages: TRANSPILE (SQLGlot rewrites the dialect-neutral governed IR to the
-    engine's declared dialect; execute(ir_sql, params) + a dialect() capability) and TRANSPORT (dispatch
-    the SQL to the engine, execute, and stream results back over the client protocol — pgwire, Bolt,
-    Arrow Flight, GraphQL). No governance or compilation logic is duplicated per engine — governance is
-    defined in the semantic layer and ENFORCED when the query compiles to IR; the engine only executes.
+  description: 'The Provisa FederationEngine is a pluggable, abstract execution substrate behind a single
+    contract. It is one of four primitives composed as a data-flow pipeline: DATASOURCES → FEDERATION
+    ENGINE → SEMANTIC LAYER → EXECUTION PIPELINE. DATASOURCES are external systems with a capability profile.
+    The FEDERATION ENGINE (this requirement) federates those datasources into one raw unified queryable
+    surface; the method per source is the federation strategy (REQ-826). The SEMANTIC LAYER is the governed
+    virtual model projected over that surface — registered tables/columns, relationships, domains, RLS,
+    masking — engine-independent; it is where governance is DEFINED and the thing queries target. The
+    EXECUTION PIPELINE turns a governed query into results as a sequence of total IR→IR passes (nanopass
+    discipline), bookended by transport: (1) TRANSPORT ingress — receive the query over the client protocol
+    (pgwire, Bolt, Arrow Flight, GraphQL, SQL); (2) TRANSPILE TO IR — frontend parse of the source language
+    into a dialect-neutral logical IR (plural frontends converge here); (3) TRANSPILE TO GOVERNED IR —
+    apply the semantic layer: inject RLS predicates, masking expressions, and relationship joins (engine-independent;
+    the IP pass); (4) PLAN — the one IMPURE stage: not a pure transpile but a planner that (a) chooses
+    the ROUTE (direct native-driver execution for a single reachable source vs handing the query to the
+    federation engine), (b) resolves RESIDENCY PREREQUISITES — for each source whose federation strategy
+    is MATERIALIZED and stale, emit a side-effecting prep step that loads/refreshes it into the DB cache
+    before execute (REQ-826), and (c) CODEGENs the engine-dialect SQL via SQLGlot for the chosen route.
+    The output is not a string but an ordered plan: a prep phase (0..n cache materializations, may be
+    empty) feeding a single terminal step (DIRECT driver or federation-engine execute); this is where
+    today''s router (DIRECT/TRINO/API) and the cache tiers (hot/warm/MV) converge. (5) EXECUTE — the federation
+    engine runs the terminal step and does its own opaque physical planning (NOT Provisa''s plan); (6)
+    TRANSPORT egress — stream results back over the same client protocol. Stages 1–3 are pure and engine-independent;
+    stage 4 reads mutable freshness state and emits effects, and stages 4–5 vary per engine — so governance-parity
+    conformance (REQ-827) must PIN residency (pre-warm the prep phase) and then test only the codegen
+    + execute. No governance or compilation logic is duplicated per engine — governance is defined in
+    the semantic layer and ENFORCED at stage 3; the engine only executes.
 
-    There is no "federation vs warehouse" dichotomy: EVERY engine federates; only the METHOD of
-    federation changes with capability (see REQ-826). An engine advertises a capability profile with two
-    axes: (a) REACH — for each datasource, which federation strategies it can support; and (b) SCALE —
-    single-node/memory-bound vs distributed. The profile RANKS transports per source (native > ADBC >
-    ODBC), not a has_connectors boolean.
+    There is no "federation vs warehouse" dichotomy: EVERY engine federates; only the METHOD of federation
+    changes with capability (see REQ-826). An engine advertises a capability profile with two axes: (a)
+    REACH — for each datasource, which federation strategies it can support; and (b) SCALE — single-node/memory-bound
+    vs distributed. The profile RANKS transports per source (native > ADBC > ODBC), not a has_connectors
+    boolean.
 
-    Concrete engines: DuckDB is a full federation engine whose reach nearly matches Trino's — native
-    ATTACH for postgres/mysql/sqlite; ODBC (community nanodbc odbc_attach, or the DuckDB-team
-    odbc/odbc_scanner functions) for any ODBC source; ADBC (community adbc_scanner, Arrow-native,
-    preferred over ODBC); NoSQL via community extensions (mongo ATTACH TYPE MONGO, cassandra
-    scan/query/ATTACH, elasticsearch_query); and zero-copy file scans. Its ONLY differentiator vs Trino
-    is SCALE (single-node, memory-bound, no distributed shuffle), making it ideal on a developer desktop
-    with no Trino dependency. Trino has broad reach and distributed scale. Snowflake/Databricks/Dremio are
-    reused as engines to leverage a customer's existing infrastructure. A pure RDBMS (e.g. SQL Server) has
-    near-zero reach and federates only by the materialized strategy. The engine is selected at deployment
-    via top-level config (engine: duckdb | trino | snowflake | databricks | dremio | ...), not per-source.
-    All query dispatch that today reads the hardcoded Trino singleton (provisa/api/app.py,
-    provisa/api/data/endpoint.py, provisa/executor/trino.py) must route through the FederationEngine
-    contract. The IR->physical mapping is intentionally thin — the divergence is confined to dialect
-    transpilation and the per-source federation strategy (REQ-826).
-  use_case: >-
-    Decouples Provisa's governed semantic layer from any single execution vendor. The same semantic
+    Concrete engines: DuckDB is a full federation engine whose reach nearly matches Trino''s — native
+    ATTACH for postgres/mysql/sqlite; ODBC (community nanodbc odbc_attach, or the DuckDB-team odbc/odbc_scanner
+    functions) for any ODBC source; ADBC (community adbc_scanner, Arrow-native, preferred over ODBC);
+    NoSQL via community extensions (mongo ATTACH TYPE MONGO, cassandra scan/query/ATTACH, elasticsearch_query);
+    and zero-copy file scans. Its ONLY differentiator vs Trino is SCALE (single-node, memory-bound, no
+    distributed shuffle), making it ideal on a developer desktop with no Trino dependency. Trino has broad
+    reach and distributed scale. Snowflake/Databricks/Dremio are reused as engines to leverage a customer''s
+    existing infrastructure. A pure RDBMS (e.g. SQL Server) has near-zero reach and federates only by
+    the materialized strategy. The engine is selected at deployment via top-level config (engine: duckdb
+    | trino | snowflake | databricks | dremio | ...), not per-source. All query dispatch that today reads
+    the hardcoded Trino singleton (provisa/api/app.py, provisa/api/data/endpoint.py, provisa/executor/trino.py)
+    must route through the FederationEngine contract. The IR->physical mapping is intentionally thin —
+    the divergence is confined to dialect transpilation and the per-source federation strategy (REQ-826).'
+  use_case: 'Decouples Provisa''s governed semantic layer from any single execution vendor. The same semantic
     layer, execution pipeline, governance, IR, and multi-protocol query surface run on an embedded desktop
-    engine (DuckDB, no Trino), the Trino federation engine, or a customer's existing warehouse
-    (Snowflake/Databricks/Dremio) — making the engine a swappable deployment choice and concentrating
-    Provisa's IP in the semantic layer, pipeline, governance, and federation-strategy logic rather than
-    the engine. Intended model: develop on DuckDB (laptop, zero infra, full governance and full source
-    reach), then scale out to Trino/Snowflake/Databricks in production, unchanged.
+    engine (DuckDB, no Trino), the Trino federation engine, or a customer''s existing warehouse (Snowflake/Databricks/Dremio)
+    — making the engine a swappable deployment choice and concentrating Provisa''s IP in the semantic
+    layer, pipeline, governance, and federation-strategy logic rather than the engine. Intended model:
+    develop on DuckDB (laptop, zero infra, full governance and full source reach), then scale out to Trino/Snowflake/Databricks
+    in production, unchanged.'
   code:
   - provisa/api/app.py
   - provisa/api/data/endpoint.py
@@ -22811,6 +22918,7 @@
   - provisa/core/config_loader.py
   related_reqs:
   - REQ-826
+  - REQ-830
 - id: REQ-826
   status: proposed
   group: 6. Execution, Routing, Caching & Performance
@@ -22818,37 +22926,39 @@
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: >-
-    Federation strategy and freshness management — the datasources → federation engine arrow of REQ-825.
-    The binding between a datasource table and the engine is a FEDERATION STRATEGY: the method by which
-    that source joins the engine's unified surface. federate(datasource, table) resolves each table to
-    one of three strategies and returns which was chosen, because freshness differs per strategy:
-    (1) VIRTUAL — the engine reaches the source live (a connector, or DuckDB ATTACH to
-    postgres/mysql/sqlite, or a Trino connector); no copy, always fresh, cache_ttl irrelevant.
-    (2) SCAN — the source is a file/object the engine reads in place, exposed as a CREATE VIEW with no
-    data moved; freshness follows the underlying file, cache_ttl irrelevant. For DuckDB this spans
-    read_parquet/read_csv/read_json, httpfs over S3/HTTP/GCS/Azure, Iceberg/Delta via extension, ATTACH
-    of external DuckDB/SQLite, and other scanner extensions; the engine declares what it can scan.
-    (3) MATERIALIZED — no virtual or scan representation (live APIs, NoSQL, or an RDBMS deliberately
-    cached for latency); data is INSERTed/COPYed in. MATERIALIZED is the ONLY strategy where cache_ttl
-    means a reload interval and the load-scheduling/invalidation logic runs; VIRTUAL and SCAN are
-    effectively free.
+  description: 'Federation strategy and freshness management — the datasources → federation engine arrow
+    of REQ-825. The binding between a datasource table and the engine is a FEDERATION STRATEGY: the method
+    by which that source joins the engine''s unified surface. federate(datasource, table) resolves each
+    table to one of three strategies and returns which was chosen, because freshness differs per strategy:
+    (1) VIRTUAL — the engine reaches the source live (a connector, or DuckDB ATTACH to postgres/mysql/sqlite,
+    or a Trino connector); no copy, always fresh, cache_ttl irrelevant. (2) SCAN — the source is a file/object
+    the engine reads in place, exposed as a CREATE VIEW with no data moved; freshness follows the underlying
+    file, cache_ttl irrelevant. For DuckDB this spans read_parquet/read_csv/read_json, httpfs over S3/HTTP/GCS/Azure,
+    Iceberg/Delta via extension, ATTACH of external DuckDB/SQLite, and other scanner extensions; the engine
+    declares what it can scan. (3) MATERIALIZED — no virtual or scan representation (live APIs, NoSQL,
+    or an RDBMS deliberately cached for latency); data is INSERTed/COPYed in. MATERIALIZED is the ONLY
+    strategy where cache_ttl means a reload interval and the load-scheduling/invalidation logic runs;
+    VIRTUAL and SCAN are effectively free.
 
     The federation strategy is STATEFUL — it owns residency, reload state, and freshness; the execution
     pipeline (transpile → transport) is stateless per query and must not carry this state. The chosen
     strategy depends on BOTH datasource capability and engine capability, so the same source may federate
-    by different strategies on different engines. This unifies today's three separate mechanisms —
-    OpenAPI PG response cache (provisa/openapi/pg_cache.py), NoSQL mapping catalogs, and warm-tables/MV
-    materialization — into one federate() operation. NoSQL scanners (mongo, cassandra, elasticsearch)
-    infer schema on read; because governance in the semantic layer binds to columns, federate() MUST pin
-    the schema on the CREATE VIEW from the semantic layer's mapping (REQ-251), never trust re-inference.
-    The router must not attempt a live/VIRTUAL route when federate() reports only a MATERIALIZED strategy
-    for that source; it uses the strategy federate() returns.
-  use_case: >-
-    Concentrates the real complexity of federation — strategy selection, residency, reload scheduling,
-    and invalidation — in one stateful federate() operation, so any datasource (RDBMS, files, NoSQL,
-    APIs) joins the engine's surface by the best available strategy with predictable freshness,
-    independent of which engine is deployed.
+    by different strategies on different engines. This unifies today''s three separate mechanisms — OpenAPI
+    PG response cache (provisa/openapi/pg_cache.py), NoSQL mapping catalogs, and warm-tables/MV materialization
+    — into one federate() operation. NoSQL scanners (mongo, cassandra, elasticsearch) infer schema on
+    read; because governance in the semantic layer binds to columns, federate() MUST pin the schema on
+    the CREATE VIEW from the semantic layer''s mapping (REQ-251), never trust re-inference. The router
+    must not attempt a live/VIRTUAL route when federate() reports only a MATERIALIZED strategy for that
+    source; it uses the strategy federate() returns. Only the TENANT DB CACHE (durable — API/GraphQL/gRPC
+    results, warm tables, MVs; REQ-830) is a true MATERIALIZED strategy: the data becomes a real relation
+    the engine reads, so it PARTICIPATES in federation (joinable/scannable like any source). The TENANT
+    HOT CACHE is NOT a federation strategy and is orthogonal to virtual|scan|materialized — it is a codegen-time
+    VALUES-CTE injection inlined into the SQL at the PLAN stage, never an engine relation and never federated;
+    tier exclusivity (REQ-241) chooses hot over db cache.'
+  use_case: Concentrates the real complexity of federation — strategy selection, residency, reload scheduling,
+    and invalidation — in one stateful federate() operation, so any datasource (RDBMS, files, NoSQL, APIs)
+    joins the engine's surface by the best available strategy with predictable freshness, independent
+    of which engine is deployed.
   code:
   - provisa/executor/trino.py
   - provisa/transpiler/router.py
@@ -22857,26 +22967,41 @@
   - provisa/cache/warm_tables.py
   - provisa/cache/hot_tables.py
   - provisa/core/config_loader.py
-  scenario: |
-    Given an engine that can only materialize an OpenAPI datasource
+  scenario: 'Given an engine that can only materialize an OpenAPI datasource
+
     When a query references that source
-    Then federate() returns the MATERIALIZED strategy, loads/refreshes the data, and the query reads it in place
+
+    Then federate() returns the MATERIALIZED strategy, loads/refreshes the data, and the query reads it
+    in place
+
     And the router does not attempt a live/VIRTUAL route
 
+
     Given a MATERIALIZED strategy with cache_ttl=300
+
     When the table has not been reloaded within 300 seconds
+
     Then federate() reloads it before the query executes (cache_ttl means reload interval)
 
+
     Given an engine that can ATTACH an RDBMS datasource live
+
     When a query references that source
+
     Then federate() returns the VIRTUAL strategy and the query reads it live with no copy
 
+
     Given a NoSQL datasource federated by SCAN or MATERIALIZED
+
     When the view is created
+
     Then the schema is pinned from the semantic layer mapping, not inferred
+
+    '
   related_reqs:
   - REQ-825
   - REQ-827
+  - REQ-830
 - id: REQ-827
   status: proposed
   group: 6. Execution, Routing, Caching & Performance
@@ -22884,17 +23009,18 @@
   priority: MUST
   type: constraint
   target: 2026-Q4
-  description: 'Governance-parity conformance across backends. Any backend admitted to the SqlBackend
+  description: 'Governance-parity conformance across federation engines. Any engine admitted to the FederationEngine
     contract (REQ-825) MUST produce byte-identical governed results — RLS filtering, column masking, relationship-join
-    enforcement, and row/aggregate output — as the reference backend for the same query and same identity.
-    SQLGlot transpiles syntax, but semantic edges differ per engine (NULL ordering, type coercion, decimal/numeric
-    precision, regex and collation semantics, timezone and timestamp handling, string comparison case
-    sensitivity); these must not change which rows are visible, which cells are masked, or which joins
-    are enforced. A backend is only certified by passing a shared governance-parity conformance suite
-    run against a fixed golden dataset and identity matrix; results are diffed against the reference backend
-    and any divergence fails certification. This is a hard gate: an uncertified backend MUST NOT be selectable
-    in production config (REQ-825). The suite is authoritative for DuckDB, Trino, Snowflake, Databricks,
-    Dremio, and any future backend.'
+    enforcement, and row/aggregate output — as the reference engine for the same query and same identity.
+    Because governance is defined in the semantic layer and enforced when the query compiles to IR, only
+    the transpile → transport stages differ per engine; SQLGlot transpiles syntax, but semantic edges
+    still differ per engine (NULL ordering, type coercion, decimal/numeric precision, regex and collation
+    semantics, timezone and timestamp handling, string comparison case sensitivity), and these must not
+    change which rows are visible, which cells are masked, or which joins are enforced. An engine is certified
+    only by passing a shared governance-parity conformance suite run against a fixed golden dataset and
+    identity matrix; results are diffed against the reference engine and any divergence fails certification.
+    This is a hard gate: an uncertified engine MUST NOT be selectable in production config (REQ-825).
+    The suite is authoritative for DuckDB, Trino, Snowflake, Databricks, Dremio, and any future engine.'
   use_case: 'Protects the vendor-independence claim: the governed data layer is only truly engine-agnostic
     if identical governance decisions are provably reproduced on every execution substrate. Without a
     conformance gate, a transpilation or semantic difference could silently leak masked or RLS-filtered
@@ -22909,18 +23035,18 @@
   scenario: 'Given a fixed golden dataset and an identity with role "analyst" subject to RLS and column
     masking
 
-    When the same governed query is executed on the reference backend and on a candidate backend (DuckDB,
+    When the same governed query is executed on the reference engine and on a candidate engine (DuckDB,
     Snowflake, Databricks, Dremio, or Trino)
 
-    Then the returned rows, masked cells, and enforced relationship joins are byte-identical between backends
+    Then the returned rows, masked cells, and enforced relationship joins are byte-identical between engines
 
 
-    Given a candidate backend whose semantic differences (NULL ordering, type coercion, collation) change
+    Given a candidate engine whose semantic differences (NULL ordering, type coercion, collation) change
     which rows are visible or which cells are masked
 
     When the governance-parity conformance suite is run
 
-    Then the backend fails certification and MUST NOT be selectable in production config
+    Then the engine fails certification and MUST NOT be selectable in production config
 
     '
   related_reqs:
@@ -22948,7 +23074,11 @@
     same parity principle as REQ-827, applied to the admin DB). Until meta-RLS is app-enforced, embedded
     stores cannot be certified for production. On desktop the OpenAPI/GraphQL cache lands in the embedded
     store rather than a Docker Postgres; where Postgres exists (prod) the existing pg_cache path is unchanged
-    and DuckDB may ATTACH it (REQ-826).'
+    and DuckDB may ATTACH it (REQ-826). This store is the TENANT CONTROL PLANE REGISTRY (REQ-830) — per-tenant,
+    distinct from the PLATFORM CONTROL PLANE REGISTRY (tenant directory, federation-engine registry, platform
+    governance). The meta-RLS move generalizes to a single app-layer tenant-isolation boundary enforced
+    across all tenant-scoped stateful components, since swappable media (Redis, DuckDB, S3) have no native
+    RLS.'
   use_case: Makes the full Provisa deployment — control plane and cache, not just the query engine — infra-free
     on a developer laptop, completing the develop-on-DuckDB / scale-out-in-prod model in REQ-825 without
     requiring Docker or an external Postgres.
@@ -22962,3 +23092,183 @@
   - REQ-825
   - REQ-826
   - REQ-827
+  - REQ-830
+- id: REQ-829
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: Deployment & Infrastructure
+  priority: SHOULD
+  type: structural
+  target: 2026-Q4
+  description: 'Pluggable Redis medium with a lightweight, code-identical embedded realization for desktop.
+    Sibling to REQ-828: where REQ-828 makes the SQL-store medium of the TENANT CONTROL PLANE REGISTRY
+    pluggable (Postgres -> DuckDB/SQLite), this makes the Redis medium pluggable (Redis -> embedded fakeredis),
+    so both halves of the REQ-830 desktop collapse (stateful components 1-4 into one process, zero infra)
+    are covered. Redis is REQ-830''s named production medium for the TENANT HOT CACHE (component #4, hot
+    tables REQ-230, provisa/cache/hot_tables.py) and additionally backs the fast result/APQ caches (provisa/cache/store.py,
+    provisa/apq/cache.py) and the Redis-runtime governance state that is orthogonal to the five data-flow
+    components — the sliding-window rate limiter and concurrency gauge (provisa/api/rate_limit.py) and
+    the table-based cache-invalidation index (provisa/cache/store.py). When no REDIS_URL is configured,
+    every one of these MUST transparently use an embedded fakeredis (FakeAsyncRedis) client that is API-identical
+    to redis.asyncio.Redis. All four current connection factories (rate_limit.py:120, cache/store.py:138,
+    apq/cache.py:97, cache/hot_tables.py:174) route through a single make_redis(url, decode_responses)
+    factory that returns redis.asyncio.from_url when a URL is set and FakeAsyncRedis otherwise, sharing
+    one process-wide fakeredis.FakeServer so the four clients (which differ in decode_responses) see the
+    same in-memory store. Zero changes to existing call sites. TENANT ISOLATION for the Redis medium is
+    enforced in the app layer via key namespacing (existing tenant_id key prefixes: provisa:cache:<tenant_id>:...,
+    provisa:apq:<tenant_id>:...), NOT any store-native RLS — the same app-layer isolation boundary REQ-828/REQ-830
+    mandate for all swappable media (Redis, DuckDB, S3); the single shared FakeServer is acceptable because
+    desktop is single-tenant. The stub is not a KVS: it MUST support the full command surface actually
+    invoked — get/set/delete, expire/TTL, sorted sets (zadd/zcard/zremrangebyscore/zrange for the sliding-window
+    rate limiter), sets (sadd/smembers/scan_iter for the invalidation index), incr/decr (concurrency gauge),
+    and pipelines. An aiocache/cashews-style KVS abstraction is explicitly rejected because it cannot
+    express the sorted-set and set operations without rewriting rate limiting and invalidation, and the
+    pure get/set caches it could serve already degrade to no-ops without Redis, so it buys almost nothing.
+    Rationale — desktop already runs without Redis today, but silently: build_rate_limiter(None) returns
+    NoopRateLimiter (rate_limit.py:118) and NoopCacheStore no-ops invalidate_by_table/invalidate_by_pattern
+    (store.py:93-96), so rate limiting and cache invalidation are simply disabled and those code paths
+    are never exercised on the laptop. Yet both surfaces are live in production: rate limiting runs on
+    every HTTP request (rate_limit_middleware.py:28) plus Arrow Flight, subscriptions, and NL endpoints
+    (flight/server.py:248, data/subscribe.py:404, nl_router.py:58), and table invalidation fires after
+    every write (cypher_router.py:560, data/endpoint.py:3307, admin/schema.py:2458). The purpose is therefore
+    NOT to add missing Redis features but to make desktop exercise the SAME hot-cache, result-cache, and
+    rate-limit code paths as production instead of silently falling back to no-ops — so that behavior
+    is testable on a laptop with zero infra. Production with a real REDIS_URL is unchanged; in production
+    the same medium scales out to Redis (REQ-830). Completes the infra-free desktop model (REQ-825/828/830)
+    by removing Redis as the last mandatory Docker dependency alongside the SQL store.'
+  use_case: Lets a developer run the full Provisa backend on a laptop with no Redis server and no Docker,
+    collapsing the Redis medium of the TENANT HOT CACHE and Redis-runtime state into an embedded fakeredis
+    while exercising the identical hot-cache, result-cache, APQ, rate-limit, and invalidation code paths
+    that production runs against a real Redis — rather than the current silent no-op fallback — so behavior
+    is the same, and testable, in both environments, with tenant isolation enforced in the app layer.
+  code:
+  - provisa/api/rate_limit.py
+  - provisa/cache/store.py
+  - provisa/apq/cache.py
+  - provisa/cache/hot_tables.py
+  related_reqs:
+  - REQ-825
+  - REQ-826
+  - REQ-828
+  - REQ-830
+  - REQ-831
+- id: REQ-830
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: Deployment & Infrastructure
+  priority: SHOULD
+  type: structural
+  target: 2026-Q4
+  description: 'Stateful-component topology. The four data-flow primitives (datasources -> federation
+    engine -> semantic layer -> execution pipeline; REQ-825) describe a STATELESS per-query flow. Orthogonal
+    to them, a deployment holds FIVE PLUGGABLE STATEFUL COMPONENTS, each independently swappable and —
+    except the platform registry — TENANT-ISOLATED: (1) PLATFORM CONTROL PLANE REGISTRY — platform-scoped,
+    shared: tenant directory, federation-engine registry, platform-level governance (REQ-041/REQ-402),
+    and per-tenant routing (which registry/caches/engine each tenant uses). (2) TENANT CONTROL PLANE REGISTRY
+    — per-tenant: persists that tenant''s datasource definitions and semantic layer (registered tables/columns,
+    relationships, domains, RLS, masking, naming); the store REQ-828 makes pluggable. (3) TENANT DB CACHE
+    — per-tenant durable store realizing the MATERIALIZED federation strategy (REQ-826): API/GraphQL/gRPC
+    result caches, warm tables, MVs; disk/object-backed. It is a real relation the federation engine reads,
+    so materialized/MV data PARTICIPATES in federation (joinable/scannable like any source). (4) TENANT
+    HOT CACHE — per-tenant fast tier realizing hot tables (REQ-230): small, low-latency, ephemeral. STRICTLY
+    a CTE-injection mechanism — its data is inlined as a VALUES CTE into the generated SQL at codegen
+    and NEVER becomes an engine relation, so it does NOT participate in federation (cannot be joined or
+    scanned by the engine as a table) and is orthogonal to the virtual|scan|materialized strategies. Tier
+    exclusivity (REQ-241) chooses it over the db cache. (5) FEDERATION ENGINE — the execution substrate
+    (REQ-825); tenant-dedicated or shared. Each is independently pluggable: on a developer desktop components
+    1-4 collapse into one embedded engine (DuckDB/SQLite) and #5 is DuckDB (zero infra); in production
+    they scale out independently (platform registry in Postgres, tenant registries sharded, db cache in
+    Iceberg/S3, hot cache in Redis, engine in Trino/Snowflake). Tenant isolation for components 2-5 MUST
+    be enforced in the app layer (REQ-828), not delegated to any single store''s native RLS, so isolation
+    holds across every medium.'
+  use_case: Names the stateful components multi-tenancy must isolate and deployment must place, separating
+    them from the stateless execution pipeline, and makes each independently pluggable so the same platform
+    collapses to zero-infra on a laptop and scales each tier independently in production with tenant isolation
+    enforced uniformly in the app layer.
+  code:
+  - provisa/api/app.py
+  - provisa/core/db.py
+  - provisa/core/repositories/source.py
+  - provisa/openapi/pg_cache.py
+  - provisa/cache/hot_tables.py
+  - provisa/cache/warm_tables.py
+  - provisa/mv/registry.py
+  related_reqs:
+  - REQ-825
+  - REQ-826
+  - REQ-828
+  - REQ-829
+  - REQ-831
+- id: REQ-831
+  status: complete
+  group: 11. Platform, Infrastructure & Delivery
+  category: Deployment & Infrastructure
+  priority: SHOULD
+  type: infrastructure
+  since: 2026-07
+  description: Demo datasources run as host processes with no Docker. The demo GraphQL service (Strawberry
+    + Starlette ASGI, demo/graphql_server/server.py, port 4000) and the demo OpenAPI petstore service
+    (Starlette ASGI, demo/petstore_server/server.py, port 18080) are launched as background uvicorn subprocesses
+    by demo/run-demo-servers.sh {start|stop}, replacing the former docker-compose services (swaggerapi/petstore3
+    'petstore-mock' and the built 'graphql-demo' container in docker-compose.demo.yml). start-ui.sh --demo
+    starts and stops them and exports PETSTORE_BASE_URL=http://localhost:18080/api/v3 and GRAPHQL_DEMO_URL=http://localhost:4000/graphql;
+    config/provisa.yaml reads those env vars with defaults that preserve the old Docker service names
+    for containerized runs. This removes the demo-source Docker dependency for local/desktop development,
+    advancing the zero-infra deployment model (REQ-829, REQ-830).
+  use_case: Lets a developer run the full demo (governed GraphQL + OpenAPI sources) on a laptop without
+    Docker, consistent with the embedded-engine / embedded-store zero-infra desktop model.
+  code:
+  - demo/run-demo-servers.sh
+  - demo/graphql_server/server.py
+  - demo/petstore_server/server.py
+  - start-ui.sh
+  - start-ui-install.sh
+  - config/provisa.yaml
+  related_reqs:
+  - REQ-829
+  - REQ-830
+- id: REQ-832
+  status: complete
+  group: 11. Platform, Infrastructure & Delivery
+  category: Data Model & Persistence
+  priority: MUST
+  type: structural
+  since: 2026-07
+  description: Control-plane database is accessed through a SQLAlchemy-Core abstraction (provisa/core/database.py: Database/Connection/Row) backed by an AsyncEngine, replacing raw asyncpg. Connection pool replaces asyncpg.create_pool with equivalent behavior.
+  use_case: Enables multi-database support (PostgreSQL Tier-1, SQLite/MySQL Tier-2) by centralizing SQL dialect translation and connection management in one module.
+  code:
+  - provisa/core/database.py
+- id: REQ-833
+  status: complete
+  group: 11. Platform, Infrastructure & Delivery
+  category: Data Model & Persistence
+  priority: MUST
+  type: structural
+  since: 2026-07
+  description: Control-plane data model is split into two SQLAlchemy MetaData registries—platform control plane (orgs, user_profiles, user_org_memberships, local_users, org_invites, tenants, tenant_config) and per-org tenant control plane (sources, registered_tables, table_columns, relationships, roles, rls_rules, domains, materialized_views, kafka_*, api_*, creation_requests, tracked_functions/webhooks, live_query_state, node_ids, rel_ids, query_audit_log, etc.). Exposed at runtime as state.admin_db and state.org_db.
+  use_case: Separates multi-tenant platform metadata from per-tenant schema, enabling per-tenant state isolation and independent schema evolution.
+  code:
+  - provisa/core/schema_admin.py
+  - provisa/core/schema_org.py
+- id: REQ-834
+  status: complete
+  group: 11. Platform, Infrastructure & Delivery
+  category: Data Model & Persistence
+  priority: MUST
+  type: constraint
+  since: 2026-07
+  description: Portable-type policy for cross-backend support maps PG-specific types to portable equivalents (JSONB/TEXT[] → JSON, SERIAL/BIGSERIAL → Integer/BigInteger identity, TIMESTAMPTZ → DateTime(timezone), UUID → Uuid, BYTEA → LargeBinary). Dialect-aware upsert() and insert_returning() helpers replace PG-only ON CONFLICT/RETURNING.
+  use_case: Ensures Tier-1 PostgreSQL, Tier-2 SQLite ≥3.35, and Tier-2 MySQL 8 can all execute the same control-plane schema without migration.
+  code:
+  - provisa/core/database.py
+- id: REQ-835
+  status: complete
+  group: 11. Platform, Infrastructure & Delivery
+  category: Data Model & Persistence
+  priority: MUST
+  type: constraint
+  since: 2026-07
+  description: A Capabilities flag object gates database features by dialect—LISTEN/NOTIFY, advisory locks, arrays, append-only RULEs, RETURNING are PG-only and must not be used on SQLite or MySQL backends.
+  use_case: Prevents runtime errors when control plane is deployed on non-PostgreSQL backends by enforcing compile-time feature gating.
+  code:
+  - provisa/core/database.py
