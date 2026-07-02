@@ -69,11 +69,19 @@ class LiveOutputConfigType:  # REQ-565
 
 
 @strawberry.type
-class LiveDeliveryConfigType:  # REQ-565
-    query_id: str
-    watermark_column: str
+class LiveKafkaParamsType:  # REQ-813
+    topic: str
+    format: str = "json"
+    key_column: str | None = None
+
+
+@strawberry.type
+class LiveDeliveryConfigType:  # REQ-565, REQ-813
+    strategy: str = "poll"  # poll | native | debezium | kafka
+    watermark_column: str | None = None
     poll_interval: int = 10
-    delivery: str = "poll"  # "poll" | "cdc"
+    kafka: LiveKafkaParamsType | None = None
+    query_id: str | None = None
     outputs: list[LiveOutputConfigType] = strawberry.field(default_factory=list)
 
 
@@ -253,11 +261,19 @@ class LiveOutputConfigInput:  # REQ-565
 
 
 @strawberry.input
-class LiveDeliveryConfigInput:  # REQ-565
-    query_id: str
-    watermark_column: str
+class LiveKafkaParamsInput:  # REQ-813
+    topic: str
+    format: str = "json"
+    key_column: str | None = None
+
+
+@strawberry.input
+class LiveDeliveryConfigInput:  # REQ-565, REQ-813
+    strategy: str = "poll"  # poll | native | debezium | kafka
+    watermark_column: str | None = None
     poll_interval: int = 10
-    delivery: str = "poll"  # "poll" | "cdc"
+    kafka: LiveKafkaParamsInput | None = None
+    query_id: str | None = None
     outputs: list[LiveOutputConfigInput] = strawberry.field(default_factory=list)
 
 

@@ -379,13 +379,38 @@ class LiveOutputConfig(BaseModel):  # REQ-565
     bootstrap_servers: str | None = None  # Kafka bootstrap (required when type="kafka")
 
 
-class LiveDeliveryConfig(BaseModel):  # REQ-565
-    """Live query delivery configuration attached to a table."""
+class LiveKafkaParams(BaseModel):  # REQ-813
+    """Per-table params for strategy=kafka (arbitrary Kafka delta topic).
 
-    query_id: str  # stable_id of the approved persisted query to run
-    watermark_column: str  # column whose max value is tracked as the watermark
-    poll_interval: int = 10  # seconds between polls
-    delivery: str = "poll"  # "poll" or "cdc"
+    Transport (bootstrap_servers) is inherited from the source's cdc block
+    (REQ-824), never repeated here — only the topic shape is per-table.
+    """
+
+    topic: str  # Kafka topic carrying this table's deltas
+    format: str = "json"  # "json" | "avro"
+    key_column: str | None = None  # column used as the Kafka message key
+    field_mapping: dict[str, str] = Field(default_factory=dict)  # kafka field → table column
+
+
+class LiveDeliveryConfig(BaseModel):  # REQ-565, REQ-813
+    """Unified live change-feed config attached to a table.
+
+    ``strategy`` selects the delta-capture mechanism (REQ-813/814); it replaces
+    the old binary ``delivery: poll|cdc``:
+      * poll     — watermark polling routed through Trino (watermark_column/poll_interval)
+      * native   — source-native push (PostgreSQL LISTEN/NOTIFY, MongoDB change streams)
+      * debezium — Debezium/Kafka CDC; transport inherited from Source.cdc (REQ-824)
+      * kafka    — arbitrary Kafka delta topic (see ``kafka`` params); transport from Source.cdc
+
+    ``query_id`` and ``outputs`` are optional so this covers both raw table
+    change-feeds and live persisted-query output fan-out.
+    """
+
+    strategy: str = "poll"  # poll | native | debezium | kafka
+    watermark_column: str | None = None  # strategy=poll: column whose max value is the watermark
+    poll_interval: int = 10  # strategy=poll: seconds between polls
+    kafka: LiveKafkaParams | None = None  # strategy=kafka params
+    query_id: str | None = None  # optional stable_id of the persisted query to run
     outputs: list[LiveOutputConfig] = Field(default_factory=list)
 
 

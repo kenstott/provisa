@@ -65,3 +65,21 @@ export const CDC_TRANSPORT_SOURCE_TYPES = new Set([
 export function cdcTransportApplicable(sourceType: string | null | undefined): boolean {
   return CDC_TRANSPORT_SOURCE_TYPES.has((sourceType ?? "").toLowerCase());
 }
+
+// REQ-813/814: per-table live delivery strategy, gated by source type. Mirrors
+// backend provisa/core/config_loader.py _STRATEGIES_BY_SOURCE_TYPE.
+const STRATEGIES_BY_SOURCE_TYPE: Record<string, string[]> = {
+  postgresql: ["poll", "native", "debezium", "kafka"],
+  mongodb: ["poll", "native"],
+  kafka: ["kafka"],
+  mysql: ["poll", "debezium", "kafka"],
+  mariadb: ["poll", "debezium", "kafka"],
+  sqlserver: ["poll", "debezium", "kafka"],
+  oracle: ["poll", "debezium", "kafka"],
+};
+
+export function availableStrategies(sourceType: string | null | undefined): string[] {
+  const t = (sourceType ?? "").toLowerCase();
+  if (!t) return [];
+  return STRATEGIES_BY_SOURCE_TYPE[t] ?? ["poll"];
+}

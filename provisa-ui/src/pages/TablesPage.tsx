@@ -38,8 +38,13 @@ import {
   useSuggestTableAlias,
   useAllRelationships,
 } from "../hooks/useAdminQueries";
-import type { RegisteredTable, LiveDeliveryConfig, LiveOutputConfig } from "../types/admin";
-import { liveCapability } from "../liveCapability";
+import type {
+  RegisteredTable,
+  LiveDeliveryConfig,
+  LiveKafkaConfig,
+  LiveOutputConfig,
+} from "../types/admin";
+import { liveCapability, availableStrategies } from "../liveCapability";
 import { ColumnPresetsEditor } from "../components/admin/ColumnPresetsEditor";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useDomainFilter } from "../context/DomainFilterContext";
@@ -595,10 +600,18 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         enableGroupBy: editingTable.enableGroupBy,
         live: editingTable.live
           ? {
-              queryId: editingTable.live.queryId,
-              watermarkColumn: editingTable.live.watermarkColumn,
+              queryId: editingTable.live.queryId ?? undefined,
+              watermarkColumn: editingTable.live.watermarkColumn ?? undefined,
               pollInterval: editingTable.live.pollInterval,
-              delivery: editingTable.live.delivery,
+              strategy: editingTable.live.strategy,
+              kafka:
+                editingTable.live.strategy === "kafka" && editingTable.live.kafka
+                  ? {
+                      topic: editingTable.live.kafka.topic,
+                      format: editingTable.live.kafka.format ?? undefined,
+                      keyColumn: editingTable.live.kafka.keyColumn ?? undefined,
+                    }
+                  : undefined,
               outputs: editingTable.live.outputs.map((o) => ({
                 type: o.type,
                 topic: o.topic ?? undefined,
@@ -2076,7 +2089,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             {(() => {
                               const src = sources.find((s) => s.id === editingTable.sourceId);
                               const stype = (src?.type ?? "").toLowerCase();
-                              const { pollAvail, cdcAvail, liveCapable } = liveCapability(stype);
+                              const { liveCapable } = liveCapability(stype);
+                              const strategies = availableStrategies(stype);
                               const live = editingTable.live;
                               const setLive = (patch: Partial<LiveDeliveryConfig>) =>
                                 setEditingTable(
@@ -2101,12 +2115,22 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                 };
                                 setLive({ outputs: [...others, { ...base, ...patch }] });
                               };
+                              const setKafkaConfig = (patch: Partial<LiveKafkaConfig>) => {
+                                if (!live) return;
+                                const base: LiveKafkaConfig = live.kafka ?? {
+                                  topic: "",
+                                  format: "json",
+                                  keyColumn: null,
+                                };
+                                setLive({ kafka: { ...base, ...patch } });
+                              };
                               const defaultLive: LiveDeliveryConfig = {
                                 queryId: `${editingTable.sourceId}.${editingTable.tableName}`,
                                 watermarkColumn:
                                   editingTable.watermarkColumn || wmCols[0]?.columnName || "",
                                 pollInterval: 10,
-                                delivery: pollAvail ? "poll" : "cdc",
+                                strategy: (strategies[0] ?? "poll") as LiveDeliveryConfig["strategy"],
+                                kafka: null,
                                 outputs: [],
                               };
                               return (
@@ -2167,36 +2191,36 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                           }}
                                         >
                                           <label>
-                                            Delivery
+                                            Strategy
                                             <select
-                                              value={live.delivery}
+                                              value={live.strategy}
                                               onChange={(e) =>
                                                 setLive({
-                                                  delivery: e.target.value as "poll" | "cdc",
+                                                  strategy: e.target
+                                                    .value as LiveDeliveryConfig["strategy"],
                                                 })
                                               }
                                             >
-                                              {pollAvail && (
-                                                <option value="poll">
-                                                  Poll (Trino, watermark)
+                                              {strategies.map((s) => (
+                                                <option key={s} value={s}>
+                                                  {s}
                                                 </option>
-                                              )}
-                                              {cdcAvail && <option value="cdc">CDC (push)</option>}
+                                              ))}
                                             </select>
                                           </label>
                                           <label>
                                             Query ID
                                             <input
-                                              value={live.queryId}
+                                              value={live.queryId ?? ""}
                                               onChange={(e) => setLive({ queryId: e.target.value })}
                                             />
                                           </label>
-                                          {live.delivery === "poll" && (
+                                          {live.strategy === "poll" && (
                                             <>
                                               <label>
                                                 Watermark column
                                                 <select
-                                                  value={live.watermarkColumn}
+                                                  value={live.watermarkColumn ?? ""}
                                                   onChange={(e) =>
                                                     setLive({ watermarkColumn: e.target.value })
                                                   }
@@ -2224,7 +2248,41 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                               </label>
                                             </>
                                           )}
-                                          {live.delivery === "cdc" && (
+                                          {live.strategy === "kafka" && (
+                                            <>
+                                              <label>
+                                                Kafka topic
+                                                <input
+                                                  value={live.kafka?.topic ?? ""}
+                                                  onChange={(e) =>
+                                                    setKafkaConfig({ topic: e.target.value })
+                                                  }
+                                                />
+                                              </label>
+                                              <label>
+                                                Kafka format
+                                                <input
+                                                  value={live.kafka?.format ?? "json"}
+                                                  onChange={(e) =>
+                                                    setKafkaConfig({ format: e.target.value })
+                                                  }
+                                                />
+                                              </label>
+                                              <label>
+                                                Key column
+                                                <input
+                                                  value={live.kafka?.keyColumn ?? ""}
+                                                  onChange={(e) =>
+                                                    setKafkaConfig({
+                                                      keyColumn: e.target.value || null,
+                                                    })
+                                                  }
+                                                />
+                                              </label>
+                                            </>
+                                          )}
+                                          {(live.strategy === "native" ||
+                                            live.strategy === "debezium") && (
                                             <p
                                               style={{
                                                 margin: 0,
@@ -2232,8 +2290,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                                 color: "var(--text-muted)",
                                               }}
                                             >
-                                              CDC connection is inherited from the source. No extra
-                                              per-table config.
+                                              {live.strategy === "debezium"
+                                                ? "Debezium transport is configured on the source. No extra per-table config."
+                                                : "Native change stream requires no extra per-table config."}
                                             </p>
                                           )}
                                           <div>

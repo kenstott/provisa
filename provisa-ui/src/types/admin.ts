@@ -91,11 +91,18 @@ export interface LiveOutputConfig {
   bootstrapServers: string | null;
 }
 
+export interface LiveKafkaConfig {
+  topic: string;
+  format?: string;
+  keyColumn?: string | null;
+}
+
 export interface LiveDeliveryConfig {
-  queryId: string;
-  watermarkColumn: string;
+  queryId?: string | null;
+  watermarkColumn?: string | null;
   pollInterval: number;
-  delivery: "poll" | "cdc";
+  strategy: "poll" | "native" | "debezium" | "kafka";
+  kafka?: LiveKafkaConfig | null;
   outputs: LiveOutputConfig[];
 }
 

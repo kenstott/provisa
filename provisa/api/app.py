@@ -2441,47 +2441,11 @@ async def _bg_hydrate_api_endpoints() -> None:
     asyncio.create_task(_bg_hydrate())
 
 
-async def _reconcile_live_engine(conn: asyncpg.Connection) -> None:  # REQ-565
-    """Reconcile LiveEngine poll jobs from registered_tables.live (delivery=poll only)."""
-    from provisa.live.engine import LiveSpec
+async def _reconcile_live_engine(conn: asyncpg.Connection) -> None:  # REQ-565, REQ-813
+    """Reconcile the LiveEngine poll jobs from persisted per-table live config."""
+    from provisa.live.reconcile import reconcile_live_engine
 
-    engine = state.live_engine
-    if engine is None:
-        return
-
-    rows = await conn.fetch(
-        "SELECT source_id, schema_name, table_name, live FROM registered_tables "
-        "WHERE live IS NOT NULL"
-    )
-    specs: list[LiveSpec] = []
-    for row in rows:
-        live = row["live"]
-        if not live or live.get("delivery", "poll") != "poll":
-            continue
-        watermark = live.get("watermark_column")
-        if not watermark:
-            continue
-        catalog = row["source_id"].replace("-", "_")
-        sql = f'SELECT * FROM {catalog}."{row["schema_name"]}"."{row["table_name"]}"'
-        kafka_outputs = [
-            {
-                "bootstrap_servers": o["bootstrap_servers"],
-                "topic": o["topic"],
-                "key_column": o.get("key_column"),
-            }
-            for o in live.get("outputs", [])
-            if o.get("type") == "kafka" and o.get("topic") and o.get("bootstrap_servers")
-        ]
-        specs.append(
-            LiveSpec(
-                query_id=f"{row['source_id']}.{row['table_name']}",
-                sql=sql,
-                watermark_column=watermark,
-                poll_interval=int(live.get("poll_interval", 10)),
-                kafka_outputs=kafka_outputs,
-            )
-        )
-    engine.reconcile(specs)
+    await reconcile_live_engine(conn, state.live_engine)
 
 
 async def _register_user_views_in_state(_pg: asyncpg.Connection, raw_config: dict | None) -> None:
@@ -2963,8 +2927,9 @@ async def _start_servers(_log: logging.Logger) -> None:
         # Reconcile poll jobs from persisted per-table live config (Phase AY).
         # Data polls route through Trino; CDC-delivered tables are driven by
         # subscription providers, not the poll engine.
-        async with state.pg_pool.acquire() as _lc:
-            await _reconcile_live_engine(cast(asyncpg.Connection, _lc))
+        if state.pg_pool is not None:
+            async with state.pg_pool.acquire() as _lc:
+                await _reconcile_live_engine(cast(asyncpg.Connection, _lc))
     except Exception:
         _log.exception("Live Query Engine startup failed")
 

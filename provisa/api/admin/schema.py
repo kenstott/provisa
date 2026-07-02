@@ -379,27 +379,7 @@ async def _fetch_table_with_columns(
     )
 
 
-def _live_model_from_input(inp):  # REQ-565
-    """Convert a LiveDeliveryConfigInput into a LiveDeliveryConfig model (None when unset)."""
-    if inp is None:
-        return None
-    from provisa.core.models import LiveDeliveryConfig, LiveOutputConfig
-
-    return LiveDeliveryConfig(
-        query_id=inp.query_id,
-        watermark_column=inp.watermark_column,
-        poll_interval=inp.poll_interval,
-        delivery=inp.delivery,
-        outputs=[
-            LiveOutputConfig(
-                type=o.type,
-                topic=o.topic,
-                key_column=o.key_column,
-                bootstrap_servers=o.bootstrap_servers,
-            )
-            for o in inp.outputs
-        ],
-    )
+from provisa.api.admin._live_mappers import live_model_from_input as _live_model_from_input
 
 
 async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:

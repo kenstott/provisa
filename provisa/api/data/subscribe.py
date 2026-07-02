@@ -168,8 +168,25 @@ def _build_cdc_config(state, source_id: str) -> dict:  # REQ-824
     }
 
 
-def _resolve_provider_type(source_type: str, source_id: str, state) -> str:  # REQ-824
-    """Route non-PG RDBMS sources with a source-level cdc block to the Debezium provider."""
+def _resolve_provider_type(source_type: str, source_id: str, tbl_meta, state) -> str:  # REQ-814
+    """Resolve the subscription provider from the table's live.strategy, not source_type.
+
+    Dispatch keys off ``live.strategy`` (REQ-814). Only when a table declares no live
+    strategy do we fall back to source_type dispatch (rss/websocket/ingest/etc.), plus
+    the REQ-824 heuristic that routes a cdc-declaring RDBMS to Debezium.
+    """
+    live = getattr(tbl_meta, "live", None)
+    strategy = getattr(live, "strategy", None) if live is not None else None
+    if strategy == "debezium":
+        return "debezium"
+    if strategy == "kafka":
+        return "kafka"
+    if strategy in ("native", "poll"):
+        # native → source-native push (postgresql LISTEN/NOTIFY, mongodb change streams);
+        # poll → the federated SQL source's polling provider. Both key off source_type,
+        # but the *decision* was driven by strategy.
+        return source_type
+    # No explicit strategy: legacy source_type dispatch + REQ-824 cdc fallback.
     if (
         source_type in _CDC_DEBEZIUM_SOURCE_TYPES
         and state.cdc_sources
@@ -252,7 +269,7 @@ async def _provider_sse_generator(  # REQ-258, REQ-260
 
     tbl_meta = _resolve_tbl_meta(table, state)
     table_id = getattr(tbl_meta, "table_id", None) if tbl_meta else None
-    provider_type = _resolve_provider_type(source_type, source_id, state)  # REQ-824
+    provider_type = _resolve_provider_type(source_type, source_id, tbl_meta, state)  # REQ-814
     provider_config = _build_provider_config(provider_type, source_id, table, tbl_meta, state)
     provider = get_provider(provider_type, provider_config)
 

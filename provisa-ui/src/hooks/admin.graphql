@@ -100,7 +100,12 @@ query TablesQuery {
       queryId
       watermarkColumn
       pollInterval
-      delivery
+      strategy
+      kafka {
+        topic
+        format
+        keyColumn
+      }
       outputs {
         type
         topic

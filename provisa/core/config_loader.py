@@ -675,22 +675,34 @@ def _validate_table_kafka_sinks(config) -> None:
                 raise ValueError(f"Table {table.table_name!r}: unknown kafka_sink trigger {t!r}")
 
 
-# CDC-capable source types (delivery=cdc) — those with a real push provider in
-# the subscription registry: PostgreSQL (LISTEN/NOTIFY triggers), Debezium and
-# generic Kafka (Kafka consumers), and MongoDB (change streams). Every other
-# source uses delivery=poll (watermark polling routed through Trino).
-_CDC_SUPPORTED_SOURCE_TYPES = {"postgresql", "debezium", "kafka", "mongodb"}
-
-# REQ-824: non-PG RDBMS have no native push mechanism; they become CDC-capable only
-# when the source declares a source-level cdc transport block (Debezium). This is
-# also the exhaustive set of source types on which a cdc block is meaningful,
-# alongside "postgresql" (which uses native LISTEN/NOTIFY and needs no transport).
+# REQ-824: non-PG RDBMS have no native push mechanism; they reach CDC only through a
+# source-level Debezium transport block. This is also the exhaustive set of source
+# types on which a cdc block is meaningful, alongside "postgresql" (native LISTEN/NOTIFY).
 _CDC_DEBEZIUM_SOURCE_TYPES = {"mysql", "mariadb", "sqlserver", "oracle"}
 _CDC_BLOCK_ALLOWED_SOURCE_TYPES = _CDC_DEBEZIUM_SOURCE_TYPES | {"postgresql"}
 
+# REQ-814: which live strategies each source type can use. Dispatch is on strategy,
+# not source_type; this matrix capability-gates strategy by the source's real push
+# ability. Any pollable federated SQL source may use "poll".
+_STRATEGIES_BY_SOURCE_TYPE: dict[str, set[str]] = {
+    "postgresql": {"poll", "native", "debezium", "kafka"},
+    "mongodb": {"poll", "native"},
+    "kafka": {"kafka"},
+    **{t: {"poll", "debezium", "kafka"} for t in _CDC_DEBEZIUM_SOURCE_TYPES},
+}
+# Strategies whose delta-transport is inherited from Source.cdc (REQ-824), and so
+# require the source to declare a cdc block — except on a "kafka" source type, whose
+# transport is the source's own Kafka connection.
+_TRANSPORT_STRATEGIES = {"debezium", "kafka"}
+
+
+def _allowed_strategies(source_type: str | None) -> set[str]:
+    # Default: only watermark polling through Trino (any federated SQL source).
+    return _STRATEGIES_BY_SOURCE_TYPE.get(source_type or "", {"poll"})
+
 
 def _validate_table_live_delivery(config) -> None:
-    """Validate live delivery config on all tables (REQ-282–287, REQ-824)."""
+    """Validate live change-feed config on all tables (REQ-282–287, REQ-813, REQ-814, REQ-824)."""
     for source in config.sources:
         # REQ-824: a source-level cdc block only makes sense on CDC-capable RDBMS sources.
         if getattr(source, "cdc", None) is not None:
@@ -701,29 +713,41 @@ def _validate_table_live_delivery(config) -> None:
                     f"{stype!r} (only PostgreSQL and Debezium-captured RDBMS)"
                 )
 
+    sources_by_id = {s.id: s for s in config.sources}
     for table in config.tables:
         if table.live is None:
             continue
-        if table.live.delivery == "poll" and not table.live.watermark_column:
+        strategy = table.live.strategy
+        source = sources_by_id.get(table.source_id)
+        stype = getattr(source, "type", None) if source else None
+
+        if strategy == "poll" and not table.live.watermark_column:
             raise ValueError(
-                f"Table {table.table_name!r}: live.delivery=poll requires watermark_column"
+                f"Table {table.table_name!r}: live.strategy=poll requires watermark_column"
             )
-        if table.live.delivery == "cdc":
-            source = next((s for s in config.sources if s.id == table.source_id), None)
-            if source is None:
-                continue
-            stype = getattr(source, "type", None)
-            has_cdc_block = getattr(source, "cdc", None) is not None
-            # Natively CDC-capable (PostgreSQL/Kafka/MongoDB), or a non-PG RDBMS that
-            # declares a source-level Debezium transport (REQ-824). A non-PG RDBMS
-            # without a cdc block has no push mechanism and is rejected.
-            if stype not in _CDC_SUPPORTED_SOURCE_TYPES and not (
-                stype in _CDC_DEBEZIUM_SOURCE_TYPES and has_cdc_block
-            ):
-                raise ValueError(
-                    f"Table {table.table_name!r}: live.delivery=cdc not supported for source type "
-                    f"{stype!r}"
-                )
+        if strategy == "kafka" and table.live.kafka is None and stype != "kafka":
+            raise ValueError(
+                f"Table {table.table_name!r}: live.strategy=kafka requires a kafka params block"
+            )
+        if source is None:
+            continue
+        # REQ-814: capability-gate strategy by source type.
+        if strategy not in _allowed_strategies(stype):
+            raise ValueError(
+                f"Table {table.table_name!r}: live.strategy={strategy!r} not supported for source "
+                f"type {stype!r} (allowed: {sorted(_allowed_strategies(stype))})"
+            )
+        # REQ-824: debezium/kafka transport on an RDBMS source is inherited from the
+        # source's cdc block — require it. (A "kafka" source type carries its own transport.)
+        if (
+            strategy in _TRANSPORT_STRATEGIES
+            and stype in _CDC_DEBEZIUM_SOURCE_TYPES | {"postgresql"}
+            and getattr(source, "cdc", None) is None
+        ):
+            raise ValueError(
+                f"Table {table.table_name!r}: live.strategy={strategy} on source {source.id!r} "
+                f"({stype}) requires source-level cdc transport (bootstrap_servers/topic_prefix)"
+            )
 
 
 async def _validate_existing_domains(conn: asyncpg.Connection, default_domain: str) -> None:

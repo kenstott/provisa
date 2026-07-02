@@ -9,13 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import pytest_asyncio
-from pytest_bdd import given, parsers, scenario, then, when
+from pytest_bdd import given, then, when
 
 # ---------------------------------------------------------------------------
 # Shared state fixture
@@ -35,7 +33,7 @@ _LIVE_CONFIG = {
     "query_id": "live_orders_query",
     "watermark_column": "updated_at",
     "poll_interval": 10,
-    "delivery": "poll",
+    "strategy": "poll",
     "outputs": [
         {"type": "sse", "path": "/live/orders"},
         {"type": "kafka", "topic": "orders.live"},
@@ -77,7 +75,7 @@ def _make_live_row(query_id: str = "live_orders_query") -> dict:
         "query_id": query_id,
         "watermark_column": "updated_at",
         "poll_interval": 10,
-        "delivery": "poll",
+        "strategy": "poll",
         "active": True,
         "sql": "SELECT * FROM orders",
         "outputs": json.dumps([{"type": "sse", "path": "/live/orders"}]),
@@ -187,7 +185,6 @@ def then_config_persisted_and_engine_notified(shared_data: dict) -> None:
     assert ok, "Mutation reported ok=False"
 
     try:
-        import importlib.resources as _ir
         import pathlib
 
         import provisa.core as _core_pkg
@@ -252,7 +249,7 @@ def given_admin_ui_tables_page(shared_data: dict) -> None:
         "query_id": "ui_live_query",
         "watermark_column": "created_at",
         "poll_interval": 30,
-        "delivery": "cdc",
+        "strategy": "debezium",
         "outputs": [{"type": "sse", "path": "/live/ui-stream"}],
     }
 
@@ -286,12 +283,13 @@ def then_changes_reflected_without_restart(shared_data: dict) -> None:
 
     live_config = shared_data.get("ui_submitted_live", {})
 
-    required_keys = {"query_id", "watermark_column", "poll_interval", "delivery", "outputs"}
+    required_keys = {"query_id", "watermark_column", "poll_interval", "strategy", "outputs"}
     missing = required_keys - set(live_config.keys())
     assert not missing, f"Live config is missing required keys: {missing}"
 
-    assert live_config["delivery"] in ("poll", "cdc"), (
-        f"Unsupported delivery mode: {live_config['delivery']!r}. Expected 'poll' or 'cdc'."
+    assert live_config["strategy"] in ("poll", "native", "debezium", "kafka"), (
+        f"Unsupported strategy: {live_config['strategy']!r}. "
+        f"Expected one of poll|native|debezium|kafka."
     )
 
     outputs = live_config.get("outputs", [])
@@ -469,7 +467,7 @@ def given_live_config_modified_via_admin(shared_data: dict) -> None:
 
     asyncio.get_event_loop().run_until_complete(_start_with_old_config())
     shared_data["mutation_engine"] = engine
-    shared_data["rebuild_calls"]: list[str] = []
+    shared_data["rebuild_calls"] = []
 
 
 @when("the mutation completes")
@@ -555,7 +553,6 @@ def then_new_poll_schedule_takes_effect(shared_data: dict) -> None:
         sched_job = engine._scheduler.get_job(job.scheduler_job_id)
         if sched_job is not None:
             # APScheduler IntervalTrigger stores interval as a timedelta.
-            import datetime
             trigger = sched_job.trigger
             if hasattr(trigger, "interval"):
                 actual_seconds = trigger.interval.total_seconds()

@@ -6,8 +6,8 @@
 """Unit tests for REQ-824: source-level CDC transport (Debezium/Kafka).
 
 Debezium/Kafka delta-transport (bootstrap_servers, topic_prefix, ...) is entered
-once on the source, never per-table. Per-table live config only picks delivery=cdc;
-the runtime inherits the transport from the source.
+once on the source, never per-table. Per-table live config only picks
+strategy=debezium/kafka; the runtime inherits the transport from the source.
 """
 
 from __future__ import annotations
@@ -47,48 +47,80 @@ class TestSourceCdcModel:
 
     def test_source_carries_cdc(self):
         s = _source_with_cdc()
+        assert s.cdc is not None
         assert s.cdc.bootstrap_servers == "broker:9092"
         assert s.cdc.topic_prefix == "dbserver1"
 
 
 class TestCdcValidation:
-    def _cfg(self, source, *, delivery="cdc", watermark_column=None):
-        live = SimpleNamespace(delivery=delivery, watermark_column=watermark_column)
+    def _cfg(self, source, *, strategy="debezium", watermark_column=None, kafka=None):
+        live = SimpleNamespace(strategy=strategy, watermark_column=watermark_column, kafka=kafka)
         table = SimpleNamespace(table_name="orders", source_id=source.id, live=live)
         return SimpleNamespace(tables=[table], sources=[source])
 
-    def test_non_pg_rdbms_with_cdc_block_allows_cdc(self):
+    def test_non_pg_rdbms_with_cdc_block_allows_debezium(self):
         _validate_table_live_delivery(self._cfg(_source_with_cdc("mysql")))
 
     @pytest.mark.parametrize("stype", ["mysql", "oracle", "sqlserver", "mariadb"])
-    def test_non_pg_rdbms_without_cdc_block_rejects_cdc(self, stype):
+    def test_non_pg_rdbms_without_cdc_block_rejects_debezium(self, stype):
         src = Source(id="s1", type=SourceType(stype))
-        with pytest.raises(ValueError, match="cdc not supported"):
+        with pytest.raises(ValueError, match="requires source-level cdc transport"):
             _validate_table_live_delivery(self._cfg(src))
 
     def test_cdc_block_on_non_capable_source_rejected(self):
         # A warehouse cannot host a Debezium transport block.
         src = _source_with_cdc("snowflake")
         with pytest.raises(ValueError, match="cdc transport config not supported"):
-            _validate_table_live_delivery(self._cfg(src, delivery="poll", watermark_column="ts"))
+            _validate_table_live_delivery(self._cfg(src, strategy="poll", watermark_column="ts"))
 
-    def test_postgres_cdc_needs_no_block(self):
+    def test_postgres_debezium_needs_cdc_block(self):
+        # PostgreSQL debezium still requires a source-level cdc transport block.
         src = Source(id="s1", type=SourceType.postgresql)
-        _validate_table_live_delivery(self._cfg(src))
+        with pytest.raises(ValueError, match="requires source-level cdc transport"):
+            _validate_table_live_delivery(self._cfg(src))
+
+    def test_postgres_native_needs_no_block(self):
+        # postgresql supports strategy=native (LISTEN/NOTIFY) without a cdc block.
+        src = Source(id="s1", type=SourceType.postgresql)
+        _validate_table_live_delivery(self._cfg(src, strategy="native"))
 
 
 class TestProviderRouting:
-    def test_non_pg_rdbms_with_cdc_routes_to_debezium(self):
+    @staticmethod
+    def _tbl(strategy=None):
+        live = SimpleNamespace(strategy=strategy) if strategy is not None else None
+        return SimpleNamespace(live=live)
+
+    def test_strategy_debezium_routes_to_debezium(self):
         state = SimpleNamespace(cdc_sources={"s1": _source_with_cdc("mysql")})
-        assert _resolve_provider_type("mysql", "s1", state) == "debezium"
+        assert _resolve_provider_type("mysql", "s1", self._tbl("debezium"), state) == "debezium"
 
-    def test_non_pg_rdbms_without_registration_stays_source_type(self):
+    def test_strategy_kafka_routes_to_kafka(self):
         state = SimpleNamespace(cdc_sources={})
-        assert _resolve_provider_type("mysql", "s1", state) == "mysql"
+        assert _resolve_provider_type("postgresql", "s1", self._tbl("kafka"), state) == "kafka"
 
-    def test_postgres_never_routes_to_debezium(self):
+    def test_strategy_native_on_pg_routes_to_source_type(self):
+        state = SimpleNamespace(cdc_sources={})
+        assert (
+            _resolve_provider_type("postgresql", "s1", self._tbl("native"), state) == "postgresql"
+        )
+
+    def test_strategy_poll_routes_to_source_type(self):
+        state = SimpleNamespace(cdc_sources={})
+        assert _resolve_provider_type("mysql", "s1", self._tbl("poll"), state) == "mysql"
+
+    def test_no_strategy_falls_back_to_cdc_heuristic(self):
+        # REQ-824: no explicit strategy, but a registered non-PG RDBMS cdc source.
+        state = SimpleNamespace(cdc_sources={"s1": _source_with_cdc("mysql")})
+        assert _resolve_provider_type("mysql", "s1", self._tbl(), state) == "debezium"
+
+    def test_no_strategy_without_registration_stays_source_type(self):
+        state = SimpleNamespace(cdc_sources={})
+        assert _resolve_provider_type("mysql", "s1", self._tbl(), state) == "mysql"
+
+    def test_postgres_no_strategy_never_routes_to_debezium(self):
         state = SimpleNamespace(cdc_sources={"s1": _source_with_cdc("postgresql")})
-        assert _resolve_provider_type("postgresql", "s1", state) == "postgresql"
+        assert _resolve_provider_type("postgresql", "s1", self._tbl(), state) == "postgresql"
         assert "postgresql" not in _CDC_DEBEZIUM_SOURCE_TYPES
 
     def test_build_cdc_config_reads_source_transport(self):

@@ -157,17 +157,39 @@ def _rls_from_row(row) -> RLSRuleType:
     )
 
 
-def _live_type_from_row(raw):  # REQ-565
+def _live_strategy_from_raw(raw: dict) -> str:  # REQ-813
+    """Read live.strategy, mapping the legacy delivery=poll|cdc field for back-compat."""
+    if raw.get("strategy"):
+        return raw["strategy"]
+    # Legacy rows: delivery=poll → poll; delivery=cdc → native (PG/Mongo push).
+    return "poll" if raw.get("delivery", "poll") == "poll" else "native"
+
+
+def _live_type_from_row(raw):  # REQ-565, REQ-813
     """Build a LiveDeliveryConfigType from a persisted JSONB dict (None when unset)."""
-    from provisa.api.admin.types import LiveDeliveryConfigType, LiveOutputConfigType
+    from provisa.api.admin.types import (
+        LiveDeliveryConfigType,
+        LiveKafkaParamsType,
+        LiveOutputConfigType,
+    )
 
     if not raw:
         return None
+    kafka_raw = raw.get("kafka")
     return LiveDeliveryConfigType(
-        query_id=raw["query_id"],
-        watermark_column=raw["watermark_column"],
+        strategy=_live_strategy_from_raw(raw),
+        watermark_column=raw.get("watermark_column"),
         poll_interval=int(raw.get("poll_interval", 10)),
-        delivery=raw.get("delivery", "poll"),
+        kafka=(
+            LiveKafkaParamsType(
+                topic=kafka_raw["topic"],
+                format=kafka_raw.get("format", "json"),
+                key_column=kafka_raw.get("key_column"),
+            )
+            if kafka_raw
+            else None
+        ),
+        query_id=raw.get("query_id"),
         outputs=[
             LiveOutputConfigType(
                 type=o["type"],

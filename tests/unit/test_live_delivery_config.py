@@ -5,9 +5,10 @@
 
 """Unit tests for per-table live delivery config: validation + DB reconcile.
 
-Covers REQ-565 amendments — poll routes through Trino, CDC is restricted to
-source types with a real push provider, and admin-persisted live config drives
-the engine via reconcile.
+Covers REQ-565/813/814 — ``strategy`` selects the delta-capture mechanism
+(poll|native|debezium|kafka), capability-gated by source type; poll routes
+through Trino; debezium/kafka inherit transport from the source cdc block; and
+admin-persisted live config drives the engine via reconcile.
 """
 
 from __future__ import annotations
@@ -20,31 +21,63 @@ import pytest
 from provisa.core.config_loader import _validate_table_live_delivery
 
 
-def _cfg(*, delivery, watermark_column=None, source_type="postgresql"):
-    live = SimpleNamespace(delivery=delivery, watermark_column=watermark_column)
+def _cfg(
+    *,
+    strategy,
+    watermark_column=None,
+    source_type="postgresql",
+    kafka=None,
+    source_cdc=None,
+):
+    live = SimpleNamespace(strategy=strategy, watermark_column=watermark_column, kafka=kafka)
     table = SimpleNamespace(table_name="orders", source_id="s1", live=live)
-    source = SimpleNamespace(id="s1", type=source_type)
+    source = SimpleNamespace(id="s1", type=source_type, cdc=source_cdc)
     return SimpleNamespace(tables=[table], sources=[source])
 
 
 class TestValidateLiveDelivery:
     def test_poll_without_watermark_raises(self):
-        with pytest.raises(ValueError, match="requires watermark_column"):
-            _validate_table_live_delivery(_cfg(delivery="poll", watermark_column=None))
+        with pytest.raises(ValueError, match="live.strategy=poll requires watermark_column"):
+            _validate_table_live_delivery(_cfg(strategy="poll", watermark_column=None))
 
     def test_poll_with_watermark_ok(self):
+        # poll is allowed on any federated SQL source.
         _validate_table_live_delivery(
-            _cfg(delivery="poll", watermark_column="updated_at", source_type="snowflake")
+            _cfg(strategy="poll", watermark_column="updated_at", source_type="snowflake")
         )
 
-    @pytest.mark.parametrize("stype", ["postgresql", "debezium", "kafka", "mongodb"])
-    def test_cdc_supported_source_types_ok(self, stype):
-        _validate_table_live_delivery(_cfg(delivery="cdc", source_type=stype))
+    def test_native_on_postgres_ok(self):
+        _validate_table_live_delivery(_cfg(strategy="native", source_type="postgresql"))
 
-    @pytest.mark.parametrize("stype", ["mysql", "oracle", "snowflake", "sqlite"])
-    def test_cdc_unsupported_source_types_raise(self, stype):
-        with pytest.raises(ValueError, match="cdc not supported"):
-            _validate_table_live_delivery(_cfg(delivery="cdc", source_type=stype))
+    def test_native_on_mongodb_ok(self):
+        _validate_table_live_delivery(_cfg(strategy="native", source_type="mongodb"))
+
+    def test_debezium_on_postgres_with_cdc_ok(self):
+        _validate_table_live_delivery(
+            _cfg(strategy="debezium", source_type="postgresql", source_cdc=object())
+        )
+
+    def test_debezium_on_postgres_without_cdc_raises(self):
+        with pytest.raises(ValueError, match="requires source-level cdc transport"):
+            _validate_table_live_delivery(
+                _cfg(strategy="debezium", source_type="postgresql", source_cdc=None)
+            )
+
+    def test_kafka_without_params_raises(self):
+        with pytest.raises(ValueError, match="requires a kafka params block"):
+            _validate_table_live_delivery(
+                _cfg(strategy="kafka", source_type="postgresql", kafka=None, source_cdc=object())
+            )
+
+    @pytest.mark.parametrize("stype", ["snowflake", "sqlite", "mongodb"])
+    def test_debezium_unsupported_source_types_raise(self, stype):
+        with pytest.raises(ValueError, match="not supported for source type"):
+            _validate_table_live_delivery(_cfg(strategy="debezium", source_type=stype))
+
+    def test_native_unsupported_on_rdbms_raises(self):
+        # A non-PG RDBMS has no native push mechanism → only poll/debezium/kafka.
+        with pytest.raises(ValueError, match="not supported for source type"):
+            _validate_table_live_delivery(_cfg(strategy="native", source_type="mysql"))
 
 
 class TestReconcileLiveEngine:
@@ -58,7 +91,7 @@ class TestReconcileLiveEngine:
                 "schema_name": "public",
                 "table_name": "orders",
                 "live": {
-                    "delivery": "poll",
+                    "strategy": "poll",
                     "watermark_column": "updated_at",
                     "poll_interval": 20,
                     "outputs": [
@@ -71,12 +104,12 @@ class TestReconcileLiveEngine:
                     ],
                 },
             },
-            # cdc rows are handled by providers, not the poll engine → excluded
+            # debezium rows are handled by providers, not the poll engine → excluded
             {
                 "source_id": "pg",
                 "schema_name": "public",
                 "table_name": "events",
-                "live": {"delivery": "cdc", "watermark_column": "ts"},
+                "live": {"strategy": "debezium", "watermark_column": "ts"},
             },
         ]
         conn = AsyncMock()
@@ -121,7 +154,7 @@ class TestRepoUpsertSerializesLive:
             query_id="s1.orders",
             watermark_column="updated_at",
             poll_interval=15,
-            delivery="poll",
+            strategy="poll",
             outputs=[LiveOutputConfig(type="kafka", topic="orders", bootstrap_servers="k:9092")],
         )
         tbl = Table(
@@ -172,7 +205,7 @@ class TestAdminLiveMapping:
             query_id="s1.orders",
             watermark_column="updated_at",
             poll_interval=25,
-            delivery="poll",
+            strategy="poll",
             outputs=[
                 LiveOutputConfigInput(
                     type="kafka", topic="orders", key_column="id", bootstrap_servers="k:9092"
@@ -187,7 +220,7 @@ class TestAdminLiveMapping:
         assert out.query_id == "s1.orders"
         assert out.watermark_column == "updated_at"
         assert out.poll_interval == 25
-        assert out.delivery == "poll"
+        assert out.strategy == "poll"
         assert len(out.outputs) == 1
         assert out.outputs[0].type == "kafka"
         assert out.outputs[0].bootstrap_servers == "k:9092"

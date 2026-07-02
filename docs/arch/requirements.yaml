@@ -17229,6 +17229,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura v2 metadata export directory
 
@@ -17269,6 +17270,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura DDN supergraph project
 
@@ -17309,6 +17311,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura boolean filter expression using operators like _eq, _in, _and, _or, _not
 
@@ -17347,6 +17350,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura v2 metadata export with select_permissions[].columns per role
 
@@ -17382,6 +17386,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura v2 metadata export with insert/update_permissions[].columns per role
 
@@ -17418,6 +17423,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura v2 select_permissions[].filter boolean expression
 
@@ -17456,6 +17462,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura v2 metadata export with object_relationships and array_relationships
 
@@ -17493,6 +17500,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a DDN supergraph with ObjectType.dataConnectorTypeMapping[].fieldMapping entries
 
@@ -17532,6 +17540,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura v2 auth config with JWT jwk_url, claims_map, or admin secret
 
@@ -17570,6 +17579,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a DDN project with AggregateExpression metadata
 
@@ -17611,6 +17621,7 @@
   - tests/unit/test_event_triggers.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura project with event_triggers, remote_schemas, cron_triggers, or webhook-backed
     actions
@@ -18113,6 +18124,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a completed Hasura v2 or DDN conversion
 
@@ -18150,6 +18162,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura v2 source config with kind, database_url, and pool_settings
 
@@ -18187,6 +18200,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura v2 role with delete_permissions on any table
 
@@ -18224,6 +18238,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura v2 source with database_url as an env var reference or unparseable URL
 
@@ -18260,6 +18275,7 @@
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
   - tests/unit/test_inherited_roles_extended.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura project with roles that have no permission entries on any table or action
 
@@ -18296,6 +18312,7 @@
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
   - tests/unit/test_hasura_v2.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a Hasura v2 table with custom_root_fields or custom_name defined
 
@@ -18331,6 +18348,7 @@
   - tests/unit/test_ddn.py
   - tests/unit/test_ddn_converter.py
   - tests/unit/test_hasura_converter.py
+  - tests/steps/steps_hasura_migration_converters.py
   since: 2026-01
   scenario: 'Given a DDN HML project where some ObjectType HML files are missing
 
@@ -22303,31 +22321,33 @@
   - data-engineer
   - app-developer
 - id: REQ-813
-  status: accepted
+  status: complete
   group: 9. Live Data & Events
   category: Subscriptions
   priority: MUST
   type: structural
-  description: >-
-    The `live` block (LiveDeliveryConfig on Table) becomes a unified change-feed / CDC abstraction.
-    Replace the binary `delivery: poll|cdc` field with a multi-strategy model: `strategy: poll|native|debezium|kafka`,
-    each with its own discriminated-union params (poll: watermark_column/poll_interval; native: none; debezium:
-    bootstrap_servers/topic_prefix/schema_registry_url/consumer_group_id; kafka: bootstrap_servers/topic/format/field_mapping/key_column).
-    Fold Table.watermark_column into live.poll.watermark_column. Make query_id and outputs optional so `live`
-    covers both raw table change-feeds (no persisted query) and live persisted-query output fan-out. Topic names
-    for debezium are derived (not per-table): {topic_prefix}.{schema}.{table}.
-  use_case: >-
-    A single `live` config abstraction unifies all capture mechanisms (polling, PostgreSQL LISTEN/NOTIFY,
-    MongoDB change streams, Debezium, arbitrary Kafka deltas), eliminating the misleading binary of "poll vs CDC"
-    where poll IS a change-feed mechanism. Strategy-specific params prevent schema pollution. Optional query_id
-    and outputs enable both low-level table subscriptions and high-level live persisted-query delivery.
+  description: 'The `live` block (LiveDeliveryConfig on Table) is a unified change-feed / CDC abstraction.
+    The binary `delivery: poll|cdc` field is replaced by a multi-strategy model: `strategy: poll|native|debezium|kafka`.
+    Per-table params: poll → watermark_column/poll_interval; native → none; kafka → LiveKafkaParams
+    (topic/format/key_column/field_mapping). Reconciled with REQ-824: Debezium/Kafka delta-transport
+    (bootstrap_servers/topic_prefix/schema_registry_url/consumer_group_id) is inherited from Source.cdc,
+    entered once per source — NOT repeated in per-table debezium params. query_id and outputs are optional
+    so `live` covers both raw table change-feeds and live persisted-query output fan-out. Debezium topic
+    names are derived from the source transport: {topic_prefix}.{schema}.{table}.'
+  use_case: A single `live` config abstraction unifies all capture mechanisms (polling, PostgreSQL LISTEN/NOTIFY,
+    MongoDB change streams, Debezium, arbitrary Kafka deltas), eliminating the misleading binary of "poll
+    vs CDC" where poll IS a change-feed mechanism. Strategy-specific params prevent schema pollution.
+    Optional query_id and outputs enable both low-level table subscriptions and high-level live persisted-query
+    delivery.
   code:
   - provisa/core/models.py
   tests:
-  - tests/unit/test_live_config_model.py
-  target: 2026-Q3
+  - tests/unit/test_live_delivery_config.py
+  since: "2026-07"
   related_reqs:
   - REQ-565
+  - REQ-814
+  - REQ-824
   - REQ-260
   - REQ-261
   - REQ-285
@@ -22337,35 +22357,39 @@
   - data-engineer
   - ops
 - id: REQ-814
-  status: accepted
+  status: complete
   group: 9. Live Data & Events
   category: Subscriptions
   priority: MUST
   type: behavioral
-  description: >-
-    Provider selection (get_provider in provisa/subscriptions/registry.py) must dispatch on
-    `live.strategy` and its nested params, NOT on source_type. Validation capability-gates strategy by source_type:
-    warehouses → poll only; MongoDB → native/poll; PostgreSQL → native/debezium/poll/kafka; non-PG RDBMS
-    (MySQL, MariaDB, SQL Server, Oracle) + Debezium connector → debezium/poll/kafka; Kafka topics → kafka only.
-    This removes the synthetic "debezium" source_type (currently at registry.py:34) that conflates delta-transport
-    with query-transport.
-  use_case: >-
-    Dispatching on strategy instead of source_type correctly models that strategy is a choice of delta-capture
-    mechanism (independent of where the data is queried from), not a data source type. Capability-gating per
-    source_type prevents misconfiguration (e.g., native change streams on Snowflake).
+  description: 'Provider selection (_resolve_provider_type in provisa/api/data/subscribe.py + get_provider
+    in provisa/subscriptions/registry.py) dispatches on `live.strategy`, NOT on source_type. Validation
+    capability-gates strategy by source_type: warehouses → poll only; MongoDB → native/poll; PostgreSQL →
+    native/debezium/poll/kafka; non-PG RDBMS (MySQL, MariaDB, SQL Server, Oracle) → debezium/poll/kafka
+    (debezium/kafka require source-level cdc transport per REQ-824); Kafka topics → kafka only. No source
+    is registered with a synthetic "debezium" type; strategy=debezium routes to the Debezium provider.'
+  use_case: Dispatching on strategy instead of source_type correctly models that strategy is a choice
+    of delta-capture mechanism (independent of where the data is queried from), not a data source type.
+    Capability-gating per source_type prevents misconfiguration (e.g., native change streams on Snowflake).
   code:
+  - provisa/api/data/subscribe.py
   - provisa/subscriptions/registry.py
+  - provisa/core/config_loader.py
   - provisa/core/models.py
   tests:
-  - tests/unit/test_provider_strategy_dispatch.py
-  - tests/unit/test_live_strategy_validation.py
-  - tests/integration/test_live_provider_selection.py
-  target: 2026-Q3
-  scenario: |
-    Given a PostgreSQL table with live.strategy=native
+  - tests/unit/test_source_cdc_config.py
+  - tests/unit/test_live_delivery_config.py
+  - tests/steps/steps_subscriptions.py
+  since: "2026-07"
+  scenario: 'Given a PostgreSQL table with live.strategy=native
+
     When get_provider() is called
+
     Then PgNotificationProvider is instantiated
+
     And the source_type is not used to dispatch
+
+    '
   related_reqs:
   - REQ-565
   - REQ-260
@@ -22380,16 +22404,14 @@
   category: Docker Compose Organization
   priority: MUST
   type: infrastructure
-  description: >-
-    Telemetry sink services (otel-collector, prometheus, tempo, grafana, otlp2parquet) are organized
-    into an independently start/stoppable compose project (provisa-observability) separate from the core
-    runtime stack. The app degrades gracefully (fire-and-forget) when no OTLP collector is listening.
-    MinIO base definitions move to docker-compose.core.yml; Trino and trino-worker remain core with
-    observability-specific env/exporter overlays applied only when telemetry is enabled.
-  use_case: >-
-    Telemetry infrastructure is optional overhead for test and CI runs. Isolating telemetry sinks
-    reduces startup time and resource consumption while ensuring app correctness does not depend on
-    collector availability.
+  description: Telemetry sink services (otel-collector, prometheus, tempo, grafana, otlp2parquet) are
+    organized into an independently start/stoppable compose project (provisa-observability) separate from
+    the core runtime stack. The app degrades gracefully (fire-and-forget) when no OTLP collector is listening.
+    MinIO base definitions move to docker-compose.core.yml; Trino and trino-worker remain core with observability-specific
+    env/exporter overlays applied only when telemetry is enabled.
+  use_case: Telemetry infrastructure is optional overhead for test and CI runs. Isolating telemetry sinks
+    reduces startup time and resource consumption while ensuring app correctness does not depend on collector
+    availability.
   code:
   - docker-compose.core.yml
   - docker-compose.observability.yml
@@ -22406,16 +22428,14 @@
   category: Docker Compose Organization
   priority: SHOULD
   type: infrastructure
-  description: >-
-    Demo/sample upstream sources (graphql-demo, petstore-mock) are organized into an independently
-    start/stoppable compose project separate from the core runtime, categorized alongside other
-    test-only services (neo4j, elasticsearch, kafka, schema-registry, fuseki, mongodb). Integration tests
-    requiring these fixtures bring them up via harness markers rather than assuming they are already running
-    in the dev stack.
-  use_case: >-
-    Demo sources serve as test fixtures for federation and remote-source integration tests.
-    Organizing them with other test services ensures test harness controls their lifecycle and
-    reduces assumptions about the dev environment state.
+  description: Demo/sample upstream sources (graphql-demo, petstore-mock) are organized into an independently
+    start/stoppable compose project separate from the core runtime, categorized alongside other test-only
+    services (neo4j, elasticsearch, kafka, schema-registry, fuseki, mongodb). Integration tests requiring
+    these fixtures bring them up via harness markers rather than assuming they are already running in
+    the dev stack.
+  use_case: Demo sources serve as test fixtures for federation and remote-source integration tests. Organizing
+    them with other test services ensures test harness controls their lifecycle and reduces assumptions
+    about the dev environment state.
   code:
   - docker-compose.demo.yml
   - docker-compose.test.yml
@@ -22436,14 +22456,12 @@
   category: Trino Memory Management
   priority: MUST
   type: infrastructure
-  description: >-
-    Trino memory overflow handling uses Fault-Tolerant Execution (FTE) with task.retry-policy=TASK
-    and task.low-memory-killer.policy=total-reservation-on-blocked-nodes. Docker deployments use
-    a shared named-volume filesystem exchange manager (trino/etc/exchange-manager.properties,
-    /data/trino/exchange). Helm deployments require an S3/MinIO-backed exchange manager with a MinIO
-    bucket-init Job or external S3 endpoint+credentials, enforced by a fail-loud guard.
-  use_case: >-
-    FTE replaces legacy spill-to-disk (deprecated in Trino 481) and mitigates noisy-neighbor OOM
+  description: Trino memory overflow handling uses Fault-Tolerant Execution (FTE) with task.retry-policy=TASK
+    and task.low-memory-killer.policy=total-reservation-on-blocked-nodes. Docker deployments use a shared
+    named-volume filesystem exchange manager (trino/etc/exchange-manager.properties, /data/trino/exchange).
+    Helm deployments require an S3/MinIO-backed exchange manager with a MinIO bucket-init Job or external
+    S3 endpoint+credentials, enforced by a fail-loud guard.
+  use_case: FTE replaces legacy spill-to-disk (deprecated in Trino 481) and mitigates noisy-neighbor OOM
     in multi-tenant deployments by isolating task memory failures and enabling graceful task retry.
   code:
   - docker-compose.core.yml
@@ -22454,7 +22472,7 @@
   - helm/provisa/templates/trino-exchange-bucket-job.yaml
   tests:
   - tests/integration/test_trino_fte_exchange.py
-  since: "2026-07"
+  since: 2026-07
   stakeholders:
   - ops
   - data-engineer
@@ -22464,14 +22482,12 @@
   category: Cypher Mutations
   priority: MUST
   type: behavioral
-  description: >-
-    Cypher supports WRITES via the /data/cypher endpoint. CREATE, DELETE, and SET statements execute
-    as direct table writes through the same write pipeline as GraphQL and SQL mutations, with RLS injection,
-    dialect transpilation, and post-mutation hooks. Non-direct write patterns (MERGE, DETACH, REMOVE)
-    are unsupported and rejected. All writes are governed by table/view write rights like any other write.
-    This supersedes REQ-346 (read-only constraint), which is now inaccurate.
-  use_case: >-
-    Write support enables graph users to mutate data via Cypher while maintaining governance consistency
+  description: Cypher supports WRITES via the /data/cypher endpoint. CREATE, DELETE, and SET statements
+    execute as direct table writes through the same write pipeline as GraphQL and SQL mutations, with
+    RLS injection, dialect transpilation, and post-mutation hooks. Non-direct write patterns (MERGE, DETACH,
+    REMOVE) are unsupported and rejected. All writes are governed by table/view write rights like any
+    other write. This supersedes REQ-346 (read-only constraint), which is now inaccurate.
+  use_case: Write support enables graph users to mutate data via Cypher while maintaining governance consistency
     with SQL and GraphQL mutations.
   code:
   - provisa/api/rest/cypher_router.py
@@ -22487,14 +22503,20 @@
   - REQ-345
   - REQ-003
   target: 2026-Q3
-  scenario: |
-    Given a valid CREATE statement targeting a table with write rights
+  scenario: 'Given a valid CREATE statement targeting a table with write rights
+
     When executed via the /data/cypher endpoint
+
     Then it executes as a direct table write, returns affected_rows, and applies RLS + post-mutation hooks
 
+
     Given a MERGE or DETACH statement
+
     When parsed
+
     Then it is rejected at parse time with a precise error
+
+    '
   stakeholders:
   - data-engineer
   - compliance
@@ -22504,15 +22526,13 @@
   category: Live Delivery Configuration
   priority: MUST
   type: behavioral
-  description: >-
-    Per-table live delivery configuration is now configurable via the admin GraphQL API and admin UI
-    (TablesPage). Configuration is persisted on registered_tables.live (JSONB column). Configuration includes:
-    query_id (identifies the live query), watermark_column (tracks delivery progress), poll_interval (frequency
-    in seconds), delivery mode ("poll" or "cdc"), and outputs array (SSE or Kafka sinks). Previously configuration
-    was YAML-only.
-  use_case: >-
-    UI-based configuration makes live delivery settings accessible to non-YAML-fluent operators and enables
-    runtime changes without server restart.
+  description: 'Per-table live delivery configuration is now configurable via the admin GraphQL API and
+    admin UI (TablesPage). Configuration is persisted on registered_tables.live (JSONB column). Configuration
+    includes: query_id (identifies the live query), watermark_column (tracks delivery progress), poll_interval
+    (frequency in seconds), delivery mode ("poll" or "cdc"), and outputs array (SSE or Kafka sinks). Previously
+    configuration was YAML-only.'
+  use_case: UI-based configuration makes live delivery settings accessible to non-YAML-fluent operators
+    and enables runtime changes without server restart.
   code:
   - provisa/api/admin/types.py
   - provisa/api/admin/schema.py
@@ -22521,15 +22541,22 @@
   - provisa-ui/src/pages/TablesPage.tsx
   tests:
   - tests/unit/test_live_delivery_config.py
-  since: "2026-07"
-  scenario: |
-    Given the admin GraphQL API for table mutations
-    When updateTable is called with live configuration (query_id, watermark_column, poll_interval, delivery, outputs)
+  since: 2026-07
+  scenario: 'Given the admin GraphQL API for table mutations
+
+    When updateTable is called with live configuration (query_id, watermark_column, poll_interval, delivery,
+    outputs)
+
     Then the configuration is persisted to registered_tables.live and the live engine is notified
 
+
     Given the admin UI TablesPage
+
     When an operator edits live config for a table
+
     Then changes are reflected in the database and take effect without server restart
+
+    '
   stakeholders:
   - ops
   - data-engineer
@@ -22539,25 +22566,27 @@
   category: Live Query Routing
   priority: MUST
   type: behavioral
-  description: >-
-    Live poll execution routes through Trino (federated query), not the PostgreSQL connection pool.
-    Any federated SQL source with a watermark column is pollable. The engine's pg_pool is used only
-    for watermark bookkeeping (live_query_state table). This enables polling over remote sources
-    (not just PostgreSQL) via Trino's federation layer.
-  use_case: >-
-    Routing through Trino enables live polling of any federated SQL source (e.g., BigQuery, Snowflake,
+  description: Live poll execution routes through Trino (federated query), not the PostgreSQL connection
+    pool. Any federated SQL source with a watermark column is pollable. The engine's pg_pool is used only
+    for watermark bookkeeping (live_query_state table). This enables polling over remote sources (not
+    just PostgreSQL) via Trino's federation layer.
+  use_case: Routing through Trino enables live polling of any federated SQL source (e.g., BigQuery, Snowflake,
     S3 via Iceberg) without embedding source-specific clients into the live engine.
   code:
   - provisa/live/engine.py
   - provisa/api/app.py
   tests:
   - tests/unit/test_live_engine.py
-  since: "2026-07"
-  scenario: |
-    Given a live poll query targeting a federated BigQuery table
+  since: 2026-07
+  scenario: 'Given a live poll query targeting a federated BigQuery table
+
     When the poll interval triggers
+
     Then the query executes through Trino (not the PostgreSQL pool)
+
     And the watermark is persisted to live_query_state in PostgreSQL
+
+    '
   stakeholders:
   - data-engineer
 - id: REQ-821
@@ -22566,25 +22595,27 @@
   category: Live Delivery Mechanisms
   priority: MUST
   type: constraint
-  description: >-
-    PostgreSQL data is never polled for live delivery. PostgreSQL live delivery uses delivery=cdc
-    (LISTEN/NOTIFY with database triggers). Poll delivery (delivery=poll) is reserved for non-push
-    federated sources reached through Trino. This prevents duplicate load on PostgreSQL replication
-    and uses push mechanisms where available.
-  use_case: >-
-    PostgreSQL's native LISTEN/NOTIFY is more efficient than polling. Restricting poll to federated
+  description: PostgreSQL data is never polled for live delivery. PostgreSQL live delivery uses delivery=cdc
+    (LISTEN/NOTIFY with database triggers). Poll delivery (delivery=poll) is reserved for non-push federated
+    sources reached through Trino. This prevents duplicate load on PostgreSQL replication and uses push
+    mechanisms where available.
+  use_case: PostgreSQL's native LISTEN/NOTIFY is more efficient than polling. Restricting poll to federated
     sources avoids duplicate query load on the primary database.
   code:
   - provisa/live/engine.py
   - provisa/core/config_loader.py
   tests:
   - tests/unit/test_live_delivery_config.py
-  since: "2026-07"
-  scenario: |
-    Given a registered table backed by PostgreSQL
+  since: 2026-07
+  scenario: 'Given a registered table backed by PostgreSQL
+
     When live delivery is configured
+
     Then delivery must be set to "cdc", not "poll"
+
     And a parse-time or runtime validation rejects delivery=poll for PostgreSQL sources
+
+    '
   stakeholders:
   - data-engineer
   - ops
@@ -22594,28 +22625,32 @@
   category: Live Delivery Mechanisms
   priority: MUST
   type: constraint
-  description: >-
-    delivery=cdc is restricted to source types with a real push provider in the subscription registry:
-    postgresql (LISTEN/NOTIFY triggers), debezium and kafka (Kafka consumers), mongodb (change streams).
-    All other sources default to delivery=poll. CDC connection config is inherited from the source definition,
-    never per-table. This ensures CDC is only used when a push mechanism is available.
-  use_case: >-
-    Restricting CDC to sources with native push mechanisms prevents attempts to use CDC on sources
+  description: 'delivery=cdc is restricted to source types with a real push provider in the subscription
+    registry: postgresql (LISTEN/NOTIFY triggers), debezium and kafka (Kafka consumers), mongodb (change
+    streams). All other sources default to delivery=poll. CDC connection config is inherited from the
+    source definition, never per-table. This ensures CDC is only used when a push mechanism is available.'
+  use_case: Restricting CDC to sources with native push mechanisms prevents attempts to use CDC on sources
     that don't support it. Connection config inheritance avoids credential duplication per table.
   code:
   - provisa/core/config_loader.py
   - provisa/subscriptions/registry.py
   tests:
   - tests/unit/test_live_delivery_config.py
-  since: "2026-07"
-  scenario: |
-    Given a source of type S3 (no native push mechanism)
+  since: 2026-07
+  scenario: 'Given a source of type S3 (no native push mechanism)
+
     When live delivery config is created with delivery=cdc
+
     Then it is rejected or silently downgraded to delivery=poll
 
+
     Given a PostgreSQL source with connection credentials
+
     When CDC is enabled on any table from that source
-    Then the CDC provider uses the source's connection config, not per-table overrides
+
+    Then the CDC provider uses the source''s connection config, not per-table overrides
+
+    '
   stakeholders:
   - data-engineer
   - ops
@@ -22625,12 +22660,10 @@
   category: Live Delivery Configuration
   priority: MUST
   type: behavioral
-  description: >-
-    The LiveEngine reconciles poll jobs from the database at startup and after every admin mutation
-    via _rebuild_schemas(). This ensures that admin-set live config takes effect without server restart.
-    Configuration changes trigger immediate engine reconciliation.
-  use_case: >-
-    Startup reconciliation catches live jobs even if the engine crashes mid-execution. Admin mutations
+  description: The LiveEngine reconciles poll jobs from the database at startup and after every admin
+    mutation via _rebuild_schemas(). This ensures that admin-set live config takes effect without server
+    restart. Configuration changes trigger immediate engine reconciliation.
+  use_case: Startup reconciliation catches live jobs even if the engine crashes mid-execution. Admin mutations
     trigger immediate reconciliation so operators see changes reflected in real-time without restart overhead.
   code:
   - provisa/live/engine.py
@@ -22638,16 +22671,23 @@
   tests:
   - tests/unit/test_live_engine.py
   - tests/unit/test_live_delivery_config.py
-  since: "2026-07"
-  scenario: |
-    Given live config stored in registered_tables.live
+  since: 2026-07
+  scenario: 'Given live config stored in registered_tables.live
+
     When the LiveEngine starts
+
     Then it queries the database for all active live configs and rebuilds poll jobs
 
+
     Given live config modified via admin GraphQL API
+
     When the mutation completes
+
     Then _rebuild_schemas() is called to reconcile the engine immediately
+
     And the new poll schedule takes effect without restart
+
+    '
   stakeholders:
   - ops
   - data-engineer
@@ -22658,18 +22698,16 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: >-
-    Source-level CDC transport configuration. Debezium/Kafka delta-transport (bootstrap_servers,
-    topic_prefix, schema_registry_url, consumer_group_id) is entered ONCE per source via a `cdc`
-    block on the Source model (persisted to sources.cdc JSONB), never repeated per-table. Per-table
-    live config only selects delivery=cdc; the runtime inherits transport from the source. A
-    source-level cdc block is only valid on CDC-capable RDBMS sources (postgresql uses native
-    LISTEN/NOTIFY and needs no transport; mysql/mariadb/sqlserver/oracle require it to enable
-    delivery=cdc via Debezium). Provider dispatch routes non-PG RDBMS sources with a cdc block to
-    the Debezium provider. Polling remains per-table (watermark_column, poll_interval).
-  use_case: >-
-    Eliminates repeated data entry of Debezium/Kafka connection details across every table of a
-    source; transport is a per-source connector property, not a per-table one.
+  description: Source-level CDC transport configuration. Debezium/Kafka delta-transport (bootstrap_servers,
+    topic_prefix, schema_registry_url, consumer_group_id) is entered ONCE per source via a `cdc` block
+    on the Source model (persisted to sources.cdc JSONB), never repeated per-table. Per-table live config
+    only selects delivery=cdc; the runtime inherits transport from the source. A source-level cdc block
+    is only valid on CDC-capable RDBMS sources (postgresql uses native LISTEN/NOTIFY and needs no transport;
+    mysql/mariadb/sqlserver/oracle require it to enable delivery=cdc via Debezium). Provider dispatch
+    routes non-PG RDBMS sources with a cdc block to the Debezium provider. Polling remains per-table (watermark_column,
+    poll_interval).
+  use_case: Eliminates repeated data entry of Debezium/Kafka connection details across every table of
+    a source; transport is a per-source connector property, not a per-table one.
   code:
   - provisa/core/models.py
   - provisa/core/config_loader.py
@@ -22686,18 +22724,28 @@
   tests:
   - tests/unit/test_source_cdc_config.py
   - provisa-ui/src/__tests__/liveCapability.test.ts
-  scenario: |
-    Given a MySQL source with a source-level cdc block (bootstrap_servers, topic_prefix)
+  scenario: 'Given a MySQL source with a source-level cdc block (bootstrap_servers, topic_prefix)
+
     When a table from that source sets live.delivery=cdc
-    Then validation passes and the runtime routes the subscription to the Debezium provider using the source's transport
+
+    Then validation passes and the runtime routes the subscription to the Debezium provider using the
+    source''s transport
+
 
     Given a MySQL source WITHOUT a cdc block
+
     When a table sets live.delivery=cdc
+
     Then config validation rejects it (no push mechanism)
 
+
     Given a warehouse source (e.g. snowflake)
+
     When a cdc block is set on it
+
     Then validation rejects the cdc block as unsupported for that source type
+
+    '
   related_reqs:
   - REQ-813
   - REQ-814
@@ -22711,44 +22759,50 @@
   category: Execution & Routing
   priority: SHOULD
   type: structural
-  target: "2026-Q4"
+  target: 2026-Q4
   description: >-
-    The Provisa storage platform is an abstract SQL execution backend behind a single contract
-    (SqlBackend). The compiler produces a dialect-neutral SQL intermediate representation; the
-    physical step is per-backend dispatch, where SQLGlot transpiles the IR to the backend's declared
-    dialect (execute(ir_sql, params) + a dialect() capability). No governance/compilation logic is
-    duplicated per backend. Federation-vs-warehouse is NOT engine identity; it is a property of each
-    backend's capability profile, which has two axes: (a) REACHABILITY — for each source type, which
-    residency mode the backend supports (live-attach / zero-copy-scan / must-copy; see REQ-826); and
-    (b) SCALE CEILING — single-node/memory-bound vs distributed. A backend advertises this profile
-    rather than a has_connectors boolean, and dispatch/routing consults it. Concrete backends:
-    DuckDB is a full federation engine whose reachability nearly matches Trino's: native ATTACH for
-    postgres/mysql/sqlite; ODBC (community nanodbc odbc_attach, or the DuckDB-team odbc/odbc_scanner
-    functions) for any source with an ODBC driver; ADBC (community adbc_scanner) for ADBC-driver
-    sources, preferred where available because it is Arrow-native and avoids ODBC's row-oriented
-    penalty; NoSQL via community extensions (mongo ATTACH TYPE MONGO, cassandra scan/query/ATTACH,
-    elasticsearch_query); and zero-copy file scans. Its ONLY differentiator vs Trino is the scale
-    ceiling (single-node, memory-bound, no distributed shuffle), which makes it ideal on a developer
-    desktop with no Trino dependency. Because a backend may offer several transports for the same
-    source, the reachability profile RANKS them (native > ADBC > ODBC) rather than treating reach as
-    binary. The current Trino federation engine has broad reach and distributed scale. External
-    warehouses (Snowflake, Databricks, Dremio) are reused as backends to leverage a customer's
-    existing infrastructure. A pure RDBMS backend (e.g. SQL Server) has near-zero reachability and is
-    copy-only. The backend is selected at deployment time via top-level config
-    (backend: duckdb | trino | snowflake | databricks | dremio | ...), not per-source. All query
-    dispatch that today reads the hardcoded Trino singleton (provisa/api/app.py,
-    provisa/api/data/endpoint.py, provisa/executor/trino.py) must route through the SqlBackend
-    contract. The IR->physical mapping is intentionally thin; the divergence is confined to dialect
-    transpilation and how catalogs are made resident (REQ-826).
+    The Provisa FederationEngine is a pluggable, abstract execution substrate behind a single contract.
+    It is one of four primitives composed as a data-flow pipeline:
+    DATASOURCES → FEDERATION ENGINE → SEMANTIC LAYER → EXECUTION PIPELINE. DATASOURCES are external
+    systems with a capability profile. The FEDERATION ENGINE (this requirement) federates those
+    datasources into one raw unified queryable surface; the method per source is the federation strategy
+    (REQ-826). The SEMANTIC LAYER is the governed virtual model projected over that surface —
+    registered tables/columns, relationships, domains, RLS, masking — engine-independent; it is where
+    governance is DEFINED and the thing queries target. The EXECUTION PIPELINE turns a governed query
+    into results in two stages: TRANSPILE (SQLGlot rewrites the dialect-neutral governed IR to the
+    engine's declared dialect; execute(ir_sql, params) + a dialect() capability) and TRANSPORT (dispatch
+    the SQL to the engine, execute, and stream results back over the client protocol — pgwire, Bolt,
+    Arrow Flight, GraphQL). No governance or compilation logic is duplicated per engine — governance is
+    defined in the semantic layer and ENFORCED when the query compiles to IR; the engine only executes.
+
+    There is no "federation vs warehouse" dichotomy: EVERY engine federates; only the METHOD of
+    federation changes with capability (see REQ-826). An engine advertises a capability profile with two
+    axes: (a) REACH — for each datasource, which federation strategies it can support; and (b) SCALE —
+    single-node/memory-bound vs distributed. The profile RANKS transports per source (native > ADBC >
+    ODBC), not a has_connectors boolean.
+
+    Concrete engines: DuckDB is a full federation engine whose reach nearly matches Trino's — native
+    ATTACH for postgres/mysql/sqlite; ODBC (community nanodbc odbc_attach, or the DuckDB-team
+    odbc/odbc_scanner functions) for any ODBC source; ADBC (community adbc_scanner, Arrow-native,
+    preferred over ODBC); NoSQL via community extensions (mongo ATTACH TYPE MONGO, cassandra
+    scan/query/ATTACH, elasticsearch_query); and zero-copy file scans. Its ONLY differentiator vs Trino
+    is SCALE (single-node, memory-bound, no distributed shuffle), making it ideal on a developer desktop
+    with no Trino dependency. Trino has broad reach and distributed scale. Snowflake/Databricks/Dremio are
+    reused as engines to leverage a customer's existing infrastructure. A pure RDBMS (e.g. SQL Server) has
+    near-zero reach and federates only by the materialized strategy. The engine is selected at deployment
+    via top-level config (engine: duckdb | trino | snowflake | databricks | dremio | ...), not per-source.
+    All query dispatch that today reads the hardcoded Trino singleton (provisa/api/app.py,
+    provisa/api/data/endpoint.py, provisa/executor/trino.py) must route through the FederationEngine
+    contract. The IR->physical mapping is intentionally thin — the divergence is confined to dialect
+    transpilation and the per-source federation strategy (REQ-826).
   use_case: >-
-    Decouples Provisa's governed data layer from any single execution vendor. The same compiler, IR,
-    governance, and multi-protocol query surface run on an embedded desktop engine (DuckDB, no
-    Trino), the Trino federation engine, or a customer's existing warehouse (Snowflake/Databricks/
-    Dremio) — making the execution substrate a swappable deployment choice and concentrating Provisa's
-    IP in the governance, compilation, planning, and residency layers rather than the engine. The
-    intended deployment model is: develop on DuckDB (laptop, zero infra, full governance and full
-    source reach), then scale out to Trino/Snowflake/Databricks in production with the same compiler,
-    IR, governance, and query surface unchanged.
+    Decouples Provisa's governed semantic layer from any single execution vendor. The same semantic
+    layer, execution pipeline, governance, IR, and multi-protocol query surface run on an embedded desktop
+    engine (DuckDB, no Trino), the Trino federation engine, or a customer's existing warehouse
+    (Snowflake/Databricks/Dremio) — making the engine a swappable deployment choice and concentrating
+    Provisa's IP in the semantic layer, pipeline, governance, and federation-strategy logic rather than
+    the engine. Intended model: develop on DuckDB (laptop, zero infra, full governance and full source
+    reach), then scale out to Trino/Snowflake/Databricks in production, unchanged.
   code:
   - provisa/api/app.py
   - provisa/api/data/endpoint.py
@@ -22763,39 +22817,38 @@
   category: Caching
   priority: SHOULD
   type: behavioral
-  target: "2026-Q4"
+  target: 2026-Q4
   description: >-
-    Residency and freshness management for the warehouse backend (REQ-825). A backend with no live
-    connectors must make every referenced source table resident in backend storage before it can be
-    queried (ensure_resident): RDBMS, NoSQL, and API sources are loaded/refreshed into the backend
-    rather than federated. This unifies today's three separate residency mechanisms — OpenAPI PG
-    response cache (provisa/openapi/pg_cache.py), NoSQL mapping catalogs, and warm-tables/MV
-    materialization — into one operation on the warehouse backend. On a federation backend
-    ensure_resident is a no-op for federatable RDBMS sources and preserves current PG-cache behavior
-    for NoSQL/API. Because a warehouse has no live path, cache_ttl changes semantics per backend:
-    on federation it bounds staleness of a live pull; on warehouse it is the reload interval, making
-    freshness a load-scheduling and invalidation concern rather than a query-time one. The router
-    must refuse DIRECT and live-TRINO routes when the active backend reports has_connectors=False and
-    force the resident/cached path.
+    Federation strategy and freshness management — the datasources → federation engine arrow of REQ-825.
+    The binding between a datasource table and the engine is a FEDERATION STRATEGY: the method by which
+    that source joins the engine's unified surface. federate(datasource, table) resolves each table to
+    one of three strategies and returns which was chosen, because freshness differs per strategy:
+    (1) VIRTUAL — the engine reaches the source live (a connector, or DuckDB ATTACH to
+    postgres/mysql/sqlite, or a Trino connector); no copy, always fresh, cache_ttl irrelevant.
+    (2) SCAN — the source is a file/object the engine reads in place, exposed as a CREATE VIEW with no
+    data moved; freshness follows the underlying file, cache_ttl irrelevant. For DuckDB this spans
+    read_parquet/read_csv/read_json, httpfs over S3/HTTP/GCS/Azure, Iceberg/Delta via extension, ATTACH
+    of external DuckDB/SQLite, and other scanner extensions; the engine declares what it can scan.
+    (3) MATERIALIZED — no virtual or scan representation (live APIs, NoSQL, or an RDBMS deliberately
+    cached for latency); data is INSERTed/COPYed in. MATERIALIZED is the ONLY strategy where cache_ttl
+    means a reload interval and the load-scheduling/invalidation logic runs; VIRTUAL and SCAN are
+    effectively free.
 
-    ensure_resident is not a boolean; it resolves each source table to one of three residency modes
-    and returns which mode was chosen, because freshness semantics differ per mode: (1) LIVE/NATIVE —
-    the backend reaches the source directly (a connector, or DuckDB ATTACH to postgres/mysql/sqlite,
-    or a Trino connector); no copy, always fresh, cache_ttl irrelevant. (2) ZERO-COPY VIEW — the
-    source is a file/object the engine can scan in place, exposed as a CREATE VIEW with no data moved;
-    freshness follows the underlying file, cache_ttl irrelevant. For DuckDB this spans read_parquet/
-    read_csv/read_json, httpfs over S3/HTTP/GCS/Azure, Iceberg/Delta via extension, ATTACH of
-    external DuckDB/SQLite databases, and other DuckDB table-function/extension scanners; the backend
-    declares which source representations it can scan. (3) MATERIALIZE/COPY — no live or scannable
-    representation (live APIs, NoSQL, or an RDBMS deliberately cached for latency); data is
-    INSERTed/COPYed in. Mode 3 is the ONLY mode where cache_ttl means a reload interval and the
-    load-scheduling/invalidation logic runs; modes 1 and 2 are effectively free. Each backend
-    declares its own reachability and scan capability, so the same source may resolve to different
-    modes on different backends.
+    The federation strategy is STATEFUL — it owns residency, reload state, and freshness; the execution
+    pipeline (transpile → transport) is stateless per query and must not carry this state. The chosen
+    strategy depends on BOTH datasource capability and engine capability, so the same source may federate
+    by different strategies on different engines. This unifies today's three separate mechanisms —
+    OpenAPI PG response cache (provisa/openapi/pg_cache.py), NoSQL mapping catalogs, and warm-tables/MV
+    materialization — into one federate() operation. NoSQL scanners (mongo, cassandra, elasticsearch)
+    infer schema on read; because governance in the semantic layer binds to columns, federate() MUST pin
+    the schema on the CREATE VIEW from the semantic layer's mapping (REQ-251), never trust re-inference.
+    The router must not attempt a live/VIRTUAL route when federate() reports only a MATERIALIZED strategy
+    for that source; it uses the strategy federate() returns.
   use_case: >-
-    Concentrates the real complexity of the storage-platform abstraction — residency, reload
-    scheduling, and invalidation — in one contract method, so non-federatable sources (NoSQL, APIs)
-    are served from local storage on a warehouse deployment with predictable freshness.
+    Concentrates the real complexity of federation — strategy selection, residency, reload scheduling,
+    and invalidation — in one stateful federate() operation, so any datasource (RDBMS, files, NoSQL,
+    APIs) joins the engine's surface by the best available strategy with predictable freshness,
+    independent of which engine is deployed.
   code:
   - provisa/executor/trino.py
   - provisa/transpiler/router.py
@@ -22805,18 +22858,22 @@
   - provisa/cache/hot_tables.py
   - provisa/core/config_loader.py
   scenario: |
-    Given the platform is deployed with backend=warehouse (has_connectors=False)
-    When a query references an OpenAPI source table
-    Then the table is loaded/refreshed into backend storage via ensure_resident and queried in place
-    And the router does not attempt a live federated pull
+    Given an engine that can only materialize an OpenAPI datasource
+    When a query references that source
+    Then federate() returns the MATERIALIZED strategy, loads/refreshes the data, and the query reads it in place
+    And the router does not attempt a live/VIRTUAL route
 
-    Given backend=warehouse and a table with cache_ttl=300
+    Given a MATERIALIZED strategy with cache_ttl=300
     When the table has not been reloaded within 300 seconds
-    Then ensure_resident reloads it before the query executes (ttl means reload interval)
+    Then federate() reloads it before the query executes (cache_ttl means reload interval)
 
-    Given the platform is deployed with backend=federation
-    When a query references a single RDBMS source table
-    Then ensure_resident is a no-op and the query routes DIRECT or live-TRINO as today
+    Given an engine that can ATTACH an RDBMS datasource live
+    When a query references that source
+    Then federate() returns the VIRTUAL strategy and the query reads it live with no copy
+
+    Given a NoSQL datasource federated by SCAN or MATERIALIZED
+    When the view is created
+    Then the schema is pinned from the semantic layer mapping, not inferred
   related_reqs:
   - REQ-825
   - REQ-827
@@ -22826,25 +22883,22 @@
   category: Execution & Routing
   priority: MUST
   type: constraint
-  target: "2026-Q4"
-  description: >-
-    Governance-parity conformance across backends. Any backend admitted to the SqlBackend contract
-    (REQ-825) MUST produce byte-identical governed results — RLS filtering, column masking,
-    relationship-join enforcement, and row/aggregate output — as the reference backend for the same
-    query and same identity. SQLGlot transpiles syntax, but semantic edges differ per engine (NULL
-    ordering, type coercion, decimal/numeric precision, regex and collation semantics, timezone and
-    timestamp handling, string comparison case sensitivity); these must not change which rows are
-    visible, which cells are masked, or which joins are enforced. A backend is only certified by
-    passing a shared governance-parity conformance suite run against a fixed golden dataset and
-    identity matrix; results are diffed against the reference backend and any divergence fails
-    certification. This is a hard gate: an uncertified backend MUST NOT be selectable in production
-    config (REQ-825). The suite is authoritative for DuckDB, Trino, Snowflake, Databricks, Dremio,
-    and any future backend.
-  use_case: >-
-    Protects the vendor-independence claim: the governed data layer is only truly engine-agnostic if
-    identical governance decisions are provably reproduced on every execution substrate. Without a
-    conformance gate, a transpilation or semantic difference could silently leak masked or
-    RLS-filtered data on one backend but not another.
+  target: 2026-Q4
+  description: 'Governance-parity conformance across backends. Any backend admitted to the SqlBackend
+    contract (REQ-825) MUST produce byte-identical governed results — RLS filtering, column masking, relationship-join
+    enforcement, and row/aggregate output — as the reference backend for the same query and same identity.
+    SQLGlot transpiles syntax, but semantic edges differ per engine (NULL ordering, type coercion, decimal/numeric
+    precision, regex and collation semantics, timezone and timestamp handling, string comparison case
+    sensitivity); these must not change which rows are visible, which cells are masked, or which joins
+    are enforced. A backend is only certified by passing a shared governance-parity conformance suite
+    run against a fixed golden dataset and identity matrix; results are diffed against the reference backend
+    and any divergence fails certification. This is a hard gate: an uncertified backend MUST NOT be selectable
+    in production config (REQ-825). The suite is authoritative for DuckDB, Trino, Snowflake, Databricks,
+    Dremio, and any future backend.'
+  use_case: 'Protects the vendor-independence claim: the governed data layer is only truly engine-agnostic
+    if identical governance decisions are provably reproduced on every execution substrate. Without a
+    conformance gate, a transpilation or semantic difference could silently leak masked or RLS-filtered
+    data on one backend but not another.'
   code:
   - provisa/security/
   - provisa/compiler/
@@ -22852,14 +22906,23 @@
   - provisa/transpiler/router.py
   tests:
   - tests/integration/test_governance_integration.py
-  scenario: |
-    Given a fixed golden dataset and an identity with role "analyst" subject to RLS and column masking
-    When the same governed query is executed on the reference backend and on a candidate backend (DuckDB, Snowflake, Databricks, Dremio, or Trino)
+  scenario: 'Given a fixed golden dataset and an identity with role "analyst" subject to RLS and column
+    masking
+
+    When the same governed query is executed on the reference backend and on a candidate backend (DuckDB,
+    Snowflake, Databricks, Dremio, or Trino)
+
     Then the returned rows, masked cells, and enforced relationship joins are byte-identical between backends
 
-    Given a candidate backend whose semantic differences (NULL ordering, type coercion, collation) change which rows are visible or which cells are masked
+
+    Given a candidate backend whose semantic differences (NULL ordering, type coercion, collation) change
+    which rows are visible or which cells are masked
+
     When the governance-parity conformance suite is run
+
     Then the backend fails certification and MUST NOT be selectable in production config
+
+    '
   related_reqs:
   - REQ-825
   - REQ-826
@@ -22869,30 +22932,26 @@
   category: Deployment & Infrastructure
   priority: SHOULD
   type: structural
-  target: "2026-Q4"
-  description: >-
-    Pluggable admin/metadata store, decoupled from Postgres, selected via a SQLAlchemy-compliant URI.
-    The control-plane store (sources, domains, registered tables, columns, naming rules, governance
-    config) plus the OpenAPI/GraphQL cache substrate must run on an embedded engine (DuckDB or
-    SQLite) with zero external infra on a developer desktop, and on Postgres in production — same
-    schema, same behavior. This is required for the desktop deployment model in REQ-825 (PG today
-    requires Docker, which breaks the zero-infra laptop story). Three couplings must be removed:
-    (1) DRIVER — repositories take asyncpg.Connection directly
-    (provisa/core/repositories/source.py) and the pool factory is asyncpg-only
-    (provisa/core/db.py); these move behind a store abstraction driven by a SQLAlchemy URI.
-    (2) DIALECT — schema.sql uses Postgres-specific DDL (SERIAL, JSONB); metadata DDL must be
-    dialect-neutral. (3) META-GOVERNANCE RLS — the hard gate: _init_meta_rls
-    (provisa/api/app.py, REQ-041/REQ-402) enforces control-plane governance via Postgres row-level
-    security, which DuckDB/SQLite lack. Meta-RLS enforcement MUST move from the database into the
-    app layer so control-plane governance is store-independent (the same parity principle as REQ-827,
-    applied to the admin DB). Until meta-RLS is app-enforced, embedded stores cannot be certified for
-    production. On desktop the OpenAPI/GraphQL cache lands in the embedded store rather than a Docker
-    Postgres; where Postgres exists (prod) the existing pg_cache path is unchanged and DuckDB may
-    ATTACH it (REQ-826).
-  use_case: >-
-    Makes the full Provisa deployment — control plane and cache, not just the query engine —
-    infra-free on a developer laptop, completing the develop-on-DuckDB / scale-out-in-prod model in
-    REQ-825 without requiring Docker or an external Postgres.
+  target: 2026-Q4
+  description: 'Pluggable admin/metadata store, decoupled from Postgres, selected via a SQLAlchemy-compliant
+    URI. The control-plane store (sources, domains, registered tables, columns, naming rules, governance
+    config) plus the OpenAPI/GraphQL cache substrate must run on an embedded engine (DuckDB or SQLite)
+    with zero external infra on a developer desktop, and on Postgres in production — same schema, same
+    behavior. This is required for the desktop deployment model in REQ-825 (PG today requires Docker,
+    which breaks the zero-infra laptop story). Three couplings must be removed: (1) DRIVER — repositories
+    take asyncpg.Connection directly (provisa/core/repositories/source.py) and the pool factory is asyncpg-only
+    (provisa/core/db.py); these move behind a store abstraction driven by a SQLAlchemy URI. (2) DIALECT
+    — schema.sql uses Postgres-specific DDL (SERIAL, JSONB); metadata DDL must be dialect-neutral. (3)
+    META-GOVERNANCE RLS — the hard gate: _init_meta_rls (provisa/api/app.py, REQ-041/REQ-402) enforces
+    control-plane governance via Postgres row-level security, which DuckDB/SQLite lack. Meta-RLS enforcement
+    MUST move from the database into the app layer so control-plane governance is store-independent (the
+    same parity principle as REQ-827, applied to the admin DB). Until meta-RLS is app-enforced, embedded
+    stores cannot be certified for production. On desktop the OpenAPI/GraphQL cache lands in the embedded
+    store rather than a Docker Postgres; where Postgres exists (prod) the existing pg_cache path is unchanged
+    and DuckDB may ATTACH it (REQ-826).'
+  use_case: Makes the full Provisa deployment — control plane and cache, not just the query engine — infra-free
+    on a developer laptop, completing the develop-on-DuckDB / scale-out-in-prod model in REQ-825 without
+    requiring Docker or an external Postgres.
   code:
   - provisa/core/db.py
   - provisa/core/repositories/source.py
