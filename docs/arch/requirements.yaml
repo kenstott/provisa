@@ -23227,6 +23227,8 @@
   related_reqs:
   - REQ-829
   - REQ-830
+  tests:
+  - tests/unit/test_demo_servers.py
 - id: REQ-832
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -23242,6 +23244,8 @@
   use_case: Enables multi-database support (PostgreSQL Tier-1, SQLite/MySQL Tier-2) by centralizing SQL dialect translation and connection management in one module.
   code:
   - provisa/core/database.py
+  tests:
+  - tests/unit/test_admin_database.py
 - id: REQ-833
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -23254,6 +23258,8 @@
   code:
   - provisa/core/schema_admin.py
   - provisa/core/schema_org.py
+  tests:
+  - tests/unit/test_schema_metadata_parity.py
 - id: REQ-834
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -23300,6 +23306,9 @@
     filesystem readiness.
   code:
   - docker-compose.core.yml
+  tests:
+  - tests/unit/test_trino_exchange_init.py
+  - tests/integration/test_trino_fte_exchange.py
 - id: REQ-837
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -23324,6 +23333,8 @@
   - provisa/auth/wiring.py
   - provisa/auth/middleware.py
   - provisa/auth/providers/basic.py
+  tests:
+  - tests/unit/test_platform_tenant_engines.py
 - id: REQ-838
   status: complete
   group: 11. Platform, Infrastructure & Delivery
