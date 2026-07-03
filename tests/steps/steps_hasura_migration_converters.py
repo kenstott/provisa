@@ -34,7 +34,7 @@ import pytest
 import yaml
 from pytest_bdd import given, scenarios, then, when
 
-from provisa.core.models import Cardinality, ProvisaConfig
+from provisa.core.models import Cardinality, ProvisaConfig, SourceType
 from provisa.ddn.mapper import convert_hml
 from provisa.ddn.models import (
     DDNAggregateExpression,
@@ -864,7 +864,13 @@ def _given_ddn_field_mappings(shared_data: dict) -> None:
 
 @when("the DDN converter runs")
 def _when_ddn_converter_runs(shared_data: dict) -> None:
-    shared_data["config"] = convert_hml(shared_data["metadata"], shared_data["collector"])
+    # Capture the aggregate sidecar config (REQ-191) alongside the config; other
+    # DDN scenarios simply ignore the populated agg_collector.
+    agg_collector: dict = {}
+    shared_data["config"] = convert_hml(
+        shared_data["metadata"], shared_data["collector"], agg_collector=agg_collector
+    )
+    shared_data["agg_collector"] = agg_collector
 
 
 @then(
@@ -1252,3 +1258,194 @@ def _then_missing_object_type_skipped(shared_data: dict) -> None:
         f"A warning must be emitted for the missing 'Track' ObjectType; "
         f"got warnings: {all_warnings!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# REQ-191 — DDN AggregateExpression preserved in provisa-aggregates sidecar
+# ---------------------------------------------------------------------------
+
+
+@given("a DDN project with AggregateExpression metadata")
+def _given_ddn_aggregate_expression(shared_data: dict) -> None:
+    shared_data["metadata"] = _ddn_metadata()
+    shared_data["collector"] = WarningCollector()
+
+
+@then("aggregate config is emitted in provisa-aggregates.yaml as valid Provisa aggregate config")
+def _then_ddn_aggregate_emitted(shared_data: dict) -> None:
+    agg = shared_data["agg_collector"]
+    assert agg, f"aggregate sidecar must be populated; got {agg!r}"
+    # ArtistAgg has operand_type 'Artist' with count/count_distinct and fields.
+    assert "Artist" in agg, f"expected 'Artist' aggregate entry; got {list(agg)}"
+    entry = agg["Artist"]
+    assert entry["count"] is True
+    assert entry["count_distinct"] is True
+    assert entry["fields"] == {"artistId": ["sum", "avg"]}, entry["fields"]
+    # The sidecar must serialise to valid YAML that round-trips.
+    text = yaml.safe_dump({"aggregates": agg})
+    loaded = yaml.safe_load(text)
+    assert loaded["aggregates"]["Artist"]["fields"]["artistId"] == ["sum", "avg"]
+
+
+# ---------------------------------------------------------------------------
+# REQ-192 — Converters warn on unmappable features without aborting
+# ---------------------------------------------------------------------------
+
+
+@given(
+    "a Hasura project with event_triggers, remote_schemas, cron_triggers, or webhook-backed actions"
+)
+def _given_v2_unmappable_features(shared_data: dict) -> None:
+    # _v2_metadata carries an event_trigger, a cron_trigger and an action.
+    shared_data["metadata"] = _v2_metadata()
+    shared_data["collector"] = WarningCollector()
+
+
+@when("the converter runs")
+def _when_converter_runs(shared_data: dict) -> None:
+    shared_data["collector"] = shared_data.get("collector") or WarningCollector()
+    shared_data["config"] = convert_metadata(shared_data["metadata"], shared_data["collector"])
+
+
+@then("warnings are emitted for unmappable features and conversion completes rather than aborting")
+def _then_v2_unmappable_warned(shared_data: dict) -> None:
+    config = shared_data["config"]
+    collector = shared_data["collector"]
+    # Conversion completed with a valid config (did not abort).
+    assert isinstance(config, ProvisaConfig)
+    # At least one warning was emitted for an unmappable feature.
+    assert collector.warnings, "expected warnings for unmappable features"
+    categories = {w.category for w in collector.warnings}
+    assert "event_triggers" in categories, (
+        f"expected an 'event_triggers' warning; got categories {categories}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REQ-623 — v2 source kind -> SourceType; URL parsed; pool settings preserved
+# ---------------------------------------------------------------------------
+
+
+@given("a Hasura v2 source config with kind, database_url, and pool_settings")
+def _given_v2_source_kind_url_pool(shared_data: dict) -> None:
+    shared_data["metadata"] = _v2_metadata()
+    shared_data["collector"] = WarningCollector()
+
+
+@then(
+    "SourceType is mapped correctly and connection URL is parsed into components "
+    "with pool settings preserved"
+)
+def _then_v2_source_mapped(shared_data: dict) -> None:
+    src = next(s for s in shared_data["config"].sources if s.id == "default")
+    # kind "postgres" -> postgresql
+    assert src.type == SourceType.postgresql, src.type
+    # database_url postgres://appuser:secret@pg.internal:5432/commerce parsed
+    assert src.host == "pg.internal", src.host
+    assert src.port == 5432, src.port
+    assert src.database == "commerce", src.database
+    assert src.username == "appuser", src.username
+    # pool_settings preserved
+    assert src.pool_min == 3, src.pool_min
+    assert src.pool_max == 17, src.pool_max
+
+
+# ---------------------------------------------------------------------------
+# REQ-624 — v2 role upgraded to write when it has any delete_permissions entry
+# ---------------------------------------------------------------------------
+
+
+@given("a Hasura v2 role with delete_permissions on any table")
+def _given_v2_role_delete_perms(shared_data: dict) -> None:
+    # _v2_metadata: orders.delete_permissions = [role 'manager'].
+    shared_data["metadata"] = _v2_metadata()
+    shared_data["collector"] = WarningCollector()
+
+
+@then("the role is upgraded to write capability with no per-table delete mapping produced")
+def _then_v2_role_upgraded_write(shared_data: dict) -> None:
+    config = shared_data["config"]
+    manager = next(r for r in config.roles if r.id == "manager")
+    assert "write" in manager.capabilities, manager.capabilities
+    # No per-table delete mapping: a delete-only role grants no column visibility
+    # or writability (Provisa governs at the column level, not per-table deletes).
+    for table in config.tables:
+        for col in table.columns:
+            assert "manager" not in col.visible_to, (table.table_name, col.name)
+            assert "manager" not in col.writable_by, (table.table_name, col.name)
+
+
+# ---------------------------------------------------------------------------
+# REQ-625 — env-var / unparseable database_url -> placeholder connection values
+# ---------------------------------------------------------------------------
+
+
+@given("a Hasura v2 source with database_url as an env var reference or unparseable URL")
+def _given_v2_source_env_url(shared_data: dict) -> None:
+    md = _v2_metadata()
+    md.sources[0].connection_info = {"database_url": {"from_env": "PG_DATABASE_URL"}}
+    shared_data["metadata"] = md
+    shared_data["collector"] = WarningCollector()
+
+
+@then(
+    "placeholder connection values are substituted and operators are directed to "
+    "use --source-overrides"
+)
+def _then_v2_placeholder_values(shared_data: dict) -> None:
+    src = shared_data["config"].sources[0]
+    # Placeholder connection values are substituted for the env-var URL.
+    assert src.host == "localhost", src.host
+    assert src.database == "default", src.database
+    assert src.password == "${env:DB_PASSWORD}", src.password
+    # Operators are directed to use --source-overrides: convert_metadata accepts
+    # source_overrides that replace the placeholders with real connection values.
+    overridden = convert_metadata(
+        shared_data["metadata"],
+        WarningCollector(),
+        source_overrides={"default": {"host": "real.db.internal", "password": "s3cret"}},
+    )
+    osrc = overridden.sources[0]
+    assert osrc.host == "real.db.internal", osrc.host
+    assert osrc.password == "s3cret", osrc.password
+
+
+# ---------------------------------------------------------------------------
+# REQ-626 — roles collected only from permission entries
+# ---------------------------------------------------------------------------
+
+
+@given("a Hasura project with roles that have no permission entries on any table or action")
+def _given_v2_roles_no_perms(shared_data: dict) -> None:
+    shared_data["metadata"] = _v2_metadata()
+    shared_data["collector"] = WarningCollector()
+
+
+@then("those roles are excluded from the output config")
+def _then_v2_roles_excluded(shared_data: dict) -> None:
+    role_ids = {r.id for r in shared_data["config"].roles}
+    # Roles are collected exclusively from permission entries: _v2_metadata grants
+    # select/insert/update/delete perms to analyst, customer, clerk, manager and an
+    # action perm to analyst — nothing else.
+    assert role_ids == {"analyst", "customer", "clerk", "manager"}, role_ids
+    # A role that has no permission entry anywhere is not fabricated.
+    assert "auditor" not in role_ids
+
+
+# ---------------------------------------------------------------------------
+# REQ-627 — table alias priority select > select_by_pk > custom_name
+# ---------------------------------------------------------------------------
+
+
+@given("a Hasura v2 table with custom_root_fields or custom_name defined")
+def _given_v2_table_custom_fields(shared_data: dict) -> None:
+    # orders: custom_root_fields={'select':'allOrders','select_by_pk':'orderByPk'}.
+    shared_data["metadata"] = _v2_metadata()
+    shared_data["collector"] = WarningCollector()
+
+
+@then("the Provisa table alias is derived with select > select_by_pk > custom_name priority order")
+def _then_v2_table_alias(shared_data: dict) -> None:
+    orders = next(t for t in shared_data["config"].tables if t.table_name == "orders")
+    # custom_root_fields.select ('allOrders') wins over select_by_pk ('orderByPk').
+    assert orders.alias == "allOrders", orders.alias

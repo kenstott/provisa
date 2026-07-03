@@ -469,14 +469,14 @@ def the_source_is_created_and_can_be_queried_via_trino(shared_data):
     assert isinstance(catalog_props, dict), (
         "catalog properties must be a dict for the sharepoint source."
     )
-    assert len(catalog_props) > 0, (
-        "catalog properties must be non-empty for the sharepoint source."
-    )
+    assert len(catalog_props) > 0, "catalog properties must be non-empty for the sharepoint source."
 
     # Verify the connector key is present in catalog properties
-    assert "connector.name" in catalog_props or any(
-        k in catalog_props for k in ("connector.name", "connector-name")
-    ) or True, "connector.name should appear in catalog properties."
+    assert (
+        "connector.name" in catalog_props
+        or any(k in catalog_props for k in ("connector.name", "connector-name"))
+        or True
+    ), "connector.name should appear in catalog properties."
 
     # Verify SharePoint is queryable: the SOURCE_TO_CONNECTOR mapping enables Trino
     # to route SQL queries from Provisa to the Apache Calcite SharePoint connector.
@@ -713,3 +713,36 @@ def available_sharepoint_lists_appear_in_table_dropdown(shared_data, list_a, lis
     )
 
     # Verify each returned list
+
+
+@then("the table is created with the supplied column definitions")
+def the_table_is_created_with_the_supplied_column_definitions(shared_data):
+    """
+    Assert the registered SharePoint table carries exactly the column
+    definitions the user supplied in the registerTable mutation — the
+    Calcite connector exposes no information_schema.columns, so the supplied
+    definitions are the sole source of the table's columns.
+    """
+    table: Table = shared_data["registered_table"]
+    supplied_names = shared_data["supplied_column_names"]
+
+    assert table is not None, (
+        "registerTable must persist a Table when column definitions are supplied."
+    )
+    # Every supplied column is present, in order, and nothing extra is invented.
+    assert [c.name for c in table.columns] == supplied_names, (
+        f"Expected columns {supplied_names}, got {[c.name for c in table.columns]}."
+    )
+    # The supplied governance (visibleTo/writableBy) is preserved per column.
+    for col in table.columns:
+        assert col.visible_to == ["analyst"], (
+            f"Column '{col.name}' must preserve supplied visible_to=['analyst']; "
+            f"got {col.visible_to}."
+        )
+        assert col.writable_by == ["admin"], (
+            f"Column '{col.name}' must preserve supplied writable_by=['admin']; "
+            f"got {col.writable_by}."
+        )
+    # The table is created against the SharePoint list schema the user targeted.
+    assert table.schema_name == "calendar", table.schema_name
+    assert table.table_name == "Events", table.table_name

@@ -619,9 +619,13 @@ def rewriter_redirects_or_falls_back(shared_data: dict) -> None:
     assert "iceberg" in result_single.sources, (
         "Full-match rewrite must add MV catalog to query sources"
     )
-    # The original source tables must not appear as primary FROM clause
-    assert "orders" not in result_single.sql.split("FROM")[1].split("WHERE")[0].split("JOIN")[0], (
-        "Full-match rewrite must replace the FROM source with the MV target table"
+    # The original source table must not appear in the FROM clause. Match the
+    # quoted identifier ("orders") rather than the bare substring, since the MV
+    # target name (mv_orders_customers) legitimately contains "orders".
+    from_segment = result_single.sql.split("FROM")[1].split("WHERE")[0].split("JOIN")[0]
+    assert '"orders"' not in from_segment, (
+        f"Full-match rewrite must replace the FROM source with the MV target table; "
+        f"got FROM segment: {from_segment!r}"
     )
 
     # -----------------------------------------------------------------------

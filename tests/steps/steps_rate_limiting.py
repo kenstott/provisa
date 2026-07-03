@@ -15,7 +15,7 @@ import pytest
 from fastapi import HTTPException
 from pytest_bdd import given, when, then, scenarios
 
-from provisa.api.rate_limit import RedisRateLimiter, build_rate_limiter, NoopRateLimiter
+from provisa.api.rate_limit import RedisRateLimiter, build_rate_limiter
 
 scenarios("../features/REQ-369.feature")
 scenarios("../features/REQ-370.feature")
@@ -78,10 +78,11 @@ def shared_data() -> dict:
 
 @given("a role with configured rate limits")
 def role_with_rate_limits(shared_data: dict) -> None:
-    # build_rate_limiter with no redis URL returns a Noop limiter; we explicitly
-    # construct a RedisRateLimiter backed by an in-memory fake so we exercise the
-    # real sliding-window enforcement logic.
-    assert isinstance(build_rate_limiter(None), NoopRateLimiter)
+    # REQ-829: build_rate_limiter with no redis URL now returns a RedisRateLimiter
+    # backed by embedded fakeredis (not a Noop), so desktop exercises the real
+    # sliding-window logic. Here we construct one explicitly with a deterministic
+    # clock/fake so the window assertions are reproducible.
+    assert isinstance(build_rate_limiter(None), RedisRateLimiter)
     clock = _Clock()
     limiter = RedisRateLimiter(_FakeRedis(), now=clock)
     shared_data["clock"] = clock
