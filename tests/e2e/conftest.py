@@ -51,6 +51,19 @@ os.environ.setdefault("PROVISA_SKIP_TRINO_WAIT", "1")
 # so enable it here — the provisa_server subprocess inherits os.environ and the
 # test client reads the same PROVISA_BOLT_PORT default (5251).
 os.environ.setdefault("PROVISA_BOLT_PORT", "5251")
+# Point PROVISA_CONFIG at the sales-analytics fixture config at IMPORT time (not
+# only inside the _disable_auth_for_e2e fixture): the session-scoped
+# provisa_server subprocess captures os.environ at Popen time, which can precede
+# that fixture's body. Without this the subprocess loads the default config (no
+# kafka_sources), so the kafka `tickets` topic is never registered and its
+# semantic→physical name map (tickets→support_tickets) is empty — graph queries
+# then emit kafka_support.default.tickets (TABLE_NOT_FOUND). setdefault so an
+# explicit outer PROVISA_CONFIG still wins.
+os.environ.setdefault(
+    "PROVISA_CONFIG",
+    os.path.join(_REPO_ROOT, "tests", "fixtures", "sample_config.yaml"),
+)
+os.environ.setdefault("PROVISA_CONFIG_REPLACE", "1")
 # Provision the e2e core stack under a DEDICATED compose project, isolated from
 # the default `provisa` project used by the dev stack / installer. Without this
 # the fixture's teardown (`down`) would tear down the developer's running stack,
