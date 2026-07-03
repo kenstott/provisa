@@ -114,6 +114,41 @@ def docker_stack():
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _seed_kafka(docker_stack):  # pyright: ignore
+    """Produce a few messages to the kafka-support topic so the kafka-backed
+    tickets table exists and has data for federated queries.
+
+    Provisa is only the consumer (REQ-147); this stands in for the external
+    producer (Debezium/app) — no Debezium image. Host-side producer uses the
+    broker's HOST listener (localhost:9092); Trino reads via kafka:29092.
+    """
+    import asyncio
+    import json
+
+    async def _produce() -> None:
+        from aiokafka import AIOKafkaProducer
+
+        producer = AIOKafkaProducer(bootstrap_servers="localhost:9092")
+        await producer.start()
+        try:
+            for i in range(3):
+                msg = {
+                    "ticket_id": f"T{i + 1}",
+                    "subject": f"Support request {i + 1}",
+                    "status": "open" if i % 2 == 0 else "closed",
+                }
+                await producer.send_and_wait("support.tickets", json.dumps(msg).encode())
+        finally:
+            await producer.stop()
+
+    try:
+        asyncio.run(_produce())
+    except Exception as exc:  # best-effort seed — surfaced, not fatal
+        print(f"[e2e] kafka seed skipped: {exc}")
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _disable_auth_for_e2e(tmp_path_factory):  # pyright: ignore
     """E2E tests build the in-process app (create_app) and call it with a `role`
     but no bearer token; force auth off so AuthMiddleware is not installed and
