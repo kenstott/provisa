@@ -51,13 +51,15 @@ Unit-testable with mocks or fixtures; no federation substrate required. Do these
   wired at the endpoint cache check. REQ-863 → **Tier 4** (behavioral routing restructure, needs
   e2e). Deeper key canonicalization (alias renaming, JOIN reordering) needs a schema-aware
   optimizer and is out of scope for 864.
-- **[3] Mutation-authz core — REQ-867–869.** C3/V5/I2. MUST, and the generalization of the
-  `writable_by` gate shipped for Cypher writes (REQ-663). Protocol-agnostic layer: table-scoped
-  mutation sub-resources with per-mutation `writable_by` (empty = default-deny) + a global
-  `WRITE`/`EXECUTE_MUTATION` capability (`provisa/security/rights.py`), execute-time enforcement
-  in `_execute_action_field`, and pure-function write classifiers (GraphQL op-type, OpenAPI HTTP
-  method, gRPC `idempotency_level`, Hasura action_type; unknown → write) plus read-statement
-  taint. All unit-testable — no live adapter. Highest-ROI leaf; do while the ACL model is fresh.
+- **[3] Mutation-authz core — REQ-867–869.** ✅ Done (2026-07). Added `Capability.WRITE`
+  (REQ-868); `provisa/security/mutation_authz.py` with the protocol write classifiers (GraphQL
+  op-type, OpenAPI HTTP method, gRPC `idempotency_level`, Hasura action_type; unknown → write)
+  and `authorize_mutation` — per-mutation `writable_by` default-deny + WRITE capability, ADMIN/
+  SUPERADMIN bypass (REQ-867); execute-time enforcement wired into `_execute_action_field` with
+  `role_id` threaded from both call sites — a `kind=mutation` UDF is a write regardless of the
+  invoking surface (read-statement taint), read UDFs pass untouched (REQ-869). 18 unit tests, 391
+  security tests green. **Remaining for [6]:** wiring the classifiers into each adapter's
+  registration so `kind` is set by contract (not caller-declared) — lands with the adapters.
 
 ## Tier 2 — Decoupled subsystems (no substrate)
 

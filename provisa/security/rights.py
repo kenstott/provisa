@@ -39,6 +39,7 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     MASKING_CONFIG = "masking_config"
     SUPERADMIN = "superadmin"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
+    WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
 
 
 class InsufficientRightsError(Exception):

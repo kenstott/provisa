@@ -68,6 +68,7 @@ from provisa.executor.serialize import (
 from provisa.executor.trino import execute_trino
 from provisa.executor import stats as _qs_mod
 from provisa.mv.rewriter import rewrite_if_mv_match
+from provisa.security.mutation_authz import require_mutation_write
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.transpiler.router import Route, decide_route
 from provisa.transpiler.transpile import transpile, transpile_to_trino
@@ -2824,7 +2825,7 @@ async def _handle_query(
         data = {}
         for sel in action_sels:
             data[sel.name.value] = await _execute_action_field(
-                sel.name.value, sel, state, variables, ctx=ctx
+                sel.name.value, sel, state, variables, ctx=ctx, role_id=role_id
             )
         return JSONResponse(content={"data": data}, headers=build_cache_headers(None))
 
@@ -3131,8 +3132,8 @@ def _like_match(value: str, pattern: str) -> bool:
     return bool(re.fullmatch(regex, value, re.DOTALL))
 
 
-async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360
-    field_name: str, field_node, state, variables: dict | None, *, ctx=None
+async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360, REQ-869
+    field_name: str, field_node, state, variables: dict | None, *, ctx=None, role_id=None
 ) -> list:
     """Execute a tracked function or webhook field, return rows list."""
     from provisa.compiler.sql_gen import _extract_value
@@ -3145,20 +3146,18 @@ async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360
     filter_args = {k: raw_args.pop(k) for k in list(raw_args) if k in _ACTION_FILTER_ARGS}
     args = raw_args
 
+    _role = state.roles.get(role_id) if role_id is not None else None
     fn = state.tracked_functions.get(field_name)
     if fn:
+        require_mutation_write(fn, _role, field_name)
         src_id = fn["source_id"]
         schema = fn["schema_name"]
         fn_name = fn["function_name"]
         if not state.source_pools.has(src_id):
             raise HTTPException(status_code=503, detail=f"Source '{src_id}' not connected")
-        if args:
-            params = list(args.values())
-            placeholders = ", ".join(f"${i + 1}" for i in range(len(params)))
-            sql = f'SELECT * FROM "{schema}"."{fn_name}"({placeholders})'
-        else:
-            sql = f'SELECT * FROM "{schema}"."{fn_name}"()'
-            params = []
+        params = list(args.values())  # empty args → no placeholders → "()"
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(params)))
+        sql = f'SELECT * FROM "{schema}"."{fn_name}"({placeholders})'
         result = await state.source_pools.execute(src_id, sql, params)
         from provisa.executor.serialize import _convert_value
 
@@ -3171,6 +3170,7 @@ async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360
 
     wh = state.tracked_webhooks.get(field_name)
     if wh:
+        require_mutation_write(wh, _role, field_name)
         url = wh["url"]
         method = wh["method"].upper()
         timeout = wh["timeout_ms"] / 1000
@@ -3237,7 +3237,7 @@ async def _handle_mutation(
         data = {}
         for sel in action_sels:
             data[sel.name.value] = await _execute_action_field(
-                sel.name.value, sel, state, variables
+                sel.name.value, sel, state, variables, role_id=role_id
             )
         return {"data": data}
 

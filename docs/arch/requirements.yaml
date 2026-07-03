@@ -23939,7 +23939,8 @@
     - REQ-038
     - REQ-263
 - id: REQ-867
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: "2. Authentication & Identity"
   category: Authorization
   priority: MUST
@@ -23958,9 +23959,11 @@
     read visibility across all query sources (GraphQL, OpenAPI, gRPC, Hasura), supporting
     mutation execution as UDFs in the semantic layer.
   code:
-    - provisa/security/rights.py
-    - provisa/models/semantic.py
-  target: "2026-Q4"
+  - provisa/security/mutation_authz.py
+  - provisa/security/rights.py
+  - provisa/core/models.py
+  tests:
+  - tests/unit/test_mutation_authz.py
   related_reqs:
     - REQ-868
     - REQ-869
@@ -23968,7 +23971,8 @@
     - REQ-871
     - REQ-872
 - id: REQ-868
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: "2. Authentication & Identity"
   category: Authorization
   priority: MUST
@@ -23982,14 +23986,16 @@
     plus fine-grained mutation-level grant check (is role in this mutation's writable_by?).
     Analogous to Postgres role-level rights + per-table GRANT.
   code:
-    - provisa/security/rights.py
-  target: "2026-Q4"
+  - provisa/security/rights.py
+  tests:
+  - tests/unit/test_mutation_authz.py
   related_reqs:
     - REQ-867
     - REQ-869
     - REQ-870
 - id: REQ-869
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: "2. Authentication & Identity"
   category: Authorization
   priority: MUST
@@ -24010,8 +24016,10 @@
     Protocol-agnostic classification with per-adapter signals ensures mutations cannot
     bypass write-level authorization regardless of source.
   code:
-    - provisa/api/data/endpoint.py
-  target: "2026-Q4"
+  - provisa/security/mutation_authz.py
+  - provisa/api/data/endpoint.py
+  tests:
+  - tests/unit/test_mutation_authz.py
   related_reqs:
     - REQ-867
     - REQ-868
