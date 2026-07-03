@@ -12,14 +12,9 @@ Runs against SQLite in-memory (no Docker).
 
 from __future__ import annotations
 
-import ast
-from pathlib import Path
-
 import pytest
 
 from provisa.core.database import create_engine_from_url
-
-_REPO = Path(__file__).resolve().parents[2]
 
 
 def test_engines_are_independent():
@@ -41,21 +36,21 @@ def test_any_async_backend_accepted():
         assert engine.url.get_backend_name() == backend
 
 
-def test_platform_url_required_with_no_fallback():
-    # app.py must read PLATFORM_DATABASE_URL via subscript (fail-loud), never
-    # os.environ.get(...) with a default that would silently mis-route.
-    src = (_REPO / "provisa" / "api" / "app.py").read_text()
-    tree = ast.parse(src)
-    subscript_reads = 0
-    for node in ast.walk(tree):
-        # os.environ.get("PLATFORM_DATABASE_URL", ...) -> forbidden fallback
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr == "get":
-                for arg in node.args:
-                    if isinstance(arg, ast.Constant) and arg.value == "PLATFORM_DATABASE_URL":
-                        pytest.fail("PLATFORM_DATABASE_URL must not use .get() fallback")
-        # os.environ["PLATFORM_DATABASE_URL"] -> required, fail-loud
-        if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant):
-            if node.slice.value == "PLATFORM_DATABASE_URL":
-                subscript_reads += 1
-    assert subscript_reads >= 1, "PLATFORM_DATABASE_URL must be read as a required env var"
+def test_platform_url_default_has_no_fallback(monkeypatch):
+    # REQ-837: ControlPlaneConfig.platform_url references PLATFORM_DATABASE_URL
+    # with no ``:-default`` — an unset var must fail loud, never silently default.
+    from provisa.core.models import ControlPlaneConfig
+    from provisa.core.secrets import resolve_secrets
+
+    ref = ControlPlaneConfig().platform_url
+    assert "PLATFORM_DATABASE_URL" in ref
+    assert ":-" not in ref, f"platform_url must not carry a fallback default: {ref!r}"
+
+    # Resolution fails loud when the env var is unset (no fallback).
+    monkeypatch.delenv("PLATFORM_DATABASE_URL", raising=False)
+    with pytest.raises(KeyError):
+        resolve_secrets(ref)
+
+    # Resolution honours the env var when set.
+    monkeypatch.setenv("PLATFORM_DATABASE_URL", "postgresql+asyncpg://u:p@h/plat")
+    assert resolve_secrets(ref) == "postgresql+asyncpg://u:p@h/plat"

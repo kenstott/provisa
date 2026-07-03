@@ -851,9 +851,9 @@ class ControlPlaneConfig(BaseModel):
     tenant_url: str = (
         "${env:TENANT_DATABASE_URL:-postgresql+asyncpg://provisa:provisa@localhost:5432/provisa}"
     )
-    platform_url: str = (
-        "${env:PLATFORM_DATABASE_URL:-postgresql+asyncpg://provisa:provisa@localhost:5432/provisa}"
-    )
+    # REQ-837: PLATFORM_DATABASE_URL is required at startup with no fallback —
+    # a missing var raises in resolve_secrets rather than silently defaulting.
+    platform_url: str = "${env:PLATFORM_DATABASE_URL}"
     org_id: str = "${env:ORG_ID:-default}"
     pool_min: int = 2
     pool_max: int = 10
