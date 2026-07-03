@@ -20,12 +20,33 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from provisa.executor.trino import QueryResult
 
 log = logging.getLogger(__name__)
+
+# RLS session-variable predicate: current_setting('provisa.<var>' [, true]).
+_CURRENT_SETTING_RE = re.compile(
+    r"current_setting\(\s*'provisa\.([A-Za-z0-9_]+)'\s*(?:,\s*true\s*)?\)",
+    re.IGNORECASE,
+)
+
+
+def _resolve_session_settings(sql: str, session_vars: dict[str, str]) -> str:
+    """Resolve ``current_setting('provisa.<var>')`` to a SQL literal for engines
+    that lack the function (the federation engine). A missing var becomes NULL —
+    the RLS predicate then matches no rows, a safe deny-by-default. PostgreSQL
+    keeps native ``current_setting`` (fed by ``SET LOCAL``) and is untouched.
+    """
+
+    def _sub(m: re.Match) -> str:
+        value = session_vars.get(m.group(1))
+        return "NULL" if value is None else "'" + value.replace("'", "''") + "'"
+
+    return _CURRENT_SETTING_RE.sub(_sub, sql)
 
 
 @dataclass
@@ -357,6 +378,13 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         except Exception:
             pass
         trino_sql = transpile_to_trino(_exec_sql)
+        # REQ-041/402: RLS is added to the governed semantic SQL as a
+        # current_setting('provisa.<var>') predicate; PostgreSQL resolves it
+        # natively (SET LOCAL) but the federation engine has no such function.
+        # Resolve it to the session's literal value here at planning so it works
+        # regardless of the requesting query language.
+        _session_vars = (state.roles.get(role_id) or {}).get("session_vars", {})
+        trino_sql = _resolve_session_settings(trino_sql, _session_vars)
         return _Plan(
             route=Route.TRINO,
             sql=governed_sql,
