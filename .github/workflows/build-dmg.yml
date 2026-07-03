@@ -304,6 +304,7 @@ jobs:
             "postgres:16" \
             "edoburu/pgbouncer:latest" \
             "redis:7-alpine" \
+            "busybox:latest" \
             "trinodb/trino:481"; do
             tag="${img##*/}"
             tag="${tag//:/-}"
@@ -354,6 +355,7 @@ jobs:
             "postgres:16" \
             "edoburu/pgbouncer:latest" \
             "redis:7-alpine" \
+            "busybox:latest" \
             "trinodb/trino:481"; do
             tag="${img##*/}"
             tag="${tag//:/-}"

@@ -106,6 +106,13 @@ services:
       - prometheus
       - tempo
 
+  # Mock Stripe API — a demo/example data source, not a core dependency.
+  stripe-mock:
+    restart: unless-stopped
+    image: stripe/stripe-mock:latest
+    ports:
+      - "12111:12111"
+
 volumes:
   tempo_data:
   grafana_data:
