@@ -93,6 +93,14 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-secrets
                   key: pg-password
+            # Control-plane DB URLs are REQUIRED with no fallback (REQ-837), so
+            # the chart must supply them. Both planes share the same Postgres in
+            # this deployment; built from the PG_* vars above via k8s dependent
+            # env-var interpolation so the password stays sourced from the secret.
+            - name: TENANT_DATABASE_URL
+              value: "postgresql+asyncpg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE)"
+            - name: PLATFORM_DATABASE_URL
+              value: "postgresql+asyncpg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE)"
             - name: TRINO_HOST
               value: "{{ .Release.Name }}-trino-coordinator"
             - name: TRINO_PORT

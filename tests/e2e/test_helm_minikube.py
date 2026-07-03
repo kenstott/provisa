@@ -206,6 +206,18 @@ def helm_install():
             "trino.worker.resources.requests.memory=512Mi",
             "--set",
             "trino.worker.resources.limits.memory=1Gi",
+            # Trino query/FTE memory must fit inside the 1Gi container limit
+            # above (query.max-memory-per-node must not exceed the JVM heap);
+            # the chart defaults (2GB per node, 5GB FTE task) are sized for
+            # production nodes and fail config validation on these minikube pods.
+            "--set",
+            "trino.memory.maxMemory=1GB",
+            "--set",
+            "trino.memory.maxMemoryPerNode=512MB",
+            "--set",
+            "trino.memory.maxTotalMemory=1GB",
+            "--set",
+            "trino.fte.taskMemory=512MB",
             "--set",
             "trino.coordinator.livenessProbe.initialDelaySeconds=180",
             "--set",
@@ -218,8 +230,12 @@ def helm_install():
             "trino.coordinator.readinessProbe.failureThreshold=20",
             "--set",
             "mongodb.enabled=false",
+            # Trino fault-tolerant execution (REQ-817) requires a shared exchange
+            # store; the chart fails render if neither minio.enabled nor an
+            # external trino.exchange.s3.endpoint is provided (no silent
+            # fallback). Deploy in-cluster MinIO as that exchange store.
             "--set",
-            "minio.enabled=false",
+            "minio.enabled=true",
             "--wait",
             f"--timeout={TIMEOUT}",
         ]
