@@ -134,6 +134,10 @@ services:
   zaychik:
     restart: unless-stopped
     build: ./zaychik
+    # Pin a fixed, project-neutral image tag so every compose project (dev
+    # `provisa`, isolated `provisa-e2e`, worktrees) reuses the one built image
+    # instead of rebuilding a per-project `<project>-zaychik` tag.
+    image: zaychik:latest
     ports:
       - "8480:8480"
     environment:

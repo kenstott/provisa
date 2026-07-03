@@ -20,6 +20,23 @@ from tests._noauth_config import pin_no_auth_config
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _COMPOSE_FILE = "docker-compose.core.yml"
 
+# The root `_wait_for_trino` session fixture pre-flights a shared, already-
+# configured Trino (SHOW SCHEMAS FROM sales_pg) before any app runs. The e2e
+# suite provisions its OWN fresh, isolated stack (see docker_stack below) whose
+# Trino catalogs are configured by each in-process app on startup, so that pre-
+# flight can never pass at session start. Readiness for e2e is established by
+# docker_stack's `--wait` (container health) plus per-test app startup. Skip the
+# shared-stack pre-flight for e2e sessions only (this conftest loads only when
+# tests/e2e is collected; integration runs are unaffected).
+os.environ.setdefault("PROVISA_SKIP_TRINO_WAIT", "1")
+# Provision the e2e core stack under a DEDICATED compose project, isolated from
+# the default `provisa` project used by the dev stack / installer. Without this
+# the fixture's teardown (`down`) would tear down the developer's running stack,
+# and conversely a dev-side restart would tear down the e2e stack mid-run — they
+# would share containers, network, and lifecycle. A distinct project gives the
+# e2e stack its own containers and network so its lifecycle is self-contained.
+_PROJECT = os.environ.get("PROVISA_E2E_PROJECT", "provisa-e2e")
+
 __all__ = ["docker_stack", "_disable_auth_for_e2e"]
 
 
@@ -48,8 +65,11 @@ def docker_stack():
         yield
         return
 
+    # --wait blocks until every service with a healthcheck (postgres, redis,
+    # trino, zaychik) reports healthy, so tests never start against a Trino that
+    # is up but not yet query-ready. -p isolates the stack in its own project.
     subprocess.run(
-        ["docker", "compose", "-f", _COMPOSE_FILE, "up", "-d"],
+        ["docker", "compose", "-p", _PROJECT, "-f", _COMPOSE_FILE, "up", "-d", "--wait"],
         cwd=_REPO_ROOT,
         check=True,
     )
@@ -65,7 +85,7 @@ def docker_stack():
     yield
 
     subprocess.run(
-        ["docker", "compose", "-f", _COMPOSE_FILE, "down"],
+        ["docker", "compose", "-p", _PROJECT, "-f", _COMPOSE_FILE, "down"],
         cwd=_REPO_ROOT,
         check=True,
     )
