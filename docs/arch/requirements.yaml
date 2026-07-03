@@ -6079,40 +6079,50 @@
 - id: REQ-673
   status: proposed
   group: 4. Source Connectors
-  category: Source Connectors
+  category: Cost Statistics
   priority: SHOULD
-  type: behavioral
-  description: GQL remote sources support an optional per-source config field (e.g. `count_query` in provisa.yaml)
-    that specifies a query or field path for retrieving node counts directly from the remote GraphQL API
-    without fetching the full dataset. When configured and the local Trino cache is cold, the `graph-counts`
-    endpoint queries the remote source to populate node counts instead of returning no count.
-  use_case: Allows users to see approximate source sizes for cold GQL sources by leveraging remote-exposed
-    aggregate queries (e.g. `totalCount`, connection aggregates), improving discoverability when the cache
-    is warming.
-  target: '2026-09-30'
-  scenario: 'Given a GQL remote source with count_query configured and a cold Trino cache
-
-    When the graph-counts endpoint is called
-
-    Then the remote GraphQL API is queried to return node counts instead of returning no count
-
-    '
-  integration_test: required
-  integration_test_reason: Remote count query execution against live GraphQL endpoint required for cold
-    cache population.
-  e2e: true
-  e2e_reason: The graph-counts endpoint is a REST API surface that queries a remote GQL API at runtime,
-    requiring a live stack to verify the endpoint routes correctly and returns counts from the remote
-    source.
+  type: structural
+  target: '2026-Q4'
+  description: >-
+    Connector cardinality capability — cardinality(source, table) -> Estimate{value,
+    exact, method}. A source may expose a CHEAP volume metric so a caller can size a
+    table without a full scan. Resolution order: (1) a cheap native statistic when the
+    source has one (GraphQL totalCount, OpenAPI X-Total-Count, PG pg_class.reltuples,
+    Trino SHOW STATS, Parquet/Iceberg row-group metadata); (2) an exact COUNT(*) only
+    when the connector reports counting is cheap; (3) UNKNOWN when sizing is expensive
+    and no native estimate exists — fail-open, never a hidden full scan. The Estimate
+    carries `exact` (true for a native count(*)/totalCount, false for reltuples-style
+    estimates) and `method`, so a consumer knows what the number is and what it may be
+    used for. The producer is SPARSE and OPT-IN: a native count is authored only for
+    expensive-count sources — the API sources (openapi/graphql_remote/grpc), where a
+    count today means materializing the full pull, and huge un-indexed row-stores.
+    Cheap-count sources contribute nothing and carry no maintenance. Generalizes and
+    supersedes the GQL-specific count_query helper (provisa/sources/counts.py) under
+    the connector abstraction (REQ-840-843).
+  use_case: >-
+    One estimate serves two consumer classes. The AUTOMATED PLANNER reads it to choose
+    a federation strategy (materialize vs virtual, REQ-826), gate hot-table promotion
+    (REQ-236) without a blind COUNT(*), and set redirect/probe thresholds. HUMAN
+    PLANNERS read the same estimate — in the catalog, in plan/EXPLAIN output, and on the
+    cold graph-counts path — to size a source before committing to an expensive
+    federated query, with exact/estimate/unknown surfaced honestly. An "unknown, sizing
+    requires a full pull" answer is itself actionable, unlike today's bare 0.
+  related_reqs:
+    - REQ-840
+    - REQ-841
+    - REQ-842
+    - REQ-843
+    - REQ-826
+    - REQ-236
+    - REQ-875
   stakeholders:
   - data-engineer
   - app-developer
   competitive_position:
     status: ahead
-    rationale: Per-source configurable count_query for remote GraphQL APIs avoids full scans for pagination
-      metadata — a performance optimization not present in Hasura Remote Schemas.
-  tests:
-  - tests/integration/test_graphql_remote_source.py
+    rationale: A source-agnostic cardinality capability that prefers cheap native
+      statistics and reports estimate/exact/unknown honestly — feeding both the query
+      planner and human capacity planning — is absent in Hasura and Dremio.
 - id: REQ-540
   status: complete
   group: 4. Source Connectors
@@ -23512,9 +23522,11 @@
     never interprets it, only compares stored vs. fresh by equality. Unchanged
     token → keep the materialized rows, skip the re-pull/rebuild (zero lag at
     probe cost); changed token → invalidate the entry and re-pull, then store the
-    new token. Optionally, if the token is a monotonic/orderable cursor (not merely an
-    opaque equality token), it enables incremental delta fetch (REQ-874) to replace only
-    changed rows instead of full re-pull. Probe transport is source-type-agnostic behind a single dispatch
+    new token. MUTUAL EXCLUSIVITY with delta (REQ-874): Probe (opaque-token change detection)
+    and delta (monotonic-cursor incremental reload) are MUTUALLY EXCLUSIVE PER ENTRY, selected by
+    token type. Opaque-token entries ⇒ REQ-855 probe + full re-pull, no delta. Monotonic entries ⇒
+    delta-as-probe (delta query IS the freshness evaluation), no separate probe runs. Probe transport
+    is source-type-agnostic behind a single dispatch
     (freshness_token(source, table) -> str | None); None means the source cannot
     produce a token and the entry degrades to TTL (a capability signal, not a
     silent fallback — REQ-847). Transports: graphql_remote posts a steward GQL
@@ -24107,46 +24119,49 @@
   target: "2026-Q4"
   description: >-
     Delta fetch for materialization_store REPLICA incremental refresh: an INCREMENTAL RELOAD
-    strategy that supplements REQ-855 freshness. CRITICAL DISTINCTION: FRESHNESS (REQ-855/856) is
-    a pure DECISION ("is this entry stale?") with no refresh semantics—the stale signal is raised
-    and caller-delegated (REQ-856 explicit). DELTA is a REFRESH ACTION—it lives in the reload
-    space that REQ-826 MATERIALIZED already owns ("load-scheduling/invalidation logic runs") and
-    is a sibling to full re-pull. CAUSAL CHAIN: (1) Freshness probe (REQ-856) decides STALE via
-    opaque-token equality comparison; (2) stale signal triggers the reload (REQ-826); (3) reload
-    picks its strategy: DELTA iff [probe token is MONOTONIC] AND [delta query supplied], else FULL
-    RE-PULL. COORDINATION: The probe token serves BOTH freshness and delta. Freshness compares it
-    by equality; delta consumes it when monotonic as its cursor value (`> last_watermark`). Delta
-    must NOT issue a second probe—it reuses the freshness probe's value. When the token is opaque,
-    freshness still works but delta is unavailable, reload falls back to full re-pull. Applies to
-    ANY dataset whose federation strategy is MATERIALIZED (REQ-826) — data is landed/cached, so
-    full re-pull is the cost deltas avoid. Primary drivers: remote schemas (graphql_remote/openapi/
-    grpc, nearly always MATERIALIZED with no attach/scan connector); also includes RDB deliberately
-    cached for latency, NoSQL, live APIs landed via MATERIALIZED. EXPLICITLY EXCLUDED: VIRTUAL
-    (reaches source live, always fresh) and SCAN (reads in place) strategies per REQ-826 — both
-    bypass cache/landing, so nothing exists to delta-refresh. The watermark itself (change-signal
-    mechanism, opaque token comparison, poll transport) is defined elsewhere; this requirement
-    defines the DELTA capability that consumes a monotonic watermark. Note: remote-schema watermark
-    is not absent—config_loader already allows poll with watermark_column for remotes (REQ-260),
-    but it runs via Trino with full relation re-scan; REQ-855 graphql_remote steward-query
-    transport is the EFFICIENT native probe path. COUPLING CONSTRAINT: delta requires a
-    MONOTONIC/ORDERABLE watermark cursor (enabling `> last_watermark` row filtering), not just
-    REQ-855's opaque equality token. A correct monotonic watermark is the registrant's
-    responsibility; Provisa does no dedup or boundary-inclusivity logic. Delta query is authored,
-    fully-formed, source-native, with two PLACEHOLDERS that Provisa substitutes: (a) watermark
-    placeholder (e.g., $wm bind variable) bound to the cursor value, (b) fields placeholder (e.g.,
-    {{fields}}) injected from the table's registered selection set. Provisa substitutes only; it
-    does not parse the filter. Adapter-native delta templates: GraphQL `where: {field: {_gt: $wm}}`
-    + `{{fields}}`; OpenAPI query-param filter `?field_since=$wm` + selection headers; gRPC
-    request-message filter field + `$wm` + selection. Returned delta rows are upserted on the
-    replica's ALREADY-REGISTERED PRIMARY KEY (entity identity from table registration) to replace
-    prior row state; degrades to insert for append-only/immutable sources. REPLICA-ONLY: the
-    VIEW/mv role is delta-ineligible—REQ-844 mandates Iceberg overwrite-snapshot semantics (one
-    clean snapshot per refresh) for time-travel/provenance/bitemporal (REQ-372/862), which upsert
-    would violate. Mutable relational substrate only. Provider-agnostic: applies to any
-    MATERIALIZED-strategy dataset with a monotonic watermark, agnostic to source type.
-    Machine-validatable gates: (a) delta_query contains both $wm and {{fields}} placeholders;
-    (b) delta_query parses; (c) watermark bind-var type matches the cursor type; (d) injected
-    selection set is valid against the table's row type.
+    strategy for datasets whose federation strategy is MATERIALIZED (REQ-826) — data is
+    landed/cached, so full re-pull is the cost delta avoids. Remote schemas (graphql_remote/
+    openapi/grpc) are the PRIMARY DRIVER but not the sole case; also RDB cached-for-latency,
+    NoSQL, live APIs landed via MATERIALIZED. VIRTUAL and SCAN strategies EXCLUDED (always-fresh /
+    read-in-place; nothing to delta-refresh per REQ-826). KEY SIMPLIFICATION: PROBE == DELTA for
+    monotonic entries. For a monotonic-cursor entry the DELTA QUERY IS THE FRESHNESS EVALUATION.
+    Run the delta query: non-empty result ⇒ changed ⇒ apply the rows; empty ⇒ fresh ⇒ no-op. No
+    separate watermark/probe query. No scalar_path. DEFINITION: ONE authored query (delta_query) —
+    authored, source-native, fully-formed filter with two PLACEHOLDERS that Provisa substitutes:
+    (a) watermark placeholder ($wm bind variable) bound to the stored CURSOR VALUE, (b) fields
+    placeholder ({{fields}}) injected from the table's registered selection set. Provisa
+    substitutes only; never parses the filter. CURSOR FIELD IMPLICIT: the cursor field is the
+    field $wm filters on (single query, single field); after applying delta rows, the stored
+    cursor advances to max(cursor-field) over returned rows (delta_query ordered by cursor field).
+    Same-field alignment therefore trivially guaranteed; no separate field declaration required.
+    Cursor and monotonicity are the registrant's responsibility; Provisa does no dedup or
+    boundary-inclusivity logic. SOURCE-TYPE-SPECIFIC AUTHORING AND EXECUTION: delta_query is
+    AUTHORED IN THE SOURCE'S NATIVE QUERY LANGUAGE, syntax and filter/cursor binding PER-SOURCE-TYPE:
+    GraphQL `where: {field: {_gt: $wm}}` + `{{fields}}`; OpenAPI query-param `?updated_since=$wm` +
+    selection headers; gRPC request-message filter + `$wm` + selection; SQL `WHERE field > $wm` +
+    projection. Only $wm/{{fields}} placeholder substitution and cursor-advance logic are uniform
+    across types. DELTA EXECUTION ROUTES THROUGH THE ADAPTER'S NATIVE CALLER, NOT THE FEDERATION
+    ENGINE: GraphQL delta POSTs the native query to the source (predicate pushed down AT source) and
+    lands rows into materialization_store; does NOT execute as Trino `WHERE field > x` scan over the
+    federated relation. Native-pushdown path is the efficiency win and reason delta exists rather than
+    relying on Trino watermark_column poll (which re-scans with no pushdown). Per source type: (1)
+    delta template = native query syntax + filter/cursor binding (author-supplied, source-specific);
+    (2) delta execution = routes through source type's existing native caller (GraphQL/HTTP/gRPC/SQL),
+    bypassing federation engine. Pattern mirrors per-adapter mutation classification/suggestion
+    (REQ-869/871): uniform contract with per-source-type native implementation. APPLY: upsert returned rows on the replica's ALREADY-REGISTERED PRIMARY KEY
+    (entity identity from table registration) to replace prior row state; degrades to plain insert
+    for append-only/immutable sources. REPLICA-ONLY: VIEW/mv role is delta-ineligible—REQ-844
+    Iceberg overwrite-snapshot semantics (one clean snapshot per refresh) for time-travel/provenance/
+    bitemporal (REQ-372/862) would be violated by upsert. Mutable relational substrate only.
+    RELATIONSHIP TO FRESHNESS: Freshness (REQ-855/856) is pure stale/fresh DECISION with no
+    refresh semantics (REQ-856). Delta is REFRESH ACTION under REQ-826's MATERIALIZED reload —
+    incremental sibling of full re-pull. But for monotonic entries delta query serves as freshness
+    evaluation, so REQ-855's opaque probe is NOT also run: PROBE (opaque token) and DELTA (monotonic
+    cursor) are MUTUALLY EXCLUSIVE PER ENTRY, selected by token type. Opaque-token entries ⇒
+    REQ-855 probe + full re-pull, no delta. Monotonic entries ⇒ delta-as-probe, no separate probe.
+    Validation gates: (a) delta_query contains both $wm and {{fields}} placeholders; (b) parses;
+    (c) $wm bind-var type is orderable/monotonic-compatible; (d) injected selection valid against
+    row type.
   use_case: >-
     For REPLICAS (any MATERIALIZED-strategy dataset whose federation strategy lands data), full
     re-pull on every refresh is expensive and unnecessary. Delta fetch via monotonic watermark
@@ -24178,3 +24193,44 @@
     - REQ-260
     - REQ-282
     - REQ-845
+- id: REQ-875
+  status: proposed
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Query Routing
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Cheap-count route: a count(*)-shaped query over an UNMATERIALIZED source that
+    exposes an EXACT native count (REQ-673 cardinality capability) is routed to the
+    native count call instead of materializing the full dataset to count it. Parallels
+    Route.CACHE (REQ-865) — a query shape that resolves to a first-class route bypassing
+    the expensive path. Today SELECT count(*) over a cold API source pulls the entire
+    dataset (endpoint.py _materialize_api_to_trino_cache) to count it; with an exact
+    native count it becomes a single call. THREE GUARDS, all required. (1) SHAPE: a bare
+    count(*) with no other projection and no WHERE the native call cannot honor; a
+    filtered count the source cannot filter falls back to materialize. (2) EXACTNESS:
+    fires only when the cardinality Estimate is exact; approximate statistics stay in
+    the planner/human-hint lane and are never served as the answer to count(*). (3)
+    GOVERNANCE: the route MUST NOT bypass Stage-2 RLS/masking (REQ-263) — when an RLS
+    predicate applies to the table for the requesting persona a native total count would
+    over-count the visible subset, so the route is disabled and falls back to
+    materialize+count. Fail-closed, the same discipline as cache isolation (REQ-866).
+  use_case: >-
+    Turns SELECT count(*) over a cold remote/API table from a full-dataset HTTP pull
+    into a single cheap call, while preserving exact-answer semantics and governance, so
+    the volume question is answerable interactively without warming the cache.
+  related_reqs:
+    - REQ-673
+    - REQ-865
+    - REQ-826
+    - REQ-263
+    - REQ-866
+  stakeholders:
+  - data-engineer
+  - app-developer
+  competitive_position:
+    status: ahead
+    rationale: Routing an unmaterialized-source count(*) to a native count call — gated
+      by shape, exactness, and RLS — is a federation execution optimization absent in
+      Hasura and Dremio.
