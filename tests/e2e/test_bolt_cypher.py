@@ -22,7 +22,11 @@ pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 _BOLT_HOST = "localhost"
 _BOLT_PORT = int(os.environ.get("PROVISA_BOLT_PORT", "5251"))
 _MAGIC = b"\x60\x60\xb0\x17"
-_TIMEOUT = 10.0
+# Generous client read timeout: RUN/PULL execute a federated graph query that can
+# scan multiple sources (Postgres + cold Kafka/Iceberg), which legitimately takes
+# longer than a handshake. Matches the server's advertised recv-timeout hint
+# (PROVISA_BOLT_RECV_TIMEOUT, default 120s).
+_TIMEOUT = 120.0
 
 
 def _version_bytes(major: int, minor: int, range_: int = 0) -> bytes:
@@ -169,9 +173,9 @@ class TestBoltCypherExecution:
         if major >= 5:
             await _send_msg(writer, 0x6A, [{"scheme": "none"}])
             logon_tag, logon_fields = await _recv_msg(reader)
-            assert (
-                logon_tag == 0x70
-            ), f"LOGON expected SUCCESS(0x70), got 0x{logon_tag:02X}: {logon_fields!r}"
+            assert logon_tag == 0x70, (
+                f"LOGON expected SUCCESS(0x70), got 0x{logon_tag:02X}: {logon_fields!r}"
+            )
         return reader, writer
 
     async def test_run_match_returns_success(self):
@@ -189,7 +193,9 @@ class TestBoltCypherExecution:
         try:
             await _send_msg(writer, 0x10, ["MATCH (n) RETURN n LIMIT 5", {}, {}])
             run_tag, run_fields = await _recv_msg(reader)
-            assert run_tag == 0x70, f"RUN expected SUCCESS(0x70), got 0x{run_tag:02X}: {run_fields!r}"
+            assert run_tag == 0x70, (
+                f"RUN expected SUCCESS(0x70), got 0x{run_tag:02X}: {run_fields!r}"
+            )
 
             await _send_msg(writer, 0x3F, [{"n": 5, "qid": -1}])
             tags = []

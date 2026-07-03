@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from enum import Enum, auto
 from typing import Any
 
@@ -24,6 +25,10 @@ log = logging.getLogger(__name__)
 
 _BOLT_VERSION = "5.4"
 _SERVER_AGENT = f"Neo4j/{_BOLT_VERSION} (Provisa)"
+# Server→client hint: how long a client should wait for a server response before
+# giving up. Federated reads (multi-source, cold Kafka/Iceberg) can be slow, so
+# this is generous and configurable via PROVISA_BOLT_RECV_TIMEOUT (seconds).
+_BOLT_RECV_TIMEOUT = int(os.environ.get("PROVISA_BOLT_RECV_TIMEOUT", "120"))
 
 
 class State(Enum):
@@ -171,7 +176,7 @@ class BoltSession:
             {
                 "server": _SERVER_AGENT,
                 "connection_id": "bolt-provisa-1",
-                "hints": {"connection.recv_timeout_seconds": 120},
+                "hints": {"connection.recv_timeout_seconds": _BOLT_RECV_TIMEOUT},
             }
         )
 
