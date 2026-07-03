@@ -226,6 +226,9 @@ def _translate(sql: str, args: tuple) -> tuple[str, dict[str, Any]]:
         return sql, {}
     params = {f"p{i + 1}": a for i, a in enumerate(args)}
     sql = _PLACEHOLDER.sub(lambda m: f":p{m.group(1)}", sql)
+    # Strip ``::type`` casts on binds — SQLAlchemy text() would misread the ``::``
+    # as another bind. Array-typed binds that need a cast (e.g. unnest) must use
+    # CAST(:p AS type[]) form instead, which survives this and SQLAlchemy parsing.
     sql = _CAST_ON_BIND.sub(lambda m: m.group(1), sql)
     return sql, params
 

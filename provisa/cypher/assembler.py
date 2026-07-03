@@ -386,7 +386,7 @@ async def register_rel_ids(serializable_rows: list[dict], tenant_db: Any) -> Non
             """
             INSERT INTO rel_ids (composite_id, rel_type, properties)
             SELECT t.cid, t.rt, t.props::jsonb
-            FROM UNNEST($1::text[], $2::text[], $3::text[]) AS t(cid, rt, props)
+            FROM UNNEST(CAST($1 AS text[]), CAST($2 AS text[]), CAST($3 AS text[])) AS t(cid, rt, props)
             ON CONFLICT (composite_id) DO UPDATE
                 SET rel_type   = EXCLUDED.rel_type,
                     properties = rel_ids.properties || EXCLUDED.properties
@@ -432,7 +432,7 @@ async def register_node_ids(serializable_rows: list[dict], tenant_db: Any) -> No
             """
             INSERT INTO node_ids (composite_id, label, properties)
             SELECT t.cid, t.lbl, t.props::jsonb
-            FROM UNNEST($1::text[], $2::text[], $3::text[]) AS t(cid, lbl, props)
+            FROM UNNEST(CAST($1 AS text[]), CAST($2 AS text[]), CAST($3 AS text[])) AS t(cid, lbl, props)
             ON CONFLICT (composite_id) DO UPDATE
                 SET label      = EXCLUDED.label,
                     properties = node_ids.properties || EXCLUDED.properties

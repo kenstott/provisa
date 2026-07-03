@@ -60,6 +60,14 @@ class _Plan:
     exec_sql: str | None = field(default=None)
     # Trino-specific: fully qualified SQL ready to run
     trino_sql: str | None = field(default=None)
+    # Per-query Trino session overrides (e.g. retry_policy=NONE to bypass FTE).
+    session_hints: dict[str, str] | None = field(default=None)
+
+
+# Connector types that don't support Trino fault-tolerant execution (FTE): their
+# splits aren't replayable, so a query routed under retry-policy=TASK blocks
+# forever on the exchange. Queries touching these run with retry_policy=NONE.
+_NON_FTE_SOURCE_TYPES = frozenset({"kafka"})
 
 
 async def _govern_and_route(
@@ -244,7 +252,9 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: execute_trino(_trino_conn, _trino_sql, params=plan.exec_params),
+            lambda: execute_trino(
+                _trino_conn, _trino_sql, params=plan.exec_params, session_hints=plan.session_hints
+            ),
         )
     elif plan.source_id == "provisa-admin" or not state.source_pools.has(plan.source_id):
         # Admin-owned tables (meta.*) live in the provisa tenant_db, not source_pools.
@@ -385,6 +395,13 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         # regardless of the requesting query language.
         _session_vars = (state.roles.get(role_id) or {}).get("session_vars", {})
         trino_sql = _resolve_session_settings(trino_sql, _session_vars)
+        # Bypass FTE for queries touching non-replayable connectors (kafka), whose
+        # splits stall the fault-tolerant exchange (blocks forever, 0 drivers).
+        _hints = (
+            {"retry_policy": "NONE"}
+            if any(state.source_types.get(s) in _NON_FTE_SOURCE_TYPES for s in (sources or ()))
+            else None
+        )
         return _Plan(
             route=Route.TRINO,
             sql=governed_sql,
@@ -393,6 +410,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             exec_params=exec_params,
             exec_sql=_exec_sql,
             trino_sql=trino_sql,
+            session_hints=_hints,
         )
     else:
         dialect = decision.dialect or "postgres"
