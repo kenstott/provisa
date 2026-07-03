@@ -218,6 +218,78 @@ def test_parse_unknown_raises():
 
 
 # ---------------------------------------------------------------------------
+# parse_cypher_write — relationship writes rejected (REQ-665)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "CREATE (a:Person)-[r:KNOWS]->(b:Person)",
+        "CREATE (a)-->(b)",
+        "MATCH (a:Person)-[r:KNOWS]->(b) DELETE r",
+        "MATCH (a:Person)-[r]-(b) SET r.weight = 5",
+    ],
+)
+def test_parse_relationship_write_rejected(query):
+    """Relationships are FK-derived, not stored edges — writing one is a hard error."""
+    with pytest.raises(CypherWriteParseError, match="relationship"):
+        parse_cypher_write(query)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "CREATE (n:Person {name: 'a->b'})",  # arrow inside a string value
+        "MATCH (n:Person) WHERE n.age = 3 SET n.note = 'x - y'",  # minus in a string
+    ],
+)
+def test_parse_arrow_in_string_not_treated_as_relationship(query):
+    """A `->` or `-` inside a scalar value must not be mistaken for an edge."""
+    ast = parse_cypher_write(query)
+    assert ast.kind in ("create", "update")
+
+
+# ---------------------------------------------------------------------------
+# writable_by column ACL on Cypher writes (REQ-663)
+# ---------------------------------------------------------------------------
+
+
+class _FakeTableMeta:
+    def __init__(self, columns):
+        self.columns = columns
+
+
+def test_writable_by_denies_role_without_write_access():
+    from provisa.cypher.write_translator import write_acl_error
+
+    mapping = _person_map().nodes["Person"]
+    ast = parse_cypher_write("CREATE (n:Person {name: 'Alice'})")
+    table_meta = _FakeTableMeta([{"column_name": "name", "writable_by": ["admin"]}])
+    err = write_acl_error(table_meta, ast, mapping, "analyst")
+    assert err is not None and err[0] == 403
+
+
+def test_writable_by_allows_permitted_role():
+    from provisa.cypher.write_translator import write_acl_error
+
+    mapping = _person_map().nodes["Person"]
+    ast = parse_cypher_write("MATCH (n:Person) WHERE n.id = 1 SET n.name = 'Bob'")
+    table_meta = _FakeTableMeta([{"column_name": "name", "writable_by": ["admin", "analyst"]}])
+    assert write_acl_error(table_meta, ast, mapping, "analyst") is None
+
+
+def test_writable_by_delete_is_not_gated():
+    from provisa.cypher.write_translator import write_acl_error
+
+    mapping = _person_map().nodes["Person"]
+    ast = parse_cypher_write("MATCH (n:Person) WHERE n.id = 1 DELETE n")
+    table_meta = _FakeTableMeta([{"column_name": "name", "writable_by": ["admin"]}])
+    # DELETE carries no column writes — consistent with the GraphQL path (REQ-663).
+    assert write_acl_error(table_meta, ast, mapping, "analyst") is None
+
+
+# ---------------------------------------------------------------------------
 # WriteTranslator — CREATE → INSERT
 # ---------------------------------------------------------------------------
 

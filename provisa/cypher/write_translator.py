@@ -190,6 +190,18 @@ def parse_cypher_write(query: str) -> WriteAST:
     """
     query = query.strip()
 
+    # REQ-665: relationships are derived from foreign-key joins, not stored edges,
+    # so they cannot be written. Any relationship pattern (`-[...]->`, `<-[...]-`,
+    # or a bare `--` edge) in a write statement is a hard error at translation time.
+    if re.search(r"-\s*\[|\]\s*-|\)\s*<?-{1,2}>?\s*\(", query):
+        raise CypherWriteParseError(
+            "Cypher write patterns cannot target relationships. Relationships are "
+            "derived from foreign-key joins in the semantic layer, not stored edges; "
+            "CREATE, SET, and DELETE may only write node (table) rows. To mutate the "
+            "underlying rows, call the GraphQL mutation — it is also exposed as a UDF "
+            "invocable via SQL function-call syntax."
+        )
+
     # REQ-818: only CREATE/DELETE/SET are supported as direct table writes.
     # MERGE, DETACH DELETE, and REMOVE are non-direct write patterns and must be
     # rejected at parse time with a precise error. This guard runs before the
@@ -200,7 +212,9 @@ def parse_cypher_write(query: str) -> WriteAST:
             raise CypherWriteParseError(
                 f"Cypher write pattern {_kw.upper()!r} is not supported. Provisa "
                 "Cypher executes CREATE, DELETE, and SET as direct table writes; "
-                "MERGE, DETACH DELETE, and REMOVE are unsupported."
+                "MERGE, DETACH DELETE, and REMOVE are unsupported. For upsert or "
+                "cascade semantics, call the corresponding GraphQL mutation — it is "
+                "also exposed as a UDF invocable via SQL function-call syntax."
             )
 
     m = _CREATE_RE.match(query)
@@ -314,6 +328,28 @@ def _rewrite_where(where_expr: str, variable: str, mapping: NodeMapping) -> str:
 # ---------------------------------------------------------------------------
 # WriteTranslator
 # ---------------------------------------------------------------------------
+
+
+def write_acl_error(table_meta, ast: WriteAST, mapping: NodeMapping, role_id: str):
+    """Return (status, detail) if role lacks writable_by access for a CREATE/SET write.
+
+    Enforces the writable_by column ACL uniformly with the GraphQL/SQL mutation
+    path (REQ-663) by delegating to the shared endpoint check on the mapped
+    physical columns. Returns None when access is allowed or the write is a
+    DELETE (which carries no column writes). REQ-663.
+    """
+    if table_meta is None or ast.kind not in ("create", "update"):
+        return None
+    from fastapi import HTTPException  # noqa: PLC0415
+    from provisa.api.data.endpoint import _check_writable_by  # noqa: PLC0415
+
+    props = list(ast.props) if ast.kind == "create" else [p for p, _ in ast.set_assignments]
+    cols = [mapping.properties.get(p, p) for p in props]
+    try:
+        _check_writable_by(table_meta, cols, role_id)
+    except HTTPException as exc:
+        return exc.status_code, exc.detail
+    return None
 
 
 class WriteTranslator:

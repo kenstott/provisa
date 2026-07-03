@@ -6539,203 +6539,6 @@
     rationale: All-or-nothing governance for embedding columns (no partial masking; must be fully visible
       or entirely absent) is a principled vector access control model not present in any competitor; Snowflake
       Cortex has no cross-source governance enforcement on embeddings.
-- id: REQ-656
-  status: in-progress
-  group: 4. Source Connectors
-  category: JSON:API Remote Schema Connector
-  priority: SHOULD
-  type: structural
-  description: 'JSON:API v1.1 remote source registration: GET any resource endpoint with `Content-Type:
-    application/vnd.api+json`, follow `links.describedby` to fetch schema document (OpenAPI 3.1 or JSON
-    Schema), parse to auto-register virtual tables for each described resource type. Discovery: parse
-    `data[].attributes` as columns, `data[].relationships` as FK links, `included[]` as relationship expansion.
-    Response unwrapping and relationship auto-registration handled by dedicated mapper (similar to `provisa/graphql_remote/mapper.py`,
-    `provisa/grpc_remote/mapper.py`). Admin endpoints: register, refresh, list (same pattern as `grpc_remote_router`,
-    `openapi_router`, `graphql_remote_router`). Module: `provisa/jsonapi_remote/`.'
-  use_case: JSON:API remote source connector enables querying governed API data following v1.1 standards
-    without manual schema mapping.
-  code:
-  - provisa/jsonapi_remote/mapper.py
-  - provisa/jsonapi_remote/register.py
-  - provisa/api/admin/jsonapi_remote_router.py
-  tests:
-  - tests/integration/test_graphql_remote_source.py
-  - tests/unit/test_jsonapi_connector.py
-  - tests/unit/test_openapi_mapper.py
-  - tests/unit/test_remote_adapter_contract.py
-  - tests/unit/test_schema_service.py
-  target: 2026-Q3
-  integration_test: required
-  integration_test_reason: JSON:API endpoint discovery and schema document fetching require live endpoints.
-  e2e: true
-  e2e_reason: JSON:API admin endpoints (register, refresh, list) are REST transport surfaces requiring
-    a live running server to verify that HTTP routing, schema discovery, and response shapes work end-to-end.
-  stakeholders:
-  - data-engineer
-  - app-developer
-  competitive_position:
-    status: neutral
-    rationale: JSON:API as a governed federation source is a unique planned capability — no competitor
-      (Trino, Hasura, Denodo, Dremio, Snowflake) natively federates JSON:API sources with governance,
-      so this is not a competitive gap but a differentiated planned feature.
-- id: REQ-657
-  status: in-progress
-  group: 4. Source Connectors
-  category: JSON:API Remote Schema Connector
-  priority: SHOULD
-  type: behavioral
-  description: JSON:API relationship expansion via `?include=` parameter integrates with Provisa JOINs
-    — when a JOIN targets a relationship field, the compiler injects the corresponding `include` list
-    into the remote query to expand the traversal with a single upstream request.
-  use_case: include-based relationship expansion eliminates N+1 query patterns for remote JSON:API sources.
-  code:
-  - provisa/jsonapi_remote/query_builder.py
-  - provisa/compiler/sql_gen.py
-  tests:
-  - tests/unit/test_jsonapi_connector.py
-  - tests/unit/test_remote_adapter_contract.py
-  - tests/unit/test_schema_service.py
-  target: 2026-Q3
-  scenario: 'Given a JOIN query targeting a JSON:API relationship field
-
-    When the compiler processes the query
-
-    Then the corresponding include list is injected into the remote request to expand the traversal in
-    a single call
-
-    '
-  integration_test: required
-  integration_test_reason: Relationship expansion via include parameter requires live JSON:API endpoint
-    with relationship support.
-  bdd: true
-  bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
-  stakeholders:
-  - data-engineer
-  - app-developer
-  competitive_position:
-    status: neutral
-    rationale: JSON:API as a governed federation source is a unique planned capability — no competitor
-      (Trino, Hasura, Denodo, Dremio, Snowflake) natively federates JSON:API sources with governance,
-      so this is not a competitive gap but a differentiated planned feature.
-- id: REQ-658
-  status: in-progress
-  group: 4. Source Connectors
-  category: JSON:API Remote Schema Connector
-  priority: SHOULD
-  type: behavioral
-  description: JSON:API sparse fieldsets via `?fields[type]=col1,col2` integrate with Provisa column projection
-    — the compiler injects sparse fieldset parameters based on the query's requested columns to reduce
-    upstream payload.
-  use_case: Sparse fieldset integration reduces upstream bandwidth by passing column projections to the
-    remote API.
-  code:
-  - provisa/jsonapi_remote/query_builder.py
-  - provisa/compiler/sql_gen.py
-  tests:
-  - tests/unit/test_jsonapi_connector.py
-  - tests/unit/test_remote_adapter_contract.py
-  - tests/unit/test_schema_service.py
-  target: 2026-Q3
-  scenario: 'Given a query requesting specific columns from a JSON:API source
-
-    When the compiler generates the remote request
-
-    Then sparse fieldset parameters are injected to reduce the upstream payload to only requested columns
-
-    '
-  integration_test: required
-  integration_test_reason: Sparse fieldset parameter injection requires live endpoint to verify bandwidth
-    reduction.
-  bdd: true
-  bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
-  stakeholders:
-  - data-engineer
-  - ops
-  competitive_position:
-    status: neutral
-    rationale: JSON:API as a governed federation source is a unique planned capability — no competitor
-      (Trino, Hasura, Denodo, Dremio, Snowflake) natively federates JSON:API sources with governance,
-      so this is not a competitive gap but a differentiated planned feature.
-- id: REQ-659
-  status: in-progress
-  group: 4. Source Connectors
-  category: JSON:API Remote Schema Connector
-  priority: SHOULD
-  type: behavioral
-  description: JSON:API pagination via `links.next` / `links.prev` integrated with Provisa limit/offset
-    — the compiler tracks pagination links and issues sequential requests to fetch paginated result sets,
-    materializing into a complete result for client-issued LIMIT/OFFSET clauses.
-  use_case: Pagination link following enables seamless result scrolling across paginated remote JSON:API
-    sources.
-  code:
-  - provisa/jsonapi_remote/paginator.py
-  tests:
-  - tests/unit/test_jsonapi_connector.py
-  - tests/unit/test_remote_adapter_contract.py
-  - tests/unit/test_schema_service.py
-  target: 2026-Q3
-  scenario: 'Given a client-issued LIMIT/OFFSET query against a paginated JSON:API source
-
-    When results span multiple pages
-
-    Then the compiler follows links.next to fetch all pages and materializes a complete result set
-
-    '
-  integration_test: required
-  integration_test_reason: Pagination link following and sequential requests require live paginated JSON:API
-    endpoint.
-  bdd: true
-  bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
-  stakeholders:
-  - data-engineer
-  - app-developer
-  competitive_position:
-    status: neutral
-    rationale: JSON:API as a governed federation source is a unique planned capability — no competitor
-      (Trino, Hasura, Denodo, Dremio, Snowflake) natively federates JSON:API sources with governance,
-      so this is not a competitive gap but a differentiated planned feature.
-- id: REQ-660
-  status: in-progress
-  group: 4. Source Connectors
-  category: JSON:API Remote Schema Connector
-  priority: SHOULD
-  type: behavioral
-  description: 'JSON:API filtering via `?filter[field]=value` maps to Provisa native filter columns (with
-    `_nf_` prefix, `native_filter_type: "query_param"`). Filters requested in the query are passed as
-    filter parameters to the remote API rather than applied post-fetch.'
-  use_case: Filter pushdown to remote JSON:API sources reduces upstream data transfer by filtering at
-    the source.
-  code:
-  - provisa/jsonapi_remote/query_builder.py
-  - provisa/api/admin/jsonapi_remote_router.py
-  tests:
-  - tests/unit/test_jsonapi_connector.py
-  - tests/unit/test_remote_adapter_contract.py
-  - tests/unit/test_schema_service.py
-  target: 2026-Q3
-  scenario: 'Given a filter on a JSON:API source column with native_filter_type query_param
-
-    When the query is executed
-
-    Then the filter is passed as ?filter[field]=value to the remote API rather than applied post-fetch
-
-    '
-  integration_test: required
-  integration_test_reason: Filter pushdown to remote JSON:API requires live endpoint to verify filter
-    parameter transmission.
-  e2e: true
-  e2e_reason: Filter pushdown to a remote JSON:API endpoint requires a live running server and HTTP network
-    boundary to verify that filter parameters are transmitted to the remote API rather than applied post-fetch.
-  bdd: true
-  bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
-  stakeholders:
-  - data-engineer
-  - app-developer
-  competitive_position:
-    status: neutral
-    rationale: JSON:API as a governed federation source is a unique planned capability — no competitor
-      (Trino, Hasura, Denodo, Dremio, Snowflake) natively federates JSON:API sources with governance,
-      so this is not a competitive gap but a differentiated planned feature.
 - id: REQ-007
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9773,7 +9576,8 @@
       → SQL HAVING) as first-class GraphQL arguments with generated HavingExp input types is not available
       in Hasura v2 (no HAVING support in aggregate queries) or any other GraphQL-over-SQL platform.'
 - id: REQ-661
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: MUST
@@ -9784,13 +9588,12 @@
   use_case: Single-label resolution ensures write operations are unambiguous and cannot accidentally target
     the wrong table.
   code:
-  - provisa/cypher/translator.py
+  - provisa/cypher/write_translator.py
   tests:
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_label_map.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
-  target: 2026-Q3
   integration_test: not_required
   integration_test_reason: Label resolution in write clauses is compile-time validation verifiable through
     unit tests.
@@ -9803,7 +9606,8 @@
       governed Cypher writes over federated relational data either, but this is a planned capability gap
       until implementation is complete.
 - id: REQ-662
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: MUST
@@ -9813,13 +9617,12 @@
   use_case: Restricting writes to pre-registered tables ensures schema integrity and prevents untracked
     table creation.
   code:
-  - provisa/cypher/translator.py
+  - provisa/cypher/write_translator.py
   tests:
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_label_map.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
-  target: 2026-Q3
   integration_test: not_required
   integration_test_reason: Pre-registered table requirement is compile-time validation logic verifiable
     through unit tests.
@@ -9832,7 +9635,8 @@
       Until complete this is a gap in a planned feature, though competitors also lack this (Cypher writes
       over federated relational data).'
 - id: REQ-663
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: MUST
@@ -9843,24 +9647,27 @@
   use_case: Consistent write access control across all mutation types prevents unauthorized writes to
     sensitive tables.
   code:
-  - provisa/cypher/translator.py
+  - provisa/cypher/write_translator.py
+  - provisa/api/rest/cypher_router.py
+  - provisa/api/data/endpoint.py
   - provisa/compiler/stage2.py
   tests:
   - tests/e2e/test_mutations.py
+  - tests/unit/test_cypher_mutations.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
-  target: 2026-Q3
   integration_test: not_required
   integration_test_reason: Write ACL enforcement is compile-time validation based on NodeMeta declarations.
   stakeholders:
   - compliance
   - data-engineer
   competitive_position:
-    status: gap
-    rationale: 'In-progress: writable_by ACL enforcement on Cypher write operations is not yet implemented.
-      This is a planned ahead feature not yet delivered.'
+    status: ahead
+    rationale: Cypher writes are gated on the same writable_by column ACL as GraphQL/SQL mutations,
+      enforced before execution — no competitor governs Cypher writes over federated relational data.
 - id: REQ-664
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: MUST
@@ -9870,13 +9677,12 @@
     operations at translation time with a clear error message.
   use_case: Restricting writes to DML-capable sources prevents silent failures on read-only systems.
   code:
-  - provisa/cypher/translator.py
+  - provisa/cypher/write_translator.py
   - provisa/core/models.py
   tests:
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
-  target: 2026-Q3
   integration_test: not_required
   integration_test_reason: DML capability checking is compile-time validation based on connector metadata.
   stakeholders:
@@ -9887,7 +9693,8 @@
     rationale: 'In-progress: DML-capability checking to gate Cypher writes on connector support is not
       yet implemented.'
 - id: REQ-665
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: MUST
@@ -9898,13 +9705,13 @@
   use_case: Relationship immutability prevents accidental FK manipulation and keeps relationship metadata
     consistent with the declared join paths.
   code:
-  - provisa/cypher/translator.py
+  - provisa/cypher/write_translator.py
   - provisa/cypher/label_map.py
   tests:
   - tests/e2e/test_mutations.py
+  - tests/unit/test_cypher_mutations.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
-  target: 2026-Q3
   integration_test: not_required
   integration_test_reason: Relationship immutability is a compile-time constraint verifiable through unit
     tests.
@@ -9916,7 +9723,8 @@
     rationale: 'In-progress: relationship immutability enforcement in Cypher write translation is not
       yet implemented.'
 - id: REQ-666
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: SHOULD
@@ -9927,14 +9735,13 @@
   use_case: Property-to-column mapping with type coercion enables straightforward graph-idiomatic CREATE
     statements without explicit SQL casting.
   code:
-  - provisa/cypher/translator.py
+  - provisa/cypher/write_translator.py
   - provisa/cypher/select_builder.py
   tests:
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_label_map.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
-  target: 2026-Q3
   scenario: 'Given a Cypher CREATE statement with a registered label and scalar properties
 
     When the WriteTranslator processes the statement
@@ -9956,7 +9763,8 @@
     status: gap
     rationale: 'In-progress: CREATE→INSERT translation with property-to-column mapping is not yet implemented.'
 - id: REQ-667
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: SHOULD
@@ -9966,14 +9774,13 @@
     compile to standard SQL WHERE predicates before deletion.'
   use_case: WHERE clause reuse avoids duplicating filter translation logic between read and write paths.
   code:
-  - provisa/cypher/translator.py
+  - provisa/cypher/write_translator.py
   - provisa/cypher/select_builder.py
   tests:
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_label_map.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
-  target: 2026-Q3
   scenario: 'Given a Cypher MATCH-DELETE statement targeting a registered label
 
     When the WriteTranslator processes the statement
@@ -9993,7 +9800,8 @@
     status: gap
     rationale: 'In-progress: MATCH-DELETE→SQL DELETE translation is not yet implemented.'
 - id: REQ-668
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: SHOULD
@@ -10005,14 +9813,13 @@
   use_case: Property-to-column mapping with multi-assignment composition lets graph clients issue idiomatic
     UPDATE patterns.
   code:
-  - provisa/cypher/translator.py
+  - provisa/cypher/write_translator.py
   - provisa/cypher/select_builder.py
   tests:
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_label_map.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
-  target: 2026-Q3
   scenario: 'Given a Cypher MATCH-SET statement with multiple property assignments
 
     When the WriteTranslator processes the statement
@@ -10034,7 +9841,8 @@
     rationale: 'In-progress: MATCH-SET→SQL UPDATE translation with multi-assignment composition is not
       yet implemented.'
 - id: REQ-669
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: MUST
@@ -10045,13 +9853,12 @@
   use_case: Separate write translation path prevents mutation syntax from breaking existing read-only
     query parsing and execution.
   code:
-  - provisa/cypher/translator.py
+  - provisa/cypher/write_translator.py
   tests:
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_path_translator.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
-  target: 2026-Q3
   integration_test: not_required
   integration_test_reason: Separate write parser entry point is implementation architecture verifiable
     through unit tests.
@@ -10062,7 +9869,8 @@
     rationale: Cypher write mutation support (CREATE/MERGE/SET/DELETE) compiled to SQL via a dedicated
       WriteTranslator is unique — no competitor compiles Cypher mutations to federated SQL.
 - id: REQ-670
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: SHOULD
@@ -10077,7 +9885,6 @@
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
-  target: 2026-Q3
   scenario: 'Given a successful Cypher CREATE statement executed via the write endpoint
 
     When the response is returned to the client
@@ -10099,7 +9906,8 @@
     status: gap
     rationale: 'In-progress: affected_rows response field for Cypher write operations is not yet implemented.'
 - id: REQ-671
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: MUST
@@ -10109,13 +9917,12 @@
     in the correct dependency order.
   use_case: Explicit cascade prevention avoids accidental data deletion across unintended table relationships.
   code:
-  - provisa/cypher/translator.py
+  - provisa/cypher/write_translator.py
   - provisa/cypher/parser.py
   tests:
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
-  target: 2026-Q3
   integration_test: not_required
   integration_test_reason: DETACH DELETE rejection is compile-time validation verifiable through unit
     tests.
@@ -18814,7 +18621,8 @@
       master key is stronger than Snowflake's customer-managed key model and not available in Hasura or
       Dremio.
 - id: REQ-695
-  status: accepted
+  status: complete
+  since: "2026-07"
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -18826,7 +18634,6 @@
     are unaffected — they transparently use org_default.
   use_case: Schema-per-org provides structural isolation between tenants on a shared PostgreSQL instance.
     Accidental cross-tenant data access requires bypassing both the search_path and the role-level grants.
-  target: 2026-Q4
   integration_test: not_required
   integration_test_reason: not active
   stakeholders:
@@ -18836,13 +18643,17 @@
     status: ahead
     rationale: Per-org PostgreSQL schema (org_<org_id>) for all internal metadata provides schema-level
       isolation stronger than row-level tenant filtering used by Hasura Cloud or Dremio.
+  code:
+  - provisa/core/db.py
+  - provisa/api/app.py
   tests:
   - tests/unit/test_org_isolation.py
   - tests/unit/test_table_search.py
   related_reqs:
   - REQ-828
 - id: REQ-696
-  status: accepted
+  status: complete
+  since: "2026-07"
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -18852,7 +18663,6 @@
     (platform.tenants). Org schemas cannot reference or join to the platform schema.
   use_case: Tenant registry and billing data must not co-mingle with per-org application data. A compromised
     org connection cannot enumerate other tenants.
-  target: 2026-Q4
   integration_test: not_required
   integration_test_reason: not active
   stakeholders:
@@ -18860,13 +18670,17 @@
   competitive_position:
     status: neutral
     rationale: ''
+  code:
+  - provisa/core/db.py
+  - provisa/api/app.py
   tests:
   - tests/unit/test_org_isolation.py
   - tests/unit/test_table_search.py
   related_reqs:
   - REQ-828
 - id: REQ-697
-  status: accepted
+  status: complete
+  since: "2026-07"
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -18877,7 +18691,6 @@
     "default").
   use_case: Schema creation is idempotent and org-scoped from first boot. No manual schema setup required
     for new tenant provisioning.
-  target: 2026-Q4
   integration_test: not_required
   integration_test_reason: not active
   stakeholders:
@@ -18886,10 +18699,14 @@
   competitive_position:
     status: neutral
     rationale: ''
+  code:
+  - provisa/core/db.py
+  - provisa/api/app.py
   tests:
   - tests/unit/test_org_isolation.py
 - id: REQ-698
-  status: accepted
+  status: complete
+  since: "2026-07"
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -18900,7 +18717,6 @@
     as Trino uses fully-qualified catalog.schema.table references.
   use_case: Non-SQL cached rows for different orgs land in separate PG schemas within the provisa_admin
     catalog. A Trino query for org A cannot reference org B cache tables without an explicit schema qualifier.
-  target: 2026-Q4
   integration_test: not_required
   integration_test_reason: not active
   stakeholders:
@@ -18910,11 +18726,15 @@
     status: ahead
     rationale: Org-scoped Trino cache schemas (org_<org_id>_api_cache) ensure no cross-tenant cache bleed
       in the query federation layer — not present in standard Trino or Hasura multi-tenant setups.
+  code:
+  - provisa/api_source/trino_cache.py
+  - provisa/api/data/endpoint.py
   tests:
   - tests/unit/test_catalog_cache.py
   - tests/unit/test_org_isolation.py
 - id: REQ-699
-  status: accepted
+  status: complete
+  since: "2026-07"
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -18925,7 +18745,6 @@
   use_case: Database-level role scoping provides a second isolation layer below search_path. A malformed
     query using an unqualified table name cannot accidentally read another org's data even if search_path
     is misconfigured.
-  target: 2026-Q4
   integration_test: not_required
   integration_test_reason: not active
   stakeholders:
@@ -18934,12 +18753,15 @@
     status: ahead
     rationale: Dedicated PostgreSQL role per org with schema-only access enforces DB-level tenant isolation
       beyond row-level security used by Hasura Cloud.
+  code:
+  - provisa/core/db.py
   tests:
   - tests/unit/test_org_isolation.py
   related_reqs:
   - REQ-828
 - id: REQ-700
-  status: accepted
+  status: complete
+  since: "2026-07"
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -18951,7 +18773,6 @@
     (the same gap blocking REQ-595 completion).
   use_case: Redis key prefix isolation complements PG schema isolation (REQ-695). Both layers must be
     independently correct — ACL misconfiguration in one should not cascade to the other.
-  target: 2026-Q4
   integration_test: not_required
   integration_test_reason: not active
   stakeholders:
@@ -18961,12 +18782,17 @@
     status: ahead
     rationale: org_id-prefixed Redis keys with ACL rules per org provides cache isolation at the Redis
       ACL layer — stronger than namespace-only separation used by most multi-tenant SaaS platforms.
+  code:
+  - provisa/cache/middleware.py
+  - provisa/cache/store.py
+  - provisa/core/org_provisioning.py
   tests:
   - tests/integration/test_cache_store.py
   - tests/unit/test_cache_store.py
   - tests/unit/test_org_isolation.py
 - id: REQ-701
-  status: accepted
+  status: complete
+  since: "2026-07"
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: SHOULD
@@ -18977,7 +18803,6 @@
     order.
   use_case: Atomic provisioning prevents half-initialised orgs from entering a queryable but misconfigured
     state. Clean deprovisioning enables tenant offboarding without manual cleanup.
-  target: 2026-Q4
   integration_test: not_required
   integration_test_reason: not active
   stakeholders:
@@ -18986,10 +18811,13 @@
     status: ahead
     rationale: Atomic org provisioning (PG schema + role + Redis ACL + Trino cache schema) with compensating
       workflow on partial failure is more robust than Hasura Cloud's sequential provisioning.
+  code:
+  - provisa/core/org_provisioning.py
   tests:
   - tests/unit/test_org_isolation.py
 - id: REQ-702
-  status: accepted
+  status: complete
+  since: "2026-07"
   group: 11. Platform, Infrastructure & Delivery
   category: Multi-Tenancy
   priority: MUST
@@ -19005,7 +18833,6 @@
   dependencies:
   - REQ-695
   - REQ-697
-  target: 2026-Q4
   integration_test: not_required
   integration_test_reason: not active
   stakeholders:
@@ -19014,6 +18841,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  code:
+  - provisa/api/app.py
   tests:
   - tests/unit/test_org_isolation.py
   related_reqs:
@@ -19087,200 +18916,6 @@
       address removes a manual ops step competitors leave to the customer; write-safety guarantee (never
       retry writes internally) is a correctness property that naive client retry implementations routinely
       miss.'
-- id: REQ-704
-  status: proposed
-  group: 7. Semantic Layer & Discovery
-  category: Consumer Discovery
-  priority: SHOULD
-  type: behavioral
-  description: CLI ingestion tool crawls consumer query artifacts (SQL logs, LookML, dbt models, ODBC
-    traces, notebooks) and extracts field references, join patterns, and filter predicates to bootstrap
-    Provisa registration.
-  use_case: Modernization teams need a way to discover what data is actually being consumed before defining
-    governance and access contracts. Consumer-driven discovery surfaces actual usage patterns rather than
-    guessing schema shape.
-  target: 2026-Q3
-  scenario: 'Given a SQL query log from an existing database
-
-    When the ingestion tool crawls and parses the log
-
-    Then field references, join patterns, and predicates are extracted and indexed
-
-    '
-  competitive_position:
-    status: ahead
-    rationale: CLI ingestion tool crawling SQL logs, LookML, dbt models, ODBC traces, and notebooks to
-      bootstrap registration config is unique — no competitor provides automated consumer-query-driven
-      schema discovery.
-  tests:
-  - tests/unit/test_llm_discovery.py
-- id: REQ-705
-  status: proposed
-  group: 7. Semantic Layer & Discovery
-  category: Consumer Discovery
-  priority: SHOULD
-  type: behavioral
-  description: RAG-based clustering identifies semantically equivalent columns across sources and proposes
-    canonical names to reduce schema fragmentation.
-  use_case: Multi-source environments often have equivalent columns with different names (e.g., customer_id,
-    cust_id, customer_number). Semantic clustering surfaces these during planning, enabling stewards to
-    resolve naming inconsistencies before governance lock-in.
-  target: 2026-Q3
-  scenario: 'Given extracted columns from multiple sources
-
-    When the clustering engine groups semantically similar columns
-
-    Then canonical names are proposed with confidence scores for steward review
-
-    '
-  competitive_position:
-    status: ahead
-    rationale: RAG-based semantic column clustering for canonical name proposals across sources is an
-      AI-native capability not available in Hasura, Dremio, Denodo, or Trino.
-  tests:
-  - tests/unit/test_llm_discovery.py
-- id: REQ-706
-  status: proposed
-  group: 7. Semantic Layer & Discovery
-  category: Consumer Discovery
-  priority: SHOULD
-  type: behavioral
-  description: Auto-generation of draft Provisa registration config (tables, columns, relationships, governance_mode=registry-required)
-    scoped to observed consumer usage only — no over-exposure.
-  use_case: Manually writing registration config for large catalogs is error-prone and time-consuming.
-    Auto-generation from usage footprints ensures the semantic layer covers only what consumers actually
-    need, reducing governance overhead and attack surface.
-  target: 2026-Q3
-  scenario: 'Given extracted consumer field references and join patterns
-
-    When config generation runs
-
-    Then a draft registration file is produced with only observed tables, columns, and relationships
-
-    And governance_mode is set to registry-required for all tables
-
-    '
-  competitive_position:
-    status: ahead
-    rationale: Auto-generation of draft registration config scoped only to observed consumer usage (no
-      over-exposure) is a security-conscious bootstrap approach not available in any competitor.
-  tests:
-  - tests/unit/test_llm_discovery.py
-- id: REQ-707
-  status: proposed
-  group: 7. Semantic Layer & Discovery
-  category: Consumer Discovery
-  priority: SHOULD
-  type: behavioral
-  description: Compilation of draft config surfaces inconsistencies (conflicting join directions, duplicate
-    columns, unresolvable filters) as structured errors rather than hiding them. LLM resolves unambiguous
-    cases; remainder flagged for steward review.
-  use_case: Inconsistencies in consumer usage (e.g., competing join patterns, conflicting type assumptions)
-    surface during compilation rather than silently producing incorrect schema. Structured errors force
-    resolution instead of hiding data quality issues.
-  target: 2026-Q3
-  scenario: 'Given a draft config with conflicting join patterns across consumers
-
-    When the compiler runs
-
-    Then join conflicts are surfaced as structured error messages
-
-    And the compiler flags them for steward resolution
-
-    '
-  competitive_position:
-    status: ahead
-    rationale: Compilation of draft config surfacing inconsistencies as structured errors with LLM resolution
-      for unambiguous cases is a unique AI-assisted governance workflow.
-  tests:
-  - tests/unit/test_llm_discovery.py
-- id: REQ-708
-  status: proposed
-  group: 7. Semantic Layer & Discovery
-  category: Consumer Discovery
-  priority: SHOULD
-  type: behavioral
-  description: Gap report identifies consumers referencing fields not resolvable in the generated SDL,
-    flagged with migration diff showing source mappings and remaining unresolved references.
-  use_case: As governance is applied and sources are modernized, gap reports track which consumer queries
-    would break if a particular source were migrated or deprecated, enabling parallel modernization planning.
-  target: 2026-Q3
-  scenario: 'Given a generated SDL and consumer query logs
-
-    When gap analysis runs
-
-    Then unresolvable field references are identified
-
-    And a migration diff is produced showing source, target, and unresolved references
-
-    '
-  competitive_position:
-    status: ahead
-    rationale: Gap report identifying unresolvable consumer field references with migration diff is a
-      unique migration-safety feature not present in Hasura, Dremio, or Denodo.
-  tests:
-  - tests/unit/test_llm_discovery.py
-- id: REQ-709
-  status: proposed
-  group: 7. Semantic Layer & Discovery
-  category: Consumer Discovery
-  priority: SHOULD
-  type: behavioral
-  description: The governed semantic layer acts as an interop boundary — consumer queries remain stable
-    across source migrations because they bind to the semantic layer contract, not physical tables. Sources
-    can be replaced independently without breaking consumers.
-  use_case: Modernization requires breaking coupling between consumers and physical data layout. The semantic
-    layer decouples them by becoming the contract boundary, enabling parallel, independent source modernization
-    (strangler fig pattern).
-  target: 2026-Q3
-  scenario: 'Given a consumer bound to a semantic layer query
-
-    When a source is migrated or replaced
-
-    Then the consumer query continues to work if the semantic layer contract is preserved
-
-    And no changes to the consumer application code are required
-
-    '
-  competitive_position:
-    status: ahead
-    rationale: Semantic layer as an interop boundary enabling source migration with stable consumer queries
-      is the core value prop of data virtualization, executed more completely than Denodo or Dremio with
-      Cypher/GraphQL/SQL multi-protocol support.
-  e2e: true
-  e2e_reason: Verifying that a consumer query continues to work after source replacement requires a live
-    server routing the query through the semantic layer to the new source and returning correct results
-    to an actual client.
-  tests:
-  - tests/unit/test_llm_discovery.py
-- id: REQ-710
-  status: proposed
-  group: 7. Semantic Layer & Discovery
-  category: Consumer Discovery
-  priority: MUST
-  type: constraint
-  description: Provisa does not move or copy data. Sources remain authoritative and in place. The semantic
-    layer governs access contracts only; it does not materialize, replicate, or stage data.
-  use_case: Strangler fig modernization requires no ETL or data movement — only governance and access
-    abstraction. This allows organizations to wrap legacy sources in governance without the cost and complexity
-    of a data warehouse or lake migration.
-  target: 2026-Q3
-  scenario: 'Given Provisa governance applied to a legacy source
-
-    When a consumer queries through the semantic layer
-
-    Then the query is routed to the original source
-
-    And data is served from the authoritative source without replication or staging
-
-    '
-  competitive_position:
-    status: ahead
-    rationale: Zero-copy architecture (no data movement, sources remain authoritative) is architecturally
-      aligned with Denodo but more explicitly enforced than Dremio's lakehouse materialization or Snowflake's
-      copy-on-load model.
-  tests:
-  - tests/unit/test_llm_discovery.py
 - id: REQ-711
   status: proposed
   group: 8. Client Access & Protocols
@@ -24177,12 +23812,12 @@
     - REQ-865
     - REQ-866
 - id: REQ-865
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 6. Execution, Routing, Caching & Performance
   category: Query Routing
   priority: SHOULD
   type: structural
-  target: "2026-Q3"
   description: >-
     The route decision includes CACHED as a first-class route alongside DIRECT
     (REQ-027) and FEDERATED/Trino (REQ-028): the Route enum gains Route.CACHE and
@@ -24264,3 +23899,167 @@
     - REQ-402
     - REQ-038
     - REQ-263
+- id: REQ-867
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Authorization
+  priority: MUST
+  type: structural
+  description: >-
+    Table-scoped mutation registration with per-mutation grants across all remote
+    schema adapters (GraphQL remote, OpenAPI, gRPC, Hasura). Mutations are registered
+    as first-class sub-resources, each with its own writable_by list. Empty writable_by
+    = default-deny. The authorization model is protocol-agnostic; shared/universal layer
+    includes table-scoped mutation sub-resources, per-mutation writable_by, global WRITE
+    capability, execute-time enforcement, read-statement taint, ranked-candidate suggestion
+    interface, admin-confirm, and default-deny. What is per-adapter is only the signals
+    used for classification and association.
+  use_case: >-
+    Enables fine-grained authorization of table mutations independent of the table's
+    read visibility across all query sources (GraphQL, OpenAPI, gRPC, Hasura), supporting
+    mutation execution as UDFs in the semantic layer.
+  code:
+    - provisa/security/rights.py
+    - provisa/models/semantic.py
+  target: "2026-Q4"
+  related_reqs:
+    - REQ-868
+    - REQ-869
+    - REQ-870
+    - REQ-871
+    - REQ-872
+- id: REQ-868
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Authorization
+  priority: MUST
+  type: structural
+  description: >-
+    Global WRITE (alias EXECUTE_MUTATION) capability added to the Capability enum.
+    Acts as a coarse master switch; role must hold WRITE AND appear in the specific
+    mutation's writable_by to invoke a mutation.
+  use_case: >-
+    Two-gate authorization model: coarse capability check (does role have WRITE at all?)
+    plus fine-grained mutation-level grant check (is role in this mutation's writable_by?).
+    Analogous to Postgres role-level rights + per-table GRANT.
+  code:
+    - provisa/security/rights.py
+  target: "2026-Q4"
+  related_reqs:
+    - REQ-867
+    - REQ-869
+    - REQ-870
+- id: REQ-869
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Authorization
+  priority: MUST
+  type: constraint
+  description: >-
+    Mutations are classified as WRITES by contract (not caller declaration) via
+    protocol-specific classifiers. Per-adapter read/write classifiers: GraphQL uses
+    operation type (type Mutation), OpenAPI uses HTTP method (POST/PUT/PATCH/DELETE = write;
+    GET = read) plus x-provisa-kind override, gRPC uses MethodOptions.idempotency_level
+    (NO_SIDE_EFFECTS = read; IDEMPOTENCY_UNKNOWN and IDEMPOTENT = write; AIP naming and
+    server-streaming are non-normative heuristics only), Hasura uses exposed_as/action_type.
+    Universal default: unknown/unclassifiable → treat as write (default-deny). Any read
+    statement (SELECT) referencing a kind=mutation UDF is promoted to write and subject
+    to both WRITE capability + writable_by check. Execute-time enforcement in
+    _execute_action_field validates role_id ∈ mutation.writable_by.
+  use_case: >-
+    Prevents callers from invoking mutations by disguising them as SELECT statements.
+    Protocol-agnostic classification with per-adapter signals ensures mutations cannot
+    bypass write-level authorization regardless of source.
+  code:
+    - provisa/api/data/endpoint.py
+  target: "2026-Q4"
+  related_reqs:
+    - REQ-867
+    - REQ-868
+    - REQ-870
+- id: REQ-870
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  description: >-
+    Admin-only reclassification: legitimate reclassification of a mutation to read-safe
+    is gated by ACCESS_CONFIG capability and recorded as a governance decision. No
+    per-operation read_only opt-out for callers; only admin acts can demote a mutation.
+    Re-introspection of discovered mutations registers with empty writable_by; existing
+    grants preserved by name.
+  use_case: >-
+    Ensures authorization policy remains under control of governance (admin), not individual
+    callers. Prevents callers from overriding mutation classification, supports safe
+    discovery/re-registration of mutations without accidentally granting them.
+  code:
+    - provisa/security/access_config.py
+    - provisa/api/admin/
+  target: "2026-Q4"
+  related_reqs:
+    - REQ-867
+    - REQ-868
+    - REQ-869
+    - REQ-871
+- id: REQ-871
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  description: >-
+    Mutation↔table association suggestions at registration time via protocol-specific
+    association-suggesters. Universal rule: adapter emits ranked (mutation → table)
+    candidates; suggestions are hints only; admin-confirmed; confirmed associations
+    register with empty writable_by (default-deny); any mutation may bind to any table
+    (manual override always); unmatched mutations remain registerable. GraphQL: walk
+    mutation return type's fields, unwrap NON_NULL/LIST, match leaf types against
+    type_to_table; LIST-valued field = changed-records collection; prioritize single
+    object > list-of-table-type; ignore scalar/stats fields. OpenAPI: align via URL path
+    template, operationId stem, and tags (e.g., POST /users → users table); response
+    schema is tiebreaker only, not primary signal. gRPC: response-message repeated field
+    type + method-name entity stem (weakest signal). Fallbacks (all adapters): operation
+    name affixes (create*/update*/delete*/upsert*) and input-type stem for operations
+    whose response carries no queryable type. False negatives expected; no suggestion
+    auto-binds.
+  use_case: >-
+    Registration of mutations across heterogeneous sources requires protocol-aware
+    association signals. Per-adapter suggesters reduce admin friction by ranking likely
+    alignment; unmatched mutations remain registerable as global functions or require
+    manual binding.
+  code:
+    - provisa/graphql_remote/mapper.py
+    - provisa/security/rights.py
+  target: "2026-Q4"
+  related_reqs:
+    - REQ-867
+    - REQ-870
+- id: REQ-872
+  status: proposed
+  group: "2. Authentication & Identity"
+  category: Authorization
+  priority: MUST
+  type: behavioral
+  description: >-
+    Registered remote-schema mutations/functions (tracked_functions, tracked_webhooks)
+    MUST be projected into each query surface's native function catalog and be invocable
+    from each surface, routing through the shared executor and enforcing per-mutation
+    writable_by authorization. Single source of truth: tracked_functions + tracked_webhooks
+    registry. Per-surface fidelity: pgwire populates _pg_proc and supports SELECT fn(...),
+    SQL/Explore projects information_schema.routines and supports table-valued-function
+    invocation, Cypher/Bolt binds CALL <registeredFn>(args) YIELD ... with optional discovery.
+  use_case: >-
+    UDF registry currently exposed only through GraphQL; pgwire, SQL/Explore, and Cypher
+    surfaces cannot discover or invoke registered functions. Cross-surface projection and
+    execution binding unifies function access across all query surfaces and enforces
+    consistent authorization.
+  code:
+    - provisa/api/data/endpoint.py
+    - provisa/pgwire/catalog.py
+    - provisa/api/rest/cypher_router.py
+    - provisa/security/rights.py
+  target: "2026-Q4"
+  related_reqs:
+    - REQ-867
+    - REQ-868

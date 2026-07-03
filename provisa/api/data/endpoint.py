@@ -2591,14 +2591,33 @@ async def _execute_one_field(
     _t0 = _time.perf_counter()
 
     # Cache check
-    rls_rules_for_key = rls.rules if rls.has_rules() else {}
-    ck = cache_key(compiled.sql, compiled.params, role_id, rls_rules_for_key)
+    ck = cache_key(compiled.sql, compiled.params, role_id, rls.rules if rls.has_rules() else {})
+    _cache_off = no_cache or output_format != "json"
     cached = (
-        None
-        if (no_cache or output_format != "json")
-        else await check_cache(state.response_cache_store, ck, org_id=org_id)
+        None if _cache_off else await check_cache(state.response_cache_store, ck, org_id=org_id)
     )
-    if cached is not None:
+
+    # Route decision — the result cache is the first candidate route (REQ-865),
+    # so a hit is served as Route.CACHE instead of a hidden pre-routing step.
+    decision = decide_route(
+        sources=compiled.sources,
+        source_types=state.source_types,
+        source_dialects=state.source_dialects,
+        steward_hint=steward_hint,
+        has_json_extract="->>" in compiled.sql,
+        source_dsns=state.source_dsns,
+        cache_hit=cached is not None,
+        no_cache=_cache_off,
+    )
+    log.warning(
+        "[QUERY %s] Route: %s | source=%s | reason: %s",
+        root_field,
+        decision.route.value,
+        decision.source_id or "(trino)",
+        decision.reason,
+    )
+
+    if decision.route == Route.CACHE and cached is not None:
         cached_data = json.loads(cached.data)
         field_rows = cached_data.get("data", {}).get(root_field, [])
         _qs_mod.record(
@@ -2610,23 +2629,6 @@ async def _execute_one_field(
             cache_hit=True,
         )
         return root_field, field_rows, None, ck, cached
-
-    # Route decision
-    decision = decide_route(
-        sources=compiled.sources,
-        source_types=state.source_types,
-        source_dialects=state.source_dialects,
-        steward_hint=steward_hint,
-        has_json_extract="->>" in compiled.sql,
-        source_dsns=state.source_dsns,
-    )
-    log.warning(
-        "[QUERY %s] Route: %s | source=%s | reason: %s",
-        root_field,
-        decision.route.value,
-        decision.source_id or "(trino)",
-        decision.reason,
-    )
 
     if decision.route == Route.API and decision.source_id:
         return await _exec_api_route(

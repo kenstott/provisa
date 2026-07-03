@@ -27,6 +27,7 @@ from provisa.executor.drivers.registry import has_driver
 
 
 class Route(str, Enum):
+    CACHE = "cached"  # REQ-865
     DIRECT = "direct"
     TRINO = "virtual"
     API = "api"
@@ -73,8 +74,10 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
     has_json_extract: bool = False,
     is_mutation: bool = False,
     source_dsns: dict[str, str] | None = None,
+    cache_hit: bool = False,
+    no_cache: bool = False,
 ) -> RouteDecision:
-    """Decide whether to route a query direct or through Trino.
+    """Decide whether to route a query cached, direct, or through Trino.
 
     Args:
         sources: Set of source_ids involved in the query.
@@ -83,10 +86,27 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
         steward_hint: Optional "direct" or "trino" override from steward.
         has_json_extract: Query uses json_extract_scalar (path columns).
         is_mutation: True for mutations — always route direct (never Trino).
+        cache_hit: True when the result cache (keyed per REQ-864/REQ-544 on the
+            governance-normalized IR) holds an entry for this query.
+        no_cache: True when the @noCache/no_cache bypass (REQ-544) removes CACHED
+            from the candidate set for this query.
 
     Returns:
         RouteDecision with route, target source (if direct), and reason.
     """
+    # Result cache is the first candidate route (REQ-865). A hit serves the
+    # stored result with no direct or federated execution. The cache key is
+    # derived from the persona-resolved governed IR, so a serve is inherently
+    # isolated (REQ-866). Mutations never serve from cache; the no-cache bypass
+    # removes CACHED from the candidate set (REQ-544).
+    if cache_hit and not is_mutation and not no_cache:
+        return RouteDecision(
+            route=Route.CACHE,
+            source_id=None,
+            dialect=None,
+            reason="result cache hit",
+        )
+
     # Mutations always route direct — Trino doesn't support writes
     if is_mutation and len(sources) >= 1:  # REQ-031
         sid = next(iter(sources))

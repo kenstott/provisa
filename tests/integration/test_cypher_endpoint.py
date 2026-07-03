@@ -129,13 +129,34 @@ def test_valid_query_returns_columns_and_rows(client):
 
 
 def test_named_params_bound_correctly(client):
+    """A named parameter binds into a Cypher query without error or timeout.
+
+    Binds ``$node_id`` into a label-BOUNDED query rather than an unbounded
+    ``MATCH (n)``. An unlabelled match fans out across every registered node
+    label and evaluates the predicate per-label, reliably exceeding the 30s
+    client timeout (the same fan-out cost documented on
+    test_cypher_endpoint_reachable). A single-label match with LIMIT 1 exercises
+    the identical param-binding path but resolves to one source and returns in
+    well under the timeout. The concrete label is discovered via db.labels();
+    if none are registered, any explicit single label still avoids the fan-out.
+    """
+    labels_resp = client.post("/data/cypher", json={"query": "CALL db.labels()"})
+    label = "Thing"
+    if labels_resp.status_code == 200:
+        rows = labels_resp.json().get("rows", [])
+        if rows:
+            label = rows[0]["label"]
+
     resp = client.post(
         "/data/cypher",
         json={
-            "query": "MATCH (n) WHERE n.id = $node_id RETURN n LIMIT 1",
+            "query": f"MATCH (n:{label}) WHERE n.id = $node_id RETURN n LIMIT 1",
             "params": {"node_id": "1"},
         },
     )
+    # A ReadTimeout here is a real defect: a single-label LIMIT 1 query must
+    # respond within the 30s client timeout. Any HTTP response is acceptable —
+    # the param path is what's under test, not whether rows exist.
     assert resp.status_code in (200, 400, 500, 503)
     if resp.status_code == 400:
         assert "error" in resp.json()

@@ -178,6 +178,12 @@ class CypherRequest(BaseModel):  # REQ-345
     params: dict[str, Any] = {}
 
 
+def _resolve_table_meta(ctx, table_name: str):  # by GraphQL field name or physical table name
+    return ctx.tables.get(table_name) or next(
+        (m for m in ctx.tables.values() if m.table_name == table_name), None
+    )
+
+
 def _handle_procedure(proc: str, label_map: CypherLabelMap) -> JSONResponse:
     """Return schema-inspection results for Neo4j-compatible CALL procedures."""
     if proc == "db.labels":
@@ -474,6 +480,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         CypherWriteParseError as _CWPE,
         WriteTranslator as _WT,
         parse_cypher_write as _pwc,
+        write_acl_error,
     )
 
     _write_ast = None
@@ -515,9 +522,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 
         # Build MutationResult so the full write pipeline applies (RLS, dialect
         # transpilation, post-mutation hooks) — same as GraphQL and SQL mutations.
-        _mutation_type = {"create": "insert", "delete": "delete", "update": "update"}[
-            _write_ast.kind
-        ]
+        _mutation_type = {"create": "insert", "update": "update"}.get(_write_ast.kind, "delete")
         _mut = _MutationResult(
             sql=_write_sql,
             params=[],
@@ -528,12 +533,12 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         )
 
         # Look up table_meta for RLS and post-mutation hooks (same pattern as GraphQL)
-        _table_meta = _ctx.tables.get(_mapping.table_name)
-        if _table_meta is None:
-            for _m in _ctx.tables.values():
-                if _m.table_name == _mapping.table_name:
-                    _table_meta = _m
-                    break
+        _table_meta = _resolve_table_meta(_ctx, _mapping.table_name)
+
+        # Enforce writable_by column ACL for CREATE/SET, uniformly with the
+        # GraphQL/SQL mutation path (REQ-663).
+        if _acl := write_acl_error(_table_meta, _write_ast, _mapping, _role_id):
+            return JSONResponse(status_code=_acl[0], content={"error": _acl[1]})
 
         # Apply RLS into UPDATE/DELETE (same as GraphQL mutations)
         if _table_meta is not None:

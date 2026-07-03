@@ -117,6 +117,7 @@ class TestInitSchema:
             )
         )
 
+        mock_pool.dialect = "postgresql"
         await init_schema(mock_pool, "SELECT 1", org_id="myorg")
 
         executed = [c.args[0] for c in mock_conn.execute.await_args_list if c.args]
@@ -136,6 +137,7 @@ class TestInitSchema:
             )
         )
 
+        mock_pool.dialect = "postgresql"
         await init_schema(mock_pool, "CREATE TABLE t (id INT)", org_id="myorg")
 
         # Invariant (REQ-697): search_path is set before the schema DDL runs.

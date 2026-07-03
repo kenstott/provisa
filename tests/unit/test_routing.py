@@ -51,8 +51,8 @@ _DIALECTS: dict[str, str] = {
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestRoutingDecisions:
 
+class TestRoutingDecisions:
     def test_single_source_routes_direct(self):
         """A single PostgreSQL source query routes to 'direct'."""
         decision = decide_route({"pg-main"}, _TYPES, _DIALECTS)
@@ -69,37 +69,58 @@ class TestRoutingDecisions:
 
     def test_mutation_always_routes_direct(self):
         """Mutations are never routed via Trino — always direct."""
-        decision = decide_route(
-            {"pg-main"}, _TYPES, _DIALECTS, is_mutation=True
-        )
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, is_mutation=True)
         assert decision.route == Route.DIRECT
         assert decision.source_id == "pg-main"
         assert "mutation" in decision.reason.lower()
 
     def test_mutation_always_routes_direct_even_with_nosql(self):
         """Even a NoSQL-sourced mutation routes direct (not Trino)."""
-        decision = decide_route(
-            {"mongo-events"}, _TYPES, _DIALECTS, is_mutation=True
-        )
+        decision = decide_route({"mongo-events"}, _TYPES, _DIALECTS, is_mutation=True)
         assert decision.route == Route.DIRECT
         assert decision.source_id == "mongo-events"
+
+    def test_cache_hit_routes_cache(self):
+        """A result-cache hit resolves to Route.CACHE as the first candidate (REQ-865)."""
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, cache_hit=True)
+        assert decision.route == Route.CACHE
+        assert decision.source_id is None
+        assert "cache" in decision.reason.lower()
+
+    def test_cache_hit_takes_priority_over_direct(self):
+        """Cache is the first candidate — it wins over an otherwise-direct route (REQ-865)."""
+        direct = decide_route({"pg-main"}, _TYPES, _DIALECTS)
+        assert direct.route == Route.DIRECT
+        cached = decide_route({"pg-main"}, _TYPES, _DIALECTS, cache_hit=True)
+        assert cached.route == Route.CACHE
+
+    def test_no_cache_removes_cache_from_candidates(self):
+        """The no_cache bypass removes CACHED even when the store holds an entry (REQ-544/865)."""
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, cache_hit=True, no_cache=True)
+        assert decision.route == Route.DIRECT
+
+    def test_mutation_never_serves_from_cache(self):
+        """A mutation with a stale cache entry still routes direct, never cache (REQ-865)."""
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, cache_hit=True, is_mutation=True)
+        assert decision.route == Route.DIRECT
+
+    def test_cache_miss_falls_through(self):
+        """No cache hit falls through to DIRECT/FEDERATED as before (REQ-865)."""
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, cache_hit=False)
+        assert decision.route == Route.DIRECT
 
     def test_route_override_hint_trino(self):
         """A `/* @provisa route=trino */`-style steward hint forces Trino route."""
         # The router accepts the hint as a string "trino" (extracted upstream
         # by the request layer from the comment; we test the routing primitive directly).
-        decision = decide_route(
-            {"pg-main"}, _TYPES, _DIALECTS, steward_hint="trino"
-        )
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint="trino")
         assert decision.route == Route.TRINO
         assert decision.source_id is None
         assert "override" in decision.reason.lower() or "steward" in decision.reason.lower()
 
     def test_route_override_hint_direct(self):
         """A `/* @provisa route=direct */`-style steward hint forces direct route."""
-        decision = decide_route(
-            {"pg-main"}, _TYPES, _DIALECTS, steward_hint="direct"
-        )
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint="direct")
         assert decision.route == Route.DIRECT
         assert decision.source_id == "pg-main"
         assert "override" in decision.reason.lower() or "steward" in decision.reason.lower()
@@ -148,7 +169,8 @@ class TestRoutingDecisions:
             {"pg-main"},
             {"pg-main", "pg-secondary"},
             {"mongo-events"},
-            {"kafka-stream"}]:
+            {"kafka-stream"},
+        ]:
             d = decide_route(source_set, _TYPES, _DIALECTS)
             assert d.reason, f"Empty reason for sources={source_set}"
             assert isinstance(d.reason, str)
