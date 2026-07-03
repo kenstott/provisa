@@ -23510,6 +23510,7 @@
   - REQ-318
   - REQ-327
   - REQ-424
+  - REQ-855
 - id: REQ-845
   status: proposed
   group: 4. Source Connectors
@@ -23521,8 +23522,9 @@
     The set of sources served through api_cache is engine-relative —
     api_cache = { source : reach(source) == land } for the configured
     federation engine — generalizing the previously hardcoded REST/GraphQL/gRPC
-    pull-through set. Pull-through is TTL/freshness-gated and single-flighted
-    to prevent upstream stampede on concurrent misses.
+    pull-through set. Pull-through is TTL/freshness-gated (per the REQ-855
+    freshness policy) and single-flighted to prevent upstream stampede on
+    concurrent misses.
   scenario: |
     Given a source with no attach connector for the active engine
     When it is referenced concurrently after TTL expiry
@@ -23538,6 +23540,7 @@
   - REQ-318
   - REQ-327
   - REQ-841
+  - REQ-855
 - id: REQ-846
   status: proposed
   group: 4. Source Connectors
@@ -23566,12 +23569,13 @@
   description: >-
     Read-through and write-back discipline. On a pull-through read, a pull
     failure with no fresh cached data is a hard error; serving stale data is
-    permitted only under an explicit per-source freshness policy, never as a
-    silent fallback. Mutations on a pulled-through relation target the upstream
-    source of truth and invalidate the cache entry; the cache is never written
-    as if it were the system of record.
+    permitted only under an explicit per-source freshness policy (REQ-855),
+    never as a silent fallback. Mutations on a pulled-through relation target the
+    upstream source of truth and invalidate the cache entry; the cache is never
+    written as if it were the system of record.
   related_reqs:
   - REQ-844
+  - REQ-855
 - id: REQ-848
   status: proposed
   group: 4. Source Connectors
@@ -23620,8 +23624,61 @@
     - REQ-199
     - REQ-844
     - REQ-845
+    - REQ-855
   scenario: |
     Given a fresh, enabled MV covering a query's root table (and optionally some joins)
     When a query is compiled that references the underlying source tables without naming the MV
     Then the rewriter transparently redirects the FROM/JOIN to the MV target (full or partial),
     otherwise the query runs against the live source tables.
+- id: REQ-855
+  status: proposed
+  group: 4. Source Connectors
+  category: Cache Abstraction (db_cache)
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q3"
+  description: >-
+    db_cache freshness policy — the freshness gate referenced by REQ-845
+    (api_cache pull-through) and applicable to REQ-844's mv_cache role. Per
+    cache entry (per-table, keyed like the existing api_cache/mv_cache targets,
+    NOT per-query-slice) the steward selects one of three modes: (1) TTL only —
+    bounded staleness, current behavior (api_cache _mem_fresh expiry / mv_cache
+    refresh interval); (2) probe — re-probe the upstream on access and rebuild
+    only on change, ignoring TTL; (3) TTL+probe — probe only after a TTL floor
+    elapses, capping probe frequency. The probe returns an OPAQUE token; Provisa
+    never interprets it, only compares stored vs. fresh by equality. Unchanged
+    token → keep the materialized rows, skip the re-pull/rebuild (zero lag at
+    probe cost); changed token → invalidate the entry and re-pull, then store the
+    new token. Probe transport is source-type-agnostic behind a single dispatch
+    (freshness_token(source, table) -> str | None); None means the source cannot
+    produce a token and the entry degrades to TTL (a capability signal, not a
+    silent fallback — REQ-847). Transports: graphql_remote posts a steward GQL
+    query (generalizing the REQ-673 count_query/graph_counts prototype); openapi
+    uses ETag/Last-Modified or a steward-configured endpoint; DB-SQL sources run
+    a steward SQL query via the engine; file-based sources use file mtime.
+  use_case: >-
+    Lets stewards trade probe cost against TTL lag per cached source/table —
+    zero-lag freshness for volatile pull-through sources and materialized views
+    where lag is unacceptable, cheap TTL for static ones — inside the one
+    db_cache gate (REQ-845) rather than a per-protocol bolt-on. mv_cache targets
+    (REQ-844 proactive role) may carry both a TTL/refresh interval and a
+    freshness gate; the gate suppresses needless CTAS rebuilds when the upstream
+    token is unchanged.
+  related_reqs:
+    - REQ-844
+    - REQ-845
+    - REQ-847
+    - REQ-849
+    - REQ-135
+    - REQ-199
+    - REQ-673
+  scenario: |
+    Given an api_cache pull-through source configured with the TTL+probe mode and a TTL floor
+    When a query reads the cached rows before the floor elapses
+    Then the materialized rows are served without probing the upstream
+    When a later query arrives after the TTL floor has elapsed
+    Then freshness_token(source, table) is evaluated and compared to the stored token; if equal the
+    existing rows are kept, and if different the entry is invalidated, re-pulled, rematerialized, and
+    the new token stored
+    And a mv_cache materialized view with a freshness gate skips its scheduled CTAS rebuild while the
+    upstream token is unchanged.
