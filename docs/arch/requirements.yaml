@@ -23510,7 +23510,9 @@
     never interprets it, only compares stored vs. fresh by equality. Unchanged
     token → keep the materialized rows, skip the re-pull/rebuild (zero lag at
     probe cost); changed token → invalidate the entry and re-pull, then store the
-    new token. Probe transport is source-type-agnostic behind a single dispatch
+    new token. Optionally, if the token is a monotonic/orderable cursor (not merely an
+    opaque equality token), it enables incremental delta fetch (REQ-874) to replace only
+    changed rows instead of full re-pull. Probe transport is source-type-agnostic behind a single dispatch
     (freshness_token(source, table) -> str | None); None means the source cannot
     produce a token and the entry degrades to TTL (a capability signal, not a
     silent fallback — REQ-847). Transports: graphql_remote posts a steward GQL
@@ -23533,6 +23535,7 @@
     - REQ-135
     - REQ-199
     - REQ-673
+    - REQ-874
   scenario: |
     Given a reactive replica pull-through source configured with the TTL+probe mode and a TTL floor
     When a query reads the cached rows before the floor elapses
@@ -23544,12 +23547,12 @@
     And a view materialization with a freshness gate skips its scheduled CTAS rebuild while the
     upstream token is unchanged.
 - id: REQ-856
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 4. Source Connectors
   category: Freshness Module
   priority: MUST
   type: structural
-  target: "2026-Q3"
   description: >-
     Freshness gate (REQ-855: three modes TTL/probe/TTL+probe, source-agnostic
     freshness_token dispatch, transports incl. DB-SQL steward query and file mtime)
@@ -23562,18 +23565,22 @@
     Source introspection, and ad-hoc cache checks (provisa/openapi/pg_cache.py:49). Single
     implementation enables consistent freshness gating across all data paths.
   code:
-    - provisa/freshness/
+  - provisa/freshness/__init__.py
+  - provisa/freshness/decision.py
+  - provisa/freshness/predicate.py
   related_reqs:
     - REQ-844
     - REQ-845
     - REQ-855
+  tests:
+  - tests/unit/test_freshness.py
 - id: REQ-857
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 4. Source Connectors
   category: Freshness Module
   priority: MUST
   type: structural
-  target: "2026-Q3"
   description: >-
     FreshnessSubject protocol exposes: (1) last-refresh timestamp; (2) last-refresh
     outcome (success/failure); (3) upstream-subject handles for transitive freshness;
@@ -23585,17 +23592,19 @@
     all conform to the same interface. Transitive strategy can check upstream freshness
     by following handles.
   code:
-    - provisa/freshness/
+  - provisa/freshness/subject.py
   related_reqs:
     - REQ-856
     - REQ-855
+  tests:
+  - tests/unit/test_freshness.py
 - id: REQ-858
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 4. Source Connectors
   category: Freshness Module
   priority: MUST
   type: structural
-  target: "2026-Q3"
   description: >-
     FreshnessPredicate with pluggable strategies that unify REQ-855's three modes plus
     a boolean content predicate: TTL (time-based, exists today); PROBE (REQ-855 opaque-
@@ -23610,11 +23619,13 @@
     composable, enabling rich policies (e.g., TTL for cost-sensitive tables, PROBE for
     zero-lag accuracy, TRANSITIVE for derived caches/medallion chains).
   code:
-    - provisa/freshness/
+  - provisa/freshness/predicate.py
   related_reqs:
     - REQ-856
     - REQ-857
     - REQ-855
+  tests:
+  - tests/unit/test_freshness.py
 - id: REQ-859
   status: proposed
   group: 4. Source Connectors
@@ -24063,3 +24074,94 @@
   related_reqs:
     - REQ-867
     - REQ-868
+- id: REQ-873
+  status: rejected
+  rejection_reason: >-
+    Duplicates existing watermark/probe change-signal work (REQ-855, REQ-260, REQ-282).
+    Its only net-new capability (incremental delta fetch) is superseded by REQ-874.
+  group: "9. Live Data & Events"
+  category: Subscriptions
+  priority: MUST
+  type: behavioral
+  description: >-
+    SUPERSEDED BY REQ-874. This requirement duplicated existing watermark/probe change-signal
+    work already captured in REQ-855 (probe transport, opaque token comparison), REQ-260 (RDB
+    watermark_column polling), and REQ-282 (Live Query Engine polling). Its only net-new
+    capability (incremental delta fetch/append to materialized replicas instead of full
+    re-pull) is now carried by REQ-874, which generalizes delta-fetch to any federated dataset
+    and separates WATERMARK (existing change-signal) from DELTA (the new incremental append).
+    This entry is retired; use REQ-874 and REQ-855 instead.
+  related_reqs:
+    - REQ-874
+    - REQ-855
+    - REQ-260
+    - REQ-282
+- id: REQ-874
+  status: proposed
+  group: "4. Source Connectors"
+  category: Materialization Store
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Delta fetch for materialization_store REPLICA incremental refresh: when an existing
+    watermark (REQ-855 probe, REQ-260 RDB watermark_column, REQ-282 LQE polling) signals a
+    change, fetch ONLY the changed rows via an AUTHORED delta query and upsert/append them
+    into the replica — instead of REQ-855's full invalidate-and-re-pull. Applies to ANY dataset
+    whose federation strategy is MATERIALIZED (REQ-826) — data is landed/cached, so full re-pull
+    is the cost deltas avoid. Primary drivers: remote schemas (graphql_remote/openapi/grpc, nearly
+    always MATERIALIZED with no attach/scan connector); also includes RDB deliberately cached for
+    latency, NoSQL, live APIs landed via MATERIALIZED. EXPLICITLY EXCLUDED: VIRTUAL (reaches source
+    live, always fresh) and SCAN (reads in place) strategies per REQ-826 — both bypass cache/landing,
+    so nothing exists to delta-refresh. The watermark itself (change-signal mechanism, opaque token
+    comparison, poll transport) is defined elsewhere; this requirement defines the DELTA capability
+    that consumes a monotonic watermark. Note: remote-schema watermark is not absent—config_loader
+    already allows poll with watermark_column for remotes (REQ-260), but it runs via Trino with full
+    relation re-scan; REQ-855 graphql_remote steward-query transport is the EFFICIENT native probe
+    path. COUPLING CONSTRAINT: delta requires a MONOTONIC/ORDERABLE watermark cursor (enabling
+    `> last_watermark` row filtering), not just REQ-855's opaque equality token. A correct monotonic
+    watermark is the registrant's responsibility; Provisa does no dedup or boundary-inclusivity logic.
+    Delta query is authored, fully-formed, source-native, with two PLACEHOLDERS that Provisa
+    substitutes: (a) watermark placeholder (e.g., $wm bind variable) bound to the cursor value,
+    (b) fields placeholder (e.g., {{fields}}) injected from the table's registered selection set.
+    Provisa substitutes only; it does not parse the filter. Adapter-native delta templates: GraphQL
+    `where: {field: {_gt: $wm}}` + `{{fields}}`; OpenAPI query-param filter `?field_since=$wm` +
+    selection headers; gRPC request-message filter field + `$wm` + selection. Returned delta rows
+    are upserted on the replica's ALREADY-REGISTERED PRIMARY KEY (entity identity from table
+    registration) to replace prior row state; degrades to insert for append-only/immutable sources.
+    REPLICA-ONLY: the VIEW/mv role is delta-ineligible—REQ-844 mandates Iceberg overwrite-snapshot
+    semantics (one clean snapshot per refresh) for time-travel/provenance/bitemporal (REQ-372/862),
+    which upsert would violate. Mutable relational substrate only. Provider-agnostic: applies to
+    any MATERIALIZED-strategy dataset with a monotonic watermark, agnostic to source type.
+    Machine-validatable gates: (a) delta_query contains both $wm and {{fields}} placeholders;
+    (b) delta_query parses; (c) watermark bind-var type matches the cursor type; (d) injected
+    selection set is valid against the table's row type.
+  use_case: >-
+    For REPLICAS (any MATERIALIZED-strategy dataset whose federation strategy lands data), full
+    re-pull on every refresh is expensive and unnecessary. Delta fetch via monotonic watermark
+    keeps replicas fresh with zero lag (REQ-855 probe) without repeated full upstream fetches.
+    Primary use: remote-schema sources (graphql_remote/openapi/gRPC) avoid full-relation re-fetch
+    and re-materialize. Also benefits RDB sources presently using watermark_column only for
+    subscriptions (REQ-260) — they gain incremental replica refresh: keyed upsert instead of full
+    re-pull, no full-CTAS + mutation-triggered staleness cycle. Strategy-agnostic scope avoids
+    VIRTUAL (live) and SCAN (in-place read) per REQ-826. Replicas in mutable stores absorb deltas;
+    views cannot.
+  code:
+    - provisa/subscriptions/
+    - provisa/materialization/
+    - provisa/materialization_store/
+  scenario: |
+    Given a table (RDB or remote-schema) with a monotonic watermark and a delta query authored
+    with $wm and {{fields}} placeholders, and a replica materialized into a mutable store
+    When the watermark signals a change (REQ-855 probe)
+    And Provisa substitutes $wm with the cursor value and {{fields}} with the selection set
+    Then the rendered delta query fetches only rows changed since the last watermark
+    And those rows are upserted on the replica's registered primary key or inserted if append-only
+    And the replica remains fresh without full re-materialization
+  related_reqs:
+    - REQ-855
+    - REQ-844
+    - REQ-826
+    - REQ-260
+    - REQ-282
+    - REQ-845
