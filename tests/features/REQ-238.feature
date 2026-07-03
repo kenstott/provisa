@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
-Feature: REQ-238 — Warm Tables (Local SSD via Trino File Cache)
-  # Warm tables -- frequently queried RDBMS tables materialized into the Iceberg results catalog so Trino's built-in file sy…
+Feature: REQ-238 — Warm Tables (Replica Profile — Low-Latency Placement)
+  # Warm tables -- frequently queried RDBMS tables materialized into a low-latency, engine-reachable location. In materializ…
 
   Scenario: REQ-238 default behaviour
     Given a table materialized into the Iceberg results catalog with Trino file cache enabled

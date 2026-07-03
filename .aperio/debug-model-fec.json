@@ -1,0 +1,2777 @@
+{
+  "operands" : {
+    "_storageProvider" : "S3StorageProvider",
+    "_incrementalTracker" : "DuckDBPartitionStatusStore",
+    "schemaName" : "fec",
+    "ephemeralCache" : false,
+    "constraints" : {
+      "candidates" : {
+        "primaryKey" : [ "type", "year", "candidate_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "states",
+          "targetColumns" : [ "state_abbreviation" ],
+          "comment" : "Links candidate state to geographic state data"
+        }, {
+          "columns" : [ "state", "district" ],
+          "targetSchema" : "geo",
+          "targetTable" : "congressional_districts",
+          "targetColumns" : [ "state_abbreviation", "district_number" ],
+          "comment" : "Links House candidates to congressional district geography"
+        } ]
+      },
+      "communication_costs" : {
+        "primaryKey" : [ "type", "year", "filing_id", "candidate_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ]
+        }, {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ]
+        }, {
+          "columns" : [ "candidate_state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "states",
+          "targetColumns" : [ "state_abbreviation" ]
+        } ]
+      },
+      "committee_contributions" : {
+        "primaryKey" : [ "type", "year", "sub_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links to contributing committee"
+        }, {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ],
+          "comment" : "Links to recipient candidate"
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "states",
+          "targetColumns" : [ "state_abbreviation" ],
+          "comment" : "Links contributor state to geographic data"
+        } ]
+      },
+      "intercommittee_transactions" : {
+        "primaryKey" : [ "type", "year", "sub_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links to originating committee"
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "states",
+          "targetColumns" : [ "state_abbreviation" ]
+        } ]
+      },
+      "individual_contributions" : {
+        "primaryKey" : [ "type", "year", "sub_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links contribution to receiving committee"
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "states",
+          "targetColumns" : [ "state_abbreviation" ],
+          "comment" : "Links contributor state to geographic data"
+        } ]
+      },
+      "candidate_summaries" : {
+        "primaryKey" : [ "type", "year", "candidate_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ]
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "states",
+          "targetColumns" : [ "state_abbreviation" ]
+        } ]
+      },
+      "candidate_committee_linkages" : {
+        "primaryKey" : [ "type", "year", "linkage_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ],
+          "comment" : "Links to candidate registration"
+        }, {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links to committee registration"
+        } ]
+      },
+      "independent_expenditures" : {
+        "primaryKey" : [ "type", "year", "filing_id", "transaction_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ],
+          "comment" : "Links IE to targeted candidate"
+        }, {
+          "columns" : [ "spender_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links IE to spending committee"
+        }, {
+          "columns" : [ "candidate_state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "states",
+          "targetColumns" : [ "state_abbreviation" ]
+        } ]
+      },
+      "committees" : {
+        "primaryKey" : [ "type", "year", "committee_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "states",
+          "targetColumns" : [ "state_abbreviation" ],
+          "comment" : "Links committee state to geographic state data"
+        }, {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ],
+          "comment" : "Links authorized committees to their candidate"
+        } ]
+      },
+      "electioneering_communications" : {
+        "primaryKey" : [ "type", "year", "committee_id", "candidate_id", "communication_date" ],
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ]
+        }, {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ]
+        }, {
+          "columns" : [ "candidate_state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "states",
+          "targetColumns" : [ "state_abbreviation" ]
+        } ]
+      },
+      "operating_expenditures" : {
+        "primaryKey" : [ "type", "year", "sub_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links expenditure to spending committee"
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "states",
+          "targetColumns" : [ "state_abbreviation" ]
+        } ]
+      },
+      "committee_summaries" : {
+        "primaryKey" : [ "type", "year", "committee_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ]
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "states",
+          "targetColumns" : [ "state_abbreviation" ]
+        } ]
+      }
+    },
+    "directory" : "s3://govdata-parquet-v1",
+    "bulkDownloads" : {
+      "fec_committees" : {
+        "cachePattern" : "fec/type=fec_bulk/year={year}/cm{yearSuffix}.zip",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/cm{yearSuffix}.zip",
+        "dimensions" : {
+          "year" : {
+            "type" : "yearRange",
+            "start" : 2010,
+            "cadenceStart" : 2010,
+            "cadenceLength" : 2,
+            "minYear" : "2024"
+          }
+        }
+      },
+      "fec_oppexp" : {
+        "cachePattern" : "fec/type=fec_bulk/year={year}/oppexp{yearSuffix}.zip",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/oppexp{yearSuffix}.zip",
+        "dimensions" : {
+          "year" : {
+            "type" : "yearRange",
+            "start" : 2010,
+            "cadenceStart" : 2010,
+            "cadenceLength" : 2,
+            "minYear" : "2024"
+          }
+        }
+      },
+      "fec_pas2" : {
+        "cachePattern" : "fec/type=fec_bulk/year={year}/pas2{yearSuffix}.zip",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/pas2{yearSuffix}.zip",
+        "dimensions" : {
+          "year" : {
+            "type" : "yearRange",
+            "start" : 2010,
+            "cadenceStart" : 2010,
+            "cadenceLength" : 2,
+            "minYear" : "2024"
+          }
+        }
+      },
+      "fec_candidates" : {
+        "cachePattern" : "fec/type=fec_bulk/year={year}/cn{yearSuffix}.zip",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/cn{yearSuffix}.zip",
+        "dimensions" : {
+          "year" : {
+            "type" : "yearRange",
+            "start" : 2010,
+            "cadenceStart" : 2010,
+            "cadenceLength" : 2,
+            "minYear" : "2024"
+          }
+        }
+      },
+      "fec_individual" : {
+        "cachePattern" : "fec/type=fec_bulk/year={year}/indiv{yearSuffix}.zip",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/indiv{yearSuffix}.zip",
+        "dimensions" : {
+          "year" : {
+            "type" : "yearRange",
+            "start" : 2010,
+            "cadenceStart" : 2010,
+            "cadenceLength" : 2,
+            "minYear" : "2024"
+          }
+        }
+      },
+      "fec_linkages" : {
+        "cachePattern" : "fec/type=fec_bulk/year={year}/ccl{yearSuffix}.zip",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/ccl{yearSuffix}.zip",
+        "dimensions" : {
+          "year" : {
+            "type" : "yearRange",
+            "start" : 2010,
+            "cadenceStart" : 2010,
+            "cadenceLength" : 2,
+            "minYear" : "2024"
+          }
+        }
+      },
+      "fec_oth" : {
+        "cachePattern" : "fec/type=fec_bulk/year={year}/oth{yearSuffix}.zip",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/oth{yearSuffix}.zip",
+        "dimensions" : {
+          "year" : {
+            "type" : "yearRange",
+            "start" : 2010,
+            "cadenceStart" : 2010,
+            "cadenceLength" : 2,
+            "minYear" : "2024"
+          }
+        }
+      }
+    },
+    "canonicalSchemaName" : "fec",
+    "operatingDirectory" : "/Users/kennethstott/.govdata/fec",
+    "workerTimeoutMinutes" : 480,
+    "column_templates" : {
+      "committee_id_column" : {
+        "name" : "committee_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC committee ID (e.g., C00000042)",
+        "source" : "CMTE_ID"
+      },
+      "committee_type_column" : {
+        "name" : "committee_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee type code: H=House, S=Senate, P=Presidential, D=Delegate, U=Single-candidate independent, V=PAC with non-contribution account, W=PAC with non-contribution account (nonqualified), X=Party nonqualified, Y=Party qualified, Z=National party nonfederal, N=PAC nonqualified, Q=PAC qualified, I=Independent expenditure filer (person), C=Communication cost filer, E=Independent expenditure filer (not a committee), O=Super PAC\n",
+        "source" : "CMTE_TP"
+      },
+      "committee_name_column" : {
+        "name" : "committee_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee name",
+        "source" : "CMTE_NM"
+      },
+      "candidate_id_column" : {
+        "name" : "candidate_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC candidate ID (e.g., H0AL01234, S0AK00567, P80000722)",
+        "source" : "CAND_ID"
+      },
+      "candidate_district_column" : {
+        "name" : "district",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Congressional district number (00 for at-large/Senate/President)",
+        "source" : "CAND_OFFICE_DISTRICT"
+      },
+      "candidate_office_column" : {
+        "name" : "office",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Office sought (H=House, S=Senate, P=President)",
+        "source" : "CAND_OFFICE"
+      },
+      "filing_id_column" : {
+        "name" : "filing_id",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "FEC filing ID number",
+        "source" : "FILE_NUM"
+      },
+      "candidate_state_column" : {
+        "name" : "state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Two-letter state abbreviation (US postal code)",
+        "source" : "CAND_OFFICE_ST"
+      },
+      "candidate_party_column" : {
+        "name" : "party",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Party affiliation (DEM, REP, LIB, GRN, IND, etc.)",
+        "source" : "CAND_PTY_AFFILIATION"
+      },
+      "transaction_date_column" : {
+        "name" : "transaction_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Transaction date",
+        "source" : "TRANSACTION_DT",
+        "dateFormat" : "MMDDYYYY_OR_SLASH"
+      },
+      "fec_election_year_column" : {
+        "name" : "fec_election_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "FEC election year for this record",
+        "source" : "FEC_ELECTION_YR"
+      },
+      "candidate_name_column" : {
+        "name" : "candidate_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate name (LAST, FIRST MIDDLE)",
+        "source" : "CAND_NAME"
+      },
+      "election_year_column" : {
+        "name" : "election_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Election year (even-numbered)",
+        "source" : "CAND_ELECTION_YR"
+      },
+      "amount_column" : {
+        "name" : "amount",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Transaction amount in USD (negative for refunds)",
+        "source" : "TRANSACTION_AMT"
+      },
+      "amendment_indicator_column" : {
+        "name" : "amendment_indicator",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Amendment indicator (N=new, A=amendment, T=termination)",
+        "source" : "AMNDT_IND"
+      }
+    },
+    "modelUri" : "/var/folders/3z/9k876p5x7xn2b7839l4hfv800000gn/T/govdata-model2561696220556457035.json",
+    "baseDirectory" : "/var/folders/3z/9k876p5x7xn2b7839l4hfv800000gn/T",
+    "views" : [ {
+      "name" : "active_candidates",
+      "comment" : "Active federal candidates from the most recent election cycle. Filters fec.candidates to rows where candidate_status = 'C' (certified active). Single-schema view using only fec tables.\n",
+      "sql" : "SELECT\n  candidate_id,\n  candidate_name,\n  party,\n  office,\n  state,\n  district,\n  incumbent_challenger,\n  election_year,\n  year\nFROM candidates WHERE candidate_status = 'C'\n"
+    }, {
+      "name" : "candidate_district_profile",
+      "comment" : "Enriches FEC candidates with geographic state and congressional district data. House candidates (office=H) are matched to their TIGER district boundary via state_fips + zero-padded district number. Senate/presidential rows get state geography only (no CD match).\n",
+      "sql" : "SELECT\n  c.candidate_id,\n  c.candidate_name,\n  c.office,\n  c.state,\n  c.district,\n  c.party,\n  c.incumbent_challenger,\n  c.year,\n  gs.state_name,\n  gs.state_fips,\n  cd.cd_fips,\n  cd.cd_name\nFROM candidates c LEFT JOIN \"geo\".\"states\" gs ON c.state = gs.state_abbr LEFT JOIN \"geo\".\"congressional_districts\" cd\n  ON c.office = 'H'\n  AND gs.state_fips = cd.state_fips\n  AND cd.cd_fips = CONCAT(gs.state_fips, LPAD(c.district, 2, '0'))\n"
+    } ],
+    "materializeDirectory" : "s3://govdata-parquet-v1",
+    "storageConfig" : {
+      "accessKeyId" : "********",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "region" : "auto"
+    },
+    "actualSchemaName" : "fec",
+    "autoDownload" : false,
+    "s3Config" : {
+      "accessKeyId" : "****e63b",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "region" : "auto"
+    },
+    "executionEngine" : "duckdb",
+    "tableConstraints" : {
+      "candidates" : {
+        "primaryKey" : [ "type", "year", "candidate_id" ],
+        "foreignKeys" : [ ]
+      },
+      "communication_costs" : {
+        "primaryKey" : [ "type", "year", "filing_id", "candidate_id" ],
+        "foreignKeys" : [ ]
+      },
+      "committee_contributions" : {
+        "primaryKey" : [ "type", "year", "sub_id" ],
+        "foreignKeys" : [ ]
+      },
+      "intercommittee_transactions" : {
+        "primaryKey" : [ "type", "year", "sub_id" ],
+        "foreignKeys" : [ ]
+      },
+      "individual_contributions" : {
+        "primaryKey" : [ "type", "year", "sub_id" ],
+        "foreignKeys" : [ ]
+      },
+      "candidate_summaries" : {
+        "primaryKey" : [ "type", "year", "candidate_id" ],
+        "foreignKeys" : [ ]
+      },
+      "candidate_committee_linkages" : {
+        "primaryKey" : [ "type", "year", "linkage_id" ],
+        "foreignKeys" : [ ]
+      },
+      "independent_expenditures" : {
+        "primaryKey" : [ "type", "year", "filing_id", "transaction_id" ],
+        "foreignKeys" : [ ]
+      },
+      "committees" : {
+        "primaryKey" : [ "type", "year", "committee_id" ],
+        "foreignKeys" : [ ]
+      },
+      "electioneering_communications" : {
+        "primaryKey" : [ "type", "year", "committee_id", "candidate_id", "communication_date" ],
+        "foreignKeys" : [ ]
+      },
+      "operating_expenditures" : {
+        "primaryKey" : [ "type", "year", "sub_id" ],
+        "foreignKeys" : [ ]
+      },
+      "committee_summaries" : {
+        "primaryKey" : [ "type", "year", "committee_id" ],
+        "foreignKeys" : [ ]
+      }
+    },
+    "dimension_templates" : {
+      "fec_year_dimension" : {
+        "type" : "yearRange",
+        "start" : 2010,
+        "cadenceStart" : 2010,
+        "cadenceLength" : 2,
+        "minYear" : "2024"
+      }
+    },
+    "testMode" : false,
+    "partitionedTables" : [ {
+      "name" : "candidates",
+      "pattern" : "type=candidates/year={year}/candidates.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "All federal candidates registered with the FEC. Includes candidate ID, name, party, office sought, state, district, incumbent/challenger status, and principal campaign committee. One record per candidate per election cycle. Source: cn{YY}.zip bulk download (pipe-delimited, no header).\n",
+      "columns" : [ {
+        "name" : "candidate_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC candidate ID (e.g., H0AL01234, S0AK00567, P80000722)",
+        "source" : "CAND_ID"
+      }, {
+        "name" : "candidate_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate name (LAST, FIRST MIDDLE)",
+        "source" : "CAND_NAME"
+      }, {
+        "name" : "party",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Party affiliation code (DEM, REP, LIB, GRN, IND, etc.)",
+        "source" : "CAND_PTY_AFFILIATION"
+      }, {
+        "name" : "office",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Office sought (H=House, S=Senate, P=President)",
+        "source" : "CAND_OFFICE"
+      }, {
+        "name" : "state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Two-letter state abbreviation (US postal code)",
+        "source" : "CAND_OFFICE_ST"
+      }, {
+        "name" : "district",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Congressional district number (00 for at-large/Senate/President)",
+        "source" : "CAND_OFFICE_DISTRICT"
+      }, {
+        "name" : "incumbent_challenger",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Incumbent/challenger/open status (I, C, O)",
+        "source" : "CAND_ICI"
+      }, {
+        "name" : "candidate_status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate status (C=statutory candidate, F=statutory candidate for future, N=not yet, P=statutory candidate in prior)",
+        "source" : "CAND_STATUS"
+      }, {
+        "name" : "principal_committee_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Principal campaign committee ID",
+        "source" : "CAND_PCC"
+      }, {
+        "name" : "street1",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mailing address street line 1",
+        "source" : "CAND_ST1"
+      }, {
+        "name" : "street2",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mailing address street line 2",
+        "source" : "CAND_ST2"
+      }, {
+        "name" : "city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mailing address city",
+        "source" : "CAND_CITY"
+      }, {
+        "name" : "state_address",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mailing address state",
+        "source" : "CAND_ST"
+      }, {
+        "name" : "zip",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mailing address ZIP code",
+        "source" : "CAND_ZIP"
+      }, {
+        "name" : "election_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Election year (even-numbered)",
+        "source" : "CAND_ELECTION_YR"
+      } ],
+      "download" : {
+        "bulkDownload" : "fec_candidates"
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/cn{yearSuffix}.zip",
+        "method" : "GET",
+        "extractPattern" : "*.txt",
+        "response" : {
+          "format" : "csv",
+          "delimiter" : "|",
+          "hasHeader" : false,
+          "columnNames" : "CAND_ID|CAND_NAME|CAND_PTY_AFFILIATION|CAND_ELECTION_YR|CAND_OFFICE_ST|CAND_OFFICE|CAND_OFFICE_DISTRICT|CAND_ICI|CAND_STATUS|CAND_PCC|CAND_ST1|CAND_ST2|CAND_CITY|CAND_ST|CAND_ZIP"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "candidates" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : 2010,
+          "cadenceStart" : 2010,
+          "cadenceLength" : 2,
+          "minYear" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local",
+          "emptyResultTtlMillis" : 86400000
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      }
+    }, {
+      "name" : "committees",
+      "pattern" : "type=committees/year={year}/committees.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "All political committees registered with the FEC. Includes PACs, party committees, campaign committees, and Super PACs. Contains committee type, designation, connected organization, treasurer, and filing frequency. Source: cm{YY}.zip bulk download (pipe-delimited, no header).\n",
+      "columns" : [ {
+        "name" : "committee_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC committee ID (e.g., C00000042)",
+        "source" : "CMTE_ID"
+      }, {
+        "name" : "committee_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee name",
+        "source" : "CMTE_NM"
+      }, {
+        "name" : "treasurer_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee treasurer name",
+        "source" : "TRES_NM"
+      }, {
+        "name" : "street1",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee street address line 1",
+        "source" : "CMTE_ST1"
+      }, {
+        "name" : "street2",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee street address line 2",
+        "source" : "CMTE_ST2"
+      }, {
+        "name" : "city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee city",
+        "source" : "CMTE_CITY"
+      }, {
+        "name" : "state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee state (two-letter postal)",
+        "source" : "CMTE_ST"
+      }, {
+        "name" : "zip",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee ZIP code",
+        "source" : "CMTE_ZIP"
+      }, {
+        "name" : "designation",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee designation: A=Authorized by candidate, B=Lobbyist/Registrant PAC, D=Leadership PAC, J=Joint fundraiser, P=Principal campaign committee, U=Unauthorized\n",
+        "source" : "CMTE_DSGN"
+      }, {
+        "name" : "committee_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee type code: H=House, S=Senate, P=Presidential, D=Delegate, U=Single-candidate independent, V=PAC with non-contribution account, W=PAC with non-contribution account (nonqualified), X=Party nonqualified, Y=Party qualified, Z=National party nonfederal, N=PAC nonqualified, Q=PAC qualified, I=Independent expenditure filer (person), C=Communication cost filer, E=Independent expenditure filer (not a committee), O=Super PAC\n",
+        "source" : "CMTE_TP"
+      }, {
+        "name" : "connected_org_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Connected organization name (for corporate/labor/trade PACs)",
+        "source" : "CONNECTED_ORG_NM"
+      }, {
+        "name" : "candidate_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate ID (for authorized committees)",
+        "source" : "CAND_ID"
+      }, {
+        "name" : "filing_frequency",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Filing frequency (A=administratively terminated, D=debt, M=monthly, Q=quarterly, T=terminated, W=waived)",
+        "source" : "CMTE_FILING_FREQ"
+      }, {
+        "name" : "org_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Interest group category (C=corporation, L=labor, M=membership, T=trade, V=cooperative, W=corp without capital stock)",
+        "source" : "ORG_TP"
+      }, {
+        "name" : "party",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Party affiliation",
+        "source" : "CMTE_PTY_AFFILIATION"
+      } ],
+      "download" : {
+        "bulkDownload" : "fec_committees"
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/cm{yearSuffix}.zip",
+        "method" : "GET",
+        "extractPattern" : "*.txt",
+        "response" : {
+          "format" : "csv",
+          "delimiter" : "|",
+          "hasHeader" : false,
+          "columnNames" : "CMTE_ID|CMTE_NM|TRES_NM|CMTE_ST1|CMTE_ST2|CMTE_CITY|CMTE_ST|CMTE_ZIP|CMTE_DSGN|CMTE_TP|CMTE_PTY_AFFILIATION|CMTE_FILING_FREQ|ORG_TP|CONNECTED_ORG_NM|CAND_ID"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "committees" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : 2010,
+          "cadenceStart" : 2010,
+          "cadenceLength" : 2,
+          "minYear" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local",
+          "emptyResultTtlMillis" : 86400000
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      }
+    }, {
+      "name" : "candidate_committee_linkages",
+      "pattern" : "type=candidate_committee_linkages/year={year}/linkages.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Links between candidates and their authorized committees. Shows which committees are authorized by which candidates, including the linkage type and election year context. Source: ccl{YY}.zip (pipe-delimited, no header).\n",
+      "columns" : [ {
+        "name" : "candidate_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC candidate ID (e.g., H0AL01234, S0AK00567, P80000722)",
+        "source" : "CAND_ID"
+      }, {
+        "name" : "election_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Election year (even-numbered)",
+        "source" : "CAND_ELECTION_YR"
+      }, {
+        "name" : "fec_election_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "FEC election year for this record",
+        "source" : "FEC_ELECTION_YR"
+      }, {
+        "name" : "committee_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC committee ID (e.g., C00000042)",
+        "source" : "CMTE_ID"
+      }, {
+        "name" : "committee_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee type code: H=House, S=Senate, P=Presidential, D=Delegate, U=Single-candidate independent, V=PAC with non-contribution account, W=PAC with non-contribution account (nonqualified), X=Party nonqualified, Y=Party qualified, Z=National party nonfederal, N=PAC nonqualified, Q=PAC qualified, I=Independent expenditure filer (person), C=Communication cost filer, E=Independent expenditure filer (not a committee), O=Super PAC\n",
+        "source" : "CMTE_TP"
+      }, {
+        "name" : "committee_designation",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee designation (A=authorized, P=principal)",
+        "source" : "CMTE_DSGN"
+      }, {
+        "name" : "linkage_id",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Unique linkage identifier",
+        "source" : "LINKAGE_ID"
+      } ],
+      "download" : {
+        "bulkDownload" : "fec_linkages"
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/ccl{yearSuffix}.zip",
+        "method" : "GET",
+        "extractPattern" : "*.txt",
+        "response" : {
+          "format" : "csv",
+          "delimiter" : "|",
+          "hasHeader" : false,
+          "columnNames" : "CAND_ID|CAND_ELECTION_YR|FEC_ELECTION_YR|CMTE_ID|CMTE_TP|CMTE_DSGN|LINKAGE_ID"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "candidate_committee_linkages" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : 2010,
+          "cadenceStart" : 2010,
+          "cadenceLength" : 2,
+          "minYear" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local",
+          "emptyResultTtlMillis" : 86400000
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      }
+    }, {
+      "name" : "individual_contributions",
+      "pattern" : "type=individual_contributions/year={year}/contributions.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Itemized individual contributions to federal committees exceeding $200 in an election cycle. Largest FEC dataset (~4-5GB per cycle, 20M+ records). Contains donor name, employer, occupation, amount, date, and memo text. Memo text is vectorized for inferred relationship discovery. Source: indiv{YY}.zip (pipe-delimited, no header).\n",
+      "columns" : [ {
+        "name" : "committee_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC committee ID (e.g., C00000042)",
+        "source" : "CMTE_ID"
+      }, {
+        "name" : "amendment_indicator",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Amendment indicator (N=new, A=amendment, T=termination)",
+        "source" : "AMNDT_IND"
+      }, {
+        "name" : "report_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Report type (e.g., 12G=pre-general, 12P=pre-primary, 30G=post-general, Q1-Q3=quarterly, YE=year-end)",
+        "source" : "RPT_TP"
+      }, {
+        "name" : "transaction_pgi",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Primary/general indicator (P=primary, G=general)",
+        "source" : "TRANSACTION_PGI"
+      }, {
+        "name" : "image_num",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Microfilm image number",
+        "source" : "IMAGE_NUM"
+      }, {
+        "name" : "transaction_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Transaction type code (15=contribution, 15E=earmarked, 22Y=refund)",
+        "source" : "TRANSACTION_TP"
+      }, {
+        "name" : "entity_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity type (IND=individual, COM=committee, ORG=organization, PAC=PAC, CAN=candidate)",
+        "source" : "ENTITY_TP"
+      }, {
+        "name" : "contributor_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Contributor name (LAST, FIRST MIDDLE)",
+        "source" : "NAME"
+      }, {
+        "name" : "city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Contributor city",
+        "source" : "CITY"
+      }, {
+        "name" : "state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Contributor state (two-letter postal)",
+        "source" : "STATE"
+      }, {
+        "name" : "zip_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Contributor ZIP code",
+        "source" : "ZIP_CODE"
+      }, {
+        "name" : "employer",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Contributor employer name",
+        "source" : "EMPLOYER"
+      }, {
+        "name" : "occupation",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Contributor occupation",
+        "source" : "OCCUPATION"
+      }, {
+        "name" : "transaction_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Transaction date",
+        "source" : "TRANSACTION_DT",
+        "dateFormat" : "MMDDYYYY_OR_SLASH"
+      }, {
+        "name" : "amount",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Transaction amount in USD (negative for refunds)",
+        "source" : "TRANSACTION_AMT"
+      }, {
+        "name" : "other_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Other committee ID (for transfers/earmarks)",
+        "source" : "OTHER_ID"
+      }, {
+        "name" : "transaction_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Transaction ID assigned by filer",
+        "source" : "TRAN_ID"
+      }, {
+        "name" : "filing_id",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "FEC filing ID number",
+        "source" : "FILE_NUM"
+      }, {
+        "name" : "memo_cd",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Memo code (X=memo item, not counted in totals)",
+        "source" : "MEMO_CD"
+      }, {
+        "name" : "memo_text",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Memo text (earmark info, conduit, purpose descriptions)",
+        "source" : "MEMO_TEXT"
+      }, {
+        "name" : "sub_id",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "FEC unique record identifier",
+        "source" : "SUB_ID"
+      } ],
+      "download" : {
+        "bulkDownload" : "fec_individual"
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/indiv{yearSuffix}.zip",
+        "method" : "GET",
+        "extractPattern" : "*.txt",
+        "response" : {
+          "format" : "csv",
+          "delimiter" : "|",
+          "hasHeader" : false,
+          "columnNames" : "CMTE_ID|AMNDT_IND|RPT_TP|TRANSACTION_PGI|IMAGE_NUM|TRANSACTION_TP|ENTITY_TP|NAME|CITY|STATE|ZIP_CODE|EMPLOYER|OCCUPATION|TRANSACTION_DT|TRANSACTION_AMT|OTHER_ID|TRAN_ID|FILE_NUM|MEMO_CD|MEMO_TEXT|SUB_ID"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "individual_contributions" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : 2010,
+          "cadenceStart" : 2010,
+          "cadenceLength" : 2,
+          "minYear" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 100000,
+          "stagingMode" : "local",
+          "emptyResultTtlMillis" : 86400000
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 2000
+        }
+      },
+      "vectorize" : {
+        "enabled" : true,
+        "columns" : [ {
+          "name" : "memo_text",
+          "comment" : "Contribution memo text containing earmark designations, conduit info, and purpose descriptions. Useful for discovering indirect corporate influence, bundling patterns, and organizational affiliations.\n"
+        } ]
+      }
+    }, {
+      "name" : "committee_contributions",
+      "pattern" : "type=committee_contributions/year={year}/contributions.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Contributions from committees (PACs, party committees) to candidates. Shows direct committee-to-candidate financial support including amount, date, and purpose. Source: pas2{YY}.zip (pipe-delimited, no header).\n",
+      "columns" : [ {
+        "name" : "committee_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC committee ID (e.g., C00000042)",
+        "source" : "CMTE_ID"
+      }, {
+        "name" : "amendment_indicator",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Amendment indicator (N=new, A=amendment, T=termination)",
+        "source" : "AMNDT_IND"
+      }, {
+        "name" : "report_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Report type",
+        "source" : "RPT_TP"
+      }, {
+        "name" : "transaction_pgi",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Primary/general indicator",
+        "source" : "TRANSACTION_PGI"
+      }, {
+        "name" : "image_num",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Microfilm image number",
+        "source" : "IMAGE_NUM"
+      }, {
+        "name" : "transaction_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Transaction type code (24A=independent against, 24C=coordinated, 24E=independent for, 24F=comm cost for, 24K=direct contribution)",
+        "source" : "TRANSACTION_TP"
+      }, {
+        "name" : "entity_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity type",
+        "source" : "ENTITY_TP"
+      }, {
+        "name" : "contributor_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Contributing committee/entity name",
+        "source" : "NAME"
+      }, {
+        "name" : "city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Contributor city",
+        "source" : "CITY"
+      }, {
+        "name" : "state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Contributor state",
+        "source" : "STATE"
+      }, {
+        "name" : "zip_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Contributor ZIP code",
+        "source" : "ZIP_CODE"
+      }, {
+        "name" : "employer",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Employer (if applicable)",
+        "source" : "EMPLOYER"
+      }, {
+        "name" : "occupation",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Occupation (if applicable)",
+        "source" : "OCCUPATION"
+      }, {
+        "name" : "transaction_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Transaction date",
+        "source" : "TRANSACTION_DT",
+        "dateFormat" : "MMDDYYYY_OR_SLASH"
+      }, {
+        "name" : "amount",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Transaction amount in USD (negative for refunds)",
+        "source" : "TRANSACTION_AMT"
+      }, {
+        "name" : "other_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate ID or other committee ID",
+        "source" : "OTHER_ID"
+      }, {
+        "name" : "candidate_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC candidate ID (e.g., H0AL01234, S0AK00567, P80000722)",
+        "source" : "CAND_ID"
+      }, {
+        "name" : "transaction_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Transaction ID",
+        "source" : "TRAN_ID"
+      }, {
+        "name" : "filing_id",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "FEC filing ID number",
+        "source" : "FILE_NUM"
+      }, {
+        "name" : "memo_cd",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Memo code",
+        "source" : "MEMO_CD"
+      }, {
+        "name" : "memo_text",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Memo text (purpose, earmark info)",
+        "source" : "MEMO_TEXT"
+      }, {
+        "name" : "sub_id",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "FEC unique record identifier",
+        "source" : "SUB_ID"
+      } ],
+      "download" : {
+        "bulkDownload" : "fec_pas2"
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/pas2{yearSuffix}.zip",
+        "method" : "GET",
+        "extractPattern" : "*.txt",
+        "response" : {
+          "format" : "csv",
+          "delimiter" : "|",
+          "hasHeader" : false,
+          "columnNames" : "CMTE_ID|AMNDT_IND|RPT_TP|TRANSACTION_PGI|IMAGE_NUM|TRANSACTION_TP|ENTITY_TP|NAME|CITY|STATE|ZIP_CODE|EMPLOYER|OCCUPATION|TRANSACTION_DT|TRANSACTION_AMT|OTHER_ID|CAND_ID|TRAN_ID|FILE_NUM|MEMO_CD|MEMO_TEXT|SUB_ID"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "committee_contributions" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : 2010,
+          "cadenceStart" : 2010,
+          "cadenceLength" : 2,
+          "minYear" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local",
+          "emptyResultTtlMillis" : 86400000
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      },
+      "vectorize" : {
+        "enabled" : true,
+        "columns" : [ {
+          "name" : "memo_text",
+          "comment" : "Committee contribution memo text with purpose descriptions and earmark designations. Useful for tracking PAC spending patterns and corporate influence channels.\n"
+        } ]
+      }
+    }, {
+      "name" : "intercommittee_transactions",
+      "pattern" : "type=intercommittee_transactions/year={year}/transactions.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Transactions between political committees — transfers, joint fundraising allocations, and other inter-committee financial activity. Shows the flow of money between PACs, party committees, and campaign committees. Source: oth{YY}.zip (pipe-delimited, no header).\n",
+      "columns" : [ {
+        "name" : "committee_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC committee ID (e.g., C00000042)",
+        "source" : "CMTE_ID"
+      }, {
+        "name" : "amendment_indicator",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Amendment indicator (N=new, A=amendment, T=termination)",
+        "source" : "AMNDT_IND"
+      }, {
+        "name" : "report_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Report type",
+        "source" : "RPT_TP"
+      }, {
+        "name" : "transaction_pgi",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Primary/general indicator",
+        "source" : "TRANSACTION_PGI"
+      }, {
+        "name" : "image_num",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Microfilm image number",
+        "source" : "IMAGE_NUM"
+      }, {
+        "name" : "transaction_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Transaction type code",
+        "source" : "TRANSACTION_TP"
+      }, {
+        "name" : "entity_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity type",
+        "source" : "ENTITY_TP"
+      }, {
+        "name" : "contributor_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Contributing entity name",
+        "source" : "NAME"
+      }, {
+        "name" : "city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "City",
+        "source" : "CITY"
+      }, {
+        "name" : "state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "State",
+        "source" : "STATE"
+      }, {
+        "name" : "zip_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ZIP code",
+        "source" : "ZIP_CODE"
+      }, {
+        "name" : "employer",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Employer",
+        "source" : "EMPLOYER"
+      }, {
+        "name" : "occupation",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Occupation",
+        "source" : "OCCUPATION"
+      }, {
+        "name" : "transaction_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Transaction date",
+        "source" : "TRANSACTION_DT",
+        "dateFormat" : "MMDDYYYY_OR_SLASH"
+      }, {
+        "name" : "amount",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Transaction amount in USD (negative for refunds)",
+        "source" : "TRANSACTION_AMT"
+      }, {
+        "name" : "other_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Other committee ID (receiving/sending)",
+        "source" : "OTHER_ID"
+      }, {
+        "name" : "transaction_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Transaction ID",
+        "source" : "TRAN_ID"
+      }, {
+        "name" : "filing_id",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "FEC filing ID number",
+        "source" : "FILE_NUM"
+      }, {
+        "name" : "memo_cd",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Memo code",
+        "source" : "MEMO_CD"
+      }, {
+        "name" : "memo_text",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Memo text",
+        "source" : "MEMO_TEXT"
+      }, {
+        "name" : "sub_id",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "FEC unique record identifier",
+        "source" : "SUB_ID"
+      } ],
+      "download" : {
+        "bulkDownload" : "fec_oth"
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/oth{yearSuffix}.zip",
+        "method" : "GET",
+        "extractPattern" : "*.txt",
+        "response" : {
+          "format" : "csv",
+          "delimiter" : "|",
+          "hasHeader" : false,
+          "columnNames" : "CMTE_ID|AMNDT_IND|RPT_TP|TRANSACTION_PGI|IMAGE_NUM|TRANSACTION_TP|ENTITY_TP|NAME|CITY|STATE|ZIP_CODE|EMPLOYER|OCCUPATION|TRANSACTION_DT|TRANSACTION_AMT|OTHER_ID|TRAN_ID|FILE_NUM|MEMO_CD|MEMO_TEXT|SUB_ID"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "intercommittee_transactions" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : 2010,
+          "cadenceStart" : 2010,
+          "cadenceLength" : 2,
+          "minYear" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local",
+          "emptyResultTtlMillis" : 86400000
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      },
+      "vectorize" : {
+        "enabled" : true,
+        "columns" : [ {
+          "name" : "memo_text",
+          "comment" : "Inter-committee transaction memo text describing transfer purposes, joint fundraising allocations, and organizational relationships.\n"
+        } ]
+      }
+    }, {
+      "name" : "operating_expenditures",
+      "pattern" : "type=operating_expenditures/year={year}/expenditures.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Itemized operating expenditures by political committees. Shows how committees spend their money — consultants, media buys, travel, rent, staffing, etc. Purpose text is vectorized for spending pattern analysis. Source: oppexp{YY}.zip (pipe-delimited, no header).\n",
+      "columns" : [ {
+        "name" : "committee_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC committee ID (e.g., C00000042)",
+        "source" : "CMTE_ID"
+      }, {
+        "name" : "amendment_indicator",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Amendment indicator (N=new, A=amendment, T=termination)",
+        "source" : "AMNDT_IND"
+      }, {
+        "name" : "report_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Report year",
+        "source" : "RPT_YR"
+      }, {
+        "name" : "report_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Report type",
+        "source" : "RPT_TP"
+      }, {
+        "name" : "image_num",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Microfilm image number",
+        "source" : "IMAGE_NUM"
+      }, {
+        "name" : "line_num",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Line number on form",
+        "source" : "LINE_NUM"
+      }, {
+        "name" : "form_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Form type (SB/F3, etc.)",
+        "source" : "FORM_TP_CD"
+      }, {
+        "name" : "schedule_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Schedule type description",
+        "source" : "SCHED_TP_CD"
+      }, {
+        "name" : "payee_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Name of payee",
+        "source" : "NAME"
+      }, {
+        "name" : "city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Payee city",
+        "source" : "CITY"
+      }, {
+        "name" : "state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Payee state",
+        "source" : "STATE"
+      }, {
+        "name" : "zip_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Payee ZIP code",
+        "source" : "ZIP_CODE"
+      }, {
+        "name" : "transaction_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Transaction date",
+        "source" : "TRANSACTION_DT",
+        "dateFormat" : "MMDDYYYY_OR_SLASH"
+      }, {
+        "name" : "amount",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Transaction amount in USD (negative for refunds)",
+        "source" : "TRANSACTION_AMT"
+      }, {
+        "name" : "transaction_pgi",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Primary/general indicator",
+        "source" : "TRANSACTION_PGI"
+      }, {
+        "name" : "purpose",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Purpose of expenditure (e.g., MEDIA BUY, CONSULTING, TRAVEL, RENT)",
+        "source" : "PURPOSE"
+      }, {
+        "name" : "category",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Disbursement category code",
+        "source" : "CATEGORY"
+      }, {
+        "name" : "category_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Disbursement category description",
+        "source" : "CATEGORY_DESC"
+      }, {
+        "name" : "memo_cd",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Memo code",
+        "source" : "MEMO_CD"
+      }, {
+        "name" : "memo_text",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Memo text",
+        "source" : "MEMO_TEXT"
+      }, {
+        "name" : "entity_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity type",
+        "source" : "ENTITY_TP"
+      }, {
+        "name" : "sub_id",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "FEC unique record identifier",
+        "source" : "SUB_ID"
+      }, {
+        "name" : "filing_id",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "FEC filing ID number",
+        "source" : "FILE_NUM"
+      }, {
+        "name" : "transaction_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Transaction ID",
+        "source" : "TRAN_ID"
+      }, {
+        "name" : "back_ref_transaction_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Back-reference transaction ID",
+        "source" : "BACK_REF_TRAN_ID"
+      } ],
+      "download" : {
+        "bulkDownload" : "fec_oppexp"
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/oppexp{yearSuffix}.zip",
+        "method" : "GET",
+        "extractPattern" : "*.txt",
+        "response" : {
+          "format" : "csv",
+          "delimiter" : "|",
+          "hasHeader" : false,
+          "columnNames" : "CMTE_ID|AMNDT_IND|RPT_YR|RPT_TP|IMAGE_NUM|LINE_NUM|FORM_TP_CD|SCHED_TP_CD|NAME|CITY|STATE|ZIP_CODE|TRANSACTION_DT|TRANSACTION_AMT|TRANSACTION_PGI|PURPOSE|CATEGORY|CATEGORY_DESC|MEMO_CD|MEMO_TEXT|ENTITY_TP|SUB_ID|FILE_NUM|TRAN_ID|BACK_REF_TRAN_ID"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "operating_expenditures" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : 2010,
+          "cadenceStart" : 2010,
+          "cadenceLength" : 2,
+          "minYear" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local",
+          "emptyResultTtlMillis" : 86400000
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      },
+      "vectorize" : {
+        "enabled" : true,
+        "columns" : [ {
+          "name" : "purpose",
+          "comment" : "Operating expenditure purpose text describing what committees spend money on — media buys, consulting, travel, rent, staffing. Useful for vendor influence analysis and spending pattern classification.\n"
+        }, {
+          "name" : "memo_text",
+          "comment" : "Operating expenditure memo text with additional context on spending.\n"
+        } ]
+      }
+    }, {
+      "name" : "independent_expenditures",
+      "pattern" : "type=independent_expenditures/year={year}/expenditures.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Independent expenditures — spending by committees and individuals for or against candidates that is not coordinated with the candidate's campaign. Includes Super PAC spending. Source: independent_expenditure_{YYYY}.csv (CSV with headers).\n",
+      "columns" : [ {
+        "name" : "candidate_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "FEC candidate ID",
+        "source" : "cand_id"
+      }, {
+        "name" : "candidate_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate name",
+        "source" : "cand_name"
+      }, {
+        "name" : "spender_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee/spender ID",
+        "source" : "spe_id"
+      }, {
+        "name" : "spender_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee/spender name",
+        "source" : "spe_nam"
+      }, {
+        "name" : "election_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "FEC election year",
+        "source" : "fec_election_yr"
+      }, {
+        "name" : "support_oppose",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Support/oppose indicator (S=support, O=oppose)",
+        "source" : "sup_opp"
+      }, {
+        "name" : "purpose",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Purpose of expenditure",
+        "source" : "pur"
+      }, {
+        "name" : "payee",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Payee name",
+        "source" : "pay"
+      }, {
+        "name" : "transaction_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Expenditure date",
+        "source" : "exp_date",
+        "dateFormat" : "SLASH"
+      }, {
+        "name" : "amount",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Expenditure amount in USD",
+        "source" : "exp_amo"
+      }, {
+        "name" : "candidate_office",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Office sought (H/S/P)",
+        "source" : "can_office"
+      }, {
+        "name" : "candidate_state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate state",
+        "source" : "can_office_state"
+      }, {
+        "name" : "candidate_district",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate district",
+        "source" : "can_office_dis"
+      }, {
+        "name" : "candidate_party",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate party",
+        "source" : "cand_pty_aff"
+      }, {
+        "name" : "prev_file_num",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Previous file number (for amendments)",
+        "source" : "prev_file_num"
+      }, {
+        "name" : "amendment_indicator",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Amendment indicator",
+        "source" : "amndt_ind"
+      }, {
+        "name" : "filing_id",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "FEC filing ID number",
+        "source" : "file_num"
+      }, {
+        "name" : "transaction_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Transaction ID",
+        "source" : "tran_id"
+      }, {
+        "name" : "image_num",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Image number",
+        "source" : "image_num"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/independent_expenditure_{year}.csv",
+        "method" : "GET",
+        "response" : {
+          "format" : "csv"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "independent_expenditures" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : 2010,
+          "cadenceStart" : 2010,
+          "cadenceLength" : 2,
+          "minYear" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local",
+          "emptyResultTtlMillis" : 86400000
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      },
+      "vectorize" : {
+        "enabled" : true,
+        "columns" : [ {
+          "name" : "purpose",
+          "comment" : "Independent expenditure purpose text describing the nature of spending for or against candidates — media buys, mailers, digital ads.\n"
+        } ]
+      }
+    }, {
+      "name" : "electioneering_communications",
+      "pattern" : "type=electioneering_communications/year={year}/communications.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Electioneering communications — broadcast, cable, or satellite ads that mention a federal candidate within 30 days of a primary or 60 days of a general election. Source: ElectioneeringComm_{YYYY}.csv (CSV with headers).\n",
+      "columns" : [ {
+        "name" : "candidate_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "FEC candidate ID",
+        "source" : "CANDIDATE_ID"
+      }, {
+        "name" : "candidate_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate name",
+        "source" : "CANDIDATE_NAME"
+      }, {
+        "name" : "candidate_office",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Office sought (H/S/P)",
+        "source" : "CANDIDATE_OFFICE"
+      }, {
+        "name" : "candidate_state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate state",
+        "source" : "CANDIDATE_STATE"
+      }, {
+        "name" : "candidate_district",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate district",
+        "source" : "CANDIDATE_DISTRICT"
+      }, {
+        "name" : "committee_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee ID",
+        "source" : "COMMITTEE_ID"
+      }, {
+        "name" : "committee_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee/organization name",
+        "source" : "COMMITTEE_NAME"
+      }, {
+        "name" : "payee_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Payee name",
+        "source" : "PAYEE_NAME"
+      }, {
+        "name" : "disbursement_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Description of the communication/disbursement",
+        "source" : "DISBURSEMENT_DESCRIPTION"
+      }, {
+        "name" : "disbursement_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Disbursement date",
+        "source" : "DISBURSEMENT_DATE",
+        "dateFormat" : "DD_MON_YY"
+      }, {
+        "name" : "communication_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Communication date",
+        "source" : "COMMUNICATION_DATE",
+        "dateFormat" : "DD_MON_YY"
+      }, {
+        "name" : "amount",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Reported disbursement amount in USD",
+        "source" : "REPORTED_DISBURSEMENT_AMOUNT"
+      }, {
+        "name" : "number_of_candidates",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Number of candidates targeted",
+        "source" : "NUMBER_OF_CANDIDATES"
+      }, {
+        "name" : "calculated_candidate_share",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Calculated per-candidate share of disbursement",
+        "source" : "CALCULATED_CANDIDATE_SHARE"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/ElectioneeringComm_{year}.csv",
+        "method" : "GET",
+        "response" : {
+          "format" : "csv"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "electioneering_communications" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : 2010,
+          "cadenceStart" : 2010,
+          "cadenceLength" : 2,
+          "minYear" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local",
+          "emptyResultTtlMillis" : 86400000
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      },
+      "vectorize" : {
+        "enabled" : true,
+        "columns" : [ {
+          "name" : "disbursement_description",
+          "comment" : "Electioneering communication description — broadcast ad content referencing candidates near elections.\n"
+        } ]
+      }
+    }, {
+      "name" : "communication_costs",
+      "pattern" : "type=communication_costs/year={year}/costs.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Communication costs reported by corporations and labor organizations for internal communications (to employees, members) mentioning federal candidates. Source: CommunicationCosts_{YYYY}.csv (CSV with headers).\n",
+      "columns" : [ {
+        "name" : "committee_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee ID",
+        "source" : "CMTE_ID"
+      }, {
+        "name" : "committee_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Reporting organization name",
+        "source" : "CMTE_NM"
+      }, {
+        "name" : "candidate_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "FEC candidate ID",
+        "source" : "CAND_ID"
+      }, {
+        "name" : "candidate_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate name",
+        "source" : "CAND_NAME"
+      }, {
+        "name" : "candidate_office",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Office sought (H/S/P)",
+        "source" : "CAND_OFFICE"
+      }, {
+        "name" : "candidate_state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate state",
+        "source" : "CAND_STATE"
+      }, {
+        "name" : "candidate_district",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate district",
+        "source" : "CAND_OFFICE_DISTRICT"
+      }, {
+        "name" : "party",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate party affiliation",
+        "source" : "CAND_PTY_AFFILIATION"
+      }, {
+        "name" : "support_oppose",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Support/oppose indicator (S=support, O=oppose)",
+        "source" : "COMMUNICATION_TP"
+      }, {
+        "name" : "communication_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Communication type code (24A, 24N, etc.)",
+        "source" : "TRANSACTION_TP"
+      }, {
+        "name" : "communication_class",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Communication class",
+        "source" : "COMMUNICATION_CLASS"
+      }, {
+        "name" : "transaction_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Transaction date",
+        "source" : "TRANSACTION_DT",
+        "dateFormat" : "DD_MON_YY"
+      }, {
+        "name" : "amount",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Transaction amount in USD",
+        "source" : "TRANSACTION_AMT"
+      }, {
+        "name" : "purpose",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Purpose of communication",
+        "source" : "PURPOSE"
+      }, {
+        "name" : "filing_id",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "FEC filing ID number",
+        "source" : "FILE_NUM"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/CommunicationCosts_{year}.csv",
+        "method" : "GET",
+        "response" : {
+          "format" : "csv"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "communication_costs" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : 2010,
+          "cadenceStart" : 2010,
+          "cadenceLength" : 2,
+          "minYear" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local",
+          "emptyResultTtlMillis" : 86400000
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      }
+    }, {
+      "name" : "candidate_summaries",
+      "pattern" : "type=candidate_summaries/year={year}/summaries.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Aggregated financial summary for each federal candidate per election cycle. Includes total receipts, disbursements, cash on hand, debts, and individual/ PAC contribution breakdowns. Source: candidate_summary_{YYYY}.csv (CSV with headers).\n",
+      "columns" : [ {
+        "name" : "candidate_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC candidate ID (e.g., H0AL01234, S0AK00567, P80000722)",
+        "source" : "Cand_Id"
+      }, {
+        "name" : "candidate_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Candidate name (LAST, FIRST MIDDLE)",
+        "source" : "Cand_Name"
+      }, {
+        "name" : "incumbent_challenger",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Incumbent/challenger/open status",
+        "source" : "Cand_Incumbent_Challenger_Open_Seat"
+      }, {
+        "name" : "office",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Office sought (H=House, S=Senate, P=President)",
+        "source" : "Cand_Office"
+      }, {
+        "name" : "state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Two-letter state abbreviation (US postal code)",
+        "source" : "Cand_Office_St"
+      }, {
+        "name" : "district",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Congressional district number (00 for at-large/Senate/President)",
+        "source" : "Cand_Office_Dist"
+      }, {
+        "name" : "party",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Party affiliation (DEM, REP, LIB, GRN, IND, etc.)",
+        "source" : "Cand_Party_Affiliation"
+      }, {
+        "name" : "total_receipts",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total receipts",
+        "source" : "Total_Receipt"
+      }, {
+        "name" : "transfers_from_auth",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Transfers from authorized committees",
+        "source" : "Transfer_From_Other_Auth_Committee"
+      }, {
+        "name" : "total_disbursements",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total disbursements",
+        "source" : "Total_Disbursement"
+      }, {
+        "name" : "transfers_to_auth",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Transfers to authorized committees",
+        "source" : "Transfer_To_Other_Auth_Committee"
+      }, {
+        "name" : "cash_begin",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Cash on hand at beginning of period",
+        "source" : "Cash_On_Hand_BOP"
+      }, {
+        "name" : "cash_end",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Cash on hand at end of period",
+        "source" : "Cash_On_Hand_COP"
+      }, {
+        "name" : "contributions_from_candidate",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Contributions from the candidate",
+        "source" : "Cand_Contribution"
+      }, {
+        "name" : "loans_from_candidate",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Loans from the candidate",
+        "source" : "Cand_Loan"
+      }, {
+        "name" : "other_loans",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Other loans",
+        "source" : "Other_Loan"
+      }, {
+        "name" : "loan_repayments_candidate",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Candidate loan repayments",
+        "source" : "Cand_Loan_Repayment"
+      }, {
+        "name" : "other_loan_repayments",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Other loan repayments",
+        "source" : "Other_Loan_Repayment"
+      }, {
+        "name" : "debts_owed_by",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Debts owed by committee",
+        "source" : "Debt_Owed_By_Committee"
+      }, {
+        "name" : "total_individual_contributions",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total individual contributions",
+        "source" : "Individual_Contribution"
+      }, {
+        "name" : "individual_itemized",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Itemized individual contributions (>$200)",
+        "source" : "Individual_Itemized_Contribution"
+      }, {
+        "name" : "individual_unitemized",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Unitemized individual contributions (<=$200)",
+        "source" : "Individual_Unitemized_Contribution"
+      }, {
+        "name" : "pac_contributions",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Contributions from political party committees",
+        "source" : "Party_Committee_Contribution"
+      }, {
+        "name" : "other_committee_contributions",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Contributions from other political committees",
+        "source" : "Other_Committee_Contribution"
+      }, {
+        "name" : "coverage_end_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Coverage end date",
+        "source" : "Coverage_End_Date",
+        "dateFormat" : "SLASH"
+      }, {
+        "name" : "refunds_individual",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Refunds to individuals",
+        "source" : "Individual_Refund"
+      }, {
+        "name" : "refunds_committee",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Refunds to committees",
+        "source" : "Other_Committee_Refund"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/candidate_summary_{year}.csv",
+        "method" : "GET",
+        "response" : {
+          "format" : "csv"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "candidate_summaries" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : 2010,
+          "cadenceStart" : 2010,
+          "cadenceLength" : 2,
+          "minYear" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local",
+          "emptyResultTtlMillis" : 86400000
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      }
+    }, {
+      "name" : "committee_summaries",
+      "pattern" : "type=committee_summaries/year={year}/summaries.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Aggregated financial summary for each political committee per election cycle. Includes total receipts, disbursements, cash on hand, debts, contribution sources, and independent expenditures. Source: committee_summary_{YYYY}.csv (CSV with headers).\n",
+      "columns" : [ {
+        "name" : "committee_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FEC committee ID (e.g., C00000042)",
+        "source" : "CMTE_ID"
+      }, {
+        "name" : "committee_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee name",
+        "source" : "CMTE_NM"
+      }, {
+        "name" : "committee_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee type code",
+        "source" : "CMTE_TP"
+      }, {
+        "name" : "designation",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee designation",
+        "source" : "CMTE_DSGN"
+      }, {
+        "name" : "filing_frequency",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Filing frequency",
+        "source" : "Cmte_Filing_Freq"
+      }, {
+        "name" : "total_receipts",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total receipts",
+        "source" : "Ttl_Receipts"
+      }, {
+        "name" : "transfers_from_affiliates",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Transfers from affiliates",
+        "source" : "Trans_From_Aff"
+      }, {
+        "name" : "individual_contributions",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total individual contributions",
+        "source" : "Indv_Contrib"
+      }, {
+        "name" : "other_political_contributions",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Contributions from other political committees",
+        "source" : "Other_Pol_Cmte_Contrib"
+      }, {
+        "name" : "candidate_contributions",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Candidate contributions",
+        "source" : "Cand_Contrib"
+      }, {
+        "name" : "candidate_loans",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Candidate loans",
+        "source" : "Cand_Loans"
+      }, {
+        "name" : "total_loans_received",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total loans received",
+        "source" : "Ttl_Loans_Received"
+      }, {
+        "name" : "total_disbursements",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total disbursements",
+        "source" : "Ttl_Disb"
+      }, {
+        "name" : "transfers_to_affiliates",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Transfers to affiliates",
+        "source" : "Trans_to_Aff"
+      }, {
+        "name" : "refunds_individual",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Refunds to individuals",
+        "source" : "Indv_Refunds"
+      }, {
+        "name" : "refunds_committee",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Refunds to committees",
+        "source" : "Other_Pol_Cmte_Refunds"
+      }, {
+        "name" : "candidate_loan_repayments",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Candidate loan repayments",
+        "source" : "Cand_Loan_Repay"
+      }, {
+        "name" : "total_loan_repayments",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total loan repayments",
+        "source" : "Ttl_Loan_Repay"
+      }, {
+        "name" : "cash_begin",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Cash on hand beginning of period",
+        "source" : "Cash_On_Hand_Beg"
+      }, {
+        "name" : "cash_end",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Cash on hand end of period",
+        "source" : "Cash_On_Hand_Close"
+      }, {
+        "name" : "debts_owed_by",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Debts owed by committee",
+        "source" : "Debts_Owed_By"
+      }, {
+        "name" : "nonfederal_transfers_received",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Nonfederal transfers received",
+        "source" : "Non_Fed_Trans_Received"
+      }, {
+        "name" : "contributions_to_committees",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Contributions to other committees",
+        "source" : "Contrib_To_Other_Cmte"
+      }, {
+        "name" : "independent_expenditures",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Independent expenditures",
+        "source" : "Ind_Exp"
+      }, {
+        "name" : "party_coordinated_expenditures",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Party coordinated expenditures",
+        "source" : "Par_Cmte_Contrib"
+      }, {
+        "name" : "nonfederal_expenditure_share",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Nonfederal share of expenditures",
+        "source" : "Non_Fed_Share_Exp"
+      }, {
+        "name" : "coverage_end_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Coverage end date",
+        "source" : "Cvg_End_Dt",
+        "dateFormat" : "YYYYMMDD"
+      }, {
+        "name" : "connected_org_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Connected organization name (for corporate/labor PACs)",
+        "source" : "Connected_Org_Nm"
+      }, {
+        "name" : "party",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Party affiliation",
+        "source" : "Cmte_Pty_Affiliation"
+      }, {
+        "name" : "state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Committee state",
+        "source" : "Cmte_St"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.fec.gov/files/bulk-downloads/{year}/committee_summary_{year}.csv",
+        "method" : "GET",
+        "response" : {
+          "format" : "csv"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "committee_summaries" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : 2010,
+          "cadenceStart" : 2010,
+          "cadenceLength" : 2,
+          "minYear" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local",
+          "emptyResultTtlMillis" : 86400000
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      }
+    } ],
+    "comment" : "Federal Election Commission campaign finance data. Contains candidate and committee registrations, itemized contributions, expenditures, and inter-committee transfers. Covers all federal elections (President, Senate, House) with data from 1980 to present. Bulk downloads are pipe-delimited files with no headers.\n",
+    "dataSource" : "fec"
+  },
+  "parentSchema" : "",
+  "generatedAt" : "2026-07-03T02:17:29.035234Z",
+  "schemaName" : "fec"
+}

@@ -10,7 +10,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from pytest_bdd import given, then, when
+from pytest_bdd import given, scenarios, then, when
 
 from provisa.api.data.subscribe import (
     _build_cdc_config,
@@ -320,3 +320,6 @@ def test_polling_config_independent_of_cdc_block():
     config = _make_config(src, strategy="poll", watermark_column="updated_at")
     # Must not raise — poll is always valid for RDBMS sources
     _validate_table_live_delivery(config)
+
+
+scenarios("../features/REQ-824.feature")

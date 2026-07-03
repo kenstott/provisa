@@ -155,4 +155,8 @@ import tests.steps.steps_live_strategy_dispatch  # type: ignore[import]  # noqa:
 
 import tests.steps.steps_cypher_writes_req818  # type: ignore[import]  # noqa: F401
 
+import tests.steps.steps_live_delivery_mechanisms  # type: ignore[import]  # noqa: F401
+
+import tests.steps.steps_warm_tables_replica_profile_low_latency_placement  # type: ignore[import]  # noqa: F401
+
 scenarios(".")

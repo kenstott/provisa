@@ -1,5 +1,5 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
-Feature: REQ-239 — Warm Tables (Local SSD via Trino File Cache)
+Feature: REQ-239 — Warm Tables (Replica Profile — Low-Latency Placement)
   # Warm table auto-promotion -- track query frequency per table (increment counter on each compiled query). Tables exceedin…
 
   Scenario: REQ-239 default behaviour
