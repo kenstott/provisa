@@ -24,8 +24,17 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 # missing S3 endpoint (a hang, not an error), so the server never finishes
 # starting. Provision both files and bring up only the services e2e needs
 # (avoids grafana/tempo/prometheus/otel).
-_COMPOSE_ARGS = ["-f", "docker-compose.core.yml", "-f", "docker-compose.observability.yml"]
-_SERVICES = ["postgres", "trino", "redis", "pgbouncer", "zaychik", "minio"]
+_COMPOSE_ARGS = [
+    "-f",
+    "docker-compose.core.yml",
+    "-f",
+    "docker-compose.observability.yml",
+    "-f",
+    "docker-compose.e2e.yml",
+]
+# kafka backs the kafka-source query (REQ-147) and kafka/debezium live-delivery
+# strategies that Provisa consumes; producer-side messages are written by tests.
+_SERVICES = ["postgres", "trino", "redis", "pgbouncer", "zaychik", "minio", "kafka"]
 
 # The root `_wait_for_trino` session fixture pre-flights a shared, already-
 # configured Trino (SHOW SCHEMAS FROM sales_pg) before any app runs. The e2e
@@ -36,6 +45,12 @@ _SERVICES = ["postgres", "trino", "redis", "pgbouncer", "zaychik", "minio"]
 # shared-stack pre-flight for e2e sessions only (this conftest loads only when
 # tests/e2e is collected; integration runs are unaffected).
 os.environ.setdefault("PROVISA_SKIP_TRINO_WAIT", "1")
+
+# The Bolt server (Cypher over Bolt, REQ-802) only starts when PROVISA_BOLT_PORT
+# is set (app.py defaults it to "0" = off). test_bolt_cypher connects to :5251,
+# so enable it here — the provisa_server subprocess inherits os.environ and the
+# test client reads the same PROVISA_BOLT_PORT default (5251).
+os.environ.setdefault("PROVISA_BOLT_PORT", "5251")
 # Provision the e2e core stack under a DEDICATED compose project, isolated from
 # the default `provisa` project used by the dev stack / installer. Without this
 # the fixture's teardown (`down`) would tear down the developer's running stack,

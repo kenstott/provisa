@@ -1,0 +1,44 @@
+# E2E-only services, layered onto docker-compose.core.yml under the dedicated
+# `provisa-e2e` compose project (see tests/e2e/conftest.py). Kept separate from
+# docker-compose.test.yml so the e2e stack owns clean, project-prefixed
+# containers (provisa-e2e-kafka) with no hardcoded container_name that would
+# collide with the integration `provisa-test` project.
+#
+# Kafka backs the DB-live options that Provisa CONSUMES: the kafka source query
+# (REQ-147) and the kafka/debezium delivery strategies (REQ-813). Provisa is the
+# consumer; producer-side test data is written by the tests themselves (no
+# Debezium image needed). Single-node KRaft broker; HOST listener on localhost:9092.
+services:
+  kafka:
+    hostname: kafka
+    restart: unless-stopped
+    image: confluentinc/cp-kafka:7.6.0
+    ports:
+      - "9092:9092"
+    networks:
+      default:
+        aliases:
+          - kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,HOST://0.0.0.0:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_PROCESS_ROLES: broker,controller
+      CLUSTER_ID: 3W4Vn7JTS4yUfx7dcvUlPg
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka_e2e_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 42
+      start_period: 120s
+
+volumes:
+  kafka_e2e_data:
