@@ -37,26 +37,20 @@ gates *when* the work can happen, not just how hard it is.
 
 Unit-testable with mocks or fixtures; no federation substrate required. Do these next.
 
-- **[1] Freshness gating consumers — REQ-859–861.** REQ-859 ✅ done (2026-07): MV
-  (`MVDefinition.is_fresh_at`) and the API/pg cache (`pg_cache._is_fresh`) now expose their
-  state via a `StateSubject` adapter and delegate the TTL decision to the one
-  `FreshnessPredicate` — behaviour-preserving, 190 MV/cache tests green. **REQ-860/861 remain,
-  and are blocked, not leaf:** REQ-860's interesting mode (a source declaring a PROBE predicate
-  that gates queries before execution) needs the REQ-855 probe transport; REQ-861 (on-stale file
-  producer) needs a file-read hook in the engine/execution path. TTL-only source gating would
-  just duplicate `Source.cache_ttl`, so both wait for their real dependency rather than shipping
-  as unwired helpers.
+- **[1] Freshness gating consumers.** REQ-859 ✅ done (2026-07): MV (`MVDefinition.is_fresh_at`)
+  and the API/pg cache (`pg_cache._is_fresh`) now expose their state via a `StateSubject` adapter
+  and delegate the TTL decision to the one `FreshnessPredicate` — behaviour-preserving, 190
+  MV/cache tests green. REQ-860, REQ-861 → **Tier 4** (gated on the probe transport / an executor
+  file-read hook).
 - **[2] Query-cache refinements.** REQ-864 + REQ-866 ✅ done (2026-07). REQ-864: the result
   cache key is now the NORMALIZED governed SQL (sqlglot parse + simplify — whitespace, keyword
   case, identifier quoting, commutable AND-predicate ordering; literal VALUES preserved), so
   cosmetically-different queries share an entry (`provisa/cache/key.py`). REQ-866: a fail-closed
   `is_cacheable` gate — an empty RLS filter or a `current_setting`-dependent predicate makes the
   query un-cacheable (never read/written), so a per-session value can't leak across personas;
-  wired at the endpoint cache check. **REQ-863 remains** (deferred): ordering the planning
-  pipeline so routing consumes the post-optimization IR (hot-CTE inlining collapsing a federated
-  query to DIRECT) is a behavioral routing restructure in `pgwire/_pipeline.py` + the router —
-  needs e2e, not a unit leaf. Deeper key canonicalization (alias renaming, JOIN reordering)
-  needs a schema-aware optimizer and is out of scope for 864.
+  wired at the endpoint cache check. REQ-863 → **Tier 4** (behavioral routing restructure, needs
+  e2e). Deeper key canonicalization (alias renaming, JOIN reordering) needs a schema-aware
+  optimizer and is out of scope for 864.
 - **[3] Mutation-authz core — REQ-867–869.** C3/V5/I2. MUST, and the generalization of the
   `writable_by` gate shipped for Cypher writes (REQ-663). Protocol-agnostic layer: table-scoped
   mutation sub-resources with per-mutation `writable_by` (empty = default-deny) + a global
@@ -110,13 +104,33 @@ engine plus real sources. This is one dependency chain — build it in order.
   call instead of a full pull — gated by shape, exactness, and Stage-2 RLS (fail-closed).
   Consumers: `federate()` strategy, hot-table promotion, catalog/EXPLAIN, cold `graph-counts`.
 
-## Backlog / deferred
+## Tier 4 — Deferred to last (gated; scheduled, not dropped)
 
-- **Encryption KMS / high-security — REQ-690–694.** I5, needs AWS/Azure/GCP credentials. Defer
-  behind encryption core [5].
-- **M:N join tables — REQ-672.** Filler; real modeling value but needs a join-table source to
-  exercise.
-- **Cypher writes REQ-818, Docker REQ-815/816** — accepted; 815/816 folded into [4].
+Every requirement here is still on the plan and must be completed. They sit last because each
+is blocked on earlier work or carries integration risk that makes it wrong to build now. Ordered
+by when they become buildable.
+
+- **[12] Cache-key deep canonicalization (part of REQ-864 follow-on).** Alias renaming and
+  commutable JOIN reordering in the cache key. Needs a schema-aware optimizer pass; builds once
+  the connector/schema surface from [8] is available. Low priority — the shipped normalization
+  already covers cross-client cosmetic variation.
+- **[13] Planning-pipeline phase ordering — REQ-863.** Order the pipeline so routing consumes the
+  post-optimization IR (hot-CTE inlining collapsing a federated query to DIRECT). Behavioral
+  restructure of `pgwire/_pipeline.py` + the router; needs e2e. Schedule after the routing/
+  `federate()` work [9] settles so it is not chasing a moving pipeline.
+- **[14] Source-level freshness gating — REQ-860.** A source declaring a PROBE freshness predicate
+  that gates queries before execution. Its valuable mode depends on the REQ-855 probe transport
+  (inside materialization store [10]); TTL-only gating would just duplicate `Source.cache_ttl`.
+  Lands after [10].
+- **[15] On-stale file producer — REQ-861 (MAY).** Optional producer argv that runs when a file
+  source is stale, before the file is read. Needs a file-read hook in the execution path (files
+  are read by the engine, not Python) — arrives with the connector/execution work [8]/[9].
+- **[16] Encryption KMS / high-security — REQ-690–694.** Needs AWS/Azure/GCP credentials (I5).
+  Builds on encryption core [5]; scheduled after it on the encryption track.
+- **[17] M:N join tables — REQ-672.** Real modeling value but needs a join-table source to
+  exercise; build alongside the substrate sources once [8] is up.
+- **[18] Cypher writes — REQ-818 (accepted).** Remaining Cypher-write item; slot with the authz
+  adapters [6] once the mutation model [3] is in place.
 
 ## Critical path & parallel tracks
 
@@ -135,4 +149,5 @@ connector contract from [8].
 **Sequence:** freshness gating [1] and query-cache refinements [2] and mutation-authz core [3] are
 the cheapest high-value leaves — do them first, in parallel where hands allow. Desktop zero-infra
 [4] clears the test-provisioning debt. Then the substrate chain [8]→[9]→[10], with [11] and the
-authz adapters [6] landing as their gates come online.
+authz adapters [6] landing as their gates come online. Tier 4 [12]–[18] closes out last: each is
+scheduled (nothing is dropped), gated on the work above, and slots in as its dependency lands.
