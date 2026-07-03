@@ -46,13 +46,17 @@ Unit-testable with mocks or fixtures; no federation substrate required. Do these
   producer) needs a file-read hook in the engine/execution path. TTL-only source gating would
   just duplicate `Source.cache_ttl`, so both wait for their real dependency rather than shipping
   as unwired helpers.
-- **[2] Query-cache refinements — REQ-863, REQ-864, REQ-866.** C2/V4/I2. Pairs with the shipped
-  `Route.CACHE`. REQ-864: key the result cache on a NORMALIZED governed IR (canonicalize
-  cosmetic form) instead of the compiled-SQL string, so semantically-identical queries share
-  an entry. REQ-863: order the planning pipeline so routing consumes the post-optimization IR
-  (hot-CTE inlining can collapse a federated query to DIRECT). REQ-866: the cache-isolation
-  invariant — largely satisfied by 865's persona-resolved key (role_id + resolved RLS); mostly
-  verify + flip, add fail-closed tests.
+- **[2] Query-cache refinements.** REQ-864 + REQ-866 ✅ done (2026-07). REQ-864: the result
+  cache key is now the NORMALIZED governed SQL (sqlglot parse + simplify — whitespace, keyword
+  case, identifier quoting, commutable AND-predicate ordering; literal VALUES preserved), so
+  cosmetically-different queries share an entry (`provisa/cache/key.py`). REQ-866: a fail-closed
+  `is_cacheable` gate — an empty RLS filter or a `current_setting`-dependent predicate makes the
+  query un-cacheable (never read/written), so a per-session value can't leak across personas;
+  wired at the endpoint cache check. **REQ-863 remains** (deferred): ordering the planning
+  pipeline so routing consumes the post-optimization IR (hot-CTE inlining collapsing a federated
+  query to DIRECT) is a behavioral routing restructure in `pgwire/_pipeline.py` + the router —
+  needs e2e, not a unit leaf. Deeper key canonicalization (alias renaming, JOIN reordering)
+  needs a schema-aware optimizer and is out of scope for 864.
 - **[3] Mutation-authz core — REQ-867–869.** C3/V5/I2. MUST, and the generalization of the
   `writable_by` gate shipped for Cypher writes (REQ-663). Protocol-agnostic layer: table-scoped
   mutation sub-resources with per-mutation `writable_by` (empty = default-deny) + a global

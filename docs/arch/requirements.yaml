@@ -23809,12 +23809,12 @@
     And decide_route selects DIRECT (single-source) rather than Trino federation
     And the VALUES CTE is lowered in source A's dialect for direct pushdown
 - id: REQ-864
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 6. Execution, Routing, Caching & Performance
   category: Query Result Cache
   priority: SHOULD
   type: structural
-  target: "2026-Q3"
   description: >-
     The query result cache key is computed from a NORMALIZED IR — a canonical,
     AST-normalized form of the GOVERNANCE-NORMALIZED IR (the post-Stage-2 governed
@@ -23839,9 +23839,10 @@
     only in text, making the result cache robust to cosmetic query variation from
     different clients, formatters, or GraphQL shapes that compile to equivalent IR.
   code:
-    - provisa/cache/key.py
-    - provisa/compiler/stage2.py
-    - provisa/transpiler/
+  - provisa/cache/key.py
+  - provisa/api/data/endpoint.py
+  tests:
+  - tests/unit/test_cache_key.py
   related_reqs:
     - REQ-544
     - REQ-536
@@ -23893,12 +23894,12 @@
     - REQ-863
     - REQ-866
 - id: REQ-866
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 1. Access Governance & Security
   category: Cache Isolation
   priority: MUST
   type: constraint
-  target: "2026-Q3"
   description: >-
     HYPERCRITICAL isolation invariant for the query result cache. The cache key MUST
     fully partition by the RESOLVED governance identity of the requester, so a cache
@@ -23924,10 +23925,10 @@
     multi-tenant and RLS isolation guarantee, consistent with the two-layer
     governance model (REQ-038) and Stage-2 RLS/masking enforcement (REQ-263).
   code:
-    - provisa/cache/key.py
-    - provisa/cache/store.py
-    - provisa/security/
-    - provisa/compiler/stage2.py
+  - provisa/cache/key.py
+  - provisa/api/data/endpoint.py
+  tests:
+  - tests/unit/test_cache_key.py
   related_reqs:
     - REQ-544
     - REQ-595

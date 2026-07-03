@@ -38,7 +38,7 @@ from fastapi.responses import JSONResponse, Response
 from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
 
-from provisa.cache.key import cache_key
+from provisa.cache.key import cache_key, is_cacheable
 from provisa.cache.middleware import build_cache_headers, check_cache, store_result
 from provisa.compiler.hints import extract_graphql_hints
 from provisa.compiler.directives import (
@@ -2590,12 +2590,13 @@ async def _execute_one_field(
     root_field = compiled.root_field
     _t0 = _time.perf_counter()
 
-    # Cache check
-    ck = cache_key(compiled.sql, compiled.params, role_id, rls.rules if rls.has_rules() else {})
-    _cache_off = no_cache or output_format != "json"
-    cached = (
-        None if _cache_off else await check_cache(state.response_cache_store, ck, org_id=org_id)
-    )
+    # Cache check. REQ-866 fail-closed: when the identity is not fully resolved into
+    # the key (empty RLS filter, or a current_setting-dependent predicate), the query
+    # is not cacheable — never read or written — so a per-session value can't leak.
+    _rls = rls.rules if rls.has_rules() else {}
+    ck = cache_key(compiled.sql, compiled.params, role_id, _rls)
+    _cache_off = no_cache or output_format != "json" or not is_cacheable(compiled.sql, _rls)[0]
+    cached = None if _cache_off else await check_cache(state.response_cache_store, ck, org_id)
 
     # Route decision — the result cache is the first candidate route (REQ-865),
     # so a hit is served as Route.CACHE instead of a hidden pre-routing step.
