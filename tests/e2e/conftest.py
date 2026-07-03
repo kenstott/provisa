@@ -18,7 +18,14 @@ import pytest
 from tests._noauth_config import pin_no_auth_config
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_COMPOSE_FILE = "docker-compose.core.yml"
+# MinIO (S3) lives in observability.yml, not core.yml, but Trino's `otel` Iceberg
+# catalog is S3-backed and is exercised on every app startup by _seed_ops_trino
+# (CREATE SCHEMA otel.signals). Without MinIO that DDL blocks forever on the
+# missing S3 endpoint (a hang, not an error), so the server never finishes
+# starting. Provision both files and bring up only the services e2e needs
+# (avoids grafana/tempo/prometheus/otel).
+_COMPOSE_ARGS = ["-f", "docker-compose.core.yml", "-f", "docker-compose.observability.yml"]
+_SERVICES = ["postgres", "trino", "redis", "pgbouncer", "zaychik", "minio"]
 
 # The root `_wait_for_trino` session fixture pre-flights a shared, already-
 # configured Trino (SHOW SCHEMAS FROM sales_pg) before any app runs. The e2e
@@ -69,7 +76,7 @@ def docker_stack():
     # trino, zaychik) reports healthy, so tests never start against a Trino that
     # is up but not yet query-ready. -p isolates the stack in its own project.
     subprocess.run(
-        ["docker", "compose", "-p", _PROJECT, "-f", _COMPOSE_FILE, "up", "-d", "--wait"],
+        ["docker", "compose", "-p", _PROJECT, *_COMPOSE_ARGS, "up", "-d", "--wait", *_SERVICES],
         cwd=_REPO_ROOT,
         check=True,
     )
@@ -85,7 +92,7 @@ def docker_stack():
     yield
 
     subprocess.run(
-        ["docker", "compose", "-p", _PROJECT, "-f", _COMPOSE_FILE, "down"],
+        ["docker", "compose", "-p", _PROJECT, *_COMPOSE_ARGS, "down"],
         cwd=_REPO_ROOT,
         check=True,
     )
