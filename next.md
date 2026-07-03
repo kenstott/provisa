@@ -47,9 +47,9 @@ Low integration burden; testable with mocks or fixtures, no live federation stac
   composable TTL+PROBE) returning fresh/stale/failed — pure decision, no side effects.
   Unblocks materialization-store freshness (REQ-855). Consumers REQ-859–861 (MV/Source/
   cache conform to the protocol; source-level + file-producer gating) remain the follow-on.
-- **[5] ADBC port — REQ-711.** C1/V2. Parameterize the hardcoded `8815` in
-  `provisa-client/provisa_client/adbc.py:62`. Filler; do it while touching the
-  client.
+- **[5] ADBC port — REQ-711.** ✅ Done (2026-07). `adbc_connect()` gains an optional
+  `port` param (default 8815); the hardcoded `grpc://host:8815` now uses it. Default +
+  custom-port tests added.
 - **[6] GQL count_query (673), M:N join tables (672).** Filler / mid. REQ-672 has real
   modeling value but needs a join-table source to exercise.
 - **[7] Remote-schema mutation authz — universal core — REQ-867–869.** C3/V5/I2. MUST

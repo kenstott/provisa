@@ -64,6 +64,22 @@ def test_adbc_connect_creates_flight_client():
     assert conn._token == "tok"
 
 
+@respx.mock
+def test_adbc_connect_default_port_is_8815():  # REQ-711
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
+    with patch("pyarrow.flight.connect", return_value=MagicMock()) as mock_connect:
+        adbc_connect(BASE, user="u", password="p")
+    assert mock_connect.call_args.args == ("grpc://localhost:8815",)
+
+
+@respx.mock
+def test_adbc_connect_custom_port():  # REQ-711
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
+    with patch("pyarrow.flight.connect", return_value=MagicMock()) as mock_connect:
+        adbc_connect(BASE, user="u", password="p", port=9999)
+    assert mock_connect.call_args.args == ("grpc://localhost:9999",)
+
+
 # ── AdbcConnection ────────────────────────────────────────────────────────────
 
 

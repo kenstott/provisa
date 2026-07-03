@@ -18917,7 +18917,8 @@
       retry writes internally) is a correctness property that naive client retry implementations routinely
       miss.'
 - id: REQ-711
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 8. Client Access & Protocols
   category: ADBC Client
   priority: SHOULD
@@ -18929,7 +18930,6 @@
     policy) can connect via ADBC without falling back to DB-API or SQLAlchemy.
   code:
   - provisa_client/adbc.py
-  target: 2026-Q3
   stakeholders:
   - ops
   - app-developer
@@ -18941,6 +18941,8 @@
   e2e: true
   e2e_reason: The configurable port for adbc_connect() can only be verified by establishing a real Arrow
     Flight connection to a server running on a non-default port, which requires a live stack.
+  tests:
+  - provisa-client/tests/test_adbc.py
 - id: REQ-712
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -24104,35 +24106,44 @@
   type: behavioral
   target: "2026-Q4"
   description: >-
-    Delta fetch for materialization_store REPLICA incremental refresh: when an existing
-    watermark (REQ-855 probe, REQ-260 RDB watermark_column, REQ-282 LQE polling) signals a
-    change, fetch ONLY the changed rows via an AUTHORED delta query and upsert/append them
-    into the replica — instead of REQ-855's full invalidate-and-re-pull. Applies to ANY dataset
-    whose federation strategy is MATERIALIZED (REQ-826) — data is landed/cached, so full re-pull
-    is the cost deltas avoid. Primary drivers: remote schemas (graphql_remote/openapi/grpc, nearly
-    always MATERIALIZED with no attach/scan connector); also includes RDB deliberately cached for
-    latency, NoSQL, live APIs landed via MATERIALIZED. EXPLICITLY EXCLUDED: VIRTUAL (reaches source
-    live, always fresh) and SCAN (reads in place) strategies per REQ-826 — both bypass cache/landing,
-    so nothing exists to delta-refresh. The watermark itself (change-signal mechanism, opaque token
-    comparison, poll transport) is defined elsewhere; this requirement defines the DELTA capability
-    that consumes a monotonic watermark. Note: remote-schema watermark is not absent—config_loader
-    already allows poll with watermark_column for remotes (REQ-260), but it runs via Trino with full
-    relation re-scan; REQ-855 graphql_remote steward-query transport is the EFFICIENT native probe
-    path. COUPLING CONSTRAINT: delta requires a MONOTONIC/ORDERABLE watermark cursor (enabling
-    `> last_watermark` row filtering), not just REQ-855's opaque equality token. A correct monotonic
-    watermark is the registrant's responsibility; Provisa does no dedup or boundary-inclusivity logic.
-    Delta query is authored, fully-formed, source-native, with two PLACEHOLDERS that Provisa
-    substitutes: (a) watermark placeholder (e.g., $wm bind variable) bound to the cursor value,
-    (b) fields placeholder (e.g., {{fields}}) injected from the table's registered selection set.
-    Provisa substitutes only; it does not parse the filter. Adapter-native delta templates: GraphQL
-    `where: {field: {_gt: $wm}}` + `{{fields}}`; OpenAPI query-param filter `?field_since=$wm` +
-    selection headers; gRPC request-message filter field + `$wm` + selection. Returned delta rows
-    are upserted on the replica's ALREADY-REGISTERED PRIMARY KEY (entity identity from table
-    registration) to replace prior row state; degrades to insert for append-only/immutable sources.
-    REPLICA-ONLY: the VIEW/mv role is delta-ineligible—REQ-844 mandates Iceberg overwrite-snapshot
-    semantics (one clean snapshot per refresh) for time-travel/provenance/bitemporal (REQ-372/862),
-    which upsert would violate. Mutable relational substrate only. Provider-agnostic: applies to
-    any MATERIALIZED-strategy dataset with a monotonic watermark, agnostic to source type.
+    Delta fetch for materialization_store REPLICA incremental refresh: an INCREMENTAL RELOAD
+    strategy that supplements REQ-855 freshness. CRITICAL DISTINCTION: FRESHNESS (REQ-855/856) is
+    a pure DECISION ("is this entry stale?") with no refresh semantics—the stale signal is raised
+    and caller-delegated (REQ-856 explicit). DELTA is a REFRESH ACTION—it lives in the reload
+    space that REQ-826 MATERIALIZED already owns ("load-scheduling/invalidation logic runs") and
+    is a sibling to full re-pull. CAUSAL CHAIN: (1) Freshness probe (REQ-856) decides STALE via
+    opaque-token equality comparison; (2) stale signal triggers the reload (REQ-826); (3) reload
+    picks its strategy: DELTA iff [probe token is MONOTONIC] AND [delta query supplied], else FULL
+    RE-PULL. COORDINATION: The probe token serves BOTH freshness and delta. Freshness compares it
+    by equality; delta consumes it when monotonic as its cursor value (`> last_watermark`). Delta
+    must NOT issue a second probe—it reuses the freshness probe's value. When the token is opaque,
+    freshness still works but delta is unavailable, reload falls back to full re-pull. Applies to
+    ANY dataset whose federation strategy is MATERIALIZED (REQ-826) — data is landed/cached, so
+    full re-pull is the cost deltas avoid. Primary drivers: remote schemas (graphql_remote/openapi/
+    grpc, nearly always MATERIALIZED with no attach/scan connector); also includes RDB deliberately
+    cached for latency, NoSQL, live APIs landed via MATERIALIZED. EXPLICITLY EXCLUDED: VIRTUAL
+    (reaches source live, always fresh) and SCAN (reads in place) strategies per REQ-826 — both
+    bypass cache/landing, so nothing exists to delta-refresh. The watermark itself (change-signal
+    mechanism, opaque token comparison, poll transport) is defined elsewhere; this requirement
+    defines the DELTA capability that consumes a monotonic watermark. Note: remote-schema watermark
+    is not absent—config_loader already allows poll with watermark_column for remotes (REQ-260),
+    but it runs via Trino with full relation re-scan; REQ-855 graphql_remote steward-query
+    transport is the EFFICIENT native probe path. COUPLING CONSTRAINT: delta requires a
+    MONOTONIC/ORDERABLE watermark cursor (enabling `> last_watermark` row filtering), not just
+    REQ-855's opaque equality token. A correct monotonic watermark is the registrant's
+    responsibility; Provisa does no dedup or boundary-inclusivity logic. Delta query is authored,
+    fully-formed, source-native, with two PLACEHOLDERS that Provisa substitutes: (a) watermark
+    placeholder (e.g., $wm bind variable) bound to the cursor value, (b) fields placeholder (e.g.,
+    {{fields}}) injected from the table's registered selection set. Provisa substitutes only; it
+    does not parse the filter. Adapter-native delta templates: GraphQL `where: {field: {_gt: $wm}}`
+    + `{{fields}}`; OpenAPI query-param filter `?field_since=$wm` + selection headers; gRPC
+    request-message filter field + `$wm` + selection. Returned delta rows are upserted on the
+    replica's ALREADY-REGISTERED PRIMARY KEY (entity identity from table registration) to replace
+    prior row state; degrades to insert for append-only/immutable sources. REPLICA-ONLY: the
+    VIEW/mv role is delta-ineligible—REQ-844 mandates Iceberg overwrite-snapshot semantics (one
+    clean snapshot per refresh) for time-travel/provenance/bitemporal (REQ-372/862), which upsert
+    would violate. Mutable relational substrate only. Provider-agnostic: applies to any
+    MATERIALIZED-strategy dataset with a monotonic watermark, agnostic to source type.
     Machine-validatable gates: (a) delta_query contains both $wm and {{fields}} placeholders;
     (b) delta_query parses; (c) watermark bind-var type matches the cursor type; (d) injected
     selection set is valid against the table's row type.
@@ -24151,15 +24162,17 @@
     - provisa/materialization/
     - provisa/materialization_store/
   scenario: |
-    Given a table (RDB or remote-schema) with a monotonic watermark and a delta query authored
-    with $wm and {{fields}} placeholders, and a replica materialized into a mutable store
+    Given a MATERIALIZED-strategy dataset with a monotonic watermark, a delta query authored with
+    $wm and {{fields}} placeholders, and a replica in a mutable relational store
     When the watermark signals a change (REQ-855 probe)
-    And Provisa substitutes $wm with the cursor value and {{fields}} with the selection set
+    And Provisa substitutes $wm with the cursor value and {{fields}} with the table's selection set
     Then the rendered delta query fetches only rows changed since the last watermark
-    And those rows are upserted on the replica's registered primary key or inserted if append-only
+    And those rows are upserted on the replica's registered primary key to replace prior state,
+    or inserted if the source is append-only
     And the replica remains fresh without full re-materialization
   related_reqs:
     - REQ-855
+    - REQ-856
     - REQ-844
     - REQ-826
     - REQ-260

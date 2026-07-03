@@ -42,11 +42,15 @@ def adbc_connect(
     user: str = "",
     password: str = "",
     role: str | None = None,
+    port: int = 8815,
 ) -> "AdbcConnection":
     """Create an ADBC-compatible connection backed by Arrow Flight.
 
     REQ-268/269/273: no connection ``mode``; ``role`` is an optional server-validated request,
     not a client-assumed identity.
+
+    REQ-711: ``port`` selects the Arrow Flight server port (default 8815) so callers can
+    reach a Flight server bound to a non-default port.
     """
     base_url = url.rstrip("/")
     token, auth_role = _auth_login(base_url, user, password)
@@ -59,7 +63,7 @@ def adbc_connect(
 
     parsed = urlparse(base_url)
     host = parsed.hostname or "localhost"
-    flight_client = fl.connect(f"grpc://{host}:8815")  # pyright: ignore[reportPrivateImportUsage]
+    flight_client = fl.connect(f"grpc://{host}:{port}")  # pyright: ignore[reportPrivateImportUsage]
 
     return AdbcConnection(
         flight_client=flight_client,
