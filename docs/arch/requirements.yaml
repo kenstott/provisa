@@ -23641,23 +23641,36 @@
   tests:
   - tests/unit/test_freshness.py
 - id: REQ-859
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 4. Source Connectors
   category: Freshness Module
   priority: MUST
   type: behavioral
-  target: "2026-Q3"
   description: >-
-    MV, Source (provisa/core/models.py:183), and ad-hoc cache freshness checks
-    (provisa/openapi/pg_cache.py:49) all become FreshnessSubjects and use
-    the unified FreshnessPredicate implementation.
+    MV and the ad-hoc API/pg cache freshness checks (provisa/openapi/pg_cache.py)
+    become FreshnessSubjects (via the StateSubject adapter) and delegate their TTL
+    decision to the one unified FreshnessPredicate. MVDefinition.is_fresh_at keeps
+    its FRESH-status lifecycle gate and delegates the TTL comparison; pg_cache._is_fresh
+    delegates likewise. Behaviour-preserving unification of the scattered TTL logic.
+    Source-level conformance is the gating work in REQ-860 (its interesting PROBE mode
+    depends on the REQ-855 probe transport).
   use_case: >-
-    Consistency: same freshness semantics and strategies apply to all data paths.
-    Simplifies maintenance and enables cross-layer freshness policies.
+    Consistency: the same freshness semantics and strategies apply to every data path,
+    and there is one place to change freshness policy instead of per-consumer copies.
+  scenario: >-
+    Given a materialized view and an API/pg cache entry, each with its own
+    last-refresh state
+    When their freshness is evaluated
+    Then both expose that state as a FreshnessSubject and the TTL decision is produced
+    by the one shared FreshnessPredicate, yielding the same fresh/stale result as the
+    prior per-consumer checks.
   code:
+    - provisa/freshness/adapters.py
     - provisa/mv/models.py
-    - provisa/core/models.py
     - provisa/openapi/pg_cache.py
+  tests:
+    - tests/unit/test_freshness_adapters.py
   related_reqs:
     - REQ-856
     - REQ-857

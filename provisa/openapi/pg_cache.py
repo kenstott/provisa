@@ -12,7 +12,7 @@ import hashlib
 import json
 import logging
 import time as _time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import asyncpg
 import httpx
@@ -185,7 +185,12 @@ async def _is_fresh(
         return False
     if cached_at is None:
         return False
-    fresh = datetime.now(UTC) - cached_at.replace(tzinfo=UTC) < timedelta(seconds=ttl)
+    # Delegate the TTL decision to the shared freshness module (REQ-859).
+    from provisa.freshness import Ttl, evaluate
+    from provisa.freshness.adapters import StateSubject
+
+    cached_epoch = cached_at.replace(tzinfo=UTC).timestamp()
+    fresh = evaluate(StateSubject(refreshed_at=cached_epoch), Ttl(ttl), _time.time()).is_fresh
     if fresh:
         _mark_fresh(pg_schema, pg_table, phash, ttl)
     return fresh

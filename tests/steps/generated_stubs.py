@@ -7604,3 +7604,13 @@ def step_then_the_rewriter_transparently_redirects_the_from_join_to_the_mv():
     pytest.skip(
         "step not implemented: the rewriter transparently redirects the FROM/JOIN to the MV"
     )
+
+
+# REQ-859
+@given(
+    "a materialized view and an API/pg cache entry, each with its own last-refresh state When their freshness is evaluated Then both expose that state as a FreshnessSubject and the TTL decision is produced by the one shared FreshnessPredicate, yielding the same fresh/stale result as the prior per-consumer checks."
+)
+def step_given_a_materialized_view_and_an_api_pg_cache_entry_each_with_its_():
+    pytest.skip(
+        "step not implemented: a materialized view and an API/pg cache entry, each with its"
+    )

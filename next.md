@@ -37,12 +37,15 @@ gates *when* the work can happen, not just how hard it is.
 
 Unit-testable with mocks or fixtures; no federation substrate required. Do these next.
 
-- **[1] Freshness gating consumers — REQ-859–861.** C2/V3/I2. Direct follow-on to the freshness
-  module just shipped. Make MV, Source, and the API/pg cache conform to `FreshnessSubject`
-  (REQ-859); add source-level freshness gating so a query reading a pull-through source is
-  gated before execution (REQ-860); optional on-stale producer command for file sources
-  (REQ-861). Closes the loop on the freshness leaf and de-risks materialization-store
-  freshness (REQ-855).
+- **[1] Freshness gating consumers — REQ-859–861.** REQ-859 ✅ done (2026-07): MV
+  (`MVDefinition.is_fresh_at`) and the API/pg cache (`pg_cache._is_fresh`) now expose their
+  state via a `StateSubject` adapter and delegate the TTL decision to the one
+  `FreshnessPredicate` — behaviour-preserving, 190 MV/cache tests green. **REQ-860/861 remain,
+  and are blocked, not leaf:** REQ-860's interesting mode (a source declaring a PROBE predicate
+  that gates queries before execution) needs the REQ-855 probe transport; REQ-861 (on-stale file
+  producer) needs a file-read hook in the engine/execution path. TTL-only source gating would
+  just duplicate `Source.cache_ttl`, so both wait for their real dependency rather than shipping
+  as unwired helpers.
 - **[2] Query-cache refinements — REQ-863, REQ-864, REQ-866.** C2/V4/I2. Pairs with the shipped
   `Route.CACHE`. REQ-864: key the result cache on a NORMALIZED governed IR (canonicalize
   cosmetic form) instead of the compiled-SQL string, so semantically-identical queries share

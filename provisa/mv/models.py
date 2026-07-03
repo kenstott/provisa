@@ -90,16 +90,26 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     def is_fresh(self) -> bool:  # REQ-483
         return self.status == MVStatus.FRESH
 
+    def freshness_subject(self):  # REQ-859
+        """This MV's refresh state as a FreshnessSubject for the unified predicate."""
+        from provisa.freshness.adapters import StateSubject
+
+        return StateSubject(refreshed_at=self.last_refresh_at, ok=self.last_error is None)
+
     def is_fresh_at(self, now: float) -> bool:
         """TTL-aware freshness (REQ-199).
 
         An MV is serveable only when its status is FRESH and its last refresh is within
         ``refresh_interval`` (its TTL). A FRESH MV whose TTL has elapsed is treated as stale
-        so the query falls back to the live source rather than serving expired data.
+        so the query falls back to the live source rather than serving expired data. The TTL
+        decision is delegated to the shared freshness module (REQ-859); the FRESH-status gate
+        stays here as the orthogonal lifecycle guard.
         """
-        if self.status != MVStatus.FRESH or self.last_refresh_at is None:
+        if self.status != MVStatus.FRESH:
             return False
-        return (now - self.last_refresh_at) < self.refresh_interval
+        from provisa.freshness import Ttl, evaluate
+
+        return evaluate(self.freshness_subject(), Ttl(self.refresh_interval), now).is_fresh
 
     @property
     def is_join_pattern(self) -> bool:  # REQ-653
