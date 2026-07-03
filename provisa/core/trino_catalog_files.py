@@ -190,13 +190,8 @@ def write_table_definitions(
 # --- Kafka catalog file generation (REQ-250) ---
 
 
-def write_kafka_catalog_files(
-    kafka_source: dict, etc_dir: Path | None = None
-) -> list[Path]:  # REQ-147, REQ-250
-    """Generate the Kafka catalog ``.properties`` (+ client props) from config.
-
-    ``kafka_source`` is a raw ``kafka_sources[]`` config entry. Returns paths written.
-    """
+def _kafka_source_config(kafka_source: dict):
+    """Build a KafkaSourceConfig from a raw ``kafka_sources[]`` config entry."""
     from pydantic import TypeAdapter
 
     from provisa.core.auth_models import KafkaAuth
@@ -206,9 +201,6 @@ def write_kafka_catalog_files(
         KafkaTopicConfig,
         SchemaSource,
         ValueFormat,
-        generate_kafka_client_properties,
-        generate_kafka_table_definitions,
-        generate_trino_kafka_properties,
     )
 
     auth_raw = kafka_source.get("auth")
@@ -232,13 +224,54 @@ def write_kafka_catalog_files(
         )
         for t in kafka_source.get("topics", [])
     ]
-    cfg = KafkaSourceConfig(
+    return KafkaSourceConfig(
         id=kafka_source["id"],
         bootstrap_servers=resolve_secrets(kafka_source.get("bootstrap_servers", "localhost:9092")),
         schema_registry_url=kafka_source.get("schema_registry_url"),
         topics=topics,
         auth=auth,
     )
+
+
+def kafka_catalog_props(kafka_source: dict) -> dict[str, str]:  # REQ-147
+    """Return the Trino kafka connector properties (minus ``connector.name``) for a
+    ``kafka_sources[]`` entry, for a dynamic ``CREATE CATALOG ... USING kafka``.
+
+    Reuses ``generate_trino_kafka_properties`` (the static-file content) as the
+    single source of truth, parsed into a dict.
+    """
+    from provisa.kafka.source import generate_trino_kafka_properties
+
+    props: dict[str, str] = {}
+    for line in generate_trino_kafka_properties(_kafka_source_config(kafka_source)).splitlines():
+        line = line.strip()
+        if not line or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip() == "connector.name":
+            continue  # supplied by USING kafka
+        props[key.strip()] = value.strip()
+    return props
+
+
+def write_kafka_catalog_files(
+    kafka_source: dict, etc_dir: Path | None = None, trino_conn=None
+) -> list[Path]:  # REQ-147, REQ-250
+    """Generate the Kafka catalog ``.properties`` (+ client props) from config.
+
+    ``kafka_source`` is a raw ``kafka_sources[]`` config entry. Returns paths
+    written. When ``trino_conn`` is given, also registers the catalog dynamically
+    (CREATE CATALOG) so it loads regardless of Trino start order — the static
+    files are staged under ``catalog-install/`` and not auto-loaded by a
+    ``catalog.management=dynamic`` Trino.
+    """
+    from provisa.kafka.source import (
+        generate_kafka_client_properties,
+        generate_kafka_table_definitions,
+        generate_trino_kafka_properties,
+    )
+
+    cfg = _kafka_source_config(kafka_source)
     base = etc_dir or trino_etc_dir()
     install_dir = base / "catalog-install"
     install_dir.mkdir(parents=True, exist_ok=True)
@@ -263,5 +296,10 @@ def write_kafka_catalog_files(
         client_path = base / "kafka-client.properties"
         client_path.write_text(client_props, encoding="utf-8")
         written.append(client_path)
+
+    if trino_conn is not None:
+        from provisa.core.catalog import create_kafka_catalog
+
+        create_kafka_catalog(trino_conn, kafka_source)
 
     return written

@@ -1227,8 +1227,9 @@ def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
                     "host": ks.get("bootstrap_servers", ""),
                 }
             )
-        # REQ-250: generate the Kafka catalog .properties from YAML config.
-        write_kafka_catalog_files(ks)
+        # REQ-250/147: write catalog files and register the catalog dynamically
+        # (CREATE CATALOG) so it loads regardless of Trino start order.
+        write_kafka_catalog_files(ks, trino_conn=state.trino_conn)
         for topic in ks.get("topics", []):
             topic_id = topic.get("id", "")
             physical_table = topic.get("topic", "").replace(".", "_").replace("-", "_")

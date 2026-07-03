@@ -223,6 +223,34 @@ def create_catalog(
         )
 
 
+def create_kafka_catalog(conn: trino.dbapi.Connection, kafka_source: dict) -> None:  # REQ-147
+    """Register a ``kafka_sources[]`` entry as a Trino dynamic catalog.
+
+    Kafka is the one source type whose connector props are not built by
+    ``_build_catalog_properties`` (no host/JDBC url), so it never went through the
+    dynamic ``CREATE CATALOG`` path — it only wrote a static ``.properties`` file,
+    which a ``catalog.management=dynamic`` Trino that started before the app never
+    loads. Register it dynamically here (idempotent) so kafka sources work
+    regardless of Trino start order, like every other source.
+    """
+    from provisa.core.trino_catalog_files import kafka_catalog_props
+
+    catalog_name = _to_catalog_name(kafka_source["id"])
+    if catalog_exists(conn, catalog_name):
+        return
+    props = kafka_catalog_props(kafka_source)
+    if not props.get("kafka.nodes"):
+        return
+    props_sql = ", ".join(f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in props.items())
+    sql = f"CREATE CATALOG IF NOT EXISTS {catalog_name} USING kafka WITH ({props_sql})"
+    try:
+        cur = conn.cursor()
+        cur.execute(sql)
+        cur.fetchall()
+    except trino.exceptions.Error as e:
+        log.warning("Kafka catalog creation failed for %s: %s", catalog_name, e)
+
+
 def analyze_source_tables(  # REQ-636
     conn: trino.dbapi.Connection,
     source: "Source",

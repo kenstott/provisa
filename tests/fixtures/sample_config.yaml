@@ -97,8 +97,12 @@ roles:
       - sales-analytics
 
 kafka_sources:
+  # The kafka source query (REQ-147) runs through Trino, which is a container on
+  # the compose network — it reaches the broker at the internal listener
+  # kafka:29092, not the host's localhost:9092. Host-side producers (tests) write
+  # to the same broker via the HOST listener (localhost:9092).
   - id: kafka-support
-    bootstrap_servers: localhost:9092
+    bootstrap_servers: kafka:29092
     topics:
       - id: tickets
         topic: support.tickets
