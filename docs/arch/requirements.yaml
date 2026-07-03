@@ -3376,6 +3376,8 @@
   stakeholders:
   - ops
   - data-engineer
+  related_reqs:
+  - REQ-856
   competitive_position:
     status: ahead
     rationale: Mutation-triggered MV staleness marking with configurable refresh interval for cross-source
@@ -5873,6 +5875,7 @@
   related_reqs:
   - REQ-826
   - REQ-844
+  - REQ-856
 - id: REQ-426
   status: complete
   group: 4. Source Connectors
@@ -7397,6 +7400,7 @@
       for query performance.
   related_reqs:
   - REQ-826
+  - REQ-856
 - id: REQ-200
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -23417,6 +23421,16 @@
     reachability tier; warehouse-native engines have only land mechanisms
     (into self), broad/partial federators use attach where a connector supports
     it and land otherwise.
+
+    A federation engine INSTANCE owns its connector collection — a map keyed by
+    source_type (connectors: dict[source_type -> Connector]). Reachability is
+    a lookup into that collection: reachable(table) == (table.source.type in
+    engine.connectors). The three driver classes are defined by collection
+    contents — broad federator (Trino: many source_types), partial federator
+    (DuckDB: postgres/csv/json/parquet where an extension/scanner exists),
+    self-only warehouse-native (Snowflake: own store only). Swapping the engine
+    swaps the connector collection; planner/cache/freshness-gate logic is
+    unchanged. Each Connector projects CatalogEntry rows into the engine catalog.
   use_case: >-
     Support deployments whose engine ranges from a broad federator to a
     self-only data warehouse without changing planner or cache logic.
@@ -23425,6 +23439,9 @@
     rationale: >-
       Engine-pluggable federation (not hardwired to one engine) is uncommon;
       Denodo, Dremio, and Trino each hardwire their own engine.
+  related_reqs:
+  - REQ-841
+  - REQ-842
 - id: REQ-841
   status: proposed
   group: 4. Source Connectors
@@ -23462,11 +23479,25 @@
     is already a native table). Adding a source type, a federation engine, or
     a cache backend is a connector registration; planner, cache-role, and
     freshness-gate logic are unchanged.
+
+    The connector's derived engine-catalog entry has an explicit persisted row
+    shape: (name: text, engine/platform: text, source_type: text, mechanism:
+    attach|land, details: jsonb). The connector exposes catalog_add,
+    catalog_update, and catalog_remove operations over individual entries, plus
+    a catalog_refresh operation that re-projects the entire engine catalog from
+    the asset registry (REQ-843 reconcile). The details jsonb field is
+    engine+source_type specific — e.g., Trino postgresql = connection-url/user
+    /password .properties; DuckDB postgresql = ATTACH dsn; DuckDB csv/json =
+    read_csv_auto/read_json_auto view DDL over file paths+columns; warehouse
+    -native (Snowflake) = no-op land-into-self. Per the V1 no-migrations
+    constraint, the catalog-entry table is derived/rebuildable engine state,
+    not a migrated Postgres table.
   use_case: >-
     A single extensibility seam so new engines/sources/backends require only
     a connector, not core changes.
   related_reqs:
   - REQ-840
+  - REQ-843
 - id: REQ-843
   status: proposed
   group: 4. Source Connectors
@@ -23630,6 +23661,142 @@
     When a query is compiled that references the underlying source tables without naming the MV
     Then the rewriter transparently redirects the FROM/JOIN to the MV target (full or partial),
     otherwise the query runs against the live source tables.
+- id: REQ-850
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: "Control-Plane Store Portability"
+  priority: MUST
+  type: structural
+  since: "2026-07"
+  description: >-
+    Control-plane store is SQLAlchemy-URI-pluggable across dialects, bootstrapped
+    from portable SQLAlchemy Core metadata (provisa/core/schema_org.py) via
+    metadata.create_all, replacing PG-only raw schema.sql (which uses SERIAL,
+    JSONB, DO $$/pg_advisory_lock, CREATE SCHEMA, search_path). PostgreSQL
+    retains the raw schema.sql path unchanged.
+  use_case: >-
+    Allows control plane to deploy on non-PostgreSQL backends (SQLite, MySQL,
+    DuckDB, Oracle) without migration, supporting infra-free deployments while
+    maintaining backward compatibility with Postgres.
+  code:
+    - provisa/core/db.py
+    - provisa/core/schema_org.py
+    - provisa/audit/query_log.py
+  related_reqs:
+    - REQ-820
+    - REQ-821
+    - REQ-822
+  scenario: |
+    Given a non-PostgreSQL backend (e.g., SQLite, MySQL) configured as the control-plane store
+    When Provisa initializes
+    Then init_schema calls metadata.create_all with portable SQLAlchemy types, and org control plane is created without raw Postgres DDL
+- id: REQ-851
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: "Multi-Tenant Org Isolation"
+  priority: MUST
+  type: structural
+  since: "2026-07"
+  description: >-
+    Org isolation is polymorphic on a schema-capable vs not-schema-capable axis.
+    Schema-capable backends (PostgreSQL, MySQL, Oracle) scope an org as a
+    namespace on a single shared connection via SQL commands (SET search_path TO
+    org_<id>, USE org_<id>, ALTER SESSION SET CURRENT_SCHEMA). Not-schema-capable
+    backends (SQLite, DuckDB) carry org in the database file; org selection
+    happens at engine construction via per-org file paths.
+  use_case: >-
+    Provides unified multi-tenant abstraction across heterogeneous databases while
+    respecting native schema isolation capabilities, enabling schema-based
+    multi-tenancy on Postgres/MySQL and file-per-org isolation on SQLite/DuckDB.
+  code:
+    - provisa/core/database.py
+  related_reqs:
+    - REQ-818
+  scenario: |
+    Given a PostgreSQL backend in multi-tenant mode
+    When org context is activated
+    Then enter_org_sql returns "SET search_path TO org_<id>"; on SQLite the org file is selected at engine construction.
+- id: REQ-852
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: "Multi-Tenant Org Isolation"
+  priority: MUST
+  type: structural
+  since: "2026-07"
+  description: >-
+    OrgRouter (provisa/core/database.py) is the multi-tenant mechanism for
+    not-schema-capable backends, mapping org_id → Database and lazily caching
+    one engine per org_<id> database file. OrgRouter guards against construction
+    on schema-capable backends and enforces that single-tenant SQLite uses the
+    default namespace with no router. Cross-org queries within a single
+    not-schema-capable connection are impossible (file boundary).
+  use_case: >-
+    Enables transparent multi-tenant routing for file-based backends (SQLite,
+    DuckDB) while preventing misconfiguration on schema-capable systems.
+  code:
+    - provisa/core/database.py
+  related_reqs:
+    - REQ-818
+    - REQ-851
+  scenario: |
+    Given a multi-tenant SQLite deployment with org_1 and org_2 database files
+    When a query is executed in org_1 context
+    Then OrgRouter routes to the org_1 engine; switching org_id requires a new connection.
+- id: REQ-853
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: "Control-Plane Store Portability"
+  priority: MUST
+  type: constraint
+  since: "2026-07"
+  description: >-
+    NOT NULL JSON columns in schema_org.py carry server_default values ('[]' for
+    list, '{}' for dict) so raw-text INSERTs that omit them succeed on portable
+    backends (previously only Python-side Core defaults existed, causing raw
+    inserts to fail NOT NULL constraints on SQLite).
+  use_case: >-
+    Ensures compatibility with raw SQL inserts across all backends, preventing
+    NOT NULL violations when JSON columns are omitted in direct SQL statements.
+  tests:
+    - tests/unit/test_schema_metadata_parity.py
+    - tests/unit/test_admin_database.py
+  code:
+    - provisa/core/schema_org.py
+  related_reqs:
+    - REQ-850
+  scenario: |
+    Given a raw INSERT statement that omits a NOT NULL JSON column (e.g., metadata)
+    When executed on SQLite via SQLAlchemy
+    Then server_default ('{}' or '[]') is applied and the insert succeeds.
+- id: REQ-854
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: "Release Artifact Packaging"
+  priority: MUST
+  type: infrastructure
+  since: "2026-07"
+  description: >-
+    Core runtime image set (docker-compose.core.yml + OVA/Lima bundles) must
+    include busybox as a core dependency; stripe-mock must remain dev-only in
+    docker-compose.dev.yml; python:3.12-slim is build-time only and excluded
+    from packaged/airgapped runtime images.
+  use_case: >-
+    Busybox is required at runtime (trino-exchange-init service uses it to chown
+    /data/provisa/exchange before Trino starts). Stripe-mock is a demo mock, not
+    a system dependency. Python:3.12-slim exists only as a build base for OVA/Lima
+    source builds. This separation ensures airgapped deployments include all
+    runtime dependencies and excludes unnecessary dev/mock components.
+  code:
+    - docker-compose.core.yml
+    - docker-compose.dev.yml
+    - .github/workflows/build-dmg.yml
+  related_reqs:
+    - REQ-836
+  scenario: |
+    Given an airgapped OVA or Lima deployment built from docker-compose.core.yml
+    When the Trino service starts
+    Then busybox image is present to support trino-exchange-init initialization
+    And stripe-mock is not bundled in the package.
 - id: REQ-855
   status: proposed
   group: 4. Source Connectors
@@ -23682,3 +23849,139 @@
     the new token stored
     And a mv_cache materialized view with a freshness gate skips its scheduled CTAS rebuild while the
     upstream token is unchanged.
+- id: REQ-856
+  status: proposed
+  group: 4. Source Connectors
+  category: Freshness Module
+  priority: MUST
+  type: structural
+  target: "2026-Q3"
+  description: >-
+    Freshness gate (REQ-855: three modes TTL/probe/TTL+probe, source-agnostic
+    freshness_token dispatch, transports incl. DB-SQL steward query and file mtime)
+    is generalized into a standalone, context-agnostic module answering one question:
+    given a subject and its observable state, is it fresh? Returns fresh/stale/failed
+    + reason. Pure decision function with no triggering or refresh semantics (caller
+    responsibilities). Enables MV, Source, cache, pgvector all consume one implementation.
+  use_case: >-
+    Unifies freshness logic currently scattered across MV (TTL-based, provisa/mv/models.py:94-102),
+    Source introspection, and ad-hoc cache checks (provisa/openapi/pg_cache.py:49). Single
+    implementation enables consistent freshness gating across all data paths.
+  code:
+    - provisa/freshness/
+  related_reqs:
+    - REQ-844
+    - REQ-845
+    - REQ-855
+- id: REQ-857
+  status: proposed
+  group: 4. Source Connectors
+  category: Freshness Module
+  priority: MUST
+  type: structural
+  target: "2026-Q3"
+  description: >-
+    FreshnessSubject protocol exposes: (1) last-refresh timestamp; (2) last-refresh
+    outcome (success/failure); (3) upstream-subject handles for transitive freshness;
+    (4) content-query capability — this IS REQ-855's freshness_token(source,table)
+    -> str | None dispatch (opaque token; None = source cannot produce one, degrades
+    to TTL per REQ-847).
+  use_case: >-
+    Enables FreshnessPredicate to evaluate any subject uniformly—MV, Source, cache
+    all conform to the same interface. Transitive strategy can check upstream freshness
+    by following handles.
+  code:
+    - provisa/freshness/
+  related_reqs:
+    - REQ-856
+    - REQ-855
+- id: REQ-858
+  status: proposed
+  group: 4. Source Connectors
+  category: Freshness Module
+  priority: MUST
+  type: structural
+  target: "2026-Q3"
+  description: >-
+    FreshnessPredicate with pluggable strategies that unify REQ-855's three modes plus
+    a boolean content predicate: TTL (time-based, exists today); PROBE (REQ-855 opaque-
+    token change detection via freshness_token — the same mechanism as REQ-855's DB-SQL
+    steward-query transport, do not treat as a separate "SQL strategy"); TRANSITIVE
+    (fresh iff own predicate holds AND all upstream subjects are transitively fresh —
+    the one net-new capability beyond REQ-855, which is per-entry only); composable
+    (TTL+PROBE floors probe frequency). Caller supplies subject and strategy; predicate
+    returns decision without side effects.
+  use_case: >-
+    Decouples freshness evaluation from refresh logic. Strategies are swappable and
+    composable, enabling rich policies (e.g., TTL for cost-sensitive tables, PROBE for
+    zero-lag accuracy, TRANSITIVE for derived caches/medallion chains).
+  code:
+    - provisa/freshness/
+  related_reqs:
+    - REQ-856
+    - REQ-857
+    - REQ-855
+- id: REQ-859
+  status: proposed
+  group: 4. Source Connectors
+  category: Freshness Module
+  priority: MUST
+  type: behavioral
+  target: "2026-Q3"
+  description: >-
+    MV, Source (provisa/core/models.py:183), and ad-hoc cache freshness checks
+    (provisa/openapi/pg_cache.py:49) all become FreshnessSubjects and use
+    the unified FreshnessPredicate implementation.
+  use_case: >-
+    Consistency: same freshness semantics and strategies apply to all data paths.
+    Simplifies maintenance and enables cross-layer freshness policies.
+  code:
+    - provisa/mv/models.py
+    - provisa/core/models.py
+    - provisa/openapi/pg_cache.py
+  related_reqs:
+    - REQ-856
+    - REQ-857
+    - REQ-858
+    - REQ-844
+- id: REQ-860
+  status: proposed
+  group: 4. Source Connectors
+  category: Freshness Gating
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q3"
+  description: >-
+    Freshness gating is now available at the Source level (provisa/core/models.py),
+    not just on MV. A source can declare a freshness predicate; queries reading
+    from that source are gated by freshness before execution.
+  use_case: >-
+    Prevents serving stale data from pull-through sources. Stewards can enforce
+    freshness without materializing into an MV, reducing latency and compute overhead.
+  code:
+    - provisa/core/models.py
+  related_reqs:
+    - REQ-856
+    - REQ-859
+- id: REQ-861
+  status: proposed
+  group: 4. Source Connectors
+  category: Freshness Gating
+  priority: MAY
+  type: behavioral
+  target: "2026-Q3"
+  description: >-
+    File-based sources (CSV, Parquet, etc.) may carry an optional producer command
+    (argv) that runs on-stale (gate-triggered) before the file is read. Allows
+    refresh without modifying the file path or materializing into an MV.
+  use_case: >-
+    Supports workflows where stale file detection should trigger a script to refresh
+    the file in place. Example: fetch latest data from an upstream API and write to
+    the same CSV path when staleness is detected. Pairs with REQ-855: REQ-855 file
+    mtime DETECTS staleness, this producer command is the ACT-on-stale response.
+  code:
+    - provisa/core/models.py
+  related_reqs:
+    - REQ-856
+    - REQ-860
+    - REQ-855

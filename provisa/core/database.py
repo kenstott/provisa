@@ -77,7 +77,14 @@ async def _register_json_codecs(conn: Any) -> None:
 class Capabilities:
     """Per-dialect feature flags. PostgreSQL supports everything; Tier-2
     backends gate PG-only features (LISTEN/NOTIFY, advisory locks, arrays,
-    append-only RULEs, RETURNING) so callers can branch."""
+    append-only RULEs, RETURNING) so callers can branch.
+
+    ``schemas`` is the org-isolation axis. Schema-capable backends (PG/Oracle/
+    MySQL) scope an org as a namespace switched on a single connection — see
+    ``enter_org_sql``. Non-schema-capable backends (SQLite) carry the org in the
+    database *file*, so an org is a distinct engine/connection, not a statement;
+    ``enter_org_sql`` returns None and org selection happens when the engine is
+    built (file-per-org)."""
 
     dialect: str
     listen_notify: bool
@@ -85,13 +92,34 @@ class Capabilities:
     arrays: bool
     rules: bool
     returning: bool
+    schemas: bool
+
+    def enter_org_sql(self, schema: str) -> str | None:
+        """The statement that scopes a connection to ``schema`` (org namespace),
+        or None for non-schema-capable backends. Semantics differ per dialect:
+        PG search_path, MySQL current database, Oracle current schema."""
+        if not self.schemas:
+            return None
+        if self.dialect == "postgresql":
+            return f"SET search_path TO {schema}"
+        if self.dialect in ("mysql", "mariadb"):
+            return f"USE {schema}"
+        if self.dialect == "oracle":
+            return f"ALTER SESSION SET CURRENT_SCHEMA = {schema}"
+        return None
 
     @classmethod
     def for_dialect(cls, dialect: str) -> "Capabilities":
         d = dialect.split("+", 1)[0]
         if d == "postgresql":
             return cls(
-                d, listen_notify=True, advisory_lock=True, arrays=True, rules=True, returning=True
+                d,
+                listen_notify=True,
+                advisory_lock=True,
+                arrays=True,
+                rules=True,
+                returning=True,
+                schemas=True,
             )
         if d == "sqlite":
             return cls(
@@ -101,6 +129,7 @@ class Capabilities:
                 arrays=False,
                 rules=False,
                 returning=True,
+                schemas=False,
             )
         if d in ("mysql", "mariadb"):
             return cls(
@@ -110,9 +139,26 @@ class Capabilities:
                 arrays=False,
                 rules=False,
                 returning=False,
+                schemas=True,
+            )
+        if d == "oracle":
+            return cls(
+                d,
+                listen_notify=False,
+                advisory_lock=False,
+                arrays=False,
+                rules=False,
+                returning=True,
+                schemas=True,
             )
         return cls(
-            d, listen_notify=False, advisory_lock=False, arrays=False, rules=False, returning=False
+            d,
+            listen_notify=False,
+            advisory_lock=False,
+            arrays=False,
+            rules=False,
+            returning=False,
+            schemas=False,
         )
 
 
@@ -422,11 +468,12 @@ class Connection:
 class Database:
     """A control-plane database handle backed by one SQLAlchemy AsyncEngine.
 
-    ``search_path`` (PostgreSQL only) scopes every acquired connection to the
-    org schema, preserving the isolation the former asyncpg pool provided via
-    its ``setup`` callback. Raw ``text()`` SQL uses unqualified table names, so
-    ``schema_translate_map`` cannot substitute here; ``SET search_path`` is the
-    Phase-1 mechanism (replaced by translate-map + Core statements in Tier-2).
+    ``search_path`` scopes every acquired connection to the org namespace on
+    schema-capable backends, preserving the isolation the former asyncpg pool
+    provided via its ``setup`` callback. The scoping statement is dialect-
+    dispatched (``Capabilities.enter_org_sql``): PG search_path, MySQL current
+    database, Oracle current schema. Non-schema-capable backends (SQLite) carry
+    the org in the file, so this is a no-op there — org = which engine.
     """
 
     def __init__(self, engine: AsyncEngine, name: str, search_path: str | None = None) -> None:
@@ -443,8 +490,8 @@ class Database:
     @asynccontextmanager
     async def acquire(self) -> AsyncGenerator[Connection]:
         async with self._engine.connect() as ac:
-            if self.search_path and self.dialect == "postgresql":
-                await ac.execute(text(f"SET search_path TO {self.search_path}"))
+            if self.search_path and (sql := self.capabilities.enter_org_sql(self.search_path)):
+                await ac.execute(text(sql))
                 await ac.commit()
             yield Connection(ac, self.capabilities)
 
@@ -542,3 +589,59 @@ def _on_pg_connect(dbapi_conn: Any, connection_record: Any) -> None:
     new asyncpg connection (matches the former asyncpg pool ``init``)."""
     del connection_record
     dbapi_conn.run_async(_register_json_codecs)
+
+
+# --------------------------------------------------------------------------- #
+# org router — multi-tenant on not-schema-capable backends
+# --------------------------------------------------------------------------- #
+class OrgRouter:
+    """Maps ``org_id`` -> :class:`Database`, one engine/file per org.
+
+    The multi-tenant mechanism for **not-schema-capable** backends (SQLite,
+    DuckDB), where an org cannot be a namespace switched on a shared connection
+    (``Capabilities.schemas`` is False) and instead lives in its own database
+    file. Schema-capable backends (PG/Oracle/MySQL) do NOT need this — a single
+    shared :class:`Database` scopes orgs via ``Capabilities.enter_org_sql`` — so
+    construct a router only when ``Capabilities.for_dialect(...).schemas`` is
+    False. Engines are built lazily and cached, so each org keeps one pool."""
+
+    def __init__(self, base_url: str, *, pool_size: int = 5, max_overflow: int = 5) -> None:
+        from sqlalchemy import make_url
+
+        self._base_url = make_url(base_url)
+        if Capabilities.for_dialect(self._base_url.get_dialect().name).schemas:
+            raise ValueError(
+                "OrgRouter is for not-schema-capable backends (file-per-org); "
+                f"{self._base_url.get_backend_name()} scopes orgs on a shared engine — "
+                "use a single Database with Capabilities.enter_org_sql instead."
+            )
+        self._pool_size = pool_size
+        self._max_overflow = max_overflow
+        self._cache: dict[str, Database] = {}
+
+    def _org_url(self, org_id: str) -> str:
+        """Per-org file URL: a sibling of the base file named ``org_<id>.db``."""
+        from pathlib import PurePosixPath
+
+        base_db = self._base_url.database
+        if not base_db:
+            raise ValueError(f"base URL has no database path: {self._base_url!r}")
+        parent = PurePosixPath(base_db).parent
+        org_path = str(parent / f"org_{org_id}{PurePosixPath(base_db).suffix or '.db'}")
+        return str(self._base_url.set(database=org_path))
+
+    def database_for(self, org_id: str) -> "Database":
+        from provisa.core.db import _validate_org_id
+
+        _validate_org_id(org_id)
+        if org_id not in self._cache:
+            engine = create_engine_from_url(
+                self._org_url(org_id), pool_size=self._pool_size, max_overflow=self._max_overflow
+            )
+            self._cache[org_id] = Database(engine, name=f"org_{org_id}")
+        return self._cache[org_id]
+
+    async def close(self) -> None:
+        for db in self._cache.values():
+            await db.close()
+        self._cache.clear()

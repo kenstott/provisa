@@ -91,9 +91,45 @@ def _validate_org_id(org_id: str) -> None:
         raise ValueError(f"org_id must be alphanumeric/underscore only, got: {org_id!r}")
 
 
+# Default domain rows seeded by schema.sql; FK targets other tenant rows depend
+# on (domain_id='' must always resolve). Re-seeded on the portable path.
+_SEED_DOMAINS: tuple[tuple[str, str], ...] = (
+    ("", "No domain"),
+    ("meta", "System metadata"),
+    ("ops", "Operational telemetry"),
+    ("shelter", "Animal shelter staff and breed management"),
+)
+
+
+async def _init_schema_portable(pool: "Database") -> None:
+    """Bootstrap the tenant plane from portable SQLAlchemy metadata.
+
+    ``schema.sql`` is PostgreSQL-only DDL (SERIAL/JSONB/DO $$/advisory locks) and
+    does not parse on SQLite/MySQL. The ``schema_org`` metadata is the dialect-
+    neutral mirror; ``create_all`` emits per-dialect DDL. Org isolation is the
+    default schema on these single-tenant backends (no ``search_path``)."""
+    from provisa.core import schema_org
+
+    async with pool.engine.begin() as conn:
+        await conn.run_sync(schema_org.metadata.create_all)
+    async with pool.acquire() as conn:
+        for domain_id, description in _SEED_DOMAINS:
+            exists = await conn.fetchval("SELECT id FROM domains WHERE id = $1", domain_id)
+            if exists is None:
+                await conn.execute(
+                    "INSERT INTO domains (id, description) VALUES ($1, $2)", domain_id, description
+                )
+
+
 async def init_schema(pool: "Database", schema_sql: str, org_id: str = "default") -> None:
-    """Execute schema SQL scoped to org_<org_id> schema (REQ-697)."""
+    """Execute schema SQL scoped to org_<org_id> schema (REQ-697).
+
+    PostgreSQL runs the raw ``schema.sql`` script inside an ``org_<id>`` schema.
+    Non-PG backends bootstrap from portable ``schema_org`` metadata instead."""
     _validate_org_id(org_id)
+    if pool.dialect != "postgresql":
+        await _init_schema_portable(pool)
+        return
     schema_name = f"org_{org_id}"
     async with pool.acquire() as conn:
         await conn.execute("SELECT pg_advisory_lock(7337)")

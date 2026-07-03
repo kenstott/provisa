@@ -73,9 +73,9 @@ sources = Table(
     Column("cache_ttl", Integer),
     Column("gql_naming_convention", Text),
     Column("path", Text),
-    Column("allowed_domains", JSON, nullable=False, default=list),
+    Column("allowed_domains", JSON, nullable=False, default=list, server_default="[]"),
     Column("description", Text, nullable=False, server_default=""),
-    Column("mapping", JSON, nullable=False, default=dict),
+    Column("mapping", JSON, nullable=False, default=dict, server_default="{}"),
     Column("cdc", JSON),
 )
 
@@ -111,7 +111,7 @@ registered_tables = Table(
     Column("cache_ttl", Integer),
     Column("gql_naming_convention", Text),
     Column("watermark_column", Text),
-    Column("column_presets", JSON, nullable=False, default=list),
+    Column("column_presets", JSON, nullable=False, default=list, server_default="[]"),
     Column("view_sql", Text),
     Column("data_product", Boolean, nullable=False, server_default=false()),
     Column("materialize", Boolean, nullable=False, server_default=false()),
@@ -138,13 +138,13 @@ table_columns = Table(
         nullable=False,
     ),
     Column("column_name", Text, nullable=False),
-    Column("visible_to", JSON, nullable=False, default=list),
+    Column("visible_to", JSON, nullable=False, default=list, server_default="[]"),
     Column("alias", Text),
     Column("description", Text),
     Column("path", Text),
     Column("data_type", Text),
-    Column("writable_by", JSON, nullable=False, default=list),
-    Column("unmasked_to", JSON, nullable=False, default=list),
+    Column("writable_by", JSON, nullable=False, default=list, server_default="[]"),
+    Column("unmasked_to", JSON, nullable=False, default=list, server_default="[]"),
     Column("mask_type", Text),
     Column("mask_pattern", Text),
     Column("mask_replace", Text),
@@ -154,7 +154,7 @@ table_columns = Table(
     Column("native_filter_type", Text),
     Column("is_foreign_key", Boolean, nullable=False, server_default=false()),
     Column("is_alternate_key", Boolean, nullable=False, server_default=false()),
-    Column("object_fields", JSON, nullable=False, default=list),
+    Column("object_fields", JSON, nullable=False, default=list, server_default="[]"),
     Column("scope", Text, nullable=False, server_default="domain"),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
@@ -199,8 +199,8 @@ roles = Table(
     "roles",
     metadata,
     Column("id", Text, primary_key=True),
-    Column("capabilities", JSON, nullable=False, default=list),
-    Column("domain_access", JSON, nullable=False, default=list),
+    Column("capabilities", JSON, nullable=False, default=list, server_default="[]"),
+    Column("domain_access", JSON, nullable=False, default=list, server_default="[]"),
     Column("parent_role_id", Text, ForeignKey("roles.id")),
     Column("org_id", Text),  # cross-model ref -> admin.orgs
     Column("tenant_id", Uuid),
@@ -299,7 +299,7 @@ kafka_topics = Table(
     Column("table_name", Text, nullable=False, unique=True),
     Column("schema_source", Text, nullable=False, server_default="registry"),
     Column("value_format", Text, nullable=False, server_default="json"),
-    Column("columns", JSON, nullable=False, default=list),
+    Column("columns", JSON, nullable=False, default=list, server_default="[]"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     UniqueConstraint("source_id", "topic"),
     CheckConstraint(
@@ -351,7 +351,7 @@ api_endpoints = Table(
     Column("pagination", JSON),
     Column("max_concurrency", Integer),
     Column("default_params", JSON),
-    Column("promotions", JSON, nullable=False, default=list),
+    Column("promotions", JSON, nullable=False, default=list, server_default="[]"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
@@ -368,7 +368,7 @@ creation_requests = Table(
     Column("resolved_by", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("resolved_at", DateTime(timezone=True)),
-    Column("approvals", JSON, nullable=False, default=list),
+    Column("approvals", JSON, nullable=False, default=list, server_default="[]"),
     Column("required_approvals", Integer, nullable=False, server_default="1"),
     CheckConstraint(
         "status IN ('pending', 'executed', 'rejected')", name="creation_requests_status_check"
@@ -413,9 +413,9 @@ tracked_functions = Table(
     Column("schema_name", Text, nullable=False, server_default="public"),
     Column("function_name", Text, nullable=False, server_default=""),
     Column("returns", Text, nullable=False, server_default=""),
-    Column("arguments", JSON, nullable=False, default=list),
-    Column("visible_to", JSON, nullable=False, default=list),
-    Column("writable_by", JSON, nullable=False, default=list),
+    Column("arguments", JSON, nullable=False, default=list, server_default="[]"),
+    Column("visible_to", JSON, nullable=False, default=list, server_default="[]"),
+    Column("writable_by", JSON, nullable=False, default=list, server_default="[]"),
     Column("domain_id", Text, nullable=False, server_default=""),
     Column("description", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
@@ -433,9 +433,9 @@ tracked_webhooks = Table(
     Column("method", Text, nullable=False, server_default="POST"),
     Column("timeout_ms", Integer, nullable=False, server_default="5000"),
     Column("returns", Text),
-    Column("inline_return_type", JSON, nullable=False, default=list),
-    Column("arguments", JSON, nullable=False, default=list),
-    Column("visible_to", JSON, nullable=False, default=list),
+    Column("inline_return_type", JSON, nullable=False, default=list, server_default="[]"),
+    Column("arguments", JSON, nullable=False, default=list, server_default="[]"),
+    Column("visible_to", JSON, nullable=False, default=list, server_default="[]"),
     Column("domain_id", Text, nullable=False, server_default=""),
     Column("description", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
@@ -490,7 +490,7 @@ node_ids = Table(
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column("composite_id", Text, nullable=False, unique=True),
     Column("label", Text, nullable=False),
-    Column("properties", JSON, nullable=False, default=dict),
+    Column("properties", JSON, nullable=False, default=dict, server_default="{}"),
 )
 
 rel_ids = Table(
@@ -499,7 +499,7 @@ rel_ids = Table(
     Column("id", BigInteger, primary_key=True, autoincrement=True),
     Column("composite_id", Text, nullable=False, unique=True),
     Column("rel_type", Text, nullable=False),
-    Column("properties", JSON, nullable=False, default=dict),
+    Column("properties", JSON, nullable=False, default=dict, server_default="{}"),
 )
 
 # Append-only SOC2 audit log (per-org). PG enforces immutability via CREATE RULE;
@@ -512,7 +512,7 @@ query_audit_log = Table(
     Column("user_id", Text, nullable=False),
     Column("role_id", Text, nullable=False),
     Column("query_hash", Text, nullable=False),
-    Column("table_ids", JSON, nullable=False, default=list),
+    Column("table_ids", JSON, nullable=False, default=list, server_default="[]"),
     Column("source", Text, nullable=False),
     Column("status_code", Integer, nullable=False),
     Column("duration_ms", Integer, nullable=False),

@@ -5,10 +5,10 @@
 Every query ultimately executes through the federation engine, which provides federation across all sources. Sources fall into three categories based on their connectivity. [tool-verified: `provisa/core/models.py` lines 84–132] (REQ-550)
 
 | Category | Has Direct Driver | Has Federated Connector | Examples |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Direct-capable** | Yes | Yes | PostgreSQL, MySQL, MariaDB, SingleStore, SQL Server, Oracle, DuckDB |
 | **Federation only** | No | Yes | MongoDB, Cassandra, Snowflake, BigQuery, Databricks, Redshift, ClickHouse, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-backed) |
-| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, local Parquet, Ingest (push receiver), GovData |
+| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData |
 
 **Direct-capable** sources execute single-source queries via their native driver (sub-100ms), bypassing the federation engine (REQ-027, REQ-229). They retain full connector support and participate in federation when joined with other sources (REQ-028).
 
@@ -25,7 +25,7 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 ### RDBMS
 
 | Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
-|------------|--------------|-----------------|-----------------|-----------|
+| ------------ | -------------- | ----------------- | ----------------- | ----------- |
 | `postgresql` | asyncpg | postgresql | postgres | Yes |
 | `mysql` | aiomysql | mysql | mysql | Yes |
 | `mariadb` | aiomysql | mariadb | mysql | Yes |
@@ -37,7 +37,7 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 ### Cloud Data Warehouses
 
 | Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
-|------------|--------------|-----------------|-----------------|-----------|
+| ------------ | -------------- | ----------------- | ----------------- | ----------- |
 | `snowflake` | — | snowflake | snowflake | Federated |
 | `bigquery` | — | bigquery | bigquery | Federated |
 | `databricks` | — | delta_lake | databricks | Federated |
@@ -46,7 +46,7 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 ### Analytics / OLAP
 
 | Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
-|------------|--------------|-----------------|-----------------|-----------|
+| ------------ | -------------- | ----------------- | ----------------- | ----------- |
 | `clickhouse` | — | clickhouse | clickhouse | Federated |
 | `druid` | — | druid | druid | No |
 | `exasol` | — | exasol | exasol | No |
@@ -58,7 +58,7 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 These source types are federation-only — no direct driver, no SQLGlot dialect. [tool-verified: `TRINO_ONLY_SOURCES` in `provisa/core/models.py` line 129] (REQ-229)
 
 | Source Type | Connector Name | Time Travel | Notes |
-|------------|-----------------|-------------|-------|
+| ------------ | ----------------- | ------------- | ------- |
 | `iceberg` | iceberg | Yes (`as_of` argument, REQ-372) | — |
 | `delta_lake` | delta_lake | Yes (`as_of` argument, REQ-372) | — |
 | `hive` | hive | No | — |
@@ -69,7 +69,7 @@ These source types are federation-only — no direct driver, no SQLGlot dialect.
 `mongodb` and `cassandra` have federated connector entries. `redis`, `kudu`, and `accumulo` are registered source types but have no connector entry in `SOURCE_TO_CONNECTOR` — they materialize through the API cache pipeline. [tool-verified: `provisa/core/models.py` lines 84–107] (REQ-017)
 
 | Source Type | Connector Name | Mutations |
-|------------|-----------------|-----------|
+| ------------ | ----------------- | ----------- |
 | `mongodb` | mongodb | No |
 | `cassandra` | cassandra | No |
 | `redis` | — (materialized) | No |
@@ -79,7 +79,7 @@ These source types are federation-only — no direct driver, no SQLGlot dialect.
 ### Streaming
 
 | Source Type | Mechanism | Mutations |
-|------------|-----------|-----------|
+| ------------ | ----------- | ----------- |
 | `kafka` | Federated Kafka connector; schema via Confluent Schema Registry (Avro, Protobuf, JSON Schema), manual definition, or sample inference (REQ-147, REQ-150) | Sink only (REQ-176) |
 | `websocket` | External WebSocket feed — connect, subscribe, receive events; results materialized (REQ-338) | No |
 | `rss` | RSS 2.0 / Atom feed — poll, watermark by pubDate/updated; results materialized (REQ-342, REQ-343) | No |
@@ -87,32 +87,48 @@ These source types are federation-only — no direct driver, no SQLGlot dialect.
 ### Push Receiver
 
 | Source Type | Mechanism | Mutations |
-|------------|-----------|-----------|
+| ------------ | ----------- | ----------- |
 | `ingest` | External services POST JSON events; results materialized (REQ-331, REQ-335) | No |
 
 ### Graph & Semantic
 
 | Source Type | Mechanism | Mutations |
-|------------|-----------|-----------|
+| ------------ | ----------- | ----------- |
 | `neo4j` | Cypher via HTTP API, results cached in PostgreSQL (REQ-295) | No |
 | `sparql` | SPARQL 1.1 POST, results cached in PostgreSQL (REQ-297) | No |
 
 ### File-Based
 
-File-based sources use the `path` field on the source config instead of `host`/`port`. [tool-verified: `provisa/core/models.py` line 156] (REQ-553)
+Two mechanisms cover files. Both use the `path` field instead of `host`/`port`. [tool-verified: `provisa/core/models.py`] (REQ-553)
 
-| Source Type | Mechanism | Mutations |
-|------------|-----------|-----------|
-| `sqlite` | Local SQLite file | Yes |
-| `csv` | Local CSV file, results materialized | No |
-| `parquet` | Local Parquet file, results materialized | No |
+**Single-file sources** — `sqlite`, `csv`, `parquet` point `path` at one file.
+
+| Source Type | Transports | Mutations |
+| --- | --- | --- |
+| `sqlite` | local | Yes |
+| `csv` | local | No |
+| `parquet` | local, `s3://` | No |
+
+Private buckets need credentials (AWS region and keys from the environment). For CSV over `s3://` or `http(s)://`, or to register many files at once, use the `files` source. [tool-verified: `provisa/file_source/source.py`]
+
+**`files` source** — points `path` at a glob, crawls it recursively, and registers the directory as a federated catalog of tables. It reads many formats over many transports; the sets below come from the file connector (kenstott/calcite fork). [tool-verified: `provisa/core/catalog.py` `files` branch and `provisa/core/models.py` `SOURCE_TO_CONNECTOR`; format and transport lists from the calcite `file` adapter — `FileSchema.java`, `storage/StorageProviderFactory.java`]
+
+| Formats | Transports |
+| --- | --- |
+| CSV, TSV, JSON, YAML, Excel (XLS/XLSX), Parquet, Arrow, and documents converted to tables — HTML, Markdown, DOCX, PPTX | Local filesystem, HTTP(S), `s3://`, `hdfs://`, `ftp://`/`ftps://`, `sftp://`, `iceberg://`, SharePoint (REST and Microsoft Graph) |
+
+```yaml
+- id: sales_files
+  type: files
+  path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
+```
 
 ### Observability & Other
 
 `google_sheets` and `prometheus` are registered source types but have no connector entry in `SOURCE_TO_CONNECTOR`. [tool-verified: `provisa/core/models.py` lines 61–62]
 
 | Source Type | Connector Name | Mutations |
-|------------|-----------------|-----------|
+| ------------ | ----------------- | ----------- |
 | `google_sheets` | — (materialized) | No |
 | `prometheus` | — (materialized) | No |
 
@@ -121,7 +137,7 @@ File-based sources use the `path` field on the source config instead of `host`/`
 Register any HTTP endpoint as a queryable table. [tool-verified: `provisa/core/models.py` `SourceType` enum] (REQ-314, REQ-307, REQ-322)
 
 | API Type | Discovery | Column Inference |
-|---------|-----------|-----------------|
+| --------- | ----------- | ----------------- |
 | `openapi` | OpenAPI spec parsing (REQ-314, REQ-316) | Primitives → native, objects → JSONB |
 | `graphql_remote` | Schema introspection (REQ-307, REQ-308) | Primitives → native, objects → JSONB |
 | `grpc_remote` | Server reflection (REQ-322, REQ-325) | Primitives → native, objects → JSONB |
@@ -137,7 +153,7 @@ U.S. government open data. Access is partitioned by subject grouping. [tool-veri
 Each `govdata` source selects one subject. That subject determines which GovData schemas are exposed. The `ref` and `geo` schemas are always included as linker schemas — they are not listed per subject but are always present. [tool-verified: `provisa/core/models.py` line 562–563 comment]
 
 | Subject | Schemas Exposed |
-|---------|-----------------|
+| --------- | ----------------- |
 | `COMMERCE` | `sec`, `patents` |
 | `ECONOMY` | `econ` |
 | `EDUCATION` | `census`, `edu` |
@@ -151,6 +167,7 @@ Each `govdata` source selects one subject. That subject determines which GovData
 
 ```yaml
 sources:
+
   - id: federal-commerce
     type: govdata
     subject: COMMERCE
@@ -160,7 +177,7 @@ sources:
 ```
 
 | Field | Required | Default | Description |
-|-------|----------|---------|-------------|
+| ------- | ---------- | --------- | ------------- |
 | `id` | Yes | — | Unique identifier |
 | `subject` | Yes | — | One of the subject values above |
 | `domain_id` | Yes | — | Domain this source belongs to |
@@ -174,7 +191,7 @@ sources:
 All sources share a common set of fields. [tool-verified: `provisa/core/models.py` `Source` class, lines 138–204]
 
 | Field | Required | Default | Description |
-|-------|----------|---------|-------------|
+| ------- | ---------- | --------- | ------------- |
 | `id` | Yes | — | Unique identifier; alphanumeric with hyphens/underscores |
 | `type` | Yes | — | Source type (see tables above) |
 | `host` | No | `""` | Hostname or IP |
@@ -205,14 +222,17 @@ Kafka topics are configured separately under `kafka_sources`, keyed by the sourc
 
 ```yaml
 kafka_sources:
+
   - id: kafka-support
     topics:
+
       - id: tickets
         topic: support.tickets
         domain_id: sales-analytics
         description: "Inbound support tickets"
         default_window: 1h
         columns:
+
           - name: id
           - name: subject
           - name: status
@@ -220,7 +240,7 @@ kafka_sources:
 ```
 
 | Field | Description |
-|-------|-------------|
+| ------- | ------------- |
 | `id` | Must match the `id` of a source with `type: kafka` |
 | `topics[].id` | Logical name for this topic within Provisa |
 | `topics[].topic` | Kafka topic name |
@@ -236,7 +256,7 @@ kafka_sources:
 Every registered table has a `governance` field. [tool-verified: `provisa/core/models.py` `GovernanceLevel` enum, lines 73–76]
 
 | Value | Behaviour |
-|-------|-----------|
+| ------- | ----------- |
 | `pre-approved` | Queries run against this table with user rights alone; no registry approval required (REQ-003) |
 
 ---
@@ -247,8 +267,10 @@ The `visible_to` field on each column is a list of role IDs that can see that co
 
 ```yaml
 columns:
+
   - name: email
     visible_to: [admin]        # only admin role sees this column
+
   - name: region
     visible_to: [admin, analyst]  # both roles see this column
 ```
@@ -263,6 +285,7 @@ Relationships connect two registered tables and appear as nested fields in Graph
 
 ```yaml
 relationships:
+
   - id: orders-to-customers
     source_table_id: orders
     target_table_id: customers
@@ -272,7 +295,7 @@ relationships:
 ```
 
 | Field | Required | Description |
-|-------|----------|-------------|
+| ------- | ---------- | ------------- |
 | `id` | Yes | Unique identifier for this relationship |
 | `source_table_id` | Yes | Table that holds the foreign key |
 | `target_table_id` | Yes | Table being referenced; empty for computed relationships |
@@ -289,6 +312,7 @@ relationships:
 | `source_json_key` | No | Extract this key from source column as a JSON object before JOIN |
 
 Cardinality values [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81]:
+
 - `many-to-one` — each source row maps to one target row (FK to PK)
 - `one-to-many` — each source row maps to multiple target rows (inverse of above)
 
@@ -300,6 +324,7 @@ RLS rules inject `WHERE` clauses at query time, scoped to a role and optionally 
 
 ```yaml
 rls_rules:
+
   - table_id: orders          # applies to orders table only
     role_id: analyst
     filter: "region = current_setting('provisa.user_region')"
@@ -312,7 +337,7 @@ rls_rules:
 When both a domain-level and a table-level rule exist for the same role, the table-level rule takes precedence (REQ-403).
 
 | Field | Required | Description |
-|-------|----------|-------------|
+| ------- | ---------- | ------------- |
 | `table_id` | Conditional | Table to apply the rule to; mutually exclusive with `domain_id` |
 | `domain_id` | Conditional | Domain to apply the rule to; applies to all tables in the domain (REQ-402) |
 | `role_id` | Yes | Role this rule applies to |
@@ -328,6 +353,7 @@ Track a database function and expose it as a GraphQL query or mutation. [tool-ve
 
 ```yaml
 functions:
+
   - name: get_customers_by_region
     source_id: sales-pg
     schema: public
@@ -338,12 +364,13 @@ functions:
     visible_to: [admin, analyst]
     kind: query
     arguments:
+
       - name: p_region
         type: String
 ```
 
 | Field | Required | Default | Description |
-|-------|----------|---------|-------------|
+| ------- | ---------- | --------- | ------------- |
 | `name` | Yes | — | GraphQL field name |
 | `source_id` | Yes | — | Source containing the function |
 | `schema` | No | `public` | Database schema |
@@ -362,6 +389,7 @@ Expose an external HTTP endpoint as a GraphQL query or mutation. [tool-verified:
 
 ```yaml
 webhooks:
+
   - name: notify_support
     url: http://localhost:9999/notify
     method: POST
@@ -371,12 +399,13 @@ webhooks:
     visible_to: [admin]
     kind: mutation
     arguments:
+
       - name: message
         type: String
 ```
 
 | Field | Required | Default | Description |
-|-------|----------|---------|-------------|
+| ------- | ---------- | --------- | ------------- |
 | `name` | Yes | — | GraphQL field name |
 | `url` | Yes | — | Webhook endpoint URL |
 | `method` | No | `POST` | HTTP method |
@@ -396,7 +425,7 @@ webhooks:
 Auth is configured under the `auth` key. [tool-verified: `provisa/core/models.py` `AuthConfig` class lines 467–477] (REQ-120)
 
 | Provider | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `none` | No authentication; all requests treated as the `default_role` |
 | `firebase` | Firebase Authentication; requires `project_id` and `service_account_key` (REQ-121) |
 | `keycloak` | Keycloak OIDC (REQ-122) |
@@ -409,6 +438,7 @@ auth:
   assignments_source: provisa   # "claims" or "provisa"
   default_role: analyst
   default_assignments:
+
     - role_id: analyst
       domain_id: "*"
   firebase:
@@ -490,6 +520,7 @@ Both connectors use the API source cache pipeline — results are stored in Post
 ## Connection Examples
 
 ### PostgreSQL
+
 ```yaml
 - id: sales-pg
   type: postgresql
@@ -501,6 +532,7 @@ Both connectors use the API source cache pipeline — results are stored in Post
 ```
 
 ### Snowflake
+
 ```yaml
 - id: analytics-sf
   type: snowflake
@@ -512,6 +544,7 @@ Both connectors use the API source cache pipeline — results are stored in Post
 ```
 
 ### MongoDB
+
 ```yaml
 - id: reviews-mongo
   type: mongodb
@@ -523,6 +556,7 @@ Both connectors use the API source cache pipeline — results are stored in Post
 ```
 
 ### Cross-Source Query
+
 ```graphql
 {
   orders(where: {region: {eq: "us"}}) {

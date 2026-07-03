@@ -53,6 +53,11 @@ async def init_audit_schema(pool: "Database", org_id: str = "default") -> None: 
     from provisa.core.db import _validate_org_id
 
     _validate_org_id(org_id)
+    # Non-PG backends already have query_audit_log from schema_org.create_all
+    # (init_schema portable path); the append-only RULE is PG-only. On those
+    # backends immutability is enforced app-side, so audit init is a no-op.
+    if pool.dialect != "postgresql":
+        return
     schema_name = f"org_{org_id}"
     async with pool.acquire() as conn:
         await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
