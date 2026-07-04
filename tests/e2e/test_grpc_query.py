@@ -63,7 +63,7 @@ def _make_full_state(role_id: str, extra_roles: dict | None = None):
             contexts[rid] = MagicMock()
             rls_contexts[rid] = RLSContext.empty()
 
-    return SimpleNamespace(
+    state = SimpleNamespace(
         schemas=schemas,
         contexts=contexts,
         rls_contexts=rls_contexts,
@@ -74,7 +74,14 @@ def _make_full_state(role_id: str, extra_roles: dict | None = None):
         masking_rules={},
         mv_registry=SimpleNamespace(get_fresh=lambda: []),
         trino_conn=MagicMock(),
+        flight_client=None,
     )
+    # Mandatory terminal-execution binding (REQ-825) on the scaffold state.
+    from provisa.federation.engine import build_trino_engine
+    from provisa.federation.runtime import EngineRuntime
+
+    state.federation_engine = EngineRuntime(build_trino_engine(), state)
+    return state
 
 
 def _mock_context(role: str) -> AsyncMock:
@@ -97,7 +104,11 @@ def _query_patches(fake_compiled, fake_result):
         patch("provisa.compiler.sampling.apply_sampling", return_value=fake_compiled),
         patch("provisa.compiler.sampling.get_sample_size", return_value=100),
         patch("provisa.transpiler.transpile.transpile", return_value=fake_compiled.sql),
-        patch("provisa.executor.direct.execute_direct", new_callable=AsyncMock, return_value=fake_result),
+        patch(
+            "provisa.executor.direct.execute_direct",
+            new_callable=AsyncMock,
+            return_value=fake_result,
+        ),
     )
 
 
@@ -130,12 +141,22 @@ class TestStreamedQueries:
             patch("provisa.security.rights.has_capability", return_value=False),
             patch("provisa.compiler.sampling.apply_sampling", return_value=fake_compiled),
             patch("provisa.compiler.sampling.get_sample_size", return_value=100),
-            patch("provisa.transpiler.transpile.transpile", return_value="SELECT id, amount FROM orders"),
-            patch("provisa.executor.direct.execute_direct", new_callable=AsyncMock, return_value=fake_result),
+            patch(
+                "provisa.transpiler.transpile.transpile",
+                return_value="SELECT id, amount FROM orders",
+            ),
+            patch(
+                "provisa.executor.direct.execute_direct",
+                new_callable=AsyncMock,
+                return_value=fake_result,
+            ),
         ):
             from provisa.transpiler.router import Route
+
             mock_route.return_value = SimpleNamespace(
-                route=Route.DIRECT, source_id="pg1", dialect="postgres",
+                route=Route.DIRECT,
+                source_id="pg1",
+                dialect="postgres",
             )
 
             context = _mock_context("admin")
@@ -177,12 +198,22 @@ class TestStreamedQueries:
             patch("provisa.security.rights.has_capability", return_value=False),
             patch("provisa.compiler.sampling.apply_sampling", return_value=fake_compiled),
             patch("provisa.compiler.sampling.get_sample_size", return_value=100),
-            patch("provisa.transpiler.transpile.transpile", return_value="SELECT id, amount FROM orders WHERE 1=0"),
-            patch("provisa.executor.direct.execute_direct", new_callable=AsyncMock, return_value=fake_result),
+            patch(
+                "provisa.transpiler.transpile.transpile",
+                return_value="SELECT id, amount FROM orders WHERE 1=0",
+            ),
+            patch(
+                "provisa.executor.direct.execute_direct",
+                new_callable=AsyncMock,
+                return_value=fake_result,
+            ),
         ):
             from provisa.transpiler.router import Route
+
             mock_route.return_value = SimpleNamespace(
-                route=Route.DIRECT, source_id="pg1", dialect="postgres",
+                route=Route.DIRECT,
+                source_id="pg1",
+                dialect="postgres",
             )
 
             context = _mock_context("admin")
@@ -230,7 +261,7 @@ class TestRoleBasedFieldFiltering:
         """Admin role descriptor includes all fields."""
         pb2, msg_cls = _make_pb2_with_descriptor("Orders", ["id", "amount", "secret_code"])
         state = _make_full_state("admin")
-        servicer = ProvisaServicer(state, pb2, MagicMock())
+        ProvisaServicer(state, pb2, MagicMock())  # constructs role-filtered descriptors
 
         descriptor = msg_cls.DESCRIPTOR
         field_names = [f.name for f in descriptor.fields if not f.message_type]
@@ -240,7 +271,7 @@ class TestRoleBasedFieldFiltering:
         """Viewer role descriptor excludes secret fields."""
         pb2, msg_cls = _make_pb2_with_descriptor("Orders", ["id", "amount"])
         state = _make_full_state("viewer")
-        servicer = ProvisaServicer(state, pb2, MagicMock())
+        ProvisaServicer(state, pb2, MagicMock())  # constructs role-filtered descriptors
 
         descriptor = msg_cls.DESCRIPTOR
         field_names = [f.name for f in descriptor.fields if not f.message_type]
@@ -251,9 +282,12 @@ class TestRoleBasedFieldFiltering:
     async def test_query_uses_role_from_metadata(self):
         """The servicer extracts role from gRPC metadata to select schema."""
         pb2, msg_cls = _make_pb2_with_descriptor("Orders", ["id"])
-        state = _make_full_state("admin", extra_roles={
-            "viewer": {"id": "viewer", "capabilities": []},
-        })
+        state = _make_full_state(
+            "admin",
+            extra_roles={
+                "viewer": {"id": "viewer", "capabilities": []},
+            },
+        )
         servicer = ProvisaServicer(state, pb2, MagicMock())
 
         fake_compiled = SimpleNamespace(
@@ -275,11 +309,18 @@ class TestRoleBasedFieldFiltering:
             patch("provisa.compiler.sampling.apply_sampling", return_value=fake_compiled),
             patch("provisa.compiler.sampling.get_sample_size", return_value=100),
             patch("provisa.transpiler.transpile.transpile", return_value="SELECT id FROM orders"),
-            patch("provisa.executor.direct.execute_direct", new_callable=AsyncMock, return_value=fake_result),
+            patch(
+                "provisa.executor.direct.execute_direct",
+                new_callable=AsyncMock,
+                return_value=fake_result,
+            ),
         ):
             from provisa.transpiler.router import Route
+
             mock_route.return_value = SimpleNamespace(
-                route=Route.DIRECT, source_id="pg1", dialect="postgres",
+                route=Route.DIRECT,
+                source_id="pg1",
+                dialect="postgres",
             )
 
             context = _mock_context("viewer")
