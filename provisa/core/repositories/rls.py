@@ -16,10 +16,27 @@ import asyncpg
 
 from provisa.core.models import RLSRule
 from provisa.core.repositories import table as table_repo
+from provisa.encryption import encryption_service
 
 
-async def upsert(conn: asyncpg.Connection, rule: RLSRule) -> None:  # REQ-041, REQ-402
+def _encrypt_filter(filter_expr: str) -> bytes:  # REQ-686
+    """Encrypt an RLS filter for storage. The predicate is injected as SQL at every
+    governance read, so it is sensitive metadata — kept ciphertext at rest (BYTEA)."""
+    return encryption_service().encrypt(filter_expr.encode("utf-8"))
+
+
+def _decrypt_row(row: asyncpg.Record | dict) -> dict:  # REQ-686
+    """Return the row as a dict with ``filter_expr`` decrypted back to SQL text."""
+    d = dict(row)
+    raw = d.get("filter_expr")
+    if raw is not None:
+        d["filter_expr"] = encryption_service().decrypt(bytes(raw)).decode("utf-8")
+    return d
+
+
+async def upsert(conn: asyncpg.Connection, rule: RLSRule) -> None:  # REQ-041, REQ-402, REQ-686
     """Upsert an RLS rule. Resolves table_id from table name for table-level rules."""
+    filter_enc = _encrypt_filter(rule.filter)
     if rule.domain_id:
         await conn.execute(
             """
@@ -30,7 +47,7 @@ async def upsert(conn: asyncpg.Connection, rule: RLSRule) -> None:  # REQ-041, R
             """,
             rule.domain_id,
             rule.role_id,
-            rule.filter,
+            filter_enc,
         )
     else:
         if not rule.table_id:
@@ -47,7 +64,7 @@ async def upsert(conn: asyncpg.Connection, rule: RLSRule) -> None:  # REQ-041, R
             """,
             tbl["id"],
             rule.role_id,
-            rule.filter,
+            filter_enc,
         )
 
 
@@ -59,19 +76,19 @@ async def get_for_table_role(  # REQ-041, REQ-403
         table_id,
         role_id,
     )
-    return dict(row) if row else None
+    return _decrypt_row(row) if row else None
 
 
 async def list_for_role(
     conn: asyncpg.Connection, role_id: str
 ) -> list[dict]:  # REQ-041, REQ-402, REQ-403
     rows = await conn.fetch("SELECT * FROM rls_rules WHERE role_id = $1 ORDER BY id", role_id)
-    return [dict(r) for r in rows]
+    return [_decrypt_row(r) for r in rows]
 
 
 async def list_all(conn: asyncpg.Connection) -> list[dict]:  # REQ-041, REQ-402
     rows = await conn.fetch("SELECT * FROM rls_rules ORDER BY id")
-    return [dict(r) for r in rows]
+    return [_decrypt_row(r) for r in rows]
 
 
 async def delete(  # REQ-041, REQ-402

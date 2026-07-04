@@ -136,6 +136,42 @@ def test_query_field_with_scalar_fields_produces_virtual_table():
     assert cols["age"] == "integer"
 
 
+def test_mutation_gets_association_suggestion_via_return_type():  # REQ-871
+    user_type = {
+        "kind": "OBJECT",
+        "name": "User",
+        "fields": [{"name": "id", "type": _scalar_type("ID")}],
+    }
+    schema = _make_schema(
+        query_fields=[{"name": "users", "type": _list_of_object("User"), "args": []}],
+        mutation_fields=[
+            {
+                "name": "createUser",
+                "type": _object_type("User"),  # returns the User object
+                "args": [{"name": "input", "type": _non_null(_object_type("UserInput"))}],
+            }
+        ],
+        extra_types=[user_type],
+    )
+    _tables, functions, _ = map_schema(schema, "myns", "src1")
+    fn = next(f for f in functions if f["field_name"] == "createUser")
+    sugg = fn["suggested_associations"]
+    assert sugg[0]["table"] == "myns__users"  # return type User → users table
+    assert sugg[0]["score"] == 1.0
+    # Hints only — nothing is bound to writable_by by the suggester (REQ-871/867).
+    assert fn.get("writable_by", []) == []
+
+
+def test_mutation_with_no_matching_table_has_empty_suggestions():  # REQ-871
+    schema = _make_schema(
+        query_fields=[],
+        mutation_fields=[{"name": "sendTelemetry", "type": _scalar_type("Boolean"), "args": []}],
+    )
+    _tables, functions, _ = map_schema(schema, "ns", "src1")
+    fn = next(f for f in functions if f["field_name"] == "sendTelemetry")
+    assert fn["suggested_associations"] == []  # false negative, not an error
+
+
 def test_namespace_prefix_applied():
     user_type = {
         "kind": "OBJECT",

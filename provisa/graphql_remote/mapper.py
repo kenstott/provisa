@@ -377,20 +377,85 @@ def _map_query_field_as_table(  # REQ-308
     }
 
 
-def _map_mutation_field(  # REQ-308
+def _type_has_list(type_ref: dict) -> bool:
+    """Whether a type reference is LIST-wrapped (through any NON_NULL wrappers)."""
+    while type_ref.get("kind") in ("NON_NULL", "LIST"):
+        if type_ref.get("kind") == "LIST":
+            return True
+        type_ref = type_ref.get("ofType") or {}
+    return False
+
+
+def _mutation_return_leaves(field: dict, types: list[dict]) -> tuple[list[str], set[str]]:
+    """Object leaf types a mutation's return type exposes, and which are list-valued (REQ-871).
+
+    Walks a payload type's fields (unwrapping NON_NULL/LIST) collecting OBJECT leaves and
+    marking LIST-valued ones as changed-records collections; scalar/stats fields are ignored.
+    When the return type is itself an OBJECT (no payload wrapper), that type is the leaf.
+    """
+    ret_kind, ret_name = _unwrap_type(field["type"])
+    leaves: list[str] = []
+    list_valued: set[str] = set()
+    # The return type may BE the table object directly (e.g. createUser: User) ...
+    if ret_kind == "OBJECT" and ret_name:
+        leaves.append(ret_name)
+    # ... or be a payload wrapper whose object-typed fields point at the table(s).
+    return_type = _find_type(types, ret_name) if ret_name else None
+    for f in (return_type or {}).get("fields") or []:
+        k, n = _unwrap_type(f["type"])
+        if k == "OBJECT" and n:
+            leaves.append(n)
+            if _type_has_list(f["type"]):
+                list_valued.add(n)
+    return leaves, list_valued
+
+
+def _mutation_input_stem(field: dict) -> str:
+    """Type name of the mutation's first non-scalar (input-object) argument, for stem matching."""
+    for arg in field.get("args") or []:
+        kind, name = _unwrap_type(arg.get("type") or {})
+        if kind in ("INPUT_OBJECT", "OBJECT") and name:
+            return name
+    return ""
+
+
+def _map_mutation_field(  # REQ-308, REQ-871
     field: dict,
     namespace: str,
     source_id: str,
     domain_id: str,
     types: list[dict],
+    type_to_table: dict[str, str] | None = None,
+    table_names: list[str] | None = None,
 ) -> dict:
-    """Map a single mutation field to a tracked-function entry."""
+    """Map a single mutation field to a tracked-function entry.
+
+    Attaches non-binding ``suggested_associations`` (REQ-871): ranked (table, score, reason)
+    hints for which table this mutation likely writes. Hints only — nothing is bound here;
+    an admin confirms, and a confirmed association registers with empty writable_by.
+    """
     ret_kind, ret_name = _unwrap_type(field["type"])
     return_type = _find_type(types, ret_name) if ret_kind == "OBJECT" else None
     return_schema = (
         _build_return_schema((return_type or {}).get("fields") or []) if return_type else []
     )
-    return _make_function_entry(field, namespace, source_id, domain_id, return_schema)
+    entry = _make_function_entry(field, namespace, source_id, domain_id, return_schema)
+
+    from provisa.security.association_suggester import suggest_graphql
+
+    leaves, list_valued = _mutation_return_leaves(field, types)
+    candidates = suggest_graphql(
+        return_leaf_types=leaves,
+        list_valued_types=list_valued,
+        type_to_table=type_to_table or {},
+        op_name=field["name"],
+        input_type_stem=_mutation_input_stem(field),
+        table_names=table_names or [],
+    )
+    entry["suggested_associations"] = [
+        {"table": c.table, "score": c.score, "reason": c.reason} for c in candidates
+    ]
+    return entry
 
 
 def _collect_queryable_types(
@@ -457,10 +522,14 @@ def _process_mutation_fields(
     source_id: str,
     domain_id: str,
     types: list[dict],
+    type_to_table: dict[str, str] | None = None,
+    table_names: list[str] | None = None,
 ) -> list[dict]:
     """Map all mutation fields to tracked-function entries."""
     return [
-        _map_mutation_field(field, namespace, source_id, domain_id, types)
+        _map_mutation_field(
+            field, namespace, source_id, domain_id, types, type_to_table, table_names
+        )
         for field in (mutation_type or {}).get("fields") or []
     ]
 
@@ -505,7 +574,15 @@ def map_schema(  # REQ-308, REQ-312, REQ-313
         max_list_items,
     )
     functions.extend(
-        _process_mutation_fields(mutation_type, namespace, source_id, domain_id, types)
+        _process_mutation_fields(
+            mutation_type,
+            namespace,
+            source_id,
+            domain_id,
+            types,
+            type_to_table,
+            [t["name"] for t in tables],
+        )
     )
 
     relationships = _detect_relationships(tables, types, queryable_type_names, type_to_table)

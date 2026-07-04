@@ -67,6 +67,7 @@ from provisa.executor.serialize import (
 )
 from provisa.executor.trino import execute_trino
 from provisa.executor import stats as _qs_mod
+from provisa.api.data.action_exec import invoke_tracked_function
 from provisa.mv.rewriter import rewrite_if_mv_match
 from provisa.security.mutation_authz import require_mutation_write
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
@@ -2437,7 +2438,14 @@ async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redi
 
 
 async def _exec_probe_redirect(
-    compiled, ctx, state, decision, session_hints, effective_redirect_format, redirect_config
+    compiled,
+    ctx,
+    state,
+    decision,
+    session_hints,
+    effective_redirect_format,
+    redirect_config,
+    role_id=None,
 ):
     """Re-execute without probe limit then upload-and-presign.
 
@@ -2469,6 +2477,7 @@ async def _exec_probe_redirect(
         redirect_config,
         output_format=effective_redirect_format,
         columns=compiled.columns,
+        role=role_id,
     )
 
 
@@ -2737,6 +2746,7 @@ async def _execute_one_field(
                 session_hints,
                 effective_redirect_format,
                 redirect_config,
+                role_id,
             )
             _record_per_source_stats(
                 root_field,
@@ -2758,6 +2768,7 @@ async def _execute_one_field(
                 redirect_config,
                 output_format=effective_redirect_format,
                 columns=compiled.columns,
+                role=role_id,
             )
             _record_per_source_stats(
                 root_field,
@@ -3149,20 +3160,7 @@ async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360, REQ-869
     _role = state.roles.get(role_id) if role_id is not None else None
     fn = state.tracked_functions.get(field_name)
     if fn:
-        require_mutation_write(fn, _role, field_name)
-        src_id = fn["source_id"]
-        schema = fn["schema_name"]
-        fn_name = fn["function_name"]
-        if not state.source_pools.has(src_id):
-            raise HTTPException(status_code=503, detail=f"Source '{src_id}' not connected")
-        params = list(args.values())  # empty args → no placeholders → "()"
-        placeholders = ", ".join(f"${i + 1}" for i in range(len(params)))
-        sql = f'SELECT * FROM "{schema}"."{fn_name}"({placeholders})'
-        result = await state.source_pools.execute(src_id, sql, params)
-        from provisa.executor.serialize import _convert_value
-
-        cols = result.column_names
-        rows = [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
+        rows = await invoke_tracked_function(field_name, args, state, role_id)
         rows = await _maybe_resolve_relationships(
             rows, field_node, fn.get("returns", ""), ctx, state
         )

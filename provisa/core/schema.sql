@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS rls_rules (
     table_id    INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     domain_id   TEXT REFERENCES domains(id) ON DELETE CASCADE,
     role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-    filter_expr TEXT NOT NULL,
+    filter_expr BYTEA NOT NULL,  -- REQ-686: encrypted at rest via EncryptionService
     UNIQUE (table_id, role_id)
 );
 

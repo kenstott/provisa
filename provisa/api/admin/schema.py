@@ -22,6 +22,7 @@ import strawberry
 from strawberry.types.info import Info as StrawberryInfo
 
 from provisa.compiler.naming import source_to_catalog
+from provisa.core.repositories import rls as rls_repo
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.api.admin._config_io import config_path as _config_path, read_config
 from provisa.core.config_loader import _normalize_op_id
@@ -837,10 +838,11 @@ class Query:  # REQ-021, REQ-042
             return [_role_from_row(r) for r in rows]
 
     @strawberry.field
-    async def rls_rules(self) -> list[RLSRuleType]:  # REQ-041, REQ-402
+    async def rls_rules(self) -> list[RLSRuleType]:  # REQ-041, REQ-402, REQ-686
+
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await conn.fetch("SELECT * FROM rls_rules ORDER BY id")
+            rows = await rls_repo.list_all(conn)  # repo decrypts filter_expr at the boundary
             return [_rls_from_row(r) for r in rows]
 
     @strawberry.field
@@ -2086,7 +2088,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def upsert_rls_rule(self, input: RLSRuleInput) -> MutationResult:  # REQ-041, REQ-402
         from provisa.core.models import RLSRule as RLSRuleModel
-        from provisa.core.repositories import rls as rls_repo
 
         pool = await _get_pool()
         model = RLSRuleModel(
@@ -2113,7 +2114,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         table_id: Optional[int] = None,
         domain_id: Optional[str] = None,
     ) -> MutationResult:
-        from provisa.core.repositories import rls as rls_repo
 
         pool = await _get_pool()
         async with pool.acquire() as conn:

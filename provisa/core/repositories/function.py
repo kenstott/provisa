@@ -42,7 +42,13 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
             returns       = EXCLUDED.returns,
             arguments     = EXCLUDED.arguments,
             visible_to    = EXCLUDED.visible_to,
-            writable_by   = EXCLUDED.writable_by,
+            -- REQ-870: re-introspection registers discovered mutations with an empty
+            -- writable_by; existing admin grants are preserved by name. An explicit,
+            -- non-empty writable_by (e.g. a config-declared grant) still applies.
+            writable_by   = CASE
+                WHEN cardinality(EXCLUDED.writable_by) > 0 THEN EXCLUDED.writable_by
+                ELSE tracked_functions.writable_by
+            END,
             domain_id     = EXCLUDED.domain_id,
             description   = EXCLUDED.description,
             kind          = EXCLUDED.kind,

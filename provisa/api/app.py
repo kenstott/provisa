@@ -32,6 +32,7 @@ import yaml
 from fastapi import FastAPI, Request
 
 from provisa.api.data.endpoint import router as data_router
+from provisa.api.data.redirect_unwrap import router as redirect_unwrap_router
 from provisa.api.data.endpoint_dev import router as dev_router
 from provisa.api.data.endpoint_grpc_proxy import router as grpc_proxy_router
 from provisa.api.data.sdl import router as sdl_router
@@ -2558,13 +2559,11 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         await _bg_hydrate_api_endpoints()
 
         # Load RLS rules — domain_id is required so domain-scoped rules (REQ-402)
-        # are not silently dropped by build_rls_context.
-        rls_rules = [
-            dict(r)
-            for r in await conn.fetch(
-                "SELECT table_id, domain_id, role_id, filter_expr FROM rls_rules"
-            )
-        ]
+        # are not silently dropped by build_rls_context. Read through the repo so the
+        # encrypted filter_expr (REQ-686) is decrypted back to SQL at this boundary.
+        from provisa.core.repositories import rls as _rls_repo
+
+        rls_rules = await _rls_repo.list_all(conn)
 
         await _load_masking_rules(conn, col_types_converted, roles)
 
@@ -3306,6 +3305,7 @@ def create_app() -> FastAPI:
         app.add_middleware(_TenantSpanMiddleware)
 
     app.include_router(data_router)
+    app.include_router(redirect_unwrap_router)
     app.include_router(dev_router)
     app.include_router(grpc_proxy_router)
     app.include_router(sdl_router)

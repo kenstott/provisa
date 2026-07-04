@@ -15,7 +15,7 @@ LocalKeychain) and AES-256-GCM envelope encryption. Cloud KMS providers and the
 per-data-path applications (column/cache/redis/audit encryption) build on top.
 """
 
-from provisa.encryption.envelope import EnvelopeEncryption
+from provisa.encryption.envelope import EnvelopeEncryption, split_envelope
 from provisa.encryption.factory import build_encryption_service
 from provisa.encryption.providers import LocalKeychain, MasterKeyProvider, NullMasterKey
 from provisa.encryption.runtime import (
@@ -29,6 +29,7 @@ __all__ = [
     "EncryptionService",
     "NullEncryption",
     "EnvelopeEncryption",
+    "split_envelope",
     "MasterKeyProvider",
     "LocalKeychain",
     "NullMasterKey",

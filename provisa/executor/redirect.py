@@ -57,6 +57,7 @@ class RedirectConfig:  # REQ-029, REQ-137, REQ-142
     ttl: int  # presigned URL TTL in seconds
     region: str = "us-east-1"
     default_format: str = "parquet"  # default S3 upload format
+    encrypt: bool = False  # REQ-687: client-side envelope-encrypt the bulk payload before upload
 
     @staticmethod
     def from_env() -> RedirectConfig:
@@ -71,6 +72,7 @@ class RedirectConfig:  # REQ-029, REQ-137, REQ-142
             ttl=int(os.environ.get("PROVISA_REDIRECT_TTL", str(DEFAULT_TTL))),
             region=os.environ.get("PROVISA_REDIRECT_REGION", "us-east-1"),
             default_format=os.environ.get("PROVISA_REDIRECT_FORMAT", "parquet"),
+            encrypt=os.environ.get("PROVISA_REDIRECT_ENCRYPT", "false").lower() == "true",
         )
 
 
@@ -238,6 +240,7 @@ async def upload_and_presign(  # REQ-029, REQ-044, REQ-137, REQ-138, REQ-139, RE
     output_format: str = "ndjson",
     columns: list[ColumnRef] | None = None,
     arrow_table=None,  # pa.Table | None
+    role: str | None = None,  # REQ-687: creating role, bound into the encryption grant
 ) -> dict:
     """Upload result to S3 and return presigned URL.
 
@@ -273,6 +276,16 @@ async def upload_and_presign(  # REQ-029, REQ-044, REQ-137, REQ-138, REQ-139, RE
         )
         row_count = len(result.rows)
 
+    encryption_meta = None
+    if config.encrypt:
+        # REQ-687: envelope-encrypt the payload so the S3 object is ciphertext. The client
+        # must open the role-bound grant via the authenticated /data/redirect/unwrap call to
+        # get the DEK — a leaked presigned URL or the bucket admin alone cannot decrypt it,
+        # and only the creating role (or an admin) can unwrap.
+        body_bytes, encryption_meta = _encrypt_payload(body_bytes, role)
+        content_type = "application/octet-stream"
+        ext = ext + ".enc"
+
     key = f"results/{uuid.uuid4()}{ext}"
 
     s3.put_object(
@@ -288,9 +301,47 @@ async def upload_and_presign(  # REQ-029, REQ-044, REQ-137, REQ-138, REQ-139, RE
         ExpiresIn=config.ttl,
     )
 
-    return {
+    response = {
         "redirect_url": url,
         "row_count": row_count,
         "expires_in": config.ttl,
         "content_type": content_type,
+    }
+    if encryption_meta is not None:
+        response["encryption"] = encryption_meta
+    return response
+
+
+def _encrypt_payload(body_bytes: bytes, role: str | None) -> tuple[bytes, dict]:  # REQ-687
+    """Envelope-encrypt a redirect body; return (ciphertext_blob, client encryption metadata).
+
+    Fail-closed: requires a real envelope provider (NullEncryption cannot protect the
+    payload). The metadata carries a role-bound ``grant`` — the raw DEK sealed (together
+    with the creating role) under the master key. To read the payload the client presents
+    the grant to the authenticated unwrap endpoint, which opens it, verifies the caller is
+    the creating role (or an admin), and returns the DEK; the client then AES-256-GCM
+    decrypts the ``iv``/ciphertext parsed from the self-describing blob. The grant is opaque
+    to the client and integrity-protected, so it cannot be re-scoped to another role.
+    """
+    import base64
+    import json
+
+    from provisa.encryption import EnvelopeEncryption, encryption_service, split_envelope
+
+    svc = encryption_service()
+    if not isinstance(svc, EnvelopeEncryption):
+        raise RuntimeError(
+            "PROVISA_REDIRECT_ENCRYPT is on but no envelope encryption provider is "
+            "configured; set encryption.provider so redirect payloads can be encrypted"
+        )
+    blob = svc.encrypt(body_bytes)
+    dek = svc.unwrap(split_envelope(blob)[0])
+    grant = svc.encrypt(
+        json.dumps({"role": role, "dek": base64.b64encode(dek).decode("ascii")}).encode("utf-8")
+    )
+    return blob, {
+        "scheme": "provisa-envelope-v1",
+        "alg": "AES-256-GCM",
+        "grant": base64.b64encode(grant).decode("ascii"),
+        "unwrap_endpoint": "/data/redirect/unwrap",
     }

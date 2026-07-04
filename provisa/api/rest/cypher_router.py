@@ -36,6 +36,11 @@ if TYPE_CHECKING:
     from provisa.compiler.sql_gen import CompilationContext  # noqa: F401
 
 import re as _re
+from provisa.api.rest.registered_call import (
+    _detect_procedure,  # noqa: F401 — re-exported for tests
+    _handle_procedure,  # noqa: F401 — re-exported for tests
+    intercept_precompile,
+)
 from provisa.compiler.naming import apply_cql_property as _cql_prop
 
 import trino.exceptions as _trino_exc
@@ -45,10 +50,6 @@ from provisa.executor import stats as _qs_mod
 log = logging.getLogger(__name__)
 
 router = APIRouter()
-
-_PROC_RE = _re.compile(
-    r"^\s*CALL\s+(db\.labels|db\.relationshipTypes|db\.propertyKeys)\s*\(\s*\)\s*$", _re.IGNORECASE
-)
 
 _ID_IN_LIST_RE = _re.compile(
     r"id\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)\s+IN\s+\[([^\]]+)\]",
@@ -168,11 +169,6 @@ def _federation_error(exc: Exception) -> str:
     return _scrub(str(exc))
 
 
-def _detect_procedure(query: str) -> str | None:
-    m = _PROC_RE.match(query.strip())
-    return m.group(1).lower() if m else None
-
-
 class CypherRequest(BaseModel):  # REQ-345
     query: str
     params: dict[str, Any] = {}
@@ -182,30 +178,6 @@ def _resolve_table_meta(ctx, table_name: str):  # by GraphQL field name or physi
     return ctx.tables.get(table_name) or next(
         (m for m in ctx.tables.values() if m.table_name == table_name), None
     )
-
-
-def _handle_procedure(proc: str, label_map: CypherLabelMap) -> JSONResponse:
-    """Return schema-inspection results for Neo4j-compatible CALL procedures."""
-    if proc == "db.labels":
-        all_labels: set[str] = set()
-        for nm in label_map.nodes.values():
-            if nm.domain_label:
-                all_labels.add(nm.domain_label)
-            all_labels.add(nm.table_label)
-        rows = [{"label": lbl} for lbl in sorted(all_labels)]
-        return JSONResponse(content={"columns": ["label"], "rows": rows})
-    if proc == "db.relationshiptypes":
-        rows = [
-            {"relationshipType": r.rel_type}
-            for r in sorted(label_map.relationships.values(), key=lambda x: x.rel_type)
-        ]
-        return JSONResponse(content={"columns": ["relationshipType"], "rows": rows})
-    # proc == "db.propertykeys"
-    keys: set[str] = set()
-    for nm in label_map.nodes.values():
-        keys.update(nm.properties.keys())
-    rows = [{"propertyKey": k} for k in sorted(keys)]
-    return JSONResponse(content={"columns": ["propertyKey"], "rows": rows})
 
 
 async def _execute_multi_call(
@@ -609,10 +581,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 
     label_map = _build_label_map(ctx, role_id, state)
 
-    # Intercept Neo4j-compatible schema procedures before parse
-    _proc = _detect_procedure(body.query)
-    if _proc is not None:
-        return _handle_procedure(_proc, label_map)
+    _pre = await intercept_precompile(body, state, role_id, label_map)  # procs + REQ-872 CALLs
+    if _pre is not None:
+        return _pre
 
     # Resolve stable node ids in id(var) IN [...] to id-column values
     query_text = body.query

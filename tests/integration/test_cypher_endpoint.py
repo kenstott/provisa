@@ -33,7 +33,10 @@ def _headers() -> dict:
 
 @pytest.fixture(scope="module")
 def client():
-    with httpx.Client(base_url=BASE_URL, headers=_headers(), timeout=30) as c:
+    # Federated Cypher→Trino queries can exceed a 30s read window under suite load
+    # (flaky ReadTimeouts); keep connect short but give reads a wide budget.
+    timeout = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=60.0)
+    with httpx.Client(base_url=BASE_URL, headers=_headers(), timeout=timeout) as c:
         yield c
 
 

@@ -16,6 +16,8 @@ the WRITE-capability + per-mutation writable_by default-deny decision.
 
 from __future__ import annotations
 
+import pytest
+
 from provisa.security.mutation_authz import (
     MutationKind,
     authorize_mutation,
@@ -24,8 +26,9 @@ from provisa.security.mutation_authz import (
     classify_hasura,
     classify_kind,
     classify_openapi,
+    reclassify_kind,
 )
-from provisa.security.rights import Capability
+from provisa.security.rights import Capability, InsufficientRightsError
 
 
 # --- protocol classifiers (REQ-869) --------------------------------------------
@@ -130,3 +133,38 @@ def test_admin_without_write_still_allowed():
     # ADMIN implies all capabilities including WRITE (check_capability convention).
     ok, _ = authorize_mutation(_role("root", Capability.ADMIN.value), ["someone-else"])
     assert ok is True
+
+
+# --- admin-only reclassification (REQ-870) -------------------------------------
+
+
+def test_access_config_role_can_demote_mutation_to_read():
+    kind = reclassify_kind(_role("gov", Capability.ACCESS_CONFIG.value), "mutation", "query")
+    assert kind == "query"
+
+
+def test_admin_can_demote_mutation_to_read():
+    # ADMIN bypasses the ACCESS_CONFIG requirement (has_capability convention).
+    assert reclassify_kind(_role("root", Capability.ADMIN.value), "mutation", "query") == "query"
+
+
+def test_non_privileged_role_cannot_reclassify():
+    with pytest.raises(InsufficientRightsError):
+        reclassify_kind(_role("analyst", Capability.WRITE.value), "mutation", "query")
+
+
+def test_no_role_cannot_reclassify():
+    with pytest.raises(InsufficientRightsError):
+        reclassify_kind(None, "mutation", "query")
+
+
+def test_promotion_read_to_write_is_rejected_even_for_admin():
+    # Only demotion to read-safe is allowed; a read can never be promoted to a write.
+    with pytest.raises(ValueError):
+        reclassify_kind(_role("root", Capability.ADMIN.value), "query", "mutation")
+
+
+def test_reclassify_noop_is_idempotent_without_privilege():
+    # target == current is a no-op and needs no capability.
+    assert reclassify_kind(_role("analyst"), "mutation", "mutation") == "mutation"
+    assert reclassify_kind(_role("analyst"), "query", "query") == "query"

@@ -21,7 +21,6 @@ from provisa.compiler.sql_gen import (
     ColumnRef,
     CompilationContext,
     CompiledQuery,
-    JoinMeta,
     TableMeta,
 )
 
@@ -80,7 +79,12 @@ class TestDomainRLS:
 
     def test_domain_rule_populates_domain_rules(self):
         rules = [
-            {"table_id": None, "domain_id": "sales", "role_id": "analyst", "filter_expr": "region = 'us'"},
+            {
+                "table_id": None,
+                "domain_id": "sales",
+                "role_id": "analyst",
+                "filter_expr": "region = 'us'",
+            },
         ]
         rls = build_rls_context(rules, "analyst")
         assert rls.domain_rules == {"sales": "region = 'us'"}
@@ -89,7 +93,12 @@ class TestDomainRLS:
     def test_table_and_domain_rules_coexist(self):
         rules = [
             {"table_id": 5, "domain_id": None, "role_id": "analyst", "filter_expr": "active"},
-            {"table_id": None, "domain_id": "sales", "role_id": "analyst", "filter_expr": "region = 'us'"},
+            {
+                "table_id": None,
+                "domain_id": "sales",
+                "role_id": "analyst",
+                "filter_expr": "region = 'us'",
+            },
         ]
         rls = build_rls_context(rules, "analyst")
         assert rls.rules == {5: "active"}
@@ -97,12 +106,25 @@ class TestDomainRLS:
 
     def test_domain_rule_injected_for_table_in_domain(self):
         meta = TableMeta(
-            table_id=1, field_name="orders", type_name="Orders", source_id="pg",
-            catalog_name="pg", schema_name="public", table_name="orders", domain_id="sales",
+            table_id=1,
+            field_name="orders",
+            type_name="Orders",
+            source_id="pg",
+            catalog_name="pg",
+            schema_name="public",
+            table_name="orders",
+            domain_id="sales",
         )
         ctx = _ctx(tables={"orders": meta})
         rls = build_rls_context(
-            [{"table_id": None, "domain_id": "sales", "role_id": "a", "filter_expr": "region = 'us'"}],
+            [
+                {
+                    "table_id": None,
+                    "domain_id": "sales",
+                    "role_id": "a",
+                    "filter_expr": "region = 'us'",
+                }
+            ],
             "a",
         )
         result = inject_rls(_compiled('SELECT "id" FROM "public"."orders"'), ctx, rls)
@@ -110,14 +132,25 @@ class TestDomainRLS:
 
     def test_table_rule_takes_precedence_over_domain_rule(self):
         meta = TableMeta(
-            table_id=1, field_name="orders", type_name="Orders", source_id="pg",
-            catalog_name="pg", schema_name="public", table_name="orders", domain_id="sales",
+            table_id=1,
+            field_name="orders",
+            type_name="Orders",
+            source_id="pg",
+            catalog_name="pg",
+            schema_name="public",
+            table_name="orders",
+            domain_id="sales",
         )
         ctx = _ctx(tables={"orders": meta})
         rls = build_rls_context(
             [
                 {"table_id": 1, "domain_id": None, "role_id": "a", "filter_expr": "owner = 'me'"},
-                {"table_id": None, "domain_id": "sales", "role_id": "a", "filter_expr": "region = 'us'"},
+                {
+                    "table_id": None,
+                    "domain_id": "sales",
+                    "role_id": "a",
+                    "filter_expr": "region = 'us'",
+                },
             ],
             "a",
         )
@@ -126,13 +159,18 @@ class TestDomainRLS:
         assert "region = 'us'" not in result.sql
 
     def test_startup_loader_selects_domain_id(self):
-        """Regression: the app RLS loader must select domain_id (else domain rules drop)."""
+        """Regression: the app RLS loader must load domain_id (else domain rules drop).
+
+        The loader funnels through ``rls_repo.list_all`` (REQ-686 decrypts filter_expr at
+        that boundary); ``list_all`` does ``SELECT *``, so domain_id is included.
+        """
         import inspect
 
         import provisa.api.app as app_module
+        from provisa.core.repositories import rls as rls_repo
 
-        src = inspect.getsource(app_module)
-        assert "domain_id, role_id, filter_expr FROM rls_rules" in src
+        assert "_rls_repo.list_all(conn)" in inspect.getsource(app_module)
+        assert "SELECT * FROM rls_rules" in inspect.getsource(rls_repo.list_all)
 
 
 class TestInjectRLS:
@@ -153,7 +191,8 @@ class TestInjectRLS:
     def test_ands_with_existing_where(self):
         compiled = _compiled('SELECT "id" FROM "public"."orders" WHERE "status" = $1')
         compiled = CompiledQuery(
-            sql=compiled.sql, params=["active"],
+            sql=compiled.sql,
+            params=["active"],
             root_field="orders",
             columns=compiled.columns,
             sources=compiled.sources,
@@ -166,18 +205,14 @@ class TestInjectRLS:
         assert '"status" = $1' in result.sql
 
     def test_injects_before_order_by(self):
-        compiled = _compiled(
-            'SELECT "id" FROM "public"."orders" ORDER BY "id"'
-        )
+        compiled = _compiled('SELECT "id" FROM "public"."orders" ORDER BY "id"')
         ctx = _ctx()
         rls = RLSContext(rules={1: "region = 'us'"})
         result = inject_rls(compiled, ctx, rls)
         assert result.sql.index("WHERE") < result.sql.index("ORDER BY")
 
     def test_injects_before_limit(self):
-        compiled = _compiled(
-            'SELECT "id" FROM "public"."orders" LIMIT 10'
-        )
+        compiled = _compiled('SELECT "id" FROM "public"."orders" LIMIT 10')
         ctx = _ctx()
         rls = RLSContext(rules={1: "region = 'us'"})
         result = inject_rls(compiled, ctx, rls)
@@ -206,24 +241,24 @@ class TestInjectRLS:
 
 class TestInjectWhere:
     def test_no_existing_where(self):
-        sql = 'SELECT 1 FROM t'
+        sql = "SELECT 1 FROM t"
         result = _inject_where(sql, "x = 1")
         assert result == "SELECT 1 FROM t WHERE x = 1"
 
     def test_existing_where(self):
-        sql = 'SELECT 1 FROM t WHERE y = 2'
+        sql = "SELECT 1 FROM t WHERE y = 2"
         result = _inject_where(sql, "x = 1")
         assert "x = 1 AND" in result
         assert "y = 2" in result
 
     def test_before_order_by(self):
-        sql = 'SELECT 1 FROM t ORDER BY id'
+        sql = "SELECT 1 FROM t ORDER BY id"
         result = _inject_where(sql, "x = 1")
         assert "WHERE x = 1" in result
         assert result.index("WHERE") < result.index("ORDER BY")
 
     def test_before_limit(self):
-        sql = 'SELECT 1 FROM t LIMIT 5'
+        sql = "SELECT 1 FROM t LIMIT 5"
         result = _inject_where(sql, "x = 1")
         assert "WHERE x = 1" in result
         assert result.index("WHERE") < result.index("LIMIT")
@@ -240,6 +275,6 @@ class TestQualifyFilter:
         assert "'us'" in result
 
     def test_does_not_double_qualify(self):
-        result = _qualify_filter('"t0".region = \'us\'', "t0")
+        result = _qualify_filter("\"t0\".region = 'us'", "t0")
         # Should not add another t0 prefix
         assert result.count('"t0"') == 1

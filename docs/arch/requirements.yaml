@@ -18424,32 +18424,47 @@
     rationale: Envelope encryption (DEK per payload, KEK from cloud KMS) for all payloads is a stronger
       security model than Hasura's no-column-encryption approach or Dremio's storage-layer-only encryption.
 - id: REQ-686
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
   type: structural
-  description: Application-layer column encryption for sensitive PG data. Source credentials, API keys,
-    RLS rules, and other sensitive columns are encrypted via EncryptionService before write and decrypted
-    after read. Encrypted columns stored as BYTEA. Structural metadata (table names, column names) remains
-    plaintext to support query planning. Platform tables (tenants, tenant_config) and tenant semantic
-    metadata tables both apply column encryption independently.
-    DONE (2026-07) the clean API-keys case — api_sources.auth is now BYTEA, encrypted on write
-    (openapi register) via the process-configured EncryptionService accessor and decrypted before use
-    (api_source loader); proven end-to-end against the live Postgres store (ciphertext at rest,
-    round-trip, wrong-key rejected). REMAINING is the pervasive part — RLS rules and any sensitive
-    column USED AS PLAINTEXT AT RUNTIME (rls_rules.filter_expr is injected as SQL by inject_rls, so it
-    must be decrypted at every governance read across many sites), plus platform tenant_config. That is
-    a broad, security-sensitive multi-site change, not a single wiring; keep in-progress until it is
-    designed and adversarially verified.
+  description: >-
+    Application-layer column encryption for sensitive PG data. API keys and RLS rules are
+    encrypted via EncryptionService before write and decrypted after read; encrypted columns stored as
+    BYTEA. Structural metadata (table names, column names) remains plaintext to support query planning.
+    DONE (2026-07) — the two sensitive DB-resident columns are both encrypted at rest.
+    (1) api_sources.auth (keys/tokens) is BYTEA, encrypted on write (openapi register) via the
+    process-configured EncryptionService accessor and decrypted before use (api_source loader).
+    (2) rls_rules.filter_expr — the RLS predicate is injected as SQL by inject_rls at every governance
+    read, so it is sensitive metadata. Encryption is confined to the repository boundary
+    (provisa/core/repositories/rls.py) where upsert encrypts and get_for_table_role/list_for_role/
+    list_all decrypt. The two raw reads that bypassed the repo (the app startup RLS loader and the admin
+    GraphQL rls_rules field) were funnelled through list_all so decryption is applied uniformly; upsert
+    is the single write choke point (config_loader + admin both use it). The meta-RLS projection exposes
+    the row over the introspection surfaces as ciphertext, consistent with the threat model.
+    NullEncryption passthrough stores plaintext-bytes in the same BYTEA column, so the encrypted path is
+    exercised identically whether or not a provider is configured. Both proven end-to-end against the
+    live Postgres store (ciphertext at rest, decrypted round-trip through the repo, wrong master key
+    rejected). COMPLETE — these are the only sensitive DB-resident columns: the sources and
+    kafka_sources tables persist no credentials at all (the schema stores host/username/auth_type only;
+    passwords/keys are never written, resolved at runtime via the secrets provider), and there is no
+    tenant_config table. Nothing else in the config DB requires column encryption.
   code:
   - provisa/encryption/runtime.py
   - provisa/api_source/loader.py
   - provisa/openapi/register.py
+  - provisa/core/repositories/rls.py
   - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  - provisa/api/app.py
+  - provisa/api/admin/schema.py
   tests:
   - tests/integration/test_api_auth_encryption.py
+  - tests/integration/test_rls_filter_encryption.py
   - tests/unit/test_encryption_runtime.py
+  - tests/unit/test_rls.py
   use_case: Compromised PG instance exposes only opaque blobs for sensitive fields. Defense in depth beyond
     schema-per-org isolation.
   integration_test: required
@@ -18463,30 +18478,45 @@
     rationale: Application-layer column encryption for source credentials, API keys, and RLS rules (not
       just data) protects the semantic layer metadata itself — not available in Hasura, Dremio, or Denodo.
 - id: REQ-687
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
   type: structural
   description: >-
-    Trino non-SQL cache row payloads encrypted via EncryptionService before create_and_insert()
-    and decrypted after fetch. One DEK per cache table entry keyed by r_<hash>. DEK held in process
-    memory for the lifetime of the cache TTL, discarded on table DROP. Iceberg/S3 bulk result
-    payloads encrypted with the same envelope pattern.
-    DESIGN CONFLICT — resolve before implementing: the Trino non-SQL cache exists so Trino can QUERY
-    the cached rows as SQL (Phase-2 pushdown applies the compiled WHERE/ORDER BY/LIMIT to the cache
-    table; provisa/api_source/trino_cache.py). Encrypting the payload columns makes them opaque to
-    Trino, so it can no longer filter/sort/join them — defeating the cache's purpose. Column
-    encryption of queryable columns is incompatible with pushdown. Tiers to pick from: (1) encrypt
-    only non-filterable columns, keep filter/join keys plaintext (but arbitrary WHERE can hit any
-    column, so the filterable set is not statically known); (2) deterministic encryption on
-    equality-filter columns (leaks equality, weaker); (3) drop pushdown for encrypted API caches —
-    fetch + decrypt + filter in the app (loses the Phase-2 optimization); (4) scope to only the
-    S3/Iceberg BULK-RESULT payloads (redirect downloads), fetched-and-decrypted whole and never
-    Trino-filtered — the one part with no conflict. The naive "encrypt the payload" breaks
-    federation over the cache.
-  use_case: Non-SQL cached data in provisa_admin PG catalog is unreadable without the org key even if
-    the PG instance or Trino catalog is directly accessed.
+    DECIDED (bulk-only, client-held key): encrypt ONLY the S3/Iceberg BULK-RESULT payloads emitted by
+    the large-result redirect path (provisa/executor/redirect.py), NOT the Trino non-SQL query cache.
+    Mechanism = client-side envelope encryption: Provisa generates a per-result DEK, encrypts the
+    serialized body (AES-256-GCM) via EncryptionService BEFORE upload, and stores CIPHERTEXT in S3.
+    The presigned GET URL therefore delivers ciphertext; the client must possess the DEK to decrypt.
+    The DEK travels to the client over the authenticated redirect response channel (not via S3), so a
+    leaked presigned URL or a directly-accessed bucket object is useless without it. This is stronger
+    than object-store SSE (which trusts the store to hold plaintext + the key). Presigned-URL
+    compatibility is preserved precisely because Provisa hands back ciphertext — no SSE-C headers on
+    the GET are required.
+    WHY NOT the Trino non-SQL cache: that cache exists so Trino can QUERY cached rows as SQL (Phase-2
+    pushdown applies compiled WHERE/ORDER BY/LIMIT against the cache table; provisa/api_source/
+    trino_cache.py). Encrypting those payload columns makes them opaque to Trino — it can no longer
+    filter/sort/join them, defeating the cache. The query cache is instead protected by short TTL +
+    Trino/PG access control, and is explicitly OUT of scope for payload encryption.
+    KEY-DELIVERY (IMPLEMENTED — role-bound grant + authenticated unwrap): the redirect response carries
+    a GRANT = the raw per-result DEK sealed together with the creating role under the master key (a
+    second envelope blob). To decrypt, the client POSTs the grant to the authenticated
+    POST /data/redirect/unwrap; the server opens it under the MasterKeyProvider, verifies the caller is
+    the creating role (or holds ADMIN/SUPERADMIN), and returns the DEK. The client then AES-256-GCM
+    decrypts the iv/ciphertext parsed from the self-describing S3 blob (provisa.encryption.
+    split_envelope). Possession of the presigned URL + grant alone is useless — decrypt-time authz is
+    enforced AND the grant is integrity-protected so it cannot be re-scoped to another role. Rejected
+    alternatives: inline raw DEK (no decrypt-time authz); SSE-C pre-shared key (breaks plain-HTTP
+    clients). SECOND-CHOICE fallback, not selected: sensitive-data column-level encryption only.
+    IMPLEMENTATION: opt-in via PROVISA_REDIRECT_ENCRYPT (default off, fail-closed — requires a real
+    envelope provider); provisa/executor/redirect.py::_encrypt_payload seals the grant; endpoint at
+    provisa/api/data/endpoint.py::redirect_unwrap. Proven against live MinIO end-to-end
+    (tests/integration/test_redirect_encryption_minio.py) + unit round-trip
+    (tests/unit/test_redirect_encryption.py).
+  use_case: Bulk result objects in S3/Iceberg are unreadable from the object store or a leaked presigned
+    URL without the per-result DEK, which is released only over the authenticated redirect channel.
   target: 2026-Q4
   integration_test: required
   integration_test_reason: Cache encryption requires real Trino, real PG catalog, and real S3/Iceberg
@@ -23776,7 +23806,8 @@
     - REQ-860
     - REQ-855
 - id: REQ-862
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: 5. Data Lineage & Provenance
   category: Column-Level Trace Instrumentation
   priority: MUST
@@ -23791,19 +23822,32 @@
     lineage-resolution engine; lineage is DERIVED BY THE USER querying these trace records
     (optionally materialized as an MV), which — combined with Iceberg time-travel — yields
     point-in-time, column-level lineage as a query result.
-  use_case: >-
+    DONE (2026-07): the mv.refresh.column_lineage span now carries all four store-independent stamps —
+    per-output-column derivation (provisa/lineage/columns.py, sqlglot), the definition-version content
+    hash (provisa/lineage/versions.py), the resolved input-version + fidelity kind, and the trace_id.
+    The final piece — actual per-source signal gathering — is wired: at refresh
+    (provisa/mv/input_signals.py::gather_input_signals) each source table is asked, through the same
+    Trino connection, for the strongest signal it offers — an Iceberg snapshot id from
+    "<table>$snapshots", else an RDB watermark MAX(watermark_column) with the column discovered from the
+    provisa_admin registry catalog (REQ-260) — so input_version reflects the real data version rather
+    than always degrading to the refresh epoch. Best-effort telemetry: sources offering neither
+    contribute nothing and any query error is skipped, never failing the refresh; resolve_input_version
+    grades iceberg_snapshot > watermark > freshness_token > refresh_epoch.
     Enables audit, impact analysis, and compliance workflows without a bespoke lineage service:
     because the trace substrate is itself queryable and time-travelable, users answer "where did
     this column value come from, as of time T" by querying the column-level MV-refresh traces
     rather than by invoking a dedicated lineage API.
   code:
     - provisa/lineage/columns.py
+    - provisa/lineage/versions.py
     - provisa/mv/refresh.py
+    - provisa/mv/input_signals.py
     - provisa/mv/registry.py
     - provisa/transpiler/
     - provisa/mv/aggregate_catalog.py
   tests:
     - tests/unit/test_lineage_columns.py
+    - tests/unit/test_mv_input_signals.py
   related_reqs:
     - REQ-844
     - REQ-857
@@ -24086,7 +24130,8 @@
     - REQ-868
     - REQ-870
 - id: REQ-870
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: "2. Authentication & Identity"
   category: Authorization
   priority: MUST
@@ -24097,21 +24142,44 @@
     per-operation read_only opt-out for callers; only admin acts can demote a mutation.
     Re-introspection of discovered mutations registers with empty writable_by; existing
     grants preserved by name.
+    DONE (2026-07): two enforceable behaviors. (1) reclassify_kind (provisa/security/
+    mutation_authz.py) is the single reclassification gate — only a role holding ACCESS_CONFIG
+    (ADMIN bypasses, per has_capability) may demote a mutation to read-safe; the reverse
+    (promoting a read to a write) is rejected for everyone, and there is no caller-supplied
+    read_only flag anywhere in the request path, so classification stays under governance
+    control. A no-op transition is idempotent. (2) upsert_function (provisa/core/repositories/
+    function.py) now preserves an existing writable_by on re-introspection: a discovered mutation
+    upserts with an empty writable_by that keeps the current admin grant (grants preserved by
+    name), while an explicit non-empty grant still applies. Proven with unit tests for the gate
+    and a live-Postgres test for grant preservation across re-introspection.
   use_case: >-
     Ensures authorization policy remains under control of governance (admin), not individual
     callers. Prevents callers from overriding mutation classification, supports safe
     discovery/re-registration of mutations without accidentally granting them.
   code:
-    - provisa/security/access_config.py
-    - provisa/api/admin/
+    - provisa/security/mutation_authz.py
+    - provisa/core/repositories/function.py
+  tests:
+    - tests/unit/test_mutation_authz.py
+    - tests/integration/test_mutation_writable_by_preservation.py
   target: "2026-Q4"
+  scenario: |
+    Given a discovered remote mutation "createOrder" registered with an empty writable_by
+    And an admin grants it to the "ops" role (writable_by = ['ops'])
+    When introspection re-runs and upserts createOrder by name with an empty writable_by
+    Then the ops grant is preserved (writable_by stays ['ops']) — discovery never wipes grants
+    And when a role WITHOUT the ACCESS_CONFIG capability attempts to reclassify createOrder
+    to read-safe, the attempt is rejected
+    And an ACCESS_CONFIG (or admin) role may demote it to read, but no one may promote a
+    read back to a write
   related_reqs:
     - REQ-867
     - REQ-868
     - REQ-869
     - REQ-871
 - id: REQ-871
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: "2. Authentication & Identity"
   category: Authorization
   priority: MUST
@@ -24131,20 +24199,44 @@
     name affixes (create*/update*/delete*/upsert*) and input-type stem for operations
     whose response carries no queryable type. False negatives expected; no suggestion
     auto-binds.
+    DONE (2026-07): the suggester engine (provisa/security/association_suggester.py) implements all
+    three protocols and the shared fallbacks exactly as specified, returning a ranked list of
+    TableCandidate(table, score, reason) deduplicated per table (strongest signal wins, corroborating
+    signals add a small tiebreak). Signal strengths encode the spec order: GraphQL single-object return
+    (1.0) > list-of-table-type (0.8); OpenAPI path resource (0.9) > operationId stem (0.7) > tag (0.6)
+    with response schema as a 0.05 tiebreak; gRPC repeated response-field type (0.6) > method-name stem
+    (0.4); name-affix / input-type stem fallback (0.3). Nothing auto-binds — the functions are pure and
+    return hints; an empty list is the honest false-negative case. The GraphQL remote mapper
+    (provisa/graphql_remote/mapper.py) invokes it during registration so every mapped mutation entry
+    carries suggested_associations = [{table, score, reason}] computed from its unwrapped return-type
+    leaves + input-type stem, with writable_by left empty (default-deny). Consuming these hints into an
+    admin confirmation surface is REQ-870; projecting/binding across surfaces is REQ-872.
   use_case: >-
     Registration of mutations across heterogeneous sources requires protocol-aware
     association signals. Per-adapter suggesters reduce admin friction by ranking likely
     alignment; unmatched mutations remain registerable as global functions or require
     manual binding.
   code:
+    - provisa/security/association_suggester.py
     - provisa/graphql_remote/mapper.py
-    - provisa/security/rights.py
+  tests:
+    - tests/unit/test_association_suggester.py
+    - tests/unit/test_graphql_remote_mapper.py
   target: "2026-Q4"
+  scenario: |
+    Given a remote GraphQL source with a query "users" returning [User] (so type_to_table
+    maps User → the users table) and a mutation "createUser(input: UserInput): User"
+    When the schema is registered and mapped
+    Then the createUser tracked-function entry carries suggested_associations whose top
+    candidate is the users table (score 1.0, reason "return type User"), and its writable_by
+    stays empty — the suggestion is a hint that no code auto-binds
+    And a mutation "sendTelemetry: Boolean" with no table-typed return yields an empty
+    suggested_associations list rather than an error
   related_reqs:
     - REQ-867
     - REQ-870
 - id: REQ-872
-  status: proposed
+  status: in-progress
   group: "2. Authentication & Identity"
   category: Authorization
   priority: MUST
@@ -24157,17 +24249,49 @@
     registry. Per-surface fidelity: pgwire populates _pg_proc and supports SELECT fn(...),
     SQL/Explore projects information_schema.routines and supports table-valued-function
     invocation, Cypher/Bolt binds CALL <registeredFn>(args) YIELD ... with optional discovery.
+    DONE (2026-07) — the SQL-surface DISCOVERY projection: the pgwire catalog builds pg_proc and
+    information_schema.routines + information_schema.parameters from the tracked_functions registry
+    (provisa/pgwire/catalog.py::_populate_functions, called from _build_catalog_db), so psql \\df,
+    DBeaver and Explore now see registered functions. The registry is the single source of truth;
+    projection is role-scoped by visible_to (unrestricted or the role is granted); table-valued
+    functions (a return_schema) are set-returning (proretset/record); arguments become
+    information_schema.parameters rows in ordinal order with SQL data types; the same function
+    registered under multiple keys (bare + domain-prefixed alias) projects once.
+    DONE (2026-07) — the SHARED EXECUTOR + Cypher INVOCATION: the tracked-function execution core is
+    extracted from the GraphQL action path into invoke_tracked_function(name, args, state, role_id)
+    (provisa/api/data/endpoint.py) — surface-agnostic, enforcing per-mutation writable_by by contract
+    (REQ-869) then running SELECT * FROM "schema"."fn"(args) through the function's source pool. The
+    GraphQL path now routes through it, and the Cypher surface binds CALL <registeredFn>(args)
+    YIELD col [AS alias] to it (provisa/api/rest/cypher_router.py::_detect_registered_call /
+    _handle_registered_call): the call is intercepted before parse, args (literals / $params) are
+    coerced positionally, writable_by is enforced in the executor (403 on deny), and YIELD projects
+    the returned columns. REMAINING (kept in-progress): the pgwire SELECT fn(...) and SQL
+    table-valued-function invocation surfaces route through the same invoke_tracked_function executor.
+    Discovery is projected on all SQL surfaces; GraphQL and Cypher invocation are bound; pgwire/SQL
+    invocation is the remaining slice.
   use_case: >-
     UDF registry currently exposed only through GraphQL; pgwire, SQL/Explore, and Cypher
     surfaces cannot discover or invoke registered functions. Cross-surface projection and
     execution binding unifies function access across all query surfaces and enforces
     consistent authorization.
   code:
-    - provisa/api/data/endpoint.py
     - provisa/pgwire/catalog.py
+    - provisa/api/data/endpoint.py
     - provisa/api/rest/cypher_router.py
     - provisa/security/rights.py
+  tests:
+    - tests/unit/pgwire/test_function_projection.py
+    - tests/unit/test_tracked_function_invocation.py
   target: "2026-Q4"
+  scenario: |
+    Given a tracked_function "createOrder(customer_id integer, total number)" returning a table
+    (return_schema set), visible to all roles, in the registry
+    When a SQL-surface client queries information_schema.routines and information_schema.parameters
+    over pgwire as a role that can see it
+    Then routines lists createOrder as a set-returning FUNCTION and parameters lists customer_id
+    and total in ordinal order with their SQL data types (pg_proc shows proname=createOrder,
+    pronargs=2, proretset=true)
+    And a function whose visible_to excludes the querying role does not appear in the catalog
   related_reqs:
     - REQ-867
     - REQ-868
@@ -24501,3 +24625,133 @@
     - REQ-855
     - REQ-862
     - REQ-844
+- id: REQ-880
+  status: proposed
+  group: "4. Source Connectors"
+  category: Materialization Store
+  priority: MUST
+  type: constraint
+  target: "2026-Q4"
+  description: >-
+    The materialized-view store (MV cache target for materialized relationships and views)
+    must be configurable as a SQLAlchemy URI instead of pinned to a specific database type.
+    Today it is hardcoded to the Trino catalog literal "postgresql", preventing the
+    materialization backend from using any SQLAlchemy-supported database.
+  use_case: >-
+    Supports flexible deployment scenarios where the materialization backend may be a
+    dedicated data warehouse, distributed datastore, or cloud analytics system independent
+    of the source connectors.
+  code:
+    - provisa/api/app.py
+    - provisa/mv/refresh.py
+    - provisa/core/schema_org.py
+  related_reqs:
+    - REQ-158
+    - REQ-159
+    - REQ-135
+    - REQ-879
+- id: REQ-881
+  status: proposed
+  group: "4. Source Connectors"
+  category: Materialization Store
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Probe-based freshness gate on the MV REFRESH path, opt-in per MV — the refresh-time
+    application of REQ-855's centralized freshness gate to the materialized-view role.
+    MOTIVATION: relationship-based (join-pattern) MVs are expensive to rebuild — a full Trino
+    CTAS / DELETE+INSERT of the join every cycle. Today the background refresh loop gates purely
+    on TTL (MVRegistry.get_due_for_refresh compares now - last_refresh_at >= refresh_interval),
+    so a due MV pays the full rebuild every interval EVEN WHEN NO SOURCE CHANGED. FIX: add a
+    per-MV freshness_mode (ttl [default, current behavior] | probe | ttl_probe). For probe /
+    ttl_probe, before the expensive materialization the refresh computes an opaque per-MV change
+    token from the REQ-862 per-source input signals (Iceberg snapshot id / RDB watermark MAX,
+    already gathered by provisa/mv/input_signals.py::gather_input_signals) and compares it by
+    equality to the token stored at last refresh: unchanged → skip the rebuild, reset the TTL,
+    keep the materialized rows and FRESH status (zero lag at probe cost); changed → rebuild and
+    store the new token. ttl_probe probes only after the TTL floor elapses (caps probe
+    frequency); probe re-checks every loop ignoring TTL. SAFETY: a token is usable only when
+    EVERY source produces one (len(signals) == len(source_tables)); if any source is
+    token-less the entry degrades to TTL and rebuilds normally — never skip on partial signal
+    (REQ-855 None-degrades-to-TTL, REQ-847 capability-signal-not-silent-fallback). Opt-in is
+    per MV so cheap MVs keep plain TTL and only expensive relationship MVs pay the probe.
+    Mutual exclusivity with delta (REQ-874) and the shared coordination catalog (REQ-879) follow
+    REQ-855: the same materialized_input_version stamp is the probe token and the dedup key.
+  use_case: >-
+    Lets a steward gate an expensive relationship-based MV so its costly join is rebuilt only
+    when a source actually changed, trading a cheap per-source probe (snapshot id / watermark)
+    for skipping a full re-materialization every interval — zero-lag freshness where rebuild
+    cost is high, plain TTL where it is not.
+  code:
+    - provisa/mv/models.py
+    - provisa/mv/registry.py
+    - provisa/mv/refresh.py
+    - provisa/mv/input_signals.py
+  related_reqs:
+    - REQ-855
+    - REQ-862
+    - REQ-874
+    - REQ-879
+    - REQ-847
+- id: REQ-882
+  status: proposed
+  group: "4. Source Connectors"
+  category: Materialization Store
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Wire the aggregate MV rewrite path into the live query execution path.
+    Populate AggregateMVCatalog from MVRegistry on startup, invoke aggregate rewrite
+    in the endpoint query path, and enforce filter subset-safety before rewriting.
+  use_case: >-
+    Enables query acceleration via pre-computed aggregates stored in materialized views,
+    allowing queries requesting SUM/AVG/etc over MV-backed tables to read pre-aggregated
+    results instead of materializing raw rows and computing aggregates at query time.
+  code:
+    - provisa/mv/aggregate_catalog.py
+    - provisa/mv/registry.py
+    - provisa/api/data/endpoint.py
+    - provisa/api/admin/dev_queries.py
+  related_reqs:
+    - REQ-198
+    - REQ-199
+    - REQ-849
+- id: REQ-883
+  status: proposed
+  group: "4. Source Connectors"
+  category: Federation Engine Abstraction
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Provisa's pgwire server must satisfy the capability set that DuckDB's `postgres`
+    extension exercises when attaching Provisa via `ATTACH ... AS x (TYPE postgres)`,
+    enabling DuckDB federation engines and external DuckDB clients to mount a governed
+    Provisa instance with RLS/masking intact. Concrete capabilities enumerated: (1)
+    libpq connection + auth handshake; (2) catalog introspection queries for schemas/tables/
+    columns/types/PKs over pg_namespace, pg_class, pg_attribute, pg_type, pg_index,
+    pg_constraint with correct atttypmod and pg_type OIDs; (3) bulk read via `COPY (SELECT
+    ...) TO STDOUT (FORMAT binary)` with real PostgreSQL binary COPY wire encoding per column
+    type; (4) read-only snapshot-consistent transactions via `BEGIN TRANSACTION ISOLATION
+    LEVEL REPEATABLE READ READ ONLY`; (5) parallel scan machinery including `pg_export_snapshot()`,
+    `SET TRANSACTION SNAPSHOT`, `DECLARE ... CURSOR` / `FETCH`, and ctid-range partitioning.
+    Design guarantee: where parallelism cannot be honored, pgwire degrades to correct single-threaded
+    sequential scan returning complete, consistent results — never partial/errored ATTACH; capability
+    set is advertised, not guessed.
+  use_case: >-
+    Lets DuckDB (as the REQ-825 federation engine or any external DuckDB/BI client) mount
+    a governed Provisa instance via `ATTACH ... TYPE postgres` and query it with RLS/masking
+    intact, completing the develop-on-DuckDB story where DuckDB reaches Provisa itself the same
+    way it reaches any Postgres.
+  code:
+    - provisa/pgwire/server.py
+    - provisa/pgwire/copy_handler.py
+    - provisa/pgwire/catalog.py
+    - provisa/pgwire/_pipeline.py
+  related_reqs:
+    - REQ-825
+    - REQ-826
+    - REQ-842
+    - REQ-527

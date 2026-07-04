@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from provisa.security.rights import Capability, has_capability
+from provisa.security.rights import Capability, InsufficientRightsError, has_capability
 
 
 class MutationKind(str, Enum):  # REQ-869
@@ -111,6 +111,31 @@ def authorize_mutation(
     if role.get("id") not in (writable_by or []):
         return False, "role is not listed in the mutation's writable_by (default-deny)"
     return True, ""
+
+
+def reclassify_kind(
+    role: dict[str, object] | None, current_kind: str | None, target_kind: str | None
+) -> str:  # REQ-870
+    """Admin-only reclassification of a mutation to read-safe. Returns the new stored kind.
+
+    Governance — not callers — controls classification (REQ-870). Only a role holding the
+    ACCESS_CONFIG capability (ADMIN bypasses, per ``has_capability``) may reclassify, and
+    only the demotion mutation → read is allowed: a write can be declared read-safe by an
+    admin, but nothing can promote a read to a write and no caller-supplied ``read_only``
+    flag exists. A no-op (target already equals current) is idempotent and returns the
+    current stored kind. Any disallowed transition raises ``InsufficientRightsError``.
+    """
+    current = classify_kind(current_kind)
+    target = classify_kind(target_kind)
+    if current is target:
+        return "query" if target is MutationKind.READ else "mutation"
+    if not (current is MutationKind.WRITE and target is MutationKind.READ):
+        raise ValueError(
+            "only demotion of a mutation to read-safe is permitted; a read cannot be promoted"
+        )
+    if not has_capability(role or {}, Capability.ACCESS_CONFIG):
+        raise InsufficientRightsError(str((role or {}).get("id", "")), Capability.ACCESS_CONFIG)
+    return "query"
 
 
 def require_mutation_write(action: dict, role: dict | None, field_name: str) -> None:  # REQ-869

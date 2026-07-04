@@ -214,7 +214,7 @@ rls_rules = Table(
     Column("table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE")),
     Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE")),
     Column("role_id", Text, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False),
-    Column("filter_expr", Text, nullable=False),
+    Column("filter_expr", LargeBinary, nullable=False),  # REQ-686: encrypted at rest (BYTEA)
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "role_id"),
     UniqueConstraint("domain_id", "role_id", name="rls_rules_domain_role_key"),

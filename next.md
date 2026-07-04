@@ -208,6 +208,24 @@ by when they become buildable.
   Checkpoint-bounded replay (nearest checkpoint ≤ N + deltas); reconstruction is a windowed
   greatest-per-key **query over the ledger** (DB-side compute), non-blocking. Sibling of REQ-877;
   Iceberg targets get content time-travel natively.
+- **[24] MV refresh probe-freshness gate — REQ-881 (new, SHOULD).** Refresh-time application of the
+  REQ-855 freshness gate to the MV role, opt-in per MV (`freshness_mode`: ttl | probe | ttl_probe).
+  Relationship-based (join-pattern) MVs are expensive to rebuild (full CTAS/DELETE+INSERT), yet the
+  reaper today gates purely on TTL (`MVRegistry.get_due_for_refresh`) and rebuilds every interval
+  even when no source changed. Reuse the **already-shipped** REQ-862 per-source signals
+  (`provisa/mv/input_signals.py::gather_input_signals` — Iceberg snapshot id / RDB watermark) as the
+  opaque change token: equal token ⇒ skip the rebuild, reset TTL, keep rows FRESH; changed ⇒ rebuild
+  and store the new token. Token usable only when EVERY source produces one, else degrade to TTL (never
+  skip on partial signal). Core is fairly self-contained (signals exist); the token store rides the
+  REQ-879 shared catalog and is store-independent per REQ-880. Build alongside REQ-855 inside [10],
+  after the reaper substrate ([23] REQ-879 / REQ-880) so the token has an authoritative home.
+- **[25] Aggregate-MV rewrite into the live query path — REQ-882 (new, SHOULD).** The aggregate MV
+  routing (`provisa/mv/aggregate_catalog.py`, REQ-198/199) exists but is not wired into execution.
+  Populate `AggregateMVCatalog` from `MVRegistry` on startup, invoke the aggregate rewrite in the
+  endpoint query path, and enforce filter subset-safety before rewriting (only rewrite when the
+  query's predicate is provably a subset of the MV's) so a SUM/AVG/etc. over an MV-backed table reads
+  pre-aggregated rows instead of re-aggregating raw rows. Fairly self-contained (catalog + rewrite
+  exist); rides the MV registry, so schedule alongside the materialization work [10].
 
 ## Critical path & parallel tracks
 
@@ -228,3 +246,55 @@ the cheapest high-value leaves — do them first, in parallel where hands allow.
 [4] clears the test-provisioning debt. Then the substrate chain [8]→[9]→[10], with [11] and the
 authz adapters [6] landing as their gates come online. Tier 4 [12]–[18] closes out last: each is
 scheduled (nothing is dropped), gated on the work above, and slots in as its dependency lands.
+
+## Final audit — completeness & abstraction integrity
+
+Run this as the closing phase once the tiers above are drained. It is two passes: a
+per-requirement completeness sweep, and an architecture-invariant sweep. Nothing here is
+optional — the goal is to prove the plan actually landed, not merely that items were checked off.
+
+### Pass A — per-requirement completeness
+
+For every requirement in `docs/arch/requirements.yaml` (not just this cycle's):
+
+- **Status reflects reality.** `complete` requires real `code:` paths that exist AND `tests:` that
+  exercise the behavior; behavioral reqs carry a `scenario` matched by a test. Reject any `complete`
+  whose code path is absent, whose test is a `pass`/no-assertion stub, or whose test only asserts a
+  tautology (use the `eval-test-fail` discipline).
+- **No orphans.** Every `in-progress` names exactly what remains; every `proposed` is either
+  scheduled in a tier above or explicitly gated with the gate named. No requirement is silently
+  dropped; a superseded one is `rejected` with a `rejection_reason` pointing at its replacement.
+- **Coded AND tested.** Each accepted requirement has both an implementation and a test that would
+  fail if the implementation regressed — verified by running the named tests, not by inspection.
+- Produce a coverage table: REQ-ID → status → code-exists? → test-exists-and-meaningful? → gaps.
+
+### Pass B — architecture invariants (store-independence)
+
+The load-bearing claim of the substrate work is that Provisa is store-independent: every durable
+store sits behind an abstraction selectable by a **SQLAlchemy URI**, and nothing routes around it.
+Audit that this actually holds — grep the tree and prove each invariant, don't assume:
+
+- **Every durable store is behind the `Database` abstraction (SQLAlchemy engine).** The control
+  plane / config store, the audit store, the tenant meta store, and the materialization store are
+  all reached through `provisa/core/database.py` and configured by URI — none pinned to a specific
+  database type. Known offenders to close first: the MV reaper drives DDL/DML through a hardcoded
+  `trino.dbapi.Connection` and an in-memory `MVRegistry` (REQ-879 / REQ-880 — the materialization
+  store is currently the Trino catalog literal `"postgresql"`, not a URI); meta-RLS is Postgres-only
+  (`_init_meta_rls`, REQ-828 coupling 3 / [20]).
+- **No DB-specific calls that bypass the abstraction.** Grep for raw `asyncpg`/`psycopg` acquired
+  outside `Database`, hardcoded Trino DBAPI usage in code paths that should be engine-agnostic,
+  direct `redis` clients outside the cache abstraction, and dialect-literal SQL (Postgres-only
+  `BYTEA`/`::jsonb`/`ARRAY`/`cardinality()`/window syntax) on paths meant to run on any dialect.
+  Each hit is either justified (a genuinely engine-specific surface, e.g. pgwire emulation) or a
+  bug to route back through the abstraction — enumerate and classify every one.
+- **Cross-cutting services go through their one seam.** Encryption via `EncryptionService`
+  (`encryption_service()`), freshness via the freshness predicate module, routing via the
+  `federate()`/connector contract, mutation authz via `mutation_authz`. Flag any call site that
+  re-implements one of these inline instead of calling the seam.
+- **Engine-agnostic execution.** Once the federation-engine abstraction [8] lands, verify the same
+  query/refresh/reaper paths run against the embedded-DuckDB overlay (`docker-compose.duckdb.yml`)
+  with no Trino-specific assumption — this is the empirical proof that Pass B's grep results are
+  complete.
+
+Output: a findings list (invariant → offending file:line → justified|fix), and for every "fix",
+a follow-on requirement or tier item so nothing is dropped.

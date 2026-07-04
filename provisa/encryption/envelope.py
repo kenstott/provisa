@@ -83,17 +83,36 @@ class EnvelopeEncryption(EncryptionService):  # REQ-685
         return _HEADER.pack(_MAGIC, _VERSION, len(wrapped)) + wrapped + iv + ciphertext
 
     def decrypt(self, blob: bytes) -> bytes:
-        magic, version, wlen = _HEADER.unpack_from(blob)
-        if magic != _MAGIC or version != _VERSION:
-            raise ValueError("not a provisa envelope blob (bad magic/version)")
-        off = _HEADER.size
-        wrapped = blob[off : off + wlen]
-        off += wlen
-        iv = blob[off : off + _IV_LEN]
-        ciphertext = blob[off + _IV_LEN :]
+        wrapped, iv, ciphertext = split_envelope(blob)
         now = time.monotonic()
         dek = self._cache.get(wrapped, now)
         if dek is None:
             dek = self._provider.unwrap_dek(wrapped)
             self._cache.put(wrapped, dek, now)
         return AESGCM(dek).decrypt(iv, ciphertext, None)
+
+    def unwrap(self, wrapped: bytes) -> bytes:
+        """Unwrap a wrapped DEK to its raw bytes via the master-key provider (REQ-687).
+
+        Backs the authenticated redirect-unwrap call: a client that holds a ciphertext
+        object + wrapped DEK still cannot read it without the master key, which never
+        leaves this provider.
+        """
+        return self._provider.unwrap_dek(wrapped)
+
+
+def split_envelope(blob: bytes) -> tuple[bytes, bytes, bytes]:
+    """Split a provisa envelope blob into ``(wrapped_dek, iv, ciphertext+tag)``.
+
+    The blob is self-describing (see module docstring); this is the framing a client
+    parses to decrypt a redirect payload once it has unwrapped the DEK (REQ-687).
+    """
+    magic, version, wlen = _HEADER.unpack_from(blob)
+    if magic != _MAGIC or version != _VERSION:
+        raise ValueError("not a provisa envelope blob (bad magic/version)")
+    off = _HEADER.size
+    wrapped = blob[off : off + wlen]
+    off += wlen
+    iv = blob[off : off + _IV_LEN]
+    ciphertext = blob[off + _IV_LEN :]
+    return wrapped, iv, ciphertext

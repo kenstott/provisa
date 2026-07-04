@@ -170,7 +170,10 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
             return
 
         select_sql = _build_refresh_sql(mv, trino_conn)
-        _emit_column_lineage_span(mv, select_sql, str(start))  # REQ-862
+        from provisa.mv.input_signals import gather_input_signals  # noqa: PLC0415
+
+        input_signals = gather_input_signals(trino_conn, mv.source_tables)  # REQ-862
+        _emit_column_lineage_span(mv, select_sql, str(start), input_signals)  # REQ-862
         cursor = trino_conn.cursor()
 
         # Check if target table exists

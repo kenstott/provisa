@@ -7614,3 +7614,129 @@ def step_given_a_materialized_view_and_an_api_pg_cache_entry_each_with_its_():
     pytest.skip(
         "step not implemented: a materialized view and an API/pg cache entry, each with its"
     )
+
+
+# REQ-870
+@given('a discovered remote mutation "createOrder" registered with an empty writable_by')
+def step_given_a_discovered_remote_mutation_createorder_registered_with_an_():
+    pytest.skip(
+        'step not implemented: a discovered remote mutation "createOrder" registered with a'
+    )
+
+
+# REQ-870
+@then("an admin grants it to the \"ops\" role (writable_by = ['ops'])")
+def step_and_an_admin_grants_it_to_the_ops_role_writable_by_ops():
+    pytest.skip(
+        "step not implemented: an admin grants it to the \"ops\" role (writable_by = ['ops'])"
+    )
+
+
+# REQ-870
+@when("introspection re-runs and upserts createOrder by name with an empty writable_by")
+def step_when_introspection_re_runs_and_upserts_createorder_by_name_with_a():
+    pytest.skip(
+        "step not implemented: introspection re-runs and upserts createOrder by name with a"
+    )
+
+
+# REQ-870
+@then("the ops grant is preserved (writable_by stays ['ops']) — discovery never wipes grants")
+def step_then_the_ops_grant_is_preserved_writable_by_stays_ops_discovery_n():
+    pytest.skip(
+        "step not implemented: the ops grant is preserved (writable_by stays ['ops']) — dis"
+    )
+
+
+# REQ-870
+@then(
+    "when a role WITHOUT the ACCESS_CONFIG capability attempts to reclassify createOrder to read-safe, the attempt is rejected"
+)
+def step_and_when_a_role_without_the_access_config_capability_attempts_to():
+    pytest.skip(
+        "step not implemented: when a role WITHOUT the ACCESS_CONFIG capability attempts to"
+    )
+
+
+# REQ-870
+@then(
+    "an ACCESS_CONFIG (or admin) role may demote it to read, but no one may promote a read back to a write"
+)
+def step_and_an_access_config_or_admin_role_may_demote_it_to_read_but_no_():
+    pytest.skip(
+        "step not implemented: an ACCESS_CONFIG (or admin) role may demote it to read, but "
+    )
+
+
+# REQ-871
+@given(
+    'a remote GraphQL source with a query "users" returning [User] (so type_to_table maps User → the users table) and a mutation "createUser(input: UserInput): User"'
+)
+def step_given_a_remote_graphql_source_with_a_query_users_returning_user_so():
+    pytest.skip(
+        'step not implemented: a remote GraphQL source with a query "users" returning [User'
+    )
+
+
+# REQ-871
+@when("the schema is registered and mapped")
+def step_when_the_schema_is_registered_and_mapped():
+    pytest.skip("step not implemented: the schema is registered and mapped")
+
+
+# REQ-871
+@then(
+    'the createUser tracked-function entry carries suggested_associations whose top candidate is the users table (score 1.0, reason "return type User"), and its writable_by stays empty — the suggestion is a hint that no code auto-binds'
+)
+def step_then_the_createuser_tracked_function_entry_carries_suggested_asso():
+    pytest.skip(
+        "step not implemented: the createUser tracked-function entry carries suggested_asso"
+    )
+
+
+# REQ-871
+@then(
+    'a mutation "sendTelemetry: Boolean" with no table-typed return yields an empty suggested_associations list rather than an error'
+)
+def step_and_a_mutation_sendtelemetry_boolean_with_no_table_typed_return_():
+    pytest.skip(
+        'step not implemented: a mutation "sendTelemetry: Boolean" with no table-typed retu'
+    )
+
+
+# REQ-872
+@given(
+    'a tracked_function "createOrder(customer_id integer, total number)" returning a table (return_schema set), visible to all roles, in the registry'
+)
+def step_given_a_tracked_function_createorder_customer_id_integer_total_num():
+    pytest.skip(
+        'step not implemented: a tracked_function "createOrder(customer_id integer, total n'
+    )
+
+
+# REQ-872
+@when(
+    "a SQL-surface client queries information_schema.routines and information_schema.parameters over pgwire as a role that can see it"
+)
+def step_when_a_sql_surface_client_queries_information_schema_routines_and():
+    pytest.skip(
+        "step not implemented: a SQL-surface client queries information_schema.routines and"
+    )
+
+
+# REQ-872
+@then(
+    "routines lists createOrder as a set-returning FUNCTION and parameters lists customer_id and total in ordinal order with their SQL data types (pg_proc shows proname=createOrder, pronargs=2, proretset=true)"
+)
+def step_then_routines_lists_createorder_as_a_set_returning_function_and_p():
+    pytest.skip(
+        "step not implemented: routines lists createOrder as a set-returning FUNCTION and p"
+    )
+
+
+# REQ-872
+@then("a function whose visible_to excludes the querying role does not appear in the catalog")
+def step_and_a_function_whose_visible_to_excludes_the_querying_role_does_():
+    pytest.skip(
+        "step not implemented: a function whose visible_to excludes the querying role does "
+    )
