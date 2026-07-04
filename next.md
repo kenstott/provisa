@@ -65,15 +65,17 @@ Unit-testable with mocks or fixtures; no federation substrate required. Do these
 
 Larger authorship; testable without the federation substrate, some need an adapter or surface.
 
-- **[4] Desktop zero-infra — REQ-828–830, REQ-815–816.** C3/V4/I2. REQ-829 (embedded fakeredis)
-  ✅ done (2026-07) — verified + tested: the `make_redis` factory routes all four Redis clients
-  (`cache/store`, `apq/cache`, `hot_tables`, `rate_limit`) to a shared-server `FakeAsyncRedis`
-  when no `REDIS_URL`, with the full command surface (get/set, sorted sets, sets, incr, pipelines).
-  **Remaining:** REQ-828 pluggable SQL store (Postgres → DuckDB/SQLite — the larger structural
-  change that removes the last mandatory Docker dep); REQ-830 stateful-component topology; and
-  REQ-815/816 (Docker Compose organization) — where the **independent-test-provisioning** fix
-  lands (parameterize core host ports `${PG_PORT:-5432}` … + dedicated projects so dev/e2e/
-  integration stacks coexist, the collision hit this session).
+- **[4] Desktop zero-infra — REQ-828–830, REQ-815–816.** C3/V4/I2. Mostly done (2026-07):
+  **REQ-829** ✅ embedded fakeredis (`make_redis` routes all four Redis clients to a shared-server
+  `FakeAsyncRedis`, full command surface, tested). **REQ-815** ✅ minio + minio-init moved from the
+  observability overlay to `docker-compose.core.yml` (they're a core runtime dep — Trino's
+  S3-backed iceberg catalog runs at startup); telemetry sinks stay in the observability overlay;
+  all stack combinations (dev/e2e/dev-install) validated. **REQ-816** ✅ demo (`demo.yml`) and
+  test services (`test.yml`) are separate, brought up via harness markers, not assumed in the dev
+  stack. **Remaining:** REQ-828 pluggable SQL store (Postgres → DuckDB/SQLite — the larger change
+  that removes the last mandatory Docker dep) and REQ-830 stateful-component topology. NOTE: the
+  dev/e2e host-port collision hit this session is still open — it needs port parameterization
+  (`${PG_PORT:-5432}` …), which is *not* in 815/816's scope; track separately.
 - **[5] Encryption core — REQ-684–689.** C4/V4/I3. `EncryptionService` with `NullEncryption` +
   `LocalKeychain` first — unit-testable, no cloud. Separate track; does not touch the substrate.
 - **[6] Mutation-authz adapters + surface projection — REQ-870–872.** C4/V4/I4. Depends on [3].

@@ -160,6 +160,40 @@ services:
       start_period: 20s
       start_interval: 2s
 
+  # MinIO is a CORE dependency (REQ-815): Trino's S3-backed iceberg/results catalog is
+  # exercised on every app startup, so it belongs with the runtime, not the observability
+  # overlay. Observability's otlp2parquet reaches this same minio by service name.
+  minio:
+    restart: unless-stopped
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/${PROVISA_OTEL_BUCKET:-provisa-otel} &&
+        mc mb --ignore-existing local/provisa-results
+      "
+
 volumes:
   pg_data:
   redis_data:
@@ -168,3 +202,4 @@ volumes:
   provisa_exchange:
   trino_logs:
   trino_worker_logs:
+  minio_data:

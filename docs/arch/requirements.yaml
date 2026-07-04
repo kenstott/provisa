@@ -22166,7 +22166,8 @@
   - data-engineer
   - ops
 - id: REQ-815
-  status: accepted
+  status: complete
+  since: "2026-07"
   group: 8. Deployment & Infrastructure
   category: Docker Compose Organization
   priority: MUST
@@ -22186,11 +22187,11 @@
   related_reqs:
   - REQ-813
   - REQ-814
-  target: 2026-Q3
   stakeholders:
   - ops
 - id: REQ-816
-  status: accepted
+  status: complete
+  since: "2026-07"
   group: 8. Deployment & Infrastructure
   category: Docker Compose Organization
   priority: SHOULD
@@ -22213,7 +22214,6 @@
   related_reqs:
   - REQ-813
   - REQ-814
-  target: 2026-Q3
   stakeholders:
   - ops
   - data-engineer
