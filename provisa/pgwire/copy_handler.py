@@ -71,14 +71,14 @@ _PARSE_TO_RE = re.compile(
         (?:(?P<schema>[A-Za-z_][A-Za-z0-9_]*)\.)?
         (?P<table>[A-Za-z_][A-Za-z0-9_]*)
         \s+TO\s+STDOUT
-        (?:\s+WITH\s*\(?\s*FORMAT\s+(?P<fmt>\w+)\s*\)?)?
+        (?:\s+(?:WITH\s+)?\(?\s*FORMAT\s+["']?(?P<fmt>\w+)["']?\s*\)?)?
     """,
     re.IGNORECASE | re.VERBOSE,
 )
 
 _PARSE_QUERY_TO_RE = re.compile(
     r"""^\s*COPY\s+\((?P<query>.+)\)\s+TO\s+STDOUT
-        (?:\s+WITH\s*\(?\s*FORMAT\s+(?P<fmt>\w+)\s*\)?)?
+        (?:\s+(?:WITH\s+)?\(?\s*FORMAT\s+["']?(?P<fmt>\w+)["']?\s*\)?)?
         \s*$
     """,
     re.IGNORECASE | re.VERBOSE | re.DOTALL,
@@ -90,7 +90,7 @@ _PARSE_FROM_RE = re.compile(
         (?P<table>[A-Za-z_][A-Za-z0-9_]*)
         (?:\s*\((?P<cols>[^)]+)\))?
         \s+FROM\s+STDIN
-        (?:\s+WITH\s*\(?\s*FORMAT\s+(?P<fmt>\w+)\s*\)?)?
+        (?:\s+(?:WITH\s+)?\(?\s*FORMAT\s+["']?(?P<fmt>\w+)["']?\s*\)?)?
     """,
     re.IGNORECASE | re.VERBOSE,
 )
