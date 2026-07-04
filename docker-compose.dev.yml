@@ -8,28 +8,28 @@ services:
   # Expose core service ports for direct access during development
   postgres:
     ports:
-      - "5432:5432"
+      - "${PG_PORT:-5432}:5432"
 
   pgbouncer:
     ports:
-      - "6432:6432"
+      - "${PGBOUNCER_PORT:-6432}:6432"
 
   minio:
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
 
   redis:
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
 
   trino:
     ports:
-      - "8080:8080"
+      - "${TRINO_PORT:-8080}:8080"
 
   zaychik:
     ports:
-      - "8480:8480"
+      - "${ZAYCHIK_PORT:-8480}:8480"
 
   # Test-only services (kafka, schema-registry, mongodb, elasticsearch, neo4j,
   # fuseki) now live in the isolated provisa-test project — see

@@ -24259,3 +24259,42 @@
     rationale: Routing an unmaterialized-source count(*) to a native count call — gated
       by shape, exactness, and RLS — is a federation execution optimization absent in
       Hasura and Dremio.
+- id: REQ-876
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: Deployment & Infrastructure
+  priority: SHOULD
+  type: infrastructure
+  target: "2026-Q4"
+  description: >-
+    Compose host-port parameterization for stack coexistence. Every published host port
+    in docker-compose.core.yml (and the dev/observability overlays) MUST be expressed as
+    ${VAR:-default} so the default preserves current behavior while a second stack can bind
+    a different host port. This lets the dev (provisa), e2e (provisa-e2e), and integration
+    (provisa-test) compose projects run simultaneously instead of colliding on 5432/8080/
+    9000/6379/8480 — the failure mode observed when a second project's minio could not bind
+    9000, started detached from its network, and its minio-init could not resolve minio,
+    hanging the stack at N-1/N. THREE parts: (1) parameterize the published ports in
+    core.yml/dev.yml/observability.yml (left side only; container ports fixed). (2) each test
+    harness project (tests/conftest.py integration, tests/e2e/conftest.py) sets its own offset
+    port set (e.g. PG_PORT/TRINO_PORT/REDIS_PORT/MINIO_PORT/ZAYCHIK_PORT) before compose up.
+    (3) the in-process app under test connects to the matching ports — TRINO_PORT/ZAYCHIK_PORT
+    are already env-driven (app.py:1119/1160); the PROVISA_CONFIG fixture's Postgres host:port
+    must become env-interpolated (or the harness must template it) so the app reaches the
+    offset postgres. Isolation of the compose PROJECT (‑p) already exists; this closes the
+    host-port dimension so lifecycle-independent stacks are also bind-independent.
+  use_case: >-
+    A developer or CI can run the dev stack, the e2e stack, and an integration test run at the
+    same time without tearing one down — each provisions its own services on its own host ports,
+    so no run blocks another and no half-attached container corrupts a shared network.
+  code:
+    - docker-compose.core.yml
+    - docker-compose.dev.yml
+    - docker-compose.observability.yml
+    - tests/conftest.py
+    - tests/e2e/conftest.py
+  related_reqs:
+    - REQ-815
+    - REQ-816
+    - REQ-828
+    - REQ-830

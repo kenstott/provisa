@@ -137,6 +137,14 @@ by when they become buildable.
   exercise; build alongside the substrate sources once [8] is up.
 - **[18] Cypher writes — REQ-818 (accepted).** Remaining Cypher-write item; slot with the authz
   adapters [6] once the mutation model [3] is in place.
+- **[19] Compose host-port coexistence — REQ-876 (new).** Part 1 done (2026-07): every published
+  host port in `core.yml`/`dev.yml` is now `${VAR:-default}`, so a second stack binds a different
+  port by setting env (defaults unchanged; validated `PG_PORT=15432` offsets postgres while the
+  default stays 5432). **Remaining:** (2) each harness project sets its own offset port set before
+  compose up; (3) the `PROVISA_CONFIG` fixture's Postgres host:port becomes env-interpolated so the
+  in-process app reaches the offset postgres (`TRINO_PORT`/`ZAYCHIK_PORT` are already env-driven).
+  Needs runnable stacks to verify — scheduled here rather than shipped half-wired. This is the fix
+  for the dev/e2e collision hit this session.
 
 ## Critical path & parallel tracks
 

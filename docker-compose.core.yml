@@ -14,7 +14,7 @@ services:
       POSTGRES_USER: provisa
       POSTGRES_PASSWORD: provisa
     ports:
-      - "5432:5432"
+      - "${PG_PORT:-5432}:5432"
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - pg_data:/var/lib/postgresql/data
@@ -42,7 +42,7 @@ services:
     restart: unless-stopped
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -68,7 +68,7 @@ services:
     image: trinodb/trino:481
     mem_limit: 8g
     ports:
-      - "8080:8080"
+      - "${TRINO_PORT:-8080}:8080"
     volumes:
       - ./trino/etc/config.properties:/etc/trino/config.properties:ro
       - ./trino/etc/exchange-manager.properties:/etc/trino/exchange-manager.properties:ro
@@ -139,7 +139,7 @@ services:
     # instead of rebuilding a per-project `<project>-zaychik` tag.
     image: zaychik:latest
     ports:
-      - "8480:8480"
+      - "${ZAYCHIK_PORT:-8480}:8480"
     environment:
       TF_TRINO_HOST: trino
       TF_TRINO_PORT: 8080
@@ -173,8 +173,8 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
