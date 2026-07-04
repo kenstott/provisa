@@ -351,7 +351,6 @@ async def _dispatch_execution_direct(
     state: Any,
 ) -> list[dict] | Response:
     """Execute SQL against a direct (non-Trino) source. Returns rows or error Response."""
-    from provisa.executor.direct import execute_direct
     from provisa.executor.trino import QueryResult
 
     try:
@@ -370,7 +369,7 @@ async def _dispatch_execution_direct(
                     rows = []
             result = QueryResult(rows=rows, column_names=col_names)
         else:
-            result = await execute_direct(
+            result = await state.federation_engine.execute_native(
                 state.source_pools, source_id, exec_sql, resolved_params or None
             )
         return [dict(zip(result.column_names, row)) for row in result.rows]
@@ -469,7 +468,6 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             inject_rls_into_mutation as _inject_rls,
         )
         from provisa.compiler.rls import RLSContext as _RLSContext
-        from provisa.executor.direct import execute_direct as _exec_direct
         from provisa.transpiler.transpile import transpile as _transpile
 
         _role_id = _resolve_role_id(request, state)
@@ -526,7 +524,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             _target_sql += " RETURNING 1"
 
         try:
-            _result = await _exec_direct(state.source_pools, _source_id, _target_sql)
+            _result = await state.federation_engine.execute_native(
+                state.source_pools, _source_id, _target_sql
+            )
             affected = len(_result.rows)
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": f"Write failed: {exc}"})
@@ -1161,7 +1161,6 @@ async def _execute_with_api(
         rewrite_all_from_cache,
         schedule_drop,
     )
-    from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
     from provisa.compiler.nf_extractor import find_api_table_names
 
@@ -1187,7 +1186,9 @@ async def _execute_with_api(
             hot_sql = build_values_cte_sql(exec_sql, table_name, entry)
             trino_sql = transpile_to_trino(hot_sql)
             log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
-            trino_result = execute_trino(state.trino_conn, trino_sql, params, span_attrs=span_attrs)
+            trino_result = await state.federation_engine.execute_engine(
+                trino_sql, params, span_attrs=span_attrs
+            )
             return [dict(zip(trino_result.column_names, row)) for row in trino_result.rows]
 
     from provisa.executor.redirect import RedirectConfig
@@ -1286,17 +1287,10 @@ async def _execute_with_api(
     rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
     trino_sql = transpile_to_trino(rewritten_sql)
 
-    def _run_query() -> list[dict]:
-        import trino as _trino
-
-        conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
-        try:
-            result = execute_trino(conn, trino_sql, params, span_attrs=span_attrs)
-            return [dict(zip(result.column_names, row)) for row in result.rows]
-        finally:
-            conn.close()
-
-    return await asyncio.get_event_loop().run_in_executor(None, _run_query)
+    result = await state.federation_engine.execute_engine(
+        trino_sql, params, conn_kwargs=state.trino_conn_kwargs, span_attrs=span_attrs
+    )
+    return [dict(zip(result.column_names, row)) for row in result.rows]
 
 
 async def _execute_with_gql_remote(
@@ -1319,7 +1313,6 @@ async def _execute_with_gql_remote(
         rewrite_all_from_cache,
         schedule_drop,
     )
-    from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
     from provisa.compiler.nf_extractor import (
         find_api_table_names,
@@ -1432,36 +1425,20 @@ async def _execute_with_gql_remote(
     rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites) if cache_rewrites else exec_sql
     trino_sql = transpile_to_trino(rewritten_sql)
 
-    def _run_query() -> list[dict]:
-        import trino as _trino
-
-        conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
-        try:
-            result = execute_trino(conn, trino_sql, params, span_attrs=span_attrs)
-            return [dict(zip(result.column_names, row)) for row in result.rows]
-        finally:
-            conn.close()
-
-    return await asyncio.get_event_loop().run_in_executor(None, _run_query)
+    result = await state.federation_engine.execute_engine(
+        trino_sql, params, conn_kwargs=state.trino_conn_kwargs, span_attrs=span_attrs
+    )
+    return [dict(zip(result.column_names, row)) for row in result.rows]
 
 
 async def _execute(
     sql: str, params: list, state: Any, span_attrs: dict[str, str] | None = None
 ) -> list[dict]:
     """Execute SQL against the federation engine and return rows as dicts."""
-    from provisa.executor.trino import execute_trino
-
-    trino_conn = getattr(state, "trino_conn", None)
-    if trino_conn is None:
+    if getattr(state, "trino_conn", None) is None:
         raise RuntimeError("Federation engine not connected")
-
-    import asyncio
-
-    def _run() -> list[dict]:
-        result = execute_trino(trino_conn, sql, params or [], span_attrs=span_attrs)
-        return [dict(zip(result.column_names, row)) for row in result.rows]
-
-    return await asyncio.get_event_loop().run_in_executor(None, _run)
+    result = await state.federation_engine.execute_engine(sql, params or [], span_attrs=span_attrs)
+    return [dict(zip(result.column_names, row)) for row in result.rows]
 
 
 async def _execute_call_body(
