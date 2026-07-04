@@ -243,14 +243,15 @@ async def _compile_cypher(client, query: str, flat_cypher: bool, role: str = "ad
 class TestFlatCypherReturn:
     """Regression: flat Cypher RETURN must expand fields as label__prop, not bare node alias.
 
-    Uses the live server (live_client) so no fixture config loading is needed —
-    the ps__pets → assignment relationship exists in the dev environment.
+    Uses the in-process ``client`` (sample_config) so the sa__orders → customer relationship is
+    always present. The shared live server is started by whichever requires_provisa_server test
+    runs first and may not carry this fixture config, so live_client would be order-dependent.
     """
 
-    async def test_flat_cypher_no_bare_node_alias(self, live_client):
+    async def test_flat_cypher_no_bare_node_alias(self, client):
         """flatCypher=True must not emit 'b AS assignment' — each field must be explicit."""
         resp = await _compile_cypher(
-            live_client,
+            client,
             "{ sa__orders { amount customer { name } } }",
             flat_cypher=True,
         )
@@ -264,10 +265,10 @@ class TestFlatCypherReturn:
         bare = re.search(r"\b[a-z]\s+AS\s+\w+\b", cypher)
         assert bare is None, f"RETURN must not use bare node alias: {cypher}"
 
-    async def test_flat_cypher_contains_per_field_paths(self, live_client):
+    async def test_flat_cypher_contains_per_field_paths(self, client):
         """flatCypher=True must expand joined fields as node.prop AS label__prop."""
         resp = await _compile_cypher(
-            live_client,
+            client,
             "{ sa__orders { amount customer { name } } }",
             flat_cypher=True,
         )
