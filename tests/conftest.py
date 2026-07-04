@@ -511,6 +511,8 @@ def provisa_server():
     """
     server_url = os.environ.get("PROVISA_URL", "http://localhost:8000")
     if _server_reachable(server_url):
+        # Reusing an externally-managed server: its Flight port is whatever it was started with.
+        os.environ["PROVISA_SERVER_FLIGHT_PORT"] = os.environ.get("FLIGHT_PORT", "8815")
         yield server_url
         return
 
@@ -526,8 +528,17 @@ def provisa_server():
             "require a Provisa server."
         )
 
+    # Give the subprocess its OWN free Arrow Flight port. The session-wide FLIGHT_PORT
+    # (_reserve_flight_port) is shared by every in-process ASGI app; if the subprocess inherited it,
+    # its Flight bind would clash with an already-bound in-process server and silently fail (HTTP
+    # comes up, Flight never binds). A dedicated free port makes the live-server Flight isolation-safe.
+    _flight_port = _free_port()
     venv_python = os.path.join(_REPO_ROOT, ".venv", "bin", "uvicorn")
-    server_env = {**os.environ, "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa"}
+    server_env = {
+        **os.environ,
+        "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa",
+        "FLIGHT_PORT": str(_flight_port),
+    }
     proc = subprocess.Popen(
         [venv_python, "main:app", "--host", "0.0.0.0", f"--port={_port}"],
         cwd=_REPO_ROOT,
@@ -546,9 +557,26 @@ def provisa_server():
         proc.terminate()
         raise RuntimeError(f"Provisa server did not become reachable at {server_url} within 90s")
 
+    # HTTP /health can precede the Flight gRPC bind; wait for the Flight port before yielding so
+    # requires_provisa_server tests never race the bind. Publish the port for Flight/ADBC clients.
+    _flight_deadline = time.monotonic() + 60
+    while time.monotonic() < _flight_deadline:
+        if _tcp_reachable(_host, _flight_port):
+            break
+        if proc.poll() is not None:
+            raise RuntimeError(f"Provisa server exited before Flight bind (code {proc.returncode})")
+        time.sleep(1)
+    else:
+        proc.terminate()
+        raise RuntimeError(
+            f"Provisa Arrow Flight server did not bind {_host}:{_flight_port} within 60s"
+        )
+    os.environ["PROVISA_SERVER_FLIGHT_PORT"] = str(_flight_port)
+
     try:
         yield server_url
     finally:
+        os.environ.pop("PROVISA_SERVER_FLIGHT_PORT", None)
         proc.terminate()
         try:
             proc.wait(timeout=10)

@@ -19,6 +19,8 @@ To run live tests:
 
 from __future__ import annotations
 
+import os
+
 import pyarrow as pa
 import pytest
 
@@ -38,13 +40,39 @@ class TestLiveAdbcExecution:
 
     PROVISA_URL = "http://localhost:8000"
     FLIGHT_HOST = "localhost"
-    FLIGHT_PORT = 8815
+
+    @classmethod
+    def _flight_port(cls) -> int:
+        # The provisa_server fixture starts the live server on a dedicated free Flight port and
+        # publishes it here (the shared session FLIGHT_PORT is owned by the in-process ASGI apps).
+        return int(os.environ.get("PROVISA_SERVER_FLIGHT_PORT", "8815"))
+
+    @classmethod
+    def _await_flight(cls, port: int, timeout: float = 60.0) -> None:
+        # /health can precede the Flight gRPC bind; poll the port so we never race the bind.
+        import socket
+        import time
+
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                with socket.create_connection((cls.FLIGHT_HOST, port), timeout=1):
+                    return
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(
+                        f"Arrow Flight server not listening on {cls.FLIGHT_HOST}:{port} "
+                        f"within {timeout}s"
+                    )
+                time.sleep(1)
 
     @pytest.fixture
     def conn(self):
         from provisa_client.adbc import adbc_connect  # pyright: ignore[reportMissingImports]
 
-        c = adbc_connect(self.PROVISA_URL, user="admin", password="provisa")
+        port = self._flight_port()
+        self._await_flight(port)
+        c = adbc_connect(self.PROVISA_URL, user="admin", password="provisa", port=port)
         yield c
         c.close()
 
@@ -80,7 +108,9 @@ class TestLiveAdbcExecution:
     def test_context_manager_closes_after_use(self, conn):
         from provisa_client.adbc import adbc_connect  # pyright: ignore[reportMissingImports]
 
-        fresh = adbc_connect(self.PROVISA_URL, user="admin", password="provisa")
+        fresh = adbc_connect(
+            self.PROVISA_URL, user="admin", password="provisa", port=self._flight_port()
+        )
         with fresh as c:
             cursor = c.cursor()
             cursor.execute("SELECT * FROM sa__orders LIMIT 1")
