@@ -22606,7 +22606,8 @@
   - REQ-822
   - REQ-565
 - id: REQ-825
-  status: proposed
+  status: in-progress
+  since: "2026-07"
   group: 6. Execution, Routing, Caching & Performance
   category: Execution & Routing
   priority: SHOULD
@@ -22657,7 +22658,15 @@
     | trino | snowflake | databricks | dremio | ...), not per-source. All query dispatch that today reads
     the hardcoded Trino singleton (provisa/api/app.py, provisa/api/data/endpoint.py, provisa/executor/trino.py)
     must route through the FederationEngine contract. The IR->physical mapping is intentionally thin —
-    the divergence is confined to dialect transpilation and the per-source federation strategy (REQ-826).'
+    the divergence is confined to dialect transpilation and the per-source federation strategy (REQ-826).
+    DONE (2026-07): the PLAN stage OUTPUT is modelled — provisa/federation/plan.py::build_execution_plan
+    composes the pure part of stage 4 into an ordered Plan: a prep phase (0..n PrepStep residency
+    loads/refreshes, one per source whose federate() strategy is MATERIALIZED and stale) feeding a single
+    terminal Route (DIRECT for a single VIRTUAL source, ENGINE otherwise). This is the four-primitive
+    flow''s planner surface built on the connector/federate contract (REQ-840/826). REMAINING (kept
+    in-progress): the other pipeline stages as engine-agnostic passes (transport ingress/egress, transpile
+    to IR, transpile to governed IR, codegen, execute) and routing the hardcoded-Trino dispatch through the
+    FederationEngine contract.'
   use_case: 'Decouples Provisa''s governed semantic layer from any single execution vendor. The same semantic
     layer, execution pipeline, governance, IR, and multi-protocol query surface run on an embedded desktop
     engine (DuckDB, no Trino), the Trino federation engine, or a customer''s existing warehouse (Snowflake/Databricks/Dremio)
@@ -22666,11 +22675,14 @@
     develop on DuckDB (laptop, zero infra, full governance and full source reach), then scale out to Trino/Snowflake/Databricks
     in production, unchanged.'
   code:
+  - provisa/federation/plan.py
   - provisa/api/app.py
   - provisa/api/data/endpoint.py
   - provisa/executor/trino.py
   - provisa/transpiler/router.py
   - provisa/core/config_loader.py
+  tests:
+  - tests/unit/test_federation_plan.py
   related_reqs:
   - REQ-826
   - REQ-830
