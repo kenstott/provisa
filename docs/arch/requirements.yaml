@@ -25272,3 +25272,128 @@
     - REQ-825
     - REQ-840
     - REQ-888
+- id: REQ-890
+  status: proposed
+  target: "2026-Q4"
+  group: "4. Source Connectors"
+  category: Federation Engine Abstraction
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Pgwire auth must be a pluggable provider interface selected at launch (trust | local | oidc),
+    superseding today's fixed MD5/cleartext wiring while keeping trust/cleartext as the baseline.
+    (a) A local-accounts provider stores SCRAM-SHA-256 verifiers at rest (RFC 5802 — random salt,
+    iterations, StoredKey/ServerKey; no cleartext stored or required on the wire, secure without TLS)
+    with a CLI to add/remove/list users, and offers SCRAM-SHA-256 as a wire auth mechanism.
+    (b) An external-token provider accepts an OIDC ID token (JWT) presented as the password and
+    verifies it against the issuer's JWKS (signature, exp, aud, iss); issuer-generic
+    (Firebase/Auth0/Google/Entra) via configured issuer URL + audience.
+  use_case: >-
+    Pgwire connections to Provisa today use MD5 or cleartext auth, neither of which meet enterprise
+    security standards. SCRAM-SHA-256 (salted, iterated, server-side verification) secures local
+    accounts without requiring TLS. OIDC integration allows enterprises to reuse their identity
+    provider, eliminating separate credential management for database access.
+  code:
+    - provisa/pgwire/server.py
+  related_reqs:
+    - REQ-883
+    - REQ-527
+- id: REQ-891
+  status: proposed
+  target: "2026-Q4"
+  group: "4. Source Connectors"
+  category: Federation Engine Abstraction
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Pgwire per-role authorization maps an authenticated account to Calcite/source schema+table
+    visibility, enforced in BOTH discovery and execution by construction: the catalog intercept
+    (provisa/pgwire/catalog.py) filters pg_catalog/information_schema discovery to the role's
+    allowed objects, and query execution rejects access to objects outside the role's grant.
+    Complements existing RLS/masking (which govern rows/columns) with object-level visibility
+    over the wire.
+  use_case: >-
+    Pgwire clients (DBeaver, DataGrip, DuckDB) discover database schemas via pg_catalog and
+    information_schema queries. Without object-level authorization filtering, a Pgwire client
+    will display all accessible Calcite schemas/tables to the user even if the user's role
+    should not see them. Enforcing role visibility in both discovery and execution prevents
+    information leakage and aligns object access with existing RLS/masking governance.
+  code:
+    - provisa/pgwire/catalog.py
+    - provisa/pgwire/_pipeline.py
+  related_reqs:
+    - REQ-883
+- id: REQ-892
+  status: proposed
+  target: "2026-Q4"
+  group: "4. Source Connectors"
+  category: Connector Abstraction
+  priority: MAY
+  type: structural
+  description: >-
+    Pgwire may present popular PostgreSQL extension surfaces backed by the federation engine,
+    as a pluggable opt-in-per-deployment mechanism: each surface (a) advertises itself in pg_extension
+    so clients see it "installed", (b) declares its types/OIDs in the single normalization module,
+    (c) maps its operators/functions to an engine function or rejects them explicitly
+    (convert-or-reject-loudly — a surface must NOT claim a capability, e.g. index acceleration,
+    it does not implement). Concrete surfaces: pgvector-compatible (vector type + distance operators
+    <-> L2, <=> cosine, <#> inner product, including ORDER BY emb <-> $1 similarity search, NOT
+    advertising ivfflat/hnsw index acceleration); PostGIS-subset (geometry/geography +
+    ST_Distance/ST_Contains/ST_DWithin/ST_Intersects/&&); JSON operators (-> ->> #> #>>
+    mapped to JSON_VALUE/JSON_QUERY); and compatibility functions (pg_trgm similarity()/%,
+    gen_random_uuid(), pgcrypto digest()).
+  use_case: >-
+    Pgwire clients assume PostgreSQL extensions are available (pgvector for ML/embedding workloads,
+    PostGIS for geospatial, JSON operators for document processing). Making these surfaces available
+    over the federation engine eliminates the need to add specialized backends or custom UDFs;
+    a single Provisa pgwire endpoint can serve diverse analytics workloads (ML, geospatial,
+    document) via compatibility operators mapped to federation engine functions.
+  code:
+    - provisa/pgwire/catalog.py
+    - provisa/pgwire/_pipeline.py
+  related_reqs:
+    - REQ-883
+    - REQ-842
+- id: REQ-893
+  status: proposed
+  target: "2026-Q4"
+  group: "4. Source Connectors"
+  category: Federation Engine Abstraction
+  priority: SHOULD
+  type: structural
+  description: >-
+    PostgreSQL can act as a pluggable FederationEngine (DriverClass.PARTIAL) via postgres_fdw,
+    enabling Postgres servers to attach foreign tables from other Postgres servers (ATTACH
+    mechanism — no data movement, references in place). FDW types (postgres_fdw, mysql_fdw,
+    file_fdw, mongo_fdw, tds_fdw, etc.) are provisioned at install time via CREATE EXTENSION;
+    per-source connections are created at runtime via CREATE SERVER + CREATE USER MAPPING + IMPORT
+    FOREIGN SCHEMA / CREATE FOREIGN TABLE. This mirrors Trino's architecture: connector types
+    bundled at provision, catalogs dynamically created at runtime (REQ-251).
+  use_case: >-
+    Enables Tier 1 deployment: a single PostgreSQL instance serves as both the metadata home
+    and the compute engine for PG-to-PG and cross-FDW federation, eliminating the need for Trino
+    until heterogeneous/broad federation is required. Maintains containerless deployment spirit
+    and completes the multi-tier deployment story. Governed queries pass through the semantic→IR
+    layer (RLS/masking applied before transpile), ensuring Postgres engine passes governance-parity
+    conformance suite (REQ-827) by construction.
+  notes: >-
+    Scale constraint (single-node, no MPP): like DuckDB, a Postgres+postgres_fdw engine executes on
+    ONE node — there is no massively-parallel execution. postgres_fdw pushes down predicates and
+    same-server joins/aggregates, but a cross-SERVER join (data from two different remotes) cannot
+    be pushed down and materializes locally, bounded by the single node's memory/CPU. This makes
+    DuckDB and Postgres the SINGLE-NODE federators (embedded / small-to-medium tiers, low latency,
+    no cluster); Trino is the only MPP federator (distributes federated joins/aggregations across a
+    worker cluster). The tier boundary is therefore about SCALE, not just breadth: run
+    DuckDB/Postgres compute until federation volume or concurrency outgrows one node, then graduate
+    to Trino for MPP. The metadata home never moves (REQ-889); only the compute engine scales up.
+    Implication for DriverClass: classification should reflect single-node vs MPP in addition to
+    connector breadth.
+  code: []
+  related_reqs:
+    - REQ-825
+    - REQ-840
+    - REQ-841
+    - REQ-888
+    - REQ-889
+    - REQ-827
+    - REQ-251
