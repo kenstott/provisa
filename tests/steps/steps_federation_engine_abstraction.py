@@ -10,21 +10,28 @@ from __future__ import annotations
 import struct
 
 import pytest
-from pytest_bdd import given, scenario, then, when
+from pytest_bdd import given, scenario, scenarios, then, when
 
+from provisa.core.models import Source, SourceType
 from provisa.executor.trino import QueryResult
-from provisa.pgwire.copy_handler import (
+from provisa.federation.connector import Mechanism
+from provisa.federation.engine import (
+    UnreachableSource,
+    build_duckdb_engine,
+    build_trino_engine,
+)
+from provisa.pgwire.copy_binary import (
     _COPY_BINARY_SIGNATURE,
     _duckdb_binary_tag,
     _encode_binary_field,
-    _queryresult_to_copy_bytes,
 )
+from provisa.pgwire.copy_handler import _queryresult_to_copy_bytes
 
 # ---------------------------------------------------------------------------
 # Scenario registration
 # ---------------------------------------------------------------------------
 
-FEATURE = "features/req_883_federation_engine_abstraction.feature"
+FEATURE = "../features/REQ-883.feature"
 
 
 @scenario(FEATURE, "REQ-883 default behaviour")
@@ -184,3 +191,138 @@ def then_text_copy_is_stable(shared_data):
     assert null_binary not in text_bytes_first, (
         "Text COPY output must not contain binary NULL encoding (int32 -1)"
     )
+
+
+scenarios("../features/REQ-841.feature")
+
+
+@pytest.fixture
+def shared_data_841():
+    return {}
+
+
+@given(
+    "a source reference and the configured federation engine",
+    target_fixture="shared_data",
+)
+def given_source_and_engine():
+    """Set up a reachable source (postgresql via Trino) and an unreachable one (oracle)."""
+    reachable_source = Source(
+        id="orders_pg",
+        type=SourceType.postgresql,
+        host="db.example.com",
+        port=5432,
+        database="orders",
+        username="reader",
+    )
+    unreachable_source = Source(
+        id="legacy_ora",
+        type=SourceType.oracle,
+        host="ora.example.com",
+        port=1521,
+        database="orcl",
+        username="reader",
+    )
+    engine = build_trino_engine()
+    return {
+        "engine": engine,
+        "reachable_source": reachable_source,
+        "unreachable_source": unreachable_source,
+    }
+
+
+@when("the planner resolves it")
+def when_planner_resolves(shared_data):
+    """Attempt resolution for both the reachable and unreachable source."""
+    engine = shared_data["engine"]
+
+    # Resolve the reachable source — must succeed.
+    try:
+        entry = engine.resolve(shared_data["reachable_source"])
+        shared_data["resolved_entry"] = entry
+        shared_data["resolve_error"] = None
+    except UnreachableSource as exc:
+        shared_data["resolved_entry"] = None
+        shared_data["resolve_error"] = exc
+
+    # Resolve the unreachable source — must raise.
+    try:
+        engine.resolve(shared_data["unreachable_source"])
+        shared_data["unreachable_error"] = None
+    except UnreachableSource as exc:
+        shared_data["unreachable_error"] = exc
+
+
+@then(
+    "if a connector exists it is exposed by that connector's mechanism "
+    "(attach in place, or land into materialization_store), "
+    "otherwise it is rejected as unreachable."
+)
+def then_connector_mechanism_or_rejected(shared_data):
+    engine = shared_data["engine"]
+
+    # --- Reachable source: connector found, exposed by its fixed mechanism ---
+    reachable_source = shared_data["reachable_source"]
+    assert shared_data["resolve_error"] is None, (
+        f"Reachable source unexpectedly raised: {shared_data['resolve_error']}"
+    )
+    entry = shared_data["resolved_entry"]
+    assert entry is not None, "resolve() returned None for a reachable source"
+
+    # The mechanism is fixed by the connector (REQ-841): postgresql on Trino is ATTACH.
+    connector = engine.connector_for(reachable_source.type.value)
+    assert entry.mechanism is connector.mechanism, (
+        f"Entry mechanism {entry.mechanism!r} does not match connector's fixed "
+        f"mechanism {connector.mechanism!r}"
+    )
+    assert entry.mechanism in (Mechanism.ATTACH, Mechanism.LAND), (
+        f"Mechanism must be ATTACH or LAND, got {entry.mechanism!r}"
+    )
+
+    # For ATTACH: details must describe the in-place reference (no data movement).
+    if entry.mechanism is Mechanism.ATTACH:
+        assert entry.details, (
+            "ATTACH mechanism must provide details describing the in-place reference"
+        )
+
+    # Engine and source_type are stamped correctly on the entry.
+    assert entry.engine == engine.name
+    assert entry.source_type == reachable_source.type.value
+
+    # --- Unreachable source: no connector → rejected as UnreachableSource ---
+    unreachable_err = shared_data["unreachable_error"]
+    assert unreachable_err is not None, (
+        "Expected UnreachableSource to be raised for a source with no connector, but it was not"
+    )
+    assert isinstance(unreachable_err, UnreachableSource), (
+        f"Expected UnreachableSource, got {type(unreachable_err)}"
+    )
+    assert unreachable_err.engine == engine.name
+    assert unreachable_err.source_type == shared_data["unreachable_source"].type.value
+
+    # Cross-check with engine.reachable() — must be consistent.
+    assert engine.reachable(reachable_source.type.value) is True
+    assert engine.reachable(shared_data["unreachable_source"].type.value) is False
+
+    # Verify mechanism is NOT chosen per query: calling resolve() again returns the
+    # same mechanism — it is fixed by the connector.
+    entry_again = engine.resolve(reachable_source)
+    assert entry_again.mechanism is entry.mechanism, (
+        "Mechanism changed between two resolve() calls — it must be fixed by the connector"
+    )
+
+    # Verify partial federator (DuckDB) also correctly rejects unreachable sources.
+    duckdb = build_duckdb_engine()
+    mysql_source = Source(
+        id="inv_mysql",
+        type=SourceType.mysql,
+        host="mysql.example.com",
+        port=3306,
+        database="inventory",
+        username="reader",
+    )
+    assert duckdb.reachable("mysql") is False
+    with pytest.raises(UnreachableSource) as exc_info:
+        duckdb.resolve(mysql_source)
+    assert exc_info.value.engine == "duckdb"
+    assert exc_info.value.source_type == "mysql"

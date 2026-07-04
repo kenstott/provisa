@@ -7580,6 +7580,28 @@ def step_then_validation_rejects_the_cdc_block_as_unsupported_for_that_sou():
     )
 
 
+# REQ-841
+@given("a source reference and the configured federation engine")
+def step_given_a_source_reference_and_the_configured_federation_engine():
+    pytest.skip("step not implemented: a source reference and the configured federation engine")
+
+
+# REQ-841
+@when("the planner resolves it")
+def step_when_the_planner_resolves_it():
+    pytest.skip("step not implemented: the planner resolves it")
+
+
+# REQ-841
+@then(
+    "if a connector exists it is exposed by that connector's mechanism (attach in place, or land into materialization_store), otherwise it is rejected as unreachable."
+)
+def step_then_if_a_connector_exists_it_is_exposed_by_that_connector_s_mech():
+    pytest.skip(
+        "step not implemented: if a connector exists it is exposed by that connector's mech"
+    )
+
+
 # REQ-849
 @given("a fresh, enabled MV covering a query's root table (and optionally some joins)")
 def step_given_a_fresh_enabled_mv_covering_a_query_s_root_table_and_optiona():

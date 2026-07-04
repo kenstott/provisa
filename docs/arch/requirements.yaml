@@ -23145,7 +23145,8 @@
   - tests/unit/test_admin_database.py
   - tests/integration/test_sqlalchemy_dialect.py
 - id: REQ-840
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 4. Source Connectors
   category: Federation Engine Abstraction
   priority: MUST
@@ -23174,9 +23175,19 @@
     self-only warehouse-native (Snowflake: own store only). Swapping the engine
     swaps the connector collection; planner/cache/freshness-gate logic is
     unchanged. Each Connector projects CatalogEntry rows into the engine catalog.
+    DONE (2026-07): provisa/federation/engine.py::FederationEngine owns a connector collection keyed
+    by source_type; reachable(source_type) is the binary connector-presence lookup; swapping the engine
+    swaps the collection. driver_class() classifies by collection contents — build_trino_engine
+    (postgres/mysql/sqlserver → BROAD), build_duckdb_engine (postgres + csv scanner → PARTIAL),
+    build_snowflake_engine (land-into-self only → SELF_ONLY).
   use_case: >-
     Support deployments whose engine ranges from a broad federator to a
     self-only data warehouse without changing planner or cache logic.
+  code:
+    - provisa/federation/engine.py
+    - provisa/federation/connector.py
+  tests:
+    - tests/unit/test_federation_engine.py
   competitive_position:
     status: ahead
     rationale: >-
@@ -23186,7 +23197,8 @@
   - REQ-841
   - REQ-842
 - id: REQ-841
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 4. Source Connectors
   category: Federation Engine Abstraction
   priority: MUST
@@ -23204,10 +23216,16 @@
     Then if a connector exists it is exposed by that connector's mechanism
     (attach in place, or land into materialization_store), otherwise it is rejected as
     unreachable.
+  code:
+    - provisa/federation/engine.py
+    - provisa/federation/connector.py
+  tests:
+    - tests/unit/test_federation_engine.py
   related_reqs:
   - REQ-840
 - id: REQ-842
-  status: proposed
+  status: in-progress
+  since: "2026-07"
   group: 4. Source Connectors
   category: Connector Abstraction
   priority: MUST
@@ -23235,14 +23253,30 @@
     -native (Snowflake) = no-op land-into-self. Per the V1 no-migrations
     constraint, the catalog-entry table is derived/rebuildable engine state,
     not a migrated Postgres table.
+    DONE (2026-07): provisa/federation/connector.py defines the Connector ABC keyed by
+    (engine, source_type) with capability() and details(source), projecting the persisted
+    CatalogEntry shape exactly — (name, engine, source_type, mechanism: attach|land, details: dict/jsonb).
+    Concrete connectors realize the three engine families: Trino postgres/mysql/sqlserver (attach,
+    connection-url/user/password .properties details), DuckDB postgres (attach dsn) + csv
+    (read_csv_auto view DDL), and a warehouse-native land-into-self no-op. catalog_add/remove/refresh
+    are the EngineCatalog.add/remove/refresh operations over these projected entries.
+    REMAINING (kept in-progress): typemap(source→engine) per connector, and the live APPLICATION of a
+    catalog entry to a running engine (writing Trino .properties / issuing DuckDB ATTACH+view DDL) —
+    wired with the executor in the federate() work (REQ-825-827).
   use_case: >-
     A single extensibility seam so new engines/sources/backends require only
     a connector, not core changes.
+  code:
+    - provisa/federation/connector.py
+    - provisa/federation/engine.py
+  tests:
+    - tests/unit/test_federation_engine.py
   related_reqs:
   - REQ-840
   - REQ-843
 - id: REQ-843
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 4. Source Connectors
   category: Connector Abstraction
   priority: MUST
@@ -23254,6 +23288,15 @@
     into the engine catalog on asset create/drop and on a full startup reconcile.
     A missing or stale catalog entry triggers re-projection from the registry —
     never a fallback or error-and-continue.
+    DONE (2026-07): EngineCatalog is derived state (name → CatalogEntry). FederationEngine.reconcile
+    rebuilds the whole projection from the source registry (only reachable sources project); ensure_entry
+    re-projects when the entry is missing or stale (!= the fresh projection) — never keeps stale, never
+    falls back. on_asset_create/on_asset_drop keep the catalog in step with registry mutations.
+  code:
+    - provisa/federation/engine.py
+    - provisa/federation/connector.py
+  tests:
+    - tests/unit/test_federation_engine.py
   related_reqs:
   - REQ-842
   - REQ-135
@@ -24831,4 +24874,34 @@
     - REQ-825
     - REQ-826
     - REQ-842
+    - REQ-527
+- id: REQ-884
+  status: proposed
+  group: "3. Governance & Observability"
+  category: Observability
+  priority: MUST
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    All Provisa internal logs—starting with the query audit log (REQ-074) and extending
+    to any other operational/observability logs—must be materialized and exposed as
+    first-class registered tables within a dedicated "ops" domain in Provisa's federated catalog.
+  use_case: >-
+    Makes operational telemetry queryable through the governed pipeline (pgwire/SQL/GraphQL/Cypher)
+    subject to role + domain access control, instead of only via the Python export path
+    (export_audit_log) or raw control-plane JDBC access which bypass governance. Enables
+    self-observability/dogfooding where an MCP/AI planner can read observability signals
+    through the same governed surface as business data. Closes the gap that query_audit_log
+    is not currently exposed in the federated pgwire catalog.
+  code:
+    - provisa/audit_log.py
+    - provisa/pgwire/catalog.py
+  scenario: |
+    Given a Provisa instance with query_audit_log records and a user with role r that has ops domain access
+    When the user queries "SELECT query, user, status FROM ops.query_audit_log WHERE timestamp > ..."
+    over pgwire
+    Then the query returns only the audit log rows that satisfy the user's domain access policy,
+    enforced by the governed access control layer
+  related_reqs:
+    - REQ-074
     - REQ-527
