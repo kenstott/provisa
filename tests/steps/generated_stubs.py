@@ -7684,6 +7684,28 @@ def step_then_if_a_connector_exists_it_is_exposed_by_that_connector_s_mech():
     )
 
 
+# REQ-845
+@given("a source with no attach connector for the active engine")
+def step_given_a_source_with_no_attach_connector_for_the_active_engine():
+    pytest.skip("step not implemented: a source with no attach connector for the active engine")
+
+
+# REQ-845
+@when("it is referenced concurrently after TTL expiry")
+def step_when_it_is_referenced_concurrently_after_ttl_expiry():
+    pytest.skip("step not implemented: it is referenced concurrently after TTL expiry")
+
+
+# REQ-845
+@then(
+    "a single coalesced pull lands its rows into materialization_store and the queries are rewritten to read the cached rows."
+)
+def step_then_a_single_coalesced_pull_lands_its_rows_into_materialization_():
+    pytest.skip(
+        "step not implemented: a single coalesced pull lands its rows into materialization_"
+    )
+
+
 # REQ-849
 @given("a fresh, enabled MV covering a query's root table (and optionally some joins)")
 def step_given_a_fresh_enabled_mv_covering_a_query_s_root_table_and_optiona():

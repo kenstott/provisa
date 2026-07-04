@@ -1,0 +1,92 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7a2c9d40-3b18-4e75-8f02-1c6a0d4f9b95
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""REQ-844/845/846/848: materialization store backend validity, write face, reactive set."""
+
+from __future__ import annotations
+
+import pytest
+
+from provisa.core.models import Source, SourceType
+from provisa.federation.engine import (
+    build_duckdb_engine,
+    build_snowflake_engine,
+    build_trino_engine,
+)
+from provisa.federation.materialization import (
+    InvalidMaterializationBackend,
+    WriteFace,
+    reactive_sources,
+    select_write_face,
+    validate_materialization_backend,
+)
+
+
+def _src(sid: str, type_: SourceType, **kw) -> Source:
+    return Source(id=sid, type=type_, host="h", port=1, database="d", username="u", **kw)
+
+
+# ---- backend validity (REQ-846) --------------------------------------------
+
+
+def test_engine_native_store_is_valid():
+    validate_materialization_backend(build_duckdb_engine(), "duckdb")  # own store, no raise
+
+
+def test_attach_reachable_backend_is_valid():
+    validate_materialization_backend(build_trino_engine(), "postgresql")  # Trino attaches PG
+
+
+def test_backend_with_no_connector_rejected():
+    with pytest.raises(InvalidMaterializationBackend, match="no connector"):
+        validate_materialization_backend(build_trino_engine(), "oracle")
+
+
+def test_land_only_backend_rejected_as_regress():
+    # A self-only warehouse engine cannot read a separate PG store landed into it.
+    with pytest.raises(InvalidMaterializationBackend):
+        validate_materialization_backend(build_snowflake_engine(), "postgresql")
+
+
+# ---- write face selection (REQ-848) -----------------------------------------
+
+
+def test_engine_native_write_face_collapses_into_engine():
+    assert select_write_face(build_duckdb_engine(), "duckdb") is WriteFace.ENGINE_NATIVE
+    assert select_write_face(build_snowflake_engine(), "snowflake") is WriteFace.ENGINE_NATIVE
+
+
+def test_separate_relational_store_uses_sqlalchemy_upsert():
+    assert select_write_face(build_trino_engine(), "postgresql") is WriteFace.SQLALCHEMY_UPSERT
+
+
+def test_write_face_validates_backend_first():
+    with pytest.raises(InvalidMaterializationBackend):
+        select_write_face(build_trino_engine(), "oracle")
+
+
+# ---- reactive-replica set (REQ-845) -----------------------------------------
+
+
+def test_reactive_set_is_engine_relative():
+    api = _src("api", SourceType.openapi, base_url="http://x")
+    pg = _src("pg", SourceType.postgresql)
+    mongo = _src("m", SourceType.mongodb)
+    sources = [api, pg, mongo]
+    # On Trino: pg is VIRTUAL (attach), api + mongo are MATERIALIZED (no connector).
+    assert reactive_sources(build_trino_engine(), sources) == {"api", "m"}
+
+
+def test_reactive_set_excludes_scannable_and_unreachable():
+    csv = _src("c", SourceType.csv, path="/c.csv")
+    pg = _src("pg", SourceType.postgresql)
+    api = _src("api", SourceType.openapi, base_url="http://x")
+    # On DuckDB: csv SCANs, pg VIRTUAL → neither reactive; api MATERIALIZED → reactive.
+    assert reactive_sources(build_duckdb_engine(), [csv, pg, api]) == {"api"}

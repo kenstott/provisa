@@ -23318,7 +23318,8 @@
   - REQ-842
   - REQ-135
 - id: REQ-844
-  status: proposed
+  status: in-progress
+  since: "2026-07"
   group: 4. Source Connectors
   category: Materialization Store
   priority: SHOULD
@@ -23378,6 +23379,19 @@
     Iceberg for the governed derived datasets whose history underpins audit,
     provenance, and bitemporal restatement. Supports security-conscious tenants
     pointing the store at their own data plane.
+  notes: >-
+    DONE (2026-07): the store's engine-relative foundations are in place on the federation contract —
+    membership is derived (a member is a source that federate() resolves to MATERIALIZED, i.e. the
+    reactive set; provisa/federation/materialization.py::reactive_sources), backend validity is enforced
+    (REQ-846), and the write face is selected per backend (REQ-848). REMAINING (kept in-progress): the
+    concrete store lifecycle — the two roles (replica vs view) over their selected substrate (relational
+    vs Iceberg with overwrite-snapshot semantics), durable load/refresh, and participation in federation
+    as a real joinable/scannable relation — lands with the freshness gate (REQ-855) and MV refresh path.
+  code:
+    - provisa/federation/materialization.py
+    - provisa/federation/engine.py
+  tests:
+    - tests/unit/test_federation_materialization.py
   related_reqs:
   - REQ-135
   - REQ-158
@@ -23396,7 +23410,8 @@
   - REQ-855
   - REQ-862
 - id: REQ-845
-  status: proposed
+  status: in-progress
+  since: "2026-07"
   group: 4. Source Connectors
   category: Materialization Store
   priority: SHOULD
@@ -23409,11 +23424,22 @@
     pull-through set (renamed from api_cache; the role is source-agnostic).
     Pull-through is TTL/freshness-gated (per the REQ-855 freshness policy) and
     single-flighted to prevent upstream stampede on concurrent misses.
+    DONE (2026-07): the engine-relative reactive set is derived — provisa/federation/materialization.py::
+    reactive_sources returns { source.id : federate(source, engine) is MATERIALIZED }, so the pull-through
+    set is a function of engine reach (a VIRTUAL/SCAN source is never a reactive replica; an unreachable
+    source is excluded). REMAINING (kept in-progress): the TTL/freshness-gated, single-flighted
+    pull-through execution that lands rows into the store on miss — lands with the write face (REQ-848)
+    and the freshness gate (REQ-855).
   scenario: |
     Given a source with no attach connector for the active engine
     When it is referenced concurrently after TTL expiry
     Then a single coalesced pull lands its rows into materialization_store and the queries
     are rewritten to read the cached rows.
+  code:
+    - provisa/federation/materialization.py
+    - provisa/federation/strategy.py
+  tests:
+    - tests/unit/test_federation_materialization.py
   competitive_position:
     status: ahead
     rationale: >-
@@ -23426,7 +23452,8 @@
   - REQ-841
   - REQ-855
 - id: REQ-846
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 4. Source Connectors
   category: Materialization Store
   priority: MUST
@@ -23440,6 +23467,16 @@
     backend with no connector, or with only a land connector, is rejected at
     startup (e.g., a separate Postgres materialization_store is invalid under a self-only
     warehouse-native engine, which has no connector for it).
+    DONE (2026-07): provisa/federation/materialization.py::validate_materialization_backend rejects a
+    backend the engine could not read back — valid only when it is the engine's own native store or has
+    an ATTACH connector; no connector or a LAND-only connector raises InvalidMaterializationBackend (the
+    land-into-land regress). select_write_face validates the backend before returning a face, so an
+    invalid backend is rejected wherever a write is set up.
+  code:
+    - provisa/federation/materialization.py
+    - provisa/federation/engine.py
+  tests:
+    - tests/unit/test_federation_materialization.py
   related_reqs:
   - REQ-844
   - REQ-840
@@ -23461,7 +23498,8 @@
   - REQ-844
   - REQ-855
 - id: REQ-848
-  status: proposed
+  status: in-progress
+  since: "2026-07"
   group: 4. Source Connectors
   category: Materialization Store
   priority: SHOULD
@@ -23474,6 +23512,17 @@
     into DuckDB tables; a warehouse-native engine caching into itself), and
     uses SQLAlchemy upsert when the backend is a separate but attach-able
     relational store.
+    DONE (2026-07): the write-face SELECTION is implemented — provisa/federation/materialization.py::
+    select_write_face returns ENGINE_NATIVE when the backend is the engine's own native store (collapse
+    into the engine), SQLALCHEMY_UPSERT for a separate attach-able relational store, else APP_LAND; it
+    validates the backend first (REQ-846). REMAINING (kept in-progress): the write-face IMPLEMENTATIONS
+    that execute the land (engine CTAS/load, the SQLAlchemy upsert over the Database abstraction, app-side
+    land) — wired with the store's load path.
+  code:
+    - provisa/federation/materialization.py
+    - provisa/federation/engine.py
+  tests:
+    - tests/unit/test_federation_materialization.py
   related_reqs:
   - REQ-844
 - id: REQ-849

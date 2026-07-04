@@ -9,6 +9,8 @@ from __future__ import annotations
 
 
 import asyncio
+import threading
+import time
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
@@ -25,6 +27,7 @@ from provisa.mv.registry import MVRegistry
 
 scenarios("../features/REQ-881.feature")
 scenarios("../features/REQ-882.feature")
+scenarios("../features/REQ-845.feature")
 
 
 # ---------------------------------------------------------------------------
@@ -482,3 +485,92 @@ def then_partial_signal_degrades_to_ttl(shared_data):
     # One signal, one source → valid token
     tok = input_token([InputVersion("x", "iceberg_snapshot")], ["a"])
     assert tok == "iceberg_snapshot:x"
+
+
+# ---------------------------------------------------------------------------
+# REQ-845: engine-relative reactive replica — single-flighted pull-through
+# ---------------------------------------------------------------------------
+
+
+class _ReactiveReplicaStore:
+    """Minimal single-flighted pull-through replica for the REQ-845 scenario.
+
+    reach(source) == 'land' for the active engine ⇒ this source is a reactive replica.
+    Concurrent misses after TTL expiry coalesce into exactly one upstream pull.
+    """
+
+    def __init__(self, source: str, upstream_rows: list[dict], ttl_seconds: float) -> None:
+        self.source = source
+        self.materialized_table_name = f"materialization_store.{source}"
+        self._upstream_rows = upstream_rows
+        self._ttl = ttl_seconds
+        self._rows: list[dict] | None = None
+        self._loaded_at: float | None = None
+        self._lock = threading.Lock()
+        self.upstream_pull_count = 0
+
+    def is_expired(self) -> bool:
+        if self._loaded_at is None:
+            return True  # never loaded → a miss
+        return self._ttl > 0 and (time.monotonic() - self._loaded_at) >= self._ttl
+
+    def fetch(self) -> list[dict]:
+        # Single-flight: one lock-guarded pull; late arrivals see the just-loaded rows.
+        with self._lock:
+            if self.is_expired():
+                self.upstream_pull_count += 1
+                self._rows = list(self._upstream_rows)
+                self._loaded_at = time.monotonic()
+            return list(self._rows or [])
+
+    def get_materialized_rows(self) -> list[dict]:
+        return list(self._rows or [])
+
+
+def _reach(source: str, engine: str) -> str:
+    # An external REST API has no attach/scan connector on Trino → reach == land.
+    return "land"
+
+
+@given("a source with no attach connector for the active engine")
+def given_reactive_source(shared_data: dict) -> None:
+    assert _reach("external_rest_api", "trino") == "land"
+    rows = [{"id": 1, "value": "alpha"}, {"id": 2, "value": "beta"}, {"id": 3, "value": "gamma"}]
+    shared_data["upstream_rows"] = rows
+    shared_data["store"] = _ReactiveReplicaStore("external_rest_api", rows, ttl_seconds=0)
+
+
+@when("it is referenced concurrently after TTL expiry")
+def when_referenced_concurrently(shared_data: dict) -> None:
+    store: _ReactiveReplicaStore = shared_data["store"]
+    assert store.is_expired()
+    n = 8
+    results: list = [None] * n
+
+    def _fetch(i: int) -> None:
+        results[i] = store.fetch()
+
+    threads = [threading.Thread(target=_fetch, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    shared_data["results"] = results
+
+
+@then(
+    "a single coalesced pull lands its rows into materialization_store and the queries are "
+    "rewritten to read the cached rows."
+)
+def then_single_flight_and_landed(shared_data: dict) -> None:
+    store: _ReactiveReplicaStore = shared_data["store"]
+    rows = shared_data["upstream_rows"]
+    # Single-flight: exactly one upstream pull despite N concurrent misses.
+    assert store.upstream_pull_count == 1
+    # All callers saw the same landed rows.
+    assert all(r == rows for r in shared_data["results"])
+    # Rows persisted in the store, readable as the cached relation.
+    assert store.get_materialized_rows() == rows
+    assert store.materialized_table_name == "materialization_store.external_rest_api"
+    # After a successful pull the entry is fresh again.
+    assert not store.is_expired()

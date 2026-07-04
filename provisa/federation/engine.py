@@ -77,10 +77,15 @@ class EngineCatalog:  # REQ-843
 class FederationEngine:  # REQ-840
     """A federation engine: a named connector collection plus its derived catalog."""
 
-    def __init__(self, name: str, connectors: list[Connector]) -> None:
+    def __init__(
+        self, name: str, connectors: list[Connector], *, native_store: str | None = None
+    ) -> None:
         self.name = name
         self.connectors: dict[str, Connector] = {c.source_type: c for c in connectors}
         self.catalog = EngineCatalog()
+        # The source_type of the engine's OWN store, into which it materializes natively
+        # (DuckDB → "duckdb", Snowflake → "snowflake"); None for a pure federator (Trino).
+        self.native_store = native_store
 
     # -- reachability (REQ-840) ------------------------------------------------
 
@@ -165,10 +170,16 @@ def build_trino_engine() -> FederationEngine:  # REQ-840 broad federator
 def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
     from provisa.federation.connector import DuckDBCsvConnector, DuckDBPostgresConnector
 
-    return FederationEngine("duckdb", [DuckDBPostgresConnector(), DuckDBCsvConnector()])
+    return FederationEngine(
+        "duckdb", [DuckDBPostgresConnector(), DuckDBCsvConnector()], native_store="duckdb"
+    )
 
 
 def build_snowflake_engine() -> FederationEngine:  # REQ-840 self-only warehouse
     from provisa.federation.connector import WarehouseNativeConnector
 
-    return FederationEngine("snowflake", [WarehouseNativeConnector("snowflake", "snowflake")])
+    return FederationEngine(
+        "snowflake",
+        [WarehouseNativeConnector("snowflake", "snowflake")],
+        native_store="snowflake",
+    )
