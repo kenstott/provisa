@@ -82,8 +82,16 @@ Larger authorship; testable without the federation substrate, some need an adapt
   embedded is not certified until meta-RLS moves to the app layer (a security-critical control-plane
   refactor, same class as REQ-866). REQ-830 stateful-component topology also remains. NOTE: the
   dev/e2e host-port collision is REQ-876 (Tier 4 [19]).
-- **[5] Encryption core — REQ-684–689.** C4/V4/I3. `EncryptionService` with `NullEncryption` +
-  `LocalKeychain` first — unit-testable, no cloud. Separate track; does not touch the substrate.
+- **[5] Encryption core — REQ-684–689.** REQ-684 + REQ-685 ✅ done (2026-07). New
+  `provisa/encryption/`: `EncryptionService` abstraction + `NullEncryption` passthrough +
+  `LocalKeychain` (AES-256-GCM master-key wrap) + a fail-closed factory (REQ-684); envelope
+  encryption — fresh per-payload DEK, AES-256-GCM, self-describing `magic|ver|wrapped_dek|iv|ct`
+  format, TTL DEK cache (REQ-685). 17 unit tests (round-trip, DEK-per-payload, tamper/wrong-key
+  rejection, fail-closed factory), no cloud. **Remaining:** the app wirings REQ-686 (PG column
+  encryption), REQ-687 (Trino cache), REQ-688 (Redis hot tables), REQ-689 (audit query text) —
+  each a focused change wiring the service into a data path; chunked-streaming mode for large
+  bulk payloads (687) extends the single-shot envelope. Cloud KMS providers are Tier 4 [16]
+  (REQ-690–694).
 - **[6] Mutation-authz adapters + surface projection — REQ-870–872.** C4/V4/I4. Depends on [3].
   Admin-only reclassification gated by `ACCESS_CONFIG` (REQ-870); per-protocol association-
   suggesters emitting ranked `mutation → table` candidates (REQ-871); projection of

@@ -18361,7 +18361,8 @@
     rationale: M:N relationship support via explicit join tables is available in Hasura (array relationships
       with join tables) and standard in Dremio and Denodo.
 - id: REQ-684
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
@@ -18371,7 +18372,12 @@
     operations route through this interface. Configured via provisa.yaml encryption.provider and encryption.key_id.
   use_case: Single interface decouples encryption policy from storage and transport layers, enabling the
     same application code to run encrypted on desktop, SMB SaaS, and enterprise BYOK deployments.
-  target: 2026-Q4
+  code:
+  - provisa/encryption/service.py
+  - provisa/encryption/providers.py
+  - provisa/encryption/factory.py
+  tests:
+  - tests/unit/test_encryption.py
   integration_test: not_required
   integration_test_reason: Abstraction and interface contracts are logic-only; pluggable implementations
     tested via mock KMS.
@@ -18383,7 +18389,8 @@
     rationale: EncryptionService abstraction with pluggable LocalKeychain/AwsKms/AzureKeyVault/Null implementations
       is more portable than Snowflake's single-provider column encryption or Dremio's at-rest-only encryption.
 - id: REQ-685
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
@@ -18395,7 +18402,10 @@
     to bound memory usage on large payloads.
   use_case: Prevents large payload memory issues and excessive KMS costs. One KMS call per payload, not
     per row. Streaming chunks mean memory overhead is constant regardless of payload size.
-  target: 2026-Q4
+  code:
+  - provisa/encryption/envelope.py
+  tests:
+  - tests/unit/test_encryption.py
   integration_test: not_required
   integration_test_reason: Envelope encryption algorithm and chunk handling are pure logic; mock KMS provides
     full fidelity.
