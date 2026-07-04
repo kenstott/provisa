@@ -25359,7 +25359,7 @@
   target: "2026-Q4"
   group: "4. Source Connectors"
   category: Federation Engine Abstraction
-  priority: SHOULD
+  priority: MAY
   type: structural
   description: >-
     PostgreSQL can act as a pluggable FederationEngine (DriverClass.PARTIAL) via postgres_fdw,
@@ -25388,6 +25388,29 @@
     to Trino for MPP. The metadata home never moves (REQ-889); only the compute engine scales up.
     Implication for DriverClass: classification should reflect single-node vs MPP in addition to
     connector breadth.
+
+    Value positioning (deprioritized to MAY): a Postgres engine adds NO federation-scale advantage
+    over DuckDB — both are single-node, and horizontal scale is already achieved by running multiple
+    stateless Provisa instances behind a load balancer with DuckDB. Postgres's value is purely
+    OPERATIONAL, not federation: (1) inspectable — a real listening server (psql, pg_stat_*, EXPLAIN,
+    standard monitoring/backup) vs DuckDB's opaque in-process file; (2) hardened/mature — MVCC, WAL,
+    replication/HA/PITR, auth/roles; (3) shared concurrent state — N stateless Provisa app instances
+    can share ONE Postgres as both metadata home and single-node engine, whereas DuckDB is embedded/
+    single-writer so each instance needs its own file (no shared home across a fleet). So DuckDB is
+    the PRIMARY embedded single-node federator (Tier 0, per-instance); Postgres is the OPTIONAL
+    shared/hardened/inspectable state+compute tier for fleets that want one concurrent backend. Build
+    only if that ops profile is needed; not required for federation capability.
+
+    Additional Postgres advantages for the SHARED-backend role: (a) connection pooling — PG is a
+    multi-client server built for pooled clients (pgbouncer, server-side max_connections, driver
+    pools), whereas DuckDB has no server-side pool (Provisa multiplexes threads/cursors to one file);
+    (b) stability/maturity matters more for a shared backend than a per-instance file; (c) STANDARDIZED
+    federation surface — postgres_fdw implements SQL/MED (ISO SQL's standard for external data:
+    CREATE FOREIGN TABLE, IMPORT FOREIGN SCHEMA), while DuckDB's ATTACH + read_* scanners are
+    DuckDB-specific. DuckDB concurrency model (for contrast): one Provisa process owns one embedded
+    DuckDB and IS the multi-user multiplexer — concurrent readers are cheap (MVCC snapshots), writers/
+    materialization serialize and are coordinated by Provisa's execution layer; DuckDB is not a
+    multi-client server.
   code: []
   related_reqs:
     - REQ-825
