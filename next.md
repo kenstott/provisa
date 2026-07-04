@@ -179,6 +179,14 @@ by when they become buildable.
   discipline as REQ-866 — every `_META_TABLES` access must apply the tenant filter in app code, and
   it needs multi-tenant verification. Couplings 1 & 2 (the `Database` abstraction + `schema_org`)
   are already done; this is the last gate. Do as a focused, adversarially-verified task.
+- **[21] Row-level MV delta capture — REQ-877 (new).** Opt-in per-table row deltas, the row-level
+  companion to column lineage (REQ-862). Native-first: Iceberg snapshot changelog / watermark
+  slice (REQ-874); full-MV hashing only for the RDB-no-watermark case. Constraints baked into the
+  req: **query-generated / DB-side compute** (push hash + EXCEPT-diff down as SQL, never download
+  rows), **non-blocking** (off the refresh critical path), a **system-wide `max_row_hashing`**
+  ceiling (global default + per-table override; skip+log above it, never sample), **column
+  exclusion** in the opt-in, and a separate append-only delta ledger. Gated on the substrate /
+  native-diff work; build alongside REQ-874.
 
 ## Critical path & parallel tracks
 

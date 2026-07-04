@@ -24311,3 +24311,54 @@
     - REQ-816
     - REQ-828
     - REQ-830
+- id: REQ-877
+  status: proposed
+  group: "5. Data Lineage & Provenance"
+  category: Row-Level Delta Capture
+  priority: MAY
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Opt-in, per-table row-level delta capture for materialized views — the row-level
+    companion to the column-level lineage trace (REQ-862). Each MV refresh can record
+    which rows changed (insert / update / delete) since the prior refresh, so downstream
+    consumers get change-data-capture on a derived dataset and audit gets row-granular
+    provenance. NATIVE-FIRST — hashing is the fallback, never the default: (1) an
+    Iceberg-target MV derives deltas from a snapshot-to-snapshot changelog scan (no
+    hashing, no retained state); (2) a watermarked source (REQ-260 watermark_column)
+    derives the delta from the watermark-bounded slice — this IS the output-side mirror of
+    REQ-874 delta-fetch; (3) ONLY an RDB target with no watermark falls back to full-MV row
+    hashing. QUERY-GENERATED — MAKE THE DB THE COMPUTE: the row hash and the diff are pushed down
+    as SQL (hash via the engine's md5/sha over the canonical row projection; the delta via a set
+    operation — EXCEPT / anti-join — between the current and the previous hash relation, the
+    previous snapshot persisted as a relation). Provisa issues the query and lands the result
+    (INSERT…SELECT / CTAS in the engine); it MUST NOT SELECT rows out and hash/diff them in Python.
+    The delta is (key, change_type, old_hash, new_hash). COLUMN EXCLUSION: the opt-in specifies
+    which columns are EXCLUDED from the row hash (e.g. volatile audit/updated_at columns), so a
+    change to an ignored column is not reported as a row change — the hash is computed over the
+    included projection only. The hash path is the expensive case and is strictly OPT-IN per table
+    (default off). A SYSTEM-WIDE config sets the row-count ceiling for
+    the hash path — `max_row_hashing` (global default in provisa.yaml, per-table override) —
+    above which hash-based delta capture is SKIPPED and logged (mirrors the existing MV
+    materialization max_rows guard); never sampled (sampling would make an audit delta lossy and
+    untrustworthy). Deltas land in a SEPARATE append-only ledger keyed by (mv_id,
+    definition_version, refresh_trace_id) — the same store-independent principle as mv_refresh_log
+    (REQ-862), never stamped on the target table. NON-BLOCKING: delta capture — especially the
+    full-MV hash path — MUST run off the refresh critical path in a background thread/task; the
+    refresh completes and marks fresh without waiting on delta computation, and a slow or failed
+    delta capture never delays or fails the refresh (best-effort provenance, logged on failure).
+  use_case: >-
+    Gives audit and incremental-consumption workflows row-level "what changed between refresh N and
+    N+1" without a bespoke CDC service, while bounding cost: capable targets/sources (Iceberg,
+    watermarked) get deltas cheaply from the engine, and the expensive full-MV hash path is opt-in
+    and ceiling-guarded so very large MVs never silently pay for it.
+  code:
+    - provisa/mv/refresh.py
+    - provisa/lineage/
+    - provisa/core/config_loader.py
+    - provisa/core/schema_org.py
+  related_reqs:
+    - REQ-862
+    - REQ-874
+    - REQ-826
+    - REQ-260
