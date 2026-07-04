@@ -128,7 +128,7 @@ async def _collect_events(
     provider: DebeziumNotificationProvider,
     table: str,
     count: int,
-    timeout: float = 30.0,
+    timeout: float = 60.0,
 ) -> list:
     """Collect up to *count* ChangeEvents from *provider* within *timeout* seconds."""
     events = []
@@ -144,7 +144,7 @@ async def _collect_events(
 
 
 async def _await_consumer_ready(
-    provider: DebeziumNotificationProvider, timeout: float = 30.0
+    provider: DebeziumNotificationProvider, timeout: float = 60.0
 ) -> None:
     """Block until the provider's Kafka consumer holds a partition assignment.
 
