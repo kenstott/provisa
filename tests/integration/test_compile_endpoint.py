@@ -251,7 +251,7 @@ class TestFlatCypherReturn:
         """flatCypher=True must not emit 'b AS assignment' — each field must be explicit."""
         resp = await _compile_cypher(
             live_client,
-            "{ ps__pets { name assignment { breedName } } }",
+            "{ sa__orders { amount customer { name } } }",
             flat_cypher=True,
         )
         assert resp.status_code == 200
@@ -268,7 +268,7 @@ class TestFlatCypherReturn:
         """flatCypher=True must expand joined fields as node.prop AS label__prop."""
         resp = await _compile_cypher(
             live_client,
-            "{ ps__pets { name assignment { breedName } } }",
+            "{ sa__orders { amount customer { name } } }",
             flat_cypher=True,
         )
         assert resp.status_code == 200

@@ -19,6 +19,8 @@ Tests the REST route generation layer in two complementary ways:
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from provisa.api.rest.generator import (
@@ -36,26 +38,32 @@ pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
 
 class TestParseWhereParams:
-    """Test _parse_where_params query string parsing."""
+    """Test _parse_where_params — the ?filter=JSON query param (list of field/comparator/value)."""
+
+    @staticmethod
+    def _filter(*entries):
+        return {"filter": json.dumps(list(entries))}
 
     async def test_simple_eq_filter(self):
-        params = {"where.region.eq": "us-east"}
+        params = self._filter({"field": "region", "comparator": "eq", "value": "us-east"})
         result = _parse_where_params(params)
         assert result == {"region": {"eq": "us-east"}}
 
     async def test_numeric_gt_filter(self):
-        params = {"where.amount.gt": "100"}
+        params = self._filter({"field": "amount", "comparator": "gt", "value": 100})
         result = _parse_where_params(params)
         assert "amount" in result
         assert "gt" in result["amount"]
 
-    async def test_in_filter_splits_on_comma(self):
-        params = {"where.region.in": "us-east,eu-west"}
+    async def test_in_filter_list_value(self):
+        params = self._filter(
+            {"field": "region", "comparator": "in", "value": ["us-east", "eu-west"]}
+        )
         result = _parse_where_params(params)
         assert result["region"]["in"] == ["us-east", "eu-west"]
 
     async def test_unknown_op_ignored(self):
-        params = {"where.region.INVALID": "x"}
+        params = self._filter({"field": "region", "comparator": "INVALID", "value": "x"})
         result = _parse_where_params(params)
         assert result == {}
 
@@ -65,49 +73,53 @@ class TestParseWhereParams:
         assert result == {}
 
     async def test_multiple_filters_collected(self):
-        params = {
-            "where.region.eq": "us-east",
-            "where.amount.gte": "500",
-        }
+        params = self._filter(
+            {"field": "region", "comparator": "eq", "value": "us-east"},
+            {"field": "amount", "comparator": "gte", "value": 500},
+        )
         result = _parse_where_params(params)
         assert "region" in result
         assert "amount" in result
 
-    async def test_malformed_key_ignored(self):
-        # Only two parts — missing op segment
-        params = {"where.region": "us-east"}
+    async def test_malformed_entry_ignored(self):
+        # Missing comparator segment.
+        params = self._filter({"field": "region", "value": "us-east"})
         result = _parse_where_params(params)
         assert result == {}
 
 
 class TestParseOrderByParams:
-    """Test _parse_order_by_params query string parsing."""
+    """Test _parse_order_by_params — the ?orderBy=JSON query param (list of field/direction)."""
+
+    @staticmethod
+    def _order(*entries):
+        return {"orderBy": json.dumps(list(entries))}
 
     async def test_asc_ordering(self):
-        params = {"order_by.created_at": "asc"}
+        params = self._order({"field": "created_at", "direction": "asc"})
         result = _parse_order_by_params(params)
         assert result == [{"field": "created_at", "dir": "asc"}]
 
     async def test_desc_ordering(self):
-        params = {"order_by.amount": "desc"}
+        params = self._order({"field": "amount", "direction": "desc"})
         result = _parse_order_by_params(params)
         assert result == [{"field": "amount", "dir": "desc"}]
 
     async def test_invalid_direction_defaults_to_asc(self):
-        params = {"order_by.amount": "INVALID"}
+        params = self._order({"field": "amount", "direction": "INVALID"})
         result = _parse_order_by_params(params)
         assert result[0]["dir"] == "asc"
 
     async def test_non_order_by_params_ignored(self):
-        params = {"limit": "5", "where.region.eq": "us-east"}
+        params = {"limit": "5"}
         result = _parse_order_by_params(params)
         assert result == []
 
     async def test_multiple_ordering_columns(self):
-        params = {
-            "order_by.created_at": "desc",
-            "order_by.amount": "asc",
-        }
+        params = self._order(
+            {"field": "created_at", "direction": "desc"},
+            {"field": "amount", "direction": "asc"},
+        )
         result = _parse_order_by_params(params)
         fields = {o["field"] for o in result}
         assert fields == {"created_at", "amount"}
@@ -310,6 +322,11 @@ class TestRestEndpointsHTTP:
         app_state.source_types = {"test-pg": "postgresql"}
         app_state.source_dialects = {"test-pg": "postgres"}
         app_state.masking_rules = {}
+        # REST routes are domain-scoped (/data/rest/{domain_id}/{table_name}); the handler resolves
+        # the GraphQL field via this path map (REQ-256).
+        app_state.table_path_maps = {
+            "admin": {"orders": {"domain_id": "default", "table_name": "orders"}}
+        }
 
         app = FastAPI()
         rest_router = create_rest_router(app_state)
@@ -325,7 +342,7 @@ class TestRestEndpointsHTTP:
 
         try:
             async with client:
-                response = await client.get("/data/rest/orders")
+                response = await client.get("/data/rest/default/orders")
             assert response.status_code == 200
             body = response.json()
             assert "data" in body
@@ -340,8 +357,12 @@ class TestRestEndpointsHTTP:
         try:
             async with client:
                 response = await client.get(
-                    "/data/rest/orders",
-                    params={"where.region.eq": "us-east"},
+                    "/data/rest/default/orders",
+                    params={
+                        "filter": json.dumps(
+                            [{"field": "region", "comparator": "eq", "value": "us-east"}]
+                        )
+                    },
                 )
             assert response.status_code == 200
             body = response.json()
@@ -357,7 +378,7 @@ class TestRestEndpointsHTTP:
 
         try:
             async with client:
-                response = await client.get("/data/rest/orders", params={"limit": "3"})
+                response = await client.get("/data/rest/default/orders", params={"limit": "3"})
             assert response.status_code == 200
             rows = response.json().get("data", [])
             assert len(rows) <= 3
@@ -371,8 +392,10 @@ class TestRestEndpointsHTTP:
         try:
             async with client:
                 response = await client.get(
-                    "/data/rest/orders",
-                    params={"where.id.eq": "99999"},
+                    "/data/rest/default/orders",
+                    params={
+                        "filter": json.dumps([{"field": "id", "comparator": "eq", "value": 99999}])
+                    },
                 )
             assert response.status_code == 200
             rows = response.json().get("data", [])
@@ -386,7 +409,7 @@ class TestRestEndpointsHTTP:
 
         try:
             async with client:
-                response = await client.get("/data/rest/orders")
+                response = await client.get("/data/rest/default/orders")
             # RLS may restrict rows but should not cause a 500 error
             assert response.status_code in (200, 403)
         finally:
@@ -398,7 +421,7 @@ class TestRestEndpointsHTTP:
 
         try:
             async with client:
-                response = await client.get("/data/rest/orders")
+                response = await client.get("/data/rest/default/orders")
             ct = response.headers.get("content-type", "")
             assert "application/json" in ct
         finally:
@@ -440,5 +463,5 @@ class TestRestEndpointsHTTP:
 
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            response = await client.get("/data/rest/nonexistent_table")
+            response = await client.get("/data/rest/default/nonexistent_table")
         assert response.status_code == 404
