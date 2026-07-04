@@ -24447,6 +24447,17 @@
     no partial data. NOT held pessimistic locks (SELECT FOR UPDATE over a long refresh holds a
     transaction open and a crash leaves a stuck lock) — leases + fencing. The catalog is the
     same structure that holds freshness (REQ-855) and the version/lineage stamps (REQ-862).
+    CONSISTENCY KNOB: a per-MV `consistency` setting selects the tier — `shared` (default)
+    engages this coordination catalog (one snapshot-consistent copy); `distributed`
+    per-instance-materializes and does NOT engage it. The distributed tier is only
+    eventually consistent under TWO preconditions: (a) a DETERMINISTIC view_sql — enforced
+    at registration (reject now()/random()/uuid/unordered-LIMIT; provisa/mv/determinism.py);
+    and (b) source QUIESCENCE — the source must stop changing long enough within a refresh
+    cycle for all instances to materialize the same source state. A never-settling
+    high-churn source never converges (each instance perpetually reflects a different
+    snapshot), so the distributed tier is inappropriate for it — determinism is necessary
+    but not sufficient. Quiescence is a workload property, not statically checkable, so it is
+    an operational constraint on choosing `distributed`, whereas determinism is validated.
   use_case: >-
     Lets an arbitrary number of control-plane/engine instances run behind a load balancer
     against one shared materialization store without redundant refreshes, write races, or a

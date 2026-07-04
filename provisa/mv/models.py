@@ -70,6 +70,13 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     serves_aggregates: bool = False
     aggregate_columns: list[str] = field(default_factory=list)
 
+    # Consistency tier (REQ-879, ADR 0001): "shared" = one coordinated copy in the
+    # materialization store (snapshot-consistent; engages the refresh-coordination
+    # catalog). "distributed" = per-instance materialization (eventually consistent —
+    # requires a deterministic view AND a source that quiesces within a refresh cycle;
+    # never converges for a never-settling high-churn source).
+    consistency: str = "shared"
+
     # Lifecycle guards
     max_rows: int = 1_000_000
     orphan_grace_period: int = 86400  # 24h in seconds

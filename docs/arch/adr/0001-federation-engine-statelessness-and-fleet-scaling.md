@@ -73,11 +73,20 @@ Two tiers, chosen per deployment:
   monotonic reads and snapshot-consistent joins → the same query at the same instant
   returns the same answer on any instance, with single-refresh economics.
 - **Distributed / per-instance materialization** (eventually correct) — each instance
-  materializes locally → converges to `f(source)` only if `view_sql` is deterministic,
-  and until every instance completes its refresh cycle the same query may return
-  different answers on different instances (phase skew bounded by `refresh_interval`),
-  at N× compute. Acceptable only for tolerant workloads, and only with an MV-definition
-  determinism rule (reject `now()`/`random()`/unordered-`LIMIT`/non-deterministic ties).
+  materializes locally, at N× compute, and the same query may return different answers on
+  different instances until they converge. Convergence requires **two** conditions, not one:
+  1. **Deterministic `view_sql`** — else instances compute different content from identical
+     source and never agree. Enforced at registration (reject `now()`/`random()`/`uuid`/
+     unordered-`LIMIT`; `provisa/mv/determinism.py`).
+  2. **Source quiescence** — the source must stop changing long enough within a refresh
+     cycle for every instance to materialize the *same* source state. A never-settling,
+     high-churn source **never converges** — each instance perpetually reflects a different
+     snapshot, so it is permanently divergent, not eventually consistent. Determinism is
+     necessary but not sufficient.
+  Quiescence is a workload property (not statically checkable), so it is an operational
+  constraint on choosing `distributed`; determinism is validated. The distributed tier fits
+  low-churn / periodically-batch-loaded sources (dimension tables, daily loads), not
+  high-velocity streams — those must use the shared tier.
 
 ## Consequences
 
