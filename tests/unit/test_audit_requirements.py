@@ -206,6 +206,11 @@ class TestREQ596AuditLogSchema:
 
         import asyncio
 
+        import os
+
+        from provisa.encryption.envelope import EnvelopeEncryption
+        from provisa.encryption.providers import LocalKeychain
+
         asyncio.run(
             log_query(
                 mock_pool,
@@ -217,6 +222,7 @@ class TestREQ596AuditLogSchema:
                 source="graphql",
                 status_code=200,
                 duration_ms=42,
+                encryption=EnvelopeEncryption(LocalKeychain(os.urandom(32))),
             )
         )
 
@@ -226,6 +232,8 @@ class TestREQ596AuditLogSchema:
         # query_hash is the 4th positional param (index 3)
         query_hash_param = params[3]
         assert query_hash_param == expected_hash
+        # REQ-689: query text is stored encrypted, so the plaintext never appears
+        # anywhere in the DB call — not even in query_text_enc.
         assert query_text not in str(call_args)
 
     def test_log_query_inserts_all_required_fields(self):
@@ -236,6 +244,8 @@ class TestREQ596AuditLogSchema:
         mock_pool.execute = AsyncMock()
 
         import asyncio
+
+        from provisa.encryption import NullEncryption
 
         asyncio.run(
             log_query(
@@ -248,6 +258,7 @@ class TestREQ596AuditLogSchema:
                 source="graphql",
                 status_code=200,
                 duration_ms=15,
+                encryption=NullEncryption(),
             )
         )
 
@@ -256,14 +267,15 @@ class TestREQ596AuditLogSchema:
         sql = call_args[0]
         assert "query_audit_log" in sql
         params = call_args[1:]
-        # tenant_id, user_id, role_id, query_hash, table_ids, source, status_code, duration_ms
+        # tenant_id, user_id, role_id, query_hash, query_text_enc, table_ids, source,
+        # status_code, duration_ms (query_text_enc inserted at index 4 per REQ-689)
         assert params[0] == "tenant-abc"
         assert params[1] == "user-xyz"
         assert params[2] == "analyst"
-        assert params[4] == ["users"]
-        assert params[5] == "graphql"
-        assert params[6] == 200
-        assert params[7] == 15
+        assert params[5] == ["users"]
+        assert params[6] == "graphql"
+        assert params[7] == 200
+        assert params[8] == 15
 
 
 # ---------------------------------------------------------------------------

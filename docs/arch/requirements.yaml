@@ -18494,7 +18494,8 @@
     rationale: Redis hot table payload encryption with ACL prefix isolation is defense-in-depth not available
       in Hasura's query cache or standard Redis deployments.
 - id: REQ-689
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
@@ -18503,7 +18504,11 @@
     on authorised admin reads. Query text may reveal schema shape and data intent. Stored as BYTEA.
   use_case: Audit log compliance records must not expose query semantics to a party who has PG access
     but not the org encryption key.
-  target: 2026-Q4
+  code:
+  - provisa/audit/query_log.py
+  - provisa/core/schema_org.py
+  tests:
+  - tests/integration/test_audit_encryption.py
   integration_test: required
   integration_test_reason: Audit log encryption requires real PG instance and authorized admin read path
     to verify encryption at write and authorized decryption.

@@ -45,6 +45,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     MetaData,
     PrimaryKeyConstraint,
     Table,
@@ -517,6 +518,8 @@ query_audit_log = Table(
     Column("user_id", Text, nullable=False),
     Column("role_id", Text, nullable=False),
     Column("query_hash", Text, nullable=False),
+    # Encrypted query text (REQ-689) — decrypted only on authorised admin reads.
+    Column("query_text_enc", LargeBinary),
     Column("table_ids", JSON, nullable=False, default=list, server_default="[]"),
     Column("source", Text, nullable=False),
     Column("status_code", Integer, nullable=False),

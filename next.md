@@ -87,11 +87,15 @@ Larger authorship; testable without the federation substrate, some need an adapt
   `LocalKeychain` (AES-256-GCM master-key wrap) + a fail-closed factory (REQ-684); envelope
   encryption — fresh per-payload DEK, AES-256-GCM, self-describing `magic|ver|wrapped_dek|iv|ct`
   format, TTL DEK cache (REQ-685). 17 unit tests (round-trip, DEK-per-payload, tamper/wrong-key
-  rejection, fail-closed factory), no cloud. **Remaining:** the app wirings REQ-686 (PG column
-  encryption), REQ-687 (Trino cache), REQ-688 (Redis hot tables), REQ-689 (audit query text) —
-  each a focused change wiring the service into a data path; chunked-streaming mode for large
-  bulk payloads (687) extends the single-shot envelope. Cloud KMS providers are Tier 4 [16]
-  (REQ-690–694).
+  rejection, fail-closed factory), no cloud. **REQ-689** ✅ done (2026-07) — first app wiring,
+  proven end-to-end against the live Postgres store: `query_audit_log` gains an encrypted
+  `query_text_enc` (BYTEA) column, `log_query` encrypts the query text on write (encryption now a
+  required param — no silent-plaintext path), `read_query_text` decrypts on an authorised admin
+  read; the live-store test asserts the stored column is ciphertext and round-trips (3 tests + 56
+  audit tests green). **Remaining app wirings:** REQ-686 (PG column encryption — pervasive: RLS
+  rules / API keys are used as plaintext at runtime, decrypt-on-every-read), REQ-687 (Trino cache),
+  REQ-688 (Redis hot tables); chunked-streaming for large bulk payloads (687). Cloud KMS providers
+  are Tier 4 [16] (REQ-690–694).
 - **[6] Mutation-authz adapters + surface projection — REQ-870–872.** C4/V4/I4. Depends on [3].
   Admin-only reclassification gated by `ACCESS_CONFIG` (REQ-870); per-protocol association-
   suggesters emitting ranked `mutation → table` candidates (REQ-871); projection of

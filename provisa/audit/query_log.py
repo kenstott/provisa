@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
+    from provisa.encryption import EncryptionService
 
 AUDIT_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS query_audit_log (
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS query_audit_log (
     user_id TEXT NOT NULL,
     role_id TEXT NOT NULL,
     query_hash TEXT NOT NULL,
+    query_text_enc BYTEA,
     table_ids TEXT[] NOT NULL DEFAULT '{}',
     source TEXT NOT NULL,
     status_code INT NOT NULL,
@@ -67,7 +69,7 @@ async def init_audit_schema(pool: "Database", org_id: str = "default") -> None: 
         await conn.execute(AUDIT_SCHEMA_SQL)
 
 
-async def log_query(  # REQ-074
+async def log_query(  # REQ-074, REQ-689
     pool: "Database",
     *,
     tenant_id: str | None,
@@ -78,18 +80,39 @@ async def log_query(  # REQ-074
     source: str,
     status_code: int,
     duration_ms: int,
+    encryption: "EncryptionService",
 ) -> None:
+    """Append an audit row. The query text is stored ENCRYPTED (REQ-689) — query text
+    can reveal schema shape and data intent — and the plaintext SHA hash is kept for
+    indexing/dedup. Pass NullEncryption in dev/test; a real provider in production."""
     query_hash = hashlib.sha256(query_text.encode()).hexdigest()
+    query_text_enc = encryption.encrypt(query_text.encode("utf-8"))
     await pool.execute(
         "INSERT INTO query_audit_log"
-        " (tenant_id, user_id, role_id, query_hash, table_ids, source, status_code, duration_ms)"
-        " VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+        " (tenant_id, user_id, role_id, query_hash, query_text_enc, table_ids, source,"
+        " status_code, duration_ms)"
+        " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
         tenant_id,
         user_id,
         role_id,
         query_hash,
+        query_text_enc,
         table_ids,
         source,
         status_code,
         duration_ms,
     )
+
+
+async def read_query_text(  # REQ-689
+    pool: "Database", audit_id: int, encryption: "EncryptionService"
+) -> str | None:
+    """Decrypt and return the query text for one audit row (authorised admin read).
+
+    Callers MUST gate this on an admin capability; decryption is only meaningful with
+    the provider/key that wrote the row. Returns None when the row or column is absent.
+    """
+    row = await pool.fetchrow("SELECT query_text_enc FROM query_audit_log WHERE id = $1", audit_id)
+    if row is None or row["query_text_enc"] is None:
+        return None
+    return encryption.decrypt(bytes(row["query_text_enc"])).decode("utf-8")

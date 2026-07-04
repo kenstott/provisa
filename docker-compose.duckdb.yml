@@ -34,7 +34,14 @@ services:
     deploy:
       replicas: 0
 
+  # Redis is disabled too: with no REDIS_URL the app transparently uses the embedded
+  # fakeredis (REQ-829) for the hot cache / result cache / rate limiter, so the
+  # zero-infra DuckDB deployment needs no Redis container. Leave REDIS_URL unset.
+  redis:
+    deploy:
+      replicas: 0
+
   # A DuckDB engine deployment reads its control-plane + cache from the embedded
-  # store (REQ-828) and federates the containerized sources directly. Redis/minio/
-  # postgres from core.yml provide the hot cache, S3/parquet substrate, and a live
-  # RDB source respectively.
+  # store (REQ-828), the hot cache from embedded fakeredis (REQ-829), and federates
+  # the containerized sources directly. postgres (a live RDB source) and minio
+  # (S3/parquet substrate) from core.yml remain; trino, zaychik, and redis are off.

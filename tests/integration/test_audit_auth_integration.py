@@ -27,6 +27,8 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
+from provisa.encryption import NullEncryption
+
 pytestmark = [pytest.mark.integration]
 
 
@@ -340,8 +342,13 @@ class TestREQ596AuditLogWriterBoundary:
 
     @pytest.mark.asyncio
     async def test_query_hash_stored_not_plaintext(self):
-        # REQ-596: query text is never stored verbatim; only SHA-256 hash is persisted
+        # REQ-596/689: query text is never stored verbatim — the SHA-256 hash is
+        # persisted for indexing and the full text only as ciphertext (query_text_enc).
+        import os
+
         from provisa.audit.query_log import log_query
+        from provisa.encryption.envelope import EnvelopeEncryption
+        from provisa.encryption.providers import LocalKeychain
 
         query_text = "SELECT id, email FROM users WHERE tenant_id = 'acme'"
         expected_hash = hashlib.sha256(query_text.encode()).hexdigest()
@@ -357,6 +364,7 @@ class TestREQ596AuditLogWriterBoundary:
             source="graphql",
             status_code=200,
             duration_ms=42,
+            encryption=EnvelopeEncryption(LocalKeychain(os.urandom(32))),
         )
 
         call_args = pool.execute.call_args[0]
@@ -364,7 +372,7 @@ class TestREQ596AuditLogWriterBoundary:
         params = call_args[1:]
         query_hash_param = params[3]  # 4th positional param is query_hash
         assert query_hash_param == expected_hash
-        # Raw query text must never appear in any argument
+        # Raw query text must never appear in any argument (encrypted, not verbatim).
         assert query_text not in str(call_args)
 
     @pytest.mark.asyncio
@@ -386,6 +394,7 @@ class TestREQ596AuditLogWriterBoundary:
             source="graphql",
             status_code=200,
             duration_ms=10,
+            encryption=NullEncryption(),
         )
         await log_query(
             pool_b,
@@ -397,6 +406,7 @@ class TestREQ596AuditLogWriterBoundary:
             source="graphql",
             status_code=200,
             duration_ms=10,
+            encryption=NullEncryption(),
         )
 
         hash_a = pool_a.execute.call_args[0][1:][3]
@@ -421,6 +431,7 @@ class TestREQ596AuditLogWriterBoundary:
             source="graphql",
             status_code=200,
             duration_ms=1,
+            encryption=NullEncryption(),
         )
         await log_query(
             pool_b,
@@ -432,6 +443,7 @@ class TestREQ596AuditLogWriterBoundary:
             source="graphql",
             status_code=200,
             duration_ms=1,
+            encryption=NullEncryption(),
         )
 
         hash_a = pool_a.execute.call_args[0][1:][3]
@@ -454,6 +466,7 @@ class TestREQ596AuditLogWriterBoundary:
             source="graphql",
             status_code=200,
             duration_ms=15,
+            encryption=NullEncryption(),
         )
 
         pool.execute.assert_awaited_once()
@@ -468,11 +481,11 @@ class TestREQ596AuditLogWriterBoundary:
         assert params[0] == "tenant-abc"  # tenant_id
         assert params[1] == "user-xyz"  # user_id
         assert params[2] == "editor"  # role_id
-        # params[3] is query_hash — tested elsewhere
-        assert params[4] == ["users", "profiles"]  # table_ids
-        assert params[5] == "graphql"  # source
-        assert params[6] == 200  # status_code
-        assert params[7] == 15  # duration_ms
+        # params[3] is query_hash, params[4] is query_text_enc (REQ-689) — tested elsewhere
+        assert params[5] == ["users", "profiles"]  # table_ids
+        assert params[6] == "graphql"  # source
+        assert params[7] == 200  # status_code
+        assert params[8] == 15  # duration_ms
 
     @pytest.mark.asyncio
     async def test_tenant_id_can_be_none(self):
@@ -490,6 +503,7 @@ class TestREQ596AuditLogWriterBoundary:
             source="graphql",
             status_code=200,
             duration_ms=5,
+            encryption=NullEncryption(),
         )
 
         params = pool.execute.call_args[0][1:]
@@ -511,10 +525,11 @@ class TestREQ596AuditLogWriterBoundary:
             source="graphql",
             status_code=200,
             duration_ms=99,
+            encryption=NullEncryption(),
         )
 
         params = pool.execute.call_args[0][1:]
-        duration = params[7]
+        duration = params[8]  # query_text_enc (REQ-689) shifts duration_ms to index 8
         assert isinstance(duration, int)
         assert duration > 0
 
@@ -579,6 +594,7 @@ class TestREQ596AuditLogWriterBoundary:
             source="graphql",
             status_code=200,
             duration_ms=1,
+            encryption=NullEncryption(),
         )
 
         params = pool.execute.call_args[0][1:]

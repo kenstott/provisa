@@ -12,6 +12,7 @@ from provisa.audit.query_log import (
     AUDIT_SCHEMA_SQL,
     init_audit_schema,
     log_query,
+    read_query_text,
 )
 from provisa.audit.sla_monitor import (
     SLA_SCHEMA_SQL,
@@ -25,6 +26,7 @@ __all__ = [
     "AUDIT_SCHEMA_SQL",
     "init_audit_schema",
     "log_query",
+    "read_query_text",
     "SLA_SCHEMA_SQL",
     "check_sla_breach",
     "get_sla_summary",
