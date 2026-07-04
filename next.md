@@ -118,6 +118,11 @@ engine plus real sources. This is one dependency chain — build it in order.
 - **[8] Federation Engine / Connector abstraction — REQ-840–843.** C5/V5/I5. The linchpin:
   pluggable engines and the `capability()` / `catalog_add` / `land` / `typemap` connector
   contract. Gates everything below it. Schedule deliberately; needs multiple engines wired up.
+  Test harness ready: `docker-compose.duckdb.yml` (2026-07) is an overlay that disables the Trino
+  engine services (replicas 0) and keeps the containerized sources, so a Trino run and an embedded-
+  DuckDB run are the same stack minus the engine — swap engines by swapping the overlay. The
+  app-side DuckDB *engine* executor is this abstraction's work (a DuckDB *source* driver already
+  exists); the overlay stands up the sources for it now.
 - **[9] Execution topology / federate() — REQ-825–827.** C4/V5/I5. The stateless four-primitive
   flow (825), `federate(datasource, table)` strategy selection — virtual | scan | materialized
   (826) — and the routing consequences (827). Depends on the connector contract [8].

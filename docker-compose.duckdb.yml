@@ -1,0 +1,40 @@
+# DuckDB federation-engine overlay.
+#
+# Swaps the federation ENGINE from Trino (a container the app queries over Arrow
+# Flight/zaychik) to embedded DuckDB (in-process in the app: ATTACH postgres/mysql/
+# sqlite, read_parquet/httpfs over S3, iceberg/delta via extension). The data
+# SOURCES stay in Docker so a Trino run and a DuckDB run are the same stack minus
+# the engine — you swap engines by swapping this overlay, not by re-provisioning.
+#
+# Usage (sources only, no Trino):
+#   docker compose -p provisa-duckdb -f docker-compose.core.yml -f docker-compose.observability.yml \
+#     -f docker-compose.duckdb.yml up -d
+#   # then run the app with the DuckDB engine (PROVISA_ENGINE=duckdb once the
+#   # federation-engine abstraction — REQ-840-843 — reads it).
+#
+# This overlay only DISABLES the Trino engine services (replicas: 0); postgres,
+# redis, and minio from core.yml remain, so embedded DuckDB has real sources to
+# federate. Nothing here binds new host ports — port coexistence is REQ-876.
+#
+# NOTE: the app-side DuckDB engine executor is the federation-engine abstraction
+# (REQ-840-843). Until that lands this overlay stands up the sources for it; there
+# is a DuckDB *source* driver today (provisa/executor/drivers/duckdb_driver.py) but
+# not yet a DuckDB *engine*.
+services:
+  trino:
+    deploy:
+      replicas: 0
+  trino-worker:
+    deploy:
+      replicas: 0
+  trino-exchange-init:
+    deploy:
+      replicas: 0
+  zaychik:
+    deploy:
+      replicas: 0
+
+  # A DuckDB engine deployment reads its control-plane + cache from the embedded
+  # store (REQ-828) and federates the containerized sources directly. Redis/minio/
+  # postgres from core.yml provide the hot cache, S3/parquet substrate, and a live
+  # RDB source respectively.
