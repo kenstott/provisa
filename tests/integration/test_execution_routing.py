@@ -282,12 +282,13 @@ class TestCacheKey:
         k2 = cache_key("SELECT 1", [], "admin", {1: "region = 'eu-west'"})
         assert k1 != k2
 
-    async def test_empty_rls_rule_raises(self):
-        # REQ-544: empty RLS rule expression raises ValueError (security defect detection)
-        from provisa.cache.key import cache_key
+    async def test_empty_rls_rule_not_cacheable(self):
+        # REQ-866: an empty RLS filter is an unresolved identity — the fail-closed
+        # is_cacheable gate reports it (relocated from cache_key's former ValueError).
+        from provisa.cache.key import is_cacheable
 
-        with pytest.raises(ValueError, match="empty filter expression"):
-            cache_key("SELECT 1", [], "admin", {1: ""})
+        ok, reason = is_cacheable("SELECT 1", {1: ""})
+        assert ok is False and "empty" in reason
 
     async def test_same_inputs_stable_key(self):
         # REQ-544: cache key is deterministic for identical inputs
