@@ -2463,6 +2463,13 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     kafka_physical = getattr(state, "kafka_table_physical", {})
     domain_prefix, raw_config = _resolve_naming_config(raw_config)
 
+    # REQ-684/686: install the process-wide EncryptionService from config before any
+    # encrypt/decrypt (API auth column, hot cache, audit) runs. Unset provider = passthrough.
+    from provisa.encryption import configure_encryption
+
+    _enc_cfg = (raw_config or {}).get("encryption", {}) or {}
+    configure_encryption(_enc_cfg.get("provider"), key_id=_enc_cfg.get("key_id"))
+
     # Clear mutable state before rebuild
     state.masking_rules = {}
 
@@ -2473,11 +2480,8 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         relationships = await _fetch_relationships(_pg)
 
         # Apply schema visibility filters (schema.include_ops / schema.include_metrics)
-        tables = _filter_tables_by_schema_cfg(
-            tables,
-            raw_config.get("schema", {}) if raw_config else {},
-            state.source_allowed_domains,
-        )
+        _schema_cfg = raw_config.get("schema", {}) if raw_config else {}
+        tables = _filter_tables_by_schema_cfg(tables, _schema_cfg, state.source_allowed_domains)
 
         # Install LISTEN/NOTIFY triggers on pre-approved PostgreSQL tables
         from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers

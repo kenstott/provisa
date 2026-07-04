@@ -18424,7 +18424,7 @@
     rationale: Envelope encryption (DEK per payload, KEK from cloud KMS) for all payloads is a stronger
       security model than Hasura's no-column-encryption approach or Dremio's storage-layer-only encryption.
 - id: REQ-686
-  status: proposed
+  status: in-progress
   group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
@@ -18434,9 +18434,24 @@
     after read. Encrypted columns stored as BYTEA. Structural metadata (table names, column names) remains
     plaintext to support query planning. Platform tables (tenants, tenant_config) and tenant semantic
     metadata tables both apply column encryption independently.
+    DONE (2026-07) the clean API-keys case — api_sources.auth is now BYTEA, encrypted on write
+    (openapi register) via the process-configured EncryptionService accessor and decrypted before use
+    (api_source loader); proven end-to-end against the live Postgres store (ciphertext at rest,
+    round-trip, wrong-key rejected). REMAINING is the pervasive part — RLS rules and any sensitive
+    column USED AS PLAINTEXT AT RUNTIME (rls_rules.filter_expr is injected as SQL by inject_rls, so it
+    must be decrypted at every governance read across many sites), plus platform tenant_config. That is
+    a broad, security-sensitive multi-site change, not a single wiring; keep in-progress until it is
+    designed and adversarially verified.
+  code:
+  - provisa/encryption/runtime.py
+  - provisa/api_source/loader.py
+  - provisa/openapi/register.py
+  - provisa/core/schema_org.py
+  tests:
+  - tests/integration/test_api_auth_encryption.py
+  - tests/unit/test_encryption_runtime.py
   use_case: Compromised PG instance exposes only opaque blobs for sensitive fields. Defense in depth beyond
     schema-per-org isolation.
-  target: 2026-Q4
   integration_test: required
   integration_test_reason: Column encryption end-to-end requires real PG instance to verify encryption
     at write and decryption at read for multiple table types.
@@ -18453,10 +18468,23 @@
   category: Encryption
   priority: SHOULD
   type: structural
-  description: Trino non-SQL cache row payloads encrypted via EncryptionService before create_and_insert()
-    and decrypted after fetch. One DEK per cache table entry keyed by r_<hash>. DEK held in process memory
-    for the lifetime of the cache TTL, discarded on table DROP. Iceberg/S3 bulk result payloads encrypted
-    with the same envelope pattern.
+  description: >-
+    Trino non-SQL cache row payloads encrypted via EncryptionService before create_and_insert()
+    and decrypted after fetch. One DEK per cache table entry keyed by r_<hash>. DEK held in process
+    memory for the lifetime of the cache TTL, discarded on table DROP. Iceberg/S3 bulk result
+    payloads encrypted with the same envelope pattern.
+    DESIGN CONFLICT — resolve before implementing: the Trino non-SQL cache exists so Trino can QUERY
+    the cached rows as SQL (Phase-2 pushdown applies the compiled WHERE/ORDER BY/LIMIT to the cache
+    table; provisa/api_source/trino_cache.py). Encrypting the payload columns makes them opaque to
+    Trino, so it can no longer filter/sort/join them — defeating the cache's purpose. Column
+    encryption of queryable columns is incompatible with pushdown. Tiers to pick from: (1) encrypt
+    only non-filterable columns, keep filter/join keys plaintext (but arbitrary WHERE can hit any
+    column, so the filterable set is not statically known); (2) deterministic encryption on
+    equality-filter columns (leaks equality, weaker); (3) drop pushdown for encrypted API caches —
+    fetch + decrypt + filter in the app (loses the Phase-2 optimization); (4) scope to only the
+    S3/Iceberg BULK-RESULT payloads (redirect downloads), fetched-and-decrypted whole and never
+    Trino-filtered — the one part with no conflict. The naive "encrypt the payload" breaks
+    federation over the cache.
   use_case: Non-SQL cached data in provisa_admin PG catalog is unreadable without the org key even if
     the PG instance or Trino catalog is directly accessed.
   target: 2026-Q4

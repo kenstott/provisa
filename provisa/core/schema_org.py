@@ -334,7 +334,8 @@ api_sources = Table(
     Column("type", Text, nullable=False),
     Column("base_url", Text, nullable=False),
     Column("spec_url", Text),
-    Column("auth", JSON),
+    # REQ-686: API auth config (keys/tokens) encrypted at rest, decrypted before use.
+    Column("auth", LargeBinary),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(
         "type IN ('openapi', 'graphql_api', 'grpc_api')", name="api_sources_type_check"

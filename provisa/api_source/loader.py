@@ -57,10 +57,16 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
     Returns (api_endpoints_by_table_name, api_sources_by_id).
     """
     # Load API sources
+    from provisa.encryption import encryption_service  # REQ-686
+
+    _enc = encryption_service()
     src_rows = await conn.fetch("SELECT id, type, base_url, spec_url, auth FROM api_sources")
     api_sources: dict[str, ApiSource] = {}
     for r in src_rows:
-        auth_data = json.loads(r["auth"]) if r["auth"] else None
+        # REQ-686: auth is encrypted at rest — decrypt before use.
+        auth_data = (
+            json.loads(_enc.decrypt(bytes(r["auth"])).decode("utf-8")) if r["auth"] else None
+        )
         api_src = ApiSource(
             id=r["id"],
             type=ApiSourceType(r["type"]),

@@ -180,6 +180,14 @@ async def upsert_table(  # REQ-316, REQ-320
     log.debug("Upserted table %s for operation %s", table_name, query.operation_id)
 
     # Upsert api_sources so api_endpoints FK is satisfied
+    from provisa.encryption import encryption_service  # REQ-686
+
+    # REQ-686: encrypt the API auth (keys/tokens) at rest.
+    _auth_enc = (
+        encryption_service().encrypt(json.dumps(auth_config).encode("utf-8"))
+        if auth_config
+        else None
+    )
     await conn.execute(
         """
         INSERT INTO api_sources (id, type, base_url, auth)
@@ -190,7 +198,7 @@ async def upsert_table(  # REQ-316, REQ-320
         """,
         source_id,
         base_url,
-        json.dumps(auth_config) if auth_config else None,
+        _auth_enc,
     )
 
     # Build ApiColumn JSON for api_endpoints

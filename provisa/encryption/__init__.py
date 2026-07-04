@@ -18,6 +18,11 @@ per-data-path applications (column/cache/redis/audit encryption) build on top.
 from provisa.encryption.envelope import EnvelopeEncryption
 from provisa.encryption.factory import build_encryption_service
 from provisa.encryption.providers import LocalKeychain, MasterKeyProvider, NullMasterKey
+from provisa.encryption.runtime import (
+    configure_encryption,
+    encryption_service,
+    reset_encryption,
+)
 from provisa.encryption.service import EncryptionService, NullEncryption
 
 __all__ = [
@@ -28,4 +33,7 @@ __all__ = [
     "LocalKeychain",
     "NullMasterKey",
     "build_encryption_service",
+    "configure_encryption",
+    "encryption_service",
+    "reset_encryption",
 ]

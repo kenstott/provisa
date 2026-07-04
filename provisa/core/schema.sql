@@ -294,7 +294,7 @@ CREATE TABLE IF NOT EXISTS api_sources (
     type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api')),
     base_url    TEXT NOT NULL,
     spec_url    TEXT,
-    auth        JSONB,
+    auth        BYTEA,  -- REQ-686: API auth (keys/tokens) encrypted at rest
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
