@@ -163,8 +163,11 @@ by when they become buildable.
   Builds on encryption core [5]; scheduled after it on the encryption track.
 - **[17] M:N join tables — REQ-672.** Real modeling value but needs a join-table source to
   exercise; build alongside the substrate sources once [8] is up.
-- **[18] Cypher writes — REQ-818 (accepted).** Remaining Cypher-write item; slot with the authz
-  adapters [6] once the mutation model [3] is in place.
+- **[18] Cypher writes — REQ-818.** ✅ Done (2026-07). Verify+flip: the umbrella "Cypher writes via
+  /data/cypher" requirement was fully satisfied by the Tier-A work — CREATE/DELETE/SET through the
+  mutation pipeline (RLS + dialect + hooks), MERGE/DETACH/REMOVE rejected, governed by the
+  `writable_by` write ACL (REQ-663). 196 cypher unit tests + 7/7 endpoint integration + 3/3 e2e.
+  Also marked the contradicted REQ-346 (Cypher "strictly read-only") superseded/rejected.
 - **[19] Compose host-port coexistence — REQ-876 (new).** Part 1 done (2026-07): every published
   host port in `core.yml`/`dev.yml` is now `${VAR:-default}`, so a second stack binds a different
   port by setting env (defaults unchanged; validated `PG_PORT=15432` offsets postgres while the

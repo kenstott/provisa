@@ -7962,14 +7962,21 @@
       on a data federation platform is unique — no competitor (Trino, Hasura, Denodo, Dremio) supports
       Cypher as a query frontend over federated relational data with automatic governance enforcement.
 - id: REQ-346
-  status: complete
+  status: rejected
+  rejection_reason: >-
+    Superseded by REQ-818. Cypher is no longer read-only: CREATE/DELETE/SET now execute as
+    governed direct table writes through the mutation pipeline. The still-true parts — MERGE/
+    DETACH/REMOVE and APOC are rejected — are carried by REQ-818 and REQ-671. This entry's
+    blanket "strictly read-only, all write clauses rejected" claim is now inaccurate.
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Query Frontend (Phase AU)
   priority: MUST
   type: constraint
-  description: The Cypher compiler is strictly read-only. Any query containing write clauses (`CREATE`,
-    `MERGE`, `SET`, `DELETE`, `DETACH`, `REMOVE`) or references to APOC procedures/functions is rejected
-    at parse time with a precise error. No fallback or silent stripping — rejection is total.
+  description: >-
+    SUPERSEDED BY REQ-818. Originally: the Cypher compiler is strictly read-only, rejecting any
+    write clause (CREATE/MERGE/SET/DELETE/DETACH/REMOVE) or APOC reference at parse time. Cypher
+    now supports governed CREATE/DELETE/SET writes (REQ-818); only MERGE/DETACH/REMOVE and APOC
+    remain rejected. Use REQ-818 and REQ-671 instead.
   use_case: Read-only enforcement prevents graph users from accidentally mutating data via Cypher.
   code:
   - provisa/cypher/
@@ -22254,7 +22261,8 @@
   - ops
   - data-engineer
 - id: REQ-818
-  status: accepted
+  status: complete
+  since: "2026-07"
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Mutations
   priority: MUST
