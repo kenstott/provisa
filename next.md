@@ -72,10 +72,16 @@ Larger authorship; testable without the federation substrate, some need an adapt
   S3-backed iceberg catalog runs at startup); telemetry sinks stay in the observability overlay;
   all stack combinations (dev/e2e/dev-install) validated. **REQ-816** ✅ demo (`demo.yml`) and
   test services (`test.yml`) are separate, brought up via harness markers, not assumed in the dev
-  stack. **Remaining:** REQ-828 pluggable SQL store (Postgres → DuckDB/SQLite — the larger change
-  that removes the last mandatory Docker dep) and REQ-830 stateful-component topology. NOTE: the
-  dev/e2e host-port collision hit this session is still open — it needs port parameterization
-  (`${PG_PORT:-5432}` …), which is *not* in 815/816's scope; track separately.
+  stack. **REQ-828** pluggable SQL store — couplings 1 & 2 ✅ done + tested (2026-07): a full
+  SQLAlchemy `Database` abstraction (`provisa/core/database.py`, asyncpg-shaped API over
+  `AsyncEngine`; placeholder translation, dialect-aware upsert/returning, per-dialect capabilities)
+  and a dialect-neutral schema (`provisa/core/schema_org.py`, `create_all` per dialect) — 21 SQLite
+  unit tests + schema-parity + platform/tenant-engine tests green, no Docker. **Coupling 3 remains
+  → Tier 4 [20]:** meta-RLS is still Postgres-only (`_init_meta_rls`, app.py). It runs only under
+  `multitenancy=True`, so desktop single-tenant SQLite works today; but production multitenant-on-
+  embedded is not certified until meta-RLS moves to the app layer (a security-critical control-plane
+  refactor, same class as REQ-866). REQ-830 stateful-component topology also remains. NOTE: the
+  dev/e2e host-port collision is REQ-876 (Tier 4 [19]).
 - **[5] Encryption core — REQ-684–689.** C4/V4/I3. `EncryptionService` with `NullEncryption` +
   `LocalKeychain` first — unit-testable, no cloud. Separate track; does not touch the substrate.
 - **[6] Mutation-authz adapters + surface projection — REQ-870–872.** C4/V4/I4. Depends on [3].
@@ -145,6 +151,12 @@ by when they become buildable.
   in-process app reaches the offset postgres (`TRINO_PORT`/`ZAYCHIK_PORT` are already env-driven).
   Needs runnable stacks to verify — scheduled here rather than shipped half-wired. This is the fix
   for the dev/e2e collision hit this session.
+- **[20] App-layer meta-RLS — REQ-828 coupling 3.** Move control-plane governance (`_init_meta_rls`,
+  app.py, REQ-041/402) off Postgres RLS into the app layer so the meta store is store-independent
+  and multitenant-on-embedded (DuckDB/SQLite) can be certified. Security-critical, same isolation
+  discipline as REQ-866 — every `_META_TABLES` access must apply the tenant filter in app code, and
+  it needs multi-tenant verification. Couplings 1 & 2 (the `Database` abstraction + `schema_org`)
+  are already done; this is the last gate. Do as a focused, adversarially-verified task.
 
 ## Critical path & parallel tracks
 
