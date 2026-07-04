@@ -28,6 +28,12 @@ import re
 import struct
 from typing import TYPE_CHECKING, Protocol
 
+from provisa.pgwire.copy_binary import (
+    _arrow_binary_tag,
+    _duckdb_binary_tag,
+    _rows_to_copy_binary,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -142,13 +148,21 @@ def _arrow_table_to_copy_bytes(table: pa.Table, fmt: str) -> bytes:
     col_count = table.num_columns
     rows = table.to_pylist()
     col_names = table.column_names
+    row_lists = [[row.get(n) for n in col_names] for row in rows]
+    if fmt == "binary":
+        tags = [_arrow_binary_tag(f.type) for f in table.schema]
+        return _rows_to_copy_binary(row_lists, tags)
     if fmt == "csv":
-        return _rows_to_copy_csv([[row.get(n) for n in col_names] for row in rows], col_count)
-    return _rows_to_copy_text([[row.get(n) for n in col_names] for row in rows], col_count)
+        return _rows_to_copy_csv(row_lists, col_count)
+    return _rows_to_copy_text(row_lists, col_count)
 
 
 def _queryresult_to_copy_bytes(result: QueryResult, fmt: str) -> bytes:
     col_count = len(result.column_names)
+    if fmt == "binary":
+        types = result.column_types or []
+        tags = [_duckdb_binary_tag(types[i] if i < len(types) else None) for i in range(col_count)]
+        return _rows_to_copy_binary(result.rows, tags)
     if fmt == "csv":
         return _rows_to_copy_csv(result.rows, col_count)
     return _rows_to_copy_text(result.rows, col_count)
@@ -344,9 +358,9 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         data_bytes = _queryresult_to_copy_bytes(result, fmt)
         return data_bytes, len(result.rows)
 
-    def _send_copy_out_response(self, _fmt: str) -> None:  # pyright: ignore[reportUnusedParameter]
-        # overall_format: 0=text, 1=binary; col_count 0 means unknown/variable
-        overall = 0
+    def _send_copy_out_response(self, fmt: str) -> None:
+        # overall_format: 0=text, 1=binary; col_count 0 means unknown/variable (REQ-883)
+        overall = 1 if fmt == "binary" else 0
         body = struct.pack("!bh", overall, 0)
         self._h.wfile.write(struct.pack("!ci", _COPY_OUT_RESPONSE, len(body) + 4))
         self._h.wfile.write(body)

@@ -7824,3 +7824,35 @@ def step_and_an_mv_pre_computed_with_status_active_is_not_used_for_a_quer():
     pytest.skip(
         "step not implemented: an MV pre-computed WITH status = 'active' is NOT used for a "
     )
+
+
+# REQ-883
+@given("a client issues COPY (SELECT id, name FROM t) TO STDOUT (FORMAT binary) over pgwire")
+def step_given_a_client_issues_copy_select_id_name_from_t_to_stdout_format_():
+    pytest.skip(
+        "step not implemented: a client issues COPY (SELECT id, name FROM t) TO STDOUT (FOR"
+    )
+
+
+# REQ-883
+@when("the result has an INTEGER id and a VARCHAR name column")
+def step_when_the_result_has_an_integer_id_and_a_varchar_name_column():
+    pytest.skip("step not implemented: the result has an INTEGER id and a VARCHAR name column")
+
+
+# REQ-883
+@then(
+    "the server replies with a binary-mode CopyOutResponse and a byte stream beginning with the PGCOPY signature, encoding id as a 4-byte int and name as UTF-8 text per row, a NULL as field length -1, and terminating with the int16 -1 trailer"
+)
+def step_then_the_server_replies_with_a_binary_mode_copyoutresponse_and_a_():
+    pytest.skip(
+        "step not implemented: the server replies with a binary-mode CopyOutResponse and a "
+    )
+
+
+# REQ-883
+@then("the same COPY in text/csv format is byte-for-byte unchanged from before")
+def step_and_the_same_copy_in_text_csv_format_is_byte_for_byte_unchanged_():
+    pytest.skip(
+        "step not implemented: the same COPY in text/csv format is byte-for-byte unchanged "
+    )

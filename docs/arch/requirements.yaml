@@ -24775,7 +24775,7 @@
     - REQ-199
     - REQ-849
 - id: REQ-883
-  status: proposed
+  status: in-progress
   group: "4. Source Connectors"
   category: Federation Engine Abstraction
   priority: SHOULD
@@ -24796,6 +24796,18 @@
     Design guarantee: where parallelism cannot be honored, pgwire degrades to correct single-threaded
     sequential scan returning complete, consistent results — never partial/errored ATTACH; capability
     set is advertised, not guessed.
+    DONE (2026-07) capability (3) — BINARY COPY output: COPY ... TO STDOUT (FORMAT binary) now emits a
+    real PostgreSQL binary COPY stream (provisa/pgwire/copy_handler.py): the 11-byte PGCOPY signature +
+    flags + header-extension, per-row int16 field count with length-prefixed per-field bodies (int32 -1
+    for NULL), and the int16 -1 trailer. Per-column encoding is selected from the column's advertised
+    type (Arrow schema on the Trino Flight bulk path; DuckDB type strings via QueryResult.column_types
+    on the direct path) — bool/int2/int4/int8/float4/float8/bytea encode to their PG binary
+    representations, everything else to UTF-8 text matching the text OID — and the CopyOutResponse
+    overall-format flag is set to 1 (binary). Capabilities (1) libpq handshake and (2) catalog
+    introspection are served by the existing pgwire server + catalog; (4) the read-only REPEATABLE READ
+    transaction control statements are accepted as no-ops by the txn-tag path. REMAINING: capability (5)
+    parallel-scan machinery (pg_export_snapshot / SET TRANSACTION SNAPSHOT / DECLARE CURSOR / FETCH /
+    ctid-range) with graceful single-threaded degradation — needs live DuckDB ATTACH verification.
   use_case: >-
     Lets DuckDB (as the REQ-825 federation engine or any external DuckDB/BI client) mount
     a governed Provisa instance via `ATTACH ... TYPE postgres` and query it with RLS/masking
@@ -24806,6 +24818,15 @@
     - provisa/pgwire/copy_handler.py
     - provisa/pgwire/catalog.py
     - provisa/pgwire/_pipeline.py
+  tests:
+    - tests/unit/pgwire/test_copy_binary.py
+  scenario: |
+    Given a client issues COPY (SELECT id, name FROM t) TO STDOUT (FORMAT binary) over pgwire
+    When the result has an INTEGER id and a VARCHAR name column
+    Then the server replies with a binary-mode CopyOutResponse and a byte stream beginning with the
+    PGCOPY signature, encoding id as a 4-byte int and name as UTF-8 text per row, a NULL as field
+    length -1, and terminating with the int16 -1 trailer
+    And the same COPY in text/csv format is byte-for-byte unchanged from before
   related_reqs:
     - REQ-825
     - REQ-826
