@@ -60,6 +60,30 @@ def test_driver_classes():
     assert build_snowflake_engine().driver_class() is DriverClass.SELF_ONLY
 
 
+def test_duckdb_reaches_file_and_db_sources():
+    # REQ-840: DuckDB attaches postgres/sqlite in place and scans csv/parquet files.
+    eng = build_duckdb_engine()
+    for st in ("postgresql", "sqlite", "csv", "parquet"):
+        assert eng.reachable(st) is True
+
+
+def test_duckdb_sqlite_attach_details():
+    entry = build_duckdb_engine().resolve(_src("inq", SourceType.sqlite, path="/data/inq.sqlite"))
+    assert "ATTACH" in entry.details["attach"] and "TYPE sqlite" in entry.details["attach"]
+
+
+def test_duckdb_parquet_view_details():
+    entry = build_duckdb_engine().resolve(_src("prod", SourceType.parquet, path="/data/p.parquet"))
+    assert "read_parquet" in entry.details["view_ddl"]
+
+
+def test_mpp_is_declared_and_orthogonal_to_reach():
+    # REQ-894/895: Snowflake is SELF_ONLY reach yet MPP; DuckDB reaches several sources, single-node.
+    assert build_trino_engine().mpp is True
+    assert build_snowflake_engine().mpp is True
+    assert build_duckdb_engine().mpp is False
+
+
 def test_swapping_engine_swaps_reachability():
     trino, duck = build_trino_engine(), build_duckdb_engine()
     assert trino.reachable("mysql") and not duck.reachable("mysql")

@@ -78,7 +78,13 @@ class FederationEngine:  # REQ-840
     """A federation engine: a named connector collection plus its derived catalog."""
 
     def __init__(
-        self, name: str, connectors: list[Connector], *, native_store: str | None = None
+        self,
+        name: str,
+        connectors: list[Connector],
+        *,
+        native_store: str | None = None,
+        driver_class: DriverClass | None = None,
+        mpp: bool = False,
     ) -> None:
         self.name = name
         self.connectors: dict[str, Connector] = {c.source_type: c for c in connectors}
@@ -86,6 +92,14 @@ class FederationEngine:  # REQ-840
         # The source_type of the engine's OWN store, into which it materializes natively
         # (DuckDB → "duckdb", Snowflake → "snowflake"); None for a pure federator (Trino).
         self.native_store = native_store
+        # An engine DECLARES its class (REQ-894/895). When unset, fall back to the count/mechanism
+        # heuristic for ad-hoc engines.
+        self._driver_class = driver_class
+        # Whether the engine distributes execution across a cluster. ORTHOGONAL to reach/driver_class
+        # (REQ-894/895): Snowflake is SELF_ONLY reach yet MPP; DuckDB/Postgres reach several sources
+        # yet are single-node. Informational today; a planner input later (e.g. push a large
+        # federated join to an MPP engine, or gate the single-node→MPP tier graduation).
+        self.mpp = mpp
 
     # -- reachability (REQ-840) ------------------------------------------------
 
@@ -99,12 +113,15 @@ class FederationEngine:  # REQ-840
         return connector
 
     def driver_class(self) -> DriverClass:
-        """Classify by connector-collection breadth (REQ-840)."""
+        """The engine's declared class, or the mechanism/count heuristic when undeclared (REQ-840)."""
+        if self._driver_class is not None:
+            return self._driver_class
         from provisa.federation.connector import Mechanism
 
         if all(c.mechanism is Mechanism.LAND for c in self.connectors.values()):
             return DriverClass.SELF_ONLY
-        # More than one distinct reachable source type ⇒ broad; a small set ⇒ partial.
+        # Undeclared ad-hoc engine: infer from breadth. BROAD-by-count is only a fallback — real
+        # engines declare their class since BROAD means MPP, which connector count cannot imply.
         return (
             DriverClass.BROAD if len(self.connectors) >= _BROAD_THRESHOLD else DriverClass.PARTIAL
         )
@@ -164,14 +181,30 @@ def build_trino_engine() -> FederationEngine:  # REQ-840 broad federator
     return FederationEngine(
         "trino",
         [TrinoPostgresConnector(), TrinoMysqlConnector(), TrinoSqlServerConnector()],
+        driver_class=DriverClass.BROAD,  # many external source types
+        mpp=True,  # distributes across a Trino worker cluster
     )
 
 
 def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
-    from provisa.federation.connector import DuckDBCsvConnector, DuckDBPostgresConnector
+    from provisa.federation.connector import (
+        DuckDBCsvConnector,
+        DuckDBParquetConnector,
+        DuckDBPostgresConnector,
+        DuckDBSqliteConnector,
+    )
 
     return FederationEngine(
-        "duckdb", [DuckDBPostgresConnector(), DuckDBCsvConnector()], native_store="duckdb"
+        "duckdb",
+        [
+            DuckDBPostgresConnector(),
+            DuckDBSqliteConnector(),
+            DuckDBCsvConnector(),
+            DuckDBParquetConnector(),
+        ],
+        native_store="duckdb",
+        driver_class=DriverClass.PARTIAL,
+        mpp=False,  # single-node embedded engine (REQ-894)
     )
 
 
@@ -182,4 +215,6 @@ def build_snowflake_engine() -> FederationEngine:  # REQ-840 self-only warehouse
         "snowflake",
         [WarehouseNativeConnector("snowflake", "snowflake")],
         native_store="snowflake",
+        driver_class=DriverClass.SELF_ONLY,  # reaches only its own store (land-into-self)
+        mpp=True,  # the warehouse itself is a distributed MPP engine
     )

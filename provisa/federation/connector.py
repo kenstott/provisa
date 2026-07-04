@@ -154,6 +154,34 @@ class DuckDBCsvConnector(Connector):
         }
 
 
+class DuckDBParquetConnector(Connector):
+    engine = "duckdb"
+    source_type = "parquet"
+    mechanism = Mechanism.ATTACH  # a scanner view references the file in place
+
+    def capability(self) -> Capability:
+        return Capability(
+            predicate_pushdown=True
+        )  # parquet supports predicate + projection pushdown
+
+    def details(self, source: Source) -> dict:
+        return {
+            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM read_parquet('{source.path}')"
+        }
+
+
+class DuckDBSqliteConnector(Connector):
+    engine = "duckdb"
+    source_type = "sqlite"
+    mechanism = Mechanism.ATTACH  # the sqlite extension attaches the file in place
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)
+
+    def details(self, source: Source) -> dict:
+        return {"attach": f"ATTACH '{source.path}' AS {source.id} (TYPE sqlite)"}
+
+
 # --- Warehouse-native (Snowflake): self-only, land-into-self is a no-op ---
 
 
