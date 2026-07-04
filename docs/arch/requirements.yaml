@@ -22764,12 +22764,12 @@
   - REQ-827
   - REQ-830
 - id: REQ-829
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 11. Platform, Infrastructure & Delivery
   category: Deployment & Infrastructure
   priority: SHOULD
   type: structural
-  target: 2026-Q4
   description: 'Pluggable Redis medium with a lightweight, code-identical embedded realization for desktop.
     Sibling to REQ-828: where REQ-828 makes the SQL-store medium of the TENANT CONTROL PLANE REGISTRY
     pluggable (Postgres -> DuckDB/SQLite), this makes the Redis medium pluggable (Redis -> embedded fakeredis),
@@ -22812,10 +22812,13 @@
     that production runs against a real Redis — rather than the current silent no-op fallback — so behavior
     is the same, and testable, in both environments, with tenant isolation enforced in the app layer.
   code:
+  - provisa/core/redis_factory.py
   - provisa/api/rate_limit.py
   - provisa/cache/store.py
   - provisa/apq/cache.py
   - provisa/cache/hot_tables.py
+  tests:
+  - tests/unit/test_redis_factory.py
   related_reqs:
   - REQ-825
   - REQ-826

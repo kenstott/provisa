@@ -65,13 +65,15 @@ Unit-testable with mocks or fixtures; no federation substrate required. Do these
 
 Larger authorship; testable without the federation substrate, some need an adapter or surface.
 
-- **[4] Desktop zero-infra — REQ-828–830, REQ-815–816.** C3/V4/I2. Pluggable SQL store
-  (Postgres → DuckDB/SQLite, REQ-828) and embedded fakeredis (REQ-829) so the full backend runs
-  on a laptop with no Docker, exercising the same hot-cache/rate-limit/invalidation paths as
-  production instead of silent no-ops. REQ-830 names the five stateful components to isolate.
-  REQ-815/816 (Docker Compose organization) is where the **integration-tests-must-independently-
-  provision** follow-up lands: parameterize core host ports (`${PG_PORT:-5432}` …) + a dedicated
-  test project so dev/e2e/integration stacks coexist.
+- **[4] Desktop zero-infra — REQ-828–830, REQ-815–816.** C3/V4/I2. REQ-829 (embedded fakeredis)
+  ✅ done (2026-07) — verified + tested: the `make_redis` factory routes all four Redis clients
+  (`cache/store`, `apq/cache`, `hot_tables`, `rate_limit`) to a shared-server `FakeAsyncRedis`
+  when no `REDIS_URL`, with the full command surface (get/set, sorted sets, sets, incr, pipelines).
+  **Remaining:** REQ-828 pluggable SQL store (Postgres → DuckDB/SQLite — the larger structural
+  change that removes the last mandatory Docker dep); REQ-830 stateful-component topology; and
+  REQ-815/816 (Docker Compose organization) — where the **independent-test-provisioning** fix
+  lands (parameterize core host ports `${PG_PORT:-5432}` … + dedicated projects so dev/e2e/
+  integration stacks coexist, the collision hit this session).
 - **[5] Encryption core — REQ-684–689.** C4/V4/I3. `EncryptionService` with `NullEncryption` +
   `LocalKeychain` first — unit-testable, no cloud. Separate track; does not touch the substrate.
 - **[6] Mutation-authz adapters + surface projection — REQ-870–872.** C4/V4/I4. Depends on [3].
