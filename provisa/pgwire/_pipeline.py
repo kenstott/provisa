@@ -440,5 +440,14 @@ async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266,
         ValueError       – SQL parse / validation error
         RuntimeError     – routing / execution error
     """
+    # REQ-872: a bare SELECT of a registered tracked function routes to the shared executor
+    # (writable_by enforced there) instead of federation, unifying invocation across surfaces.
+    from provisa.api.app import state as _state
+    from provisa.pgwire.function_call import maybe_invoke_registered_function
+
+    fn_result = await maybe_invoke_registered_function(sql, role_id, _state)
+    if fn_result is not None:
+        return fn_result
+
     plan = await _govern_and_route(sql, role_id)
     return await _execute_plan(plan)

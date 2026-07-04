@@ -24236,7 +24236,8 @@
     - REQ-867
     - REQ-870
 - id: REQ-872
-  status: in-progress
+  status: complete
+  since: "2026-07"
   group: "2. Authentication & Identity"
   category: Authorization
   priority: MUST
@@ -24265,10 +24266,15 @@
     YIELD col [AS alias] to it (provisa/api/rest/cypher_router.py::_detect_registered_call /
     _handle_registered_call): the call is intercepted before parse, args (literals / $params) are
     coerced positionally, writable_by is enforced in the executor (403 on deny), and YIELD projects
-    the returned columns. REMAINING (kept in-progress): the pgwire SELECT fn(...) and SQL
-    table-valued-function invocation surfaces route through the same invoke_tracked_function executor.
-    Discovery is projected on all SQL surfaces; GraphQL and Cypher invocation are bound; pgwire/SQL
-    invocation is the remaining slice.
+    the returned columns.
+    DONE (2026-07) — the pgwire / SQL INVOCATION: execute_pgwire_sql intercepts a bare
+    SELECT-of-a-registered-function before governance/routing and runs it through the same executor
+    (provisa/pgwire/function_call.py). Both the table-valued form SELECT * FROM fn(args) and the
+    scalar form SELECT fn(args) are recognized via sqlglot (an Anonymous func whose name is a
+    registered tracked function), literal args are coerced positionally, and the executor's row dicts
+    are adapted back to a pgwire QueryResult — so psql / DBeaver / Explore invoke registered functions
+    exactly like native ones, with writable_by enforced. All surfaces (GraphQL, Cypher CALL, pgwire/
+    SQL SELECT) now discover AND invoke registered functions through the one shared executor.
   use_case: >-
     UDF registry currently exposed only through GraphQL; pgwire, SQL/Explore, and Cypher
     surfaces cannot discover or invoke registered functions. Cross-surface projection and
@@ -24276,11 +24282,15 @@
     consistent authorization.
   code:
     - provisa/pgwire/catalog.py
-    - provisa/api/data/endpoint.py
+    - provisa/pgwire/function_catalog.py
+    - provisa/pgwire/function_call.py
+    - provisa/pgwire/_pipeline.py
+    - provisa/api/data/action_exec.py
+    - provisa/api/rest/registered_call.py
     - provisa/api/rest/cypher_router.py
-    - provisa/security/rights.py
   tests:
     - tests/unit/pgwire/test_function_projection.py
+    - tests/unit/pgwire/test_function_call.py
     - tests/unit/test_tracked_function_invocation.py
   target: "2026-Q4"
   scenario: |
