@@ -18,7 +18,7 @@ from provisa.freshness.adapters import StateSubject
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.openapi import pg_cache
 
-scenarios("../../../features/req_859.feature")
+scenarios("../features/REQ-859.feature")
 
 
 @pytest.fixture

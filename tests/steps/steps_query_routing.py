@@ -11,7 +11,7 @@ from enum import Enum, auto
 from typing import Optional, Dict, Any, List
 
 
-scenarios("../features/req_875_query_routing.feature")
+scenarios("../features/REQ-875.feature")
 
 
 # ---------------------------------------------------------------------------

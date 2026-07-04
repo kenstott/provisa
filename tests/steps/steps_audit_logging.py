@@ -52,6 +52,11 @@ def audit_pool(docker_postgres):  # noqa: F811
     async def _setup():
         pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=2)
         try:
+            # Drop any stale pre-encryption audit table so init recreates the current schema
+            # (query_text_enc etc.). V1 has no migrations; CREATE TABLE IF NOT EXISTS would
+            # otherwise keep an obsolete table on a long-lived test database.
+            async with pool.acquire() as _c:
+                await _c.execute("DROP TABLE IF EXISTS org_default.query_audit_log CASCADE")
             await init_audit_schema(pool, org_id="default")
         finally:
             await pool.close()
@@ -93,6 +98,8 @@ def when_query_completes(shared_data: dict, audit_pool):
             max_size=2,
             server_settings={"search_path": "org_default"},
         )
+        from provisa.encryption import NullEncryption
+
         try:
             await log_query(
                 pool,
@@ -104,6 +111,7 @@ def when_query_completes(shared_data: dict, audit_pool):
                 source=shared_data["source"],
                 status_code=shared_data["status_code"],
                 duration_ms=shared_data["duration_ms"],
+                encryption=NullEncryption(),
             )
         finally:
             await pool.close()

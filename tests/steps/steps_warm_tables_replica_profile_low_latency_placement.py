@@ -23,7 +23,7 @@ from pytest_bdd import given, scenarios, then, when
 from provisa.cache.warm_tables import QueryCounter, WarmTableManager
 from provisa.mv.models import MVDefinition, MVStatus
 
-scenarios("../../features/req_238_warm_tables_replica_profile_low_latency_placement.feature")
+scenarios("../features/REQ-238.feature")
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +237,7 @@ def step_then_result_from_ssd_cache_low_latency(shared_data: dict[str, Any]) -> 
     )
 
 
-scenarios("../../features/req_239_warm_tables_replica_profile_low_latency_placement.feature")
+scenarios("../features/REQ-239.feature")
 
 
 # ---------------------------------------------------------------------------
