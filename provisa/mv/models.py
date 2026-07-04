@@ -85,11 +85,19 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     max_rows: int = 1_000_000
     orphan_grace_period: int = 86400  # 24h in seconds
 
+    # REQ-881: refresh-time freshness gate. "ttl" (default) rebuilds every refresh_interval;
+    # "probe" re-checks every loop ignoring TTL; "ttl_probe" probes only after the TTL floor.
+    # For probe/ttl_probe, refresh skips the (expensive) rebuild when every source reports an
+    # unchanged input token vs last_input_token (REQ-862 signals). Single-instance today; the
+    # authoritative shared token store is REQ-879.
+    freshness_mode: str = "ttl"
+
     # Runtime state
     status: MVStatus = MVStatus.STALE
     last_refresh_at: float | None = None
     row_count: int | None = None
     last_error: str | None = None
+    last_input_token: str | None = None  # REQ-881: source version token at last materialization
 
     def __post_init__(self):
         if self.target_table is None:

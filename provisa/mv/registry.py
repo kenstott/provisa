@@ -81,6 +81,8 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
                 continue
             if mv.last_refresh_at is None:
                 result.append(mv)
+            elif mv.freshness_mode == "probe":  # REQ-881: probe every loop, ignore TTL
+                result.append(mv)
             elif (now - mv.last_refresh_at) >= mv.refresh_interval:
                 result.append(mv)
         return result
@@ -112,6 +114,18 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
         if mv:
             mv.status = MVStatus.STALE
             mv.last_error = error
+
+    def mark_unchanged(self, mv_id: str) -> None:  # REQ-881
+        """Probe found sources unchanged: reset the TTL and stay FRESH without rebuilding.
+
+        Keeps the existing materialized rows/row_count and last_input_token; only the refresh
+        clock advances so the next probe waits a full interval (ttl_probe) or continues (probe).
+        """
+        mv = self._mvs.get(self._key(mv_id))
+        if mv:
+            mv.status = MVStatus.FRESH
+            mv.last_refresh_at = time.time()
+            mv.last_error = None
 
     def all(self) -> list[MVDefinition]:  # REQ-543
         return list(self._mvs.values())

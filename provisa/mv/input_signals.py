@@ -87,6 +87,18 @@ def _table_watermark(trino_conn, table: str, column: str) -> str | None:
     return str(row[0]) if row and row[0] is not None else None
 
 
+def input_token(signals: list[InputVersion], source_tables: list[str]) -> str | None:
+    """A stable per-MV change token from per-source signals, or None (REQ-881).
+
+    Usable ONLY when EVERY source produced a signal (len == len(source_tables)); a partial
+    signal set returns None so the caller degrades to TTL and never skips a rebuild on
+    incomplete change information (REQ-855 None-degrades-to-TTL).
+    """
+    if not source_tables or len(signals) != len(source_tables):
+        return None
+    return ";".join(sorted(f"{s.kind}:{s.value}" for s in signals))
+
+
 def gather_input_signals(trino_conn, source_tables: list[str]) -> list[InputVersion]:
     """Gather the strongest available input-version signal per source table (REQ-862).
 

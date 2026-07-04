@@ -156,6 +156,18 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
 
     start = time.time()
     try:
+        from provisa.mv.input_signals import gather_input_signals, input_token  # noqa: PLC0415
+
+        input_signals = gather_input_signals(trino_conn, mv.source_tables)  # REQ-862
+        # REQ-881: probe-freshness gate — skip the expensive rebuild when every source reports
+        # an unchanged input token. Runs before the size-count probe so even that is skipped.
+        if mv.freshness_mode in ("probe", "ttl_probe"):
+            token = input_token(input_signals, mv.source_tables)
+            if token is not None and token == mv.last_input_token:
+                registry.mark_unchanged(mv.id)
+                log.info("MV %s: sources unchanged (probe) — skipped rebuild", mv.id)
+                return
+
         # Size guard: probe source count before materializing
         source_count = _probe_source_count(trino_conn, mv)
         if source_count > mv.max_rows:
@@ -170,9 +182,6 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
             return
 
         select_sql = _build_refresh_sql(mv, trino_conn)
-        from provisa.mv.input_signals import gather_input_signals  # noqa: PLC0415
-
-        input_signals = gather_input_signals(trino_conn, mv.source_tables)  # REQ-862
         _emit_column_lineage_span(mv, select_sql, str(start), input_signals)  # REQ-862
         cursor = trino_conn.cursor()
 
@@ -199,6 +208,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
 
         duration = time.time() - start
         registry.mark_refreshed(mv.id, row_count)
+        mv.last_input_token = input_token(input_signals, mv.source_tables)  # REQ-881
         log.info(
             "Refreshed MV %s: %d rows in %.1fs",
             mv.id,

@@ -24661,7 +24661,8 @@
     - REQ-135
     - REQ-879
 - id: REQ-881
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: "4. Source Connectors"
   category: Materialization Store
   priority: SHOULD
@@ -24698,6 +24699,25 @@
     - provisa/mv/registry.py
     - provisa/mv/refresh.py
     - provisa/mv/input_signals.py
+  tests:
+    - tests/unit/test_mv_probe_freshness.py
+  scenario: |
+    Given a relationship MV with freshness_mode="probe" over an Iceberg-backed source and a
+    last_input_token equal to the source's current snapshot id
+    When the refresh loop processes it
+    Then the refresh computes the source token, finds it unchanged, and skips the rebuild
+    (no DELETE/CREATE) — resetting the TTL and keeping the materialized rows FRESH
+    And when the source snapshot id later differs, the same MV rebuilds and stores the new token
+    And an MV where any source yields no token degrades to plain TTL (never skips on partial signal)
+  notes: >-
+    DONE (2026-07): MVDefinition gains freshness_mode (ttl | probe | ttl_probe) + last_input_token;
+    MVRegistry.get_due_for_refresh returns probe-mode MVs every loop (ttl_probe keeps the TTL floor);
+    refresh_mv gathers the REQ-862 per-source signals first and, for probe/ttl_probe, builds an
+    input_token (usable only when EVERY source produced a signal, else degrade to TTL) and skips the
+    expensive rebuild + size-count probe via MVRegistry.mark_unchanged when it equals last_input_token,
+    storing the fresh token after a real rebuild. Single-instance token store today; fleet-wide
+    persistence of the token is REQ-879's shared refresh-coordination catalog (by design — the same
+    stamp is the dedup key there).
   related_reqs:
     - REQ-855
     - REQ-862

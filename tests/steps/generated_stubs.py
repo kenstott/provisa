@@ -7742,6 +7742,50 @@ def step_and_a_function_whose_visible_to_excludes_the_querying_role_does_():
     )
 
 
+# REQ-881
+@given(
+    'a relationship MV with freshness_mode="probe" over an Iceberg-backed source and a last_input_token equal to the source\'s current snapshot id'
+)
+def step_given_a_relationship_mv_with_freshness_mode_probe_over_an_iceberg_():
+    pytest.skip(
+        'step not implemented: a relationship MV with freshness_mode="probe" over an Iceber'
+    )
+
+
+# REQ-881
+@when("the refresh loop processes it")
+def step_when_the_refresh_loop_processes_it():
+    pytest.skip("step not implemented: the refresh loop processes it")
+
+
+# REQ-881
+@then(
+    "the refresh computes the source token, finds it unchanged, and skips the rebuild (no DELETE/CREATE) — resetting the TTL and keeping the materialized rows FRESH"
+)
+def step_then_the_refresh_computes_the_source_token_finds_it_unchanged_and():
+    pytest.skip(
+        "step not implemented: the refresh computes the source token, finds it unchanged, a"
+    )
+
+
+# REQ-881
+@then("when the source snapshot id later differs, the same MV rebuilds and stores the new token")
+def step_and_when_the_source_snapshot_id_later_differs_the_same_mv_rebuil():
+    pytest.skip(
+        "step not implemented: when the source snapshot id later differs, the same MV rebui"
+    )
+
+
+# REQ-881
+@then(
+    "an MV where any source yields no token degrades to plain TTL (never skips on partial signal)"
+)
+def step_and_an_mv_where_any_source_yields_no_token_degrades_to_plain_ttl():
+    pytest.skip(
+        "step not implemented: an MV where any source yields no token degrades to plain TTL"
+    )
+
+
 # REQ-882
 @given(
     'an aggregate MV over "orders" pre-computing SUM(amount), registered with no filters, and the aggregate catalog populated from the MV registry'
