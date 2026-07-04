@@ -24417,3 +24417,48 @@
     - REQ-862
     - REQ-826
     - REQ-874
+- id: REQ-879
+  status: proposed
+  group: "4. Source Connectors"
+  category: Materialization Store
+  priority: MUST
+  type: structural
+  target: "2026-Q4"
+  description: >-
+    Cross-instance MV refresh coordination for a load-balanced fleet sharing one
+    materialization store. Today the live refresh state is per-instance in-memory
+    (MVRegistry._mvs; mark_refreshing flips an in-process status), so instance A's
+    REFRESHING is invisible to B and both refresh the same MV — redundant compute plus
+    concurrent writers racing on the same relation. FIX: promote the materialized_views
+    catalog into the AUTHORITATIVE SHARED refresh-state and drive the refresh loop off it
+    (not the per-instance registry). Add columns: writer, lease_until,
+    materialized_definition_version, materialized_input_version, snapshot_id. PROTOCOL:
+    (1) ATOMIC CLAIM — a single conditional UPDATE that BOTH dedups by version (skip when
+    materialized_input_version == target, the REQ-862 stamp is the already-written key) AND
+    excludes concurrent writers (skip when status=refreshing AND lease_until>now). 0 rows =
+    skip; 1 row = this instance owns the refresh. This is the per-MV election — DECENTRALIZED,
+    no global leader; a heartbeat renews lease_until during a long refresh, and lease expiry
+    reclaims after a crash. (2) FENCED COMMIT — finalize (set materialized_version/status/
+    snapshot_id) only WHERE writer=me AND lease_until>=now; 0 rows means the lease was lost
+    (slow/crashed-then-revived) so the result is DISCARDED — prevents a stale writer clobbering
+    a newer refresh (fencing token). (3) SOURCE OF TRUTH — the store's committed snapshot
+    (atomic commit, e.g. Iceberg) is authoritative for what is materialized; the catalog is
+    coordination metadata reconciled to the store on lease expiry, so a crash mid-write leaves
+    no partial data. NOT held pessimistic locks (SELECT FOR UPDATE over a long refresh holds a
+    transaction open and a crash leaves a stuck lock) — leases + fencing. The catalog is the
+    same structure that holds freshness (REQ-855) and the version/lineage stamps (REQ-862).
+  use_case: >-
+    Lets an arbitrary number of control-plane/engine instances run behind a load balancer
+    against one shared materialization store without redundant refreshes, write races, or a
+    single-leader bottleneck — each instance races to claim due MVs, exactly one wins per MV,
+    and crashes are handled by lease expiry and fenced commits.
+  code:
+    - provisa/mv/registry.py
+    - provisa/mv/refresh.py
+    - provisa/core/schema_org.py
+  related_reqs:
+    - REQ-826
+    - REQ-830
+    - REQ-855
+    - REQ-862
+    - REQ-844

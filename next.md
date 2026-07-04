@@ -194,6 +194,13 @@ by when they become buildable.
   ceiling (global default + per-table override; skip+log above it, never sample), **column
   exclusion** in the opt-in, and a separate append-only delta ledger. Gated on the substrate /
   native-diff work; build alongside REQ-874.
+- **[23] MV refresh coordination — REQ-879 (new, MUST).** Cross-instance single-writer refresh for
+  a fleet sharing one materialization store. Today the REFRESHING status is per-instance in-memory
+  (`MVRegistry`), so a fleet double-refreshes. Promote `materialized_views` into the authoritative
+  shared catalog (+ `writer`/`lease_until`/`materialized_*_version`/`snapshot_id`); atomic
+  version-dedup + lease claim (decentralized per-MV election, no leader), heartbeat-renewed lease,
+  fenced commit (discard if lease lost). The REQ-862 version stamps are the dedup key. Enables
+  arbitrarily many LB'd instances. Prereq for the shared-materialization tier (ADR 0001).
 - **[22] Point-in-time MV reconstruction — REQ-878 (new).** The delta ledger [21] as a temporal
   substrate: reconstruct a view as of refresh version N by folding change events. Two opt-in
   fidelity tiers — `hash-delta` reconstructs membership + audit; `value-delta` reconstructs full
