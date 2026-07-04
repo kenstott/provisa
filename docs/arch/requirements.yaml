@@ -25234,3 +25234,41 @@
   related_reqs:
     - REQ-825
     - REQ-840
+- id: REQ-889
+  status: proposed
+  target: "2026-Q4"
+  group: "8. Deployment & Infrastructure"
+  category: Deployment Tier Architecture
+  priority: MUST
+  type: constraint
+  description: >-
+    The metadata/config/roles store MUST be the embedded single source of truth in every
+    deployment tier. The embedded tier (SQLite or DuckDB) is the metadata home; container
+    tier adds Trino + observability strictly as COMPUTE, never as metadata home. Tier
+    changes MUST be additive and reversible: Trino can be toggled on/off without migrating
+    the catalog.
+  use_case: >-
+    Tier changes must be reversible without catalog migrations. If Postgres becomes the
+    metadata home in a container tier, it reintroduces a container dependency and creates
+    a migration problem on every tier toggle, breaking the design invariant that compute
+    is pluggable while metadata stays embedded.
+  notes: >-
+    Scope clarification (what is and is not a metadata-home blocker): Provisa governance roles
+    (analyst/admin, RLS, masking, capabilities) already live entirely in metadata tables + the
+    governance layer and never touch a database role system — no gap. The PG `CREATE ROLE
+    role_<org_id>` (db.py:82) is per-org PHYSICAL schema isolation invoked only by provision_org()
+    from the multi-tenant SaaS admin endpoint (POST /admin/orgs), not at base startup; it is
+    compute/deployment-tier hardening and is now a NO-OP on every non-PostgreSQL control-plane
+    backend (create_org_role/provision_org/deprovision_org gate on dialect=="postgresql"), so it is
+    structurally unreachable on an embedded home. PG LISTEN/NOTIFY (database.py:454) is a DATASOURCE
+    feature (subscriptions/CDC/triggers on a PG source, via pg_provider) correctly gated on source
+    type — NOT a metadata-home dependency. The genuine remaining metadata-home item is the
+    control-plane bootstrap DDL (schema.sql is PG-only), which already has a portable path
+    (_init_schema_portable via the schema_org SQLAlchemy metadata) for embedded backends.
+  code:
+    - provisa/core/db.py
+    - provisa/core/database.py
+  related_reqs:
+    - REQ-825
+    - REQ-840
+    - REQ-888

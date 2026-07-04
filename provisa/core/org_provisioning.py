@@ -125,7 +125,7 @@ async def provision_org(  # REQ-701
         # Compensating rollback in reverse order
         if provisioned_redis and redis_url:
             await deprovision_redis_acl(redis_url, org_id)
-        if provisioned_role:
+        if provisioned_role and pool.dialect == "postgresql":  # REQ-889: PG-only role hardening
             try:
                 async with pool.acquire() as conn:
                     await conn.execute(f"DROP ROLE IF EXISTS role_{org_id}")
@@ -158,7 +158,8 @@ async def deprovision_org(  # REQ-701
         await deprovision_redis_acl(redis_url, org_id)
 
     async with pool.acquire() as conn:
-        await conn.execute(f"DROP ROLE IF EXISTS role_{org_id}")
+        if pool.dialect == "postgresql":  # REQ-889: PG-only role hardening — no-op elsewhere
+            await conn.execute(f"DROP ROLE IF EXISTS role_{org_id}")
         await conn.execute(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE")
 
     log.info("Org %r deprovisioned", org_id)

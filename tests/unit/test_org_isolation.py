@@ -241,11 +241,22 @@ class TestCreateOrgRole:
         from provisa.core.db import create_org_role
 
         conn = AsyncMock()
+        conn.capabilities.dialect = "postgresql"  # PG control plane → role hardening runs
         await create_org_role(conn, "acme")
 
         executed = [c.args[0] for c in conn.execute.await_args_list if c.args]
         assert any("role_acme" in s for s in executed)
         assert any("GRANT USAGE, CREATE ON SCHEMA org_acme TO role_acme" in s for s in executed)
+
+    @pytest.mark.asyncio
+    async def test_create_org_role_is_noop_on_non_pg_backend(self):  # REQ-889
+        from provisa.core.db import create_org_role
+
+        conn = AsyncMock()
+        conn.capabilities.dialect = "sqlite"  # embedded home has no role system to harden
+        await create_org_role(conn, "acme")
+
+        conn.execute.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_create_org_role_rejects_invalid_org_id(self):  # REQ-699
@@ -351,6 +362,7 @@ class TestProvisionOrg:
 
         mock_conn = AsyncMock()
         mock_pool = MagicMock()
+        mock_pool.dialect = "postgresql"  # PG control plane → role drop runs (REQ-889)
         mock_pool.acquire = MagicMock(
             return_value=AsyncMock(
                 __aenter__=AsyncMock(return_value=mock_conn),

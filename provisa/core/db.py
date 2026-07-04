@@ -14,7 +14,7 @@
 
 import asyncio
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import asyncpg
 
@@ -73,9 +73,19 @@ async def create_pool(  # REQ-052
     )
 
 
-async def create_org_role(conn: asyncpg.Connection, org_id: str) -> None:  # REQ-699
-    """Create a PG role scoped to org_<org_id> schema only."""
+async def create_org_role(conn: Any, org_id: str) -> None:  # REQ-699, REQ-889
+    """Create a PG role scoped to org_<org_id> schema for physical multi-tenant isolation.
+
+    PostgreSQL-only hardening — a NO-OP on every other control-plane backend (REQ-889). Provisa
+    governance roles are a Provisa-layer concept living in metadata tables, never a DB role system;
+    this only adds defense-in-depth when Postgres is the control plane. Embedded/single-tenant
+    homes have no role system to harden, so the metadata home stays portable.
+    """
     _validate_org_id(org_id)
+    # Default to postgresql for a raw asyncpg connection (which has no capabilities wrapper).
+    dialect = getattr(getattr(conn, "capabilities", None), "dialect", "postgresql")
+    if dialect != "postgresql":
+        return
     schema_name = f"org_{org_id}"
     role_name = f"role_{org_id}"
     await conn.execute(
