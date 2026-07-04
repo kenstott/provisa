@@ -405,7 +405,6 @@ class TestHotTableModelField:
             domain_id="test",
             schema_name="public",
             table_name="orders",
-            governance="pre-approved",
             columns=[],
         )
         assert t.hot is None
@@ -418,7 +417,6 @@ class TestHotTableModelField:
             domain_id="test",
             schema_name="public",
             table_name="countries",
-            governance="pre-approved",
             columns=[],
             hot=True,
         )
@@ -432,7 +430,6 @@ class TestHotTableModelField:
             domain_id="test",
             schema_name="public",
             table_name="big_table",
-            governance="pre-approved",
             columns=[],
             hot=False,
         )
