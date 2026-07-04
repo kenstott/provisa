@@ -23700,7 +23700,8 @@
     Then busybox image is present to support trino-exchange-init initialization
     And stripe-mock is not bundled in the package.
 - id: REQ-855
-  status: proposed
+  status: in-progress
+  since: "2026-07"
   group: 4. Source Connectors
   category: Materialization Store
   priority: SHOULD
@@ -23738,6 +23739,20 @@
     (REQ-844 derivation role) may carry both a TTL/refresh interval and a
     freshness gate; the gate suppresses needless CTAS rebuilds when the upstream
     token is unchanged.
+    DONE (2026-07): the centralized gate is implemented — provisa/federation/freshness_gate.py::
+    evaluate_freshness(mode, now, last_refresh_at, ttl, stored_token, probe) returns a FreshnessDecision
+    (fresh + new_token) for the three modes: TTL (bounded staleness), PROBE (probe every access, ignore
+    TTL), TTL_PROBE (probe only past the TTL floor). The probe yields an opaque token compared by equality
+    — unchanged keeps the rows (zero lag), changed marks not-fresh with the new token to persist — and a
+    probe returning None degrades the entry to TTL (a capability signal, never a silent stale fallback,
+    REQ-847). Pure and reused by both the reactive-replica (REQ-845) and view (REQ-844) roles. REMAINING
+    (kept in-progress): the per-source probe TRANSPORTS behind freshness_token(source, table) -> str | None
+    (graphql query, openapi ETag/Last-Modified, DB-SQL steward query, file mtime) and wiring the gate into
+    the store's lazy-on-access path + delta mutual-exclusivity (REQ-874).
+  code:
+    - provisa/federation/freshness_gate.py
+  tests:
+    - tests/unit/test_freshness_gate.py
   related_reqs:
     - REQ-844
     - REQ-845
@@ -24989,4 +25004,38 @@
   code:
     - provisa/api_source/transforms.py
     - provisa/core/models.py
+- id: REQ-886
+  status: proposed
+  group: "3. Governance & Observability"
+  category: Observability
+  priority: MUST
+  type: behavioral
   target: "2026-Q4"
+  description: >-
+    Engine-emitted I/O tracing for UDF/transformer invocations must be mandatory and
+    non-bypassable, recording UDF name, transport type (script/http/grpc/sql/python),
+    identity context (admin/definer vs user/invoker), declared input refs, output
+    cardinality/size, duration_ms, and status. A trace/correlation ID must be stamped
+    into the UDF's minted pgwire session so audit rows join to the invocation trace
+    for precise lineage reconstruction. UDF-emitted tracing (via W3C traceparent context
+    propagation) is encouraged but optional, allowing UDF interiors and egress calls to
+    nest under the engine-side invocation span.
+  use_case: >-
+    Establishes a non-bypassable observability floor (relied on for governance and audit)
+    while encouraging voluntary UDF-emitted interior/egress tracing as the ceiling for
+    debugging and performance analysis. Enables precise lineage reconstruction by
+    correlating UDF invocation traces with pgwire data-access audit rows.
+  code:
+    - provisa/otel_compat.py
+  scenario: |
+    Given a user invokes a UDF (transformer or custom function) via pgwire or SQL
+    When the UDF executes and accesses tables via pgwire data derefs
+    Then the engine records an invocation trace with UDF name, transport, identity, input
+    refs, output size, duration, and status, stamping a trace ID into the UDF session so
+    that pgwire audit rows for the UDF's data access join to the invocation trace via
+    correlation ID, reconstructing the full data lineage precisely
+    And if the UDF implements W3C traceparent propagation, its interior spans nest under
+    the invocation span automatically via OTEL context
+  related_reqs:
+    - REQ-884
+    - REQ-885

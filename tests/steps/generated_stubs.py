@@ -7732,6 +7732,54 @@ def step_then_the_rewriter_transparently_redirects_the_from_join_to_the_mv():
     )
 
 
+# REQ-855
+@given("a reactive replica pull-through source configured with the TTL+probe mode and a TTL floor")
+def step_given_a_reactive_replica_pull_through_source_configured_with_the_t():
+    pytest.skip(
+        "step not implemented: a reactive replica pull-through source configured with the T"
+    )
+
+
+# REQ-855
+@when("a query reads the cached rows before the floor elapses")
+def step_when_a_query_reads_the_cached_rows_before_the_floor_elapses():
+    pytest.skip("step not implemented: a query reads the cached rows before the floor elapses")
+
+
+# REQ-855
+@then("the materialized rows are served without probing the upstream")
+def step_then_the_materialized_rows_are_served_without_probing_the_upstrea():
+    pytest.skip(
+        "step not implemented: the materialized rows are served without probing the upstrea"
+    )
+
+
+# REQ-855
+@when("a later query arrives after the TTL floor has elapsed")
+def step_when_a_later_query_arrives_after_the_ttl_floor_has_elapsed():
+    pytest.skip("step not implemented: a later query arrives after the TTL floor has elapsed")
+
+
+# REQ-855
+@then(
+    "freshness_token(source, table) is evaluated and compared to the stored token; if equal the existing rows are kept, and if different the entry is invalidated, re-pulled, rematerialized, and the new token stored"
+)
+def step_then_freshness_token_source_table_is_evaluated_and_compared_to_th():
+    pytest.skip(
+        "step not implemented: freshness_token(source, table) is evaluated and compared to "
+    )
+
+
+# REQ-855
+@then(
+    "a view materialization with a freshness gate skips its scheduled CTAS rebuild while the upstream token is unchanged."
+)
+def step_and_a_view_materialization_with_a_freshness_gate_skips_its_sched():
+    pytest.skip(
+        "step not implemented: a view materialization with a freshness gate skips its sched"
+    )
+
+
 # REQ-859
 @given(
     "a materialized view and an API/pg cache entry, each with its own last-refresh state When their freshness is evaluated Then both expose that state as a FreshnessSubject and the TTL decision is produced by the one shared FreshnessPredicate, yielding the same fresh/stale result as the prior per-consumer checks."

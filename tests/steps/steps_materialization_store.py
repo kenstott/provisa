@@ -15,6 +15,11 @@ import time
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
+from provisa.federation.freshness_gate import (
+    FreshnessDecision,
+    FreshnessMode,
+    evaluate_freshness,
+)
 from provisa.lineage import InputVersion
 from provisa.mv.aggregate_catalog import (
     AggregateMVCatalog,
@@ -574,3 +579,257 @@ def then_single_flight_and_landed(shared_data: dict) -> None:
     assert store.materialized_table_name == "materialization_store.external_rest_api"
     # After a successful pull the entry is fresh again.
     assert not store.is_expired()
+
+
+# ---------------------------------------------------------------------------
+# REQ-855: centralized freshness gate — TTL+probe, probe, view CTAS suppression
+# ---------------------------------------------------------------------------
+
+_TTL_FLOOR = 30.0  # seconds
+
+
+@given("a reactive replica pull-through source configured with the TTL+probe mode and a TTL floor")
+def given_ttl_probe_replica(shared_data: dict) -> None:
+    """Set up a cache entry in TTL_PROBE mode with a known TTL floor and a stored token."""
+    stored_token = "upstream-token-v1"
+    last_refresh_at = 1000.0  # arbitrary epoch-relative anchor
+
+    shared_data["mode"] = FreshnessMode.TTL_PROBE
+    shared_data["ttl"] = _TTL_FLOOR
+    shared_data["last_refresh_at"] = last_refresh_at
+    shared_data["stored_token"] = stored_token
+    shared_data["probe_call_count"] = 0
+    shared_data["current_upstream_token"] = stored_token
+    shared_data["materialized_rows"] = [{"id": 1, "v": "a"}, {"id": 2, "v": "b"}]
+
+
+@when("a query reads the cached rows before the floor elapses")
+def when_query_before_floor(shared_data: dict) -> None:
+    """Evaluate freshness with a timestamp inside the TTL floor (no probe should fire)."""
+    last_refresh_at: float = shared_data["last_refresh_at"]
+    ttl: float = shared_data["ttl"]
+    # now is strictly within the TTL floor
+    now = last_refresh_at + ttl * 0.5  # half the floor elapsed
+
+    probe_call_count_holder = [0]
+    upstream_token = shared_data["current_upstream_token"]
+
+    def _probe() -> str | None:
+        probe_call_count_holder[0] += 1
+        return upstream_token
+
+    decision = evaluate_freshness(
+        shared_data["mode"],
+        now=now,
+        last_refresh_at=last_refresh_at,
+        ttl=ttl,
+        stored_token=shared_data["stored_token"],
+        probe=_probe,
+    )
+    shared_data["before_floor_decision"] = decision
+    shared_data["before_floor_probe_calls"] = probe_call_count_holder[0]
+
+
+@then("the materialized rows are served without probing the upstream")
+def then_served_without_probe(shared_data: dict) -> None:
+    """Assert the gate returned fresh=True and the probe was never called."""
+    decision: FreshnessDecision = shared_data["before_floor_decision"]
+    probe_calls: int = shared_data["before_floor_probe_calls"]
+
+    assert decision.fresh is True, (
+        f"Expected fresh=True within the TTL floor but got fresh={decision.fresh}"
+    )
+    assert probe_calls == 0, (
+        f"Probe was called {probe_calls} time(s) within the TTL floor; expected 0 calls "
+        "(TTL_PROBE should not probe before the floor elapses)"
+    )
+    # The materialized rows are untouched
+    assert shared_data["materialized_rows"], "Materialized rows should still be present"
+
+
+@when("a later query arrives after the TTL floor has elapsed")
+def when_query_after_floor(shared_data: dict) -> None:
+    """Evaluate freshness past the TTL floor for both unchanged and changed token scenarios."""
+    last_refresh_at: float = shared_data["last_refresh_at"]
+    ttl: float = shared_data["ttl"]
+    # now is well past the TTL floor
+    now_past = last_refresh_at + ttl * 3.0
+
+    stored_token: str = shared_data["stored_token"]
+    upstream_token_holder = [shared_data["current_upstream_token"]]
+
+    probe_calls_holder = [0]
+
+    def _probe() -> str | None:
+        probe_calls_holder[0] += 1
+        return upstream_token_holder[0]
+
+    # Scenario A: token unchanged
+    decision_unchanged = evaluate_freshness(
+        shared_data["mode"],
+        now=now_past,
+        last_refresh_at=last_refresh_at,
+        ttl=ttl,
+        stored_token=stored_token,
+        probe=_probe,
+    )
+    probe_calls_unchanged = probe_calls_holder[0]
+
+    # Scenario B: token changed
+    probe_calls_holder[0] = 0
+    new_upstream_token = "upstream-token-v2"
+    upstream_token_holder[0] = new_upstream_token
+
+    decision_changed = evaluate_freshness(
+        shared_data["mode"],
+        now=now_past,
+        last_refresh_at=last_refresh_at,
+        ttl=ttl,
+        stored_token=stored_token,
+        probe=_probe,
+    )
+    probe_calls_changed = probe_calls_holder[0]
+
+    shared_data["decision_unchanged"] = decision_unchanged
+    shared_data["decision_changed"] = decision_changed
+    shared_data["probe_calls_unchanged"] = probe_calls_unchanged
+    shared_data["probe_calls_changed"] = probe_calls_changed
+    shared_data["new_upstream_token"] = new_upstream_token
+
+
+@then(
+    "freshness_token(source, table) is evaluated and compared to the stored token; "
+    "if equal the existing rows are kept, and if different the entry is invalidated, "
+    "re-pulled, rematerialized, and the new token stored"
+)
+def then_probe_evaluated_and_compared(shared_data: dict) -> None:
+    """Assert token comparison behaviour: unchanged keeps rows; changed triggers re-pull."""
+    decision_unchanged: FreshnessDecision = shared_data["decision_unchanged"]
+    probe_calls_unchanged: int = shared_data["probe_calls_unchanged"]
+
+    decision_changed: FreshnessDecision = shared_data["decision_changed"]
+    probe_calls_changed: int = shared_data["probe_calls_changed"]
+
+    new_upstream_token: str = shared_data["new_upstream_token"]
+    stored_token: str = shared_data["stored_token"]
+
+    # Probe must have been called in both cases (we are past the TTL floor)
+    assert probe_calls_unchanged == 1, (
+        f"Expected probe called once past the TTL floor (unchanged), got {probe_calls_unchanged}"
+    )
+    assert probe_calls_changed == 1, (
+        f"Expected probe called once past the TTL floor (changed), got {probe_calls_changed}"
+    )
+
+    # Unchanged token → fresh=True, new_token equal to stored
+    assert decision_unchanged.fresh is True, (
+        f"Expected fresh=True when token is unchanged but got fresh={decision_unchanged.fresh}"
+    )
+    assert decision_unchanged.new_token == stored_token, (
+        f"Expected new_token={stored_token!r} when unchanged, got {decision_unchanged.new_token!r}"
+    )
+
+    # Changed token → fresh=False, new_token carries the updated value to persist
+    assert decision_changed.fresh is False, (
+        f"Expected fresh=False when token changed but got fresh={decision_changed.fresh}"
+    )
+    assert decision_changed.new_token == new_upstream_token, (
+        f"Expected new_token={new_upstream_token!r} after change, "
+        f"got {decision_changed.new_token!r}"
+    )
+
+    # Simulate the store acting on the changed decision: invalidate, re-pull, store new token
+    if not decision_changed.fresh:
+        # Entry is invalidated; the store would re-pull upstream rows
+        shared_data["materialized_rows"] = [{"id": 1, "v": "a_new"}, {"id": 2, "v": "b_new"}]
+        shared_data["stored_token"] = decision_changed.new_token
+
+    assert shared_data["stored_token"] == new_upstream_token, (
+        "After re-pull the stored token should be updated to the new upstream token"
+    )
+
+
+@then(
+    "a view materialization with a freshness gate skips its scheduled CTAS rebuild "
+    "while the upstream token is unchanged."
+)
+def then_view_skips_ctas_when_token_unchanged(shared_data: dict) -> None:
+    """Assert that a view's CTAS rebuild is suppressed when the freshness gate returns fresh=True."""
+    # Model a view entry: TTL_PROBE mode, last refreshed recently, same upstream token
+    last_refresh_at = 2000.0
+    ttl = 60.0  # 60-second refresh interval / TTL floor
+    stored_token = "view-upstream-token-v1"
+    ctas_rebuild_count = [0]
+
+    def _view_probe() -> str | None:
+        return stored_token  # unchanged
+
+    def _run_ctas_if_needed(decision: FreshnessDecision) -> None:
+        if not decision.fresh:
+            ctas_rebuild_count[0] += 1
+
+    # Access within TTL floor → probe suppressed → fresh → no CTAS
+    now_within_floor = last_refresh_at + ttl * 0.3
+    decision_within = evaluate_freshness(
+        FreshnessMode.TTL_PROBE,
+        now=now_within_floor,
+        last_refresh_at=last_refresh_at,
+        ttl=ttl,
+        stored_token=stored_token,
+        probe=_view_probe,
+    )
+    _run_ctas_if_needed(decision_within)
+    assert decision_within.fresh is True, (
+        "View gate should be fresh within TTL floor (no probe, no CTAS)"
+    )
+
+    # Access past TTL floor, token still unchanged → probe fires but token matches → still fresh
+    now_past_floor = last_refresh_at + ttl * 2.0
+    decision_past = evaluate_freshness(
+        FreshnessMode.TTL_PROBE,
+        now=now_past_floor,
+        last_refresh_at=last_refresh_at,
+        ttl=ttl,
+        stored_token=stored_token,
+        probe=_view_probe,
+    )
+    _run_ctas_if_needed(decision_past)
+    assert decision_past.fresh is True, (
+        "View gate should be fresh past the floor when the upstream token is unchanged"
+    )
+    assert decision_past.new_token == stored_token, (
+        f"new_token should equal the stored token when unchanged; got {decision_past.new_token!r}"
+    )
+
+    # No CTAS rebuild should have been triggered in either case
+    assert ctas_rebuild_count[0] == 0, (
+        f"Expected 0 CTAS rebuilds when upstream token is unchanged, "
+        f"but {ctas_rebuild_count[0]} rebuild(s) were triggered"
+    )
+
+    # Verify that a changed token DOES trigger the CTAS rebuild (positive control)
+    changed_token_probe_calls = [0]
+
+    def _changed_probe() -> str | None:
+        changed_token_probe_calls[0] += 1
+        return "view-upstream-token-v2"
+
+    decision_changed_view = evaluate_freshness(
+        FreshnessMode.TTL_PROBE,
+        now=now_past_floor,
+        last_refresh_at=last_refresh_at,
+        ttl=ttl,
+        stored_token=stored_token,
+        probe=_changed_probe,
+    )
+    _run_ctas_if_needed(decision_changed_view)
+    assert decision_changed_view.fresh is False, (
+        "View gate should be not-fresh when the upstream token has changed"
+    )
+    assert decision_changed_view.new_token == "view-upstream-token-v2"
+    assert ctas_rebuild_count[0] == 1, (
+        "Expected exactly 1 CTAS rebuild after the upstream token changed"
+    )
+
+
+scenarios("../features/REQ-855.feature")
