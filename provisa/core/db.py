@@ -137,7 +137,9 @@ async def init_schema(pool: "Database", schema_sql: str, org_id: str = "default"
     PostgreSQL runs the raw ``schema.sql`` script inside an ``org_<id>`` schema.
     Non-PG backends bootstrap from portable ``schema_org`` metadata instead."""
     _validate_org_id(org_id)
-    if pool.dialect != "postgresql":
+    # A raw asyncpg pool (no Database shim) has no .dialect and is always PostgreSQL — run the
+    # native schema.sql path. Only the portable SQLAlchemy Database routes non-PG backends.
+    if getattr(pool, "dialect", "postgresql") != "postgresql":
         await _init_schema_portable(pool)
         return
     schema_name = f"org_{org_id}"
