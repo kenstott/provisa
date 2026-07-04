@@ -7916,6 +7916,48 @@ def step_and_a_function_whose_visible_to_excludes_the_querying_role_does_():
     )
 
 
+# REQ-875
+@given("an unmaterialized API source with an exact cardinality capability and no RLS predicate")
+def step_given_an_unmaterialized_api_source_with_an_exact_cardinality_capab():
+    pytest.skip(
+        "step not implemented: an unmaterialized API source with an exact cardinality capab"
+    )
+
+
+# REQ-875
+@when("a user issues a bare SELECT count(*) query with no WHERE clause")
+def step_when_a_user_issues_a_bare_select_count_query_with_no_where_clause():
+    pytest.skip(
+        "step not implemented: a user issues a bare SELECT count(*) query with no WHERE cla"
+    )
+
+
+# REQ-875
+@then("the query is routed to the native count call instead of materializing the full dataset")
+def step_then_the_query_is_routed_to_the_native_count_call_instead_of_mate():
+    pytest.skip(
+        "step not implemented: the query is routed to the native count call instead of mate"
+    )
+
+
+# REQ-875
+@then("when the same query applies to a table where RLS rules restrict the user's visible rows")
+def step_and_when_the_same_query_applies_to_a_table_where_rls_rules_restr():
+    pytest.skip(
+        "step not implemented: when the same query applies to a table where RLS rules restr"
+    )
+
+
+# REQ-875
+@then(
+    "the cheap-count route is disabled and the query falls back to materialize+count to preserve governance"
+)
+def step_then_the_cheap_count_route_is_disabled_and_the_query_falls_back_t():
+    pytest.skip(
+        "step not implemented: the cheap-count route is disabled and the query falls back t"
+    )
+
+
 # REQ-881
 @given(
     'a relationship MV with freshness_mode="probe" over an Iceberg-backed source and a last_input_token equal to the source\'s current snapshot id'

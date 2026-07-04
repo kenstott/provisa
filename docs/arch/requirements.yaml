@@ -6077,7 +6077,8 @@
     rationale: Three-phase vector search with native cosine_similarity UDF translation and non-native
       fallback is more comprehensive than Hasura's nascent vector support and not in Trino/Dremio.
 - id: REQ-673
-  status: proposed
+  status: in-progress
+  since: "2026-07"
   group: 4. Source Connectors
   category: Cost Statistics
   priority: SHOULD
@@ -6099,6 +6100,17 @@
     Cheap-count sources contribute nothing and carry no maintenance. Generalizes and
     supersedes the GQL-specific count_query helper (provisa/sources/counts.py) under
     the connector abstraction (REQ-840-843).
+    DONE (2026-07): the estimate type + resolution order are implemented — provisa/federation/
+    cardinality.py::Estimate(value, exact, method: CardinalityMethod) and resolve_cardinality(native_stat,
+    exact_count_cheap, exact_count) returning, in order, a source's native statistic (exact totalCount or
+    approximate reltuples), else an exact COUNT(*) only when the connector says counting is cheap, else
+    UNKNOWN (fail-open, never a hidden full scan). REMAINING (kept in-progress): the per-source native-stat
+    PRODUCERS wired onto the connectors (graphql totalCount, openapi X-Total-Count, PG reltuples, Trino
+    SHOW STATS, Parquet/Iceberg row-group metadata) — sparse/opt-in for expensive-count sources.
+  code:
+    - provisa/federation/cardinality.py
+  tests:
+    - tests/unit/test_cardinality.py
   use_case: >-
     One estimate serves two consumer classes. The AUTOMATED PLANNER reads it to choose
     a federation strategy (materialize vs virtual, REQ-826), gate hot-table promotion
@@ -24558,7 +24570,8 @@
     - REQ-282
     - REQ-845
 - id: REQ-875
-  status: proposed
+  status: in-progress
+  since: "2026-07"
   group: "6. Execution, Routing, Caching & Performance"
   category: Query Routing
   priority: SHOULD
@@ -24580,10 +24593,26 @@
     predicate applies to the table for the requesting persona a native total count would
     over-count the visible subset, so the route is disabled and falls back to
     materialize+count. Fail-closed, the same discipline as cache isolation (REQ-866).
+    DONE (2026-07): the three-guard route decision is implemented — provisa/federation/cardinality.py::
+    can_route_cheap_count(is_bare_count_star, estimate, rls_applies) fires only when the shape is a bare
+    count(*), the REQ-673 estimate is EXACT with a value, and NO RLS predicate applies to the persona;
+    any guard failing returns False (fail-closed → materialize+count). REMAINING (kept in-progress):
+    wiring it into the endpoint count(*) path so an exact-native-count source answers with one call
+    instead of _materialize_api_to_trino_cache.
+  code:
+    - provisa/federation/cardinality.py
+  tests:
+    - tests/unit/test_cardinality.py
   use_case: >-
     Turns SELECT count(*) over a cold remote/API table from a full-dataset HTTP pull
     into a single cheap call, while preserving exact-answer semantics and governance, so
     the volume question is answerable interactively without warming the cache.
+  scenario: |
+    Given an unmaterialized API source with an exact cardinality capability and no RLS predicate
+    When a user issues a bare SELECT count(*) query with no WHERE clause
+    Then the query is routed to the native count call instead of materializing the full dataset
+    And when the same query applies to a table where RLS rules restrict the user's visible rows
+    Then the cheap-count route is disabled and the query falls back to materialize+count to preserve governance
   related_reqs:
     - REQ-673
     - REQ-865
@@ -25114,3 +25143,44 @@
   related_reqs:
     - REQ-884
     - REQ-885
+- id: REQ-887
+  status: proposed
+  group: "4. Source Connectors"
+  category: RDBMS Stored Procedure Auto-Discovery
+  priority: SHOULD
+  type: behavioral
+  target: "2026-Q3"
+  description: >-
+    Extend database source introspection to auto-discover stored procedures and routines
+    (via information_schema.routines, pg_proc, or vendor equivalents) and auto-register them,
+    rather than requiring hand-registration. Classify discovered procedures as read-returning
+    (registered as parameterized relations; proc arguments become query arguments) or
+    side-effecting (registered as mutations/tracked functions). Discovered proc results flow
+    through Stage-2 governance identically to tables.
+  use_case: >-
+    Meet legacy enterprise estates (Oracle/SQL Server shops with large proc inventories) at
+    their current state, ensuring nothing in the estate is invisible to the catalog. Mirrors
+    the OpenAPI discovery pattern (REQ-316/317): introspection + auto-registration avoiding
+    hand-registration. Value scales with proc inventory; low build cost because it reuses
+    existing introspection and OpenAPI-style registration.
+  code:
+    - provisa/introspection/
+  scenario: |
+    Given a user connects a Postgres source with stored procedures (identified via pg_proc)
+    When introspection runs and analyzes prokind (p=procedure, f=function) and provolatile (stable/immutable vs volatile)
+    Then Provisa auto-registers stable/immutable procedures as parameterized relations (proc arguments as query params, same shape as OpenAPI GET tables) and volatile procedures as mutations/tracked functions, making results queryable via GraphQL and SQL with governance applied identically to hand-registered procs
+  related_reqs:
+    - REQ-205
+    - REQ-206
+    - REQ-207
+    - REQ-208
+    - REQ-316
+    - REQ-317
+    - REQ-319
+    - REQ-885
+  competitive_position:
+    status: parity
+    rationale: >-
+      Cloud data warehouses (Snowflake, BigQuery) auto-discover and expose stored procedures
+      in their catalogs. This requirement brings Provisa to parity for legacy database sources
+      that rely on stored procedures as a primary abstraction.
