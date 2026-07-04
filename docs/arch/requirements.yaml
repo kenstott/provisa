@@ -22799,7 +22799,8 @@
   - REQ-827
   - REQ-830
 - id: REQ-827
-  status: proposed
+  status: in-progress
+  since: "2026-07"
   group: 6. Execution, Routing, Caching & Performance
   category: Execution & Routing
   priority: MUST
@@ -22816,17 +22817,24 @@
     only by passing a shared governance-parity conformance suite run against a fixed golden dataset and
     identity matrix; results are diffed against the reference engine and any divergence fails certification.
     This is a hard gate: an uncertified engine MUST NOT be selectable in production config (REQ-825).
-    The suite is authoritative for DuckDB, Trino, Snowflake, Databricks, Dremio, and any future engine.'
-  use_case: 'Protects the vendor-independence claim: the governed data layer is only truly engine-agnostic
-    if identical governance decisions are provably reproduced on every execution substrate. Without a
-    conformance gate, a transpilation or semantic difference could silently leak masked or RLS-filtered
-    data on one backend but not another.'
+    The suite is authoritative for DuckDB, Trino, Snowflake, Databricks, Dremio, and any future engine.
+    DONE (2026-07): the comparator + certification GATE are implemented — provisa/federation/conformance.py::
+    compare_governed_results diffs a candidate engine''s governed rows against the reference as an
+    order-INDEPENDENT multiset (NULL ordering is an allowed semantic edge) but visibility/masking-EXACT: a
+    row visible in exactly one side (an RLS leak or over-filter) or a differently-masked cell is a
+    Divergence, and any divergence fails certification. ConformanceRegistry tracks certified engines (the
+    reference is always certified) and require_certified raises UncertifiedEngineError — the hard gate that
+    an uncertified engine must not be selectable. REMAINING (kept in-progress): the conformance SUITE
+    itself — the fixed golden dataset + identity matrix and the runner that executes each governed query on
+    every candidate engine and feeds the diff — which needs the live multi-engine execution paths.'
   code:
+  - provisa/federation/conformance.py
   - provisa/security/
   - provisa/compiler/
   - provisa/executor/trino.py
   - provisa/transpiler/router.py
   tests:
+  - tests/unit/test_conformance.py
   - tests/integration/test_governance_integration.py
   scenario: 'Given a fixed golden dataset and an identity with role "analyst" subject to RLS and column
     masking
