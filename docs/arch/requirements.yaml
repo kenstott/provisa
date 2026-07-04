@@ -24362,3 +24362,41 @@
     - REQ-874
     - REQ-826
     - REQ-260
+- id: REQ-878
+  status: proposed
+  group: "5. Data Lineage & Provenance"
+  category: Point-In-Time Reconstruction
+  priority: MAY
+  type: behavioral
+  target: "2026-Q4"
+  description: >-
+    Point-in-time MV reconstruction from the delta ledger (REQ-877). An append-only delta
+    ledger is a temporal substrate: folding change events up to a refresh version N (or reversing
+    them from the live table back to N) reconstructs the view as of N — time-travel for targets
+    that lack it natively. TWO OPT-IN TIERS by fidelity, matching what the ledger stores: (1)
+    HASH-DELTA (REQ-877 default) reconstructs MEMBERSHIP and change history only — which row keys
+    existed as of N, and that/when a row changed — because a hash proves change but does not invert
+    to old values; (2) VALUE-DELTA stores the changed row VALUES, enabling FULL CONTENT
+    reconstruction as of N (true time-travel for an RDB target). Value-delta is a second, heavier
+    opt-in — it reimplements what Iceberg gives natively (checkpoint snapshots + a changelog), so
+    Iceberg targets get content time-travel for free and value-delta buys it for RDB targets at a
+    storage cost. CHECKPOINT-BOUNDED REPLAY: do not fold all history — persist a periodic full
+    snapshot plus deltas between; reconstruct = nearest checkpoint <= N, then apply deltas up to N
+    (Iceberg's model). RECONSTRUCTION IS A QUERY — MAKE THE DB THE COMPUTE (same discipline as
+    REQ-877): as-of-N is a windowed greatest-per-key query over the ledger (last event with version
+    <= N per key, excluding deletes), executed in the engine, never a Python replay. Non-blocking
+    and system-config bounded like REQ-877.
+  use_case: >-
+    Lets a user query "the view as of refresh N / time T" for MVs whose target is not Iceberg,
+    without a bespoke temporal store — membership-and-audit reconstruction cheaply from hashes, or
+    full content reconstruction when the value-delta tier is opted in, with replay cost bounded by
+    checkpoints and the whole reconstruction expressed as a single ledger query.
+  code:
+    - provisa/lineage/
+    - provisa/mv/refresh.py
+    - provisa/core/schema_org.py
+  related_reqs:
+    - REQ-877
+    - REQ-862
+    - REQ-826
+    - REQ-874

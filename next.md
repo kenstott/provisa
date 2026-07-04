@@ -187,6 +187,13 @@ by when they become buildable.
   ceiling (global default + per-table override; skip+log above it, never sample), **column
   exclusion** in the opt-in, and a separate append-only delta ledger. Gated on the substrate /
   native-diff work; build alongside REQ-874.
+- **[22] Point-in-time MV reconstruction — REQ-878 (new).** The delta ledger [21] as a temporal
+  substrate: reconstruct a view as of refresh version N by folding change events. Two opt-in
+  fidelity tiers — `hash-delta` reconstructs membership + audit; `value-delta` reconstructs full
+  content (true time-travel for RDB targets, reimplementing Iceberg's snapshot+changelog).
+  Checkpoint-bounded replay (nearest checkpoint ≤ N + deltas); reconstruction is a windowed
+  greatest-per-key **query over the ledger** (DB-side compute), non-blocking. Sibling of REQ-877;
+  Iceberg targets get content time-travel natively.
 
 ## Critical path & parallel tracks
 
