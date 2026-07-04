@@ -90,6 +90,7 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         "bpchar": GraphQLString,  # postgres blank-padded char
         "name": GraphQLString,  # postgres internal identifier type
         "varbinary": GraphQLString,
+        "bytea": GraphQLString,  # postgres binary (REQ-686 encrypted-at-rest columns)
         "uuid": GraphQLString,
         # Integer types
         "tinyint": GraphQLInt,

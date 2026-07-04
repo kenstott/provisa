@@ -804,7 +804,7 @@ _NUMERIC_TYPES = {
     "decimal",
     "numeric",
 }
-_STRING_TYPES = {"varchar", "char", "text", "varbinary", "uuid"}
+_STRING_TYPES = {"varchar", "char", "text", "varbinary", "bytea", "uuid"}
 _TEMPORAL_TYPES = {"date", "time", "timestamp", "time with time zone", "timestamp with time zone"}
 
 
