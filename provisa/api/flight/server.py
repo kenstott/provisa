@@ -31,10 +31,6 @@ from typing import TYPE_CHECKING, cast
 import pyarrow as pa
 import pyarrow.flight as flight
 
-from provisa.otel_compat import get_tracer as _get_tracer
-
-_tracer = _get_tracer(__name__)
-
 from provisa.api.flight.catalog import (
     CatalogTable,
     build_catalog_tables,
@@ -44,9 +40,11 @@ from provisa.api.flight.catalog import (
 from provisa.compiler.parser import parse_query
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import compile_query
-from provisa.executor.direct import execute_direct
 from provisa.executor.formats.arrow import rows_to_arrow_table
+from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.transpiler.router import Route, decide_route
+
+_tracer = _get_tracer(__name__)
 
 if TYPE_CHECKING:
     from graphql import DocumentNode, GraphQLSchema
@@ -106,7 +104,9 @@ def _parse_limit_value(value: int | bool | None) -> int | None:
     return value
 
 
-class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143, REQ-369  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+class ProvisaFlightServer(
+    flight.FlightServerBase
+):  # REQ-045, REQ-051, REQ-143, REQ-369  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Arrow Flight server that executes GraphQL queries and streams Arrow data."""
 
     def __init__(
@@ -261,9 +261,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143
                 try:
                     return self._execute_query(request)
                 finally:
-                    asyncio.run_coroutine_threadsafe(
-                        limiter.release(key), self._main_loop
-                    ).result()
+                    asyncio.run_coroutine_threadsafe(limiter.release(key), self._main_loop).result()
             return self._execute_query(request)
 
         return self._do_get_catalog(ticket)
@@ -402,7 +400,9 @@ class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143
 
         return document, ctx, rls, role, compiled, decision, variables
 
-    def _do_get_cypher(self, request: dict[str, object]) -> flight.RecordBatchStream:  # REQ-345, REQ-347, REQ-352  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def _do_get_cypher(
+        self, request: dict[str, object]
+    ) -> flight.RecordBatchStream:  # REQ-345, REQ-347, REQ-352  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute a Cypher query ticket and return Arrow record batches."""
         import concurrent.futures
 
@@ -458,13 +458,16 @@ class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143
             raise flight.FlightServerError(f"Cypher SQL render failed: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         from provisa.compiler.sql_gen import make_semantic_sql
+
         semantic_sql = make_semantic_sql(sql_str, ctx)
 
         resolved_params = [params.get(name) for name in ordered_params]
 
         try:
             plan = asyncio.run_coroutine_threadsafe(
-                _govern_and_route_compiled(semantic_sql, role_id, exec_params=resolved_params or None, state=self._state),
+                _govern_and_route_compiled(
+                    semantic_sql, role_id, exec_params=resolved_params or None, state=self._state
+                ),
                 self._main_loop,
             ).result()
         except PermissionError as exc:
@@ -478,7 +481,9 @@ class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143
 
         trino_sql = plan.trino_sql
         if trino_sql is None:
-            raise flight.FlightServerError(f"Route {plan.route!r} is not supported for Cypher via Flight")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise flight.FlightServerError(
+                f"Route {plan.route!r} is not supported for Cypher via Flight"
+            )  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         def _run() -> list[dict[str, object]]:
             cursor = trino_conn.cursor()
@@ -519,11 +524,13 @@ class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143
             return self._do_get_sql_governed(request)
         return self._do_get_graphql(request)
 
-    def _do_get_sql_governed(self, request: dict[str, object]) -> flight.RecordBatchStream:  # REQ-267, REQ-266  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def _do_get_sql_governed(
+        self, request: dict[str, object]
+    ) -> (
+        flight.RecordBatchStream
+    ):  # REQ-267, REQ-266  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute SQL through the shared governance pipeline and return Arrow record batches."""
         from provisa.compiler.sql_gen import ColumnRef
-        from provisa.executor.direct import execute_direct
-        from provisa.executor.trino_flight import execute_trino_flight_arrow
         from provisa.pgwire._pipeline import _govern_and_route
 
         sql = str(request.get("query", ""))
@@ -540,17 +547,16 @@ class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         if plan.route == Route.TRINO:
-            if self._state.flight_client is None:
-                raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                    "Zaychik Flight SQL proxy is not configured. "
-                    "Set ZAYCHIK_HOST/ZAYCHIK_PORT and ensure the service is running."
-                )
             assert plan.trino_sql is not None
-            table = execute_trino_flight_arrow(self._state.flight_client, plan.trino_sql, [])
+            # Arrow Flight is an advertised, engine-specific transport (REQ-825).
+            try:
+                table = self._state.federation_engine.execute_engine_arrow(plan.trino_sql, [])
+            except RuntimeError as exc:
+                raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         elif plan.route == Route.DIRECT:
             result = asyncio.run_coroutine_threadsafe(
-                execute_direct(
+                self._state.federation_engine.execute_native(
                     self._state.source_pools,
                     plan.source_id,
                     plan.sql,
@@ -591,7 +597,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143
 
         if plan.route == Route.DIRECT:
             result = asyncio.run_coroutine_threadsafe(
-                execute_direct(
+                self._state.federation_engine.execute_native(
                     self._state.source_pools,
                     plan.source_id,
                     plan.sql,
@@ -602,17 +608,13 @@ class ProvisaFlightServer(flight.FlightServerBase):  # REQ-045, REQ-051, REQ-143
             table = rows_to_arrow_table(result.rows, compiled.columns)
             return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        if self._state.flight_client is None:
-            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                "Zaychik Flight SQL proxy is not configured. "
-                "Set ZAYCHIK_HOST/ZAYCHIK_PORT and ensure the service is running."
-            )
-        from provisa.executor.trino_flight import execute_trino_flight_stream
-
         assert plan.trino_sql is not None
-        arrow_schema, batch_gen = execute_trino_flight_stream(
-            self._state.flight_client,
-            plan.trino_sql,
-            compiled.params,
-        )
+        # Streamed Arrow Flight is an advertised, engine-specific transport (REQ-825, REQ-145).
+        try:
+            arrow_schema, batch_gen = self._state.federation_engine.execute_engine_stream(
+                plan.trino_sql,
+                compiled.params,
+            )
+        except RuntimeError as exc:
+            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         return flight.GeneratorStream(arrow_schema, batch_gen)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

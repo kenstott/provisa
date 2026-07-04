@@ -58,14 +58,12 @@ from provisa.compiler.sql_gen import (
     rewrite_semantic_to_physical,
     rewrite_semantic_to_trino_physical,
 )
-from provisa.executor.direct import execute_direct
 from provisa.executor.serialize import (
     serialize_aggregate,
     serialize_group_by,
     serialize_rows,
     shape_transform,
 )
-from provisa.executor.trino import execute_trino
 from provisa.executor import stats as _qs_mod
 from provisa.api.data.action_exec import invoke_tracked_function
 from provisa.mv.rewriter import rewrite_if_mv_match
@@ -2098,7 +2096,6 @@ async def _execute_trino_standard(
 
     trino_sql = transpile_to_trino(exec_sql)
     _t_trino = _time.perf_counter()
-    _loop = asyncio.get_running_loop()
     _trino_ck = getattr(state, "trino_conn_kwargs", None)
     _root_meta = ctx.tables.get(root_field)
     _root_name = (
@@ -2113,17 +2110,12 @@ async def _execute_trino_standard(
     if query_text is not None:
         _span_attrs["provisa.query_text"] = query_text
 
-    result = await _loop.run_in_executor(
-        None,
-        lambda: execute_trino(
-            state.trino_conn,
-            trino_sql,
-            compiled.params,
-            session_hints=session_hints or None,
-            conn_kwargs=_trino_ck,
-            span_attrs=_span_attrs,
-            extra_table_attrs=None,
-        ),
+    result = await state.federation_engine.execute_engine(
+        trino_sql,
+        compiled.params,
+        session_hints=session_hints or None,
+        conn_kwargs=_trino_ck,
+        span_attrs=_span_attrs,
     )
     _trino_ms = (_time.perf_counter() - _t_trino) * 1000
     _per_source_ms: dict[str, float] = {
@@ -2156,12 +2148,13 @@ async def _exec_nodes_query(compiled, ctx, state, decision):
 
     Returns the nodes_result.
     """
+    engine = state.federation_engine
     if decision.route == Route.DIRECT and decision.source_id:
         nodes_target_sql = transpile(
             rewrite_semantic_to_physical(compiled.nodes_sql, ctx),
             decision.dialect or "postgres",
         )
-        return await execute_direct(
+        return await engine.execute_native(
             state.source_pools,
             decision.source_id,
             nodes_target_sql,
@@ -2170,14 +2163,10 @@ async def _exec_nodes_query(compiled, ctx, state, decision):
     nodes_trino_sql = transpile_to_trino(
         rewrite_semantic_to_trino_physical(compiled.nodes_sql, ctx)
     )
-    return await asyncio.get_running_loop().run_in_executor(
-        None,
-        lambda: execute_trino(
-            state.trino_conn,
-            nodes_trino_sql,
-            compiled.nodes_params,
-            conn_kwargs=getattr(state, "trino_conn_kwargs", None),
-        ),
+    return await engine.execute_engine(
+        nodes_trino_sql,
+        compiled.nodes_params,
+        conn_kwargs=getattr(state, "trino_conn_kwargs", None),
     )
 
 
@@ -2453,24 +2442,21 @@ async def _exec_probe_redirect(
     """
     from provisa.executor.redirect import upload_and_presign
 
+    engine = state.federation_engine
     if decision.route == Route.DIRECT and decision.source_id:
         target_sql = transpile(
             rewrite_semantic_to_physical(compiled.sql, ctx), decision.dialect or "postgres"
         )
-        full_result = await execute_direct(
+        full_result = await engine.execute_native(
             state.source_pools, decision.source_id, target_sql, compiled.params
         )
     else:
         full_trino_sql = transpile_to_trino(rewrite_semantic_to_trino_physical(compiled.sql, ctx))
-        full_result = await asyncio.get_running_loop().run_in_executor(
-            None,
-            lambda: execute_trino(
-                state.trino_conn,
-                full_trino_sql,
-                compiled.params,
-                session_hints=session_hints or None,
-                conn_kwargs=getattr(state, "trino_conn_kwargs", None),
-            ),
+        full_result = await engine.execute_engine(
+            full_trino_sql,
+            compiled.params,
+            session_hints=session_hints or None,
+            conn_kwargs=getattr(state, "trino_conn_kwargs", None),
         )
     return await upload_and_presign(
         full_result,
@@ -2694,7 +2680,7 @@ async def _execute_one_field(
             exec_sql = rewrite_semantic_to_physical(compiled.sql, ctx)
             if probe_limit is not None:
                 exec_sql = _inject_probe_limit(exec_sql, probe_limit)
-            result = await execute_direct(
+            result = await state.federation_engine.execute_native(
                 state.source_pools,
                 decision.source_id,
                 transpile(exec_sql, decision.dialect or "postgres"),
@@ -3292,7 +3278,7 @@ async def _handle_mutation(
         target_sql = transpile(mutation.sql, dialect)
 
         try:
-            result = await execute_direct(
+            result = await state.federation_engine.execute_native(
                 state.source_pools,
                 source_id,
                 target_sql,

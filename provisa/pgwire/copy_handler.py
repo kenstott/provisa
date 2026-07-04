@@ -338,13 +338,12 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
 
     def _exec_trino_flight(self, plan: _Plan, fmt: str) -> tuple[bytes, int]:
         from provisa.api.app import state
-        from provisa.executor.trino_flight import execute_trino_flight_arrow
 
-        if state.flight_client is None:
-            raise RuntimeError("Arrow Flight client not connected")
         if plan.trino_sql is None:
             raise RuntimeError("Trino plan missing transpiled SQL")
-        table = execute_trino_flight_arrow(state.flight_client, plan.trino_sql, plan.exec_params)
+        # Arrow Flight is an advertised, engine-specific transport (REQ-825): route through the
+        # bound engine, which fails closed if the engine lacks ARROW or the proxy is unconfigured.
+        table = state.federation_engine.execute_engine_arrow(plan.trino_sql, plan.exec_params)
         data_bytes = _arrow_table_to_copy_bytes(table, fmt)
         return data_bytes, table.num_rows
 

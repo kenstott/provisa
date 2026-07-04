@@ -18,7 +18,6 @@ Called from pgwire handler threads via asyncio.run_coroutine_threadsafe.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -239,22 +238,15 @@ async def _govern_and_route(
 async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  # REQ-027, REQ-028
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
-    from provisa.executor.direct import execute_direct
-    from provisa.executor.trino import execute_trino
     from provisa.transpiler.router import Route
 
+    engine = state.federation_engine
+
     if plan.route == Route.TRINO:
-        if state.trino_conn is None:
-            raise RuntimeError("Trino connection not available")
         assert plan.trino_sql is not None
-        _trino_conn = state.trino_conn
-        _trino_sql = plan.trino_sql
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: execute_trino(
-                _trino_conn, _trino_sql, params=plan.exec_params, session_hints=plan.session_hints
-            ),
+        # ENGINE terminal (REQ-825): hand the federated SQL to the bound engine.
+        result = await engine.execute_engine(
+            plan.trino_sql, params=plan.exec_params, session_hints=plan.session_hints
         )
     elif plan.source_id == "provisa-admin" or not state.source_pools.has(plan.source_id):
         # Admin-owned tables (meta.*) live in the provisa tenant_db, not source_pools.
@@ -274,7 +266,8 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
                 rows = []
         result = QueryResult(rows=rows, column_names=col_names)
     else:
-        result = await execute_direct(
+        # DIRECT terminal (REQ-825): single reachable source on its native driver.
+        result = await engine.execute_native(
             state.source_pools,
             plan.source_id,
             plan.sql,

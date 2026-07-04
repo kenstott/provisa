@@ -416,12 +416,9 @@ async def _execute_trino_route(
     state,
     embedded_params: list | None,
 ) -> "QueryResult":
-    import asyncio
-
     from provisa.api.data.endpoint import _materialize_api_to_trino_cache
     from provisa.cache.hot_tables import build_values_cte_sql
     from provisa.api_source.trino_cache import rewrite_all_from_cache
-    from provisa.executor.trino import execute_trino
 
     _qualified = qualify_with_catalogs(governed_physical, ctx)
     if state.view_sql_map:
@@ -434,14 +431,10 @@ async def _execute_trino_route(
     if _rewrites:
         _qualified = rewrite_all_from_cache(_qualified, _rewrites)
     sql_to_run = transpile_to_trino(_qualified)
-    _loop = asyncio.get_event_loop()
     if state.trino_conn is None:
         raise HTTPException(status_code=503, detail="Trino connection not available")
-    _trino_conn = state.trino_conn
     exec_params = embedded_params or None
-    return await _loop.run_in_executor(
-        None, lambda: execute_trino(_trino_conn, sql_to_run, params=exec_params)
-    )
+    return await state.federation_engine.execute_engine(sql_to_run, params=exec_params)
 
 
 async def _execute_direct_route(
@@ -451,12 +444,12 @@ async def _execute_direct_route(
     source_pools,
     embedded_params: list | None,
 ) -> "QueryResult":
-    from provisa.executor.direct import execute_direct
+    from provisa.api.app import state as _state
 
     dialect = decision.dialect or "postgres"
     sql_to_run = transpile(governed_physical, dialect)
     exec_params = embedded_params or None
-    return await execute_direct(
+    return await _state.federation_engine.execute_native(
         source_pools,
         decision.source_id or default_source,
         sql_to_run,

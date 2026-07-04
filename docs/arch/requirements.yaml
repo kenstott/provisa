@@ -25204,3 +25204,33 @@
       Cloud data warehouses (Snowflake, BigQuery) auto-discover and expose stored procedures
       in their catalogs. This requirement brings Provisa to parity for legacy database sources
       that rely on stored procedures as a primary abstraction.
+- id: REQ-888
+  status: complete
+  since: "2026-07"
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Execution & Routing
+  priority: MUST
+  type: constraint
+  description: >-
+    Federation engine contract is wired into the live query path via EngineRuntime,
+    bound mandatorily at AppState construction as state.federation_engine. Engine-specific
+    consumer transports are capability-gated via EngineCapability enum (ROWS/ARROW/ARROW_STREAM);
+    missing capabilities fail closed via UnsupportedCapabilityError with no fallback.
+  use_case: >-
+    Mandatory EngineRuntime binding and capability-gating defines the defensible abstraction
+    boundary for platform-specific escape hatches. Named, advertised capabilities prevent
+    arbitrary injected connections and enforce consistent routing (DIRECT → native driver,
+    ENGINE → federated execution) across all consumer paths (pgwire, GraphQL, Arrow Flight,
+    COPY handler, NL executor).
+  code:
+    - provisa/federation/runtime.py
+    - provisa/api/graphql/
+    - provisa/bolt/
+    - provisa/arrow_flight/
+    - provisa/query_helpers.py
+  tests:
+    - tests/integration/test_engine_runtime_binding.py
+    - tests/unit/test_engine_capabilities.py
+  related_reqs:
+    - REQ-825
+    - REQ-840

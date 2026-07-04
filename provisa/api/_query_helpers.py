@@ -124,21 +124,20 @@ async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
         source_dsns=getattr(state, "source_dsns", None),
     )
 
-    if decision.route == Route.DIRECT and decision.source_id:
-        from provisa.executor.direct import execute_direct
+    engine = state.federation_engine
 
+    if decision.route == Route.DIRECT and decision.source_id:
         target_sql = transpile(compiled.sql, decision.dialect or "postgres")
-        return await execute_direct(
+        return await engine.execute_native(
             state.source_pools,
             decision.source_id,
             target_sql,
             compiled.params,
         )
 
-    from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
 
     if state.trino_conn is None:
         raise HTTPException(status_code=503, detail="Trino not connected")
     trino_sql = transpile_to_trino(compiled.sql)
-    return execute_trino(state.trino_conn, trino_sql, compiled.params)
+    return await engine.execute_engine(trino_sql, compiled.params)

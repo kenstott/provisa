@@ -111,21 +111,19 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
 
 
 async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
-    import asyncio
     from graphql import GraphQLSchema
     from provisa.compiler.parser import parse_query
     from provisa.compiler.sql_gen import compile_query, rewrite_semantic_to_trino_physical
     from provisa.compiler.stage2 import apply_governance, build_governance_context
     from provisa.compiler.rls import RLSContext
-    from provisa.executor.trino import execute_trino
     from provisa.executor.serialize import serialize_aggregate, serialize_rows
 
     schema = app_state.schemas.get(role)
     if not isinstance(schema, GraphQLSchema):
         raise RuntimeError(f"No GraphQL schema for role: {role}")
-    trino_conn = getattr(app_state, "trino_conn", None)
-    if trino_conn is None:
+    if getattr(app_state, "trino_conn", None) is None:
         raise RuntimeError("Federation engine not connected")
+    engine = app_state.federation_engine
 
     ctx = _get_ctx(app_state, role)
     rls = getattr(app_state, "rls_contexts", {}).get(role, RLSContext.empty())
@@ -147,16 +145,11 @@ async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
     for cq in compiled_queries:
         governed = apply_governance(cq.sql, gov_ctx)
         physical = rewrite_semantic_to_trino_physical(governed, ctx)
-        result = await asyncio.get_event_loop().run_in_executor(
-            None, lambda sql=physical, p=cq.params: execute_trino(trino_conn, sql, p)
-        )
+        result = await engine.execute_engine(physical, cq.params)
         if cq.nodes_sql is not None:
             governed_nodes = apply_governance(cq.nodes_sql, gov_ctx)
             physical_nodes = rewrite_semantic_to_trino_physical(governed_nodes, ctx)
-            nodes_result = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda sql=physical_nodes, p=cq.nodes_params: execute_trino(trino_conn, sql, p),
-            )
+            nodes_result = await engine.execute_engine(physical_nodes, cq.nodes_params)
             serialized = serialize_aggregate(
                 result.rows,
                 cq.columns,
@@ -206,21 +199,10 @@ def _get_ctx(app_state: Any, role: str) -> Any:
 
 
 async def _run_trino(sql: str, params: list, app_state: Any) -> list[dict]:
-    import asyncio
-
-    trino_conn = getattr(app_state, "trino_conn", None)
-    if trino_conn is None:
+    if getattr(app_state, "trino_conn", None) is None:
         raise FederationError("Federation engine not connected")
-
-    def _run() -> list[dict]:
-        cursor = trino_conn.cursor()
-        try:
-            cursor.execute(sql, params or [])
-            cols = [d[0] for d in (cursor.description or [])]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
-        except Exception as exc:
-            raise _federation_error(exc) from exc
-        finally:
-            cursor.close()
-
-    return await asyncio.get_event_loop().run_in_executor(None, _run)
+    try:
+        result = await app_state.federation_engine.execute_engine(sql, params or [])
+    except Exception as exc:
+        raise _federation_error(exc) from exc
+    return [dict(zip(result.column_names, row)) for row in result.rows]
