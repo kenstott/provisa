@@ -88,7 +88,13 @@ def _make_state(role_id: str = "admin", schema=None, ctx=None):
         masking_rules={},
         mv_registry=SimpleNamespace(get_fresh=lambda: []),
         trino_conn=MagicMock(),
+        flight_client=None,
     )
+    # Mandatory terminal-execution binding (REQ-825): bind the reference engine to the stub state.
+    from provisa.federation.engine import build_trino_engine
+    from provisa.federation.runtime import EngineRuntime
+
+    state.federation_engine = EngineRuntime(build_trino_engine(), state)
     return state
 
 

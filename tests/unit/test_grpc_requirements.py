@@ -327,7 +327,13 @@ class TestREQ617RoleSelectionViaMetadata:
             masking_rules={},
             mv_registry=SimpleNamespace(get_fresh=lambda: []),
             trino_conn=MagicMock(),
+            flight_client=None,
         )
+        # Mandatory terminal-execution binding (REQ-825).
+        from provisa.federation.engine import build_trino_engine
+        from provisa.federation.runtime import EngineRuntime
+
+        state.federation_engine = EngineRuntime(build_trino_engine(), state)
         servicer = ProvisaServicer(state, pb2, MagicMock())
         context = AsyncMock(spec=grpc.aio.ServicerContext)
         context.invocation_metadata.return_value = [("x-provisa-role", "admin")]
