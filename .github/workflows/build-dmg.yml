@@ -422,11 +422,11 @@ jobs:
         with:
           platforms: arm64
 
-      - name: Pull + build demo images
+      - name: Build demo images (all Python — no Java petstore)
         run: |
           mkdir -p images
-          docker pull --platform linux/amd64 "swaggerapi/petstore3:unstable"
-          docker save "swaggerapi/petstore3:unstable" | gzip -9 > images/petstore3-unstable.tar.gz
+          docker build --platform linux/arm64 -t provisa/petstore-demo:local ./demo/petstore_server
+          docker save provisa/petstore-demo:local | gzip -9 > images/petstore-demo-local.tar.gz
           docker build --platform linux/arm64 -t provisa/graphql-demo:local ./demo/graphql_server
           docker save provisa/graphql-demo:local | gzip -9 > images/graphql-demo-local.tar.gz
 

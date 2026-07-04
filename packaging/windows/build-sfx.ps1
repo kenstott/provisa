@@ -22,11 +22,13 @@ Copy-Item (Join-Path $RepoRoot 'docker-compose.airgap.yml') $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'config')  (Join-Path $BuildCompose 'config')  -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'db')      (Join-Path $BuildCompose 'db')      -Recurse -Force
 
-# Demo overlay: rewrite graphql-demo's build: to the prebuilt image so no build
-# context is needed on the user's machine (image ships via provisa-demo-images).
+# Demo overlay: rewrite the demo servers' build: to prebuilt images so no build
+# context is needed on the user's machine (images ship via provisa-demo-images).
 $DemoComposeSrc = Join-Path $RepoRoot 'docker-compose.demo.yml'
 $DemoComposeDst = Join-Path $BuildCompose 'docker-compose.demo.yml'
-(Get-Content $DemoComposeSrc -Raw) -replace 'build:\s*\./demo/graphql_server', 'image: provisa/graphql-demo:local' |
+((Get-Content $DemoComposeSrc -Raw) `
+  -replace 'build:\s*\./demo/graphql_server',  'image: provisa/graphql-demo:local' `
+  -replace 'build:\s*\./demo/petstore_server', 'image: provisa/petstore-demo:local') |
   Set-Content -Path $DemoComposeDst -Encoding UTF8
 
 # Copy trino WITHOUT plugins/ — plugins (925 MB) download at first launch.

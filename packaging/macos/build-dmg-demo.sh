@@ -46,19 +46,21 @@ check_prereqs() {
 save_images() {
   mkdir -p "$IMAGES_DIR"
 
-  # petstore3 — public image
-  local petstore_out="${IMAGES_DIR}/petstore3-unstable.tar.gz"
+  # petstore — Python OpenAPI mock, built from local source (no Java image)
+  local petstore_out="${IMAGES_DIR}/petstore-demo-local.tar.gz"
   if [ ! -f "$petstore_out" ]; then
     if ! command -v docker &>/dev/null; then
-      err "docker not found — required to pull demo images"
+      err "docker not found — required to build demo images"
       exit 1
     fi
-    info "Pulling + saving: swaggerapi/petstore3:unstable"
-    docker pull --platform linux/amd64 "swaggerapi/petstore3:unstable"
-    docker save "swaggerapi/petstore3:unstable" | gzip -9 > "$petstore_out"
+    info "Building + saving: provisa/petstore-demo:local (linux/arm64)"
+    docker build --platform linux/arm64 \
+      -t provisa/petstore-demo:local \
+      "${REPO_ROOT}/demo/petstore_server"
+    docker save provisa/petstore-demo:local | gzip -9 > "$petstore_out"
     ok "  Saved: ${petstore_out}"
   else
-    info "  Skipping (cached): petstore3:unstable"
+    info "  Skipping (cached): petstore-demo:local"
   fi
 
   # graphql-demo — built from local source
@@ -154,17 +156,16 @@ write_extension() {
     cp "${compose_src}/docker-compose.demo.yml" "$EXT_COMPOSE"
     ok "Extension compose file written: ${EXT_COMPOSE}"
   else
-    # Write the demo compose inline — petstore3 (amd64) + graphql-demo (arm64)
+    # Write the demo compose inline — Python petstore + graphql-demo (arm64)
     cat > "$EXT_COMPOSE" <<'COMPOSE'
-# Provisa Demo Extension — petstore-mock + graphql-demo
+# Provisa Demo Extension — petstore-mock + graphql-demo (all Python)
 services:
   petstore-mock:
-    image: swaggerapi/petstore3:unstable
-    platform: linux/amd64
+    image: provisa/petstore-demo:local
     ports:
       - "18080:8080"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/v3/pet/findByStatus?status=available || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v3/pet/findByStatus?status=available')\""]
       interval: 10s
       timeout: 5s
       retries: 12
