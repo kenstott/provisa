@@ -15,5 +15,19 @@ from provisa.lineage.columns import (
     lineage_span_attributes,
     resolve_column_lineage,
 )
+from provisa.lineage.versions import (
+    INPUT_KINDS,
+    InputVersion,
+    mv_definition_version,
+    resolve_input_version,
+)
 
-__all__ = ["ColumnDerivation", "resolve_column_lineage", "lineage_span_attributes"]
+__all__ = [
+    "ColumnDerivation",
+    "resolve_column_lineage",
+    "lineage_span_attributes",
+    "InputVersion",
+    "INPUT_KINDS",
+    "resolve_input_version",
+    "mv_definition_version",
+]

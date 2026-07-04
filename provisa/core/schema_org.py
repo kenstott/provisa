@@ -253,6 +253,11 @@ mv_refresh_log = Table(
     Column("row_count", Integer),
     Column("duration_ms", Integer),
     Column("error", Text),
+    # Column-level lineage / provenance stamps (REQ-862) — store-independent.
+    Column("definition_version", Text),
+    Column("input_version", Text),
+    Column("input_version_kind", Text),
+    Column("trace_id", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint("status IN ('success', 'failure')", name="mv_refresh_log_status_check"),
 )

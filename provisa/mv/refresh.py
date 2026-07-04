@@ -32,26 +32,54 @@ log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
 
 
-def _emit_column_lineage_span(mv: MVDefinition, select_sql: str) -> None:  # REQ-862
-    """Emit a span capturing the per-output-column derivation of this refresh.
+def _emit_column_lineage_span(
+    mv: MVDefinition, select_sql: str, refresh_epoch: str, input_signals=None
+) -> None:  # REQ-862
+    """Emit a span capturing this refresh's column-level lineage and version stamps.
 
-    Best-effort telemetry: a SQL the lineage resolver cannot parse is logged and
-    skipped, never failing the refresh. The refresh trace_id is carried by the
-    active span context; column derivations land as attributes for the user to query.
+    Carries, store-independently (works for Iceberg or RDB targets): per-output-column
+    derivation from the view SQL, the MV definition-version (content hash), the resolved
+    input-version + its fidelity kind, and the refresh trace_id. Best-effort telemetry:
+    a SQL the lineage resolver cannot parse is logged and skipped, never failing the
+    refresh.
     """
-    from provisa.lineage import lineage_span_attributes, resolve_column_lineage
     from sqlglot.errors import SqlglotError
+
+    from provisa.lineage import (
+        lineage_span_attributes,
+        resolve_column_lineage,
+        resolve_input_version,
+    )
 
     try:
         derivations = resolve_column_lineage(select_sql, dialect="trino")
     except SqlglotError as exc:
         log.warning("MV %s: column lineage unresolved (%s)", mv.id, exc)
-        return
+        derivations = []
+    input_version = resolve_input_version(input_signals or [], refresh_epoch)
     with _tracer.start_as_current_span("mv.refresh.column_lineage") as span:
+        ctx = span.get_span_context() if hasattr(span, "get_span_context") else None
+        trace_id = format(ctx.trace_id, "032x") if ctx is not None else ""
         span.set_attribute("mv.id", mv.id)
         span.set_attribute("mv.target_table", mv.target_table or "")
+        span.set_attribute("lineage.definition_version", _mv_definition_version(mv))
+        span.set_attribute("lineage.input_version", input_version.value)
+        span.set_attribute("lineage.input_version_kind", input_version.kind)
+        span.set_attribute("lineage.trace_id", trace_id)
         for key, value in lineage_span_attributes(derivations).items():
             span.set_attribute(key, value)
+
+
+def _mv_definition_version(mv: MVDefinition) -> str:  # REQ-862
+    from provisa.lineage import mv_definition_version
+
+    return mv_definition_version(
+        sql=mv.sql,
+        join_pattern=mv.join_pattern,
+        source_tables=mv.source_tables,
+        serves_aggregates=mv.serves_aggregates,
+        aggregate_columns=mv.aggregate_columns,
+    )
 
 
 def _build_refresh_sql(mv: MVDefinition, trino_conn=None) -> str:
@@ -142,7 +170,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
             return
 
         select_sql = _build_refresh_sql(mv, trino_conn)
-        _emit_column_lineage_span(mv, select_sql)  # REQ-862
+        _emit_column_lineage_span(mv, select_sql, str(start))  # REQ-862
         cursor = trino_conn.cursor()
 
         # Check if target table exists

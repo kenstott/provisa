@@ -28,5 +28,9 @@ CREATE TABLE IF NOT EXISTS mv_refresh_log (
     row_count   INTEGER,
     duration_ms INTEGER,
     error       TEXT,
+    definition_version TEXT,
+    input_version      TEXT,
+    input_version_kind TEXT,
+    trace_id           TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

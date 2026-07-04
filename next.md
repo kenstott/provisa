@@ -98,13 +98,17 @@ Larger authorship; testable without the federation substrate, some need an adapt
   `tracked_functions`/`tracked_webhooks` into every surface's native catalog — pgwire `_pg_proc`,
   SQL `information_schema.routines`, Cypher/Bolt `CALL fn() YIELD` — with `writable_by`
   enforcement (REQ-872). Needs the remote adapters and each surface wired.
-- **[7] Lineage column-trace — REQ-862.** In-progress (2026-07). Column-derivation core done +
-  tested: `provisa/lineage/columns.py` resolves per-output-column lineage (upstream source
-  columns + transform) from a view SELECT via sqlglot, and MV refresh emits it as an OTel span
-  (`mv.refresh.column_lineage`, `provisa/mv/refresh.py`) — 10 unit tests. **Remaining (kept MUST
-  in-progress, not flipped):** the span must also carry the input snapshot ids / watermark epochs
-  consumed and the active definition-version — needs MV definition-versioning + Iceberg
-  snapshot-id capture, verifiable only on a live Iceberg stack.
+- **[7] Lineage column-trace — REQ-862.** In-progress (2026-07). The refresh span
+  (`mv.refresh.column_lineage`) now carries all four mandated, **store-independent** stamps:
+  per-output-column derivation (`provisa/lineage/columns.py`, sqlglot), a definition-version
+  content hash (`provisa/lineage/versions.py`), a capability-graded input-version + its fidelity
+  kind (iceberg_snapshot › watermark › freshness_token › refresh_epoch), and the trace_id. Ledger
+  columns added to `mv_refresh_log` (`definition_version`/`input_version`/`input_version_kind`/
+  `trace_id`) for a future writer. 19 unit tests; schema-parity green. **Remaining (kept MUST
+  in-progress):** wire per-source signal *gathering* in refresh so `input_version` reflects the
+  actual Iceberg snapshot id / RDB watermark value rather than always degrading to the refresh
+  epoch — needs source-metadata plumbing + live source queries (a running engine). The resolver
+  and fallback are done; only the signal capture is unwired.
 
 ## Tier 3 — Substrate (live multi-engine + multi-source)
 
