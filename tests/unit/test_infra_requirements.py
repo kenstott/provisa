@@ -260,16 +260,16 @@ class TestREQ170ResetVolumes:
 class TestREQ171MinioBucketAutoCreated:
     """REQ-171"""
 
-    def test_minio_init_service_in_observability_compose(self):
-        # REQ-171 — minio-init service creates the bucket at startup
-        content = yaml.safe_load((REPO_ROOT / "docker-compose.observability.yml").read_text())
+    def test_minio_init_service_in_core_compose(self):
+        # REQ-171 / REQ-815 — minio + minio-init moved to docker-compose.core.yml (core runtime dep)
+        content = yaml.safe_load((REPO_ROOT / "docker-compose.core.yml").read_text())
         assert "minio-init" in content["services"], (
             "minio-init service must exist to auto-create results bucket"
         )
 
     def test_minio_init_creates_provisa_results_bucket(self):
-        # REQ-171
-        content = yaml.safe_load((REPO_ROOT / "docker-compose.observability.yml").read_text())
+        # REQ-171 / REQ-815
+        content = yaml.safe_load((REPO_ROOT / "docker-compose.core.yml").read_text())
         init_svc = content["services"]["minio-init"]
         entrypoint = str(init_svc.get("entrypoint", ""))
         assert "provisa-results" in entrypoint, "minio-init must create the provisa-results bucket"

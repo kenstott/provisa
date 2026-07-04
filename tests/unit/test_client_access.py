@@ -483,11 +483,12 @@ def test_adbc_connect_uses_hardcoded_flight_port_8815():
 
 
 def test_adbc_connect_has_no_flight_port_parameter():
-    # REQ-608
-    # adbc_connect must NOT expose a flight_port parameter — port is hardcoded.
+    # REQ-608 / REQ-711: the Arrow Flight port is exposed as `port` (default 8815), not the
+    # confusingly-named `flight_port`. REQ-711 made the port configurable, superseding the
+    # earlier "hardcoded, no port param" constraint.
     import inspect
     from provisa_client.adbc import adbc_connect  # type: ignore[import-not-found]
 
     sig = inspect.signature(adbc_connect)
     assert "flight_port" not in sig.parameters
-    assert "port" not in sig.parameters
+    assert sig.parameters["port"].default == 8815
