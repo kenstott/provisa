@@ -98,6 +98,16 @@ def _alive(conn: trino.dbapi.Connection) -> bool:
         return False
 
 
+def _close_quietly(conn: trino.dbapi.Connection | None) -> None:
+    """Best-effort close of a connection execute_trino owns (opened from conn_kwargs)."""
+    if conn is None:
+        return
+    try:
+        conn.close()
+    except Exception:  # noqa: BLE001  # best-effort close in a finally must never raise
+        pass
+
+
 def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-303
     conn: trino.dbapi.Connection,
     sql: str,
@@ -109,8 +119,10 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
 ) -> QueryResult:
     span_name = "provisa.query.trino" if span_attrs else "trino.execute"
     with _tracer.start_as_current_span(span_name) as span:
+        _owned_conn = None
         if conn_kwargs is not None:
             conn = trino.dbapi.connect(**conn_kwargs)
+            _owned_conn = conn  # execute_trino owns a conn it creates from kwargs; close it on exit
         elif not _alive(conn):
             log.warning("[EXEC TRINO] connection stale — reconnecting")
             try:
@@ -156,96 +168,99 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
         last_exc: Exception | None = None
         attempt = 0
 
-        while True:
-            if attempt > 0:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                delay = min(_backoff_secs(attempt), remaining)
-                log.warning(
-                    "[EXEC TRINO] retry attempt=%d after %.1fs (%.1fs remaining) — %s",
-                    attempt,
-                    delay,
-                    remaining,
-                    last_exc,
-                )
-                time.sleep(delay)
+        try:
+            while True:
+                if attempt > 0:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    delay = min(_backoff_secs(attempt), remaining)
+                    log.warning(
+                        "[EXEC TRINO] retry attempt=%d after %.1fs (%.1fs remaining) — %s",
+                        attempt,
+                        delay,
+                        remaining,
+                        last_exc,
+                    )
+                    time.sleep(delay)
+                    try:
+                        from provisa.api.app import state as _retry_state
+
+                        conn = trino.dbapi.connect(**_retry_state.trino_conn_kwargs)
+                        _retry_state.trino_conn = conn
+                    except Exception as reconnect_exc:
+                        last_exc = ConnectionError(
+                            f"Trino reconnect on retry {attempt}: {reconnect_exc}"
+                        )
+                        attempt += 1
+                        continue
+
                 try:
-                    from provisa.api.app import state as _retry_state
+                    cur = conn.cursor()
+                    for key, value in effective_hints.items():
+                        safe_key = key.replace("'", "")
+                        safe_value = value.replace("'", "")
+                        set_sql = f"SET SESSION {safe_key} = '{safe_value}'"
+                        log.info("[EXEC TRINO] session hint: %s", set_sql)
+                        cur.execute(set_sql)
 
-                    conn = trino.dbapi.connect(**_retry_state.trino_conn_kwargs)
-                    _retry_state.trino_conn = conn
-                except Exception as reconnect_exc:
-                    last_exc = ConnectionError(
-                        f"Trino reconnect on retry {attempt}: {reconnect_exc}"
+                    log.info("[EXEC TRINO] sql=%s", exec_sql[:200])
+                    if effective_params:
+                        cur.execute(exec_sql, effective_params)
+                    else:
+                        cur.execute(exec_sql)
+                    rows = cur.fetchall()
+                    column_names = [desc[0] for desc in cur.description] if cur.description else []
+
+                    span.set_attribute("db.row_count", len(rows))
+                    log.info("[EXEC TRINO] rows=%d", len(rows))
+
+                    if extra_table_attrs:
+                        for _attrs in extra_table_attrs:
+                            with _tracer.start_as_current_span("provisa.query.trino") as _child:
+                                for k, v in _attrs.items():
+                                    _child.set_attribute(k, v)
+
+                    return QueryResult(rows=rows, column_names=column_names)
+
+                except Exception as exc:
+                    from provisa.executor.errors import FederationError
+
+                    err_msg = str(exc)
+                    # Memory errors are never retryable.
+                    if any(
+                        k in err_msg
+                        for k in (
+                            "EXCEEDED_LOCAL_MEMORY_LIMIT",
+                            "EXCEEDED_GLOBAL_MEMORY_LIMIT",
+                            "Query exceeded",
+                        )
+                    ):
+                        span.set_attribute("error", True)
+                        span.set_attribute("error.message", err_msg[:500])
+                        raise MemoryError(
+                            f"Query exceeded Trino memory limit — add a limit clause or narrow your filter. Detail: {err_msg[:300]}"
+                        ) from exc
+
+                    wrapped = (
+                        FederationError.from_trino(exc)
+                        if isinstance(exc, trino.exceptions.TrinoQueryError)
+                        else exc
                     )
-                    attempt += 1
-                    continue
 
-            try:
-                cur = conn.cursor()
-                for key, value in effective_hints.items():
-                    safe_key = key.replace("'", "")
-                    safe_value = value.replace("'", "")
-                    set_sql = f"SET SESSION {safe_key} = '{safe_value}'"
-                    log.info("[EXEC TRINO] session hint: %s", set_sql)
-                    cur.execute(set_sql)
+                    if _is_retryable(wrapped) and time.monotonic() < deadline:
+                        last_exc = wrapped
+                        attempt += 1
+                        continue
 
-                log.info("[EXEC TRINO] sql=%s", exec_sql[:200])
-                if effective_params:
-                    cur.execute(exec_sql, effective_params)
-                else:
-                    cur.execute(exec_sql)
-                rows = cur.fetchall()
-                column_names = [desc[0] for desc in cur.description] if cur.description else []
-
-                span.set_attribute("db.row_count", len(rows))
-                log.info("[EXEC TRINO] rows=%d", len(rows))
-
-                if extra_table_attrs:
-                    for _attrs in extra_table_attrs:
-                        with _tracer.start_as_current_span("provisa.query.trino") as _child:
-                            for k, v in _attrs.items():
-                                _child.set_attribute(k, v)
-
-                return QueryResult(rows=rows, column_names=column_names)
-
-            except Exception as exc:
-                from provisa.executor.errors import FederationError
-
-                err_msg = str(exc)
-                # Memory errors are never retryable.
-                if any(
-                    k in err_msg
-                    for k in (
-                        "EXCEEDED_LOCAL_MEMORY_LIMIT",
-                        "EXCEEDED_GLOBAL_MEMORY_LIMIT",
-                        "Query exceeded",
-                    )
-                ):
                     span.set_attribute("error", True)
                     span.set_attribute("error.message", err_msg[:500])
-                    raise MemoryError(
-                        f"Query exceeded Trino memory limit — add a limit clause or narrow your filter. Detail: {err_msg[:300]}"
-                    ) from exc
+                    if isinstance(exc, trino.exceptions.TrinoQueryError):
+                        raise FederationError.from_trino(exc) from exc
+                    raise
 
-                wrapped = (
-                    FederationError.from_trino(exc)
-                    if isinstance(exc, trino.exceptions.TrinoQueryError)
-                    else exc
-                )
-
-                if _is_retryable(wrapped) and time.monotonic() < deadline:
-                    last_exc = wrapped
-                    attempt += 1
-                    continue
-
-                span.set_attribute("error", True)
-                span.set_attribute("error.message", err_msg[:500])
-                if isinstance(exc, trino.exceptions.TrinoQueryError):
-                    raise FederationError.from_trino(exc) from exc
-                raise
-
-        span.set_attribute("error", True)
-        span.set_attribute("error.message", str(last_exc)[:500])
-        raise last_exc  # type: ignore[misc]  # loop always sets last_exc before exhausting
+            span.set_attribute("error", True)
+            span.set_attribute("error.message", str(last_exc)[:500])
+            raise last_exc  # type: ignore[misc]  # loop always sets last_exc before exhausting
+        finally:
+            _close_quietly(_owned_conn)
