@@ -23493,7 +23493,8 @@
   - REQ-844
   - REQ-840
 - id: REQ-847
-  status: proposed
+  status: in-progress
+  since: "2026-07"
   group: 4. Source Connectors
   category: Materialization Store
   priority: MUST
@@ -23506,6 +23507,16 @@
     never as a silent fallback. Mutations on a pulled-through relation target the
     upstream source of truth and invalidate the cache entry; the cache is never
     written as if it were the system of record.
+    DONE (2026-07): the discipline is implemented as pure policy — provisa/federation/read_through.py::
+    resolve_read returns SERVE_FRESH (re-pull ok, or cache still fresh), SERVE_STALE (only when stale
+    cache exists AND an explicit per-source stale policy allows it), or HARD_ERROR (pull failed with no
+    fresh data — never a silent stale fallback); plan_mutation states a write targets "upstream" and
+    invalidates the cache entry, never the cache as system of record. REMAINING (kept in-progress): wiring
+    these decisions into the live pull-through read path and the mutation executor.
+  code:
+    - provisa/federation/read_through.py
+  tests:
+    - tests/unit/test_read_through.py
   related_reqs:
   - REQ-844
   - REQ-855
@@ -25000,22 +25011,74 @@
     - REQ-527
 - id: REQ-885
   status: proposed
-  group: "5. Data Integration"
-  category: Source Preprocessing
+  group: "5. Query Languages, Compilation & Operations"
+  category: Extensible Functions
   priority: SHOULD
   type: behavioral
+  target: "2026-Q4"
   description: >-
-    Provide a source-level ingest preprocessing hook for transformations that are not
-    SQL-expressible (messy file parsing, API-response reshaping beyond normalizers, enrichment/cleaning/featurization).
-    The hook must execute on raw rows at ingest time before data enters the catalog via a named,
-    registered callable from a wired transform registry—not an inline code blob.
+    Generalize tracked functions (REQ-205–208: source-resident stored procedures exposed as GraphQL
+    mutations) to support multiple implementation kinds: source procedure (existing), script (local
+    subprocess), http, grpc, and optionally python (in-process). Implementation kind becomes a
+    selectable dimension at registration; addressing (catalog name) is decoupled from binding
+    (transport+location, swappable). Provisa-hosted functions take relation arguments (kinds:
+    table_ref=lazy, result_set=eager materialized Arrow, column_value=scalar row-wise) and return
+    Arrow buffers materialized as relations, governed at the read-time boundary. Identity model
+    (DEFINER/admin vs INVOKER/user) selected by materialize flag: true ⇒ admin/output-governed;
+    false ⇒ user/input-governed. Composition via view_sql + materialize; no new MV subsystem—reuse
+    MV refresh (REQ-879), CTAS sink, governance, lineage primitives.
   use_case: >-
-    Enables complex source integrations that require preprocessing logic beyond declarative SQL views
-    (Table.view_sql) and API normalizers. Revives the vestigial TRANSFORM_REGISTRY to preserve the
-    "config is the truthful model" property that enables external config reading and observability.
+    Enables diverse computation platforms (hosted scripts, external services, Python libraries) to
+    act as governed data transformations, returning relations (not just scalar functions). Maintains
+    config-as-truthful-model property with URI addressing and spec-driven discovery (OpenAPI/proto/
+    script-manifest). Preserves existing source-procedure tracked-function contract while extending
+    to Provisa-hosted and external implementations.
   code:
-    - provisa/api_source/transforms.py
+    - provisa/compiler/
+    - provisa/executor/
     - provisa/core/models.py
+  scenario: |
+    Given a user registers a function with implementation kind=http and argument kinds=[table_ref, column_value]
+    and a view references it as SELECT * FROM myfn(tbl, param) WITH (materialize=true)
+    When Provisa materializes the view (e.g. via CTAS or scheduled MV refresh)
+    Then the function invokes the http endpoint as admin (definer), passing table metadata/hint
+    and row-wise scalar, receives Arrow buffer, materializes as a relation, and applies row-level
+    access governance on output before serving to end users
+  open_decisions:
+    - Eager vs streamed as default carrier for result_set arguments
+    - Reentrancy/cycle guard when a function queries its own dependents (engine cannot see dependency graph statically)
+    - Exact credential-minting mechanism for invoker-identity functions (scoped, single-use, short-TTL pgwire session tokens)
+  security_constraints: >-
+    Registration requires admin privilege for system-processed (materialize=true) functions; users may
+    register only invoker-context (materialize=false) functions bounded by their own rights. Hosted
+    functions receive minted, scoped, single-use, short-TTL credentials (no ambient passwords in env/
+    config). Egress deny-by-default with allow-list (Provisa pgwire + declared http/grpc endpoints).
+    Process isolation + resource limits close DoS. Row-wise calls to external services are refused/
+    hard-warned; set-wise/batched required for expensive or external work. Honest staging: ship-now
+    requires trusted-author-only trust model (same as stored procedures/dbt); opening to less-trusted
+    authors requires confinement (egress control + process isolation).
+  performance_constraint: >-
+    Row-wise (column_value kind) permitted only for cheap pure local scalars; expensive or external
+    work must be set-wise and batched (function receives relation, makes batched outbound calls).
+    Row-wise kills pushdown (opaque projection) and prevents engine optimization. Detection via
+    ops-domain audit (REQ-884) duration_ms; prevention via refusal for external row-wise and
+    cardinality warning for row-wise applied past N estimated rows.
+  observability: >-
+    Engine-emitted I/O-boundary trace (REQ-886) is the non-bypassable floor; function-emitted OTel
+    tracing via W3C traceparent propagation is encouraged ceiling. Correlation ID stamped into minted
+    pgwire session joins invocation to governed reads for precise lineage.
+  ui: >-
+    No new top-level nav category or actionType noun. Generalized existing Commands "function" type
+    with implementation/body selector (source procedure | script | http | grpc). Referenced from
+    Views/Materialized Views as definition source.
+  related_reqs:
+    - REQ-205
+    - REQ-206
+    - REQ-207
+    - REQ-208
+    - REQ-879
+    - REQ-884
+    - REQ-886
 - id: REQ-886
   status: proposed
   group: "3. Governance & Observability"
