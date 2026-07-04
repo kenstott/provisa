@@ -7580,6 +7580,88 @@ def step_then_validation_rejects_the_cdc_block_as_unsupported_for_that_sou():
     )
 
 
+# REQ-826
+@given("an engine that can only materialize an OpenAPI datasource")
+def step_given_an_engine_that_can_only_materialize_an_openapi_datasource():
+    pytest.skip("step not implemented: an engine that can only materialize an OpenAPI datasource")
+
+
+# REQ-826
+@when("a query references that source")
+def step_when_a_query_references_that_source():
+    pytest.skip("step not implemented: a query references that source")
+
+
+# REQ-826
+@then(
+    "federate() returns the MATERIALIZED strategy, loads/refreshes the data, and the query reads it in place"
+)
+def step_then_federate_returns_the_materialized_strategy_loads_refreshes_t():
+    pytest.skip(
+        "step not implemented: federate() returns the MATERIALIZED strategy, loads/refreshe"
+    )
+
+
+# REQ-826
+@then("the router does not attempt a live/VIRTUAL route")
+def step_and_the_router_does_not_attempt_a_live_virtual_route():
+    pytest.skip("step not implemented: the router does not attempt a live/VIRTUAL route")
+
+
+# REQ-826
+@given("a MATERIALIZED strategy with cache_ttl=300")
+def step_given_a_materialized_strategy_with_cache_ttl_300():
+    pytest.skip("step not implemented: a MATERIALIZED strategy with cache_ttl=300")
+
+
+# REQ-826
+@when("the table has not been reloaded within 300 seconds")
+def step_when_the_table_has_not_been_reloaded_within_300_seconds():
+    pytest.skip("step not implemented: the table has not been reloaded within 300 seconds")
+
+
+# REQ-826
+@then("federate() reloads it before the query executes (cache_ttl means reload interval)")
+def step_then_federate_reloads_it_before_the_query_executes_cache_ttl_mean():
+    pytest.skip(
+        "step not implemented: federate() reloads it before the query executes (cache_ttl m"
+    )
+
+
+# REQ-826
+@given("an engine that can ATTACH an RDBMS datasource live")
+def step_given_an_engine_that_can_attach_an_rdbms_datasource_live():
+    pytest.skip("step not implemented: an engine that can ATTACH an RDBMS datasource live")
+
+
+# REQ-826
+@then("federate() returns the VIRTUAL strategy and the query reads it live with no copy")
+def step_then_federate_returns_the_virtual_strategy_and_the_query_reads_it():
+    pytest.skip(
+        "step not implemented: federate() returns the VIRTUAL strategy and the query reads "
+    )
+
+
+# REQ-826
+@given("a NoSQL datasource federated by SCAN or MATERIALIZED")
+def step_given_a_nosql_datasource_federated_by_scan_or_materialized():
+    pytest.skip("step not implemented: a NoSQL datasource federated by SCAN or MATERIALIZED")
+
+
+# REQ-826
+@when("the view is created")
+def step_when_the_view_is_created():
+    pytest.skip("step not implemented: the view is created")
+
+
+# REQ-826
+@then("the schema is pinned from the semantic layer mapping, not inferred")
+def step_then_the_schema_is_pinned_from_the_semantic_layer_mapping_not_inf():
+    pytest.skip(
+        "step not implemented: the schema is pinned from the semantic layer mapping, not in"
+    )
+
+
 # REQ-841
 @given("a source reference and the configured federation engine")
 def step_given_a_source_reference_and_the_configured_federation_engine():

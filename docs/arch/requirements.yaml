@@ -22675,7 +22675,8 @@
   - REQ-826
   - REQ-830
 - id: REQ-826
-  status: proposed
+  status: in-progress
+  since: "2026-07"
   group: 6. Execution, Routing, Caching & Performance
   category: Caching
   priority: SHOULD
@@ -22709,12 +22710,26 @@
     the engine reads, so it PARTICIPATES in federation (joinable/scannable like any source). The TENANT
     HOT CACHE is NOT a federation strategy and is orthogonal to virtual|scan|materialized — it is a codegen-time
     VALUES-CTE injection inlined into the SQL at the PLAN stage, never an engine relation and never federated;
-    tier exclusivity (REQ-241) chooses hot over materialization store.'
+    tier exclusivity (REQ-241) chooses hot over materialization store.
+    DONE (2026-07): federate(source, engine) is implemented (provisa/federation/strategy.py), resolving
+    each source to VIRTUAL | SCAN | MATERIALIZED and returning which was chosen. The choice depends on
+    BOTH source capability and engine capability: an ATTACH connector on a live DB → VIRTUAL, an ATTACH
+    connector on a file/object type (csv/parquet/iceberg/...) → SCAN, a LAND connector (warehouse-native)
+    → MATERIALIZED, and an API/NoSQL source with no connector → MATERIALIZED (loaded into the store). The
+    same source therefore federates differently per engine (csv SCANs on DuckDB but is UnreachableSource
+    on a Trino build without a csv connector). prefer_materialized forces MATERIALIZED for a live source
+    deliberately cached for latency. requires_residency(strategy) is the REQ-825 stage-4b signal (only
+    MATERIALIZED needs a prep step). REMAINING (kept in-progress): the STATEFUL side — wiring residency /
+    reload-scheduling / invalidation and unifying the three existing mechanisms (openapi pg_cache, NoSQL
+    mapping catalogs, warm-tables/MV) behind this one federate() operation, and having the router consume
+    the returned strategy — lands with the materialization store (REQ-844-848/830) and the PLAN stage.'
   use_case: Concentrates the real complexity of federation — strategy selection, residency, reload scheduling,
     and invalidation — in one stateful federate() operation, so any datasource (RDBMS, files, NoSQL, APIs)
     joins the engine's surface by the best available strategy with predictable freshness, independent
     of which engine is deployed.
   code:
+  - provisa/federation/strategy.py
+  - provisa/federation/engine.py
   - provisa/executor/trino.py
   - provisa/transpiler/router.py
   - provisa/openapi/pg_cache.py
@@ -22722,6 +22737,8 @@
   - provisa/cache/warm_tables.py
   - provisa/cache/hot_tables.py
   - provisa/core/config_loader.py
+  tests:
+  - tests/unit/test_federation_strategy.py
   scenario: 'Given an engine that can only materialize an OpenAPI datasource
 
     When a query references that source
@@ -24905,3 +24922,22 @@
   related_reqs:
     - REQ-074
     - REQ-527
+- id: REQ-885
+  status: proposed
+  group: "5. Data Integration"
+  category: Source Preprocessing
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Provide a source-level ingest preprocessing hook for transformations that are not
+    SQL-expressible (messy file parsing, API-response reshaping beyond normalizers, enrichment/cleaning/featurization).
+    The hook must execute on raw rows at ingest time before data enters the catalog via a named,
+    registered callable from a wired transform registry—not an inline code blob.
+  use_case: >-
+    Enables complex source integrations that require preprocessing logic beyond declarative SQL views
+    (Table.view_sql) and API normalizers. Revives the vestigial TRANSFORM_REGISTRY to preserve the
+    "config is the truthful model" property that enables external config reading and observability.
+  code:
+    - provisa/api_source/transforms.py
+    - provisa/core/models.py
+  target: "2026-Q4"
