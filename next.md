@@ -98,8 +98,13 @@ Larger authorship; testable without the federation substrate, some need an adapt
   `tracked_functions`/`tracked_webhooks` into every surface's native catalog — pgwire `_pg_proc`,
   SQL `information_schema.routines`, Cypher/Bolt `CALL fn() YIELD` — with `writable_by`
   enforcement (REQ-872). Needs the remote adapters and each surface wired.
-- **[7] Lineage column-trace — REQ-862.** C3/V3/I3. Column-level trace instrumentation. Mid; value
-  is governance/observability, decoupled from the substrate.
+- **[7] Lineage column-trace — REQ-862.** In-progress (2026-07). Column-derivation core done +
+  tested: `provisa/lineage/columns.py` resolves per-output-column lineage (upstream source
+  columns + transform) from a view SELECT via sqlglot, and MV refresh emits it as an OTel span
+  (`mv.refresh.column_lineage`, `provisa/mv/refresh.py`) — 10 unit tests. **Remaining (kept MUST
+  in-progress, not flipped):** the span must also carry the input snapshot ids / watermark epochs
+  consumed and the active definition-version — needs MV definition-versioning + Iceberg
+  snapshot-id capture, verifiable only on a live Iceberg stack.
 
 ## Tier 3 — Substrate (live multi-engine + multi-source)
 

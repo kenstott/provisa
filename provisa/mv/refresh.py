@@ -26,8 +26,32 @@ import trino
 
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
+from provisa.otel_compat import get_tracer as _get_tracer
 
 log = logging.getLogger(__name__)
+_tracer = _get_tracer(__name__)
+
+
+def _emit_column_lineage_span(mv: MVDefinition, select_sql: str) -> None:  # REQ-862
+    """Emit a span capturing the per-output-column derivation of this refresh.
+
+    Best-effort telemetry: a SQL the lineage resolver cannot parse is logged and
+    skipped, never failing the refresh. The refresh trace_id is carried by the
+    active span context; column derivations land as attributes for the user to query.
+    """
+    from provisa.lineage import lineage_span_attributes, resolve_column_lineage
+    from sqlglot.errors import SqlglotError
+
+    try:
+        derivations = resolve_column_lineage(select_sql, dialect="trino")
+    except SqlglotError as exc:
+        log.warning("MV %s: column lineage unresolved (%s)", mv.id, exc)
+        return
+    with _tracer.start_as_current_span("mv.refresh.column_lineage") as span:
+        span.set_attribute("mv.id", mv.id)
+        span.set_attribute("mv.target_table", mv.target_table or "")
+        for key, value in lineage_span_attributes(derivations).items():
+            span.set_attribute(key, value)
 
 
 def _build_refresh_sql(mv: MVDefinition, trino_conn=None) -> str:
@@ -118,6 +142,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
             return
 
         select_sql = _build_refresh_sql(mv, trino_conn)
+        _emit_column_lineage_span(mv, select_sql)  # REQ-862
         cursor = trino_conn.cursor()
 
         # Check if target table exists

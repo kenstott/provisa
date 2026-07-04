@@ -23731,7 +23731,7 @@
     - REQ-860
     - REQ-855
 - id: REQ-862
-  status: proposed
+  status: in-progress
   group: 5. Data Lineage & Provenance
   category: Column-Level Trace Instrumentation
   priority: MUST
@@ -23752,10 +23752,13 @@
     this column value come from, as of time T" by querying the column-level MV-refresh traces
     rather than by invoking a dedicated lineage API.
   code:
+    - provisa/lineage/columns.py
     - provisa/mv/refresh.py
     - provisa/mv/registry.py
     - provisa/transpiler/
     - provisa/mv/aggregate_catalog.py
+  tests:
+    - tests/unit/test_lineage_columns.py
   related_reqs:
     - REQ-844
     - REQ-857
