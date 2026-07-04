@@ -159,6 +159,10 @@ def _make_app_state_with_orders():
             }
         }
     }
+    from provisa.federation.engine import build_trino_engine
+    from provisa.federation.runtime import EngineRuntime
+
+    state.federation_engine = EngineRuntime(build_trino_engine(), state)  # REQ-825
     return state
 
 

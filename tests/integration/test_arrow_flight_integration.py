@@ -75,6 +75,10 @@ def _make_minimal_state():
     state.masking_rules = {}
     state.flight_client = None
     state.trino_conn = None
+    from provisa.federation.engine import build_trino_engine
+    from provisa.federation.runtime import EngineRuntime
+
+    state.federation_engine = EngineRuntime(build_trino_engine(), state)  # REQ-825
     return state
 
 
@@ -295,6 +299,10 @@ class TestFlightDoGetWithRealData:
         state.masking_rules = {}
         state.flight_client = None
         state.trino_conn = None
+        from provisa.federation.engine import build_trino_engine
+        from provisa.federation.runtime import EngineRuntime
+
+        state.federation_engine = EngineRuntime(build_trino_engine(), state)  # REQ-825
         server._state = state
 
         flight_thread = threading.Thread(target=server.serve, daemon=True)
