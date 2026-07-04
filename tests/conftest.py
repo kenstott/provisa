@@ -87,6 +87,30 @@ class _DockerServiceManager:
             check=True,
         )
 
+        # Prometheus (REQ-251) — started with --no-deps so its otel-collector dep chain (which
+        # binds otlp2parquet on :4319 and clashes in dev environments) is not pulled in; the Trino
+        # prometheus connector only needs prometheus:9090 on the dev network. Gated on the marker.
+        if any(item.get_closest_marker("requires_prometheus") for item in session.items):
+            subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "-f",
+                    _CORE_COMPOSE,
+                    "-f",
+                    _OBS_COMPOSE,
+                    "-f",
+                    _DEV_COMPOSE,
+                    "up",
+                    "prometheus",
+                    "-d",
+                    "--no-deps",
+                    "--wait",
+                ],
+                cwd=_REPO_ROOT,
+                check=True,
+            )
+
         # Phase 2 — isolated test-only services (kafka, schema-registry, neo4j,
         # elasticsearch, fuseki, mongodb) in the provisa-test project. Brought up
         # before any dev extras so debezium can reach kafka on first start.

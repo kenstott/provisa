@@ -68,7 +68,9 @@ def test_get_nl_result_pending_or_complete(client):
 
 
 def test_result_contains_all_three_branches(client):
-    expected = {"cypher", "graphql", "sql"}
+    # The NL runner fans out to every query target (runner._TARGETS): the three semantic query
+    # branches plus the grpc/jsonapi/openapi transport branches.
+    expected = {"cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"}
     branches: dict = {}
     for _ in range(3):
         resp = client.post("/query/nl", json={"q": "count rows", "role": "default"})

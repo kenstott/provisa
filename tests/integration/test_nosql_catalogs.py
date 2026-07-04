@@ -18,6 +18,7 @@ import time
 
 import pytest
 import trino.dbapi
+import trino.exceptions
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -65,6 +66,7 @@ def _drop(cur, name):
         pass
 
 
+@pytest.mark.requires_prometheus
 async def test_prometheus_catalog_created_and_queryable():
     pytest.importorskip("trino")
     from provisa.core.catalog import create_catalog
@@ -84,9 +86,19 @@ async def test_prometheus_catalog_created_and_queryable():
         schemas = {r[0] for r in cur.fetchall()}
         assert "default" in schemas
 
-        # The 'up' metric is always present; querying it proves data flows through.
-        cur.execute(f"SELECT value FROM {catalog}.default.up LIMIT 1")
-        rows = cur.fetchall()
+        # The 'up' metric appears once Prometheus has completed its first self-scrape; querying it
+        # proves data flows through. Retry to absorb the initial scrape interval on a fresh stack.
+        rows: list = []
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            try:
+                cur.execute(f"SELECT value FROM {catalog}.default.up LIMIT 1")
+                rows = cur.fetchall()
+            except trino.exceptions.TrinoExternalError:
+                rows = []  # PROMETHEUS_UNKNOWN_ERROR before the first scrape lands
+            if rows:
+                break
+            time.sleep(3)
         assert len(rows) >= 1
     finally:
         _drop(cur, catalog)
