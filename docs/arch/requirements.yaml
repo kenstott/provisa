@@ -24705,7 +24705,8 @@
     - REQ-879
     - REQ-847
 - id: REQ-882
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: "4. Source Connectors"
   category: Materialization Store
   priority: SHOULD
@@ -24715,6 +24716,19 @@
     Wire the aggregate MV rewrite path into the live query execution path.
     Populate AggregateMVCatalog from MVRegistry on startup, invoke aggregate rewrite
     in the endpoint query path, and enforce filter subset-safety before rewriting.
+    DONE (2026-07): (1) POPULATE — MVRegistry.register/unregister now sync the process
+    aggregate-MV catalog (provisa/mv/aggregate_catalog.get_aggregate_catalog()), so every MV
+    registered at startup is visible to rewriting; register() is a no-op for non-aggregate MVs.
+    (2) INVOKE — the endpoint query path calls rewrite_if_aggregate_match after the join-MV
+    rewriter (provisa/mv/rewriter.py); only when the join rewrite did not already fire. It extracts
+    a single-table aggregate query via sqlglot (base table, columns inside aggregate functions,
+    top-level AND filter fragments; queries with a JOIN, multiple tables, or no aggregate are left
+    alone) and, on a covering MV, rewrites FROM to the MV target and sets sources to the MV catalog.
+    (3) SUBSET-SAFETY — find_aggregate_mv now enforces it (the prior code skipped the check its
+    docstring promised): a new MVDefinition.filters records the predicates the aggregate MV was
+    pre-computed with, and an MV is usable only when set(mv.filters) is a SUBSET of the query's
+    filters (an unfiltered MV is always safe); the query's remaining filters (query − MV) are
+    re-applied on the MV at rewrite so no rows the query wants are silently dropped.
   use_case: >-
     Enables query acceleration via pre-computed aggregates stored in materialized views,
     allowing queries requesting SUM/AVG/etc over MV-backed tables to read pre-aggregated
@@ -24722,8 +24736,20 @@
   code:
     - provisa/mv/aggregate_catalog.py
     - provisa/mv/registry.py
+    - provisa/mv/rewriter.py
+    - provisa/mv/models.py
     - provisa/api/data/endpoint.py
-    - provisa/api/admin/dev_queries.py
+  tests:
+    - tests/unit/test_aggregate_mv_catalog.py
+  scenario: |
+    Given an aggregate MV over "orders" pre-computing SUM(amount), registered with no filters,
+    and the aggregate catalog populated from the MV registry
+    When a query "SELECT SUM(amount) FROM orders WHERE region = 'us'" reaches the endpoint and the
+    join-MV rewriter did not fire
+    Then the query is rewritten to read the MV target table with region = 'us' re-applied, and its
+    sources become the MV catalog
+    And an MV pre-computed WITH status = 'active' is NOT used for a query that lacks that filter
+    (subset-safety), so no rows are silently dropped
   related_reqs:
     - REQ-198
     - REQ-199

@@ -93,15 +93,29 @@ def _match_join_to_mv(
     return cols_match
 
 
-def rewrite_if_mv_match(  # REQ-198, REQ-199
+def rewrite_if_mv_match(  # REQ-198, REQ-199, REQ-882
     compiled: CompiledQuery,
     fresh_mvs: list[MVDefinition],
 ) -> CompiledQuery:
-    """Attempt to rewrite SQL to use a materialized view.
+    """Rewrite to a matching MV: try join-pattern MVs first, else an aggregate MV.
 
-    Checks if the query's FROM/JOIN pattern matches any fresh MV.
+    A join/partial-pattern match (REQ-849) takes precedence; when none applies, fall back
+    to the aggregate-MV catalog for single-table aggregate queries (REQ-882).
+    """
+    rewritten = _rewrite_join_mv(compiled, fresh_mvs)
+    if rewritten.sources != compiled.sources:
+        return rewritten
+    return rewrite_if_aggregate_match(rewritten)
+
+
+def _rewrite_join_mv(
+    compiled: CompiledQuery,
+    fresh_mvs: list[MVDefinition],
+) -> CompiledQuery:
+    """Attempt to rewrite SQL to use a join-pattern materialized view (REQ-849).
+
     Supports both full match (all JOINs covered) and partial match
-    (MV covers a subset of JOINs, remaining JOINs preserved) (REQ-849).
+    (MV covers a subset of JOINs, remaining JOINs preserved).
     """
     with _tracer.start_as_current_span("mv.rewrite") as span:
         span.set_attribute("mv.candidates", len(fresh_mvs))
@@ -168,6 +182,29 @@ def rewrite_if_mv_match(  # REQ-198, REQ-199
 
         span.set_attribute("mv.hit", False)
         return compiled
+
+
+def rewrite_if_aggregate_match(compiled: CompiledQuery) -> CompiledQuery:  # REQ-882
+    """Rewrite a single-table aggregate query to a covering aggregate MV, if one exists.
+
+    Consults the process aggregate-MV catalog (populated from the MVRegistry). Filter
+    subset-safety is enforced inside the catalog; on a hit the sources become the MV's
+    target catalog so routing reads the pre-aggregated table. No match → unchanged.
+    """
+    from provisa.mv.aggregate_catalog import get_aggregate_catalog, rewrite_aggregate_query
+
+    hit = rewrite_aggregate_query(compiled.sql, get_aggregate_catalog())
+    if hit is None:
+        return compiled
+    new_sql, mv = hit
+    log.info("Aggregate MV %s covers query, rewriting", mv.id)
+    return CompiledQuery(
+        sql=new_sql,
+        params=compiled.params,
+        root_field=compiled.root_field,
+        columns=compiled.columns,
+        sources={mv.target_catalog},
+    )
 
 
 def _rewrite_to_mv(

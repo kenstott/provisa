@@ -42,11 +42,19 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
             return f"{self._tenant_id}:{mv_id}"
         return mv_id
 
-    def register(self, mv: MVDefinition) -> None:  # REQ-543
+    def register(self, mv: MVDefinition) -> None:  # REQ-543, REQ-882
         self._mvs[self._key(mv.id)] = mv
+        # REQ-882: keep the aggregate-MV catalog in sync so aggregate query rewriting sees
+        # every registered MV (register() is a no-op for non-aggregate MVs).
+        from provisa.mv.aggregate_catalog import get_aggregate_catalog
 
-    def unregister(self, mv_id: str) -> None:  # REQ-234
+        get_aggregate_catalog().register(mv)
+
+    def unregister(self, mv_id: str) -> None:  # REQ-234, REQ-882
         self._mvs.pop(self._key(mv_id), None)
+        from provisa.mv.aggregate_catalog import get_aggregate_catalog
+
+        get_aggregate_catalog().unregister(mv_id)
 
     def get(self, mv_id: str) -> MVDefinition | None:  # REQ-543
         return self._mvs.get(self._key(mv_id))

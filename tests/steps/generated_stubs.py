@@ -7740,3 +7740,43 @@ def step_and_a_function_whose_visible_to_excludes_the_querying_role_does_():
     pytest.skip(
         "step not implemented: a function whose visible_to excludes the querying role does "
     )
+
+
+# REQ-882
+@given(
+    'an aggregate MV over "orders" pre-computing SUM(amount), registered with no filters, and the aggregate catalog populated from the MV registry'
+)
+def step_given_an_aggregate_mv_over_orders_pre_computing_sum_amount_registe():
+    pytest.skip(
+        'step not implemented: an aggregate MV over "orders" pre-computing SUM(amount), reg'
+    )
+
+
+# REQ-882
+@when(
+    "a query \"SELECT SUM(amount) FROM orders WHERE region = 'us'\" reaches the endpoint and the join-MV rewriter did not fire"
+)
+def step_when_a_query_select_sum_amount_from_orders_where_region_us_reache():
+    pytest.skip(
+        "step not implemented: a query \"SELECT SUM(amount) FROM orders WHERE region = 'us'\""
+    )
+
+
+# REQ-882
+@then(
+    "the query is rewritten to read the MV target table with region = 'us' re-applied, and its sources become the MV catalog"
+)
+def step_then_the_query_is_rewritten_to_read_the_mv_target_table_with_regi():
+    pytest.skip(
+        "step not implemented: the query is rewritten to read the MV target table with regi"
+    )
+
+
+# REQ-882
+@then(
+    "an MV pre-computed WITH status = 'active' is NOT used for a query that lacks that filter (subset-safety), so no rows are silently dropped"
+)
+def step_and_an_mv_pre_computed_with_status_active_is_not_used_for_a_quer():
+    pytest.skip(
+        "step not implemented: an MV pre-computed WITH status = 'active' is NOT used for a "
+    )

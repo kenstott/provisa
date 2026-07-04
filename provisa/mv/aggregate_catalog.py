@@ -75,18 +75,20 @@ class AggregateMVCatalog:  # REQ-198, REQ-199
         """
         candidates = self._by_table.get(table, [])
         requested = set(agg_columns)
+        query_filters = set(filters)
 
         for mv in candidates:
-            mv_cols = set(mv.aggregate_columns)
-            if not requested.issubset(mv_cols):
+            if not requested.issubset(set(mv.aggregate_columns)):
                 continue
-            # MV filters must be covered by the query's filters (conservative)
-            # We skip filter checking for MVs with no declared filters
+            # REQ-882 subset-safety: the MV was pre-computed WITH mv.filters, so it holds only
+            # the rows those predicates select. It can answer this query ONLY when every MV
+            # filter is also a query filter (the MV is no more restrictive than the query);
+            # otherwise it would silently drop rows the query wants. An unfiltered MV ({}) is
+            # always safe. The query's remaining filters are re-applied on the MV at rewrite.
+            if not set(mv.filters).issubset(query_filters):
+                continue
             log.debug(
-                "AggregateMVCatalog: MV %s covers table=%s cols=%s",
-                mv.id,
-                table,
-                agg_columns,
+                "AggregateMVCatalog: MV %s covers table=%s cols=%s", mv.id, table, agg_columns
             )
             return mv
 
@@ -144,6 +146,59 @@ class AggregateMVCatalog:  # REQ-198, REQ-199
         rewritten = f"/* aggregate_mv: {mv.id} */\n{tree.sql()}"
         log.info("Rewrote aggregate query for table=%s to MV %s", mv.source_tables, mv.id)
         return rewritten
+
+
+def _split_conjuncts(node) -> list:
+    """Flatten a boolean expression tree into its top-level AND conjuncts."""
+    if isinstance(node, exp.And):
+        return _split_conjuncts(node.this) + _split_conjuncts(node.expression)
+    return [node]
+
+
+def _extract_aggregate_query(sql: str) -> tuple[str, list[str], list[str]] | None:
+    """Parse a single-table aggregate query into (table, agg_columns, filter_fragments).
+
+    Returns None when the query is not a rewritable single-table aggregate (has a JOIN,
+    references multiple tables, or contains no aggregate function).
+    """
+    from sqlglot.errors import SqlglotError
+
+    try:
+        tree = sqlglot.parse_one(sql)
+    except (SqlglotError, RecursionError):
+        return None
+    if tree.find(exp.Join) is not None:
+        return None
+    tables = list(tree.find_all(exp.Table))
+    if len(tables) != 1:
+        return None
+    agg_cols = [c.name for f in tree.find_all(exp.AggFunc) for c in f.find_all(exp.Column)]
+    if not agg_cols:
+        return None
+    where = tree.find(exp.Where)
+    filters = [c.sql() for c in _split_conjuncts(where.this)] if where else []
+    return tables[0].name, agg_cols, filters
+
+
+def rewrite_aggregate_query(
+    sql: str, catalog: AggregateMVCatalog
+) -> tuple[str, MVDefinition] | None:  # REQ-882
+    """Rewrite a single-table aggregate query to read a covering aggregate MV.
+
+    Returns (rewritten_sql, mv) or None. Enforces filter subset-safety via
+    ``find_aggregate_mv`` and re-applies the query's filters that the MV was NOT
+    pre-computed with (remaining filters) on the MV.
+    """
+    parsed = _extract_aggregate_query(sql)
+    if parsed is None:
+        return None
+    table, agg_cols, filters = parsed
+    mv = catalog.find_aggregate_mv(table, agg_cols, filters)
+    if mv is None:
+        return None
+    mv_filters = set(mv.filters)
+    remaining = [f for f in filters if f not in mv_filters]
+    return catalog.rewrite_sql(sql, mv, agg_cols, remaining), mv
 
 
 # Module-level singleton — populated by MVRegistry on startup

@@ -31,6 +31,7 @@ def _mv(
     target_catalog: str = "pg",
     target_schema: str = "public",
     target_table: str | None = None,
+    filters: list[str] | None = None,
 ) -> MVDefinition:
     return MVDefinition(
         id=mv_id,
@@ -40,6 +41,7 @@ def _mv(
         target_table=target_table or f"mv_{mv_id}",
         serves_aggregates=serves_aggregates,
         aggregate_columns=aggregate_columns or [],
+        filters=filters or [],
     )
 
 
@@ -172,3 +174,95 @@ class TestMVDefinitionDefaultFields:
         assert mv.serves_aggregates is True
         assert "revenue" in mv.aggregate_columns
         assert "units" in mv.aggregate_columns
+
+
+# ---------------------------------------------------------------------------
+# REQ-882: filter subset-safety, query rewrite, and registry population
+# ---------------------------------------------------------------------------
+
+
+class TestFilterSubsetSafety:
+    def test_unfiltered_mv_always_safe(self):
+        cat = AggregateMVCatalog()
+        cat.register(_mv("mv1", ["orders"], aggregate_columns=["amount"], filters=[]))
+        # Query with a filter can use an unfiltered MV (remaining filter re-applied at rewrite).
+        assert cat.find_aggregate_mv("orders", ["amount"], ["region = 'us'"]) is not None
+
+    def test_mv_filter_subset_of_query_is_safe(self):
+        cat = AggregateMVCatalog()
+        cat.register(
+            _mv("mv1", ["orders"], aggregate_columns=["amount"], filters=["status = 'active'"])
+        )
+        # MV filter is one of the query's filters → safe.
+        got = cat.find_aggregate_mv("orders", ["amount"], ["status = 'active'", "region = 'us'"])
+        assert got is not None and got.id == "mv1"
+
+    def test_mv_filter_not_in_query_is_rejected(self):
+        cat = AggregateMVCatalog()
+        cat.register(
+            _mv("mv1", ["orders"], aggregate_columns=["amount"], filters=["status = 'active'"])
+        )
+        # Query has no such filter → MV is more restrictive → must NOT be used.
+        assert cat.find_aggregate_mv("orders", ["amount"], ["region = 'us'"]) is None
+        assert cat.find_aggregate_mv("orders", ["amount"], []) is None
+
+
+class TestRewriteAggregateQuery:
+    def _cat(self, **kw):
+        from provisa.mv.aggregate_catalog import AggregateMVCatalog
+
+        cat = AggregateMVCatalog()
+        cat.register(_mv("agg1", ["orders"], aggregate_columns=["amount"], **kw))
+        return cat
+
+    def test_rewrites_single_table_aggregate(self):
+        from provisa.mv.aggregate_catalog import rewrite_aggregate_query
+
+        cat = self._cat()
+        out = rewrite_aggregate_query("SELECT SUM(amount) FROM orders", cat)
+        assert out is not None
+        sql, mv = out
+        assert mv.id == "agg1"
+        assert "mv_agg1" in sql
+
+    def test_non_aggregate_query_not_rewritten(self):
+        from provisa.mv.aggregate_catalog import rewrite_aggregate_query
+
+        assert rewrite_aggregate_query("SELECT amount FROM orders", self._cat()) is None
+
+    def test_joined_query_not_rewritten(self):
+        from provisa.mv.aggregate_catalog import rewrite_aggregate_query
+
+        sql = "SELECT SUM(o.amount) FROM orders o JOIN customers c ON o.cid = c.id"
+        assert rewrite_aggregate_query(sql, self._cat()) is None
+
+    def test_filtered_query_reapplies_remaining_filter(self):
+        from provisa.mv.aggregate_catalog import rewrite_aggregate_query
+
+        cat = self._cat(filters=["status = 'active'"])
+        out = rewrite_aggregate_query(
+            "SELECT SUM(amount) FROM orders WHERE status = 'active' AND region = 'us'", cat
+        )
+        assert out is not None
+        sql, _mv = out
+        assert "region = 'us'" in sql  # the query-only filter is re-applied on the MV
+
+    def test_query_missing_mv_filter_not_rewritten(self):
+        from provisa.mv.aggregate_catalog import rewrite_aggregate_query
+
+        cat = self._cat(filters=["status = 'active'"])
+        # Query lacks the MV's pre-computed filter → unsafe → no rewrite.
+        assert rewrite_aggregate_query("SELECT SUM(amount) FROM orders", cat) is None
+
+
+class TestRegistryPopulatesCatalog:
+    def test_register_populates_aggregate_catalog(self):
+        from provisa.mv.aggregate_catalog import get_aggregate_catalog
+        from provisa.mv.registry import MVRegistry
+
+        reg = MVRegistry()
+        mv = _mv("reg-agg", ["widgets"], aggregate_columns=["price"])
+        reg.register(mv)
+        assert get_aggregate_catalog().find_aggregate_mv("widgets", ["price"], []) is not None
+        reg.unregister("reg-agg")
+        assert get_aggregate_catalog().find_aggregate_mv("widgets", ["price"], []) is None
