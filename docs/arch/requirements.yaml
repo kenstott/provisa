@@ -24487,7 +24487,8 @@
     - REQ-260
     - REQ-282
 - id: REQ-874
-  status: proposed
+  status: in-progress
+  since: "2026-07"
   group: "4. Source Connectors"
   category: Materialization Store
   priority: SHOULD
@@ -24538,6 +24539,14 @@
     Validation gates: (a) delta_query contains both $wm and {{fields}} placeholders; (b) parses;
     (c) $wm bind-var type is orderable/monotonic-compatible; (d) injected selection valid against
     row type.
+    DONE (2026-07): the UNIFORM part is implemented — provisa/federation/delta.py: delta_applies gates
+    delta to MATERIALIZED (VIRTUAL/SCAN excluded); render_delta_fields substitutes {{fields}} textually
+    (Provisa never parses the source-native filter) leaving $wm for native binding; has_wm_placeholder is
+    the $wm validation gate; delta_is_fresh is PROBE==DELTA (empty result ⇒ fresh/no-op, non-empty ⇒
+    changed/apply); advance_cursor advances the stored cursor to max(cursor-field) over the returned rows
+    (empty keeps it). REMAINING (kept in-progress): the per-source-type delta authoring + native execution
+    (GraphQL/HTTP/gRPC/SQL callers, predicate pushed down at source), keyed-upsert apply on the replica,
+    and the delta/opaque-probe mutual-exclusivity wiring with REQ-855.
   use_case: >-
     For REPLICAS (any MATERIALIZED-strategy dataset whose federation strategy lands data), full
     re-pull on every refresh is expensive and unnecessary. Delta fetch via monotonic watermark
@@ -24549,9 +24558,12 @@
     VIRTUAL (live) and SCAN (in-place read) per REQ-826. Replicas in mutable stores absorb deltas;
     views cannot.
   code:
+    - provisa/federation/delta.py
     - provisa/subscriptions/
     - provisa/materialization/
     - provisa/materialization_store/
+  tests:
+    - tests/unit/test_delta.py
   scenario: |
     Given a MATERIALIZED-strategy dataset with a monotonic watermark, a delta query authored with
     $wm and {{fields}} placeholders, and a replica in a mutable relational store

@@ -7916,6 +7916,54 @@ def step_and_a_function_whose_visible_to_excludes_the_querying_role_does_():
     )
 
 
+# REQ-874
+@given(
+    "a MATERIALIZED-strategy dataset with a monotonic watermark, a delta query authored with $wm and {{fields}} placeholders, and a replica in a mutable relational store"
+)
+def step_given_a_materialized_strategy_dataset_with_a_monotonic_watermark_a():
+    pytest.skip(
+        "step not implemented: a MATERIALIZED-strategy dataset with a monotonic watermark, "
+    )
+
+
+# REQ-874
+@when("the watermark signals a change (REQ-855 probe)")
+def step_when_the_watermark_signals_a_change_req_855_probe():
+    pytest.skip("step not implemented: the watermark signals a change (REQ-855 probe)")
+
+
+# REQ-874
+@then("Provisa substitutes $wm with the cursor value and {{fields}} with the table's selection set")
+def step_and_provisa_substitutes_wm_with_the_cursor_value_and_fields_with():
+    pytest.skip(
+        "step not implemented: Provisa substitutes $wm with the cursor value and {{fields}}"
+    )
+
+
+# REQ-874
+@then("the rendered delta query fetches only rows changed since the last watermark")
+def step_then_the_rendered_delta_query_fetches_only_rows_changed_since_the():
+    pytest.skip(
+        "step not implemented: the rendered delta query fetches only rows changed since the"
+    )
+
+
+# REQ-874
+@then(
+    "those rows are upserted on the replica's registered primary key to replace prior state, or inserted if the source is append-only"
+)
+def step_and_those_rows_are_upserted_on_the_replica_s_registered_primary_():
+    pytest.skip(
+        "step not implemented: those rows are upserted on the replica's registered primary "
+    )
+
+
+# REQ-874
+@then("the replica remains fresh without full re-materialization")
+def step_and_the_replica_remains_fresh_without_full_re_materialization():
+    pytest.skip("step not implemented: the replica remains fresh without full re-materialization")
+
+
 # REQ-875
 @given("an unmaterialized API source with an exact cardinality capability and no RLS predicate")
 def step_given_an_unmaterialized_api_source_with_an_exact_cardinality_capab():

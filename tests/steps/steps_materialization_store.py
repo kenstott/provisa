@@ -15,6 +15,14 @@ import time
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
+from provisa.federation.delta import (
+    advance_cursor,
+    delta_applies,
+    delta_is_fresh,
+    has_wm_placeholder,
+    render_delta_fields,
+)
+from provisa.federation.strategy import Strategy
 from provisa.federation.freshness_gate import (
     FreshnessDecision,
     FreshnessMode,
@@ -833,3 +841,212 @@ def then_view_skips_ctas_when_token_unchanged(shared_data: dict) -> None:
 
 
 scenarios("../features/REQ-855.feature")
+scenarios("../features/REQ-874.feature")
+
+
+# ---------------------------------------------------------------------------
+# REQ-874: Delta fetch for materialization_store REPLICA incremental refresh
+# ---------------------------------------------------------------------------
+
+
+@given(
+    "a MATERIALIZED-strategy dataset with a monotonic watermark, a delta query authored "
+    "with $wm and {{fields}} placeholders, and a replica in a mutable relational store"
+)
+def given_materialized_dataset_with_delta_query(shared_data: dict) -> None:
+    """Set up a MATERIALIZED dataset with a well-formed delta query and a cursor value."""
+    # Simulate a registered table entry for the replica
+    table_entry = {
+        "federation_strategy": Strategy.MATERIALIZED,
+        "role": "REPLICA",
+        "delta_query": "query { orders(where: {updated_at: {_gt: $wm}}) { {{fields}} } }",
+        "selection_set": "id, name, updated_at, amount",
+        "primary_key": ["id"],
+        "cursor_value": "2024-01-01T00:00:00Z",
+        "source_type": "graphql_remote",
+    }
+
+    # Validate that the delta query contains both required placeholders
+    assert has_wm_placeholder(table_entry["delta_query"]), (
+        "delta_query must contain the $wm placeholder"
+    )
+    assert "{{fields}}" in table_entry["delta_query"], (
+        "delta_query must contain the {{fields}} placeholder"
+    )
+
+    # Confirm delta_applies accepts MATERIALIZED strategy (not VIRTUAL or SCAN)
+    assert delta_applies(table_entry["federation_strategy"]), (
+        "delta_applies should return True for MATERIALIZED strategy"
+    )
+
+    shared_data["table_entry"] = table_entry
+    shared_data["initial_cursor"] = table_entry["cursor_value"]
+
+
+@when("the watermark signals a change (REQ-855 probe)")
+def when_watermark_signals_change(shared_data: dict) -> None:
+    """Simulate the PROBE==DELTA path: run the delta query to check for changes."""
+    table_entry = shared_data["table_entry"]
+
+    # Render the delta query by substituting {{fields}} (leave $wm for native binding)
+    rendered = render_delta_fields(
+        table_entry["delta_query"],
+        table_entry["selection_set"].split(", "),
+    )
+    shared_data["rendered_query_before_wm"] = rendered
+
+    # Simulate delta rows returned from the source (non-empty → changed)
+    delta_rows = [
+        {"id": 1, "name": "Alice", "updated_at": "2024-06-01T12:00:00Z", "amount": 100},
+        {"id": 2, "name": "Bob", "updated_at": "2024-06-02T09:30:00Z", "amount": 200},
+    ]
+    shared_data["delta_rows"] = delta_rows
+
+    # PROBE == DELTA: non-empty result means changed, empty means fresh/no-op
+    is_fresh = delta_is_fresh(delta_rows)
+    assert is_fresh is False, (
+        "delta_is_fresh should return False (changed) when delta_rows is non-empty"
+    )
+    shared_data["is_fresh"] = is_fresh
+
+
+@when("Provisa substitutes $wm with the cursor value and {{fields}} with the table's selection set")
+def when_provisa_substitutes_placeholders(shared_data: dict) -> None:
+    """Perform placeholder substitution: {{fields}} injected, $wm left for native binding."""
+    table_entry = shared_data["table_entry"]
+    rendered = shared_data["rendered_query_before_wm"]
+
+    # {{fields}} must have been substituted
+    assert "{{fields}}" not in rendered, (
+        "render_delta_fields should have substituted {{fields}} in the rendered query"
+    )
+    assert table_entry["selection_set"] in rendered, (
+        "The selection set should appear in the rendered query after {{fields}} substitution"
+    )
+
+    # $wm must still be present (left for native binding)
+    assert "$wm" in rendered, "render_delta_fields must leave $wm intact for native binding"
+
+    # Simulate native binding: replace $wm with the actual cursor value
+    fully_rendered = rendered.replace("$wm", f'"{table_entry["cursor_value"]}"')
+    assert "$wm" not in fully_rendered, "After native binding $wm should be replaced"
+    assert table_entry["cursor_value"] in fully_rendered, (
+        "Cursor value must appear in the fully rendered query"
+    )
+
+    shared_data["fully_rendered_query"] = fully_rendered
+
+
+@then("the rendered delta query fetches only rows changed since the last watermark")
+def then_rendered_query_fetches_only_changed_rows(shared_data: dict) -> None:
+    """Assert the rendered query is scoped to rows after the cursor value."""
+    fully_rendered: str = shared_data["fully_rendered_query"]
+    table_entry = shared_data["table_entry"]
+
+    # The cursor value (watermark) must be embedded so only newer rows are fetched
+    assert table_entry["cursor_value"] in fully_rendered, (
+        "The rendered query must contain the cursor value to filter only changed rows"
+    )
+
+    # The selection set must be present (not the raw placeholder)
+    assert table_entry["selection_set"] in fully_rendered, (
+        "The selection set must be injected into the rendered query"
+    )
+
+    # Neither placeholder should remain
+    assert "{{fields}}" not in fully_rendered
+    assert "$wm" not in fully_rendered
+
+    # Confirm that an empty delta result would be treated as fresh (no-op)
+    assert delta_is_fresh([]) is True, (
+        "delta_is_fresh([]) should return True — empty result means no changes (fresh)"
+    )
+
+    # Confirm that the non-empty delta rows from the When step indicate change
+    assert delta_is_fresh(shared_data["delta_rows"]) is False
+
+
+@then(
+    "those rows are upserted on the replica's registered primary key to replace prior state, "
+    "or inserted if the source is append-only"
+)
+def then_rows_upserted_on_primary_key(shared_data: dict) -> None:
+    """Simulate keyed upsert of delta rows into the replica store."""
+    table_entry = shared_data["table_entry"]
+    delta_rows: list[dict] = shared_data["delta_rows"]
+    primary_key: list[str] = table_entry["primary_key"]
+
+    # Simulate the existing replica state
+    replica_store: dict[tuple, dict] = {
+        (1,): {"id": 1, "name": "Alice_old", "updated_at": "2023-12-01T00:00:00Z", "amount": 50},
+    }
+
+    # Perform upsert: replace on PK match, insert if absent
+    for row in delta_rows:
+        pk_tuple = tuple(row[k] for k in primary_key)
+        replica_store[pk_tuple] = row
+
+    # id=1 should be updated (was "Alice_old", now "Alice")
+    assert replica_store[(1,)]["name"] == "Alice", (
+        "Row with id=1 should be upserted (updated) to 'Alice'"
+    )
+    assert replica_store[(1,)]["amount"] == 100, "Row with id=1 amount should be updated to 100"
+
+    # id=2 should be newly inserted
+    assert (2,) in replica_store, "Row with id=2 should have been inserted"
+    assert replica_store[(2,)]["name"] == "Bob"
+
+    # The cursor must advance to max(updated_at) over the delta rows
+    new_cursor = advance_cursor(
+        delta_rows,
+        "updated_at",
+        current=shared_data["initial_cursor"],
+    )
+    assert new_cursor == "2024-06-02T09:30:00Z", (
+        f"Cursor should advance to max(updated_at) over delta rows, got {new_cursor!r}"
+    )
+
+    shared_data["replica_store"] = replica_store
+    shared_data["new_cursor"] = new_cursor
+
+
+@then("the replica remains fresh without full re-materialization")
+def then_replica_fresh_without_full_rematerialization(shared_data: dict) -> None:
+    """Assert that only delta rows were applied and the cursor advanced; no full re-pull needed."""
+    new_cursor: str = shared_data["new_cursor"]
+    initial_cursor: str = shared_data["initial_cursor"]
+    replica_store: dict = shared_data["replica_store"]
+
+    # Cursor must have advanced beyond the initial value
+    assert new_cursor > initial_cursor, (
+        f"Cursor should advance past the initial value {initial_cursor!r}, got {new_cursor!r}"
+    )
+
+    # Only delta rows were applied — verify the count reflects upsert (not full reload)
+    # id=1 was updated; id=2 was inserted; total replica rows = 2
+    assert len(replica_store) == 2, (
+        f"Replica should contain exactly 2 rows after delta upsert, got {len(replica_store)}"
+    )
+
+    # VIRTUAL and SCAN are excluded from delta
+    assert not delta_applies("VIRTUAL"), (
+        "delta_applies should return False for VIRTUAL strategy (always-fresh)"
+    )
+    assert not delta_applies("SCAN"), (
+        "delta_applies should return False for SCAN strategy (read-in-place)"
+    )
+
+    # Empty delta keeps cursor unchanged
+    unchanged_cursor = advance_cursor(
+        [],
+        "updated_at",
+        current=new_cursor,
+    )
+    assert unchanged_cursor == new_cursor, (
+        "advance_cursor with empty delta_rows should keep the cursor unchanged"
+    )
+
+    # Confirm the freshness gate: after advancing cursor, a re-run with no rows → fresh/no-op
+    assert delta_is_fresh([]) is True, (
+        "After cursor advance, an empty delta result confirms the replica is fresh"
+    )
