@@ -37,7 +37,8 @@ REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 REDIS_AVAILABLE = False
 
 try:
-    import redis
+    import redis  # noqa: F401  (availability probe)
+
     REDIS_AVAILABLE = True
 except ImportError:
     pass
@@ -73,7 +74,9 @@ def _make_compiled(sql: str, root_field: str = "orders") -> CompiledQuery:
     )
 
 
-def _make_manager_with_entry(table_name: str, rows: list[dict], column_names: list[str]) -> HotTableManager:
+def _make_manager_with_entry(
+    table_name: str, rows: list[dict], column_names: list[str]
+) -> HotTableManager:
     """Build a HotTableManager with a pre-loaded in-memory entry (no Redis)."""
     mgr = _make_hot_manager()
     entry = HotTableEntry(
@@ -91,6 +94,7 @@ def _make_manager_with_entry(table_name: str, rows: list[dict], column_names: li
 # ---------------------------------------------------------------------------
 # Tests: loading from Trino (mocked)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestHotTableLoading:
@@ -135,11 +139,13 @@ class TestHotTableLoading:
 
     async def test_hot_table_cached_in_redis(self):
         """After load_table, get_rows retrieves rows via Redis blob key."""
+        import base64
         import json
 
         mgr = _make_hot_manager()
         stored_rows = [{"id": 1, "name": "Alpha"}, {"id": 2, "name": "Beta"}]
-        serialized = json.dumps(stored_rows)
+        # REQ-688: stored blob is base64(encrypt(json)); default is NullEncryption passthrough.
+        serialized = base64.b64encode(json.dumps(stored_rows).encode()).decode()
 
         # Simulate Redis returning the blob
         mock_redis = AsyncMock()
@@ -179,6 +185,7 @@ class TestHotTableLoading:
 # ---------------------------------------------------------------------------
 # Tests: SQL rewriting
 # ---------------------------------------------------------------------------
+
 
 class TestHotJoinRewriting:
     def test_hot_join_rewritten_to_cte(self):
@@ -281,6 +288,7 @@ class TestHotJoinRewriting:
 # ---------------------------------------------------------------------------
 # Tests: detect_hot_tables helper
 # ---------------------------------------------------------------------------
+
 
 class TestDetectHotTables:
     def test_many_to_one_target_auto_detected(self):

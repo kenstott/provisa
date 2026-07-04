@@ -76,8 +76,12 @@ class TestHotTableRedisRoundTrip:
         rows = [{"id": 1, "name": "alpha"}, {"id": 2, "name": "beta"}]
         blob_key = HOT_PREFIX + table + ":blob"
 
-        await hot_mgr._redis.set(blob_key, json.dumps(rows))
+        # REQ-688: store via the manager (encrypts at rest), then read back decrypted.
+        await hot_mgr._store_rows(table, rows, "id", "cat", "sch")
+        hot_mgr._hot_tables.clear()  # force the read through Redis + decrypt
 
+        raw = await hot_mgr._redis.get(blob_key)
+        assert "alpha" not in raw  # ciphertext at rest, not plaintext JSON
         fetched = await hot_mgr.get_rows(table)
         assert fetched == rows
 

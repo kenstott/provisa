@@ -203,7 +203,7 @@ class TestHotTableManager:
 
         async def _empty_scan(*args, **kwargs):
             return
-            yield  # noqa: make it an async generator
+            yield  # (unreachable) — presence of yield makes this an async generator
 
         mock_redis.scan_iter = _empty_scan
         manager._redis = mock_redis
@@ -213,11 +213,15 @@ class TestHotTableManager:
 
     @pytest.mark.asyncio
     async def test_get_rows_from_redis(self, manager):
+        import base64
         import json
 
         rows = [{"id": 1, "name": "US"}, {"id": 2, "name": "UK"}]
+        # REQ-688: the stored blob is base64(encrypt(json)); the default manager uses
+        # NullEncryption passthrough, so this is base64 of the JSON.
+        stored = base64.b64encode(json.dumps(rows).encode()).decode()
         mock_redis = AsyncMock()
-        mock_redis.get = AsyncMock(return_value=json.dumps(rows))
+        mock_redis.get = AsyncMock(return_value=stored)
         manager._redis = mock_redis
 
         result = await manager.get_rows("countries")
@@ -490,6 +494,7 @@ class TestMutationInvalidation:
 
 # --- REQ-236: COUNT(*) auto-detection ---
 
+
 class _CountConn:
     def __init__(self, counts: dict):
         self._counts = counts
@@ -551,7 +556,5 @@ class TestDetectHotTablesByCount:
             def fetchone(self):
                 return (0,)
 
-        result = await detect_hot_tables_by_count(
-            _BoomConn(), [("t", "public", "pg")], 1_000, {}
-        )
+        result = await detect_hot_tables_by_count(_BoomConn(), [("t", "public", "pg")], 1_000, {})
         assert result == []

@@ -18471,7 +18471,8 @@
     rationale: Trino non-SQL cache row payload encryption via EncryptionService protects cached data at
       the application layer — beyond what Trino's native caching offers.
 - id: REQ-688
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: 15. Proposed Features
   category: Encryption
   priority: SHOULD
@@ -18482,7 +18483,10 @@
     scheme.
   use_case: Redis ACL isolation prevents accidental cross-tenant key access. Payload encryption ensures
     that even a Redis ACL misconfiguration does not expose plaintext row data.
-  target: 2026-Q4
+  code:
+  - provisa/cache/hot_tables.py
+  tests:
+  - tests/unit/test_hot_tables_encryption.py
   integration_test: required
   integration_test_reason: Redis encryption requires real Redis instance and actual TTL lifecycle to verify
     payload encryption and ACL isolation interaction.

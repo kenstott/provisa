@@ -12,13 +12,18 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from provisa.compiler.naming import source_to_catalog
+
+if TYPE_CHECKING:
+    from provisa.encryption import EncryptionService
 
 log = logging.getLogger(__name__)
 
@@ -161,7 +166,10 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         max_rows: int,
         ttl: int = 300,
         max_bytes: int = 10 * 1024 * 1024,
+        encryption: "EncryptionService | None" = None,  # REQ-688
     ):
+        from provisa.encryption import NullEncryption  # REQ-688
+
         self._redis_url = redis_url
         self._auto_threshold = auto_threshold
         self._max_rows = max_rows
@@ -170,6 +178,11 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         self._redis = None
         self._hot_tables: dict[str, HotTableEntry] = {}
         self._candidates: dict[str, HotTableCandidate] = {}
+        # REQ-688: hot-table payloads are encrypted at rest in Redis. Defaults to the
+        # platform passthrough (NullEncryption) when no provider is configured; the app
+        # injects the configured EncryptionService. Redis ACL isolation (REQ-595) and
+        # payload encryption are independent controls.
+        self._encryption = encryption or NullEncryption()
 
     async def _connect(self):
         if self._redis is None:
@@ -205,9 +218,12 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             )
             return len(rows)
 
+        # REQ-688: encrypt the payload at rest. Ciphertext is base64-wrapped so it stays
+        # a string under the existing key scheme (the client decodes responses).
+        stored = base64.b64encode(self._encryption.encrypt(blob.encode("utf-8"))).decode("ascii")
         pipe = self._redis.pipeline()
         pipe.delete(blob_key)
-        pipe.set(blob_key, blob, ex=self._ttl)
+        pipe.set(blob_key, stored, ex=self._ttl)
         await pipe.execute()
 
         self._hot_tables[table_name] = HotTableEntry(
@@ -326,7 +342,9 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             # back to the live source. (CTE injection is gated on is_hot()/get_entry(), so an
             # evicted/expired hot table is simply queried live; this is the structural fallback.)
             return []
-        return json.loads(data)
+        # REQ-688: decrypt the at-rest payload (base64-wrapped ciphertext → JSON).
+        blob = self._encryption.decrypt(base64.b64decode(data)).decode("utf-8")
+        return json.loads(blob)
 
     async def invalidate(self, table_name: str) -> None:  # REQ-544
         """Delete all Redis keys for a hot table."""
@@ -605,12 +623,19 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
     # REQ-230: max_rows has its own default (falls back to auto_threshold) and a byte ceiling.
     max_rows = hot_config.get("max_rows", auto_threshold)
     max_bytes = hot_config.get("max_bytes", 10 * 1024 * 1024)
+    # REQ-688/684: build the configured EncryptionService (encryption.provider/key_id);
+    # unset provider → NullEncryption passthrough (platform default).
+    from provisa.encryption import build_encryption_service  # noqa: PLC0415
+
+    _enc_cfg = raw_config.get("encryption", {}) or {}
+    encryption = build_encryption_service(_enc_cfg.get("provider"), key_id=_enc_cfg.get("key_id"))
     hot_mgr = HotTableManager(
         redis_url=redis_url,
         auto_threshold=auto_threshold,
         max_rows=max_rows,
         ttl=refresh_interval,
         max_bytes=max_bytes,
+        encryption=encryption,
     )
 
     hot_overrides: dict[str, bool | None] = {}
