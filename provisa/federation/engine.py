@@ -223,6 +223,27 @@ def build_postgres_engine() -> FederationEngine:  # REQ-893 single-node federato
     )
 
 
+def build_embedded_pg_engine() -> FederationEngine:  # REQ-893: stock embedded PG, no FDWs
+    """A stock embedded Postgres (pgserver: plpgsql + vector only, no contrib FDWs).
+
+    With no attach/FDW connector, every source is LANDED into the engine's own native store and
+    federated with plain SQL — the SELF_ONLY/warehouse shape (like Snowflake, but on a laptop). Costs
+    full data movement (each source copied in) but runs anywhere with zero extensions. Contrast the
+    ``pg`` engine (build_postgres_engine), which ATTACHes sources in place via postgres_fdw/file_fdw.
+    """
+    from provisa.federation.connector import WarehouseNativeConnector
+
+    # LAND every demo source type into the native PG store (mechanism LAND -> federate MATERIALIZED).
+    land_types = ("postgresql", "csv", "sqlite", "parquet", "openapi", "graphql_remote")
+    return FederationEngine(
+        "embedded_pg",
+        [WarehouseNativeConnector("embedded_pg", t) for t in land_types],
+        native_store="postgres",
+        driver_class=DriverClass.SELF_ONLY,  # reaches only its own store; everything lands into self
+        mpp=False,
+    )
+
+
 def build_snowflake_engine() -> FederationEngine:  # REQ-840 self-only warehouse
     from provisa.federation.connector import WarehouseNativeConnector
 

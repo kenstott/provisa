@@ -84,6 +84,26 @@ def test_mpp_is_declared_and_orthogonal_to_reach():
     assert build_duckdb_engine().mpp is False
 
 
+def test_embedded_pg_lands_every_source_type():
+    # REQ-893: stock embedded PG (no FDWs) is SELF_ONLY — every source lands into its native store.
+    from provisa.federation.engine import build_embedded_pg_engine
+    from provisa.federation.strategy import Strategy, federate
+
+    eng = build_embedded_pg_engine()
+    assert eng.driver_class() is DriverClass.SELF_ONLY and eng.mpp is False
+    for st in (SourceType.csv, SourceType.sqlite, SourceType.postgresql):
+        assert federate(_src("x", st), eng) is Strategy.MATERIALIZED  # landed, not attached
+
+
+def test_pg_fdw_engine_attaches_in_place():
+    # REQ-893: the FDW engine reaches postgres/csv via ATTACH (in place), not materialization.
+    from provisa.federation.engine import build_postgres_engine
+
+    eng = build_postgres_engine()
+    assert eng.driver_class() is DriverClass.PARTIAL
+    assert eng.reachable("postgresql") and eng.reachable("csv")
+
+
 def test_swapping_engine_swaps_reachability():
     trino, duck = build_trino_engine(), build_duckdb_engine()
     assert trino.reachable("mysql") and not duck.reachable("mysql")
