@@ -19,9 +19,12 @@ Or mount ``build_app()`` into an existing ASGI app.
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 import json
 import logging
+import os
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 
@@ -55,6 +58,14 @@ log = logging.getLogger(__name__)
 
 _engine: sa.Engine | None = None
 _tables: dict[str, sa.Table] = {}
+
+# Batched ingest: accumulate rows and flush on size or interval, rather than one
+# INSERT per OTLP request. This is what makes a single sink viable against any
+# engine (DuckDB, ClickHouse, a warehouse) — cheap ingest, engine-appropriate.
+_BATCH_MAX_ROWS = int(os.environ.get("OTLP2SQL_BATCH_MAX_ROWS", "1000"))
+_BATCH_MAX_SECS = float(os.environ.get("OTLP2SQL_BATCH_MAX_SECS", "2"))
+_buffer: dict[str, list[dict]] = defaultdict(list)
+_buf_lock = asyncio.Lock()
 
 
 # ── attribute / value decoding ────────────────────────────────────────────────
@@ -221,17 +232,47 @@ def _insert(table_name: str, rows: list[dict]) -> None:
         conn.execute(sa.insert(tbl), rows)
 
 
+async def _flush() -> None:
+    """Drain the buffer and insert each table's rows in a threadpool (writes
+    serialize through the one-connection pool). Best-effort — telemetry is
+    lossy under error, never fatal."""
+    async with _buf_lock:
+        pending = {t: rows for t, rows in _buffer.items() if rows}
+        _buffer.clear()
+    for table_name, rows in pending.items():
+        try:
+            await run_in_threadpool(_insert, table_name, rows)
+        except Exception:
+            log.exception("otlp2sql: flush failed for %s (%d rows)", table_name, len(rows))
+
+
+async def _flush_loop() -> None:
+    try:
+        while True:
+            await asyncio.sleep(_BATCH_MAX_SECS)
+            await _flush()
+    except asyncio.CancelledError:
+        pass
+
+
+async def _enqueue(table_name: str, rows: list[dict]) -> None:
+    if not rows:
+        return
+    async with _buf_lock:
+        buf = _buffer[table_name]
+        buf.extend(rows)
+        over = len(buf) >= _BATCH_MAX_ROWS
+    if over:  # size trigger — don't wait for the interval
+        await _flush()
+
+
 async def _handle(request: Request, decode, to_rows, table_name: str, resp_cls) -> Response:
     body = await request.body()
     if request.headers.get("content-encoding", "").lower() == "gzip":
         body = gzip.decompress(body)
     msg = decode()
     msg.ParseFromString(body)
-    rows = to_rows(msg)
-    try:
-        await run_in_threadpool(_insert, table_name, rows)
-    except Exception:  # never fail ingest on a write error — telemetry is best-effort
-        log.exception("otlp2sql: insert failed for %s (%d rows)", table_name, len(rows))
+    await _enqueue(table_name, to_rows(msg))
     return Response(resp_cls().SerializeToString(), media_type="application/x-protobuf")
 
 
@@ -277,7 +318,13 @@ def build_app(db_url: str | None = None) -> Starlette:
         _engine = sa.create_engine(url, **kwargs)
         _tables = ensure_tables(_engine)
         log.info("otlp2sql: ready -> %s", _engine.url.render_as_string(hide_password=True))
-        yield
+        flusher = asyncio.create_task(_flush_loop())
+        try:
+            yield
+        finally:
+            flusher.cancel()
+            await _flush()  # drain anything buffered before shutdown
+            _engine.dispose()
 
     return Starlette(
         lifespan=_lifespan,

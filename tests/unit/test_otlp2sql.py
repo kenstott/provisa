@@ -92,3 +92,29 @@ def test_ops_db_url_is_dedicated_telemetry_store(monkeypatch, tmp_path):
 def test_schema_shared_with_app():
     # app.py imports this same object — one source of truth, no drift.
     assert set(OPS_TABLES) == {"traces", "metrics", "logs"}
+
+
+def test_batching_buffers_then_flushes_on_size(monkeypatch, tmp_path):
+    # Buffer until the size trigger; don't wait on the interval.
+    monkeypatch.setenv("OTLP2SQL_BATCH_MAX_ROWS", "2")
+    monkeypatch.setenv("OTLP2SQL_BATCH_MAX_SECS", "60")
+    url = f"sqlite:///{tmp_path / 'batch.sqlite'}"
+    app = otlp2sql.build_app(url)
+    eng = sa.create_engine(url)
+
+    def _post(client):
+        client.post(
+            "/v1/traces",
+            content=_trace_request().SerializeToString(),
+            headers={"content-type": "application/x-protobuf"},
+        )
+
+    def _count():
+        with eng.connect() as cx:
+            return cx.execute(sa.text("SELECT count(*) FROM traces")).scalar()
+
+    with TestClient(app) as client:
+        _post(client)
+        assert _count() == 0  # buffered, interval not reached
+        _post(client)
+        assert _count() == 2  # size trigger flushed the batch
