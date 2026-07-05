@@ -6,7 +6,7 @@ name: Build PG Extensions
 
 on:
   push:
-    branches: ['ci/test-linux-extensions']   # test branch — remove before merge
+    branches: ['ci/test-linux-extensions', 'ci/test-windows-extensions']   # test branches — remove before merge
     tags: ['v*']
   workflow_dispatch:
 
@@ -22,6 +22,7 @@ jobs:
   unix:
     name: pg-ext ${{ matrix.os }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
+    if: github.ref != 'refs/heads/ci/test-windows-extensions'   # skip the heavy Linux compile on the Windows test
     # Matrix tracks the platforms pgserver actually ships an embedded-PG wheel for:
     #   macosx arm64 + x86_64, manylinux_2_17_x86_64, win_amd64.  NO Linux arm64 wheel exists, so
     #   Linux arm64 is intentionally absent (there is no embedded PG to load into there yet).
@@ -108,7 +109,7 @@ jobs:
   windows:
     name: pg-ext windows-x64 (experimental)
     runs-on: windows-latest
-    if: startsWith(github.ref, 'refs/tags/')   # skip on the Linux test push
+    if: github.ref == 'refs/heads/ci/test-windows-extensions' || startsWith(github.ref, 'refs/tags/')
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
