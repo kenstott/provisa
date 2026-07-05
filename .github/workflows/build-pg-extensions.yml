@@ -113,11 +113,15 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - name: Confirm embedded PG exists on Windows (pgserver win_amd64)
-        run: |
-          python -m pip install pgserver
-          python -c "import pgserver, tempfile; d=tempfile.mkdtemp(); s=pgserver.get_server(d); print('embedded PG on Windows:', s.psql('SHOW server_version'))"
-      - name: Build (TODO — MSVC/vcpkg .dll bundle)
-        run: |
-          Write-Host "TODO: scripts/ci/build_pg_extensions.ps1 — MSVC build of PG contrib + pg_duckdb"
-          Write-Host "(vcpkg x64-windows) -> .dll bundle; reuse smoke_pg_extensions.py to prove load."
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native Windows PostgreSQL 16 (source of the built-in FDW DLLs)
+        run: choco install postgresql16 --params "/Password:Passw0rd1" -y --no-progress
+      - name: pip install pgserver
+        run: python -m pip install pgserver
+      - name: Probe — (Q1) does embedded pgserver boot? (Q2) acquire+load built-in FDW DLLs
+        env:
+          PGDATA_DIR: 'C:/pgd'
+          PG16_HOME: 'C:/Program Files/PostgreSQL/16'
+        run: python scripts/ci/win_pgserver_probe.py
