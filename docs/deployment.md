@@ -116,6 +116,29 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Tempo | — | Trace storage (with `--observability`) (REQ-330) |
 | Grafana | 3100 | Dashboards (with `--observability`) (REQ-330) |
 
+### Telemetry backend (`otlp2sql`)
+
+The `--observability` stack above (Collector → Tempo/Prometheus/Grafana) is one
+telemetry path. The other is `otlp2sql` (`provisa.observability.otlp2sql`): an
+OTLP/HTTP receiver that writes traces, metrics, and logs to a SQL database
+chosen by a SQLAlchemy URL, extracting the `provisa.*` span attributes at ingest
+so no separate compaction job runs. Writes are batched
+(`OTLP2SQL_BATCH_MAX_ROWS`, default 1000; `OTLP2SQL_BATCH_MAX_SECS`, default 2s).
+
+Telemetry gets its own store, separate from the control-plane database. Select
+the backend with `PROVISA_OPS_DB_URL`:
+
+| `PROVISA_OPS_DB_URL` | Backend | Notes |
+|---|---|---|
+| *(unset)* | dedicated DuckDB under `~/.provisa/telemetry/` | default; no server, no Docker |
+| `trino://user@host:8080/otel` | Trino / Iceberg | uses Trino as the telemetry store — object storage plus `optimize` compaction |
+| `clickhouse+native://user@host/otel` | ClickHouse | high-rate ingest with automatic background merges |
+| `postgresql+psycopg2://user@host/otel` | PostgreSQL | |
+
+Point the app and Trino OTLP exporters (`OTEL_EXPORTER_OTLP_ENDPOINT`) at the
+`otlp2sql` endpoint, and register the ops domain against the same
+`PROVISA_OPS_DB_URL` so it reads what the receiver wrote.
+
 ---
 
 ## macOS Installer
