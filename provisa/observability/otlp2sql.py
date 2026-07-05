@@ -264,7 +264,17 @@ def build_app(db_url: str | None = None) -> Starlette:
     @asynccontextmanager
     async def _lifespan(_app):
         global _engine, _tables
-        _engine = sa.create_engine(db_url or ops_db_url(), future=True, pool_pre_ping=True)
+        url = db_url or ops_db_url()
+        kwargs: dict = {"future": True}
+        # DuckDB/SQLite are single-writer file stores with only a SYNC driver.
+        # We never touch an async driver — inserts run in a threadpool (see
+        # _insert). A one-connection pool serializes those writes so concurrent
+        # threads can't corrupt the single writable handle.
+        if url.startswith(("duckdb", "sqlite")):
+            kwargs.update(poolclass=sa.pool.QueuePool, pool_size=1, max_overflow=0)
+        else:
+            kwargs["pool_pre_ping"] = True
+        _engine = sa.create_engine(url, **kwargs)
         _tables = ensure_tables(_engine)
         log.info("otlp2sql: ready -> %s", _engine.url.render_as_string(hide_password=True))
         yield

@@ -77,12 +77,16 @@ def test_otlp_trace_lands_as_ops_row(tmp_path):
     assert str(row["_date"]) == "2024-07-03"
 
 
-def test_ops_db_url_shared_socket_and_tcp(monkeypatch):
-    monkeypatch.setenv("PG_HOST", "/var/run/provisa")
+def test_ops_db_url_is_dedicated_telemetry_store(monkeypatch, tmp_path):
+    # Telemetry gets its OWN store — a dedicated DuckDB, never the control plane.
     monkeypatch.delenv("PROVISA_OPS_DB_URL", raising=False)
-    assert ops_db_url() == "postgresql+psycopg2://provisa:provisa@/provisa?host=/var/run/provisa"
-    monkeypatch.setenv("PG_HOST", "db")
-    assert ops_db_url() == "postgresql+psycopg2://provisa:provisa@db:5432/provisa"
+    monkeypatch.setenv("PROVISA_TELEMETRY_DIR", str(tmp_path))
+    url = ops_db_url()
+    assert url.startswith("duckdb:///")
+    assert url.endswith("telemetry.duckdb")
+    # explicit override (e.g. a warehouse) wins
+    monkeypatch.setenv("PROVISA_OPS_DB_URL", "sqlite:///x.db")
+    assert ops_db_url() == "sqlite:///x.db"
 
 
 def test_schema_shared_with_app():

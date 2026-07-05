@@ -107,37 +107,56 @@ _TYPE_MAP = {
 
 def build_metadata(schema: str | None = OPS_SCHEMA) -> tuple[sa.MetaData, dict[str, sa.Table]]:
     """SQLAlchemy MetaData + Tables for the ops schema (schema=None for engines
-    without namespaces, e.g. sqlite)."""
+    without namespaces, e.g. sqlite).
+
+    Telemetry tables are append-only: the ``is_key`` flag is a logical/partition
+    hint, NOT a physical primary key — a real PK on a bigint timestamp would (a)
+    be wrong (many rows share a timestamp) and (b) make SQLAlchemy emit an
+    autoincrement (BIGSERIAL) that DuckDB rejects.
+    """
     md = sa.MetaData(schema=schema)
     tables: dict[str, sa.Table] = {}
     for name, cols in OPS_TABLES.items():
         tables[name] = sa.Table(
             name,
             md,
-            *[sa.Column(col, _TYPE_MAP[typ](), primary_key=key) for col, typ, key in cols],
+            *[sa.Column(col, _TYPE_MAP[typ]()) for col, typ, _key in cols],
         )
     return md, tables
 
 
-def ops_db_url() -> str:
-    """SQLAlchemy URL for the ops telemetry DB — the single value shared by
-    otlp2sql and the ops-domain source registration.
+def telemetry_dir() -> str:
+    """Directory of the dedicated telemetry store. The single location that
+    otlp2sql (duckdb file), otlp2parquet (parquet/ subdir), and the ops domain
+    all point at. Override with ``PROVISA_TELEMETRY_DIR``."""
+    d = os.environ.get("PROVISA_TELEMETRY_DIR")
+    if not d:
+        home = os.environ.get("PROVISA_HOME") or os.path.join(os.path.expanduser("~"), ".provisa")
+        d = os.path.join(home, "telemetry")
+    os.makedirs(d, exist_ok=True)
+    return d
 
-    Override with ``PROVISA_OPS_DB_URL`` (e.g. ``duckdb:///~/.provisa/ops.duckdb``,
-    ``sqlite:///~/.provisa/ops.sqlite``). Default: the platform postgres control
-    plane — TCP, or a unix socket when ``PG_HOST`` is a path (bundled pgserver).
+
+def telemetry_parquet_dir() -> str:
+    """Where otlp2parquet lands parquet — a subdir of the same store, exposed to
+    the ops domain as DuckDB views over the telemetry duckdb."""
+    d = os.path.join(telemetry_dir(), "parquet")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def ops_db_url() -> str:
+    """SQLAlchemy URL for the telemetry store — the single value shared by
+    otlp2sql, the ops-domain source, and (via views) otlp2parquet output.
+
+    Telemetry gets its OWN store, never the control-plane DB: a dedicated DuckDB
+    under :func:`telemetry_dir`. Override with ``PROVISA_OPS_DB_URL`` (e.g. a
+    warehouse) when volume warrants.
     """
     url = os.environ.get("PROVISA_OPS_DB_URL")
     if url:
         return url
-    host = os.environ.get("PG_HOST", os.environ.get("POSTGRES_HOST", "postgres"))
-    db = os.environ.get("PG_DATABASE", os.environ.get("PG_NAME", "provisa"))
-    user = os.environ.get("PG_USER", "provisa")
-    pw = os.environ.get("PG_PASSWORD", "provisa")
-    if host.startswith("/"):  # unix socket (pgserver on the desktop)
-        return f"postgresql+psycopg2://{user}:{pw}@/{db}?host={host}"
-    port = os.environ.get("PG_PORT", "5432")
-    return f"postgresql+psycopg2://{user}:{pw}@{host}:{port}/{db}"
+    return f"duckdb:///{os.path.join(telemetry_dir(), 'telemetry.duckdb')}"
 
 
 def ensure_tables(engine: sa.Engine) -> dict[str, sa.Table]:
