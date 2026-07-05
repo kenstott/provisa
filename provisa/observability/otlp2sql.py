@@ -304,7 +304,11 @@ def build_app(db_url: str | None = None) -> Starlette:
 
     @asynccontextmanager
     async def _lifespan(_app):
-        global _engine, _tables
+        global _engine, _tables, _BATCH_MAX_ROWS, _BATCH_MAX_SECS
+        # Read batch config at startup (not import) so env set before build_app
+        # takes effect.
+        _BATCH_MAX_ROWS = int(os.environ.get("OTLP2SQL_BATCH_MAX_ROWS", "1000"))
+        _BATCH_MAX_SECS = float(os.environ.get("OTLP2SQL_BATCH_MAX_SECS", "2"))
         url = db_url or ops_db_url()
         kwargs: dict = {"future": True}
         # DuckDB/SQLite are single-writer file stores with only a SYNC driver.
