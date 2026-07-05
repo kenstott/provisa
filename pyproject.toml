@@ -2,7 +2,7 @@
 name = "provisa"
 version = "0.1.0"
 description = "Config-driven data virtualization platform"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi",
     "uvicorn",
