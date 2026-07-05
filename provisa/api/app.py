@@ -264,64 +264,9 @@ _OPS_PG_TO_TRINO: dict[str, str] = {
 # Matches actual otlp2parquet output schema (https://github.com/smithclay/otlp2parquet).
 # Timestamps are milliseconds. span_attributes is a JSON string.
 # We add table_name/domain_id/role_id extracted from span_attributes during compaction.
-_OPS_TABLES: dict[str, list[tuple[str, str, bool]]] = {
-    "traces": [
-        ("trace_id", "text", True),
-        ("span_id", "text", False),
-        ("parent_span_id", "text", False),
-        ("span_name", "text", False),
-        ("span_kind", "integer", False),
-        ("service_name", "text", False),
-        ("service_namespace", "text", False),
-        ("timestamp", "bigint", False),
-        ("end_timestamp", "bigint", False),
-        ("duration", "bigint", False),
-        ("status_code", "integer", False),
-        ("status_message", "text", False),
-        ("scope_name", "text", False),
-        ("span_attributes", "text", False),
-        ("resource_attributes", "text", False),
-        # extracted from span_attributes during compaction
-        ("table_name", "text", False),
-        ("domain_id", "text", False),
-        ("role_id", "text", False),
-        ("query_text", "text", False),
-        ("tenant_id", "text", False),
-        ("_date", "date", False),
-    ],
-    "metrics": [
-        ("timestamp", "bigint", True),
-        ("start_timestamp", "bigint", False),
-        ("metric_name", "text", False),
-        ("metric_description", "text", False),
-        ("metric_unit", "text", False),
-        ("metric_type", "text", False),
-        ("service_name", "text", False),
-        ("service_namespace", "text", False),
-        ("scope_name", "text", False),
-        ("metric_attributes", "text", False),
-        ("resource_attributes", "text", False),
-        ("value", "float8", False),
-        ("tenant_id", "text", False),
-        ("_date", "date", False),
-    ],
-    "logs": [
-        ("timestamp", "bigint", True),
-        ("observed_timestamp", "bigint", False),
-        ("trace_id", "text", False),
-        ("span_id", "text", False),
-        ("severity_number", "integer", False),
-        ("severity_text", "text", False),
-        ("body", "text", False),
-        ("service_name", "text", False),
-        ("service_namespace", "text", False),
-        ("scope_name", "text", False),
-        ("log_attributes", "text", False),
-        ("resource_attributes", "text", False),
-        ("tenant_id", "text", False),
-        ("_date", "date", False),
-    ],
-}
+# Ops telemetry schema — single source of truth, shared with otlp2sql so the
+# receiver's tables and the ops-domain registration never drift.
+from provisa.observability.ops_schema import OPS_TABLES as _OPS_TABLES  # noqa: E402
 
 # Views registered in the ops domain alongside the raw Iceberg tables.
 # Each entry: (view_name, [(col_name, data_type, is_pk)], ddl_sql)

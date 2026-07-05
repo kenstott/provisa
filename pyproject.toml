@@ -37,6 +37,8 @@ dependencies = [
     "stripe",
     "cryptography",
     "sqlalchemy>=2",
+    "duckdb-engine",
+    "psycopg2-binary",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
     "opentelemetry-exporter-otlp-proto-http",
