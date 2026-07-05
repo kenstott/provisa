@@ -25365,8 +25365,8 @@
     - REQ-883
     - REQ-842
 - id: REQ-893
-  status: proposed
-  target: "2026-Q4"
+  status: complete
+  since: "2026-07"
   group: "4. Source Connectors"
   category: Federation Engine Abstraction
   priority: MAY
@@ -25421,7 +25421,37 @@
     DuckDB and IS the multi-user multiplexer — concurrent readers are cheap (MVCC snapshots), writers/
     materialization serialize and are coordinated by Provisa's execution layer; DuckDB is not a
     multi-client server.
-  code: []
+
+    IMPLEMENTATION: PostgresFdwConnector and FileFdwConnector (Mechanism.ATTACH) implemented in
+    provisa/federation/connector.py. build_postgres_engine() in provisa/federation/engine.py creates
+    a DriverClass.PARTIAL single-node engine. E2E tests pass: postgres_fdw attaches remote PG source
+    with RLS masking (non-NY customers hidden), file_fdw attaches CSV; both joined to local engine
+    table and executed via compile→apply_governance→rewrite_semantic_to_physical→transpile→execute
+    on Postgres. Companion DuckDB engine also passes e2e (test_duckdb_federation_engine_e2e.py):
+    RLS filter on customers.csv (15→5 rows) and CSV+SQLite relationship join on DuckDB.
+
+    CORE FDW SET (bundled in standard PG, verified working): postgres_fdw (remote PG), file_fdw
+    (CSV/text). EXTERNAL FDW CANDIDATES (not in standard image): sqlite_fdw (SQLite files),
+    parquet_fdw (Parquet), iceberg_fdw (Apache Iceberg lakehouse), mysql_fdw, mongo_fdw, tds_fdw.
+
+    ADDING EXTERNAL FDWs TO EMBEDDED PG: FDW provisioning is a BUILD/BUNDLING step, not runtime
+    CREATE EXTENSION. Each external FDW is a shared library (.so) compiled against the embedded
+    PG's exact version; SQL files placed in that PG's lib/ and share/extension/ dirs. Only then
+    does CREATE EXTENSION succeed. Curated FDWs must be compiled into the embedded-PG distribution
+    (pgserver bundles prebuilt PG binaries). Adding FDWs means shipping a customized embedded-PG
+    build — directly parallel to how Trino bundles connector plugins in its image. This is the
+    design guarantee: FDW set is fixed at distribution build time, not provisioned at install time.
+  code:
+    - provisa/federation/connector.py
+    - provisa/federation/engine.py
+  tests:
+    - tests/integration/test_postgres_federation_engine_e2e.py
+    - tests/integration/test_duckdb_federation_engine_e2e.py
+  e2e: true
+  e2e_reason: >-
+    RLS masking on joined federation tables is only verifiable through a live-stack round-trip:
+    semantic governance layer must apply before transpile, then Postgres executor confirms rows
+    are hidden/shown correctly based on user context.
   related_reqs:
     - REQ-825
     - REQ-840
@@ -25430,6 +25460,8 @@
     - REQ-889
     - REQ-827
     - REQ-251
+    - REQ-894
+    - REQ-897
 - id: REQ-894
   status: proposed
   target: "2026-Q4"
@@ -25501,3 +25533,74 @@
     - REQ-888
     - REQ-889
     - REQ-893
+- id: REQ-896
+  status: proposed
+  target: "2026-Q4"
+  group: "0. Architecture & Design Principles"
+  category: Federation Architecture
+  priority: MUST
+  type: structural
+  description: >-
+    Provisa's defensible value is the GOVERNED-FEDERATION MODEL and consistent governance philosophy,
+    not any compute engine or infrastructure. Federation engines (Trino, DuckDB, Postgres, Snowflake,
+    warehouse-native) are interchangeable commodity COMPUTE substrates; governance (RLS, column masking,
+    relationship-join enforcement) is applied in the semantic→IR layer BEFORE any engine sees the query,
+    ensuring governance-parity across all engines regardless of architecture.
+  use_case: >-
+    Engine independence allows Provisa to swap compute substrates (Trino ↔ DuckDB ↔ Postgres) with the
+    entire governed federation model unchanged. The connector, CatalogEntry, materialization-store
+    abstractions and single-node→MPP tier graduation remain engine-agnostic; governance invariants hold
+    across deployment tiers and engine boundaries.
+  notes: >-
+    Design consequence: keep governance and the semantic model strictly above the engine seam. Never
+    let engine-specific behavior leak into governance logic. Engines must remain hot-swappable. This
+    principle is validated by the fact that Provisa can demonstrate identical governed-federation
+    behavior across fundamentally different compute architectures (Trino/MPP cluster vs DuckDB/embedded
+    in-process vs Postgres/single-node shared backend).
+  related_reqs:
+    - REQ-827
+    - REQ-825
+    - REQ-840
+    - REQ-841
+    - REQ-888
+    - REQ-889
+    - REQ-893
+    - REQ-894
+    - REQ-895
+- id: REQ-897
+  status: proposed
+  target: "2026-Q4"
+  group: "0. Architecture & Design Principles"
+  category: Federation Architecture
+  priority: SHOULD
+  type: structural
+  description: >-
+    Federation engines are declared-capability objects; capabilities are planner inputs. Each
+    FederationEngine carries a set of DECLARED capability traits used to make routing/planning/tier
+    decisions. Established traits: driver_class (reach: BROAD/PARTIAL/SELF_ONLY) and mpp (scale-out;
+    orthogonal to reach). Candidate additional traits: file_native, pooled, transactional, streaming
+    (Arrow transport modes), and connector-level pushdown (predicate/join/aggregate).
+  use_case: >-
+    Consolidating engine capabilities into one coherent descriptor enables planner decisions such as:
+    push a large federated join to an MPP engine; land API/remote sources into a pooled/transactional
+    store; prefer a file_native engine when sources are files; gate single-node→MPP tier graduation.
+    Capabilities become planner inputs rather than being inferred from incidental plumbing (e.g.,
+    connector count or driver class alone).
+  notes: >-
+    Current seeds are scattered across EngineCapability (transports, provisa/federation/runtime.py),
+    connector Capability (pushdown), and engine driver_class/mpp fields. Direction: consolidate into
+    one coherent engine-capability descriptor that orthogonally captures: (a) reach dimension —
+    BROAD (native federation), PARTIAL (via connectors), SELF_ONLY (single-node); (b) scale dimension —
+    mpp/distributed vs single-node; (c) storage dimension — file_native (scans files directly),
+    pooled (server-side connection pooling), transactional support; (d) compute dimension — pushdown
+    capabilities (predicate/join/aggregate at connector level). This consolidation is informational
+    today; it enables decision-driving planner logic and capability-aware cost models in future versions.
+  related_reqs:
+    - REQ-825
+    - REQ-840
+    - REQ-841
+    - REQ-888
+    - REQ-889
+    - REQ-893
+    - REQ-894
+    - REQ-895
