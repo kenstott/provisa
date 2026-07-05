@@ -131,9 +131,22 @@ the backend with `PROVISA_OPS_DB_URL`:
 | `PROVISA_OPS_DB_URL` | Backend | Notes |
 |---|---|---|
 | *(unset)* | dedicated DuckDB under `~/.provisa/telemetry/` | default; no server, no Docker |
-| `trino://user@host:8080/otel` | Trino / Iceberg | uses Trino as the telemetry store — object storage plus `optimize` compaction |
 | `clickhouse+native://user@host/otel` | ClickHouse | high-rate ingest with automatic background merges |
-| `postgresql+psycopg2://user@host/otel` | PostgreSQL | |
+| `postgresql+psycopg2://user@host/otel` | PostgreSQL | moderate volume |
+| `trino://user@host:8080/otel` | Trino / Iceberg | technically works, **not recommended** — see below |
+
+**On `trino://`:** the SQLAlchemy Trino dialect emits valid Trino DDL and
+`INSERT`s, so it is technically feasible as an `otlp2sql` backend. It is not
+recommended for anything but low ingest rates. Every batch flush becomes a
+distributed Trino `INSERT` plus an Iceberg snapshot, so high-rate telemetry
+produces many small files and snapshots and still needs periodic
+`ALTER TABLE ... EXECUTE optimize` / `expire_snapshots` — which `otlp2sql` does
+not run. It also puts the query engine in the ingest hot path.
+
+For high-volume telemetry into Trino/Iceberg, use `otlp2parquet` instead: it
+writes parquet to object storage without going through Trino, and a scheduled
+Trino compaction rolls the raw files into the live Iceberg tables. For a single
+engine that handles both high-rate ingest and compaction, prefer ClickHouse.
 
 Point the app and Trino OTLP exporters (`OTEL_EXPORTER_OTLP_ENDPOINT`) at the
 `otlp2sql` endpoint, and register the ops domain against the same
