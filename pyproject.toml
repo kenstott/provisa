@@ -84,6 +84,12 @@ dev = [
     "syrupy",
     "respx",
     "python-pptx",
+    # Test-time deps that were present-but-undeclared in the old venv (recreating
+    # the venv dropped them): async sqlite dialect, sqlalchemy async runtime, and
+    # pandas for provisa_client.query_df. Declared so `uv sync` keeps them.
+    "aiosqlite",
+    "greenlet",
+    "pandas",
 ]
 
 [build-system]

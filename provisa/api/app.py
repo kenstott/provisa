@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import asyncio
-import datetime
 import json
 import logging
 import os
@@ -191,10 +190,10 @@ class AppState:
         # federation engine, so the query path always routes through it — there is no unbound state
         # and no per-call-site fallback. The runtime reads self.trino_conn lazily at execute time,
         # so binding before the connection exists is correct; startup may swap the reference engine.
-        from provisa.federation.engine import build_trino_engine
+        from provisa.federation.engine import build_engine  # $PROVISA_ENGINE selects
         from provisa.federation.runtime import EngineRuntime
 
-        self.federation_engine = EngineRuntime(build_trino_engine(), self)
+        self.federation_engine = EngineRuntime(build_engine(), self)
 
 
 state = AppState()
@@ -252,21 +251,13 @@ _META_TABLES = [
     "tracked_functions",
 ]
 
-_OPS_PG_TO_TRINO: dict[str, str] = {
-    "text": "VARCHAR",
-    "bigint": "BIGINT",
-    "integer": "INTEGER",
-    "float8": "DOUBLE",
-    "date": "DATE",
-    "boolean": "BOOLEAN",
-}
-
 # Matches actual otlp2parquet output schema (https://github.com/smithclay/otlp2parquet).
 # Timestamps are milliseconds. span_attributes is a JSON string.
 # We add table_name/domain_id/role_id extracted from span_attributes during compaction.
 # Ops telemetry schema — single source of truth, shared with otlp2sql so the
 # receiver's tables and the ops-domain registration never drift.
 from provisa.observability.ops_schema import OPS_TABLES as _OPS_TABLES  # noqa: E402
+from provisa.observability.ops_trino import OPS_PG_TO_TRINO as _OPS_PG_TO_TRINO  # noqa: E402
 
 # Views registered in the ops domain alongside the raw Iceberg tables.
 # Each entry: (view_name, [(col_name, data_type, is_pk)], ddl_sql)
@@ -526,126 +517,6 @@ async def _seed_ops_pg(conn: asyncpg.Connection) -> None:  # REQ-016
             )
 
 
-def _seed_ops_trino(  # REQ-016
-    trino_conn: trino.dbapi.Connection, snapshot_retention_hours: int | None = None
-) -> None:
-    """Create Iceberg schema/tables/views in Trino for the ops domain (idempotent)."""
-    _log = logging.getLogger(__name__)
-
-    def _exec(ddl: str) -> None:
-        cur = trino_conn.cursor()
-        cur.execute(ddl)
-        cur.fetchall()
-
-    # Schema + physical tables — one exception aborts table creation (catalog not ready).
-    _tables_ready = True
-    try:
-        _exec("CREATE SCHEMA IF NOT EXISTS otel.signals")
-        for tbl_name, cols in _OPS_TABLES.items():
-            col_defs = [
-                f'"{col_name}" {_OPS_PG_TO_TRINO.get(pg_type, "VARCHAR")}'
-                for col_name, pg_type, _ in cols
-            ]
-            col_names_lower = {col_name.lower() for col_name, _, _ in cols}
-            partition_cols = (
-                ["'table_name'", "'_date'"] if "table_name" in col_names_lower else ["'_date'"]
-            )
-            _exec(
-                f"CREATE TABLE IF NOT EXISTS otel.signals.{tbl_name} "
-                f"({', '.join(col_defs)}) "
-                f"WITH (partitioning = ARRAY[{', '.join(partition_cols)}], format = 'PARQUET')"
-            )
-    except Exception:
-        _log.warning(
-            "ops Iceberg DDL failed — will retry before next schema introspection", exc_info=True
-        )
-        _tables_ready = False
-
-    if _tables_ready:
-        # Column additions are non-fatal and isolated per table.
-        for tbl_name, cols in _OPS_TABLES.items():
-            try:
-                cur = trino_conn.cursor()
-                cur.execute(f"SHOW COLUMNS FROM otel.signals.{tbl_name}")
-                existing_cols = {row[0].lower() for row in cur.fetchall()}
-                for col_name, pg_type, _ in cols:
-                    if col_name.lower() not in existing_cols:
-                        trino_type = _OPS_PG_TO_TRINO.get(pg_type, "VARCHAR")
-                        try:
-                            _exec(
-                                f'ALTER TABLE otel.signals.{tbl_name} ADD COLUMN "{col_name}" {trino_type}'
-                            )
-                            _log.info("ops Iceberg: added column %s.%s", tbl_name, col_name)
-                        except Exception:
-                            _log.warning(
-                                "ops Iceberg: could not add column %s.%s",
-                                tbl_name,
-                                col_name,
-                                exc_info=True,
-                            )
-            except Exception:
-                _log.warning(
-                    "ops Iceberg: could not inspect columns for %s", tbl_name, exc_info=True
-                )
-
-        # Evolve partition spec on existing tables to include table_name (non-destructive).
-        for tbl_name in _OPS_TABLES:
-            try:
-                _exec(f'ALTER TABLE otel.signals.{tbl_name} ADD PARTITION FIELD "table_name"')
-            except trino.exceptions.Error:
-                pass  # already present, unsupported, or Trino transient — best-effort, not fatal
-
-        # Warm up Iceberg metadata: first query on a cold Iceberg table can take >60s;
-        # running a zero-row scan here ensures metadata is loaded before user requests arrive.
-        for tbl_name in _OPS_TABLES:
-            try:
-                _exec(f"SELECT 1 FROM otel.signals.{tbl_name} LIMIT 0")
-            except Exception:
-                _log.warning(
-                    "ops Iceberg: warm-up scan on %s failed (non-fatal)", tbl_name, exc_info=True
-                )
-
-    # Views — always attempted; independent of column-addition and table-creation failures.
-    # If the initial DDL block failed because Trino wasn't ready, these will also fail (caught
-    # individually). If tables already exist from a prior run, views are created/refreshed here.
-    # Use DROP IF EXISTS + CREATE VIEW for broad Trino version compatibility
-    # (CREATE OR REPLACE VIEW for Iceberg requires Trino 418+).
-    for view_name, _, view_ddl in _OPS_VIEWS:
-        try:
-            _exec(f"DROP VIEW IF EXISTS otel.signals.{view_name}")
-            clean_ddl = view_ddl.replace("CREATE OR REPLACE VIEW", "CREATE VIEW")
-            _exec(clean_ddl)
-        except Exception:
-            _log.warning("ops view %s: create failed", view_name, exc_info=True)
-
-    if not _tables_ready:
-        return
-
-    # Expire old Iceberg snapshots and orphan files when retention is configured.
-    if snapshot_retention_hours is not None:
-        threshold = (
-            datetime.datetime.now(datetime.timezone.utc)
-            - datetime.timedelta(hours=snapshot_retention_hours)
-        ).strftime("%Y-%m-%d %H:%M:%S.000")
-        for tbl_name in _OPS_TABLES:
-            for proc, arg in [
-                ("expire_snapshots", f"retention_threshold => TIMESTAMP '{threshold}'"),
-                ("remove_orphan_files", f"retention_threshold => TIMESTAMP '{threshold}'"),
-            ]:
-                try:
-                    _exec(f"ALTER TABLE otel.signals.{tbl_name} EXECUTE {proc}({arg})")
-                    _log.info(
-                        "ops Iceberg: %s on %s (retention %dh)",
-                        proc,
-                        tbl_name,
-                        snapshot_retention_hours,
-                    )
-                except Exception:
-                    _log.warning(
-                        "ops Iceberg: %s on %s failed (non-fatal)", proc, tbl_name, exc_info=True
-                    )
-
-
 async def _init_meta_rls(conn: asyncpg.Connection) -> None:  # REQ-041, REQ-402
     """Enable Postgres RLS on all _META_TABLES. Called only when multitenancy=True."""
     for tbl in _META_TABLES:
@@ -783,23 +654,30 @@ def _apply_server_and_trino_config(raw_config: dict) -> None:
         ),
     }
 
-    trino_host = os.environ.get("TRINO_HOST", "localhost")
-    trino_port = int(os.environ.get("TRINO_PORT", "8080"))
-    state.trino_conn_kwargs = dict(
-        host=trino_host,
-        port=trino_port,
-        user="provisa",
-        catalog="system",
-        schema=f"org_{state.org_id}",
-        http_scheme="http",
-        request_timeout=10,
-    )
-    state.trino_conn = trino.dbapi.connect(**state.trino_conn_kwargs)
-    from provisa.compiler import schema_service
+    # The Trino terminal is only provisioned when Trino is the bound engine. A native
+    # engine (duckdb/embedded-pg/…) has no Trino cluster, so eagerly connecting and
+    # seeding the otel catalog here would fail at boot — telemetry for those engines
+    # lands in the dedicated ops store (ops_schema/otlp2sql), not a Trino catalog.
+    if state.federation_engine.name == "trino":
+        trino_host = os.environ.get("TRINO_HOST", "localhost")
+        trino_port = int(os.environ.get("TRINO_PORT", "8080"))
+        state.trino_conn_kwargs = dict(
+            host=trino_host,
+            port=trino_port,
+            user="provisa",
+            catalog="system",
+            schema=f"org_{state.org_id}",
+            http_scheme="http",
+            request_timeout=10,
+        )
+        state.trino_conn = trino.dbapi.connect(**state.trino_conn_kwargs)
+        from provisa.compiler import schema_service
+        from provisa.observability.ops_trino import seed_ops_trino
 
-    schema_service.init(state.trino_conn)
-
-    _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
+        schema_service.init(state.trino_conn)
+        seed_ops_trino(
+            state.trino_conn, _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
+        )
 
     # Fault-Tolerant Execution (FTE) — env var > server.federation_fte config > disabled.
     _fte_cfg = state.server_cfg.get("federation_fte", {})
@@ -1377,8 +1255,11 @@ async def _load_and_build(
 
     # Flight (Zaychik), the MinIO buckets, and the Trino results schema are mutually
     # independent network setup. Run them concurrently to cut startup latency — the
-    # blocking calls go on threads so the event loop can overlap them.
-    await _connect_flight_and_object_store()
+    # blocking calls go on threads so the event loop can overlap them. All three are
+    # Trino-terminal infra: a native engine has no Zaychik/MinIO/results-schema, so
+    # this whole step is skipped there (it would otherwise block on absent services).
+    if state.federation_engine.name == "trino":
+        await _connect_flight_and_object_store()
 
     _mark("infra: flight/minio/results")
 
@@ -1416,10 +1297,17 @@ async def _load_and_build(
     # Initialize cache store — REDIS_URL env var overrides config
     cache_config = raw_config.get("cache", {})
     # Resolve Redis URL regardless of response-cache enablement so rate limiting
-    # (REQ-371) can use it even when the response cache is off.
-    state.redis_url = (
-        os.environ.get("REDIS_URL") or resolve_secrets(cache_config.get("redis_url", "")) or None
-    )
+    # (REQ-371) can use it even when the response cache is off. PROVISA_REDIS_EMBEDDED
+    # forces the in-process fakeredis path (REQ-829) for the native desktop tier — an
+    # explicit selection that ignores any configured URL, so no Redis server is needed.
+    if os.environ.get("PROVISA_REDIS_EMBEDDED", "").lower() in ("1", "true", "yes"):
+        state.redis_url = None
+    else:
+        state.redis_url = (
+            os.environ.get("REDIS_URL")
+            or resolve_secrets(cache_config.get("redis_url", ""))
+            or None
+        )
     # REQ-289: APQ TTL from the apq.ttl config key (PROVISA_APQ_TTL env overrides, like redis_url).
     state.apq_ttl = int(
         os.environ.get("PROVISA_APQ_TTL") or raw_config.get("apq", {}).get("ttl") or 86400
@@ -2191,8 +2079,12 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             )
 
         # Ensure ops Iceberg tables exist before introspection — idempotent, self-healing
-        # if _seed_ops_trino failed at startup because the otel catalog wasn't ready yet.
-        _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
+        # if seed_ops_trino failed at startup because the otel catalog wasn't ready yet.
+        from provisa.observability.ops_trino import seed_ops_trino
+
+        seed_ops_trino(
+            state.trino_conn, _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
+        )
 
         await _register_user_views_in_state(_pg, raw_config)
 
