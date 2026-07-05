@@ -59,6 +59,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Embedded PostgreSQL for the desktop/native tier (control plane + dedicated
+# telemetry store). Optional because pgserver has no cp313 wheel yet — install
+# under a cpython<=3.12 interpreter.
+telemetry-pg = ["pgserver"]
 mysql = ["aiomysql"]
 sqlserver = ["aioodbc"]
 oracle = ["oracledb"]

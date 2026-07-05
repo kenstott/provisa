@@ -332,6 +332,17 @@ for _i in $(seq 1 10); do
 done
 echo " OK"
 
+# Telemetry (ops) store — a SEPARATE embedded PostgreSQL instance (pgserver),
+# distinct from the control-plane postgres. Persistent across runs. Falls back
+# to the default DuckDB store when pgserver is unavailable (e.g. no cp313 wheel).
+TELEM_PG_DIR="${PROVISA_HOME:-$HOME/.provisa}/telemetry-pg"
+if TELEM_OPS_URL="$("$SCRIPT_DIR/.venv/bin/python" -m provisa.observability.telemetry_pg start "$TELEM_PG_DIR" 2>>"$LOG_DIR/telemetry-pg.log")"; then
+  echo "Telemetry store: dedicated embedded PostgreSQL ($TELEM_PG_DIR)"
+else
+  TELEM_OPS_URL=""
+  echo "Telemetry store: DuckDB default — pgserver unavailable (needs Python <=3.12); see $LOG_DIR/telemetry-pg.log"
+fi
+
 BACKEND_PID=""
 
 start_backend() {
@@ -357,6 +368,8 @@ start_backend() {
     PROVISA_CONFIG_REPLACE="true"
     PROVISA_PGWIRE_PORT=5439
   )
+  # Telemetry lands in its own embedded-pg instance when available.
+  [ -n "${TELEM_OPS_URL:-}" ] && _BACKEND_ENV+=( PROVISA_OPS_DB_URL="$TELEM_OPS_URL" )
   if [ "$DEMO" = true ]; then
     _BACKEND_ENV+=(
       PROVISA_REDIRECT_ENABLED="true"
