@@ -208,6 +208,21 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
     )
 
 
+def build_postgres_engine() -> FederationEngine:  # REQ-893 single-node federator via FDW (SQL/MED)
+    from provisa.federation.connector import FileFdwConnector, PostgresFdwConnector
+
+    return FederationEngine(
+        "postgres",
+        # Curated stock FDWs (REQ-893): postgres_fdw (remote PG) + file_fdw (CSV) ship with the
+        # standard PG image. sqlite_fdw / parquet_fdw / mysql_fdw are external extensions added when
+        # the deployment needs them.
+        [PostgresFdwConnector(), FileFdwConnector()],
+        native_store="postgres",  # its own tables are native; foreign tables reference in place
+        driver_class=DriverClass.PARTIAL,
+        mpp=False,  # single-node: cross-server joins materialize locally (REQ-894)
+    )
+
+
 def build_snowflake_engine() -> FederationEngine:  # REQ-840 self-only warehouse
     from provisa.federation.connector import WarehouseNativeConnector
 

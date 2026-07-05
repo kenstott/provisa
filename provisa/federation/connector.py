@@ -182,6 +182,70 @@ class DuckDBSqliteConnector(Connector):
         return {"attach": f"ATTACH '{source.path}' AS {source.id} (TYPE sqlite)"}
 
 
+# --- Postgres: a single-node federator that ATTACHes remote sources via postgres_fdw (SQL/MED) ---
+
+
+class PostgresFdwConnector(Connector):  # REQ-893
+    """Attach a remote PostgreSQL source into a Postgres engine via postgres_fdw (SQL/MED).
+
+    A remote source is referenced in place through a foreign server + imported foreign schema — the
+    SQL-standard analog of a Trino catalog / DuckDB ATTACH. ``details`` carries the ordered DDL the
+    engine issues once to attach the source; per-query the engine just reads the foreign tables.
+    """
+
+    engine = "postgres"
+    source_type = "postgresql"
+    mechanism = Mechanism.ATTACH
+
+    def capability(self) -> Capability:
+        # postgres_fdw pushes down predicates, joins between same-server foreign tables, and (PG14+)
+        # aggregates; a cross-SERVER join still materializes locally (single-node — REQ-894).
+        return Capability(predicate_pushdown=True, join_pushdown=True, aggregate_pushdown=True)
+
+    def details(self, source: Source) -> dict:
+        server = f"fdw_{source.id}"
+        local_schema = f"fdw_{source.id}"
+        remote_schema = getattr(source, "schema", None) or "public"
+        return {
+            "attach_ddl": [
+                "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
+                f"CREATE SERVER IF NOT EXISTS {server} FOREIGN DATA WRAPPER postgres_fdw "
+                f"OPTIONS (host '{source.host}', port '{source.port}', dbname '{source.database}')",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server} "
+                f"OPTIONS (user '{source.username}', password '{source.password}')",
+                f"CREATE SCHEMA IF NOT EXISTS {local_schema}",
+                f"IMPORT FOREIGN SCHEMA {remote_schema} FROM SERVER {server} INTO {local_schema}",
+            ],
+            "local_schema": local_schema,
+        }
+
+
+class FileFdwConnector(Connector):  # REQ-893
+    """Attach a CSV file into a Postgres engine via file_fdw (a stock/core PG contrib FDW).
+
+    file_fdw needs an explicit column list, so the per-table CREATE FOREIGN TABLE is completed by the
+    engine runtime from the registry's column metadata; ``details`` carries the column-independent
+    server setup plus the file OPTIONS the foreign table binds.
+    """
+
+    engine = "postgres"
+    source_type = "csv"
+    mechanism = Mechanism.ATTACH
+
+    def capability(self) -> Capability:
+        return Capability()  # file_fdw is a plain sequential scan — no pushdown
+
+    def details(self, source: Source) -> dict:
+        return {
+            "server_ddl": [
+                "CREATE EXTENSION IF NOT EXISTS file_fdw",
+                "CREATE SERVER IF NOT EXISTS fdw_file_srv FOREIGN DATA WRAPPER file_fdw",
+            ],
+            "server": "fdw_file_srv",
+            "table_options": f"OPTIONS (filename '{source.path}', format 'csv', header 'true')",
+        }
+
+
 # --- Warehouse-native (Snowflake): self-only, land-into-self is a no-op ---
 
 
