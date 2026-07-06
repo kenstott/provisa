@@ -7,6 +7,8 @@
 # NOTICE: Use of this software for training artificial intelligence or
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
+#
+# complexity-gate: allow-ble=2 reason="engine-agnostic table-exists probe (SELECT 1 fails => absent) cannot name a Trino-specific exception without re-coupling; plus the grandfathered refresh_mv outer catch"
 
 """Materialized view refresh engine (REQ-081, REQ-084).
 
@@ -21,8 +23,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-
-import trino
 
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
@@ -82,7 +82,7 @@ def _mv_definition_version(mv: MVDefinition) -> str:  # REQ-862
     )
 
 
-def _build_refresh_sql(mv: MVDefinition, trino_conn=None) -> str:
+async def _build_refresh_sql(mv: MVDefinition, engine=None) -> str:
     """Build the SELECT SQL for an MV refresh.
 
     For join-pattern MVs, builds a SELECT from the source tables with the join.
@@ -97,11 +97,10 @@ def _build_refresh_sql(mv: MVDefinition, trino_conn=None) -> str:
         # Prefix all right-table columns as "right_table__col" to avoid
         # duplicate column names when both tables share column names like "id".
         right_cols = ""
-        if trino_conn:
+        if engine is not None:
             try:
-                cursor = trino_conn.cursor()
-                cursor.execute(f'SHOW COLUMNS FROM "{jp.right_table}"')
-                cols = [row[0] for row in cursor.fetchall()]
+                rows = (await engine.execute_engine(f'SHOW COLUMNS FROM "{jp.right_table}"')).rows
+                cols = [row[0] for row in rows]
                 right_cols = ", ".join(
                     f'"{jp.right_table}"."{c}" AS "{jp.right_table}__{c}"' for c in cols
                 )
@@ -132,20 +131,19 @@ def _target_ref(mv: MVDefinition) -> str:
     return f'"{mv.target_catalog}"."{mv.target_schema}"."{mv.target_table}"'
 
 
-def _probe_source_count(trino_conn: trino.dbapi.Connection, mv: MVDefinition) -> int:  # REQ-235
+async def _probe_source_count(engine, mv: MVDefinition) -> int:  # REQ-235
     """Run a COUNT(*) probe against the MV's source query to estimate result size."""
-    select_sql = _build_refresh_sql(mv, trino_conn)
-    cursor = trino_conn.cursor()
-    cursor.execute(f"SELECT COUNT(*) FROM ({select_sql}) _probe")
-    return cursor.fetchone()[0]
+    select_sql = await _build_refresh_sql(mv, engine)
+    res = await engine.execute_engine(f"SELECT COUNT(*) FROM ({select_sql}) _probe")
+    return res.rows[0][0]
 
 
 async def refresh_mv(  # REQ-135, REQ-160, REQ-235
-    trino_conn: trino.dbapi.Connection,
+    engine,
     mv: MVDefinition,
     registry: MVRegistry,
 ) -> None:
-    """Refresh a single MV via Trino.
+    """Refresh a single MV through the engine terminal.
 
     First refresh: CREATE TABLE AS SELECT.
     Subsequent: DELETE FROM target; INSERT INTO target SELECT.
@@ -158,7 +156,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
     try:
         from provisa.mv.input_signals import gather_input_signals, input_token  # noqa: PLC0415
 
-        input_signals = gather_input_signals(trino_conn, mv.source_tables)  # REQ-862
+        input_signals = await gather_input_signals(engine, mv.source_tables)  # REQ-862
         # REQ-881: probe-freshness gate — skip the expensive rebuild when every source reports
         # an unchanged input token. Runs before the size-count probe so even that is skipped.
         if mv.freshness_mode in ("probe", "ttl_probe"):
@@ -169,7 +167,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
                 return
 
         # Size guard: probe source count before materializing
-        source_count = _probe_source_count(trino_conn, mv)
+        source_count = await _probe_source_count(engine, mv)
         if source_count > mv.max_rows:
             log.warning(
                 "MV %s source has %d rows (max_rows=%d) — skipping materialization",
@@ -181,30 +179,24 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
             mv.last_error = f"Source row count {source_count} exceeds max_rows {mv.max_rows}"
             return
 
-        select_sql = _build_refresh_sql(mv, trino_conn)
+        select_sql = await _build_refresh_sql(mv, engine)
         _emit_column_lineage_span(mv, select_sql, str(start), input_signals)  # REQ-862
-        cursor = trino_conn.cursor()
 
-        # Check if target table exists
+        # Check if target table exists — probe through the engine (empty rows on absence).
         try:
-            cursor.execute(f"SELECT 1 FROM {target} LIMIT 0")
-            cursor.fetchall()
+            await engine.execute_engine(f"SELECT 1 FROM {target} LIMIT 0")
             table_exists = True
-        except trino.exceptions.TrinoUserError:
+        except Exception:
             table_exists = False
 
         if table_exists:
-            cursor.execute(f"DELETE FROM {target}")
-            cursor.fetchall()
-            cursor.execute(f"INSERT INTO {target} {select_sql}")
-            cursor.fetchall()
+            await engine.execute_engine(f"DELETE FROM {target}")
+            await engine.execute_engine(f"INSERT INTO {target} {select_sql}")
         else:
-            cursor.execute(f"CREATE TABLE {target} AS {select_sql}")
-            cursor.fetchall()
+            await engine.execute_engine(f"CREATE TABLE {target} AS {select_sql}")
 
         # Get row count
-        cursor.execute(f"SELECT COUNT(*) FROM {target}")
-        row_count = cursor.fetchone()[0]
+        row_count = (await engine.execute_engine(f"SELECT COUNT(*) FROM {target}")).rows[0][0]
 
         duration = time.time() - start
         registry.mark_refreshed(mv.id, row_count)
@@ -220,8 +212,8 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235
         log.exception("Failed to refresh MV %s", mv.id)
 
 
-def reclaim_removed_mvs(  # REQ-234
-    trino_conn: trino.dbapi.Connection,
+async def reclaim_removed_mvs(  # REQ-234
+    engine,
     registry: MVRegistry,
     config_mv_ids: set[str],
 ) -> list[str]:
@@ -241,9 +233,7 @@ def reclaim_removed_mvs(  # REQ-234
             continue
         target = _target_ref(mv)
         try:
-            cursor = trino_conn.cursor()
-            cursor.execute(f"DROP TABLE IF EXISTS {target}")
-            cursor.fetchall()
+            await engine.execute_engine(f"DROP TABLE IF EXISTS {target}")
             log.info("Reclaimed removed MV %s — dropped %s", mv_id, target)
         except Exception:
             log.exception("Failed to drop table for removed MV %s", mv_id)
@@ -254,8 +244,8 @@ def reclaim_removed_mvs(  # REQ-234
     return reclaimed
 
 
-def detect_orphans(  # REQ-234
-    trino_conn: trino.dbapi.Connection,
+async def detect_orphans(  # REQ-234
+    engine,
     registry: MVRegistry,
     schema_name: str,
     catalog: str = "postgresql",
@@ -264,9 +254,8 @@ def detect_orphans(  # REQ-234
 
     Returns list of orphan table names.
     """
-    cursor = trino_conn.cursor()
-    cursor.execute(f'SHOW TABLES FROM "{catalog}"."{schema_name}"')
-    actual_tables = {row[0] for row in cursor.fetchall()}
+    rows = (await engine.execute_engine(f'SHOW TABLES FROM "{catalog}"."{schema_name}"')).rows
+    actual_tables = {row[0] for row in rows}
 
     known_tables = {mv.target_table for mv in registry.all()}
     orphans = actual_tables - known_tables
@@ -281,8 +270,8 @@ def detect_orphans(  # REQ-234
     return sorted(orphans)
 
 
-def drop_expired_orphans(  # REQ-234
-    trino_conn: trino.dbapi.Connection,
+async def drop_expired_orphans(  # REQ-234
+    engine,
     orphan_tracker: dict[str, float],
     orphan_tables: list[str],
     grace_period: int,
@@ -292,7 +281,7 @@ def drop_expired_orphans(  # REQ-234
     """Drop orphan tables that have exceeded the grace period.
 
     Args:
-        trino_conn: Trino connection.
+        engine: EngineRuntime terminal.
         orphan_tracker: Dict mapping orphan table name to first-seen timestamp.
         orphan_tables: Current list of orphan table names.
         grace_period: Seconds to wait before dropping.
@@ -319,9 +308,7 @@ def drop_expired_orphans(  # REQ-234
         if (now - first_seen) >= grace_period:
             target = f'"{catalog}"."{schema_name}"."{table}"'
             try:
-                cursor = trino_conn.cursor()
-                cursor.execute(f"DROP TABLE IF EXISTS {target}")
-                cursor.fetchall()
+                await engine.execute_engine(f"DROP TABLE IF EXISTS {target}")
                 log.info("Dropped expired orphan table %s", target)
                 dropped.append(table)
             except Exception:
@@ -332,7 +319,7 @@ def drop_expired_orphans(  # REQ-234
 
 
 async def refresh_loop(  # REQ-135, REQ-160, REQ-199, REQ-234
-    trino_conn: trino.dbapi.Connection,
+    engine,
     registry: MVRegistry,
     check_interval: int = 30,
     config_mv_ids: set[str] | None = None,
@@ -342,7 +329,7 @@ async def refresh_loop(  # REQ-135, REQ-160, REQ-199, REQ-234
     Also runs storage reclamation and orphan detection each cycle.
 
     Args:
-        trino_conn: Trino connection for executing refresh queries.
+        engine: EngineRuntime terminal for executing refresh queries.
         registry: MV registry to check for due MVs.
         check_interval: Seconds between checks for due MVs.
         config_mv_ids: Set of MV IDs from current config (for reclamation).
@@ -353,22 +340,22 @@ async def refresh_loop(  # REQ-135, REQ-160, REQ-199, REQ-234
         try:
             # Reclaim removed MVs if config IDs provided
             if config_mv_ids is not None:
-                reclaim_removed_mvs(trino_conn, registry, config_mv_ids)
+                await reclaim_removed_mvs(engine, registry, config_mv_ids)
 
             # Orphan detection across all enabled MVs
             schemas_seen: set[tuple[str, str]] = set()
             for mv in registry.all():
                 schemas_seen.add((mv.target_catalog, mv.target_schema))
             for catalog, schema in schemas_seen:
-                orphans = detect_orphans(trino_conn, registry, schema, catalog)
+                orphans = await detect_orphans(engine, registry, schema, catalog)
                 # Use shortest grace period from any registered MV
                 all_mvs = registry.all()
                 grace = min(
                     (m.orphan_grace_period for m in all_mvs),
                     default=86400,
                 )
-                drop_expired_orphans(
-                    trino_conn,
+                await drop_expired_orphans(
+                    engine,
                     orphan_tracker,
                     orphans,
                     grace,
@@ -378,7 +365,7 @@ async def refresh_loop(  # REQ-135, REQ-160, REQ-199, REQ-234
 
             due = registry.get_due_for_refresh()
             for mv in due:
-                await refresh_mv(trino_conn, mv, registry)
+                await refresh_mv(engine, mv, registry)
         except Exception:
             log.exception("Error in MV refresh loop")
         await asyncio.sleep(check_interval)

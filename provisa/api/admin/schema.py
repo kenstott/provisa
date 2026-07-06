@@ -2359,9 +2359,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             if result == "UPDATE 0":
                 return MutationResult(success=False, message=f"Table {table_id} not found")
-        return MutationResult(
-            success=True, message=f"prefer_materialized set for table {table_id}"
-        )
+        return MutationResult(success=True, message=f"prefer_materialized set for table {table_id}")
 
     # ── Admin: Naming Convention ──
 
@@ -2460,8 +2458,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         try:
             from provisa.mv.refresh import refresh_mv
 
-            assert state.trino_conn is not None
-            await refresh_mv(state.trino_conn, mv, state.mv_registry)
+            assert state.federation_engine is not None
+            await refresh_mv(state.federation_engine, mv, state.mv_registry)
             return MutationResult(success=True, message=f"MV {mv_id!r} refreshed")
         except Exception as e:
             return MutationResult(success=False, message=str(e))

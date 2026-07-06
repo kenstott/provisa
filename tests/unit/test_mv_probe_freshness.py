@@ -84,36 +84,23 @@ def test_mark_unchanged_resets_ttl_keeps_rows():
 _WM_MARK = "registered_tables"
 
 
-class _Cursor:
-    def __init__(self, conn):
-        self._conn = conn
-        self._one = None
-        self._all = None
-
-    def execute(self, sql):
-        self._conn.queries.append(sql)
-        if _WM_MARK in sql:
-            self._all = []  # no watermark columns
-        elif "$snapshots" in sql:
-            self._one = (self._conn.snapshot,)
-        elif sql.startswith("SELECT COUNT(*)"):
-            self._one = (3,)
-        # DDL (DELETE/INSERT/CREATE) and the LIMIT-0 existence probe: no result needed
-
-    def fetchone(self):
-        return self._one
-
-    def fetchall(self):
-        return self._all or []
-
-
-class _Conn:
+class _FakeEngine:
     def __init__(self, snapshot):
         self.snapshot = snapshot
         self.queries: list[str] = []
 
-    def cursor(self):
-        return _Cursor(self)
+    async def execute_engine(self, sql, *a, **k):
+        from provisa.executor.trino import QueryResult
+
+        self.queries.append(sql)
+        if _WM_MARK in sql:
+            return QueryResult(rows=[], column_names=[])  # no watermark columns
+        if "$snapshots" in sql:
+            return QueryResult(rows=[(self.snapshot,)], column_names=[])
+        if sql.startswith("SELECT COUNT(*)"):
+            return QueryResult(rows=[(3,)], column_names=[])
+        # DDL (DELETE/INSERT/CREATE) and the LIMIT-0 existence probe: no result needed
+        return QueryResult(rows=[], column_names=[])
 
 
 @pytest.mark.asyncio
@@ -124,7 +111,7 @@ async def test_refresh_skips_when_token_unchanged():
     reg.mark_refreshed("agg", 10)
     mv.last_input_token = "iceberg_snapshot:555"  # matches the fake snapshot below
 
-    conn = _Conn(snapshot=555)
+    conn = _FakeEngine(snapshot=555)
     await refresh_mv(conn, mv, reg)
 
     # No rebuild DDL executed — only the gather probe ($snapshots) + watermark lookup ran.
@@ -141,7 +128,7 @@ async def test_refresh_rebuilds_and_stores_token_when_changed():
     reg.mark_refreshed("agg2", 10)
     mv.last_input_token = "iceberg_snapshot:1"  # stale — source is now 999
 
-    conn = _Conn(snapshot=999)
+    conn = _FakeEngine(snapshot=999)
     await refresh_mv(conn, mv, reg)
 
     # A rebuild happened and the new token was stored.

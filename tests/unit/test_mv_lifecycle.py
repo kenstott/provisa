@@ -13,14 +13,13 @@
 from __future__ import annotations
 
 import time
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
+from provisa.executor.trino import QueryResult
 from provisa.mv.refresh import (
-    _probe_source_count,
     detect_orphans,
     drop_expired_orphans,
     reclaim_removed_mvs,
@@ -57,17 +56,28 @@ def _mv(
     )
 
 
-def _mock_cursor(fetchone_val=None, fetchall_val=None):
-    cursor = MagicMock()
-    cursor.fetchone.return_value = fetchone_val
-    cursor.fetchall.return_value = fetchall_val or []
-    return cursor
+class _FakeEngine:
+    """Records SQL through the engine terminal; COUNT(*)/SHOW TABLES/SHOW COLUMNS return
+    configured rows. ``fail_exists`` raises on the SELECT-1 existence probe (table absent)."""
 
+    def __init__(self, count=0, show_tables=None, show_columns=None, fail_exists=False):
+        self.count = count
+        self.show_tables = show_tables or []
+        self.show_columns = show_columns or []
+        self.fail_exists = fail_exists
+        self.sqls: list[str] = []
 
-def _mock_trino_conn(cursor):
-    conn = MagicMock()
-    conn.cursor.return_value = cursor
-    return conn
+    async def execute_engine(self, sql, *a, **k):
+        self.sqls.append(sql)
+        if self.fail_exists and "SELECT 1 FROM" in sql:
+            raise Exception("TABLE_NOT_FOUND")
+        if "SHOW TABLES" in sql:
+            return QueryResult(rows=self.show_tables, column_names=[])
+        if "SHOW COLUMNS" in sql:
+            return QueryResult(rows=self.show_columns, column_names=[])
+        if "COUNT(*)" in sql:
+            return QueryResult(rows=[(self.count,)], column_names=[])
+        return QueryResult(rows=[], column_names=[])
 
 
 class TestSizeGuard:
@@ -78,10 +88,7 @@ class TestSizeGuard:
         registry = MVRegistry()
         registry.register(mv)
 
-        cursor = _mock_cursor(fetchone_val=(1000,))
-        conn = _mock_trino_conn(cursor)
-
-        await refresh_mv(conn, mv, registry)
+        await refresh_mv(_FakeEngine(count=1000), mv, registry)
 
         assert mv.status == MVStatus.SKIPPED_SIZE
         assert "exceeds max_rows" in mv.last_error
@@ -93,49 +100,7 @@ class TestSizeGuard:
         registry = MVRegistry()
         registry.register(mv)
 
-        # First call: probe count. Second+: table existence check, etc.
-        call_count = 0
-        results = []
-
-        def _execute_side_effect(sql):
-            nonlocal call_count
-            call_count += 1
-            # Store for fetchone/fetchall routing
-            results.append(sql)
-
-        cursor = MagicMock()
-        cursor.execute.side_effect = _execute_side_effect
-
-        fetchone_calls = 0
-
-        def _fetchone():
-            nonlocal fetchone_calls
-            fetchone_calls += 1
-            if fetchone_calls == 1:
-                return (100,)  # probe count
-            return (100,)  # final row count
-
-        cursor.fetchone.side_effect = _fetchone
-        cursor.fetchall.return_value = []
-
-        conn = _mock_trino_conn(cursor)
-
-        # Simulate table not existing (TrinoUserError on existence check)
-        import trino.exceptions
-        original_execute = cursor.execute.side_effect
-        exec_count = [0]
-
-        def _execute_with_error(sql):
-            exec_count[0] += 1
-            if exec_count[0] == 3:  # The "SELECT 1 FROM target LIMIT 0" check
-                raise trino.exceptions.TrinoUserError(
-                    {"errorName": "TABLE_NOT_FOUND", "message": "not found"},
-                    "not found",
-                )
-
-        cursor.execute.side_effect = _execute_with_error
-
-        await refresh_mv(conn, mv, registry)
+        await refresh_mv(_FakeEngine(count=100, fail_exists=True), mv, registry)
 
         assert mv.status == MVStatus.FRESH
         assert mv.row_count == 100
@@ -147,35 +112,13 @@ class TestSizeGuard:
         registry = MVRegistry()
         registry.register(mv)
 
-        exec_count = [0]
-        fetchone_count = [0]
-
-        def _execute(sql):
-            exec_count[0] += 1
-            if exec_count[0] == 3:
-                import trino.exceptions
-                raise trino.exceptions.TrinoUserError(
-                    {"errorName": "TABLE_NOT_FOUND", "message": "not found"},
-                    "not found",
-                )
-
-        def _fetchone():
-            fetchone_count[0] += 1
-            return (1000,)  # probe=1000 (equal, not exceeded), row_count=1000
-
-        cursor = MagicMock()
-        cursor.execute.side_effect = _execute
-        cursor.fetchone.side_effect = _fetchone
-        cursor.fetchall.return_value = []
-        conn = _mock_trino_conn(cursor)
-
-        await refresh_mv(conn, mv, registry)
+        await refresh_mv(_FakeEngine(count=1000, fail_exists=True), mv, registry)
 
         assert mv.status == MVStatus.FRESH
 
 
 class TestReclamation:
-    def test_identifies_removed_mvs(self):
+    async def test_identifies_removed_mvs(self):
         """MVs in registry but not in config get reclaimed."""
         registry = MVRegistry()
         mv1 = _mv(mv_id="keep-me", target_table="mv_keep_me")
@@ -183,139 +126,140 @@ class TestReclamation:
         registry.register(mv1)
         registry.register(mv2)
 
-        cursor = _mock_cursor()
-        conn = _mock_trino_conn(cursor)
+        engine = _FakeEngine()
 
         config_ids = {"keep-me"}
-        reclaimed = reclaim_removed_mvs(conn, registry, config_ids)
+        reclaimed = await reclaim_removed_mvs(engine, registry, config_ids)
 
         assert reclaimed == ["remove-me"]
         assert registry.get("remove-me") is None
         assert registry.get("keep-me") is not None
 
-    def test_no_reclamation_when_all_present(self):
+    async def test_no_reclamation_when_all_present(self):
         """No reclamation when all registry MVs are in config."""
         registry = MVRegistry()
         mv1 = _mv(mv_id="mv1")
         registry.register(mv1)
 
-        cursor = _mock_cursor()
-        conn = _mock_trino_conn(cursor)
+        engine = _FakeEngine()
 
-        reclaimed = reclaim_removed_mvs(conn, registry, {"mv1"})
+        reclaimed = await reclaim_removed_mvs(engine, registry, {"mv1"})
         assert reclaimed == []
 
-    def test_reclamation_drops_table(self):
+    async def test_reclamation_drops_table(self):
         """Reclamation executes DROP TABLE IF EXISTS."""
         registry = MVRegistry()
         mv = _mv(mv_id="gone", target_table="mv_gone")
         registry.register(mv)
 
-        cursor = _mock_cursor()
-        conn = _mock_trino_conn(cursor)
+        engine = _FakeEngine()
 
-        reclaim_removed_mvs(conn, registry, set())
+        await reclaim_removed_mvs(engine, registry, set())
 
-        cursor.execute.assert_called_once()
-        sql = cursor.execute.call_args[0][0]
+        assert len(engine.sqls) == 1
+        sql = engine.sqls[0]
         assert "DROP TABLE IF EXISTS" in sql
         assert "mv_gone" in sql
 
 
 class TestOrphanDetection:
-    def test_flags_unknown_tables(self):
+    async def test_flags_unknown_tables(self):
         """Tables in schema but not in registry are flagged as orphans."""
         registry = MVRegistry()
         mv = _mv(mv_id="known", target_table="mv_known")
         registry.register(mv)
 
-        cursor = MagicMock()
-        cursor.fetchall.return_value = [("mv_known",), ("mv_unknown",), ("mv_stale",)]
-        conn = _mock_trino_conn(cursor)
+        engine = _FakeEngine(show_tables=[("mv_known",), ("mv_unknown",), ("mv_stale",)])
 
-        orphans = detect_orphans(conn, registry, "mv_cache")
+        orphans = await detect_orphans(engine, registry, "mv_cache")
 
         assert orphans == ["mv_stale", "mv_unknown"]
 
-    def test_no_orphans_when_all_known(self):
+    async def test_no_orphans_when_all_known(self):
         """No orphans when all schema tables are in registry."""
         registry = MVRegistry()
         mv = _mv(mv_id="known", target_table="mv_known")
         registry.register(mv)
 
-        cursor = MagicMock()
-        cursor.fetchall.return_value = [("mv_known",)]
-        conn = _mock_trino_conn(cursor)
+        engine = _FakeEngine(show_tables=[("mv_known",)])
 
-        orphans = detect_orphans(conn, registry, "mv_cache")
+        orphans = await detect_orphans(engine, registry, "mv_cache")
         assert orphans == []
 
 
 class TestOrphanGracePeriod:
-    def test_grace_period_prevents_premature_deletion(self):
+    async def test_grace_period_prevents_premature_deletion(self):
         """Orphans within grace period are not dropped."""
         tracker: dict[str, float] = {}
-        cursor = _mock_cursor()
-        conn = _mock_trino_conn(cursor)
+        engine = _FakeEngine()
 
-        dropped = drop_expired_orphans(
-            conn, tracker, ["orphan_table"], grace_period=86400,
+        dropped = await drop_expired_orphans(
+            engine,
+            tracker,
+            ["orphan_table"],
+            grace_period=86400,
             schema_name="mv_cache",
         )
 
         assert dropped == []
         assert "orphan_table" in tracker
         # Cursor should NOT have been called for DROP
-        cursor.execute.assert_not_called()
+        assert engine.sqls == []
 
-    def test_drops_after_grace_period(self):
+    async def test_drops_after_grace_period(self):
         """Orphans past grace period are dropped."""
         tracker: dict[str, float] = {
             "old_orphan": time.time() - 90000,  # >24h ago
         }
-        cursor = _mock_cursor()
-        conn = _mock_trino_conn(cursor)
+        engine = _FakeEngine()
 
-        dropped = drop_expired_orphans(
-            conn, tracker, ["old_orphan"], grace_period=86400,
+        dropped = await drop_expired_orphans(
+            engine,
+            tracker,
+            ["old_orphan"],
+            grace_period=86400,
             schema_name="mv_cache",
         )
 
         assert dropped == ["old_orphan"]
         assert "old_orphan" not in tracker
-        cursor.execute.assert_called_once()
-        sql = cursor.execute.call_args[0][0]
+        assert len(engine.sqls) == 1
+        sql = engine.sqls[0]
         assert "DROP TABLE IF EXISTS" in sql
 
-    def test_removes_resolved_orphans_from_tracker(self):
+    async def test_removes_resolved_orphans_from_tracker(self):
         """Orphans that disappear from the list are removed from tracker."""
         tracker: dict[str, float] = {
             "was_orphan": time.time() - 100,
         }
-        cursor = _mock_cursor()
-        conn = _mock_trino_conn(cursor)
+        engine = _FakeEngine()
 
         # Empty orphan list means "was_orphan" is no longer orphaned
-        dropped = drop_expired_orphans(
-            conn, tracker, [], grace_period=86400,
+        dropped = await drop_expired_orphans(
+            engine,
+            tracker,
+            [],
+            grace_period=86400,
             schema_name="mv_cache",
         )
 
         assert dropped == []
         assert "was_orphan" not in tracker
 
-    def test_mixed_orphans_only_expired_dropped(self):
+    async def test_mixed_orphans_only_expired_dropped(self):
         """Only orphans past grace period are dropped; fresh ones are kept."""
         now = time.time()
         tracker: dict[str, float] = {
             "old": now - 90000,
             "new": now - 100,
         }
-        cursor = _mock_cursor()
-        conn = _mock_trino_conn(cursor)
+        engine = _FakeEngine()
 
-        dropped = drop_expired_orphans(
-            conn, tracker, ["old", "new"], grace_period=86400,
+        dropped = await drop_expired_orphans(
+            engine,
+            tracker,
+            ["old", "new"],
+            grace_period=86400,
             schema_name="mv_cache",
         )
 

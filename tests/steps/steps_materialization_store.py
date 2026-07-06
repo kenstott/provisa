@@ -272,38 +272,25 @@ def then_subset_safety_enforced(shared_data):
 _WM_MARK = "registered_tables"
 
 
-class _SnapshotCursor:
-    def __init__(self, conn):
-        self._conn = conn
-        self._one = None
-        self._all = None
-
-    def execute(self, sql):
-        self._conn.queries.append(sql)
-        if _WM_MARK in sql:
-            self._all = []
-        elif "$snapshots" in sql:
-            self._one = (self._conn.snapshot,)
-        elif sql.startswith("SELECT COUNT(*)"):
-            self._one = (3,)
-        elif sql.upper().startswith("SELECT 1"):
-            self._one = None
-        # DDL / existence probes: no result needed
-
-    def fetchone(self):
-        return self._one
-
-    def fetchall(self):
-        return self._all if self._all is not None else []
-
-
 class _FakeConn:
+    """Engine terminal recording SQL; answers snapshot/count probes for refresh_mv."""
+
     def __init__(self, snapshot):
         self.snapshot = snapshot
         self.queries: list[str] = []
 
-    def cursor(self):
-        return _SnapshotCursor(self)
+    async def execute_engine(self, sql, *a, **k):
+        from provisa.executor.trino import QueryResult
+
+        self.queries.append(sql)
+        if _WM_MARK in sql:
+            return QueryResult(rows=[], column_names=[])
+        if "$snapshots" in sql:
+            return QueryResult(rows=[(self.snapshot,)], column_names=[])
+        if sql.startswith("SELECT COUNT(*)"):
+            return QueryResult(rows=[(3,)], column_names=[])
+        # DDL / existence probes: no result needed
+        return QueryResult(rows=[], column_names=[])
 
 
 def _make_probe_mv(mv_id: str, source_tables=None, **kw) -> MVDefinition:

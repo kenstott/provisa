@@ -2198,7 +2198,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
         from provisa.mv.refresh import refresh_loop
 
         state._mv_refresh_task = asyncio.create_task(
-            refresh_loop(state.trino_conn, state.mv_registry),
+            refresh_loop(state.federation_engine, state.mv_registry),
         )
 
     if state.trino_conn:
