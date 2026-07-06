@@ -10,21 +10,35 @@
 
 from __future__ import annotations
 
-import asyncpg
-import inflect
-from typing import cast
-from inflect import Word as InflectWord
+from typing import TYPE_CHECKING, cast
 
-_inflect = inflect.engine()
+import asyncpg
+
+if TYPE_CHECKING:
+    from inflect import Word as InflectWord
+    from inflect import engine as _Engine
+
+# inflect (~0.8s import) lazy-loaded — paid once on first singularization, never at cold start.
+_inflect: "_Engine | None" = None
+
+
+def _engine() -> "_Engine":
+    global _inflect
+    if _inflect is None:
+        import inflect
+
+        _inflect = inflect.engine()
+    return _inflect
 
 
 def _to_singular(camel: str) -> str:
     """Singularize camelCase word using inflect with round-trip validation."""
-    candidate = _inflect.singular_noun(cast(InflectWord, camel))
+    eng = _engine()
+    candidate = eng.singular_noun(cast("InflectWord", camel))
     if candidate is False:
         return camel  # already singular
     # Validate: if round-trip doesn't reconstruct original, inflect got it wrong
-    if _inflect.plural(cast(InflectWord, candidate)) == camel:
+    if eng.plural(cast("InflectWord", candidate)) == camel:
         return candidate
     return camel
 

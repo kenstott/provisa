@@ -28,14 +28,27 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import asyncpg
-import inflect as _inflect_mod
-from inflect import Word
+
+if TYPE_CHECKING:
+    from inflect import Word
+    from inflect import engine as _Engine
 
 _log = logging.getLogger(__name__)
-_inflect = _inflect_mod.engine()
+# inflect's import + engine() build costs ~0.8s — lazy so it never hits cold start; paid once on
+# first alias derivation. Same pattern as provisa/compiler/naming.py.
+_inflect: "_Engine | None" = None
+
+
+def _engine() -> "_Engine":
+    global _inflect
+    if _inflect is None:
+        import inflect
+
+        _inflect = inflect.engine()
+    return _inflect
 
 # Requirements: REQ-018, REQ-399, REQ-413, REQ-414, REQ-415
 
@@ -155,7 +168,7 @@ def _m2o_alias(ref_table: str, hasura_v2_style: bool = False) -> str:  # REQ-415
     REQ-415: under Hasura V2 style the many-to-one (object) alias is singular.
     """
     if hasura_v2_style:
-        return _inflect.singular_noun(cast(Word, ref_table)) or ref_table
+        return _engine().singular_noun(cast("Word", ref_table)) or ref_table
     return ref_table
 
 
@@ -167,8 +180,9 @@ def _o2m_alias(fk_table: str, hasura_v2_style: bool = False) -> str:  # REQ-415
     if hasura_v2_style:
         # Singularize first so an already-plural table name is not double-pluralized
         # (inflect.plural_noun("orders") → "orderss").
-        singular = _inflect.singular_noun(cast(Word, fk_table)) or fk_table
-        return _inflect.plural_noun(cast(Word, singular)) or singular
+        eng = _engine()
+        singular = eng.singular_noun(cast("Word", fk_table)) or fk_table
+        return eng.plural_noun(cast("Word", singular)) or singular
     return fk_table
 
 

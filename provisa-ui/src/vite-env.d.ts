@@ -57,6 +57,8 @@ declare module '*.graphql' {
   export const PurgeCache: DocumentNode;
   export const UpdateSourceCache: DocumentNode;
   export const UpdateTableCache: DocumentNode;
+  export const UpdateSourcePreferMaterialized: DocumentNode;
+  export const UpdateTablePreferMaterialized: DocumentNode;
   export const UpdateSourceNaming: DocumentNode;
   export const UpdateTableNaming: DocumentNode;
   export const UpdateSourceAllowedDomains: DocumentNode;
@@ -111,6 +113,8 @@ declare module '*.gql' {
   export const PurgeCache: DocumentNode;
   export const UpdateSourceCache: DocumentNode;
   export const UpdateTableCache: DocumentNode;
+  export const UpdateSourcePreferMaterialized: DocumentNode;
+  export const UpdateTablePreferMaterialized: DocumentNode;
   export const UpdateSourceNaming: DocumentNode;
   export const UpdateTableNaming: DocumentNode;
   export const UpdateSourceAllowedDomains: DocumentNode;

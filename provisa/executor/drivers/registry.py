@@ -63,6 +63,22 @@ _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     "oracle": _make_oracle,
 }
 
+# FALLBACK: source types with no bespoke async driver, served by the generic SQLAlchemy driver
+# (REQ-229). Value is the SQLAlchemy URL drivername. A native factory above always wins; this only
+# fills gaps, broadening the writable/readable set to any SQLAlchemy dialect whose DBAPI is installed.
+_SQLALCHEMY_FALLBACK: dict[str, str] = {
+    "sqlite": "sqlite",
+}
+
+
+def _make_sqlalchemy(drivername: str) -> Callable[[], DirectDriver]:
+    def factory() -> DirectDriver:
+        from provisa.executor.drivers.sqlalchemy_driver import SQLAlchemyDriver
+
+        return SQLAlchemyDriver(drivername)
+
+    return factory
+
 
 def create_driver(source_type: str, **kwargs) -> DirectDriver:  # REQ-550
     """Create a driver instance for a source type.
@@ -75,7 +91,10 @@ def create_driver(source_type: str, **kwargs) -> DirectDriver:  # REQ-550
     """
     factory = _DRIVER_FACTORIES.get(source_type)
     if factory is None:
-        raise KeyError(f"No direct driver for source type: {source_type!r}")
+        fallback = _SQLALCHEMY_FALLBACK.get(source_type)
+        if fallback is None:
+            raise KeyError(f"No direct driver for source type: {source_type!r}")
+        factory = _make_sqlalchemy(fallback)
     driver = factory()
     # Apply kwargs to driver if it accepts them (e.g., PgBouncer config)
     for key, value in kwargs.items():
@@ -84,8 +103,8 @@ def create_driver(source_type: str, **kwargs) -> DirectDriver:  # REQ-550
     return driver
 
 
-def has_driver(source_type: str) -> bool:  # REQ-550
-    """Check if a direct driver exists and its dependency is installed."""
+def has_native_driver(source_type: str) -> bool:  # REQ-550
+    """Whether a BESPOKE native driver is registered for the type and its dependency imports."""
     factory = _DRIVER_FACTORIES.get(source_type)
     if factory is None:
         return False
@@ -96,13 +115,27 @@ def has_driver(source_type: str) -> bool:  # REQ-550
         return False
 
 
+def has_sqlalchemy_fallback(source_type: str) -> bool:  # REQ-229
+    """Whether the generic SQLAlchemy fallback covers the type and its DBAPI imports."""
+    drivername = _SQLALCHEMY_FALLBACK.get(source_type)
+    if drivername is None:
+        return False
+    try:
+        _make_sqlalchemy(drivername)()
+        return True
+    except ImportError:
+        return False
+
+
+def has_driver(source_type: str) -> bool:  # REQ-550
+    """Check if a direct driver (native or SQLAlchemy fallback) exists and its dependency is installed."""
+    return has_native_driver(source_type) or has_sqlalchemy_fallback(source_type)
+
+
 def available_drivers() -> list[str]:  # REQ-550
-    """List source types with registered direct drivers."""
+    """List source types with a registered direct driver (native or SQLAlchemy fallback)."""
     available = []
-    for stype, factory in _DRIVER_FACTORIES.items():
-        try:
-            factory()
+    for stype in list(_DRIVER_FACTORIES) + list(_SQLALCHEMY_FALLBACK):
+        if has_driver(stype):
             available.append(stype)
-        except ImportError:
-            pass
     return available

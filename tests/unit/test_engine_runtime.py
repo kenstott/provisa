@@ -19,7 +19,7 @@ import pytest
 from provisa.executor.trino import QueryResult
 from provisa.federation.engine import (
     build_duckdb_engine,
-    build_snowflake_engine,
+    build_sqlalchemy_engine,
     build_trino_engine,
 )
 from provisa.federation.runtime import (
@@ -64,7 +64,7 @@ def test_duckdb_omits_flight_stream():
 
 
 def test_require_fails_closed_for_unsupported_transport():
-    rt = EngineRuntime(build_snowflake_engine(), _state())
+    rt = EngineRuntime(build_sqlalchemy_engine("postgresql://h/db"), _state())
     with pytest.raises(UnsupportedCapabilityError):
         rt.require(EngineCapability.ARROW_STREAM)
 

@@ -28,6 +28,7 @@ export interface Source {
   dialect: string | null;
   cacheEnabled: boolean;
   cacheTtl: number | null;
+  preferMaterialized: boolean;
   gqlNamingConvention: string | null;
   path: string | null;
   allowedDomains: string[];
@@ -115,6 +116,7 @@ export interface RegisteredTable {
   alias: string | null;
   description: string | null;
   cacheTtl: number | null;
+  preferMaterialized: boolean | null;
   gqlNamingConvention: string | null;
   watermarkColumn: string | null;
   columns: TableColumn[];

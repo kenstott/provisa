@@ -2079,3 +2079,31 @@ def _req638_then(shared_data):
 
     assert hasattr(_intro, "native_schemas")
     assert hasattr(_intro, "native_tables")
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fa07eacc-adce-46ac-bcb2-6447f357a6f1
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# No new step definitions are required for REQ-016.
+# All steps and the scenarios() binding already exist in the file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 857344ae-dad5-40fe-849e-f14e2bd91aaa
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5f10a64e-a01c-4d7c-a218-c4ce6e0d66b9
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 84f7ab53-c00e-4cdc-8f76-1d413688e1a8
+#
+# This source code is licensed under the Business Source License 1.1

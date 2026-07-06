@@ -55,7 +55,7 @@ _ENGINE_CAPABILITIES: dict[str, frozenset[EngineCapability]] = {
         {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
     ),
     "duckdb": frozenset({EngineCapability.ROWS, EngineCapability.ARROW}),
-    "snowflake": frozenset({EngineCapability.ROWS, EngineCapability.ARROW}),
+    # pg and sqlalchemy are row-oriented (no Arrow transport); omitted keys default to ROWS.
 }
 
 
@@ -137,6 +137,69 @@ class EngineRuntime:  # REQ-825, REQ-840
         from provisa.executor.direct import execute_direct
 
         return await execute_direct(source_pools, source_id, sql, params)
+
+    # -- engine-native metadata (REQ-825/840): introspection through the abstraction ----------
+
+    def introspect_columns(self, source: Any, schema_name: str, table_name: str) -> dict[str, str]:
+        """Column types as the BOUND ENGINE reports them for a registered table — the
+        single introspection seam. Every engine answers in its own type system: Trino
+        reads its normalized ``information_schema`` over the dbapi conn; DuckDB DESCRIBEs
+        the attached source. All engine-specific access (Trino conn, DuckDB attach) lives
+        behind this method, so callers never reference a concrete engine. Returns
+        ``{column_name: type_name}``; an engine that cannot introspect live returns ``{}``
+        (registration then keeps the declared types — introspection only fills nulls)."""
+        name = self.engine.name
+        if name == "trino":
+            conn = self._state.trino_conn
+            if conn is None:
+                return {}
+            from provisa.compiler.introspect import introspect_column_types
+            from provisa.compiler.naming import source_to_catalog
+
+            return introspect_column_types(
+                conn, source_to_catalog(source.id), schema_name, table_name
+            )
+        if self.engine.native_store == "duckdb":
+            from types import SimpleNamespace
+
+            from provisa.core.secrets import resolve_secrets
+            from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
+
+            def _rs(v: Any) -> Any:  # resolve ${env:..}/${secret:..} in connection strings
+                return resolve_secrets(v) if isinstance(v, str) else v
+
+            merged = SimpleNamespace(
+                id=source.id,
+                type=source.type,
+                host=_rs(getattr(source, "host", None)),
+                port=getattr(source, "port", None),
+                database=_rs(getattr(source, "database", None)),
+                username=_rs(getattr(source, "username", None)),
+                password=_rs(getattr(source, "password", None)),
+                path=_rs(getattr(source, "path", None)),
+                schema_name=schema_name,
+                table_name=table_name,
+            )
+            import duckdb
+
+            runtime = DuckDBFederationRuntime()
+            try:
+                return runtime.introspect_columns(merged)
+            except duckdb.Error:
+                # Engine can't reach the source right now (e.g. offline extension install,
+                # source down): keep declared types. Introspection only augments — logged.
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "duckdb introspection of %s.%s failed; keeping declared types",
+                    schema_name,
+                    table_name,
+                    exc_info=True,
+                )
+                return {}
+            finally:
+                runtime.close()
+        return {}
 
     # -- engine-specific transports (REQ-825): designed, capability-gated ENGINE terminals ----
 

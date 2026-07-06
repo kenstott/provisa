@@ -531,3 +531,8 @@ def then_returns_stable_integer_ids_in_result_edges(shared_data: dict) -> None:
     assert parsed.end_node.id in [str(s) for s in stable_ids], (
         f"Edge end_node.id {parsed.end_node.id} is not a stable id from {stable_ids}"
     )
+
+
+from pytest_bdd import scenarios
+
+scenarios("../features/REQ-784.feature")

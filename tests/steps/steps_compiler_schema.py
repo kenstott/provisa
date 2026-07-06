@@ -2104,3 +2104,33 @@ def req655_assert_filter_where(shared_data):
     assert "WHERE" in sql_upper, f"Expected a WHERE clause for row-level filtering in SQL:\n{sql}"
     assert "GROUP BY" in sql_upper, f"Expected GROUP BY in SQL:\n{sql}"
     assert "HAVING" in sql_upper, f"Expected HAVING in SQL:\n{sql}"
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1ba7e77f-1aa0-40bb-82c5-b68bf224b8c6
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5b91f749-8265-40d7-be02-a79cb9d20c81
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# (no new code required - all REQ-253 steps are already present in the existing file)
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 974055c0-fc6c-42a8-ab62-14e4e9529695
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 83e56d48-c99e-40aa-ba5f-df90fc53b05c
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-534 are already present in the existing steps file.
+# No new step definitions are required.

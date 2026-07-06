@@ -346,7 +346,8 @@ async def reload_query_engine_catalog(catalog: str = "otel"):
     """
     import httpx
     import trino as _trino
-    from provisa.api.app import state, _seed_ops_trino
+    from provisa.api.app import _OPS_VIEWS, state
+    from provisa.observability.ops_trino import seed_ops_trino
 
     if not state.trino_conn_kwargs:
         raise HTTPException(status_code=503, detail="Query engine connection not configured")
@@ -409,7 +410,9 @@ async def reload_query_engine_catalog(catalog: str = "otel"):
         return {"success": False, "errors": [f"Reconnect failed: {exc}"]}
 
     try:
-        _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
+        seed_ops_trino(
+            state.trino_conn, _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
+        )
     except Exception as exc:
         errors.append(str(exc))
 

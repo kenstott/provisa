@@ -1449,3 +1449,100 @@ def _then_v2_table_alias(shared_data: dict) -> None:
     orders = next(t for t in shared_data["config"].tables if t.table_name == "orders")
     # custom_root_fields.select ('allOrders') wins over select_by_pk ('orderByPk').
     assert orders.alias == "allOrders", orders.alias
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0dfe5c2a-2793-4602-90f0-c92462567ab6
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6bb8d7db-d7b9-4805-9b1b-0843948d0366
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# (no new steps required for REQ-184 - all steps already exist in the file)
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 128312b5-eb59-4cf7-b220-19d49db05a00
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 663a0735-3294-4ec0-b189-20b75c178a4a
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-187 are already implemented in the existing steps file.
+# Given: "a Hasura v2 select_permissions[].filter boolean expression" -> _given_v2_filter
+# When:  "the v2 converter runs"                                       -> _when_v2_converter_runs
+# Then:  "rls_rules[] are generated via boolean expression-to-SQL..."  -> _then_rls_rules
+# scenarios("../features/REQ-187.feature") is also already registered.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2a323831-26b8-41d5-9e9a-e585ce3f8a7b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-188 are already implemented in the existing steps file.
+# Given: "a Hasura v2 metadata export with object_relationships and array_relationships"
+#        -> _given_v2_relationships
+# When:  "the v2 converter runs"
+#        -> _when_v2_converter_runs
+# Then:  "object_relationships become cardinality=many-to-one and
+#         array_relationships become cardinality=one-to-many"
+#        -> _then_cardinality
+# scenarios("../features/REQ-188.feature") is also already registered.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0584cbdf-ac84-44aa-8605-c7318d3348f8
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-189 are already implemented in the existing steps file.
+# Given: "a DDN supergraph with ObjectType.dataConnectorTypeMapping[].fieldMapping entries"
+#        -> _given_ddn_field_mappings
+# When:  "the DDN converter runs"
+#        -> _when_ddn_converter_runs
+# Then:  "all GraphQL field names in relationships, permissions, and column definitions
+#         are resolved to physical column names"
+#        -> _then_ddn_fields_resolved
+# scenarios("../features/REQ-189.feature") is also already registered.
+
+
+# No new steps or scenario registrations are required for REQ-190.
+# All Given/When/Then steps and the scenarios() registration already exist
+# in the existing steps file content provided above.
+
+
+# REQ-621: all steps (_given_completed_conversion, _when_output_config_inspected,
+# _then_placeholder_credentials) and scenarios("../features/REQ-621.feature") are
+# already present in the existing steps file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e0c2198b-639c-471e-8a5e-7c0ed9ced9f4
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-623 are already implemented in the existing steps file.
+# Given: "a Hasura v2 source config with kind, database_url, and pool_settings"
+#        -> _given_v2_source_kind_url_pool
+# When:  "the v2 converter runs"
+#        -> _when_v2_converter_runs
+# Then:  "SourceType is mapped correctly and connection URL is parsed into components
+#         with pool settings preserved"
+#        -> _then_v2_source_mapped
+# scenarios("../features/REQ-623.feature") is also already registered.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 86b0aae2-b42e-4cf6-92fa-6c54e801e33a
+#
+# This source code is licensed under the Business Source License 1.1

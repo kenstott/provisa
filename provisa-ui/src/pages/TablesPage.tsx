@@ -31,6 +31,7 @@ import {
   useUpdateTable,
   useDeleteTable,
   useUpdateTableCache,
+  useUpdateTablePreferMaterialized,
   useUpdateTableNaming,
   usePurgeCacheByTable,
   useInvalidateFileSource,
@@ -165,6 +166,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { updateTable } = useUpdateTable();
   const { deleteTable } = useDeleteTable();
   const { updateTableCache } = useUpdateTableCache();
+  const { updateTablePreferMaterialized } = useUpdateTablePreferMaterialized();
   const { updateTableNaming } = useUpdateTableNaming();
   const { purgeCacheByTable } = usePurgeCacheByTable();
   const { invalidateFileSource } = useInvalidateFileSource();
@@ -647,6 +649,14 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       await handleNamingChange(editingTable.id, editingTable.gqlNamingConvention ?? "");
       const ttlEdit = cacheTtlEdits[editingTable.id];
       if (ttlEdit?.dirty) await handleSaveTableCache(editingTable.id);
+      const preferResult = await updateTablePreferMaterialized(
+        editingTable.id,
+        editingTable.preferMaterialized,
+      );
+      if (!preferResult.success) {
+        setError(preferResult.message);
+        return;
+      }
       setEditingTable(null);
       reload();
     } catch (e) {
@@ -1854,6 +1864,46 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                   }
                                   placeholder="inherit"
                                 />
+                              </label>
+                              <label>
+                                <span
+                                  style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
+                                >
+                                  Prefer Materialized{" "}
+                                  <span
+                                    title="Force this table to be materialized into the store and federated from there, instead of reached live. Use when the connector is a poor fit for this table's queries. Inherit = follow the source-level default."
+                                    style={{
+                                      cursor: "help",
+                                      color: "var(--text-muted)",
+                                      fontSize: "0.75rem",
+                                      lineHeight: 1,
+                                    }}
+                                  >
+                                    ⓘ
+                                  </span>
+                                </span>
+                                <select
+                                  value={
+                                    editingTable.preferMaterialized == null
+                                      ? "inherit"
+                                      : editingTable.preferMaterialized
+                                        ? "on"
+                                        : "off"
+                                  }
+                                  onChange={(e) =>
+                                    setEditingTable({
+                                      ...editingTable,
+                                      preferMaterialized:
+                                        e.target.value === "inherit"
+                                          ? null
+                                          : e.target.value === "on",
+                                    })
+                                  }
+                                >
+                                  <option value="inherit">Inherit source</option>
+                                  <option value="on">On</option>
+                                  <option value="off">Off</option>
+                                </select>
                               </label>
                               <label style={{ gridColumn: "1 / -1" }}>
                                 <span

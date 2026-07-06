@@ -87,7 +87,12 @@ class FederationEngine:  # REQ-840
         mpp: bool = False,
     ) -> None:
         self.name = name
-        self.connectors: dict[str, Connector] = {c.source_type: c for c in connectors}
+        # Prebuilt candidate connectors in PRECEDENCE order (first per source_type wins). Optimistic
+        # until discover() probes them; connectors is the active set queried by reachable().
+        self._candidates: list[Connector] = list(connectors)
+        self.connectors: dict[str, Connector] = {}
+        for c in self._candidates:
+            self.connectors.setdefault(c.source_type, c)
         self.catalog = EngineCatalog()
         # The source_type of the engine's OWN store, into which it materializes natively
         # (DuckDB → "duckdb", Snowflake → "snowflake"); None for a pure federator (Trino).
@@ -111,6 +116,35 @@ class FederationEngine:  # REQ-840
         if connector is None:
             raise UnreachableSource(self.name, source_type)
         return connector
+
+    # -- capability discovery (REQ-904) ----------------------------------------
+
+    async def discover(self, fetch, *, disabled: frozenset[str] = frozenset()) -> dict:
+        """Probe candidate connectors against the live engine and set the active connector set.
+
+        A connector STRUCK by the override (its key in ``disabled``) is skipped entirely — not probed.
+        Every other candidate is probed; only those whose probe is available become active. For each
+        source_type the first available candidate (precedence order) wins, so a richer connector can be
+        preferred with a stock one as fallback. ``fetch(sql)`` is an async rows-returning callable.
+
+        Returns a per-connector report {key: ProbeResult}. A source whose connectors are all
+        unavailable is simply unreachable — resolve() raises UnreachableSource (explicit, no fallback).
+        """
+        from provisa.federation.connector import ProbeResult
+
+        report: dict = {}
+        active: dict[str, Connector] = {}
+        for c in self._candidates:
+            key = c.key or c.source_type
+            if key in disabled:  # struck from the list -> do not probe
+                report[key] = ProbeResult(False, "disabled by override config (not probed)")
+                continue
+            result = await c.probe(fetch)
+            report[key] = result
+            if result.available:
+                active.setdefault(c.source_type, c)  # first available per type wins (precedence)
+        self.connectors = active
+        return report
 
     def driver_class(self) -> DriverClass:
         """The engine's declared class, or the mechanism/count heuristic when undeclared (REQ-840)."""
@@ -188,9 +222,17 @@ def build_trino_engine() -> FederationEngine:  # REQ-840 broad federator
 
 def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
     from provisa.federation.connector import (
+        DuckDBAirportConnector,
+        DuckDBBigQueryConnector,
         DuckDBCsvConnector,
+        DuckDBFirebirdConnector,
+        DuckDBGsheetsConnector,
+        DuckDBIcebergConnector,
+        DuckDBMongoConnector,
+        DuckDBMssqlConnector,
         DuckDBParquetConnector,
         DuckDBPostgresConnector,
+        DuckDBSnowflakeConnector,
         DuckDBSqliteConnector,
     )
 
@@ -201,6 +243,15 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
             DuckDBSqliteConnector(),
             DuckDBCsvConnector(),
             DuckDBParquetConnector(),
+            # REQ-899 community-extension connectors: external DB / warehouse / SaaS reach in place.
+            DuckDBMssqlConnector(),
+            DuckDBMongoConnector(),
+            DuckDBSnowflakeConnector(),
+            DuckDBBigQueryConnector(),
+            DuckDBFirebirdConnector(),
+            DuckDBGsheetsConnector(),
+            DuckDBAirportConnector(),
+            DuckDBIcebergConnector(),  # core `iceberg` extension — iceberg_scan (REQ-899)
         ],
         native_store="duckdb",
         driver_class=DriverClass.PARTIAL,
@@ -208,49 +259,93 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
     )
 
 
-def build_postgres_engine() -> FederationEngine:  # REQ-893 single-node federator via FDW (SQL/MED)
-    from provisa.federation.connector import FileFdwConnector, PostgresFdwConnector
+def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
+    """A Postgres-family engine with ALL prebuilt connector defs registered; discover() prunes to what
+    actually works.
+
+    No static "is it installed" config: the candidate set is fixed and each connector's probe() reports
+    functional truth against the live Postgres (an FDW/extension present but not loaded is disabled).
+    Candidates are ordered by PRECEDENCE — pg_duckdb is registered before file_fdw so that, when both
+    probe available, pg_duckdb owns ``csv`` (richer scanner) while file_fdw remains the fallback if
+    pg_duckdb is unavailable. An operator override may STRIKE connectors from the candidate list by key
+    (they are then never probed — see FederationEngine.discover(disabled=...)).
+    """
+    from provisa.federation.connector import (
+        FileFdwConnector,
+        MysqlFdwConnector,
+        PgDuckdbCsvConnector,
+        PgDuckdbIcebergConnector,
+        PgDuckdbJsonConnector,
+        PgDuckdbParquetConnector,
+        PostgresFdwConnector,
+        SqliteFdwConnector,
+    )
 
     return FederationEngine(
-        "postgres",
-        # Curated stock FDWs (REQ-893): postgres_fdw (remote PG) + file_fdw (CSV) ship with the
-        # standard PG image. sqlite_fdw / parquet_fdw / mysql_fdw are external extensions added when
-        # the deployment needs them.
-        [PostgresFdwConnector(), FileFdwConnector()],
-        native_store="postgres",  # its own tables are native; foreign tables reference in place
+        name,
+        [
+            PostgresFdwConnector(),  # postgresql
+            PgDuckdbCsvConnector(),  # csv (preferred over file_fdw)
+            FileFdwConnector(),  # csv (fallback)
+            PgDuckdbParquetConnector(),  # parquet
+            PgDuckdbJsonConnector(),  # json
+            PgDuckdbIcebergConnector(),  # iceberg (DuckDB iceberg ext; probe verifies it's compiled in)
+            SqliteFdwConnector(),  # sqlite (system libsqlite3)
+            MysqlFdwConnector(),  # mysql (needs a bundled client lib; probe-gated)
+        ],
+        native_store="postgres",  # its own tables are native; attached sources reference in place
         driver_class=DriverClass.PARTIAL,
         mpp=False,  # single-node: cross-server joins materialize locally (REQ-894)
     )
 
 
-def build_embedded_pg_engine() -> FederationEngine:  # REQ-893: stock embedded PG, no FDWs
-    """A stock embedded Postgres (pgserver: plpgsql + vector only, no contrib FDWs).
+# Demo source types LANDed into the sqlalchemy self-only engine (no attach/FDW).
+_LAND_TYPES = ("postgresql", "csv", "sqlite", "parquet", "openapi", "graphql_remote")
 
-    With no attach/FDW connector, every source is LANDED into the engine's own native store and
-    federated with plain SQL — the SELF_ONLY/warehouse shape (like Snowflake, but on a laptop). Costs
-    full data movement (each source copied in) but runs anywhere with zero extensions. Contrast the
-    ``pg`` engine (build_postgres_engine), which ATTACHes sources in place via postgres_fdw/file_fdw.
-    """
+
+def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero connectors
+    url: str | None = None, name: str = "sqlalchemy"
+) -> FederationEngine:
+    """A self-only engine defined SOLELY by a SQLAlchemy URL — zero federation
+    connectors. Every source LANDs into the target store and is federated with plain
+    SQL, so ANY SQLAlchemy-reachable database (Postgres, MySQL, Oracle, SQL Server,
+    ClickHouse, ...) is a usable engine with no per-source connector. The URL comes
+    from the arg or ``$PROVISA_ENGINE_URL``; its scheme names the native store."""
+    import os
+
     from provisa.federation.connector import WarehouseNativeConnector
 
-    # LAND every demo source type into the native PG store (mechanism LAND -> federate MATERIALIZED).
-    land_types = ("postgresql", "csv", "sqlite", "parquet", "openapi", "graphql_remote")
+    dsn = url or os.environ.get("PROVISA_ENGINE_URL")
+    if not dsn:
+        raise ValueError("sqlalchemy engine requires a URL ($PROVISA_ENGINE_URL)")
+    backend = dsn.split("://", 1)[0].split("+", 1)[0]  # postgresql+psycopg2 -> postgresql
     return FederationEngine(
-        "embedded_pg",
-        [WarehouseNativeConnector("embedded_pg", t) for t in land_types],
-        native_store="postgres",
-        driver_class=DriverClass.SELF_ONLY,  # reaches only its own store; everything lands into self
+        name,
+        [WarehouseNativeConnector(name, t) for t in _LAND_TYPES],
+        native_store=backend,
+        driver_class=DriverClass.SELF_ONLY,  # reaches only its own store; everything lands in
         mpp=False,
     )
 
 
-def build_snowflake_engine() -> FederationEngine:  # REQ-840 self-only warehouse
-    from provisa.federation.connector import WarehouseNativeConnector
+# The four federation engines. embedded PostgreSQL is NOT a separate engine — it is the
+# ``pg`` engine on a bundled instance (its FDW/pg_duckdb connectors are probed by discover).
+# Snowflake is a SOURCE reached by an engine's connector, not an engine.
+_ENGINE_BUILDERS = {
+    "trino": build_trino_engine,  # broad federator (needs a Trino cluster)
+    "pg": build_pg_engine,  # PostgreSQL (BYO or embedded) — FDW/pg_duckdb federation
+    "duckdb": build_duckdb_engine,  # native in-process partial federator
+    "sqlalchemy": build_sqlalchemy_engine,  # any SQLAlchemy URL, zero connectors (self-only)
+}
 
-    return FederationEngine(
-        "snowflake",
-        [WarehouseNativeConnector("snowflake", "snowflake")],
-        native_store="snowflake",
-        driver_class=DriverClass.SELF_ONLY,  # reaches only its own store (land-into-self)
-        mpp=True,  # the warehouse itself is a distributed MPP engine
-    )
+
+def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/904
+    """Select the federation engine by name — the one place the runtime picks an
+    engine. Default is ``$PROVISA_ENGINE`` (else trino); the four engines are
+    trino / pg / duckdb / sqlalchemy."""
+    import os
+
+    key = (name or os.environ.get("PROVISA_ENGINE") or "trino").lower().replace("_", "-")
+    if key not in _ENGINE_BUILDERS:
+        raise ValueError(f"unknown PROVISA_ENGINE {key!r}; valid: {sorted(_ENGINE_BUILDERS)}")
+    return _ENGINE_BUILDERS[key]()

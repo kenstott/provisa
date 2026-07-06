@@ -560,3 +560,18 @@ def step_req724_assert_app_and_ssl(shared_data):
     assert "password" not in props, (
         f"REQ-724: 'password' key must not appear when use_token=True; props={props}"
     )
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b763fdaf-fe01-42ca-9f55-cd9f00358c78
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-721 are already present in the existing steps file.
+# Nothing new to append.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8e9a35c3-eec2-4fce-844b-ba42e847acb8
+#
+# This source code is licensed under the Business Source License 1.1

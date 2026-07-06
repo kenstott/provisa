@@ -2061,3 +2061,19 @@ def then_typed_response_shape(shared_data: dict) -> None:
     assert row["p"]["label"] == "Person"
     assert set(["id", "label", "tableLabel", "properties"]).issubset(row["p"].keys())
     assert resp["error"] is None
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2f8dcf63-4ff2-4dfd-bda6-c171d55968ec
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a1db4039-160d-4972-b264-22bddecd8554
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-757 (given_map_projection, when_translator_processes, then_map_projection)
+# are already implemented in this file. No new definitions required.

@@ -35,6 +35,7 @@ class SourceType(str, Enum):
     mariadb = "mariadb"
     sqlserver = "sqlserver"
     oracle = "oracle"
+    firebird = "firebird"  # Firebird 3/4/5 — DuckDB firebird community extension (REQ-899)
     duckdb = "duckdb"
     # Cloud DW
     snowflake = "snowflake"
@@ -75,6 +76,7 @@ class SourceType(str, Enum):
     graphql_remote = "graphql_remote"
     openapi = "openapi"
     grpc_remote = "grpc_remote"
+    airport = "airport"  # Arrow Flight server — DuckDB airport community extension (REQ-899)
     # Push receiver — external services POST JSON events (Phase AS)
     ingest = "ingest"
     # U.S. government open data via Apache Calcite / GovData JDBC adapter
@@ -131,6 +133,7 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     "mysql": "mysql",
     "mariadb": "mysql",
     "singlestore": "singlestore",
+    "sqlite": "sqlite",  # served by the SQLAlchemy fallback driver (no native async driver)
     "sqlserver": "tsql",
     "oracle": "oracle",
     "duckdb": "duckdb",
@@ -198,6 +201,9 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     pgbouncer_port: int = Field(default=6432, alias="pgbouncer_port")
     cache_enabled: bool = True
     cache_ttl: int | None = None  # overrides global default; None = inherit
+    # Force MATERIALIZED federation for this source's tables even when it could be reached live —
+    # the manual counterpart to cost-based promotion, for when the connector is a poor fit (REQ-826).
+    prefer_materialized: bool = False
     cache_catalog: str | None = None  # Trino catalog for API cache; None = source's own catalog
     cache_schema: str = "api_cache"  # schema within that catalog
     gql_naming_convention: str | None = None  # overrides global; None = inherit
@@ -438,6 +444,7 @@ class Table(
     alias: str | None = None  # GraphQL type/field name override
     description: str | None = None  # GraphQL type description
     cache_ttl: int | None = None  # overrides source-level; None = inherit
+    prefer_materialized: bool | None = None  # overrides source-level; None = inherit (REQ-826)
     gql_naming_convention: str | None = None  # overrides source; None = inherit
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
     warm: bool | None = (
@@ -879,11 +886,18 @@ class ControlPlaneConfig(BaseModel):
 
     def tenant_parts(self) -> tuple[str | None, int, str | None, str | None, str | None]:
         """(host, port, database, username, password) parsed from the tenant URL —
-        for the Trino self-catalog that points back at the control-plane DB."""
+        drives the raw asyncpg tenant pool and the Trino self-catalog.
+
+        For a unix-socket URL (the embedded/native tier — no host in the netloc, the
+        socket directory carried in ``?host=/dir``), the host lives in the query, so
+        read it there when the netloc host is absent. asyncpg treats a directory host
+        as a unix socket, so this feeds ``create_pool(host=/dir)`` directly."""
         from sqlalchemy import make_url
 
         u = make_url(self.resolved_tenant_url())
-        return u.host, u.port or 5432, u.database, u.username, u.password
+        q_host = u.query.get("host")  # SQLAlchemy multi-valued query params can be a tuple
+        socket_host: str | None = q_host[0] if isinstance(q_host, tuple) else q_host
+        return u.host or socket_host, u.port or 5432, u.database, u.username, u.password
 
 
 class ProvisaConfig(BaseModel):

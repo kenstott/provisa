@@ -21,6 +21,7 @@ import {
   useRenameSource,
   useDeleteSource,
   useUpdateSourceCache,
+  useUpdateSourcePreferMaterialized,
   useUpdateSourceNaming,
   useUpdateSourceAllowedDomains,
 } from "../hooks/useAdminQueries";
@@ -201,6 +202,7 @@ export function SourcesPage() {
   const { renameSource } = useRenameSource();
   const { deleteSource } = useDeleteSource();
   const { updateSourceCache } = useUpdateSourceCache();
+  const { updateSourcePreferMaterialized } = useUpdateSourcePreferMaterialized();
   const { updateSourceNaming } = useUpdateSourceNaming();
   const { updateSourceAllowedDomains } = useUpdateSourceAllowedDomains();
   const [settingsLoading, setSettingsLoading] = useState(true);
@@ -222,6 +224,7 @@ export function SourcesPage() {
     gqlNamingConvention: "",
     cacheTtl: "",
     cacheEnabled: true,
+    preferMaterialized: false,
     path: "" as string,
     allowedDomains: "" as string,
     description: "" as string,
@@ -397,6 +400,7 @@ export function SourcesPage() {
       gqlNamingConvention: s.gqlNamingConvention ?? "",
       cacheTtl: s.cacheTtl != null ? String(s.cacheTtl) : "",
       cacheEnabled: s.cacheEnabled,
+      preferMaterialized: s.preferMaterialized ?? false,
       path: s.type === "files" ? parseFilesPath(s.path ?? "").path : (s.path ?? ""),
       allowedDomains: (s.allowedDomains ?? []).join(", "),
       description: s.description ?? "",
@@ -478,6 +482,7 @@ export function SourcesPage() {
       gqlNamingConvention: "",
       cacheTtl: "",
       cacheEnabled: true,
+      preferMaterialized: false,
       path: "",
       allowedDomains: "",
       description: "",
@@ -498,7 +503,13 @@ export function SourcesPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const { gqlNamingConvention: _nc, cacheTtl: _ct, cacheEnabled: _ce, ...coreForm } = form;
+      const {
+        gqlNamingConvention: _nc,
+        cacheTtl: _ct,
+        cacheEnabled: _ce,
+        preferMaterialized: _pm,
+        ...coreForm
+      } = form;
       const spMappingJson =
         form.type === "sharepoint"
           ? JSON.stringify({
@@ -556,6 +567,11 @@ export function SourcesPage() {
         if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
         const cacheResult = await updateSourceCache(effectiveId, form.cacheEnabled, ttlValue);
         if (!cacheResult.success) throw new Error(cacheResult.message);
+        const preferResult = await updateSourcePreferMaterialized(
+          effectiveId,
+          form.preferMaterialized,
+        );
+        if (!preferResult.success) throw new Error(preferResult.message);
         const namingResult = await updateSourceNaming(
           effectiveId,
           form.gqlNamingConvention === "" ? null : form.gqlNamingConvention,
@@ -2264,6 +2280,23 @@ export function SourcesPage() {
               onChange={(e) => setForm({ ...form, cacheTtl: e.target.value })}
               placeholder="inherit global"
             />
+          </label>
+          <label
+            title="Force this source's tables to be materialized into the store and federated from there, instead of reached live. Use when the connector is a poor fit for your queries."
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={form.preferMaterialized}
+              onChange={(e) => setForm({ ...form, preferMaterialized: e.target.checked })}
+              style={{ width: "auto" }}
+            />
+            Prefer Materialized
           </label>
           {domainsEnabled && (
             <label>

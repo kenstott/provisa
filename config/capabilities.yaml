@@ -1,0 +1,204 @@
+# Capability manifest — the single source of truth the desktop installer wizard renders from, and
+# from which the "demo" preset is derived. The runtime (discover()/probe) enforces functional truth on
+# top of these declarations, so this file declares INTENT + PREREQS; startup confirms REALITY.
+#
+# Field semantics
+#   role            federation_engine | materialization_store | control_plane_store | source
+#   platforms       where the option runs NATIVELY: [macos, linux, windows]; 'wsl' = Windows-via-WSL2
+#   provisioning    bundled        — ships in the installer, nothing to do
+#                   pip_driver     — a Python driver auto-installed on selection (offline wheel bundled)
+#                   system_driver  — the operator installs a system library/driver
+#                   platform_feature — an OS capability the operator enables (e.g. WSL2)
+#                   credentials    — external endpoint + credentials required
+#                   license        — non-redistributable / licensed component
+#   startup_cost    instant     — a bundled file-open (ms); ELIGIBLE for the demo tier
+#                   seconds     — initdb / server boot at launch
+#                   install-time — heavy setup done at INSTALL, never at launch
+#   prereq          one-line badge text shown in the wizard
+#
+# RULE: the demo preset may only use options whose startup_cost == instant AND provisioning == bundled.
+
+roles:
+
+  federation_engine:
+    options:
+      - id: duckdb
+        name: DuckDB (embedded)
+        platforms: [macos, linux, windows]
+        provisioning: bundled
+        startup_cost: instant
+        prereq: none — in-process; reaches csv/parquet/json/iceberg + attached DBs
+        default_for: [demo]
+      - id: pg_duckdb
+        name: Embedded Postgres + DuckDB (pg_duckdb)
+        platforms: [macos, linux, wsl]        # NOT native Windows (Unix-only build)
+        provisioning: bundled
+        startup_cost: seconds                  # pgserver initdb + preload
+        prereq: "Windows: requires WSL2"
+      - id: postgres_fdw
+        name: Embedded Postgres + FDWs
+        platforms: [macos, linux, windows]     # windows: core FDW DLLs acquired from a native PG16
+        provisioning: bundled
+        startup_cost: seconds
+        prereq: "sqlite_fdw/mysql_fdw need extra build; core FDWs bundled"
+      - id: trino
+        name: Trino (distributed MPP)
+        platforms: [macos, linux, windows]
+        provisioning: platform_feature
+        startup_cost: install-time             # JVM cluster / containers — server deploy, not demo
+        prereq: server/cluster deployment (not desktop)
+      - id: sqlalchemy
+        name: SQLAlchemy warehouse (self-only)
+        platforms: [macos, linux, windows]
+        provisioning: pip_driver
+        startup_cost: instant
+        prereq: driver + credentials (see materialization_store SQLAlchemy targets)
+
+  # Where governed results/materializations land, and where tenant/catalog state lives. Same option set;
+  # the demo pins both to a bundled instant store.
+  materialization_store:
+    options:
+      - id: duckdb_file
+        name: DuckDB file
+        platforms: [macos, linux, windows]
+        provisioning: bundled
+        startup_cost: instant
+        prereq: none
+        default_for: [demo]
+      - id: sqlite
+        name: SQLite file
+        platforms: [macos, linux, windows]
+        provisioning: bundled
+        startup_cost: instant
+        prereq: none
+      - id: embedded_pg
+        name: Embedded PostgreSQL (pgserver)
+        platforms: [macos, linux, windows]     # windows OK with a non-%TEMP% data dir
+        provisioning: bundled
+        startup_cost: install-time             # run initdb at INSTALL, not launch, to stay fast
+        prereq: "Windows: data dir must not be under %TEMP%"
+      # ---- external SQLAlchemy targets (preloaded choices) ----
+      - id: postgresql
+        name: PostgreSQL (external)
+        platforms: [macos, linux, windows]
+        provisioning: pip_driver
+        startup_cost: instant
+        prereq: "installs psycopg; needs host + credentials"
+        url: postgresql+psycopg://USER:PASS@HOST:5432/DB
+      - id: mysql
+        name: MySQL / MariaDB (external)
+        platforms: [macos, linux, windows]
+        provisioning: pip_driver
+        startup_cost: instant
+        prereq: "installs pymysql (pure-python); needs host + credentials"
+        url: mysql+pymysql://USER:PASS@HOST:3306/DB
+      - id: singlestore
+        name: SingleStore (external)
+        platforms: [macos, linux, windows]
+        provisioning: pip_driver
+        startup_cost: instant
+        prereq: "installs singlestoredb; needs host + credentials"
+        url: singlestoredb://USER:PASS@HOST:3306/DB
+      - id: snowflake
+        name: Snowflake (external)
+        platforms: [macos, linux, windows]
+        provisioning: pip_driver
+        startup_cost: instant
+        prereq: "installs snowflake-sqlalchemy; needs account + credentials"
+        url: snowflake://USER:PASS@ACCOUNT/DB/SCHEMA?warehouse=WH
+      - id: databricks
+        name: Databricks (external)
+        platforms: [macos, linux, windows]
+        provisioning: pip_driver
+        startup_cost: instant
+        prereq: "installs databricks-sqlalchemy; needs workspace + token"
+        url: databricks://token:TOKEN@HOST?http_path=PATH&catalog=CAT&schema=SCH
+      - id: oracle
+        name: Oracle (external)
+        platforms: [macos, linux, windows]
+        provisioning: pip_driver               # oracledb THIN mode = pure-python, no Instant Client
+        startup_cost: instant
+        prereq: "installs oracledb (thin mode — no client lib); needs host + credentials"
+        url: oracle+oracledb://USER:PASS@HOST:1521/?service_name=SVC
+      - id: sqlserver
+        name: SQL Server (external)
+        platforms: [macos, linux, windows]
+        provisioning: system_driver            # the heavier one: needs a system ODBC driver
+        startup_cost: instant
+        prereq: "installs pyodbc + REQUIRES Microsoft ODBC Driver 18 (system install)"
+        url: mssql+pyodbc://USER:PASS@HOST:1433/DB?driver=ODBC+Driver+18+for+SQL+Server
+
+  # The control plane (tenant/org registry + billing) runs on the SQLAlchemy `Database` abstraction and
+  # REQUIRES AN ASYNC DRIVER (provisa/core/database.py create_engine_from_url; REQ-837). This is a
+  # NARROWER set than materialization_store: analytical warehouses (Snowflake/Databricks/BigQuery) have
+  # no async transactional driver and cannot host the control plane.
+  control_plane_store:
+    options:
+      - id: sqlite
+        name: SQLite (aiosqlite)
+        platforms: [macos, linux, windows]
+        provisioning: bundled              # aiosqlite is a core dependency
+        startup_cost: instant              # no initdb — the truly-instant control plane
+        prereq: none (aiosqlite bundled)
+        url: sqlite+aiosqlite:///{data_dir}/control.db
+        default_for: [demo]
+      - id: embedded_pg
+        name: Embedded PostgreSQL (asyncpg)
+        platforms: [macos, linux, windows]
+        provisioning: bundled
+        startup_cost: install-time         # run initdb at INSTALL, not launch
+        prereq: "asyncpg bundled; Windows data dir not under %TEMP%"
+        url: postgresql+asyncpg://.../     # unix socket via pgserver
+      - id: postgresql
+        name: PostgreSQL (external, asyncpg)
+        platforms: [macos, linux, windows]
+        provisioning: pip_driver           # asyncpg bundled
+        startup_cost: instant
+        prereq: "asyncpg (bundled); host + credentials"
+        url: postgresql+asyncpg://USER:PASS@HOST:5432/DB
+      - id: mysql
+        name: MySQL / MariaDB (external, aiomysql)
+        platforms: [macos, linux, windows]
+        provisioning: pip_driver
+        startup_cost: instant
+        prereq: "installs aiomysql (async driver); host + credentials"
+        url: mysql+aiomysql://USER:PASS@HOST:3306/DB
+      - id: sqlserver
+        name: SQL Server (external, aioodbc)
+        platforms: [macos, linux, windows]
+        provisioning: system_driver
+        startup_cost: instant
+        prereq: "installs aioodbc + REQUIRES Microsoft ODBC Driver 18 (system)"
+        url: mssql+aioodbc://USER:PASS@HOST:1433/DB?driver=ODBC+Driver+18+for+SQL+Server
+      - id: oracle
+        name: Oracle (external, oracledb async)
+        platforms: [macos, linux, windows]
+        provisioning: pip_driver
+        startup_cost: instant
+        prereq: "installs oracledb (async, thin mode); host + credentials"
+        url: oracle+oracledb_async://USER:PASS@HOST:1521/?service_name=SVC
+
+  source:
+    options:
+      - { id: csv,        name: CSV file,        platforms: [macos, linux, windows], provisioning: bundled, startup_cost: instant, prereq: none, default_for: [demo] }
+      - { id: parquet,    name: Parquet file,    platforms: [macos, linux, windows], provisioning: bundled, startup_cost: instant, prereq: none, default_for: [demo] }
+      - { id: json,       name: JSON file,       platforms: [macos, linux, windows], provisioning: bundled, startup_cost: instant, prereq: none, default_for: [demo] }
+      - { id: sqlite,     name: SQLite file,     platforms: [macos, linux, windows], provisioning: bundled, startup_cost: instant, prereq: none, default_for: [demo] }
+      - { id: iceberg,    name: Apache Iceberg,  platforms: [macos, linux, windows], provisioning: bundled, startup_cost: instant, prereq: "via DuckDB engine (native everywhere)", default_for: [demo] }
+      - { id: openapi,    name: OpenAPI / REST,  platforms: [macos, linux, windows], provisioning: bundled, startup_cost: instant, prereq: "endpoint URL (demo ships a mock)", default_for: [demo] }
+      - { id: graphql_remote, name: GraphQL,     platforms: [macos, linux, windows], provisioning: bundled, startup_cost: instant, prereq: "endpoint URL (demo ships a mock)", default_for: [demo] }
+      - { id: postgresql, name: PostgreSQL,      platforms: [macos, linux, windows], provisioning: pip_driver, startup_cost: instant, prereq: "host + credentials" }
+      - { id: mysql,      name: MySQL/MariaDB,   platforms: [macos, linux, windows], provisioning: pip_driver, startup_cost: instant, prereq: "host + credentials" }
+
+# The demo preset: every role pinned to a bundled, instant option — so "Demo" runs in a few seconds
+# with NO Trino/Redis/MinIO/Docker and nothing to install or download at launch.
+presets:
+  demo:
+    federation_engine: duckdb
+    materialization_store: duckdb_file
+    control_plane_store: sqlite
+    sources: [csv, parquet, json, sqlite, iceberg, openapi, graphql_remote]
+    external_services: []          # no trino, redis, minio, otel-collector
+    cache: in_memory
+    observability: off
+    startup_target_seconds: 3

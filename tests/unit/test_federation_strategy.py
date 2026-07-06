@@ -18,7 +18,7 @@ from provisa.core.models import Source, SourceType
 from provisa.federation.engine import (
     UnreachableSource,
     build_duckdb_engine,
-    build_snowflake_engine,
+    build_sqlalchemy_engine,
     build_trino_engine,
 )
 from provisa.federation.strategy import Strategy, federate, requires_residency
@@ -43,8 +43,9 @@ def test_file_via_scanner_view_is_scan():
 
 
 def test_warehouse_native_lands_is_materialized():
-    eng = build_snowflake_engine()
-    assert federate(_src("sf", SourceType.snowflake), eng) is Strategy.MATERIALIZED
+    # A self-only sqlalchemy engine lands every source into its own store.
+    eng = build_sqlalchemy_engine("mysql://h/db")
+    assert federate(_src("pg", SourceType.postgresql), eng) is Strategy.MATERIALIZED
 
 
 def test_api_source_with_no_connector_is_materialized():

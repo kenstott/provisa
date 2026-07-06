@@ -42,7 +42,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._engine = build_duckdb_engine()
         self._materialize_dsn = materialize_dsn
         self._sqlite_loaded = False
-        self._pg_attached = False
+        self._pg_ext_loaded = False  # postgres DuckDB extension INSTALL/LOAD (source ATTACH)
+        self._pg_attached = False  # matpg materialization store ATTACH (distinct)
 
     # -- source exposure -------------------------------------------------------
 
@@ -50,6 +51,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         """Expose an ATTACH source at its physical ``schema.table`` via the engine's connector."""
         entry = self._engine.resolve(source)  # picks the (duckdb, source_type) connector
         details = entry.details
+        # The physical view lives in a DuckDB schema named after the source's schema —
+        # create it first (DuckDB's default schema is "main"; anything else must exist).
+        self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{source.schema_name}"')
         phys = f'"{source.schema_name}"."{source.table_name}"'
         if "view_ddl" in details:  # csv / parquet scanner
             scan = details["view_ddl"].split(" AS ", 1)[1]
@@ -59,10 +63,15 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._con.execute("INSTALL sqlite")
                 self._con.execute("LOAD sqlite")
                 self._sqlite_loaded = True
+            elif source.type.value == "postgresql" and not self._pg_ext_loaded:
+                self._con.execute("INSTALL postgres")
+                self._con.execute("LOAD postgres")
+                self._pg_ext_loaded = True
             self._con.execute(details["attach"])
-            self._con.execute(
-                f"CREATE VIEW {phys} AS SELECT * FROM {source.id}.{source.table_name}"
-            )
+            # Reference the attached table as alias.schema.table (postgres/sqlite expose the
+            # remote schema); quote each part so hyphenated ids and mixed case survive.
+            remote = f'"{source.id}"."{source.schema_name}"."{source.table_name}"'
+            self._con.execute(f"CREATE VIEW {phys} AS SELECT * FROM {remote}")
 
     async def materialize_source(
         self, source: Any, columns: list[tuple[str, str]], rows: list[dict]
@@ -94,6 +103,19 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             f"host={u.hostname} port={u.port or 5432} dbname={u.path.lstrip('/')} "
             f"user={u.username} password={u.password}"
         )
+
+    # -- metadata --------------------------------------------------------------
+
+    def introspect_columns(self, source: Any) -> dict[str, str]:
+        """Column types as the DuckDB engine reports them for a registered source —
+        the engine's metadata view (attach the source, DESCRIBE the physical relation).
+        Returns {column_name: duckdb_type_name}. This is the DuckDB implementation of
+        the engine-introspection seam (REQ-825/840); callers reach it via EngineRuntime."""
+        self.attach_source(source)
+        phys = f'"{source.schema_name}"."{source.table_name}"'
+        res = self._con.execute(f"DESCRIBE {phys}")
+        # DESCRIBE rows: (column_name, column_type, null, key, default, extra)
+        return {row[0]: str(row[1]).lower() for row in res.fetchall()}
 
     # -- execution -------------------------------------------------------------
 

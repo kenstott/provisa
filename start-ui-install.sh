@@ -8,14 +8,16 @@ set -euo pipefail
 KEEP_DOCKER=false
 FAST=false
 DEMO=false
+NATIVE=false
 IDP=""
 for arg in "$@"; do
   case "$arg" in
     --keep-docker) KEEP_DOCKER=true ;;
     --fast) FAST=true; KEEP_DOCKER=true ;;
     --demo) DEMO=true ;;
+    --native) NATIVE=true ;;
     --idp=*) IDP="${arg#--idp=}" ;;
-    *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--demo] [--idp=basic|firebase]"; exit 1 ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--demo] [--native] [--idp=basic|firebase]"; exit 1 ;;
   esac
 done
 if [ -n "$IDP" ] && [ "$IDP" != "basic" ] && [ "$IDP" != "firebase" ]; then
@@ -165,6 +167,10 @@ if is_exfat "$SCRIPT_DIR"; then
   done
 fi
 
+if [ "$NATIVE" = true ]; then
+  echo "Native mode (--native): no Docker — embedded control-plane PG + DuckDB engine + fakeredis."
+fi
+if [ "$NATIVE" = false ]; then
 if [ "$DEMO" = true ]; then
   echo "Starting Docker Compose services (core + observability + demo)..."
 else
@@ -248,6 +254,7 @@ docker exec provisa-postgres-1 psql -U provisa -d provisa -c "
     ('Lion 3',   'lion',   'Barbary Lion',     1600.00, TRUE),
     ('Rabbit 1', 'rabbit', 'Holland Lop',       150.00, TRUE);
 " 2>/dev/null || echo "pet_store schema setup skipped (will retry on next start)"
+fi  # end NATIVE=false Docker block
 
 if [ "$DEMO" = true ]; then
   "$SCRIPT_DIR/demo/run-demo-servers.sh" start
@@ -343,17 +350,42 @@ else
   echo "Telemetry store: DuckDB default — pgserver unavailable (needs Python <=3.12); see $LOG_DIR/telemetry-pg.log"
 fi
 
+# Native (no-Docker) tier: the control plane is an embedded PostgreSQL (pgserver),
+# the federation engine is in-process DuckDB, and the cache is embedded fakeredis —
+# no postgres/trino/redis/zaychik/minio containers. Backend PG env points at the
+# embedded instance's unix socket. Defaults (Docker mode) are localhost:5432.
+CP_PG_HOST=localhost
+CP_PG_PORT=5432
+if [ "$NATIVE" = true ]; then
+  CP_PG_DIR="${PROVISA_HOME:-$HOME/.provisa}/control-pg"
+  echo -n "Booting embedded control-plane PostgreSQL ($CP_PG_DIR)... "
+  if _CP_OUT="$("$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg start "$CP_PG_DIR" --init-sql db/init.sql 2>>"$LOG_DIR/control-plane-pg.log")"; then
+    CP_PG_HOST="$(echo "$_CP_OUT" | sed -n 's/^PG_HOST=//p')"
+    CP_PG_PORT="$(echo "$_CP_OUT" | sed -n 's/^PG_PORT=//p')"
+    echo "OK (socket $CP_PG_HOST:$CP_PG_PORT)"
+    # Both SQLAlchemy control planes (tenant + platform) connect to the embedded
+    # instance over its unix socket — the directory travels in ?host=. The tenant
+    # and platform planes share this one embedded database (single-tenant desktop).
+    export TENANT_DATABASE_URL="postgresql+asyncpg://provisa:provisa@/provisa?host=${CP_PG_HOST}"
+    export PLATFORM_DATABASE_URL="postgresql+asyncpg://provisa:provisa@/provisa?host=${CP_PG_HOST}"
+  else
+    echo "FAILED — see $LOG_DIR/control-plane-pg.log"
+    echo "Native bring-up requires pgserver (Python <=3.12). Aborting."
+    exit 1
+  fi
+fi
+
 BACKEND_PID=""
 
 start_backend() {
   cd "$SCRIPT_DIR"
   _BACKEND_ENV=(
-    PG_HOST=localhost
-    PG_PORT=5432
+    PG_HOST="$CP_PG_HOST"
+    PG_PORT="$CP_PG_PORT"
     PG_DATABASE=provisa
     PG_USER=provisa
     PG_PASSWORD="${PG_PASSWORD:-provisa}"
-    POSTGRES_HOST=localhost
+    POSTGRES_HOST="$CP_PG_HOST"
     TRINO_HOST=localhost
     TRINO_PORT=8080
     TRINO_FLIGHT_PORT=8480
@@ -368,6 +400,11 @@ start_backend() {
     PROVISA_CONFIG_REPLACE="true"
     PROVISA_PGWIRE_PORT=5439
   )
+  # Native tier: in-process DuckDB engine + embedded fakeredis, so no Trino/Redis
+  # server is contacted. (Docker mode keeps the Trino engine and real Redis above.)
+  if [ "$NATIVE" = true ]; then
+    _BACKEND_ENV+=( PROVISA_ENGINE=duckdb PROVISA_REDIS_EMBEDDED=1 )
+  fi
   # Telemetry lands in its own embedded-pg instance when available.
   [ -n "${TELEM_OPS_URL:-}" ] && _BACKEND_ENV+=( PROVISA_OPS_DB_URL="$TELEM_OPS_URL" )
   if [ "$DEMO" = true ]; then
@@ -548,7 +585,11 @@ cleanup() {
   if [ "$DEMO" = true ]; then
     "$SCRIPT_DIR/demo/run-demo-servers.sh" stop 2>/dev/null || true
   fi
-  if [ "$KEEP_DOCKER" = true ]; then
+  if [ "$NATIVE" = true ]; then
+    # Embedded control-plane + telemetry PostgreSQL are persistent (reused next run);
+    # leave them running. No Docker to tear down.
+    echo "Native mode: leaving embedded PostgreSQL instances running for next start."
+  elif [ "$KEEP_DOCKER" = true ]; then
     echo "Leaving Docker Compose services running (--keep-docker)."
   else
     echo "Stopping Docker Compose services..."

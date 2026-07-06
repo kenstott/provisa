@@ -955,3 +955,12 @@ def subscribers_receive_sse_with_governance(shared_data):
     )
     assert "id SERIAL PRIMARY KEY" in ddl
     assert "_received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()" in ddl
+
+
+# All steps for REQ-331 default behaviour are already implemented in this file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 97a215ac-4bf4-4ab9-968d-f4109ccc46e7
+#
+# This source code is licensed under the Business Source License 1.1

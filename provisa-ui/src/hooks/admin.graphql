@@ -55,6 +55,7 @@ query SourcesQuery {
     dialect
     cacheEnabled
     cacheTtl
+    preferMaterialized
     gqlNamingConvention
     allowedDomains
     description
@@ -86,6 +87,7 @@ query TablesQuery {
     alias
     description
     cacheTtl
+    preferMaterialized
     gqlNamingConvention
     watermarkColumn
     apiEndpoint
@@ -376,6 +378,18 @@ mutation UpdateSourceCache($sourceId: String!, $cacheEnabled: Boolean!, $cacheTt
 
 mutation UpdateTableCache($tableId: Int!, $cacheTtl: Int) {
   updateTableCache(tableId: $tableId, cacheTtl: $cacheTtl) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateSourcePreferMaterialized($sourceId: String!, $preferMaterialized: Boolean!) {
+  updateSourcePreferMaterialized(sourceId: $sourceId, preferMaterialized: $preferMaterialized) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateTablePreferMaterialized($tableId: Int!, $preferMaterialized: Boolean) {
+  updateTablePreferMaterialized(tableId: $tableId, preferMaterialized: $preferMaterialized) {
     ...MutationResult
   }
 }

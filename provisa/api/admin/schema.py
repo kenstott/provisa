@@ -364,6 +364,7 @@ async def _fetch_table_with_columns(
         alias=row.get("alias"),
         description=row.get("description"),
         cache_ttl=row.get("cache_ttl"),
+        prefer_materialized=row.get("prefer_materialized"),
         gql_naming_convention=row.get("gql_naming_convention"),
         watermark_column=row.get("watermark_column"),
         columns=columns,
@@ -2325,6 +2326,42 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if result == "UPDATE 0":
                 return MutationResult(success=False, message=f"Table {table_id} not found")
         return MutationResult(success=True, message=f"Cache TTL updated for table {table_id}")
+
+    @strawberry.mutation
+    async def update_source_prefer_materialized(
+        self, source_id: str, prefer_materialized: bool
+    ) -> MutationResult:  # REQ-826
+        """Force (or release) MATERIALIZED federation for a source's tables — the source-level default."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE sources SET prefer_materialized = $1 WHERE id = $2",
+                prefer_materialized,
+                source_id,
+            )
+            if result == "UPDATE 0":
+                return MutationResult(success=False, message=f"Source {source_id!r} not found")
+        return MutationResult(
+            success=True, message=f"prefer_materialized set for source {source_id!r}"
+        )
+
+    @strawberry.mutation
+    async def update_table_prefer_materialized(
+        self, table_id: int, prefer_materialized: bool | None = None
+    ) -> MutationResult:  # REQ-826
+        """Override MATERIALIZED federation for one table; None = inherit the source-level default."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE registered_tables SET prefer_materialized = $1 WHERE id = $2",
+                prefer_materialized,
+                table_id,
+            )
+            if result == "UPDATE 0":
+                return MutationResult(success=False, message=f"Table {table_id} not found")
+        return MutationResult(
+            success=True, message=f"prefer_materialized set for table {table_id}"
+        )
 
     # ── Admin: Naming Convention ──
 

@@ -17,7 +17,7 @@ import pytest
 from provisa.core.models import Source, SourceType
 from provisa.federation.engine import (
     build_duckdb_engine,
-    build_snowflake_engine,
+    build_sqlalchemy_engine,
     build_trino_engine,
 )
 from provisa.federation.materialization import (
@@ -50,9 +50,10 @@ def test_backend_with_no_connector_rejected():
 
 
 def test_land_only_backend_rejected_as_regress():
-    # A self-only warehouse engine cannot read a separate PG store landed into it.
+    # A self-only (sqlalchemy) engine whose native store is mysql cannot read a separate
+    # PG store landed into it — postgresql is a LAND-only connector here, so it regresses.
     with pytest.raises(InvalidMaterializationBackend):
-        validate_materialization_backend(build_snowflake_engine(), "postgresql")
+        validate_materialization_backend(build_sqlalchemy_engine("mysql://h/db"), "postgresql")
 
 
 # ---- write face selection (REQ-848) -----------------------------------------
@@ -60,7 +61,10 @@ def test_land_only_backend_rejected_as_regress():
 
 def test_engine_native_write_face_collapses_into_engine():
     assert select_write_face(build_duckdb_engine(), "duckdb") is WriteFace.ENGINE_NATIVE
-    assert select_write_face(build_snowflake_engine(), "snowflake") is WriteFace.ENGINE_NATIVE
+    # sqlalchemy engine on a mysql URL materializes into its own (mysql) store.
+    assert select_write_face(build_sqlalchemy_engine("mysql://h/db"), "mysql") is (
+        WriteFace.ENGINE_NATIVE
+    )
 
 
 def test_separate_relational_store_uses_sqlalchemy_upsert():

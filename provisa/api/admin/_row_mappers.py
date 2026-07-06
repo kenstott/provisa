@@ -83,6 +83,7 @@ def _source_from_row(row) -> SourceType:
         dialect=row["dialect"],
         cache_enabled=row.get("cache_enabled", True),
         cache_ttl=row.get("cache_ttl"),
+        prefer_materialized=bool(row.get("prefer_materialized", False)),
         gql_naming_convention=row.get("gql_naming_convention"),
         path=row.get("path"),
         allowed_domains=list(row.get("allowed_domains") or []),

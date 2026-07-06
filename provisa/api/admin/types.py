@@ -36,6 +36,7 @@ class SourceType:  # REQ-012
     dialect: str
     cache_enabled: bool
     cache_ttl: int | None
+    prefer_materialized: bool
     gql_naming_convention: str | None
     path: str | None
     allowed_domains: list[str] = strawberry.field(default_factory=list)
@@ -95,6 +96,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     alias: str | None
     description: str | None
     cache_ttl: int | None
+    prefer_materialized: bool | None
     gql_naming_convention: str | None
     watermark_column: str | None
     columns: list[TableColumnType]

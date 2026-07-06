@@ -892,3 +892,9 @@ def then_logged_in_append_only_audit_log(shared_data, audit_pool):
             )
 
     asyncio.get_event_loop().run_until_complete(_verify())
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 37459962-2e6e-4a90-92f8-65348a325ab1
+#
+# This source code is licensed under the Business Source License 1.1

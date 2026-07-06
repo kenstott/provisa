@@ -231,3 +231,6 @@ def _verify_pg_cache_delegates(shared_data):
     pg_cache._mem_fresh.clear()
     result_stale = asyncio.run(_run_stale())
     assert result_stale is False, "pg_cache._is_fresh must return False for an expired cache entry"
+
+
+# No new steps required; all steps for REQ-859 are already implemented in the existing file.

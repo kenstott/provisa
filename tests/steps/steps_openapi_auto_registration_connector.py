@@ -1517,3 +1517,15 @@ def then_stewards_accept_or_reject(shared_data):
     rejected_row = next(r for r in conn.rows if r["id"] == reject_id)
     assert accepted_row["status"] == "registered"
     assert rejected_row["status"] == "rejected"
+
+
+# No new steps required for REQ-316; all steps already exist in the file.
+
+
+# No new steps required for REQ-317; all steps already exist in the file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 38cd230a-e41a-41c1-8acf-7063f4edb196
+#
+# This source code is licensed under the Business Source License 1.1

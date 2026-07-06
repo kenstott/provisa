@@ -10,7 +10,6 @@ name: Build DuckDB Extensions
 
 on:
   push:
-    branches: ['ci/test-linux-extensions', 'ci/test-windows-extensions']   # test branches — remove before merge
     tags: ['v*']
   workflow_dispatch:
 
@@ -29,7 +28,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # TEST: Windows only (Linux already confirmed). Full matrix restored before merge.
+          - { runner: macos-14,        label: osx-arm64 }
+          - { runner: macos-13,        label: osx-x64 }
+          - { runner: ubuntu-22.04,    label: linux-x64 }
+          - { runner: ubuntu-22.04-arm, label: linux-arm64 }
           - { runner: windows-latest,  label: windows-x64 }
     steps:
       - uses: actions/checkout@v4

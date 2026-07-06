@@ -1322,8 +1322,9 @@ async def _load_and_build(
     assert tenant_db is not None
     async with tenant_db.acquire() as conn:
         _replace_mode = os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in ("1", "true", "yes")
+        _conn = cast(asyncpg.Connection, conn)
         await load_config(
-            config, cast(asyncpg.Connection, conn), state.trino_conn, replace=_replace_mode
+            config, _conn, state.trino_conn, state.federation_engine, replace=_replace_mode
         )
 
     _mark("load_config")
@@ -2009,11 +2010,13 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
 
 
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
-    """Re-introspect Trino and rebuild schemas for all roles from current DB state."""
+    # Rebuild per-role schemas from DB state. Column types come from the authoritative
+    # table_columns store (introspect_tables does NOT query Trino), so this runs on any
+    # engine; a missing Trino connection only skips the Trino-catalog ops seeding below.
     _rebuild_log = logging.getLogger(__name__)
     _rebuild_log.info("_rebuild_schemas called")
-    if state.tenant_db is None or state.trino_conn is None:
-        _rebuild_log.warning("_rebuild_schemas: tenant_db or trino_conn is None, returning")
+    if state.tenant_db is None:
+        _rebuild_log.warning("_rebuild_schemas: tenant_db is None, returning")
         return
 
     kafka_physical = getattr(state, "kafka_table_physical", {})
@@ -2080,11 +2083,14 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
 
         # Ensure ops Iceberg tables exist before introspection — idempotent, self-healing
         # if seed_ops_trino failed at startup because the otel catalog wasn't ready yet.
-        from provisa.observability.ops_trino import seed_ops_trino
+        # Trino-only: a native engine has no otel catalog to seed (telemetry lives in the
+        # dedicated ops store), so skip it there.
+        if state.trino_conn is not None:
+            from provisa.observability.ops_trino import seed_ops_trino
 
-        seed_ops_trino(
-            state.trino_conn, _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
-        )
+            seed_ops_trino(
+                state.trino_conn, _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
+            )
 
         await _register_user_views_in_state(_pg, raw_config)
 

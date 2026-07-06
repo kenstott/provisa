@@ -62,7 +62,6 @@ class Stakeholder(str, Enum):
     executive = "executive"
 
 
-_COVERAGE_STATUSES = {Status.accepted, Status.in_progress, Status.complete}
 _NEEDS_SCENARIO = {Status.accepted, Status.in_progress, Status.complete}
 
 
@@ -146,6 +145,10 @@ class Requirement(BaseModel):
             and self.unit_test is not False
         ):
             errors.append("tests required for MUST complete behavioral/constraint requirements")
+
+        # A unit-test opt-out must document why — never a silent escape hatch.
+        if self.unit_test is False and not self.unit_test_reason:
+            errors.append("unit_test_reason required when unit_test is false")
 
         if self.status == Status.complete and not self.since:
             errors.append("since required when status=complete")

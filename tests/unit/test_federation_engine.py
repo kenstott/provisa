@@ -21,7 +21,7 @@ from provisa.federation.engine import (
     FederationEngine,
     UnreachableSource,
     build_duckdb_engine,
-    build_snowflake_engine,
+    build_sqlalchemy_engine,
     build_trino_engine,
 )
 
@@ -57,7 +57,7 @@ def test_connector_for_unreachable_raises():
 def test_driver_classes():
     assert build_trino_engine().driver_class() is DriverClass.BROAD
     assert build_duckdb_engine().driver_class() is DriverClass.PARTIAL
-    assert build_snowflake_engine().driver_class() is DriverClass.SELF_ONLY
+    assert build_sqlalchemy_engine("postgresql://h/db").driver_class() is DriverClass.SELF_ONLY
 
 
 def test_duckdb_reaches_file_and_db_sources():
@@ -78,30 +78,127 @@ def test_duckdb_parquet_view_details():
 
 
 def test_mpp_is_declared_and_orthogonal_to_reach():
-    # REQ-894/895: Snowflake is SELF_ONLY reach yet MPP; DuckDB reaches several sources, single-node.
+    # REQ-894/895: MPP is orthogonal to reach — a SELF_ONLY engine can still be MPP
+    # (declared explicitly), while DuckDB reaches several sources yet is single-node.
     assert build_trino_engine().mpp is True
-    assert build_snowflake_engine().mpp is True
     assert build_duckdb_engine().mpp is False
+    from provisa.federation.connector import WarehouseNativeConnector
+
+    self_only_mpp = FederationEngine(
+        "wh",
+        [WarehouseNativeConnector("wh", "wh")],
+        native_store="wh",
+        driver_class=DriverClass.SELF_ONLY,
+        mpp=True,
+    )
+    assert self_only_mpp.driver_class() is DriverClass.SELF_ONLY and self_only_mpp.mpp is True
 
 
-def test_embedded_pg_lands_every_source_type():
-    # REQ-893: stock embedded PG (no FDWs) is SELF_ONLY — every source lands into its native store.
-    from provisa.federation.engine import build_embedded_pg_engine
+def test_build_engine_selects_the_four_engines(monkeypatch):
+    # REQ-840: one factory picks the engine by name; the four engines are trino/pg/duckdb/sqlalchemy.
+    from provisa.federation.engine import build_engine
+
+    monkeypatch.delenv("PROVISA_ENGINE", raising=False)
+    monkeypatch.delenv("PROVISA_ENGINE_URL", raising=False)
+    assert build_engine().name == "trino"  # default
+    assert build_engine("duckdb").name == "duckdb"
+    assert build_engine("pg").name == "postgres"
+    monkeypatch.setenv("PROVISA_ENGINE", "duckdb")
+    assert build_engine().name == "duckdb"  # env-selected
+    for gone in ("embedded-pg", "snowflake", "bogus"):
+        with pytest.raises(ValueError, match="unknown PROVISA_ENGINE"):
+            build_engine(gone)
+
+
+def test_sqlalchemy_engine_is_url_defined_self_only(monkeypatch):
+    # REQ-905: the sqlalchemy engine is any RDB with a working SQLAlchemy URI — self-only,
+    # zero connectors; its scheme names the native store.
+    from provisa.federation.engine import build_engine, build_sqlalchemy_engine
     from provisa.federation.strategy import Strategy, federate
 
-    eng = build_embedded_pg_engine()
-    assert eng.driver_class() is DriverClass.SELF_ONLY and eng.mpp is False
+    eng = build_sqlalchemy_engine("postgresql+psycopg2://h/db")
+    assert eng.driver_class() is DriverClass.SELF_ONLY and eng.native_store == "postgresql"
     for st in (SourceType.csv, SourceType.sqlite, SourceType.postgresql):
         assert federate(_src("x", st), eng) is Strategy.MATERIALIZED  # landed, not attached
+    monkeypatch.setenv("PROVISA_ENGINE", "sqlalchemy")
+    monkeypatch.setenv("PROVISA_ENGINE_URL", "mysql+pymysql://u:p@h/db")
+    assert build_engine().native_store == "mysql"  # env URL drives the store
+    monkeypatch.delenv("PROVISA_ENGINE_URL")
+    with pytest.raises(ValueError, match="requires a URL"):
+        build_engine()
 
 
-def test_pg_fdw_engine_attaches_in_place():
-    # REQ-893: the FDW engine reaches postgres/csv via ATTACH (in place), not materialization.
-    from provisa.federation.engine import build_postgres_engine
+def test_pg_engine_registers_all_prebuilt_connectors():
+    # REQ-904: one Postgres engine with every prebuilt connector def; optimistic before discovery.
+    from provisa.federation.engine import build_pg_engine
 
-    eng = build_postgres_engine()
+    eng = build_pg_engine()
     assert eng.driver_class() is DriverClass.PARTIAL
-    assert eng.reachable("postgresql") and eng.reachable("csv")
+    for st in ("postgresql", "csv", "parquet", "json"):
+        assert eng.reachable(st) is True
+
+
+def _fake_pg(*, extensions=(), available=(), preload=""):
+    """An async fetch double over a Postgres: canned answers for the probe queries."""
+
+    async def fetch(sql: str):
+        if "shared_preload_libraries" in sql:
+            return [{"v": preload}]
+        if "pg_extension" in sql:
+            ext = sql.split("extname = '")[1].split("'")[0]
+            return [{"?": 1}] if ext in extensions else []
+        if "pg_available_extensions" in sql:
+            name = sql.split("name = '")[1].split("'")[0]
+            return [{"?": 1}] if name in available else []
+        return []
+
+    return fetch
+
+
+@pytest.mark.asyncio
+async def test_discover_disables_connectors_whose_probe_fails():
+    # REQ-904: probe is availability truth — pg_duckdb present but NOT preloaded -> disabled.
+    from provisa.federation.engine import build_pg_engine
+
+    eng = build_pg_engine()
+    # postgres_fdw + file_fdw installable; pg_duckdb installed but not in shared_preload_libraries.
+    fetch = _fake_pg(available=("postgres_fdw", "file_fdw"), extensions=("pg_duckdb",), preload="")
+    report = await eng.discover(fetch)
+    assert eng.reachable("postgresql") is True  # postgres_fdw probes available
+    assert eng.reachable("csv") is True  # falls back to file_fdw (pg_duckdb_csv failed)
+    assert eng.reachable("parquet") is False and eng.reachable("json") is False  # pg_duckdb only
+    assert report["pg_duckdb_csv"].available is False
+    assert "shared_preload_libraries" in report["pg_duckdb_csv"].reason
+    with pytest.raises(UnreachableSource):  # unavailable -> explicit, never a silent land
+        eng.resolve(_src("p", SourceType.parquet, path="/x.parquet"))
+
+
+@pytest.mark.asyncio
+async def test_discover_pg_duckdb_wins_csv_when_available():
+    # REQ-904: with pg_duckdb preloaded, it owns csv (precedence) and unlocks parquet/json.
+    from provisa.federation.connector import PgDuckdbCsvConnector
+    from provisa.federation.engine import build_pg_engine
+
+    eng = build_pg_engine()
+    fetch = _fake_pg(extensions=("pg_duckdb", "file_fdw"), preload="pg_duckdb")
+    await eng.discover(fetch)
+    assert isinstance(eng.connector_for("csv"), PgDuckdbCsvConnector)
+    for st in ("csv", "parquet", "json"):
+        assert eng.reachable(st) is True
+
+
+@pytest.mark.asyncio
+async def test_discover_override_strikes_connector_without_probing():
+    # REQ-904: a struck connector is never probed; csv then falls back to file_fdw.
+    from provisa.federation.connector import FileFdwConnector
+    from provisa.federation.engine import build_pg_engine
+
+    eng = build_pg_engine()
+    fetch = _fake_pg(extensions=("pg_duckdb", "file_fdw"), preload="pg_duckdb")
+    report = await eng.discover(fetch, disabled=frozenset({"pg_duckdb_csv"}))
+    assert "not probed" in report["pg_duckdb_csv"].reason
+    assert isinstance(eng.connector_for("csv"), FileFdwConnector)  # struck -> fallback wins csv
+    assert eng.reachable("parquet") is True  # other pg_duckdb connectors still probed/available
 
 
 def test_swapping_engine_swaps_reachability():
@@ -126,8 +223,8 @@ def test_duckdb_postgres_attach_dsn():
 
 
 def test_warehouse_native_lands_into_self():
-    eng = build_snowflake_engine()
-    entry = eng.resolve(_src("sf", SourceType.snowflake))
+    eng = build_sqlalchemy_engine("postgresql://h/db")
+    entry = eng.resolve(_src("pg", SourceType.postgresql))
     assert entry.mechanism is Mechanism.LAND
     assert entry.details == {}  # already native — nothing to attach
 

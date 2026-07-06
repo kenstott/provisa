@@ -1054,3 +1054,9 @@ def then_source_type_not_used_to_dispatch(shared_data: dict) -> None:
         "strategy=debezium must resolve to 'debezium' regardless of source_type, "
         f"got {debezium_resolved!r}"
     )
+
+
+# (no new steps required - all REQ-260 steps are already implemented in the existing file)
+
+
+# (no new steps required - all REQ-261 steps are already implemented in the existing file)

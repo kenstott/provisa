@@ -19,7 +19,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import ast
 import asyncio
 import re
 import sys
@@ -176,6 +175,153 @@ Use case: {req.get("use_case", "")}
 """
 
 
+# Unicode punctuation the model occasionally emits in code position (not inside a
+# string), which is illegal Python. Mapping to ASCII is safe: inside a string it only
+# changes text; in code position it turns an illegal token into a legal one. Quote
+# characters are deliberately excluded — rewriting them could re-delimit a string, so
+# any residual quote breakage is left to the model repair loop below.
+_UNICODE_FIXUPS = {
+    "—": "-",  # em dash
+    "–": "-",  # en dash
+    "→": "->",  # rightwards arrow
+    "←": "<-",  # leftwards arrow
+    "✓": "[check]",  # check mark
+    "✗": "[x]",  # ballot x
+    "…": "...",  # ellipsis
+    "×": "x",  # multiplication sign
+    "≥": ">=",  # greater-than-or-equal
+    "≤": "<=",  # less-than-or-equal
+    "≠": "!=",  # not equal
+    " ": " ",  # non-breaking space
+    "‘": "'",  # left single quote
+    "’": "'",  # right single quote
+    "“": '"',  # left double quote
+    "”": '"',  # right double quote
+}
+
+
+def normalize_unicode(text: str) -> str:
+    for bad, good in _UNICODE_FIXUPS.items():
+        text = text.replace(bad, good)
+    return text
+
+
+def strip_fences(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    return text.strip()
+
+
+_FUTURE_RE = re.compile(r"^\s*from __future__ import .*$")
+# Any string literal naming a feature file, in either the `scenarios("...")` or the
+# `@scenario("...", "name")` form. The model routinely gets the relative depth and the
+# filename casing wrong; the canonical location is always tests/features/REQ-NNN.feature.
+_FEATURE_LIT_RE = re.compile(r"""["'][^"']*?[Rr][Ee][Qq][_-]?\d+\.feature["']""")
+_PYTEST_BDD_IMPORT_RE = re.compile(r"^(from pytest_bdd import )(.+)$", re.MULTILINE)
+
+
+def sanitize_fragment(text: str, req_id: str, append_mode: bool) -> str:
+    """Fix the structural mistakes the model makes: a `from __future__` import in an
+    appended fragment (illegal anywhere but a file's top), a wrong relative path or
+    casing in the feature registration, and a `scenarios(` call whose import was
+    omitted."""
+
+    # Normalise every feature-path literal to the canonical location regardless of the
+    # registration form the model chose.
+    canonical_path = f'"../features/{req_id}.feature"'
+    text = _FEATURE_LIT_RE.sub(canonical_path, text)
+
+    if append_mode:
+        text = "\n".join(
+            line for line in text.splitlines() if not _FUTURE_RE.match(line)
+        )
+    elif "scenarios(" in text and not re.search(r"\bscenarios\b", text.split("scenarios(")[0]):
+        # New-file mode: the model called scenarios() but forgot to import it. Add it
+        # to the existing pytest_bdd import line rather than inventing a new import.
+        m = _PYTEST_BDD_IMPORT_RE.search(text)
+        if m and "scenarios" not in m.group(2):
+            text = _PYTEST_BDD_IMPORT_RE.sub(
+                lambda mm: f"{mm.group(1)}{mm.group(2).rstrip()}, scenarios", text, count=1
+            )
+    return text
+
+
+def parse_error(source: str) -> SyntaxError | None:
+    """Return the SyntaxError from compiling source, or None if it is valid.
+    Uses compile() rather than ast.parse() so misplaced __future__ imports and
+    other compile-only errors are caught before the file is written."""
+    try:
+        compile(source, "<generated>", "exec")
+    except SyntaxError as exc:
+        return exc
+    return None
+
+
+async def stream_text(
+    client: anthropic.AsyncAnthropic,
+    system: str,
+    messages: list[anthropic.types.MessageParam],
+) -> tuple[str, str | None]:
+    """Stream a completion; return (text, stop_reason)."""
+    content_parts: list[str] = []
+    stop_reason: str | None = None
+    async with client.messages.stream(
+        model="claude-sonnet-4-6",
+        max_tokens=8000,
+        system=system,
+        messages=messages,
+    ) as stream:
+        async for event in stream:
+            if getattr(event, "type", None) == "content_block_delta":
+                delta = getattr(event, "delta", None)
+                if delta and getattr(delta, "type", None) == "text_delta":
+                    content_parts.append(delta.text)
+        final = await stream.get_final_message()
+        stop_reason = final.stop_reason
+    return "".join(content_parts), stop_reason
+
+
+# Number of times to ask the model to repair unparseable output before giving up.
+_MAX_REPAIR_ATTEMPTS = 2
+
+
+async def repair_syntax(
+    client: anthropic.AsyncAnthropic,
+    system: str,
+    prompt: str,
+    broken: str,
+    exc: SyntaxError,
+) -> str | None:
+    """Feed a SyntaxError back to the model until the output parses (or attempts run out)."""
+    current = broken
+    error = exc
+    for _ in range(_MAX_REPAIR_ATTEMPTS):
+        repair_prompt = (
+            f"The Python you produced does not parse. Fix it and return the COMPLETE "
+            f"corrected source only — no markdown, no prose. Preserve all real logic; "
+            f"only make it valid Python (ASCII operators/punctuation, terminated string "
+            f"literals, no leading-zero integer literals, no bare prose lines).\n\n"
+            f"SyntaxError: {error} (line {error.lineno})\n\n"
+            f"Source:\n{current}"
+        )
+        messages: list[anthropic.types.MessageParam] = [
+            {"role": "user", "content": prompt},
+            {"role": "assistant", "content": current},
+            {"role": "user", "content": repair_prompt},
+        ]
+        text, stop_reason = await stream_text(client, system, messages)
+        if stop_reason == "max_tokens":
+            return None
+        candidate = normalize_unicode(strip_fences(text))
+        exc2 = parse_error(candidate)
+        if exc2 is None:
+            return candidate
+        current, error = candidate, exc2
+    return None
+
+
 async def generate_for_req(
     client: anthropic.AsyncAnthropic,
     req: dict,
@@ -228,31 +374,12 @@ async def generate_for_req(
             req, feature_text, existing_file, test_context, code_context, append_mode
         )
 
-        content_parts: list[str] = []
-        stop_reason: str | None = None
         # Substitute a real per-file canary; the SYSTEM_PROMPT ships the literal
         # placeholder "{canary}", which otherwise lands verbatim in the output.
         system = SYSTEM_PROMPT.replace("{canary}", str(uuid4()))
-        async with client.messages.stream(
-            model="claude-sonnet-4-6",
-            max_tokens=8000,
-            system=system,
-            messages=[{"role": "user", "content": prompt}],
-        ) as stream:
-            async for event in stream:
-                if hasattr(event, "type"):
-                    if event.type == "content_block_delta":
-                        delta = getattr(event, "delta", None)
-                        if delta and getattr(delta, "type", None) == "text_delta":
-                            content_parts.append(delta.text)
-            final = await stream.get_final_message()
-            stop_reason = final.stop_reason
-
-        generated = "".join(content_parts).strip()
-
-        if generated.startswith("```"):
-            lines = generated.splitlines()
-            generated = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        raw, stop_reason = await stream_text(
+            client, system, [{"role": "user", "content": prompt}]
+        )
 
         # A truncated (max_tokens) generation is the root cause of mid-statement
         # file corruption — never write it over a good file.
@@ -264,6 +391,32 @@ async def generate_for_req(
             )
             return None
 
+        generated = sanitize_fragment(
+            normalize_unicode(strip_fences(raw)), req_id, append_mode
+        )
+
+        # The fragment must parse standalone (imports + scenarios + step functions).
+        # If it does not, ask the model to repair its own output before giving up.
+        exc = parse_error(generated)
+        if exc is not None:
+            print(
+                f"  repair {req_id}: {exc} (line {exc.lineno}) — asking model to fix",
+                file=sys.stderr,
+                flush=True,
+            )
+            repaired = await repair_syntax(client, system, prompt, generated, exc)
+            if repaired is None:
+                print(
+                    f"  ERROR {req_id}: generated content does not parse after "
+                    f"{_MAX_REPAIR_ATTEMPTS} repair attempts — not writing",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return None
+            # Re-apply structural fixes: repair may reintroduce a __future__ line
+            # or an off path.
+            generated = sanitize_fragment(repaired, req_id, append_mode)
+
         STEPS_DIR.mkdir(parents=True, exist_ok=True)
         async with file_locks[file_key]:
             # Re-read under the lock so we append to the freshest content.
@@ -273,12 +426,11 @@ async def generate_for_req(
             else:
                 new_content = generated + "\n"
 
-            # Never overwrite a valid file with unparseable output.
-            try:
-                ast.parse(new_content)
-            except SyntaxError as exc:
+            # Final safety net: never overwrite a valid file with unparseable output.
+            exc = parse_error(new_content)
+            if exc is not None:
                 print(
-                    f"  ERROR {req_id}: generated content does not parse ({exc}) — not writing",
+                    f"  ERROR {req_id}: assembled file does not parse ({exc}) — not writing",
                     file=sys.stderr,
                     flush=True,
                 )

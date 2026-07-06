@@ -72,6 +72,8 @@ import {
   PurgeCache,
   UpdateSourceCache,
   UpdateTableCache,
+  UpdateSourcePreferMaterialized,
+  UpdateTablePreferMaterialized,
   UpdateSourceNaming,
   UpdateTableNaming,
   UpdateSourceAllowedDomains,
@@ -325,6 +327,45 @@ export function useUpdateTableCache() {
     updateTableCache: async (tableId: number, cacheTtl: number | null) => {
       const result = await updateTableCache({ variables: { tableId, cacheTtl } });
       return (result.data?.updateTableCache ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useUpdateSourcePreferMaterialized() {
+  const [updateSourcePreferMaterialized, { loading }] = useMutation<{
+    updateSourcePreferMaterialized: MutationResult;
+  }>(UpdateSourcePreferMaterialized);
+  return {
+    updateSourcePreferMaterialized: async (sourceId: string, preferMaterialized: boolean) => {
+      const result = await updateSourcePreferMaterialized({
+        variables: { sourceId, preferMaterialized },
+      });
+      return (result.data?.updateSourcePreferMaterialized ?? {
+        success: false,
+        message: "",
+      }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useUpdateTablePreferMaterialized() {
+  const [updateTablePreferMaterialized, { loading }] = useMutation<{
+    updateTablePreferMaterialized: MutationResult;
+  }>(UpdateTablePreferMaterialized);
+  return {
+    updateTablePreferMaterialized: async (
+      tableId: number,
+      preferMaterialized: boolean | null,
+    ) => {
+      const result = await updateTablePreferMaterialized({
+        variables: { tableId, preferMaterialized },
+      });
+      return (result.data?.updateTablePreferMaterialized ?? {
+        success: false,
+        message: "",
+      }) as MutationResult;
     },
     loading,
   };

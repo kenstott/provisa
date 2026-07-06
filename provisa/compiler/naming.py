@@ -16,12 +16,25 @@ Names must be valid GraphQL identifiers: [_A-Za-z][_0-9A-Za-z]*.
 # Requirements: REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-195, REQ-411, REQ-412, REQ-416
 
 import re
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-import inflect as _inflect_mod
-from inflect import Word
+if TYPE_CHECKING:
+    from inflect import Word
+    from inflect import engine as _Engine
 
-_inflect = _inflect_mod.engine()
+# inflect's import + engine() build costs ~0.8s. Lazy-load it so that cost is paid ONCE on first
+# pluralization (schema generation), never at module import — keeps the desktop/demo cold start
+# instant (import is otherwise ~1.6s, dominated by inflect). Behaviour is identical; just deferred.
+_inflect: "_Engine | None" = None
+
+
+def _engine() -> "_Engine":
+    global _inflect
+    if _inflect is None:
+        import inflect
+
+        _inflect = inflect.engine()
+    return _inflect
 
 
 _VERB_PREFIXES = frozenset(
@@ -64,17 +77,18 @@ def rel_field_name(target_field_name: str, cardinality: str) -> str:  # REQ-194,
         noun, modifiers = parts[-1], parts[:-1]
     else:
         noun, modifiers = parts[0], parts[1:]
+    eng = _engine()
     if cardinality == "one-to-many":
-        singular = _inflect.singular_noun(cast(Word, noun))
+        singular = eng.singular_noun(cast("Word", noun))
         if singular is False:
             # noun is singular — pluralize it
-            noun = _inflect.plural_noun(cast(Word, noun)) or noun
+            noun = eng.plural_noun(cast("Word", noun)) or noun
         elif singular.endswith("s") and not noun.endswith("ies"):
             # inflect returned a false singular ending in 's' (e.g. address→addres) — force plural
-            noun = _inflect.plural_noun(cast(Word, noun)) or noun
+            noun = eng.plural_noun(cast("Word", noun)) or noun
         # else: genuinely plural (e.g. inquiries, orders) — leave as-is
     else:
-        singular = _inflect.singular_noun(cast(Word, noun))
+        singular = eng.singular_noun(cast("Word", noun))
         if singular:
             noun = singular
     if not verb_was_stripped and len(parts) > 1:

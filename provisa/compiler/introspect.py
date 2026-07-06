@@ -66,15 +66,19 @@ def introspect_table_columns(  # REQ-008, REQ-393
 
 
 def introspect_tables(  # REQ-008, REQ-393, REQ-421
-    conn: trino.dbapi.Connection,
+    conn: trino.dbapi.Connection | None,
     registered_tables: list[dict],
     sources: dict[str, dict],
     physical_table_map: dict[str, str] | None = None,
 ) -> dict[int, list[ColumnMetadata]]:
-    """Bulk introspect all registered tables.
+    """Bulk-build column metadata for all registered tables.
+
+    Column types are read from the authoritative ``table_columns`` store (captured at
+    registration), NOT from a live catalog — so ``conn`` is unused and may be None on a
+    native engine with no Trino. The parameter is kept for call-site symmetry.
 
     Args:
-        conn: Trino connection.
+        conn: Trino connection, or None (unused — types come from the store).
         registered_tables: list of dicts from table_repo.list_all().
         sources: {source_id: source_dict} for catalog name lookup.
         physical_table_map: {virtual_table_name: physical_table_name} for

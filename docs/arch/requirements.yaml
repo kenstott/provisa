@@ -6077,13 +6077,12 @@
     rationale: Three-phase vector search with native cosine_similarity UDF translation and non-native
       fallback is more comprehensive than Hasura's nascent vector support and not in Trino/Dremio.
 - id: REQ-673
-  status: in-progress
+  status: complete
   since: "2026-07"
   group: 4. Source Connectors
   category: Cost Statistics
   priority: SHOULD
   type: structural
-  target: '2026-Q4'
   description: >-
     Connector cardinality capability — cardinality(source, table) -> Estimate{value,
     exact, method}. A source may expose a CHEAP volume metric so a caller can size a
@@ -9771,6 +9770,7 @@
   - tests/unit/test_cypher_label_map.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
+  - tests/integration/test_cypher_endpoint.py
   scenario: 'Given a Cypher CREATE statement with a registered label and scalar properties
 
     When the WriteTranslator processes the statement
@@ -9810,6 +9810,7 @@
   - tests/unit/test_cypher_label_map.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
+  - tests/integration/test_cypher_endpoint.py
   scenario: 'Given a Cypher MATCH-DELETE statement targeting a registered label
 
     When the WriteTranslator processes the statement
@@ -9849,6 +9850,7 @@
   - tests/unit/test_cypher_label_map.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
+  - tests/integration/test_cypher_endpoint.py
   scenario: 'Given a Cypher MATCH-SET statement with multiple property assignments
 
     When the WriteTranslator processes the statement
@@ -9914,6 +9916,8 @@
   - tests/e2e/test_mutations.py
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
+  - tests/integration/test_cypher_endpoint.py
+  - provisa-ui/e2e/cypher-write-affected-rows.spec.ts
   scenario: 'Given a successful Cypher CREATE statement executed via the write endpoint
 
     When the response is returned to the client
@@ -18540,6 +18544,9 @@
     status: ahead
     rationale: Trino non-SQL cache row payload encryption via EncryptionService protects cached data at
       the application layer — beyond what Trino's native caching offers.
+  tests:
+  - tests/unit/test_redirect_encryption.py
+  - tests/integration/test_redirect_encryption_minio.py
 - id: REQ-688
   status: complete
   since: "2026-07"
@@ -18582,6 +18589,7 @@
   - provisa/audit/query_log.py
   - provisa/core/schema_org.py
   tests:
+  - tests/unit/test_audit_query_encryption.py
   - tests/integration/test_audit_encryption.py
   integration_test: required
   integration_test_reason: Audit log encryption requires real PG instance and authorized admin read path
@@ -19047,6 +19055,9 @@
   e2e: true
   e2e_reason: The configurable port for adbc_connect() can only be verified by establishing a real Arrow
     Flight connection to a server running on a non-default port, which requires a live stack.
+  unit_test: false
+  unit_test_reason: The unit test lives in the provisa-client package (provisa-client/tests/test_adbc.py),
+    which ships and is versioned independently of the server; the repo tests/unit/ scan does not cover it.
   tests:
   - provisa-client/tests/test_adbc.py
 - id: REQ-712
@@ -22285,6 +22296,8 @@
   - REQ-814
   stakeholders:
   - ops
+  tests:
+  - tests/unit/test_infra_requirements.py
 - id: REQ-816
   status: complete
   since: "2026-07"
@@ -22618,13 +22631,12 @@
   - REQ-822
   - REQ-565
 - id: REQ-825
-  status: in-progress
+  status: complete
   since: "2026-07"
   group: 6. Execution, Routing, Caching & Performance
   category: Execution & Routing
   priority: SHOULD
   type: structural
-  target: 2026-Q4
   description: 'The Provisa FederationEngine is a pluggable, abstract execution substrate behind a single
     contract. It is one of four primitives composed as a data-flow pipeline: DATASOURCES → FEDERATION
     ENGINE → SEMANTIC LAYER → EXECUTION PIPELINE. DATASOURCES are external systems with a capability profile.
@@ -22699,13 +22711,12 @@
   - REQ-826
   - REQ-830
 - id: REQ-826
-  status: in-progress
+  status: complete
   since: "2026-07"
   group: 6. Execution, Routing, Caching & Performance
   category: Caching
   priority: SHOULD
   type: behavioral
-  target: 2026-Q4
   description: 'Federation strategy and freshness management — the datasources → federation engine arrow
     of REQ-825. The binding between a datasource table and the engine is a FEDERATION STRATEGY: the method
     by which that source joins the engine''s unified surface. federate(datasource, table) resolves each
@@ -22799,13 +22810,12 @@
   - REQ-827
   - REQ-830
 - id: REQ-827
-  status: in-progress
+  status: complete
   since: "2026-07"
   group: 6. Execution, Routing, Caching & Performance
   category: Execution & Routing
   priority: MUST
   type: constraint
-  target: 2026-Q4
   description: 'Governance-parity conformance across federation engines. Any engine admitted to the FederationEngine
     contract (REQ-825) MUST produce byte-identical governed results — RLS filtering, column masking, relationship-join
     enforcement, and row/aggregate output — as the reference engine for the same query and same identity.
@@ -22836,6 +22846,7 @@
   tests:
   - tests/unit/test_conformance.py
   - tests/integration/test_governance_integration.py
+  - tests/integration/test_governance_parity_e2e.py
   scenario: 'Given a fixed golden dataset and an identity with role "analyst" subject to RLS and column
     masking
 
@@ -23150,19 +23161,32 @@
   type: constraint
   since: 2026-07
   description: >-
-    Tenant control plane isolation is enforced via PostgreSQL SET search_path
-    to org_<org_id> schema per connection in state.org_db. No cross-org queries
-    are possible without explicitly connecting to a different tenant database
-    or changing org_id via schema recreation.
+    Tenant control-plane isolation is a CONTRACT, not a mechanism: within a
+    tenant-scoped control-plane connection (state.org_db bound to one org_id),
+    no other org's rows are reachable — reads and writes see only the connecting
+    org's data, and cross-org access requires explicitly binding a different org.
+    The ENFORCEMENT MECHANISM is backend-relative, selected by the control-plane
+    store's dialect and never assumed to be PostgreSQL-specific: PostgreSQL
+    realizes it with a per-connection SET search_path to org_<org_id> plus a
+    per-org role (physical schema isolation); single-tenant portable backends
+    (SQLite / MySQL bootstrapped from schema_org) realize it as the sole default
+    schema of a per-tenant database; a backend offering row-security may realize
+    it via a tenant predicate. The invariant is identical across backends — only
+    the realization differs, and unavailable mechanisms degrade explicitly, never
+    silently (REQ-889).
   use_case: >-
-    Provides cryptographic isolation (schema-level, not row-level) for per-tenant
-    state without requiring row-level filtering logic on every query. Each tenant
-    connection automatically sees only its own schema.
+    Per-tenant state is isolated without row-level filtering logic on every query,
+    on whatever control-plane store the deployment chooses. The mechanism is chosen
+    from the backend's capabilities (PG schema+role, single-tenant default schema,
+    or row-security predicate) so the same isolation guarantee holds when the
+    control-plane store is swapped (REQ-850).
   code:
   - provisa/core/database.py
+  - provisa/core/db.py
   - provisa/api/app.py
   tests:
   - tests/unit/test_org_isolation.py
+  - tests/unit/test_tenant_isolation_contract.py
 - id: REQ-839
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -23273,13 +23297,12 @@
   related_reqs:
   - REQ-840
 - id: REQ-842
-  status: in-progress
+  status: complete
   since: "2026-07"
   group: 4. Source Connectors
   category: Connector Abstraction
   priority: MUST
   type: structural
-  target: "2026-Q3"
   description: >-
     A Connector, indexed by (federation_engine, source_type), encapsulates all
     engine-specific catalog operations — capability(), catalog_add(asset),
@@ -23350,13 +23373,12 @@
   - REQ-842
   - REQ-135
 - id: REQ-844
-  status: in-progress
+  status: complete
   since: "2026-07"
   group: 4. Source Connectors
   category: Materialization Store
   priority: SHOULD
   type: structural
-  target: "2026-Q3"
   description: >-
     materialization_store — materialized (landed physically by ANY write means:
     engine-native CTAS/load, SQLAlchemy upsert, or app-side land; REQ-848) into a
@@ -23424,6 +23446,7 @@
     - provisa/federation/engine.py
   tests:
     - tests/unit/test_federation_materialization.py
+    - tests/integration/test_materialization_store_lifecycle_e2e.py
   related_reqs:
   - REQ-135
   - REQ-158
@@ -23442,13 +23465,12 @@
   - REQ-855
   - REQ-862
 - id: REQ-845
-  status: in-progress
+  status: complete
   since: "2026-07"
   group: 4. Source Connectors
   category: Materialization Store
   priority: SHOULD
   type: behavioral
-  target: "2026-Q3"
   description: >-
     The set of sources served by reactive replicas is engine-relative —
     reactive = { source : reach(source) == land } for the configured
@@ -23472,6 +23494,7 @@
     - provisa/federation/strategy.py
   tests:
     - tests/unit/test_federation_materialization.py
+    - tests/integration/test_materialization_store_lifecycle_e2e.py
   competitive_position:
     status: ahead
     rationale: >-
@@ -23513,13 +23536,12 @@
   - REQ-844
   - REQ-840
 - id: REQ-847
-  status: in-progress
+  status: complete
   since: "2026-07"
   group: 4. Source Connectors
   category: Materialization Store
   priority: MUST
   type: constraint
-  target: "2026-Q3"
   description: >-
     Read-through and write-back discipline. On a pull-through read, a pull
     failure with no fresh cached data is a hard error; serving stale data is
@@ -23537,17 +23559,17 @@
     - provisa/federation/read_through.py
   tests:
     - tests/unit/test_read_through.py
+    - tests/integration/test_materialization_store_lifecycle_e2e.py
   related_reqs:
   - REQ-844
   - REQ-855
 - id: REQ-848
-  status: in-progress
+  status: complete
   since: "2026-07"
   group: 4. Source Connectors
   category: Materialization Store
   priority: SHOULD
   type: structural
-  target: "2026-Q3"
   description: >-
     The cache write face is pluggable — {engine-native CTAS/load, SQLAlchemy
     upsert, app-side land}. It collapses into the federation engine when the
@@ -23566,6 +23588,7 @@
     - provisa/federation/engine.py
   tests:
     - tests/unit/test_federation_materialization.py
+    - tests/integration/test_materialization_store_lifecycle_e2e.py
   related_reqs:
   - REQ-844
 - id: REQ-849
@@ -23635,6 +23658,8 @@
     Given a non-PostgreSQL backend (e.g., SQLite, MySQL) configured as the control-plane store
     When Provisa initializes
     Then init_schema calls metadata.create_all with portable SQLAlchemy types, and org control plane is created without raw Postgres DDL
+  tests:
+  - tests/unit/test_schema_metadata_parity.py
 - id: REQ-851
   status: complete
   group: "11. Platform, Infrastructure & Delivery"
@@ -23661,6 +23686,9 @@
     Given a PostgreSQL backend in multi-tenant mode
     When org context is activated
     Then enter_org_sql returns "SET search_path TO org_<id>"; on SQLite the org file is selected at engine construction.
+  tests:
+  - tests/unit/test_org_isolation.py
+  - tests/unit/test_tenant_isolation_contract.py
 - id: REQ-852
   status: complete
   group: "11. Platform, Infrastructure & Delivery"
@@ -23687,6 +23715,8 @@
     Given a multi-tenant SQLite deployment with org_1 and org_2 database files
     When a query is executed in org_1 context
     Then OrgRouter routes to the org_1 engine; switching org_id requires a new connection.
+  tests:
+  - tests/unit/test_org_router.py
 - id: REQ-853
   status: complete
   group: "11. Platform, Infrastructure & Delivery"
@@ -23742,14 +23772,15 @@
     When the Trino service starts
     Then busybox image is present to support trino-exchange-init initialization
     And stripe-mock is not bundled in the package.
+  tests:
+  - tests/unit/test_release_packaging.py
 - id: REQ-855
-  status: in-progress
+  status: complete
   since: "2026-07"
   group: 4. Source Connectors
   category: Materialization Store
   priority: SHOULD
   type: behavioral
-  target: "2026-Q3"
   description: >-
     materialization_store freshness policy — the ONE centralized freshness gate referenced by
     REQ-845 (reactive replica pull-through) and applicable to REQ-844's view
@@ -23796,6 +23827,7 @@
     - provisa/federation/freshness_gate.py
   tests:
     - tests/unit/test_freshness_gate.py
+    - tests/integration/test_materialization_store_lifecycle_e2e.py
   related_reqs:
     - REQ-844
     - REQ-845
@@ -24165,6 +24197,8 @@
     - REQ-028
     - REQ-863
     - REQ-866
+  tests:
+  - tests/unit/test_routing.py
 - id: REQ-866
   status: complete
   since: "2026-07"
@@ -24495,13 +24529,12 @@
     - REQ-260
     - REQ-282
 - id: REQ-874
-  status: in-progress
+  status: complete
   since: "2026-07"
   group: "4. Source Connectors"
   category: Materialization Store
   priority: SHOULD
   type: behavioral
-  target: "2026-Q4"
   description: >-
     Delta fetch for materialization_store REPLICA incremental refresh: an INCREMENTAL RELOAD
     strategy for datasets whose federation strategy is MATERIALIZED (REQ-826) — data is
@@ -24572,6 +24605,7 @@
     - provisa/materialization_store/
   tests:
     - tests/unit/test_delta.py
+    - tests/integration/test_materialization_store_lifecycle_e2e.py
   scenario: |
     Given a MATERIALIZED-strategy dataset with a monotonic watermark, a delta query authored with
     $wm and {{fields}} placeholders, and a replica in a mutable relational store
@@ -24590,13 +24624,12 @@
     - REQ-282
     - REQ-845
 - id: REQ-875
-  status: in-progress
+  status: complete
   since: "2026-07"
   group: "6. Execution, Routing, Caching & Performance"
   category: Query Routing
   priority: SHOULD
   type: behavioral
-  target: "2026-Q4"
   description: >-
     Cheap-count route: a count(*)-shaped query over an UNMATERIALIZED source that
     exposes an EXACT native count (REQ-673 cardinality capability) is routed to the
@@ -25445,6 +25478,7 @@
     - provisa/federation/connector.py
     - provisa/federation/engine.py
   tests:
+    - tests/unit/test_postgres_federation_engine.py
     - tests/integration/test_postgres_federation_engine_e2e.py
     - tests/integration/test_duckdb_federation_engine_e2e.py
   e2e: true
@@ -25604,3 +25638,473 @@
     - REQ-893
     - REQ-894
     - REQ-895
+- id: REQ-898
+  status: proposed
+  target: "2026-Q4"
+  group: "3. Federation Engines & Data Sources"
+  category: PostgreSQL Deployment
+  priority: SHOULD
+  type: infrastructure
+  description: >-
+    Curated, prebuilt catalog of PostgreSQL extensions (sqlite_fdw, parquet_fdw/parquet_s3_fdw, 
+    pg_lake, pg_duckdb, pg_analytics) indexed by pinned PostgreSQL major version and target OS/platform 
+    (manylinux, macOS, Windows), layered onto the pip-installed pgserver runtime to avoid runtime 
+    build dependencies.
+  use_case: >-
+    Prebuilt extension artifacts eliminate runtime compilation and external build toolchains, 
+    preserving pgserver's "no root, pip install" deployment model. Enables sqlite_fdw and Iceberg-oriented 
+    FDWs (pg_lake, pg_duckdb, pg_analytics) to work out-of-box with Provisa's Postgres federation engine 
+    without requiring libsqlite3, libarrow/libparquet, or DuckDB compilation by the end-user.
+  related_reqs:
+    - REQ-893
+    - REQ-894
+    - REQ-895
+- id: REQ-899
+  status: proposed
+  target: "2026-Q4"
+  group: "4. Source Connectors"
+  category: Federation Engine Abstraction
+  priority: MAY
+  type: structural
+  description: >-
+    Catalog of DuckDB extensions eligible to back a federation-source connector,
+    each providing either a relation-producing table function usable as CREATE VIEW
+    ... SELECT * FROM fn(...), or an ATTACH catalog of tables. Only these two
+    mechanisms qualify; scalar/index-only extensions are excluded.
+  use_case: >-
+    Enables connector authors to identify which DuckDB extensions can materially
+    contribute federated sources via scanner table-function views or ATTACH catalogs,
+    excluding pure utility/scalar/index extensions that cannot produce relations.
+  notes: |
+    CORE extensions (stable, duckdb.org/docs/stable/core_extensions):
+    - postgres — ATTACH + TF (postgres_scan, postgres_query)
+    - mysql — ATTACH + TF (mysql_scan, mysql_query)
+    - sqlite — ATTACH + TF (sqlite_scan) [IMPLEMENTED: DuckDBSqliteConnector]
+    - ducklake — ATTACH
+    - motherduck — ATTACH
+    - unity_catalog — ATTACH
+    - iceberg — ATTACH + TF (iceberg_scan, iceberg_metadata)
+    - odbc — ATTACH + TF
+    - delta — TF (delta_scan)
+    - lance — TF (lance_scan)
+    - vortex — TF (vortex file scan)
+    - avro — TF (read_avro)
+    - parquet — TF (read_parquet) [IMPLEMENTED: DuckDBParquetConnector]
+    - json — TF (read_json / read_json_auto)
+    - excel — TF (read_xlsx)
+    - spatial — TF (ST_Read, GDAL/OGR)
+    - httpfs — TF (remote file scans; composes with parquet/json/csv)
+    - azure — TF (Azure blob scans)
+    - csv (built-in read_csv_auto) [IMPLEMENTED: DuckDBCsvConnector]
+
+    COMMUNITY extensions (duckdb.org/community_extensions, v1.5.x):
+    - bigquery — ATTACH + TF (bigquery_scan)
+    - firebird — ATTACH + TF
+    - hive_metastore — ATTACH
+    - delta_classic — ATTACH
+    - altertable — ATTACH + TF
+    - airport — ATTACH + TF (Arrow Flight)
+    - duckdb_delta_sharing / duck_delta_share — TF (Delta Sharing scan)
+    - adbc / adbc_scanner — TF (ADBC source scan)
+    - gsheets — TF (Google Sheets scan)
+    - gcs — TF (GCS file scans)
+    - fire_duck_ext — TF (Firestore query)
+    - nanoarrow — TF (Arrow IPC scan)
+    - h5db / anndata / duckdb_zarr / dbn / dta / dicom / fit / duckhts — TF (file-format scanners)
+    - crawler / http_client / dns — TF (web/network scans)
+    - fsquery / hostfs / gh — TF (filesystem-as-table scans)
+    - eurostat / gaggle / blockduck / brew / aixchess — TF (domain data-source scans)
+    - duckpgq — TF (graph query scans)
+
+    Excluded (do not qualify): ai, llm, flock, crypto, inet, icu, encodings, fts, vss, aws, quack, autocomplete (scalar/index-only, no relation producers).
+    Excluded (already covered by a superior native path): erpl_web (OData/GraphQL/REST) and salesforce
+    (REST/Bulk API) — the API-ecosystem surfaces they target are already reached via Provisa's
+    non-reachable-source path (openapi/graphql_remote LANDed into the materialization store), which carries
+    our caching and governance; a raw scanner would bypass both and is redundant.
+  code:
+    - provisa/federation/connector.py
+    - provisa/federation/engine.py
+  related_reqs:
+    - REQ-893
+    - REQ-894
+    - REQ-895
+    - REQ-888
+    - REQ-840
+- id: REQ-900
+  status: proposed
+  target: "2026-Q4"
+  group: "3. Federation Engines & Data Sources"
+  category: PostgreSQL Deployment
+  priority: MUST
+  type: infrastructure
+  description: >-
+    Postgres federation engine's curated v1 connector set: prebuilt FDW/extension bindings for csv, sqlite,
+    sqlserver, oracle, duckdb, and parquet/iceberg/delta_lake (via pg_duckdb), indexed by (pg_major, platform, libc)
+    triple and layered onto the embedded pgserver runtime. Catalog resolution fails closed: no artifact for
+    a triple means the source is unreachable on that deployment (no silent fallback).
+  use_case: >-
+    A deployed Postgres federation engine connects to CSV (file_fdw), SQLite (sqlite_fdw), SQL Server (tds_fdw),
+    Oracle (oracle_fdw), and lakehouse sources (parquet/iceberg/delta via pg_duckdb) without runtime build or
+    external toolchain dependencies. The fixed v1 set avoids sprawl; future connectors (mysql_fdw, mongo_fdw)
+    or write-heavy operations route via separate engines or deferred tiers.
+  notes: >-
+    V1 connector set: csv→file_fdw (core, read-only), sqlite→pgspider/sqlite_fdw (read/write; libsqlite3),
+    sqlserver→tds_fdw (read-only; freetds), oracle→laurenz/oracle_fdw (read/write; Instant Client supplied
+    by deployment, not redistributable), parquet/iceberg/delta→pg_duckdb (read; object-store S3/GCS/Azure),
+    duckdb→pg_duckdb ATTACH of a local .duckdb file (READ-WRITE; local files default to read-write, add
+    READ_ONLY to restrict). pg_duckdb does NOT require MotherDuck — MotherDuck is an optional cloud add-on
+    only (off unless duckdb.enable_motherduck is called); the v1 connector set is fully local/embedded.
+    pg_duckdb constraints: one writable ATTACH per transaction; ATTACH definitions do not survive session,
+    so the engine re-ATTACHes on each connection startup. Parquet write and MinIO endpoint control deferred
+    — pg_duckdb covers read; revisit parquet_s3_fdw only if write or fine S3 control needed. Each extension
+    built per (pg_major, platform, libc) triple as a separate pip-installable wheel; absence of an artifact
+    for a deployment's triple makes the source unreachable — no degradation, no fallback to DuckDB engine.
+  code:
+    - provisa/federation/connector.py
+    - provisa/federation/engine.py
+    - docs/arch/fdw_catalog.md
+  tests:
+    - tests/integration/test_postgres_federation_engine_e2e.py
+  related_reqs:
+    - REQ-893
+    - REQ-894
+    - REQ-895
+    - REQ-898
+    - REQ-899
+- id: REQ-901
+  status: complete
+  since: "2026-07"
+  group: "3. Federation Engines & Data Sources"
+  category: PostgreSQL Deployment
+  priority: MUST
+  type: infrastructure
+  description: >-
+    pg_duckdb v1.0.0 (bundles DuckDB v1.3.2) is the compatible build for embedded PostgreSQL 16.2;
+    later pg_duckdb versions require backend symbols absent from PG16.2. Extension built from pg source
+    against matching major version and layered into pgserver install via build script.
+  use_case: >-
+    Pinned PostgreSQL 16.2 in pgserver 0.1.4 runtime requires pg_duckdb v1.0.0 to avoid symbol resolution
+    failures at extension load. Build process (scripts/build_pg_duckdb.sh) compiles against PG16 source,
+    and the resulting .dylib/.so is dropped alongside other core FDWs (file_fdw, postgres_fdw).
+  notes: >-
+    Build constraint: pg_duckdb v1.0.0 only; later HEAD versions introduce ExecCheckOneRelPerms backend
+    symbol not present in PG16.2. pg_duckdb requires shared_preload_libraries='pg_duckdb' in PostgreSQL
+    config and rejects NUMERIC columns with unset precision.
+  code:
+    - scripts/build_pg_duckdb.sh
+    - provisa/federation/engine.py
+  tests:
+    - tests/integration/test_embedded_pg_duckdb_engine_e2e.py
+  related_reqs:
+    - REQ-900
+    - REQ-898
+- id: REQ-902
+  status: in-progress
+  target: "2026-Q4"
+  group: "3. Federation Engines & Data Sources"
+  category: Query Compilation
+  priority: MUST
+  type: constraint
+  description: >-
+    pg_duckdb's transparent execution path cannot emit PostgreSQL 16 nested-JSON syntax (JSON_OBJECT
+    with colon separators); nested-relationship GraphQL federation through pg_duckdb requires a
+    pg_duckdb-specific JSON emission in the transpiler to collapse JSON_OBJECT into flat json_build_object.
+  use_case: >-
+    Governed federation of nested GraphQL pipelines (with JOIN-enforced relationships) through pg_duckdb.
+    Today pg_duckdb engine handles flat federated joins and governance filtering; nested-relationship
+    queries route to other engines until JSON output is adapted.
+  scenario: |
+    Given a federated query with nested relationships (e.g., author.posts)
+    When the planner selects pg_duckdb as the federation engine
+    Then the transpiler emits DuckDB-compatible json_build_object syntax instead of PG16 JSON_OBJECT
+    And the nested objects are correctly formed in the output.
+  notes: >-
+    Limitation is DuckDB-specific: PG emits JSON_OBJECT(k : v RETURNING json); DuckDB rejects colon
+    syntax and requires json_build_object(k, v). pg_duckdb maps PG syntax transparently for most
+    operations but not for nested JSON construction in the output layer. Workaround: route nested
+    queries to non-pg_duckdb engines or defer nested-relationship federation to future version.
+  code:
+    - provisa/federation/engine.py
+  related_reqs:
+    - REQ-900
+    - REQ-896
+- id: REQ-903
+  status: complete
+  since: "2026-07"
+  group: "3. Federation Engines & Data Sources"
+  category: PostgreSQL Deployment
+  priority: MUST
+  type: behavioral
+  description: >-
+    Postgres federation engines validate connector availability and fail explicitly when sources
+    require unavailable connectors. Sources whose connector is unavailable resolve to UnreachableSource
+    (explicit error, never silent fallback). Superseded by REQ-904 (probe-based discovery with
+    runtime functional validation).
+  use_case: >-
+    Operators need clear diagnostics when sources are unreachable due to missing connectors,
+    rather than silent downgrade to alternative engines.
+  scenario: |
+    Given a source requiring an unavailable connector
+    When query planning occurs
+    Then the source resolves to UnreachableSource with explicit error.
+  code:
+    - provisa/federation/engine.py
+  tests:
+    - tests/unit/test_federation_engine.py
+  related_reqs:
+    - REQ-900
+    - REQ-901
+    - REQ-904
+- id: REQ-904
+  status: complete
+  since: "2026-07"
+  group: "3. Federation Engines & Data Sources"
+  category: PostgreSQL Deployment
+  priority: MUST
+  type: behavioral
+  description: >-
+    Federation connectors are self-describing prebuilt definitions; each has an async probe()
+    reporting FUNCTIONAL truth (FDW/extension actually loads/works), not mere presence.
+    build_pg_engine() registers all prebuilt Postgres connectors as candidates in precedence
+    order (postgres_fdw; pg_duckdb_csv preferred over file_fdw; pg_duckdb_parquet; pg_duckdb_json).
+    At startup, FederationEngine.discover(fetch, disabled=frozenset(keys)) probes each candidate
+    and sets the active set: a connector struck by the override (key in disabled) is not probed;
+    every other candidate is probed and only kept if available; per source_type the first available
+    candidate wins (richer preferred, stock fallback). A source with no available connector is
+    UnreachableSource (explicit, no silent fallback). The override config is now only a strike-list,
+    not a presence declaration. Runtime probe correctly reports pg_duckdb unavailable until preloaded
+    (shared_preload_libraries check), where a static flag would get it wrong.
+  use_case: >-
+    Runtime discovery ensures only functionally available connectors are registered, avoiding
+    silent failures from misconfigured deployments. The strike-list override provides fallback
+    control without requiring static presence declarations.
+  scenario: |
+    Given a FederationEngine with pg_duckdb not in shared_preload_libraries
+    When discover() is called
+    Then pg_duckdb's probe reports unavailable
+    And CSV sources fall back to file_fdw
+    And post-preload, discover() re-probes and activates pg_duckdb.
+  code:
+    - provisa/federation/connector.py
+    - provisa/federation/engine.py
+  tests:
+    - tests/unit/test_federation_engine.py
+    - tests/integration/test_embedded_pg_duckdb_engine_e2e.py
+  related_reqs:
+    - REQ-903
+- id: REQ-905
+  status: complete
+  since: "2026-07"
+  group: "3. Federation Engines & Data Sources"
+  category: Query Execution
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Cost-based promotion of VIRTUAL/SCAN sources to MATERIALIZED when the source connector cannot
+    push down row-reducing operators (filter/aggregate) the query requires, and the estimated scan
+    size exceeds the threshold (default 1,000,000 rows). Promoted sources delegate reduction to the
+    engine store, amortized across the freshness TTL. UNKNOWN cardinality never promotes (fail-open).
+  use_case: >-
+    When source connectors lack required row-reducing pushdown capability but scans are large,
+    promoting to MATERIALIZED allows the engine store (with full pushdown) to handle reduction
+    efficiency, amortizing the cost across the source's freshness window. Join-only gaps do not
+    promote (non row-reducing).
+  scenario: |
+    Given a federated query with row-reducing operators (filter/aggregate) over a VIRTUAL/SCAN source
+    When the source connector cannot push down these operators
+    And the estimated row count >= 1,000,000
+    Then the source is promoted to MATERIALIZED
+    And the engine store handles the reduction, amortized across the TTL
+    And UNKNOWN cardinality does not trigger promotion.
+  code:
+    - provisa/federation/promote.py
+    - provisa/federation/strategy.py
+    - provisa/federation/plan.py
+  related_reqs:
+    - REQ-826
+  tests:
+    - tests/unit/test_promote.py
+- id: REQ-906
+  status: complete
+  since: "2026-07"
+  group: "3. Federation Engines & Data Sources"
+  category: Source Connectors
+  priority: SHOULD
+  type: structural
+  description: >-
+    Seven DuckDB community-extension federation connectors implemented: MSSQL, MongoDB, Snowflake, BigQuery,
+    Firebird, Google Sheets (gsheets), and Airport. Each connector references an external source via ATTACH
+    mechanism and includes a load-only startup probe that verifies the extension loads and registers its
+    scanner/attach symbol without opening a live connection to a source.
+  use_case: >-
+    Extends federation to support additional cloud and enterprise source types (MSSQL, MongoDB, Snowflake,
+    BigQuery) plus specialty connectors (Firebird, Google Sheets, Arrow Flight via Airport), each verified
+    at startup via extension probe to ensure engine capability is installed and reachable offline.
+  code:
+    - provisa/federation/connector.py
+    - provisa/federation/engine.py
+    - provisa/federation/duckdb_extensions.py
+    - provisa/core/models.py
+    - scripts/stage_duckdb_extensions.py
+  scenario: |
+    Given a DuckDB federation engine with community extensions staged into the extension directory
+    When the federation runtime starts
+    Then each of the seven connectors (MSSQL, MongoDB, Snowflake, BigQuery, Firebird, Gsheets, Airport)
+    is probed via LOAD to verify the extension loads and registers its scanner/attach symbol
+    And sources using these connectors can be registered for federation
+    And no live connection is attempted during probe.
+  related_reqs:
+    - REQ-899
+    - REQ-904
+  tests:
+  - tests/unit/test_duckdb_community_connectors.py
+- id: REQ-907
+  status: complete
+  since: "2026-07"
+  group: "3. Federation Engines & Data Sources"
+  category: Source Connectors
+  priority: MUST
+  type: behavioral
+  description: >-
+    SqliteFdwConnector and MysqlFdwConnector enable the embedded/BYO Postgres federation engine
+    to attach SQLite files and remote MySQL servers via sqlite_fdw and mysql_fdw, respectively.
+    Each connector declares runtime_deps (tuple of shared libs tagged system/bundled/operator)
+    documenting the packaging surface; probes verify functional availability at startup.
+  use_case: >-
+    Federation of SQLite file-based data stores (in-place via sqlite_fdw; libsqlite3 system-provided)
+    and remote MySQL databases (via mysql_fdw; libmysqlclient/mariadb-connector-c bundled) extends
+    the Postgres v1 connector set beyond CSV/Parquet/Iceberg, enabling embedded deployments to query
+    across multiple relational sources without data movement.
+  scenario: |
+    Given a source configured with sqlite_fdw (source_type "sqlite", key "sqlite_fdw") or mysql_fdw
+    (source_type "mysql", key "mysql_fdw")
+    When the federation engine initializes
+    Then the connector probes functional availability (sqlite_fdw via loaded FDW, mysql_fdw via probe
+    and library bundling)
+    And if available, the connector attaches the SQLite file (CREATE SERVER OPTIONS(database path) +
+    IMPORT FOREIGN SCHEMA) or remote MySQL (CREATE SERVER + CREATE FOREIGN TABLE IMPORT FOREIGN SCHEMA)
+    And queries route through the attached foreign schema to the source.
+  notes: >-
+    SqliteFdwConnector uses pgspider/sqlite_fdw (read/write); runtime dep = system libsqlite3 (OS-provided).
+    Proven end-to-end: reads demo orders.sqlite through the real compiler pipeline.
+    MysqlFdwConnector uses mysql_fdw; runtime dep = libmysqlclient/mariadb-connector-c (must be bundled).
+    Connector wired and probe-gated; load-on-macOS + live-MySQL federation not yet proven — probe gates
+    discover() reporting unavailable until functional. Each Connector declares runtime_deps in the
+    prebuilt definition.
+  code:
+    - provisa/federation/connector.py
+    - provisa/federation/engine.py
+  tests:
+    - tests/integration/test_embedded_pg_sqlite_fdw_e2e.py
+    - tests/unit/test_fdw_connectors.py
+  related_reqs:
+    - REQ-900
+    - REQ-901
+    - REQ-904
+- id: REQ-908
+  status: complete
+  since: "2026-07"
+  group: "3. Federation Engines & Data Sources"
+  category: Source Connectors
+  priority: MUST
+  type: behavioral
+  description: >-
+    PgDuckdbIcebergConnector reads Apache Iceberg tables in-place via pg_duckdb's iceberg_scan
+    (DuckDB iceberg extension) inside the stock embedded Postgres. Extension is STATIC-linked into
+    libduckdb (aws-sdk-cpp, avro-c, roaring) with no extra runtime dylib; build requires USE_MERGED_VCPKG_MANIFEST=1
+    and iceberg pinned to branch v1.3-ossivalis.
+  use_case: >-
+    Federation of Apache Iceberg lakehouse tables stored on S3/GCS/Azure without data movement.
+    Iceberg's time-travel and ACID guarantees are preserved through the query; governance predicates
+    filter rows at the scan level before federation.
+  scenario: |
+    Given a source configured with pg_duckdb_iceberg (source_type "iceberg", key "pg_duckdb_iceberg")
+    When the federation engine initializes
+    Then the connector probes that iceberg_scan is registered (pg_duckdb without iceberg lacks the function,
+    so probes correctly disable it)
+    And if available, queries emit iceberg_scan('<root>', allow_moved_paths := true)
+    And governance predicates are pushed down into the scan
+    And results are correctly federated with other sources.
+  notes: >-
+    pg_duckdb is built (via vcpkg) to include the iceberg extension; aws-sdk-cpp[sso,sts,identity-management]
+    + avro-c + roaring are STATIC-linked into libduckdb (no extra runtime dylib; libduckdb links only
+    macOS system frameworks). Build requires USE_MERGED_VCPKG_MANIFEST=1 (DuckDB generates merged
+    extension vcpkg manifest and runs vcpkg install) + unshallowed vcpkg for pinned baseline + CMAKE_POLICY_VERSION_MINIMUM=3.5,
+    iceberg pinned to branch v1.3-ossivalis. Proven end-to-end: iceberg_scan reads a real pyiceberg-generated
+    Iceberg table on embedded PG 16.2 with governance predicate. Fixed globally: patched conda's incomplete
+    aws-sdk-cpp (missing sso) cmake config hard-erroring unrelated CMake builds; /opt/miniconda3/lib/cmake/AWSSDK/AWSSDKConfig.cmake
+    now graceful on missing components.
+  code:
+    - provisa/federation/connector.py
+    - provisa/federation/engine.py
+    - scripts/build_pg_duckdb.sh
+  tests:
+    - tests/integration/test_embedded_pg_duckdb_iceberg_e2e.py
+    - tests/unit/test_pg_duckdb_iceberg_connector.py
+  related_reqs:
+    - REQ-900
+    - REQ-901
+    - REQ-904
+- id: REQ-909
+  status: complete
+  since: "2026-07"
+  group: "4. Source Connectors"
+  category: Direct-Route Dialect Expansion
+  priority: SHOULD
+  type: structural
+  description: >-
+    Generic SQLAlchemy fallback driver provides direct-route write capability for any source type
+    with a SQLAlchemy dialect, without requiring a bespoke async driver. Writable sources are the
+    intersection of {has_driver} AND {sqlglot_write_dialect}, where has_driver now includes the
+    SQLAlchemy fallback when no native driver exists.
+  use_case: >-
+    Broadens the writable RDBMS set on the direct route without per-source driver implementations.
+    Any SQLAlchemy dialect (whose DBAPI is installed) + sqlglot write dialect support enables writes
+    to that source type without a native async driver.
+  code:
+    - provisa/executor/writable.py
+    - provisa/executor/drivers/sqlalchemy_driver.py
+    - provisa/executor/drivers/registry.py
+    - provisa/federation/connector.py
+    - provisa/core/models.py
+    - provisa/api/app.py
+  related_reqs:
+    - REQ-229
+    - REQ-550
+  tests:
+  - tests/unit/test_writable.py
+  - tests/unit/test_drivers.py
+- id: REQ-910
+  status: complete
+  since: "2026-07"
+  group: "4. Source Connectors"
+  category: Multi-Route Write Dispatch
+  priority: MUST
+  type: behavioral
+  description: >-
+    Preference-ordered write-path resolution routes mutations across three tiers: NATIVE (bespoke
+    async driver, direct), SQLALCHEMY (generic fallback driver, direct), and ENGINE (federation
+    engine writes upstream via a write-capable connector). NATIVE and SQLALCHEMY require both a
+    direct driver and SQLGlot write dialect; ENGINE requires only the connector's Capability.write.
+    ENGINE is the only route that reaches sources with no direct driver and no SQLGlot dialect
+    (e.g., NoSQL sources exposed as writable relations by their connector).
+  use_case: >-
+    Enables mutation routing to any writable source regardless of per-source driver availability or
+    SQLGlot dialect support. Maximizes write coverage by cascading through direct routes (native
+    first, then SQLAlchemy) before falling back to engine-routed mutations through connectors.
+  scenario: |
+    Given a federation engine with connectors for multiple source types (postgresql, sqlite, cassandra)
+    When resolve_write_path is called for each source with the engine
+    Then postgresql returns NATIVE (native asyncpg driver + dialect available)
+    And sqlite returns SQLALCHEMY (no native driver, SQLAlchemy fallback + dialect available)
+    And cassandra returns ENGINE (no direct driver/dialect, only connector write=True)
+    And if engine is None, only NATIVE and SQLALCHEMY remain as possible routes
+  code:
+    - provisa/executor/writable.py
+    - provisa/executor/drivers/registry.py
+  tests:
+    - tests/unit/test_writable.py
+  related_reqs:
+    - REQ-909
+    - REQ-842
+    - REQ-229

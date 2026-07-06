@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS sources (
     dialect       TEXT NOT NULL DEFAULT '',
     cache_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     cache_ttl     INTEGER,
+    prefer_materialized BOOLEAN NOT NULL DEFAULT FALSE,  -- force MATERIALIZED federation for this source's tables
     gql_naming_convention TEXT,
     path          TEXT  -- file path or URL for file-based sources (csv, parquet, sqlite)
     -- password never stored; resolved at runtime via secrets provider
@@ -55,6 +56,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     alias       TEXT,
     description TEXT,
     cache_ttl   INTEGER,
+    prefer_materialized BOOLEAN,  -- NULL = inherit source; overrides federation strategy to MATERIALIZED
     gql_naming_convention TEXT,
     watermark_column TEXT,
     UNIQUE (source_id, schema_name, table_name)
@@ -103,12 +105,14 @@ DO $$ BEGIN
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'domain';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_enabled BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS prefer_materialized BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS path TEXT;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS allowed_domains TEXT[] NOT NULL DEFAULT '{}';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS mapping JSONB NOT NULL DEFAULT '{}';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cdc JSONB;  -- REQ-824: source-level CDC transport
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS prefer_materialized BOOLEAN;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS column_presets JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;

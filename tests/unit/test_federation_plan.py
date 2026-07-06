@@ -12,8 +12,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from provisa.core.models import Source, SourceType
 from provisa.federation.engine import build_duckdb_engine, build_trino_engine
+from provisa.federation.materialization import InvalidMaterializationBackend
 from provisa.federation.plan import Route, Strategy, build_execution_plan
 
 
@@ -98,3 +101,42 @@ def test_prep_respects_per_source_staleness():
     api2 = _src("a2", SourceType.mongodb)
     plan = build_execution_plan([api1, api2], build_trino_engine(), lambda sid: sid == "a1")
     assert [p.source_id for p in plan.prep] == ["a1"]  # only the stale one
+
+
+# ---- prefer_materialized override (REQ-826 extension) -----------------------
+
+
+def test_prefer_materialized_forces_a_live_source_to_the_store():
+    # Trino would reach postgres live (VIRTUAL); the override lands it into a postgres backend.
+    pg = _src("pg", SourceType.postgresql)
+    plan = build_execution_plan(
+        [pg],
+        build_trino_engine(),
+        _always_stale,
+        prefer_materialized_of=lambda sid: sid == "pg",
+        materialization_backend="postgresql",
+    )
+    assert [p.source_id for p in plan.prep] == ["pg"]
+    assert plan.prep[0].strategy is Strategy.MATERIALIZED
+    assert plan.route is Route.ENGINE  # no longer a single live source
+
+
+def test_prefer_materialized_without_a_backend_fails_loud():
+    pg = _src("pg", SourceType.postgresql)
+    with pytest.raises(InvalidMaterializationBackend):
+        build_execution_plan(
+            [pg], build_trino_engine(), _never_stale, prefer_materialized_of=lambda _sid: True
+        )
+
+
+def test_prefer_materialized_rejects_backend_engine_cannot_read_back():
+    # Trino has no ATTACH connector for a raw-file backend → land-into-land regress.
+    pg = _src("pg", SourceType.postgresql)
+    with pytest.raises(InvalidMaterializationBackend):
+        build_execution_plan(
+            [pg],
+            build_trino_engine(),
+            _never_stale,
+            prefer_materialized_of=lambda _sid: True,
+            materialization_backend="csv",
+        )

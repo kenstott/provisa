@@ -41,7 +41,9 @@ from provisa.federation.engine import UnreachableSource
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
+    from provisa.federation.cardinality import Estimate
     from provisa.federation.engine import FederationEngine
+    from provisa.federation.promote import PushdownDemand
 
 
 class Strategy(str, Enum):  # REQ-826
@@ -81,13 +83,23 @@ _MATERIALIZE_ONLY = frozenset(
 
 
 def federate(
-    source: Source, engine: FederationEngine, *, prefer_materialized: bool = False
+    source: Source,
+    engine: FederationEngine,
+    *,
+    prefer_materialized: bool = False,
+    demand: PushdownDemand | None = None,
+    estimate: Estimate | None = None,
 ) -> Strategy:
     """Resolve a source's federation strategy on the given engine (REQ-826).
 
     ``prefer_materialized`` forces MATERIALIZED for a source that could federate live but is
     deliberately cached for latency. A source the engine can neither attach/scan nor
     materialize is rejected as unreachable (REQ-841).
+
+    ``demand`` + ``estimate`` enable COST-BASED promotion: a VIRTUAL/SCAN source whose
+    connector cannot push down a reducing operator this query needs, and whose scan is
+    known-large, is promoted to MATERIALIZED (see promote.should_promote). Both must be
+    supplied to arm promotion; absent them, resolution is capability-only as before.
     """
     source_type = source.type.value
     connector = engine.connectors.get(source_type)
@@ -96,7 +108,13 @@ def federate(
         if connector.mechanism is Mechanism.LAND:
             return Strategy.MATERIALIZED  # engine lands it into its own reachable store
         # ATTACH: a file/object type is a SCAN view; a live source is VIRTUAL.
-        return Strategy.SCAN if source_type in _SCANNABLE else Strategy.VIRTUAL
+        strategy = Strategy.SCAN if source_type in _SCANNABLE else Strategy.VIRTUAL
+        if demand is not None and estimate is not None:
+            from provisa.federation.promote import should_promote
+
+            if should_promote(connector.capability(), demand, estimate):
+                return Strategy.MATERIALIZED  # reachable but weak pushdown on a large scan
+        return strategy
 
     # No connector (or forced): only materializable sources federate via the store.
     if prefer_materialized or source_type in _MATERIALIZE_ONLY:

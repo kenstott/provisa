@@ -30,6 +30,7 @@ type SourceType {
   dialect: String!
   cacheEnabled: Boolean!
   cacheTtl: Int
+  preferMaterialized: Boolean!
   namingConvention: String
   path: String
   allowedDomains: [String!]!
@@ -53,6 +54,7 @@ type RegisteredTableType {
   alias: String
   description: String
   cacheTtl: Int
+  preferMaterialized: Boolean
   namingConvention: String
   watermarkColumn: String
   columns: [TableColumnType!]!
@@ -196,6 +198,8 @@ type Mutation {
   deleteRelationship(id: String!): MutationResult!
   updateSourceCache(sourceId: String!, cacheEnabled: Boolean!, cacheTtl: Int = null): MutationResult!
   updateTableCache(tableId: Int!, cacheTtl: Int = null): MutationResult!
+  updateSourcePreferMaterialized(sourceId: String!, preferMaterialized: Boolean!): MutationResult!
+  updateTablePreferMaterialized(tableId: Int!, preferMaterialized: Boolean = null): MutationResult!
   updateNamingConvention(convention: String!): MutationResult!
   updateSourceNaming(sourceId: String!, namingConvention: String = null): MutationResult!
   updateSourceAllowedDomains(sourceId: String!, allowedDomains: [String!]!): MutationResult!
