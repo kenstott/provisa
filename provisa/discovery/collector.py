@@ -15,11 +15,10 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from typing import Any
 
 import asyncpg
-import trino
 
-from provisa.compiler.introspect import introspect_fk_candidates
 from provisa.compiler.naming import source_to_catalog
 from provisa.otel_compat import get_tracer as _get_tracer
 
@@ -28,6 +27,11 @@ _tracer = _get_tracer(__name__)
 log = logging.getLogger(__name__)
 
 _SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def _escape_literal(value: str) -> str:
+    return value.replace("'", "''")
+
 
 # Requirements: REQ-018, REQ-019, REQ-167, REQ-302, REQ-413
 
@@ -56,32 +60,31 @@ def _validate_ident(value: str) -> str:
     return value
 
 
-def _fetch_column_types(
-    trino_conn: trino.dbapi.Connection,
-    catalog: str,
-    schema: str,
-    table: str,
-) -> list[dict]:
+async def _try_engine_rows(engine: Any, sql: str) -> list | None:
+    """Run a best-effort read through the engine seam; None if the engine/connector
+    can't answer (e.g. no constraint metadata, table not sampleable). One catch point
+    so callers stay blind-except-free."""
+    try:
+        return (await engine.execute_engine(sql)).rows
+    except Exception:
+        return None
+
+
+async def _fetch_column_types(engine: Any, catalog: str, schema: str, table: str) -> list[dict]:
     cat = _validate_ident(catalog)
     _validate_ident(schema)
     _validate_ident(table)
-    cur = trino_conn.cursor()
-    cur.execute(
+    res = await engine.execute_engine(
         f"SELECT column_name, data_type "
         f"FROM {cat}.information_schema.columns "
         f"WHERE table_schema = '{schema}' AND table_name = '{table}' "
         f"ORDER BY ordinal_position"
     )
-    return [{"name": row[0], "type": row[1].lower()} for row in cur.fetchall()]
+    return [{"name": row[0], "type": row[1].lower()} for row in res.rows]
 
 
-def _fetch_samples(
-    trino_conn: trino.dbapi.Connection,
-    catalog: str,
-    schema: str,
-    table: str,
-    columns: list[dict],
-    sample_size: int,
+async def _fetch_samples(
+    engine: Any, catalog: str, schema: str, table: str, columns: list[dict], sample_size: int
 ) -> list[dict]:
     cat = _validate_ident(catalog)
     sch = _validate_ident(schema)
@@ -90,12 +93,11 @@ def _fetch_samples(
     if not col_names:
         return []
     cols_sql = ", ".join(col_names)
-    cur = trino_conn.cursor()
-    try:
-        cur.execute(f"SELECT {cols_sql} FROM {cat}.{sch}.{tbl} LIMIT {int(sample_size)}")
-        rows = cur.fetchall()
-    except Exception as e:
-        log.warning("Failed to sample %s.%s.%s: %s", cat, sch, tbl, e)
+    rows = await _try_engine_rows(
+        engine, f"SELECT {cols_sql} FROM {cat}.{sch}.{tbl} LIMIT {int(sample_size)}"
+    )
+    if rows is None:
+        log.warning("Failed to sample %s.%s.%s", cat, sch, tbl)
         return []
     return [
         {col_names[i]: str(val) if val is not None else None for i, val in enumerate(row)}
@@ -103,8 +105,38 @@ def _fetch_samples(
     ]
 
 
+async def _fetch_fk_candidates(engine: Any, catalog: str, schema: str, table: str) -> list[dict]:
+    """FK candidates from TABLE_CONSTRAINTS + KEY_COLUMN_USAGE, run through the engine seam.
+    Returns {constraint_name, column_name, referenced_table, referenced_column}; empty when the
+    engine/connector doesn't expose constraint metadata."""
+    cat = _validate_ident(catalog)
+    sch = _escape_literal(schema)
+    tbl = _escape_literal(table)
+    rows = await _try_engine_rows(
+        engine,
+        f"SELECT tc.constraint_name, kcu.column_name, "
+        f"ccu.table_name AS referenced_table, ccu.column_name AS referenced_column "
+        f"FROM {cat}.information_schema.table_constraints tc "
+        f"JOIN {cat}.information_schema.key_column_usage kcu "
+        f"  ON tc.constraint_name = kcu.constraint_name "
+        f"JOIN {cat}.information_schema.constraint_column_usage ccu "
+        f"  ON tc.constraint_name = ccu.constraint_name "
+        f"WHERE tc.table_schema = '{sch}' AND tc.table_name = '{tbl}' "
+        f"  AND tc.constraint_type = 'FOREIGN KEY'",
+    )
+    return [
+        {
+            "constraint_name": row[0],
+            "column_name": row[1],
+            "referenced_table": row[2],
+            "referenced_column": row[3],
+        }
+        for row in (rows or [])  # empty when the connector doesn't expose constraint metadata
+    ]
+
+
 async def collect_metadata(  # REQ-018, REQ-019, REQ-167, REQ-302, REQ-413
-    trino_conn: trino.dbapi.Connection,
+    engine: Any,
     pg_conn: asyncpg.Connection,
     scope: str,
     scope_id: str | int | None = None,
@@ -139,9 +171,9 @@ async def collect_metadata(  # REQ-018, REQ-019, REQ-167, REQ-302, REQ-413
         table_metas: list[TableMeta] = []
         for t in tables:
             catalog = source_to_catalog(t["source_id"])
-            columns = _fetch_column_types(trino_conn, catalog, t["schema_name"], t["table_name"])
-            samples = _fetch_samples(
-                trino_conn, catalog, t["schema_name"], t["table_name"], columns, sample_size
+            columns = await _fetch_column_types(engine, catalog, t["schema_name"], t["table_name"])
+            samples = await _fetch_samples(
+                engine, catalog, t["schema_name"], t["table_name"], columns, sample_size
             )
             table_metas.append(
                 TableMeta(
@@ -171,12 +203,13 @@ async def collect_metadata(  # REQ-018, REQ-019, REQ-167, REQ-302, REQ-413
 
 
 async def collect_fk_candidates(  # REQ-018, REQ-413
-    trino_conn: trino.dbapi.Connection,
+    engine: Any,
     pg_conn: asyncpg.Connection,
     scope: str,
     scope_id: str | int | None = None,
 ) -> list:
-    """Return RelationshipCandidate objects derived from FK constraints in Trino information_schema.
+    """Return RelationshipCandidate objects derived from FK constraints, read through the
+    engine seam (the engine's information_schema).
 
     Imported lazily to avoid circular import with analyzer.
     """
@@ -211,7 +244,7 @@ async def collect_fk_candidates(  # REQ-018, REQ-413
     candidates: list[RelationshipCandidate] = []
     for t in tables:
         catalog = source_to_catalog(t["source_id"])
-        fks = introspect_fk_candidates(trino_conn, catalog, t["schema_name"], t["table_name"])
+        fks = await _fetch_fk_candidates(engine, catalog, t["schema_name"], t["table_name"])
         for fk in fks:
             target = table_by_name.get(fk["referenced_table"])
             if target is None:

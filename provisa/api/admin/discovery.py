@@ -69,12 +69,12 @@ async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413
         all_candidates = []
         pool = state.tenant_db
         assert pool is not None
-        trino_conn = state.trino_conn
-        assert trino_conn is not None
+        engine = state.federation_engine
+        assert engine is not None
         async with pool.acquire() as _conn:
             conn = cast(asyncpg.Connection, _conn)
             fk_candidates = await collect_fk_candidates(
-                trino_conn,
+                engine,
                 conn,
                 body.scope,
                 scope_id,
@@ -85,7 +85,7 @@ async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413
             api_key = os.environ.get("ANTHROPIC_API_KEY")
             if api_key:
                 discovery_input = await collect_metadata(
-                    trino_conn,
+                    engine,
                     conn,
                     body.scope,
                     scope_id,
