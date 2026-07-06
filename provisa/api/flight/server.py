@@ -475,8 +475,8 @@ class ProvisaFlightServer(
         except ValueError as exc:
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        trino_conn = getattr(self._state, "trino_conn", None)
-        if trino_conn is None:
+        engine = getattr(self._state, "federation_engine", None)
+        if engine is None:
             raise flight.FlightServerError("Federation engine not connected")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         trino_sql = plan.trino_sql
@@ -486,13 +486,9 @@ class ProvisaFlightServer(
             )  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         def _run() -> list[dict[str, object]]:
-            cursor = trino_conn.cursor()
-            try:
-                cursor.execute(trino_sql, resolved_params or [])
-                cols = [d[0] for d in (cursor.description or [])]
-                return [dict(zip(cols, row, strict=False)) for row in cursor.fetchall()]
-            finally:
-                cursor.close()
+            # On a worker thread — go through the sync engine terminal, not a raw cursor.
+            res = engine.execute_engine_sync(trino_sql, resolved_params or [])
+            return [dict(zip(res.column_names, row, strict=False)) for row in res.rows]
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             raw_rows = pool.submit(_run).result()

@@ -130,6 +130,18 @@ class EngineRuntime:  # REQ-825, REQ-840
             ),
         )
 
+    def execute_engine_sync(self, sql: str, params: list | None = None) -> QueryResult:
+        """SYNCHRONOUS ENGINE terminal — for callers already on a worker thread (Arrow
+        Flight, API-response materialization, OTEL compaction) that must not touch the
+        event loop. Same dispatch as execute_engine, minus the run_in_executor hop, so
+        those paths reach the engine through the abstraction instead of a raw connection."""
+        from provisa.executor.trino import execute_trino
+
+        conn = self._state.trino_conn
+        if conn is None:
+            raise RuntimeError(f"engine {self.engine.name!r} connection not available")
+        return execute_trino(cast("Any", conn), sql, params=params)
+
     async def execute_native(
         self, source_pools: Any, source_id: str, sql: str, params: list | None = None
     ) -> QueryResult:
