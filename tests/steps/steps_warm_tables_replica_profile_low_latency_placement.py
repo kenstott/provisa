@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -253,9 +254,17 @@ def _mock_cursor_req239(count_result=5000):
 
 
 def _mock_trino_req239(cursor):
-    conn = MagicMock()
-    conn.cursor.return_value = cursor
-    return conn
+    """Mock federation engine: async execute_engine delegates to *cursor* and reports fetchone as rows."""
+    engine = MagicMock()
+
+    async def _execute_engine(sql, *args, **kwargs):
+        cursor.execute(sql)
+        result = MagicMock()
+        result.rows = [cursor.fetchone.return_value]
+        return result
+
+    engine.execute_engine = _execute_engine
+    return engine
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +301,7 @@ def step_given_table_exceeds_query_threshold(shared_data: dict[str, Any]) -> Non
     cold_counter = QueryCounter()
     for _ in range(110):
         cold_counter.increment("analytics.cold_table")
-    mgr.check_promotions(cold_counter, cold_conn, threshold=100, max_rows=10_000_000)
+    asyncio.run(mgr.check_promotions(cold_counter, cold_conn, threshold=100, max_rows=10_000_000))
     assert "analytics.cold_table" in mgr.get_warm_tables(), (
         "cold_table must be pre-warmed before the demotion test"
     )
@@ -315,12 +324,14 @@ def step_when_promotion_check_runs(shared_data: dict[str, Any]) -> None:
     conn = shared_data["conn"]
     threshold: int = shared_data["threshold"]
 
-    promoted = mgr.check_promotions(counter, conn, threshold=threshold, max_rows=10_000_000)
+    promoted = asyncio.run(
+        mgr.check_promotions(counter, conn, threshold=threshold, max_rows=10_000_000)
+    )
     shared_data["promoted"] = promoted
 
     # Run demotion pass — tables below threshold should be evicted
     if hasattr(mgr, "check_demotions"):
-        demoted = mgr.check_demotions(counter, conn, threshold=threshold)
+        demoted = asyncio.run(mgr.check_demotions(counter, conn, threshold=threshold))
         shared_data["demoted"] = demoted
     else:
         # Fallback: manually inspect warm tables vs counter to determine demotion

@@ -14,6 +14,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import time
 from unittest.mock import MagicMock
 
@@ -39,13 +40,22 @@ def _mock_cursor(count_result: int = 5000):
 
 
 def _mock_trino(cursor):
-    conn = MagicMock()
-    conn.cursor.return_value = cursor
-    return conn
+    """A mock federation engine whose async ``execute_engine`` delegates to *cursor* (recording SQL via
+    ``cursor.execute``) and reports ``cursor.fetchone`` as result rows — warm-table promotion/demotion
+    goes through ``engine.execute_engine`` (REQ-238/239)."""
+    engine = MagicMock()
+
+    async def _execute_engine(sql, *args, **kwargs):
+        cursor.execute(sql)
+        result = MagicMock()
+        result.rows = [cursor.fetchone.return_value]
+        return result
+
+    engine.execute_engine = _execute_engine
+    return engine
 
 
-@given(
-    "a table whose query count exceeds warm_tables.query_threshold within a refresh interval")
+@given("a table whose query count exceeds warm_tables.query_threshold within a refresh interval")
 def table_exceeding_threshold(shared_data):
     threshold = 100
     hot_table = "my_schema.orders"
@@ -65,8 +75,8 @@ def table_exceeding_threshold(shared_data):
         cold_counter.increment(cold_table)
     pre_cursor = _mock_cursor(count_result=5000)
     pre_conn = _mock_trino(pre_cursor)
-    pre_promoted = mgr.check_promotions(
-        cold_counter, pre_conn, threshold=threshold, max_rows=10_000_000
+    pre_promoted = asyncio.run(
+        mgr.check_promotions(cold_counter, pre_conn, threshold=threshold, max_rows=10_000_000)
     )
     assert cold_table in pre_promoted
     assert cold_table in mgr.get_warm_tables()
@@ -97,17 +107,16 @@ def promotion_check_runs(shared_data):
     conn = shared_data["conn"]
     threshold = shared_data["threshold"]
 
-    promoted = mgr.check_promotions(
-        counter, conn, threshold=threshold, max_rows=10_000_000
+    promoted = asyncio.run(
+        mgr.check_promotions(counter, conn, threshold=threshold, max_rows=10_000_000)
     )
-    demoted = mgr.check_demotions(counter, conn, threshold=threshold)
+    demoted = asyncio.run(mgr.check_demotions(counter, conn, threshold=threshold))
 
     shared_data["promoted"] = promoted
     shared_data["demoted"] = demoted
 
 
-@then(
-    "the table is auto-materialized into Iceberg; tables falling below threshold are demoted")
+@then("the table is auto-materialized into Iceberg; tables falling below threshold are demoted")
 def table_promoted_and_demoted(shared_data):
     mgr: WarmTableManager = shared_data["manager"]
     cursor = shared_data["cursor"]
@@ -131,8 +140,7 @@ def table_promoted_and_demoted(shared_data):
 # --- REQ-238: Warm Tables served from local SSD via Trino file cache ---
 
 
-@given(
-    "a table materialized into the Iceberg results catalog with Trino file cache enabled")
+@given("a table materialized into the Iceberg results catalog with Trino file cache enabled")
 def table_materialized_with_file_cache(shared_data):
     threshold = 100
     warm_table = "rdbms_schema.customers"
@@ -150,8 +158,8 @@ def table_materialized_with_file_cache(shared_data):
     cursor = _mock_cursor(count_result=25_000)
     conn = _mock_trino(cursor)
 
-    promoted = mgr.check_promotions(
-        counter, conn, threshold=threshold, max_rows=10_000_000
+    promoted = asyncio.run(
+        mgr.check_promotions(counter, conn, threshold=threshold, max_rows=10_000_000)
     )
 
     # Materialization must have created the table in the Iceberg results catalog.
@@ -186,9 +194,7 @@ def query_targets_warm_table(shared_data):
     # A cache hit reads from local SSD; we measure the (negligible) lookup latency
     # of resolving the warm table and assert the served path is the cached one.
     start = time.perf_counter()
-    served_from_cache = (
-        shared_data.get("file_cache_enabled") is True and is_warm
-    )
+    served_from_cache = shared_data.get("file_cache_enabled") is True and is_warm
     elapsed_ms = (time.perf_counter() - start) * 1000.0
 
     # Local-SSD Parquet cache read budget for warm tables: ~10-50ms. The in-process
@@ -198,8 +204,7 @@ def query_targets_warm_table(shared_data):
     shared_data["ssd_read_latency_ms"] = 30.0  # representative local-SSD read (10-50ms)
 
 
-@then(
-    "Trino serves the result from local SSD Parquet cache at ~10-50ms latency")
+@then("Trino serves the result from local SSD Parquet cache at ~10-50ms latency")
 def served_from_local_ssd_cache(shared_data):
     # The query was served from the cached Iceberg copy, not the remote RDBMS.
     assert shared_data["served_from_cache"] is True

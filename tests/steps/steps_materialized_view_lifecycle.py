@@ -93,6 +93,21 @@ def _make_mock_conn(schema_tables: list[str]) -> tuple[MagicMock, list[str]]:
     return conn, executed
 
 
+def _make_mock_engine(schema_tables: list[str], executed: list[str]) -> MagicMock:
+    """A mock federation engine whose async ``execute_engine`` records every SQL into ``executed`` and
+    reports ``schema_tables`` as result rows — the MV lifecycle uses ``engine.execute_engine`` (REQ-234)."""
+    engine = MagicMock()
+
+    async def _execute_engine(sql, *args, **kwargs):
+        executed.append(sql)
+        result = MagicMock()
+        result.rows = [(t,) for t in schema_tables]
+        return result
+
+    engine.execute_engine = _execute_engine
+    return engine
+
+
 def _invoke(func, **available):
     """Bind only the parameters ``func`` declares, call it, await if needed."""
     if func is None:
@@ -135,11 +150,13 @@ def given_removed_mv(shared_data: dict) -> None:
     #  - an orphan table (mv_ghost) present in schema but absent from registry
     schema_tables = ["mv_active", "mv_removed", "mv_ghost"]
     conn, executed = _make_mock_conn(schema_tables)
+    engine = _make_mock_engine(schema_tables, executed)
 
     shared_data["registry"] = registry
     shared_data["active_mv"] = active_mv
     shared_data["removed_mv"] = removed_mv
     shared_data["conn"] = conn
+    shared_data["engine"] = engine
     shared_data["executed_sql"] = executed
     shared_data["target_catalog"] = "iceberg"
     shared_data["target_schema"] = "mv_cache"
@@ -183,6 +200,7 @@ def when_cleanup_runs(shared_data: dict) -> None:
         known_tables=shared_data["known_tables"],
         orphan_tracker=orphan_tracker,
         orphan_tables=orphan_tables,
+        engine=shared_data["engine"],
     )
 
     # 1. Reclaim tables for MVs removed/disabled in config.

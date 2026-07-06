@@ -7,11 +7,19 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
-from pytest_bdd import given, parsers, scenarios, then, when
+from pytest_bdd import given, scenarios, then, when
 
 from provisa.core.models import Source, SourceType
-from provisa.federation.engine import FederationEngine, UnreachableSource, build_duckdb_engine
+from provisa.federation.connector import ProbeResult
+from provisa.federation.engine import (
+    FederationEngine,
+    UnreachableSource,
+    build_duckdb_engine,
+    build_pg_engine,
+)
 
 scenarios("../features/REQ-903.feature")
 
@@ -66,9 +74,7 @@ def then_source_resolves_to_unreachable_source(shared_data):
     assert isinstance(exc, UnreachableSource), (
         f"Expected UnreachableSource, got {type(exc).__name__}"
     )
-    assert exc.engine == "duckdb", (
-        f"Expected engine name 'duckdb' in error, got {exc.engine!r}"
-    )
+    assert exc.engine == "duckdb", f"Expected engine name 'duckdb' in error, got {exc.engine!r}"
     assert exc.source_type == "mysql", (
         f"Expected source_type 'mysql' in error, got {exc.source_type!r}"
     )
@@ -81,18 +87,7 @@ def then_source_resolves_to_unreachable_source(shared_data):
     )
 
 
-import asyncio
-from unittest.mock import AsyncMock
-
-from provisa.federation.connector import ProbeResult
-from provisa.federation.engine import build_pg_engine
-
 scenarios("../features/REQ-904.feature")
-
-
-@pytest.fixture
-def shared_data():
-    return {}
 
 
 @given("a FederationEngine with pg_duckdb not in shared_preload_libraries")
@@ -109,7 +104,7 @@ def given_federation_engine_without_pg_duckdb_preloaded(shared_data):
         sql_lower = sql.lower()
         # shared_preload_libraries check: pg_duckdb absent
         if "shared_preload_libraries" in sql_lower:
-            return [{"setting": "pg_stat_statements"}]
+            return [{"v": "pg_stat_statements"}]
         # postgres_fdw extension check: present and works
         if "postgres_fdw" in sql_lower:
             return [{"extname": "postgres_fdw", "installed_version": "1.0"}]
@@ -126,9 +121,7 @@ def when_discover_is_called(shared_data):
     engine: FederationEngine = shared_data["engine"]
     fetch = shared_data["fetch_without_preload"]
 
-    report = asyncio.get_event_loop().run_until_complete(
-        engine.discover(fetch, disabled=frozenset())
-    )
+    report = asyncio.run(engine.discover(fetch, disabled=frozenset()))
     shared_data["report"] = report
     shared_data["connectors_after_discover"] = dict(engine.connectors)
 
@@ -161,7 +154,10 @@ def then_csv_sources_fall_back_to_file_fdw(shared_data):
     )
     active_csv_connector = connectors["csv"]
     # The active connector for csv should be file_fdw, not pg_duckdb_csv.
-    assert "file_fdw" in active_csv_connector.key or active_csv_connector.__class__.__name__ == "FileFdwCsvConnector", (
+    assert (
+        "file_fdw" in active_csv_connector.key
+        or active_csv_connector.__class__.__name__ == "FileFdwCsvConnector"
+    ), (
         f"Expected file_fdw connector to be active for CSV after pg_duckdb unavailable, "
         f"but got: {active_csv_connector.__class__.__name__!r} (key={active_csv_connector.key!r})"
     )
@@ -175,7 +171,7 @@ def then_post_preload_discover_activates_pg_duckdb(shared_data):
         """Simulate a Postgres instance where pg_duckdb IS in shared_preload_libraries."""
         sql_lower = sql.lower()
         if "shared_preload_libraries" in sql_lower:
-            return [{"setting": "pg_stat_statements,pg_duckdb"}]
+            return [{"v": "pg_stat_statements,pg_duckdb"}]
         if "postgres_fdw" in sql_lower:
             return [{"extname": "postgres_fdw", "installed_version": "1.0"}]
         if "file_fdw" in sql_lower:
@@ -184,9 +180,7 @@ def then_post_preload_discover_activates_pg_duckdb(shared_data):
             return [{"extname": "pg_duckdb", "installed_version": "1.0.0"}]
         return []
 
-    report = asyncio.get_event_loop().run_until_complete(
-        engine.discover(fetch_with_preload, disabled=frozenset())
-    )
+    report = asyncio.run(engine.discover(fetch_with_preload, disabled=frozenset()))
 
     # After preload, at least one pg_duckdb connector must now be available.
     pg_duckdb_keys = [k for k in report if "pg_duckdb" in k]
