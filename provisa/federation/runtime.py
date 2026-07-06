@@ -201,6 +201,33 @@ class EngineRuntime:  # REQ-825, REQ-840
                 runtime.close()
         return {}
 
+    # -- source lifecycle (REQ-825/840): registration/analyze through the abstraction --------
+
+    def register_source(self, source: Any, resolved_password: str) -> None:
+        """Provision a registered source ON THE BOUND ENGINE. Trino creates a dynamic
+        catalog; DuckDB/pg/sqlalchemy attach lazily at query time, so this is a no-op
+        for them. The only place source→engine provisioning happens — callers never
+        touch a Trino connection."""
+        if self.engine.name == "trino" and self._state.trino_conn is not None:
+            from provisa.core import catalog
+
+            catalog.create_catalog(self._state.trino_conn, source, resolved_password)
+
+    def drop_source(self, source_id: str) -> None:
+        """Deprovision a source on the bound engine (Trino: drop catalog; else no-op)."""
+        if self.engine.name == "trino" and self._state.trino_conn is not None:
+            from provisa.core import catalog
+
+            catalog.drop_catalog(self._state.trino_conn, source_id)
+
+    def analyze(self, source: Any, tables: list) -> None:
+        """Refresh engine statistics for a source's tables (Trino: ANALYZE; else no-op —
+        DuckDB/pg gather stats implicitly or not at all). Best-effort, behind the seam."""
+        if self.engine.name == "trino" and self._state.trino_conn is not None:
+            from provisa.core import catalog
+
+            catalog.analyze_source_tables(self._state.trino_conn, source, tables)
+
     # -- engine-specific transports (REQ-825): designed, capability-gated ENGINE terminals ----
 
     def _flight_transport(self) -> Any:

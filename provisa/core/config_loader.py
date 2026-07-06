@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 import asyncpg
-import trino
 import yaml
 
 from provisa.core.models import ControlPlaneConfig, Domain, ProvisaConfig, Source, Table
@@ -34,7 +33,6 @@ from provisa.core.repositories import (
     rls as rls_repo,
     function as function_repo,
 )
-from provisa.core import catalog
 
 log = logging.getLogger(__name__)
 
@@ -211,17 +209,18 @@ async def _replace_mode_cleanup(
 
 async def _upsert_sources(  # REQ-012, REQ-250
     conn: asyncpg.Connection,
-    trino_conn: trino.dbapi.Connection | None,
+    engine: Any,
     config: ProvisaConfig,
 ) -> None:
     for src in config.sources:
         await source_repo.upsert(conn, src)
-        if trino_conn is not None:
+        # Provision the source on the bound engine through the abstraction (Trino makes a
+        # catalog; native engines attach lazily). No direct Trino reference here.
+        if engine is not None:
             try:
-                resolved_pw = resolve_secrets(src.password)
-                catalog.create_catalog(trino_conn, src, resolved_pw)
+                engine.register_source(src, resolve_secrets(src.password))
             except Exception:
-                pass  # catalog.create_catalog already logs warnings
+                pass  # register_source / catalog.create_catalog already log warnings
 
 
 async def _upsert_naming_rules(conn: asyncpg.Connection, config: ProvisaConfig) -> None:
@@ -533,20 +532,17 @@ async def _purge_removed_tables(conn: asyncpg.Connection, config: ProvisaConfig)
         )
 
 
-async def _analyze_sources(
-    trino_conn: trino.dbapi.Connection, config: ProvisaConfig
-) -> None:  # REQ-275
-    """Prime federation CBO stats after tables are registered."""
+async def _analyze_sources(engine: Any, config: ProvisaConfig) -> None:  # REQ-275
+    """Prime federation CBO stats after tables are registered — through the engine seam."""
     for src in config.sources:
         try:
-            catalog.analyze_source_tables(trino_conn, src, config.tables)
+            engine.analyze(src, config.tables)
         except Exception:
-            pass  # analyze_source_tables already logs per-table failures
+            pass  # engine.analyze / analyze_source_tables already log per-table failures
 
 
 async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
     conn: asyncpg.Connection,
-    trino_conn: trino.dbapi.Connection | None,
     engine: Any,
     config: ProvisaConfig,
     openapi_specs: dict[str, dict],
@@ -559,8 +555,8 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
 
     await _purge_removed_tables(conn, config)
 
-    if trino_conn is not None:
-        await _analyze_sources(trino_conn, config)
+    if engine is not None:
+        await _analyze_sources(engine, config)
 
 
 async def _upsert_relationships(
@@ -606,7 +602,6 @@ async def _upsert_relationships(
 async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250
     config: ProvisaConfig,
     conn: asyncpg.Connection,
-    trino_conn: trino.dbapi.Connection | None,
     engine: Any = None,
     replace: bool = False,
 ) -> None:
@@ -626,7 +621,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250
         await _replace_mode_cleanup(conn, config)
 
     # 1. Sources
-    await _upsert_sources(conn, trino_conn, config)
+    await _upsert_sources(conn, engine, config)
 
     # 2. Domains
     if domain_policy.single_domain():
@@ -646,7 +641,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250
     openapi_specs = _load_openapi_specs(config)
     _validate_table_kafka_sinks(config)
     _validate_table_live_delivery(config)
-    await _upsert_tables(conn, trino_conn, engine, config, openapi_specs)
+    await _upsert_tables(conn, engine, config, openapi_specs)
 
     # 6. Relationships (tables must exist first)
     # Preserve relationships whose source or target table belongs to a dynamically-registered
@@ -786,28 +781,27 @@ async def _validate_existing_domains(conn: asyncpg.Connection, default_domain: s
 async def load_config(  # REQ-012, REQ-016, REQ-250
     config: ProvisaConfig,
     pg_conn: asyncpg.Connection,
-    trino_conn: trino.dbapi.Connection | None = None,
     engine: Any = None,
     replace: bool = False,
 ) -> None:
     """Upsert full config into PG within a transaction. Idempotent.
 
-    ``engine`` is the EngineRuntime whose introspection seam supplies engine-native
-    column types (REQ-905). Pass replace=True to delete all metadata not in the new
-    config first (full replace semantics — use for install simulation / clean reloads).
+    ``engine`` is the EngineRuntime: it provisions each source (Trino catalog / native
+    attach) and supplies engine-native column types — the ONLY engine touchpoint, so no
+    Trino connection is passed here. Pass replace=True to delete all metadata not in the
+    new config first (full replace semantics — use for install simulation / clean reloads).
     """
     async with pg_conn.transaction():
-        await _load_config_in_txn(config, pg_conn, trino_conn, engine, replace=replace)
+        await _load_config_in_txn(config, pg_conn, engine, replace=replace)
 
 
 async def load_config_from_yaml(  # REQ-012, REQ-016, REQ-250
     path: str | Path,
     pg_conn: asyncpg.Connection,
-    trino_conn: trino.dbapi.Connection | None = None,
     engine: Any = None,
     replace: bool = False,
 ) -> ProvisaConfig:
     """Parse YAML, resolve secrets in source passwords, load into PG."""
     config = parse_config(path)
-    await load_config(config, pg_conn, trino_conn, engine, replace=replace)
+    await load_config(config, pg_conn, engine, replace=replace)
     return config

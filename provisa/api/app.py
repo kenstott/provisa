@@ -1323,9 +1323,7 @@ async def _load_and_build(
     async with tenant_db.acquire() as conn:
         _replace_mode = os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in ("1", "true", "yes")
         _conn = cast(asyncpg.Connection, conn)
-        await load_config(
-            config, _conn, state.trino_conn, state.federation_engine, replace=_replace_mode
-        )
+        await load_config(config, _conn, state.federation_engine, replace=_replace_mode)
 
     _mark("load_config")
 

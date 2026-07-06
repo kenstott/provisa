@@ -14,6 +14,7 @@ Verifies that YAML-configured OpenAPI tables are pre-populated at config load ti
 using enum/default values extracted from the spec, and that Trino cross-source JOINs
 return non-null relationship fields (REQ: petByStatus must not be null).
 """
+
 from __future__ import annotations
 
 import json
@@ -81,13 +82,13 @@ MOCK_SPEC = {
 }
 
 MOCK_PETS = [
-    {"id": 1, "name": "Cat 1",    "status": "available", "photoUrls": ["http://example.com/cat1.jpg"]},
-    {"id": 2, "name": "Cat 2",    "status": "available", "photoUrls": ["http://example.com/cat2.jpg"]},
-    {"id": 4, "name": "Dog 1",    "status": "available", "photoUrls": ["http://example.com/dog1.jpg"]},
-    {"id": 7, "name": "Lion 1",   "status": "available", "photoUrls": []},
-    {"id": 8, "name": "Lion 2",   "status": "available", "photoUrls": []},
-    {"id": 9, "name": "Lion 3",   "status": "available", "photoUrls": []},
-    {"id": 10, "name": "Rabbit 1","status": "available", "photoUrls": []},
+    {"id": 1, "name": "Cat 1", "status": "available", "photoUrls": ["http://example.com/cat1.jpg"]},
+    {"id": 2, "name": "Cat 2", "status": "available", "photoUrls": ["http://example.com/cat2.jpg"]},
+    {"id": 4, "name": "Dog 1", "status": "available", "photoUrls": ["http://example.com/dog1.jpg"]},
+    {"id": 7, "name": "Lion 1", "status": "available", "photoUrls": []},
+    {"id": 8, "name": "Lion 2", "status": "available", "photoUrls": []},
+    {"id": 9, "name": "Lion 3", "status": "available", "photoUrls": []},
+    {"id": 10, "name": "Rabbit 1", "status": "available", "photoUrls": []},
 ]
 
 MOCK_BASE_URL = "http://mock-petstore.test"
@@ -175,7 +176,11 @@ async def test_default_params_from_spec_uses_default_when_no_enum():
             "/items": {
                 "get": {
                     "parameters": [
-                        {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 100}}
+                        {
+                            "name": "limit",
+                            "in": "query",
+                            "schema": {"type": "integer", "default": 100},
+                        }
                     ]
                 }
             }
@@ -195,7 +200,11 @@ async def test_default_params_from_spec_ignores_path_params():
                 "get": {
                     "parameters": [
                         {"name": "id", "in": "path", "schema": {"type": "integer"}},
-                        {"name": "format", "in": "query", "schema": {"type": "string", "enum": ["json", "xml"]}},
+                        {
+                            "name": "format",
+                            "in": "query",
+                            "schema": {"type": "string", "enum": ["json", "xml"]},
+                        },
                     ]
                 }
             }
@@ -229,7 +238,7 @@ async def test_openapi_config_load_prepopulates_table_with_enum_defaults(pg_conn
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
 
-        await load_config(config, pg_conn, trino_conn=None, replace=False)
+        await load_config(config, pg_conn, replace=False)
 
     # The PG table should have rows pre-populated from the mock API response
     row_count = await pg_conn.fetchval('SELECT COUNT(*) FROM "default"."find_pets_by_status"')
@@ -252,7 +261,7 @@ async def test_openapi_config_load_registers_api_endpoint(pg_conn):
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
-        await load_config(config, pg_conn, trino_conn=None, replace=False)
+        await load_config(config, pg_conn, replace=False)
 
     ep = await pg_conn.fetchrow(
         "SELECT path, source_id FROM api_endpoints WHERE table_name = $1",
@@ -279,7 +288,7 @@ async def test_openapi_config_load_registers_api_source(pg_conn):
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
         )
-        await load_config(config, pg_conn, trino_conn=None, replace=False)
+        await load_config(config, pg_conn, replace=False)
 
     src = await pg_conn.fetchrow(
         "SELECT base_url FROM api_sources WHERE id = $1",
@@ -302,10 +311,8 @@ async def test_openapi_config_load_empty_table_when_api_returns_no_rows(pg_conn)
     # integration: mock-justified — respx intercepts outbound HTTP to a 3rd-party
     # OpenAPI endpoint (MOCK_BASE_URL), not a docker-compose service.
     with respx.mock(assert_all_called=False) as rx:
-        rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
-            return_value=httpx.Response(200, json=[])
-        )
-        await load_config(config, pg_conn, trino_conn=None, replace=False)
+        rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(return_value=httpx.Response(200, json=[]))
+        await load_config(config, pg_conn, replace=False)
 
     # Table must exist (even if empty)
     exists = await pg_conn.fetchval(
