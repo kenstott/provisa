@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 
 import sqlglot.expressions as exp
 import sqlglot
@@ -49,7 +49,6 @@ from provisa.cypher.parser import (
     OrderItem,
 )
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
-from provisa.cypher.comprehension import rewrite_list_comprehensions
 from provisa.cypher.path_functions import PathFunctionsMixin
 from provisa.cypher.path_comprehension import PathComprehensionMixin
 from provisa.cypher.select_builder import SelectBuilderMixin
@@ -743,7 +742,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         return segments
 
     def _build_unwind_expr(self, expr_text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Parse a Cypher UNWIND source expression into a SQLGlot expression."""
+        """Parse a Cypher UNWIND source expression into a SQLGlot expression.
+
+        Kept on the text path deliberately: an UNWIND source may be a bare ``$param`` that must survive
+        as the executor placeholder ``$N`` in every dialect (the AST parameter node renders ``@N`` in
+        some engines). The predicate/projection/order paths use the AST lowering (REQ-913)."""
         text = expr_text.strip()
         # Cypher list literal [...] → ARRAY[...]
         if text.startswith("["):
@@ -754,7 +757,6 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         text = _rewrite_property_access(text)
         try:
             # No dialect: $N executor placeholders must survive as identifiers.
-            # dialect="postgres" turns $1 into a Parameter node that renders as @1.
             return sqlglot.parse_one(text)  # pyright: ignore[reportReturnType]
         except Exception:
             return exp.column(text)  # pyright: ignore[reportReturnType]
@@ -1405,34 +1407,6 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         return from_expr, joins
 
-    def _rewrite_node_var_in_aggs(self, text: str) -> str:
-        """Rewrite COUNT(var)/COLLECT(var) where var is a node variable to use id_column.
-
-        Cypher COUNT(n) counts non-null node instances — translates to COUNT(n.id_col) in SQL.
-        Without this, the bare var reaches the engine as a table alias which cannot be resolved as a column.
-        Cypher COUNT(r) for a relationship variable translates to COUNT(*) — r is not a SQL column.
-        """
-        _AGG_WITH_NODE_ARG = re.compile(
-            r"\b(COUNT|COLLECT|count|collect)\s*\(\s*([A-Za-z_]\w*)\s*\)",
-        )
-
-        def _replace(m: re.Match) -> str:
-            fn, var = m.group(1), m.group(2)
-            if var in self._rel_var_types or var in self._all_rels_rel_vars:
-                if fn.upper() == "COUNT":
-                    return "COUNT(*)"
-                return m.group(0)
-            info = self._var_table.get(var)
-            if info and info[1]:
-                id_col = info[1].id_column
-                # COUNT(n) must deduplicate — multiple SQL rows can map to one graph node via JOINs
-                if fn.upper() == "COUNT":
-                    return f"{fn}(DISTINCT {var}.{id_col})"
-                return f"{fn}({var}.{id_col})"
-            return m.group(0)
-
-        return _AGG_WITH_NODE_ARG.sub(_replace, text)
-
     def _rewrite_cypher_props(self, text: str) -> str:
         """Rewrite var.camelProp → var.sql_alias using NodeMapping.properties."""
 
@@ -1453,53 +1427,25 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         return re.sub(r"\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\b", _replace, text)
 
-    def _rewrite_nf_props(self, text: str) -> str:
-        """Rewrite var.col or var."col" → var."_nf_col" for native filter columns."""
+    def _lower_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Lower a Cypher expression to sqlglot via the AST path (REQ-913): parse to a CypherExpr and
+        lower it node-to-node against the translator's traversal state — no text rewriting. Raises on a
+        construct the grammar/context cannot handle, so a gap surfaces loudly instead of degrading."""
+        from provisa.cypher.expr_context import TranslatorExprContext
+        from provisa.cypher.expr_parser import parse_expression
+        from provisa.cypher.expr_visitor import ExprLowering
 
-        def _replace(m: re.Match) -> str:
-            var, col = m.group(1), m.group(2)
-            info = self._var_table.get(var)
-            if info and info[1] and col in info[1].native_filter_columns:
-                return f'{var}."_nf_{col}"'
-            return m.group(0)
-
-        # Match both quoted (var."col") and unquoted with optional spaces (var . col)
-        return re.sub(r'\b([A-Za-z_]\w*)\s*\.\s*"?([A-Za-z_]\w*)"?', _replace, text)
+        node = ExprLowering(TranslatorExprContext(self)).lower(parse_expression(text))
+        return node.transform(_rewrite_cypher_fn_node)
 
     def _build_where(self, where: WhereClause | None) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if where is None:
             return None
-        expr_text = _rewrite_cypher_dquote_strings(self._rewrite_params_in_expr(where.expression))
-        expr_text = self._rewrite_cte_vars(expr_text)
-        expr_text = self._rewrite_call_bound_vars(expr_text)
-        expr_text = self._rewrite_node_var_in_aggs(expr_text)
-        expr_text = self._rewrite_map_projections(expr_text)
-        expr_text = rewrite_bare_map_literals(expr_text)
-        expr_text = self._rewrite_graph_fns(expr_text)
-        expr_text = self._rewrite_path_comprehensions(expr_text)
-        expr_text = rewrite_list_comprehensions(expr_text)
-        expr_text = _rewrite_in_list(expr_text)
-        expr_text = self._rewrite_cypher_props(expr_text)
-        expr_text = _rewrite_string_predicates(expr_text)
-        expr_text = _rewrite_property_access(expr_text)
-        expr_text = self._rewrite_nf_props(expr_text)
-        expr_text = _coerce_ts_literals(expr_text)
-        expr_text = self._rewrite_subquery_exprs(expr_text)
-        try:
-            parsed = sqlglot.parse_one(expr_text, dialect="postgres")
-            return parsed.transform(_rewrite_cypher_fn_node)
-        except Exception:
-            try:
-                from sqlglot.errors import ErrorLevel
+        return self._lower_expr(where.expression)
 
-                parsed = sqlglot.parse_one(
-                    expr_text, dialect="postgres", error_level=ErrorLevel.IGNORE
-                )
-                if parsed is not None:
-                    return parsed.transform(_rewrite_cypher_fn_node)
-            except Exception:
-                pass
-            return exp.true()
+    def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Parse a Cypher expression fragment into a SQLGlot expression via the AST path (REQ-913)."""
+        return self._lower_expr(text)
 
     def _build_order_by(self, order_by: list[OrderItem]) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -1511,245 +1457,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 exprs.append(exp.Ordered(this=inner, desc=False))
         return exprs
 
-    def _rewrite_graph_fns(self, text: str) -> str:
-        """Rewrite graph-aware functions using var_table context."""
-
-        def _id_in_list_repl(m: re.Match) -> str:
-            var = m.group(1).strip()
-            items_text = m.group(2)
-            info = self._var_table.get(var)
-            if info and info[1]:
-                id_ref = f'{var}."{info[1].id_column}"'
-                return f"{id_ref} IN ({items_text})"
-            elif var in self._domain_nodes:
-                # __id is always CAST(id_column AS VARCHAR) — cast integer literals to match
-                id_ref = f'{var}."__id"'
-                items = [i.strip() for i in items_text.split(",")]
-                cast_items = [
-                    f"CAST({i} AS VARCHAR)" if i.lstrip("-+").isdigit() else i for i in items
-                ]
-                return f"{id_ref} IN ({', '.join(cast_items)})"
-            else:
-                return m.group(0)
-
-        def _id_repl(m: re.Match) -> str:
-            var = m.group(1).strip()
-            info = self._var_table.get(var)
-            if info and info[1]:
-                return f'{var}."{info[1].id_column}"'
-            if var in self._domain_nodes:
-                return f'{var}."__id"'
-            return m.group(0)
-
-        def _labels_repl(m: re.Match) -> str:
-            var = m.group(1).strip()
-            info = self._var_table.get(var)
-            if info and info[1]:
-                return f"ARRAY['{info[1].label}']"
-            return m.group(0)
-
-        def _keys_repl(m: re.Match) -> str:
-            var = m.group(1).strip()
-            info = self._var_table.get(var)
-            if info and info[1]:
-                keys = ", ".join(f"'{k}'" for k in sorted(info[1].properties.keys()))
-                return f"ARRAY[{keys}]"
-            return m.group(0)
-
-        def _type_repl(m: re.Match) -> str:
-            var = m.group(1).strip()
-            rel_type = self._rel_var_types.get(var)
-            if rel_type is not None:
-                return f"'{rel_type}'"
-            return m.group(0)
-
-        # type(r) → 'REL_TYPE' literal (resolved at compile time from semantic layer)
-        text = re.sub(r"\btype\s*\(\s*([A-Za-z_]\w*)\s*\)", _type_repl, text, flags=re.IGNORECASE)
-        # exists(n.prop) → (n.prop) IS NOT NULL
-        text = re.sub(r"\bexists\s*\(([^()]+)\)", r"(\1) IS NOT NULL", text, flags=re.IGNORECASE)
-        # id(var) IN [...] — must run before plain id() so domain nodes cast integer literals to VARCHAR
-        text = re.sub(
-            r"\bid\s*\(\s*([A-Za-z_]\w*)\s*\)\s+IN\s+\[([^\]]*)\]",
-            _id_in_list_repl,
-            text,
-            flags=re.IGNORECASE,
-        )
-        # id(var) → var."id_col"
-        text = re.sub(r"\bid\s*\(\s*([A-Za-z_]\w*)\s*\)", _id_repl, text)
-        # labels(var) → ARRAY['Label']
-        text = re.sub(
-            r"\blabels\s*\(\s*([A-Za-z_]\w*)\s*\)", _labels_repl, text, flags=re.IGNORECASE
-        )
-        # keys(var) → ARRAY['prop1', ...]
-        text = re.sub(r"\bkeys\s*\(\s*([A-Za-z_]\w*)\s*\)", _keys_repl, text, flags=re.IGNORECASE)
-        # length(p) for recursive CTE paths → _t.hops; for flat paths → 1
-        if self._shortestpath_hops_col is not None:
-            text = re.sub(
-                r"\blength\s*\(\s*[A-Za-z_]\w*\s*\)", "_t.hops", text, flags=re.IGNORECASE
-            )
-        else:
-            # flat path: length is always 1 (single hop or variable-length flat join)
-            text = re.sub(r"\blength\s*\(\s*[A-Za-z_]\w*\s*\)", "1", text, flags=re.IGNORECASE)
-
-        def _relationships_repl(m: re.Match) -> str:
-            var = m.group(1).strip()
-            path_step_info = getattr(self, "_path_steps", {}).get(var)
-            if path_step_info is None:
-                _vr = getattr(self, "_varlen_rel_vars", {})
-                if var in _vr:
-                    path_step_info = getattr(self, "_path_steps", {}).get(_vr[var])
-            if path_step_info is not None:
-                _, step_edges = path_step_info
-                arr = exp.Anonymous(
-                    this="JSON_ARRAY",
-                    expressions=[
-                        self._build_edge_object(rt, sa, snm, ta, tnm, rev)
-                        for rt, sa, snm, ta, tnm, rev in step_edges
-                    ],
-                )
-                return arr.sql(dialect="postgres")
-            return "NULL"
-
-        def _nodes_repl(m: re.Match) -> str:
-            var = m.group(1).strip()
-            if var not in self._path_vars:
-                return m.group(0)
-            path_step_info = getattr(self, "_path_steps", {}).get(var)
-            if path_step_info is not None:
-                step_nodes, _ = path_step_info
-                arr = exp.Anonymous(
-                    this="JSON_ARRAY",
-                    expressions=[
-                        self._build_node_object_expr(node_alias, nm)
-                        for node_alias, nm in step_nodes
-                    ],
-                )
-                return arr.sql(dialect="postgres")
-            return "NULL"
-
-        def _startnode_repl(m: re.Match) -> str:
-            var = m.group(1).strip()
-            endpoints = self._rel_var_endpoints.get(var)
-            if endpoints:
-                src_alias, src_nm, _, _, _ = endpoints
-                return self._build_node_object_expr(src_alias, src_nm).sql(dialect="postgres")
-            path_info = self._path_vars.get(var)
-            if path_info:
-                src_alias, _, _ = path_info
-                src_info = self._var_table.get(src_alias)
-                if src_info and src_info[1]:
-                    return self._build_node_object_expr(src_alias, src_info[1]).sql(
-                        dialect="postgres"
-                    )
-                return f"{src_alias}.*"
-            return m.group(0)
-
-        def _endnode_repl(m: re.Match) -> str:
-            var = m.group(1).strip()
-            endpoints = self._rel_var_endpoints.get(var)
-            if endpoints:
-                _, _, tgt_alias, tgt_nm, _ = endpoints
-                return self._build_node_object_expr(tgt_alias, tgt_nm).sql(dialect="postgres")
-            path_info = self._path_vars.get(var)
-            if path_info:
-                _, tgt_alias, _ = path_info
-                tgt_info = self._var_table.get(tgt_alias)
-                if tgt_info and tgt_info[1]:
-                    return self._build_node_object_expr(tgt_alias, tgt_info[1]).sql(
-                        dialect="postgres"
-                    )
-                return f"{tgt_alias}.*"
-            return m.group(0)
-
-        def _properties_repl(m: re.Match) -> str:
-            var = m.group(1).strip()
-            info = self._var_table.get(var)
-            if info and info[1]:
-                nm = info[1]
-                sql_alias = info[0]
-                exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                for prop_name, col_name in nm.properties.items():
-                    exprs.append(exp.Literal.string(prop_name))
-                    exprs.append(
-                        exp.Column(
-                            this=exp.Identifier(this=col_name, quoted=True),
-                            table=exp.Identifier(this=sql_alias),
-                        )
-                    )
-                return exp.Anonymous(this="JSON_OBJECT", expressions=exprs).sql(dialect="postgres")
-            if var in self._rel_var_types:
-                return "JSON_OBJECT()"
-            return m.group(0)
-
-        text = re.sub(
-            r"\brelationship(?:s)?\s*\(\s*([A-Za-z_]\w*)\s*\)",
-            _relationships_repl,
-            text,
-            flags=re.IGNORECASE,
-        )
-        text = re.sub(r"\bnodes\s*\(\s*([A-Za-z_]\w*)\s*\)", _nodes_repl, text, flags=re.IGNORECASE)
-        text = re.sub(
-            r"\bstartNode\s*\(\s*([A-Za-z_]\w*)\s*\)", _startnode_repl, text, flags=re.IGNORECASE
-        )
-        text = re.sub(
-            r"\bendNode\s*\(\s*([A-Za-z_]\w*)\s*\)", _endnode_repl, text, flags=re.IGNORECASE
-        )
-        text = re.sub(
-            r"\bproperties\s*\(\s*([A-Za-z_]\w*)\s*\)", _properties_repl, text, flags=re.IGNORECASE
-        )
-        return text
-
-    def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Parse a Cypher expression fragment into a SQLGlot expression."""
-        text = self._rewrite_params_in_expr(text)
-        text = _rewrite_cypher_dquote_strings(text)
-        text = self._rewrite_cte_vars(text)
-        text = self._rewrite_call_bound_vars(text)
-        text = self._rewrite_node_var_in_aggs(text)
-        text = self._rewrite_cypher_props(text)
-        text = self._rewrite_map_projections(text)
-        text = rewrite_bare_map_literals(text)
-        text = self._rewrite_graph_fns(text)
-        text = self._rewrite_path_comprehensions(text)
-        text = rewrite_list_comprehensions(text)
-        text = _rewrite_in_list(text)
-        text = _rewrite_list_slices(text)
-        text = _rewrite_string_predicates(text)
-        text = _rewrite_property_access(text)
-        text = self._rewrite_subquery_exprs(text)
-        try:
-            parsed = sqlglot.parse_one(text, dialect="postgres")
-            return parsed.transform(_rewrite_cypher_fn_node)
-        except Exception:
-            try:
-                from sqlglot.errors import ErrorLevel
-
-                parsed = sqlglot.parse_one(text, dialect="postgres", error_level=ErrorLevel.IGNORE)
-                if parsed is not None:
-                    return parsed.transform(_rewrite_cypher_fn_node)
-            except Exception:
-                pass
-            return exp.column(text)
-
     def _rewrite_cte_vars(self, text: str) -> str:
         for var in self._cte_sources:
             sql_alias = self._var_table.get(var, (var, None))[0]
             if sql_alias != var:
                 text = re.sub(rf"\b{re.escape(var)}\.", f"{sql_alias}.", text)
-        return text
-
-    def _rewrite_call_bound_vars(self, text: str) -> str:
-        """Qualify CALL-subquery return vars with their CROSS JOIN LATERAL alias.
-
-        e.g. d_list → _call0."d_list" so the engine can resolve the scoped column.
-        """
-        for var, lateral_alias in self._call_var_to_lateral.items():
-            # Match bare var not already table-qualified (not preceded by . or word char)
-            text = re.sub(
-                rf"(?<![.\w]){re.escape(var)}\b",
-                f'{lateral_alias}."{var}"',
-                text,
-            )
         return text
 
     def _build_with_select_items(self, items: list[ReturnItem]) -> list[exp.Expr]:
@@ -2260,19 +1972,16 @@ def _is_bare_variable(expr: str) -> bool:
 _CYPHER_DQUOTE_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
 
 
-def _rewrite_cypher_dquote_strings(expr: str) -> str:
-    """Convert Cypher double-quoted string literals to SQL single-quoted literals.
-
-    Only converts strings not preceded by `.` (those are quoted identifiers, not literals).
-    Runs before _rewrite_property_access so no quoted identifiers exist yet.
-    """
+def _rewrite_cypher_dquote_strings(expr: str) -> str:  # REQ-410
+    """Convert Cypher double-quoted string literals to SQL single-quoted literals, leaving quoted
+    identifiers (after ``.``) untouched. Retained for the UNWIND text path and REQ-410 coverage; the
+    predicate/projection paths handle double-quoted strings in the grammar (REQ-913)."""
     result = []
     pos = 0
     for m in _CYPHER_DQUOTE_RE.finditer(expr):
         start = m.start()
         result.append(expr[pos:start])
-        # If preceded by `.`, it's a property name — leave as-is
-        if start > 0 and expr[start - 1] == ".":
+        if start > 0 and expr[start - 1] == ".":  # property name — leave as-is
             result.append(m.group(0))
         else:
             inner = m.group(1).replace("'", "\\'")
@@ -2326,79 +2035,6 @@ _CYPHER_CAST_FNS: dict[str, tuple[str, bool]] = {
     "TOBOOLEAN": ("BOOLEAN", True),
     "TOBOOLEANORNULL": ("BOOLEAN", True),
 }
-
-# String predicates: (pattern, replacement)
-_STRING_PREDICATE_REWRITES: list[tuple[re.Pattern[str], str | Callable[[re.Match[str]], str]]] = [
-    # n . name STARTS WITH 'x'  →  starts_with(n.name, 'x')
-    # Also handles function calls on the left: toLower(n.name) STARTS WITH 'x'
-    (
-        re.compile(
-            r"([\w]+(?:\s*\.\s*[\w]+)?|\w+\s*\([^)]*\))\s+STARTS\s+WITH\s+('(?:[^'\\]|\\.)*'|[\w.$]+)",
-            re.IGNORECASE,
-        ),
-        lambda m: f"starts_with({m.group(1).replace(' ', '')}, {m.group(2)})",
-    ),
-    # n . name ENDS WITH 'x'  →  (n.name LIKE CONCAT('%', 'x'))
-    # Also handles function calls on the left: toLower(n.name) ENDS WITH 'x'
-    (
-        re.compile(
-            r"([\w]+(?:\s*\.\s*[\w]+)?|\w+\s*\([^)]*\))\s+ENDS\s+WITH\s+('(?:[^'\\]|\\.)*'|[\w.$]+)",
-            re.IGNORECASE,
-        ),
-        lambda m: f"({m.group(1).replace(' ', '')} LIKE CONCAT('%', {m.group(2)}))",
-    ),
-    # n . name CONTAINS 'x'  →  (strpos(n.name, 'x') > 0)
-    # Also handles function calls on the left: toLower(n.name) CONTAINS 'x'
-    (
-        re.compile(
-            r"([\w]+(?:\s*\.\s*[\w]+)?|\w+\s*\([^)]*\))\s+CONTAINS\s+('(?:[^'\\]|\\.)*'|[\w.$]+)",
-            re.IGNORECASE,
-        ),
-        lambda m: f"(strpos({m.group(1).replace(' ', '')}, {m.group(2)}) > 0)",
-    ),
-    # n.prop =~ 'regex'  →  regexp_like(n.prop, 'regex')
-    (
-        re.compile(
-            r"([\w]+(?:\s*\.\s*[\w]+)?)\s*=~\s*('(?:[^'\\]|\\.)*'|[\w.$]+)",
-            re.IGNORECASE,
-        ),
-        lambda m: f"regexp_like({m.group(1).replace(' ', '')}, {m.group(2)})",
-    ),
-]
-
-
-def _rewrite_string_predicates(text: str) -> str:
-    for pattern, repl in _STRING_PREDICATE_REWRITES:
-        text = pattern.sub(repl, text)
-    return text
-
-
-_ISO_TS_LITERAL_RE = re.compile(r"'(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)'")
-
-
-def _coerce_ts_literals(text: str) -> str:
-    """Wrap ISO-datetime string literals as TIMESTAMP '...' so the engine doesn't see varchar(N)."""
-    return _ISO_TS_LITERAL_RE.sub(lambda m: f"TIMESTAMP {m.group(0)}", text)
-
-
-_IN_LIST_RE = re.compile(r"\bIN\s*\[([^\[\]]*)\]", re.IGNORECASE)
-
-
-def _rewrite_in_list(text: str) -> str:
-    """Rewrite Cypher IN [...] literal list to SQL IN (...)."""
-    return _IN_LIST_RE.sub(r"IN (\1)", text)
-
-
-_LIST_SLICE_RE = re.compile(r"(\w+\s*\(\s*[^)]*\s*\)|[A-Za-z_]\w*)\s*\[\s*\.\.\s*(\d+)\s*\]")
-
-
-def _rewrite_list_slices(text: str) -> str:
-    """Rewrite Cypher list-slice expr[..n] → slice(expr, 1, n) for the engine.
-
-    Cypher's [..n] returns the first n elements (0-indexed, exclusive end).
-    the engine's slice(arr, start, length) is 1-indexed with a length argument.
-    """
-    return _LIST_SLICE_RE.sub(r"slice(\1, 1, \2)", text)
 
 
 def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
