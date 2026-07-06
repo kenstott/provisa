@@ -103,8 +103,8 @@ class DdlHandler:  # REQ-042, REQ-060
                     f"Only CREATE TABLE/VIEW is supported for Trino catalog {write_catalog!r}. "
                     "Use a registered source as ddl_catalog for full DDL support."
                 )
-            if state.trino_conn is None:
-                raise RuntimeError("Trino connection not available for DDL")
+            if state.federation_engine is None:
+                raise RuntimeError("Query engine not available for DDL")
             self._exec_trino(ctx, sql, write_catalog, write_schema, role_id, state)
 
         return _command_tag(sql)
@@ -138,7 +138,7 @@ class DdlHandler:  # REQ-042, REQ-060
         )
         log.info("DDL(trino) role=%r: %s", role_id, qualified_sql[:200])
         future = asyncio.run_coroutine_threadsafe(
-            _exec_trino_ddl_async(state.trino_conn, qualified_sql),
+            state.federation_engine.execute_engine(qualified_sql),
             self._handler._srv._loop,
         )
         future.result(timeout=60)
@@ -186,17 +186,6 @@ def _catalog_to_source_id(catalog: str, state) -> str | None:
     if catalog in state.source_catalogs:
         return catalog
     return None
-
-
-async def _exec_trino_ddl_async(conn, sql: str) -> None:
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, lambda: _exec_trino_ddl(conn, sql))
-
-
-def _exec_trino_ddl(conn, sql: str) -> None:
-    cur = conn.cursor()
-    cur.execute(sql)
-    cur.fetchall()
 
 
 async def _exec_direct_ddl_async(source_pools, source_id: str, sql: str) -> None:

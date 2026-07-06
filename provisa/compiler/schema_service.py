@@ -36,13 +36,13 @@ class _TableEntry:
 
 
 _cache: dict[tuple[str, str, str], _TableEntry] = {}
-_conn = None  # trino.dbapi.Connection
+_engine = None  # EngineRuntime — introspection goes through the abstraction
 
 
-def init(conn) -> None:  # REQ-636
-    """Store the Trino connection for on-demand schema queries."""
-    global _conn
-    _conn = conn
+def init(engine) -> None:  # REQ-636
+    """Store the federation engine for on-demand schema queries (through the seam)."""
+    global _engine
+    _engine = engine
 
 
 def get_column_type(catalog: str, schema: str, table: str, column: str) -> str:  # REQ-636
@@ -75,23 +75,12 @@ def invalidate(catalog: str, schema: str, table: str) -> None:  # REQ-636
 
 
 def _fetch(catalog: str, schema: str, table: str) -> None:
-    if _conn is None:
+    if _engine is None:
         return
-    from provisa.compiler.introspect import _validate_ident, _escape_literal
-
     try:
-        cat = _validate_ident(catalog)
-        _validate_ident(schema)
-        _validate_ident(table)
-        cur = _conn.cursor()
-        cur.execute(
-            f"SELECT column_name, data_type "
-            f"FROM {cat}.information_schema.columns "
-            f"WHERE table_schema = '{_escape_literal(schema)}' "
-            f"AND table_name = '{_escape_literal(table)}'"
-        )
-        rows = cur.fetchall()
-        columns = {row[0].lower(): row[1].lower() for row in rows}
+        # Engine-native column types by physical catalog — through the abstraction.
+        raw = _engine.introspect_by_catalog(catalog, schema, table)
+        columns = {k.lower(): v.lower() for k, v in raw.items()}
         _cache[(catalog, schema, table)] = _TableEntry(
             columns=columns,
             expiry=time.monotonic() + _TTL,

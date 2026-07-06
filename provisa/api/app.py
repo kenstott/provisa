@@ -674,7 +674,7 @@ def _apply_server_and_trino_config(raw_config: dict) -> None:
         from provisa.compiler import schema_service
         from provisa.observability.ops_trino import seed_ops_trino
 
-        schema_service.init(state.trino_conn)
+        schema_service.init(state.federation_engine)
         seed_ops_trino(
             state.trino_conn, _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
         )

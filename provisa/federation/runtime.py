@@ -140,6 +140,16 @@ class EngineRuntime:  # REQ-825, REQ-840
 
     # -- engine-native metadata (REQ-825/840): introspection through the abstraction ----------
 
+    def introspect_by_catalog(self, catalog: str, schema: str, table: str) -> dict[str, str]:
+        """Column types keyed by the engine's PHYSICAL catalog name (not source id) — the
+        sync introspection seam used by the compile-time type cache. Trino reads its
+        information_schema over the dbapi conn; engines without a live catalog return {}."""
+        if self.engine.name == "trino" and self._state.trino_conn is not None:
+            from provisa.compiler.introspect import introspect_column_types
+
+            return introspect_column_types(self._state.trino_conn, catalog, schema, table)
+        return {}
+
     def introspect_columns(self, source: Any, schema_name: str, table_name: str) -> dict[str, str]:
         """Column types as the BOUND ENGINE reports them for a registered table — the
         single introspection seam. Every engine answers in its own type system: Trino
