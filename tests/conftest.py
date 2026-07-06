@@ -38,7 +38,9 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_sparql": ["fuseki"],
 }
 # Shared services provided by the dev stack (never torn down by the test run).
-_CORE_SERVICES = ["postgres", "trino", "redis", "pgbouncer", "minio"]
+# zaychik is the Arrow Flight terminal (:8480) the in-process app connects to for Flight/CTAS
+# redirects; without it Flight-dependent integration tests fail with connection-refused.
+_CORE_SERVICES = ["postgres", "trino", "redis", "pgbouncer", "minio", "zaychik"]
 # Kafka/Schema-Registry/Debezium are core: Trino's kafka catalog and the app's
 # CDC path reach them by service name on the dev network, so they come up with
 # the dev stack (via --profile test), not the isolated test project. debezium is
