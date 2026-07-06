@@ -116,6 +116,9 @@ def inject_masking(  # REQ-040, REQ-263, REQ-264
         for original, replacement in replacements:
             select_part = select_part.replace(original, replacement, 1)
 
+        from provisa.observability.stage_trace import trace_stage
+
+        trace_stage("govern.mask", select_part + rest_part)
         return CompiledQuery(
             sql=select_part + rest_part,
             params=compiled.params,

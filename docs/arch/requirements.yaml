@@ -4148,7 +4148,7 @@
   competitive_position:
     status: ahead
     rationale: SPARQL 1.1 triplestore support (Fuseki, GraphDB, Stardog, Blazegraph, Virtuoso) as a governed
-      query source is absent from Trino, Hasura, Denodo, and Dremio in a first-class, spec-compliant way;
+      data source is absent from Trino, Hasura, Denodo, and Dremio in a first-class, spec-compliant way;
       semantic web data federation is a differentiator.
 - id: REQ-298
   status: complete
@@ -5170,7 +5170,7 @@
   competitive_position:
     status: ahead
     rationale: A governed HTTP push receiver (ingest source) that writes external events from OTEL Collector,
-      Fluentd, and webhooks into Provisa's governed query fabric is not present in Trino, Hasura, Denodo,
+      Fluentd, and webhooks into Provisa's governed data fabric is not present in Trino, Hasura, Denodo,
       or Dremio. These platforms are read-only federation engines; Provisa uniquely owns the write path.
 - id: REQ-332
   status: complete
@@ -5396,7 +5396,7 @@
   description: '`websocket` is a supported source type. Connects to a WebSocket server, optionally sends
     a JSON subscribe payload on connect, receives JSON messages as a stream of ChangeEvents.'
   use_case: WebSocket sources feed real-time events (market data, IoT, CDC streams) into the governed
-    query fabric.
+    data fabric.
   code:
   - provisa/subscriptions/
   tests:
@@ -5408,7 +5408,7 @@
 
     When Provisa connects to the WebSocket server
 
-    Then received JSON messages are emitted as ChangeEvents into the governed query fabric
+    Then received JSON messages are emitted as ChangeEvents into the governed data fabric
 
     '
   integration_test: required
@@ -8881,7 +8881,7 @@
     rationale: A governed GraphQL `sample` argument that compiles to TABLESAMPLE BERNOULLI, distinct from
       the row cap, and transparently dialect-transpiled is not offered by Hasura or Denodo; Trino supports
       TABLESAMPLE natively in SQL but has no GraphQL or governance layer. Provisa makes statistical sampling
-      a first-class governed query feature.
+      a first-class governed data feature.
 - id: REQ-525
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -12643,7 +12643,7 @@
 
     '
   integration_test: required
-  integration_test_reason: Automatic APQ registration for governed queries requires end-to-end query execution
+  integration_test_reason: Automatic APQ registration for queries requires end-to-end query execution
     and cache storage.
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
@@ -22644,7 +22644,7 @@
     surface; the method per source is the federation strategy (REQ-826). The SEMANTIC LAYER is the governed
     virtual model projected over that surface — registered tables/columns, relationships, domains, RLS,
     masking — engine-independent; it is where governance is DEFINED and the thing queries target. The
-    EXECUTION PIPELINE turns a governed query into results as a sequence of total IR→IR passes (nanopass
+    EXECUTION PIPELINE turns a query into results as a sequence of total IR→IR passes (nanopass
     discipline), bookended by transport: (1) TRANSPORT ingress — receive the query over the client protocol
     (pgwire, Bolt, Arrow Flight, GraphQL, SQL); (2) TRANSPILE TO IR — frontend parse of the source language
     into a dialect-neutral logical IR (plural frontends converge here); (3) TRANSPILE TO GOVERNED IR —
@@ -22835,7 +22835,7 @@
     Divergence, and any divergence fails certification. ConformanceRegistry tracks certified engines (the
     reference is always certified) and require_certified raises UncertifiedEngineError — the hard gate that
     an uncertified engine must not be selectable. REMAINING (kept in-progress): the conformance SUITE
-    itself — the fixed golden dataset + identity matrix and the runner that executes each governed query on
+    itself — the fixed golden dataset + identity matrix and the runner that executes each query on
     every candidate engine and feeds the diff — which needs the live multi-engine execution paths.'
   code:
   - provisa/federation/conformance.py
@@ -22850,7 +22850,7 @@
   scenario: 'Given a fixed golden dataset and an identity with role "analyst" subject to RLS and column
     masking
 
-    When the same governed query is executed on the reference engine and on a candidate engine (DuckDB,
+    When the same query is executed on the reference engine and on a candidate engine (DuckDB,
     Snowflake, Databricks, Dremio, or Trino)
 
     Then the returned rows, masked cells, and enforced relationship joins are byte-identical between engines
@@ -25416,7 +25416,7 @@
     Enables Tier 1 deployment: a single PostgreSQL instance serves as both the metadata home
     and the compute engine for PG-to-PG and cross-FDW federation, eliminating the need for Trino
     until heterogeneous/broad federation is required. Maintains containerless deployment spirit
-    and completes the multi-tier deployment story. Governed queries pass through the semantic→IR
+    and completes the multi-tier deployment story. Queries pass through the semantic→IR
     layer (RLS/masking applied before transpile), ensuring Postgres engine passes governance-parity
     conformance suite (REQ-827) by construction.
   notes: >-
@@ -26108,3 +26108,153 @@
     - REQ-909
     - REQ-842
     - REQ-229
+- id: REQ-911
+  status: complete
+  since: "2026-07"
+  group: "4. Source Connectors"
+  category: ClickHouse Federation Engine
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    ClickHouse is a selectable federation engine (PROVISA_ENGINE=clickhouse) alongside
+    trino/pg/duckdb/sqlalchemy. It is a single-node-reach PARTIAL federator, MPP,
+    native_store="clickhouse" that ATTACHes external sources via ClickHouse's native
+    integration engines (Mechanism.ATTACH) rather than an FDW.
+  use_case: >-
+    Federate PostgreSQL, MySQL, CSV, Parquet, and MongoDB sources as ClickHouse tables
+    without data movement. PostgreSQL/MySQL sources mount as DATABASE engines exposing
+    all remote tables; CSV/Parquet mount as TABLE engines (S3, URL, or File based on path
+    scheme) with columns inferred by ClickHouse; MongoDB mounts as MongoDB engine with
+    columns supplied from registry metadata.
+  scenario: |
+    Given PROVISA_ENGINE=clickhouse with registered sources (postgresql, mongodb, s3://bucket/file.parquet)
+    When the federation engine initializes
+    Then postgresql source mounts as CREATE DATABASE ... ENGINE=PostgreSQL
+    And mongodb source mounts as CREATE TABLE ... ENGINE=MongoDB with supplied columns
+    And s3 parquet source mounts as CREATE TABLE ... ENGINE=S3 with inferred columns
+    And all sources support predicate pushdown where available (postgresql, mysql, parquet)
+    And query execution transpiles to ClickHouse dialect and routes through ClickHouseFederationRuntime
+  code:
+    - provisa/federation/engine.py
+    - provisa/federation/connector.py
+    - provisa/compiler/dialects.py
+  tests:
+    - tests/integration/test_clickhouse_federation_e2e.py
+    - tests/unit/test_clickhouse_connector.py
+  related_reqs:
+    - REQ-900
+    - REQ-901
+    - REQ-904
+- id: REQ-912
+  status: complete
+  since: "2026-07"
+  group: "4. Source Connectors"
+  category: ClickHouse Federation Engine
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The ClickHouse federation runtime supports three interchangeable execution backends
+    selected by URL scheme at initialization: clickhouse:// (HTTP via clickhouse-connect,
+    port 8123), clickhouse+native:// (native TCP via clickhouse-driver, port 9000),
+    or chdb:// (embedded in-process engine, optional filesystem persistence). All backends
+    expose identical SQL and integration engine surfaces.
+  use_case: >-
+    Operators can choose between a remote ClickHouse server (HTTP or native protocol),
+    in-process embedded ClickHouse, or persistent embedded store depending on deployment
+    topology and latency requirements.
+  scenario: |
+    Given ClickHouseFederationRuntime.from_url with URL scheme
+    When the URL scheme is clickhouse://
+    Then connect via clickhouse-connect HTTP client to port 8123
+    When the URL scheme is clickhouse+native://
+    Then connect via clickhouse-driver native TCP client to port 9000
+    When the URL scheme is chdb:// or chdb:///path
+    Then initialize embedded chdb in-process, optionally persisting to path
+    And all three backends support identical SQL execution and integration engines
+  code:
+    - provisa/federation/runtime.py
+  related_reqs:
+    - REQ-911
+- id: REQ-913
+  status: proposed
+  group: "0. Architecture & Design Principles"
+  category: AST-Based Transforms
+  priority: MUST
+  type: structural
+  description: >-
+    Every query transform — governance (RLS, masking, visibility, row-cap), correlated-
+    subquery rewriting, and dialect lowering — MUST operate on a parsed SQL/relational
+    AST, never on SQL text via regex or string substitution. Each surface language
+    (GraphQL, Cypher, SQL) parses to an AST that is carried through governance and planning
+    and serialized to a dialect string only at final emission; no stage may re-derive
+    query structure (SELECT scope, WHERE injection point, alias binding, LIMIT) from text.
+  use_case: >-
+    String/regex transforms silently mis-apply governance: a scalar subquery in the
+    projection moves the masking boundary (PII leak), a non-t0 alias convention skips RLS
+    qualification (scope-ambiguous predicate), and a parameterized LIMIT bypasses the
+    row-cap ceiling. AST transforms make "governance applied" a structural property of the
+    tree rather than a textual coincidence each frontend must keep satisfying.
+  code:
+    - provisa/compiler/stage2.py
+    - provisa/compiler/rls.py
+    - provisa/compiler/mask_inject.py
+    - provisa/transpiler/transpile.py
+    - provisa/cypher/translator.py
+  tests:
+    - tests/unit/test_ast_transform_invariants.py
+    - tests/integration/test_ast_transform_e2e.py
+  target: "2026-Q4"
+  competitive_position:
+    status: parity
+    rationale: >-
+      Trino, Spark, and Calcite-based engines apply predicate/column governance as
+      logical-plan rewrites, not text edits; AST-based transforms bring Provisa to that
+      baseline and are prerequisite to first-class dynamic obligations.
+  related_reqs:
+    - REQ-040
+    - REQ-041
+    - REQ-087
+    - REQ-263
+    - REQ-264
+- id: REQ-914
+  status: complete
+  since: "2026-07"
+  group: "3. Governance & Observability"
+  category: Pipeline Stage Tracing
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Each query-pipeline boundary (govern.in, govern.rls, govern.mask, govern.out, and
+    transpile.<dialect>) emits an OpenTelemetry span event carrying the canonical SQL, so the
+    transform sequence is inspectable per request and the pre/post-governance pair serves as a
+    compliance receipt. SQL capture is OFF by default; PROVISA_TRACE_SQL=redacted blanks every
+    literal to a placeholder before attaching, and =full attaches raw SQL for dev only.
+    Telemetry never fails the request: a redaction parse error is surfaced as a span attribute.
+    PROVISA_TRACE_AST=1 attaches the SQLGlot AST repr, redacted the same way (literals blanked),
+    so it is safe to enable independently of the SQL mode.
+  use_case: >-
+    Debugging special-case query transforms previously meant reading regex and guessing where
+    text was mangled; per-stage canonical SQL turns that into a diff. The redaction default
+    prevents literal values (RLS predicate values, PII) from leaking into traces in a
+    governance product.
+  scenario: |
+    Given the query pipeline processes a request
+    When PROVISA_TRACE_SQL is unset or off
+    Then stage span events carry the stage name but no SQL text
+    When PROVISA_TRACE_SQL is redacted
+    Then each stage event carries SQL with every literal replaced by a placeholder
+    And no literal value (e.g. an RLS predicate value or SSN) appears in any attribute
+    When the SQL is unparseable in redacted mode
+    Then the failure is recorded as a span attribute and the request is not aborted
+  code:
+    - provisa/observability/stage_trace.py
+    - provisa/compiler/stage2.py
+    - provisa/compiler/rls.py
+    - provisa/compiler/mask_inject.py
+    - provisa/transpiler/transpile.py
+  tests:
+    - tests/unit/test_stage_trace.py
+  related_reqs:
+    - REQ-913
+    - REQ-302
+    - REQ-303
