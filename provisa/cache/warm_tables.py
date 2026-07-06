@@ -86,10 +86,10 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
         safe = table.replace('"', '""')
         return f'"{self._iceberg_catalog}"."{self._iceberg_schema}"."{safe}"'
 
-    def check_promotions(  # REQ-239, REQ-240, REQ-241
+    async def check_promotions(  # REQ-239, REQ-240, REQ-241
         self,
         counter: QueryCounter,
-        trino_conn: Any,
+        engine: Any,
         threshold: int = DEFAULT_QUERY_THRESHOLD,
         max_rows: int = DEFAULT_MAX_ROWS,
         hot_tables: set[str] | None = None,
@@ -125,10 +125,9 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
                 if table in self._warm_tables:
                     continue
 
-            # Size check
-            cursor = trino_conn.cursor()
-            cursor.execute(f"SELECT COUNT(*) FROM {table}")
-            row_count = cursor.fetchone()[0]
+            # Size check — through the engine terminal
+            _cnt = await engine.execute_engine(f"SELECT COUNT(*) FROM {table}")
+            row_count = _cnt.rows[0][0]
 
             if row_count > max_rows:
                 log.info(
@@ -139,10 +138,9 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
                 )
                 continue
 
-            # CTAS into Iceberg
+            # CTAS into Iceberg via the engine
             target = self._iceberg_ref(table)
-            cursor.execute(f"CREATE TABLE {target} AS SELECT * FROM {table}")
-            cursor.fetchall()
+            await engine.execute_engine(f"CREATE TABLE {target} AS SELECT * FROM {table}")
 
             with self._lock:
                 self._warm_tables.add(table)
@@ -151,10 +149,10 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
 
         return promoted
 
-    def check_demotions(  # REQ-239
+    async def check_demotions(  # REQ-239
         self,
         counter: QueryCounter,
-        trino_conn: Any,
+        engine: Any,
         threshold: int = DEFAULT_QUERY_THRESHOLD,
     ) -> list[str]:
         """Demote tables that have fallen below query threshold.
@@ -172,9 +170,7 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
                 continue
 
             target = self._iceberg_ref(table)
-            cursor = trino_conn.cursor()
-            cursor.execute(f"DROP TABLE IF EXISTS {target}")
-            cursor.fetchall()
+            await engine.execute_engine(f"DROP TABLE IF EXISTS {target}")
 
             with self._lock:
                 self._warm_tables.discard(table)

@@ -2231,17 +2231,17 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                         if state.hot_manager is not None
                         else set()
                     )
-                    state.warm_manager.check_promotions(
+                    await state.warm_manager.check_promotions(
                         _qc,
-                        state.trino_conn,
+                        state.federation_engine,
                         threshold=_warm_threshold,
                         max_rows=_warm_max_rows,
                         hot_tables=_hot_names,
                         excluded=_warm_excluded,
                         forced=_warm_forced,
                     )
-                    state.warm_manager.check_demotions(
-                        _qc, state.trino_conn, threshold=_warm_threshold
+                    await state.warm_manager.check_demotions(
+                        _qc, state.federation_engine, threshold=_warm_threshold
                     )
                 except Exception:
                     _log.exception("Error in warm-table loop")

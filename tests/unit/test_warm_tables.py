@@ -12,9 +12,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call
-
-import pytest
 
 from provisa.cache.warm_tables import QueryCounter, WarmTableManager
 
@@ -57,90 +54,89 @@ class TestQueryCounter:
         assert hot == {"hot_table"}
 
 
-# --- Mock Trino helpers ---
+# --- Fake engine terminal ---
 
 
-def _mock_cursor(count_result=1000, fetchall_result=None):
-    cursor = MagicMock()
-    cursor.fetchone.return_value = (count_result,)
-    cursor.fetchall.return_value = fetchall_result or []
-    return cursor
+class _FakeEngine:
+    """Records SQL passed to execute_engine; COUNT(*) returns the configured row count."""
 
+    def __init__(self, count_result=1000):
+        self._count = count_result
+        self.sqls: list[str] = []
 
-def _mock_trino(cursor):
-    conn = MagicMock()
-    conn.cursor.return_value = cursor
-    return conn
+    async def execute_engine(self, sql, *a, **k):
+        self.sqls.append(sql)
+        from provisa.executor.trino import QueryResult
+
+        if "COUNT(*)" in sql:
+            return QueryResult(rows=[(self._count,)], column_names=["c"])
+        return QueryResult(rows=[], column_names=[])
 
 
 # --- WarmTableManager promotion ---
 
 
 class TestWarmPromotion:
-    def test_promotes_table_above_threshold(self):
+    async def test_promotes_table_above_threshold(self):
         counter = QueryCounter()
         for _ in range(100):
             counter.increment("my_schema.orders")
 
-        cursor = _mock_cursor(count_result=5000)
-        conn = _mock_trino(cursor)
+        engine = _FakeEngine(5000)
 
         mgr = WarmTableManager(iceberg_catalog="iceberg", iceberg_schema="warm")
-        promoted = mgr.check_promotions(counter, conn, threshold=100, max_rows=10_000_000)
+        promoted = await mgr.check_promotions(counter, engine, threshold=100, max_rows=10_000_000)
 
         assert promoted == ["my_schema.orders"]
         assert "my_schema.orders" in mgr.get_warm_tables()
 
         # Verify CTAS was issued
-        calls = [c for c in cursor.execute.call_args_list]
+        calls = [c for c in engine.sqls]
         assert any("CREATE TABLE" in str(c) for c in calls)
         assert any("SELECT * FROM my_schema.orders" in str(c) for c in calls)
 
-    def test_skips_below_threshold(self):
+    async def test_skips_below_threshold(self):
         counter = QueryCounter()
         for _ in range(50):
             counter.increment("orders")
 
-        cursor = _mock_cursor()
-        conn = _mock_trino(cursor)
+        engine = _FakeEngine()
 
         mgr = WarmTableManager()
-        promoted = mgr.check_promotions(counter, conn, threshold=100)
+        promoted = await mgr.check_promotions(counter, engine, threshold=100)
 
         assert promoted == []
         assert mgr.get_warm_tables() == set()
-        cursor.execute.assert_not_called()
+        assert engine.sqls == []
 
-    def test_skips_already_warm(self):
+    async def test_skips_already_warm(self):
         counter = QueryCounter()
         for _ in range(100):
             counter.increment("orders")
 
-        cursor = _mock_cursor(count_result=100)
-        conn = _mock_trino(cursor)
+        engine = _FakeEngine(100)
 
         mgr = WarmTableManager()
-        mgr.check_promotions(counter, conn, threshold=100)
+        await mgr.check_promotions(counter, engine, threshold=100)
         # Second call — should not re-promote
-        cursor.reset_mock()
-        promoted = mgr.check_promotions(counter, conn, threshold=100)
+        engine.sqls.clear()
+        promoted = await mgr.check_promotions(counter, engine, threshold=100)
         assert promoted == []
 
-    def test_size_guard_skips_large_table(self):
+    async def test_size_guard_skips_large_table(self):
         counter = QueryCounter()
         for _ in range(200):
             counter.increment("big_table")
 
-        cursor = _mock_cursor(count_result=20_000_000)
-        conn = _mock_trino(cursor)
+        engine = _FakeEngine(20_000_000)
 
         mgr = WarmTableManager()
-        promoted = mgr.check_promotions(counter, conn, threshold=100, max_rows=10_000_000)
+        promoted = await mgr.check_promotions(counter, engine, threshold=100, max_rows=10_000_000)
 
         assert promoted == []
         assert mgr.get_warm_tables() == set()
         # Only COUNT(*) query should have been issued, not CTAS
-        execute_calls = cursor.execute.call_args_list
+        execute_calls = engine.sqls
         assert len(execute_calls) == 1
         assert "COUNT(*)" in str(execute_calls[0])
 
@@ -149,47 +145,45 @@ class TestWarmPromotion:
 
 
 class TestWarmDemotion:
-    def test_demotes_table_below_threshold(self):
+    async def test_demotes_table_below_threshold(self):
         counter = QueryCounter()
         for _ in range(100):
             counter.increment("orders")
 
-        cursor = _mock_cursor(count_result=500)
-        conn = _mock_trino(cursor)
+        engine = _FakeEngine(500)
 
         mgr = WarmTableManager(iceberg_catalog="iceberg", iceberg_schema="warm")
-        mgr.check_promotions(counter, conn, threshold=100)
+        await mgr.check_promotions(counter, engine, threshold=100)
         assert "orders" in mgr.get_warm_tables()
 
         # Reset counter to simulate low usage
         counter.reset("orders")
-        cursor.reset_mock()
+        engine.sqls.clear()
 
-        demoted = mgr.check_demotions(counter, conn, threshold=100)
+        demoted = await mgr.check_demotions(counter, engine, threshold=100)
         assert demoted == ["orders"]
         assert mgr.get_warm_tables() == set()
 
         # Verify DROP TABLE was issued
-        calls = [c for c in cursor.execute.call_args_list]
+        calls = [c for c in engine.sqls]
         assert any("DROP TABLE IF EXISTS" in str(c) for c in calls)
 
-    def test_keeps_warm_table_above_threshold(self):
+    async def test_keeps_warm_table_above_threshold(self):
         counter = QueryCounter()
         for _ in range(200):
             counter.increment("orders")
 
-        cursor = _mock_cursor(count_result=500)
-        conn = _mock_trino(cursor)
+        engine = _FakeEngine(500)
 
         mgr = WarmTableManager()
-        mgr.check_promotions(counter, conn, threshold=100)
-        cursor.reset_mock()
+        await mgr.check_promotions(counter, engine, threshold=100)
+        engine.sqls.clear()
 
-        demoted = mgr.check_demotions(counter, conn, threshold=100)
+        demoted = await mgr.check_demotions(counter, engine, threshold=100)
         assert demoted == []
         assert "orders" in mgr.get_warm_tables()
 
-    def test_get_warm_tables_returns_copy(self):
+    async def test_get_warm_tables_returns_copy(self):
         mgr = WarmTableManager()
         tables = mgr.get_warm_tables()
         tables.add("injected")
@@ -198,51 +192,46 @@ class TestWarmDemotion:
 
 # --- REQ-240/241: hot precedence, opt-out, force ---
 
+
 class TestWarmTierMembership:
-    def test_hot_table_not_promoted_to_warm(self):
+    async def test_hot_table_not_promoted_to_warm(self):
         # REQ-241: a table the hot tier manages is never also promoted to warm.
         counter = QueryCounter()
         for _ in range(100):
             counter.increment("countries")
-        cursor = _mock_cursor(count_result=50)
-        conn = _mock_trino(cursor)
+        engine = _FakeEngine(50)
         mgr = WarmTableManager()
-        promoted = mgr.check_promotions(
-            counter, conn, threshold=100, hot_tables={"countries"}
+        promoted = await mgr.check_promotions(
+            counter, engine, threshold=100, hot_tables={"countries"}
         )
         assert promoted == []
-        cursor.execute.assert_not_called()
+        assert engine.sqls == []
 
-    def test_excluded_table_not_promoted(self):
+    async def test_excluded_table_not_promoted(self):
         # REQ-240: warm: false opts a table out of warming.
         counter = QueryCounter()
         for _ in range(100):
             counter.increment("orders")
-        cursor = _mock_cursor(count_result=50)
-        conn = _mock_trino(cursor)
+        engine = _FakeEngine(50)
         mgr = WarmTableManager()
-        promoted = mgr.check_promotions(
-            counter, conn, threshold=100, excluded={"orders"}
-        )
+        promoted = await mgr.check_promotions(counter, engine, threshold=100, excluded={"orders"})
         assert promoted == []
 
-    def test_forced_table_promoted_below_threshold(self):
+    async def test_forced_table_promoted_below_threshold(self):
         # REQ-240: warm: true forces promotion even with no query traffic.
         counter = QueryCounter()  # zero queries
-        cursor = _mock_cursor(count_result=50)
-        conn = _mock_trino(cursor)
+        engine = _FakeEngine(50)
         mgr = WarmTableManager()
-        promoted = mgr.check_promotions(
-            counter, conn, threshold=100, forced={"reference_data"}
+        promoted = await mgr.check_promotions(
+            counter, engine, threshold=100, forced={"reference_data"}
         )
         assert promoted == ["reference_data"]
 
-    def test_forced_still_respects_hot_precedence(self):
+    async def test_forced_still_respects_hot_precedence(self):
         counter = QueryCounter()
-        cursor = _mock_cursor(count_result=50)
-        conn = _mock_trino(cursor)
+        engine = _FakeEngine(50)
         mgr = WarmTableManager()
-        promoted = mgr.check_promotions(
-            counter, conn, threshold=100, forced={"t"}, hot_tables={"t"}
+        promoted = await mgr.check_promotions(
+            counter, engine, threshold=100, forced={"t"}, hot_tables={"t"}
         )
         assert promoted == []
