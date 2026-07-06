@@ -1968,22 +1968,26 @@ _CYPHER_DQUOTE_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
 
 
 def _rewrite_cypher_dquote_strings(expr: str) -> str:  # REQ-410
-    """Convert Cypher double-quoted string literals to SQL single-quoted literals, leaving quoted
-    identifiers (after ``.``) untouched. Retained for the UNWIND text path and REQ-410 coverage; the
-    predicate/projection paths handle double-quoted strings in the grammar (REQ-913)."""
-    result = []
+    """Cypher ``"str"`` → SQL ``'str'``, leaving quoted identifiers (after ``.``) untouched. Retained
+    for the UNWIND text path + REQ-410; the AST grammar handles this on the predicate paths (REQ-913)."""
+    result: list[str] = []
     pos = 0
     for m in _CYPHER_DQUOTE_RE.finditer(expr):
         start = m.start()
         result.append(expr[pos:start])
-        if start > 0 and expr[start - 1] == ".":  # property name — leave as-is
-            result.append(m.group(0))
-        else:
-            inner = m.group(1).replace("'", "\\'")
-            result.append(f"'{inner}'")
+        keep = start > 0 and expr[start - 1] == "."  # property name after `.` — leave as-is
+        result.append(m.group(0) if keep else "'" + m.group(1).replace("'", "\\'") + "'")
         pos = m.end()
     result.append(expr[pos:])
     return "".join(result)
+
+
+_ISO_TS_LITERAL_RE = re.compile(r"'(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)'")
+
+
+def _coerce_ts_literals(text: str) -> str:  # REQ-409
+    """Wrap ISO-datetime string literals as ``TIMESTAMP '...'`` (retained for REQ-409)."""
+    return _ISO_TS_LITERAL_RE.sub(lambda m: f"TIMESTAMP {m.group(0)}", text)
 
 
 def _rewrite_property_access(expr: str) -> str:

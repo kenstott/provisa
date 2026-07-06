@@ -259,7 +259,7 @@ def rls_injected_columns_stripped(shared_data: dict) -> None:
     surviving = shared_data["surviving_columns"]
 
     # RLS predicate is present in the executable SQL.
-    assert "region = 'us'" in enforced_sql
+    assert "\"region\" = 'us'" in enforced_sql
     assert "WHERE" in enforced_sql.upper()
 
     # Unauthorized column is never exposed to the restricted role.

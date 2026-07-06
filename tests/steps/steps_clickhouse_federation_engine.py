@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
-scenarios("../features/req_911_clickhouse_federation_engine.feature")
+scenarios("../features/REQ-911.feature")
 
 # ---------------------------------------------------------------------------
 # Minimal stubs for ClickHouse federation objects (REQ-911)

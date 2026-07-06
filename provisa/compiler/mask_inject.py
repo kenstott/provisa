@@ -143,3 +143,44 @@ def inject_masking(  # REQ-040, REQ-263, REQ-264
             columns=compiled.columns,
             sources=compiled.sources,
         )
+
+
+def _find_select_end(sql: str) -> int:
+    """Index of the top-level ``FROM`` keyword — the end of the SELECT projection.
+
+    Scans at parenthesis depth 0 and outside string/identifier quotes, so a scalar subquery in the
+    projection (``SELECT (SELECT .. FROM ..) AS c, "ssn" FROM t``) does not move the boundary onto the
+    inner FROM. Retained as a test/analysis utility (REQ-740/744); ``inject_masking`` rewrites the
+    projection structurally on the AST and no longer needs it. Returns ``len(sql)`` when there is no FROM.
+    """
+    depth = 0
+    i = 0
+    n = len(sql)
+    while i < n:
+        ch = sql[i]
+        if ch == "'":  # single-quoted string literal — skip to its close
+            i += 1
+            while i < n and sql[i] != "'":
+                i += 2 if sql[i] == "\\" else 1
+            i += 1
+            continue
+        if ch == '"':  # double-quoted identifier — skip to its close
+            i += 1
+            while i < n and sql[i] != '"':
+                i += 1
+            i += 1
+            continue
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif (
+            depth == 0
+            and ch in "Ff"
+            and sql[i : i + 4].upper() == "FROM"
+            and (i == 0 or not (sql[i - 1].isalnum() or sql[i - 1] == "_"))
+            and (i + 4 >= n or not (sql[i + 4].isalnum() or sql[i + 4] == "_"))
+        ):
+            return i
+        i += 1
+    return n

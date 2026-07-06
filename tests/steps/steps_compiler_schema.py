@@ -1001,7 +1001,7 @@ def req403_run(shared_data):
 def req403_assert(shared_data):
     sql = shared_data["req403_result"].sql
     # Table-specific filter is applied.
-    assert "owner_id = current_user" in sql
+    assert '"owner_id" = CURRENT_USER' in sql
     # Domain-level filter is NOT applied (table rule wins, no fallback).
     assert "region = 'us'" not in sql
 

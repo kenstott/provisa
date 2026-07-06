@@ -73,7 +73,7 @@ def _all_governance_applied(shared_data: dict) -> None:
 
     # (1) RLS predicate injected for the referenced table
     assert "WHERE" in upper, f"RLS WHERE not injected: {result}"
-    assert "region = 'us'" in result, f"RLS predicate missing: {result}"
+    assert "\"region\" = 'us'" in result, f"RLS predicate missing: {result}"
 
     # (2) column masking wrapped the masked column expression
     assert "REGEXP_REPLACE" in upper, f"masking function not applied: {result}"
@@ -156,7 +156,7 @@ def _governance_at_every_reference(shared_data: dict) -> None:
     # orders is referenced THREE times: in the CTE body, and in the WHERE
     # subquery — RLS must be injected at each physical reference, not only the
     # outermost SELECT.
-    orders_rls_count = result.count("region = 'us'")
+    orders_rls_count = result.count("\"region\" = 'us'")
     assert orders_rls_count >= 2, (
         f"RLS for orders not injected at every reference (found {orders_rls_count}): {result}"
     )
@@ -256,7 +256,9 @@ def _identical_to_graphql_path(shared_data: dict) -> None:
     # /data/sql:
     #   (1) RLS predicate injected for the referenced table
     assert "WHERE" in upper, f"RLS WHERE not injected on /data/sql path: {sql_result}"
-    assert "region = 'us'" in sql_result, f"RLS predicate missing on /data/sql path: {sql_result}"
+    assert "\"region\" = 'us'" in sql_result, (
+        f"RLS predicate missing on /data/sql path: {sql_result}"
+    )
     #   (2) masking applied to the masked column
     assert "REGEXP_REPLACE" in upper, f"masking not applied on /data/sql path: {sql_result}"
     #   (3) invisible column ("secret") stripped or nulled
