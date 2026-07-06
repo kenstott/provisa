@@ -14,8 +14,7 @@ This is the seam between the context-free expression visitor (``expr_visitor.Exp
 translator. It reads — never mutates, except the shared parameter registry — the translator's symbol
 tables, so lowering an expression produces exactly what the old regex pipeline produced, but built as
 ``sqlglot.exp`` nodes. Embedded queries (``EXISTS/COUNT/COLLECT { … }``, pattern comprehensions) recurse
-into a fresh ``_Translator`` that inherits the outer ``_var_table`` for correlation — the same mechanism
-the text path used in ``subquery_exprs._subquery_expr_to_sql``.
+into a fresh ``_Translator`` that inherits the outer ``_var_table`` for correlation.
 """
 
 from __future__ import annotations

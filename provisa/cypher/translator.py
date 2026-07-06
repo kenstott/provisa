@@ -50,11 +50,9 @@ from provisa.cypher.parser import (
 )
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.path_functions import PathFunctionsMixin
-from provisa.cypher.path_comprehension import PathComprehensionMixin
 from provisa.cypher.select_builder import SelectBuilderMixin
 from provisa.cypher.correlated_call import CorrelatedCallMixin
-from provisa.cypher.subquery_exprs import SubqueryExprsMixin
-from provisa.cypher.map_projection import MapProjectionMixin, rewrite_bare_map_literals
+from provisa.cypher.map_projection import rewrite_bare_map_literals
 from provisa.cypher.group_by import GroupByMixin
 
 
@@ -364,11 +362,8 @@ def cypher_calls_to_sql_list(  # REQ-571
 
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
     PathFunctionsMixin,
-    PathComprehensionMixin,
     SelectBuilderMixin,
     CorrelatedCallMixin,
-    SubqueryExprsMixin,
-    MapProjectionMixin,
     GroupByMixin,
 ):
     def __init__(
