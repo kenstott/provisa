@@ -66,13 +66,12 @@ async def _candidates_live(
     if raw_tables is None:
         catalog = source_to_catalog(source_id)
         try:
-            cursor = state.trino_conn.cursor()
-            cursor.execute(
+            res = await state.federation_engine.execute_engine(
                 f'SELECT table_name FROM "{catalog}".information_schema.tables '
                 f"WHERE table_schema = '{schema_name}' "
                 f"AND table_type = 'BASE TABLE' ORDER BY table_name"
             )
-            raw_tables_list = [row[0] for row in cursor.fetchall()]
+            raw_tables_list = [row[0] for row in res.rows]
         except Exception:
             raw_tables_list = []
         candidates = [
@@ -91,13 +90,12 @@ async def _candidates_live(
     catalog = source_to_catalog(source_id)
     for c in candidates:
         try:
-            cursor = state.trino_conn.cursor()
-            cursor.execute(
+            res = await state.federation_engine.execute_engine(
                 f'SELECT column_name FROM "{catalog}".information_schema.columns '
                 f"WHERE table_schema = '{schema_name}' AND table_name = '{c.name}' "
                 f"ORDER BY ordinal_position"
             )
-            c.columns = [row[0] for row in cursor.fetchall()]
+            c.columns = [row[0] for row in res.rows]
         except Exception:
             pass
 

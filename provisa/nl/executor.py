@@ -104,7 +104,7 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     governed_sql = apply_governance(make_semantic_sql(sql_str, ctx), gov_ctx)
     exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
     trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
-    rows = await _run_trino(trino_sql, [], app_state)
+    rows = await _run_engine(trino_sql, [], app_state)
     assembled = assemble_rows(rows, graph_vars)
     columns = list(rows[0].keys()) if rows else []
     return {"columns": columns, "rows": [to_serializable(r) for r in assembled]}
@@ -121,8 +121,7 @@ async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
     schema = app_state.schemas.get(role)
     if not isinstance(schema, GraphQLSchema):
         raise RuntimeError(f"No GraphQL schema for role: {role}")
-    if getattr(app_state, "trino_conn", None) is None:
-        raise RuntimeError("Federation engine not connected")
+    # execute_engine guards its own connection — no direct trino_conn check.
     engine = app_state.federation_engine
 
     ctx = _get_ctx(app_state, role)
@@ -186,7 +185,7 @@ async def _execute_sql(query: str, role: str, app_state: Any) -> dict:
     governed_sql = apply_governance(make_semantic_sql(query, ctx), gov_ctx)
     exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
     trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
-    rows = await _run_trino(trino_sql, [], app_state)
+    rows = await _run_engine(trino_sql, [], app_state)
     columns = list(rows[0].keys()) if rows else []
     return {"columns": columns, "rows": rows}
 
@@ -198,9 +197,8 @@ def _get_ctx(app_state: Any, role: str) -> Any:
     return ctx
 
 
-async def _run_trino(sql: str, params: list, app_state: Any) -> list[dict]:
-    if getattr(app_state, "trino_conn", None) is None:
-        raise FederationError("Federation engine not connected")
+async def _run_engine(sql: str, params: list, app_state: Any) -> list[dict]:
+    # execute_engine guards its own connection/availability — no direct trino_conn check.
     try:
         result = await app_state.federation_engine.execute_engine(sql, params or [])
     except Exception as exc:

@@ -99,7 +99,7 @@ async def invalidate_source(pool, source_id: str) -> None:  # REQ-464
 
 
 async def index_source(
-    source_id: str, pool, trino_conn, source_pools, source_types, state
+    source_id: str, pool, engine, source_pools, source_types, state
 ) -> None:  # REQ-464
     """Background task: walk all schemas+tables for a source and populate cache.
 
@@ -121,12 +121,11 @@ async def index_source(
 
         catalog = source_to_catalog(source_id)
         try:
-            cursor = trino_conn.cursor()
-            cursor.execute(
+            res = await engine.execute_engine(
                 f'SELECT schema_name FROM "{catalog}".information_schema.schemata '
                 f"ORDER BY schema_name"
             )
-            schemas = [row[0] for row in cursor.fetchall()]
+            schemas = [row[0] for row in res.rows]
         except Exception as exc:
             log.warning("catalog_cache: Trino schema list failed for %r: %s", source_id, exc)
             return
@@ -145,13 +144,12 @@ async def index_source(
 
             catalog = source_to_catalog(source_id)
             try:
-                cursor = trino_conn.cursor()
-                cursor.execute(
+                res = await engine.execute_engine(
                     f'SELECT table_name FROM "{catalog}".information_schema.tables '
                     f"WHERE table_schema = '{schema}' AND table_type = 'BASE TABLE' "
                     f"ORDER BY table_name"
                 )
-                table_names = [row[0] for row in cursor.fetchall()]
+                table_names = [row[0] for row in res.rows]
                 tables_with_cols = [
                     CachedTable(schema_name=schema, table_name=t, column_names=[], comment=None)
                     for t in table_names
@@ -178,13 +176,12 @@ async def index_source(
         catalog = source_to_catalog(source_id)
         for cached in tables_with_cols:
             try:
-                cursor = trino_conn.cursor()
-                cursor.execute(
+                res = await engine.execute_engine(
                     f'SELECT column_name FROM "{catalog}".information_schema.columns '
                     f"WHERE table_schema = '{schema}' AND table_name = '{cached.table_name}' "
                     f"ORDER BY ordinal_position"
                 )
-                cached.column_names = [row[0] for row in cursor.fetchall()]
+                cached.column_names = [row[0] for row in res.rows]
             except Exception:
                 pass
 

@@ -32,8 +32,9 @@ _TABLESAMPLE_PCT = 10  # BERNOULLI(10) — 10% of blocks
 async def profile_table(table_id: int) -> dict:  # REQ-452
     if state.tenant_db is None:
         raise HTTPException(503, "Database unavailable")
-    if state.trino_conn is None:
-        raise HTTPException(503, "Trino unavailable")
+    if state.federation_engine is None:
+        raise HTTPException(503, "Query engine unavailable")
+    engine = state.federation_engine
 
     async with state.tenant_db.acquire() as conn:
         row = await conn.fetchrow(
@@ -62,19 +63,17 @@ async def profile_table(table_id: int) -> dict:  # REQ-452
         )
 
     try:
-        cur = state.trino_conn.cursor()
-        cur.execute(sql)
-        raw_rows = cur.fetchall()
-        columns = [d[0] for d in cur.description] if cur.description else []
+        res = await engine.execute_engine(sql)
+        raw_rows = res.rows
+        columns = res.column_names
     except Exception:
         if "TABLESAMPLE" in sql:
             # Retry without TABLESAMPLE
             try:
                 fqn = f'"{source_to_catalog(source_id)}"."{schema_name}"."{table_name}"'
-                cur = state.trino_conn.cursor()
-                cur.execute(f"SELECT * FROM {fqn} LIMIT {_SAMPLE_LIMIT}")
-                raw_rows = cur.fetchall()
-                columns = [d[0] for d in cur.description] if cur.description else []
+                res = await engine.execute_engine(f"SELECT * FROM {fqn} LIMIT {_SAMPLE_LIMIT}")
+                raw_rows = res.rows
+                columns = res.column_names
             except Exception as e:
                 raise HTTPException(400, str(e))
         else:

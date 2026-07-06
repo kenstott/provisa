@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import HTTPException
 from graphql import (
     GraphQLEnumType,
     GraphQLList,
@@ -137,7 +136,8 @@ async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
 
     from provisa.transpiler.transpile import transpile_to_trino
 
-    if state.trino_conn is None:
-        raise HTTPException(status_code=503, detail="Trino not connected")
+    # ENGINE terminal — execute_engine guards its own connection/availability, so no
+    # direct trino_conn check here. (SQL dialect is still Trino-shaped via transpile_to_trino;
+    # engine-owned transpilation is the remaining native-execution step.)
     trino_sql = transpile_to_trino(compiled.sql)
     return await engine.execute_engine(trino_sql, compiled.params)

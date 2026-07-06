@@ -867,17 +867,11 @@ class Query:  # REQ-021, REQ-042
             return []
         catalog = source_to_catalog(source_id)
         try:
-            assert state.trino_conn is not None
-            cursor = state.trino_conn.cursor()
-            cursor.execute(
+            res = await state.federation_engine.execute_engine(
                 f'SELECT schema_name FROM "{catalog}".information_schema.schemata '
                 f"ORDER BY schema_name"
             )
-            return [
-                row[0].lower()
-                for row in cursor.fetchall()
-                if not is_provisa_internal(row[0].lower())
-            ]
+            return [row[0].lower() for row in res.rows if not is_provisa_internal(row[0].lower())]
         except Exception:
             return []
 
@@ -920,9 +914,7 @@ class Query:  # REQ-021, REQ-042
         catalog = source_to_catalog(source_id)
         skip = PROVISA_INTERNAL_TABLES if schema_name.lower() == "public" else frozenset()
         try:
-            assert state.trino_conn is not None
-            cursor = state.trino_conn.cursor()
-            cursor.execute(
+            res = await state.federation_engine.execute_engine(
                 f'SELECT table_name FROM "{catalog}".information_schema.tables '
                 f"WHERE lower(table_schema) = lower('{schema_name}') "
                 f"AND table_type = 'BASE TABLE' "
@@ -930,7 +922,7 @@ class Query:  # REQ-021, REQ-042
             )
             return [
                 AvailableTableType(name=row[0], comment=None)
-                for row in cursor.fetchall()
+                for row in res.rows
                 if row[0].lower() not in skip
             ]
         except Exception:
@@ -973,15 +965,13 @@ class Query:  # REQ-021, REQ-042
             return [c.name for c in cols]
         catalog = source_to_catalog(source_id)
         try:
-            assert state.trino_conn is not None
-            cursor = state.trino_conn.cursor()
-            cursor.execute(
+            res = await state.federation_engine.execute_engine(
                 f'SELECT column_name FROM "{catalog}".information_schema.columns '
                 f"WHERE table_schema = '{schema_name}' "
                 f"AND table_name = '{table_name}' "
                 f"ORDER BY ordinal_position"
             )
-            return [row[0] for row in cursor.fetchall()]
+            return [row[0] for row in res.rows]
         except Exception:
             return []
 
@@ -1046,12 +1036,19 @@ class Query:  # REQ-021, REQ-042
             ]
         catalog = source_to_catalog(source_id)
         try:
-            from provisa.compiler.introspect import introspect_pk_columns
-
-            assert state.trino_conn is not None
-            pk_cols = introspect_pk_columns(state.trino_conn, catalog, schema_name, table_name)
-            cursor = state.trino_conn.cursor()
-            cursor.execute(
+            # PK columns + column metadata via the engine terminal (information_schema).
+            pk_res = await state.federation_engine.execute_engine(
+                f"SELECT kcu.column_name "
+                f'FROM "{catalog}".information_schema.table_constraints tc '
+                f'JOIN "{catalog}".information_schema.key_column_usage kcu '
+                f"  ON tc.constraint_name = kcu.constraint_name "
+                f"  AND tc.table_schema = kcu.table_schema "
+                f"  AND tc.table_name = kcu.table_name "
+                f"WHERE tc.table_schema = '{schema_name}' AND tc.table_name = '{table_name}' "
+                f"  AND tc.constraint_type = 'PRIMARY KEY'"
+            )
+            pk_cols = {row[0] for row in pk_res.rows}
+            col_res = await state.federation_engine.execute_engine(
                 f"SELECT column_name, data_type, comment "
                 f'FROM "{catalog}".information_schema.columns '
                 f"WHERE table_schema = '{schema_name}' "
@@ -1062,7 +1059,7 @@ class Query:  # REQ-021, REQ-042
                 AvailableColumnType(
                     name=row[0], data_type=row[1], comment=row[2], is_primary_key=row[0] in pk_cols
                 )
-                for row in cursor.fetchall()
+                for row in col_res.rows
             ]
         except Exception:
             return []
@@ -1443,25 +1440,21 @@ async def _add_source_pool(state, input: SourceInput) -> None:
 
 
 def _create_trino_catalog(state, model, input: SourceInput) -> None:
-    """Create a Trino catalog for the source (mirrors config_loader path)."""
-    from provisa.core.catalog import create_catalog
+    """Provision the source on the bound engine (mirrors config_loader path)."""
     from provisa.core.secrets import resolve_secrets
 
     try:
-        create_catalog(
-            state.trino_conn,
-            model,
-            resolve_secrets(input.password) if input.password else "",
+        state.federation_engine.register_source(
+            model, resolve_secrets(input.password) if input.password else ""
         )
     except Exception as _cat_err:
         logging.getLogger(__name__).warning(
-            "Trino catalog creation for %r failed: %s", input.id, _cat_err
+            "engine source provisioning for %r failed: %s", input.id, _cat_err
         )
 
 
 async def _analyze_trino_tables(state, pool, model, input: SourceInput) -> None:
-    """Fire ANALYZE on all registered tables for this source (errors swallowed)."""
-    from provisa.core.catalog import analyze_source_tables
+    """Fire engine ANALYZE on all registered tables for this source (errors swallowed)."""
 
     class _TblRef:
         def __init__(self, source_id: str, schema_name: str, table_name: str) -> None:
@@ -1476,7 +1469,7 @@ async def _analyze_trino_tables(state, pool, model, input: SourceInput) -> None:
         )
     table_refs = [_TblRef(input.id, r["schema_name"], r["table_name"]) for r in rows]
     if table_refs:
-        analyze_source_tables(state.trino_conn, model, table_refs)
+        state.federation_engine.analyze(model, table_refs)
 
 
 def _prime_govdata_cache(input: SourceInput) -> None:
@@ -1511,7 +1504,7 @@ def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
         _index_source(
             input.id,
             pool,
-            state.trino_conn,
+            state.federation_engine,
             state.source_pools,
             state.source_types,
             state,
@@ -1607,9 +1600,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         state.source_types[input.id] = input.type
         state.source_dialects[input.id] = ""
 
-        if state.trino_conn is not None:
-            _create_trino_catalog(state, model, input)
-            await _analyze_trino_tables(state, pool, model, input)
+        # Provision on the bound engine (Trino makes a catalog; native engines no-op / attach lazily).
+        _create_trino_catalog(state, model, input)
+        await _analyze_trino_tables(state, pool, model, input)
 
         if input.type == "govdata" and input.database and input.username:
             _prime_govdata_cache(input)
@@ -1706,7 +1699,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             await _index_source(
                 input.id,
                 pool,
-                state.trino_conn,
+                state.federation_engine,
                 state.source_pools,
                 state.source_types,
                 state,
@@ -2580,8 +2573,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """
         from provisa.api.app import state
 
-        if state.trino_conn is None:
-            return MutationResult(success=False, message="Trino connection not available")
+        if state.federation_engine is None:
+            return MutationResult(success=False, message="Query engine not available")
 
         pool = await _get_pool()
         if pool is None:
@@ -2606,8 +2599,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         for row in rows:
             full_name = f"{source_catalog}.{row['schema_name']}.{row['table_name']}"
             try:
-                cur = state.trino_conn.cursor()
-                cur.execute(f"ANALYZE {full_name}")
+                await state.federation_engine.execute_engine(f"ANALYZE {full_name}")
                 analyzed.append(full_name)
             except Exception as exc:
                 errors.append(f"{full_name}: {exc}")
