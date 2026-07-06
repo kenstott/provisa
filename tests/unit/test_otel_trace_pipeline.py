@@ -127,12 +127,23 @@ class TestExecuteTrinoSpanEmission:
 class TestInsertOtelIceberg:
     """_insert_otel_iceberg extracts provisa.* from span_attributes into columns."""
 
-    def _make_conn(self, trino_cols: dict[str, str]) -> MagicMock:
-        cur = MagicMock()
-        cur.fetchall.return_value = [(name, typ) for name, typ in trino_cols.items()]
-        conn = MagicMock()
-        conn.cursor.return_value = cur
-        return conn
+    def _make_engine(self, trino_cols: dict[str, str]):
+        from provisa.executor.trino import QueryResult
+
+        class _FakeEngine:
+            def __init__(self, cols):
+                self._cols = cols
+                self.calls = []  # (sql, params)
+
+            def execute_engine_sync(self, sql, params=None):
+                self.calls.append((sql, params))
+                if "SHOW COLUMNS" in sql:
+                    return QueryResult(
+                        rows=[(n, t) for n, t in self._cols.items()], column_names=[]
+                    )
+                return QueryResult(rows=[], column_names=[])
+
+        return _FakeEngine(trino_cols)
 
     def test_extracts_table_name_from_span_attributes(self):
         pytest.importorskip("pyarrow")
@@ -152,7 +163,7 @@ class TestInsertOtelIceberg:
             "query_text": "varchar",
             "_date": "date",
         }
-        conn = self._make_conn(trino_cols)
+        engine = self._make_engine(trino_cols)
 
         attrs_json = json.dumps(
             {
@@ -174,10 +185,9 @@ class TestInsertOtelIceberg:
             }
         )
 
-        _insert_otel_iceberg(conn, "traces", table, datetime(2026, 5, 11))
+        _insert_otel_iceberg(engine, "traces", table, datetime(2026, 5, 11))
 
-        cur = conn.cursor.return_value
-        all_args = " ".join(str(c) for c in cur.execute.call_args_list)
+        all_args = " ".join(str(c) for c in engine.calls)
         assert "pets" in all_args, f"'pets' not found in INSERT args. Calls: {all_args}"
         assert "{ ps__pets { id } }" in all_args, (
             f"query_text not found in INSERT args. Calls: {all_args}"
@@ -195,7 +205,7 @@ class TestInsertOtelIceberg:
             "query_text": "varchar",
             "_date": "date",
         }
-        conn = self._make_conn(trino_cols)
+        engine = self._make_engine(trino_cols)
 
         attrs_json = json.dumps({"provisa.query_text": "{ ps__pets { id name } }"})
         table = pa.table(
@@ -206,10 +216,9 @@ class TestInsertOtelIceberg:
             }
         )
 
-        _insert_otel_iceberg(conn, "traces", table, datetime(2026, 5, 11))
+        _insert_otel_iceberg(engine, "traces", table, datetime(2026, 5, 11))
 
-        cur = conn.cursor.return_value
-        all_args = " ".join(str(c) for c in cur.execute.call_args_list)
+        all_args = " ".join(str(c) for c in engine.calls)
         assert "{ ps__pets { id name } }" in all_args, (
             f"query_text value not found in INSERT args. Calls: {all_args}"
         )
@@ -226,7 +235,7 @@ class TestInsertOtelIceberg:
             "span_attributes": "varchar",
             "_date": "date",
         }
-        conn = self._make_conn(trino_cols)
+        engine = self._make_engine(trino_cols)
 
         attrs_json = json.dumps({"provisa.table": "pets"})
         table = pa.table(
@@ -238,11 +247,10 @@ class TestInsertOtelIceberg:
         )
 
         # Must not raise when table_name column is absent from Trino schema
-        _insert_otel_iceberg(conn, "traces", table, datetime(2026, 5, 11))
+        _insert_otel_iceberg(engine, "traces", table, datetime(2026, 5, 11))
 
         # Find the INSERT call and verify table_name is not in its column list
-        cur = conn.cursor.return_value
-        insert_calls = [str(c) for c in cur.execute.call_args_list if "INSERT INTO" in str(c)]
+        insert_calls = [str(c) for c in engine.calls if "INSERT INTO" in str(c)]
         assert insert_calls, "An INSERT statement must have been executed"
         insert_sql = insert_calls[0]
         assert "table_name" not in insert_sql, (

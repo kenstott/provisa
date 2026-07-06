@@ -24,11 +24,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 if TYPE_CHECKING:
-    import trino.dbapi
+    import trino.dbapi  # noqa: F401 — annotation for the Trino watchdog/ping
 
     from provisa.core.models import ScheduledTrigger
-
-    _TrinoCursor = trino.dbapi.Cursor  # pyright: ignore[reportUnusedVariable]
 
 logger = logging.getLogger(__name__)
 
@@ -72,13 +70,15 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
         state, "otel_s3_endpoint", "http://minio:9000"
     )
     logger.warning(
-        "compact_otel: starting — s3=%s trino_conn=%s", s3_endpoint, state.trino_conn is not None
+        "compact_otel: starting — s3=%s engine=%s",
+        s3_endpoint,
+        state.federation_engine is not None,
     )
     access_key = os.environ.get("PROVISA_OTEL_S3_ACCESS_KEY", "minioadmin")
     secret_key = os.environ.get("PROVISA_OTEL_S3_SECRET_KEY", "minioadmin")
     otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
     file_chunk = getattr(state, "otel_compact_file_chunk", 50)
-    trino_conn = state.trino_conn
+    engine = state.federation_engine
 
     loop = asyncio.get_event_loop()
     for signal in ("logs", "metrics", "traces"):
@@ -95,7 +95,7 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
                 secret_key,
                 otel_bucket,
                 file_chunk,
-                trino_conn,
+                engine,
             )
         except asyncio.CancelledError:
             logger.warning("compact_otel: cancelled during shutdown, skipping %s", signal)
@@ -115,7 +115,7 @@ def _compact_signal(
     secret_key: str,
     otel_bucket: str,
     file_chunk: int,
-    trino_conn: trino.dbapi.Connection | None,
+    engine,
 ) -> None:
     """Compact one OTel signal type. Runs entirely in a thread — no event loop blocking."""
     import io
@@ -179,7 +179,7 @@ def _compact_signal(
             return
 
         try:
-            _insert_otel_iceberg(trino_conn, signal, combined, target)
+            _insert_otel_iceberg(engine, signal, combined, target)
             total_rows += len(combined)
             del_resp = s3.delete_objects(
                 Bucket=otel_bucket,
@@ -265,7 +265,7 @@ def _build_iceberg_col_defs(signal: str, table: pa.Table) -> list[str]:
 
 
 def _ensure_iceberg_table(
-    cursor: trino.dbapi.Cursor,
+    engine,
     signal: str,
     col_defs: list[str],
     partition_cols: list[str],
@@ -276,10 +276,10 @@ def _ensure_iceberg_table(
         f"({', '.join(col_defs)}) "
         f"WITH (partitioning = ARRAY[{', '.join(partition_cols)}], format = 'PARQUET')"
     )
-    cursor.execute(create_ddl)  # type: ignore[union-attr]
+    engine.execute_engine_sync(create_ddl)
     if signal == "traces":
         try:
-            cursor.execute(  # type: ignore[union-attr]
+            engine.execute_engine_sync(
                 f"ALTER TABLE otel.signals.{signal} "
                 f"SET PROPERTIES partitioning = ARRAY[{', '.join(partition_cols)}]"
             )
@@ -372,14 +372,14 @@ def _resolve_batch_size(signal: str) -> int:
 
 
 def _execute_batch_inserts(
-    cursor: trino.dbapi.Cursor,
+    engine,
     signal: str,
     rows: list[tuple],  # type: ignore[type-arg]
     col_names: list[str],
     placeholders: list[str],
     batch_size: int,
 ) -> None:
-    """Execute multi-row batch INSERTs into Iceberg."""
+    """Execute multi-row batch INSERTs into Iceberg through the engine terminal."""
     row_ph = f"({', '.join(placeholders)})"
     for i in range(0, len(rows), batch_size):
         batch = rows[i : i + batch_size]
@@ -388,13 +388,13 @@ def _execute_batch_inserts(
             + ", ".join([row_ph] * len(batch))
         )
         flat = [v for row in batch for v in row]
-        cursor.execute(multi_sql, flat)  # type: ignore[union-attr]
+        engine.execute_engine_sync(multi_sql, flat)
 
 
-def _expire_iceberg_snapshots(cursor: trino.dbapi.Cursor, signal: str) -> None:
+def _expire_iceberg_snapshots(engine, signal: str) -> None:
     """Expire old Iceberg snapshots to prevent metadata bloat."""
     try:
-        cursor.execute(  # type: ignore[union-attr]
+        engine.execute_engine_sync(
             f"ALTER TABLE otel.signals.{signal} EXECUTE expire_snapshots"
             f"(retention_threshold => '7d')"
         )
@@ -402,20 +402,17 @@ def _expire_iceberg_snapshots(cursor: trino.dbapi.Cursor, signal: str) -> None:
         logger.warning("compact_otel: expire_snapshots for %s failed", signal, exc_info=True)
 
 
-def _insert_otel_iceberg(
-    conn: trino.dbapi.Connection | None, signal: str, table: pa.Table, dt: datetime
-) -> None:
-    """Create Iceberg table from schema and INSERT the rows (runs in thread)."""
-    cursor = conn.cursor()  # type: ignore[union-attr]
-    cursor.execute("CREATE SCHEMA IF NOT EXISTS otel.signals")
+def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> None:
+    """Create Iceberg table from schema and INSERT the rows (runs in thread, sync engine)."""
+    engine.execute_engine_sync("CREATE SCHEMA IF NOT EXISTS otel.signals")
 
     col_defs = _build_iceberg_col_defs(signal, table)
     partition_cols = ["'_date'", "'table_name'"] if signal == "traces" else ["'_date'"]
-    _ensure_iceberg_table(cursor, signal, col_defs, partition_cols)
+    _ensure_iceberg_table(engine, signal, col_defs, partition_cols)
 
     # Read back actual Trino column types and cast PyArrow table to match exactly.
-    cursor.execute(f"SHOW COLUMNS FROM otel.signals.{signal}")
-    trino_cols = {row[0].lower(): row[1].lower() for row in cursor.fetchall()}
+    _cols = engine.execute_engine_sync(f"SHOW COLUMNS FROM otel.signals.{signal}")
+    trino_cols = {row[0].lower(): row[1].lower() for row in _cols.rows}
     table = _cast_table_to_trino_schema(signal, table, trino_cols)
 
     date_val = dt.strftime("%Y-%m-%d")
@@ -445,8 +442,8 @@ def _insert_otel_iceberg(
         return
 
     batch_size = _resolve_batch_size(signal)
-    _execute_batch_inserts(cursor, signal, rows, col_names, placeholders, batch_size)
-    _expire_iceberg_snapshots(cursor, signal)
+    _execute_batch_inserts(engine, signal, rows, col_names, placeholders, batch_size)
+    _expire_iceberg_snapshots(engine, signal)
 
 
 async def watch_trino() -> None:
