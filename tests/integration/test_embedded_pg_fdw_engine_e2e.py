@@ -78,7 +78,9 @@ def _build_fdw_artifacts() -> Path:
     src = _CACHE / f"postgresql-{_PG_VERSION}"
     if not src.exists():
         tarball = _CACHE / f"postgresql-{_PG_VERSION}.tar.bz2"
-        url = f"https://ftp.postgresql.org/pub/source/v{_PG_VERSION}/postgresql-{_PG_VERSION}.tar.bz2"
+        url = (
+            f"https://ftp.postgresql.org/pub/source/v{_PG_VERSION}/postgresql-{_PG_VERSION}.tar.bz2"
+        )
         if shutil.which("curl"):
             subprocess.run(["curl", "-fsSL", "-o", str(tarball), url], check=True)
         else:
@@ -146,18 +148,28 @@ def _si(customers_schema: str, orders_schema: str) -> SchemaInput:
     return SchemaInput(
         tables=[
             {
-                "id": 1, "source_id": "cust", "domain_id": "sales",
-                "schema_name": customers_schema, "table_name": "customers",
+                "id": 1,
+                "source_id": "cust",
+                "domain_id": "sales",
+                "schema_name": customers_schema,
+                "table_name": "customers",
                 "governance": "pre-approved",
-                "columns": [{"column_name": c, "visible_to": ["admin"]}
-                            for c in ("id", "first_name", "state")],
+                "columns": [
+                    {"column_name": c, "visible_to": ["admin"]}
+                    for c in ("id", "first_name", "state")
+                ],
             },
             {
-                "id": 2, "source_id": "ord", "domain_id": "sales",
-                "schema_name": orders_schema, "table_name": "orders",
+                "id": 2,
+                "source_id": "ord",
+                "domain_id": "sales",
+                "schema_name": orders_schema,
+                "table_name": "orders",
                 "governance": "pre-approved",
-                "columns": [{"column_name": c, "visible_to": ["admin"]}
-                            for c in ("id", "customer_id", "amount")],
+                "columns": [
+                    {"column_name": c, "visible_to": ["admin"]}
+                    for c in ("id", "customer_id", "amount")
+                ],
             },
         ],  # fmt: skip
         relationships=[
@@ -189,7 +201,9 @@ def _compile(si: SchemaInput, gql: str, rls: RLSContext) -> str:
     ctx = build_context(si)
     compiled = compile_query(parse_query(generate_schema(si), gql, {}), ctx)[0]
     gov = build_governance_context("admin", rls, {}, ctx, si.tables, role=_ADMIN)
-    return transpile(rewrite_semantic_to_physical(apply_governance(compiled.sql, gov), ctx), "postgres")
+    return transpile(
+        rewrite_semantic_to_physical(apply_governance(compiled.sql, gov), ctx), "postgres"
+    )
 
 
 async def test_embedded_pg_fdw_connectors_federate(embedded_pg_with_fdw):
@@ -200,14 +214,18 @@ async def test_embedded_pg_fdw_connectors_federate(embedded_pg_with_fdw):
         # ---- loopback "remote" that postgres_fdw will attach: orders in demo_remote ----
         await conn.execute("CREATE SCHEMA IF NOT EXISTS demo_remote")
         await conn.execute("DROP TABLE IF EXISTS demo_remote.orders CASCADE")
-        await conn.execute("CREATE TABLE demo_remote.orders(id int, customer_id int, amount numeric)")
+        await conn.execute(
+            "CREATE TABLE demo_remote.orders(id int, customer_id int, amount numeric)"
+        )
         await conn.execute(
             "INSERT INTO demo_remote.orders VALUES "
             "(10,4,19.99),(11,2,49.99),(12,7,5.00),(13,9,7.50),(14,1,3.25)"
         )  # customers 4/7/9 are TX; 2 is CA, 1 is NY
 
         # ---- attach customers.csv via the REAL FileFdwConnector ----
-        csv_src = SimpleNamespace(id="cust", path=str(_FILES / "customers.csv"))
+        csv_src = SimpleNamespace(
+            id="cust", path=str(_FILES / "customers.csv"), federation_hints={}
+        )
         fdet = FileFdwConnector().details(csv_src)
         for ddl in fdet["server_ddl"]:
             await conn.execute(ddl)
@@ -220,7 +238,11 @@ async def test_embedded_pg_fdw_connectors_federate(embedded_pg_with_fdw):
 
         # ---- attach demo_remote via the REAL PostgresFdwConnector (loopback to self) ----
         pg_src = SimpleNamespace(
-            id="ord", schema="demo_remote", password="", **_loopback_source_params(server)
+            id="ord",
+            schema="demo_remote",
+            password="",
+            federation_hints={"schema": "demo_remote"},
+            **_loopback_source_params(server),
         )
         pdet = PostgresFdwConnector().details(pg_src)
         for ddl in pdet["attach_ddl"]:

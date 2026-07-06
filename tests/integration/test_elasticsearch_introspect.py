@@ -134,14 +134,14 @@ class TestESTypeMappings:
     """Verify ES type → Trino type mappings."""
 
     @pytest.mark.parametrize(
-        "es_type,expected_trino",
+        "es_type,expected_ir",
         [
             ("text", "VARCHAR"),
             ("keyword", "VARCHAR"),
             ("long", "BIGINT"),
             ("integer", "INTEGER"),
             ("short", "SMALLINT"),
-            ("byte", "TINYINT"),
+            ("byte", "smallint"),  # IR is postgres-dialect (no TINYINT)
             ("double", "DOUBLE"),
             ("float", "REAL"),
             ("half_float", "REAL"),
@@ -149,12 +149,12 @@ class TestESTypeMappings:
             ("boolean", "BOOLEAN"),
             ("date", "TIMESTAMP"),
             ("ip", "VARCHAR"),
-            ("binary", "VARBINARY"),
+            ("binary", "bytea"),  # IR is postgres-dialect (no VARBINARY)
             ("geo_point", "VARCHAR"),
         ],
     )
-    def test_type_mapping(self, es_type, expected_trino):
-        assert ES_TYPE_TO_IR[es_type] == expected_trino
+    def test_type_mapping(self, es_type, expected_ir):
+        assert ES_TYPE_TO_IR[es_type] == expected_ir
 
     def test_all_mapped_types_produce_columns(self):
         mapping = {es_t: {"type": es_t} for es_t in ES_TYPE_TO_IR}

@@ -95,12 +95,9 @@ def test_control_plain_projection_masks_ssn_in_executed_rows():
     assert "HIDDEN" in flat, "control: mask expression should reach the rows"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="REQ-913: keyword in string literal moves the regex SELECT boundary → SSN leaks",
-)
 def test_keyword_in_literal_projection_leaks_ssn_end_to_end():
-    """A projected literal containing ``from`` defeats the regex boundary — SSN reaches the caller."""
+    """REQ-913: a projected literal containing ``from`` no longer defeats masking — the AST projection
+    rewrite masks ``ssn`` regardless of a scalar-subquery/keyword-bearing literal in the SELECT list."""
     rows = _govern_and_execute(
         'SELECT \'shipped from warehouse\' AS "note", "ssn", "region" FROM "customers"'
     )

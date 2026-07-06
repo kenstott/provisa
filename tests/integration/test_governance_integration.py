@@ -288,7 +288,7 @@ class TestRLSEnforcement:
         assert "WHERE" in with_rls.sql.upper(), (
             "REQ-040: WHERE clause must be present in governed SQL"
         )
-        assert "amount > 0" in with_rls.sql
+        assert '"amount" > 0' in with_rls.sql
 
     async def test_empty_rls_context_returns_all_rows(self, source_pool):
         # REQ-040: empty RLS (no rules) must not restrict rows.

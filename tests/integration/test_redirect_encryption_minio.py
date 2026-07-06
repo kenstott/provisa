@@ -35,7 +35,7 @@ from provisa.encryption import (
     reset_encryption,
     split_envelope,
 )
-from provisa.executor.redirect import RedirectConfig, upload_and_presign
+from provisa.executor.redirect import RedirectConfig, ensure_results_bucket, upload_and_presign
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -82,6 +82,9 @@ def _reachable() -> bool:
 async def test_encrypted_redirect_roundtrip_via_minio():
     if not _reachable():
         pytest.skip(f"MinIO not reachable at {_ENDPOINT}")
+
+    # Provision the results bucket (the app does this at startup via connect_infra).
+    await ensure_results_bucket(_config())
 
     result = QueryResult(
         column_names=["id", "note"],
