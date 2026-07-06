@@ -31,7 +31,6 @@ import logging
 import time as _time
 
 import httpx
-import trino.dbapi
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
@@ -809,7 +808,8 @@ async def _mat_gql_remote_table(
     redirect_config = RedirectConfig.from_env()
 
     # Cache hit — only trust in-process table_known_live
-    ensure_cache_schema(state.trino_conn, gql_cache_loc)
+    with state.federation_engine.isolated_sync() as _c:
+        ensure_cache_schema(_c, gql_cache_loc)
     if table_known_live(gql_cache_loc, gql_cache_tbl):
         cache_rewrites[tn] = (gql_cache_loc, gql_cache_tbl)
         return
@@ -833,9 +833,12 @@ async def _mat_gql_remote_table(
 
     # Hydrate to Trino cache (best-effort)
     try:
-        create_and_insert(state.trino_conn, gql_cache_loc, gql_cache_tbl, gql_rows, col_objs)
+        with state.federation_engine.isolated_sync() as _c:
+            create_and_insert(_c, gql_cache_loc, gql_cache_tbl, gql_rows, col_objs)
         asyncio.create_task(
-            schedule_drop(state.trino_conn, gql_cache_loc, gql_cache_tbl, 300, redirect_config)
+            schedule_drop(
+                state.federation_engine, gql_cache_loc, gql_cache_tbl, 300, redirect_config
+            )
         )
     except Exception as cache_exc:
         log.warning("[GQL REMOTE] cache write failed for %s: %s", tn, cache_exc)
@@ -895,7 +898,7 @@ async def _mat_fetch_rows_from_pg(ep, col_names: list, _META_COLS: set, state) -
 async def _mat_fetch_rows_from_rest(
     ep,
     col_names: list,
-    _conn,
+    engine,
     api_source,
     source_id,
     state,
@@ -913,7 +916,7 @@ async def _mat_fetch_rows_from_rest(
     rest_result = await handle_api_query(
         ep,
         {},
-        _conn,
+        engine,
         source=api_source,
         source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
         global_ttl=getattr(state, "response_cache_default_ttl", None),
@@ -943,7 +946,7 @@ def _mat_store_rows(
     _hot_threshold: int,
     hot_mgr,
     response_cols: list,
-    _conn,
+    engine,
     ttl,
     redirect_config,
     cache_rewrites: dict,
@@ -990,8 +993,9 @@ def _mat_store_rows(
             c.model_copy(update={"name": _apply_sql_name(c.name)}) for c in response_cols
         ]
         _snake_rows = [{_name_map.get(k, k): v for k, v in r.items()} for r in rows]
-        create_and_insert(_conn, _cache_loc, cache_tbl, _snake_rows, _snake_cols)
-        asyncio.create_task(schedule_drop(_conn, _cache_loc, cache_tbl, ttl, redirect_config))
+        with engine.isolated_sync() as _c:
+            create_and_insert(_c, _cache_loc, cache_tbl, _snake_rows, _snake_cols)
+        asyncio.create_task(schedule_drop(engine, _cache_loc, cache_tbl, ttl, redirect_config))
 
 
 async def _mat_api_ep_table(
@@ -1026,8 +1030,6 @@ async def _mat_api_ep_table(
     )
     _cache_loc = cache_location(source_id, _cc, _cs)
     cache_tbl = cache_table_name(source_id, tn, {})
-
-    _conn = state.trino_conn
     ttl = (
         getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl")
         or getattr(state, "response_cache_default_ttl", None)
@@ -1062,8 +1064,10 @@ async def _mat_api_ep_table(
             )
         return
 
-    ensure_cache_schema(_conn, _cache_loc)
-    if table_exists(_conn, _cache_loc, cache_tbl, ttl=ttl):
+    with state.federation_engine.isolated_sync() as _c:
+        ensure_cache_schema(_c, _cache_loc)
+        _cache_hit = table_exists(_c, _cache_loc, cache_tbl, ttl=ttl)
+    if _cache_hit:
         log.warning(
             "[MAT] Trino cache hit for %s → %s.%s.%s",
             tn,
@@ -1091,7 +1095,7 @@ async def _mat_api_ep_table(
             rows = await _mat_fetch_rows_from_rest(
                 ep,
                 col_names,
-                _conn,
+                state.federation_engine,
                 api_source,
                 source_id,
                 state,
@@ -1114,7 +1118,7 @@ async def _mat_api_ep_table(
         _hot_threshold,
         hot_mgr,
         response_cols,
-        _conn,
+        state.federation_engine,
         ttl,
         redirect_config,
         cache_rewrites,
@@ -1648,7 +1652,6 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         ensure_cache_schema,
         rewrite_from_cache,
     )
-    from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
 
     # Find the API endpoint matching this query's table
@@ -1692,7 +1695,6 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         from provisa.cache.hot_tables import build_values_cte_sql
         from provisa.compiler.nf_extractor import extract_nf_args
         from provisa.transpiler.transpile import transpile_to_trino
-        from provisa.executor.trino import execute_trino
 
         entry = hot_mgr.get_entry(table_name)
         _exec_sql, _exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
@@ -1701,10 +1703,9 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         trino_sql = transpile_to_trino(hot_sql)
         log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
         _loop = asyncio.get_running_loop()
-        _api_conn = state.trino_conn
         _t0 = _time.perf_counter()
         trino_result = await _loop.run_in_executor(
-            None, lambda: execute_trino(_api_conn, trino_sql, _exec_params)
+            None, lambda: state.federation_engine.execute_engine_sync(trino_sql, _exec_params)
         )
         phase2_ms = (_time.perf_counter() - _t0) * 1000
         response_data = _format_response(
@@ -1728,8 +1729,7 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
     )
 
     _loop = asyncio.get_running_loop()
-    _api_conn_kwargs = getattr(state, "trino_conn_kwargs", None)
-    _api_conn = trino.dbapi.connect(**_api_conn_kwargs) if _api_conn_kwargs else state.trino_conn
+    _engine = state.federation_engine
 
     # Fast path: in-process cache hit — skip ensure_cache_schema + handle_api_query entirely
     _probe_tbl = _cache_table_name(endpoint.source_id, endpoint.table_name, url_params)
@@ -1740,12 +1740,17 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         log.info("[API CACHE] in-process hit — %s", cache_tbl)
     else:
         _t_phase1 = _time.perf_counter()
-        await _loop.run_in_executor(None, lambda: ensure_cache_schema(_api_conn, _cache_loc))
+
+        def _ensure() -> None:
+            with _engine.isolated_sync() as _c:
+                ensure_cache_schema(_c, _cache_loc)
+
+        await _loop.run_in_executor(None, _ensure)
         # handle_api_query owns cache key derivation and the full create/schedule_drop lifecycle.
         result = await handle_api_query(
             endpoint=endpoint,
             params=url_params,
-            conn=_api_conn,
+            engine=_engine,
             source=api_source,
             source_ttl=state.source_cache.get(source_id, {}).get("cache_ttl"),
             global_ttl=state.response_cache_default_ttl,
@@ -1794,7 +1799,7 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
     log.warning("[API P2] trino_sql=%s", trino_sql[:500])
     _t_phase2 = _time.perf_counter()
     trino_result = await _loop.run_in_executor(
-        None, lambda: execute_trino(_api_conn, trino_sql, exec_params)
+        None, lambda: _engine.execute_engine_sync(trino_sql, exec_params)
     )
     phase2_ms = (_time.perf_counter() - _t_phase2) * 1000
 
@@ -1827,7 +1832,6 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     """
     from provisa.compiler.nf_extractor import extract_nf_args
     from provisa.cache.hot_tables import HotTableEntry, build_values_cte_sql
-    from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
     from provisa.source_adapters import grpc_remote_adapter
 
@@ -1886,7 +1890,8 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     exec_sql, exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
     exec_sql = rewrite_semantic_to_trino_physical(exec_sql, ctx)
 
-    ensure_cache_schema(state.trino_conn, cache_loc)
+    with state.federation_engine.isolated_sync() as _cache_conn:
+        ensure_cache_schema(_cache_conn, cache_loc)
 
     phase1_ms = 0.0
     final_sql: str | None = None
@@ -1924,10 +1929,11 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
         materialized = False
         if rows:
             try:
-                create_and_insert(state.trino_conn, cache_loc, cache_tbl, rows, cache_cols)
+                with state.federation_engine.isolated_sync() as _c:
+                    create_and_insert(_c, cache_loc, cache_tbl, rows, cache_cols)
                 asyncio.create_task(
                     schedule_drop(
-                        state.trino_conn,
+                        state.federation_engine,
                         cache_loc,
                         cache_tbl,
                         reg.get("cache_ttl", 300),
@@ -1955,11 +1961,9 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     trino_sql = transpile_to_trino(final_sql)
 
     _loop = asyncio.get_running_loop()
-    _api_conn_kwargs = getattr(state, "trino_conn_kwargs", None)
-    _api_conn = trino.dbapi.connect(**_api_conn_kwargs) if _api_conn_kwargs else state.trino_conn
     _t2 = _time.perf_counter()
     trino_result = await _loop.run_in_executor(
-        None, lambda: execute_trino(_api_conn, trino_sql, exec_params)
+        None, lambda: state.federation_engine.execute_engine_sync(trino_sql, exec_params)
     )
     phase2_ms = (_time.perf_counter() - _t2) * 1000
 

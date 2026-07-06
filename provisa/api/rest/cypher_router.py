@@ -1249,21 +1249,16 @@ async def _execute_with_api(
         loop = asyncio.get_event_loop()
 
         def _check_schema_and_exists() -> bool:
-            import trino as _trino
-
-            conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
-            try:
+            with state.federation_engine.isolated_sync() as conn:
                 ensure_cache_schema(conn, _cache_loc)
                 return table_exists(conn, _cache_loc, cache_tbl)
-            finally:
-                conn.close()
 
         hit = await loop.run_in_executor(None, _check_schema_and_exists)
         if not hit:
             result = await handle_api_query(
                 endpoint=endpoint,
                 params=url_params,
-                conn=state.trino_conn,
+                engine=state.federation_engine,
                 source=api_source,
                 source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
                 global_ttl=getattr(state, "response_cache_default_ttl", None),
@@ -1276,7 +1271,7 @@ async def _execute_with_api(
                 or endpoint.ttl
             )
             asyncio.create_task(
-                schedule_drop(state.trino_conn, _cache_loc, cache_tbl, ttl, redirect_config)
+                schedule_drop(state.federation_engine, _cache_loc, cache_tbl, ttl, redirect_config)
             )
 
             if hot_mgr is not None and result.rows:
@@ -1373,10 +1368,7 @@ async def _execute_with_gql_remote(
         loop = asyncio.get_event_loop()
 
         def _check_or_create_cache(fetch_rows: list | None) -> bool:
-            import trino as _trino
-
-            conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
-            try:
+            with state.federation_engine.isolated_sync() as conn:
                 ensure_cache_schema(conn, cache_loc)
                 if table_exists(conn, cache_loc, cache_tbl):
                     return True
@@ -1394,8 +1386,6 @@ async def _execute_with_gql_remote(
                     ]
                     create_and_insert(conn, cache_loc, cache_tbl, fetch_rows, col_objs)
                 return False
-            finally:
-                conn.close()
 
         hit = await loop.run_in_executor(None, _check_or_create_cache, None)
         if not hit:
@@ -1410,7 +1400,7 @@ async def _execute_with_gql_remote(
             )
             await loop.run_in_executor(None, _check_or_create_cache, fetched_rows)
             asyncio.create_task(
-                schedule_drop(state.trino_conn, cache_loc, cache_tbl, info["cache_ttl"])
+                schedule_drop(state.federation_engine, cache_loc, cache_tbl, info["cache_ttl"])
             )
         else:
             log.info("[GQL CACHE] hit — %s", cache_tbl)

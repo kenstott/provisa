@@ -324,17 +324,19 @@ def rewrite_all_from_cache(  # REQ-318, REQ-309, REQ-327
 
 
 async def schedule_drop(  # REQ-318, REQ-309, REQ-327
-    conn,
+    engine,
     loc: CacheLocation,
     table_name: str,
     ttl: int,
     redirect_config=None,
 ) -> None:
-    """Drop cache table after TTL seconds."""
+    """Drop cache table after TTL seconds — acquires a fresh engine connection at
+    drop-time (not held across the sleep)."""
     await asyncio.sleep(ttl)
     _TABLE_EXISTS_CACHE.pop((loc.catalog, loc.schema, table_name), None)
     try:
-        conn.cursor().execute(f'DROP TABLE IF EXISTS {loc.catalog}.{loc.schema}."{table_name}"')
+        with engine.isolated_sync() as conn:
+            conn.cursor().execute(f'DROP TABLE IF EXISTS {loc.catalog}.{loc.schema}."{table_name}"')
         log.info("[API CACHE] dropped %s after TTL=%ds", table_name, ttl)
     except Exception as exc:
         log.warning("[API CACHE] drop failed for %s: %s", table_name, exc)

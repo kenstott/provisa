@@ -175,6 +175,16 @@ class TestInitSchema:
 # ---------------------------------------------------------------------------
 
 
+class _FakeEngine:
+    """handle_api_query now takes the engine; isolated_sync yields a throwaway conn."""
+
+    from contextlib import contextmanager as _cm
+
+    @_cm
+    def isolated_sync(self):
+        yield MagicMock()
+
+
 class TestOrgScopedCacheLocation:
     def test_cache_location_uses_org_prefix_as_default(self):  # REQ-698
         from provisa.api_source.trino_cache import cache_location
@@ -198,7 +208,7 @@ class TestOrgScopedCacheLocation:
             result = await handle_api_query(
                 endpoint=endpoint,
                 params={},
-                conn=MagicMock(),
+                engine=_FakeEngine(),
                 org_id="acme",
             )
 
@@ -225,7 +235,9 @@ class TestOrgScopedCacheLocation:
         with patch(
             "provisa.api_source.router_integration.table_exists", side_effect=fake_table_exists
         ):
-            await handle_api_query(endpoint=endpoint, params={}, conn=MagicMock(), org_id="myorg")
+            await handle_api_query(
+                endpoint=endpoint, params={}, engine=_FakeEngine(), org_id="myorg"
+            )
 
         assert captured_loc["loc"].schema == "org_myorg_api_cache"
 

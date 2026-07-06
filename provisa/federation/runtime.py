@@ -26,6 +26,7 @@ unchanged (REQ-840, REQ-841).
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from enum import Enum
 from typing import TYPE_CHECKING, Any, cast
 
@@ -141,6 +142,25 @@ class EngineRuntime:  # REQ-825, REQ-840
         if conn is None:
             raise RuntimeError(f"engine {self.engine.name!r} connection not available")
         return execute_trino(cast("Any", conn), sql, params=params)
+
+    @contextmanager
+    def isolated_sync(self):
+        """A FRESH, thread-isolated engine connection for background materialization
+        (API-response caching) that runs off the event loop and must not share the main
+        connection's session across threads. Yields a DBAPI-style connection; the engine
+        owns provisioning and teardown, so callers never open a Trino connection directly.
+        Closed on exit."""
+        if self.engine.name == "trino":
+            import trino as _trino
+
+            conn = _trino.dbapi.connect(**self._state.trino_conn_kwargs)
+            try:
+                yield conn
+            finally:
+                conn.close()
+        else:
+            # Engines without a Trino-style dbapi connection share the bound connection.
+            yield self._state.trino_conn
 
     async def execute_native(
         self, source_pools: Any, source_id: str, sql: str, params: list | None = None

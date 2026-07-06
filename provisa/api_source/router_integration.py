@@ -72,7 +72,7 @@ def is_api_source(source_id: str, source_types: dict[str, str]) -> bool:  # REQ-
 async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-318, REQ-698
     endpoint: ApiEndpoint,
     params: dict,
-    conn,
+    engine,
     source: ApiSource | None = None,
     source_ttl: int | None = None,
     global_ttl: int | None = None,
@@ -98,7 +98,9 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
             _cs = getattr(source, "cache_schema", _default_cs) if source else _default_cs
             loc = cache_location(endpoint.source_id, _cc, _cs)
 
-        if table_exists(conn, loc, tbl, ttl=ttl):
+        with engine.isolated_sync() as _c:
+            _hit = table_exists(_c, loc, tbl, ttl=ttl)
+        if _hit:
             log.info("[API CACHE] hit — %s.%s.%s", loc.catalog, loc.schema, tbl)
             span.set_attribute("api_source.cache_hit", True)
             return QueryResult(rows=[], from_cache=True, cache_table=tbl)
@@ -118,7 +120,8 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
             )
             all_rows.extend(rows)
 
-        create_and_insert(conn, loc, tbl, all_rows, endpoint.columns)
+        with engine.isolated_sync() as _c:
+            create_and_insert(_c, loc, tbl, all_rows, endpoint.columns)
         log.info(
             "[API CACHE] miss — %d rows materialized → %s.%s.%s (ttl=%ds)",
             len(all_rows),
@@ -135,6 +138,6 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
         if endpoint.promotions and loc.backend != "iceberg":
             await _apply_cache_promotions(loc, tbl, endpoint)
 
-        asyncio.ensure_future(schedule_drop(conn, loc, tbl, ttl))
+        asyncio.ensure_future(schedule_drop(engine, loc, tbl, ttl))
 
         return QueryResult(rows=all_rows, from_cache=False, cache_table=tbl)
