@@ -6,6 +6,8 @@ Then the core fell out: one federation model, one intermediate representation, a
 
 That's Provisa. A single governed API over 30+ heterogeneous data sources — query it with **GraphQL, Cypher, or SQL**, consume it over **pgwire, Bolt, gRPC, REST, Arrow Flight, or JDBC**. RLS, column masking, and query approval aren't a layer bolted on top; they *are* the path. No query reaches data without passing through governance, so coverage is total by construction, not by diligence.
 
+Put another way, this is what a semantic layer was supposed to be. Every prior one — dbt, Cube, LookML — is *passive*: a metadata description of your data that some other engine may or may not consult. Provisa is an **active semantic layer** — the model isn't documentation the engine reads, it *is* the engine. Registered domains and relationships are the only legal join paths; governance is compiled into the plan; every request is enforced inline because no execution path goes around it. And because the same governed path serves SQL, GraphQL, and Cypher over pgwire, Bolt, Flight, JDBC, and REST, effectively all of your cross-system data movement — system-to-system, analytical, application, and human — travels through one place that both describes the data and enforces the rules on it. Describing your data and governing it become the same act.
+
 GraphQL, Cypher, and SQL are all first-class over federated data — something no federated engine offers natively. And that's not three integrations but one. Every query language lowers to a single intermediate representation, and governance is injected there — one place, so it cannot drift between languages, and the same IR retargets to any source dialect on the way out. A new query language is a front-end onto that shared governed core, not a new engine, which is why the IR can absorb almost any query dialect. If that sounds too good to be true: some languages carry a small compromise at the edges, but every core language feature is supported — you are not writing a crippled subset. And it isn't read-only: most federation engines are. Provisa carries both analytical and transactional flows through the same governed API. Cross-source reads fan out through the federation layer; writes and single-source reads route direct to the source driver — governed the same way, but transactional and sub-100ms. Arrow Flight columnar streaming is built in, not bolted on. Distributed traces, metrics, and logs are automatically registered as queryable tables in the same schema as your business data, so observability is just another join.
 
 ## Features
@@ -71,7 +73,6 @@ Sources, files, and remote endpoints are registered as governed tables from the 
 - **Column presets** — Server-side static or session-variable values injected on insert/update; not exposed in mutation input types
 - **Write permissions** — Per-column mutation access control (`writable_by`)
 - **Inherited roles** — Roles inherit RLS, visibility, and masking from a parent role recursively
-- **Governed query registry** — Approved named queries with approval workflow, ceiling enforcement, and role-scoped execution. Each approved query is a virtual table: scopeable, joinable, and addressable by `stable_id` via a cacheable GET
 - **Tracked functions & webhooks** — DB functions and outbound webhooks exposed as GraphQL mutations with typed return shapes
 - **ABAC approval hook** — Pre-execution authorization hook; webhook, gRPC, or unix_socket transport; per-table, per-source, or global scope; configurable fallback policy
 - **Pluggable auth** — Firebase, Keycloak, OAuth 2.0, simple (testing)
@@ -80,7 +81,7 @@ Sources, files, and remote endpoints are registered as governed tables from the 
 
 ### Delivery & Performance
 
-- **Materialized view transparent rewriting** — Structural join-pattern matching rewrites queries (or subexpressions) to use a fresh MV automatically; partial matches are supported so an MV covering a subset of joins still applies, with remaining joins preserved
+- **Materialized views as recorded transforms** — An MV captures the transform that produced it: its join shape or SQL, the per-source input signals (Iceberg snapshot, RDB watermark) it was built from, and a determinism check at registration. Because the transform is recorded, queries (or subexpressions) are transparently rewritten onto a fresh MV — structural join-pattern matching with partial-match support, so an MV covering a subset of joins still applies, with remaining joins preserved
 - **Hot table inlining** — Small frequently-joined lookup tables are inlined as VALUES CTEs directly in the query plan, eliminating cross-source round trips for dimension data
 - **Query caching** — Role+RLS-partitioned Redis result cache; APQ hash cache included
 - **Observability as data** — Distributed traces, metrics, and logs are collected via OpenTelemetry, compacted into Iceberg on S3, and automatically registered as queryable tables (`traces`, `metrics`, `logs`, `queries`) in the federated schema; query them with SQL, GraphQL, or Cypher alongside your business data — join a `customers` table to the `queries` table to see who ran what and how long it took
@@ -135,7 +136,7 @@ Masked columns are rejected from `WHERE` and `HAVING` clauses. Without this, a c
 
 ### Relationship governance
 
-JOIN conditions in SQL must match a registered, approved relationship between tables. Unapproved joins are rejected. Each relationship carries a human-readable reason and description — guidance for both users and autonomous agents about why a traversal path exists. This is governance policy, not a hard security boundary: Layers 2–5 hold regardless of join structure, so a deliberate circumvention does not expose data the role could not reach through two separate approved queries. Circumvention attempts are logged and auditable.
+JOIN conditions in SQL must match a registered, approved relationship between tables. Unapproved joins are rejected. Each relationship carries a human-readable reason and description — guidance for both users and autonomous agents about why a traversal path exists. This is governance policy, not a hard security boundary: Layers 2–5 hold regardless of join structure, so a deliberate circumvention does not expose data the role could not reach through two separate queries. Circumvention attempts are logged and auditable.
 
 ---
 
@@ -184,9 +185,6 @@ curl -X POST http://localhost:8001/data/graphql \
   -H "Content-Type: application/json" \
   -d '{"query": "SELECT id, amount, region FROM orders"}'
 
-# Execute a governed query by name — GET is cacheable by CDN/proxies
-curl "http://localhost:8001/data/graphql?queryId=monthly-revenue-by-region"
-
 # Production — authenticate with a Bearer token; role is derived from the token
 curl -X POST https://provisa.example.com/data/graphql \
   -H "Authorization: Bearer <token>" \
@@ -204,7 +202,6 @@ jdbc:provisa://localhost:8815
 
 Authenticate with your Provisa username and password — the server assigns your role.
 
-- **`approved` mode** — approved queries appear as virtual tables with governed columns and RLS enforced
 - **`catalog` mode** — full schema visible; use with catalog tools (Collibra, Atlan, DBeaver)
 
 See [docs/integrations.md](docs/integrations.md) for Tableau and Power BI setup steps.
@@ -269,13 +266,6 @@ df = client.query_df("{ orders { id amount region } }")
 
 # SQL → DataFrame
 df = client.query_df("SELECT id, amount, region FROM orders WHERE region = 'west'")
-
-# Execute a governed query by name (via DB-API approved mode)
-with connect("http://localhost:8001", username="alice", password="secret",
-             mode="approved") as conn:
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM monthly-revenue-by-region")
-    rows = cur.fetchall()
 
 # Arrow Flight → pyarrow Table (high-throughput columnar)
 table = client.flight("{ orders { id amount region } }")

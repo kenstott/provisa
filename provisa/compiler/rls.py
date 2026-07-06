@@ -117,6 +117,9 @@ def inject_rls(  # REQ-038, REQ-040, REQ-041, REQ-402, REQ-403
         rls_clause = " AND ".join(filters)
         sql = _inject_where(compiled.sql, rls_clause)
 
+        from provisa.observability.stage_trace import trace_stage
+
+        trace_stage("govern.rls", sql)
         return CompiledQuery(
             sql=sql,
             params=compiled.params,

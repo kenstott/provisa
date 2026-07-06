@@ -30,6 +30,7 @@ SUPPORTED_DIALECTS: set[str] = {
     "duckdb",
     "snowflake",
     "bigquery",
+    "clickhouse",
 }
 
 
@@ -117,6 +118,9 @@ def transpile(pg_sql: str, target_dialect: str) -> str:  # REQ-066, REQ-068, REQ
     results = sqlglot.transpile(pg_sql, read="postgres", write=target_dialect)
     if not results:
         raise ValueError(f"SQLGlot produced no output for: {pg_sql!r}")
+    from provisa.observability.stage_trace import trace_stage
+
+    trace_stage(f"transpile.{target_dialect}", results[0])
     return results[0]
 
 

@@ -396,6 +396,9 @@ def apply_governance(
 
     Returns governed SQL string.
     """
+    from provisa.observability.stage_trace import trace_stage
+
+    trace_stage("govern.in", sql)
     tree = sqlglot.parse_one(sql, read="postgres")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -426,6 +429,7 @@ def apply_governance(
     elif gov_ctx.sample_size is not None:
         governed = _apply_limit_ceiling(governed, gov_ctx.sample_size)
 
+    trace_stage("govern.out", governed)
     return governed
 
 
