@@ -27,6 +27,31 @@ from provisa.compiler.sql_gen import (
     _sql_literal,
     rewrite_hot_joins,
 )
+from provisa.executor.trino import QueryResult
+
+
+class _FakeEngine:
+    """Minimal EngineRuntime stand-in: load_table/count go through execute_engine."""
+
+    def __init__(self, rows, column_names=None):
+        self._rows = rows
+        self._cols = column_names or []
+
+    async def execute_engine(self, sql, *args, **kwargs):
+        return QueryResult(rows=self._rows, column_names=self._cols)
+
+
+class _CountEngine:
+    """execute_engine returns COUNT(*) keyed by which quoted table name is in the SQL."""
+
+    def __init__(self, counts):
+        self._counts = counts
+
+    async def execute_engine(self, sql, *args, **kwargs):
+        for t, c in self._counts.items():
+            if f'"{t}"' in sql:
+                return QueryResult(rows=[(c,)], column_names=["_c"])
+        return QueryResult(rows=[(0,)], column_names=["_c"])
 
 
 # --- detect_hot_tables ---
@@ -132,22 +157,12 @@ class TestHotTableManager:
         mock_redis.pipeline.return_value = mock_pipe
         manager._redis = mock_redis
 
-        # Mock Trino cursor
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = [
-            (1, "US", "United States"),
-            (2, "UK", "United Kingdom"),
-        ]
-        mock_cursor.description = [
-            ("id",),
-            ("code",),
-            ("name",),
-        ]
-        mock_conn = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-
+        engine = _FakeEngine(
+            [(1, "US", "United States"), (2, "UK", "United Kingdom")],
+            ["id", "code", "name"],
+        )
         count = await manager.load_table(
-            mock_conn,
+            engine,
             "countries",
             "public",
             "pg",
@@ -170,14 +185,10 @@ class TestHotTableManager:
 
         # Return more rows than max_rows
         rows = [(i, f"code_{i}") for i in range(10_001)]
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = rows
-        mock_cursor.description = [("id",), ("code",)]
-        mock_conn = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+        engine = _FakeEngine(rows, ["id", "code"])
 
         count = await manager.load_table(
-            mock_conn,
+            engine,
             "big_countries",
             "public",
             "pg",
@@ -492,50 +503,31 @@ class TestMutationInvalidation:
 # --- REQ-236: COUNT(*) auto-detection ---
 
 
-class _CountConn:
-    def __init__(self, counts: dict):
-        self._counts = counts
-        self._last = 0
-
-    def cursor(self):
-        return self
-
-    def execute(self, sql):
-        self._last = 0
-        for t, c in self._counts.items():
-            if f'"{t}"' in sql:
-                self._last = c
-                return
-
-    def fetchone(self):
-        return (self._last,)
-
-
 class TestDetectHotTablesByCount:
     @pytest.mark.asyncio
     async def test_small_table_qualifies(self):
         from provisa.cache.hot_tables import detect_hot_tables_by_count
 
-        conn = _CountConn({"small": 50, "big": 5000})
+        engine = _CountEngine({"small": 50, "big": 5000})
         cands = [("small", "public", "pg"), ("big", "public", "pg")]
-        result = await detect_hot_tables_by_count(conn, cands, 1_000, {})
+        result = await detect_hot_tables_by_count(engine, cands, 1_000, {})
         assert result == ["small"]
 
     @pytest.mark.asyncio
     async def test_empty_table_excluded(self):
         from provisa.cache.hot_tables import detect_hot_tables_by_count
 
-        conn = _CountConn({"empty": 0})
-        result = await detect_hot_tables_by_count(conn, [("empty", "public", "pg")], 1_000, {})
+        engine = _CountEngine({"empty": 0})
+        result = await detect_hot_tables_by_count(engine, [("empty", "public", "pg")], 1_000, {})
         assert result == []
 
     @pytest.mark.asyncio
     async def test_opt_out_skipped(self):
         from provisa.cache.hot_tables import detect_hot_tables_by_count
 
-        conn = _CountConn({"small": 50})
+        engine = _CountEngine({"small": 50})
         result = await detect_hot_tables_by_count(
-            conn, [("small", "public", "pg")], 1_000, {"small": False}
+            engine, [("small", "public", "pg")], 1_000, {"small": False}
         )
         assert result == []
 
@@ -543,15 +535,9 @@ class TestDetectHotTablesByCount:
     async def test_count_failure_tolerated(self):
         from provisa.cache.hot_tables import detect_hot_tables_by_count
 
-        class _BoomConn:
-            def cursor(self):
-                return self
-
-            def execute(self, sql):
+        class _BoomEngine:
+            async def execute_engine(self, sql, *a, **k):
                 raise RuntimeError("connector has no COUNT")
 
-            def fetchone(self):
-                return (0,)
-
-        result = await detect_hot_tables_by_count(_BoomConn(), [("t", "public", "pg")], 1_000, {})
+        result = await detect_hot_tables_by_count(_BoomEngine(), [("t", "public", "pg")], 1_000, {})
         assert result == []

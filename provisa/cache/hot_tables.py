@@ -239,18 +239,17 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
 
     async def load_table(  # REQ-544
         self,
-        trino_conn,
+        engine,
         table_name: str,
         schema: str,
         catalog: str,
         pk_column: str,
     ) -> int:
-        """Load a Trino-backed table into Redis. Returns row count."""
+        """Load an engine-backed table into Redis via the engine terminal. Returns row count."""
         fqn = f'"{catalog}"."{schema}"."{table_name}"'
-        cur = trino_conn.cursor()
-        cur.execute(f"SELECT * FROM {fqn}")
-        rows_raw = cur.fetchall()
-        columns = [desc[0] for desc in cur.description]
+        res = await engine.execute_engine(f"SELECT * FROM {fqn}")
+        rows_raw = res.rows
+        columns = res.column_names
 
         row_count = len(rows_raw)
         if row_count > self._max_rows:
@@ -560,19 +559,15 @@ async def _openapi_list_rows(
     return rows[: max_rows + 1]
 
 
-async def count_table_rows(
-    trino_conn, table_name: str, schema: str, catalog: str
-) -> int:  # REQ-544
-    """SELECT COUNT(*) for auto-detection sizing."""
+async def count_table_rows(engine, table_name: str, schema: str, catalog: str) -> int:  # REQ-544
+    """SELECT COUNT(*) for auto-detection sizing, through the engine terminal."""
     fqn = f'"{catalog}"."{schema}"."{table_name}"'
-    cur = trino_conn.cursor()
-    cur.execute(f"SELECT COUNT(*) FROM {fqn}")
-    row = cur.fetchone()
-    return row[0] if row else 0
+    res = await engine.execute_engine(f"SELECT COUNT(*) FROM {fqn}")
+    return res.rows[0][0] if res.rows else 0
 
 
 async def detect_hot_tables_by_count(  # REQ-236
-    trino_conn,
+    engine,
     candidates: list[tuple[str, str, str]],
     auto_threshold: int,
     hot_overrides: dict[str, bool | None],
@@ -588,7 +583,7 @@ async def detect_hot_tables_by_count(  # REQ-236
         if hot_overrides.get(table_name) is False:
             continue
         try:
-            count = await count_table_rows(trino_conn, table_name, schema, catalog)
+            count = await count_table_rows(engine, table_name, schema, catalog)
         except Exception:
             log.debug("COUNT(*) failed for hot-detect of %s; leaving non-hot", table_name)
             continue
@@ -599,7 +594,7 @@ async def detect_hot_tables_by_count(  # REQ-236
 
 async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
     raw_config: dict,
-    trino_conn,
+    engine,
 ) -> HotTableManager | None:
     """Initialize hot table manager from raw config. Returns manager or None."""
 
@@ -679,7 +674,7 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         elif source_type == "openapi":
             await hot_mgr.load_table_from_openapi(source_cfg, tbl_name, pk_col)
         elif source_type in _TRINO_BACKED:
-            await hot_mgr.load_table(trino_conn, tbl_name, schema_name, catalog, pk_col)
+            await hot_mgr.load_table(engine, tbl_name, schema_name, catalog, pk_col)
         else:
             log.debug(
                 "hot: true table %s: source type %r not supported for caching",
@@ -725,7 +720,7 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         count_meta[tbl_name] = (pk_col, catalog, schema_name)
 
     for tbl_name in await detect_hot_tables_by_count(
-        trino_conn, count_candidates, auto_threshold, hot_overrides
+        engine, count_candidates, auto_threshold, hot_overrides
     ):
         pk_col, catalog, schema_name = count_meta[tbl_name]
         hot_mgr.register_candidate(

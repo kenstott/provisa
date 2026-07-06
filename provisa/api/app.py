@@ -1369,7 +1369,7 @@ async def _load_and_build(
     # Initialize hot tables (Phase AD6)
     from provisa.cache.hot_tables import init_hot_tables
 
-    hot_mgr = await init_hot_tables(raw_config, state.trino_conn)
+    hot_mgr = await init_hot_tables(raw_config, state.federation_engine)
     if hot_mgr is not None:
         state.hot_manager = hot_mgr
 
@@ -2271,7 +2271,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                         continue
                     try:
                         await hot_mgr.load_table(
-                            state.trino_conn,
+                            state.federation_engine,
                             entry.table_name,
                             entry.schema,
                             entry.catalog,

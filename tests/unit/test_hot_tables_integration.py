@@ -52,16 +52,16 @@ def _make_hot_manager(auto_threshold: int = 1000) -> HotTableManager:
     )
 
 
-def _make_trino_conn_mock(rows: list[tuple], columns: list[str]) -> MagicMock:
-    """Return a synchronous Trino connection mock."""
-    description = [(c,) for c in columns]
-    cur = MagicMock()
-    cur.execute = MagicMock()
-    cur.fetchall = MagicMock(return_value=rows)
-    cur.description = description
-    conn = MagicMock()
-    conn.cursor = MagicMock(return_value=cur)
-    return conn
+def _make_trino_conn_mock(rows: list[tuple], columns: list[str]):
+    """Return a fake EngineRuntime whose execute_engine yields the given rows/columns
+    (load_table reads through the engine terminal, not a raw Trino cursor)."""
+    from provisa.executor.trino import QueryResult
+
+    class _FakeEngine:
+        async def execute_engine(self, sql, *a, **k):
+            return QueryResult(rows=rows, column_names=columns)
+
+    return _FakeEngine()
 
 
 def _make_compiled(sql: str, root_field: str = "orders") -> CompiledQuery:

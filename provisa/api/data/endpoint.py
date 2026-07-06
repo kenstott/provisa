@@ -3319,7 +3319,7 @@ async def _handle_mutation(
                             _tbl_catalog = table_meta.catalog_name
                             _pk = "id"  # default PK
                             await hot_mgr.load_table(
-                                state.trino_conn,
+                                state.federation_engine,
                                 table_meta.table_name,
                                 _tbl_schema,
                                 _tbl_catalog,

@@ -550,7 +550,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
                     await _hot.invalidate(_table_meta.table_name)
                     if _hot.get_entry(_table_meta.table_name) is None:
                         await _hot.load_table(
-                            state.trino_conn,
+                            state.federation_engine,
                             _table_meta.table_name,
                             _table_meta.schema_name,
                             _table_meta.catalog_name,
