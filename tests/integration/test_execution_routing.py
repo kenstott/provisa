@@ -60,7 +60,7 @@ class TestDecideRoute:
             source_types={"sales-pg": "postgresql", "crm-pg": "postgresql"},
             source_dialects={"sales-pg": "postgres", "crm-pg": "postgres"},
         )
-        assert result.route == Route.TRINO
+        assert result.route == Route.ENGINE
         assert result.source_id is None
 
     async def test_steward_override_trino(self):
@@ -73,7 +73,7 @@ class TestDecideRoute:
             source_dialects={"sales-pg": "postgres"},
             steward_hint="federated",
         )
-        assert result.route == Route.TRINO
+        assert result.route == Route.ENGINE
 
     async def test_steward_override_direct(self):
         # REQ-030: steward can force DIRECT on single RDBMS source
@@ -109,7 +109,7 @@ class TestDecideRoute:
             source_types={"events-kafka": "kafka"},
             source_dialects={"events-kafka": ""},
         )
-        assert result.route == Route.TRINO
+        assert result.route == Route.ENGINE
 
     async def test_api_source_routes_api(self):
         # REQ-027: openapi sources route through API caller pipeline
@@ -131,7 +131,7 @@ class TestDecideRoute:
             source_types={"sales-pg": "postgresql", "analytics-mysql": "mysql"},
             source_dialects={"sales-pg": "postgres", "analytics-mysql": "mysql"},
         )
-        assert result.route == Route.TRINO
+        assert result.route == Route.ENGINE
 
     async def test_colocated_sources_route_direct(self):
         # REQ-027: two sources on the same physical DB DSN route DIRECT
@@ -358,7 +358,7 @@ class TestTypeCoercedRouting:
             source_dialects={"mysql-src": "mysql"},
             has_json_extract=True,
         )
-        assert result.route == Route.TRINO
+        assert result.route == Route.ENGINE
 
     async def test_postgres_source_with_json_extract_routes_direct(self):
         # REQ-552: Postgres supports ->> natively; json_extract does not force Trino
@@ -389,7 +389,7 @@ class TestTenantCachePrefix:
 
     async def test_cache_table_name_stable(self):
         # REQ-595: cache table name is a stable SHA-256 hash of source+operation+args
-        from provisa.api_source.trino_cache import cache_table_name
+        from provisa.api_source.engine_cache import cache_table_name
 
         t1 = cache_table_name("my-source", "my_table", {"page": 1})
         t2 = cache_table_name("my-source", "my_table", {"page": 1})
@@ -398,7 +398,7 @@ class TestTenantCachePrefix:
 
     async def test_cache_table_name_differs_by_source(self):
         # REQ-595: different source IDs produce different cache table names
-        from provisa.api_source.trino_cache import cache_table_name
+        from provisa.api_source.engine_cache import cache_table_name
 
         t1 = cache_table_name("source-a", "my_table", {})
         t2 = cache_table_name("source-b", "my_table", {})
@@ -406,7 +406,7 @@ class TestTenantCachePrefix:
 
     async def test_cache_table_name_differs_by_args(self):
         # REQ-595: different native args produce different cache table names
-        from provisa.api_source.trino_cache import cache_table_name
+        from provisa.api_source.engine_cache import cache_table_name
 
         t1 = cache_table_name("src", "tbl", {"status": "open"})
         t2 = cache_table_name("src", "tbl", {"status": "closed"})
@@ -566,7 +566,7 @@ class TestMVLifecycle:
 class TestFederationHints:
     async def test_table_known_live_returns_false_on_miss(self):
         # REQ-280: table_known_live is False when cache has no entry
-        from provisa.api_source.trino_cache import (
+        from provisa.api_source.engine_cache import (
             CacheLocation,
             _TABLE_EXISTS_CACHE,
             table_known_live,
@@ -580,7 +580,7 @@ class TestFederationHints:
         # REQ-280: table_known_live is True when in-process cache entry is valid
         import time
 
-        from provisa.api_source.trino_cache import (
+        from provisa.api_source.engine_cache import (
             CacheLocation,
             _TABLE_EXISTS_CACHE,
             table_known_live,
@@ -595,7 +595,7 @@ class TestFederationHints:
         # REQ-280: expired in-process cache entry is treated as a miss
         import time
 
-        from provisa.api_source.trino_cache import (
+        from provisa.api_source.engine_cache import (
             CacheLocation,
             _TABLE_EXISTS_CACHE,
             table_known_live,
@@ -608,7 +608,7 @@ class TestFederationHints:
 
     async def test_cache_location_postgresql_backend(self):
         # REQ-275: cache_location builds correct CacheLocation for PG-backed catalog
-        from provisa.api_source.trino_cache import cache_location
+        from provisa.api_source.engine_cache import cache_location
 
         loc = cache_location("my-source", None, "api_cache")
         assert loc.catalog == "my_source"  # hyphens → underscores
@@ -617,7 +617,7 @@ class TestFederationHints:
 
     async def test_cache_location_iceberg_backend(self):
         # REQ-275: cache_location with "results" catalog uses iceberg backend
-        from provisa.api_source.trino_cache import cache_location
+        from provisa.api_source.engine_cache import cache_location
 
         loc = cache_location("my-source", "results", "mv")
         assert loc.catalog == "results"
@@ -625,7 +625,7 @@ class TestFederationHints:
 
     async def test_rewrite_from_cache_replaces_root_table(self):
         # REQ-276: rewrite_from_cache rewrites FROM clause to point at cache table
-        from provisa.api_source.trino_cache import CacheLocation, rewrite_from_cache
+        from provisa.api_source.engine_cache import CacheLocation, rewrite_from_cache
 
         sql = 'SELECT "id" FROM "public"."orders"'
         loc = CacheLocation(catalog="my_src", schema="api_cache", backend="postgresql")
@@ -635,7 +635,7 @@ class TestFederationHints:
 
     async def test_rewrite_all_from_cache_rewrites_all_tables(self):
         # REQ-277, REQ-278: rewrite_all_from_cache handles multiple table references
-        from provisa.api_source.trino_cache import CacheLocation, rewrite_all_from_cache
+        from provisa.api_source.engine_cache import CacheLocation, rewrite_all_from_cache
 
         sql = (
             'SELECT "t0"."id" FROM "public"."orders" "t0" '

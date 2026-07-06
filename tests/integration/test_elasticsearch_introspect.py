@@ -24,11 +24,10 @@ from __future__ import annotations
 import pytest
 
 from provisa.elasticsearch.source import (
-    ES_TYPE_TO_TRINO,
+    ES_TYPE_TO_IR,
     ESColumn,
     ESSourceConfig,
     ESTableConfig,
-    _flatten_mapping,
     discover_schema,
     generate_catalog_properties,
     generate_table_definitions,
@@ -40,6 +39,7 @@ pytestmark = [pytest.mark.integration]
 # ---------------------------------------------------------------------------
 # discover_schema — pure Python
 # ---------------------------------------------------------------------------
+
 
 class TestDiscoverSchema:
     def test_single_field(self):
@@ -133,35 +133,39 @@ class TestDiscoverSchema:
 class TestESTypeMappings:
     """Verify ES type → Trino type mappings."""
 
-    @pytest.mark.parametrize("es_type,expected_trino", [
-        ("text", "VARCHAR"),
-        ("keyword", "VARCHAR"),
-        ("long", "BIGINT"),
-        ("integer", "INTEGER"),
-        ("short", "SMALLINT"),
-        ("byte", "TINYINT"),
-        ("double", "DOUBLE"),
-        ("float", "REAL"),
-        ("half_float", "REAL"),
-        ("scaled_float", "DOUBLE"),
-        ("boolean", "BOOLEAN"),
-        ("date", "TIMESTAMP"),
-        ("ip", "VARCHAR"),
-        ("binary", "VARBINARY"),
-        ("geo_point", "VARCHAR"),
-    ])
+    @pytest.mark.parametrize(
+        "es_type,expected_trino",
+        [
+            ("text", "VARCHAR"),
+            ("keyword", "VARCHAR"),
+            ("long", "BIGINT"),
+            ("integer", "INTEGER"),
+            ("short", "SMALLINT"),
+            ("byte", "TINYINT"),
+            ("double", "DOUBLE"),
+            ("float", "REAL"),
+            ("half_float", "REAL"),
+            ("scaled_float", "DOUBLE"),
+            ("boolean", "BOOLEAN"),
+            ("date", "TIMESTAMP"),
+            ("ip", "VARCHAR"),
+            ("binary", "VARBINARY"),
+            ("geo_point", "VARCHAR"),
+        ],
+    )
     def test_type_mapping(self, es_type, expected_trino):
-        assert ES_TYPE_TO_TRINO[es_type] == expected_trino
+        assert ES_TYPE_TO_IR[es_type] == expected_trino
 
     def test_all_mapped_types_produce_columns(self):
-        mapping = {es_t: {"type": es_t} for es_t in ES_TYPE_TO_TRINO}
+        mapping = {es_t: {"type": es_t} for es_t in ES_TYPE_TO_IR}
         cols = discover_schema(mapping)
-        assert len(cols) == len(ES_TYPE_TO_TRINO)
+        assert len(cols) == len(ES_TYPE_TO_IR)
 
 
 # ---------------------------------------------------------------------------
 # generate_catalog_properties — pure Python
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateCatalogProperties:
     def test_connector_name(self):
@@ -206,6 +210,7 @@ class TestGenerateCatalogProperties:
 # ---------------------------------------------------------------------------
 # generate_table_definitions — pure Python
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateTableDefinitions:
     def test_empty_tables(self):
@@ -269,10 +274,13 @@ class TestGenerateTableDefinitions:
         assert defs[0]["columns"][0]["sourcePath"] == "status"
 
     def test_multiple_tables(self):
-        cfg = ESSourceConfig(id="es-1", tables=[
-            ESTableConfig(name="t1", index="i1"),
-            ESTableConfig(name="t2", index="i2"),
-        ])
+        cfg = ESSourceConfig(
+            id="es-1",
+            tables=[
+                ESTableConfig(name="t1", index="i1"),
+                ESTableConfig(name="t2", index="i2"),
+            ],
+        )
         defs = generate_table_definitions(cfg)
         assert len(defs) == 2
         names = {d["tableName"] for d in defs}
@@ -283,10 +291,11 @@ class TestGenerateTableDefinitions:
 # Live-service tests (requires running Elasticsearch instance)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.requires_elasticsearch
 class TestLiveElasticsearchIntrospect:
     """Require Docker Compose elasticsearch service:
-        docker compose up elasticsearch
+    docker compose up elasticsearch
     """
 
     ES_HOST = "localhost"
@@ -315,9 +324,7 @@ class TestLiveElasticsearchIntrospect:
             )
 
             # Fetch the mapping
-            resp = await client.get(
-                f"http://{self.ES_HOST}:{self.ES_PORT}/{index}/_mapping"
-            )
+            resp = await client.get(f"http://{self.ES_HOST}:{self.ES_PORT}/{index}/_mapping")
             resp.raise_for_status()
             data = resp.json()
 

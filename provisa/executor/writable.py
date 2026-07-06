@@ -18,7 +18,7 @@ A mutation can reach a source three ways, in DESCENDING preference (native → s
 2. SQLALCHEMY — the generic SQLAlchemy fallback driver, for a type with no native driver. Same two
                 gates (DBAPI installed + SQLGlot dialect); broadens the set to any SQLAlchemy dialect.
 3. ENGINE     — the federation engine writes upstream through a write-capable ATTACH connector
-                (postgres_fdw, DuckDB/Trino ATTACH — Capability.write). The engine executes the
+                (postgres_fdw, DuckDB/the engine ATTACH — Capability.write). The engine executes the
                 mutation in ITS OWN dialect against the attached/foreign table, so no per-source
                 SQLGlot gate applies; the only gate is the connector declaring write support. This is
                 the only route that can reach a source with no direct driver AND no SQLGlot dialect
@@ -63,7 +63,7 @@ def sqlglot_write_dialect(source_type: str) -> str | None:
 
     try:
         Dialect.get_or_raise(dialect)
-    except Exception:
+    except ValueError:  # sqlglot raises ValueError for an unknown dialect name
         return None
     return dialect
 

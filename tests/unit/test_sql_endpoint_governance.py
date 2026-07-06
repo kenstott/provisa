@@ -19,7 +19,7 @@ from httpx import ASGITransport, AsyncClient
 
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ class TestSQLGovernanceApplied:
         sql = "SELECT id FROM orders"
         governed = apply_governance(sql, gov_ctx)
 
-        assert "status = 'active'" in governed
+        assert "\"status\" = 'active'" in governed
         assert "WHERE" in governed
 
     async def test_sql_endpoint_rls_applied_via_http(self, sql_client):
@@ -226,7 +226,7 @@ class TestSQLGovernanceApplied:
         )
         sql = "SELECT id FROM orders"
         result = apply_governance(sql, gov)
-        assert "status = 'active'" in result
+        assert "\"status\" = 'active'" in result
         assert "WHERE" in result
 
     async def test_apply_governance_no_rls_unchanged_tables(self):

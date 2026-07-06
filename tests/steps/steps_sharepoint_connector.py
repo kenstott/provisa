@@ -749,15 +749,3 @@ def the_table_is_created_with_the_supplied_column_definitions(shared_data):
 
 
 # No new steps are required for REQ-726; all steps are already defined in the existing file.
-
-
-# Copyright (c) 2026 Kenneth Stott
-# Canary: 993f77f0-4bcc-41ca-8bb2-aaacde050f74
-#
-# This source code is licensed under the Business Source License 1.1
-
-
-# Copyright (c) 2026 Kenneth Stott
-# Canary: 1ab3f7a4-6877-468c-a6c2-a60695c3f507
-#
-# This source code is licensed under the Business Source License 1.1

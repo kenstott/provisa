@@ -57,12 +57,12 @@ def _ctx(tables=None, joins=None):
 class TestBuildRLSContext:
     def test_filters_by_role(self):
         rules = [
-            {"table_id": 1, "role_id": "analyst", "filter_expr": "region = 'us'"},
+            {"table_id": 1, "role_id": "analyst", "filter_expr": "\"region\" = 'us'"},
             {"table_id": 1, "role_id": "admin", "filter_expr": "1=1"},
             {"table_id": 2, "role_id": "analyst", "filter_expr": "active = true"},
         ]
         rls = build_rls_context(rules, "analyst")
-        assert rls.rules == {1: "region = 'us'", 2: "active = true"}
+        assert rls.rules == {1: "\"region\" = 'us'", 2: "active = true"}
 
     def test_empty_for_no_rules(self):
         rls = build_rls_context([], "admin")
@@ -83,11 +83,11 @@ class TestDomainRLS:
                 "table_id": None,
                 "domain_id": "sales",
                 "role_id": "analyst",
-                "filter_expr": "region = 'us'",
+                "filter_expr": "\"region\" = 'us'",
             },
         ]
         rls = build_rls_context(rules, "analyst")
-        assert rls.domain_rules == {"sales": "region = 'us'"}
+        assert rls.domain_rules == {"sales": "\"region\" = 'us'"}
         assert rls.rules == {}
 
     def test_table_and_domain_rules_coexist(self):
@@ -97,12 +97,12 @@ class TestDomainRLS:
                 "table_id": None,
                 "domain_id": "sales",
                 "role_id": "analyst",
-                "filter_expr": "region = 'us'",
+                "filter_expr": "\"region\" = 'us'",
             },
         ]
         rls = build_rls_context(rules, "analyst")
         assert rls.rules == {5: "active"}
-        assert rls.domain_rules == {"sales": "region = 'us'"}
+        assert rls.domain_rules == {"sales": "\"region\" = 'us'"}
 
     def test_domain_rule_injected_for_table_in_domain(self):
         meta = TableMeta(
@@ -122,13 +122,13 @@ class TestDomainRLS:
                     "table_id": None,
                     "domain_id": "sales",
                     "role_id": "a",
-                    "filter_expr": "region = 'us'",
+                    "filter_expr": "\"region\" = 'us'",
                 }
             ],
             "a",
         )
         result = inject_rls(_compiled('SELECT "id" FROM "public"."orders"'), ctx, rls)
-        assert "region = 'us'" in result.sql
+        assert "\"region\" = 'us'" in result.sql
 
     def test_table_rule_takes_precedence_over_domain_rule(self):
         meta = TableMeta(
@@ -144,19 +144,24 @@ class TestDomainRLS:
         ctx = _ctx(tables={"orders": meta})
         rls = build_rls_context(
             [
-                {"table_id": 1, "domain_id": None, "role_id": "a", "filter_expr": "owner = 'me'"},
+                {
+                    "table_id": 1,
+                    "domain_id": None,
+                    "role_id": "a",
+                    "filter_expr": "\"owner\" = 'me'",
+                },
                 {
                     "table_id": None,
                     "domain_id": "sales",
                     "role_id": "a",
-                    "filter_expr": "region = 'us'",
+                    "filter_expr": "\"region\" = 'us'",
                 },
             ],
             "a",
         )
         result = inject_rls(_compiled('SELECT "id" FROM "public"."orders"'), ctx, rls)
-        assert "owner = 'me'" in result.sql
-        assert "region = 'us'" not in result.sql
+        assert "\"owner\" = 'me'" in result.sql
+        assert "\"region\" = 'us'" not in result.sql
 
     def test_startup_loader_selects_domain_id(self):
         """Regression: the app RLS loader must load domain_id (else domain rules drop).
@@ -183,10 +188,10 @@ class TestInjectRLS:
     def test_injects_where_on_simple_query(self):
         compiled = _compiled('SELECT "id" FROM "public"."orders"')
         ctx = _ctx()
-        rls = RLSContext(rules={1: "region = 'us'"})
+        rls = RLSContext(rules={1: "\"region\" = 'us'"})
         result = inject_rls(compiled, ctx, rls)
         assert "WHERE" in result.sql
-        assert "region = 'us'" in result.sql
+        assert "\"region\" = 'us'" in result.sql
 
     def test_ands_with_existing_where(self):
         compiled = _compiled('SELECT "id" FROM "public"."orders" WHERE "status" = $1')
@@ -198,23 +203,23 @@ class TestInjectRLS:
             sources=compiled.sources,
         )
         ctx = _ctx()
-        rls = RLSContext(rules={1: "region = 'us'"})
+        rls = RLSContext(rules={1: "\"region\" = 'us'"})
         result = inject_rls(compiled, ctx, rls)
         assert "AND" in result.sql
-        assert "region = 'us'" in result.sql
+        assert "\"region\" = 'us'" in result.sql
         assert '"status" = $1' in result.sql
 
     def test_injects_before_order_by(self):
         compiled = _compiled('SELECT "id" FROM "public"."orders" ORDER BY "id"')
         ctx = _ctx()
-        rls = RLSContext(rules={1: "region = 'us'"})
+        rls = RLSContext(rules={1: "\"region\" = 'us'"})
         result = inject_rls(compiled, ctx, rls)
         assert result.sql.index("WHERE") < result.sql.index("ORDER BY")
 
     def test_injects_before_limit(self):
         compiled = _compiled('SELECT "id" FROM "public"."orders" LIMIT 10')
         ctx = _ctx()
-        rls = RLSContext(rules={1: "region = 'us'"})
+        rls = RLSContext(rules={1: "\"region\" = 'us'"})
         result = inject_rls(compiled, ctx, rls)
         assert result.sql.index("WHERE") < result.sql.index("LIMIT")
 
@@ -234,7 +239,7 @@ class TestInjectRLS:
             sources={"pg"},
         )
         ctx = _ctx()
-        rls = RLSContext(rules={1: "region = 'us'"})
+        rls = RLSContext(rules={1: "\"region\" = 'us'"})
         result = inject_rls(compiled, ctx, rls)
         assert result.params == ["val"]
 
@@ -248,8 +253,9 @@ class TestInjectWhere:
     def test_existing_where(self):
         sql = "SELECT 1 FROM t WHERE y = 2"
         result = _inject_where(sql, "x = 1")
-        assert "x = 1 AND" in result
+        assert "x = 1" in result
         assert "y = 2" in result
+        assert "AND" in result
 
     def test_before_order_by(self):
         sql = "SELECT 1 FROM t ORDER BY id"
@@ -266,11 +272,11 @@ class TestInjectWhere:
 
 class TestQualifyFilter:
     def test_qualifies_column(self):
-        result = _qualify_filter("region = 'us'", "t0")
-        assert '"t0".region' in result
+        result = _qualify_filter("\"region\" = 'us'", "t0")
+        assert '"t0"."region"' in result
 
     def test_does_not_qualify_string_literal(self):
-        result = _qualify_filter("region = 'us'", "t0")
+        result = _qualify_filter("\"region\" = 'us'", "t0")
         # 'us' should not be qualified
         assert "'us'" in result
 

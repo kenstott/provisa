@@ -861,8 +861,8 @@ class Query:  # REQ-021, REQ-042
             result = await native_schemas(source_id, source_type, state.source_pools, config_conn)
         if result is not None:
             return [s for s in result if not is_provisa_internal(s)]
-        # native_schemas returns None only for Trino-backed connector sources
-        # that have no cheaper direct pool path. Use Trino for those.
+        # native_schemas returns None only for the engine-backed connector sources
+        # that have no cheaper direct pool path. Use the engine for those.
         if source_type not in SOURCE_TO_CONNECTOR:
             return []
         catalog = source_to_catalog(source_id)
@@ -908,7 +908,7 @@ class Query:  # REQ-021, REQ-042
                 result = None
         if result is not None:
             return result
-        # Trino fallback
+        # the engine fallback
         from provisa.api.admin.introspect import PROVISA_INTERNAL_TABLES
 
         catalog = source_to_catalog(source_id)
@@ -956,7 +956,7 @@ class Query:  # REQ-021, REQ-042
     async def available_columns(
         self, source_id: str, schema_name: str, table_name: str
     ) -> list[str]:
-        """List columns for a table in a source's Trino catalog."""
+        """List columns for a table in a source's the engine catalog."""
         from provisa.api.app import state
 
         source_type = state.source_types.get(source_id, "")
@@ -1036,7 +1036,7 @@ class Query:  # REQ-021, REQ-042
             ]
         catalog = source_to_catalog(source_id)
         try:
-            # PK columns + column metadata via the engine terminal (information_schema).
+            # PK columns + column metadata vithe engine terminal (information_schema).
             pk_res = await state.federation_engine.execute_engine(
                 f"SELECT kcu.column_name "
                 f'FROM "{catalog}".information_schema.table_constraints tc '
@@ -1173,23 +1173,9 @@ class Query:  # REQ-021, REQ-042
         from provisa.api.app import state
         from provisa.cache.store import RedisCacheStore
 
-        trino_ok = False
-        trino_worker_count = 0
-        trino_active_workers = 0
-        if state.trino_conn is not None:
-            try:
-                cursor = state.trino_conn.cursor()
-                cursor.execute("SELECT 1")
-                cursor.fetchone()
-                trino_ok = True
-                cursor.execute("SELECT state, count(*) FROM system.runtime.nodes GROUP BY state")
-                for row in cursor.fetchall():
-                    node_state, cnt = row[0], int(row[1])
-                    trino_worker_count += cnt
-                    if node_state == "active":
-                        trino_active_workers = cnt
-            except Exception:
-                pass
+        engine_ok, engine_worker_count, engine_active_workers = (
+            state.federation_engine.cluster_diagnostics()
+        )
 
         pg_size, pg_free = 0, 0
         if state.tenant_db is not None:
@@ -1208,9 +1194,9 @@ class Query:  # REQ-021, REQ-042
         flight_ok = state._flight_server is not None if hasattr(state, "_flight_server") else False
 
         return SystemHealthType(
-            trino_connected=trino_ok,
-            trino_worker_count=trino_worker_count,
-            trino_active_workers=trino_active_workers,
+            engine_connected=engine_ok,
+            engine_worker_count=engine_worker_count,
+            engine_active_workers=engine_active_workers,
             pg_pool_size=pg_size,
             pg_pool_free=pg_free,
             cache_connected=cache_ok,
@@ -1439,7 +1425,7 @@ async def _add_source_pool(state, input: SourceInput) -> None:
     )
 
 
-def _create_trino_catalog(state, model, input: SourceInput) -> None:
+def _register_source_on_engine(state, model, input: SourceInput) -> None:
     """Provision the source on the bound engine (mirrors config_loader path)."""
     from provisa.core.secrets import resolve_secrets
 
@@ -1453,7 +1439,7 @@ def _create_trino_catalog(state, model, input: SourceInput) -> None:
         )
 
 
-async def _analyze_trino_tables(state, pool, model, input: SourceInput) -> None:
+async def _analyze_source_on_engine(state, pool, model, input: SourceInput) -> None:
     """Fire engine ANALYZE on all registered tables for this source (errors swallowed)."""
 
     class _TblRef:
@@ -1600,9 +1586,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         state.source_types[input.id] = input.type
         state.source_dialects[input.id] = ""
 
-        # Provision on the bound engine (Trino makes a catalog; native engines no-op / attach lazily).
-        _create_trino_catalog(state, model, input)
-        await _analyze_trino_tables(state, pool, model, input)
+        # Provision on the bound engine (the engine makes a catalog; native engines no-op / attach lazily).
+        _register_source_on_engine(state, model, input)
+        await _analyze_source_on_engine(state, pool, model, input)
 
         if input.type == "govdata" and input.database and input.username:
             _prime_govdata_cache(input)
@@ -1678,7 +1664,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 import logging as _log
 
                 _log.getLogger(__name__).warning(
-                    "Direct pool for %r failed: %s — Trino-routed queries still work.",
+                    "Direct pool for %r failed: %s — the engine-routed queries still work.",
                     input.id,
                     _pool_err,
                 )
@@ -1891,12 +1877,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if _owner_conflict:
                 return MutationResult(success=False, message=_owner_conflict)
             if input.source_id == "__provisa__":
+                from provisa.api.app import state
+
                 await _conn.execute(
                     """
                     INSERT INTO sources (id, type, description)
-                    VALUES ('__provisa__', 'trino', 'Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products')
+                    VALUES ('__provisa__', $1, 'Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products')
                     ON CONFLICT (id) DO NOTHING
-                    """
+                    """,
+                    state.federation_engine.name,
                 )
             table_id = await table_repo.upsert(_conn, model)
             src_row = await _conn.fetchrow(
@@ -2568,7 +2557,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def refresh_source_statistics(self, source_id: str) -> MutationResult:  # REQ-276
         """Run ANALYZE on all registered tables for a source (Phase AL).
 
-        Triggers Trino to collect fresh table statistics, which improves the
+        Triggers the engine to collect fresh table statistics, which improves the
         quality of join-order and broadcast decisions for federated queries.
         """
         from provisa.api.app import state
@@ -2634,7 +2623,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 CompileQueryResult(
                     sql=r["sql"],
                     semantic_sql=r["semantic_sql"],
-                    trino_sql=r.get("trino_sql"),
+                    engine_sql=r.get("engine_sql"),
                     direct_sql=r.get("direct_sql"),
                     route=r["route"],
                     route_reason=r["route_reason"],

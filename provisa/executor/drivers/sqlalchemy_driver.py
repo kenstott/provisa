@@ -29,7 +29,7 @@ import asyncio
 from typing import Any
 
 from provisa.executor.drivers.base import DirectDriver
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 
 def _to_named_params(sql: str, params: list | None) -> tuple[str, dict[str, Any]]:

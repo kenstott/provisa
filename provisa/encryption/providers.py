@@ -96,3 +96,29 @@ def _load_from_keychain(key_id: str | None) -> str | None:
     except ImportError:
         return None
     return keyring.get_password(_KEYCHAIN_SERVICE, key_id or "master")
+
+
+# -- key management (REQ-918): provisioning + presence for the admin UI ----------------------
+
+
+def master_key_present(key_id: str | None = None) -> bool:
+    """Whether a LocalKeychain master key is available (OS keychain or the env fallback)."""
+    return bool(_load_from_keychain(key_id) or os.environ.get(_MASTER_KEY_ENV))
+
+
+def generate_master_key_b64() -> str:
+    """Generate a fresh 32-byte (AES-256) master key, base64-encoded."""
+    return base64.b64encode(os.urandom(_MASTER_KEY_BYTES)).decode("ascii")
+
+
+def store_master_key(key_b64: str, key_id: str | None = None) -> bool:
+    """Store a base64 master key in the OS keychain under ``key_id``. Returns True on success,
+    False when no OS keychain is available (the caller then supplies it via the env var)."""
+    if len(base64.b64decode(key_b64)) != _MASTER_KEY_BYTES:
+        raise ValueError(f"master key must decode to {_MASTER_KEY_BYTES} bytes (AES-256)")
+    try:
+        import keyring  # noqa: PLC0415
+    except ImportError:
+        return False
+    keyring.set_password(_KEYCHAIN_SERVICE, key_id or "master", key_b64)
+    return True

@@ -50,7 +50,7 @@ from pytest_bdd import given, when, then, parsers, scenarios
 
 from provisa.openapi.loader import load_spec, parse_text
 from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, parse_spec as map_operations
-from provisa.api_source.trino_cache import (
+from provisa.api_source.engine_cache import (
     CacheLocation,
     cache_location,
     cache_table_name,
@@ -291,7 +291,7 @@ _REQ318_TTL = 300  # seconds
 
 
 def _build_req318_cache_key(source_id: str, operation_path: str, native_args: dict) -> str:
-    """Compute the SHA-256 cache key exactly as trino_cache.cache_table_name does."""
+    """Compute the SHA-256 cache key exactly as engine_cache.cache_table_name does."""
     key = json.dumps(
         {
             "s": source_id,
@@ -1523,9 +1523,3 @@ def then_stewards_accept_or_reject(shared_data):
 
 
 # No new steps required for REQ-317; all steps already exist in the file.
-
-
-# Copyright (c) 2026 Kenneth Stott
-# Canary: 38cd230a-e41a-41c1-8acf-7063f4edb196
-#
-# This source code is licensed under the Business Source License 1.1

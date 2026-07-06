@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
 from provisa.mv.refresh import _build_refresh_sql, _target_ref, refresh_mv
 from provisa.mv.registry import MVRegistry

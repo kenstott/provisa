@@ -44,7 +44,7 @@ async def _candidates_from_cache(  # REQ-464
 async def _candidates_live(
     source_id: str, schema_name: str, state
 ) -> list[TableCandidate]:  # REQ-464
-    """Fetch candidates live from native introspection + Trino (cache-miss path)."""
+    """Fetch candidates live from native introspection + the engine (cache-miss path)."""
     from provisa.api.admin.introspect import native_tables
     from provisa.api.admin.schema import _get_pool, source_to_catalog
 
@@ -111,7 +111,7 @@ async def search_source_tables(  # REQ-464
     """Search tables in a source using NL query.
 
     Reads from the background-populated catalog cache when warm.
-    Falls back to live Trino introspection on a cold cache.
+    Falls back to live the engine introspection on a cold cache.
     Two-pass ranking: token overlap pre-filter, then haiku LLM (if ANTHROPIC_API_KEY set).
     """
     from provisa.api.app import state

@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Config loader: YAML → validate → resolve secrets → upsert PG → create Trino catalogs."""
+"""Config loader: YAML → validate → resolve secrets → upsert PG → create the engine catalogs."""
 
 # Requirements: REQ-012, REQ-013, REQ-016, REQ-250, REQ-251, REQ-275, REQ-282, REQ-283, REQ-285
 
@@ -62,10 +62,10 @@ async def _fill_null_column_types(
         )
 
 
-# PG information_schema.data_type → Trino type name. Mirrors what Trino's
+# PG information_schema.data_type → the engine type name. Mirrors what the engine's
 # information_schema.columns reports for a PG-backed catalog, so types read via
-# the (same-connection, uncommitted-visible) asyncpg path match the Trino path.
-_PG_TO_TRINO_TYPE = {
+# the (same-connection, uncommitted-visible) asyncpg path match the engine path.
+_PG_TO_PHYSICAL_TYPE = {
     "text": "varchar",
     "character varying": "varchar",
     "bigint": "bigint",
@@ -84,12 +84,12 @@ _PG_TO_TRINO_TYPE = {
 }
 
 
-async def _pg_column_trino_types(
+async def _pg_column_types(
     conn: asyncpg.Connection, pg_schema: str, pg_table: str
 ) -> dict[str, str]:
-    """Return {column_name: trino_type} for a PG table read over the same asyncpg
+    """Return {column_name: column_type} for a PG table read over the same asyncpg
     connection — sees uncommitted writes (e.g. an OpenAPI cache table just created
-    in this transaction), which a separate Trino JDBC connection cannot."""
+    in this transaction), which a separate the engine JDBC connection cannot."""
     rows = await conn.fetch(
         "SELECT column_name, data_type FROM information_schema.columns "
         "WHERE table_schema=$1 AND table_name=$2",
@@ -97,9 +97,9 @@ async def _pg_column_trino_types(
         pg_table,
     )
     return {
-        r["column_name"]: _PG_TO_TRINO_TYPE[r["data_type"]]
+        r["column_name"]: _PG_TO_PHYSICAL_TYPE[r["data_type"]]
         for r in rows
-        if r["data_type"] in _PG_TO_TRINO_TYPE
+        if r["data_type"] in _PG_TO_PHYSICAL_TYPE
     }
 
 
@@ -163,7 +163,7 @@ def parse_config_dict(data: dict) -> ProvisaConfig:  # REQ-250
 
 _SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel", "__provisa__"]
 
-_OAPI_TRINO = {
+_OAPI_PHYSICAL = {
     "string": "varchar",
     "integer": "integer",
     "number": "double",
@@ -214,8 +214,8 @@ async def _upsert_sources(  # REQ-012, REQ-250
 ) -> None:
     for src in config.sources:
         await source_repo.upsert(conn, src)
-        # Provision the source on the bound engine through the abstraction (Trino makes a
-        # catalog; native engines attach lazily). No direct Trino reference here.
+        # Provision the source on the bound engine through the abstraction (the engine makes a
+        # catalog; native engines attach lazily). No direct the engine reference here.
         if engine is not None:
             try:
                 engine.register_source(src, resolve_secrets(src.password))
@@ -277,7 +277,7 @@ async def _handle_sqlite_table(
     tbl: Table,
     src: Source,
 ) -> None:
-    from provisa.file_source.pg_migrate import migrate_sqlite_table, sqlite_column_trino_types
+    from provisa.file_source.pg_migrate import migrate_sqlite_table, sqlite_column_types
 
     assert src.path is not None
     try:
@@ -287,7 +287,7 @@ async def _handle_sqlite_table(
             tbl.source_id,
             tbl.schema_name,
             tbl.table_name,
-            sqlite_column_trino_types(src.path, tbl.table_name),
+            sqlite_column_types(src.path, tbl.table_name),
         )
     except Exception as _e:
         log.warning("SQLite → PG migration failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e)
@@ -396,7 +396,7 @@ async def _register_api_endpoint(
                 col_data["name"],
             )
     # Persist column data_type from the spec. OpenAPI tables are
-    # API-backed: their cached response may be empty (so Trino can't
+    # API-backed: their cached response may be empty (so the engine can't
     # introspect every column), and native-filter params (_nf_*) never
     # appear in the response at all. The spec is authoritative for
     # both. introspect_tables trusts stored types — fill any null.
@@ -405,21 +405,21 @@ async def _register_api_endpoint(
     # authoritative for response columns — including map-typed
     # responses (e.g. status→count) the spec schema has no
     # properties for. Read it over this same connection, which
-    # sees the uncommitted table; the Trino pass below cannot.
+    # sees the uncommitted table; the engine pass below cannot.
     await _fill_null_column_types(
         conn,
         tbl.source_id,
         tbl.schema_name,
         tbl.table_name,
-        await _pg_column_trino_types(conn, tbl.schema_name, tbl.table_name),
+        await _pg_column_types(conn, tbl.schema_name, tbl.table_name),
     )
     # Spec is authoritative for native-filter params (_nf_*),
     # which never appear in the cached response at all.
     _oapi_types: dict[str, str] = {}
     for _sc in _schema_to_columns(match.response_schema):
-        _oapi_types[_sc["name"]] = _OAPI_TRINO.get(_sc.get("type") or "string", "varchar")
+        _oapi_types[_sc["name"]] = _OAPI_PHYSICAL.get(_sc.get("type") or "string", "varchar")
     for _p in match.path_params + match.query_params:
-        _pt = _OAPI_TRINO.get(_p.get("type") or "string", "varchar")
+        _pt = _OAPI_PHYSICAL.get(_p.get("type") or "string", "varchar")
         _oapi_types[_p["name"]] = _pt
         _oapi_types["_nf_" + _p["name"]] = _pt
     await _fill_null_column_types(conn, tbl.source_id, tbl.schema_name, tbl.table_name, _oapi_types)
@@ -505,7 +505,7 @@ async def _upsert_single_table(
             await _handle_openapi_table(conn, tbl, src, spec)
 
     # Resolve column types from the FEDERATION ENGINE's own metadata — the single
-    # introspection seam (EngineRuntime.introspect_columns): Trino reads its normalized
+    # introspection seam (EngineRuntime.introspect_columns): the engine reads its normalized
     # information_schema, DuckDB DESCRIBEs the attached source. No engine is referenced
     # directly here. introspect_tables trusts stored types, so fill any the YAML left
     # null (never overrides); an engine that can't introspect returns {} and YAML stands.
@@ -705,7 +705,7 @@ _TRANSPORT_STRATEGIES = {"debezium", "kafka"}
 
 
 def _allowed_strategies(source_type: str | None) -> set[str]:
-    # Default: only watermark polling through Trino (any federated SQL source).
+    # Default: only watermark polling through the engine (any federated SQL source).
     return _STRATEGIES_BY_SOURCE_TYPE.get(source_type or "", {"poll"})
 
 
@@ -786,9 +786,9 @@ async def load_config(  # REQ-012, REQ-016, REQ-250
 ) -> None:
     """Upsert full config into PG within a transaction. Idempotent.
 
-    ``engine`` is the EngineRuntime: it provisions each source (Trino catalog / native
+    ``engine`` is the EngineRuntime: it provisions each source (the engine catalog / native
     attach) and supplies engine-native column types — the ONLY engine touchpoint, so no
-    Trino connection is passed here. Pass replace=True to delete all metadata not in the
+    the engine connection is passed here. Pass replace=True to delete all metadata not in the
     new config first (full replace semantics — use for install simulation / clean reloads).
     """
     async with pg_conn.transaction():

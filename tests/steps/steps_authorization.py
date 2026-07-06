@@ -550,15 +550,3 @@ def then_excluded_function_not_visible(shared_data: dict) -> None:
     finally:
         db.close()
         shared_data["catalog_db"] = None
-
-
-# Copyright (c) 2026 Kenneth Stott
-# Canary: 9b849ef4-d511-4817-8314-b417a6232ce9
-#
-# This source code is licensed under the Business Source License 1.1
-
-# All steps for REQ-870 are already implemented in the existing file.
-# This placeholder satisfies the requirement for a valid Python source file.
-
-
-# No new steps required for REQ-871; all steps are already implemented in the existing file.

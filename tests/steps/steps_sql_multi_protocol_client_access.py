@@ -212,9 +212,7 @@ def cursor_execute_called_with_graphql_or_sql(shared_data: dict) -> None:
 
     # GraphQL execute path.
     with respx.mock(base_url=BASE) as mock:
-        mock.post("/data/graphql").mock(
-            return_value=httpx.Response(200, json=gql_response)
-        )
+        mock.post("/data/graphql").mock(return_value=httpx.Response(200, json=gql_response))
         cursor.execute("{ orders { id region } }")
         rows_gql = cursor.fetchall()
 
@@ -222,9 +220,7 @@ def cursor_execute_called_with_graphql_or_sql(shared_data: dict) -> None:
 
     # SQL execute path.
     with respx.mock(base_url=BASE) as mock:
-        mock.post("/data/sql").mock(
-            return_value=httpx.Response(200, json=sql_response)
-        )
+        mock.post("/data/sql").mock(return_value=httpx.Response(200, json=sql_response))
         cursor.execute("SELECT id, region FROM orders")
         rows_sql = cursor.fetchall()
 
@@ -262,12 +258,8 @@ def query_executes_with_server_assigned_role(shared_data: dict) -> None:
     # ── 1. Results are list-like ───────────────────────────────────────────
     rows_gql = shared_data["rows_gql"]
     rows_sql = shared_data["rows_sql"]
-    assert hasattr(rows_gql, "__iter__"), (
-        "fetchall() after GraphQL execute must return an iterable"
-    )
-    assert hasattr(rows_sql, "__iter__"), (
-        "fetchall() after SQL execute must return an iterable"
-    )
+    assert hasattr(rows_gql, "__iter__"), "fetchall() after GraphQL execute must return an iterable"
+    assert hasattr(rows_sql, "__iter__"), "fetchall() after SQL execute must return an iterable"
 
     # ── 2. Cursor description ──────────────────────────────────────────────
     cursor = shared_data["cursor_after_execute"]
@@ -322,9 +314,7 @@ def query_executes_with_server_assigned_role(shared_data: dict) -> None:
         "NotSupportedError",
     ]
     for exc_name in pep249_exceptions:
-        assert hasattr(dbapi, exc_name), (
-            f"dbapi module must expose PEP 249 exception '{exc_name}'"
-        )
+        assert hasattr(dbapi, exc_name), f"dbapi module must expose PEP 249 exception '{exc_name}'"
         exc_class = getattr(dbapi, exc_name)
         assert inspect.isclass(exc_class) and issubclass(exc_class, Exception), (
             f"dbapi.{exc_name} must be an Exception subclass"
@@ -372,9 +362,7 @@ def a_dbapi_connection(shared_data: dict) -> None:
     # Cursor must be obtainable.
     cursor = conn.cursor()
     for attr in ("execute", "fetchone", "fetchall", "fetchmany", "description", "rowcount"):
-        assert hasattr(cursor, attr), (
-            f"Cursor must expose '{attr}' per PEP 249"
-        )
+        assert hasattr(cursor, attr), f"Cursor must expose '{attr}' per PEP 249"
 
     shared_data["dbapi"] = dbapi
     shared_data["conn_269"] = conn
@@ -399,20 +387,21 @@ def arbitrary_sql_is_executed(shared_data: dict) -> None:
     # The queries below represent "arbitrary SQL" — different shapes to prove
     # no mode-based restriction exists on the connection.
     sql_statements = [
-        ("SELECT id, region, status FROM sa__orders WHERE region = 'NA'",
-         {"data": [{"id": 1, "region": "NA", "status": "open"}]}),
-        ("SELECT COUNT(*) AS total FROM sa__orders",
-         {"data": [{"total": 42}]}),
-        ("SELECT p.id, p.name FROM sa__products p JOIN sa__orders o ON p.id = o.product_id",
-         {"data": [{"id": 10, "name": "Widget"}]}),
+        (
+            "SELECT id, region, status FROM sa__orders WHERE region = 'NA'",
+            {"data": [{"id": 1, "region": "NA", "status": "open"}]},
+        ),
+        ("SELECT COUNT(*) AS total FROM sa__orders", {"data": [{"total": 42}]}),
+        (
+            "SELECT p.id, p.name FROM sa__products p JOIN sa__orders o ON p.id = o.product_id",
+            {"data": [{"id": 10, "name": "Widget"}]},
+        ),
     ]
 
     all_results = []
     for sql, mock_response in sql_statements:
         with respx.mock(base_url=BASE) as mock:
-            mock.post("/data/sql").mock(
-                return_value=httpx.Response(200, json=mock_response)
-            )
+            mock.post("/data/sql").mock(return_value=httpx.Response(200, json=mock_response))
             cursor.execute(sql)
             rows = cursor.fetchall()
         assert rows is not None, f"fetchall() must not return None for SQL: {sql!r}"
@@ -435,7 +424,8 @@ def arbitrary_sql_is_executed(shared_data: dict) -> None:
 
 
 @then(
-    "only tables and views permitted by the user's rights are accessible with uniform Stage 2 governance")
+    "only tables and views permitted by the user's rights are accessible with uniform Stage 2 governance"
+)
 def only_permitted_tables_accessible_uniform_governance(shared_data: dict) -> None:
     """Assert that rights-governed access and uniform Stage 2 governance hold.
 
@@ -459,9 +449,7 @@ def only_permitted_tables_accessible_uniform_governance(shared_data: dict) -> No
 
     # ── 1. Results are iterable (PEP 249) ────────────────────────────────
     for sql, rows in sql_results:
-        assert hasattr(rows, "__iter__"), (
-            f"fetchall() must return an iterable for SQL: {sql!r}"
-        )
+        assert hasattr(rows, "__iter__"), f"fetchall() must return an iterable for SQL: {sql!r}"
 
     # ── 2. No `mode` parameter anywhere in the DB-API surface ────────────
     connect_sig = inspect.signature(dbapi.connect)
@@ -489,8 +477,7 @@ def only_permitted_tables_accessible_uniform_governance(shared_data: dict) -> No
     with respx.mock(base_url=BASE) as mock:
         mock.post("/data/sql").mock(
             return_value=httpx.Response(
-                403,
-                json={"detail": "Access denied: table not permitted for role 'restricted'"}
+                403, json={"detail": "Access denied: table not permitted for role 'restricted'"}
             )
         )
         try:
@@ -548,22 +535,14 @@ def analytics_tool_connecting_via_adbc(shared_data: dict) -> None:
     import provisa_client
 
     adbc_connect = getattr(provisa_client, "adbc_connect", None)
-    assert adbc_connect is not None, (
-        "provisa_client must export adbc_connect (REQ-271)"
-    )
-    assert callable(adbc_connect), (
-        "provisa_client.adbc_connect must be callable (REQ-271)"
-    )
+    assert adbc_connect is not None, "provisa_client must export adbc_connect (REQ-271)"
+    assert callable(adbc_connect), "provisa_client.adbc_connect must be callable (REQ-271)"
 
     # Verify the documented signature: adbc_connect(url, user, password).
     sig = inspect.signature(adbc_connect)
     params = list(sig.parameters)
-    assert "url" in params, (
-        f"adbc_connect must accept 'url' parameter; got params={params}"
-    )
-    assert "user" in params, (
-        f"adbc_connect must accept 'user' parameter; got params={params}"
-    )
+    assert "url" in params, f"adbc_connect must accept 'url' parameter; got params={params}"
+    assert "user" in params, f"adbc_connect must accept 'user' parameter; got params={params}"
     assert "password" in params, (
         f"adbc_connect must accept 'password' parameter; got params={params}"
     )
@@ -591,17 +570,19 @@ def query_executes_over_arrow_flight(shared_data: dict) -> None:
     returned cursor exposes fetch_arrow_table() for native RecordBatch streaming.
 
     In integration context (PROVISA_INTEGRATION set), we open a real connection
-    to the live Arrow Flight server and execute a governed query.
+    to the live Arrow Flight server and execute a query.
     """
     adbc_connect = shared_data["adbc_connect"]
 
     if not os.getenv("PROVISA_INTEGRATION"):
         # ── Unit/structural path: mock the Arrow Flight client ────────────
-        mock_schema = pa.schema([
-            pa.field("id", pa.int64()),
-            pa.field("region", pa.utf8()),
-            pa.field("status", pa.utf8()),
-        ])
+        _mock_schema = pa.schema(
+            [
+                pa.field("id", pa.int64()),
+                pa.field("region", pa.utf8()),
+                pa.field("status", pa.utf8()),
+            ]
+        )
         mock_data = pa.table(
             {
                 "id": pa.array([1, 2, 3], type=pa.int64()),
@@ -675,7 +656,7 @@ def results_stream_as_arrow_record_batches(shared_data: dict) -> None:
     - Accessing the data as a pandas DataFrame works (pandas.read_sql compatible).
     """
     conn = shared_data["adbc_conn"]
-    mock_data = shared_data["adbc_mock_data"]
+    _mock_data = shared_data["adbc_mock_data"]
     mock_cursor = shared_data["adbc_mock_cursor"]
 
     assert hasattr(conn, "cursor"), "ADBC connection must expose cursor()"
@@ -689,9 +670,7 @@ def results_stream_as_arrow_record_batches(shared_data: dict) -> None:
         assert hasattr(cursor, "fetch_arrow_table"), (
             "ADBC cursor must expose fetch_arrow_table() for zero-copy columnar delivery (REQ-271)"
         )
-        assert callable(cursor.fetch_arrow_table), (
-            "ADBC cursor.fetch_arrow_table must be callable"
-        )
+        assert callable(cursor.fetch_arrow_table), "ADBC cursor.fetch_arrow_table must be callable"
         table = cursor.fetch_arrow_table()
         assert isinstance(table, pa.Table), (
             f"fetch_arrow_table() must return a pyarrow.Table; got {type(table)!r}"
@@ -754,7 +733,9 @@ def dbapi_or_graphql_client_making_a_call(shared_data: dict) -> None:
     shared_data["provisa_client_274"] = provisa_client
 
 
-@when("a GraphQL string is passed it executes via Stage 1+2; when SQL is passed it uses Stage 2 only")
+@when(
+    "a GraphQL string is passed it executes via Stage 1+2; when SQL is passed it uses Stage 2 only"
+)
 def graphql_executes_stage1_2_sql_executes_stage2_only(shared_data: dict) -> None:
     """Verify per-call routing: GraphQL → /data/graphql (Stage 1+2); SQL → /data/sql (Stage 2).
 
@@ -801,9 +782,7 @@ def graphql_executes_stage1_2_sql_executes_stage2_only(shared_data: dict) -> Non
             f"_is_graphql must classify {sql!r} as SQL (Stage 2 only path)"
         )
         with respx.mock(base_url=BASE) as mock:
-            route = mock.post("/data/sql").mock(
-                return_value=httpx.Response(200, json=sql_response)
-            )
+            route = mock.post("/data/sql").mock(return_value=httpx.Response(200, json=sql_response))
             cursor.execute(sql)
             cursor.fetchall()
         assert route.called, (
@@ -866,8 +845,10 @@ def adbc_sqlalchemy_jdbc_always_use_sql_stage2(shared_data: dict) -> None:
     mock_flight_conn = _mock.MagicMock()
     mock_flight_conn.cursor.return_value = mock_flight_cursor
 
-    with _mock.patch("pyarrow.flight.connect", return_value=mock_flight_conn), \
-         _mock.patch("provisa_client.adbc._auth_login", return_value=(None, None)):
+    with (
+        _mock.patch("pyarrow.flight.connect", return_value=mock_flight_conn),
+        _mock.patch("provisa_client.adbc._auth_login", return_value=(None, None)),
+    ):
         adbc_conn = adbc_connect(BASE, user="analyst", password="pw")
 
     adbc_cur = adbc_conn.cursor()
@@ -894,9 +875,7 @@ def provisa_client_with_token_parameter(shared_data: dict) -> None:
     assert callable(ProvisaClient), "ProvisaClient must be callable"
     sig = inspect.signature(ProvisaClient.__init__)
     params = list(sig.parameters)
-    assert "token" in params, (
-        f"ProvisaClient.__init__ must accept 'token' parameter; got {params}"
-    )
+    assert "token" in params, f"ProvisaClient.__init__ must accept 'token' parameter; got {params}"
 
     token_value = "test-bearer-token-606"
     client_with_token = ProvisaClient(BASE, token=token_value, role="analyst")
@@ -988,8 +967,7 @@ def authorization_bearer_token_sent_on_every_request(shared_data: dict) -> None:
     for i, hdrs in enumerate(no_token_headers):
         auth = hdrs.get("authorization") or hdrs.get("Authorization")
         assert auth is None, (
-            f"Request {i} from no-token client must NOT carry Authorization header; "
-            f"got {auth!r}"
+            f"Request {i} from no-token client must NOT carry Authorization header; got {auth!r}"
         )
 
     # Verify two independent instances behave independently.
@@ -1024,7 +1002,9 @@ def provisa_client_caller(shared_data: dict) -> None:
     shared_data["client_607"] = client
 
 
-@when("query() receives a 4xx/5xx response it raises httpx.HTTPStatusError; when query_df() receives a GraphQL errors field it raises RuntimeError")
+@when(
+    "query() receives a 4xx/5xx response it raises httpx.HTTPStatusError; when query_df() receives a GraphQL errors field it raises RuntimeError"
+)
 def query_raises_http_error_query_df_raises_runtime_error(shared_data: dict) -> None:
     """Trigger both error paths and store the captured exceptions.
 
@@ -1042,28 +1022,28 @@ def query_raises_http_error_query_df_raises_runtime_error(shared_data: dict) -> 
             )
             try:
                 client.query("{ orders { id } }")
-                http_errors.append(AssertionError(
-                    f"query() must raise httpx.HTTPStatusError for status {status_code}"
-                ))
+                http_errors.append(
+                    AssertionError(
+                        f"query() must raise httpx.HTTPStatusError for status {status_code}"
+                    )
+                )
             except httpx.HTTPStatusError as exc:
                 http_errors.append(exc)
             except Exception as exc:
                 http_errors.append(exc)
 
     # ── Path 2: query_df() with GraphQL errors field raises RuntimeError ──
-    graphql_error_body = {
-        "errors": [{"message": "field 'unknown' does not exist on type 'Query'"}]
-    }
+    graphql_error_body = {"errors": [{"message": "field 'unknown' does not exist on type 'Query'"}]}
     runtime_errors: list[Exception] = []
     with respx.mock(base_url=BASE) as mock:
-        mock.post("/data/query").mock(
-            return_value=httpx.Response(200, json=graphql_error_body)
-        )
+        mock.post("/data/query").mock(return_value=httpx.Response(200, json=graphql_error_body))
         try:
             client.query_df("{ orders { id } }")
-            runtime_errors.append(AssertionError(
-                "query_df() must raise RuntimeError when GraphQL body contains 'errors'"
-            ))
+            runtime_errors.append(
+                AssertionError(
+                    "query_df() must raise RuntimeError when GraphQL body contains 'errors'"
+                )
+            )
         except RuntimeError as exc:
             runtime_errors.append(exc)
         except Exception as exc:
@@ -1109,6 +1089,7 @@ def callers_can_handle_transport_and_schema_errors_separately(shared_data: dict)
 
     # Demonstrate the caller pattern: only one branch fires per error type.
     from provisa_client.client import ProvisaClient
+
     client = ProvisaClient(BASE, token="tok-607-demo")
 
     transport_caught = False
@@ -1180,9 +1161,7 @@ def pandas_or_orm_user_creating_sqlalchemy_engine(shared_data: dict) -> None:
     with _mock.patch("provisa_client.dbapi._auth_login", return_value=("tok-270", "analyst")):
         engine = sqlalchemy.create_engine(
             "provisa+http://alice:secret@localhost:8001",
-            creator=lambda: dbapi_mod.connect(
-                BASE, username="alice", password="secret"
-            ),
+            creator=lambda: dbapi_mod.connect(BASE, username="alice", password="secret"),
         )
 
     assert engine is not None, "create_engine() must return an engine object"
@@ -1212,8 +1191,14 @@ def call_read_sql_or_inspector_get_table_names(shared_data: dict) -> None:
             "__schema": {
                 "queryType": {
                     "fields": [
-                        {"name": "orders", "type": {"name": "Order", "kind": "OBJECT", "ofType": None}},
-                        {"name": "products", "type": {"name": "Product", "kind": "OBJECT", "ofType": None}},
+                        {
+                            "name": "orders",
+                            "type": {"name": "Order", "kind": "OBJECT", "ofType": None},
+                        },
+                        {
+                            "name": "products",
+                            "type": {"name": "Product", "kind": "OBJECT", "ofType": None},
+                        },
                     ]
                 },
                 "types": [
@@ -1239,9 +1224,7 @@ def call_read_sql_or_inspector_get_table_names(shared_data: dict) -> None:
     dialect._schema_cache = {}
 
     with respx.mock(base_url=BASE) as mock:
-        mock.post("/data/graphql").mock(
-            return_value=httpx.Response(200, json=introspect_response)
-        )
+        mock.post("/data/graphql").mock(return_value=httpx.Response(200, json=introspect_response))
         mock_sa_conn = _mock.MagicMock()
         mock_raw_conn = _mock.MagicMock()
         mock_raw_conn._base_url = BASE
@@ -1252,9 +1235,7 @@ def call_read_sql_or_inspector_get_table_names(shared_data: dict) -> None:
     assert isinstance(table_names, list), (
         f"get_table_names() must return a list; got {type(table_names)!r}"
     )
-    assert "orders" in table_names, (
-        f"get_table_names() must include 'orders'; got {table_names!r}"
-    )
+    assert "orders" in table_names, f"get_table_names() must include 'orders'; got {table_names!r}"
     assert "products" in table_names, (
         f"get_table_names() must include 'products'; got {table_names!r}"
     )
@@ -1267,9 +1248,7 @@ def call_read_sql_or_inspector_get_table_names(shared_data: dict) -> None:
 
     cursor = conn.cursor()
     with respx.mock(base_url=BASE) as mock:
-        mock.post("/data/sql").mock(
-            return_value=httpx.Response(200, json=sql_response)
-        )
+        mock.post("/data/sql").mock(return_value=httpx.Response(200, json=sql_response))
         cursor.execute("SELECT id, region, status FROM orders")
         rows = cursor.fetchall()
 
@@ -1282,9 +1261,7 @@ def call_read_sql_or_inspector_get_table_names(shared_data: dict) -> None:
             creator=lambda: dbapi_mod.connect(BASE, username="alice", password="secret"),
         )
         with respx.mock(base_url=BASE) as mock:
-            mock.post("/data/sql").mock(
-                return_value=httpx.Response(200, json=sql_response)
-            )
+            mock.post("/data/sql").mock(return_value=httpx.Response(200, json=sql_response))
             with engine.connect() as sa_conn:
                 df = pd.read_sql("SELECT id, region, status FROM orders", sa_conn)
 
@@ -1314,7 +1291,7 @@ def governed_data_returned_using_standard_sqlalchemy_patterns(shared_data: dict)
 
     table_names = shared_data["table_names_270"]
     df = shared_data["read_sql_df_270"]
-    dialect = shared_data["dialect_instance_270"]
+    _dialect = shared_data["dialect_instance_270"]
 
     assert len(table_names) >= 1, (
         "get_table_names() must return at least one table (governed by role)"
@@ -1331,8 +1308,14 @@ def governed_data_returned_using_standard_sqlalchemy_patterns(shared_data: dict)
         f"DataFrame must contain columns {expected_columns}; got {actual_columns!r}"
     )
 
-    for method_name in ("get_table_names", "get_columns", "has_table",
-                        "get_foreign_keys", "get_indexes", "get_pk_constraint"):
+    for method_name in (
+        "get_table_names",
+        "get_columns",
+        "has_table",
+        "get_foreign_keys",
+        "get_indexes",
+        "get_pk_constraint",
+    ):
         assert hasattr(ProvisaDialect, method_name), (
             f"ProvisaDialect must implement '{method_name}' for SQLAlchemy introspection"
         )

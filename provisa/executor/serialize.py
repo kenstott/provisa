@@ -56,7 +56,7 @@ def _convert_value(
         from typing import cast as _cast
 
         return _cast(_date, val).isoformat()  # guarded by hasattr — any date/datetime-like type
-    # Trino returns JSON columns as strings; parse so object sub-fields resolve correctly.
+    # the engine returns JSON columns as strings; parse so object sub-fields resolve correctly.
     # Recursively convert nested values so json_format(...)-wrapped arrays unpack correctly.
     if isinstance(val, str) and len(val) > 1 and val[0] in ("{", "["):
         try:

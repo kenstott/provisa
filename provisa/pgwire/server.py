@@ -41,7 +41,7 @@ from buenavista.postgres import (
     ServerResponse,
 )
 
-from provisa.executor.trino import QueryResult as TrinoResult
+from provisa.executor.result import QueryResult as EngineResult
 
 log = logging.getLogger(__name__)
 
@@ -162,17 +162,17 @@ def _infer_bvtype(rows: list[tuple], col_idx: int) -> BVType:
 
 
 class ProvisaQueryResult(BVQueryResult):  # REQ-529
-    """Adapts TrinoResult (or DuckDB catalog result) to the buenavista QueryResult ABC."""
+    """Adapts EngineResult (or DuckDB catalog result) to the buenavista QueryResult ABC."""
 
-    def __init__(self, trino_result: TrinoResult, original_sql: str = ""):
+    def __init__(self, engine_result: EngineResult, original_sql: str = ""):
         super().__init__()
-        self._rows = trino_result.rows
-        self._cols = trino_result.column_names
+        self._rows = engine_result.rows
+        self._cols = engine_result.column_names
         self._status = _tag_from_sql(original_sql)
-        if trino_result.column_types:
+        if engine_result.column_types:
             self._types = [
                 _duckdb_type_to_bvtype(t) if t else _infer_bvtype(self._rows, i)
-                for i, t in enumerate(trino_result.column_types)
+                for i, t in enumerate(engine_result.column_types)
             ]
         else:
             self._types = [_infer_bvtype(self._rows, i) for i in range(len(self._cols))]

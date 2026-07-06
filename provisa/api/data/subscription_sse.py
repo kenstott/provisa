@@ -209,7 +209,7 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
                 and table_name not in (state.pg_notify_tables or set())
                 and effective_watermark is not None
             )
-            use_trino_polling = (
+            use_engine_polling = (
                 not use_polling_fallback
                 and source_type != "postgresql"
                 and effective_watermark is not None
@@ -219,7 +219,7 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
             if use_polling_fallback:
                 provider_config["pool"] = state.tenant_db
                 provider_config["watermark_column"] = effective_watermark
-            elif use_trino_polling:
+            elif use_engine_polling:
                 pass
             elif source_type == "postgresql" and state.tenant_db:
                 provider_config["pool"] = state.tenant_db
@@ -236,19 +236,18 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
                         pool=provider_config["pool"],
                         watermark_column=watermark_col,
                     )
-                elif use_trino_polling:
-                    import os
-                    from provisa.subscriptions.trino_polling_provider import TrinoPollingProvider
-
+                elif use_engine_polling:
                     assert effective_watermark is not None
-                    provider = TrinoPollingProvider(
-                        host=os.environ.get("TRINO_HOST", "localhost"),
-                        port=int(os.environ.get("TRINO_PORT", "8080")),
-                        catalog=table_meta.catalog_name or "hive",
-                        schema=table_meta.schema_name or "default",
-                        table=table_meta.table_name,
-                        watermark_column=effective_watermark,
+                    # The engine supplies its change-polling provider through the seam; a native
+                    # engine with no catalog-polling transport returns None (subscription inactive).
+                    provider = state.federation_engine.polling_provider(
+                        table_meta.catalog_name or "hive",
+                        table_meta.schema_name or "default",
+                        table_meta.table_name,
+                        effective_watermark,
                     )
+                    if provider is None:
+                        return
                 else:
                     from provisa.subscriptions.registry import get_provider
 
@@ -377,7 +376,7 @@ async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
             and table_name not in (state.pg_notify_tables or set())
             and table_name in (state.table_watermarks or {})
         )
-        use_trino_polling = (
+        use_engine_polling = (
             not use_polling_fallback
             and source_type != "postgresql"
             and table_name in (state.table_watermarks or {})
@@ -391,17 +390,17 @@ async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
                     pool=state.tenant_db,
                     watermark_column=state.table_watermarks[table_name],
                 )
-            elif use_trino_polling:
-                from provisa.subscriptions.trino_polling_provider import TrinoPollingProvider
-
-                provider = TrinoPollingProvider(
-                    host=os.environ.get("TRINO_HOST", "localhost"),
-                    port=int(os.environ.get("TRINO_PORT", "8080")),
-                    catalog=table_meta.catalog_name or "hive",
-                    schema=table_meta.schema_name or "default",
-                    table=table_meta.table_name,
-                    watermark_column=state.table_watermarks[table_name],
+            elif use_engine_polling:
+                # Engine-provided change-polling; a native engine without a catalog-polling
+                # transport returns None (subscription inactive for this table).
+                provider = state.federation_engine.polling_provider(
+                    table_meta.catalog_name or "hive",
+                    table_meta.schema_name or "default",
+                    table_meta.table_name,
+                    state.table_watermarks[table_name],
                 )
+                if provider is None:
+                    return
             else:
                 from provisa.subscriptions.registry import get_provider
 
@@ -419,7 +418,7 @@ async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
         try:
             use_many = (
                 not use_polling_fallback
-                and not use_trino_polling
+                and not use_engine_polling
                 and source_type == "postgresql"
                 and len(all_watch_tables) > 1
                 and hasattr(provider, "watch_many")

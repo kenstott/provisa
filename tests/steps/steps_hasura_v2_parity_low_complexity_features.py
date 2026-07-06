@@ -333,13 +333,13 @@ def _when_compiler_processes_upsert(shared_data: dict) -> None:
             shared_data["pg_ctx"],
             shared_data["pg_table"],
         )
-        trino_result = _run_compile_query(
+        engine_result = _run_compile_query(
             shared_data["trino_field_node"],
             shared_data["trino_ctx"],
             shared_data["trino_table"],
         )
         shared_data["pg_result"] = pg_result
-        shared_data["trino_result"] = trino_result
+        shared_data["engine_result"] = engine_result
         return
 
     field_node: FieldNode = shared_data["field_node"]
@@ -432,16 +432,16 @@ def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
             shared_data["pg_ctx"],
             shared_data["pg_table"],
         )
-        trino_result = _run_compile_query(
+        engine_result = _run_compile_query(
             shared_data["trino_field_node"],
             shared_data["trino_ctx"],
             shared_data["trino_table"],
         )
         shared_data["pg_result"] = pg_result
-        shared_data["trino_result"] = trino_result
+        shared_data["engine_result"] = engine_result
 
     pg_result = shared_data.get("pg_result")
-    trino_result = shared_data.get("trino_result")
+    engine_result = shared_data.get("engine_result")
 
     def _sql(result: object) -> str:
         if isinstance(result, str):
@@ -453,7 +453,7 @@ def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
         return str(result)
 
     assert pg_result is not None, "PostgreSQL compile_query result must not be None"
-    assert trino_result is not None, "Trino compile_query result must not be None"
+    assert engine_result is not None, "Trino compile_query result must not be None"
 
     pg_sql = _sql(pg_result)
     pg_sql_upper = pg_sql.upper()
@@ -474,7 +474,7 @@ def _then_distinct_on_or_window_fallback(shared_data: dict) -> None:
         f"Got:\n{pg_sql}"
     )
 
-    trino_sql = _sql(trino_result)
+    trino_sql = _sql(engine_result)
     trino_sql_upper = trino_sql.upper()
 
     trino_dedup_present = (

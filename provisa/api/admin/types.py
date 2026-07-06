@@ -356,9 +356,9 @@ class CacheStatsType:
 
 @strawberry.type
 class SystemHealthType:
-    trino_connected: bool
-    trino_worker_count: int
-    trino_active_workers: int
+    engine_connected: bool
+    engine_worker_count: int
+    engine_active_workers: int
     pg_pool_size: int
     pg_pool_free: int
     cache_connected: bool
@@ -406,7 +406,7 @@ class EnforcementType:  # REQ-038, REQ-040, REQ-041, REQ-263
 class CompileQueryResult:  # REQ-262, REQ-263, REQ-267
     sql: str
     semantic_sql: str
-    trino_sql: str | None
+    engine_sql: str | None
     direct_sql: str | None
     route: str
     route_reason: str

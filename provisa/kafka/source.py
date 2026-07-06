@@ -10,7 +10,7 @@
 
 """Kafka topic registration as data sources (REQ-114).
 
-Each topic + schema → registered table. Trino Kafka connector handles reads.
+Each topic + schema → registered table. the engine Kafka connector handles reads.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class KafkaColumn:
     """Column definition for a Kafka topic table."""
 
     name: str
-    data_type: str  # Trino type: varchar, integer, bigint, double, boolean, etc.
+    data_type: str  # the engine type: varchar, integer, bigint, double, boolean, etc.
     is_complex: bool = False  # True for JSONB columns (objects/arrays)
 
 
@@ -83,53 +83,14 @@ class KafkaSourceConfig:  # REQ-147
     topics: list[KafkaTopicConfig] = field(default_factory=list)
 
 
-def generate_trino_kafka_properties(source: KafkaSourceConfig) -> str:  # REQ-147, REQ-250
-    """Generate Trino Kafka connector properties file content.
-
-    Returns the content for a kafka.properties file to be placed
-    in Trino's catalog directory.
-    """
-    from provisa.core.auth_models import (
-        KafkaAuthSaslPlain,
-        KafkaAuthSaslScram256,
-        KafkaAuthSaslScram512,
-    )
-
-    lines = [
-        "connector.name=kafka",
-        f"kafka.nodes={source.bootstrap_servers}",
-        "kafka.hide-internal-columns=false",
-    ]
-
-    # REQ-250: Confluent is optional. Use the schema registry only when one is
-    # configured; otherwise use FILE table descriptions generated from the topic's
-    # manual columns (or a sampled layout) — no Confluent dependency.
-    if source.schema_registry_url:
-        lines.append("kafka.table-description-supplier=CONFLUENT")
-        lines.append(f"kafka.confluent-schema-registry-url={source.schema_registry_url}")
-    else:
-        lines.append("kafka.table-description-supplier=FILE")
-        lines.append("kafka.table-description-dir=/etc/trino/kafka")
-        # Table names (sanitized) match the table-description tableName; the
-        # description maps each back to its raw topicName.
-        table_names = [t.table_name or t.topic for t in source.topics]
-        if table_names:
-            lines.append("kafka.table-names=" + ",".join(table_names))
-
-    if isinstance(source.auth, (KafkaAuthSaslPlain, KafkaAuthSaslScram256, KafkaAuthSaslScram512)):
-        lines.append("kafka.config.resources=/etc/trino/kafka-client.properties")
-
-    return "\n".join(lines)
-
-
 def generate_kafka_table_definitions(
     source: "KafkaSourceConfig",
 ) -> list[dict]:  # REQ-147, REQ-150, REQ-250
-    """Generate Trino Kafka FILE table-description dicts from each topic's columns.
+    """Generate the engine Kafka FILE table-description dicts from each topic's columns.
 
     Used when no Confluent schema registry is configured: the record layout comes
     from the topic's manually-entered (or sampled) columns. One dict per topic in
-    Trino's kafka table-description JSON format.
+    the engine's kafka table-description JSON format.
     """
     definitions: list[dict] = []
     for topic in source.topics:
@@ -190,10 +151,10 @@ def generate_topic_table_names(source: KafkaSourceConfig) -> list[str]:
     return [t.topic for t in source.topics]
 
 
-def map_avro_to_trino(avro_type: str | dict) -> tuple[str, bool]:
-    """Map an Avro type to a Trino column type.
+def map_avro_to_ir(avro_type: str | dict) -> tuple[str, bool]:
+    """Map an Avro type to the engine column type.
 
-    Returns (trino_type, is_complex).
+    Returns (column_type, is_complex).
     """
     if isinstance(avro_type, str):
         mapping = {
@@ -221,13 +182,13 @@ def map_avro_to_trino(avro_type: str | dict) -> tuple[str, bool]:
     if isinstance(avro_type, list):
         for t in avro_type:
             if t != "null":
-                return map_avro_to_trino(t)
+                return map_avro_to_ir(t)
 
     return ("varchar", True)
 
 
-def map_json_schema_to_trino(json_type: str) -> tuple[str, bool]:
-    """Map a JSON Schema type to a Trino column type."""
+def map_json_schema_to_ir(json_type: str) -> tuple[str, bool]:
+    """Map a JSON Schema type to the engine column type."""
     mapping = {
         "string": ("varchar", False),
         "integer": ("bigint", False),
@@ -290,8 +251,8 @@ def infer_columns_from_records(records: list[dict]) -> list[KafkaColumn]:  # REQ
             jt = "boolean"
         else:
             jt = "string"
-        trino_type, is_complex = map_json_schema_to_trino(jt)
-        columns.append(KafkaColumn(name=key, data_type=trino_type.upper(), is_complex=is_complex))
+        column_type, is_complex = map_json_schema_to_ir(jt)
+        columns.append(KafkaColumn(name=key, data_type=column_type.upper(), is_complex=is_complex))
     return columns
 
 

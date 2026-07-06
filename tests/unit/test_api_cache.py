@@ -10,10 +10,8 @@
 
 """Tests for API source caching via Trino (Phase U, REQ-309/318/327)."""
 
-import pytest
-
 from provisa.api_source.cache import DEFAULT_TTL, resolve_ttl
-from provisa.api_source.trino_cache import (
+from provisa.api_source.engine_cache import (
     CacheLocation,
     cache_location,
     cache_table_name,
@@ -22,6 +20,7 @@ from provisa.api_source.trino_cache import (
 
 
 # --- TTL resolution ---
+
 
 def test_ttl_endpoint_wins():
     assert resolve_ttl(60, 120, 300) == 60
@@ -40,6 +39,7 @@ def test_ttl_default():
 
 
 # --- cache_location factory ---
+
 
 def test_cache_location_default_uses_source_catalog():
     loc = cache_location("petstore-api")
@@ -66,6 +66,7 @@ def test_cache_location_custom_schema():
 
 
 # --- Cache table name ---
+
 
 def test_cache_table_name_deterministic():
     """Same inputs always produce the same name."""
@@ -151,6 +152,7 @@ def test_rewrite_from_cache_catalog_schema():
 
 # --- REQ-280: ANALYZE after cache materialization ---
 
+
 class _FakeCursor:
     def __init__(self, log):
         self._log = log
@@ -177,7 +179,7 @@ class _Col:
 
 
 def test_create_and_insert_runs_analyze():
-    from provisa.api_source.trino_cache import CacheLocation, create_and_insert
+    from provisa.api_source.engine_cache import CacheLocation, create_and_insert
 
     conn = _FakeConn()
     loc = CacheLocation(catalog="petstore_api", schema="api_cache", backend="postgresql")
@@ -190,7 +192,7 @@ def test_create_and_insert_runs_analyze():
 
 
 def test_create_and_insert_analyze_after_insert():
-    from provisa.api_source.trino_cache import CacheLocation, create_and_insert
+    from provisa.api_source.engine_cache import CacheLocation, create_and_insert
 
     conn = _FakeConn()
     loc = CacheLocation(catalog="petstore_api", schema="api_cache", backend="postgresql")
@@ -202,7 +204,7 @@ def test_create_and_insert_analyze_after_insert():
 
 
 def test_create_and_insert_no_analyze_when_empty():
-    from provisa.api_source.trino_cache import CacheLocation, create_and_insert
+    from provisa.api_source.engine_cache import CacheLocation, create_and_insert
 
     conn = _FakeConn()
     loc = CacheLocation(catalog="petstore_api", schema="api_cache", backend="postgresql")

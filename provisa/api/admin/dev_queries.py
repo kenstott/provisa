@@ -53,16 +53,14 @@ def _merge_nodes_cypher(group_by_cypher: str, nodes_columns: list) -> str | None
     node_cols = [c for c in nodes_columns if c.nested_in is None]
     if not node_cols:
         return None
-    match_line = next((l for l in group_by_cypher.splitlines() if "MATCH" in l.upper()), "")
+    match_line = next((ln for ln in group_by_cypher.splitlines() if "MATCH" in ln.upper()), "")
     m = re.search(r"\((\w+):", match_line)
     var = m.group(1) if m else "a"
     entries = ", ".join(f"{c.field_name}: {var}.{c.field_name}" for c in node_cols)
     collect_expr = f"collect({{{entries}}}) AS nodes"
     lines = group_by_cypher.strip().splitlines()
     merged = "\n".join(
-        line.rstrip() + ", " + collect_expr
-        if line.strip().upper().startswith("RETURN")
-        else line
+        line.rstrip() + ", " + collect_expr if line.strip().upper().startswith("RETURN") else line
         for line in lines
     )
     return merged if merged != group_by_cypher else None
@@ -85,9 +83,7 @@ def _merge_nodes_sql_denormalized(
     )
 
 
-def _merge_nodes_cypher_denormalized(
-    group_by_cypher: str, nodes_columns: list
-) -> str | None:
+def _merge_nodes_cypher_denormalized(group_by_cypher: str, nodes_columns: list) -> str | None:
     """Return a WITH/UNWIND Cypher that denormalizes group-by rows with their matching nodes."""
     import re
 
@@ -96,15 +92,17 @@ def _merge_nodes_cypher_denormalized(
         return None
 
     lines = group_by_cypher.strip().splitlines()
-    ret_idx = next((i for i, l in enumerate(lines) if l.strip().upper().startswith("RETURN")), None)
+    ret_idx = next(
+        (i for i, ln in enumerate(lines) if ln.strip().upper().startswith("RETURN")), None
+    )
     if ret_idx is None:
         return None
 
-    match_line = next((l for l in lines if "MATCH" in l.upper()), "")
+    match_line = next((ln for ln in lines if "MATCH" in ln.upper()), "")
     m = re.search(r"\((\w+):", match_line)
     var = m.group(1) if m else "a"
 
-    ret_body = lines[ret_idx].strip()[len("RETURN"):].strip()
+    ret_body = lines[ret_idx].strip()[len("RETURN") :].strip()
     agg_items = [item.strip() for item in ret_body.split(",")]
 
     def _alias(expr: str) -> str:
@@ -118,21 +116,22 @@ def _merge_nodes_cypher_denormalized(
 
     collect_entries = ", ".join(f"{c.field_name}: {var}.{c.field_name}" for c in node_cols)
     with_parts = [
-        item if " AS " in item.upper() else f"{item} AS {_alias(item)}"
-        for item in agg_items
+        item if " AS " in item.upper() else f"{item} AS {_alias(item)}" for item in agg_items
     ] + [f"collect({{{collect_entries}}}) AS _nodes"]
 
     final_ret = [_alias(item) for item in agg_items] + [
         f"node.{c.field_name} AS {c.field_name}" for c in node_cols
     ]
 
-    return "\n".join([
-        *lines[:ret_idx],
-        "WITH " + ", ".join(with_parts),
-        "UNWIND _nodes AS node",
-        "RETURN " + ", ".join(final_ret),
-        *lines[ret_idx + 1:],
-    ])
+    return "\n".join(
+        [
+            *lines[:ret_idx],
+            "WITH " + ", ".join(with_parts),
+            "UNWIND _nodes AS node",
+            "RETURN " + ", ".join(final_ret),
+            *lines[ret_idx + 1 :],
+        ]
+    )
 
 
 def _build_enforcement_metadata(  # REQ-040, REQ-041, REQ-263
@@ -233,9 +232,9 @@ def _apply_pipeline_transforms(  # REQ-040, REQ-041, REQ-134, REQ-198, REQ-262, 
 def _decide_transpile(  # REQ-066, REQ-067, REQ-068, REQ-152, REQ-229
     compiled, state, steward_hint: str | None
 ) -> tuple[Any, str | None, str | None, str]:
-    """Return (decision, trino_sql, direct_sql, route_str)."""
+    """Return (decision, engine_sql, direct_sql, route_str)."""
     from provisa.transpiler.router import Route, decide_route
-    from provisa.transpiler.transpile import transpile, transpile_to_trino
+    from provisa.transpiler.transpile import transpile
 
     has_json_extract = "->>" in compiled.sql
     decision = decide_route(
@@ -247,7 +246,11 @@ def _decide_transpile(  # REQ-066, REQ-067, REQ-068, REQ-152, REQ-229
         source_dsns=getattr(state, "source_dsns", None),
     )
 
-    trino_sql = transpile_to_trino(compiled.sql) if decision.route == Route.TRINO else None
+    engine_sql = (
+        state.federation_engine.transpile_physical(compiled.sql)
+        if decision.route == Route.ENGINE
+        else None
+    )
     direct_sql = (
         transpile(compiled.sql, decision.dialect)
         if decision.route == Route.DIRECT and decision.dialect
@@ -258,7 +261,7 @@ def _decide_transpile(  # REQ-066, REQ-067, REQ-068, REQ-152, REQ-229
     if decision.route == Route.DIRECT and decision.dialect:
         route_str = f"direct:{decision.dialect}"
 
-    return decision, trino_sql, direct_sql, route_str
+    return decision, engine_sql, direct_sql, route_str
 
 
 def _build_optimizations_and_warnings(
@@ -413,7 +416,7 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
         )
 
         sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
-        decision, trino_sql, direct_sql, route_str = _decide_transpile(
+        decision, engine_sql, direct_sql, route_str = _decide_transpile(
             compiled, state, steward_hint
         )
 
@@ -486,7 +489,7 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
                 "sql": compiled.sql,
                 "semantic_sql": semantic_sql_str,
                 "nodes_semantic_sql": nodes_semantic_sql,
-                "trino_sql": trino_sql,
+                "engine_sql": engine_sql,
                 "direct_sql": direct_sql,
                 "route": decision.route.value,
                 "route_reason": decision.reason,

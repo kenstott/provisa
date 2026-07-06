@@ -87,7 +87,7 @@ def _make_state(ctx: Any, col_types: dict) -> Any:
     state = MagicMock()
     state.contexts = {ctx._role_id: ctx} if hasattr(ctx, "_role_id") else {}
     state.schema_build_cache = {"column_types": col_types, "tables": [], "domains": []}
-    state.trino_conn = None
+    state.engine_conn = None
     return state
 
 
@@ -237,7 +237,7 @@ class TestJDBCGetColumnsRoleVisibility:
             "tables": _TABLES,
             "domains": [{"id": "sales", "graphql_alias": None}],
         }
-        state.trino_conn = None
+        state.engine_conn = None
 
         result = answer(sql, "analyst", state)
         returned_cols = {row[0] for row in result.rows}

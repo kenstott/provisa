@@ -15,7 +15,7 @@ method by which that source joins the engine's unified surface. ``federate`` res
 source to one of three strategies (and returns which was chosen, because freshness differs
 per strategy):
 
-- VIRTUAL      — the engine reaches the source live via an ATTACH connector (a Trino
+- VIRTUAL      — the engine reaches the source live via an ATTACH connector (the engine
                  connector, or DuckDB ATTACH to postgres/mysql/sqlite). No copy, always
                  fresh; cache_ttl is irrelevant.
 - SCAN         — the source is a file/object the engine reads in place, exposed as a view

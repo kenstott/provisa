@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the COPYRIGHT holder.
 
-"""Per-process cache of Trino column data types, queried on demand.
+"""Per-process cache of the engine column data types, queried on demand.
 
 Used as a fallback when compile-time column_types dict does not contain
 a type (e.g. for dynamically registered tables or API-backed sources).
@@ -31,7 +31,7 @@ _TTL = 300  # seconds
 
 @dataclass
 class _TableEntry:
-    columns: dict[str, str]  # column_name → trino data_type (lower)
+    columns: dict[str, str]  # column_name → engine data_type (lower)
     expiry: float
 
 
@@ -46,7 +46,7 @@ def init(engine) -> None:  # REQ-636
 
 
 def get_column_type(catalog: str, schema: str, table: str, column: str) -> str:  # REQ-636
-    """Return the Trino data type for catalog.schema.table.column.
+    """Return the engine data type for catalog.schema.table.column.
 
     Returns 'varchar' if the column cannot be resolved.
     """

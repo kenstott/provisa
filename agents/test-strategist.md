@@ -75,8 +75,6 @@ Misplacement is a bug. Fix by moving, not rewriting.
 
 **SQL generation:** SQL injection via GraphQL arguments, dialect-specific edge cases, cross-source JOIN correctness, RLS injection completeness
 
-**Registry:** Unapproved queries rejected, deprecated queries return errors, parameter binding validation, output type enforcement
-
 **Security layers:** RLS bypass attempts, column visibility enforcement, pre-approval bypass, privilege escalation
 
 ## Property-Based Testing Candidates

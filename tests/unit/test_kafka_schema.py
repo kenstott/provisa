@@ -14,13 +14,12 @@ import json
 
 import pytest
 
+from provisa.core.trino_catalog_files import generate_trino_kafka_properties
 from provisa.kafka.source import (
-    KafkaColumn,
     KafkaSourceConfig,
     KafkaTopicConfig,
-    generate_trino_kafka_properties,
-    map_avro_to_trino,
-    map_json_schema_to_trino,
+    map_avro_to_ir,
+    map_json_schema_to_ir,
 )
 from provisa.kafka.schema_registry import (
     columns_from_avro_schema,
@@ -30,68 +29,70 @@ from provisa.kafka.schema_registry import (
 
 class TestAvroToTrino:
     def test_string(self):
-        assert map_avro_to_trino("string") == ("varchar", False)
+        assert map_avro_to_ir("string") == ("varchar", False)
 
     def test_int(self):
-        assert map_avro_to_trino("int") == ("integer", False)
+        assert map_avro_to_ir("int") == ("integer", False)
 
     def test_long(self):
-        assert map_avro_to_trino("long") == ("bigint", False)
+        assert map_avro_to_ir("long") == ("bigint", False)
 
     def test_double(self):
-        assert map_avro_to_trino("double") == ("double", False)
+        assert map_avro_to_ir("double") == ("double", False)
 
     def test_boolean(self):
-        assert map_avro_to_trino("boolean") == ("boolean", False)
+        assert map_avro_to_ir("boolean") == ("boolean", False)
 
     def test_record_is_complex(self):
-        assert map_avro_to_trino({"type": "record"}) == ("varchar", True)
+        assert map_avro_to_ir({"type": "record"}) == ("varchar", True)
 
     def test_array_is_complex(self):
-        assert map_avro_to_trino({"type": "array"}) == ("varchar", True)
+        assert map_avro_to_ir({"type": "array"}) == ("varchar", True)
 
     def test_union_picks_non_null(self):
-        assert map_avro_to_trino(["null", "string"]) == ("varchar", False)
+        assert map_avro_to_ir(["null", "string"]) == ("varchar", False)
 
     def test_union_null_int(self):
-        assert map_avro_to_trino(["null", "int"]) == ("integer", False)
+        assert map_avro_to_ir(["null", "int"]) == ("integer", False)
 
     def test_enum_is_string(self):
-        assert map_avro_to_trino({"type": "enum"}) == ("varchar", False)
+        assert map_avro_to_ir({"type": "enum"}) == ("varchar", False)
 
 
 class TestJsonSchemaToTrino:
     def test_string(self):
-        assert map_json_schema_to_trino("string") == ("varchar", False)
+        assert map_json_schema_to_ir("string") == ("varchar", False)
 
     def test_integer(self):
-        assert map_json_schema_to_trino("integer") == ("bigint", False)
+        assert map_json_schema_to_ir("integer") == ("bigint", False)
 
     def test_number(self):
-        assert map_json_schema_to_trino("number") == ("double", False)
+        assert map_json_schema_to_ir("number") == ("double", False)
 
     def test_boolean(self):
-        assert map_json_schema_to_trino("boolean") == ("boolean", False)
+        assert map_json_schema_to_ir("boolean") == ("boolean", False)
 
     def test_object_is_complex(self):
-        assert map_json_schema_to_trino("object") == ("varchar", True)
+        assert map_json_schema_to_ir("object") == ("varchar", True)
 
     def test_array_is_complex(self):
-        assert map_json_schema_to_trino("array") == ("varchar", True)
+        assert map_json_schema_to_ir("array") == ("varchar", True)
 
 
 class TestColumnsFromAvroSchema:
     def test_simple_record(self):
-        schema = json.dumps({
-            "type": "record",
-            "name": "Order",
-            "fields": [
-                {"name": "id", "type": "int"},
-                {"name": "customer_id", "type": "int"},
-                {"name": "amount", "type": "double"},
-                {"name": "region", "type": "string"},
-            ],
-        })
+        schema = json.dumps(
+            {
+                "type": "record",
+                "name": "Order",
+                "fields": [
+                    {"name": "id", "type": "int"},
+                    {"name": "customer_id", "type": "int"},
+                    {"name": "amount", "type": "double"},
+                    {"name": "region", "type": "string"},
+                ],
+            }
+        )
         cols = columns_from_avro_schema(schema)
         assert len(cols) == 4
         assert cols[0].name == "id"
@@ -100,14 +101,16 @@ class TestColumnsFromAvroSchema:
         assert cols[2].data_type == "double"
 
     def test_complex_field_is_jsonb(self):
-        schema = json.dumps({
-            "type": "record",
-            "name": "User",
-            "fields": [
-                {"name": "id", "type": "int"},
-                {"name": "metadata", "type": {"type": "record", "name": "Meta", "fields": []}},
-            ],
-        })
+        schema = json.dumps(
+            {
+                "type": "record",
+                "name": "User",
+                "fields": [
+                    {"name": "id", "type": "int"},
+                    {"name": "metadata", "type": {"type": "record", "name": "Meta", "fields": []}},
+                ],
+            }
+        )
         cols = columns_from_avro_schema(schema)
         assert cols[1].is_complex
 
@@ -118,14 +121,16 @@ class TestColumnsFromAvroSchema:
 
 class TestColumnsFromJsonSchema:
     def test_simple_object(self):
-        schema = json.dumps({
-            "type": "object",
-            "properties": {
-                "id": {"type": "integer"},
-                "name": {"type": "string"},
-                "active": {"type": "boolean"},
-            },
-        })
+        schema = json.dumps(
+            {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "name": {"type": "string"},
+                    "active": {"type": "boolean"},
+                },
+            }
+        )
         cols = columns_from_json_schema(schema)
         assert len(cols) == 3
         names = {c.name for c in cols}
@@ -182,9 +187,12 @@ class TestInferColumnsFromRecords:
     def test_infers_scalar_types(self):
         from provisa.kafka.source import infer_columns_from_records
 
-        cols = {c.name: (c.data_type, c.is_complex) for c in infer_columns_from_records(
-            [{"id": 1, "amount": 9.5, "paid": True, "region": "us"}]
-        )}
+        cols = {
+            c.name: (c.data_type, c.is_complex)
+            for c in infer_columns_from_records(
+                [{"id": 1, "amount": 9.5, "paid": True, "region": "us"}]
+            )
+        }
         assert cols["id"] == ("BIGINT", False)
         assert cols["amount"] == ("DOUBLE", False)
         assert cols["paid"] == ("BOOLEAN", False)
@@ -193,18 +201,17 @@ class TestInferColumnsFromRecords:
     def test_object_and_array_are_complex_varchar(self):
         from provisa.kafka.source import infer_columns_from_records
 
-        cols = {c.name: (c.data_type, c.is_complex) for c in infer_columns_from_records(
-            [{"items": [1, 2], "meta": {"k": "v"}}]
-        )}
+        cols = {
+            c.name: (c.data_type, c.is_complex)
+            for c in infer_columns_from_records([{"items": [1, 2], "meta": {"k": "v"}}])
+        }
         assert cols["items"] == ("VARCHAR", True)
         assert cols["meta"] == ("VARCHAR", True)
 
     def test_int_then_float_widens_to_double(self):
         from provisa.kafka.source import infer_columns_from_records
 
-        cols = {c.name: c.data_type for c in infer_columns_from_records(
-            [{"x": 1}, {"x": 2.5}]
-        )}
+        cols = {c.name: c.data_type for c in infer_columns_from_records([{"x": 1}, {"x": 2.5}])}
         assert cols["x"] == "DOUBLE"
 
     def test_null_contributes_no_type_and_field_order_preserved(self):

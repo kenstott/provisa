@@ -28,7 +28,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import trino.exceptions as _trino_exc
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -39,11 +38,15 @@ router = APIRouter()
 
 
 def _federation_error(exc: Exception) -> str:
-    """Format execution errors without leaking the Trino backend name."""
-    if isinstance(exc, _trino_exc.TrinoQueryError):
-        parts = [f"type={exc.error_type}", f"name={exc.error_name}", f'message="{exc.message}"']
-        if exc.query_id:
-            parts.append(f"query_id={exc.query_id}")
+    """Format execution errors without leaking the engine backend name. Duck-typed on the
+    structured-query-error shape (type/name/message) so no engine-specific exception is imported."""
+    _fields = ("error_type", "error_name", "message")
+    if all(hasattr(exc, a) for a in _fields):
+        v = {a: getattr(exc, a) for a in _fields}
+        parts = [f"type={v['error_type']}", f"name={v['error_name']}", f'message="{v["message"]}"']
+        query_id = getattr(exc, "query_id", None)
+        if query_id:
+            parts.append(f"query_id={query_id}")
         return "FederationUserError(" + ", ".join(parts) + ")"
     return str(exc)
 
@@ -222,8 +225,8 @@ def _error_response(message: str, code: str, status: int = 400) -> JSONResponse:
 
 def _resolve_role_id(
     _request: Request,  # pyright: ignore[reportUnusedParameter]
-    state: object,
-) -> str:  # object-ok: circular-import boundary
+    state: object,  # object-ok: circular-import boundary (AppState)
+) -> str:
     roles: dict = getattr(state, "roles", {})
     if roles:
         return next(iter(roles))

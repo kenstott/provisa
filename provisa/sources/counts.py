@@ -13,7 +13,7 @@ async def graph_counts(
 ) -> dict | None:
     """Return node counts for a GQL remote source.
 
-    When *cache_warm* is True and a local Trino cache is available, counts
+    When *cache_warm* is True and a local the engine cache is available, counts
     are read from cache (not implemented here — returns None).  When False
     and a ``count_query`` is configured, the remote GraphQL API is queried.
     """

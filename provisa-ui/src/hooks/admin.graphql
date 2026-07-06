@@ -228,7 +228,7 @@ mutation CompileQuery($input: CompileQueryInput!) {
   compileQuery(input: $input) {
     sql
     semanticSql
-    trinoSql
+    engineSql
     directSql
     route
     routeReason
@@ -279,9 +279,9 @@ query CacheStats {
 
 query SystemHealth {
   systemHealth {
-    trinoConnected
-    trinoWorkerCount
-    trinoActiveWorkers
+    engineConnected
+    engineWorkerCount
+    engineActiveWorkers
     pgPoolSize
     pgPoolFree
     cacheConnected

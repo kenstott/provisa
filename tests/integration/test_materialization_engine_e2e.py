@@ -127,7 +127,7 @@ async def test_materialized_api_source_federates_via_pg_store():
         landed = await conn.fetch("SELECT * FROM e2e_materialize.orders ORDER BY id")
         assert len(landed) == 3  # the API source really landed in the store
 
-        # 2) Compile a federated + governed query joining the materialized source with the CSV file.
+        # 2) Compile a federated query joining the materialized source with the CSV file.
         rls = RLSContext(
             rules={1: "state = 'NY'"}, domain_rules={}
         )  # governance on the CSV customer

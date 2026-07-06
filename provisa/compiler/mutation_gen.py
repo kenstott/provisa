@@ -10,7 +10,7 @@
 
 """Compile GraphQL mutations → INSERT/UPDATE/DELETE SQL (REQ-031–REQ-037).
 
-Mutations always route direct to RDBMS (never Trino).
+Mutations always route direct to RDBMS (never the engine).
 No mutations for NoSQL sources.
 """
 

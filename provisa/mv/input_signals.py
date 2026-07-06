@@ -19,7 +19,7 @@ than always degrading to the refresh wall-clock:
 - RDB sources declaring a ``watermark_column`` (REQ-260, discovered from
   ``provisa_admin.public.registered_tables``) yield ``MAX(<col>)`` (``watermark``).
 
-Both are queried through the same Trino connection the refresh already uses (the
+Both are queried through the same the engine connection the refresh already uses (the
 config DB is the ``provisa_admin`` catalog, the Iceberg store is its own catalog),
 so gathering needs no extra plumbing. It is best-effort telemetry: a source that is
 neither Iceberg nor watermarked simply contributes nothing, and any query error is
@@ -36,7 +36,7 @@ from provisa.lineage import InputVersion
 log = logging.getLogger(__name__)
 
 # Registry of source-table watermark columns (REQ-260) lives in the config DB, which
-# Trino exposes as the provisa_admin catalog.
+# the engine exposes as the provisa_admin catalog.
 _WATERMARK_LOOKUP_SQL = (
     "SELECT table_name, watermark_column "
     "FROM provisa_admin.public.registered_tables "
@@ -105,7 +105,7 @@ async def gather_input_signals(engine, source_tables: list[str]) -> list[InputVe
 
     Prefers an Iceberg snapshot id; falls back to an RDB watermark when the source
     declares a watermark column. Sources offering neither contribute nothing. Never
-    raises — pass the result to ``resolve_input_version``. Reads via the engine terminal.
+    raises — pass the result to ``resolve_input_version``. Reads vithe engine terminal.
     """
     watermarks = await _watermark_columns(engine)
     signals: list[InputVersion] = []

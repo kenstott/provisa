@@ -22,6 +22,8 @@ The mechanism is a fixed property of the connector, not chosen per query (REQ-84
 ``CatalogEntry`` is derived, rebuildable engine state (REQ-843) — never a migrated table.
 """
 
+# complexity-gate: allow-ble=1 reason="connector probe (REQ-904) reports any extension load failure as unavailable, surfacing the error type in the ProbeResult"
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -87,7 +89,9 @@ class Connector(ABC):  # REQ-842
     engine: str
     source_type: str
     mechanism: Mechanism
-    key: str = ""  # stable identity for probe reports + override strike-list (falls back to source_type)
+    key: str = (
+        ""  # stable identity for probe reports + override strike-list (falls back to source_type)
+    )
     # DuckDB connectors backed by a loadable extension declare it (REQ-899): ``extension`` is the name
     # to INSTALL/LOAD before an attach; ``install_from_community`` selects the community vs core registry;
     # ``probe_symbol`` is the scanner/attach function whose presence after LOAD proves the extension is
@@ -242,7 +246,9 @@ class DuckDBSqliteConnector(Connector):
 
 class _DuckDBExtensionConnector(Connector):  # REQ-899
     engine = "duckdb"
-    mechanism = Mechanism.ATTACH  # referenced in place (ATTACH catalog or scanner view), never landed
+    mechanism = (
+        Mechanism.ATTACH
+    )  # referenced in place (ATTACH catalog or scanner view), never landed
     install_from_community = True
 
     def capability(self) -> Capability:
@@ -334,7 +340,9 @@ class DuckDBBigQueryConnector(_DuckDBExtensionConnector):  # REQ-899
 
     def details(self, source: Source) -> dict:
         project = source.federation_hints["project"]
-        return {"attach": f"ATTACH 'project={project}' AS \"{source.id}\" (TYPE bigquery, READ_ONLY)"}
+        return {
+            "attach": f"ATTACH 'project={project}' AS \"{source.id}\" (TYPE bigquery, READ_ONLY)"
+        }
 
 
 class DuckDBFirebirdConnector(_DuckDBExtensionConnector):  # REQ-899
@@ -367,9 +375,7 @@ class DuckDBGsheetsConnector(_DuckDBExtensionConnector):  # REQ-899
 
     def details(self, source: Source) -> dict:
         sheet = source.federation_hints["spreadsheet_id"]
-        return {
-            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM read_gsheet('{sheet}')"
-        }
+        return {"view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM read_gsheet('{sheet}')"}
 
 
 class DuckDBAirportConnector(_DuckDBExtensionConnector):  # REQ-899
@@ -433,7 +439,9 @@ class PostgresFdwConnector(Connector):  # REQ-893
     mechanism = Mechanism.ATTACH
     key = "postgres_fdw"
 
-    async def probe(self, fetch) -> ProbeResult:  # REQ-904 — engine creates it on attach, so installable is enough
+    async def probe(
+        self, fetch
+    ) -> ProbeResult:  # REQ-904 — engine creates it on attach, so installable is enough
         return await _probe_pg_extension(fetch, "postgres_fdw", auto_create=True)
 
     def capability(self) -> Capability:
@@ -668,6 +676,154 @@ class PgDuckdbIcebergConnector(_PgDuckdbScanConnector):  # REQ-908
             "pg_duckdb is loaded but was built without the iceberg extension",
             "rebuild pg_duckdb with the iceberg DuckDB extension (vcpkg)",
         )
+
+
+# --- ClickHouse: an OLAP federator that ATTACHes external sources via integration engines ---
+#
+# ClickHouse reaches external data through native integration engines, not an FDW. Relational
+# sources (PostgreSQL/MySQL) mount as a DATABASE engine that auto-exposes every remote table — the
+# CREATE DATABASE analog of postgres_fdw's IMPORT FOREIGN SCHEMA (details carry ``attach_ddl`` +
+# ``local_schema``). File sources (csv/parquet) and MongoDB mount as a per-table TABLE engine
+# (S3/URL/File by path scheme, or MongoDB); details carry the ``engine_clause`` the runtime binds
+# into a ``CREATE TABLE`` — columns inferred where the engine supports it (S3/URL/File), supplied
+# from registry metadata where it does not (MongoDB). mechanism is ATTACH throughout: the data is
+# referenced in place, never landed.
+
+
+class ClickHousePostgresConnector(Connector):
+    """Mount a remote PostgreSQL source into ClickHouse via the PostgreSQL database engine.
+
+    ``CREATE DATABASE ... ENGINE = PostgreSQL(...)`` exposes every remote table under a local
+    database — the CREATE DATABASE analog of postgres_fdw's IMPORT FOREIGN SCHEMA. ClickHouse pushes
+    WHERE predicates to PostgreSQL and can INSERT back through the engine.
+    """
+
+    engine = "clickhouse"
+    source_type = "postgresql"
+    mechanism = Mechanism.ATTACH
+    key = "clickhouse_postgres"
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True, write=True)
+
+    def details(self, source: Source) -> dict:
+        local_schema = f"ch_{source.id}"
+        # Remote schema override rides on federation_hints (Source has no `schema` field — and
+        # ``source.schema`` would resolve to pydantic's BaseModel.schema method, never the default).
+        remote_schema = source.federation_hints.get("schema") or "public"
+        return {
+            "attach_ddl": [
+                f'CREATE DATABASE IF NOT EXISTS "{local_schema}" ENGINE = PostgreSQL('
+                f"'{source.host}:{source.port}', '{source.database}', "
+                f"'{source.username}', '{source.password}', '{remote_schema}')"
+            ],
+            "local_schema": local_schema,
+        }
+
+
+class ClickHouseMysqlConnector(Connector):
+    """Mount a remote MySQL/MariaDB source into ClickHouse via the MySQL database engine.
+
+    Same CREATE DATABASE shape as the PostgreSQL engine — every remote table is exposed under a
+    local database. ClickHouse pushes predicates to MySQL and can INSERT back through the engine.
+    """
+
+    engine = "clickhouse"
+    source_type = "mysql"
+    mechanism = Mechanism.ATTACH
+    key = "clickhouse_mysql"
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True, write=True)
+
+    def details(self, source: Source) -> dict:
+        local_schema = f"ch_{source.id}"
+        return {
+            "attach_ddl": [
+                f'CREATE DATABASE IF NOT EXISTS "{local_schema}" ENGINE = MySQL('
+                f"'{source.host}:{source.port}', '{source.database}', "
+                f"'{source.username}', '{source.password}')"
+            ],
+            "local_schema": local_schema,
+        }
+
+
+class ClickHouseMongoConnector(Connector):
+    """Mount a MongoDB collection into ClickHouse via the MongoDB table engine.
+
+    MongoDB is a per-table engine (one collection per table) and cannot infer its schema, so the
+    per-table ``CREATE TABLE`` column list is completed by the runtime from registry metadata; the
+    ``engine_clause`` carries a ``{table}`` placeholder the runtime binds to the collection name.
+    ClickHouse pushes simple predicates down to MongoDB.
+    """
+
+    engine = "clickhouse"
+    source_type = "mongodb"
+    mechanism = Mechanism.ATTACH
+    key = "clickhouse_mongo"
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)
+
+    def details(self, source: Source) -> dict:
+        return {
+            "engine_clause": (
+                f"MongoDB('{source.host}:{source.port}', '{source.database}', "
+                f"'{{table}}', '{source.username}', '{source.password}')"
+            ),
+            "requires_columns": True,
+        }
+
+
+def _clickhouse_file_engine(source: Source, fmt: str) -> str:
+    """The ClickHouse table-engine clause for a file source, chosen by the path scheme:
+    ``s3://`` → S3, ``http(s)://`` → URL, otherwise a local File. S3 credentials, when the bucket
+    is private, ride on federation_hints (aws_key/aws_secret); absent means a public bucket."""
+    path = source.path
+    if path is None:
+        raise ValueError(f"file source {source.id!r} has no path")
+    if path.startswith("s3://"):
+        key = source.federation_hints.get("aws_key")
+        secret = source.federation_hints.get("aws_secret")
+        creds = f", '{key}', '{secret}'" if key else ""
+        return f"S3('{path}'{creds}, '{fmt}')"
+    if path.startswith(("http://", "https://")):
+        return f"URL('{path}', '{fmt}')"
+    # The File table engine is format-FIRST (unlike S3/URL, which are url-first).
+    return f"File('{fmt}', '{path}')"
+
+
+class _ClickHouseFileConnector(Connector):
+    """Mount a file source into ClickHouse via an S3/URL/File table engine (chosen by path scheme).
+
+    ClickHouse infers the column schema for these engines, so the runtime issues a bare
+    ``CREATE TABLE ... ENGINE = <clause>`` with no column list. The data is read in place.
+    """
+
+    engine = "clickhouse"
+    mechanism = Mechanism.ATTACH
+    _format = ""  # ClickHouse input-format name
+
+    def details(self, source: Source) -> dict:
+        return {"engine_clause": _clickhouse_file_engine(source, self._format), "infer": True}
+
+
+class ClickHouseCsvConnector(_ClickHouseFileConnector):
+    source_type = "csv"
+    key = "clickhouse_csv"
+    _format = "CSVWithNames"
+
+    def capability(self) -> Capability:
+        return Capability()  # CSV scan: no predicate pushdown
+
+
+class ClickHouseParquetConnector(_ClickHouseFileConnector):
+    source_type = "parquet"
+    key = "clickhouse_parquet"
+    _format = "Parquet"
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)  # column + row-group pruning
 
 
 # --- Warehouse-native (Snowflake): self-only, land-into-self is a no-op ---

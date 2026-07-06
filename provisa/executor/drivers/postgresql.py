@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncpg
 
 from provisa.executor.drivers.base import DirectDriver
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 
 class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550

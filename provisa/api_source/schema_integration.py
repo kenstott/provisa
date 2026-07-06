@@ -23,8 +23,8 @@ from provisa.api_source.models import ApiColumnType, ApiEndpoint, PromotionConfi
 from provisa.compiler.introspect import ColumnMetadata
 
 
-# Map ApiColumnType to Trino-compatible type strings for schema generation
-_API_TYPE_TO_TRINO: dict[ApiColumnType, str] = {
+# Map ApiColumnType to the engine-compatible type strings for schema generation
+_API_TYPE_TO_IR: dict[ApiColumnType, str] = {
     ApiColumnType.string: "varchar",
     ApiColumnType.integer: "bigint",
     ApiColumnType.number: "double",
@@ -32,7 +32,7 @@ _API_TYPE_TO_TRINO: dict[ApiColumnType, str] = {
     ApiColumnType.jsonb: "varchar",
 }
 
-_PROMOTION_TYPE_TO_TRINO: dict[str, str] = {
+_PROMOTION_TYPE_TO_IR: dict[str, str] = {
     "integer": "integer",
     "numeric": "double",
     "boolean": "boolean",
@@ -57,11 +57,11 @@ def _endpoint_to_table_dict(  # REQ-119, REQ-599, REQ-602
     column_metadata: list[ColumnMetadata] = []
 
     for col in endpoint.columns:
-        trino_type = _API_TYPE_TO_TRINO.get(col.type, "varchar")
+        column_type = _API_TYPE_TO_IR.get(col.type, "varchar")
         col_dict: dict = {
             "column_name": col.name,
             "visible_to": role_ids,
-            "data_type": trino_type,
+            "data_type": column_type,
         }
         if col.object_fields:
             col_dict["object_fields"] = col.object_fields
@@ -75,7 +75,7 @@ def _endpoint_to_table_dict(  # REQ-119, REQ-599, REQ-602
         column_metadata.append(
             ColumnMetadata(
                 column_name=col.name,
-                data_type=trino_type,
+                data_type=column_type,
                 is_nullable=True,
             )
         )
@@ -83,7 +83,7 @@ def _endpoint_to_table_dict(  # REQ-119, REQ-599, REQ-602
     # Add promoted columns
     if promotions:
         for p in promotions:
-            trino_type = _PROMOTION_TYPE_TO_TRINO.get(p.target_type, "varchar")
+            column_type = _PROMOTION_TYPE_TO_IR.get(p.target_type, "varchar")
             columns_for_table.append(
                 {
                     "column_name": p.target_column,
@@ -93,7 +93,7 @@ def _endpoint_to_table_dict(  # REQ-119, REQ-599, REQ-602
             column_metadata.append(
                 ColumnMetadata(
                     column_name=p.target_column,
-                    data_type=trino_type,
+                    data_type=column_type,
                     is_nullable=True,
                 )
             )

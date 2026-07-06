@@ -195,7 +195,7 @@ def when_function_executed_via_graphql(shared_data: dict) -> None:
 
     async def _fake_execute_direct(pool, source_id, sql, params=None):
         direct_calls.append({"pool": pool, "source_id": source_id, "sql": sql, "params": params})
-        from provisa.executor.trino import QueryResult
+        from provisa.executor.result import QueryResult
 
         return QueryResult(
             rows=[("1", "premium")],
@@ -262,7 +262,7 @@ def then_runs_via_direct_db_not_trino(shared_data: dict) -> None:
         "Trino executor must never be invoked for tracked database functions (REQ-208)"
     )
 
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
 
     assert isinstance(result, QueryResult), (
         f"Result must be a QueryResult from the direct executor, got {type(result)}"

@@ -10,7 +10,7 @@
 
 """Elasticsearch source mapping — index discovery + nested flattening (REQ-250).
 
-Generates Trino Elasticsearch connector catalog properties. Supports
+Generates the engine Elasticsearch connector catalog properties. Supports
 schema inference from ES index mappings with nested field flattening.
 """
 
@@ -23,13 +23,13 @@ log = logging.getLogger(__name__)
 
 # Requirements: REQ-017, REQ-250, REQ-251, REQ-252
 
-ES_TYPE_TO_TRINO = {
+ES_TYPE_TO_IR = {
     "text": "VARCHAR",
     "keyword": "VARCHAR",
     "long": "BIGINT",
     "integer": "INTEGER",
     "short": "SMALLINT",
-    "byte": "TINYINT",
+    "byte": "smallint",
     "double": "DOUBLE",
     "float": "REAL",
     "half_float": "REAL",
@@ -37,7 +37,7 @@ ES_TYPE_TO_TRINO = {
     "boolean": "BOOLEAN",
     "date": "TIMESTAMP",
     "ip": "VARCHAR",
-    "binary": "VARBINARY",
+    "binary": "bytea",
     "nested": "VARCHAR",
     "object": "VARCHAR",
     "geo_point": "VARCHAR",
@@ -49,7 +49,7 @@ class ESColumn:  # REQ-251
     """Column definition with optional nested path mapping."""
 
     name: str
-    data_type: str  # Trino type
+    data_type: str  # the engine type
     path: str | None = None  # ES field path (e.g., "request.method")
 
 
@@ -77,7 +77,7 @@ class ESSourceConfig:  # REQ-250, REQ-251
 
 
 def generate_catalog_properties(config: ESSourceConfig) -> dict[str, str]:  # REQ-250
-    """Generate Trino Elasticsearch connector catalog properties."""
+    """Generate the engine Elasticsearch connector catalog properties."""
     props = {
         "connector.name": "elasticsearch",
         "elasticsearch.host": config.host,
@@ -172,11 +172,11 @@ def _flatten_mapping(properties: dict, prefix: str, columns: list[dict]) -> None
             continue
 
         es_type = field_def.get("type", "object")
-        trino_type = ES_TYPE_TO_TRINO.get(es_type, "VARCHAR")
+        column_type = ES_TYPE_TO_IR.get(es_type, "VARCHAR")
         columns.append(
             {
                 "name": full_path.replace(".", "_"),
-                "type": trino_type,
+                "type": column_type,
                 "sourcePath": full_path,
             }
         )

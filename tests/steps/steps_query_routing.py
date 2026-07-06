@@ -226,7 +226,7 @@ def then_routed_to_native_count(shared_data):
         return []
 
     with patch(
-        "builtins.print",  # lightweight stand-in; real code would patch endpoint._materialize_api_to_trino_cache
+        "builtins.print",  # lightweight stand-in; real code would patch endpoint._materialize_api_to_engine_cache
         side_effect=lambda *a, **kw: None,
     ):
         result = execute_native_count(source)

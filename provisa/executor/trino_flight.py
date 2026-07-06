@@ -23,7 +23,7 @@ import logging
 
 import pyarrow as pa
 
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 log = logging.getLogger(__name__)
 

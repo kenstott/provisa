@@ -100,7 +100,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 ### Phase O: Query Result Caching
 - Redis-backed query result cache
 - Security-partitioned cache keys (role + RLS context)
-- Steward-controlled TTL per approved query
 - Cache invalidation on registration changes and mutations
 - `X-Provisa-Cache: HIT|MISS` response headers with age
 

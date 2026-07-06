@@ -39,7 +39,7 @@ from provisa.executor.redirect import (
     ensure_results_bucket,
     upload_and_presign,
 )
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 
 # ---------------------------------------------------------------------------

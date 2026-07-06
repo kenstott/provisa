@@ -6,10 +6,10 @@
 """otlp2sql — an OTLP/HTTP receiver that writes traces/metrics/logs straight to
 a SQL database (any SQLAlchemy URL), matching the ops-domain schema.
 
-It's the native/desktop counterpart to the ``otlp2parquet`` + Trino-compaction
+It's the native/desktop counterpart to the ``otlp2parquet`` + the engine-compaction
 pipeline: because attributes are extracted **inline at ingest** (see
 ``TRACE_ATTR_COLS``), rows land already-shaped like the compacted output, so
-there is no separate compaction step. Point the app/Trino OTLP exporter here
+there is no separate compaction step. Point the app/the engine OTLP exporter here
 (``OTEL_EXPORTER_OTLP_ENDPOINT``) and the ops domain at the same DB
 (``ops_db_url``), and telemetry is queryable the instant it lands.
 

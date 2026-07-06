@@ -127,8 +127,8 @@ class TestExecuteTrinoSpanEmission:
 class TestInsertOtelIceberg:
     """_insert_otel_iceberg extracts provisa.* from span_attributes into columns."""
 
-    def _make_engine(self, trino_cols: dict[str, str]):
-        from provisa.executor.trino import QueryResult
+    def _make_engine(self, engine_cols: dict[str, str]):
+        from provisa.executor.result import QueryResult
 
         class _FakeEngine:
             def __init__(self, cols):
@@ -143,14 +143,14 @@ class TestInsertOtelIceberg:
                     )
                 return QueryResult(rows=[], column_names=[])
 
-        return _FakeEngine(trino_cols)
+        return _FakeEngine(engine_cols)
 
     def test_extracts_table_name_from_span_attributes(self):
         pytest.importorskip("pyarrow")
         import pyarrow as pa
         from provisa.scheduler.jobs import _insert_otel_iceberg
 
-        trino_cols = {
+        engine_cols = {
             "trace_id": "varchar",
             "span_id": "varchar",
             "span_name": "varchar",
@@ -163,7 +163,7 @@ class TestInsertOtelIceberg:
             "query_text": "varchar",
             "_date": "date",
         }
-        engine = self._make_engine(trino_cols)
+        engine = self._make_engine(engine_cols)
 
         attrs_json = json.dumps(
             {
@@ -198,14 +198,14 @@ class TestInsertOtelIceberg:
         import pyarrow as pa
         from provisa.scheduler.jobs import _insert_otel_iceberg
 
-        trino_cols = {
+        engine_cols = {
             "trace_id": "varchar",
             "span_name": "varchar",
             "span_attributes": "varchar",
             "query_text": "varchar",
             "_date": "date",
         }
-        engine = self._make_engine(trino_cols)
+        engine = self._make_engine(engine_cols)
 
         attrs_json = json.dumps({"provisa.query_text": "{ ps__pets { id name } }"})
         table = pa.table(
@@ -229,13 +229,13 @@ class TestInsertOtelIceberg:
         import pyarrow as pa
         from provisa.scheduler.jobs import _insert_otel_iceberg
 
-        trino_cols = {
+        engine_cols = {
             "trace_id": "varchar",
             "span_name": "varchar",
             "span_attributes": "varchar",
             "_date": "date",
         }
-        engine = self._make_engine(trino_cols)
+        engine = self._make_engine(engine_cols)
 
         attrs_json = json.dumps({"provisa.table": "pets"})
         table = pa.table(

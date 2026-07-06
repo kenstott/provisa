@@ -27,7 +27,7 @@ from provisa.compiler.sql_gen import (
     _sql_literal,
     rewrite_hot_joins,
 )
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 
 class _FakeEngine:

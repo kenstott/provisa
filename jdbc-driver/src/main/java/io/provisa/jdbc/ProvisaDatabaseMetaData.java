@@ -4,16 +4,10 @@ import java.sql.*;
 import java.util.*;
 
 /**
- * Database metadata — exposes tables/views depending on connection mode.
+ * Database metadata — exposes registered tables for schema discovery.
  *
- * mode=approved: Approved queries as virtual views, named {stableId}__{rootField}.
- *   Each root field in a multi-root query becomes its own view.
- *   Column metadata from /data/compile with aliases and descriptions.
- *
- * mode=catalog: Registered tables with aliases, descriptions, and domain schemas.
- *   Metadata-only — no query execution.
- *
- * Both modes: PK/FK relationships materialized from semantic relationships.
+ * Registered tables carry aliases, descriptions, and domain schemas.
+ * PK/FK relationships are materialized from semantic relationships.
  */
 public class ProvisaDatabaseMetaData extends AbstractDatabaseMetaData {
 
@@ -28,43 +22,7 @@ public class ProvisaDatabaseMetaData extends AbstractDatabaseMetaData {
     @Override
     public ResultSet getTables(String catalog, String schemaPattern, String tableNamePattern, String[] types)
             throws SQLException {
-        if ("catalog".equals(conn.mode)) {
-            return getCatalogTables(tableNamePattern);
-        }
-        return getApprovedTables(tableNamePattern);
-    }
-
-    private ResultSet getApprovedTables(String tableNamePattern) throws SQLException {
-        List<ProvisaConnection.ApprovedQuery> queries = conn.fetchApprovedQueries();
-
-        List<String> columns = Arrays.asList(
-            "TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "TABLE_TYPE", "REMARKS"
-        );
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (ProvisaConnection.ApprovedQuery q : queries) {
-            List<String> rootFields;
-            try {
-                rootFields = conn.resolveRootFields(q.queryText);
-            } catch (Exception e) {
-                rootFields = Collections.singletonList("unknown");
-            }
-            String operationName = extractName(q.queryText);
-
-            for (String rootField : rootFields) {
-                String viewName = q.stableId + "__" + rootField;
-                if (tableNamePattern != null && !tableNamePattern.equals("%")) {
-                    if (!viewName.contains(tableNamePattern)) continue;
-                }
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("TABLE_CAT", "provisa");
-                row.put("TABLE_SCHEM", "approved");
-                row.put("TABLE_NAME", viewName);
-                row.put("TABLE_TYPE", "VIEW");
-                row.put("REMARKS", operationName.isEmpty() ? "Approved query" : "Approved query: " + operationName);
-                rows.add(row);
-            }
-        }
-        return new ProvisaResultSet(columns, rows);
+        return getCatalogTables(tableNamePattern);
     }
 
     private ResultSet getCatalogTables(String tableNamePattern) throws SQLException {
@@ -95,106 +53,7 @@ public class ProvisaDatabaseMetaData extends AbstractDatabaseMetaData {
     @Override
     public ResultSet getColumns(String catalog, String schemaPattern, String tableNamePattern, String columnNamePattern)
             throws SQLException {
-        if ("catalog".equals(conn.mode)) {
-            return getCatalogColumns(tableNamePattern);
-        }
-        return getApprovedColumns(tableNamePattern);
-    }
-
-    private ResultSet getApprovedColumns(String viewName) throws SQLException {
-        // Parse stableId and rootField from viewName: stableId__rootField
-        String stableId = null;
-        String targetRootField = null;
-        if (viewName != null) {
-            int sep = viewName.indexOf("__");
-            if (sep > 0) {
-                stableId = viewName.substring(0, sep);
-                targetRootField = viewName.substring(sep + 2);
-            }
-        }
-
-        // Find the matching approved query
-        List<ProvisaConnection.ApprovedQuery> queries = conn.fetchApprovedQueries();
-        ProvisaConnection.ApprovedQuery match = null;
-        if (stableId != null) {
-            for (ProvisaConnection.ApprovedQuery q : queries) {
-                if (q.stableId.equals(stableId)) {
-                    match = q;
-                    break;
-                }
-            }
-        }
-
-        List<String> columns = Arrays.asList(
-            "TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "COLUMN_NAME",
-            "DATA_TYPE", "TYPE_NAME", "ORDINAL_POSITION", "REMARKS"
-        );
-        List<Map<String, Object>> rows = new ArrayList<>();
-
-        if (match != null) {
-            try {
-                com.google.gson.JsonObject compiled = conn.compileQuery(match.queryText);
-                // Find the compile result matching the target root field
-                com.google.gson.JsonObject fieldResult = null;
-                if (compiled.has("queries") && targetRootField != null) {
-                    for (com.google.gson.JsonElement el : compiled.getAsJsonArray("queries")) {
-                        com.google.gson.JsonObject qr = el.getAsJsonObject();
-                        if (targetRootField.equals(qr.get("root_field").getAsString())) {
-                            fieldResult = qr;
-                            break;
-                        }
-                    }
-                } else {
-                    fieldResult = compiled;
-                }
-
-                if (fieldResult != null) {
-                    String sql = fieldResult.has("sql") ? fieldResult.get("sql").getAsString() : "";
-                    if (sql.toUpperCase().contains("SELECT ") && sql.toUpperCase().contains(" FROM ")) {
-                        String selectPart = sql.substring(
-                            sql.toUpperCase().indexOf("SELECT ") + 7,
-                            sql.toUpperCase().indexOf(" FROM ")
-                        );
-                        String[] cols = selectPart.split(",\\s*");
-                        int ordinal = 1;
-                        for (String col : cols) {
-                            String colName = col.trim()
-                                .replaceAll("\"[^\"]*\"\\.", "")
-                                .replaceAll("\"", "")
-                                .replaceAll(".*\\.", "")
-                                .replaceAll("(?i)\\s+AS\\s+", " AS ")
-                                .replaceAll(".*\\sAS\\s+", "");
-                            // Look up alias and description from registered table metadata
-                            String displayName = colName;
-                            String remarks = "";
-                            List<ProvisaConnection.RegisteredTable> regTables = conn.fetchRegisteredTables();
-                            for (ProvisaConnection.RegisteredTable rt : regTables) {
-                                for (ProvisaConnection.RegisteredColumn rc : rt.columns) {
-                                    if (rc.columnName.equals(colName)) {
-                                        if (rc.alias != null) displayName = rc.alias;
-                                        if (rc.description != null) remarks = rc.description;
-                                        break;
-                                    }
-                                }
-                            }
-                            Map<String, Object> row = new LinkedHashMap<>();
-                            row.put("TABLE_CAT", "provisa");
-                            row.put("TABLE_SCHEM", "approved");
-                            row.put("TABLE_NAME", viewName);
-                            row.put("COLUMN_NAME", displayName);
-                            row.put("DATA_TYPE", Types.VARCHAR);
-                            row.put("TYPE_NAME", "VARCHAR");
-                            row.put("ORDINAL_POSITION", ordinal++);
-                            row.put("REMARKS", remarks);
-                            rows.add(row);
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                // If compile fails, return empty columns
-            }
-        }
-        return new ProvisaResultSet(columns, rows);
+        return getCatalogColumns(tableNamePattern);
     }
 
     private ResultSet getCatalogColumns(String tableNamePattern) throws SQLException {
@@ -329,16 +188,6 @@ public class ProvisaDatabaseMetaData extends AbstractDatabaseMetaData {
         row.put("FK_NAME", "fk_" + r.sourceTableName + "_" + r.sourceColumn);
         row.put("PK_NAME", "pk_" + r.targetTableName + "_" + r.targetColumn);
         return row;
-    }
-
-    // ── Helpers ──
-
-    private String extractName(String queryText) {
-        if (queryText == null) return "";
-        java.util.regex.Matcher m = java.util.regex.Pattern
-            .compile("(?:query|mutation)\\s+(\\w+)")
-            .matcher(queryText);
-        return m.find() ? m.group(1) : "";
     }
 
     @Override public String getDatabaseProductName() { return "Provisa"; }

@@ -37,9 +37,7 @@ from graphql import build_schema, parse
 from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.sampling import apply_sampling
 from provisa.compiler.sql_gen import (
-    ColumnRef,
     CompilationContext,
-    CompiledQuery,
     TableMeta,
     compile_query,
 )
@@ -246,15 +244,15 @@ class TestRLSAppliedPerRootField:
         orders_q = next(r for r in results if r.root_field == "orders")
         customers_q = next(r for r in results if r.root_field == "customers")
 
-        rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'us-east'"})
+        rls = RLSContext(rules={ORDERS_TABLE_ID: "\"region\" = 'us-east'"})
 
         orders_with_rls = inject_rls(orders_q, ctx, rls)
         customers_with_rls = inject_rls(customers_q, ctx, rls)
 
         # Orders gets the filter
-        assert "region = 'us-east'" in orders_with_rls.sql
+        assert "\"region\" = 'us-east'" in orders_with_rls.sql
         # Customers does NOT (different table_id, no rule for it)
-        assert "region = 'us-east'" not in customers_with_rls.sql
+        assert "\"region\" = 'us-east'" not in customers_with_rls.sql
 
     def test_customers_rls_injected_into_customers_query_only(self):
         """RLS rule for customers table is injected only into the customers SQL."""
@@ -265,13 +263,13 @@ class TestRLSAppliedPerRootField:
         orders_q = next(r for r in results if r.root_field == "orders")
         customers_q = next(r for r in results if r.root_field == "customers")
 
-        rls = RLSContext(rules={CUSTOMERS_TABLE_ID: "region = 'eu-west'"})
+        rls = RLSContext(rules={CUSTOMERS_TABLE_ID: "\"region\" = 'eu-west'"})
 
         orders_with_rls = inject_rls(orders_q, ctx, rls)
         customers_with_rls = inject_rls(customers_q, ctx, rls)
 
-        assert "region = 'eu-west'" not in orders_with_rls.sql
-        assert "region = 'eu-west'" in customers_with_rls.sql
+        assert "\"region\" = 'eu-west'" not in orders_with_rls.sql
+        assert "\"region\" = 'eu-west'" in customers_with_rls.sql
 
     def test_both_tables_have_rls_each_receives_its_own_filter(self):
         """When both tables have RLS rules, each query receives only its own filter."""
@@ -282,10 +280,12 @@ class TestRLSAppliedPerRootField:
         orders_q = next(r for r in results if r.root_field == "orders")
         customers_q = next(r for r in results if r.root_field == "customers")
 
-        rls = RLSContext(rules={
-            ORDERS_TABLE_ID: "region = 'us-east'",
-            CUSTOMERS_TABLE_ID: "region = 'eu-west'",
-        })
+        rls = RLSContext(
+            rules={
+                ORDERS_TABLE_ID: "\"region\" = 'us-east'",
+                CUSTOMERS_TABLE_ID: "\"region\" = 'eu-west'",
+            }
+        )
 
         orders_final = inject_rls(orders_q, ctx, rls)
         customers_final = inject_rls(customers_q, ctx, rls)
@@ -342,6 +342,7 @@ class TestSamplingAppliedPerRootField:
         customers_sampled = apply_sampling(customers_q, 50)
 
         import re
+
         assert re.search(r"LIMIT\s+10\b", orders_sampled.sql)
         assert re.search(r"LIMIT\s+50\b", customers_sampled.sql)
         # The original queries carry the default row cap but not the sample limits

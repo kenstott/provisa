@@ -154,7 +154,7 @@ def _to_snake_case(name: str) -> str:
 
 
 def source_to_catalog(source_id: str) -> str:  # REQ-471
-    """Convert a source ID to a Trino catalog name (hyphens → underscores)."""
+    """Convert a source ID to the engine catalog name (hyphens → underscores)."""
     return source_id.replace("-", "_")
 
 

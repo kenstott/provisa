@@ -24,7 +24,7 @@ from provisa.api.flight.catalog import (
     CatalogTable,
     catalog_table_to_arrow_schema,
     catalog_table_to_flight_info,
-    _trino_type_to_arrow,
+    _physical_type_to_arrow,
 )
 from provisa.api.flight.server import ProvisaFlightServer
 from provisa.api.flight.server import _parse_limit_value
@@ -47,7 +47,7 @@ class FakeState:
         self.source_types = {}
         self.source_dialects = {}
         self.tenant_db = None
-        self.trino_conn = None
+        self.engine_conn = None
         self.flight_client = None
 
 
@@ -83,29 +83,29 @@ def _make_table(
 
 class TestTrinoTypeToArrow:
     def test_varchar(self):
-        assert _trino_type_to_arrow("varchar") == pa.utf8()
+        assert _physical_type_to_arrow("varchar") == pa.utf8()
 
     def test_integer(self):
-        assert _trino_type_to_arrow("integer") == pa.int32()
+        assert _physical_type_to_arrow("integer") == pa.int32()
 
     def test_bigint(self):
-        assert _trino_type_to_arrow("bigint") == pa.int64()
+        assert _physical_type_to_arrow("bigint") == pa.int64()
 
     def test_boolean(self):
-        assert _trino_type_to_arrow("boolean") == pa.bool_()
+        assert _physical_type_to_arrow("boolean") == pa.bool_()
 
     def test_double(self):
-        assert _trino_type_to_arrow("double") == pa.float64()
+        assert _physical_type_to_arrow("double") == pa.float64()
 
     def test_decimal_parameterized(self):
-        assert _trino_type_to_arrow("decimal(10,2)") == pa.float64()
+        assert _physical_type_to_arrow("decimal(10,2)") == pa.float64()
 
     def test_timestamp(self):
-        assert _trino_type_to_arrow("timestamp") == pa.timestamp("us")
+        assert _physical_type_to_arrow("timestamp") == pa.timestamp("us")
 
     def test_unknown_raises(self):
-        with pytest.raises(KeyError, match="Unmapped Trino type"):
-            _trino_type_to_arrow("unknown_fancy_type")
+        with pytest.raises(KeyError, match="Unmapped engine type"):
+            _physical_type_to_arrow("unknown_fancy_type")
 
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,8 @@ so serialization still works.
 
 from __future__ import annotations
 
-import re
+import sqlglot
+from sqlglot import exp
 
 from provisa.compiler.sql_gen import CompiledQuery, CompilationContext
 from provisa.security.masking import MaskingRule, build_mask_expression
@@ -58,8 +59,9 @@ def inject_masking(  # REQ-040, REQ-263, REQ-264
             span.set_attribute("masking.columns_masked", 0)
             return compiled
 
-        # Collect replacements: (original_column_ref_str, mask_expression)
-        replacements: list[tuple[str, str]] = []
+        # Which (table_alias, column) refs carry a masking rule for this role, with their rule.
+        # Keyed the way a projection Column exposes itself: table alias (or None) + column name.
+        mask_map: dict[tuple[str | None, str], tuple[MaskingRule, str]] = {}
 
         for col_ref in compiled.columns:
             # Determine which table this column belongs to
@@ -88,52 +90,56 @@ def inject_masking(  # REQ-040, REQ-263, REQ-264
             if not rule_entry:
                 continue
 
-            rule, data_type = rule_entry
+            mask_map[(col_ref.alias, col_ref.column)] = rule_entry
 
-            # Build the original column reference as it appears in SQL
-            if col_ref.alias:
-                original = f'"{col_ref.alias}"."{col_ref.column}"'
-            else:
-                original = f'"{col_ref.column}"'
-
-            # Build the mask expression
-            mask_expr = build_mask_expression(rule, original, data_type)
-
-            # The replacement preserves the column alias for serialization
-            replacement = f'{mask_expr} AS "{col_ref.column}"'
-            replacements.append((original, replacement))
-
-        span.set_attribute("masking.columns_masked", len(replacements))
-        if not replacements:
+        if not mask_map:
+            span.set_attribute("masking.columns_masked", 0)
             return compiled
 
-        # Apply replacements to the SELECT clause only
-        sql = compiled.sql
-        select_end = _find_select_end(sql)
-        select_part = sql[:select_end]
-        rest_part = sql[select_end:]
+        # Rewrite the OUTER projection on the AST: only genuine top-level output columns are
+        # candidates, so a scalar subquery in the SELECT list can never shift the masking scope
+        # (its inner FROM is structurally distinct, not a text boundary).
+        tree = sqlglot.parse_one(compiled.sql, read="postgres")
+        select = tree if isinstance(tree, exp.Select) else tree.find(exp.Select)
+        if select is None:
+            raise ValueError("inject_masking: query has no SELECT to mask")
 
-        for original, replacement in replacements:
-            select_part = select_part.replace(original, replacement, 1)
+        masked = 0
+        new_projection: list = []  # mixed Alias/Column nodes; sqlglot stub types are inexact
+        for proj in select.expressions:
+            col_node = proj.this if isinstance(proj, exp.Alias) else proj
+            if isinstance(col_node, exp.Column):
+                key = (col_node.table or None, col_node.name)
+                entry = mask_map.get(key)
+                if entry:
+                    rule, data_type = entry
+                    mask_sql = build_mask_expression(
+                        rule, col_node.sql(dialect="postgres"), data_type
+                    )
+                    out_alias = proj.alias if isinstance(proj, exp.Alias) else col_node.name
+                    new_projection.append(
+                        exp.alias_(
+                            sqlglot.parse_one(mask_sql, read="postgres"), out_alias, quoted=True
+                        )
+                    )
+                    masked += 1
+                    continue
+            new_projection.append(proj)
+
+        span.set_attribute("masking.columns_masked", masked)
+        if masked == 0:
+            return compiled  # nothing matched — leave the SQL byte-identical
+
+        select.set("expressions", new_projection)
+        sql = tree.sql(dialect="postgres")
 
         from provisa.observability.stage_trace import trace_stage
 
-        trace_stage("govern.mask", select_part + rest_part)
+        trace_stage("govern.mask", sql)
         return CompiledQuery(
-            sql=select_part + rest_part,
+            sql=sql,
             params=compiled.params,
             root_field=compiled.root_field,
             columns=compiled.columns,
             sources=compiled.sources,
         )
-
-
-def _find_select_end(sql: str) -> int:
-    """Find the end of the SELECT clause (start of FROM).
-
-    Returns the index of the FROM keyword.
-    """
-    match = re.search(r"\bFROM\b", sql, re.IGNORECASE)
-    if match:
-        return match.start()
-    return len(sql)

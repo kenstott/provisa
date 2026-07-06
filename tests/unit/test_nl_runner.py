@@ -41,7 +41,7 @@ def _make_app_state(has_schema: bool = False) -> MagicMock:
     state = MagicMock()
     state.schemas = {}
     state.contexts = {}
-    state.trino_conn = None
+    state.engine_conn = None
     return state
 
 

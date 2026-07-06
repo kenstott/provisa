@@ -280,7 +280,7 @@ class _FakeConn:
         self.queries: list[str] = []
 
     async def execute_engine(self, sql, *a, **k):
-        from provisa.executor.trino import QueryResult
+        from provisa.executor.result import QueryResult
 
         self.queries.append(sql)
         if _WM_MARK in sql:
@@ -1040,12 +1040,3 @@ def then_replica_fresh_without_full_rematerialization(shared_data: dict) -> None
 
 
 # All REQ-855 step definitions and scenarios("../features/REQ-855.feature") are already present in this file.
-
-
-# Copyright (c) 2026 Kenneth Stott
-# Canary: 8227dc98-016a-478c-b036-13d9a744f44e
-#
-# This source code is licensed under the Business Source License 1.1
-
-
-# No new steps required for REQ-882; all definitions already exist in the existing file.

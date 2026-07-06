@@ -27,7 +27,7 @@ import pytest
 import urllib.request
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 from provisa.encryption import (
     EnvelopeEncryption,
     configure_encryption,

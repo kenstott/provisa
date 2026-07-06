@@ -825,13 +825,3 @@ def test_packstream_pack_message_pull():
     # tiny struct header with 1 field: 0xB1
     assert data[0] == 0xB1
     assert data[1] == PULL
-
-
-# Copyright (c) 2026 Kenneth Stott
-# Canary: caa43d7b-8b0b-45aa-af8b-376ed608d19a
-#
-# This source code is licensed under the Business Source License 1.1
-
-from pytest_bdd import scenarios
-
-scenarios("../features/REQ-802.feature")

@@ -64,7 +64,7 @@ class TestRoutingDecisions:
     def test_multi_source_routes_trino(self):
         """A query involving two different sources routes to Trino."""
         decision = decide_route({"pg-main", "pg-secondary"}, _TYPES, _DIALECTS)
-        assert decision.route == Route.TRINO
+        assert decision.route == Route.ENGINE
         assert decision.source_id is None
 
     def test_mutation_always_routes_direct(self):
@@ -113,8 +113,8 @@ class TestRoutingDecisions:
         """A `/* @provisa route=trino */`-style steward hint forces Trino route."""
         # The router accepts the hint as a string "trino" (extracted upstream
         # by the request layer from the comment; we test the routing primitive directly).
-        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint="trino")
-        assert decision.route == Route.TRINO
+        decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint="engine")
+        assert decision.route == Route.ENGINE
         assert decision.source_id is None
         assert "override" in decision.reason.lower() or "steward" in decision.reason.lower()
 
@@ -128,13 +128,13 @@ class TestRoutingDecisions:
     def test_nosql_source_routes_trino(self):
         """A query on a MongoDB source routes to Trino (no direct SQL driver)."""
         decision = decide_route({"mongo-events"}, _TYPES, _DIALECTS)
-        assert decision.route == Route.TRINO
+        assert decision.route == Route.ENGINE
         assert decision.source_id is None
 
     def test_kafka_streaming_source_routes_trino(self):
         """A Kafka source (virtual) always routes to Trino."""
         decision = decide_route({"kafka-stream"}, _TYPES, _DIALECTS)
-        assert decision.route == Route.TRINO
+        assert decision.route == Route.ENGINE
         assert decision.source_id is None
 
     def test_snowflake_without_direct_driver_routes_trino(self):
@@ -142,26 +142,26 @@ class TestRoutingDecisions:
         if has_driver("snowflake"):
             pytest.skip("Snowflake direct driver is installed — test not applicable")
         decision = decide_route({"sf-warehouse"}, _TYPES, _DIALECTS)
-        assert decision.route == Route.TRINO
+        assert decision.route == Route.ENGINE
 
     def test_multi_source_with_hint_direct_still_trino(self):
         """Direct hint on a multi-source query is ignored — must use Trino."""
         decision = decide_route(
             {"pg-main", "pg-secondary"}, _TYPES, _DIALECTS, steward_hint="direct"
         )
-        assert decision.route == Route.TRINO
+        assert decision.route == Route.ENGINE
 
     def test_multi_source_nosql_mix_routes_trino(self):
         """Mixed RDBMS + NoSQL multi-source query routes to Trino."""
         decision = decide_route({"pg-main", "mongo-events"}, _TYPES, _DIALECTS)
-        assert decision.route == Route.TRINO
+        assert decision.route == Route.ENGINE
 
     def test_route_decision_is_frozen_dataclass(self):
         """RouteDecision should be a frozen dataclass (immutable)."""
         decision = decide_route({"pg-main"}, _TYPES, _DIALECTS)
         assert isinstance(decision, RouteDecision)
         with pytest.raises((AttributeError, TypeError)):
-            decision.route = Route.TRINO  # type: ignore[misc]
+            decision.route = Route.ENGINE  # type: ignore[misc]
 
     def test_reason_always_populated(self):
         """Every routing decision must carry a human-readable reason."""

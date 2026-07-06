@@ -94,7 +94,7 @@ def compile_entity_query(  # REQ-259
     Or for single PK: WHERE pk IN ($1, $2, ...)
 
     Args:
-        catalog: Trino catalog name.
+        catalog: the engine catalog name.
         schema_name: DB schema name.
         table_name: DB table name.
         key_columns: PK column names.

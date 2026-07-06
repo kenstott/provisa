@@ -18,7 +18,12 @@ import json
 import os
 from pathlib import Path
 
+from typing import TYPE_CHECKING
+
 from provisa.core.models import Source
+
+if TYPE_CHECKING:
+    from provisa.kafka.source import KafkaSourceConfig
 from provisa.core.secrets import resolve_secrets
 
 # Requirements: REQ-017, REQ-250, REQ-251
@@ -240,7 +245,6 @@ def kafka_catalog_props(kafka_source: dict) -> dict[str, str]:  # REQ-147
     Reuses ``generate_trino_kafka_properties`` (the static-file content) as the
     single source of truth, parsed into a dict.
     """
-    from provisa.kafka.source import generate_trino_kafka_properties
 
     props: dict[str, str] = {}
     for line in generate_trino_kafka_properties(_kafka_source_config(kafka_source)).splitlines():
@@ -268,7 +272,6 @@ def write_kafka_catalog_files(
     from provisa.kafka.source import (
         generate_kafka_client_properties,
         generate_kafka_table_definitions,
-        generate_trino_kafka_properties,
     )
 
     cfg = _kafka_source_config(kafka_source)
@@ -303,3 +306,42 @@ def write_kafka_catalog_files(
         create_kafka_catalog(trino_conn, kafka_source)
 
     return written
+
+
+def generate_trino_kafka_properties(source: "KafkaSourceConfig") -> str:  # REQ-147, REQ-250
+    """Generate Trino Kafka connector properties file content.
+
+    Returns the content for a kafka.properties file to be placed
+    in Trino's catalog directory.
+    """
+    from provisa.core.auth_models import (
+        KafkaAuthSaslPlain,
+        KafkaAuthSaslScram256,
+        KafkaAuthSaslScram512,
+    )
+
+    lines = [
+        "connector.name=kafka",
+        f"kafka.nodes={source.bootstrap_servers}",
+        "kafka.hide-internal-columns=false",
+    ]
+
+    # REQ-250: Confluent is optional. Use the schema registry only when one is
+    # configured; otherwise use FILE table descriptions generated from the topic's
+    # manual columns (or a sampled layout) — no Confluent dependency.
+    if source.schema_registry_url:
+        lines.append("kafka.table-description-supplier=CONFLUENT")
+        lines.append(f"kafka.confluent-schema-registry-url={source.schema_registry_url}")
+    else:
+        lines.append("kafka.table-description-supplier=FILE")
+        lines.append("kafka.table-description-dir=/etc/trino/kafka")
+        # Table names (sanitized) match the table-description tableName; the
+        # description maps each back to its raw topicName.
+        table_names = [t.table_name or t.topic for t in source.topics]
+        if table_names:
+            lines.append("kafka.table-names=" + ",".join(table_names))
+
+    if isinstance(source.auth, (KafkaAuthSaslPlain, KafkaAuthSaslScram256, KafkaAuthSaslScram512)):
+        lines.append("kafka.config.resources=/etc/trino/kafka-client.properties")
+
+    return "\n".join(lines)

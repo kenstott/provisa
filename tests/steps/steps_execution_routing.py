@@ -359,7 +359,7 @@ def route_through_federation(shared_data):
         source_dialects=shared_data["source_dialects"],
     )
     shared_data["decision"] = decision
-    assert decision.route == Route.TRINO, (
+    assert decision.route == Route.ENGINE, (
         f"cross-source JOIN must route through the federation engine (Trino), "
         f"got {decision.route} ({decision.reason})"
     )
@@ -498,7 +498,7 @@ def assert_trino_routing_and_transpilation(shared_data):
     decision = shared_data["decision"]
 
     # ── Routing assertion ──────────────────────────────────────────────────
-    assert decision.route == Route.TRINO, (
+    assert decision.route == Route.ENGINE, (
         f"cross-source query must route to Trino (REQ-028), "
         f"got {decision.route!r} — reason: {decision.reason}"
     )
@@ -627,7 +627,7 @@ def assert_direct_routing_and_dialect_transpilation(shared_data):
 def query_result_exceeds_threshold(shared_data):
     """Set up a QueryResult whose row count exceeds the redirect threshold."""
     from provisa.executor.redirect import DEFAULT_THRESHOLD, DEFAULT_TTL, RedirectConfig
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
 
     threshold = DEFAULT_THRESHOLD
     # Build a result with one more row than the threshold to guarantee redirect.

@@ -10,7 +10,7 @@
 
 """Redis source mapping — key_pattern, key_column, value_type (REQ-250).
 
-Generates Trino Redis connector catalog properties and JSON table
+Generates the engine Redis connector catalog properties and JSON table
 definition files from YAML config.
 """
 # Requirements: REQ-250, REQ-251
@@ -36,7 +36,7 @@ class RedisColumn:  # REQ-251
     """Column mapped from a Redis hash field or value."""
 
     name: str
-    data_type: str  # Trino type: VARCHAR, INTEGER, etc.
+    data_type: str  # the engine type: VARCHAR, INTEGER, etc.
     field: str | None = None  # Redis hash field name (None for string values)
 
 
@@ -63,13 +63,13 @@ class RedisSourceConfig:  # REQ-250, REQ-251
 
 
 def generate_catalog_properties(config: RedisSourceConfig) -> dict[str, str]:  # REQ-250
-    """Generate Trino Redis connector catalog properties."""
+    """Generate the engine Redis connector catalog properties."""
     props = {
         "connector.name": "redis",
         "redis.nodes": f"{config.host}:{config.port}",
         "redis.table-names": ",".join(t.name for t in config.tables),
         "redis.key-delimiter": ":",
-        "redis.table-description-dir": "/etc/trino/redis",
+        "redis.table-description-dir": "/etc/engine/redis",
     }
     if config.password:
         props["redis.password"] = config.password
@@ -79,7 +79,7 @@ def generate_catalog_properties(config: RedisSourceConfig) -> dict[str, str]:  #
 def generate_table_definitions(config: RedisSourceConfig) -> list[dict]:  # REQ-251
     """Generate JSON table definition files for the Redis connector.
 
-    Each table config produces one JSON dict matching Trino's
+    Each table config produces one JSON dict matching the engine's
     redis table-description format.
     """
     definitions = []
@@ -124,7 +124,7 @@ def generate_table_json(config: RedisSourceConfig) -> dict[str, str]:  # REQ-497
 
 
 def _data_format_for(value_type: str) -> str:
-    """Map Redis value type to Trino data format."""
+    """Map Redis value type to the engine data format."""
     mapping = {
         ValueType.HASH: "hash",
         ValueType.STRING: "raw",

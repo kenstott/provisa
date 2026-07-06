@@ -11,7 +11,7 @@
 """REQ-827: governance-parity conformance across federation engines — the SUITE.
 
 The comparator + certification gate (provisa/federation/conformance.py) are unit-covered.
-This is the missing piece: the runner that executes the SAME governed query on a real
+This is the missing piece: the runner that executes the SAME query on a real
 candidate engine and diffs its rows against the reference golden set. It validates the
 ABSTRACTION (any admitted engine yields byte-identical governed output), which per-engine
 execution tests structurally cannot — they never compare engines against each other.
@@ -54,8 +54,7 @@ _GOLDEN_ROWS = [
 # The governance-baked canonical query (PG dialect): RLS predicate + masked email.
 # This is what the semantic layer emits before the per-engine transpile stage.
 _GOVERNED_PG_SQL = (
-    "SELECT id, first_name, state, 'REDACTED' AS email "
-    "FROM customers WHERE state = 'NY'"
+    "SELECT id, first_name, state, 'REDACTED' AS email FROM customers WHERE state = 'NY'"
 )
 
 # The reference engine's governed result — analyst sees only NY rows, email masked.
@@ -67,7 +66,9 @@ _REFERENCE_GOVERNED = [
 
 def _load_duckdb():
     con = duckdb.connect()
-    con.execute("CREATE TABLE customers (id INTEGER, first_name VARCHAR, state VARCHAR, email VARCHAR)")
+    con.execute(
+        "CREATE TABLE customers (id INTEGER, first_name VARCHAR, state VARCHAR, email VARCHAR)"
+    )
     con.executemany("INSERT INTO customers VALUES (?, ?, ?, ?)", _GOLDEN_ROWS)
     return con
 
@@ -76,7 +77,7 @@ def _load_duckdb():
 
 
 def test_duckdb_candidate_is_governance_certified_against_reference():
-    """DuckDB's execution of the governed query diffs clean against the reference golden set."""
+    """DuckDB's execution of the query diffs clean against the reference golden set."""
     con = _load_duckdb()
     ddl = transpile(_GOVERNED_PG_SQL, "duckdb")
     candidate = con.execute(ddl).fetchall()

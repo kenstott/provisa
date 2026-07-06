@@ -44,7 +44,7 @@ def resolve_policy(  # REQ-544
       4. default_ttl (global default)
 
     Args:
-        stable_id: Approved query stable_id (None for ad-hoc/test queries).
+        stable_id: Sink/query stable_id (None for ad-hoc/test queries).
         cache_ttl: Steward-specified TTL for this query (from approved metadata).
         default_ttl: Global default TTL when no explicit TTL is set.
         source_cache_enabled: Whether caching is enabled for the source.

@@ -22,7 +22,7 @@ import random
 import re
 
 from provisa.executor.pool import SourcePool
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 
 log = logging.getLogger(__name__)

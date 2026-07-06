@@ -307,13 +307,13 @@ write_config() {
 #   hostname, api_port, federation_workers, runtime, docker_host, project_dir
 #
 # Shared state (lives in PostgreSQL on this node — secondaries connect to it):
-#   Data source definitions, semantic model, security policies, governed queries,
+#   Data source definitions, semantic model, security policies,
 #   role mappings, masking rules, Trino catalog properties.
 #   Secondaries pull shared config at runtime via the database connection —
 #   no manual sync required.
 #
 # Singleton services on this node (secondaries point here, never run their own):
-#   PostgreSQL  — shared schema, config, governed queries, semantic model
+#   PostgreSQL  — shared schema, config, semantic model
 #   Redis       — shared query result cache and subscription state
 #   MinIO       — shared object store for redirect results and MV snapshots
 #   Trino coordinator — all workers (primary + secondary nodes) register here

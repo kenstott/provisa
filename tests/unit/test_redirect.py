@@ -11,14 +11,18 @@
 """Unit tests for large result redirect logic."""
 
 from provisa.executor.redirect import RedirectConfig, should_redirect
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 
 def _config(enabled=True, threshold=10):
     return RedirectConfig(
-        enabled=enabled, threshold=threshold,
-        bucket="test", endpoint_url="http://localhost:9000",
-        access_key="key", secret_key="secret", ttl=3600,
+        enabled=enabled,
+        threshold=threshold,
+        bucket="test",
+        endpoint_url="http://localhost:9000",
+        access_key="key",
+        secret_key="secret",
+        ttl=3600,
     )
 
 

@@ -52,37 +52,44 @@ def _compiled():
 
 def test_table_rule_used_when_present():
     rls = build_rls_context(
-        [{"table_id": 1, "domain_id": None, "role_id": "a", "filter_expr": "owner = 'me'"}], "a"
+        [{"table_id": 1, "domain_id": None, "role_id": "a", "filter_expr": "\"owner\" = 'me'"}], "a"
     )
     result = inject_rls(_compiled(), _ctx(_meta()), rls)
-    assert "owner = 'me'" in result.sql
+    assert "\"owner\" = 'me'" in result.sql
 
 
 def test_domain_rule_used_as_fallback():
     rls = build_rls_context(
-        [{"table_id": None, "domain_id": "sales", "role_id": "a", "filter_expr": "region = 'us'"}],
+        [
+            {
+                "table_id": None,
+                "domain_id": "sales",
+                "role_id": "a",
+                "filter_expr": "\"region\" = 'us'",
+            }
+        ],
         "a",
     )
     result = inject_rls(_compiled(), _ctx(_meta()), rls)
-    assert "region = 'us'" in result.sql
+    assert "\"region\" = 'us'" in result.sql
 
 
 def test_table_rule_takes_precedence_over_domain_rule():
     rls = build_rls_context(
         [
-            {"table_id": 1, "domain_id": None, "role_id": "a", "filter_expr": "owner = 'me'"},
+            {"table_id": 1, "domain_id": None, "role_id": "a", "filter_expr": "\"owner\" = 'me'"},
             {
                 "table_id": None,
                 "domain_id": "sales",
                 "role_id": "a",
-                "filter_expr": "region = 'us'",
+                "filter_expr": "\"region\" = 'us'",
             },
         ],
         "a",
     )
     result = inject_rls(_compiled(), _ctx(_meta()), rls)
-    assert "owner = 'me'" in result.sql
-    assert "region = 'us'" not in result.sql
+    assert "\"owner\" = 'me'" in result.sql
+    assert "\"region\" = 'us'" not in result.sql
 
 
 def test_no_rule_for_table_or_domain_leaves_sql_unchanged():
@@ -96,8 +103,15 @@ def test_no_rule_for_table_or_domain_leaves_sql_unchanged():
 
 def test_domain_rule_does_not_apply_when_table_in_other_domain():
     rls = build_rls_context(
-        [{"table_id": None, "domain_id": "sales", "role_id": "a", "filter_expr": "region = 'us'"}],
+        [
+            {
+                "table_id": None,
+                "domain_id": "sales",
+                "role_id": "a",
+                "filter_expr": "\"region\" = 'us'",
+            }
+        ],
         "a",
     )
     result = inject_rls(_compiled(), _ctx(_meta(domain_id="marketing")), rls)
-    assert "region = 'us'" not in result.sql
+    assert "\"region\" = 'us'" not in result.sql

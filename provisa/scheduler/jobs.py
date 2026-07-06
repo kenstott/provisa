@@ -24,8 +24,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 if TYPE_CHECKING:
-    import trino.dbapi  # noqa: F401 — annotation for the Trino watchdog/ping
-
     from provisa.core.models import ScheduledTrigger
 
 logger = logging.getLogger(__name__)
@@ -48,7 +46,7 @@ async def _execute_webhook(
 
 
 async def compact_otel_signals() -> None:  # REQ-302, REQ-303
-    """Compact today's OTEL Parquet from MinIO into Iceberg via Trino.
+    """Compact today's OTEL Parquet from MinIO into Iceberg vithe engine.
 
     Runs every minute. Deletes existing rows for today's partition before
     reinserting so re-runs are idempotent. Set OTEL_COMPACT_DATE (YYYY-MM-DD)
@@ -201,7 +199,7 @@ def _compact_signal(
     logger.info("compact_otel: inserted %d %s rows for %s", total_rows, signal, date_glob)
 
 
-_PA_TO_TRINO: dict[object, str] = {
+_PA_TO_PHYSICAL: dict[object, str] = {
     pa.string(): "VARCHAR",
     pa.large_string(): "VARCHAR",
     pa.int32(): "INTEGER",
@@ -215,7 +213,7 @@ _PA_TO_TRINO: dict[object, str] = {
     pa.date32(): "DATE",
 }
 
-_TRINO_TO_PA: dict[str, object] = {
+_PHYSICAL_TO_PA: dict[str, object] = {
     "varchar": pa.string(),
     "bigint": pa.int64(),
     "integer": pa.int32(),
@@ -227,7 +225,7 @@ _TRINO_TO_PA: dict[str, object] = {
     "date": pa.date32(),
 }
 
-_TRINO_CAST: dict[str, str] = {
+_PHYSICAL_CAST: dict[str, str] = {
     "bigint": "BIGINT",
     "integer": "INTEGER",
     "double": "DOUBLE",
@@ -253,8 +251,8 @@ def _build_iceberg_col_defs(signal: str, table: pa.Table) -> list[str]:
     """Build Iceberg column definition strings from a PyArrow table schema."""
     col_defs = []
     for name, typ in zip(table.schema.names, table.schema.types):
-        trino_type = _PA_TO_TRINO.get(typ, "VARCHAR")
-        col_defs.append(f'"{name}" {trino_type}')
+        column_type = _PA_TO_PHYSICAL.get(typ, "VARCHAR")
+        col_defs.append(f'"{name}" {column_type}')
     if signal == "traces":
         existing = {n.lower() for n in table.schema.names}
         for ec in _TRACE_EXTRA_COLS:
@@ -287,22 +285,22 @@ def _ensure_iceberg_table(
             logger.warning("compact_otel: could not evolve partition spec for %s: %s", signal, exc)
 
 
-def _cast_table_to_trino_schema(
+def _cast_table_to_physical_schema(
     signal: str,
     table: pa.Table,
-    trino_cols: dict[str, str],
+    engine_cols: dict[str, str],
 ) -> pa.Table:
-    """Cast a PyArrow table's columns to match the actual Trino column types."""
+    """Cast a PyArrow table's columns to match the actual the engine column types."""
     cast_fields = []
     for field in table.schema:
-        trino_type = trino_cols.get(field.name.lower())
-        pa_type = _TRINO_TO_PA.get(trino_type, pa.string()) if trino_type else field.type  # type: ignore[arg-type]
+        column_type = engine_cols.get(field.name.lower())
+        pa_type = _PHYSICAL_TO_PA.get(column_type, pa.string()) if column_type else field.type  # type: ignore[arg-type]
         cast_fields.append(pa.field(field.name, pa_type))
     try:
         return table.cast(pa.schema(cast_fields), safe=False)
     except Exception:
         logger.warning(
-            "compact_otel: could not cast %s table to Trino schema, proceeding as-is", signal
+            "compact_otel: could not cast %s table to the engine schema, proceeding as-is", signal
         )
         return table
 
@@ -310,22 +308,22 @@ def _cast_table_to_trino_schema(
 def _build_insert_columns(
     _signal: str,
     table: pa.Table,
-    trino_cols: dict[str, str],
+    engine_cols: dict[str, str],
     extract_trace_attrs: bool,
     extra_cols: list[str],
 ) -> tuple[list[str], list[str], list[str]]:
     """Return (parquet_cols, col_names, placeholders) for INSERT statement building."""
 
     def _cast_ph(col_lower: str) -> str:
-        t = _TRINO_CAST.get(trino_cols.get(col_lower, "varchar"), "VARCHAR")
+        t = _PHYSICAL_CAST.get(engine_cols.get(col_lower, "varchar"), "VARCHAR")
         return f"CAST(? AS {t})"
 
-    parquet_cols = [n for n in table.schema.names if n.lower() in trino_cols]
+    parquet_cols = [n for n in table.schema.names if n.lower() in engine_cols]
     col_names = [f'"{n}"' for n in parquet_cols] + ['"_date"']
     placeholders = [_cast_ph(n.lower()) for n in parquet_cols] + ["CAST(? AS DATE)"]
     if extract_trace_attrs:
         extra_insert = [
-            ec for ec in extra_cols if ec not in table.schema.names and ec.lower() in trino_cols
+            ec for ec in extra_cols if ec not in table.schema.names and ec.lower() in engine_cols
         ]
         col_names += [f'"{ec}"' for ec in extra_insert]
         placeholders += [_cast_ph(ec.lower()) for ec in extra_insert]
@@ -339,9 +337,9 @@ def _build_row(
     extract_trace_attrs: bool,
     table_has_table_name: bool,
     extra_cols: list[str],
-    trino_cols: dict[str, str],
+    engine_cols: dict[str, str],
 ) -> tuple:  # type: ignore[type-arg]
-    """Convert a single row dict to a tuple for Trino INSERT."""
+    """Convert a single row dict to a tuple for the engine INSERT."""
     vals = dict(row)
     if "span_attributes" in vals and isinstance(vals["span_attributes"], str):
         vals["span_attributes"] = vals["span_attributes"][:_SPAN_ATTRS_MAX]
@@ -355,7 +353,7 @@ def _build_row(
             attrs = json.loads(raw)
         except Exception:
             pass
-    return base + tuple(attrs.get(_ATTR_KEYS[ec]) for ec in extra_cols if ec.lower() in trino_cols)
+    return base + tuple(attrs.get(_ATTR_KEYS[ec]) for ec in extra_cols if ec.lower() in engine_cols)
 
 
 def _resolve_batch_size(signal: str) -> int:
@@ -410,10 +408,10 @@ def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> 
     partition_cols = ["'_date'", "'table_name'"] if signal == "traces" else ["'_date'"]
     _ensure_iceberg_table(engine, signal, col_defs, partition_cols)
 
-    # Read back actual Trino column types and cast PyArrow table to match exactly.
+    # Read back actual the engine column types and cast PyArrow table to match exactly.
     _cols = engine.execute_engine_sync(f"SHOW COLUMNS FROM otel.signals.{signal}")
-    trino_cols = {row[0].lower(): row[1].lower() for row in _cols.rows}
-    table = _cast_table_to_trino_schema(signal, table, trino_cols)
+    engine_cols = {row[0].lower(): row[1].lower() for row in _cols.rows}
+    table = _cast_table_to_physical_schema(signal, table, engine_cols)
 
     date_val = dt.strftime("%Y-%m-%d")
 
@@ -422,7 +420,7 @@ def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> 
     extra_cols: list[str] = _TRACE_EXTRA_COLS if extract_trace_attrs else []
 
     parquet_cols, col_names, placeholders = _build_insert_columns(
-        signal, table, trino_cols, extract_trace_attrs, extra_cols
+        signal, table, engine_cols, extract_trace_attrs, extra_cols
     )
 
     table_has_table_name = "table_name" in table.schema.names
@@ -434,7 +432,7 @@ def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> 
             extract_trace_attrs,
             table_has_table_name,
             extra_cols,
-            trino_cols,
+            engine_cols,
         )
         for r in table.to_pylist()
     ]
@@ -446,66 +444,13 @@ def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> 
     _expire_iceberg_snapshots(engine, signal)
 
 
-async def watch_trino() -> None:
-    """Restart the Trino Docker container if it is not responding."""
-    import asyncio
-    import trino
+async def watch_engine() -> None:
+    """Engine-terminal liveness watchdog (scheduled job). Delegates to the bound engine's
+    watchdog through the seam — the engine restarts its container and replaces a dead connection;
+    native engines have no external process to watch (no-op)."""
     from provisa.api.app import state
 
-    if state.trino_conn is None:
-        return
-
-    try:
-        await asyncio.to_thread(_trino_ping, state.trino_conn)
-        return
-    except Exception:
-        pass
-
-    logger.warning("watch_trino: Trino unresponsive — attempting restart")
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "docker",
-            "start",
-            "provisa-trino-1",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            logger.error("watch_trino: docker start failed: %s", stderr.decode().strip())
-            return
-        logger.info("watch_trino: provisa-trino-1 started, waiting for healthy state")
-    except Exception:
-        logger.exception("watch_trino: docker start provisa-trino-1 failed")
-        return
-
-    # Wait up to 120 s for Trino to accept connections, then replace the dead conn.
-    deadline = asyncio.get_event_loop().time() + 120
-    while asyncio.get_event_loop().time() < deadline:
-        await asyncio.sleep(5)
-        try:
-            new_conn = await asyncio.to_thread(
-                lambda: trino.dbapi.connect(**state.trino_conn_kwargs)
-            )
-            await asyncio.to_thread(_trino_ping, new_conn)
-            old_conn = state.trino_conn
-            state.trino_conn = new_conn
-            try:
-                old_conn.close()
-            except Exception:
-                pass
-            logger.info("watch_trino: Trino reconnected successfully")
-            return
-        except Exception:
-            pass
-
-    logger.error("watch_trino: Trino did not become healthy within 120 s")
-
-
-def _trino_ping(conn: trino.dbapi.Connection) -> None:
-    cur = conn.cursor()
-    cur.execute("SELECT 1")
-    cur.fetchone()
+    await state.federation_engine.watchdog()
 
 
 def build_scheduler(

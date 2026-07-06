@@ -30,7 +30,7 @@ import pyarrow.flight as flight
 
 log = logging.getLogger(__name__)
 
-# Trino type -> Arrow type mapping
+# the engine type -> Arrow type mapping
 _ARROW_TYPE_MAP: dict[str, pa.DataType] = {
     "boolean": pa.bool_(),
     "tinyint": pa.int8(),
@@ -55,13 +55,13 @@ _ARROW_TYPE_MAP: dict[str, pa.DataType] = {
 }
 
 
-def _trino_type_to_arrow(trino_type: str) -> pa.DataType:
-    """Map a Trino data type string to an Arrow type."""
+def _physical_type_to_arrow(column_type: str) -> pa.DataType:
+    """Map the engine data type string to an Arrow type."""
     # Strip parameterized types: decimal(10,2) -> decimal
-    base = trino_type.split("(")[0].strip().lower()
+    base = column_type.split("(")[0].strip().lower()
     if base in _ARROW_TYPE_MAP:
         return _ARROW_TYPE_MAP[base]
-    raise KeyError(f"Unmapped Trino type: {trino_type!r}")
+    raise KeyError(f"Unmapped engine type: {column_type!r}")
 
 
 @dataclass(frozen=True)
@@ -79,7 +79,7 @@ class CatalogColumn:
     """A column in a virtual catalog table."""
 
     name: str
-    data_type: str  # Trino type string
+    data_type: str  # the engine type string
     is_nullable: bool
     description: str
 
@@ -129,7 +129,7 @@ async def _build_catalog_tables_async(state) -> list[CatalogTable]:
 
     # Build the column metadata lookup from introspection
 
-    if state.trino_conn:
+    if state.engine_conn:
         # Re-use the compilation context's column types if available
         # They are stored during schema build on AppState indirectly
         # We can re-introspect the relevant tables
@@ -226,7 +226,7 @@ def catalog_table_to_arrow_schema(table: CatalogTable) -> pa.Schema:  # REQ-143
     fields = []
     for col in table.columns:
         try:
-            arrow_type = _trino_type_to_arrow(col.data_type)
+            arrow_type = _physical_type_to_arrow(col.data_type)
         except KeyError:
             arrow_type = pa.utf8()
         metadata = {}

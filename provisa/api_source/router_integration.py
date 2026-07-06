@@ -10,7 +10,7 @@
 
 """Routing integration for API sources (Phase U).
 
-Flow: check Trino cache → hit? return cache reference → miss? call API
+Flow: check the engine cache → hit? return cache reference → miss? call API
 → flatten → materialize → schedule TTL DROP → return rows.
 
 Phase 2 SQL (WHERE/ORDER BY/LIMIT) is applied by the caller via rewrite_from_cache().
@@ -29,7 +29,7 @@ from provisa.api_source.cache import resolve_ttl
 from provisa.api_source.caller import call_api
 from provisa.api_source.flattener import flatten_response
 from provisa.api_source.models import ApiEndpoint, ApiSource, ApiSourceType
-from provisa.api_source.trino_cache import (
+from provisa.api_source.engine_cache import (
     CacheLocation,
     cache_location,
     cache_table_name,
@@ -79,10 +79,10 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
     loc: CacheLocation | None = None,
     org_id: str = "default",
 ) -> QueryResult:
-    """Execute an API query with Trino cache.
+    """Execute an API query with the engine cache.
 
     1. Derive stable table name from source + path + native params
-    2. If table exists in Trino: return cache reference (phase 2 SQL applied by caller)
+    2. If table exists in the engine: return cache reference (phase 2 SQL applied by caller)
     3. On miss: call API → flatten → materialize → schedule DROP after TTL
     """
     with _tracer.start_as_current_span("api_source.handle_api_query") as span:

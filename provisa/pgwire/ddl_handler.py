@@ -12,8 +12,8 @@
 
 Two execution paths:
 
-  Trino path  — ddl_catalog is Iceberg/Hive or any non-registered catalog.
-                Only CREATE TABLE / CREATE VIEW supported (Trino limit).
+  the engine path  — ddl_catalog is Iceberg/Hive or any non-registered catalog.
+                Only CREATE TABLE / CREATE VIEW supported (the engine limit).
                 Table name is qualified as catalog.schema.name.
 
   Direct path — ddl_catalog matches a registered source id.
@@ -93,19 +93,19 @@ class DdlHandler:  # REQ-042, REQ-060
         write_target = self._resolve_write_target(role_id, role, state)
         write_catalog, write_schema = write_target
 
-        # Determine whether to use direct source pool or Trino
+        # Determine whether to use direct source pool or the engine
         source_id = _catalog_to_source_id(write_catalog, state)
         if source_id and state.source_types.get(source_id):
             self._exec_direct(ctx, sql, source_id, write_schema, role_id, state)
         else:
             if not _CREATE_TABLE_OR_VIEW_RE.match(sql):
                 raise ValueError(
-                    f"Only CREATE TABLE/VIEW is supported for Trino catalog {write_catalog!r}. "
+                    f"Only CREATE TABLE/VIEW is supported for the engine catalog {write_catalog!r}. "
                     "Use a registered source as ddl_catalog for full DDL support."
                 )
             if state.federation_engine is None:
                 raise RuntimeError("Query engine not available for DDL")
-            self._exec_trino(ctx, sql, write_catalog, write_schema, role_id, state)
+            self._exec_engine(ctx, sql, write_catalog, write_schema, role_id, state)
 
         return _command_tag(sql)
 
@@ -122,7 +122,7 @@ class DdlHandler:  # REQ-042, REQ-060
                 return target
         raise PermissionError(f"No ddl_catalog configured on domain for role {role_id!r}")
 
-    def _exec_trino(self, _ctx, sql, write_catalog, write_schema, role_id, state):
+    def _exec_engine(self, _ctx, sql, write_catalog, write_schema, role_id, state):
         kind = _ddl_kind(sql)
         pattern = _VIEW_RE if kind == "VIEW" else _TABLE_RE
         m = pattern.match(sql)
@@ -136,7 +136,7 @@ class DdlHandler:  # REQ-042, REQ-060
         qualified_sql = (
             f"CREATE {or_replace}{verb} {write_catalog}.{write_schema}.{table_name} {rest}"
         )
-        log.info("DDL(trino) role=%r: %s", role_id, qualified_sql[:200])
+        log.info("DDL(engine) role=%r: %s", role_id, qualified_sql[:200])
         future = asyncio.run_coroutine_threadsafe(
             state.federation_engine.execute_engine(qualified_sql),
             self._handler._srv._loop,

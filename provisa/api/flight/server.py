@@ -479,15 +479,15 @@ class ProvisaFlightServer(
         if engine is None:
             raise flight.FlightServerError("Federation engine not connected")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        trino_sql = plan.trino_sql
-        if trino_sql is None:
+        physical_sql = plan.physical_sql
+        if physical_sql is None:
             raise flight.FlightServerError(
                 f"Route {plan.route!r} is not supported for Cypher via Flight"
             )  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         def _run() -> list[dict[str, object]]:
             # On a worker thread — go through the sync engine terminal, not a raw cursor.
-            res = engine.execute_engine_sync(trino_sql, resolved_params or [])
+            res = engine.execute_engine_sync(physical_sql, resolved_params or [])
             return [dict(zip(res.column_names, row, strict=False)) for row in res.rows]
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
@@ -542,11 +542,11 @@ class ProvisaFlightServer(
         except ValueError as exc:
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        if plan.route == Route.TRINO:
-            assert plan.trino_sql is not None
+        if plan.route == Route.ENGINE:
+            assert plan.physical_sql is not None
             # Arrow Flight is an advertised, engine-specific transport (REQ-825).
             try:
-                table = self._state.federation_engine.execute_engine_arrow(plan.trino_sql, [])
+                table = self._state.federation_engine.execute_engine_arrow(plan.physical_sql, [])
             except RuntimeError as exc:
                 raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -604,11 +604,11 @@ class ProvisaFlightServer(
             table = rows_to_arrow_table(result.rows, compiled.columns)
             return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        assert plan.trino_sql is not None
+        assert plan.physical_sql is not None
         # Streamed Arrow Flight is an advertised, engine-specific transport (REQ-825, REQ-145).
         try:
             arrow_schema, batch_gen = self._state.federation_engine.execute_engine_stream(
-                plan.trino_sql,
+                plan.physical_sql,
                 compiled.params,
             )
         except RuntimeError as exc:

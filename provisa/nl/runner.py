@@ -37,6 +37,7 @@ from provisa.nl.loop import (
 
 if TYPE_CHECKING:
     from provisa.api.app import AppState
+    from provisa.cypher.label_map import CypherLabelMap
 
 JobStore = InMemoryJobStore | RedisJobStore
 
@@ -82,7 +83,9 @@ def _generate_openapi_query(
 
 
 async def _generate_sql_from_nl(
-    nl_query: str, role: str, app_state: AppState,
+    nl_query: str,
+    role: str,
+    app_state: AppState,
     pre_selected_types: "set[str] | None" = None,
 ) -> tuple[str | None, str | None]:
     """Generate semantic SQL via the proven endpoint_dev pipeline.
@@ -144,7 +147,7 @@ async def _generate_sql_from_nl(
         return last_sql or None, last_error
 
     # Normalize domain-qualified refs (e.g. pet_store.pets) to physical schema.table
-    # so _execute_sql's make_semantic_sql → rewrite_semantic_to_trino_physical pipeline works.
+    # so _execute_sql's make_semantic_sql → rewrite_semantic_to_physical pipeline works.
     from provisa.compiler.sql_gen import rewrite_semantic_to_physical
 
     physical_sql = rewrite_semantic_to_physical(last_sql, ctx)
@@ -234,7 +237,12 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
             compiler = compilers[target]  # type: ignore[index]
             entities = cypher_schema_block if target == "cypher" else relevant_entities
             valid_query, error = await generation_loop(
-                nl_query, target, schema_sdl, compiler, llm, relevant_entities=entities  # type: ignore[arg-type]
+                nl_query,
+                target,
+                schema_sdl,
+                compiler,
+                llm,
+                relevant_entities=entities,  # type: ignore[arg-type]
             )
             return target, valid_query, error
         except Exception as exc:
@@ -264,7 +272,6 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
 
 def _format_cypher_schema(lm: "CypherLabelMap") -> str:  # type: ignore[name-defined]
     """Serialize CypherLabelMap to an authoritative label/relationship reference block."""
-    from provisa.cypher.label_map import CypherLabelMap
 
     lm_typed: CypherLabelMap = lm
     lines = [

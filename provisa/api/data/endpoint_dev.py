@@ -28,7 +28,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
     from provisa.cypher.label_map import CypherLabelMap
 
 from provisa.api.admin._dev_shared import detect_target
@@ -37,7 +37,7 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import qualify_with_catalogs, rewrite_semantic_to_physical
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.transpiler.router import Route, decide_route
-from provisa.transpiler.transpile import transpile, transpile_to_trino
+from provisa.transpiler.transpile import transpile
 
 log = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ async def _execute_govdata(source_id: str, sql: str, state) -> "QueryResult":
     log.warning("_execute_govdata called: sql=%s", sql[:300])
     from provisa.core.models import GovDataSource, GovDataSubject
     from provisa.core.secrets import resolve_secrets
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
     from provisa.govdata.source import execute_query
 
     pool = state.tenant_db
@@ -403,36 +403,36 @@ async def _dispatch_sql_execution(
     )
     if _govdata_sid:
         return await _execute_govdata(_govdata_sid, governed_physical, state)
-    if decision.route == Route.TRINO:
-        return await _execute_trino_route(governed_physical, ctx, state, embedded_params)
+    if decision.route == Route.ENGINE:
+        return await _execute_engine_route(governed_physical, ctx, state, embedded_params)
     return await _execute_direct_route(
         governed_physical, decision, default_source, state.source_pools, embedded_params
     )
 
 
-async def _execute_trino_route(
+async def _execute_engine_route(
     governed_physical: str,
     ctx,
     state,
     embedded_params: list | None,
 ) -> "QueryResult":
-    from provisa.api.data.endpoint import _materialize_api_to_trino_cache
+    from provisa.api.data.endpoint import _materialize_api_to_engine_cache
     from provisa.cache.hot_tables import build_values_cte_sql
-    from provisa.api_source.trino_cache import rewrite_all_from_cache
+    from provisa.api_source.engine_cache import rewrite_all_from_cache
 
     _qualified = qualify_with_catalogs(governed_physical, ctx)
     if state.view_sql_map:
         from provisa.compiler.view_expand import expand_view_refs
 
         _qualified = expand_view_refs(_qualified, state.view_sql_map)
-    _rewrites, _values_ctes, _ = await _materialize_api_to_trino_cache(_qualified, state)
+    _rewrites, _values_ctes, _ = await _materialize_api_to_engine_cache(_qualified, state)
     for _tn, _entry in _values_ctes.items():
         _qualified = build_values_cte_sql(_qualified, _tn, _entry)
     if _rewrites:
         _qualified = rewrite_all_from_cache(_qualified, _rewrites)
-    sql_to_run = transpile_to_trino(_qualified)
-    if state.trino_conn is None:
-        raise HTTPException(status_code=503, detail="Trino connection not available")
+    sql_to_run = state.federation_engine.transpile_physical(_qualified)
+    if state.engine_conn is None:
+        raise HTTPException(status_code=503, detail="the engine connection not available")
     exec_params = embedded_params or None
     return await state.federation_engine.execute_engine(sql_to_run, params=exec_params)
 

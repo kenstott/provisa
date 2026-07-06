@@ -99,7 +99,7 @@ def _tgt_col_expr_for_rm(rm: "RelationshipMapping", alias: str) -> "exp.Expressi
     if rm.target_expr is not None:
         return exp.maybe_parse(
             rm.target_expr.replace("{alias}", alias),
-            dialect="trino",
+            dialect="postgres",
         )
     return exp.Column(
         this=exp.Identifier(this=rm.join_target_column, quoted=True),
@@ -118,7 +118,7 @@ def _src_col_expr_for_rm(
     if rm.source_expr is not None:
         return exp.maybe_parse(
             rm.source_expr.replace("{alias}", src_table_ref),
-            dialect="trino",
+            dialect="postgres",
         )
     if rm.join_source_column == "_name_" and src_nm is not None:
         from provisa.compiler.naming import domain_to_sql_name as _d2s
@@ -280,7 +280,7 @@ def _fold_where_into_optional_joins(
     remaining_conjuncts: list = []
 
     for cond in conjuncts:
-        cond_text = cond.sql(dialect="trino")
+        cond_text = cond.sql(dialect="postgres")
         # _nf_ conditions must stay in WHERE so nf_extractor can strip them before SQL execution.
         if "_nf_" in cond_text:
             remaining_conjuncts.append(cond)
@@ -1409,7 +1409,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         """Rewrite COUNT(var)/COLLECT(var) where var is a node variable to use id_column.
 
         Cypher COUNT(n) counts non-null node instances — translates to COUNT(n.id_col) in SQL.
-        Without this, the bare var reaches Trino as a table alias which cannot be resolved as a column.
+        Without this, the bare var reaches the engine as a table alias which cannot be resolved as a column.
         Cypher COUNT(r) for a relationship variable translates to COUNT(*) — r is not a SQL column.
         """
         _AGG_WITH_NODE_ARG = re.compile(
@@ -1607,7 +1607,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         for rt, sa, snm, ta, tnm, rev in step_edges
                     ],
                 )
-                return arr.sql(dialect="trino")
+                return arr.sql(dialect="postgres")
             return "NULL"
 
         def _nodes_repl(m: re.Match) -> str:
@@ -1624,7 +1624,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         for node_alias, nm in step_nodes
                     ],
                 )
-                return arr.sql(dialect="trino")
+                return arr.sql(dialect="postgres")
             return "NULL"
 
         def _startnode_repl(m: re.Match) -> str:
@@ -1632,13 +1632,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             endpoints = self._rel_var_endpoints.get(var)
             if endpoints:
                 src_alias, src_nm, _, _, _ = endpoints
-                return self._build_node_object_expr(src_alias, src_nm).sql(dialect="trino")
+                return self._build_node_object_expr(src_alias, src_nm).sql(dialect="postgres")
             path_info = self._path_vars.get(var)
             if path_info:
                 src_alias, _, _ = path_info
                 src_info = self._var_table.get(src_alias)
                 if src_info and src_info[1]:
-                    return self._build_node_object_expr(src_alias, src_info[1]).sql(dialect="trino")
+                    return self._build_node_object_expr(src_alias, src_info[1]).sql(
+                        dialect="postgres"
+                    )
                 return f"{src_alias}.*"
             return m.group(0)
 
@@ -1647,13 +1649,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             endpoints = self._rel_var_endpoints.get(var)
             if endpoints:
                 _, _, tgt_alias, tgt_nm, _ = endpoints
-                return self._build_node_object_expr(tgt_alias, tgt_nm).sql(dialect="trino")
+                return self._build_node_object_expr(tgt_alias, tgt_nm).sql(dialect="postgres")
             path_info = self._path_vars.get(var)
             if path_info:
                 _, tgt_alias, _ = path_info
                 tgt_info = self._var_table.get(tgt_alias)
                 if tgt_info and tgt_info[1]:
-                    return self._build_node_object_expr(tgt_alias, tgt_info[1]).sql(dialect="trino")
+                    return self._build_node_object_expr(tgt_alias, tgt_info[1]).sql(
+                        dialect="postgres"
+                    )
                 return f"{tgt_alias}.*"
             return m.group(0)
 
@@ -1672,7 +1676,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                             table=exp.Identifier(this=sql_alias),
                         )
                     )
-                return exp.Anonymous(this="JSON_OBJECT", expressions=exprs).sql(dialect="trino")
+                return exp.Anonymous(this="JSON_OBJECT", expressions=exprs).sql(dialect="postgres")
             if var in self._rel_var_types:
                 return "JSON_OBJECT()"
             return m.group(0)
@@ -1737,7 +1741,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     def _rewrite_call_bound_vars(self, text: str) -> str:
         """Qualify CALL-subquery return vars with their CROSS JOIN LATERAL alias.
 
-        e.g. d_list → _call0."d_list" so Trino can resolve the scoped column.
+        e.g. d_list → _call0."d_list" so the engine can resolve the scoped column.
         """
         for var, lateral_alias in self._call_var_to_lateral.items():
             # Match bare var not already table-qualified (not preceded by . or word char)
@@ -1930,7 +1934,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         When a property referenced in WHERE doesn't exist on the resolved node type, every
         access returns NULL.  If *all* WHERE props for a variable are missing, the WHERE
         condition on that variable is always non-true (NULL comparisons), so the result is
-        zero rows regardless of query structure — we can skip the Trino round-trip.
+        zero rows regardless of query structure — we can skip the engine round-trip.
 
         This check is skipped for domain-union / passthrough vars because those are already
         pruned per-branch inside _build_domain_union.
@@ -2117,7 +2121,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                             else (
                                 exp.maybe_parse(
                                     rm.source_expr.replace("{alias}", sa),
-                                    dialect="trino",
+                                    dialect="postgres",
                                 )
                                 if rm.source_expr is not None
                                 else exp.Column(
@@ -2129,7 +2133,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         expression=(
                             exp.maybe_parse(
                                 rm.target_expr.replace("{alias}", ta),
-                                dialect="trino",
+                                dialect="postgres",
                             )
                             if rm.target_expr is not None
                             else exp.Column(
@@ -2171,7 +2175,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             had_resolvable = True
             # Metadata-based prune: skip branches where no required property exists.
             # Those branches can only contribute NULL rows, which a WHERE filter would discard.
-            # This prevents full-table scans across all entity types on Trino.
+            # This prevents full-table scans across all entity types on the engine.
             if props and not any(nm.properties.get(p) for p in props):
                 continue
             select_items: list[exp.Expr] = [
@@ -2302,7 +2306,7 @@ _CYPHER_FN_RENAMES: dict[str, str] = {
     "REPLACE": "replace",
     "SPLIT": "split",
     "RANGE": "sequence",  # Cypher range(start, end[, step]) → sequence(start, end[, step])
-    "LOG": "ln",  # Neo4j log() = natural log = Trino ln()
+    "LOG": "ln",  # Neo4j log() = natural log = the engine ln()
     "LOG2": "log2",
     "COLLECT": "array_agg",
     "STDEV": "stddev_samp",
@@ -2373,7 +2377,7 @@ _ISO_TS_LITERAL_RE = re.compile(r"'(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\
 
 
 def _coerce_ts_literals(text: str) -> str:
-    """Wrap ISO-datetime string literals as TIMESTAMP '...' so Trino doesn't see varchar(N)."""
+    """Wrap ISO-datetime string literals as TIMESTAMP '...' so the engine doesn't see varchar(N)."""
     return _ISO_TS_LITERAL_RE.sub(lambda m: f"TIMESTAMP {m.group(0)}", text)
 
 
@@ -2389,10 +2393,10 @@ _LIST_SLICE_RE = re.compile(r"(\w+\s*\(\s*[^)]*\s*\)|[A-Za-z_]\w*)\s*\[\s*\.\.\s
 
 
 def _rewrite_list_slices(text: str) -> str:
-    """Rewrite Cypher list-slice expr[..n] → slice(expr, 1, n) for Trino.
+    """Rewrite Cypher list-slice expr[..n] → slice(expr, 1, n) for the engine.
 
     Cypher's [..n] returns the first n elements (0-indexed, exclusive end).
-    Trino's slice(arr, start, length) is 1-indexed with a length argument.
+    the engine's slice(arr, start, length) is 1-indexed with a length argument.
     """
     return _LIST_SLICE_RE.sub(r"slice(\1, 1, \2)", text)
 
@@ -2406,7 +2410,7 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
             return exp.Anonymous(this="element_at", expressions=[inner, exp.Literal.number(-1)])
         return node
 
-    # log(x) in Cypher = natural log → Trino ln(x)
+    # log(x) in Cypher = natural log → the engine ln(x)
     # exp.Log with one arg (no base) is natural log in Cypher
     if isinstance(node, exp.Log):
         base = node.args.get("this")
@@ -2419,7 +2423,7 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
         return node
 
     # exp.Left / exp.Right — SQLGlot parses left()/right() as these; emit as Anonymous
-    # so Trino receives LEFT(str, n) rather than a SUBSTRING expansion.
+    # so the engine receives LEFT(str, n) rather than a SUBSTRING expansion.
     if isinstance(node, exp.Left):
         return exp.Anonymous(this="left", expressions=[node.this, node.expression])
 

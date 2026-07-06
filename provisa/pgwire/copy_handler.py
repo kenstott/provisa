@@ -10,7 +10,7 @@
 
 """COPY TO STDOUT and COPY FROM STDIN for the pgwire server.
 
-COPY TO: runs governance pipeline, executes via Flight SQL (Trino) or direct,
+COPY TO: runs governance pipeline, executes via Flight SQL (the engine) or direct,
          serialises result to PG COPY text/csv wire format.
 COPY FROM: receives PG COPY wire data, parses rows, inserts into writable
            SQL-backed sources only (postgresql / mysql / sqlite / mariadb).
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from buenavista.postgres import BVContext
 
     from provisa.compiler.sql_gen import TableMeta
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
     from provisa.pgwire._pipeline import _Plan
 
 
@@ -326,8 +326,8 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         future = asyncio.run_coroutine_threadsafe(plan_pgwire_sql(query, role_id), loop)
         plan = future.result(timeout=60)
 
-        if plan.route == Route.TRINO:
-            data_bytes, nrows = self._exec_trino_flight(plan, fmt)
+        if plan.route == Route.ENGINE:
+            data_bytes, nrows = self._exec_engine_flight(plan, fmt)
         else:
             data_bytes, nrows = self._exec_direct_plan(plan, loop, fmt)
 
@@ -336,14 +336,14 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         self._send_copy_done()
         return nrows
 
-    def _exec_trino_flight(self, plan: _Plan, fmt: str) -> tuple[bytes, int]:
+    def _exec_engine_flight(self, plan: _Plan, fmt: str) -> tuple[bytes, int]:
         from provisa.api.app import state
 
-        if plan.trino_sql is None:
-            raise RuntimeError("Trino plan missing transpiled SQL")
+        if plan.physical_sql is None:
+            raise RuntimeError("the engine plan missing transpiled SQL")
         # Arrow Flight is an advertised, engine-specific transport (REQ-825): route through the
         # bound engine, which fails closed if the engine lacks ARROW or the proxy is unconfigured.
-        table = state.federation_engine.execute_engine_arrow(plan.trino_sql, plan.exec_params)
+        table = state.federation_engine.execute_engine_arrow(plan.physical_sql, plan.exec_params)
         data_bytes = _arrow_table_to_copy_bytes(table, fmt)
         return data_bytes, table.num_rows
 

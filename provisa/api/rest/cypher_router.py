@@ -14,7 +14,7 @@ Five-stage pipeline:
   1. Cypher parser + translator → SQLGlot AST (physical refs)
   2. Graph type rewriter → CAST(ROW(...) AS JSON) for node/edge columns
   3. make_semantic_sql → semantic refs; apply_governance → RLS/masking/visibility
-  4. rewrite_semantic_to_trino_physical → catalog-qualified refs
+  4. rewrite_semantic_to_physical → catalog-qualified refs
   5. Federation executor → flat rows → assembler → typed response
 """
 
@@ -43,7 +43,6 @@ from provisa.api.rest.registered_call import (
 )
 from provisa.compiler.naming import apply_cql_property as _cql_prop
 
-import trino.exceptions as _trino_exc
 
 from provisa.executor import stats as _qs_mod
 
@@ -151,20 +150,31 @@ def _span_attrs_from_semantic_sql(
 
 
 def _federation_error(exc: Exception) -> str:
-    """Format execution errors without leaking the Trino backend name."""
+    """Format execution errors without leaking the engine backend name."""
     import re as _re_mod
 
-    def _scrub(s: str) -> str:
-        return _re_mod.sub(r"\bTrino\b", "the query engine", s, flags=_re_mod.IGNORECASE)
+    from provisa.api.app import state
 
-    if isinstance(exc, _trino_exc.TrinoQueryError):
+    _engine_name = state.federation_engine.name  # scrub bound engine name, not hardcoded
+
+    def _scrub(s: str) -> str:
+        return _re_mod.sub(
+            rf"\b{_re_mod.escape(_engine_name)}\b", "the query engine", s, flags=_re_mod.IGNORECASE
+        )
+
+    # Structured engine query error (duck-typed, so no engine-specific exception import): any
+    # driver error exposing type/name/message formats into the neutral FederationUserError shape.
+    _fields = ("error_type", "error_name", "message")
+    if all(hasattr(exc, a) for a in _fields):
+        v = {a: getattr(exc, a) for a in _fields}
         parts = [
-            f"type={exc.error_type}",
-            f"name={exc.error_name}",
-            f'message="{_scrub(exc.message)}"',
+            f"type={v['error_type']}",
+            f"name={v['error_name']}",
+            f'message="{_scrub(str(v["message"]))}"',
         ]
-        if exc.query_id:
-            parts.append(f"query_id={exc.query_id}")
+        query_id = getattr(exc, "query_id", None)
+        if query_id:
+            parts.append(f"query_id={query_id}")
         return "FederationUserError(" + ", ".join(parts) + ")"
     return _scrub(str(exc))
 
@@ -260,7 +270,7 @@ def _build_sql_from_ast(
 
 async def _dispatch_execution(
     exec_sql: str,
-    trino_sql: str,
+    physical_sql: str,
     resolved_params: list,
     state: AppState,
     span_attrs: dict[str, str],
@@ -278,7 +288,7 @@ async def _dispatch_execution(
     )
 
     _timeout = _request_timeout()
-    log.info("Cypher final SQL: %s", trino_sql)
+    log.info("Cypher final SQL: %s", physical_sql)
     try:
         if _has_gql_remote:
             rows = await _asyncio.wait_for(
@@ -292,33 +302,44 @@ async def _dispatch_execution(
             )
         else:
             rows = await _asyncio.wait_for(
-                _execute(trino_sql, resolved_params, state, span_attrs),
+                _execute(physical_sql, resolved_params, state, span_attrs),
                 timeout=_timeout,
             )
     except _asyncio.TimeoutError:
         return JSONResponse(
             status_code=504,
-            content={"error": f"Query timed out after {_timeout:.0f}s", "sql": trino_sql},
-        )
-    except _trino_exc.TrinoConnectionError as exc:
-        log.warning("Cypher execution: Trino connection failed: %s", exc)
-        return JSONResponse(
-            status_code=503,
-            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
-        )
-    except _trino_exc.TrinoQueryError as exc:
-        log.warning("Cypher execution: Trino query error: %s", exc)
-        return JSONResponse(
-            status_code=400,
-            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
+            content={"error": f"Query timed out after {_timeout:.0f}s", "sql": physical_sql},
         )
     except OSError as exc:
         log.warning("Cypher execution: network error: %s", exc)
         return JSONResponse(
             status_code=503,
-            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
+            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": physical_sql},
         )
     except Exception as exc:
+        # Engine driver errors are classified through the seam (no engine-specific exception
+        # import): connection loss → 503, query error → 400. Then HTTP-transport failures → 503,
+        # else an unexpected 500.
+        kind = state.federation_engine.classify_error(exc)
+        if kind == "connection":
+            log.warning("Cypher execution: engine connection failed: %s", exc)
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": f"Execution failed: {_federation_error(exc)}",
+                    "sql": physical_sql,
+                },
+            )
+        if kind == "query":
+            log.warning("Cypher execution: engine query error: %s", exc)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": f"Execution failed: {_federation_error(exc)}",
+                    "sql": physical_sql,
+                },
+            )
+
         import httpx as _httpx
 
         if isinstance(
@@ -334,12 +355,15 @@ async def _dispatch_execution(
             log.warning("Cypher execution: HTTP network error: %s", exc)
             return JSONResponse(
                 status_code=503,
-                content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
+                content={
+                    "error": f"Execution failed: {_federation_error(exc)}",
+                    "sql": physical_sql,
+                },
             )
-        log.exception("Cypher execution failed: %s", trino_sql)
+        log.exception("Cypher execution failed: %s", physical_sql)
         return JSONResponse(
             status_code=500,
-            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
+            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": physical_sql},
         )
     return rows
 
@@ -350,8 +374,8 @@ async def _dispatch_execution_direct(
     resolved_params: list,
     state: Any,
 ) -> list[dict] | Response:
-    """Execute SQL against a direct (non-Trino) source. Returns rows or error Response."""
-    from provisa.executor.trino import QueryResult
+    """Execute SQL against a direct (non-the engine) source. Returns rows or error Response."""
+    from provisa.executor.result import QueryResult
 
     try:
         if source_id == "provisa-admin" or not state.source_pools.has(source_id):
@@ -406,20 +430,22 @@ def _serialize_rows(
 def _build_stats_content(
     columns: list[str],
     serializable_rows: list,
-    trino_sql: str,
+    physical_sql: str,
     stats_enabled: bool,
     t0: float,
 ) -> dict:
     """Build response content dict, optionally including query stats."""
     content: dict = {"columns": columns, "rows": serializable_rows}
     if stats_enabled:
+        from provisa.api.app import state  # noqa: PLC0415
+
         _qs_mod.record(
             field="cypher",
-            source="trino",
+            source=state.federation_engine.name,
             strategy="federated",
             elapsed_ms=(_time.perf_counter() - t0) * 1000,
             rows=len(serializable_rows),
-            physical_sql=trino_sql,
+            physical_sql=physical_sql,
         )
         qs = _qs_mod.current()
         if qs is not None:
@@ -670,15 +696,15 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     from provisa.transpiler.router import Route as _Route
 
     exec_sql = plan.exec_sql or ""
-    trino_sql = plan.trino_sql or ""
-    if plan.route != _Route.TRINO and plan.source_id:
+    physical_sql = plan.physical_sql or ""
+    if plan.route != _Route.ENGINE and plan.source_id:
         # Single-source direct route — cypher SQL rewritten to physical (no catalog)
         _exec_result = await _dispatch_execution_direct(
             exec_sql, plan.source_id, resolved_params, state
         )
     else:
         _exec_result = await _dispatch_execution(
-            exec_sql, trino_sql, resolved_params, state, span_attrs
+            exec_sql, physical_sql, resolved_params, state, span_attrs
         )
     if isinstance(_exec_result, Response):
         return _exec_result
@@ -696,7 +722,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     await register_node_ids(serializable_rows, state.tenant_db)
     await register_rel_ids(serializable_rows, state.tenant_db)
 
-    content = _build_stats_content(columns, serializable_rows, trino_sql, stats_enabled, _t0)
+    content = _build_stats_content(columns, serializable_rows, physical_sql, stats_enabled, _t0)
     content["type"] = "cypher"
     return JSONResponse(content=content)
 
@@ -812,13 +838,13 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             sql_str, _, _ = result
             semantic_sql = make_semantic_sql(sql_str, ctx)
             plan = await _govern_and_route_compiled(semantic_sql, role_id, exec_params=None)
-            if plan.route != _Route.TRINO and plan.source_id:
+            if plan.route != _Route.ENGINE and plan.source_id:
                 rows = await _dispatch_execution_direct(
                     plan.exec_sql or "", plan.source_id, [], state
                 )
             else:
                 rows = await _dispatch_execution(
-                    plan.exec_sql or "", plan.trino_sql or "", [], state, {}
+                    plan.exec_sql or "", plan.physical_sql or "", [], state, {}
                 )
             if isinstance(rows, Response):
                 return 0
@@ -1143,17 +1169,17 @@ async def _execute_with_api(
     state: Any,
     span_attrs: dict[str, str] | None = None,
 ) -> list[dict]:
-    """Phase 1 (REST) + Phase 2 (Trino) execution for ALL API-backed tables in the query.
+    """Phase 1 (REST) + Phase 2 (the engine) execution for ALL API-backed tables in the query.
 
     For each API-backed table referenced in FROM/JOIN clauses:
       1. Derive URL params from nf_args columns that match the endpoint's native params.
-      2. Materialize into Trino cache (cache miss) or reuse (cache hit).
+      2. Materialize into the engine cache (cache miss) or reuse (cache hit).
       3. Rewrite all API table references in the SQL to their respective cache tables.
     This ensures json-typed JSONB columns are always exposed as VARCHAR in the cache.
     """
     import asyncio
     from provisa.api_source.router_integration import handle_api_query
-    from provisa.api_source.trino_cache import (
+    from provisa.api_source.engine_cache import (
         cache_table_name,
         cache_location,
         ensure_cache_schema,
@@ -1161,7 +1187,6 @@ async def _execute_with_api(
         rewrite_all_from_cache,
         schedule_drop,
     )
-    from provisa.transpiler.transpile import transpile_to_trino
     from provisa.compiler.nf_extractor import find_api_table_names
 
     table_names = find_api_table_names(exec_sql)
@@ -1184,18 +1209,18 @@ async def _execute_with_api(
 
             entry = hot_mgr.get_entry(table_name)
             hot_sql = build_values_cte_sql(exec_sql, table_name, entry)
-            trino_sql = transpile_to_trino(hot_sql)
+            physical_sql = state.federation_engine.transpile_physical(hot_sql)
             log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
-            trino_result = await state.federation_engine.execute_engine(
-                trino_sql, params, span_attrs=span_attrs
+            engine_result = await state.federation_engine.execute_engine(
+                physical_sql, params, span_attrs=span_attrs
             )
-            return [dict(zip(trino_result.column_names, row)) for row in trino_result.rows]
+            return [dict(zip(engine_result.column_names, row)) for row in engine_result.rows]
 
     from provisa.executor.redirect import RedirectConfig
 
     redirect_config = RedirectConfig.from_env()
 
-    # Materialize every API-backed table into its Trino cache slot.
+    # Materialize every API-backed table into its the engine cache slot.
     cache_rewrites: dict[str, tuple] = {}  # physical table name → (CacheLocation, cache_tbl)
     for table_name, endpoint in api_endpoints_in_sql:
         _response_cols = [c for c in endpoint.columns if c.param_type is None]
@@ -1280,10 +1305,10 @@ async def _execute_with_api(
             log.info("[API CACHE] hit — %s", cache_tbl)
 
     rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
-    trino_sql = transpile_to_trino(rewritten_sql)
+    physical_sql = state.federation_engine.transpile_physical(rewritten_sql)
 
     result = await state.federation_engine.execute_engine(
-        trino_sql, params, conn_kwargs=state.trino_conn_kwargs, span_attrs=span_attrs
+        physical_sql, params, fresh=True, span_attrs=span_attrs
     )
     return [dict(zip(result.column_names, row)) for row in result.rows]
 
@@ -1295,11 +1320,11 @@ async def _execute_with_gql_remote(
     state: Any,
     span_attrs: dict[str, str] | None = None,
 ) -> list[dict]:
-    """Materialize graphql_remote tables into Trino cache and execute the query."""
+    """Materialize graphql_remote tables into the engine cache and execute the query."""
     import asyncio
     from dataclasses import dataclass
     from provisa.graphql_remote.executor import execute_remote
-    from provisa.api_source.trino_cache import (
+    from provisa.api_source.engine_cache import (
         cache_table_name,
         cache_location,
         ensure_cache_schema,
@@ -1308,7 +1333,6 @@ async def _execute_with_gql_remote(
         rewrite_all_from_cache,
         schedule_drop,
     )
-    from provisa.transpiler.transpile import transpile_to_trino
     from provisa.compiler.nf_extractor import (
         find_api_table_names,
         drop_joined_table,
@@ -1406,17 +1430,17 @@ async def _execute_with_gql_remote(
             log.info("[GQL CACHE] hit — %s", cache_tbl)
 
     # If skipped gql_remote tables (missing required args) weren't dropped from the main FROM,
-    # they still reference an uncacheable catalog — return empty instead of failing in Trino.
+    # they still reference an uncacheable catalog — return empty instead of failing in the engine.
     if gql_remote_skipped and not cache_rewrites:
         still_present = gql_remote_skipped & set(find_api_table_names(exec_sql))
         if still_present:
             return []
 
     rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites) if cache_rewrites else exec_sql
-    trino_sql = transpile_to_trino(rewritten_sql)
+    physical_sql = state.federation_engine.transpile_physical(rewritten_sql)
 
     result = await state.federation_engine.execute_engine(
-        trino_sql, params, conn_kwargs=state.trino_conn_kwargs, span_attrs=span_attrs
+        physical_sql, params, fresh=True, span_attrs=span_attrs
     )
     return [dict(zip(result.column_names, row)) for row in result.rows]
 
@@ -1425,7 +1449,7 @@ async def _execute(
     sql: str, params: list, state: Any, span_attrs: dict[str, str] | None = None
 ) -> list[dict]:
     """Execute SQL against the federation engine and return rows as dicts."""
-    if getattr(state, "trino_conn", None) is None:
+    if not state.federation_engine.is_connected():
         raise RuntimeError("Federation engine not connected")
     result = await state.federation_engine.execute_engine(sql, params or [], span_attrs=span_attrs)
     return [dict(zip(result.column_names, row)) for row in result.rows]
@@ -1459,7 +1483,7 @@ async def _execute_call_body(
         exec_params=resolved_params or None,
     )
     exec_sql = plan.exec_sql or ""
-    trino_sql = plan.trino_sql or ""
+    physical_sql = plan.physical_sql or ""
 
     clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
     api_table_names = find_api_table_names(exec_sql)
@@ -1472,8 +1496,8 @@ async def _execute_call_body(
         rows = await _execute_with_gql_remote(
             exec_sql, resolved_params, nf_args, state, _cb_span_attrs
         )
-    elif trino_sql:
-        rows = await _execute(trino_sql, resolved_params, state, _cb_span_attrs)
+    elif physical_sql:
+        rows = await _execute(physical_sql, resolved_params, state, _cb_span_attrs)
     else:
         from provisa.pgwire._pipeline import _execute_plan as _exec_plan
 

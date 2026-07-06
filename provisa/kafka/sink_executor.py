@@ -10,7 +10,7 @@
 
 """Kafka sink executor (REQ-176 through REQ-181).
 
-When a dataset change event fires, finds approved queries with change_event
+When a dataset change event fires, finds tables with change_event
 sinks targeting the changed table, re-executes them, and publishes results
 to the configured Kafka topic.
 """

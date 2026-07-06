@@ -29,7 +29,7 @@ class AccumuloColumn:  # REQ-251, REQ-252
     """Column mapped from an Accumulo column family/qualifier."""
 
     name: str
-    data_type: str  # Trino type
+    data_type: str  # the engine type
     family: str  # Accumulo column family
     qualifier: str  # Accumulo column qualifier
 
@@ -56,7 +56,7 @@ class AccumuloSourceConfig:  # REQ-250, REQ-251
 
 
 def generate_catalog_properties(config: AccumuloSourceConfig) -> dict[str, str]:  # REQ-250
-    """Generate Trino Accumulo connector catalog properties."""
+    """Generate the engine Accumulo connector catalog properties."""
     props = {
         "connector.name": "accumulo",
         "accumulo.instance": config.instance,

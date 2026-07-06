@@ -103,13 +103,13 @@ async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
 
     Args:
         compiled: A compiled query object (sql, sources, params, columns).
-        state: AppState with source_types, source_dialects, source_pools, trino_conn.
+        state: AppState with source_types, source_dialects, source_pools, engine_conn.
 
     Returns:
         Execution result with .rows and .columns.
 
     Raises:
-        HTTPException: On execution failure or missing Trino connection.
+        HTTPException: On execution failure or missing the engine connection.
     """
     from provisa.transpiler.router import Route, decide_route
     from provisa.transpiler.transpile import transpile
@@ -134,10 +134,7 @@ async def route_and_execute(compiled, state) -> Any:  # REQ-027, REQ-028
             compiled.params,
         )
 
-    from provisa.transpiler.transpile import transpile_to_trino
-
-    # ENGINE terminal — execute_engine guards its own connection/availability, so no
-    # direct trino_conn check here. (SQL dialect is still Trino-shaped via transpile_to_trino;
-    # engine-owned transpilation is the remaining native-execution step.)
-    trino_sql = transpile_to_trino(compiled.sql)
-    return await engine.execute_engine(trino_sql, compiled.params)
+    # ENGINE terminal — execute_engine guards its own connection/availability, and the physical
+    # dialect comes from the bound engine (engine.transpile_physical), so no engine specifics here.
+    physical_sql = engine.transpile_physical(compiled.sql)
+    return await engine.execute_engine(physical_sql, compiled.params)

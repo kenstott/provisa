@@ -32,9 +32,9 @@ from graphql import (
     print_schema,
 )
 
-GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
-
 from provisa.compiler.introspect import ColumnMetadata
+
+GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
 
 # Requirements: REQ-259, REQ-393, REQ-394
 
@@ -74,13 +74,13 @@ def extract_pk_columns(  # REQ-393, REQ-394
     tables: list[dict],
     column_types: dict[int, list[ColumnMetadata]],
 ) -> dict[int, list[str]]:
-    """Extract primary key columns for each table from Trino metadata.
+    """Extract primary key columns for each table from the engine metadata.
 
     Returns table_id -> list of PK column names.
     Heuristic: columns whose column_name is 'id' or ends with '_id' at position 0,
     or all columns marked as non-nullable in single-column tables.
 
-    In practice, Trino INFORMATION_SCHEMA does not expose PK constraints directly.
+    In practice, the engine INFORMATION_SCHEMA does not expose PK constraints directly.
     This uses the convention that tables declare PK columns via a 'primary_key'
     field in the registration config. Falls back to first non-nullable column.
     """
@@ -182,10 +182,13 @@ def build_federation_schema(  # REQ-259
     fed_sdl = generate_federation_sdl(base_schema, key_directives)
 
     # _service field
-    service_type = cast(GraphQLObjectType, GraphQLObjectType(
-        "_Service",
-        {"sdl": GraphQLField(GraphQLNonNull(GraphQLString))},
-    ))
+    service_type = cast(
+        GraphQLObjectType,
+        GraphQLObjectType(
+            "_Service",
+            {"sdl": GraphQLField(GraphQLNonNull(GraphQLString))},
+        ),
+    )
 
     # Build new query fields = existing + federation fields
     existing_fields = query_type.fields

@@ -592,7 +592,7 @@ export function useCompileQuery() {
       const results = rows.map((r) => ({
         ...r,
         semantic_sql: r.semanticSql ?? r.semantic_sql,
-        trino_sql: r.trinoSql ?? r.trino_sql,
+        engine_sql: r.engineSql ?? r.engine_sql,
         direct_sql: r.directSql ?? r.direct_sql,
         route_reason: r.routeReason ?? r.route_reason,
         root_field: r.rootField ?? r.root_field,

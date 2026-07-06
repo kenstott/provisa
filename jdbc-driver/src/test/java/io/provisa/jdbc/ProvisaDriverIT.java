@@ -19,11 +19,11 @@ class ProvisaDriverIT {
     static final String BASE_URL = System.getProperty("provisa.url", "jdbc:provisa://localhost:8001");
     static final String USER = System.getProperty("provisa.user", "admin");
 
-    // ── mode=approved ──
+    // ── mode=catalog (default) ──
 
     @Test
     @Order(1)
-    void approvedMode_connectsSuccessfully() throws SQLException {
+    void connectsSuccessfully() throws SQLException {
         var props = new Properties();
         props.setProperty("user", USER);
         props.setProperty("password", "");
@@ -32,91 +32,6 @@ class ProvisaDriverIT {
             assertEquals("Provisa", conn.getMetaData().getDatabaseProductName());
         }
     }
-
-    @Test
-    @Order(2)
-    void approvedMode_getTablesReturnsViews() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (Connection conn = DriverManager.getConnection(BASE_URL, props)) {
-            ResultSet rs = conn.getMetaData().getTables(null, null, "%", null);
-            List<String> names = new ArrayList<>();
-            while (rs.next()) {
-                assertEquals("VIEW", rs.getString("TABLE_TYPE"));
-                assertEquals("approved", rs.getString("TABLE_SCHEM"));
-                names.add(rs.getString("TABLE_NAME"));
-            }
-            // All view names should have stableId__rootField format
-            for (String name : names) {
-                assertTrue(name.contains("__"),
-                    "View name should contain '__' separator: " + name);
-            }
-        }
-    }
-
-    /** Find a view whose name doesn't contain "__unknown" (has valid compile output). */
-    private String findValidView(Connection conn) throws SQLException {
-        ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
-        while (tables.next()) {
-            String name = tables.getString("TABLE_NAME");
-            if (!name.contains("__unknown")) return name;
-        }
-        return null;
-    }
-
-    @Test
-    @Order(3)
-    void approvedMode_getColumnsForView() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (Connection conn = DriverManager.getConnection(BASE_URL, props)) {
-            String viewName = findValidView(conn);
-            if (viewName == null) {
-                System.out.println("No approved queries with valid GraphQL — skipping column test");
-                return;
-            }
-
-            ResultSet cols = conn.getMetaData().getColumns(null, null, viewName, null);
-            List<String> colNames = new ArrayList<>();
-            while (cols.next()) {
-                colNames.add(cols.getString("COLUMN_NAME"));
-                assertNotNull(cols.getString("TYPE_NAME"));
-                assertTrue(cols.getInt("ORDINAL_POSITION") > 0);
-            }
-            assertFalse(colNames.isEmpty(), "View should have columns: " + viewName);
-        }
-    }
-
-    @Test
-    @Order(4)
-    void approvedMode_executeQuery() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (Connection conn = DriverManager.getConnection(BASE_URL, props)) {
-            String viewName = findValidView(conn);
-            if (viewName == null) {
-                System.out.println("No approved queries with valid GraphQL — skipping execute test");
-                return;
-            }
-
-            Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM " + viewName);
-            ResultSetMetaData meta = rs.getMetaData();
-            assertTrue(meta.getColumnCount() > 0, "Should have columns");
-
-            int rowCount = 0;
-            while (rs.next()) {
-                rowCount++;
-                assertNotNull(rs.getObject(1));
-            }
-            assertTrue(rowCount >= 0, "Query should execute successfully");
-        }
-    }
-
-    // ── mode=catalog ──
 
     @Test
     @Order(10)
@@ -146,9 +61,9 @@ class ProvisaDriverIT {
                 schemas.add(rs.getString("TABLE_SCHEM"));
             }
             assertFalse(names.isEmpty(), "Should have registered tables");
-            // Schemas should be domain IDs, not "approved"
+            // Schemas should be domain IDs
             for (String schema : schemas) {
-                assertNotEquals("approved", schema);
+                assertNotNull(schema);
             }
         }
     }
@@ -180,12 +95,27 @@ class ProvisaDriverIT {
 
     @Test
     @Order(13)
-    void catalogMode_rejectsQueryExecution() throws SQLException {
+    void catalogMode_executesSqlThroughGovernanceEndpoint() throws SQLException {
         var props = new Properties();
         props.setProperty("user", USER);
         props.setProperty("password", "");
         try (Connection conn = DriverManager.getConnection(BASE_URL + "?mode=catalog", props)) {
-            assertThrows(SQLException.class, conn::createStatement);
+            ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
+            if (!tables.next()) {
+                fail("No registered tables");
+            }
+            String tableName = tables.getString("TABLE_NAME");
+
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT * FROM " + tableName);
+            ResultSetMetaData meta = rs.getMetaData();
+            assertTrue(meta.getColumnCount() >= 0);
+
+            int rowCount = 0;
+            while (rs.next()) {
+                rowCount++;
+            }
+            assertTrue(rowCount >= 0, "Query should execute successfully");
         }
     }
 

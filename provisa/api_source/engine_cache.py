@@ -8,24 +8,26 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the COPYRIGHT holder.
 
-"""Materialize API response rows into a cache table for Phase 2 Trino execution.
+"""Materialize API response rows into a cache table for Phase 2 the engine execution.
 
-Default backend: source's own Trino catalog (PostgreSQL connector) so same-source
+Default backend: source's own the engine catalog (PostgreSQL connector) so same-source
 JOINs are pushed down to a single database.
 
-Any registered Trino catalog can be the cache target — specify via cache_catalog
+Any registered the engine catalog can be the cache target — specify via cache_catalog
 on the Source config.  The only special case is the Iceberg catalog ("results"):
 table CREATE adds PARQUET format+S3 location, and DROP triggers S3 cleanup.
 
 Execution model for OpenAPI/REST sources:
   Phase 1 — REST call: native filter args (path/query params) build the URL.
              On cache miss, rows are materialized into the cache table.
-  Phase 2 — Trino SQL: compiled WHERE/ORDER BY/LIMIT applied to cached rows.
-             Same-source JOINs are pushed down by Trino when cache catalog
+  Phase 2 — the engine SQL: compiled WHERE/ORDER BY/LIMIT applied to cached rows.
+             Same-source JOINs are pushed down by the engine when cache catalog
              matches the source catalog (both PostgreSQL).
 """
 
 # Requirements: REQ-280, REQ-309, REQ-318, REQ-327
+
+# complexity-gate: allow-ble=6 reason="API-response cache materialization is best-effort augmentation: any cache/store failure falls back to live execution, never failing the query"
 
 from __future__ import annotations
 
@@ -47,15 +49,15 @@ _DEFAULT_CACHE_SCHEMA = "api_cache"
 
 # In-process TTL cache for table_exists results.
 # Key: (catalog, schema, table_name) → expiry monotonic time.
-# Avoids a live Trino probe on every request when the table is known-live.
+# Avoids a live the engine probe on every request when the table is known-live.
 _TABLE_EXISTS_CACHE: dict[tuple[str, str, str], float] = {}
-_TABLE_EXISTS_SAFETY_MARGIN = 30  # expire this many seconds before Trino TTL
+_TABLE_EXISTS_SAFETY_MARGIN = 30  # expire this many seconds before the engine TTL
 
 # In-process cache for schema existence — evicted only on process restart.
 # Schema DROP is not expected in normal operation; safe to cache indefinitely.
 _SCHEMA_EXISTS_CACHE: set[tuple[str, str]] = set()
 
-_API_TYPE_TO_TRINO: dict[str, str] = {
+_API_TYPE_TO_IR: dict[str, str] = {
     "string": "VARCHAR",
     "integer": "BIGINT",
     "number": "DOUBLE",
@@ -78,7 +80,7 @@ def cache_location(  # REQ-318, REQ-309, REQ-327
 ) -> CacheLocation:
     """Build cache location.
 
-    cache_catalog=None → source's own Trino catalog (source_id with hyphens→underscores).
+    cache_catalog=None → source's own the engine catalog (source_id with hyphens→underscores).
     Any other catalog name is used as-is; "results" triggers Iceberg S3 behaviour.
     """
     catalog = cache_catalog if cache_catalog is not None else source_id.replace("-", "_")
@@ -120,7 +122,7 @@ def ensure_cache_schema(conn, loc: CacheLocation) -> None:  # REQ-318, REQ-309, 
 
 
 def table_known_live(loc: CacheLocation, table_name: str) -> bool:  # REQ-318, REQ-309, REQ-327
-    """Return True if the in-process cache confirms this table is live — no Trino probe."""
+    """Return True if the in-process cache confirms this table is live — no the engine probe."""
     key = (loc.catalog, loc.schema, table_name)
     expiry = _TABLE_EXISTS_CACHE.get(key)
     return expiry is not None and time.monotonic() < expiry
@@ -139,7 +141,7 @@ def table_exists(  # REQ-318, REQ-309, REQ-327
         cur = conn.cursor()
         cur.execute(sql)
         cur.fetchall()
-        # Cache the positive result; expire before Trino drops the table
+        # Cache the positive result; expire before the engine drops the table
         if ttl is not None and ttl > _TABLE_EXISTS_SAFETY_MARGIN:
             _TABLE_EXISTS_CACHE[key] = time.monotonic() + ttl - _TABLE_EXISTS_SAFETY_MARGIN
         elif ttl is not None:
@@ -165,11 +167,11 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
 ) -> None:
     """Create cache table and INSERT API response rows."""
 
-    def _trino_type(col) -> str:
+    def _column_type(col) -> str:
         raw = col.type.value if hasattr(col.type, "value") else str(col.type)
-        return _API_TYPE_TO_TRINO.get(raw, "VARCHAR")
+        return _API_TYPE_TO_IR.get(raw, "VARCHAR")
 
-    col_defs = ", ".join(f'"{c.name}" {_trino_type(c)}' for c in columns)
+    col_defs = ", ".join(f'"{c.name}" {_column_type(c)}' for c in columns)
 
     if loc.backend == "iceberg":
         s3_location = f"s3a://{_ICEBERG_BUCKET}/{loc.schema}/{table_name}/"
@@ -230,7 +232,7 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
         else:
             raise
 
-    # REQ-280: collect statistics on the freshly-materialized cache table so the Trino cost
+    # REQ-280: collect statistics on the freshly-materialized cache table so the engine cost
     # optimizer can plan joins against it. ANALYZE support varies by connector, so a failure is
     # logged (not raised) — matching analyze_source_tables (REQ-275).
     try:
@@ -341,7 +343,7 @@ async def schedule_drop(  # REQ-318, REQ-309, REQ-327
     except Exception as exc:
         log.warning("[API CACHE] drop failed for %s: %s", table_name, exc)
     if loc.backend == "iceberg" and redirect_config is not None:
-        from provisa.executor.trino_write import schedule_s3_cleanup
+        from provisa.executor.redirect import schedule_s3_cleanup
 
         s3_prefix = f"s3a://{_ICEBERG_BUCKET}/{loc.schema}/{table_name}/"
         await schedule_s3_cleanup(s3_prefix, redirect_config, delay_seconds=0)

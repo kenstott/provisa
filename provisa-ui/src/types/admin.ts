@@ -162,16 +162,6 @@ export interface RLSRule {
   filterExpr: string;
 }
 
-export interface GovernedQuery {
-  id: number;
-  name: string;
-  queryText: string;
-  status: "submitted" | "approved" | "deprecated" | "flagged";
-  submittedBy: string;
-  approvedBy: string | null;
-  rejectionReason: string | null;
-}
-
 export interface MutationResult {
   success: boolean;
   message: string;

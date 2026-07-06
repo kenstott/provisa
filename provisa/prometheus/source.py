@@ -45,7 +45,7 @@ class PrometheusSourceConfig:  # REQ-250, REQ-251
 
 
 def generate_catalog_properties(config: PrometheusSourceConfig) -> dict[str, str]:  # REQ-250
-    """Generate Trino Prometheus connector catalog properties."""
+    """Generate the engine Prometheus connector catalog properties."""
     return {
         "connector.name": "prometheus",
         "prometheus.uri": config.url,

@@ -13,7 +13,7 @@ import pytest
 from pytest_bdd import given, scenario, scenarios, then, when
 
 from provisa.core.models import Source, SourceType
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 from provisa.federation.connector import Mechanism
 from provisa.federation.engine import (
     UnreachableSource,

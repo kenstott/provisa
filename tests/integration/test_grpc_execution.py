@@ -142,7 +142,7 @@ class TestGrpcServerStarts:
         state.masking_rules = {}
         state.mv_registry = MagicMock()
         state.mv_registry.get_fresh.return_value = []
-        state.trino_conn = None
+        state.engine_conn = None
         # Mandatory terminal-execution binding (REQ-825) on the MagicMock scaffold state.
         from provisa.federation.engine import build_trino_engine
         from provisa.federation.runtime import EngineRuntime
@@ -176,7 +176,7 @@ class TestGrpcServerStarts:
         state.masking_rules = {}
         state.mv_registry = MagicMock()
         state.mv_registry.get_fresh.return_value = []
-        state.trino_conn = None
+        state.engine_conn = None
         # Mandatory terminal-execution binding (REQ-825) on the MagicMock scaffold state.
         from provisa.federation.engine import build_trino_engine
         from provisa.federation.runtime import EngineRuntime
@@ -310,7 +310,7 @@ class TestGrpcQueryExecution:
         state.masking_rules = {}
         state.mv_registry = MagicMock()
         state.mv_registry.get_fresh.return_value = []
-        state.trino_conn = None
+        state.engine_conn = None
         # Mandatory terminal-execution binding (REQ-825) on the MagicMock scaffold state.
         from provisa.federation.engine import build_trino_engine
         from provisa.federation.runtime import EngineRuntime

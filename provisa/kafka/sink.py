@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 class KafkaSinkConfig:  # REQ-176, REQ-177, REQ-178, REQ-180
     """Configuration for publishing query results to a Kafka topic."""
 
-    query_stable_id: str  # approved query stable_id
+    query_stable_id: str  # sink query stable_id
     topic: str
     key_column: str | None = None  # column to use as message key
     value_format: str = "json"

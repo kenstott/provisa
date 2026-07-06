@@ -28,7 +28,7 @@ re-projects from the registry — never a fallback or error-and-continue.
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from provisa.federation.connector import CatalogEntry, Connector
 
@@ -85,8 +85,18 @@ class FederationEngine:  # REQ-840
         native_store: str | None = None,
         driver_class: DriverClass | None = None,
         mpp: bool = False,
+        backend_factory: Any = None,
+        capabilities: Any = None,
     ) -> None:
         self.name = name
+        # Transports this engine advertises (REQ-825), e.g. Arrow Flight. The engine declares its own
+        # capabilities here — the generic seam reads them and never hardcodes a per-engine table.
+        self._capabilities = capabilities
+        # The engine's concrete terminal implementation (execute/dialect/lifecycle/introspection).
+        # A Trino engine attaches TrinoBackend; native engines use the default EngineBackend. This
+        # is what keeps every Trino reference inside the Trino engine instance and out of the seam.
+        self._backend_factory = backend_factory
+        self._backend: Any = None
         # Prebuilt candidate connectors in PRECEDENCE order (first per source_type wins). Optimistic
         # until discover() probes them; connectors is the active set queried by reachable().
         self._candidates: list[Connector] = list(connectors)
@@ -105,6 +115,31 @@ class FederationEngine:  # REQ-840
         # yet are single-node. Informational today; a planner input later (e.g. push a large
         # federated join to an MPP engine, or gate the single-node→MPP tier graduation).
         self.mpp = mpp
+
+    # -- backend (REQ-825/840): the engine's concrete terminal implementation ---
+
+    @property
+    def backend(self) -> Any:
+        """The engine's backend — built once from its factory (Trino → TrinoBackend) or the default
+        native EngineBackend. Every engine-specific terminal (execute/dialect/lifecycle/introspect)
+        lives here, so the generic runtime seam never branches on the engine name."""
+        if self._backend is None:
+            from provisa.federation.backend import EngineBackend
+
+            self._backend = (self._backend_factory or EngineBackend)(self)
+        return self._backend
+
+    @property
+    def dialect(self) -> str:
+        """The physical SQL dialect the engine speaks (transpile target)."""
+        return self.backend.dialect
+
+    @property
+    def capabilities(self) -> Any:
+        """The transports this engine advertises (REQ-825). Defaults to row-oriented only."""
+        from provisa.federation.runtime import EngineCapability
+
+        return self._capabilities or frozenset({EngineCapability.ROWS})
 
     # -- reachability (REQ-840) ------------------------------------------------
 
@@ -206,21 +241,28 @@ _BROAD_THRESHOLD = 3  # a connector collection reaching >= this many source type
 
 
 def build_trino_engine() -> FederationEngine:  # REQ-840 broad federator
+    from provisa.federation.backend import TrinoBackend
     from provisa.federation.connector import (
         TrinoMysqlConnector,
         TrinoPostgresConnector,
         TrinoSqlServerConnector,
     )
+    from provisa.federation.runtime import EngineCapability
 
     return FederationEngine(
         "trino",
         [TrinoPostgresConnector(), TrinoMysqlConnector(), TrinoSqlServerConnector()],
         driver_class=DriverClass.BROAD,  # many external source types
         mpp=True,  # distributes across a Trino worker cluster
+        backend_factory=TrinoBackend,  # the only backend that references Trino
+        capabilities=frozenset(
+            {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
+        ),
     )
 
 
 def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
+    from provisa.federation.runtime import EngineCapability
     from provisa.federation.connector import (
         DuckDBAirportConnector,
         DuckDBBigQueryConnector,
@@ -256,6 +298,7 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
         native_store="duckdb",
         driver_class=DriverClass.PARTIAL,
         mpp=False,  # single-node embedded engine (REQ-894)
+        capabilities=frozenset({EngineCapability.ROWS, EngineCapability.ARROW}),
     )
 
 
@@ -299,6 +342,42 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
     )
 
 
+def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial federator
+    from provisa.federation.runtime import EngineCapability
+
+    """A ClickHouse engine that ATTACHes external sources via native integration engines.
+
+    Relational sources mount as a DATABASE engine (PostgreSQL/MySQL) that auto-exposes every remote
+    table; file sources (csv/parquet) and MongoDB mount as a per-table TABLE engine. Everything is
+    referenced in place (Mechanism.ATTACH) — nothing lands. ClickHouse is its own native store, so a
+    source of type ``clickhouse`` is already native. Single-node reach model like DuckDB/Postgres.
+    """
+    from provisa.federation.connector import (
+        ClickHouseCsvConnector,
+        ClickHouseMongoConnector,
+        ClickHouseMysqlConnector,
+        ClickHouseParquetConnector,
+        ClickHousePostgresConnector,
+    )
+
+    return FederationEngine(
+        "clickhouse",
+        [
+            ClickHousePostgresConnector(),  # postgresql — CREATE DATABASE ENGINE=PostgreSQL
+            ClickHouseMysqlConnector(),  # mysql — CREATE DATABASE ENGINE=MySQL
+            ClickHouseMongoConnector(),  # mongodb — MongoDB table engine (columns from registry)
+            ClickHouseCsvConnector(),  # csv — S3/URL/File engine by path scheme
+            ClickHouseParquetConnector(),  # parquet — S3/URL/File engine by path scheme
+        ],
+        native_store="clickhouse",  # its own tables are native; attached sources reference in place
+        driver_class=DriverClass.PARTIAL,
+        mpp=True,  # ClickHouse distributes across shards/replicas
+        capabilities=frozenset(
+            {EngineCapability.ROWS, EngineCapability.ARROW}
+        ),  # query_arrow (REQ-909)
+    )
+
+
 # Demo source types LANDed into the sqlalchemy self-only engine (no attach/FDW).
 _LAND_TYPES = ("postgresql", "csv", "sqlite", "parquet", "openapi", "graphql_remote")
 
@@ -311,11 +390,9 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
     SQL, so ANY SQLAlchemy-reachable database (Postgres, MySQL, Oracle, SQL Server,
     ClickHouse, ...) is a usable engine with no per-source connector. The URL comes
     from the arg or ``$PROVISA_ENGINE_URL``; its scheme names the native store."""
-    import os
-
     from provisa.federation.connector import WarehouseNativeConnector
 
-    dsn = url or os.environ.get("PROVISA_ENGINE_URL")
+    dsn = url or configured_engine_url()
     if not dsn:
         raise ValueError("sqlalchemy engine requires a URL ($PROVISA_ENGINE_URL)")
     backend = dsn.split("://", 1)[0].split("+", 1)[0]  # postgresql+psycopg2 -> postgresql
@@ -328,24 +405,146 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
     )
 
 
-# The four federation engines. embedded PostgreSQL is NOT a separate engine — it is the
+# The five federation engines. embedded PostgreSQL is NOT a separate engine — it is the
 # ``pg`` engine on a bundled instance (its FDW/pg_duckdb connectors are probed by discover).
 # Snowflake is a SOURCE reached by an engine's connector, not an engine.
 _ENGINE_BUILDERS = {
     "trino": build_trino_engine,  # broad federator (needs a Trino cluster)
     "pg": build_pg_engine,  # PostgreSQL (BYO or embedded) — FDW/pg_duckdb federation
     "duckdb": build_duckdb_engine,  # native in-process partial federator
+    "clickhouse": build_clickhouse_engine,  # OLAP federator via native integration engines (REQ-909)
     "sqlalchemy": build_sqlalchemy_engine,  # any SQLAlchemy URL, zero connectors (self-only)
 }
 
 
-def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/904
-    """Select the federation engine by name — the one place the runtime picks an
-    engine. Default is ``$PROVISA_ENGINE`` (else trino); the four engines are
-    trino / pg / duckdb / sqlalchemy."""
+# Selectable-engine registry (REQ-916): metadata + config schema the admin UI renders to pick and
+# configure the federation engine. ``config_fields[].config_key`` names the ProvisaConfig field the
+# value persists to; the selected engine's own implementation reads it. Applied on service restart.
+ENGINE_REGISTRY: list[dict] = [
+    {
+        "key": "trino",
+        "label": "Trino",
+        "description": "Broad MPP federator. Reaches many external source types via a Trino cluster.",
+        "config_fields": [
+            {
+                "config_key": "federation_engine_host",
+                "label": "Coordinator host",
+                "type": "string",
+                "required": False,
+                "placeholder": "localhost",
+            },
+            {
+                "config_key": "federation_engine_port",
+                "label": "Coordinator port",
+                "type": "number",
+                "required": False,
+                "placeholder": "8080",
+            },
+        ],
+    },
+    {
+        "key": "duckdb",
+        "label": "DuckDB",
+        "description": "In-process partial federator. Reaches postgres/sqlite/files and cloud sources via DuckDB extensions. No external service.",
+        "config_fields": [],
+    },
+    {
+        "key": "pg",
+        "label": "PostgreSQL",
+        "description": "PostgreSQL (embedded or bring-your-own) with FDW / pg_duckdb federation. Leave the URL empty to use the embedded instance.",
+        "config_fields": [
+            {
+                "config_key": "federation_engine_url",
+                "label": "PostgreSQL URL",
+                "type": "string",
+                "required": False,
+                "placeholder": "postgresql://user:pass@host:5432/db",
+            },
+        ],
+    },
+    {
+        "key": "clickhouse",
+        "label": "ClickHouse",
+        "description": "OLAP federator via native integration engines. Server (clickhouse://) or embedded chdb (chdb://).",
+        "config_fields": [
+            {
+                "config_key": "federation_engine_url",
+                "label": "ClickHouse URL",
+                "type": "string",
+                "required": True,
+                "placeholder": "clickhouse://user:pass@host:9000/db",
+            },
+        ],
+    },
+    {
+        "key": "sqlalchemy",
+        "label": "SQLAlchemy (any RDB)",
+        "description": "Any SQLAlchemy-reachable database as a self-only warehouse. Every source lands into the target store.",
+        "config_fields": [
+            {
+                "config_key": "federation_engine_url",
+                "label": "SQLAlchemy URL",
+                "type": "string",
+                "required": True,
+                "placeholder": "postgresql+psycopg2://user:pass@host:5432/db",
+            },
+        ],
+    },
+]
+
+
+def engine_registry() -> list[dict]:
+    """The selectable-engine registry (metadata + config schema) for the admin UI."""
+    return ENGINE_REGISTRY
+
+
+def _engine_config() -> dict:
+    """The persisted platform config, for engine selection/URL fallback. Empty if unreadable
+    (e.g. very early boot before a config file exists)."""
+    try:
+        from provisa.api.admin._config_io import read_config
+    except ImportError:  # api layer not importable at very early boot (module-load ordering)
+        return {}
+    return read_config() or {}
+
+
+def configured_engine_url() -> str | None:
+    """The engine DSN for sqlalchemy/clickhouse/pg: ``$PROVISA_ENGINE_URL`` then the persisted
+    ``federation_engine_url`` config field."""
     import os
 
-    key = (name or os.environ.get("PROVISA_ENGINE") or "trino").lower().replace("_", "-")
+    return os.environ.get("PROVISA_ENGINE_URL") or _engine_config().get("federation_engine_url")
+
+
+def configured_materialize_url() -> str | None:
+    """The PostgreSQL DSN where non-attachable sources land for native engines:
+    ``$PROVISA_MATERIALIZE_URL`` then the persisted ``materialize_store_url`` config field."""
+    import os
+
+    return os.environ.get("PROVISA_MATERIALIZE_URL") or _engine_config().get(
+        "materialize_store_url"
+    )
+
+
+def configured_engine_endpoint() -> tuple[str, int]:
+    """The engine coordinator host/port (Trino): ``$TRINO_HOST``/``$TRINO_PORT`` env then the
+    persisted ``federation_engine_host``/``federation_engine_port`` config fields."""
+    import os
+
+    cfg = _engine_config()
+    host = os.environ.get("TRINO_HOST") or cfg.get("federation_engine_host") or "localhost"
+    port = int(os.environ.get("TRINO_PORT") or cfg.get("federation_engine_port") or 8080)
+    return host, port
+
+
+def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/904/916
+    """Select the federation engine by name — the one place the runtime picks an engine. Precedence:
+    explicit arg > ``$PROVISA_ENGINE`` env > persisted ``federation_engine`` config > ``trino``. The
+    engines are trino / pg / duckdb / clickhouse / sqlalchemy."""
+    import os
+
+    selected = name or os.environ.get("PROVISA_ENGINE") or _engine_config().get("federation_engine")
+    key = (selected or "trino").lower().replace("_", "-")
     if key not in _ENGINE_BUILDERS:
-        raise ValueError(f"unknown PROVISA_ENGINE {key!r}; valid: {sorted(_ENGINE_BUILDERS)}")
+        raise ValueError(f"unknown federation engine {key!r}; valid: {sorted(_ENGINE_BUILDERS)}")
     return _ENGINE_BUILDERS[key]()

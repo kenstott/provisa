@@ -16,7 +16,7 @@ import pytest
 
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.pool import SourcePool
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 
 class _FakeDriver(DirectDriver):

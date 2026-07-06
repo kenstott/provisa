@@ -12,14 +12,12 @@
 
 from __future__ import annotations
 
-import pytest
 
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import (
     ColumnRef,
     CompilationContext,
     CompiledQuery,
-    JoinMeta,
     TableMeta,
 )
 from provisa.compiler.rls import inject_rls
@@ -78,7 +76,8 @@ def _orders_compiled() -> CompiledQuery:
         columns=[
             ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
             ColumnRef(alias=None, column="amount", field_name="amount", nested_in=None),
-            ColumnRef(alias=None, column="region", field_name="region", nested_in=None)],
+            ColumnRef(alias=None, column="region", field_name="region", nested_in=None),
+        ],
         sources={"test-pg"},
     )
 
@@ -174,7 +173,7 @@ class TestInheritedRolesRLS:
 
         # Parent has a region rule; child inherits it (caller applies parent's rule)
         parent_rule_table_id = ORDERS_TABLE_ID
-        parent_filter = "region = 'us-east'"
+        parent_filter = "\"region\" = 'us-east'"
 
         # Simulate: child inherits parent RLS rule
         rls = RLSContext(rules={parent_rule_table_id: parent_filter})
@@ -199,8 +198,8 @@ class TestInheritedRolesRLS:
         rls = RLSContext(rules={ORDERS_TABLE_ID: combined_filter})
         result = inject_rls(compiled, ctx, rls)
 
-        assert "region = 'us-east'" in result.sql
-        assert "amount > 100" in result.sql
+        assert "\"region\" = 'us-east'" in result.sql
+        assert '"amount" > 100' in result.sql
         assert "AND" in result.sql
 
     def test_grandchild_inherits_two_levels(self):
@@ -228,27 +227,24 @@ class TestInheritedRolesRLS:
 
         ctx = _orders_ctx()
         # Use a table alias so ORDER BY is unambiguous (avoids matching "orders")
-        base_sql = (
-            'SELECT "t0"."id", "t0"."amount" '
-            'FROM "public"."orders" "t0" '
-            'ORDER BY "t0"."id"'
-        )
+        base_sql = 'SELECT "t0"."id", "t0"."amount" FROM "public"."orders" "t0" ORDER BY "t0"."id"'
         compiled = CompiledQuery(
             sql=base_sql,
             params=[],
             root_field="orders",
             columns=[
                 ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
-                ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None)],
+                ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None),
+            ],
             sources={"test-pg"},
         )
 
-        rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'us-east'"})
+        rls = RLSContext(rules={ORDERS_TABLE_ID: "\"region\" = 'us-east'"})
         result = inject_rls(compiled, ctx, rls)
 
         # Use word-boundary regex to find keyword positions
-        where_m = _re.search(r'\bWHERE\b', result.sql, _re.IGNORECASE)
-        order_m = _re.search(r'\bORDER\s+BY\b', result.sql, _re.IGNORECASE)
+        where_m = _re.search(r"\bWHERE\b", result.sql, _re.IGNORECASE)
+        order_m = _re.search(r"\bORDER\s+BY\b", result.sql, _re.IGNORECASE)
 
         assert where_m is not None, "WHERE clause was not injected"
         assert order_m is not None, "ORDER BY was unexpectedly removed"
@@ -276,7 +272,8 @@ class TestInheritedRolesMasking:
             root_field="orders",
             columns=[
                 ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
-                ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None)],
+                ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None),
+            ],
             sources={"test-pg"},
         )
 
@@ -301,7 +298,8 @@ class TestInheritedRolesMasking:
             root_field="orders",
             columns=[
                 ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
-                ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None)],
+                ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None),
+            ],
             sources={"test-pg"},
         )
 
@@ -323,7 +321,8 @@ class TestInheritedRolesMasking:
             root_field="orders",
             columns=[
                 ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
-                ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None)],
+                ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None),
+            ],
             sources={"test-pg"},
         )
 

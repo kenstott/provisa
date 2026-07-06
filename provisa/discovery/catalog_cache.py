@@ -11,7 +11,7 @@
 """Source catalog cache: pre-index table+column metadata for fast NL search (REQ-464).
 
 The cache is populated in the background after source registration.
-The search endpoint reads from cache; falls back to live Trino if cache is cold.
+The search endpoint reads from cache; falls back to live the engine if cache is cold.
 """
 
 # Requirements: REQ-464
@@ -116,7 +116,7 @@ async def index_source(
         schemas = None
 
     if schemas is None:
-        # Trino fallback for schema list
+        # the engine fallback for schema list
         from provisa.api.admin.schema import source_to_catalog
 
         catalog = source_to_catalog(source_id)
@@ -127,7 +127,7 @@ async def index_source(
             )
             schemas = [row[0] for row in res.rows]
         except Exception as exc:
-            log.warning("catalog_cache: Trino schema list failed for %r: %s", source_id, exc)
+            log.warning("catalog_cache: the engine schema list failed for %r: %s", source_id, exc)
             return
 
     for schema in schemas:
@@ -170,7 +170,7 @@ async def index_source(
                 for t in tables
             ]
 
-        # Enrich with column names from Trino
+        # Enrich with column names from the engine
         from provisa.api.admin.schema import source_to_catalog
 
         catalog = source_to_catalog(source_id)

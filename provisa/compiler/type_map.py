@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Trino type → GraphQL scalar mapping (REQ-010).
+"""the engine type → GraphQL scalar mapping (REQ-010).
 
 Nullability preserved from INFORMATION_SCHEMA. Custom scalars for DateTime, JSON.
 """
@@ -126,13 +126,13 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
 )
 
 
-def trino_to_graphql(trino_type: str) -> GraphQLScalarType | GraphQLList:  # REQ-010, REQ-306
-    """Map a Trino column type to a GraphQL scalar.
+def column_type_to_graphql(column_type: str) -> GraphQLScalarType | GraphQLList:  # REQ-010, REQ-306
+    """Map the engine column type to a GraphQL scalar.
 
     Handles parameterized types like varchar(255), decimal(10,2), array(varchar).
     Raises ValueError for unmapped types.
     """
-    normalized = trino_type.lower().strip()
+    normalized = column_type.lower().strip()
 
     # Check exact match first
     if normalized in _TYPE_MAP:
@@ -146,10 +146,10 @@ def trino_to_graphql(trino_type: str) -> GraphQLScalarType | GraphQLList:  # REQ
     # Handle array types: array(varchar) → List of mapped type
     if normalized.startswith("array(") and normalized.endswith(")"):
         inner = normalized[6:-1]
-        inner_type = trino_to_graphql(inner)
+        inner_type = column_type_to_graphql(inner)
         return GraphQLList(GraphQLNonNull(inner_type))
 
-    raise ValueError(f"Unmapped Trino type: {trino_type!r}")
+    raise ValueError(f"Unmapped the engine type: {column_type!r}")
 
 
 # --- Filter input types (shared across all schemas) ---
@@ -226,3 +226,15 @@ FILTER_TYPE_MAP: dict[GraphQLScalarType, GraphQLInputObjectType] = cast(
         JSONScalar: JSONFilter,
     },
 )
+
+
+# Postgres -> physical engine type map for the OTel ops schema DDL (REQ-016). Neutral home so both
+# the engine ops writer and generic boot import it without reaching into an engine-impl module.
+OPS_PG_TO_PHYSICAL: dict[str, str] = {
+    "text": "VARCHAR",
+    "bigint": "BIGINT",
+    "integer": "INTEGER",
+    "float8": "DOUBLE",
+    "date": "DATE",
+    "boolean": "BOOLEAN",
+}

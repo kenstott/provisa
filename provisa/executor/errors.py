@@ -42,7 +42,9 @@ class FederationError(Exception):  # REQ-027, REQ-028, REQ-031
         return repr(self)
 
     @classmethod
-    def from_trino(cls, exc: Exception) -> "FederationError":  # REQ-028
+    def from_engine_error(cls, exc: Exception) -> "FederationError":  # REQ-028
+        """Build a FederationError from any engine driver exception — duck-typed on the standard
+        ``error_type``/``error_name``/``message``/``query_id`` attributes, so no engine-specific."""
         return cls(
             error_type=getattr(exc, "error_type", None),
             error_name=getattr(exc, "error_name", None),

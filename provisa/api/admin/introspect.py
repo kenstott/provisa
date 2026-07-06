@@ -10,7 +10,7 @@
 
 """Native source introspection helpers for available_schemas / available_tables.
 
-Returns None when no native path exists — caller falls back to Trino.
+Returns None when no native path exists — caller falls back to the engine.
 """
 
 # Requirements: REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314, REQ-322, REQ-147
@@ -99,7 +99,7 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     pool: "SourcePool",
     config_conn,
 ) -> list[str] | None:
-    """Return schema list via native introspection or None to fall back to Trino."""
+    """Return schema list via native introspection or None to fall back to the engine."""
     t = source_type.lower()
 
     if t in ("graphql", "graphql_remote"):
@@ -437,7 +437,7 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     config_conn,
     state,
 ) -> "list[AvailableTableType] | None":
-    """Return table list via native introspection or None to fall back to Trino."""
+    """Return table list via native introspection or None to fall back to the engine."""
     t = source_type.lower()
 
     if t == "openapi":

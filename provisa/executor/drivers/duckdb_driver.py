@@ -17,7 +17,7 @@ import asyncio
 import duckdb
 
 from provisa.executor.drivers.base import DirectDriver
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 # Requirements: REQ-027, REQ-068
 

@@ -55,7 +55,7 @@ def _make_hot_manager(auto_threshold: int = 1000) -> HotTableManager:
 def _make_trino_conn_mock(rows: list[tuple], columns: list[str]):
     """Return a fake EngineRuntime whose execute_engine yields the given rows/columns
     (load_table reads through the engine terminal, not a raw Trino cursor)."""
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
 
     class _FakeEngine:
         async def execute_engine(self, sql, *a, **k):
@@ -102,8 +102,8 @@ class TestHotTableLoading:
         """HotTableManager.load_table populates in-memory entry from Trino cursor."""
         mgr = _make_hot_manager()
         trino_rows = [(1, "Widget"), (2, "Gadget")]
-        trino_cols = ["id", "name"]
-        conn = _make_trino_conn_mock(trino_rows, trino_cols)
+        engine_cols = ["id", "name"]
+        conn = _make_trino_conn_mock(trino_rows, engine_cols)
 
         # Mock Redis pipeline so we avoid a real Redis connection
         mock_redis = AsyncMock()
@@ -119,7 +119,7 @@ class TestHotTableLoading:
         assert mgr.is_hot("products")
         entry = mgr.get_entry("products")
         assert entry is not None
-        assert entry.column_names == trino_cols
+        assert entry.column_names == engine_cols
         assert len(entry.rows) == 2
         assert entry.rows[0]["id"] == 1
         assert entry.rows[1]["name"] == "Gadget"

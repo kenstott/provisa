@@ -8,11 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Route queries to Trino or direct RDBMS based on source analysis (REQ-027, REQ-028, REQ-030).
+"""Route queries to the federation engine or a direct RDBMS based on source analysis (REQ-027, REQ-028, REQ-030).
 
 Single RDBMS source with direct driver → direct (sub-100ms target).
-Single NoSQL source → always Trino (no SQL support).
-Multi-source → Trino (REQ-028, 300-500ms target).
+Single NoSQL source → always the engine (no direct SQL driver).
+Multi-source → the engine (REQ-028, 300-500ms target).
 Steward override hint respected (REQ-030).
 """
 
@@ -29,14 +29,14 @@ from provisa.executor.drivers.registry import has_driver
 class Route(str, Enum):
     CACHE = "cached"  # REQ-865
     DIRECT = "direct"
-    TRINO = "virtual"
+    ENGINE = "virtual"  # the federation ENGINE terminal (was Route.ENGINE)
     API = "api"
 
 
 # API sources — route through API caller pipeline
 API_SOURCES: set[str] = {"openapi", "graphql_api", "grpc_api", "grpc_remote"}
 
-# Virtual sources — always route through Trino (no direct SQL driver)
+# Virtual sources — always route through the engine (no direct SQL driver)
 VIRTUAL_SOURCES: set[str] = {
     # NoSQL
     "mongodb",
@@ -77,15 +77,15 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
     cache_hit: bool = False,
     no_cache: bool = False,
 ) -> RouteDecision:
-    """Decide whether to route a query cached, direct, or through Trino.
+    """Decide whether to route a query cached, direct, or through the engine.
 
     Args:
         sources: Set of source_ids involved in the query.
         source_types: {source_id: source_type} e.g. {"sales-pg": "postgresql"}.
         source_dialects: {source_id: sqlglot_dialect} e.g. {"sales-pg": "postgres"}.
-        steward_hint: Optional "direct" or "trino" override from steward.
+        steward_hint: Optional "direct" or "engine" override from steward.
         has_json_extract: Query uses json_extract_scalar (path columns).
-        is_mutation: True for mutations — always route direct (never Trino).
+        is_mutation: True for mutations — always route direct (never the engine).
         cache_hit: True when the result cache (keyed per REQ-864/REQ-544 on the
             governance-normalized IR) holds an entry for this query.
         no_cache: True when the @noCache/no_cache bypass (REQ-544) removes CACHED
@@ -107,7 +107,7 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             reason="result cache hit",
         )
 
-    # Mutations always route direct — Trino doesn't support writes
+    # Mutations always route direct — the engine terminal doesn't take writes
     if is_mutation and len(sources) >= 1:  # REQ-031
         sid = next(iter(sources))
         return RouteDecision(
@@ -118,9 +118,9 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
         )
 
     # Steward override
-    if steward_hint in ("trino", "federated"):  # REQ-030
+    if steward_hint in ("engine", "federated"):  # REQ-030
         return RouteDecision(
-            route=Route.TRINO,
+            route=Route.ENGINE,
             source_id=None,
             dialect=None,
             reason="steward override: federated",
@@ -137,7 +137,7 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             )
 
     # Colocated sources: same physical DB → treat as single source, route DIRECT
-    # Any source missing a DSN (e.g. iceberg/Trino-only) means the query cannot be direct.
+    # Any source missing a DSN (e.g. iceberg/connector-only) means the query cannot be direct.
     if len(sources) > 1 and source_dsns:
         unique_dsns = {source_dsns.get(s) for s in sources}
         if None not in unique_dsns and len(unique_dsns) == 1:
@@ -151,10 +151,10 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
                     reason="colocated sources on same physical DB (direct)",
                 )
 
-    # Multi-source → Trino
+    # Multi-source → the engine
     if len(sources) > 1:  # REQ-028
         return RouteDecision(
-            route=Route.TRINO,
+            route=Route.ENGINE,
             source_id=None,
             dialect=None,
             reason="multi-source query",
@@ -163,7 +163,7 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
     sid = next(iter(sources))
     stype = source_types.get(sid, "")
 
-    # API sources — route through API caller, not Trino
+    # API sources — route through API caller, not the engine
     if stype in API_SOURCES:
         return RouteDecision(
             route=Route.API,
@@ -172,10 +172,10 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             reason=f"api source ({stype})",
         )
 
-    # Trino-only sources (NoSQL, data lake, non-SQL)
+    # Connector-only sources (NoSQL, data lake, non-SQL)
     if stype in VIRTUAL_SOURCES:
         return RouteDecision(
-            route=Route.TRINO,
+            route=Route.ENGINE,
             source_id=None,
             dialect=None,
             reason=f"virtual source ({stype})",
@@ -187,7 +187,7 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
         dialect = source_dialects.get(sid, "")
         if dialect not in _JSON_SAFE_DIALECTS:
             return RouteDecision(
-                route=Route.TRINO,
+                route=Route.ENGINE,
                 source_id=None,
                 dialect=None,
                 reason=f"query uses JSON path extraction, unsupported for direct {stype}",
@@ -202,9 +202,9 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             reason=f"single rdbms source with direct driver ({stype})",
         )
 
-    # RDBMS without direct driver → Trino
+    # RDBMS without direct driver → the engine
     return RouteDecision(
-        route=Route.TRINO,
+        route=Route.ENGINE,
         source_id=None,
         dialect=None,
         reason=f"no direct driver for source type ({stype})",

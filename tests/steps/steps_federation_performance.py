@@ -770,10 +770,10 @@ def then_federated_query_routed_through_federation_engine(shared_data: dict) -> 
         f"expected route hint value 'federated', got {hints['route']!r}"
     )
 
-    # "federated" maps to Route.TRINO in the router when passed as steward_hint.
-    decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint="trino")
-    assert decision.route == Route.TRINO, (
-        f"decide_route with steward_hint for federated path should produce Route.TRINO, "
+    # "federated" maps to Route.ENGINE in the router when passed as steward_hint.
+    decision = decide_route({"pg-main"}, _TYPES, _DIALECTS, steward_hint="engine")
+    assert decision.route == Route.ENGINE, (
+        f"decide_route with steward_hint for federated path should produce Route.ENGINE, "
         f"got {decision.route!r}"
     )
     assert decision.source_id is None, "federated route must not resolve to a single source_id"
@@ -796,9 +796,3 @@ def then_federated_query_routed_through_federation_engine(shared_data: dict) -> 
 
 
 # All REQ-279 steps are already implemented in the existing file; no new definitions required.
-
-
-# Copyright (c) 2026 Kenneth Stott
-# Canary: b744c6f9-e587-4069-afd0-7bf617221628
-#
-# This source code is licensed under the Business Source License 1.1

@@ -17,11 +17,11 @@ import os
 import pytest
 from pytest_bdd import given, when, then, scenarios
 
+from provisa.core.trino_catalog_files import generate_trino_kafka_properties
 from provisa.kafka.source import (
     KafkaColumn,
     KafkaSourceConfig,
     KafkaTopicConfig,
-    generate_trino_kafka_properties,
 )
 
 scenarios("../features/REQ-147.feature")
@@ -141,7 +141,8 @@ def _discriminator_of(topic: KafkaTopicConfig) -> tuple[str | None, object]:
 
 
 @given(
-    "multiple table configs registered against the same Kafka topic with different discriminator values")
+    "multiple table configs registered against the same Kafka topic with different discriminator values"
+)
 def register_multi_type_topic(shared_data):
     """Register two logical tables backed by one physical topic.
 

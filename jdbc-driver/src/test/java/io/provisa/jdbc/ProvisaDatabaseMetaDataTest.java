@@ -18,46 +18,6 @@ class ProvisaDatabaseMetaDataTest {
     @Mock
     ProvisaConnection conn;
 
-    // ── mode=approved: getTables ──
-
-    @Test
-    void approvedMode_getTablesReturnsViewsWithRootFieldSuffix() throws SQLException {
-        conn.mode = "approved";
-        when(conn.fetchApprovedQueries()).thenReturn(List.of(
-            new ProvisaConnection.ApprovedQuery("my-report", "{ users { id } orders { id } }", "")
-        ));
-        when(conn.resolveRootFields("{ users { id } orders { id } }"))
-            .thenReturn(List.of("sales__users", "sales__orders"));
-
-        var meta = new ProvisaDatabaseMetaData(conn);
-        ResultSet rs = meta.getTables(null, null, "%", null);
-
-        List<String> names = new ArrayList<>();
-        while (rs.next()) names.add(rs.getString("TABLE_NAME"));
-
-        assertEquals(2, names.size());
-        assertTrue(names.contains("my-report__sales__users"));
-        assertTrue(names.contains("my-report__sales__orders"));
-    }
-
-    @Test
-    void approvedMode_singleRootStillGetsSuffix() throws SQLException {
-        conn.mode = "approved";
-        when(conn.fetchApprovedQueries()).thenReturn(List.of(
-            new ProvisaConnection.ApprovedQuery("get-users", "{ users { id } }", "")
-        ));
-        when(conn.resolveRootFields("{ users { id } }"))
-            .thenReturn(List.of("sales__users"));
-
-        var meta = new ProvisaDatabaseMetaData(conn);
-        ResultSet rs = meta.getTables(null, null, "%", null);
-
-        assertTrue(rs.next());
-        assertEquals("get-users__sales__users", rs.getString("TABLE_NAME"));
-        assertEquals("VIEW", rs.getString("TABLE_TYPE"));
-        assertFalse(rs.next());
-    }
-
     // ── mode=catalog: getTables ──
 
     @Test

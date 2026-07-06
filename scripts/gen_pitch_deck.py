@@ -384,7 +384,6 @@ def slide_product_summary(prs):
             "Persisted Query Registry",
             [
                 "Queries submitted for steward review before reaching production",
-                "Approved queries receive a stable identifier — query text never sent in production",
                 "Steward approves: table scope, parameter schema, permitted output types",
                 "Audit trail: who defined, who approved, when, against which schema version",
                 "Deprecated queries return clear errors directing clients to replacements",
@@ -717,7 +716,7 @@ def slide_query_paths(prs):
             "latency": "< 100ms",
             "x": 0.2,
             "steps": [
-                "Client submits pre-approved query ID + bindings",
+                "Client submits query ID + bindings",
                 "Executor validates registry membership",
                 "Compiler produces PG-style SQL",
                 "SQLGlot transpiles to target RDBMS dialect",
@@ -731,7 +730,7 @@ def slide_query_paths(prs):
             "latency": "300–500ms",
             "x": 4.6,
             "steps": [
-                "Client submits pre-approved query ID + bindings",
+                "Client submits query ID + bindings",
                 "Executor validates registry membership",
                 "Compiler produces PG-style SQL",
                 "SQLGlot transpiles to federation engine SQL",
@@ -745,7 +744,7 @@ def slide_query_paths(prs):
             "latency": "Seconds–minutes (async)",
             "x": 9.0,
             "steps": [
-                "Client requests pre-approved query with redirect preference",
+                "Client requests query with redirect preference",
                 "Executor validates registry + output type approval",
                 "Federation engine executes, writes to blob storage",
                 "Presigned URL returned (TTL-bounded)",
@@ -881,10 +880,10 @@ def slide_security_model(prs):
             "desc": (
                 "Row-level security WHERE clauses and column projections are injected at the "
                 "executor — after compile, before execution. Applied to every query regardless "
-                "of schema state. Ensures no pre-approved query invoked by a narrow-rights user "
+                "of schema state. Ensures no query against pre-approved tables invoked by a narrow-rights user "
                 "can exceed that user's authorized data boundary."
             ),
-            "threat": "Eliminates: cross-user data leakage, RLS bypass via pre-approved queries",
+            "threat": "Eliminates: cross-user data leakage, RLS bypass via queries against pre-approved tables",
         },
     ]
 

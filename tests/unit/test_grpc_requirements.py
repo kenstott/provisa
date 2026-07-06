@@ -154,7 +154,7 @@ class TestREQ538ProtoTypeMappings:
     Relationships between tables produce nested message fields."""
 
     def _proto_for(self, col_defs: list[tuple[str, str]]) -> str:
-        """Generate proto for a table with given (name, trino_type) column pairs."""
+        """Generate proto for a table with given (name, column_type) column pairs."""
         col_names = [name for name, _ in col_defs]
         tables = [
             {

@@ -135,7 +135,7 @@ def connect_to_websocket(shared_data: dict) -> None:
     assert json.loads(fake_ws.sent[0]) == shared_data["subscribe_payload"]
 
 
-@then("received JSON messages are emitted as ChangeEvents into the governed query fabric")
+@then("received JSON messages are emitted as ChangeEvents into the governed data fabric")
 def assert_change_events_emitted(shared_data: dict) -> None:
     events: list[ChangeEvent] = shared_data["events"]
 

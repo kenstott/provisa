@@ -106,7 +106,7 @@ function SqlPanel({
         )}
         {(isSignificantAlias || hasSignificantColumnAliases) && (
           <div className="provisa-tools-alias-warn">
-            Warning: alias adds semantic complexity — not recommended for approved queries.
+            Warning: alias adds semantic complexity — not recommended for registered tables.
           </div>
         )}
         {hasColumnAliases && (

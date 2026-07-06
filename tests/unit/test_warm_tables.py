@@ -66,7 +66,7 @@ class _FakeEngine:
 
     async def execute_engine(self, sql, *a, **k):
         self.sqls.append(sql)
-        from provisa.executor.trino import QueryResult
+        from provisa.executor.result import QueryResult
 
         if "COUNT(*)" in sql:
             return QueryResult(rows=[(self._count,)], column_names=["c"])

@@ -16,7 +16,12 @@ and that transpile() produces valid output for each.
 
 import pytest
 
-from provisa.core.models import SOURCE_TO_CONNECTOR, SOURCE_TO_DIALECT, TRINO_ONLY_SOURCES, SourceType
+from provisa.core.models import (
+    SOURCE_TO_CONNECTOR,
+    SOURCE_TO_DIALECT,
+    LAKE_ONLY_SOURCES,
+    SourceType,
+)
 from provisa.transpiler.router import VIRTUAL_SOURCES
 from provisa.transpiler.transpile import transpile
 
@@ -225,7 +230,7 @@ class TestTrinoOnlySources:
 
     @pytest.mark.parametrize("source_type", sorted(_TRINO_ONLY))
     def test_in_trino_only_sources_set(self, source_type):
-        assert source_type in TRINO_ONLY_SOURCES
+        assert source_type in LAKE_ONLY_SOURCES
 
     @pytest.mark.parametrize("source_type", sorted(_TRINO_ONLY))
     def test_source_type_enum_covers_trino_only(self, source_type):

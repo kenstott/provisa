@@ -12,7 +12,6 @@ using SQLGlot. Input: plain SQL string. Output: governed SQL string.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 
 import sqlglot
@@ -170,8 +169,6 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
 # --------------------------------------------------------------------------- #
 # Helpers                                                                     #
 # --------------------------------------------------------------------------- #
-
-_LIMIT_RE = re.compile(r"\bLIMIT\s+(\d+|\$\d+)", re.IGNORECASE)
 
 
 def _table_id_for_node(table_node: exp.Table, gov_ctx: GovernanceContext) -> int | None:
@@ -452,19 +449,32 @@ def apply_row_cap(sql: str, cap: int | None) -> str:  # REQ-005
 
 
 def _apply_limit_ceiling(sql: str, ceiling: int) -> str:
-    """Inject or cap LIMIT to ceiling."""
-    m = _LIMIT_RE.search(sql)
-    if m:
-        val = m.group(1)
-        if val.startswith("$"):
-            # Parameterized LIMIT — cannot compare numerically; leave it unchanged.
-            return sql
-        existing = int(val)
-        if existing > ceiling:
-            return sql[: m.start()] + f"LIMIT {ceiling}" + sql[m.end() :]
-        return sql
-    sql = sql.rstrip().rstrip(";")
-    return f"{sql} LIMIT {ceiling}"
+    """Bound a query's row count by ``ceiling`` (AST — inspect the LIMIT node, never regex the text).
+
+    A literal LIMIT above the ceiling is lowered; a missing LIMIT is added. A non-literal LIMIT
+    (parameter or expression, whose value is unknown at govern time) is wrapped in a subquery with a
+    constant outer LIMIT, so the ceiling still bounds the result — min(inner, ceiling) — and stays
+    valid on engines that reject expressions in LIMIT.
+    """
+    tree = sqlglot.parse_one(sql, read="postgres")
+    node = tree if isinstance(tree, (exp.Select, exp.Union)) else tree.find(exp.Select)
+    if node is None:
+        raise ValueError("_apply_limit_ceiling: query has no SELECT/UNION to bound")
+
+    limit = node.args.get("limit")
+    if limit is None:
+        node.limit(ceiling, copy=False)
+        return tree.sql(dialect="postgres")
+
+    val = limit.expression
+    if isinstance(val, exp.Literal) and not val.is_string:
+        if int(val.name) > ceiling:
+            node.limit(ceiling, copy=False)
+            return tree.sql(dialect="postgres")
+        return sql  # within the ceiling — leave the SQL byte-identical
+
+    sub = exp.Subquery(this=tree, alias=exp.TableAlias(this=exp.to_identifier("_govern_capped")))
+    return exp.select("*").from_(sub).limit(ceiling).sql(dialect="postgres")
 
 
 def extract_sources(

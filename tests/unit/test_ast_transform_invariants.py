@@ -22,8 +22,6 @@ move to AST-based transforms. Marked xfail(strict) so the suite stays green whil
 and flips to a hard failure (forcing marker removal) once the restructure lands.
 """
 
-import pytest
-
 from provisa.compiler.mask_inject import inject_masking, MaskingRules
 from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.sql_gen import (
@@ -54,7 +52,6 @@ def _ctx(tables=None):
     return ctx
 
 
-@pytest.mark.xfail(strict=True, reason="REQ-913: string _find_select_end masks wrong scope")
 def test_masking_survives_scalar_subquery_in_projection():
     """A scalar subquery in the SELECT list must not move the masking boundary.
 
@@ -80,7 +77,6 @@ def test_masking_survives_scalar_subquery_in_projection():
     assert "'HIDDEN' AS \"ssn\"" in result.sql, "ssn leaked unmasked"
 
 
-@pytest.mark.xfail(strict=True, reason="REQ-913: rls._has_alias only recognizes t0")
 def test_rls_predicate_is_scoped_to_root_alias_regardless_of_alias_name():
     """RLS filter must bind to the root table's alias for any alias convention.
 
@@ -100,7 +96,6 @@ def test_rls_predicate_is_scoped_to_root_alias_regardless_of_alias_name():
     assert '"c"."region"' in result.sql, "RLS predicate not scoped to root alias"
 
 
-@pytest.mark.xfail(strict=True, reason="REQ-913: parameterized LIMIT bypasses row-cap ceiling")
 def test_row_cap_ceiling_enforced_over_parameterized_limit():
     """A role row-cap ceiling must bound even a parameterized LIMIT.
 

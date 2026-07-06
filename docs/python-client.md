@@ -77,7 +77,6 @@ client = ProvisaClient("http://prod.example.com", flight_port=8815)
 
 ```python
 tables_df = client.list_tables()
-approved_df = client.list_approved()
 ```
 
 ### Connection Reference

@@ -13,7 +13,7 @@
 
 Cypher  → Phase AU pipeline (cypher_router._execute)
 GraphQL → existing compiler pipeline
-SQL     → Stage 2 governance + Trino
+SQL     → Stage 2 governance + the engine
 """
 
 # Requirements: REQ-357, REQ-359
@@ -30,11 +30,11 @@ NlTarget = Literal["cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"]
 
 
 class FederationError(RuntimeError):
-    """Wraps federation engine (Trino) errors with a clean message."""
+    """Wraps federation engine (the engine) errors with a clean message."""
 
 
 def _federation_error(exc: Exception) -> FederationError:
-    """Extract human-readable message from a Trino exception repr."""
+    """Extract human-readable message from the engine exception repr."""
     raw = str(exc)
     m = re.search(r'message="([^"]*)"', raw)
     msg = m.group(1) if m else raw
@@ -78,9 +78,8 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     from provisa.cypher.params import collect_param_names, bind_params
     from provisa.cypher.assembler import assemble_rows, to_serializable
     from provisa.compiler.rls import RLSContext
-    from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_trino_physical
+    from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_catalog_physical
     from provisa.compiler.stage2 import apply_governance, build_governance_context
-    import sqlglot
 
     ctx = _get_ctx(app_state, role)
     ast = parse_cypher(query)
@@ -102,9 +101,9 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
         role=getattr(app_state, "roles", {}).get(role),
     )
     governed_sql = apply_governance(make_semantic_sql(sql_str, ctx), gov_ctx)
-    exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
-    trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
-    rows = await _run_engine(trino_sql, [], app_state)
+    exec_sql = rewrite_semantic_to_catalog_physical(governed_sql, ctx)
+    physical_sql = app_state.federation_engine.transpile_physical(exec_sql)
+    rows = await _run_engine(physical_sql, [], app_state)
     assembled = assemble_rows(rows, graph_vars)
     columns = list(rows[0].keys()) if rows else []
     return {"columns": columns, "rows": [to_serializable(r) for r in assembled]}
@@ -113,7 +112,7 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
 async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
     from graphql import GraphQLSchema
     from provisa.compiler.parser import parse_query
-    from provisa.compiler.sql_gen import compile_query, rewrite_semantic_to_trino_physical
+    from provisa.compiler.sql_gen import compile_query, rewrite_semantic_to_catalog_physical
     from provisa.compiler.stage2 import apply_governance, build_governance_context
     from provisa.compiler.rls import RLSContext
     from provisa.executor.serialize import serialize_aggregate, serialize_rows
@@ -121,7 +120,7 @@ async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
     schema = app_state.schemas.get(role)
     if not isinstance(schema, GraphQLSchema):
         raise RuntimeError(f"No GraphQL schema for role: {role}")
-    # execute_engine guards its own connection — no direct trino_conn check.
+    # execute_engine guards its own connection — no direct engine-connection check.
     engine = app_state.federation_engine
 
     ctx = _get_ctx(app_state, role)
@@ -143,11 +142,11 @@ async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
     merged: dict = {}
     for cq in compiled_queries:
         governed = apply_governance(cq.sql, gov_ctx)
-        physical = rewrite_semantic_to_trino_physical(governed, ctx)
+        physical = rewrite_semantic_to_catalog_physical(governed, ctx)
         result = await engine.execute_engine(physical, cq.params)
         if cq.nodes_sql is not None:
             governed_nodes = apply_governance(cq.nodes_sql, gov_ctx)
-            physical_nodes = rewrite_semantic_to_trino_physical(governed_nodes, ctx)
+            physical_nodes = rewrite_semantic_to_catalog_physical(governed_nodes, ctx)
             nodes_result = await engine.execute_engine(physical_nodes, cq.nodes_params)
             serialized = serialize_aggregate(
                 result.rows,
@@ -168,9 +167,8 @@ async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
 
 async def _execute_sql(query: str, role: str, app_state: Any) -> dict:
     from provisa.compiler.rls import RLSContext
-    from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_trino_physical
+    from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_catalog_physical
     from provisa.compiler.stage2 import apply_governance, build_governance_context
-    import sqlglot
 
     ctx = _get_ctx(app_state, role)
     rls = getattr(app_state, "rls_contexts", {}).get(role, RLSContext.empty())
@@ -183,9 +181,9 @@ async def _execute_sql(query: str, role: str, app_state: Any) -> dict:
         role=getattr(app_state, "roles", {}).get(role),
     )
     governed_sql = apply_governance(make_semantic_sql(query, ctx), gov_ctx)
-    exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
-    trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
-    rows = await _run_engine(trino_sql, [], app_state)
+    exec_sql = rewrite_semantic_to_catalog_physical(governed_sql, ctx)
+    physical_sql = app_state.federation_engine.transpile_physical(exec_sql)
+    rows = await _run_engine(physical_sql, [], app_state)
     columns = list(rows[0].keys()) if rows else []
     return {"columns": columns, "rows": rows}
 
@@ -198,7 +196,7 @@ def _get_ctx(app_state: Any, role: str) -> Any:
 
 
 async def _run_engine(sql: str, params: list, app_state: Any) -> list[dict]:
-    # execute_engine guards its own connection/availability — no direct trino_conn check.
+    # execute_engine guards its own connection/availability — no direct engine-connection check.
     try:
         result = await app_state.federation_engine.execute_engine(sql, params or [])
     except Exception as exc:

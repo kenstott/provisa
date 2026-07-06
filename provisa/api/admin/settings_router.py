@@ -211,9 +211,7 @@ async def update_settings(request: Request):  # REQ-165, REQ-194, REQ-253, REQ-3
                 changed = True
         if changed:
             write_config(path, cfg)
-            from provisa.api.trino_setup import write_trino_config
-
-            write_trino_config(str(path))
+            state.federation_engine.write_config(str(path))
             restart_required = True
 
     if "redirect" in body:
@@ -337,94 +335,370 @@ async def set_domain_policy(request: Request):  # REQ-165
     return {"success": True, "backup": backup_name, "use_domains": use_domains}
 
 
+@router.get("/admin/federation-engine")
+async def get_federation_engine():  # REQ-916
+    """Current federation-engine selection + connection config, and the selectable-engine registry."""
+    from provisa.federation.engine import engine_registry
+    from provisa.core.models import ProvisaConfig
+
+    cfg = read_config()
+
+    def _eng(key: str):
+        return cfg.get(key, ProvisaConfig.model_fields[key].default)
+
+    return {
+        "current": _eng("federation_engine"),
+        "config": {
+            "federation_engine_url": _eng("federation_engine_url"),
+            "federation_engine_host": _eng("federation_engine_host"),
+            "federation_engine_port": _eng("federation_engine_port"),
+        },
+        "engines": engine_registry(),
+        "restart_required_note": "Changing the federation engine takes effect after the service is restarted.",
+    }
+
+
+@router.put("/admin/federation-engine")
+async def set_federation_engine(request: Request):  # REQ-916
+    """Persist the federation-engine selection + connection config. Applied on service restart."""
+    from provisa.federation.engine import engine_registry
+
+    body = await request.json()
+    engine = body.get("engine")
+    valid = {e["key"] for e in engine_registry()}
+    if engine not in valid:
+        raise HTTPException(
+            status_code=400, detail=f"unknown engine {engine!r}; valid: {sorted(valid)}"
+        )
+
+    path = config_path()
+    cfg = read_config()
+    cfg["federation_engine"] = engine
+    updated = ["federation_engine"]
+    # Only the config keys this engine declares are accepted, so one engine's fields can't smuggle
+    # into another's persisted config.
+    allowed = {
+        f["config_key"] for e in engine_registry() if e["key"] == engine for f in e["config_fields"]
+    }
+    for key in ("federation_engine_url", "federation_engine_host", "federation_engine_port"):
+        if key in body and key in allowed:
+            val = body[key]
+            cfg[key] = (
+                int(val) if key == "federation_engine_port" and val not in (None, "") else val
+            )
+            updated.append(key)
+    write_config(path, cfg)
+    return {"success": True, "updated": updated, "restart_required": True}
+
+
+@router.get("/admin/cache-storage")
+async def get_cache_storage():  # REQ-917
+    """Hot-cache (Redis) + materialize-store settings for the admin UI."""
+    cfg = read_config()
+    cache = cfg.get("cache", {}) or {}
+    hot = cfg.get("hot_tables", {}) or {}
+    # Defaults mirror the single source of truth — the reads in cache/hot_tables.py.
+    return {
+        "cache": {
+            "enabled": bool(cache.get("enabled", False)),
+            "redis_url": cache.get("redis_url", ""),  # empty → embedded fakeredis
+            "default_ttl": cache.get("default_ttl"),
+        },
+        "hot_tables": {
+            "auto_threshold": hot.get("auto_threshold", 1000),
+            "max_rows": hot.get("max_rows", hot.get("auto_threshold", 1000)),
+            "max_bytes": hot.get("max_bytes", 10 * 1024 * 1024),
+            "refresh_interval": hot.get("refresh_interval"),
+        },
+        "materialize": {"store_url": cfg.get("materialize_store_url") or ""},
+        "restart_required_note": "Redis and materialize-store connections bind at startup — changes take effect after a service restart.",
+    }
+
+
+@router.put("/admin/cache-storage")
+async def set_cache_storage(request: Request):  # REQ-917
+    """Persist hot-cache (Redis) + materialize-store settings. Applied on service restart."""
+    body = await request.json()
+    path = config_path()
+    cfg = read_config()
+    updated: list[str] = []
+
+    if "cache" in body:
+        cache = dict(cfg.get("cache", {}) or {})
+        for k in ("enabled", "redis_url", "default_ttl"):
+            if k in body["cache"]:
+                cache[k] = body["cache"][k]
+                updated.append(f"cache.{k}")
+        cfg["cache"] = cache
+    if "hot_tables" in body:
+        hot = dict(cfg.get("hot_tables", {}) or {})
+        for k in ("auto_threshold", "max_rows", "max_bytes", "refresh_interval"):
+            if k in body["hot_tables"]:
+                v = body["hot_tables"][k]
+                hot[k] = int(v) if v not in (None, "") else None
+                updated.append(f"hot_tables.{k}")
+        cfg["hot_tables"] = hot
+    if "materialize" in body and "store_url" in body["materialize"]:
+        cfg["materialize_store_url"] = body["materialize"]["store_url"] or None
+        updated.append("materialize_store_url")
+
+    write_config(path, cfg)
+    return {"success": True, "updated": updated, "restart_required": True}
+
+
+_ENCRYPTION_PROVIDERS = [
+    {
+        "key": "null",
+        "label": "None (passthrough)",
+        "description": "No encryption — data stored in plaintext. Development/test only.",
+    },
+    {
+        "key": "local",
+        "label": "Local keychain (AES-256-GCM)",
+        "description": "Envelope encryption with a 32-byte master key held on this host (OS keychain or PROVISA_ENCRYPTION_KEY).",
+    },
+]
+
+
+@router.get("/admin/encryption")
+async def get_encryption():  # REQ-918
+    """Encryption provider + master-key status for the admin UI."""
+    from provisa.encryption.providers import master_key_present
+
+    cfg = read_config()
+    enc = cfg.get("encryption", {}) or {}
+    provider = enc.get("provider", "null")
+    key_id = enc.get("key_id")
+    return {
+        "provider": provider,
+        "key_id": key_id,
+        "key_present": master_key_present(key_id) if provider == "local" else None,
+        "providers": _ENCRYPTION_PROVIDERS,
+        "restart_required_note": "The encryption provider binds at startup — changes take effect after a service restart.",
+    }
+
+
+@router.put("/admin/encryption")
+async def set_encryption(request: Request):  # REQ-918
+    """Persist the encryption provider + key id. Applied on service restart."""
+    body = await request.json()
+    provider = body.get("provider")
+    if provider not in {p["key"] for p in _ENCRYPTION_PROVIDERS}:
+        raise HTTPException(status_code=400, detail=f"unknown encryption provider {provider!r}")
+    path = config_path()
+    cfg = read_config()
+    enc = dict(cfg.get("encryption", {}) or {})
+    enc["provider"] = provider
+    if "key_id" in body:
+        enc["key_id"] = body["key_id"] or None
+    cfg["encryption"] = enc
+    write_config(path, cfg)
+    return {"success": True, "restart_required": True}
+
+
+@router.post("/admin/encryption/generate-key")
+async def generate_encryption_key(request: Request):  # REQ-918
+    """Generate a fresh AES-256 master key and store it in the OS keychain under ``key_id``. When no
+    OS keychain is available, the base64 key is returned once so the operator can set it as
+    ``PROVISA_ENCRYPTION_KEY``. Never re-displayed after this call."""
+    from provisa.encryption.providers import generate_master_key_b64, store_master_key
+
+    body = await request.json()
+    key_id = body.get("key_id") or None
+    key_b64 = generate_master_key_b64()
+    stored = store_master_key(key_b64, key_id)
+    return {
+        "stored": stored,
+        "key_id": key_id or "master",
+        # Only returned when it could NOT be stored in a keychain — the operator must persist it.
+        "key_b64": None if stored else key_b64,
+        "env_var": None if stored else "PROVISA_ENCRYPTION_KEY",
+    }
+
+
+_AUTH_PROVIDERS = [
+    {
+        "key": "none",
+        "label": "None",
+        "description": "No authentication — open access. Development only.",
+        "config_fields": [],
+    },
+    {
+        "key": "firebase",
+        "label": "Firebase",
+        "description": "Google Firebase ID-token verification.",
+        "config_fields": [
+            {"config_key": "project_id", "label": "Project ID", "type": "string", "required": True},
+            {
+                "config_key": "service_account_key",
+                "label": "Service account key",
+                "type": "string",
+                "required": False,
+                "secret": True,
+            },
+        ],
+    },
+    {
+        "key": "keycloak",
+        "label": "Keycloak",
+        "description": "Keycloak OIDC (realm + client).",
+        "config_fields": [
+            {
+                "config_key": "server_url",
+                "label": "Server URL",
+                "type": "string",
+                "required": True,
+                "placeholder": "https://keycloak.example.com",
+            },
+            {"config_key": "realm", "label": "Realm", "type": "string", "required": True},
+            {"config_key": "client_id", "label": "Client ID", "type": "string", "required": True},
+            {
+                "config_key": "client_secret",
+                "label": "Client secret",
+                "type": "string",
+                "required": False,
+                "secret": True,
+            },
+        ],
+    },
+    {
+        "key": "oauth",
+        "label": "OAuth / OIDC",
+        "description": "Generic OIDC provider via a discovery URL.",
+        "config_fields": [
+            {
+                "config_key": "discovery_url",
+                "label": "Discovery URL",
+                "type": "string",
+                "required": True,
+                "placeholder": "https://issuer/.well-known/openid-configuration",
+            },
+            {"config_key": "client_id", "label": "Client ID", "type": "string", "required": True},
+            {"config_key": "audience", "label": "Audience", "type": "string", "required": False},
+            {
+                "config_key": "role_claim",
+                "label": "Role claim",
+                "type": "string",
+                "required": False,
+                "placeholder": "roles",
+            },
+        ],
+    },
+    {
+        "key": "simple",
+        "label": "Simple (username/password)",
+        "description": "Built-in username/password. NOT for production — requires the production guard.",
+        "config_fields": [
+            {
+                "config_key": "jwt_secret",
+                "label": "JWT signing secret",
+                "type": "string",
+                "required": True,
+                "secret": True,
+            },
+        ],
+    },
+]
+
+
+@router.get("/admin/auth")
+async def get_auth():  # REQ-919
+    """Auth provider selection + per-provider config + role settings for the admin UI."""
+    from provisa.core.models import AuthConfig
+
+    cfg = read_config()
+    auth = cfg.get("auth", {}) or {}
+    provider = auth.get("provider", "none")
+
+    def _pcfg(pkey: str) -> dict:
+        # jwt_secret lives at the auth top level (not under `simple`); surface it there for the UI.
+        block = dict(auth.get(pkey, {}) or {})
+        if pkey == "simple":
+            block["jwt_secret"] = auth.get("jwt_secret", "")
+        return block
+
+    af = AuthConfig.model_fields
+    return {
+        "provider": provider,
+        "providers": _AUTH_PROVIDERS,
+        "config": {p["key"]: _pcfg(p["key"]) for p in _AUTH_PROVIDERS},
+        "common": {
+            "default_role": auth.get("default_role", af["default_role"].default),
+            "assignments_source": auth.get("assignments_source", af["assignments_source"].default),
+            "trust_upstream": bool(auth.get("trust_upstream", af["trust_upstream"].default)),
+            "allow_simple_auth": bool(
+                auth.get("allow_simple_auth", af["allow_simple_auth"].default)
+            ),
+        },
+        "restart_required_note": "The auth provider binds at startup — changes take effect after a service restart.",
+    }
+
+
+@router.put("/admin/auth")
+async def set_auth(request: Request):  # REQ-919
+    """Persist the auth provider + its config + role settings. Applied on service restart."""
+    body = await request.json()
+    provider = body.get("provider")
+    valid = {p["key"] for p in _AUTH_PROVIDERS}
+    if provider not in valid:
+        raise HTTPException(
+            status_code=400, detail=f"unknown auth provider {provider!r}; valid: {sorted(valid)}"
+        )
+
+    path = config_path()
+    cfg = read_config()
+    auth = dict(cfg.get("auth", {}) or {})
+    auth["provider"] = provider
+
+    allowed = {
+        f["config_key"] for p in _AUTH_PROVIDERS if p["key"] == provider for f in p["config_fields"]
+    }
+    pcfg = dict(auth.get(provider, {}) or {})
+    for k, v in (body.get("config") or {}).items():
+        if k not in allowed:
+            continue
+        if k == "jwt_secret":  # top-level, not under the provider block
+            auth["jwt_secret"] = v
+        else:
+            pcfg[k] = v
+    if provider != "simple" or pcfg:
+        auth[provider] = pcfg
+
+    for k in ("default_role", "assignments_source", "trust_upstream", "allow_simple_auth"):
+        if k in (body.get("common") or {}):
+            auth[k] = body["common"][k]
+
+    cfg["auth"] = auth
+    write_config(path, cfg)
+    return {"success": True, "restart_required": True}
+
+
 @router.post("/admin/query-engine/reload-catalog")
 async def reload_query_engine_catalog(catalog: str = "otel"):
-    """Reload a catalog via the query engine coordinator REST API, then reconnect and re-run DDL.
+    """Reload an engine catalog without a restart, then reconnect and re-run OTel DDL.
 
-    Uses DELETE + POST on the coordinator's /v1/catalog endpoint so all workers pick up the
-    change automatically via the discovery service — no container restart required.
+    Delegates to the bound engine through the seam — the engine re-registers via its coordinator
+    REST API so all workers pick up the change via discovery; a native engine has no reloadable
+    catalog.
     """
-    import httpx
-    import trino as _trino
     from provisa.api.app import _OPS_VIEWS, state
-    from provisa.observability.ops_trino import seed_ops_trino
 
-    if not state.trino_conn_kwargs:
-        raise HTTPException(status_code=503, detail="Query engine connection not configured")
-
-    host = state.trino_conn_kwargs.get("host", "localhost")
-    port = state.trino_conn_kwargs.get("port", 8080)
-    base_url = f"http://{host}:{port}"
-
-    # Read catalog properties file from disk
-    catalog_dir = os.path.join(
-        os.environ.get("PROVISA_CATALOG_DIR", "trino/catalog"), f"{catalog}.properties"
+    return await state.federation_engine.reload_catalog(
+        catalog, _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
     )
-    if not os.path.isabs(catalog_dir):
-        script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-        catalog_path = os.path.join(script_dir, catalog_dir)
-    else:
-        catalog_path = catalog_dir
-
-    if not os.path.exists(catalog_path):
-        raise HTTPException(status_code=404, detail=f"Catalog properties not found: {catalog_path}")
-
-    props: dict[str, str] = {}
-    with open(catalog_path) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, _, v = line.partition("=")
-                props[k.strip()] = v.strip()
-
-    connector_name = props.pop("connector.name", None)
-    if not connector_name:
-        raise HTTPException(status_code=500, detail=f"connector.name missing in {catalog_path}")
-
-    errors: list[str] = []
-    async with httpx.AsyncClient(timeout=30) as client:
-        # Drop the catalog (ignore 404 — may not be registered yet)
-        del_resp = await client.delete(f"{base_url}/v1/catalog/{catalog}")
-        if del_resp.status_code not in (200, 204, 404):
-            errors.append(f"DELETE /v1/catalog/{catalog} → {del_resp.status_code}: {del_resp.text}")
-
-        # Re-register the catalog
-        post_resp = await client.post(
-            f"{base_url}/v1/catalog",
-            json={"catalogName": catalog, "connectorName": connector_name, "properties": props},
-        )
-        if post_resp.status_code not in (200, 201):
-            errors.append(f"POST /v1/catalog → {post_resp.status_code}: {post_resp.text}")
-
-    if errors:
-        return {"success": False, "errors": errors}
-
-    # Reconnect Provisa's internal connection and re-run OTel DDL
-    try:
-        new_conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
-        cur = new_conn.cursor()
-        cur.execute("SELECT 1")
-        cur.fetchone()
-        state.trino_conn = new_conn
-    except Exception as exc:
-        return {"success": False, "errors": [f"Reconnect failed: {exc}"]}
-
-    try:
-        seed_ops_trino(
-            state.trino_conn, _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
-        )
-    except Exception as exc:
-        errors.append(str(exc))
-
-    return {"success": not errors, "errors": errors}
 
 
 @router.post("/admin/query-engine/restart")
 async def restart_query_engine(container: str | None = None):
-    """Restart the query engine container (single-node dev only). Falls back to QUERY_ENGINE_CONTAINER env var."""
+    """Restart the query engine container (single-node dev only). Falls back to
+    QUERY_ENGINE_CONTAINER env var, then the bound engine's name."""
     import asyncio
 
-    container = container or os.environ.get("QUERY_ENGINE_CONTAINER", "trino")
+    from provisa.api.app import state
+
+    container = (
+        container or os.environ.get("QUERY_ENGINE_CONTAINER") or state.federation_engine.name
+    )
     try:
         proc = await asyncio.create_subprocess_exec(
             "docker",

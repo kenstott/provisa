@@ -23,14 +23,7 @@ import trino
 from provisa.observability.ops_schema import OPS_TABLES
 
 # Postgres column types (ops_schema's source of truth) mapped to Trino/Iceberg types.
-OPS_PG_TO_TRINO: dict[str, str] = {
-    "text": "VARCHAR",
-    "bigint": "BIGINT",
-    "integer": "INTEGER",
-    "float8": "DOUBLE",
-    "date": "DATE",
-    "boolean": "BOOLEAN",
-}
+from provisa.compiler.type_map import OPS_PG_TO_PHYSICAL
 
 
 def seed_ops_trino(  # REQ-016
@@ -52,7 +45,7 @@ def seed_ops_trino(  # REQ-016
         _exec("CREATE SCHEMA IF NOT EXISTS otel.signals")
         for tbl_name, cols in OPS_TABLES.items():
             col_defs = [
-                f'"{col_name}" {OPS_PG_TO_TRINO.get(pg_type, "VARCHAR")}'
+                f'"{col_name}" {OPS_PG_TO_PHYSICAL.get(pg_type, "VARCHAR")}'
                 for col_name, pg_type, _ in cols
             ]
             col_names_lower = {col_name.lower() for col_name, _, _ in cols}
@@ -79,7 +72,7 @@ def seed_ops_trino(  # REQ-016
                 existing_cols = {row[0].lower() for row in cur.fetchall()}
                 for col_name, pg_type, _ in cols:
                     if col_name.lower() not in existing_cols:
-                        trino_type = OPS_PG_TO_TRINO.get(pg_type, "VARCHAR")
+                        trino_type = OPS_PG_TO_PHYSICAL.get(pg_type, "VARCHAR")
                         try:
                             _exec(
                                 f'ALTER TABLE otel.signals.{tbl_name} ADD COLUMN "{col_name}" {trino_type}'

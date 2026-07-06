@@ -187,7 +187,7 @@ class _FakeEngine:
 
 class TestOrgScopedCacheLocation:
     def test_cache_location_uses_org_prefix_as_default(self):  # REQ-698
-        from provisa.api_source.trino_cache import cache_location
+        from provisa.api_source.engine_cache import cache_location
 
         loc = cache_location("my-source", cache_schema="org_acme_api_cache")
         assert loc.schema == "org_acme_api_cache"

@@ -14,7 +14,7 @@ import pytest
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput
-from provisa.grpc.proto_gen import generate_proto, _trino_to_proto
+from provisa.grpc.proto_gen import generate_proto, _physical_to_proto
 
 
 def _make_si(
@@ -72,41 +72,41 @@ def _make_si(
 
 class TestTypeMapping:
     def test_integer(self):
-        assert _trino_to_proto("integer") == "int32"
+        assert _physical_to_proto("integer") == "int32"
 
     def test_bigint(self):
-        assert _trino_to_proto("bigint") == "int64"
+        assert _physical_to_proto("bigint") == "int64"
 
     def test_varchar(self):
-        assert _trino_to_proto("varchar") == "string"
+        assert _physical_to_proto("varchar") == "string"
 
     def test_varchar_parameterized(self):
-        assert _trino_to_proto("varchar(255)") == "string"
+        assert _physical_to_proto("varchar(255)") == "string"
 
     def test_boolean(self):
-        assert _trino_to_proto("boolean") == "bool"
+        assert _physical_to_proto("boolean") == "bool"
 
     def test_decimal(self):
-        assert _trino_to_proto("decimal(10,2)") == "double"
+        assert _physical_to_proto("decimal(10,2)") == "double"
 
     def test_real(self):
-        assert _trino_to_proto("real") == "double"
+        assert _physical_to_proto("real") == "double"
 
     def test_double(self):
-        assert _trino_to_proto("double") == "double"
+        assert _physical_to_proto("double") == "double"
 
     def test_timestamp(self):
-        assert _trino_to_proto("timestamp") == "google.protobuf.Timestamp"
+        assert _physical_to_proto("timestamp") == "google.protobuf.Timestamp"
 
     def test_date(self):
-        assert _trino_to_proto("date") == "string"
+        assert _physical_to_proto("date") == "string"
 
     def test_unmapped_raises(self):
-        with pytest.raises(ValueError, match="Unmapped Trino type"):
-            _trino_to_proto("hyperloglog")
+        with pytest.raises(ValueError, match="Unmapped column type"):
+            _physical_to_proto("hyperloglog")
 
     def test_array_inner(self):
-        assert _trino_to_proto("array(varchar)") == "string"
+        assert _physical_to_proto("array(varchar)") == "string"
 
 
 class TestGenerateProto:

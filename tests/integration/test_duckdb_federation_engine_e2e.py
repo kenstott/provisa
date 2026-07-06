@@ -60,7 +60,7 @@ def _compile_to_duckdb(si: SchemaInput, gql: str, rls: RLSContext | None = None)
     return transpile(rewrite_semantic_to_physical(sql, ctx), "duckdb")
 
 
-def test_duckdb_governed_query_applies_rls():
+def test_duckdb_query_applies_rls():
     """An RLS rule filters real CSV rows when executed on DuckDB (governance is not bypassed)."""
     gt = duckdb.connect()
     by_state = gt.execute(

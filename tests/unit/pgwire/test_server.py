@@ -21,7 +21,7 @@ import decimal
 
 import pytest
 
-from provisa.executor.trino import QueryResult as TrinoResult
+from provisa.executor.result import QueryResult as EngineResult
 from provisa.pgwire.server import ProvisaQueryResult, _infer_bvtype, _tag_from_sql
 from buenavista.core import BVType
 
@@ -109,7 +109,7 @@ class TestInferBvtype:
 
 class TestProvisaQueryResult:
     def _make(self, rows, cols, sql="SELECT 1"):
-        tr = TrinoResult(rows=rows, column_names=cols)
+        tr = EngineResult(rows=rows, column_names=cols)
         return ProvisaQueryResult(tr, sql)
 
     def test_has_results_with_columns(self):

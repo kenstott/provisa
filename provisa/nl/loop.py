@@ -152,7 +152,7 @@ def make_sql_compiler() -> Callable[[str], CompileResult]:  # REQ-464
 
     def _compile(query: str) -> CompileResult:
         try:
-            parsed = sqlglot.parse(query, dialect="trino")
+            parsed = sqlglot.parse(query, dialect="postgres")
             if not parsed or parsed[0] is None:
                 return CompileResult(valid=False, error="Empty or unparseable SQL")
             return CompileResult(valid=True)

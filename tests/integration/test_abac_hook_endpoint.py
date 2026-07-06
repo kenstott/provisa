@@ -5,12 +5,12 @@
 
 """Endpoint-level ABAC approval-hook integration test (REQ-203).
 
-Drives a governed query through the live /data/graphql endpoint with a stub
+Drives a compiled query through the live /data/graphql endpoint with a stub
 ApprovalHook injected into AppState, executing against a running Postgres source.
 Pins the three contractual behaviours of the hook seam in ``_prepare_compiled``:
 
   1. The hook is evaluated for the query, receiving a payload that reflects the
-     governed query (tables + requested columns) — it runs AFTER RLS/visibility.
+     compiled query (tables + requested columns) — it runs AFTER RLS/visibility.
   2. A denial (``approved=False``) aborts execution with HTTP 403.
   3. An ``additional_filter`` is ANDed into the governed WHERE clause and
      therefore narrows the real result set.
@@ -107,9 +107,7 @@ def _orders_field(schema) -> str:
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
 async def client_field():
     os.environ.setdefault("PG_PASSWORD", "provisa")
-    assert await _pg_ready(), (
-        "Postgres source with public.orders not reachable on localhost:5432"
-    )
+    assert await _pg_ready(), "Postgres source with public.orders not reachable on localhost:5432"
 
     import provisa.api.app as appmod
     from fastapi import FastAPI
@@ -210,7 +208,7 @@ class TestApprovalHookEndpoint:
         assert len(rows) >= 1
 
     async def test_hook_is_evaluated_with_governed_payload(self, client_field):
-        """REQ-203: the hook is called, and its payload reflects the governed query."""
+        """REQ-203: the hook is called, and its payload reflects the compiled query."""
         from provisa.auth.approval_hook import ApprovalResponse
 
         client, field_name, st = client_field
@@ -227,7 +225,7 @@ class TestApprovalHookEndpoint:
         assert req.operation == "query"
         assert req.user == "admin"
         assert "admin" in req.roles
-        # Payload reflects the compiled/governed query, not the raw request.
+        # Payload reflects the compiled query, not the raw request.
         assert req.tables, "hook payload missing table ids"
         assert "id" in req.columns and "region" in req.columns
 

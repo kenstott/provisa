@@ -39,7 +39,7 @@ import pytest
 from pytest_bdd import given, when, then, scenarios
 
 from provisa.grpc_remote import loader
-from provisa.api_source.trino_cache import (
+from provisa.api_source.engine_cache import (
     cache_location,
     cache_table_name,
     table_known_live,
@@ -476,9 +476,7 @@ def provisa_auto_classifies_methods(shared_data):
 # ---------------------------------------------------------------------------
 
 
-@then(
-    "GetUsers and StreamEvents are classified as queries and CreateUser as a mutation"
-)
+@then("GetUsers and StreamEvents are classified as queries and CreateUser as a mutation")
 def assert_classification_results(shared_data):
     """Verify the name-prefix rule classifies correctly for each method."""
     classifications = shared_data["classifications"]
@@ -552,16 +550,12 @@ def query_classified_grpc_method_with_fields(shared_data):
 
     method_names = {m["name"] for m in service["methods"]}
     assert "GetProducts" in method_names, f"GetProducts not found in {method_names}"
-    assert "StreamStockEvents" in method_names, (
-        f"StreamStockEvents not found in {method_names}"
-    )
+    assert "StreamStockEvents" in method_names, f"StreamStockEvents not found in {method_names}"
 
     # Verify classification: both start with query prefixes
     for method in service["methods"]:
         kind = _classify_method(method)
-        assert kind == "query", (
-            f"Expected {method['name']} to be query-classified, got {kind!r}"
-        )
+        assert kind == "query", f"Expected {method['name']} to be query-classified, got {kind!r}"
 
     messages = parsed["messages"]
 
@@ -642,12 +636,13 @@ def expose_as_virtual_table(shared_data):
 
 
 @then(
-    "output fields become columns, input fields become GraphQL arguments, and streaming methods collect all messages")
+    "output fields become columns, input fields become GraphQL arguments, and streaming methods collect all messages"
+)
 def assert_virtual_table_structure(shared_data):
     """Assert REQ-325: columns from output, args from input, streaming collects all rows."""
     virtual_tables: dict = shared_data["virtual_tables"]
     parsed: dict = shared_data["parsed"]
-    messages: dict = parsed["messages"]
+    _messages: dict = parsed["messages"]
 
     # -----------------------------------------------------------------------
     # GetProducts: output fields → typed columns
@@ -676,9 +671,7 @@ def assert_virtual_table_structure(shared_data):
     assert column_by_name["tags"]["sql_type"] == "ARRAY(VARCHAR)", (
         f"Expected 'tags' → ARRAY(VARCHAR), got {column_by_name['tags']['sql_type']!r}"
     )
-    assert column_by_name["tags"]["repeated"] is True, (
-        "tags field must be marked as repeated"
-    )
+    assert column_by_name["tags"]["repeated"] is True, "tags field must be marked as repeated"
 
     # -----------------------------------------------------------------------
     # GetProducts: input fields → GraphQL arguments
@@ -686,12 +679,8 @@ def assert_virtual_table_structure(shared_data):
     graphql_args = get_products["graphql_args"]
     arg_by_name = {a["name"]: a for a in graphql_args}
 
-    assert "category" in arg_by_name, (
-        "input field 'category' must become a GraphQL argument"
-    )
-    assert "limit" in arg_by_name, (
-        "input field 'limit' must become a GraphQL argument"
-    )
+    assert "category" in arg_by_name, "input field 'category' must become a GraphQL argument"
+    assert "limit" in arg_by_name, "input field 'limit' must become a GraphQL argument"
     assert arg_by_name["category"]["sql_type"] == "VARCHAR", (
         f"Expected 'category' arg → VARCHAR, got {arg_by_name['category']['sql_type']!r}"
     )
@@ -746,8 +735,7 @@ def assert_virtual_table_structure(shared_data):
     )
     for i, (collected, original) in enumerate(zip(collected_rows, streamed_messages)):
         assert collected == original, (
-            f"Row {i} mismatch after streaming collection: "
-            f"{collected!r} != {original!r}"
+            f"Row {i} mismatch after streaming collection: {collected!r} != {original!r}"
         )
 
     # Verify none of the stream rows were dropped
@@ -761,8 +749,7 @@ def assert_virtual_table_structure(shared_data):
     # -----------------------------------------------------------------------
     tracked_functions: dict = shared_data["tracked_functions"]
     assert len(tracked_functions) == 0, (
-        "All methods in this proto are query-classified; "
-        "no tracked_functions should exist"
+        "All methods in this proto are query-classified; no tracked_functions should exist"
     )
 
     # -----------------------------------------------------------------------
@@ -782,19 +769,11 @@ def assert_virtual_table_structure(shared_data):
             f"Virtual table {key!r} must not be marked as a mutation"
         )
         # Each virtual table must expose typed_columns and graphql_args
-        assert "typed_columns" in vt, (
-            f"Virtual table {key!r} must have typed_columns"
-        )
-        assert "graphql_args" in vt, (
-            f"Virtual table {key!r} must have graphql_args"
-        )
+        assert "typed_columns" in vt, f"Virtual table {key!r} must have typed_columns"
+        assert "graphql_args" in vt, f"Virtual table {key!r} must have graphql_args"
         # Each virtual table must declare its input and output proto message types
-        assert "input_type" in vt, (
-            f"Virtual table {key!r} must declare input_type"
-        )
-        assert "output_type" in vt, (
-            f"Virtual table {key!r} must declare output_type"
-        )
+        assert "input_type" in vt, f"Virtual table {key!r} must declare input_type"
+        assert "output_type" in vt, f"Virtual table {key!r} must declare output_type"
         # server_streaming flag must be a boolean
         assert isinstance(vt["server_streaming"], bool), (
             f"Virtual table {key!r} server_streaming must be bool, "
@@ -919,15 +898,11 @@ def assert_tracked_function_structure(shared_data):
     assert "payment_id" in return_schema_by_name, (
         "output field 'payment_id' must appear in return_schema"
     )
-    assert "status" in return_schema_by_name, (
-        "output field 'status' must appear in return_schema"
-    )
+    assert "status" in return_schema_by_name, "output field 'status' must appear in return_schema"
     assert "charged_amount" in return_schema_by_name, (
         "output field 'charged_amount' must appear in return_schema"
     )
-    assert "success" in return_schema_by_name, (
-        "output field 'success' must appear in return_schema"
-    )
+    assert "success" in return_schema_by_name, "output field 'success' must appear in return_schema"
 
     assert return_schema_by_name["payment_id"]["sql_type"] == "VARCHAR"
     assert return_schema_by_name["charged_amount"]["sql_type"] == "DOUBLE"
@@ -998,9 +973,7 @@ def grpc_query_result_cached_in_iceberg(shared_data):
     _TABLE_EXISTS_CACHE[(loc.catalog, loc.schema, tbl)] = time.monotonic() + 3600
 
     # Simulate cached rows already in Trino (no live gRPC call needed)
-    cached_rows = [
-        {"sku": "SKU-42", "warehouse_id": "WH-001", "quantity": 100, "unit_cost": 9.99}
-    ]
+    cached_rows = [{"sku": "SKU-42", "warehouse_id": "WH-001", "quantity": 100, "unit_cost": 9.99}]
 
     # Simulate a reusable gRPC channel stored in AppState.grpc_remote_channels
     mock_channel = MagicMock()
@@ -1033,9 +1006,7 @@ def same_grpc_call_repeated_within_ttl(shared_data):
 
     # table_known_live must return True — no Trino probe needed
     is_live = table_known_live(loc, tbl)
-    assert is_live, (
-        "table_known_live must return True when the cache entry has not expired"
-    )
+    assert is_live, "table_known_live must return True when the cache entry has not expired"
 
     shared_data["is_cache_hit"] = is_live
 
@@ -1103,9 +1074,7 @@ def assert_results_from_cache_and_channel_reused(shared_data):
     assert loc.catalog == _ICEBERG_CATALOG, (
         f"gRPC query cache must use the '{_ICEBERG_CATALOG}' Iceberg catalog"
     )
-    assert loc.schema == _ICEBERG_SCHEMA, (
-        f"gRPC query cache schema must be '{_ICEBERG_SCHEMA}'"
-    )
+    assert loc.schema == _ICEBERG_SCHEMA, f"gRPC query cache schema must be '{_ICEBERG_SCHEMA}'"
     assert loc.backend == "iceberg", (
         "Cache location backend must be 'iceberg' for the results catalog"
     )
@@ -1148,9 +1117,7 @@ def grpc_source_with_changed_proto(shared_data):
     orig_arg_names = {a["name"] for a in get_report_orig["graphql_args"]}
     assert "report_id" in orig_arg_names
     assert "since" in orig_arg_names
-    assert "format" not in orig_arg_names, (
-        "'format' arg must NOT exist before the proto change"
-    )
+    assert "format" not in orig_arg_names, "'format' arg must NOT exist before the proto change"
 
     # Build a simulated source registration dict (mirrors AppState structure)
     registration = {
@@ -1234,9 +1201,7 @@ def assert_proto_refresh_results(shared_data):
 
     # GetReport input args expanded with new 'format' field
     updated_arg_names = {a["name"] for a in get_report["graphql_args"]}
-    assert "format" in updated_arg_names, (
-        "'format' input arg must appear after proto change"
-    )
+    assert "format" in updated_arg_names, "'format' input arg must appear after proto change"
     assert "report_id" in updated_arg_names
     assert "since" in updated_arg_names
 

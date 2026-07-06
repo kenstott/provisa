@@ -18,7 +18,7 @@ from __future__ import annotations
 import oracledb  # pyright: ignore[reportMissingImports]
 
 from provisa.executor.drivers.base import DirectDriver
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 
 class OracleDriver(DirectDriver):  # REQ-052, REQ-229, REQ-550

@@ -29,7 +29,7 @@ from provisa.cypher.parser import MatchClause, NodePattern, PathFunction, RelPat
 
 
 def _parse_sql_expr(sql: str) -> Any:
-    return sqlglot.parse_one(sql, dialect="trino")
+    return sqlglot.parse_one(sql, dialect="postgres")
 
 
 # ---------------------------------------------------------------------------

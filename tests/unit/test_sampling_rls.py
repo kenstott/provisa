@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.sampling import DEFAULT_SAMPLE_SIZE, apply_sampling, get_sample_size
@@ -136,7 +135,7 @@ class TestApplySamplingWithRLS:
         """Build a compiled query with an RLS WHERE clause already injected."""
         base = _compiled('SELECT "id" FROM "public"."orders"')
         ctx = _ctx()
-        rls = RLSContext(rules={1: "region = 'us-east'"})
+        rls = RLSContext(rules={1: "\"region\" = 'us-east'"})
         return inject_rls(base, ctx, rls)
 
     def test_rls_query_without_limit_gets_limit(self):
@@ -146,7 +145,7 @@ class TestApplySamplingWithRLS:
 
         result = apply_sampling(rls_query, 100)
         assert "LIMIT 100" in result.sql
-        assert "region = 'us-east'" in result.sql
+        assert "\"region\" = 'us-east'" in result.sql
 
     def test_rls_query_with_large_limit_capped(self):
         rls_query = self._rls_injected()
@@ -161,7 +160,7 @@ class TestApplySamplingWithRLS:
         result = apply_sampling(rls_with_limit, 100)
         assert "LIMIT 100" in result.sql
         assert "5000" not in result.sql
-        assert "region = 'us-east'" in result.sql
+        assert "\"region\" = 'us-east'" in result.sql
 
     def test_rls_query_with_small_limit_preserved(self):
         rls_query = self._rls_injected()
@@ -174,7 +173,7 @@ class TestApplySamplingWithRLS:
         )
         result = apply_sampling(rls_with_limit, 100)
         assert "LIMIT 10" in result.sql
-        assert "region = 'us-east'" in result.sql
+        assert "\"region\" = 'us-east'" in result.sql
 
 
 # ---------------------------------------------------------------------------
@@ -196,15 +195,10 @@ class TestHasCapability:
         assert has_capability(role, Capability.FULL_RESULTS) is False
 
     def test_none_role_handled_gracefully(self):
-        # has_capability uses dict.get so passing None raises AttributeError —
-        # confirm the function signature expects a dict and docs say None is invalid.
-        # We verify a role dict with None-ish value is handled.
+        # capabilities=None is coerced to an empty list by has_capability, so the check
+        # returns False rather than crashing — a None value is handled, not raised.
         role = {"id": "ghost", "capabilities": None}
-        # capabilities=None means .get returns None; `in` on None raises TypeError
-        # The contract: callers must supply a list.  Validate that a proper empty
-        # list dict evaluates False rather than crashing.
-        role_safe = {"id": "ghost", "capabilities": []}
-        assert has_capability(role_safe, Capability.FULL_RESULTS) is False
+        assert has_capability(role, Capability.FULL_RESULTS) is False
 
     def test_multiple_capabilities_checks_correct_one(self):
         role = {

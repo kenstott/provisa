@@ -74,7 +74,7 @@ def _make_minimal_state():
     state.source_dialects = {}
     state.masking_rules = {}
     state.flight_client = None
-    state.trino_conn = None
+    state.engine_conn = None
     from provisa.federation.engine import build_trino_engine
     from provisa.federation.runtime import EngineRuntime
 
@@ -298,7 +298,7 @@ class TestFlightDoGetWithRealData:
         state.source_dialects = {"test-pg": "postgres"}
         state.masking_rules = {}
         state.flight_client = None
-        state.trino_conn = None
+        state.engine_conn = None
         from provisa.federation.engine import build_trino_engine
         from provisa.federation.runtime import EngineRuntime
 

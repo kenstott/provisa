@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Atomic org provisioning — PG schema, PG role, Redis ACL, Trino cache schema.
+"""Atomic org provisioning — PG schema, PG role, Redis ACL, the engine cache schema.
 
 REQ-700, REQ-701
 """

@@ -8,11 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Google Sheets source mapping — sheet ranges to tables via Trino connector.
+"""Google Sheets source mapping — sheet ranges to tables vithe engine connector.
 
 Each sheet range becomes a table. Column names come from the first row or
 explicit config. The metadata sheet holds the schema definitions that the
-Trino Google Sheets connector reads.
+the engine Google Sheets connector reads.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ class GoogleSheetsSourceConfig:  # REQ-012, REQ-250
 
 
 def generate_catalog_properties(config: GoogleSheetsSourceConfig) -> dict[str, str]:  # REQ-250
-    """Generate Trino Google Sheets connector catalog properties."""
+    """Generate the engine Google Sheets connector catalog properties."""
     return {
         "connector.name": "gsheets",
         "gsheets.metadata-sheet-id": config.metadata_sheet_id,
@@ -53,7 +53,7 @@ def generate_catalog_properties(config: GoogleSheetsSourceConfig) -> dict[str, s
 def generate_table_definitions(config: GoogleSheetsSourceConfig) -> list[dict]:  # REQ-250, REQ-012
     """Generate table definition entries for each configured sheet range.
 
-    Each entry corresponds to one row in the Trino metadata sheet:
+    Each entry corresponds to one row in the engine metadata sheet:
     - tableName: logical table name
     - sheetUrl: Google Sheets URL or range reference
     - columns: list of {name, type} for schema enforcement

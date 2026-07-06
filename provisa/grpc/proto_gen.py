@@ -25,7 +25,7 @@ from provisa.compiler.schema_gen import (
     _can_see_relationship,
 )
 
-# Trino type → proto type
+# the engine type → proto type
 _PROTO_TYPE_MAP: dict[str, str] = {
     "tinyint": "int32",
     "smallint": "int32",
@@ -54,8 +54,8 @@ _PROTO_TYPE_MAP: dict[str, str] = {
 }
 
 
-def _trino_to_proto(trino_type: str) -> str:
-    normalized = trino_type.lower().strip()
+def _physical_to_proto(column_type: str) -> str:
+    normalized = column_type.lower().strip()
     if normalized in _PROTO_TYPE_MAP:
         return _PROTO_TYPE_MAP[normalized]
     base = normalized.split("(")[0].strip()
@@ -63,16 +63,16 @@ def _trino_to_proto(trino_type: str) -> str:
         return _PROTO_TYPE_MAP[base]
     if normalized.startswith("array(") and normalized.endswith(")"):
         inner = normalized[6:-1]
-        return _trino_to_proto(inner)
-    raise ValueError(f"Unmapped Trino type for proto: {trino_type!r}")
+        return _physical_to_proto(inner)
+    raise ValueError(f"Unmapped column type for proto: {column_type!r}")
 
 
 def _needs_timestamp_import(columns: list[tuple[str, str]]) -> bool:
-    return any(_trino_to_proto(dtype) == "google.protobuf.Timestamp" for _, dtype in columns)
+    return any(_physical_to_proto(dtype) == "google.protobuf.Timestamp" for _, dtype in columns)
 
 
-def _is_array_type(trino_type: str) -> bool:
-    return trino_type.lower().strip().startswith("array(")
+def _is_array_type(column_type: str) -> bool:
+    return column_type.lower().strip().startswith("array(")
 
 
 def _to_proto_type_name(gql_name: str) -> str:
@@ -155,7 +155,7 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
             meta = t.column_metadata.get(col["column_name"])
             if meta is None:
                 continue
-            proto_type = _trino_to_proto(meta.data_type)
+            proto_type = _physical_to_proto(meta.data_type)
             repeated = "repeated " if _is_array_type(meta.data_type) else ""
             lines.append(f"  {repeated}{proto_type} {col['column_name']} = {field_num};")
             used_fields.add(col["column_name"])
@@ -186,7 +186,7 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
             meta = t.column_metadata.get(col["column_name"])
             if meta is None:
                 continue
-            proto_type = _trino_to_proto(meta.data_type)
+            proto_type = _physical_to_proto(meta.data_type)
             filter_proto = "string" if proto_type == "google.protobuf.Timestamp" else proto_type
             lines.append(f"  {filter_proto} {col['column_name']} = {filter_num};")
             filter_num += 1
@@ -212,7 +212,7 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
             meta = t.column_metadata.get(col["column_name"])
             if meta is None:
                 continue
-            proto_type = _trino_to_proto(meta.data_type)
+            proto_type = _physical_to_proto(meta.data_type)
             lines.append(f"  {proto_type} {col['column_name']} = {input_num};")
             input_num += 1
         lines.append("}")

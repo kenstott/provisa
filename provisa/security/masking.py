@@ -32,13 +32,13 @@ class MaskType(str, Enum):
     truncate = "truncate"
 
 
-# Trino base types that support regex masking
+# the engine base types that support regex masking
 _STRING_TYPES = {"varchar", "char", "text", "varbinary"}
 
-# Trino base types that support truncate masking
+# the engine base types that support truncate masking
 _TEMPORAL_TYPES = {"date", "time", "timestamp", "time with time zone", "timestamp with time zone"}
 
-# Trino integer type bounds for MAX/MIN constant resolution
+# the engine integer type bounds for MAX/MIN constant resolution
 _INTEGER_BOUNDS: dict[str, tuple[int, int]] = {
     "tinyint": (-128, 127),
     "smallint": (-32768, 32767),
@@ -48,9 +48,9 @@ _INTEGER_BOUNDS: dict[str, tuple[int, int]] = {
 }
 
 
-def _base_type(trino_type: str) -> str:
+def _base_type(column_type: str) -> str:
     """Normalize parameterized types: varchar(100) → varchar."""
-    return trino_type.lower().split("(")[0].strip()
+    return column_type.lower().split("(")[0].strip()
 
 
 @dataclass(frozen=True)
@@ -155,7 +155,7 @@ def build_mask_expression(  # REQ-040, REQ-263
     Args:
         rule: The masking rule to apply.
         column_ref: The fully qualified column reference (e.g., '"t0"."email"').
-        data_type: The Trino data type of the column.
+        data_type: The engine data type of the column.
 
     Returns:
         SQL expression string.
@@ -191,7 +191,7 @@ def _resolve_constant_value(value: int | float | str | None, data_type: str):
 
 
 def _convert_regexp_replacement(replace: str) -> str:
-    """Convert Trino REGEXP_REPLACE replacement syntax ($1, $$) to Python re.sub (\\g<1>, $)."""
+    """Convert the engine REGEXP_REPLACE replacement syntax ($1, $$) to Python re.sub (\\g<1>, $)."""
     out: list[str] = []
     i = 0
     while i < len(replace):

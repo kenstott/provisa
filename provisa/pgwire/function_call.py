@@ -18,7 +18,7 @@ row dicts back to a pgwire QueryResult. Invocation routes through the one shared
 
 from __future__ import annotations
 
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 
 def _literal_value(node):

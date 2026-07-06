@@ -27,7 +27,6 @@ New coverage here:
 
 from __future__ import annotations
 
-import pytest
 
 from provisa.compiler.rls import RLSContext, build_rls_context, inject_rls
 from provisa.compiler.mask_inject import MaskingRules, inject_masking
@@ -92,8 +91,7 @@ def _compiled_for(
         sql=sql,
         params=[],
         root_field=root_field,
-        columns=columns
-        or [ColumnRef(alias=None, column="id", field_name="id", nested_in=None)],
+        columns=columns or [ColumnRef(alias=None, column="id", field_name="id", nested_in=None)],
         sources={"test-pg"},
     )
 
@@ -155,12 +153,12 @@ class TestDeepInheritanceChain:
         by_second = {r.id: r for r in second_pass}
 
         for role_id in ["base", "mid", "leaf"]:
-            assert set(by_first[role_id].capabilities) == set(
-                by_second[role_id].capabilities
-            ), f"Idempotency failed for capabilities of role {role_id}"
-            assert set(by_first[role_id].domain_access) == set(
-                by_second[role_id].domain_access
-            ), f"Idempotency failed for domain_access of role {role_id}"
+            assert set(by_first[role_id].capabilities) == set(by_second[role_id].capabilities), (
+                f"Idempotency failed for capabilities of role {role_id}"
+            )
+            assert set(by_first[role_id].domain_access) == set(by_second[role_id].domain_access), (
+                f"Idempotency failed for domain_access of role {role_id}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -241,14 +239,14 @@ class TestRLSAccumulationThroughInheritance:
     def test_build_rls_context_accumulates_multiple_tables(self):
         """build_rls_context must collect rules from all tables for the given role."""
         raw_rules = [
-            {"table_id": ORDERS_TABLE_ID, "role_id": "analyst", "filter_expr": "region = 'us'"},
+            {"table_id": ORDERS_TABLE_ID, "role_id": "analyst", "filter_expr": "\"region\" = 'us'"},
             {"table_id": CUSTOMERS_TABLE_ID, "role_id": "analyst", "filter_expr": "active = true"},
             {"table_id": PRODUCTS_TABLE_ID, "role_id": "analyst", "filter_expr": "visible = true"},
             {"table_id": ORDERS_TABLE_ID, "role_id": "admin", "filter_expr": "1=1"},
         ]
         rls = build_rls_context(raw_rules, "analyst")
 
-        assert rls.rules[ORDERS_TABLE_ID] == "region = 'us'"
+        assert rls.rules[ORDERS_TABLE_ID] == "\"region\" = 'us'"
         assert rls.rules[CUSTOMERS_TABLE_ID] == "active = true"
         assert rls.rules[PRODUCTS_TABLE_ID] == "visible = true"
         assert ORDERS_TABLE_ID in rls.rules
@@ -274,7 +272,7 @@ class TestRLSAccumulationThroughInheritance:
             ],
         )
         # Child inherits parent's rule: the caller passes the parent's filter for the child
-        inherited_rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'eu-west'"})
+        inherited_rls = RLSContext(rules={ORDERS_TABLE_ID: "\"region\" = 'eu-west'"})
         result = inject_rls(compiled, ctx, inherited_rls)
 
         assert "region" in result.sql
@@ -293,8 +291,8 @@ class TestRLSAccumulationThroughInheritance:
         rls = RLSContext(rules={ORDERS_TABLE_ID: combined_filter})
         result = inject_rls(compiled, ctx, rls)
 
-        assert "region = 'us-west'" in result.sql
-        assert "tier = 'premium'" in result.sql
+        assert "\"region\" = 'us-west'" in result.sql
+        assert "\"tier\" = 'premium'" in result.sql
         assert "AND" in result.sql
 
     def test_rls_context_empty_when_role_has_no_rules(self):

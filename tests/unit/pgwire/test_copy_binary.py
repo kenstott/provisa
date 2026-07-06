@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import struct
 
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 from provisa.pgwire.copy_binary import (
     _COPY_BINARY_SIGNATURE,
     _duckdb_binary_tag,

@@ -36,7 +36,7 @@ class ProvisaDriverTest {
         DriverPropertyInfo[] props = driver.getPropertyInfo("jdbc:provisa://localhost:8001", new Properties());
         assertEquals(3, props.length);
         assertEquals("mode", props[2].name);
-        assertArrayEquals(new String[]{"approved", "catalog"}, props[2].choices);
+        assertArrayEquals(new String[]{"catalog"}, props[2].choices);
     }
 
     @Test

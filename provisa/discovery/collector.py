@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Collect table metadata from Trino and PG for LLM relationship discovery."""
+"""Collect table metadata from the engine and PG for LLM relationship discovery."""
 
 from __future__ import annotations
 

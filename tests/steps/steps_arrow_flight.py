@@ -86,7 +86,7 @@ def client_connects_to_flight_server_port_8815(shared_data: dict) -> None:
     state.source_dialects = {}
     state.masking_rules = {}
     state.flight_client = None
-    state.trino_conn = None
+    state.engine_conn = None
     state.tenant_db = None
 
     # Start a dedicated event loop in a daemon thread so that the server's
@@ -525,7 +525,7 @@ def zaychik_proxy_unavailable(shared_data: dict) -> None:
 
     state = MagicMock()
     state.flight_client = None  # Zaychik proxy not available
-    state.trino_conn = MagicMock()  # Trino REST connectivity remains available
+    state.engine_conn = MagicMock()  # Trino REST connectivity remains available
     state.schemas = {}
     state.contexts = {}
     state.rls_contexts = {}

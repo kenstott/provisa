@@ -4,10 +4,10 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""Migrate registered file-source tables (SQLite) into PostgreSQL for Trino federation.
+"""Migrate registered file-source tables (SQLite) into PostgreSQL for the engine federation.
 
 Only the tables explicitly registered in Provisa are migrated — not the entire file.
-PG schema name matches the table's registered schema_name so Trino paths are consistent.
+PG schema name matches the table's registered schema_name so the engine paths are consistent.
 """
 
 import logging
@@ -43,12 +43,12 @@ def _to_pg_type(sqlite_declared: str) -> str:
     return _PG_TYPE_MAP.get(sql_type, "TEXT")
 
 
-# SQL type (from _sqlite_type_to_sql) → Trino type name, matching what Trino's
+# SQL type (from _sqlite_type_to_sql) → the engine type name, matching what the engine's
 # information_schema.columns reports for the migrated PG table. Used to persist
 # column types from the authoritative SQLite schema instead of introspecting
-# Trino — the migration runs inside the config-load transaction, so Trino (a
+# the engine — the migration runs inside the config-load transaction, so the engine (a
 # separate JDBC connection) cannot see the uncommitted PG table.
-_TRINO_TYPE_MAP = {
+_PHYSICAL_TYPE_MAP = {
     "VARCHAR": "varchar",
     "BIGINT": "bigint",
     "INTEGER": "integer",
@@ -62,14 +62,14 @@ _TRINO_TYPE_MAP = {
 }
 
 
-def sqlite_column_trino_types(source_path: str, sqlite_table: str) -> dict[str, str]:  # REQ-250
-    """Return {column_name: trino_type} for a SQLite table from its declared schema."""
+def sqlite_column_types(source_path: str, sqlite_table: str) -> dict[str, str]:  # REQ-250
+    """Return {column_name: column_type} for a SQLite table from its declared schema."""
     sq = sqlite3.connect(source_path)
     try:
         info = sq.execute(f'PRAGMA table_info("{sqlite_table}")').fetchall()
     finally:
         sq.close()
-    return {row[1]: _TRINO_TYPE_MAP.get(_sqlite_type_to_sql(row[2]), "varchar") for row in info}
+    return {row[1]: _PHYSICAL_TYPE_MAP.get(_sqlite_type_to_sql(row[2]), "varchar") for row in info}
 
 
 async def migrate_sqlite_table(  # REQ-012, REQ-017, REQ-250
@@ -97,7 +97,7 @@ async def migrate_sqlite_table(  # REQ-012, REQ-017, REQ-250
         # PRAGMA table_info columns: (cid, name, type, notnull, dflt_value, pk).
         # pk > 0 marks PRIMARY KEY membership (value = 1-based position for composites).
         # Preserve it so the migrated PG table carries the constraint — the PK
-        # resolution pass reads it from there (SQLite has no Trino/native driver path).
+        # resolution pass reads it from there (SQLite has no the engine/native driver path).
         pk_cols = [r[1] for r in sorted((r for r in info if r[5]), key=lambda r: r[5])]
         if pk_cols:
             col_defs += ", PRIMARY KEY (" + ", ".join(f'"{c}"' for c in pk_cols) + ")"

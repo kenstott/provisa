@@ -90,7 +90,7 @@ class _FakeEngine:
         self.queries: list[str] = []
 
     async def execute_engine(self, sql, *a, **k):
-        from provisa.executor.trino import QueryResult
+        from provisa.executor.result import QueryResult
 
         self.queries.append(sql)
         if _WM_MARK in sql:

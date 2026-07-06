@@ -33,7 +33,7 @@ function hasColumnAliases(c: CompileResult): boolean {
 const base: CompileResult = {
   sql: 'SELECT 1',
   semantic_sql: 'SELECT 1',
-  trino_sql: null,
+  engine_sql: null,
   direct_sql: null,
   params: [],
   route: 'direct',

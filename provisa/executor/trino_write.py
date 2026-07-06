@@ -26,17 +26,17 @@ import trino
 
 log = logging.getLogger(__name__)
 
-# Formats Trino can write natively via Hive/Iceberg CTAS
-TRINO_NATIVE_FORMATS = {"parquet", "orc"}
+# Object-store / format helpers live in the neutral redirect module; re-export for impl callers.
+from provisa.executor.redirect import (  # noqa: E402,F401  # re-export for impl back-compat
+    ENGINE_NATIVE_FORMATS,
+    is_engine_native_format,
+    presign_ctas_result,
+    schedule_s3_cleanup,
+)
 
 RESULTS_CATALOG = "results"
 RESULTS_SCHEMA = "provisa_results"
 RESULTS_BUCKET = "provisa-results"
-
-
-def is_trino_native_format(fmt: str) -> bool:  # REQ-138
-    """Check if a format can be written directly by Trino."""
-    return fmt.lower() in TRINO_NATIVE_FORMATS
 
 
 def _iceberg_format(fmt: str) -> str:
@@ -111,89 +111,3 @@ def cleanup_result_table(conn: trino.dbapi.Connection, table_name: str) -> None:
     cur = conn.cursor()
     cur.execute(sql)
     log.info("[CTAS CLEANUP] dropped table %s", table_name)
-
-
-async def schedule_s3_cleanup(  # REQ-141
-    s3_prefix: str,
-    redirect_config,
-    delay_seconds: int | None = None,
-) -> None:
-    """Delete S3 objects under a CTAS result prefix after a delay.
-
-    Called after the presigned URL TTL expires so the data doesn't
-    accumulate indefinitely.
-    """
-    import asyncio
-    import boto3
-    from botocore.config import Config as BotoConfig
-
-    ttl = delay_seconds if delay_seconds is not None else redirect_config.ttl
-
-    await asyncio.sleep(ttl)
-
-    s3 = boto3.client(
-        "s3",
-        endpoint_url=redirect_config.endpoint_url or None,
-        aws_access_key_id=redirect_config.access_key,
-        aws_secret_access_key=redirect_config.secret_key,
-        region_name=redirect_config.region,
-        config=BotoConfig(signature_version="s3v4"),
-    )
-
-    bucket = redirect_config.bucket
-    prefix = s3_prefix.replace(f"s3a://{bucket}/", "")
-
-    response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
-    contents = response.get("Contents", [])
-
-    if contents:
-        s3.delete_objects(
-            Bucket=bucket,
-            Delete={"Objects": [{"Key": obj["Key"]} for obj in contents]},
-        )
-        log.info("[CTAS CLEANUP] deleted %d S3 objects at %s", len(contents), prefix)
-
-
-async def presign_ctas_result(  # REQ-044, REQ-029
-    s3_prefix: str,
-    redirect_config,
-) -> str:
-    """Find the Parquet/ORC file(s) under the CTAS prefix and return a presigned URL.
-
-    CTAS writes one or more files under the prefix. For a single result set,
-    Trino typically writes a single file.
-    """
-    import boto3
-    from botocore.config import Config as BotoConfig
-
-    s3 = boto3.client(
-        "s3",
-        endpoint_url=redirect_config.endpoint_url or None,
-        aws_access_key_id=redirect_config.access_key,
-        aws_secret_access_key=redirect_config.secret_key,
-        region_name=redirect_config.region,
-        config=BotoConfig(signature_version="s3v4"),
-    )
-
-    # s3_prefix is like "s3a://provisa-results/results/abc123"
-    # Strip the s3a://bucket/ to get the S3 key prefix
-    bucket = redirect_config.bucket
-    prefix = s3_prefix.replace(f"s3a://{bucket}/", "")
-
-    # List objects under the prefix to find the data file(s)
-    response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
-    contents = response.get("Contents", [])
-
-    if not contents:
-        raise FileNotFoundError(f"No files found at {s3_prefix}")
-
-    # Use the first (and typically only) data file
-    key = contents[0]["Key"]
-
-    url = s3.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": bucket, "Key": key},
-        ExpiresIn=redirect_config.ttl,
-    )
-
-    return url

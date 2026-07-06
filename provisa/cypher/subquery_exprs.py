@@ -84,7 +84,7 @@ class SubqueryExprsMixin:  # REQ-345, REQ-347
                 self._param_order.append(p)  # type: ignore[attr-defined]
                 self._param_seen.add(p)  # type: ignore[attr-defined]
 
-        inner_sql = inner_select.sql(dialect="trino")
+        inner_sql = inner_select.sql(dialect="postgres")
 
         if keyword == "EXISTS":
             return f"EXISTS ({inner_sql})"

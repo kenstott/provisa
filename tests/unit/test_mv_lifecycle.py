@@ -18,7 +18,7 @@ import pytest
 
 from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 from provisa.mv.refresh import (
     detect_orphans,
     drop_expired_orphans,

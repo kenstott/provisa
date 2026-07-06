@@ -25,6 +25,7 @@ from provisa.pgwire.catalog import answer, classify
 # Shared state helpers (mirrors test_catalog.py)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class _TableMeta:
     table_id: int
@@ -64,6 +65,7 @@ def _empty_state():
 # TestParamSubstitution
 # ---------------------------------------------------------------------------
 
+
 class TestParamSubstitution:
     def test_no_params_unchanged(self):
         assert _substitute_params("SELECT 1", None) == "SELECT 1"
@@ -98,6 +100,7 @@ class TestParamSubstitution:
 # TestCatalogScalars
 # ---------------------------------------------------------------------------
 
+
 class TestCatalogScalars:
     def test_current_user(self):
         result = answer("SELECT current_user", "alice", _empty_state())
@@ -122,6 +125,7 @@ class TestCatalogScalars:
 # TestCatalogTxnFix
 # ---------------------------------------------------------------------------
 
+
 class TestCatalogTxnFix:
     def test_start_transaction_intercepted(self):
         assert classify("START TRANSACTION") == "INTERCEPT"
@@ -141,6 +145,7 @@ class TestCatalogTxnFix:
 # TestPgAm
 # ---------------------------------------------------------------------------
 
+
 class TestPgAm:
     def test_pg_am_returns_rows(self):
         result = answer("SELECT * FROM pg_catalog.pg_am", "u", _empty_state())
@@ -152,6 +157,7 @@ class TestPgAm:
 # TestWireParamBinding (integration, no real server)
 # ---------------------------------------------------------------------------
 
+
 class TestWireParamBinding:
     def test_parameterized_select(self, monkeypatch):
         """After substitution $1 is replaced before reaching the pipeline."""
@@ -159,7 +165,8 @@ class TestWireParamBinding:
 
         async def _mock_pipeline(sql, role_id):
             captured["sql"] = sql
-            from provisa.executor.trino import QueryResult
+            from provisa.executor.result import QueryResult
+
             return QueryResult(rows=[(99,)], column_names=["val"])
 
         monkeypatch.setattr("provisa.pgwire._pipeline.execute_pgwire_sql", _mock_pipeline)
@@ -169,6 +176,7 @@ class TestWireParamBinding:
 
         loop = asyncio.new_event_loop()
         import provisa.pgwire.server as srv_mod
+
         with srv_mod._loop_lock:
             srv_mod._loop = loop
 
@@ -178,7 +186,7 @@ class TestWireParamBinding:
         try:
             sess = ProvisaSession()
             sess.role_id = "testuser"
-            result = sess.execute_sql("SELECT $1::int", [99])
+            _result = sess.execute_sql("SELECT $1::int", [99])
             assert "$1" not in captured["sql"]
             assert "99" in captured["sql"]
         finally:

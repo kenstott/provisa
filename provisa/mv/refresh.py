@@ -8,12 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 #
-# complexity-gate: allow-ble=2 reason="engine-agnostic table-exists probe (SELECT 1 fails => absent) cannot name a Trino-specific exception without re-coupling; plus the grandfathered refresh_mv outer catch"
+# complexity-gate: allow-ble=2 reason="engine-agnostic table-exists probe (SELECT 1 fails => absent) cannot name the engine-specific exception without re-coupling; plus the grandfathered refresh_mv outer catch"
 
 """Materialized view refresh engine (REQ-081, REQ-084).
 
 Background asyncio task that refreshes stale MVs on schedule.
-Uses Trino CTAS for initial creation, DELETE+INSERT for refresh.
+Uses the engine CTAS for initial creation, DELETE+INSERT for refresh.
 """
 
 # Requirements: REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ-235
@@ -52,7 +52,7 @@ def _emit_column_lineage_span(
     )
 
     try:
-        derivations = resolve_column_lineage(select_sql, dialect="trino")
+        derivations = resolve_column_lineage(select_sql, dialect="postgres")
     except SqlglotError as exc:
         log.warning("MV %s: column lineage unresolved (%s)", mv.id, exc)
         derivations = []
@@ -286,7 +286,7 @@ async def drop_expired_orphans(  # REQ-234
         orphan_tables: Current list of orphan table names.
         grace_period: Seconds to wait before dropping.
         schema_name: MV cache schema name.
-        catalog: Trino catalog.
+        catalog: the engine catalog.
 
     Returns list of dropped table names.
     """

@@ -57,17 +57,31 @@ def _make_conn():
     return conn
 
 
+class _BridgeEngine:
+    """Fake EngineRuntime whose ENGINE terminal delegates to the module-level ``execute_trino``,
+    so the existing ``_patch_trino`` patches (and call-arg assertions) keep working after LiveEngine
+    was switched from a raw Trino connection to the engine seam."""
+
+    def __init__(self, conn) -> None:
+        self._conn = conn
+
+    async def execute_engine(self, sql, params=None, **_kw):
+        from provisa.executor.trino import execute_trino
+
+        return execute_trino(self._conn, sql)
+
+
 def _make_engine(pool=None, trino_conn=None) -> LiveEngine:
     if pool is None:
         pool = MagicMock()
     if trino_conn is None:
         trino_conn = MagicMock()
-    return LiveEngine(tenant_db=pool, trino_conn=trino_conn)
+    return LiveEngine(tenant_db=pool, engine=_BridgeEngine(trino_conn))
 
 
 def _trino_qr(rows):
     """Build a Trino QueryResult from a list of dict rows."""
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
 
     if not rows:
         return QueryResult(rows=[], column_names=[])

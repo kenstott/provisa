@@ -35,7 +35,7 @@ class KafkaTableConfig:  # REQ-147, REQ-148, REQ-149
 
 
 def _parse_window(window: str) -> str:
-    """Parse a human-friendly window like '1h', '30m', '24h' to a Trino INTERVAL.
+    """Parse a human-friendly window like '1h', '30m', '24h' to the engine INTERVAL.
 
     Returns a SQL fragment like "INTERVAL '1' HOUR".
     """

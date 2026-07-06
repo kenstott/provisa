@@ -14,10 +14,10 @@ The planner (REQ-825) produces an ordered plan whose terminal step is DIRECT (a 
 reachable source, executed on its native driver) or ENGINE (hand to the federation engine).
 ``EngineRuntime`` is where that hand-off actually happens: it binds a ``FederationEngine`` to
 its live backend and owns the DIRECT-vs-ENGINE dispatch that was previously duplicated at every
-call site as ``execute_trino(state.trino_conn, ...)`` / ``execute_direct(state.source_pools, ...)``.
+call site as a hardcoded engine execution / ``execute_direct(state.source_pools, ...)``.
 
-For the Trino reference engine the ENGINE terminal delegates to the existing ``execute_trino``
-(which owns Trino reconnect against ``state.trino_conn_kwargs``) and the DIRECT terminal delegates
+The ENGINE terminal delegates to the bound engine's backend (which owns its own connection
+and reconnect against ``state.engine_conn_kwargs``) and the DIRECT terminal delegates
 to ``execute_direct`` — so behavior is byte-identical to the pre-swap hardcoded path. Swapping the
 bound engine (DuckDB/Snowflake) swaps only this terminal dispatch; routing/governance/cache are
 unchanged (REQ-840, REQ-841).
@@ -25,39 +25,25 @@ unchanged (REQ-840, REQ-841).
 
 from __future__ import annotations
 
-import asyncio
 from contextlib import contextmanager
 from enum import Enum
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import pyarrow as pa
 
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
     from provisa.federation.engine import FederationEngine
     from provisa.transpiler.router import RouteDecision
 
 
 class EngineCapability(str, Enum):  # REQ-825, REQ-840
     """A transport an engine advertises. Consumer-side features gate on these — they are
-    federation-engine-specific, not universally available (e.g. Arrow Flight is a Trino feature)."""
+    federation-engine-specific, not universally available (e.g. Arrow Flight is the engine feature)."""
 
     ROWS = "rows"  # row-oriented result (dbapi cursor) — every engine
     ARROW = "arrow"  # materialized columnar Arrow table
     ARROW_STREAM = "arrow_stream"  # lazily-streamed Arrow record batches
-
-
-# Transport capabilities per reference engine. A designed escape hatch (REQ-825): the contract is
-# uniform, but engine-specific transports (Arrow Flight off Trino) are advertised capabilities that
-# callers query and route through — never an undesigned reach-around to a raw connection. An engine
-# that lacks a transport simply omits it, and require() fails closed.
-_ENGINE_CAPABILITIES: dict[str, frozenset[EngineCapability]] = {
-    "trino": frozenset(
-        {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
-    ),
-    "duckdb": frozenset({EngineCapability.ROWS, EngineCapability.ARROW}),
-    # pg and sqlalchemy are row-oriented (no Arrow transport); omitted keys default to ROWS.
-}
 
 
 class UnsupportedCapabilityError(Exception):  # REQ-825
@@ -75,16 +61,28 @@ class EngineRuntime:  # REQ-825, REQ-840
     def __init__(self, engine: FederationEngine, state: Any) -> None:
         self.engine = engine
         self._state = state
+        self._backend = engine.backend  # the engine's concrete implementation of every terminal
 
     @property
     def name(self) -> str:
         return self.engine.name
 
+    @property
+    def dialect(self) -> str:
+        """The physical SQL dialect the bound engine speaks — the transpile target for generic
+        callers, so they never hardcode a specific engine's dialect."""
+        return self._backend.dialect
+
+    def transpile_physical(self, pg_sql: str) -> str:
+        """Transpile governed PostgreSQL-dialect SQL to the bound engine's physical dialect —
+        the single seam generic callers use instead of hardcoding a specific engine's dialect."""
+        return self._backend.transpile_physical(pg_sql)
+
     # -- capability introspection (REQ-825): consumer-side features gate on these -----------
 
     @property
     def capabilities(self) -> frozenset[EngineCapability]:
-        return _ENGINE_CAPABILITIES.get(self.engine.name, frozenset({EngineCapability.ROWS}))
+        return self.engine.capabilities
 
     def supports(self, capability: EngineCapability) -> bool:
         return capability in self.capabilities
@@ -96,8 +94,8 @@ class EngineRuntime:  # REQ-825, REQ-840
 
     @property
     def native_conn(self) -> Any:
-        """The reference-engine connection backing the ENGINE terminal (Trino dbapi conn)."""
-        return self._state.trino_conn
+        """The reference-engine connection backing the ENGINE terminal (the engine dbapi conn)."""
+        return self._state.engine_conn
 
     async def execute_engine(
         self,
@@ -105,62 +103,42 @@ class EngineRuntime:  # REQ-825, REQ-840
         params: list | None = None,
         *,
         session_hints: dict[str, str] | None = None,
+        fresh: bool = False,
         conn_kwargs: dict | None = None,
         span_attrs: dict[str, str] | None = None,
         extra_table_attrs: list[dict[str, str]] | None = None,
     ) -> QueryResult:
-        """ENGINE terminal (REQ-825): execute federated SQL on the bound engine."""
-        from provisa.executor.trino import execute_trino
+        """ENGINE terminal (REQ-825): execute federated SQL on the bound engine.
 
-        conn = self._state.trino_conn
-        if conn is None and conn_kwargs is None:
-            raise RuntimeError(f"engine {self.engine.name!r} connection not available")
-        # When conn_kwargs is set, execute_trino reconnects and ignores `conn`; None is safe there.
-        _conn = cast("Any", conn)
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None,
-            lambda: execute_trino(
-                _conn,
-                sql,
-                params=params,
-                session_hints=session_hints,
-                conn_kwargs=conn_kwargs,
-                span_attrs=span_attrs,
-                extra_table_attrs=extra_table_attrs,
-            ),
+        ``fresh=True`` requests a private, freshly-reconnected terminal connection instead of the
+        shared one (used by concurrent API-cache materialization that must not share a session) —
+        the engine supplies its own reconnection parameters, so callers never touch a raw
+        connection."""
+        return await self._backend.execute(
+            self._state,
+            sql,
+            params,
+            session_hints=session_hints,
+            fresh=fresh,
+            conn_kwargs=conn_kwargs,
+            span_attrs=span_attrs,
+            extra_table_attrs=extra_table_attrs,
         )
 
     def execute_engine_sync(self, sql: str, params: list | None = None) -> QueryResult:
         """SYNCHRONOUS ENGINE terminal — for callers already on a worker thread (Arrow
         Flight, API-response materialization, OTEL compaction) that must not touch the
-        event loop. Same dispatch as execute_engine, minus the run_in_executor hop, so
-        those paths reach the engine through the abstraction instead of a raw connection."""
-        from provisa.executor.trino import execute_trino
-
-        conn = self._state.trino_conn
-        if conn is None:
-            raise RuntimeError(f"engine {self.engine.name!r} connection not available")
-        return execute_trino(cast("Any", conn), sql, params=params)
+        event loop."""
+        return self._backend.execute_sync(self._state, sql, params)
 
     @contextmanager
     def isolated_sync(self):
         """A FRESH, thread-isolated engine connection for background materialization
         (API-response caching) that runs off the event loop and must not share the main
-        connection's session across threads. Yields a DBAPI-style connection; the engine
-        owns provisioning and teardown, so callers never open a Trino connection directly.
-        Closed on exit."""
-        if self.engine.name == "trino":
-            import trino as _trino
-
-            conn = _trino.dbapi.connect(**self._state.trino_conn_kwargs)
-            try:
-                yield conn
-            finally:
-                conn.close()
-        else:
-            # Engines without a Trino-style dbapi connection share the bound connection.
-            yield self._state.trino_conn
+        connection's session across threads. The engine owns provisioning and teardown, so
+        callers never open a concrete connection directly."""
+        with self._backend.isolated_sync(self._state) as conn:
+            yield conn
 
     async def execute_native(
         self, source_pools: Any, source_id: str, sql: str, params: list | None = None
@@ -174,129 +152,106 @@ class EngineRuntime:  # REQ-825, REQ-840
 
     def introspect_by_catalog(self, catalog: str, schema: str, table: str) -> dict[str, str]:
         """Column types keyed by the engine's PHYSICAL catalog name (not source id) — the
-        sync introspection seam used by the compile-time type cache. Trino reads its
-        information_schema over the dbapi conn; engines without a live catalog return {}."""
-        if self.engine.name == "trino" and self._state.trino_conn is not None:
-            from provisa.compiler.introspect import introspect_column_types
-
-            return introspect_column_types(self._state.trino_conn, catalog, schema, table)
-        return {}
+        sync introspection seam used by the compile-time type cache."""
+        return self._backend.introspect_by_catalog(self._state, catalog, schema, table)
 
     def introspect_columns(self, source: Any, schema_name: str, table_name: str) -> dict[str, str]:
-        """Column types as the BOUND ENGINE reports them for a registered table — the
-        single introspection seam. Every engine answers in its own type system: Trino
-        reads its normalized ``information_schema`` over the dbapi conn; DuckDB DESCRIBEs
-        the attached source. All engine-specific access (Trino conn, DuckDB attach) lives
-        behind this method, so callers never reference a concrete engine. Returns
-        ``{column_name: type_name}``; an engine that cannot introspect live returns ``{}``
-        (registration then keeps the declared types — introspection only fills nulls)."""
-        name = self.engine.name
-        if name == "trino":
-            conn = self._state.trino_conn
-            if conn is None:
-                return {}
-            from provisa.compiler.introspect import introspect_column_types
-            from provisa.compiler.naming import source_to_catalog
-
-            return introspect_column_types(
-                conn, source_to_catalog(source.id), schema_name, table_name
-            )
-        if self.engine.native_store == "duckdb":
-            from types import SimpleNamespace
-
-            from provisa.core.secrets import resolve_secrets
-            from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
-
-            def _rs(v: Any) -> Any:  # resolve ${env:..}/${secret:..} in connection strings
-                return resolve_secrets(v) if isinstance(v, str) else v
-
-            merged = SimpleNamespace(
-                id=source.id,
-                type=source.type,
-                host=_rs(getattr(source, "host", None)),
-                port=getattr(source, "port", None),
-                database=_rs(getattr(source, "database", None)),
-                username=_rs(getattr(source, "username", None)),
-                password=_rs(getattr(source, "password", None)),
-                path=_rs(getattr(source, "path", None)),
-                schema_name=schema_name,
-                table_name=table_name,
-            )
-            import duckdb
-
-            runtime = DuckDBFederationRuntime()
-            try:
-                return runtime.introspect_columns(merged)
-            except duckdb.Error:
-                # Engine can't reach the source right now (e.g. offline extension install,
-                # source down): keep declared types. Introspection only augments — logged.
-                import logging
-
-                logging.getLogger(__name__).warning(
-                    "duckdb introspection of %s.%s failed; keeping declared types",
-                    schema_name,
-                    table_name,
-                    exc_info=True,
-                )
-                return {}
-            finally:
-                runtime.close()
-        return {}
+        """Column types as the BOUND ENGINE reports them for a registered table — the single
+        introspection seam. Every engine answers in its own type system, and all engine-specific
+        access lives in the engine's backend, so callers never reference a concrete engine. Returns
+        ``{column_name: type_name}``; an engine that cannot introspect live returns ``{}``."""
+        return self._backend.introspect_columns(self._state, source, schema_name, table_name)
 
     # -- source lifecycle (REQ-825/840): registration/analyze through the abstraction --------
 
     def register_source(self, source: Any, resolved_password: str) -> None:
-        """Provision a registered source ON THE BOUND ENGINE. Trino creates a dynamic
-        catalog; DuckDB/pg/sqlalchemy attach lazily at query time, so this is a no-op
-        for them. The only place source→engine provisioning happens — callers never
-        touch a Trino connection."""
-        if self.engine.name == "trino" and self._state.trino_conn is not None:
-            from provisa.core import catalog
-
-            catalog.create_catalog(self._state.trino_conn, source, resolved_password)
+        """Provision a registered source ON THE BOUND ENGINE (the engine creates a dynamic catalog;
+        native engines attach lazily). The only place source→engine provisioning happens."""
+        self._backend.register_source(self._state, source, resolved_password)
 
     def drop_source(self, source_id: str) -> None:
-        """Deprovision a source on the bound engine (Trino: drop catalog; else no-op)."""
-        if self.engine.name == "trino" and self._state.trino_conn is not None:
-            from provisa.core import catalog
-
-            catalog.drop_catalog(self._state.trino_conn, source_id)
+        """Deprovision a source on the bound engine."""
+        self._backend.drop_source(self._state, source_id)
 
     def analyze(self, source: Any, tables: list) -> None:
-        """Refresh engine statistics for a source's tables (Trino: ANALYZE; else no-op —
-        DuckDB/pg gather stats implicitly or not at all). Best-effort, behind the seam."""
-        if self.engine.name == "trino" and self._state.trino_conn is not None:
-            from provisa.core import catalog
+        """Refresh engine statistics for a source's tables (best-effort, behind the seam)."""
+        self._backend.analyze(self._state, source, tables)
 
-            catalog.analyze_source_tables(self._state.trino_conn, source, tables)
+    # -- engine lifecycle (REQ-825/840): boot / watchdog / reload / readiness through the seam --
+
+    def is_connected(self) -> bool:
+        """Whether the bound engine's terminal connection is live. Generic readiness gate — native
+        engines run in-process and are always connected."""
+        return self._backend.is_connected(self._state)
+
+    def provision(self, ops_views: list, retention_hours: int | None) -> None:
+        """Boot-time: connect the engine terminal and seed the OTel ops store (no-op for native
+        engines, whose telemetry lands in the dedicated ops store)."""
+        self._backend.provision(self._state, ops_views, retention_hours)
+
+    async def provision_infra(self) -> None:
+        """Boot-time engine-terminal infra (Arrow Flight proxy, object store, results schema).
+        No-op for a native engine."""
+        await self._backend.provision_infra(self._state)
+
+    async def watchdog(self) -> None:
+        """Liveness watchdog for the engine terminal (no-op when there is no external process)."""
+        await self._backend.watchdog(self._state)
+
+    async def reload_catalog(
+        self, catalog: str, ops_views: list, retention_hours: int | None
+    ) -> dict:
+        """Reload an engine catalog without a restart (native engines have no dynamic catalog)."""
+        return await self._backend.reload_catalog(self._state, catalog, ops_views, retention_hours)
+
+    def classify_error(self, exc: Exception) -> str | None:
+        """Map an engine driver exception to an engine-agnostic category (``"connection"`` → 503,
+        ``"query"`` → 400, ``None`` → caller default) so generic request handlers select an HTTP
+        status without importing engine-specific exception types."""
+        return self._backend.classify_error(exc)
+
+    def write_config(self, config_path: str) -> None:
+        """Lifecycle: render the engine's cluster config from platform config (no-op for native)."""
+        self._backend.write_config(self._state, config_path)
+
+    def configure_session(self, server_cfg: dict) -> None:
+        """Lifecycle: set engine session hints from server config (no-op for native)."""
+        self._backend.configure_session(self._state, server_cfg)
+
+    def polling_provider(self, catalog: str, schema: str, table: str, watermark_column: str):
+        """A change-data polling provider for the engine, or ``None`` when it offers none."""
+        return self._backend.polling_provider(self._state, catalog, schema, table, watermark_column)
+
+    def close(self) -> None:
+        """Lifecycle: tear down the engine terminal (no-op for native)."""
+        self._backend.close(self._state)
+
+    def register_kafka_catalog(self, kafka_source: dict) -> None:
+        """Register a Kafka source as an engine catalog (no-op for native engines)."""
+        self._backend.register_kafka_catalog(self._state, kafka_source)
+
+    def reseed_ops(self, ops_views: list, retention_hours: int | None) -> None:
+        """Idempotently re-seed the OTel ops store (self-heal after reconcile); no-op for native."""
+        self._backend.reseed_ops(self._state, ops_views, retention_hours)
+
+    def cluster_diagnostics(self) -> tuple[bool, int, int]:
+        """Engine health for the admin system-health view: ``(connected, workers, active_workers)``."""
+        return self._backend.cluster_diagnostics(self._state)
+
+    def ctas_redirect(self, physical_sql: str, output_format: str) -> dict:
+        """Execute a query as CTAS-to-object-store and return the redirect manifest (engine-specific)."""
+        return self._backend.ctas_redirect(self._state, physical_sql, output_format)
 
     # -- engine-specific transports (REQ-825): designed, capability-gated ENGINE terminals ----
-
-    def _flight_transport(self) -> Any:
-        """The engine's Arrow-Flight transport client (Trino → Zaychik Flight SQL proxy).
-
-        Distinct from the dbapi ``trino_conn``: the Flight transport is a separate, engine-specific
-        connection. Absent configuration fails closed — the capability is advertised statically but
-        unavailable at runtime until the proxy is wired.
-        """
-        client = self._state.flight_client
-        if client is None:
-            raise RuntimeError(
-                f"engine {self.engine.name!r} Arrow Flight transport is not configured "
-                "(set ZAYCHIK_HOST/ZAYCHIK_PORT and ensure the proxy is running)"
-            )
-        return client
 
     def execute_engine_arrow(self, sql: str, params: list | None = None) -> pa.Table:
         """ENGINE terminal returning a materialized Arrow table (requires ARROW capability).
 
         Synchronous: consumers (Flight server, COPY-to) call it from handler threads and off-load
-        to executors themselves. The Flight call is blocking (REQ-143, REQ-144).
+        to executors themselves. The transport call is blocking (REQ-143, REQ-144).
         """
         self.require(EngineCapability.ARROW)
-        from provisa.executor.trino_flight import execute_trino_flight_arrow
-
-        return execute_trino_flight_arrow(self._flight_transport(), sql, params)
+        return self._backend.execute_arrow(self._state, sql, params)
 
     def execute_engine_stream(self, sql: str, params: list | None = None):
         """ENGINE terminal returning ``(schema, RecordBatch generator)`` for lazy streaming.
@@ -305,9 +260,7 @@ class EngineRuntime:  # REQ-825, REQ-840
         the full result is never materialized (REQ-145).
         """
         self.require(EngineCapability.ARROW_STREAM)
-        from provisa.executor.trino_flight import execute_trino_flight_stream
-
-        return execute_trino_flight_stream(self._flight_transport(), sql, params)
+        return self._backend.execute_stream(self._state, sql, params)
 
     async def execute(
         self,

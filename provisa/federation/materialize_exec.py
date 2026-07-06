@@ -13,7 +13,7 @@
 Non-attachable sources (openapi/API, graphql_remote) cannot be referenced in place, so a
 single-node engine (DuckDB/Postgres) LANDs them into a relational store it can then attach and
 federate. ``select_write_face`` (REQ-848) chooses ``WriteFace.SQLALCHEMY_UPSERT`` for such a store;
-this module is that write face's execution — the piece that was missing (only the Trino/Iceberg
+this module is that write face's execution — the piece that was missing (only the engine/Iceberg
 land existed). Replace semantics here (drop+create) model a full refresh; incremental upsert is a
 follow-on keyed by the source's watermark.
 """

@@ -11,8 +11,8 @@
 """DuckDB federation runtime — ties the connectors, materialize store, and execution together.
 
 One in-process DuckDB connection acts as the single-node federation engine. Each registered source
-is exposed at its PHYSICAL ``schema.table`` name (what rewrite_semantic_to_physical emits) so a
-governed query executes unchanged:
+is exposed at its PHYSICAL ``schema.table`` name (what rewrite_semantic_to_physical emits) so
+the query executes unchanged:
 
 - ATTACH sources (postgres/sqlite/csv/parquet) are referenced in place via the (duckdb, source_type)
   connector's DDL, then wrapped in a physical-named view.
@@ -30,7 +30,7 @@ from typing import Any
 
 import duckdb
 
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 from provisa.federation.engine import build_duckdb_engine
 from provisa.federation.materialize_exec import land_rows_into_pg
 from provisa.transpiler.transpile import transpile
@@ -38,9 +38,12 @@ from provisa.transpiler.transpile import transpile
 
 class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def __init__(self, *, materialize_dsn: str | None = None) -> None:
+        from provisa.federation.engine import configured_materialize_url
+
         self._con = duckdb.connect()
         self._engine = build_duckdb_engine()
-        self._materialize_dsn = materialize_dsn
+        # Default the LAND store from config ($PROVISA_MATERIALIZE_URL / materialize_store_url).
+        self._materialize_dsn = materialize_dsn or configured_materialize_url()
         self._sqlite_loaded = False
         self._pg_ext_loaded = False  # postgres DuckDB extension INSTALL/LOAD (source ATTACH)
         self._pg_attached = False  # matpg materialization store ATTACH (distinct)
@@ -120,7 +123,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     # -- execution -------------------------------------------------------------
 
     async def execute(self, physical_or_governed_sql: str) -> QueryResult:
-        """Execute governed physical SQL on the engine (transpiled to DuckDB)."""
+        """Execute physical SQL (post-governance) on the engine (transpiled to DuckDB)."""
         duck_sql = transpile(physical_or_governed_sql, "duckdb")
         loop = asyncio.get_event_loop()
 

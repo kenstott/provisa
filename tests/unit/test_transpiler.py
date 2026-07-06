@@ -78,7 +78,7 @@ class TestSupportedDialects:
         assert "bigquery" in SUPPORTED_DIALECTS
 
     def test_dialect_count(self):
-        assert len(SUPPORTED_DIALECTS) == 7
+        assert len(SUPPORTED_DIALECTS) == 8  # + clickhouse (REQ-909)
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +317,7 @@ class TestTypeCoercions:
         assert "created_at" in result
 
     def test_boolean_literal(self):
-        sql = "SELECT TRUE AS \"active\", FALSE AS \"inactive\" FROM \"t\""
+        sql = 'SELECT TRUE AS "active", FALSE AS "inactive" FROM "t"'
         result = transpile(sql, "postgres")
         assert "active" in result
 
@@ -355,25 +355,25 @@ class TestRouterSingleSourceDirect:
 class TestRouterVirtualSources:
     def test_cassandra_routes_trino(self):
         d = decide_route({"cass1"}, _TYPES, _DIALECTS)
-        assert d.route == Route.TRINO
+        assert d.route == Route.ENGINE
         assert d.source_id is None
         assert "cassandra" in d.reason
 
     def test_mongodb_routes_trino(self):
         d = decide_route({"mongo1"}, _TYPES, _DIALECTS)
-        assert d.route == Route.TRINO
+        assert d.route == Route.ENGINE
 
     def test_kafka_routes_trino(self):
         d = decide_route({"kafka1"}, _TYPES, _DIALECTS)
-        assert d.route == Route.TRINO
+        assert d.route == Route.ENGINE
 
     def test_snowflake_without_driver_routes_trino(self):
         d = decide_route({"sf1"}, _TYPES, _DIALECTS)
-        assert d.route == Route.TRINO
+        assert d.route == Route.ENGINE
 
     def test_bigquery_without_driver_routes_trino(self):
         d = decide_route({"bq1"}, _TYPES, _DIALECTS)
-        assert d.route == Route.TRINO
+        assert d.route == Route.ENGINE
 
 
 class TestRouterAPIRoute:
@@ -391,18 +391,18 @@ class TestRouterAPIRoute:
 class TestRouterMultiSource:
     def test_two_pg_sources_routes_trino(self):
         d = decide_route({"pg1", "pg2"}, _TYPES, _DIALECTS)
-        assert d.route == Route.TRINO
+        assert d.route == Route.ENGINE
         assert "multi-source" in d.reason
 
     def test_pg_plus_mongo_routes_trino(self):
         d = decide_route({"pg1", "mongo1"}, _TYPES, _DIALECTS)
-        assert d.route == Route.TRINO
+        assert d.route == Route.ENGINE
 
 
 class TestRouterStewardHints:
     def test_steward_trino_overrides_direct(self):
-        d = decide_route({"pg1"}, _TYPES, _DIALECTS, steward_hint="trino")
-        assert d.route == Route.TRINO
+        d = decide_route({"pg1"}, _TYPES, _DIALECTS, steward_hint="engine")
+        assert d.route == Route.ENGINE
         assert "steward" in d.reason
 
     def test_steward_direct_on_pg(self):
@@ -413,11 +413,11 @@ class TestRouterStewardHints:
     def test_steward_direct_on_nosql_falls_through(self):
         """NoSQL has no direct driver; steward hint is ignored."""
         d = decide_route({"cass1"}, _TYPES, _DIALECTS, steward_hint="direct")
-        assert d.route == Route.TRINO
+        assert d.route == Route.ENGINE
 
     def test_steward_direct_on_multi_source_ignored(self):
         d = decide_route({"pg1", "pg2"}, _TYPES, _DIALECTS, steward_hint="direct")
-        assert d.route == Route.TRINO
+        assert d.route == Route.ENGINE
 
 
 class TestRouterMutations:
@@ -438,7 +438,7 @@ class TestRouterJSONExtract:
         types = {"mysql1": "mysql"}
         dialects = {"mysql1": "mysql"}
         d = decide_route({"mysql1"}, types, dialects, has_json_extract=True)
-        assert d.route == Route.TRINO
+        assert d.route == Route.ENGINE
         assert "JSON" in d.reason or "json" in d.reason
 
     def test_json_extract_pg_dialect_stays_direct(self):
@@ -452,7 +452,7 @@ class TestRouterRouteDecision:
         d = decide_route({"pg1"}, _TYPES, _DIALECTS)
         assert isinstance(d, RouteDecision)
         with pytest.raises(Exception):
-            d.route = Route.TRINO  # type: ignore[misc]
+            d.route = Route.ENGINE  # type: ignore[misc]
 
     def test_reason_is_always_non_empty_string(self):
         for sid, stype in _TYPES.items():

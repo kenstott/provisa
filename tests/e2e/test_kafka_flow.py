@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""E2E tests for Kafka sink flow: approved query → result published to topic.
+"""E2E tests for Kafka sink flow: query → result published to topic.
 
 Requires: docker-compose up (Kafka + Provisa backend)
 """

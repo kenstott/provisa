@@ -26,7 +26,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import asyncpg
-import trino
 import yaml
 from fastapi import FastAPI, Request
 
@@ -55,7 +54,6 @@ from provisa.api.admin.db_queries import (
     parse_mask_value as _parse_mask_value,
 )
 from provisa.api.otel_setup import setup_otel as _setup_otel, shutdown_otel as _shutdown_otel
-from provisa.api.trino_setup import write_trino_config as _write_trino_config
 from provisa.mv.registry import MVRegistry
 from provisa.cache.warm_tables import WarmTableManager
 from provisa.apq.cache import APQCache, NoopAPQCache
@@ -83,10 +81,10 @@ class AppState:
     # billing), backed by its own SQLAlchemy URI.
     tenant_db: Database | None = None
     admin_db: Database | None = None
-    trino_conn: trino.dbapi.Connection | None = None
-    trino_conn_kwargs: dict = {}  # kwargs used to create trino_conn (for reconnect)
+    engine_conn: Any | None = None  # engine terminal connection; owned by the engine backend
+    engine_conn_kwargs: dict = {}  # kwargs used to create engine_conn (for reconnect)
     # Terminal-route execution binding (REQ-825): owns DIRECT-vs-ENGINE dispatch. Always bound in
-    # __init__ (never None); Trino is the reference engine. Typed Any to avoid the runtime import.
+    # __init__ (never None); the engine is the reference engine. Typed Any to avoid the runtime import.
     federation_engine: Any = None
     flight_client: Any | None = None  # pyarrow.flight.FlightClient
     schemas: dict[str, graphql.GraphQLSchema] = {}  # role_id → GraphQLSchema
@@ -102,7 +100,7 @@ class AppState:
     roles: dict[str, dict] = {}  # role_id → role dict
     source_pools: SourcePool = SourcePool()
     source_types: dict[str, str] = {}  # source_id → source_type
-    source_catalogs: dict[str, str] = {}  # source_id → Trino catalog name
+    source_catalogs: dict[str, str] = {}  # source_id → the engine catalog name
     source_dialects: dict[str, str] = {}  # source_id → sqlglot dialect
     source_dsns: dict[str, str] = {}  # source_id → "host:port/database" (physical colocation key)
     masking_rules: MaskingRules = {}  # (table_id, role_id) → {col: (rule, dtype)}
@@ -139,11 +137,15 @@ class AppState:
     apq_ttl: int = 86400  # REQ-289: APQ cache TTL (apq.ttl config / PROVISA_APQ_TTL env)
     live_engine: Any | None = None  # Phase AM: LiveEngine instance
     hostname: str = "localhost"  # publicly reachable hostname (PROVISA_HOSTNAME)
-    source_federation_hints: dict[str, dict[str, str]] = {}  # source_id → Trino session props (AL3)
+    source_federation_hints: dict[
+        str, dict[str, str]
+    ] = {}  # source_id → the engine session props (AL3)
     source_allowed_domains: dict[
         str, list[str]
     ] = {}  # source_id → allowed domain ids (empty = unrestricted)
-    trino_fte_hints: dict[str, str] = {}  # FTE session properties injected into every Trino query
+    engine_session_hints: dict[
+        str, str
+    ] = {}  # FTE session properties injected into every the engine query
     server_cfg: dict = {}  # raw server section from provisa.yaml
     server_limits: dict = {}  # resolved query/request limits (from config + env overrides)
     tracked_functions: dict[str, dict] = {}  # gql field name → fn dict
@@ -180,7 +182,7 @@ class AppState:
     tenant_context_cache: TenantContextCache | None = None
     kafka_table_physical: dict[
         str, str
-    ] = {}  # virtual gql table → physical Trino table (Kafka sources)
+    ] = {}  # virtual gql table → physical the engine table (Kafka sources)
     config: Any = None  # ProvisaConfig set at startup
     otel_snapshot_retention_hours: int | None = None  # Iceberg snapshot expiry hours
     _stale_check_task: asyncio.Task | None = None  # schema staleness background loop
@@ -188,7 +190,7 @@ class AppState:
     def __init__(self) -> None:
         # Mandatory terminal-execution binding (REQ-825, REQ-840): every AppState is born with its
         # federation engine, so the query path always routes through it — there is no unbound state
-        # and no per-call-site fallback. The runtime reads self.trino_conn lazily at execute time,
+        # and no per-call-site fallback. The runtime reads self.engine_conn lazily at execute time,
         # so binding before the connection exists is correct; startup may swap the reference engine.
         from provisa.federation.engine import build_engine  # $PROVISA_ENGINE selects
         from provisa.federation.runtime import EngineRuntime
@@ -257,7 +259,7 @@ _META_TABLES = [
 # Ops telemetry schema — single source of truth, shared with otlp2sql so the
 # receiver's tables and the ops-domain registration never drift.
 from provisa.observability.ops_schema import OPS_TABLES as _OPS_TABLES  # noqa: E402
-from provisa.observability.ops_trino import OPS_PG_TO_TRINO as _OPS_PG_TO_TRINO  # noqa: E402
+from provisa.compiler.type_map import OPS_PG_TO_PHYSICAL as _OPS_PG_TO_PHYSICAL  # noqa: E402
 
 # Views registered in the ops domain alongside the raw Iceberg tables.
 # Each entry: (view_name, [(col_name, data_type, is_pk)], ddl_sql)
@@ -544,7 +546,7 @@ async def _init_control_planes(
     """Bring up both control planes from config and init tenant schema + audit.
 
     Returns the tenant DB connection parts (host, port, database, user) for the
-    Trino self-catalog. All connection details come from the config layer
+    the engine self-catalog. All connection details come from the config layer
     (``control_plane``), which is the only place the environment is read — both
     planes are driven purely by SQLAlchemy, each by its own URI."""
     from provisa.core.config_loader import load_control_plane
@@ -584,8 +586,9 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
 ) -> None:
     """Seed provisa-admin, provisa-otel, and __provisa__ source rows; seed meta domain and ops; compute clusters."""
     assert state.tenant_db is not None
-    trino_host_early = os.environ.get("TRINO_HOST", "localhost")
-    trino_port_early = int(os.environ.get("TRINO_PORT", "8080"))
+    from provisa.federation.engine import configured_engine_endpoint
+
+    engine_host_early, engine_port_early = configured_engine_endpoint()
     async with state.tenant_db.acquire() as _conn:
         await _conn.execute(
             """
@@ -598,21 +601,24 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
             pg_database,
             pg_user,
         )
+        _engine_name = state.federation_engine.name
         await _conn.execute(
             """
             INSERT INTO sources (id, type, host, port, database, username, dialect, description)
-            VALUES ('provisa-otel', 'iceberg', $1, $2, 'otel', 'provisa', 'trino', 'Observability telemetry store — OpenTelemetry spans and traces collected from Provisa query execution, used for performance monitoring and query analytics')
+            VALUES ('provisa-otel', 'iceberg', $1, $2, 'otel', 'provisa', $3, 'Observability telemetry store — OpenTelemetry spans and traces collected from Provisa query execution, used for performance monitoring and query analytics')
             ON CONFLICT (id) DO UPDATE SET description = COALESCE(NULLIF(sources.description, ''), EXCLUDED.description)
             """,
-            trino_host_early,
-            trino_port_early,
+            engine_host_early,
+            engine_port_early,
+            _engine_name,
         )
         await _conn.execute(
             """
             INSERT INTO sources (id, type, description)
-            VALUES ('__provisa__', 'trino', 'Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products')
+            VALUES ('__provisa__', $1, 'Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products')
             ON CONFLICT (id) DO NOTHING
-            """
+            """,
+            _engine_name,
         )
         _pg_conn = cast(asyncpg.Connection, _conn)
         await _seed_meta_domain(_pg_conn, org_id=state.org_id)
@@ -625,8 +631,8 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
             await _compute_and_store_clusters(_pg_conn)
 
 
-def _apply_server_and_trino_config(raw_config: dict) -> None:
-    """Populate state.server_cfg, state.hostname, state.server_limits, state.trino_conn, and FTE hints."""
+def _apply_server_and_engine_config(raw_config: dict) -> None:
+    """Populate state.server_cfg, state.hostname, state.server_limits, state.engine_conn, and FTE hints."""
     state.server_cfg = raw_config.get("server", {}) if isinstance(raw_config, dict) else {}
     state.hostname = str(
         os.environ.get("PROVISA_HOSTNAME") or state.server_cfg.get("hostname", "localhost")
@@ -639,9 +645,9 @@ def _apply_server_and_trino_config(raw_config: dict) -> None:
                 "PROVISA_DEFAULT_ROW_LIMIT", str(_limits_cfg.get("default_row_limit", 100))
             )
         ),
-        "trino_query_timeout": int(
+        "engine_query_timeout": int(
             os.environ.get(
-                "PROVISA_TRINO_QUERY_TIMEOUT", str(_limits_cfg.get("trino_query_timeout", 120))
+                "PROVISA_ENGINE_QUERY_TIMEOUT", str(_limits_cfg.get("engine_query_timeout", 120))
             )
         ),
         "request_timeout": float(
@@ -654,111 +660,21 @@ def _apply_server_and_trino_config(raw_config: dict) -> None:
         ),
     }
 
-    # The Trino terminal is only provisioned when Trino is the bound engine. A native
-    # engine (duckdb/embedded-pg/…) has no Trino cluster, so eagerly connecting and
-    # seeding the otel catalog here would fail at boot — telemetry for those engines
-    # lands in the dedicated ops store (ops_schema/otlp2sql), not a Trino catalog.
-    if state.federation_engine.name == "trino":
-        trino_host = os.environ.get("TRINO_HOST", "localhost")
-        trino_port = int(os.environ.get("TRINO_PORT", "8080"))
-        state.trino_conn_kwargs = dict(
-            host=trino_host,
-            port=trino_port,
-            user="provisa",
-            catalog="system",
-            schema=f"org_{state.org_id}",
-            http_scheme="http",
-            request_timeout=10,
-        )
-        state.trino_conn = trino.dbapi.connect(**state.trino_conn_kwargs)
-        from provisa.compiler import schema_service
-        from provisa.observability.ops_trino import seed_ops_trino
+    # The engine terminal is only provisioned when it has one (the engine connects a cluster and seeds
+    # its otel catalog). A native engine (duckdb/embedded-pg/…) has nothing to connect here —
+    # telemetry lands in the dedicated ops store (ops_schema/otlp2sql), so provision() is a no-op.
+    state.federation_engine.provision(
+        _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
+    )
 
-        schema_service.init(state.federation_engine)
-        seed_ops_trino(
-            state.trino_conn, _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
-        )
-
-    # Fault-Tolerant Execution (FTE) — env var > server.federation_fte config > disabled.
-    _fte_cfg = state.server_cfg.get("federation_fte", {})
-    _fte_enabled = os.environ.get(
-        "TRINO_FTE_ENABLED", str(_fte_cfg.get("enabled", False))
-    ).lower() not in ("0", "false", "no")
-    if _fte_enabled:
-        _rp: str = os.environ.get("TRINO_FTE_RETRY_POLICY") or str(
-            _fte_cfg.get("retry_policy", "TASK")
-        )
-        _retry_policy = _rp.upper()
-        state.trino_fte_hints = {"retry_policy": _retry_policy}
-        for _k, _v in _fte_cfg.items():
-            if _k in ("enabled", "retry_policy"):
-                continue
-            state.trino_fte_hints.setdefault(_k, str(_v))
-
-
-async def _connect_flight_and_object_store() -> None:  # REQ-143, REQ-171
-    """Concurrently connect Arrow Flight (Zaychik) and set up MinIO/results-schema."""
-
-    async def _connect_flight() -> None:
-        from provisa.executor.trino_flight import create_flight_connection
-
-        zaychik_host = os.environ.get("ZAYCHIK_HOST", "localhost")
-        zaychik_port = int(os.environ.get("ZAYCHIK_PORT", "8480"))
-        state.flight_client = await asyncio.to_thread(
-            create_flight_connection, host=zaychik_host, port=zaychik_port
-        )
-
-    async def _setup_object_store() -> None:
-        # MinIO results bucket (REQ-171) — already async.
-        from provisa.executor.redirect import RedirectConfig, ensure_results_bucket
-
-        await ensure_results_bucket(RedirectConfig.from_env())
-
-        # MinIO OTEL bucket for otlp2parquet (blocking boto3 → thread).
-        def _ensure_otel_bucket() -> None:
-            import boto3
-            from botocore.config import Config as BotoConfig
-
-            _otel_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT", "http://minio:9000")
-            _otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
-            _s3 = boto3.client(
-                "s3",
-                endpoint_url=_otel_endpoint,
-                aws_access_key_id=os.environ.get("PROVISA_OTEL_S3_ACCESS_KEY", "minioadmin"),
-                aws_secret_access_key=os.environ.get("PROVISA_OTEL_S3_SECRET_KEY", "minioadmin"),
-                region_name="us-east-1",
-                config=BotoConfig(signature_version="s3v4"),
-            )
-            existing = [b["Name"] for b in _s3.list_buckets().get("Buckets", [])]
-            if _otel_bucket not in existing:
-                _s3.create_bucket(Bucket=_otel_bucket)
-                logging.getLogger(__name__).info("Created MinIO bucket: %s", _otel_bucket)
-
-        try:
-            await asyncio.to_thread(_ensure_otel_bucket)
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "Could not ensure OTEL bucket — otlp2parquet storage may fail", exc_info=True
-            )
-
-        # Results schema for CTAS redirects (blocking Trino → thread).
-        try:
-            from provisa.executor.trino_write import ensure_results_schema
-
-            assert state.trino_conn is not None
-            await asyncio.to_thread(ensure_results_schema, state.trino_conn)
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "Could not create results schema — CTAS redirect unavailable", exc_info=True
-            )
-
-    await asyncio.gather(_connect_flight(), _setup_object_store())
+    # Engine session tuning (e.g. Fault-Tolerant Execution) — engine-specific, applied through the
+    # lifecycle seam. Native engines have no per-session cluster tuning (no-op).
+    state.federation_engine.configure_session(state.server_cfg)
 
 
 def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
     """Register Kafka topics as virtual tables and populate state.kafka_table_configs/windows."""
     from provisa.kafka.window import KafkaTableConfig
-    from provisa.core.trino_catalog_files import write_kafka_catalog_files
 
     for ks in raw_config.get("kafka_sources", []):
         source_id = ks["id"]
@@ -773,9 +689,9 @@ def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
                     "host": ks.get("bootstrap_servers", ""),
                 }
             )
-        # REQ-250/147: write catalog files and register the catalog dynamically
-        # (CREATE CATALOG) so it loads regardless of Trino start order.
-        write_kafka_catalog_files(ks, trino_conn=state.trino_conn)
+        # REQ-250/147: register the Kafka source as an engine catalog (the engine writes catalog files
+        # + CREATE CATALOG so it loads regardless of start order; native engines no-op).
+        state.federation_engine.register_kafka_catalog(ks)
         for topic in ks.get("topics", []):
             topic_id = topic.get("id", "")
             physical_table = topic.get("topic", "").replace(".", "_").replace("-", "_")
@@ -866,21 +782,21 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
                 )
             except Exception as _pool_err:
                 logging.getLogger(__name__).warning(
-                    "Direct pool for %r (%s:%s) failed: %s — Trino-routed queries still work.",
+                    "Direct pool for %r (%s:%s) failed: %s — the engine-routed queries still work.",
                     src.id,
                     resolved_host,
                     src.port,
                     _pool_err,
                 )
 
-    _known_trino_catalogs = set(state.source_catalogs.values()) | {
+    _known_engine_catalogs = set(state.source_catalogs.values()) | {
         _DEFAULT_ICE_CAT,
         "otel",
         "results",
     }
     for _dom in config.domains:
         _ddl_cat = _dom.ddl_catalog or _DEFAULT_ICE_CAT
-        if _dom.ddl_catalog and _ddl_cat not in _known_trino_catalogs:
+        if _dom.ddl_catalog and _ddl_cat not in _known_engine_catalogs:
             raise ValueError(
                 f"Domain {_dom.id!r} ddl_catalog={_dom.ddl_catalog!r} is not a registered source catalog"
             )
@@ -1209,7 +1125,7 @@ async def _init_ingest_engines() -> None:
 async def _load_and_build(
     config_path: str | None = None,
 ) -> None:  # REQ-012, REQ-016, REQ-247, REQ-289, REQ-369, REQ-371
-    """Load config, introspect Trino, build schemas for all roles."""
+    """Load config, introspect the engine, build schemas for all roles."""
     if config_path is None:
         config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
 
@@ -1249,17 +1165,15 @@ async def _load_and_build(
     with open(path) as f:
         raw_config = yaml.safe_load(f)
 
-    _apply_server_and_trino_config(raw_config)
+    _apply_server_and_engine_config(raw_config)
 
-    _mark("trino-connect")
+    _mark("engine-connect")
 
-    # Flight (Zaychik), the MinIO buckets, and the Trino results schema are mutually
-    # independent network setup. Run them concurrently to cut startup latency — the
-    # blocking calls go on threads so the event loop can overlap them. All three are
-    # Trino-terminal infra: a native engine has no Zaychik/MinIO/results-schema, so
-    # this whole step is skipped there (it would otherwise block on absent services).
-    if state.federation_engine.name == "trino":
-        await _connect_flight_and_object_store()
+    # Flight (Zaychik), the MinIO buckets, and the results schema are mutually independent
+    # engine-terminal network setup, run concurrently to cut startup latency. the engine-terminal
+    # infra: a native engine has no Zaychik/MinIO/results-schema, so provision_infra() is a
+    # no-op there (it would otherwise block on absent services).
+    await state.federation_engine.provision_infra()
 
     _mark("infra: flight/minio/results")
 
@@ -1273,7 +1187,7 @@ async def _load_and_build(
         None if (isinstance(_raw_auth, dict) and _raw_auth.get("provider") == "none") else _raw_auth
     )
 
-    # Load config into PG (and create Trino catalogs)
+    # Load config into PG (and create the engine catalogs)
     config = parse_config_dict(raw_config)
     state.config = config
     state.multitenancy = config.multitenancy
@@ -1334,9 +1248,9 @@ async def _load_and_build(
     await _init_ingest_engines()
 
     # Second pass — resolve PRIMARY KEYs from each native RDBMS source's own
-    # information_schema. Trino normalizes column types and layers Provisa governance
+    # information_schema. the engine normalizes column types and layers Provisa governance
     # on top, but its metadata model omits source constraints (there is no
-    # information_schema.table_constraints in a Trino catalog), so PKs are read here
+    # information_schema.table_constraints in the engine catalog), so PKs are read here
     # through the source driver directly, now that the source pools are built. The DB
     # constraint is authoritative — config YAML need not restate is_primary_key.
     await _resolve_pk_from_sources()
@@ -1596,12 +1510,12 @@ def _synthesize_column_metadata(
     gql_remote_srcs: dict,
 ) -> None:
     """Synthesize ColumnMetadata for ops, provisa-admin, graphql_remote, and govdata tables."""
-    # Ops tables: static columns when Trino introspection returns empty
+    # Ops tables: static columns when the engine introspection returns empty
     _ops_static_cols: dict[str, list[ColumnMetadata]] = {
         tbl_name: [
             ColumnMetadata(
                 column_name=col_name,
-                data_type=_OPS_PG_TO_TRINO.get(pg_type, "VARCHAR").lower(),
+                data_type=_OPS_PG_TO_PHYSICAL.get(pg_type, "VARCHAR").lower(),
                 is_nullable=not is_pk,
             )
             for col_name, pg_type, is_pk in cols
@@ -1612,7 +1526,7 @@ def _synthesize_column_metadata(
         _ops_static_cols[view_name] = [
             ColumnMetadata(
                 column_name=col_name,
-                data_type=_OPS_PG_TO_TRINO.get(pg_type, "VARCHAR").lower(),
+                data_type=_OPS_PG_TO_PHYSICAL.get(pg_type, "VARCHAR").lower(),
                 is_nullable=not is_pk,
             )
             for col_name, pg_type, is_pk in cols
@@ -1627,8 +1541,8 @@ def _synthesize_column_metadata(
         if not col_types_converted.get(_tid):
             col_types_converted[_tid] = _ops_static_cols[_vname]
 
-    # provisa-admin meta tables (no provisa_admin Trino catalog)
-    _pg_to_trino: dict[str, str] = {
+    # provisa-admin meta tables (no provisa_admin the engine catalog)
+    _pg_to_physical: dict[str, str] = {
         "text": "varchar",
         "character varying": "varchar",
         "varchar": "varchar",
@@ -1657,15 +1571,15 @@ def _synthesize_column_metadata(
         col_types_converted[_tid] = [
             ColumnMetadata(
                 column_name=c["column_name"],
-                data_type=_pg_to_trino.get(c.get("data_type") or "text", "varchar"),
+                data_type=_pg_to_physical.get(c.get("data_type") or "text", "varchar"),
                 is_nullable=not c.get("is_primary_key", False),
             )
             for c in _cols
         ]
 
-    # graphql_remote tables (no Trino catalog)
+    # graphql_remote tables (no the engine catalog)
     if gql_remote_srcs:
-        _provisa_to_trino = {
+        _provisa_to_physical = {
             "text": "varchar",
             "integer": "integer",
             "numeric": "double",
@@ -1681,7 +1595,7 @@ def _synthesize_column_metadata(
                     col_types_converted[_tid] = [
                         ColumnMetadata(
                             column_name=c["name"],
-                            data_type=_provisa_to_trino.get(c.get("type", "text"), "varchar"),
+                            data_type=_provisa_to_physical.get(c.get("type", "text"), "varchar"),
                             is_nullable=True,
                         )
                         for c in _tbl.get("columns", [])
@@ -1997,20 +1911,20 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
     if state.view_sql_map and state.contexts:
         from provisa.compiler.sql_gen import (
             normalize_table_refs,
-            rewrite_semantic_to_trino_physical,
+            rewrite_semantic_to_catalog_physical,
         )
 
         ctx = next(iter(state.contexts.values()))
         state.view_sql_map = {
-            name: rewrite_semantic_to_trino_physical(normalize_table_refs(sql, ctx), ctx)
+            name: rewrite_semantic_to_catalog_physical(normalize_table_refs(sql, ctx), ctx)
             for name, sql in state.view_sql_map.items()
         }
 
 
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     # Rebuild per-role schemas from DB state. Column types come from the authoritative
-    # table_columns store (introspect_tables does NOT query Trino), so this runs on any
-    # engine; a missing Trino connection only skips the Trino-catalog ops seeding below.
+    # table_columns store (introspect_tables does NOT query the engine), so this runs on any
+    # engine; a missing the engine connection only skips the engine-catalog ops seeding below.
     _rebuild_log = logging.getLogger(__name__)
     _rebuild_log.info("_rebuild_schemas called")
     if state.tenant_db is None:
@@ -2060,7 +1974,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         state.table_cache = {r["id"]: r["cache_ttl"] for r in cache_rows}
         domains = [dict(r) for r in await conn.fetch("SELECT id, description FROM domains")]
         sources = {r["id"]: dict(r) for r in await conn.fetch("SELECT * FROM sources")}
-        # Backfill state.source_types; patch postgresql sources to use Trino catalog names.
+        # Backfill state.source_types; patch postgresql sources to use the engine catalog names.
         for _sid, _src_dict in list(sources.items()):
             if _sid not in state.source_types and _src_dict.get("type"):
                 state.source_types[_sid] = _src_dict["type"]
@@ -2079,22 +1993,17 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 "gql_naming_convention"
             )
 
-        # Ensure ops Iceberg tables exist before introspection — idempotent, self-healing
-        # if seed_ops_trino failed at startup because the otel catalog wasn't ready yet.
-        # Trino-only: a native engine has no otel catalog to seed (telemetry lives in the
-        # dedicated ops store), so skip it there.
-        if state.trino_conn is not None:
-            from provisa.observability.ops_trino import seed_ops_trino
-
-            seed_ops_trino(
-                state.trino_conn, _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
-            )
+        # Ensure ops tables exist before introspection — idempotent, self-healing if boot seeding
+        # raced the otel catalog. No-op for a native engine (telemetry lives in the ops store).
+        state.federation_engine.reseed_ops(
+            _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
+        )
 
         await _register_user_views_in_state(_pg, raw_config)
 
-        # Introspect Trino metadata
+        # Introspect the engine metadata
         col_types_converted: dict[int, list[ColumnMetadata]] = introspect_tables(
-            state.trino_conn, tables, sources, {**_META_TABLE_ALIAS, **(kafka_physical or {})}
+            state.engine_conn, tables, sources, {**_META_TABLE_ALIAS, **(kafka_physical or {})}
         )
 
         _gql_remote_srcs = getattr(state, "graphql_remote_sources", {})
@@ -2194,14 +2103,14 @@ def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
 
 async def _start_background_tasks(_log: logging.Logger) -> None:
     """Start MV refresh, warm-table, hot-table refresh, and SQLite staleness background tasks."""
-    if state.mv_registry.get_enabled() and state.trino_conn:
+    if state.mv_registry.get_enabled() and state.engine_conn:
         from provisa.mv.refresh import refresh_loop
 
         state._mv_refresh_task = asyncio.create_task(
             refresh_loop(state.federation_engine, state.mv_registry),
         )
 
-    if state.trino_conn:
+    if state.engine_conn:
         from provisa.compiler.sql_gen import query_counter as _qc
 
         # REQ-240: warm-tier thresholds + sweep interval come from config (warm_tables.*),
@@ -2249,7 +2158,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
 
         state._warm_task = asyncio.create_task(_warm_loop())
 
-    if state.hot_manager is not None and state.trino_conn:
+    if state.hot_manager is not None and state.engine_conn:
         from provisa.cache.hot_tables import HotTableManager
 
         hot_mgr = state.hot_manager
@@ -2427,13 +2336,13 @@ async def _start_servers(_log: logging.Logger) -> None:
     try:
         from provisa.live.engine import LiveEngine
 
-        live_engine = LiveEngine(tenant_db=state.tenant_db, trino_conn=state.trino_conn)
+        live_engine = LiveEngine(tenant_db=state.tenant_db, engine=state.federation_engine)
         await live_engine.start()
         state.live_engine = live_engine
         _log.info("Live Query Engine started")
 
         # Reconcile poll jobs from persisted per-table live config (Phase AY).
-        # Data polls route through Trino; CDC-delivered tables are driven by
+        # Data polls route through the engine; CDC-delivered tables are driven by
         # subscription providers, not the poll engine.
         if state.tenant_db is not None:
             async with state.tenant_db.acquire() as _lc:
@@ -2458,7 +2367,7 @@ async def _start_servers(_log: logging.Logger) -> None:
 
 
 def _start_scheduler(_log: logging.Logger) -> None:
-    """Start APScheduler with config-based triggers, OTEL compaction, and Trino watcher."""
+    """Start APScheduler with config-based triggers, OTEL compaction, and the engine watcher."""
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
@@ -2488,7 +2397,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
                     name=job.name,
                     replace_existing=True,
                 )
-        from provisa.scheduler.jobs import compact_otel_signals, watch_trino
+        from provisa.scheduler.jobs import compact_otel_signals, watch_engine
 
         scheduler.add_job(
             compact_otel_signals,
@@ -2500,10 +2409,10 @@ def _start_scheduler(_log: logging.Logger) -> None:
             coalesce=True,
         )
         scheduler.add_job(
-            watch_trino,
+            watch_engine,
             trigger=CronTrigger.from_crontab("* * * * *"),
-            id="trino_watch",
-            name="trino:watcher",
+            id="engine_watch",
+            name="engine:watcher",
             replace_existing=True,
         )
 
@@ -2784,10 +2693,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     await state.source_pools.close_all()
     if state.tenant_db:
         await state.tenant_db.close()
-    if state.flight_client:
-        state.flight_client.close()
-    if state.trino_conn:
-        state.trino_conn.close()
+    state.federation_engine.close()
 
 
 def create_app() -> FastAPI:
@@ -2798,7 +2704,7 @@ def create_app() -> FastAPI:
     from provisa.api.admin.schema import admin_schema
 
     app = FastAPI(title="Provisa", lifespan=lifespan)
-    _write_trino_config(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml"))
+    state.federation_engine.write_config(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml"))
     _setup_otel(app)
 
     app.add_middleware(

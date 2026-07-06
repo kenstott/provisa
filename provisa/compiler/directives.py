@@ -15,7 +15,7 @@ Supported GraphQL directives (operation-level unless noted):
     @route(engine: RouteEngine!)                    — FEDERATED | DIRECT
     @join(strategy: JoinStrategy!)                  — BROADCAST | PARTITIONED
     @reorder(enabled: Boolean!)                     — false = disable join reordering
-    @broadcastSize(size: String!)                   — max broadcast table size for Trino
+    @broadcastSize(size: String!)                   — max broadcast table size for the engine
     @watermark                                      — field-level; marks watermark column
     @sink(topic: String!, broker: String)           — Kafka sink redirect
     @redirect(format: String, threshold: Int)       — redirect large results to object store
@@ -104,13 +104,13 @@ class QueryDirectives:  # REQ-277, REQ-279, REQ-281
     def steward_hint(self) -> str | None:
         """Translate @route to internal steward_hint string."""
         if self.route == "FEDERATED":
-            return "trino"
+            return "engine"
         if self.route == "DIRECT":
             return "direct"
         return None
 
     def to_session_props(self) -> dict[str, str]:
-        """Convert join/reorder/broadcastSize directives to Trino session props."""
+        """Convert join/reorder/broadcastSize directives to the engine session props."""
         props: dict[str, str] = {}
         if self.join_strategy == "BROADCAST":
             props["join_distribution_type"] = "BROADCAST"
@@ -131,17 +131,17 @@ class QueryDirectives:  # REQ-277, REQ-279, REQ-281
 
 
 def translate_federation_hints(hints: dict[str, str]) -> dict[str, str]:  # REQ-278, REQ-281
-    """REQ-281: map Provisa-branded source federation hints to Trino session props.
+    """REQ-281: map Provisa-branded source federation hints to the engine session props.
 
     Source-level ``federation_hints`` use the same vocabulary as the @provisa query
-    directives so admins never write Trino-specific names:
+    directives so admins never write the engine-specific names:
       - ``join``: ``broadcast`` | ``partitioned`` → ``join_distribution_type``
       - ``reorder``: ``none``/``false`` → ``join_reordering_strategy=NONE``;
         ``auto``/``true`` → ``AUTOMATIC``
       - ``broadcast_size``: ``<size>`` → ``join_max_broadcast_table_size``
 
-    Unrecognized keys pass through unchanged (Trino validates them) so configs still using
-    raw Trino session-prop names keep working during the transition.
+    Unrecognized keys pass through unchanged (the engine validates them) so configs still using
+    raw the engine session-prop names keep working during the transition.
     """
     out: dict[str, str] = {}
     for key, value in hints.items():
@@ -160,7 +160,7 @@ def translate_federation_hints(hints: dict[str, str]) -> dict[str, str]:  # REQ-
         elif k == "broadcast_size":
             out["join_max_broadcast_table_size"] = v
         else:
-            out[key] = value  # passthrough (raw Trino prop) — transitional
+            out[key] = value  # passthrough (raw the engine prop) — transitional
     return out
 
 

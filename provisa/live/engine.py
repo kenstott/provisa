@@ -90,15 +90,15 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
     Args:
         tenant_db: asyncpg connection pool used ONLY for watermark bookkeeping
                  (``live_query_state``). Data polls never hit this pool.
-        trino_conn: Trino DBAPI connection used to execute every data poll.
-                 Routing through Trino makes any federated source pollable —
-                 PostgreSQL sources use ``delivery=cdc`` (LISTEN/NOTIFY) and are
-                 never polled here.
+        engine: the bound EngineRuntime; every data poll runs through its ENGINE
+                 terminal, so any federated source is pollable regardless of which
+                 engine is bound. PostgreSQL sources use ``delivery=cdc``
+                 (LISTEN/NOTIFY) and are never polled here.
     """
 
-    def __init__(self, tenant_db, trino_conn=None) -> None:
+    def __init__(self, tenant_db, engine=None) -> None:
         self._tenant_db = tenant_db
-        self._trino_conn = trino_conn
+        self._engine = engine
         self._jobs: dict[str, _LiveJob] = {}
         self._scheduler = None
 
@@ -254,17 +254,11 @@ class LiveEngine:  # REQ-282, REQ-285, REQ-286, REQ-287
                 query_watermark,
             )
 
-            # Data poll always routes through Trino (federated). execute_trino is
-            # blocking, so run it off the event loop.
-            if self._trino_conn is None:
-                raise RuntimeError("LiveEngine has no Trino connection for polling")
-            from provisa.executor.trino import execute_trino
-
-            _trino_conn = self._trino_conn
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None, lambda: execute_trino(_trino_conn, incremental_sql)
-            )
+            # Data poll routes through the bound engine's ENGINE terminal (federated), so any
+            # federated source is pollable regardless of which engine is bound.
+            if self._engine is None:
+                raise RuntimeError("LiveEngine has no bound engine for polling")
+            result = await self._engine.execute_engine(incremental_sql)
             if not result.rows:
                 return
 

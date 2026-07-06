@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 # Requirements: REQ-027, REQ-052
 

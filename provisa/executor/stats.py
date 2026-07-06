@@ -5,6 +5,7 @@
 # found in the LICENSE file in the root directory of this source tree.
 
 """Per-request query stats accumulator (opt-in via X-Provisa-Stats header)."""
+
 from __future__ import annotations
 
 import time as _time
@@ -15,12 +16,14 @@ from dataclasses import dataclass, field as _field
 @dataclass
 class FieldStat:
     field: str
-    source: str      # source_id, or "cache"
-    strategy: str    # "direct:postgresql", "federated:sqlite", "api:openapi", "api:dataloader", "cache"
+    source: str  # source_id, or "cache"
+    strategy: (
+        str  # "direct:postgresql", "federated:sqlite", "api:openapi", "api:dataloader", "cache"
+    )
     elapsed_ms: float
     rows: int
     cache_hit: bool = False
-    physical_sql: str | None = None  # final Trino SQL sent to federation engine
+    physical_sql: str | None = None  # final the engine SQL sent to federation engine
 
 
 @dataclass
@@ -30,8 +33,28 @@ class QueryStats:
     wall_ms: float | None = None  # true end-to-end wall-clock set by caller
     _t0: float = _field(default_factory=_time.perf_counter)
 
-    def record(self, *, field: str, source: str, strategy: str, elapsed_ms: float, rows: int, cache_hit: bool = False, physical_sql: str | None = None) -> None:
-        self.entries.append(FieldStat(field=field, source=source, strategy=strategy, elapsed_ms=elapsed_ms, rows=rows, cache_hit=cache_hit, physical_sql=physical_sql))
+    def record(
+        self,
+        *,
+        field: str,
+        source: str,
+        strategy: str,
+        elapsed_ms: float,
+        rows: int,
+        cache_hit: bool = False,
+        physical_sql: str | None = None,
+    ) -> None:
+        self.entries.append(
+            FieldStat(
+                field=field,
+                source=source,
+                strategy=strategy,
+                elapsed_ms=elapsed_ms,
+                rows=rows,
+                cache_hit=cache_hit,
+                physical_sql=physical_sql,
+            )
+        )
 
     def to_dict(self) -> dict:
         if self.wall_ms is not None:

@@ -62,7 +62,7 @@ class _FakeAppState:
         self.contexts = {}
         self.rls_contexts = {}
         self.masking_rules = {}
-        self.trino_conn = None
+        self.engine_conn = None
 
 
 @pytest.fixture

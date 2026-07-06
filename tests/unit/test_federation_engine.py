@@ -106,7 +106,7 @@ def test_build_engine_selects_the_four_engines(monkeypatch):
     monkeypatch.setenv("PROVISA_ENGINE", "duckdb")
     assert build_engine().name == "duckdb"  # env-selected
     for gone in ("embedded-pg", "snowflake", "bogus"):
-        with pytest.raises(ValueError, match="unknown PROVISA_ENGINE"):
+        with pytest.raises(ValueError, match="unknown federation engine"):
             build_engine(gone)
 
 
@@ -280,3 +280,60 @@ def test_direct_engine_construction_from_connectors():
     eng = FederationEngine("custom", [TrinoPostgresConnector()])
     assert eng.reachable("postgresql")
     assert not eng.reachable("mysql")
+
+
+# --- REQ-916: selectable-engine registry + config-based selection --------------
+
+
+def test_engine_registry_lists_all_selectable_engines():
+    from provisa.federation.engine import engine_registry
+
+    reg = engine_registry()
+    keys = {e["key"] for e in reg}
+    assert keys == {"trino", "duckdb", "pg", "clickhouse", "sqlalchemy"}
+    # every entry carries UI metadata + a config schema
+    for e in reg:
+        assert e["label"] and e["description"]
+        assert isinstance(e["config_fields"], list)
+    trino = next(e for e in reg if e["key"] == "trino")
+    assert {f["config_key"] for f in trino["config_fields"]} == {
+        "federation_engine_host",
+        "federation_engine_port",
+    }
+    duckdb = next(e for e in reg if e["key"] == "duckdb")
+    assert duckdb["config_fields"] == []  # in-process, no config
+
+
+def test_build_engine_reads_persisted_config_when_env_unset(monkeypatch):
+    from provisa.federation import engine as engine_mod
+
+    monkeypatch.delenv("PROVISA_ENGINE", raising=False)
+    monkeypatch.setattr(engine_mod, "_engine_config", lambda: {"federation_engine": "duckdb"})
+    assert engine_mod.build_engine().name == "duckdb"  # config-selected
+
+
+def test_env_overrides_persisted_config(monkeypatch):
+    from provisa.federation import engine as engine_mod
+
+    monkeypatch.setenv("PROVISA_ENGINE", "duckdb")
+    monkeypatch.setattr(engine_mod, "_engine_config", lambda: {"federation_engine": "pg"})
+    assert engine_mod.build_engine().name == "duckdb"  # env wins over config
+
+
+def test_configured_engine_url_and_endpoint_fall_back_to_config(monkeypatch):
+    from provisa.federation import engine as engine_mod
+
+    monkeypatch.delenv("PROVISA_ENGINE_URL", raising=False)
+    monkeypatch.delenv("TRINO_HOST", raising=False)
+    monkeypatch.delenv("TRINO_PORT", raising=False)
+    monkeypatch.setattr(
+        engine_mod,
+        "_engine_config",
+        lambda: {
+            "federation_engine_url": "clickhouse://h:9000/db",
+            "federation_engine_host": "coord",
+            "federation_engine_port": 9999,
+        },
+    )
+    assert engine_mod.configured_engine_url() == "clickhouse://h:9000/db"
+    assert engine_mod.configured_engine_endpoint() == ("coord", 9999)

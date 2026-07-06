@@ -42,8 +42,8 @@ export function SystemHealth() {
       <tbody>
         <tr>
           <td>Federation Engine</td>
-          <td><StatusDot ok={health.trinoConnected} /> {health.trinoConnected ? "Connected" : "Disconnected"}</td>
-          <td>{health.trinoConnected ? `${health.trinoWorkerCount} worker${health.trinoWorkerCount !== 1 ? "s" : ""} (${health.trinoActiveWorkers} active)` : ""}</td>
+          <td><StatusDot ok={health.engineConnected} /> {health.engineConnected ? "Connected" : "Disconnected"}</td>
+          <td>{health.engineConnected ? `${health.engineWorkerCount} worker${health.engineWorkerCount !== 1 ? "s" : ""} (${health.engineActiveWorkers} active)` : ""}</td>
         </tr>
         <tr>
           <td>PostgreSQL Pool</td>

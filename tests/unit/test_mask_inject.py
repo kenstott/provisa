@@ -49,7 +49,9 @@ class TestInjectMasking:
             columns=[ColumnRef(alias=None, column="email", field_name="email", nested_in=None)],
             sources={"pg"},
         )
-        ctx = _ctx(tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")})
+        ctx = _ctx(
+            tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        )
         result = inject_masking(compiled, ctx, {}, "analyst")
         assert result.sql == compiled.sql
 
@@ -61,11 +63,15 @@ class TestInjectMasking:
             columns=[ColumnRef(alias=None, column="email", field_name="email", nested_in=None)],
             sources={"pg"},
         )
-        ctx = _ctx(tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")})
+        ctx = _ctx(
+            tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        )
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (
-                    MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"),
+                    MaskingRule(
+                        mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"
+                    ),
                     "varchar",
                 ),
             }
@@ -100,7 +106,9 @@ class TestInjectMasking:
             sql='SELECT "t0"."created_at" FROM "public"."orders" "t0"',
             params=[],
             root_field="orders",
-            columns=[ColumnRef(alias="t0", column="created_at", field_name="created_at", nested_in=None)],
+            columns=[
+                ColumnRef(alias="t0", column="created_at", field_name="created_at", nested_in=None)
+            ],
             sources={"pg"},
         )
         ctx = _ctx()
@@ -113,7 +121,8 @@ class TestInjectMasking:
             }
         }
         result = inject_masking(compiled, ctx, rules, "analyst")
-        assert "DATE_TRUNC('month'" in result.sql
+        # sqlglot canonicalizes the DATE_TRUNC unit to upper-case (same as transpile output).
+        assert "DATE_TRUNC('MONTH'" in result.sql
         assert 'AS "created_at"' in result.sql
 
     def test_aliased_column_with_join(self):
@@ -145,7 +154,9 @@ class TestInjectMasking:
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (
-                    MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"),
+                    MaskingRule(
+                        mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"
+                    ),
                     "varchar",
                 ),
             }
@@ -167,7 +178,9 @@ class TestInjectMasking:
             ],
             sources={"pg"},
         )
-        ctx = _ctx(tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")})
+        ctx = _ctx(
+            tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        )
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (
@@ -175,7 +188,9 @@ class TestInjectMasking:
                     "varchar",
                 ),
                 "name": (
-                    MaskingRule(mask_type=MaskType.regex, pattern="^(.).* (.).*$", replace="$1. $2."),
+                    MaskingRule(
+                        mask_type=MaskType.regex, pattern="^(.).* (.).*$", replace="$1. $2."
+                    ),
                     "varchar",
                 ),
             }
@@ -197,7 +212,9 @@ class TestInjectMasking:
             ],
             sources={"pg"},
         )
-        ctx = _ctx(tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")})
+        ctx = _ctx(
+            tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        )
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (
@@ -220,7 +237,9 @@ class TestInjectMasking:
             columns=[ColumnRef(alias=None, column="email", field_name="email", nested_in=None)],
             sources={"pg"},
         )
-        ctx = _ctx(tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")})
+        ctx = _ctx(
+            tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        )
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (
@@ -244,7 +263,9 @@ class TestInjectMasking:
             ],
             sources={"pg"},
         )
-        ctx = _ctx(tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")})
+        ctx = _ctx(
+            tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        )
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (
@@ -266,7 +287,9 @@ class TestInjectMasking:
             columns=[ColumnRef(alias=None, column="email", field_name="email", nested_in=None)],
             sources={"pg"},
         )
-        ctx = _ctx(tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")})
+        ctx = _ctx(
+            tables={"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        )
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (

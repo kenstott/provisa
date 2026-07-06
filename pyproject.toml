@@ -38,6 +38,9 @@ dependencies = [
     "cryptography",
     "sqlalchemy>=2",
     "duckdb-engine",
+    "clickhouse-connect",
+    "clickhouse-driver",
+    "chdb",
     "psycopg2-binary",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
@@ -90,6 +93,10 @@ dev = [
     "aiosqlite",
     "greenlet",
     "pandas",
+    # Direct-driver libraries the unit suite exercises (test_drivers/routing/transpiler).
+    # Declared so `uv sync` installs them and the driver tests run instead of skipping.
+    "aiomysql",
+    "oracledb",
 ]
 
 [build-system]

@@ -11,7 +11,7 @@
 """PostgreSQL catalog proxy.
 
 Intercepts information_schema and pg_catalog queries and answers them
-from CompilationContext without a Trino round-trip. Uses DuckDB in-memory
+from CompilationContext without the engine round-trip. Uses DuckDB in-memory
 as the query engine so clients can send arbitrary JOINs and WHERE clauses.
 """
 
@@ -1105,7 +1105,7 @@ def _parse_typeinfo_oids(sql: str) -> list[int] | None:
 
 
 def _handle_typeinfo_tree(oids: list[int]):
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
 
     rows = []
     for oid in oids:
@@ -1157,8 +1157,8 @@ _KNOWN_SETTINGS = {
 }
 
 
-def _trino_to_pg_name(trino_type: str) -> str:
-    t = trino_type.lower().split("(")[0].strip()
+def _physical_to_pg_name(column_type: str) -> str:
+    t = column_type.lower().split("(")[0].strip()
     return {
         "varchar": "character varying",
         "char": "character",
@@ -1182,8 +1182,8 @@ def _trino_to_pg_name(trino_type: str) -> str:
     }.get(t, "text")
 
 
-def _trino_to_pg_oid(trino_type: str) -> int:
-    t = trino_type.lower().split("(")[0].strip()
+def _physical_to_pg_oid(column_type: str) -> int:
+    t = column_type.lower().split("(")[0].strip()
     return {
         "varchar": 1043,
         "char": 18,
@@ -1406,7 +1406,7 @@ def _populate_is_columns(db, idx: CatalogIndex) -> None:
     col_rows = []
     for toid, col_name, col_type, is_nullable, ordinal in idx.all_cols:
         c, s, t = idx.toid_to_table.get(toid, ("provisa", "public", ""))
-        pg_type = _trino_to_pg_name(col_type)
+        pg_type = _physical_to_pg_name(col_type)
         null_str = "YES" if is_nullable else "NO"
         col_rows.append(
             (
@@ -1672,7 +1672,7 @@ def _populate_pg_attribute(db, idx: CatalogIndex) -> None:
         attacl VARCHAR, attoptions VARCHAR, attfdwoptions VARCHAR)""")
     attr_rows = []
     for toid, col_name, col_type, is_nullable, ordinal in idx.all_cols:
-        pg_oid = _trino_to_pg_oid(col_type)
+        pg_oid = _physical_to_pg_oid(col_type)
         attlen, attbyval, attalign, attstorage = _PG_OID_ATTR_META.get(
             pg_oid, (-1, False, "i", "x")
         )
@@ -2385,9 +2385,9 @@ _row_count_cache: dict[str, tuple[float, dict[int, float]]] = {}
 _ROW_COUNT_TTL = 300.0
 
 
-def _fetch_row_counts(ctx, idx: CatalogIndex, trino_conn) -> dict[int, float]:
+def _fetch_row_counts(ctx, idx: CatalogIndex, engine_conn) -> dict[int, float]:
     """Fetch row count estimates via SHOW STATS FOR. Returns {toid: row_count}."""
-    if ctx is None or trino_conn is None:
+    if ctx is None or engine_conn is None:
         return {}
     table_id_to_meta: dict[int, tuple[str, str, str]] = {
         tm.table_id: (tm.catalog_name, tm.schema_name, tm.table_name) for tm in ctx.tables.values()
@@ -2399,7 +2399,7 @@ def _fetch_row_counts(ctx, idx: CatalogIndex, trino_conn) -> dict[int, float]:
             continue
         cat, sch, tname = ref
         try:
-            cur = trino_conn.cursor()
+            cur = engine_conn.cursor()
             cur.execute(f'SHOW STATS FOR "{cat}"."{sch}"."{tname}"')
             for row in cur.fetchall():
                 if row[0] is None and row[4] is not None:
@@ -2436,7 +2436,7 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     if cached and now - cached[0] < _ROW_COUNT_TTL:
         row_counts = cached[1]
     else:
-        row_counts = _fetch_row_counts(ctx, idx, getattr(state, "trino_conn", None))
+        row_counts = _fetch_row_counts(ctx, idx, getattr(state, "engine_conn", None))
         _row_count_cache[role_id] = (now, row_counts)
 
     _populate_is_schemata(db, idx)
@@ -2738,7 +2738,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
 
 def _handle_show(sql: str):
     """Answer SHOW commands without DuckDB."""
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
 
     normalized = sql.strip().rstrip(";")
     if re.match(r"^\s*SHOW\s+TRANSACTION\s+ISOLATION\s+LEVEL\s*$", normalized, re.IGNORECASE):
@@ -2755,7 +2755,7 @@ def _handle_show(sql: str):
 
 
 def _handle_scalar(sql: str, role_id: str):
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
 
     s = sql.strip().lower()
     if "current_user" in s or "session_user" in s:
@@ -2773,7 +2773,7 @@ def _handle_scalar(sql: str, role_id: str):
 
 def _handle_current_setting(sql: str):
     """Answer SELECT current_setting(...) [+ set_config(...)] without DuckDB."""
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
 
     lower = sql.lower()
     if "current_setting" not in lower:
@@ -2804,7 +2804,7 @@ def _handle_current_setting(sql: str):
 
 def answer(sql: str, role_id: str, state):  # REQ-532
     """Return a synthetic QueryResult for intercepted catalog/SET/SHOW queries."""
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
 
     stripped = sql.strip().rstrip(";")
 
@@ -2825,7 +2825,7 @@ def answer(sql: str, role_id: str, state):  # REQ-532
             return result
 
     if "set_config" in stripped.lower() and "current_setting" not in stripped.lower():
-        from provisa.executor.trino import QueryResult
+        from provisa.executor.result import QueryResult
 
         return QueryResult(rows=[("on",)], column_names=["set_config"], column_types=["VARCHAR"])
 

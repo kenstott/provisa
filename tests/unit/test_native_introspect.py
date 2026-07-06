@@ -19,11 +19,12 @@ from provisa.api.admin.introspect import (
     _openapi_is_table,
     _gql_field_returns_list,
 )
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 from provisa.openapi.mapper import parse_spec
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
+
 
 def _pool(rows: list[tuple]) -> MagicMock:
     """Mock SourcePool that returns given rows for execute()."""
@@ -40,6 +41,7 @@ def _empty_pool() -> MagicMock:
 
 
 # ── _openapi_is_table ─────────────────────────────────────────────────────────
+
 
 def test_openapi_is_table_direct_array():
     q = MagicMock()
@@ -85,6 +87,7 @@ def test_openapi_is_table_object_multiple_array_props():
 
 # ── _gql_field_returns_list ───────────────────────────────────────────────────
 
+
 def test_gql_field_returns_list_direct():
     field = {"name": "pets", "type": {"kind": "LIST", "ofType": {"kind": "OBJECT", "name": "Pet"}}}
     assert _gql_field_returns_list(field) is True
@@ -93,7 +96,10 @@ def test_gql_field_returns_list_direct():
 def test_gql_field_returns_list_nonnull_wrapped():
     field = {
         "name": "pets",
-        "type": {"kind": "NON_NULL", "ofType": {"kind": "LIST", "ofType": {"kind": "OBJECT", "name": "Pet"}}},
+        "type": {
+            "kind": "NON_NULL",
+            "ofType": {"kind": "LIST", "ofType": {"kind": "OBJECT", "name": "Pet"}},
+        },
     }
     assert _gql_field_returns_list(field) is True
 
@@ -109,6 +115,7 @@ def test_gql_field_returns_scalar():
 
 
 # ── native_schemas ────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_native_schemas_graphql():
@@ -194,6 +201,7 @@ async def test_native_schemas_sqlite_returns_main():
 
 
 # ── native_tables ─────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_native_tables_sqlite_reads_file(tmp_path):
@@ -312,9 +320,7 @@ async def test_native_tables_openapi_pagination_wrapper_included():
 @pytest.mark.asyncio
 async def test_native_tables_graphql_filters_non_list():
     state = MagicMock()
-    state.graphql_remote_sources = {
-        "src": {"url": "http://example.com/graphql", "auth": None}
-    }
+    state.graphql_remote_sources = {"src": {"url": "http://example.com/graphql", "auth": None}}
     config_conn = AsyncMock()
     schema = {
         "queryType": {"name": "Query"},
@@ -322,13 +328,23 @@ async def test_native_tables_graphql_filters_non_list():
             {
                 "name": "Query",
                 "fields": [
-                    {"name": "pets", "description": "All pets", "type": {"kind": "LIST", "ofType": {"kind": "OBJECT", "name": "Pet"}}},
-                    {"name": "pet", "description": "One pet", "type": {"kind": "OBJECT", "name": "Pet"}},
+                    {
+                        "name": "pets",
+                        "description": "All pets",
+                        "type": {"kind": "LIST", "ofType": {"kind": "OBJECT", "name": "Pet"}},
+                    },
+                    {
+                        "name": "pet",
+                        "description": "One pet",
+                        "type": {"kind": "OBJECT", "name": "Pet"},
+                    },
                 ],
             }
         ],
     }
-    with patch("provisa.graphql_remote.introspect.introspect_schema", new=AsyncMock(return_value=schema)):
+    with patch(
+        "provisa.graphql_remote.introspect.introspect_schema", new=AsyncMock(return_value=schema)
+    ):
         result = await native_tables("src", "graphql", "graphql", _empty_pool(), config_conn, state)
 
     assert result is not None
@@ -339,11 +355,7 @@ async def test_native_tables_graphql_filters_non_list():
 @pytest.mark.asyncio
 async def test_native_tables_grpc_streaming_only():
     state = MagicMock()
-    state.grpc_remote_sources = {
-        "src": {
-            "proto_text": "syntax = 'proto3';"
-        }
-    }
+    state.grpc_remote_sources = {"src": {"proto_text": "syntax = 'proto3';"}}
     proto_dict = {
         "messages": {
             "PetResponse": [{"name": "id", "repeated": False}],
@@ -354,7 +366,11 @@ async def test_native_tables_grpc_streaming_only():
                 "methods": [
                     {"name": "StreamPets", "server_streaming": True, "output_type": "PetResponse"},
                     {"name": "GetPet", "server_streaming": False, "output_type": "PetResponse"},
-                    {"name": "ListPets", "server_streaming": False, "output_type": "PetListResponse"},
+                    {
+                        "name": "ListPets",
+                        "server_streaming": False,
+                        "output_type": "PetListResponse",
+                    },
                 ]
             }
         ],
@@ -430,9 +446,7 @@ _PETSTORE_SPEC = {
                     "200": {
                         "description": "successful operation",
                         "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/Pet"}
-                            }
+                            "application/json": {"schema": {"$ref": "#/components/schemas/Pet"}}
                         },
                     }
                 },

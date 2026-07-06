@@ -4,7 +4,7 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""Cache OpenAPI endpoint responses into PostgreSQL for Trino federation."""
+"""Cache OpenAPI endpoint responses into PostgreSQL for the engine federation."""
 
 from __future__ import annotations
 
@@ -211,7 +211,7 @@ async def cache_openapi_table(  # REQ-318
 
     Creates schema/table (with _params_hash + _cached_at meta columns) on every call.
     If pk_column is set, adds a UNIQUE constraint on (pk_column, _params_hash) for bulk upsert support.
-    Skips HTTP fetch for path-param endpoints — table is created empty for Trino introspection.
+    Skips HTTP fetch for path-param endpoints — table is created empty for the engine introspection.
     Returns number of rows inserted.
     """
     entity_cols = _schema_to_pg_cols(response_schema) or (fallback_cols or [])

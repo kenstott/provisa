@@ -7,7 +7,7 @@ import java.util.logging.Logger;
 /**
  * Provisa JDBC Driver.
  *
- * Connection URL format: jdbc:provisa://host:port[?mode=catalog|approved]
+ * Connection URL format: jdbc:provisa://host:port[?mode=catalog]
  * Properties: user, password, mode
  */
 public class ProvisaDriver implements Driver {
@@ -28,7 +28,7 @@ public class ProvisaDriver implements Driver {
 
         // Split off query string: host:port?mode=catalog
         String hostPort = remainder;
-        String mode = info.getProperty("mode", "approved");
+        String mode = info.getProperty("mode", "catalog");
         int qIdx = remainder.indexOf('?');
         if (qIdx >= 0) {
             hostPort = remainder.substring(0, qIdx);
@@ -59,9 +59,9 @@ public class ProvisaDriver implements Driver {
 
     @Override
     public DriverPropertyInfo[] getPropertyInfo(String url, Properties info) {
-        DriverPropertyInfo modeProp = new DriverPropertyInfo("mode", info.getProperty("mode", "approved"));
-        modeProp.description = "Connection mode: 'approved' (query approved queries) or 'catalog' (schema discovery)";
-        modeProp.choices = new String[]{"approved", "catalog"};
+        DriverPropertyInfo modeProp = new DriverPropertyInfo("mode", info.getProperty("mode", "catalog"));
+        modeProp.description = "Connection mode: 'catalog' (schema discovery and SQL execution)";
+        modeProp.choices = new String[]{"catalog"};
         return new DriverPropertyInfo[]{
             new DriverPropertyInfo("user", info.getProperty("user")),
             new DriverPropertyInfo("password", info.getProperty("password")),

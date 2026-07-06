@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.drivers.registry import create_driver
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 # Requirements: REQ-027, REQ-031, REQ-052, REQ-053
 

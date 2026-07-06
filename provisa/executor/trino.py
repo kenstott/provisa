@@ -21,9 +21,9 @@ import logging
 import os
 import random
 import time
-from dataclasses import dataclass
 
 import trino
+from provisa.executor.result import QueryResult  # re-export: neutral result type (REQ-028)
 from provisa.otel_compat import get_tracer as _get_tracer
 
 log = logging.getLogger(__name__)
@@ -61,10 +61,10 @@ def _trino_query_timeout() -> int:
         from provisa.api.app import state
 
         return state.server_limits.get(
-            "trino_query_timeout", int(os.environ.get("PROVISA_TRINO_QUERY_TIMEOUT", "120"))
+            "engine_query_timeout", int(os.environ.get("PROVISA_ENGINE_QUERY_TIMEOUT", "120"))
         )
     except Exception:
-        return int(os.environ.get("PROVISA_TRINO_QUERY_TIMEOUT", "120"))
+        return int(os.environ.get("PROVISA_ENGINE_QUERY_TIMEOUT", "120"))
 
 
 def _retry_budget() -> float:
@@ -76,15 +76,6 @@ def _retry_budget() -> float:
         )
     except Exception:
         return float(os.environ.get("PROVISA_RETRY_BUDGET_SECS", "30"))
-
-
-@dataclass
-class QueryResult:  # REQ-028
-    """Result of executing a SQL query against Trino."""
-
-    rows: list[tuple]
-    column_names: list[str]
-    column_types: list[str] | None = None
 
 
 def _alive(conn: trino.dbapi.Connection) -> bool:
@@ -128,8 +119,8 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
             try:
                 from provisa.api.app import state
 
-                conn = trino.dbapi.connect(**state.trino_conn_kwargs)
-                state.trino_conn = conn
+                conn = trino.dbapi.connect(**state.engine_conn_kwargs)
+                state.engine_conn = conn
             except Exception as reconnect_exc:
                 raise ConnectionError(f"Trino reconnect failed: {reconnect_exc}") from reconnect_exc
         # Extract embedded provisa-params comment if present; fall back to explicit params.
@@ -159,7 +150,7 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
         try:
             from provisa.api.app import state as _app_state
 
-            effective_hints = {**_app_state.trino_fte_hints, **effective_hints}
+            effective_hints = {**_app_state.engine_session_hints, **effective_hints}
         except Exception:
             pass
 
@@ -186,8 +177,8 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
                     try:
                         from provisa.api.app import state as _retry_state
 
-                        conn = trino.dbapi.connect(**_retry_state.trino_conn_kwargs)
-                        _retry_state.trino_conn = conn
+                        conn = trino.dbapi.connect(**_retry_state.engine_conn_kwargs)
+                        _retry_state.engine_conn = conn
                     except Exception as reconnect_exc:
                         last_exc = ConnectionError(
                             f"Trino reconnect on retry {attempt}: {reconnect_exc}"
@@ -243,7 +234,7 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
                         ) from exc
 
                     wrapped = (
-                        FederationError.from_trino(exc)
+                        FederationError.from_engine_error(exc)
                         if isinstance(exc, trino.exceptions.TrinoQueryError)
                         else exc
                     )
@@ -256,7 +247,7 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
                     span.set_attribute("error", True)
                     span.set_attribute("error.message", err_msg[:500])
                     if isinstance(exc, trino.exceptions.TrinoQueryError):
-                        raise FederationError.from_trino(exc) from exc
+                        raise FederationError.from_engine_error(exc) from exc
                     raise
 
             span.set_attribute("error", True)

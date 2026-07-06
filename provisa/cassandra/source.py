@@ -10,7 +10,7 @@
 
 """Cassandra source mapping — keyspace discovery + partition key awareness (REQ-250).
 
-Generates Trino Cassandra connector catalog properties. Supports schema
+Generates the engine Cassandra connector catalog properties. Supports schema
 inference from keyspace metadata with partition/clustering key annotations.
 """
 
@@ -24,10 +24,10 @@ from dataclasses import dataclass, field
 log = logging.getLogger(__name__)
 
 
-CQL_TYPE_TO_TRINO = {
+CQL_TYPE_TO_IR = {
     "ascii": "VARCHAR",
     "bigint": "BIGINT",
-    "blob": "VARBINARY",
+    "blob": "bytea",
     "boolean": "BOOLEAN",
     "counter": "BIGINT",
     "date": "DATE",
@@ -41,7 +41,7 @@ CQL_TYPE_TO_TRINO = {
     "time": "TIME",
     "timestamp": "TIMESTAMP",
     "timeuuid": "UUID",
-    "tinyint": "TINYINT",
+    "tinyint": "smallint",
     "uuid": "UUID",
     "varchar": "VARCHAR",
     "varint": "BIGINT",
@@ -76,7 +76,7 @@ class CassandraSourceConfig:
 def generate_catalog_properties(
     config: CassandraSourceConfig,
 ) -> dict[str, str]:  # REQ-250, REQ-251
-    """Generate Trino Cassandra connector catalog properties."""
+    """Generate the engine Cassandra connector catalog properties."""
     props = {
         "connector.name": "cassandra",
         "cassandra.contact-points": config.contact_points,
@@ -124,11 +124,11 @@ def discover_schema(keyspace_metadata: dict) -> list[dict]:  # REQ-252
         cql_type = col.get("type", "text")
         # Strip collection wrappers like list<text> -> list
         base_type = cql_type.split("<")[0].strip()
-        trino_type = CQL_TYPE_TO_TRINO.get(base_type, "VARCHAR")
+        column_type = CQL_TYPE_TO_IR.get(base_type, "VARCHAR")
 
         col_def = {
             "name": col["name"],
-            "type": trino_type,
+            "type": column_type,
             "cqlType": cql_type,
         }
         if col["name"] in partition_keys:

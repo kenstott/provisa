@@ -8,10 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Federation hint extraction for Trino query optimizer (Phase AL).
+"""Federation hint extraction for the engine query optimizer (Phase AL).
 
 Parses SQL comment hints of the form ``/*+ HINT(...) */`` and converts them
-to Trino session property key-value pairs.
+to the engine session property key-value pairs.
 
 Supported hints:
   - ``BROADCAST(table)``           → ``join_distribution_type = 'BROADCAST'``
@@ -19,12 +19,12 @@ Supported hints:
   - ``BROADCAST_SIZE(table, N)``   → ``join_max_broadcast_table_size = 'N'``
 
 Also parses GraphQL query comment hints of the form ``# @provisa key=value``:
-  - ``# @provisa route=federated`` → force Trino federation
+  - ``# @provisa route=federated`` → force the engine federation
   - ``# @provisa route=direct``    → force direct driver (single-source only)
-  - ``# @provisa join=broadcast``  → Trino session: join_distribution_type=BROADCAST
-  - ``# @provisa join=partitioned``→ Trino session: join_distribution_type=PARTITIONED
-  - ``# @provisa reorder=off``     → Trino session: join_reordering_strategy=NONE
-  - ``# @provisa broadcast_size=N``→ Trino session: join_max_broadcast_table_size=N
+  - ``# @provisa join=broadcast``  → the engine session: join_distribution_type=BROADCAST
+  - ``# @provisa join=partitioned``→ the engine session: join_distribution_type=PARTITIONED
+  - ``# @provisa reorder=off``     → the engine session: join_reordering_strategy=NONE
+  - ``# @provisa broadcast_size=N``→ the engine session: join_max_broadcast_table_size=N
 """
 
 # Requirements: REQ-277, REQ-278, REQ-279, REQ-281
@@ -44,14 +44,14 @@ def extract_hints(sql: str) -> tuple[str, dict[str, str]]:  # REQ-279, REQ-281
     """Extract optimizer hints from SQL comment blocks.
 
     Removes the ``/*+ ... */`` hint comment from the SQL string and returns
-    both the cleaned SQL and a dict of Trino session properties derived from
+    both the cleaned SQL and a dict of the engine session properties derived from
     the hints.
 
     Args:
         sql: SQL string potentially containing ``/*+ HINT */`` comment blocks.
 
     Returns:
-        ``(cleaned_sql, session_props)`` where ``session_props`` maps Trino
+        ``(cleaned_sql, session_props)`` where ``session_props`` maps the engine
         session property names to their string values.
     """
     session_props: dict[str, str] = {}
@@ -89,7 +89,7 @@ def extract_graphql_comments(query: str) -> list[str]:  # REQ-464
 
     Returns:
         List of comment strings (stripped), e.g.
-        ``["@provisa route=trino", "Fetch all active customers"]``.
+        ``["@provisa route=engine", "Fetch all active customers"]``.
     """
     comments: list[str] = []
     for line in query.splitlines():
@@ -109,7 +109,7 @@ def graphql_comments_to_sql(query: str) -> str:  # REQ-464
         query: Raw GraphQL query string.
 
     Returns:
-        SQL comment block, e.g. ``"-- @provisa route=trino\\n"``, or ``""``.
+        SQL comment block, e.g. ``"-- @provisa route=engine\\n"``, or ``""``.
     """
     lines = [line for line in extract_graphql_comments(query) if line.startswith("@provisa")]
     if not lines:
@@ -120,7 +120,7 @@ def graphql_comments_to_sql(query: str) -> str:  # REQ-464
 def graphql_hints_to_session_props(
     hints: dict[str, str],
 ) -> dict[str, str]:  # REQ-277, REQ-278, REQ-281
-    """Convert ``# @provisa`` federation hints to Trino session properties.
+    """Convert ``# @provisa`` federation hints to the engine session properties.
 
     Handles the federation-specific keys; routing keys (``route``) are ignored
     here since they are handled by the router, not the executor.
@@ -129,7 +129,7 @@ def graphql_hints_to_session_props(
         hints: Dict returned by :func:`extract_graphql_hints`.
 
     Returns:
-        Dict of Trino session property name → value, ready to merge into
+        Dict of the engine session property name → value, ready to merge into
         ``session_hints`` before execution.
     """
     props: dict[str, str] = {}
@@ -155,14 +155,14 @@ def extract_graphql_hints(query: str) -> dict[str, str]:  # REQ-277, REQ-278, RE
 
     Example::
 
-        # @provisa route=trino
+        # @provisa route=engine
         query MyReport { orders { id } }
 
     Args:
         query: Raw GraphQL query string.
 
     Returns:
-        Dict of hint key → value, e.g. ``{"route": "trino"}``.
+        Dict of hint key → value, e.g. ``{"route": "engine"}``.
     """
     hints: dict[str, str] = {}
     for line in query.splitlines():

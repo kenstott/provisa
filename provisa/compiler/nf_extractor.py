@@ -12,7 +12,7 @@
 
 Native param columns use the _nf_ prefix (e.g. _nf_id).
 In SQL and Cypher queries they appear as ordinary WHERE conditions; this module
-strips them out before Trino execution and returns them as api_args for the
+strips them out before the engine execution and returns them as api_args for the
 REST call Phase 1.
 
 Handles both literal values and $N positional params (postgres dialect).

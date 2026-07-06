@@ -325,7 +325,7 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `executor/trino_flight.py` | ADBC Flight SQL client for the federation engine |
 | `executor/ctas_write.py` | CTAS-based redirect (federation engine writes to S3) |
 | `executor/redirect.py` | S3 redirect logic, Provisa-side upload |
-| `registry/` | Governed query store, governance |
+| `registry/` | Persisted query registry, governance |
 | `security/` | Visibility, rights, column masking |
 | `cache/` | Redis-backed query result caching (hot tier) |
 | `mv/` | Materialized view registry, refresh, SQL rewriter |

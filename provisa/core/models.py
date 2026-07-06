@@ -52,7 +52,7 @@ class SourceType(str, Enum):
     delta_lake = "delta_lake"
     iceberg = "iceberg"
     hive = "hive"
-    hive_s3 = "hive_s3"  # S3-backed Hive via Trino hive connector (TRINO_ONLY)
+    hive_s3 = "hive_s3"  # S3-backed Hive lake table (connector-only; no direct driver)
     # NoSQL
     mongodb = "mongodb"
     cassandra = "cassandra"
@@ -93,7 +93,7 @@ class Cardinality(str, Enum):
     one_to_many = "one-to-many"
 
 
-# Map source types to Trino connector names
+# Map source types to the engine connector names
 SOURCE_TO_CONNECTOR: dict[str, str] = {
     "postgresql": "postgresql",
     "mysql": "mysql",
@@ -112,7 +112,7 @@ SOURCE_TO_CONNECTOR: dict[str, str] = {
     "hive": "hive",
     "druid": "druid",
     "exasol": "exasol",
-    # TRINO_ONLY lake sources — connector-only, no direct driver, no SQLGlot dialect (REQ-229)
+    # CONNECTOR_ONLY lake sources — connector-only, no direct driver, no SQLGlot dialect (REQ-229)
     "iceberg": "iceberg",
     "hive_s3": "hive",
     "delta_lake": "delta_lake",
@@ -147,10 +147,10 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     "exasol": "exasol",
 }
 
-# Source types that are TRINO_ONLY — no direct driver, no SQLGlot dialect (REQ-229)
-TRINO_ONLY_SOURCES: set[str] = {"iceberg", "hive_s3", "delta_lake"}
+# Source types that are CONNECTOR_ONLY — no direct driver, no SQLGlot dialect (REQ-229)
+LAKE_ONLY_SOURCES: set[str] = {"iceberg", "hive_s3", "delta_lake"}
 
-# Source types that support time-travel via Trino FOR TIMESTAMP/VERSION AS OF (REQ-372)
+# Source types that support time-travel vithe engine FOR TIMESTAMP/VERSION AS OF (REQ-372)
 TIME_TRAVEL_SOURCES: set[str] = {"iceberg", "delta_lake"}
 
 
@@ -204,11 +204,13 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # Force MATERIALIZED federation for this source's tables even when it could be reached live —
     # the manual counterpart to cost-based promotion, for when the connector is a poor fit (REQ-826).
     prefer_materialized: bool = False
-    cache_catalog: str | None = None  # Trino catalog for API cache; None = source's own catalog
+    cache_catalog: str | None = (
+        None  # the engine catalog for API cache; None = source's own catalog
+    )
     cache_schema: str = "api_cache"  # schema within that catalog
     gql_naming_convention: str | None = None  # overrides global; None = inherit
     # REQ-281: Provisa-branded federation hints (join/reorder/broadcast_size, the @provisa
-    # vocabulary), translated to Trino session props at query time. Raw Trino keys still pass
+    # vocabulary), translated to the engine session props at query time. Raw the engine keys still pass
     # through for backward compatibility but are deprecated.
     federation_hints: dict[str, str] = Field(default_factory=dict)
     # REQ-251: type-specific mapping DSL for NoSQL/non-relational sources
@@ -234,7 +236,7 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
 
     @property
     def catalog_name(self) -> str:
-        """Trino catalog name — sanitized source id."""
+        """the engine catalog name — sanitized source id."""
         return self.id.replace("-", "_")
 
     def jdbc_url(self, host: str | None = None, port: int | None = None) -> str:
@@ -266,7 +268,7 @@ class Domain(BaseModel):  # REQ-471
     id: str
     description: str = ""
     graphql_alias: str | None = None
-    ddl_catalog: str | None = None  # Trino catalog for DDL; defaults to system Iceberg catalog
+    ddl_catalog: str | None = None  # the engine catalog for DDL; defaults to system Iceberg catalog
     ddl_schema: str | None = None  # schema within ddl_catalog; defaults to domain id
 
 
@@ -329,7 +331,7 @@ class Column(
 ):  # REQ-038, REQ-039, REQ-119, REQ-151, REQ-155, REQ-156, REQ-393, REQ-399, REQ-421
     name: str
     data_type: str | None = (
-        None  # source column type (e.g. "varchar", "integer"); lets startup skip Trino introspection
+        None  # source column type (e.g. "varchar", "integer"); lets startup skip the engine introspection
     )
     visible_to: list[str]
     writable_by: list[str] = []  # roles allowed to mutate this column
@@ -365,7 +367,7 @@ class ColumnPreset(BaseModel):
     source: str  # "header", "now", "literal"
     name: str | None = None  # header name (for source=header)
     value: str | None = None  # literal value (for source=literal)
-    data_type: str | None = None  # Trino data type of the column (for coercion)
+    data_type: str | None = None  # the engine data type of the column (for coercion)
 
 
 class KafkaSinkAttachment(BaseModel):  # REQ-565
@@ -403,7 +405,7 @@ class LiveDeliveryConfig(BaseModel):  # REQ-565, REQ-813
 
     ``strategy`` selects the delta-capture mechanism (REQ-813/814); it replaces
     the old binary ``delivery: poll|cdc``:
-      * poll     — watermark polling routed through Trino (watermark_column/poll_interval)
+      * poll     — watermark polling routed through the engine (watermark_column/poll_interval)
       * native   — source-native push (PostgreSQL LISTEN/NOTIFY, MongoDB change streams)
       * debezium — Debezium/Kafka CDC; transport inherited from Source.cdc (REQ-824)
       * kafka    — arbitrary Kafka delta topic (see ``kafka`` params); transport from Source.cdc
@@ -471,12 +473,12 @@ class HotTablesConfig(BaseModel):  # REQ-544
 
 
 class WarmTablesConfig(BaseModel):  # REQ-544
-    # REQ-240: tier promotion thresholds + the Trino filesystem (SSD) read-cache settings.
+    # REQ-240: tier promotion thresholds + the engine filesystem (SSD) read-cache settings.
     query_threshold: int = 100  # promote a table after this many queries
     max_rows: int = 10_000_000  # do not promote tables larger than this
     refresh_interval: int = 60  # seconds between promotion/demotion sweeps
     fs_cache_enabled: bool = False  # REQ-238: emit fs.cache.* on the Iceberg catalog
-    fs_cache_directories: str = "/tmp/trino-cache"  # nosec B108 - Trino-node cache dir, configurable
+    fs_cache_directories: str = "/tmp/engine-cache"  # nosec B108 - engine-node cache dir, configurable
     fs_cache_max_sizes: str = "10GB"
 
 
@@ -690,7 +692,7 @@ class OtelConfig(BaseModel):  # REQ-545
     sample_rate: fraction of traces to sample (1.0 = 100%).
     log_level: Python log level name forwarded to the OTLP log exporter (default WARNING).
     compact_cron: cron expression for the Parquet→Iceberg compaction job (default every minute).
-    compact_batch_size: rows per INSERT batch during compaction; reduce for low-memory Trino.
+    compact_batch_size: rows per INSERT batch during compaction; reduce for low-memory engines.
     compact_file_chunk: Parquet files processed per compaction chunk; reduce for low-memory environments.
     ops_snapshot_retention_hours: if set, expire Iceberg snapshots and orphan files older than
         this many hours on each startup. None (default) disables expiry.
@@ -886,7 +888,7 @@ class ControlPlaneConfig(BaseModel):
 
     def tenant_parts(self) -> tuple[str | None, int, str | None, str | None, str | None]:
         """(host, port, database, username, password) parsed from the tenant URL —
-        drives the raw asyncpg tenant pool and the Trino self-catalog.
+        drives the raw asyncpg tenant pool and the engine self-catalog.
 
         For a unix-socket URL (the embedded/native tier — no host in the netloc, the
         socket directory carried in ``?host=/dir``), the host lives in the query, so
@@ -904,6 +906,12 @@ class ProvisaConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     control_plane: ControlPlaneConfig = Field(default_factory=ControlPlaneConfig)
     multitenancy: bool = False
+    # Federation engine selection + connection config (set via the admin UI; applied on restart).
+    # The selected engine's own implementation reads these — generic code never branches on the value.
+    federation_engine: str = "trino"
+    federation_engine_url: str | None = None  # DSN for sqlalchemy/clickhouse/pg engines
+    federation_engine_host: str = "localhost"  # coordinator host (engine)
+    federation_engine_port: int = 8080  # coordinator port (engine)
     jvm_heap_gb: int = 8
     query_max_memory: str = "4GB"
     query_max_memory_per_node: str = "2GB"
@@ -936,6 +944,9 @@ class ProvisaConfig(BaseModel):
     webhooks: list[Webhook] = Field(default_factory=list)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     hot_tables: HotTablesConfig = Field(default_factory=HotTablesConfig)
+    # PostgreSQL DSN where non-attachable sources LAND for native (duckdb/…) engines; set via the
+    # admin UI. Empty → the native materialize path is unavailable. Applied on restart.
+    materialize_store_url: str | None = None
     warm_tables: WarmTablesConfig = Field(default_factory=WarmTablesConfig)
     materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
     observability: OtelConfig = Field(default_factory=OtelConfig)

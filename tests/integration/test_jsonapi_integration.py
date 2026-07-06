@@ -146,7 +146,7 @@ def _make_app_state(schema=None):
     state.source_types = {"test-pg": "postgresql"}
     state.source_dialects = {"test-pg": "postgres"}
     state.source_pools = MagicMock()
-    state.trino_conn = None
+    state.engine_conn = None
     state.schema_build_cache = {"column_types": {1: []}, "tables": []}
     state.tables = []
     # Domain-scoped path map (REQ-799..804): gql field name → {domain_id, table_name}

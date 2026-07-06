@@ -40,7 +40,7 @@ def test_bound_runtime_back_references_its_owning_state():
     from provisa.api.app import AppState
 
     state = AppState()
-    # The runtime reads self._state.trino_conn lazily at execute time; the binding
+    # The runtime reads self._state.engine_conn lazily at execute time; the binding
     # must point back at the AppState that owns it.
     assert state.federation_engine._state is state
 

@@ -14,21 +14,21 @@ trino_write CTAS helpers, and trino_flight utilities.
 
 from __future__ import annotations
 
-import pytest
 
-from provisa.executor.trino import QueryResult, execute_trino
+from provisa.executor.result import QueryResult
+from provisa.executor.trino import execute_trino
 from provisa.executor.trino_write import (
-    TRINO_NATIVE_FORMATS,
+    ENGINE_NATIVE_FORMATS,
     _iceberg_format,
-    is_trino_native_format,
+    is_engine_native_format,
 )
-import provisa.executor.trino_flight as _flight_mod
 from provisa.executor.trino_flight import _substitute_params
 
 
 # ---------------------------------------------------------------------------
 # QueryResult dataclass
 # ---------------------------------------------------------------------------
+
 
 class TestQueryResult:
     def test_construction(self):
@@ -54,6 +54,7 @@ class TestQueryResult:
 # ---------------------------------------------------------------------------
 # execute_trino — parameter substitution (via a real stub connection)
 # ---------------------------------------------------------------------------
+
 
 class _FakeCursor:
     """Minimal cursor stand-in to verify execute_trino parameter handling."""
@@ -175,32 +176,33 @@ class TestExecuteTrinoParameterSubstitution:
 # trino_write — CTAS helpers
 # ---------------------------------------------------------------------------
 
+
 class TestTrinoNativeFormats:
     def test_parquet_is_native(self):
-        assert is_trino_native_format("parquet")
+        assert is_engine_native_format("parquet")
 
     def test_orc_is_native(self):
-        assert is_trino_native_format("orc")
+        assert is_engine_native_format("orc")
 
     def test_json_not_native(self):
-        assert not is_trino_native_format("json")
+        assert not is_engine_native_format("json")
 
     def test_csv_not_native(self):
-        assert not is_trino_native_format("csv")
+        assert not is_engine_native_format("csv")
 
     def test_arrow_not_native(self):
-        assert not is_trino_native_format("arrow")
+        assert not is_engine_native_format("arrow")
 
     def test_ndjson_not_native(self):
-        assert not is_trino_native_format("ndjson")
+        assert not is_engine_native_format("ndjson")
 
     def test_case_insensitive(self):
-        assert is_trino_native_format("PARQUET")
-        assert is_trino_native_format("ORC")
+        assert is_engine_native_format("PARQUET")
+        assert is_engine_native_format("ORC")
 
     def test_constants_set(self):
-        assert "parquet" in TRINO_NATIVE_FORMATS
-        assert "orc" in TRINO_NATIVE_FORMATS
+        assert "parquet" in ENGINE_NATIVE_FORMATS
+        assert "orc" in ENGINE_NATIVE_FORMATS
 
 
 class TestIcebergFormat:
@@ -214,6 +216,7 @@ class TestIcebergFormat:
 # ---------------------------------------------------------------------------
 # trino_flight — parameter substitution
 # ---------------------------------------------------------------------------
+
 
 class TestSubstituteParams:
     def test_no_params_unchanged(self):
@@ -256,5 +259,3 @@ class TestSubstituteParams:
         result = _substitute_params(sql, ["x"])
         assert "'x'" in result
         assert "@1" not in result
-
-

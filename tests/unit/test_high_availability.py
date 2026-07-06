@@ -133,7 +133,7 @@ async def test_direct_read_retries_on_connection_error():
 
 
 # ---------------------------------------------------------------------------
-# Tier 2 — watch_trino watcher
+# Tier 2 — watch_engine watcher
 # ---------------------------------------------------------------------------
 
 
@@ -145,32 +145,45 @@ def _app_module(state_obj: MagicMock) -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_watch_trino_no_op_when_healthy():
-    """watch_trino exits early without calling docker when Trino responds."""
-    from provisa.scheduler.jobs import watch_trino
+async def test_watch_engine_delegates_to_engine_watchdog():
+    """The scheduled watch_engine job delegates to the bound engine's watchdog via the seam."""
+    from provisa.scheduler.jobs import watch_engine
 
     mock_state = MagicMock()
-    mock_state.trino_conn = MagicMock()
+    mock_state.federation_engine.watchdog = AsyncMock()
+
+    with patch.dict(sys.modules, {"provisa.api.app": _app_module(mock_state)}):
+        await watch_engine()
+
+    mock_state.federation_engine.watchdog.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_watchdog_no_op_when_healthy():
+    """The Trino watchdog exits early without calling docker when Trino responds."""
+    from provisa.federation import trino_lifecycle
+
+    mock_state = MagicMock()
+    mock_state.engine_conn = MagicMock()
 
     with (
-        patch.dict(sys.modules, {"provisa.api.app": _app_module(mock_state)}),
         patch("asyncio.to_thread", side_effect=_run_in_thread),
-        patch("provisa.scheduler.jobs._trino_ping", return_value=None),
+        patch("provisa.federation.trino_lifecycle._ping", return_value=None),
         patch("asyncio.create_subprocess_exec") as mock_exec,
     ):
-        await watch_trino()
+        await trino_lifecycle.watchdog(mock_state)
 
     assert mock_exec.call_count == 0
 
 
 @pytest.mark.asyncio
-async def test_watch_trino_calls_docker_start_when_unresponsive():
-    """watch_trino issues 'docker start provisa-trino-1' when ping fails."""
-    from provisa.scheduler.jobs import watch_trino
+async def test_watchdog_calls_docker_start_when_unresponsive():
+    """The Trino watchdog issues 'docker start provisa-trino-1' when ping fails."""
+    from provisa.federation import trino_lifecycle
 
     mock_state = MagicMock()
-    mock_state.trino_conn = MagicMock()
-    mock_state.trino_conn_kwargs = {}
+    mock_state.engine_conn = MagicMock()
+    mock_state.engine_conn_kwargs = {}
 
     mock_proc = AsyncMock()
     mock_proc.returncode = 0
@@ -184,14 +197,13 @@ async def test_watch_trino_calls_docker_start_when_unresponsive():
             raise ConnectionError("down")
 
     with (
-        patch.dict(sys.modules, {"provisa.api.app": _app_module(mock_state)}),
         patch("asyncio.to_thread", side_effect=_run_in_thread),
-        patch("provisa.scheduler.jobs._trino_ping", side_effect=ping_side_effect),
+        patch("provisa.federation.trino_lifecycle._ping", side_effect=ping_side_effect),
         patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec,
         patch("asyncio.sleep", new_callable=AsyncMock),
         patch("trino.dbapi.connect", return_value=MagicMock()),
     ):
-        await watch_trino()
+        await trino_lifecycle.watchdog(mock_state)
 
     mock_exec.assert_called_once()
     args = mock_exec.call_args[0]
@@ -201,41 +213,37 @@ async def test_watch_trino_calls_docker_start_when_unresponsive():
 
 
 @pytest.mark.asyncio
-async def test_watch_trino_skips_when_no_conn():
-    """watch_trino exits immediately when state.trino_conn is None."""
-    from provisa.scheduler.jobs import watch_trino
+async def test_watchdog_skips_when_no_conn():
+    """The Trino watchdog exits immediately when state.engine_conn is None."""
+    from provisa.federation import trino_lifecycle
 
     mock_state = MagicMock()
-    mock_state.trino_conn = None
+    mock_state.engine_conn = None
 
-    with (
-        patch.dict(sys.modules, {"provisa.api.app": _app_module(mock_state)}),
-        patch("asyncio.create_subprocess_exec") as mock_exec,
-    ):
-        await watch_trino()
+    with patch("asyncio.create_subprocess_exec") as mock_exec:
+        await trino_lifecycle.watchdog(mock_state)
 
     assert mock_exec.call_count == 0
 
 
 @pytest.mark.asyncio
-async def test_watch_trino_logs_error_on_docker_failure():
-    """watch_trino returns without raising when docker start fails."""
-    from provisa.scheduler.jobs import watch_trino
+async def test_watchdog_logs_error_on_docker_failure():
+    """The Trino watchdog returns without raising when docker start fails."""
+    from provisa.federation import trino_lifecycle
 
     mock_state = MagicMock()
-    mock_state.trino_conn = MagicMock()
+    mock_state.engine_conn = MagicMock()
 
     mock_proc = AsyncMock()
     mock_proc.returncode = 1
     mock_proc.communicate = AsyncMock(return_value=(b"", b"container not found"))
 
     with (
-        patch.dict(sys.modules, {"provisa.api.app": _app_module(mock_state)}),
         patch("asyncio.to_thread", side_effect=_run_in_thread),
-        patch("provisa.scheduler.jobs._trino_ping", side_effect=ConnectionError("down")),
+        patch("provisa.federation.trino_lifecycle._ping", side_effect=ConnectionError("down")),
         patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec,
     ):
-        await watch_trino()
+        await trino_lifecycle.watchdog(mock_state)
 
     # docker start was attempted
     mock_exec.assert_called_once()

@@ -16,7 +16,7 @@ import types
 
 import pytest
 
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 from provisa.federation.engine import (
     build_duckdb_engine,
     build_sqlalchemy_engine,
@@ -38,9 +38,10 @@ class _FakePools:
         return source_id in self._present
 
 
-def _state(*, trino_conn=object(), flight_client=None, present=()):
+def _state(*, engine_conn=object(), flight_client=None, present=()):
     return types.SimpleNamespace(
-        trino_conn=trino_conn,
+        engine_conn=engine_conn,
+        engine_conn_kwargs={},
         flight_client=flight_client,
         source_pools=_FakePools(set(present)),
     )
@@ -100,9 +101,9 @@ async def test_engine_route_uses_engine_terminal(monkeypatch):
 
     monkeypatch.setattr("provisa.executor.trino.execute_trino", _fake_trino)
     conn = object()
-    rt = EngineRuntime(build_trino_engine(), _state(trino_conn=conn, present={"pg"}))
+    rt = EngineRuntime(build_trino_engine(), _state(engine_conn=conn, present={"pg"}))
     # Multi-source / non-direct → ENGINE terminal even though a direct source exists.
-    decision = RouteDecision(route=Route.TRINO, source_id=None, dialect=None, reason="")
+    decision = RouteDecision(route=Route.ENGINE, source_id=None, dialect=None, reason="")
 
     result = await rt.execute(decision, "SELECT 2", [], source_pools=rt._state.source_pools)
 

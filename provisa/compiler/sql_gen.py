@@ -103,7 +103,7 @@ class TableMeta:
     field_name: str  # snake_case GraphQL field name
     type_name: str  # PascalCase GraphQL type name
     source_id: str
-    catalog_name: str  # Trino catalog name (source_id with hyphens → underscores)
+    catalog_name: str  # the engine catalog name (source_id with hyphens → underscores)
     schema_name: str
     table_name: str  # post-alias physical name (e.g. "registered_tables_meta")
     domain_id: str = ""  # semantic domain name (as JDBC clients see it)
@@ -119,8 +119,8 @@ class JoinMeta:
 
     source_column: str
     target_column: str
-    source_column_type: str  # Trino data type (e.g. "integer", "varchar")
-    target_column_type: str  # Trino data type on target side
+    source_column_type: str  # the engine data type (e.g. "integer", "varchar")
+    target_column_type: str  # the engine data type on target side
     target: TableMeta
     cardinality: str  # "many-to-one" or "one-to-many"
     cypher_alias: str | None = None  # Cypher rel type override (e.g. OPENED_BY)
@@ -151,7 +151,7 @@ class CompilationContext:
     joins: dict[tuple[str, str], JoinMeta] = field(default_factory=dict)
     # (table_id, graphql_field_name) → path expression (e.g. "payload.order_id")
     column_paths: dict[tuple[int, str], str] = field(default_factory=dict)
-    # table_id → [(col_name, trino_type)] for aggregate column metadata
+    # table_id → [(col_name, column_type)] for aggregate column metadata
     aggregate_columns: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
     # table_id → user-designated PK column names (informational; empty = heuristic only)
     pk_columns: dict[int, list[str]] = field(default_factory=dict)
@@ -242,10 +242,10 @@ def _lookup_column_type(
     schema: str | None = None,
     table: str | None = None,
 ) -> str:
-    """Look up a column's Trino data type.
+    """Look up a column's the engine data type.
 
     Checks compile-time column_types first; falls back to schema_service
-    live Trino query when catalog/schema/table are provided.
+    live the engine query when catalog/schema/table are provided.
     """
     from provisa.compiler.schema_gen import SchemaInput
 
@@ -301,7 +301,7 @@ def _register_table_in_ctx(
     ctx.tables[f"{t.field_name}GroupBy"] = meta
 
     # Aggregate columns — exclude GQL object columns that have no physical DB column.
-    # Virtual GQL fields (e.g. FK-resolved "pet" on inquiries) are not real columns in Trino.
+    # Virtual GQL fields (e.g. FK-resolved "pet" on inquiries) are not real columns in the engine.
     _gql_obj_cols = si.gql_object_columns.get(t.table_name, {})
     _covered_blobs = {
         blob_col for blob_col in _gql_obj_cols if blob_col.lower() not in t.column_metadata
@@ -808,13 +808,13 @@ _STRING_TYPES = {"varchar", "char", "text", "varbinary", "bytea", "uuid"}
 _TEMPORAL_TYPES = {"date", "time", "timestamp", "time with time zone", "timestamp with time zone"}
 
 
-def _base_type(trino_type: str) -> str:
+def _base_type(column_type: str) -> str:
     """Normalize parameterized types: varchar(100) → varchar, decimal(10,2) → decimal."""
-    return trino_type.lower().split("(")[0].strip()
+    return column_type.lower().split("(")[0].strip()
 
 
 def _types_compatible(type_a: str, type_b: str) -> bool:
-    """Check if two Trino types are implicitly coercible (no CAST needed)."""
+    """Check if two the engine types are implicitly coercible (no CAST needed)."""
     a, b = _base_type(type_a), _base_type(type_b)
     if a == b:
         return True
@@ -1023,12 +1023,13 @@ def _all_table_metas(ctx: CompilationContext) -> list[TableMeta]:
     return metas
 
 
-def rewrite_semantic_to_trino_physical(sql: str, ctx: CompilationContext) -> str:  # REQ-641
-    """Replace semantic and physical table refs with Trino catalog-qualified refs.
+def rewrite_semantic_to_catalog_physical(sql: str, ctx: CompilationContext) -> str:  # REQ-641
+    """Replace semantic and physical table refs with catalog-qualified physical refs.
 
     Handles both semantic refs (domain.field_name, produced by make_semantic_sql for root
     tables) and physical refs without catalog (schema.table, left by make_semantic_sql for
-    join targets that are not in ctx.tables).
+    join targets that are not in ctx.tables). Distinct from ``rewrite_semantic_to_physical``,
+    which only rewrites semantic → uncatalogued schema.table.
     """
     replacements: dict[str, str] = {}
     seen: set[tuple[str, str, str]] = set()
@@ -1346,7 +1347,7 @@ def _build_rel_json_kv(
     Returns (kv_pairs_list, alias_counter) where each element is
     "KEY 'key' VALUE expr" — suitable for joining with commas inside json_object.
     Nested relationships produce correlated subqueries at value positions.
-    Uses SQL-standard json_object syntax so sqlglot transpiles correctly to Trino.
+    Uses SQL-standard json_object syntax so sqlglot transpiles correctly to the engine.
     """
     kv_pairs: list[str] = []
     for sel in selections:
@@ -1366,7 +1367,7 @@ def _build_rel_json_kv(
 
             if sub_join_meta.source_expr is not None:
                 if parent_src_val is not None:
-                    # Trino rejects doubly-nested correlated subqueries. When the parent
+                    # the engine rejects doubly-nested correlated subqueries. When the parent
                     # join resolved to a constant (e.g. 'pet-store.pets'), use that value
                     # here so the child subquery's WHERE clause contains no outer reference.
                     sub_src = parent_src_val
@@ -1983,7 +1984,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             if col_path:
                 # path is "source_col.key1.key2" → PG JSON extraction, or just "key"
                 # when the column is aliased (phys_name is the JSON source column).
-                # Emits PG syntax; SQLGlot transpiles to Trino json_extract_scalar
+                # Emits PG syntax; SQLGlot transpiles to the engine json_extract_scalar
                 path_parts = col_path.split(".")
                 if len(path_parts) == 1:
                     # Single-key path: phys_name is the JSON column, col_path is the key.
@@ -2065,7 +2066,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
 
     # When ops LATERAL joins are present, wrap the base table in a subquery so that
     # the base row count is capped before the lateral Cartesian expansion.
-    # Without this cap, Trino runs one full Iceberg scan per base row (no secondary index).
+    # Without this cap, the engine runs one full Iceberg scan per base row (no secondary index).
     result_limit: int | None = None
     if has_lateral_ops_joins:
         base_limit = int(args["limit"]) if "limit" in args else _get_default_row_limit()
@@ -2111,7 +2112,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             distinct_prefix = f"DISTINCT ON ({', '.join(parts_d)}) "
             sql = f"SELECT {distinct_prefix}{sql[len('SELECT ') :]}"
         else:
-            # Non-PostgreSQL sources (Trino, Iceberg, etc.) do not support DISTINCT ON.
+            # Non-PostgreSQL sources (the engine, Iceberg, etc.) do not support DISTINCT ON.
             # Wrap as ROW_NUMBER() window function to deduplicate by the distinct columns.
             partition_cols = ", ".join(parts_d)
             inner_alias = "__distinct_inner"
@@ -2164,7 +2165,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
     api_args = {k: v for k, v in args.items() if k not in _STANDARD_ARGS}
 
     # Inject _nf_-prefixed WHERE conditions so the SQL/CQL preview shows the filter.
-    # nf_extractor strips these before Trino execution; endpoint.py uses api_args for the REST call.
+    # nf_extractor strips these before the engine execution; endpoint.py uses api_args for the REST call.
     if api_args:
         nf_conditions = []
         for k, v in api_args.items():
@@ -2996,7 +2997,7 @@ def compile_query(  # REQ-007, REQ-009, REQ-010, REQ-011, REQ-262, REQ-263, REQ-
         document: Validated GraphQL DocumentNode.
         ctx: Compilation context mapping GraphQL names to physical metadata.
         variables: Optional GraphQL variable values.
-        use_catalog: If True, emit catalog-qualified table names (for Trino).
+        use_catalog: If True, emit catalog-qualified table names (for the engine).
 
     Returns one CompiledQuery per root query field in the document.
     """

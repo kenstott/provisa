@@ -66,7 +66,7 @@ def assemble_rows(  # REQ-349, REQ-350
     if not raw_rows:
         return []
 
-    # Trino lowercases unquoted column aliases; normalize graph_vars to match.
+    # the engine lowercases unquoted column aliases; normalize graph_vars to match.
     graph_vars = {k.lower(): v for k, v in graph_vars.items()}
 
     path_cols = {k for k, v in graph_vars.items() if v == GraphVarKind.PATH}

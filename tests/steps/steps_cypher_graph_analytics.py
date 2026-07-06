@@ -11,7 +11,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from pytest_bdd import given, parsers, then, when
+from pytest_bdd import given, parsers, scenarios, then, when
 
 from provisa.api.rest.cypher_router import ImputeRequest
 from provisa.cypher.assembler import Edge, _parse_edge
@@ -532,7 +532,5 @@ def then_returns_stable_integer_ids_in_result_edges(shared_data: dict) -> None:
         f"Edge end_node.id {parsed.end_node.id} is not a stable id from {stable_ids}"
     )
 
-
-from pytest_bdd import scenarios
 
 scenarios("../features/REQ-784.feature")

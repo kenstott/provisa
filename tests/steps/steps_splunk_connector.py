@@ -8,7 +8,6 @@
 import os
 
 import pytest
-import pytest_asyncio
 from pytest_bdd import given, parsers, scenario, then, when
 
 from provisa.core.models import Source, SourceType, SOURCE_TO_CONNECTOR
@@ -162,7 +161,6 @@ def step_register_splunk_source(shared_data):
             }
         }
         import urllib.request as _ur
-        import urllib.parse as _up
 
         body = _json.dumps({"query": mutation, "variables": variables}).encode()
         req = _ur.Request(
@@ -174,9 +172,7 @@ def step_register_splunk_source(shared_data):
         with _ur.urlopen(req, timeout=30) as resp:
             result = _json.loads(resp.read())
         gql_data = result.get("data", {}).get("addSource", {})
-        assert gql_data.get("success"), (
-            f"addSource mutation failed: {gql_data.get('error')}"
-        )
+        assert gql_data.get("success"), f"addSource mutation failed: {gql_data.get('error')}"
         shared_data["registered_via_api"] = True
     else:
         shared_data["registered_via_api"] = False
@@ -233,9 +229,7 @@ def step_source_in_catalog_and_tables_enumerable(shared_data):
         # Confirm catalog exists
         cur.execute("SHOW CATALOGS")
         catalogs = [row[0] for row in cur.fetchall()]
-        assert "e2e_splunk" in catalogs, (
-            f"Catalog 'e2e_splunk' not found; available: {catalogs}"
-        )
+        assert "e2e_splunk" in catalogs, f"Catalog 'e2e_splunk' not found; available: {catalogs}"
 
         # Confirm internal_server table (or similar search table) is enumerable
         cur.execute("SHOW TABLES FROM e2e_splunk.splunk")
@@ -279,9 +273,7 @@ def step_splunk_host_and_port(host, port, shared_data):
     assert host, "host must not be empty"
     assert port > 0, f"port must be a positive integer, got {port}"
     # REQ-722 states the default port is 8089
-    assert port == 8089, (
-        f"REQ-722 specifies default port 8089, but step was given port={port}"
-    )
+    assert port == 8089, f"REQ-722 specifies default port 8089, but step was given port={port}"
     shared_data["req722_host"] = host
     shared_data["req722_port"] = port
 
@@ -332,9 +324,7 @@ def step_connector_receives_url(expected_url, shared_data):
     """
     props: dict = shared_data["req722_catalog_props"]
 
-    assert "url" in props, (
-        f"Catalog properties must contain 'url'; got keys: {list(props.keys())}"
-    )
+    assert "url" in props, f"Catalog properties must contain 'url'; got keys: {list(props.keys())}"
 
     actual_url = props["url"]
     assert actual_url == expected_url, (
@@ -529,8 +519,7 @@ def step_req724_assert_app_and_ssl(shared_data):
         f"got keys: {list(props.keys())}"
     )
     assert props["disable-ssl-validation"] == "true", (
-        f"REQ-724: expected disable-ssl-validation='true', "
-        f"got {props['disable-ssl-validation']!r}"
+        f"REQ-724: expected disable-ssl-validation='true', got {props['disable-ssl-validation']!r}"
     )
 
     # ── Structural invariants ─────────────────────────────────────────────────
@@ -549,8 +538,7 @@ def step_req724_assert_app_and_ssl(shared_data):
     # ── Token auth must still be set (use_token=True on this source) ──────────
     password = shared_data["req724_password"]
     assert props.get("token") == password, (
-        f"REQ-724: expected token={password!r} (use_token=True), "
-        f"got {props.get('token')!r}"
+        f"REQ-724: expected token={password!r} (use_token=True), got {props.get('token')!r}"
     )
 
     # ── user/password keys must be absent when token auth is active ───────────
@@ -560,18 +548,3 @@ def step_req724_assert_app_and_ssl(shared_data):
     assert "password" not in props, (
         f"REQ-724: 'password' key must not appear when use_token=True; props={props}"
     )
-
-
-# Copyright (c) 2026 Kenneth Stott
-# Canary: b763fdaf-fe01-42ca-9f55-cd9f00358c78
-#
-# This source code is licensed under the Business Source License 1.1
-
-# All steps for REQ-721 are already present in the existing steps file.
-# Nothing new to append.
-
-
-# Copyright (c) 2026 Kenneth Stott
-# Canary: 8e9a35c3-eec2-4fce-844b-ba42e847acb8
-#
-# This source code is licensed under the Business Source License 1.1

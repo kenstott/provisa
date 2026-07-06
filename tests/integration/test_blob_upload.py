@@ -16,7 +16,7 @@ Requires MinIO running in Docker Compose (port 9000).
 import pytest
 
 from provisa.executor.redirect import RedirectConfig, upload_and_presign
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 

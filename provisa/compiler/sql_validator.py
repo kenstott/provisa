@@ -30,7 +30,7 @@ Security model / layer responsibilities:
   paths between tables a role already has access to. A role cannot use an unapproved join
   to reach data outside its Layer 2 domain grant or past Layers 3–5 content controls — so
   circumventing V002 does not expose data the role couldn't obtain through two separate
-  approved queries. V002 exists to enforce approved roads and provide an audit surface for
+  queries. V002 exists to enforce allowed roads and provide an audit surface for
   deliberate circumvention, not to be the last line of defence.
 """
 

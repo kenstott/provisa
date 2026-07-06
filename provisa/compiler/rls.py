@@ -18,8 +18,10 @@ RLS filter expressions are stored per (table_id, role_id) in the config DB.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
+
+import sqlglot
+from sqlglot import exp
 
 from provisa.compiler.sql_gen import CompiledQuery, CompilationContext
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -80,9 +82,6 @@ def inject_rls(  # REQ-038, REQ-040, REQ-041, REQ-402, REQ-403
             span.set_attribute("rls.rules_applied", 0)
             return compiled
 
-        # Find which tables in the query have RLS rules
-        filters: list[str] = []
-
         def _rule_for_table(table_id: int, domain_id: str) -> str | None:
             if table_id in rls.rules:
                 return rls.rules[table_id]
@@ -90,32 +89,42 @@ def inject_rls(  # REQ-038, REQ-040, REQ-041, REQ-402, REQ-403
                 return rls.domain_rules[domain_id]
             return None
 
-        # Check root table
+        tree = sqlglot.parse_one(compiled.sql, read="postgres")
+        # Map each physical table_name to the alias it carries in the query (its own name when
+        # unaliased) — read from the AST, so any alias convention works, not just "t0"/"tN".
+        alias_by_table = _alias_by_table(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub
+
+        # Build a qualified predicate AST per applicable table.
+        predicates: list[exp.Expression] = []
         root_table = ctx.tables.get(compiled.root_field)
         if root_table:
             filter_expr = _rule_for_table(root_table.table_id, root_table.domain_id)
             if filter_expr:
-                # Qualify column refs with alias if the query uses aliases
-                if _has_alias(compiled.sql):
-                    filter_expr = _qualify_filter(filter_expr, "t0")
-                filters.append(f"({filter_expr})")
+                predicates.append(
+                    _qualified_predicate(filter_expr, alias_by_table.get(root_table.table_name))
+                )
 
-        # Check joined tables — find their aliases from the SQL
         for (type_name, _), join_meta in ctx.joins.items():
             if root_table and type_name == root_table.type_name:
                 filter_expr = _rule_for_table(join_meta.target.table_id, join_meta.target.domain_id)
                 if filter_expr:
-                    alias = _find_join_alias(compiled.sql, join_meta.target.table_name)
-                    if alias:
-                        filter_expr = _qualify_filter(filter_expr, alias)
-                    filters.append(f"({filter_expr})")
+                    predicates.append(
+                        _qualified_predicate(
+                            filter_expr, alias_by_table.get(join_meta.target.table_name)
+                        )
+                    )
 
-        span.set_attribute("rls.rules_applied", len(filters))
-        if not filters:
+        span.set_attribute("rls.rules_applied", len(predicates))
+        if not predicates:
             return compiled
 
-        rls_clause = " AND ".join(filters)
-        sql = _inject_where(compiled.sql, rls_clause)
+        select = tree if isinstance(tree, exp.Select) else tree.find(exp.Select)
+        if select is None:
+            raise ValueError("inject_rls: query has no SELECT to attach the RLS predicate to")
+        for pred in predicates:
+            select.where(pred, copy=False)  # ANDs into the existing WHERE at the right position
+
+        sql = tree.sql(dialect="postgres")
 
         from provisa.observability.stage_trace import trace_stage
 
@@ -129,105 +138,43 @@ def inject_rls(  # REQ-038, REQ-040, REQ-041, REQ-402, REQ-403
         )
 
 
-def _has_alias(sql: str) -> bool:
-    """Check if the SQL uses table aliases (t0, t1, ...)."""
-    return '"t0"' in sql
+def _alias_by_table(tree: exp.Expression) -> dict[str, str]:
+    """Map each table's physical name to the alias it carries in the query (its own name when
+    unaliased). Read structurally from the AST — no regex over the SQL text."""
+    out: dict[str, str] = {}
+    for tbl in tree.find_all(exp.Table):
+        out.setdefault(tbl.name, tbl.alias or tbl.name)
+    return out
 
 
-_SQL_KEYWORDS = {
-    "and",
-    "or",
-    "not",
-    "is",
-    "null",
-    "in",
-    "like",
-    "between",
-    "true",
-    "false",
-    "current_setting",
-    "select",
-    "from",
-    "where",
-    "exists",
-    "case",
-    "when",
-    "then",
-    "else",
-    "end",
-    "as",
-    "on",
-    "join",
-    "left",
-    "right",
-    "inner",
-    "outer",
-    "cross",
-    "full",
-    "group",
-    "by",
-    "order",
-    "having",
-    "limit",
-    "offset",
-    "union",
-    "all",
-    "distinct",
-    "with",
-}
+def _qualified_predicate(filter_expr: str, alias: str | None) -> exp.Expression:
+    """Parse a raw SQL predicate and qualify every unqualified column with ``alias`` (AST).
+
+    Structural, not textual: string literals and keywords are their own node types, so only
+    genuine Column nodes are touched — no regex, no keyword denylist. Already-qualified columns
+    keep their table. Column identifiers are rendered quoted to match the compiler convention.
+    """
+    pred = sqlglot.parse_one(filter_expr, read="postgres")
+    if alias:
+        for col in pred.find_all(exp.Column):
+            if not col.table:
+                col.set("table", exp.to_identifier(alias, quoted=True))
+            if isinstance(col.this, exp.Identifier):
+                col.this.set("quoted", True)
+    return pred  # pyright: ignore[reportReturnType]  # sqlglot stub types parse_one as Expr
 
 
 def _qualify_filter(filter_expr: str, alias: str) -> str:
-    """Prefix bare column names in filter_expr with "alias".
-
-    Handles string literals correctly — quoted values are skipped so
-    words inside single quotes are never treated as column references.
-    """
-    if f'"{alias}".' in filter_expr:
-        return filter_expr
-
-    def _replace(m: re.Match) -> str:
-        # Group 1 matches a single-quoted string literal — return unchanged
-        if m.group(1) is not None:
-            return m.group(1)
-        word = m.group(2)
-        if word.lower() in _SQL_KEYWORDS:
-            return word
-        start = m.start(2)
-        if start > 0 and filter_expr[start - 1] == "'":
-            return word
-        if start > 0 and filter_expr[start - 1] == ".":
-            return word  # column name after dot — don't qualify
-        end = m.end(2)
-        if end < len(filter_expr) and filter_expr[end] == ".":
-            return f'"{alias}"'  # replace existing table alias with correct alias
-        return f'"{alias}".{word}'
-
-    # Match single-quoted strings first (to skip them), then bare identifiers
-    return re.sub(r"('(?:[^'\\]|\\.)*')|(\b[a-zA-Z_]\w*\b)", _replace, filter_expr)
-
-
-def _find_join_alias(sql: str, table_name: str) -> str | None:
-    """Find the alias used for a joined table in the SQL."""
-    # Pattern: JOIN "schema"."table" "tN"
-    pattern = rf'"[^"]*"\."{re.escape(table_name)}"\s+"(t\d+)"'
-    m = re.search(pattern, sql)
-    return m.group(1) if m else None
+    """Qualify bare columns in ``filter_expr`` with ``alias`` and return the SQL text."""
+    return _qualified_predicate(filter_expr, alias).sql(dialect="postgres")
 
 
 def _inject_where(sql: str, rls_clause: str) -> str:
-    """Inject an RLS clause into SQL, merging with existing WHERE if present."""
-    # Find WHERE position (case-insensitive, word boundary)
-    where_match = re.search(r"\bWHERE\b", sql, re.IGNORECASE)
-    if where_match:
-        # Insert RLS after WHERE, before existing conditions
-        pos = where_match.end()
-        return f"{sql[:pos]} {rls_clause} AND{sql[pos:]}"
-
-    # No WHERE — insert before ORDER BY, LIMIT, or end
-    for keyword in (r"\bORDER\s+BY\b", r"\bLIMIT\b", r"\bOFFSET\b"):
-        m = re.search(keyword, sql, re.IGNORECASE)
-        if m:
-            return f"{sql[: m.start()]}WHERE {rls_clause} {sql[m.start() :]}"
-
-    return f"{sql} WHERE {rls_clause}"
+    """AND ``rls_clause`` into a query's WHERE (AST): parse, attach the predicate to the outer
+    SELECT — sqlglot places it before ORDER BY/LIMIT and merges an existing WHERE — reserialize."""
+    tree = sqlglot.parse_one(sql, read="postgres")
+    select = tree if isinstance(tree, exp.Select) else tree.find(exp.Select)
+    if select is None:
+        raise ValueError("_inject_where: query has no SELECT to attach the predicate to")
+    select.where(rls_clause, dialect="postgres", copy=False)
+    return tree.sql(dialect="postgres")

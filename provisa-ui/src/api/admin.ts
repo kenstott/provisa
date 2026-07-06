@@ -343,6 +343,192 @@ export async function fetchSettings(): Promise<PlatformSettings> {
   return resp.json();
 }
 
+// --- Federation engine selection (REQ-916) ---
+
+export interface EngineConfigField {
+  config_key: string;
+  label: string;
+  type: "string" | "number";
+  required: boolean;
+  placeholder?: string;
+}
+
+export interface EngineRegistryEntry {
+  key: string;
+  label: string;
+  description: string;
+  config_fields: EngineConfigField[];
+}
+
+export interface FederationEngineState {
+  current: string;
+  config: {
+    federation_engine_url: string | null;
+    federation_engine_host: string;
+    federation_engine_port: number;
+  };
+  engines: EngineRegistryEntry[];
+  restart_required_note: string;
+}
+
+export async function fetchFederationEngine(): Promise<FederationEngineState> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/federation-engine`);
+  if (!resp.ok) throw new Error(`Federation engine fetch failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function setFederationEngine(
+  body: {
+    engine: string;
+    federation_engine_url?: string | null;
+    federation_engine_host?: string;
+    federation_engine_port?: number;
+  },
+): Promise<{ success: boolean; updated: string[]; restart_required: boolean }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/federation-engine`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`Federation engine update failed: ${resp.status}`);
+  return resp.json();
+}
+
+// --- Cache (Redis) + materialize-store settings (REQ-917) ---
+
+export interface CacheStorageState {
+  cache: { enabled: boolean; redis_url: string; default_ttl: number | null };
+  hot_tables: {
+    auto_threshold: number;
+    max_rows: number;
+    max_bytes: number;
+    refresh_interval: number | null;
+  };
+  materialize: { store_url: string };
+  restart_required_note: string;
+}
+
+export async function fetchCacheStorage(): Promise<CacheStorageState> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/cache-storage`);
+  if (!resp.ok) throw new Error(`Cache/storage fetch failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function setCacheStorage(
+  body: Partial<{
+    cache: Partial<CacheStorageState["cache"]>;
+    hot_tables: Partial<CacheStorageState["hot_tables"]>;
+    materialize: { store_url: string };
+  }>,
+): Promise<{ success: boolean; updated: string[]; restart_required: boolean }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/cache-storage`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`Cache/storage update failed: ${resp.status}`);
+  return resp.json();
+}
+
+// --- Encryption key management (REQ-918) ---
+
+export interface EncryptionProvider {
+  key: string;
+  label: string;
+  description: string;
+}
+
+export interface EncryptionState {
+  provider: string;
+  key_id: string | null;
+  key_present: boolean | null;
+  providers: EncryptionProvider[];
+  restart_required_note: string;
+}
+
+export async function fetchEncryption(): Promise<EncryptionState> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/encryption`);
+  if (!resp.ok) throw new Error(`Encryption fetch failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function setEncryption(
+  body: { provider: string; key_id?: string | null },
+): Promise<{ success: boolean; restart_required: boolean }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/encryption`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`Encryption update failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function generateEncryptionKey(
+  body: { key_id?: string | null },
+): Promise<{ stored: boolean; key_id: string; key_b64: string | null; env_var: string | null }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/encryption/generate-key`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`Key generation failed: ${resp.status}`);
+  return resp.json();
+}
+
+// --- Auth provider config (REQ-919) ---
+
+export interface AuthProviderField {
+  config_key: string;
+  label: string;
+  type: "string";
+  required: boolean;
+  secret?: boolean;
+  placeholder?: string;
+}
+
+export interface AuthProviderMeta {
+  key: string;
+  label: string;
+  description: string;
+  config_fields: AuthProviderField[];
+}
+
+export interface AuthConfigState {
+  provider: string;
+  providers: AuthProviderMeta[];
+  config: Record<string, Record<string, unknown>>;
+  common: {
+    default_role: string;
+    assignments_source: string;
+    trust_upstream: boolean;
+    allow_simple_auth: boolean;
+  };
+  restart_required_note: string;
+}
+
+export async function fetchAuthConfig(): Promise<AuthConfigState> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/auth`);
+  if (!resp.ok) throw new Error(`Auth config fetch failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function setAuthConfig(
+  body: {
+    provider: string;
+    config?: Record<string, unknown>;
+    common?: Partial<AuthConfigState["common"]>;
+  },
+): Promise<{ success: boolean; restart_required: boolean }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/auth`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`Auth config update failed: ${resp.status}`);
+  return resp.json();
+}
+
 export async function updateSettings(
   settings: Partial<PlatformSettings>,
 ): Promise<{ success: boolean; updated: string[]; restart_required: boolean }> {
@@ -378,7 +564,7 @@ export async function setDomainPolicy(body: {
 export interface CompileResult {
   sql: string;
   semantic_sql: string;
-  trino_sql: string | null;
+  engine_sql: string | null;
   direct_sql: string | null;
   params: unknown[];
   route: string;
@@ -483,9 +669,9 @@ export interface CacheStats {
 }
 
 export interface SystemHealth {
-  trinoConnected: boolean;
-  trinoWorkerCount: number;
-  trinoActiveWorkers: number;
+  engineConnected: boolean;
+  engineWorkerCount: number;
+  engineActiveWorkers: number;
   pgPoolSize: number;
   pgPoolFree: number;
   cacheConnected: boolean;

@@ -244,7 +244,7 @@ class TestExecuteTrinoFlightArrow:
 
 class TestExecuteTrinoFlight:
     def test_returns_query_result_type(self):
-        from provisa.executor.trino import QueryResult
+        from provisa.executor.result import QueryResult
 
         schema = pa.schema([("id", pa.int64()), ("val", pa.string())])
         table = pa.table({"id": [1, 2], "val": ["x", "y"]}, schema=schema)

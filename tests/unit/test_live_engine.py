@@ -21,6 +21,19 @@ from provisa.live.engine import LiveEngine, _build_incremental_sql
 from provisa.live.outputs.sse import SSEFanout
 
 
+class _BridgeEngine:
+    """Fake EngineRuntime whose ENGINE terminal delegates to the module-level ``execute_trino``,
+    so ``execute_trino`` patches + call-arg assertions still work after LiveEngine moved to the seam."""
+
+    def __init__(self, conn) -> None:
+        self._conn = conn
+
+    async def execute_engine(self, sql, params=None, **_kw):
+        from provisa.executor.trino import execute_trino
+
+        return execute_trino(self._conn, sql)
+
+
 # ---------------------------------------------------------------------------
 # _build_incremental_sql
 # ---------------------------------------------------------------------------
@@ -210,7 +223,7 @@ class TestLiveEngine:
     async def test_poll_routes_through_trino_and_delivers(self):
         # Poll data comes from Trino (federated), not the PG pool. PG is used
         # only for watermark bookkeeping.
-        from provisa.executor.trino import QueryResult
+        from provisa.executor.result import QueryResult
 
         # PG pool: watermark bookkeeping only.
         conn_mock = AsyncMock()
@@ -222,7 +235,7 @@ class TestLiveEngine:
             )
         )
         trino_conn = MagicMock()
-        engine = LiveEngine(tenant_db=pool, trino_conn=trino_conn)
+        engine = LiveEngine(tenant_db=pool, engine=_BridgeEngine(trino_conn))
 
         with patch("provisa.live.engine.AsyncIOScheduler") as mock_sched_cls:
             mock_sched = MagicMock()
@@ -238,8 +251,8 @@ class TestLiveEngine:
         )
         q = engine.subscribe("q1")
 
-        trino_result = QueryResult(rows=[(1, "2026-01-02")], column_names=["id", "updated_at"])
-        exec_mock = MagicMock(return_value=trino_result)
+        engine_result = QueryResult(rows=[(1, "2026-01-02")], column_names=["id", "updated_at"])
+        exec_mock = MagicMock(return_value=engine_result)
         with (
             patch("provisa.executor.trino.execute_trino", exec_mock),
             patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
@@ -263,7 +276,7 @@ class TestLiveEngine:
                 __aexit__=AsyncMock(return_value=False),
             )
         )
-        engine = LiveEngine(tenant_db=pool, trino_conn=None)
+        engine = LiveEngine(tenant_db=pool, engine=None)
         with patch("provisa.live.engine.AsyncIOScheduler") as mock_sched_cls:
             mock_sched = MagicMock()
             mock_sched.add_job.return_value = MagicMock(id="live_q1")
@@ -286,7 +299,7 @@ class TestLiveEngine:
 
 class TestReconcile:
     def _started_engine(self, stack) -> LiveEngine:
-        engine = LiveEngine(tenant_db=AsyncMock(), trino_conn=MagicMock())
+        engine = LiveEngine(tenant_db=AsyncMock(), engine=_BridgeEngine(MagicMock()))
         mock_sched = MagicMock()
         mock_sched.add_job.return_value = MagicMock(id="live_x")
         stack.enter_context(patch("provisa.live.engine.AsyncIOScheduler", return_value=mock_sched))

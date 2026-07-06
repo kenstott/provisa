@@ -33,7 +33,7 @@ def dot_path_to_pg_expression(column: str, path: str, cast_source: bool = False)
          -> (data->'a'->'b'->>'c')
 
     ``cast_source`` casts the source column to ``jsonb`` first (``data::jsonb->...``)
-    — needed where JSON is stored as text/varchar (e.g. the Trino api-cache table).
+    — needed where JSON is stored as text/varchar (e.g. the engine api-cache table).
     """
     if not path:
         raise ValueError(f"Empty dot-path for column {column!r}")

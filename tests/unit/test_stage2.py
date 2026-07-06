@@ -37,7 +37,7 @@ class TestRLSInjection:
         sql = "SELECT id FROM orders"
         result = apply_governance(sql, gov)
         assert "WHERE" in result
-        assert "region = 'us'" in result
+        assert "\"region\" = 'us'" in result
 
     def test_rls_ands_with_existing_where(self):
         gov = _gov(
@@ -46,7 +46,7 @@ class TestRLSInjection:
         )
         sql = "SELECT id FROM orders WHERE status = 'active'"
         result = apply_governance(sql, gov)
-        assert "region = 'us'" in result
+        assert "\"region\" = 'us'" in result
         assert "status = 'active'" in result
         assert "AND" in result
 
@@ -66,7 +66,7 @@ class TestRLSInjection:
         )
         sql = "SELECT o.id FROM orders o JOIN customers c ON o.cid = c.id"
         result = apply_governance(sql, gov)
-        assert "region = 'us'" in result
+        assert "\"region\" = 'us'" in result
         assert "active" in result.lower() and "true" in result.lower()
 
     def test_no_rls_rule_unchanged(self):
@@ -199,7 +199,7 @@ class TestUnionGovernance:
         sql = "SELECT id FROM orders UNION ALL SELECT id FROM orders"
         result = apply_governance(sql, gov)
         # Both branches should have RLS applied
-        assert result.count("region = 'us'") >= 2
+        assert result.count("\"region\" = 'us'") >= 2
 
 
 class TestCeilingWiring:
@@ -207,9 +207,7 @@ class TestCeilingWiring:
 
     def test_role_max_rows_populates_limit_ceiling(self):
         ctx = SimpleNamespace(tables={})
-        gov = build_governance_context(
-            "analyst", None, {}, ctx, [], role={"max_rows": 500}
-        )
+        gov = build_governance_context("analyst", None, {}, ctx, [], role={"max_rows": 500})
         assert gov.limit_ceiling == 500
 
     def test_role_without_full_results_gets_default_row_limit(self, monkeypatch):

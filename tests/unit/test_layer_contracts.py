@@ -20,7 +20,7 @@ from provisa.compiler.sql_gen import (
     build_context,
     compile_query,
 )
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 
 # --- TableMeta field contract ---
@@ -217,7 +217,7 @@ class TestRoundTripContracts:
         doc = parse("{ orders { id amount } }")
         results = compile_query(doc, ctx)
         compiled = results[0]
-        rls = RLSContext(rules={1: "amount > 0"})
+        rls = RLSContext(rules={1: '"amount" > 0'})
         result = inject_rls(compiled, ctx, rls)
         assert isinstance(result.sql, str)
 
@@ -226,9 +226,9 @@ class TestRoundTripContracts:
         doc = parse("{ orders { id amount } }")
         results = compile_query(doc, ctx)
         compiled = results[0]
-        rls = RLSContext(rules={1: "amount > 0"})
+        rls = RLSContext(rules={1: '"amount" > 0'})
         result = inject_rls(compiled, ctx, rls)
-        assert "amount > 0" in result.sql
+        assert '"amount" > 0' in result.sql
 
     def test_inject_rls_empty_rules_returns_same_sql(self):
         schema, ctx = _build_minimal_ctx()

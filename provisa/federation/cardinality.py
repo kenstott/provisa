@@ -13,7 +13,7 @@
 REQ-673 — ``cardinality(source, table) -> Estimate{value, exact, method}``: a source may
 expose a CHEAP volume metric so a caller can size a table without a full scan. Resolution
 order: (1) a cheap native statistic when the source has one (GraphQL totalCount, OpenAPI
-X-Total-Count, PG reltuples, Trino SHOW STATS, Parquet/Iceberg row-group metadata); (2) an
+X-Total-Count, PG reltuples, the engine SHOW STATS, Parquet/Iceberg row-group metadata); (2) an
 exact COUNT(*) only when the connector reports counting is cheap; (3) UNKNOWN when sizing is
 expensive and no native estimate exists — fail-open, never a hidden full scan. ``exact`` and
 ``method`` tell a consumer what the number is and what it may be used for. The producer is
@@ -34,7 +34,7 @@ from enum import Enum
 
 class CardinalityMethod(str, Enum):  # REQ-673
     NATIVE_COUNT = "native_count"  # exact — GraphQL totalCount, OpenAPI X-Total-Count
-    NATIVE_STAT = "native_stat"  # approximate — PG reltuples, Trino SHOW STATS
+    NATIVE_STAT = "native_stat"  # approximate — PG reltuples, the engine SHOW STATS
     COUNT_STAR = "count_star"  # exact — engine COUNT(*), only when the connector says it's cheap
     UNKNOWN = "unknown"  # sizing is expensive and no native estimate exists
 

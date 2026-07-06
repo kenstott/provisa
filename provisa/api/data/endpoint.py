@@ -13,7 +13,7 @@
 Pipeline: parse -> compile -> MV rewrite -> sampling -> make_semantic_sql
   -> governance (RLS/masking/visibility) -> cache check -> route
   -> rewrite_to_physical -> transpile -> execute -> cache store -> serialize.
-Mutations: parse -> compile_mutation -> RLS inject -> direct execute (never Trino).
+Mutations: parse -> compile_mutation -> RLS inject -> direct execute (never the engine).
 """
 
 # Requirements: REQ-001, REQ-002, REQ-027, REQ-028, REQ-029, REQ-032, REQ-033,
@@ -54,8 +54,8 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import (
     compile_query,
     make_semantic_sql,
+    rewrite_semantic_to_catalog_physical,
     rewrite_semantic_to_physical,
-    rewrite_semantic_to_trino_physical,
 )
 from provisa.executor.serialize import (
     serialize_aggregate,
@@ -69,7 +69,7 @@ from provisa.mv.rewriter import rewrite_if_mv_match
 from provisa.security.mutation_authz import require_mutation_write
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.transpiler.router import Route, decide_route
-from provisa.transpiler.transpile import transpile, transpile_to_trino
+from provisa.transpiler.transpile import transpile
 
 import os as _os
 import re as _re
@@ -322,17 +322,12 @@ async def _handle_normalized(document, ctx, rls, state, variables, role_id, role
     """REQ-049: emit one governed, deduplicated relational table per entity via per-table CTAS.
 
     Each entity's scoped SELECT DISTINCT is governed identically to the normal path, written
-    to S3 by Trino CTAS (the denormalized product never forms), and returned as a manifest of
+    to S3 by the engine CTAS (the denormalized product never forms), and returned as a manifest of
     presigned URLs. A computed-join query that cannot be normalized returns 400.
     """
     from provisa.compiler.normalize import NormalizeError, compile_normalized
     from provisa.executor.redirect import RedirectConfig
-    from provisa.executor.trino_write import (
-        execute_ctas_redirect,
-        presign_ctas_result,
-        schedule_s3_cleanup,
-    )
-    from provisa.transpiler.transpile import transpile_to_trino
+    from provisa.executor.redirect import presign_ctas_result, schedule_s3_cleanup
 
     try:
         ntables = compile_normalized(document, ctx, variables, use_catalog=True)
@@ -345,9 +340,9 @@ async def _handle_normalized(document, ctx, rls, state, variables, role_id, role
     for nt in ntables:
         # Govern each per-table query exactly like the normal path (RLS/masking/visibility).
         await _prepare_compiled(nt.compiled, ctx, rls, state, role_id, role, fresh_mvs)
-        exec_sql = rewrite_semantic_to_trino_physical(nt.compiled.sql, ctx)
-        trino_sql = transpile_to_trino(exec_sql)
-        ctas = execute_ctas_redirect(state.trino_conn, trino_sql, "parquet")
+        exec_sql = rewrite_semantic_to_catalog_physical(nt.compiled.sql, ctx)
+        physical_sql = state.federation_engine.transpile_physical(exec_sql)
+        ctas = state.federation_engine.ctas_redirect(physical_sql, "parquet")
         url = await presign_ctas_result(ctas["s3_prefix"], redirect_config)
         asyncio.create_task(schedule_s3_cleanup(ctas["s3_prefix"], redirect_config))
         manifest.append(
@@ -700,7 +695,7 @@ async def _promote_joined_from_pg(
 
 
 def _normalize_mat_value(v):
-    """Normalize a value for materialization into Trino cache (VARCHAR/scalar types)."""
+    """Normalize a value for materialization into the engine cache (VARCHAR/scalar types)."""
     if isinstance(v, (dict, list)):
         return json.dumps(v)
     if v is None:
@@ -722,8 +717,8 @@ async def _mat_gql_remote_table(
     extra_selections: dict[str, str] | None = None,
     variables: dict | None = None,
 ) -> None:
-    """Materialize a graphql_remote-backed table into the Trino cache or VALUES CTE."""
-    from provisa.api_source.trino_cache import (
+    """Materialize a graphql_remote-backed table into the engine cache or VALUES CTE."""
+    from provisa.api_source.engine_cache import (
         cache_location,
         cache_table_name,
         create_and_insert,
@@ -831,7 +826,7 @@ async def _mat_gql_remote_table(
     except Exception as fetch_exc:
         raise RuntimeError(f"GQL remote fetch failed for {tn!r}: {fetch_exc}") from fetch_exc
 
-    # Hydrate to Trino cache (best-effort)
+    # Hydrate to the engine cache (best-effort)
     try:
         with state.federation_engine.isolated_sync() as _c:
             create_and_insert(_c, gql_cache_loc, gql_cache_tbl, gql_rows, col_objs)
@@ -861,7 +856,7 @@ async def _mat_gql_remote_table(
     else:
         cache_rewrites[tn] = (gql_cache_loc, gql_cache_tbl)
         log.warning(
-            "[GQL REMOTE] %d rows → Trino cache %s.%s.%s",
+            "[GQL REMOTE] %d rows → the engine cache %s.%s.%s",
             len(gql_rows),
             gql_cache_loc.catalog,
             gql_cache_loc.schema,
@@ -953,8 +948,8 @@ def _mat_store_rows(
     values_cte_entries: dict,
     all_ep_col_names: list | None = None,
 ) -> None:
-    """Store materialized rows as hot VALUES CTE or in Trino cache."""
-    from provisa.api_source.trino_cache import create_and_insert, schedule_drop
+    """Store materialized rows as hot VALUES CTE or in the engine cache."""
+    from provisa.api_source.engine_cache import create_and_insert, schedule_drop
 
     if 0 < len(rows) <= _hot_threshold:
         from provisa.cache.hot_tables import HotTableEntry
@@ -978,13 +973,13 @@ def _mat_store_rows(
     else:
         cache_rewrites[tn] = (_cache_loc, cache_tbl)
         log.warning(
-            "[MAT] materialized %d rows → Trino cache %s.%s.%s",
+            "[MAT] materialized %d rows → the engine cache %s.%s.%s",
             len(rows),
             _cache_loc.catalog,
             _cache_loc.schema,
             cache_tbl,
         )
-        # Trino cache column names must match what the SQL compiler generates (snake_case).
+        # the engine cache column names must match what the SQL compiler generates (snake_case).
         # Remap both column objects and row keys from camelCase to snake_case.
         from provisa.compiler.naming import apply_sql_name as _apply_sql_name
 
@@ -1008,8 +1003,8 @@ async def _mat_api_ep_table(
     cache_rewrites: dict,
     values_cte_entries: dict,
 ) -> None:
-    """Materialize a REST API endpoint-backed table into the Trino cache or VALUES CTE."""
-    from provisa.api_source.trino_cache import (
+    """Materialize a REST API endpoint-backed table into the engine cache or VALUES CTE."""
+    from provisa.api_source.engine_cache import (
         cache_location,
         cache_table_name,
         ensure_cache_schema,
@@ -1046,10 +1041,10 @@ async def _mat_api_ep_table(
         log.warning("[MAT] %s has no response columns — skipping", tn)
         return
 
-    # Priority 2: Trino cache hit
+    # Priority 2: the engine cache hit
     if table_known_live(_cache_loc, cache_tbl):
         log.warning(
-            "[MAT] Trino cache hit for %s → %s.%s.%s",
+            "[MAT] the engine cache hit for %s → %s.%s.%s",
             tn,
             _cache_loc.catalog,
             _cache_loc.schema,
@@ -1069,7 +1064,7 @@ async def _mat_api_ep_table(
         _cache_hit = table_exists(_c, _cache_loc, cache_tbl, ttl=ttl)
     if _cache_hit:
         log.warning(
-            "[MAT] Trino cache hit for %s → %s.%s.%s",
+            "[MAT] the engine cache hit for %s → %s.%s.%s",
             tn,
             _cache_loc.catalog,
             _cache_loc.schema,
@@ -1127,18 +1122,18 @@ async def _mat_api_ep_table(
     )
 
 
-async def _materialize_api_to_trino_cache(
+async def _materialize_api_to_engine_cache(
     exec_sql: str,
     state,
     gql_remote_extra_selections: dict | None = None,
     nf_args: dict | None = None,
 ) -> tuple[dict, dict, list[str]]:
-    """Materialize API-backed tables into Trino cache (VARCHAR columns) before Trino SQL runs.
+    """Materialize API-backed tables into the engine cache (VARCHAR columns) before the engine SQL runs.
 
-    Avoids INVALID_CAST_ARGUMENT: Trino's PG connector exposes JSONB as json type;
+    Avoids INVALID_CAST_ARGUMENT: the engine's PG connector exposes JSONB as json type;
     cache tables store all columns as VARCHAR/scalar types instead.
 
-    Reads from the PG cache populated by _hydrate_api_tables_before_trino — no HTTP call.
+    Reads from the PG cache populated by _hydrate_api_tables_before_engine — no HTTP call.
     Returns (cache_rewrites, values_cte_entries, dropped_tables):
       cache_rewrites: {physical_table_name: (CacheLocation, cache_tbl)}
       values_cte_entries: {physical_table_name: HotTableEntry} — inlined as VALUES CTEs
@@ -1401,10 +1396,10 @@ async def _hydrate_path_param(
     return True
 
 
-async def _hydrate_api_tables_before_trino(
+async def _hydrate_api_tables_before_engine(
     compiled, ctx, state
 ) -> tuple[set, dict[str, float], dict[str, int], set]:
-    """Ensure API-backed PG cache tables are populated before Trino executes.
+    """Ensure API-backed PG cache tables are populated before the engine executes.
 
     For each openapi source in compiled.sources:
     - Non-path-param: call fill_api_table (TTL-aware, keyed by params hash).
@@ -1544,7 +1539,7 @@ def _build_mermaid(
     sources: set,
     source_types: dict,
     hydration_ms: dict[str, float],
-    trino_ms: float | None,
+    engine_ms: float | None,
     result_rows: int,
     root_field: str,
     join_fields: list | None = None,
@@ -1556,7 +1551,7 @@ def _build_mermaid(
     join_fields: list of (rel_field_name, source_id, is_cache_hit) for JOIN targets.
     root_source_id: when set, only this source_id is rendered in the main loop; other
                     sources in `sources` that appear as join targets are rendered via join_fields.
-    cache_catalog: Trino catalog used for API cache — shown on cache node label.
+    cache_catalog: the engine catalog used for API cache — shown on cache node label.
     """
     _cache_label = f"{cache_catalog or root_source_id or 'pg'} cache"
 
@@ -1594,11 +1589,11 @@ def _build_mermaid(
                     else f"    pg_{nid} --> result"
                 )
             else:
-                trino_label = f"{round(trino_ms)}ms" if trino_ms is not None else ""
-                lines.append(f'    pg_{nid} -->|"federated {trino_label}"| trino')
+                engine_label = f"{round(engine_ms)}ms" if engine_ms is not None else ""
+                lines.append(f'    pg_{nid} -->|"federated {engine_label}"| engine')
         else:
             if single:
-                elapsed_label = f"{round(trino_ms)}ms" if trino_ms is not None else ""
+                elapsed_label = f"{round(engine_ms)}ms" if engine_ms is not None else ""
                 lines.append(f'    {nid}["{root_field}\\n({src_id})"]')
                 lines.append(f'    result(["{root_field}\\n{result_rows} rows"])')
                 lines.append(
@@ -1607,13 +1602,13 @@ def _build_mermaid(
                     else f"    {nid} --> result"
                 )
             else:
-                trino_label = f"{round(trino_ms)}ms" if trino_ms is not None else ""
+                engine_label = f"{round(engine_ms)}ms" if engine_ms is not None else ""
                 lines.append(f'    {nid}["{root_field}\\n({src_id})"]')
-                lines.append(f'    {nid} -->|"federated {trino_label}"| trino')
+                lines.append(f'    {nid} -->|"federated {engine_label}"| engine')
 
     # Render JOIN target nodes — separate node per join target, even if same source as root.
     if join_fields:
-        trino_label = f"{round(trino_ms)}ms" if trino_ms is not None else ""
+        engine_label = f"{round(engine_ms)}ms" if engine_ms is not None else ""
         for rel_field, jt_src_id, is_hit in join_fields:
             jt_type = source_types.get(jt_src_id, "")
             jnid = _node_id(rel_field)
@@ -1622,15 +1617,15 @@ def _build_mermaid(
                 lines.append(f'    {jnid}["{rel_field}\\n({jt_src_id})"]')
                 lines.append(f'    pg_{jnid}["{_cache_label}\\n{rel_field}"]')
                 lines.append(f'    {jnid} -->|"{hit_label}"| pg_{jnid}')
-                lines.append(f'    pg_{jnid} -->|"federated {trino_label}"| trino')
+                lines.append(f'    pg_{jnid} -->|"federated {engine_label}"| engine')
             else:
                 lines.append(f'    {jnid}["{rel_field}\\n({jt_src_id})"]')
-                lines.append(f'    {jnid} -->|"federated {trino_label}"| trino')
+                lines.append(f'    {jnid} -->|"federated {engine_label}"| engine')
 
     if not single:
-        lines.append('    trino{"Virtual\\nJoin"}')
+        lines.append('    engine{"Virtual\\nJoin"}')
         lines.append(f'    result(["{root_field}\\n{result_rows} rows"])')
-        lines.append("    trino --> result")
+        lines.append("    engine --> result")
 
     return "\n".join(lines)
 
@@ -1642,17 +1637,16 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
               On cache miss, rows are materialized into the source's cache table
               (postgresql backend by default; iceberg if configured).
 
-    Phase 2 — Trino SQL: the compiled WHERE/ORDER BY/LIMIT are applied by Trino
+    Phase 2 — the engine SQL: the compiled WHERE/ORDER BY/LIMIT are applied by the engine
               against the cached table.  Same-source JOINs are pushed down to the
               source database when using the postgresql backend.
     """
     from provisa.api_source.router_integration import handle_api_query
-    from provisa.api_source.trino_cache import (
+    from provisa.api_source.engine_cache import (
         cache_location,
         ensure_cache_schema,
         rewrite_from_cache,
     )
-    from provisa.transpiler.transpile import transpile_to_trino
 
     # Find the API endpoint matching this query's table
     table_meta = None
@@ -1689,27 +1683,26 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
             param_name_map[f"_{c.name}"] = c.param_name
     url_params = {param_name_map.get(k, k): v for k, v in url_params.items()}
 
-    # Hot table bypass: skip REST + Trino materialization entirely
+    # Hot table bypass: skip REST + the engine materialization entirely
     hot_mgr = getattr(state, "hot_manager", None)
     if hot_mgr is not None and hot_mgr.is_hot(table_name):
         from provisa.cache.hot_tables import build_values_cte_sql
         from provisa.compiler.nf_extractor import extract_nf_args
-        from provisa.transpiler.transpile import transpile_to_trino
 
         entry = hot_mgr.get_entry(table_name)
         _exec_sql, _exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
-        _exec_sql = rewrite_semantic_to_trino_physical(_exec_sql, ctx)
+        _exec_sql = rewrite_semantic_to_catalog_physical(_exec_sql, ctx)
         hot_sql = build_values_cte_sql(_exec_sql, table_name, entry)
-        trino_sql = transpile_to_trino(hot_sql)
+        physical_sql = state.federation_engine.transpile_physical(hot_sql)
         log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
         _loop = asyncio.get_running_loop()
         _t0 = _time.perf_counter()
-        trino_result = await _loop.run_in_executor(
-            None, lambda: state.federation_engine.execute_engine_sync(trino_sql, _exec_params)
+        engine_result = await _loop.run_in_executor(
+            None, lambda: state.federation_engine.execute_engine_sync(physical_sql, _exec_params)
         )
         phase2_ms = (_time.perf_counter() - _t0) * 1000
         response_data = _format_response(
-            trino_result.rows,
+            engine_result.rows,
             compiled.columns,
             root_field,
             output_format,
@@ -1720,10 +1713,10 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
             if isinstance(response_data, dict)
             else response_data
         )
-        return field_rows, response_data, 0.0, phase2_ms, trino_sql, True
+        return field_rows, response_data, 0.0, phase2_ms, physical_sql, True
 
     # --- Phase 1: materialize if cache miss ---
-    from provisa.api_source.trino_cache import (
+    from provisa.api_source.engine_cache import (
         cache_table_name as _cache_table_name,
         table_known_live,
     )
@@ -1770,15 +1763,15 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
                 asyncio.create_task(hot_mgr.maybe_promote_dicts(table_name, result.rows))
         phase1_ms = (_time.perf_counter() - _t_phase1) * 1000
 
-    # --- Phase 2: apply WHERE/ORDER BY/LIMIT via Trino ---
+    # --- Phase 2: apply WHERE/ORDER BY/LIMIT vithe engine ---
     from provisa.compiler.nf_extractor import extract_nf_args
 
     exec_sql, exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
-    exec_sql = rewrite_semantic_to_trino_physical(exec_sql, ctx)
+    exec_sql = rewrite_semantic_to_catalog_physical(exec_sql, ctx)
     assert cache_tbl is not None, "cache_tbl must be set before Phase 2"
     rewritten_sql = rewrite_from_cache(exec_sql, _cache_loc, cache_tbl)
-    # Rewrite any joined API table refs → VALUES CTE (hot) or Trino cache
-    _join_rewrites, _join_values_ctes, _join_dropped = await _materialize_api_to_trino_cache(
+    # Rewrite any joined API table refs → VALUES CTE (hot) or the engine cache
+    _join_rewrites, _join_values_ctes, _join_dropped = await _materialize_api_to_engine_cache(
         rewritten_sql, state, compiled.gql_remote_extra_selections
     )
     if _join_dropped:
@@ -1792,24 +1785,26 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         for _tn, _entry in _join_values_ctes.items():
             rewritten_sql = build_values_cte_sql(rewritten_sql, _tn, _entry)
     if _join_rewrites:
-        from provisa.api_source.trino_cache import rewrite_all_from_cache
+        from provisa.api_source.engine_cache import rewrite_all_from_cache
 
         rewritten_sql = rewrite_all_from_cache(rewritten_sql, _join_rewrites)
-    trino_sql = transpile_to_trino(rewritten_sql)
-    log.warning("[API P2] trino_sql=%s", trino_sql[:500])
+    physical_sql = state.federation_engine.transpile_physical(rewritten_sql)
+    log.warning("[API P2] physical_sql=%s", physical_sql[:500])
     _t_phase2 = _time.perf_counter()
-    trino_result = await _loop.run_in_executor(
-        None, lambda: _engine.execute_engine_sync(trino_sql, exec_params)
+    engine_result = await _loop.run_in_executor(
+        None, lambda: _engine.execute_engine_sync(physical_sql, exec_params)
     )
     phase2_ms = (_time.perf_counter() - _t_phase2) * 1000
 
-    response_data = _format_response(trino_result.rows, compiled.columns, root_field, output_format)
+    response_data = _format_response(
+        engine_result.rows, compiled.columns, root_field, output_format
+    )
     if isinstance(response_data, dict):
         field_rows = response_data.get("data", {}).get(root_field, [])
     else:
         field_rows = response_data
 
-    return field_rows, response_data, phase1_ms, phase2_ms, trino_sql, not _cache_miss
+    return field_rows, response_data, phase1_ms, phase2_ms, physical_sql, not _cache_miss
 
 
 def _grpc_cache_type(sql_type: str) -> str:
@@ -1828,11 +1823,10 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     """Execute a gRPC remote query method.
 
     Calls the remote gRPC endpoint with _nf_ args, injects result rows as a
-    VALUES CTE, then applies WHERE/ORDER BY/LIMIT via Trino (Phase 2 only).
+    VALUES CTE, then applies WHERE/ORDER BY/LIMIT vithe engine (Phase 2 only).
     """
     from provisa.compiler.nf_extractor import extract_nf_args
     from provisa.cache.hot_tables import HotTableEntry, build_values_cte_sql
-    from provisa.transpiler.transpile import transpile_to_trino
     from provisa.source_adapters import grpc_remote_adapter
 
     reg = getattr(state, "grpc_remote_sources", {}).get(source_id)
@@ -1868,7 +1862,7 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     # safe fallback if any cache step fails.
     from collections import namedtuple as _nt
 
-    from provisa.api_source.trino_cache import (
+    from provisa.api_source.engine_cache import (
         cache_location,
         cache_table_name,
         create_and_insert,
@@ -1888,7 +1882,7 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     _hot_threshold = hot_mgr.auto_threshold if hot_mgr is not None else 500
 
     exec_sql, exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
-    exec_sql = rewrite_semantic_to_trino_physical(exec_sql, ctx)
+    exec_sql = rewrite_semantic_to_catalog_physical(exec_sql, ctx)
 
     with state.federation_engine.isolated_sync() as _cache_conn:
         ensure_cache_schema(_cache_conn, cache_loc)
@@ -1958,23 +1952,25 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
             )
             final_sql = build_values_cte_sql(exec_sql, table_name, entry)
 
-    trino_sql = transpile_to_trino(final_sql)
+    physical_sql = state.federation_engine.transpile_physical(final_sql)
 
     _loop = asyncio.get_running_loop()
     _t2 = _time.perf_counter()
-    trino_result = await _loop.run_in_executor(
-        None, lambda: state.federation_engine.execute_engine_sync(trino_sql, exec_params)
+    engine_result = await _loop.run_in_executor(
+        None, lambda: state.federation_engine.execute_engine_sync(physical_sql, exec_params)
     )
     phase2_ms = (_time.perf_counter() - _t2) * 1000
 
-    response_data = _format_response(trino_result.rows, compiled.columns, root_field, output_format)
+    response_data = _format_response(
+        engine_result.rows, compiled.columns, root_field, output_format
+    )
     field_rows = (
         response_data.get("data", {}).get(root_field, [])
         if isinstance(response_data, dict)
         else response_data
     )
 
-    return field_rows, response_data, phase1_ms, phase2_ms, trino_sql, False
+    return field_rows, response_data, phase1_ms, phase2_ms, physical_sql, False
 
 
 def _record_per_source_stats(
@@ -1987,7 +1983,7 @@ def _record_per_source_stats(
     decision=None,
     dataloader_sources: set | None = None,
     per_source_ms: dict[str, float] | None = None,
-    trino_ms: float | None = None,
+    engine_ms: float | None = None,
     hydration_rows: dict[str, int] | None = None,
     field_rows: list | None = None,
     physical_sql: str | None = None,
@@ -1996,8 +1992,8 @@ def _record_per_source_stats(
     """Emit FieldStat entries per source.
 
     For openapi sources in a federated join: emits two entries —
-    one for hydration (HTTP fetch → PG write) and one for the Trino join.
-    For all other sources: one entry with Trino execution time.
+    one for hydration (HTTP fetch → PG write) and one for the engine join.
+    For all other sources: one entry with the engine execution time.
     Per-source row counts use join cardinality from the result for one-to-many joins.
     """
     joined_rows = _count_rows_per_source(field_rows or [], ctx) if field_rows else {}
@@ -2013,7 +2009,7 @@ def _record_per_source_stats(
 
         src_rows = joined_rows.get(src_id, rows)
 
-        if source_type == "openapi" and per_source_ms is not None and trino_ms is not None:
+        if source_type == "openapi" and per_source_ms is not None and engine_ms is not None:
             hydration = per_source_ms.get(src_id, 0.0)
             h_rows = (hydration_rows or {}).get(src_id, 0)
             h_hit = hydration_cache_hits is not None and src_id in hydration_cache_hits
@@ -2029,7 +2025,7 @@ def _record_per_source_stats(
                 field=root_field,
                 source=src_id,
                 strategy=strategy,
-                elapsed_ms=trino_ms,
+                elapsed_ms=engine_ms,
                 rows=src_rows,
                 physical_sql=physical_sql,
             )
@@ -2045,34 +2041,34 @@ def _record_per_source_stats(
             )
 
 
-async def _execute_trino_standard(
+async def _execute_engine_standard(
     compiled, ctx, state, role_id, root_field, probe_limit, query_session_props, query_text
 ):
-    """Execute the Trino federated path.
+    """Execute the engine federated path.
 
-    Returns (result, trino_sql, trino_ms, per_source_ms, dataloader_srcs, hydration_ms,
+    Returns (result, physical_sql, engine_ms, per_source_ms, dataloader_srcs, hydration_ms,
              hydration_rows, hydration_cache_hits).
     """
     from provisa.cache.hot_tables import build_values_cte_sql
-    from provisa.api_source.trino_cache import rewrite_all_from_cache
+    from provisa.api_source.engine_cache import rewrite_all_from_cache
     from provisa.compiler.hints import extract_hints
 
-    if state.trino_conn is None:
-        raise HTTPException(status_code=503, detail="Trino not connected")
+    if state.engine_conn is None:
+        raise HTTPException(status_code=503, detail="the engine not connected")
 
     (
         _dataloader_srcs,
         _hydration_ms,
         _hydration_rows,
         _hydration_cache_hits,
-    ) = await _hydrate_api_tables_before_trino(compiled, ctx, state)
+    ) = await _hydrate_api_tables_before_engine(compiled, ctx, state)
 
-    exec_sql = rewrite_semantic_to_trino_physical(compiled.sql, ctx)
+    exec_sql = rewrite_semantic_to_catalog_physical(compiled.sql, ctx)
     if probe_limit is not None:
         exec_sql = _inject_probe_limit(exec_sql, probe_limit)
 
-    # Materialize API-backed tables into Trino cache to avoid INVALID_CAST_ARGUMENT
-    _api_cache_rewrites, _api_values_ctes, _api_dropped = await _materialize_api_to_trino_cache(
+    # Materialize API-backed tables into the engine cache to avoid INVALID_CAST_ARGUMENT
+    _api_cache_rewrites, _api_values_ctes, _api_dropped = await _materialize_api_to_engine_cache(
         exec_sql, state, compiled.gql_remote_extra_selections
     )
     if _api_dropped:
@@ -2093,14 +2089,14 @@ async def _execute_trino_standard(
     for sid in compiled.sources:
         src_hints = getattr(state, "source_federation_hints", {}).get(sid, {})
         # REQ-281: source hints use the Provisa-branded @provisa vocabulary; translate to
-        # Trino session props here (the single translation layer) before they reach SET SESSION.
+        # the engine session props here (the single translation layer) before they reach SET SESSION.
         session_hints.update(translate_federation_hints(src_hints))
     session_hints.update(query_session_props or {})
     session_hints.update(comment_hints)
 
-    trino_sql = transpile_to_trino(exec_sql)
-    _t_trino = _time.perf_counter()
-    _trino_ck = getattr(state, "trino_conn_kwargs", None)
+    physical_sql = state.federation_engine.transpile_physical(exec_sql)
+    _t_engine = _time.perf_counter()
+    _engine_ck = getattr(state, "engine_conn_kwargs", None)
     _root_meta = ctx.tables.get(root_field)
     _root_name = (
         (_root_meta.original_table_name or _root_meta.table_name) if _root_meta else ""
@@ -2115,17 +2111,17 @@ async def _execute_trino_standard(
         _span_attrs["provisa.query_text"] = query_text
 
     result = await state.federation_engine.execute_engine(
-        trino_sql,
+        physical_sql,
         compiled.params,
         session_hints=session_hints or None,
-        conn_kwargs=_trino_ck,
+        conn_kwargs=_engine_ck,
         span_attrs=_span_attrs,
     )
-    _trino_ms = (_time.perf_counter() - _t_trino) * 1000
+    _engine_ms = (_time.perf_counter() - _t_engine) * 1000
     _per_source_ms: dict[str, float] = {
-        src_id: _hydration_ms.get(src_id, _trino_ms)
+        src_id: _hydration_ms.get(src_id, _engine_ms)
         if (state.source_types or {}).get(src_id) == "openapi"
-        else _trino_ms
+        else _engine_ms
         for src_id in compiled.sources
     }
     # Lazy hot-table promotion
@@ -2136,8 +2132,8 @@ async def _execute_trino_standard(
 
     return (
         result,
-        trino_sql,
-        _trino_ms,
+        physical_sql,
+        _engine_ms,
         _per_source_ms,
         _dataloader_srcs,
         _hydration_ms,
@@ -2164,13 +2160,13 @@ async def _exec_nodes_query(compiled, ctx, state, decision):
             nodes_target_sql,
             compiled.nodes_params,
         )
-    nodes_trino_sql = transpile_to_trino(
-        rewrite_semantic_to_trino_physical(compiled.nodes_sql, ctx)
+    nodes_physical_sql = state.federation_engine.transpile_physical(
+        rewrite_semantic_to_catalog_physical(compiled.nodes_sql, ctx)
     )
     return await engine.execute_engine(
-        nodes_trino_sql,
+        nodes_physical_sql,
         compiled.nodes_params,
-        conn_kwargs=getattr(state, "trino_conn_kwargs", None),
+        conn_kwargs=getattr(state, "engine_conn_kwargs", None),
     )
 
 
@@ -2250,7 +2246,7 @@ async def _store_api_source_cache(
 
 
 def _append_mermaid(
-    qs, compiled, ctx, root_field, per_source_ms, trino_ms, n_rows, hydration_cache_hits
+    qs, compiled, ctx, root_field, per_source_ms, engine_ms, n_rows, hydration_cache_hits
 ):
     """Build and append a Mermaid diagram for the standard query path to qs."""
     _st = getattr(ctx, "source_types", None) or {}
@@ -2266,7 +2262,7 @@ def _append_mermaid(
         compiled.sources,
         _st,
         per_source_ms or {},
-        trino_ms,
+        engine_ms,
         n_rows,
         root_field,
         join_fields=_jf2 or None,
@@ -2352,14 +2348,14 @@ async def _exec_api_route(
             for (_type_name, _rel_field), _jm in (ctx.joins or {}).items():
                 if _type_name == _root_meta.type_name:
                     _join_fields.append((_rel_field, _jm.target.source_id, True))
-        _trino_ms_for_mermaid = _phase2_ms if _join_fields else None
+        _engine_ms_for_mermaid = _phase2_ms if _join_fields else None
         _src_obj = getattr(state, "api_sources", {}).get(decision.source_id)
         _cc = getattr(_src_obj, "cache_catalog", None) if _src_obj else None
         _api_mermaid = _build_mermaid(
             compiled.sources,
             _source_types,
             _hydration_ms_api,
-            _trino_ms_for_mermaid,
+            _engine_ms_for_mermaid,
             _api_rows,
             root_field,
             join_fields=_join_fields or None,
@@ -2387,15 +2383,11 @@ async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redi
 
     Returns redirect_info dict on success, or raises.
     """
-    from provisa.executor.trino_write import (
-        execute_ctas_redirect,
-        presign_ctas_result,
-        schedule_s3_cleanup,
-    )
+    from provisa.executor.redirect import presign_ctas_result, schedule_s3_cleanup
 
-    _, _, _, _ = await _hydrate_api_tables_before_trino(compiled, ctx, state)
-    _ctas_exec_sql = rewrite_semantic_to_trino_physical(compiled.sql, ctx)
-    _ctas_rewrites, _ctas_values_ctes, _ctas_dropped = await _materialize_api_to_trino_cache(
+    _, _, _, _ = await _hydrate_api_tables_before_engine(compiled, ctx, state)
+    _ctas_exec_sql = rewrite_semantic_to_catalog_physical(compiled.sql, ctx)
+    _ctas_rewrites, _ctas_values_ctes, _ctas_dropped = await _materialize_api_to_engine_cache(
         _ctas_exec_sql, state, compiled.gql_remote_extra_selections
     )
     if _ctas_dropped:
@@ -2409,11 +2401,11 @@ async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redi
         for _tn, _entry in _ctas_values_ctes.items():
             _ctas_exec_sql = build_values_cte_sql(_ctas_exec_sql, _tn, _entry)
     if _ctas_rewrites:
-        from provisa.api_source.trino_cache import rewrite_all_from_cache
+        from provisa.api_source.engine_cache import rewrite_all_from_cache
 
         _ctas_exec_sql = rewrite_all_from_cache(_ctas_exec_sql, _ctas_rewrites)
-    trino_sql = transpile_to_trino(_ctas_exec_sql)
-    ctas_result = execute_ctas_redirect(state.trino_conn, trino_sql, effective_redirect_format)
+    physical_sql = state.federation_engine.transpile_physical(_ctas_exec_sql)
+    ctas_result = state.federation_engine.ctas_redirect(physical_sql, effective_redirect_format)
     url = await presign_ctas_result(ctas_result["s3_prefix"], redirect_config)
     # Do NOT drop the Iceberg table here — DROP TABLE on the JDBC catalog purges
     # S3 data files immediately, invalidating the presigned URL before the user
@@ -2455,12 +2447,14 @@ async def _exec_probe_redirect(
             state.source_pools, decision.source_id, target_sql, compiled.params
         )
     else:
-        full_trino_sql = transpile_to_trino(rewrite_semantic_to_trino_physical(compiled.sql, ctx))
+        full_physical_sql = state.federation_engine.transpile_physical(
+            rewrite_semantic_to_catalog_physical(compiled.sql, ctx)
+        )
         full_result = await engine.execute_engine(
-            full_trino_sql,
+            full_physical_sql,
             compiled.params,
             session_hints=session_hints or None,
-            conn_kwargs=getattr(state, "trino_conn_kwargs", None),
+            conn_kwargs=getattr(state, "engine_conn_kwargs", None),
         )
     return await upload_and_presign(
         full_result,
@@ -2485,10 +2479,10 @@ async def _exec_inline_result(
     t0,
     _dataloader_srcs,
     _per_source_ms,
-    _trino_ms,
+    _engine_ms,
     _hydration_rows,
     _hydration_cache_hits,
-    trino_sql,
+    physical_sql,
 ):
     """Build inline response, cache it, record stats, and return (root_field, field_rows, None, ck, None)."""
     if compiled.nodes_sql is not None:
@@ -2547,16 +2541,23 @@ async def _exec_inline_result(
         decision,
         _dataloader_srcs,
         _per_source_ms,
-        _trino_ms,
+        _engine_ms,
         _hydration_rows,
         field_rows if isinstance(field_rows, list) else None,
-        trino_sql or None,
+        physical_sql or None,
         _hydration_cache_hits,
     )
     qs = _qs_mod.current()
     if qs is not None and len(compiled.sources) >= 1:
         _append_mermaid(
-            qs, compiled, ctx, root_field, _per_source_ms, _trino_ms, _n_rows, _hydration_cache_hits
+            qs,
+            compiled,
+            ctx,
+            root_field,
+            _per_source_ms,
+            _engine_ms,
+            _n_rows,
+            _hydration_cache_hits,
         )
     return root_field, field_rows, None, ck, None
 
@@ -2585,7 +2586,7 @@ async def _execute_one_field(
     Returns (root_field, field_rows, redirect_info_or_None, cache_key, cached_entry_or_None).
     """
     from provisa.executor.redirect import upload_and_presign
-    from provisa.executor.trino_write import is_trino_native_format
+    from provisa.executor.redirect import is_engine_native_format
 
     root_field = compiled.root_field
     _t0 = _time.perf_counter()
@@ -2614,7 +2615,7 @@ async def _execute_one_field(
         "[QUERY %s] Route: %s | source=%s | reason: %s",
         root_field,
         decision.route.value,
-        decision.source_id or "(trino)",
+        decision.source_id or "(engine)",
         decision.reason,
     )
 
@@ -2647,8 +2648,8 @@ async def _execute_one_field(
 
     if (
         force_redirect
-        and is_trino_native_format(effective_redirect_format)
-        and state.trino_conn is not None
+        and is_engine_native_format(effective_redirect_format)
+        and state.engine_conn is not None
     ):
         try:
             redirect_info = await _exec_ctas_route(
@@ -2672,8 +2673,8 @@ async def _execute_one_field(
     _hydration_rows: dict[str, int] = {}
     _hydration_cache_hits: set = set()
     _per_source_ms: dict[str, float] = {}
-    _trino_ms: float = 0.0
-    trino_sql: str = ""
+    _engine_ms: float = 0.0
+    physical_sql: str = ""
 
     try:
         if (
@@ -2693,15 +2694,15 @@ async def _execute_one_field(
         else:
             (
                 result,
-                trino_sql,
-                _trino_ms,
+                physical_sql,
+                _engine_ms,
                 _per_source_ms,
                 _dataloader_srcs,
                 _,
                 _hydration_rows,
                 _hydration_cache_hits,
                 session_hints,
-            ) = await _execute_trino_standard(
+            ) = await _execute_engine_standard(
                 compiled,
                 ctx,
                 state,
@@ -2787,10 +2788,10 @@ async def _execute_one_field(
         _t0,
         _dataloader_srcs,
         _per_source_ms,
-        _trino_ms,
+        _engine_ms,
         _hydration_rows,
         _hydration_cache_hits,
-        trino_sql,
+        physical_sql,
     )
 
 

@@ -23,7 +23,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 log = logging.getLogger(__name__)
 
@@ -55,15 +55,15 @@ class _Plan:
     source_id: str
     dialect: str
     exec_params: list | None = field(default=None)
-    # Trino-specific: catalog-qualified postgres SQL (pre-transpile, for NF args extraction)
+    # the engine-specific: catalog-qualified postgres SQL (pre-transpile, for NF args extraction)
     exec_sql: str | None = field(default=None)
-    # Trino-specific: fully qualified SQL ready to run
-    trino_sql: str | None = field(default=None)
-    # Per-query Trino session overrides (e.g. retry_policy=NONE to bypass FTE).
+    # the engine-specific: fully qualified SQL ready to run
+    physical_sql: str | None = field(default=None)
+    # Per-query the engine session overrides (e.g. retry_policy=NONE to bypass FTE).
     session_hints: dict[str, str] | None = field(default=None)
 
 
-# Connector types that don't support Trino fault-tolerant execution (FTE): their
+# Connector types that don't support the engine fault-tolerant execution (FTE): their
 # splits aren't replayable, so a query routed under retry-policy=TASK blocks
 # forever on the exchange. Queries touching these run with retry_policy=NONE.
 _NON_FTE_SOURCE_TYPES = frozenset({"kafka"})
@@ -82,7 +82,7 @@ async def _govern_and_route(
     from provisa.compiler.stage2 import apply_governance, build_governance_context, extract_sources
     from provisa.compiler.sql_validator import validate_sql
     from provisa.transpiler.router import Route, decide_route
-    from provisa.transpiler.transpile import transpile, transpile_to_trino
+    from provisa.transpiler.transpile import transpile
 
     if role_id not in state.contexts:
         raise PermissionError(f"No schema for role {role_id!r}")
@@ -170,13 +170,15 @@ async def _govern_and_route(
 
     exec_params = embedded_params or None
 
-    if decision.route == Route.TRINO:
-        from provisa.api.data.endpoint import _materialize_api_to_trino_cache
+    if decision.route == Route.ENGINE:
+        from provisa.api.data.endpoint import _materialize_api_to_engine_cache
         from provisa.cache.hot_tables import build_values_cte_sql
-        from provisa.api_source.trino_cache import rewrite_all_from_cache
+        from provisa.api_source.engine_cache import rewrite_all_from_cache
 
         _qualified = qualify_with_catalogs(governed_semantic, ctx)
-        _rewrites, _values_ctes, _dropped = await _materialize_api_to_trino_cache(_qualified, state)
+        _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
+            _qualified, state
+        )
         if _dropped:
             from provisa.compiler.nf_extractor import drop_union_branches_for_table
 
@@ -214,14 +216,14 @@ async def _govern_and_route(
             raise
         except Exception:
             pass
-        trino_sql = transpile_to_trino(_qualified)
+        physical_sql = state.federation_engine.transpile_physical(_qualified)
         return _Plan(
-            route=Route.TRINO,
+            route=Route.ENGINE,
             sql=governed_semantic,
             source_id=_default_source,
-            dialect="trino",
+            dialect=state.federation_engine.dialect,
             exec_params=exec_params,
-            trino_sql=trino_sql,
+            physical_sql=physical_sql,
         )
     else:
         dialect = decision.dialect or "postgres"
@@ -242,11 +244,11 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
 
     engine = state.federation_engine
 
-    if plan.route == Route.TRINO:
-        assert plan.trino_sql is not None
+    if plan.route == Route.ENGINE:
+        assert plan.physical_sql is not None
         # ENGINE terminal (REQ-825): hand the federated SQL to the bound engine.
         result = await engine.execute_engine(
-            plan.trino_sql, params=plan.exec_params, session_hints=plan.session_hints
+            plan.physical_sql, params=plan.exec_params, session_hints=plan.session_hints
         )
     elif plan.source_id == "provisa-admin" or not state.source_pools.has(plan.source_id):
         # Admin-owned tables (meta.*) live in the provisa tenant_db, not source_pools.
@@ -291,17 +293,17 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
     """
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
-    from provisa.api.data.endpoint import _materialize_api_to_trino_cache
-    from provisa.api_source.trino_cache import rewrite_all_from_cache
+    from provisa.api.data.endpoint import _materialize_api_to_engine_cache
+    from provisa.api_source.engine_cache import rewrite_all_from_cache
     from provisa.cache.hot_tables import build_values_cte_sql
     from provisa.compiler.rls import RLSContext
     from provisa.compiler.sql_gen import (
+        rewrite_semantic_to_catalog_physical,
         rewrite_semantic_to_physical,
-        rewrite_semantic_to_trino_physical,
     )
     from provisa.compiler.stage2 import apply_governance, build_governance_context, extract_sources
     from provisa.transpiler.router import Route, decide_route
-    from provisa.transpiler.transpile import transpile, transpile_to_trino
+    from provisa.transpiler.transpile import transpile
 
     if role_id not in state.contexts:
         raise PermissionError(f"No schema for role {role_id!r}")
@@ -332,8 +334,8 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         source_dsns=getattr(state, "source_dsns", None),
     )
 
-    if decision.route == Route.TRINO:
-        _exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
+    if decision.route == Route.ENGINE:
+        _exec_sql = rewrite_semantic_to_catalog_physical(governed_sql, ctx)
         _view_map = getattr(state, "view_sql_map", None)
         if _view_map:
             from provisa.compiler.view_expand import expand_view_refs
@@ -344,7 +346,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(_exec_sql, exec_params or [])
         exec_params = _nf_clean_params if _nf_clean_params != (exec_params or []) else exec_params
         _nf_args = {**(api_args or {}), **(_extracted_nf or {})} or None
-        _rewrites, _values_ctes, _dropped = await _materialize_api_to_trino_cache(
+        _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
             _exec_sql, state, nf_args=_nf_args
         )
         if _dropped:
@@ -380,14 +382,14 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             raise
         except Exception:
             pass
-        trino_sql = transpile_to_trino(_exec_sql)
+        physical_sql = state.federation_engine.transpile_physical(_exec_sql)
         # REQ-041/402: RLS is added to the governed semantic SQL as a
         # current_setting('provisa.<var>') predicate; PostgreSQL resolves it
         # natively (SET LOCAL) but the federation engine has no such function.
         # Resolve it to the session's literal value here at planning so it works
         # regardless of the requesting query language.
         _session_vars = (state.roles.get(role_id) or {}).get("session_vars", {})
-        trino_sql = _resolve_session_settings(trino_sql, _session_vars)
+        physical_sql = _resolve_session_settings(physical_sql, _session_vars)
         # Bypass FTE for queries touching non-replayable connectors (kafka), whose
         # splits stall the fault-tolerant exchange (blocks forever, 0 drivers).
         _hints = (
@@ -396,13 +398,13 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             else None
         )
         return _Plan(
-            route=Route.TRINO,
+            route=Route.ENGINE,
             sql=governed_sql,
             source_id=_default_source,
-            dialect="trino",
+            dialect=state.federation_engine.dialect,
             exec_params=exec_params,
             exec_sql=_exec_sql,
-            trino_sql=trino_sql,
+            physical_sql=physical_sql,
             session_hints=_hints,
         )
     else:

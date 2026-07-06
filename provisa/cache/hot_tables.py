@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 
 
 class _HotEncoder(json.JSONEncoder):
-    """Handle Trino types that aren't natively JSON serializable."""
+    """Handle the engine types that aren't natively JSON serializable."""
 
     def default(self, o):
         if isinstance(o, Decimal):
@@ -51,7 +51,7 @@ HOT_PREFIX = "provisa:hot:"
 
 
 def _sql_literal(val) -> str:
-    """Render a Python value as a SQL literal (Trino-compatible)."""
+    """Render a Python value as a SQL literal (the engine-compatible)."""
     if val is None:
         return "NULL"
     if isinstance(val, bool):
@@ -78,8 +78,8 @@ def build_values_cte_sql(
 
     REQ-233: hot rows are injected verbatim into the CTE on purpose. Column governance
     (RLS / masking / visibility) is applied by Stage 2 (`apply_governance`) to the governed
-    SQL that wraps this CTE — the pipeline order is governance → cache/CTE → route — so the
-    governed query filters and masks the CTE rows exactly as it would the live table. Storing
+    SQL that wraps this CTE — the pipeline order is governance → cache/CTE → route — so
+    governance filters and masks the CTE rows exactly as it would the live table. Storing
     governed-per-role copies in Redis would be both redundant and a leak risk, so the cache
     holds the raw rows and governance stays at query time.
     """
@@ -245,7 +245,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         catalog: str,
         pk_column: str,
     ) -> int:
-        """Load an engine-backed table into Redis via the engine terminal. Returns row count."""
+        """Load an engine-backed table into Redis vithe engine terminal. Returns row count."""
         fqn = f'"{catalog}"."{schema}"."{table_name}"'
         res = await engine.execute_engine(f"SELECT * FROM {fqn}")
         rows_raw = res.rows
@@ -574,7 +574,7 @@ async def detect_hot_tables_by_count(  # REQ-236
 ) -> list[str]:
     """REQ-236 criterion (1): a table whose row count is at/below ``auto_threshold`` is hot.
 
-    candidates: list of (table_name, schema, catalog) for Trino-backed tables to size.
+    candidates: list of (table_name, schema, catalog) for the engine-backed tables to size.
     Opt-outs (hot: false) are skipped; COUNT(*) failures are tolerated (table left non-hot).
     Returns the table names that qualify by row count.
     """
@@ -639,7 +639,15 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         if tbl_name and "hot" in tbl_cfg:
             hot_overrides[tbl_name] = tbl_cfg["hot"]
 
-    _TRINO_BACKED = {"postgresql", "mysql", "mongodb", "elasticsearch", "kafka", "delta", "iceberg"}
+    _ENGINE_BACKED = {
+        "postgresql",
+        "mysql",
+        "mongodb",
+        "elasticsearch",
+        "kafka",
+        "delta",
+        "iceberg",
+    }
     source_cfgs = {s["id"]: s for s in raw_config.get("sources", []) if "id" in s}
     tables_list = raw_config.get("tables", [])
     rels_list = raw_config.get("relationships", [])
@@ -673,7 +681,7 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
             await hot_mgr.load_table_from_sqlite(source_cfg, tbl_name, pk_col)
         elif source_type == "openapi":
             await hot_mgr.load_table_from_openapi(source_cfg, tbl_name, pk_col)
-        elif source_type in _TRINO_BACKED:
+        elif source_type in _ENGINE_BACKED:
             await hot_mgr.load_table(engine, tbl_name, schema_name, catalog, pk_col)
         else:
             log.debug(
@@ -702,7 +710,7 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         )
         log.debug("Registered hot table candidate %s (lazy promotion on first query)", tbl_name)
 
-    # REQ-236 criterion (1): also size small Trino-backed tables by COUNT(*) and register
+    # REQ-236 criterion (1): also size small the engine-backed tables by COUNT(*) and register
     # those at/below auto_threshold as candidates. Skip ones already handled above.
     already = set(auto_candidates) | {n for n, o in hot_overrides.items() if o is True}
     count_candidates: list[tuple[str, str, str]] = []
@@ -712,7 +720,7 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         if not tbl_name or tbl_name in already:
             continue
         result = _tbl_meta(tbl_name)
-        if result[0] is None or result[3] not in _TRINO_BACKED:
+        if result[0] is None or result[3] not in _ENGINE_BACKED:
             continue
         _source_cfg, source_id, _source_type, _, pk_col, schema_name = result  # pyright: ignore[reportUnusedVariable]
         catalog = source_to_catalog(source_id)

@@ -10,25 +10,25 @@ import java.util.*;
 /**
  * Provisa JDBC Connection.
  *
- * Authenticates against Provisa, discovers approved queries or registered tables,
- * and executes them via the HTTP API.
+ * Authenticates against Provisa, discovers registered tables, and executes
+ * SQL via the HTTP API.
  *
- * Modes:
- *   approved — exposes approved queries as virtual views (default)
- *   catalog  — exposes registered tables for schema discovery (no query execution)
+ * Mode:
+ *   catalog — exposes registered tables for schema discovery and routes SQL
+ *             through the /data/sql governance endpoint.
  */
 public class ProvisaConnection extends AbstractConnection {
 
     String baseUrl;
     String role;
-    String mode; // "approved" or "catalog"
+    String mode; // "catalog"
     String authToken;
     FlightTransport flightTransport; // null if Flight unavailable
     private boolean closed = false;
 
     ProvisaConnection(String baseUrl, String user, String password, String mode) throws SQLException {
         this.baseUrl = baseUrl;
-        this.mode = mode != null ? mode : "approved";
+        this.mode = mode != null ? mode : "catalog";
 
         String resolvedRole = user;
         String resolvedToken = null;
@@ -68,90 +68,6 @@ public class ProvisaConnection extends AbstractConnection {
 
         String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         return JsonParser.parseString(response).getAsJsonObject();
-    }
-
-    // ── Approved queries (mode=approved) ──
-
-    /**
-     * Fetch approved queries visible to this role.
-     */
-    List<ApprovedQuery> fetchApprovedQueries() throws SQLException {
-        try {
-            String gql = "{ persistedQueries { id stableId queryText status compiledSql } }";
-            JsonObject result = executeGraphQL(baseUrl + "/admin/graphql", gql);
-            JsonArray queries = result.getAsJsonObject("data")
-                    .getAsJsonArray("persistedQueries");
-
-            List<ApprovedQuery> approved = new ArrayList<>();
-            for (JsonElement el : queries) {
-                JsonObject q = el.getAsJsonObject();
-                if (!"approved".equals(q.get("status").getAsString())) continue;
-                String stableId = q.has("stableId") && !q.get("stableId").isJsonNull()
-                        ? q.get("stableId").getAsString() : null;
-                if (stableId == null) continue;
-                approved.add(new ApprovedQuery(
-                    stableId,
-                    q.get("queryText").getAsString(),
-                    q.has("compiledSql") ? q.get("compiledSql").getAsString() : ""
-                ));
-            }
-            return approved;
-        } catch (Exception e) {
-            throw new SQLException("Failed to fetch approved queries: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Resolve root field names for a query via /data/compile.
-     * Returns list of root field names (includes domain prefix).
-     */
-    List<String> resolveRootFields(String queryText) throws SQLException {
-        try {
-            JsonObject compiled = compileQuery(queryText);
-            List<String> fields = new ArrayList<>();
-
-            // Multi-root returns {"queries": [...]}
-            if (compiled.has("queries")) {
-                JsonArray queries = compiled.getAsJsonArray("queries");
-                for (JsonElement el : queries) {
-                    fields.add(el.getAsJsonObject().get("root_field").getAsString());
-                }
-            } else if (compiled.has("root_field")) {
-                // Single root
-                fields.add(compiled.get("root_field").getAsString());
-            }
-            return fields;
-        } catch (Exception e) {
-            throw new SQLException("Failed to resolve root fields: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Execute an approved query by stable ID, returning JSON results.
-     */
-    JsonObject executeApprovedQuery(String stableId, Map<String, Object> variables) throws SQLException {
-        List<ApprovedQuery> queries = fetchApprovedQueries();
-        ApprovedQuery match = null;
-        for (ApprovedQuery q : queries) {
-            if (q.stableId.equals(stableId)) {
-                match = q;
-                break;
-            }
-        }
-        if (match == null) {
-            throw new SQLException("Approved query not found: " + stableId);
-        }
-
-        try {
-            JsonObject body = new JsonObject();
-            body.addProperty("query", match.queryText);
-            if (variables != null && !variables.isEmpty()) {
-                body.add("variables", new Gson().toJsonTree(variables));
-            }
-            return executeGraphQL(baseUrl + "/data/graphql", body);
-        } catch (Exception e) {
-            throw new SQLException("Query execution failed: " + e.getMessage(), e);
-        }
     }
 
     // ── Registered tables (mode=catalog) ──
@@ -221,33 +137,6 @@ public class ProvisaConnection extends AbstractConnection {
             return rels;
         } catch (Exception e) {
             throw new SQLException("Failed to fetch relationships: " + e.getMessage(), e);
-        }
-    }
-
-    // ── Compile ──
-
-    /**
-     * Compile a query to see its output columns and root fields.
-     */
-    JsonObject compileQuery(String queryText) throws SQLException {
-        try {
-            JsonObject body = new JsonObject();
-            body.addProperty("query", queryText);
-
-            HttpURLConnection conn = (HttpURLConnection) URI.create(baseUrl + "/data/compile").toURL().openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("X-Provisa-Role", role);
-            if (authToken != null) {
-                conn.setRequestProperty("Authorization", "Bearer " + authToken);
-            }
-            conn.setDoOutput(true);
-            conn.getOutputStream().write(body.toString().getBytes(StandardCharsets.UTF_8));
-
-            String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            return JsonParser.parseString(response).getAsJsonObject();
-        } catch (Exception e) {
-            throw new SQLException("Compile failed: " + e.getMessage(), e);
         }
     }
 
@@ -367,18 +256,6 @@ public class ProvisaConnection extends AbstractConnection {
     }
 
     // ── Data classes ──
-
-    static class ApprovedQuery {
-        final String stableId;
-        final String queryText;
-        final String compiledSql;
-
-        ApprovedQuery(String stableId, String queryText, String compiledSql) {
-            this.stableId = stableId;
-            this.queryText = queryText;
-            this.compiledSql = compiledSql;
-        }
-    }
 
     static class RegisteredTable {
         final int id;

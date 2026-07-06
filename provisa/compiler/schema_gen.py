@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Build graphql-core schema from registration model + Trino metadata per role.
+"""Build graphql-core schema from registration model + the engine metadata per role.
 
 No third-party GraphQL framework (REQ-007). Uses graphql-core directly.
 Domain-scoped, per-role column filtering (REQ-008, REQ-021).
@@ -59,7 +59,7 @@ from provisa.compiler.naming import (
     rel_field_name,
     to_type_name,
 )
-from provisa.compiler.type_map import FILTER_TYPE_MAP, JSONScalar, trino_to_graphql
+from provisa.compiler.type_map import FILTER_TYPE_MAP, JSONScalar, column_type_to_graphql
 
 # graphql-core 3.2.x: __new__ returns GraphQLNamedType instead of Self;
 # re-bind scalars with explicit GraphQLScalarType annotation so Pyright narrows correctly.
@@ -75,12 +75,12 @@ class SchemaInput:
 
     tables: list[dict]  # from table_repo.list_all() — includes "columns" sub-list
     relationships: list[dict]  # from rel_repo.list_all()
-    column_types: dict[int, list[ColumnMetadata]]  # table_id → Trino column metadata
+    column_types: dict[int, list[ColumnMetadata]]  # table_id → the engine column metadata
     naming_rules: list[dict]  # [{pattern, replacement}]
     role: dict  # from role_repo.get()
     domains: list[dict]  # from domain_repo.list_all()
     source_types: dict[str, str] | None = None  # source_id → type (for mutation eligibility)
-    source_catalogs: dict[str, str] | None = None  # source_id → Trino catalog name
+    source_catalogs: dict[str, str] | None = None  # source_id → the engine catalog name
     domain_prefix: bool = False  # prepend domain_id__ to all names
     physical_table_map: dict[str, str] | None = None  # virtual → physical table name
     relay_pagination: bool = False  # global opt-in for _connection fields
@@ -93,7 +93,9 @@ class SchemaInput:
     gql_object_columns: dict[str, dict[str, list[str]]] = field(
         default_factory=dict
     )  # {table_name: {col_name: [sub_fields]}}
-    governed_gql_types: set[str] = field(default_factory=set)  # GQL type names backed by governed tables
+    governed_gql_types: set[str] = field(
+        default_factory=set
+    )  # GQL type names backed by governed tables
     gql_governed_object_cols: set[tuple[int, str]] = field(
         default_factory=set
     )  # (table_id, col_name) pairs where the GQL OBJECT type is a governed registered table
@@ -148,7 +150,7 @@ RouteEngineEnum = cast(
     GraphQLEnumType(
         "RouteEngine",
         {
-            "FEDERATED": GraphQLEnumValue("FEDERATED", description="Route via Trino federation"),
+            "FEDERATED": GraphQLEnumValue("FEDERATED", description="Route vithe engine federation"),
             "DIRECT": GraphQLEnumValue("DIRECT", description="Route directly to source"),
         },
         description="Execution engine routing hint for @route.",
@@ -192,7 +194,7 @@ PROVISA_DIRECTIVES = [
                 GraphQLNonNull(JoinStrategyEnum), description="BROADCAST or PARTITIONED"
             )
         },
-        description="Set Trino join distribution strategy.",
+        description="Set the engine join distribution strategy.",
     ),
     GraphQLDirective(
         name="reorder",
@@ -202,7 +204,7 @@ PROVISA_DIRECTIVES = [
                 GraphQLNonNull(GraphQLBoolean), description="Set false to disable join reordering"
             )
         },
-        description="Control Trino join reordering.",
+        description="Control the engine join reordering.",
     ),
     GraphQLDirective(
         name="broadcastSize",
@@ -212,7 +214,7 @@ PROVISA_DIRECTIVES = [
                 GraphQLNonNull(GraphQLString), description="Max broadcast table size, e.g. '100MB'"
             )
         },
-        description="Override max broadcast table size for Trino.",
+        description="Override max broadcast table size for the engine.",
     ),
     GraphQLDirective(
         name="watermark",
@@ -350,9 +352,12 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
         # They are always exposed as query args regardless of visible_to — the role
         # only needs access to the table itself.
         _raw_nfc = [c for c in table["columns"] if c.get("native_filter_type")]
-        _base_names = {c["column_name"] for c in _raw_nfc if not c["column_name"].startswith("_nf_")}
+        _base_names = {
+            c["column_name"] for c in _raw_nfc if not c["column_name"].startswith("_nf_")
+        }
         native_filter_cols = [
-            c for c in _raw_nfc
+            c
+            for c in _raw_nfc
             if not c["column_name"].startswith("_nf_") or c["column_name"][4:] not in _base_names
         ]
 
@@ -510,7 +515,7 @@ def _build_column_fields(  # REQ-008, REQ-010, REQ-039, REQ-155, REQ-156, REQ-22
             import logging as _clog
 
             _clog.getLogger(__name__).warning(
-                "Registered column %r on table %r not found in Trino metadata — skipping.",
+                "Registered column %r on table %r not found in the engine metadata — skipping.",
                 col_name,
                 table.table_name,
             )
@@ -532,7 +537,7 @@ def _build_column_fields(  # REQ-008, REQ-010, REQ-039, REQ-155, REQ-156, REQ-22
             if enum_gql is not None:
                 gql_type = enum_gql if meta.is_nullable else GraphQLNonNull(enum_gql)
             else:
-                scalar_type = trino_to_graphql(meta.data_type)
+                scalar_type = column_type_to_graphql(meta.data_type)
                 if not meta.is_nullable and not isinstance(scalar_type, GraphQLList):
                     gql_type = GraphQLNonNull(scalar_type)
                 else:
@@ -581,7 +586,7 @@ def _build_where_input(  # REQ-008, REQ-221
         if enum_filter:
             input_fields[gql_name] = GraphQLInputField(enum_filter)
         else:
-            gql_type = trino_to_graphql(meta.data_type)
+            gql_type = column_type_to_graphql(meta.data_type)
             scalar = gql_type.of_type if isinstance(gql_type, GraphQLList) else gql_type
             filter_type = FILTER_TYPE_MAP.get(scalar)
             if filter_type:
@@ -950,7 +955,6 @@ def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
     """
     raw_by_id = {t["id"]: t for t in si.tables}
     fields: dict[str, GraphQLField] = {}
-    role_id = si.role["id"]
 
     for t in tables:
         raw = raw_by_id.get(t.table_id, {})
@@ -1016,9 +1020,7 @@ def _add_ops_traversal_fields(
         if ops_t.table_id not in gql_types:
             continue
         ops_base = (
-            ops_t.field_name.split("__", 1)[1]
-            if "__" in ops_t.field_name
-            else ops_t.field_name
+            ops_t.field_name.split("__", 1)[1] if "__" in ops_t.field_name else ops_t.field_name
         )
         fields[f"_{ops_base}"] = GraphQLField(
             GraphQLList(GraphQLNonNull(gql_types[ops_t.table_id])),
@@ -1047,7 +1049,11 @@ def _add_computed_relationship_field(
     if len(parts) != 2:
         return
     ret_type = next(
-        (gql_types[t.table_id] for t in tables if t.schema_name == parts[0] and t.table_name == parts[1]),
+        (
+            gql_types[t.table_id]
+            for t in tables
+            if t.schema_name == parts[0] and t.table_name == parts[1]
+        ),
         None,
     )
     if ret_type:
@@ -1114,9 +1120,7 @@ def _make_object_type_fields(
             continue
         fn_name = rel.get("target_function_name")
         if fn_name:
-            _add_computed_relationship_field(
-                fields, rel, fn_name, functions, tables, gql_types
-            )
+            _add_computed_relationship_field(fields, rel, fn_name, functions, tables, gql_types)
         else:
             _add_standard_relationship_field(
                 fields, rel, table_lookup, gql_types, where_types, order_by_types, distinct_enums
@@ -1131,9 +1135,7 @@ def _build_native_filter_args(
 ) -> None:
     """Append native filter args to args in-place."""
     visible_col_names = [
-        c["column_name"]
-        for c in t.visible_columns
-        if c["column_name"].lower() in t.column_metadata
+        c["column_name"] for c in t.visible_columns if c["column_name"].lower() in t.column_metadata
     ]
     response_field_names = set(visible_col_names) | {
         "where",
@@ -1147,7 +1149,7 @@ def _build_native_filter_args(
         bare_name = col_name[4:] if col_name.startswith("_nf_") else col_name
         arg_name = f"_{bare_name}" if bare_name in response_field_names else bare_name
         meta = t.column_metadata.get(col_name.lower())
-        nfc_gql_type = trino_to_graphql(meta.data_type) if meta else GraphQLString
+        nfc_gql_type = column_type_to_graphql(meta.data_type) if meta else GraphQLString
         scalar = nfc_gql_type.of_type if isinstance(nfc_gql_type, GraphQLList) else nfc_gql_type
         required = nfc.get("native_filter_type") == "path_param"
         args[arg_name] = GraphQLArgument(
@@ -1280,7 +1282,7 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
         meta = t.column_metadata.get(col_name.lower())
         if meta is None:
             continue
-        col_gql_type = trino_to_graphql(meta.data_type)
+        col_gql_type = column_type_to_graphql(meta.data_type)
         if isinstance(col_gql_type, GraphQLList):
             col_gql_type = GraphQLString  # fallback for arrays in input
         insert_fields[col_name] = GraphQLInputField(col_gql_type)
@@ -1364,7 +1366,11 @@ def build_table_path_map(si: SchemaInput) -> dict[str, dict]:
     }
 
 
-def generate_schema(si: SchemaInput) -> GraphQLSchema:  # REQ-007, REQ-008, REQ-021, REQ-133, REQ-134, REQ-196, REQ-197, REQ-213, REQ-218, REQ-253
+def generate_schema(
+    si: SchemaInput,
+) -> (
+    GraphQLSchema
+):  # REQ-007, REQ-008, REQ-021, REQ-133, REQ-134, REQ-196, REQ-197, REQ-213, REQ-218, REQ-253
     """Generate a graphql-core schema for a specific role.
 
     The schema includes:

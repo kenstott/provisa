@@ -491,7 +491,7 @@ class _FakeTrinoConnectionCursor:
 
 def _make_iceberg_cache_location():
     """Return a CacheLocation targeting the Iceberg results catalog."""
-    from provisa.api_source.trino_cache import cache_location
+    from provisa.api_source.engine_cache import cache_location
 
     return cache_location("graphql-remote-src", cache_catalog="results")
 
@@ -523,7 +523,7 @@ def _simulate_first_query_execution(
     columns,
 ) -> list[dict]:
     """Simulate first query: call remote endpoint, materialise rows into Iceberg cache."""
-    from provisa.api_source.trino_cache import ensure_cache_schema, create_and_insert
+    from provisa.api_source.engine_cache import ensure_cache_schema, create_and_insert
 
     conn.record_remote_call()
     ensure_cache_schema(conn, loc)
@@ -542,7 +542,7 @@ def _simulate_second_query_from_cache(
     ttl: int,
 ) -> tuple[list[dict], bool]:
     """Simulate second query: check cache, serve from Iceberg — no remote hop."""
-    from provisa.api_source.trino_cache import table_exists
+    from provisa.api_source.engine_cache import table_exists
 
     cache_hit = table_exists(conn, loc, table_name, ttl=ttl)
     if not cache_hit:

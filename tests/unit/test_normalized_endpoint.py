@@ -33,7 +33,9 @@ def _ntable(name, path, sql):
 def _state():
     st = MagicMock()
     st.mv_registry.get_fresh.return_value = []
-    st.trino_conn = MagicMock()
+    st.engine_conn = MagicMock()
+    # The engine seam transpiles + runs CTAS; passthrough transpile so tests assert manifest logic.
+    st.federation_engine.transpile_physical.side_effect = lambda s: s
     return st
 
 
@@ -49,30 +51,27 @@ async def test_normalized_returns_manifest_of_tables():
             {"table_name": "r_b", "s3_prefix": "s3a://b/results/b", "row_count": 3},
         ]
     )
+    st = _state()
+    st.federation_engine.ctas_redirect.side_effect = lambda *_a, **_k: next(ctas_results)
     with (
         patch("provisa.compiler.normalize.compile_normalized", return_value=ntables),
         patch("provisa.api.data.endpoint._prepare_compiled", new=AsyncMock()),
         patch(
-            "provisa.api.data.endpoint.rewrite_semantic_to_trino_physical",
+            "provisa.api.data.endpoint.rewrite_semantic_to_physical",
             side_effect=lambda s, _c: s,
         ),
-        patch("provisa.transpiler.transpile.transpile_to_trino", side_effect=lambda s: s),
         patch(
-            "provisa.executor.trino_write.execute_ctas_redirect",
-            side_effect=lambda *_a, **_k: next(ctas_results),
-        ),
-        patch(
-            "provisa.executor.trino_write.presign_ctas_result",
+            "provisa.executor.redirect.presign_ctas_result",
             new=AsyncMock(side_effect=lambda p, _c: f"https://x/{p[-1]}"),
         ),
-        patch("provisa.executor.trino_write.schedule_s3_cleanup", new=AsyncMock()),
+        patch("provisa.executor.redirect.schedule_s3_cleanup", new=AsyncMock()),
         patch("provisa.executor.redirect.RedirectConfig.from_env", return_value=MagicMock()),
     ):
         resp = await _handle_normalized(
             document=MagicMock(),
             ctx=MagicMock(),
             rls=MagicMock(),
-            state=_state(),
+            state=st,
             variables=None,
             role_id="admin",
             role={"id": "admin"},
@@ -91,30 +90,31 @@ async def test_normalized_returns_manifest_of_tables():
 @pytest.mark.asyncio
 async def test_normalized_governs_each_table():
     ntables = [_ntable("orders", ("orders",), "SELECT DISTINCT id FROM orders")]
+    st = _state()
+    st.federation_engine.ctas_redirect.return_value = {
+        "table_name": "r",
+        "s3_prefix": "s3a://b/x",
+        "row_count": 1,
+    }
     with (
         patch("provisa.compiler.normalize.compile_normalized", return_value=ntables),
         patch("provisa.api.data.endpoint._prepare_compiled", new=AsyncMock()) as prep,
         patch(
-            "provisa.api.data.endpoint.rewrite_semantic_to_trino_physical",
+            "provisa.api.data.endpoint.rewrite_semantic_to_physical",
             side_effect=lambda s, _c: s,
         ),
-        patch("provisa.transpiler.transpile.transpile_to_trino", side_effect=lambda s: s),
         patch(
-            "provisa.executor.trino_write.execute_ctas_redirect",
-            return_value={"table_name": "r", "s3_prefix": "s3a://b/x", "row_count": 1},
-        ),
-        patch(
-            "provisa.executor.trino_write.presign_ctas_result",
+            "provisa.executor.redirect.presign_ctas_result",
             new=AsyncMock(return_value="https://x/u"),
         ),
-        patch("provisa.executor.trino_write.schedule_s3_cleanup", new=AsyncMock()),
+        patch("provisa.executor.redirect.schedule_s3_cleanup", new=AsyncMock()),
         patch("provisa.executor.redirect.RedirectConfig.from_env", return_value=MagicMock()),
     ):
         await _handle_normalized(
             document=MagicMock(),
             ctx=MagicMock(),
             rls=MagicMock(),
-            state=_state(),
+            state=st,
             variables=None,
             role_id="admin",
             role={"id": "admin"},

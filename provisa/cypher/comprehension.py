@@ -43,7 +43,7 @@ _REDUCE_RE = re.compile(
 
 
 def rewrite_reduce(text: str) -> str:  # REQ-345, REQ-347
-    """Rewrite Cypher reduce(acc = init, x IN list | expr) → Trino reduce(list, init, (acc, x) -> expr, acc -> acc)."""
+    """Rewrite Cypher reduce(acc = init, x IN list | expr) → the engine reduce(list, init, (acc, x) -> expr, acc -> acc)."""
 
     def _replace(m: re.Match) -> str:
         acc = m.group(1).strip()

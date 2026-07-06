@@ -39,7 +39,7 @@ import pytest
 from pytest_bdd import given, when, then, scenarios
 
 from provisa.executor.redirect import RedirectConfig, should_redirect
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 scenarios("../features/REQ-137.feature")
 scenarios("../features/REQ-138.feature")
@@ -105,10 +105,7 @@ def _build_iceberg_ctas(
     Trino executes this directly, writing files to S3 — Provisa never
     materializes the rows.
     """
-    return (
-        f"CREATE TABLE {target_table} "
-        f"WITH (format = '{fmt.upper()}') AS {select_sql}"
-    )
+    return f"CREATE TABLE {target_table} WITH (format = '{fmt.upper()}') AS {select_sql}"
 
 
 def _build_limit_probe(select_sql: str, threshold: int) -> str:
@@ -140,9 +137,7 @@ def _serialize_result(result: QueryResult, fmt: str) -> bytes:
         records = [dict(zip(result.column_names, row)) for row in result.rows]
         return json.dumps(records).encode("utf-8")
     if fmt == "ndjson":
-        lines = [
-            json.dumps(dict(zip(result.column_names, row))) for row in result.rows
-        ]
+        lines = [json.dumps(dict(zip(result.column_names, row))) for row in result.rows]
         return ("\n".join(lines)).encode("utf-8")
     if fmt == "arrow":
         try:
@@ -151,15 +146,9 @@ def _serialize_result(result: QueryResult, fmt: str) -> bytes:
             # Deterministic binary fallback when pyarrow is not installed in
             # the unit context — still proves serialization produces bytes.
             return repr(result.rows).encode("utf-8")
-        columns = (
-            list(zip(*result.rows))
-            if result.rows
-            else [[] for _ in result.column_names]
-        )
+        columns = list(zip(*result.rows)) if result.rows else [[] for _ in result.column_names]
         arrays = [pa.array(list(col)) for col in columns]
-        table = pa.table(
-            {name: arr for name, arr in zip(result.column_names, arrays)}
-        )
+        table = pa.table({name: arr for name, arr in zip(result.column_names, arrays)})
         sink = pa.BufferOutputStream()
         with pa.ipc.new_stream(sink, table.schema) as writer:
             writer.write_table(table)
@@ -193,6 +182,7 @@ def _run_scheduled_cleanup(objects: dict, store: set, now: float) -> list[str]:
 # REQ-137: Given step
 # ---------------------------------------------------------------------------
 
+
 @given("a client sets X-Provisa-Redirect-Format and optionally X-Provisa-Redirect-Threshold")
 def client_sets_headers(shared_data):
     # Scenario A: format alone (force redirect regardless of size).
@@ -225,6 +215,7 @@ def client_sets_headers(shared_data):
 # REQ-138: Given step
 # ---------------------------------------------------------------------------
 
+
 @given("a redirect format of Parquet or ORC")
 def given_native_redirect_format(shared_data):
     shared_data["native_formats"] = ["parquet", "orc"]
@@ -239,6 +230,7 @@ def given_native_redirect_format(shared_data):
 # ---------------------------------------------------------------------------
 # REQ-139: Given step
 # ---------------------------------------------------------------------------
+
 
 @given("a redirect format of JSON, NDJSON, CSV, or Arrow IPC")
 def given_provisa_mediated_format(shared_data):
@@ -256,6 +248,7 @@ def given_provisa_mediated_format(shared_data):
 # REQ-140: Given step
 # ---------------------------------------------------------------------------
 
+
 @given("a redirect threshold is set")
 def given_redirect_threshold_set(shared_data):
     # REQ-140: a concrete inline threshold and a query that exceeds it.
@@ -272,6 +265,7 @@ def given_redirect_threshold_set(shared_data):
 # REQ-141: Given step
 # ---------------------------------------------------------------------------
 
+
 @given("redirect results have been written to S3 with a presigned URL")
 def given_redirect_results_written_to_s3(shared_data):
     # REQ-141: model the S3 bucket state at the time objects were written.
@@ -285,8 +279,8 @@ def given_redirect_results_written_to_s3(shared_data):
     # Two objects written in the past whose presigned URLs have already expired,
     # plus one object whose TTL is still in the future.
     shared_data["s3_objects"] = {
-        "results/expired-key-1.csv": now - 60.0,   # expired 60 s ago
-        "results/expired-key-2.json": now - 5.0,   # expired 5 s ago
+        "results/expired-key-1.csv": now - 60.0,  # expired 60 s ago
+        "results/expired-key-2.json": now - 5.0,  # expired 5 s ago
         "results/live-key-1.parquet": now + config.ttl,  # still valid
     }
     shared_data["s3_store"] = set(shared_data["s3_objects"].keys())
@@ -300,6 +294,7 @@ def given_redirect_results_written_to_s3(shared_data):
 # ---------------------------------------------------------------------------
 # When steps
 # ---------------------------------------------------------------------------
+
 
 @when("the query executes")
 def query_executes(shared_data):
@@ -335,16 +330,12 @@ def query_executes(shared_data):
             assert "AS SELECT" in ctas
             # Critical REQ-138 invariant: Provisa must not produce serialized
             # bytes for native formats — no _serialize_result call here.
-            assert _is_native_ctas_format(fmt), (
-                f"format {fmt!r} is not a native CTAS format"
-            )
+            assert _is_native_ctas_format(fmt), f"format {fmt!r} is not a native CTAS format"
             ctas_statements[fmt] = ctas
         shared_data["ctas_statements"] = ctas_statements
 
         # Record that no data passed through Provisa for these formats.
-        shared_data["provisa_bytes_produced"] = {
-            fmt: 0 for fmt in shared_data["native_formats"]
-        }
+        shared_data["provisa_bytes_produced"] = {fmt: 0 for fmt in shared_data["native_formats"]}
 
     # REQ-140 branch: build a LIMIT threshold+1 probe and simulate execution.
     # This branch is active when the Given step has populated probe fields.
@@ -380,7 +371,7 @@ def when_presigned_url_ttl_expires(shared_data):
     # Advance the logical clock past the TTL of the expired objects.
     # We model "now" as a moment after the two expired objects' TTL has
     # elapsed but before the live object's TTL is up.
-    config = shared_data["cleanup_config"]
+    _config = shared_data["cleanup_config"]
     # Use a point in time that is clearly after both expired entries.
     simulated_now = shared_data["cleanup_now"] + 1.0  # 1 s after fixture creation
     shared_data["simulated_now"] = simulated_now
@@ -392,9 +383,7 @@ def when_presigned_url_ttl_expires(shared_data):
         f"expected 2 keys expired at simulated_now, got {expired_at_now}"
     )
     live_key = "results/live-key-1.parquet"
-    assert live_key not in expired_at_now, (
-        f"live key {live_key!r} should not be expired yet"
-    )
+    assert live_key not in expired_at_now, f"live key {live_key!r} should not be expired yet"
     # Verify the live key's expiry is genuinely in the future relative to
     # the simulated clock.
     assert shared_data["s3_objects"][live_key] > simulated_now
@@ -455,12 +444,8 @@ def when_query_executes_above_threshold(shared_data):
     serialized_payloads: dict[str, bytes] = {}
     for fmt in shared_data["mediated_formats"]:
         payload = _serialize_result(result, fmt)
-        assert isinstance(payload, bytes), (
-            f"_serialize_result must return bytes for format {fmt!r}"
-        )
-        assert len(payload) > 0, (
-            f"serialized payload for format {fmt!r} must not be empty"
-        )
+        assert isinstance(payload, bytes), f"_serialize_result must return bytes for format {fmt!r}"
+        assert len(payload) > 0, f"serialized payload for format {fmt!r} must not be empty"
         serialized_payloads[fmt] = payload
 
     shared_data["serialized_payloads"] = serialized_payloads
@@ -510,7 +495,10 @@ def when_query_executes_above_threshold(shared_data):
 # Then steps
 # ---------------------------------------------------------------------------
 
-@then("results are redirected to the specified format; format alone forces redirect regardless of size")
+
+@then(
+    "results are redirected to the specified format; format alone forces redirect regardless of size"
+)
 def then_results_redirected_to_specified_format(shared_data):
     """REQ-137: verify both force-redirect and threshold-redirect paths.
 
@@ -647,8 +635,7 @@ def then_trino_writes_directly_to_s3_no_data_through_provisa(shared_data):
             f"CTAS for {fmt!r} must start with CREATE TABLE; got: {ctas!r}"
         )
         assert f"WITH (format = '{fmt.upper()}')" in ctas, (
-            f"CTAS for {fmt!r} must specify the correct Iceberg format property; "
-            f"got: {ctas!r}"
+            f"CTAS for {fmt!r} must specify the correct Iceberg format property; got: {ctas!r}"
         )
         assert "AS SELECT" in ctas, (
             f"CTAS for {fmt!r} must contain the AS SELECT clause; got: {ctas!r}"
@@ -678,21 +665,16 @@ def then_provisa_serializes_and_uploads_to_s3(shared_data):
 
     # Every non-native format must have been serialized to non-empty bytes.
     for fmt in mediated_formats:
-        assert fmt in serialized_payloads, (
-            f"format {fmt!r} missing from serialized_payloads"
-        )
+        assert fmt in serialized_payloads, f"format {fmt!r} missing from serialized_payloads"
         payload = serialized_payloads[fmt]
         assert isinstance(payload, bytes), (
             f"serialized payload for {fmt!r} must be bytes, got {type(payload)}"
         )
-        assert len(payload) > 0, (
-            f"serialized payload for {fmt!r} must not be empty"
-        )
+        assert len(payload) > 0, f"serialized payload for {fmt!r} must not be empty"
 
     # boto3 put_object must have been called exactly once per format.
     assert mock_s3.put_object.call_count == len(mediated_formats), (
-        f"expected {len(mediated_formats)} put_object calls, "
-        f"got {mock_s3.put_object.call_count}"
+        f"expected {len(mediated_formats)} put_object calls, got {mock_s3.put_object.call_count}"
     )
 
     # generate_presigned_url must have been called exactly once per format.

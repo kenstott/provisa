@@ -20,7 +20,7 @@ from __future__ import annotations
 import aioodbc  # pyright: ignore[reportMissingImports]
 
 from provisa.executor.drivers.base import DirectDriver
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 
 
 class SQLServerDriver(DirectDriver):  # REQ-052, REQ-068, REQ-229, REQ-550

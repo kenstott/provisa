@@ -48,7 +48,7 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
-from provisa.executor.trino import QueryResult as TrinoResult
+from provisa.executor.result import QueryResult as EngineResult
 from provisa.pgwire.server import ProvisaConnection, ProvisaServer
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
@@ -109,7 +109,7 @@ def _make_mock_state(role: str = "admin", provider: str = "simple") -> MagicMock
     state.source_dialects = {}
     state.source_pools = MagicMock()
     state.server_limits = {}
-    state.trino_conn = None
+    state.engine_conn = None
     return state
 
 
@@ -152,7 +152,7 @@ class TestPgwireAuth:
         state = _make_mock_state("admin", "simple")
 
         async def _noop(*_):
-            return TrinoResult(rows=[(1,)], column_names=["v"])
+            return EngineResult(rows=[(1,)], column_names=["v"])
 
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
@@ -195,7 +195,7 @@ class TestPgwireAuth:
         state = _make_mock_state("analyst", "none")
 
         async def _echo_role(_, role_id):
-            return TrinoResult(rows=[(role_id,)], column_names=["role"])
+            return EngineResult(rows=[(role_id,)], column_names=["role"])
 
         with (
             patch("provisa.api.app.state", state),
@@ -398,7 +398,7 @@ class TestPgwireMultiStatement:
         state = _make_mock_state("admin", "simple")
 
         async def _noop(*_):
-            return TrinoResult(rows=[(1,)], column_names=["v"])
+            return EngineResult(rows=[(1,)], column_names=["v"])
 
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
@@ -457,7 +457,7 @@ class TestPgwireParameterizedQueries:
 
         async def _capture(sql, *_):
             received.append(sql)
-            return TrinoResult(rows=[("hello",)], column_names=["v"])
+            return EngineResult(rows=[("hello",)], column_names=["v"])
 
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
@@ -487,7 +487,7 @@ class TestPgwireParameterizedQueries:
 
         async def _capture(sql, *_):
             received.append(sql)
-            return TrinoResult(rows=[(42,)], column_names=["v"])
+            return EngineResult(rows=[(42,)], column_names=["v"])
 
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
@@ -517,7 +517,7 @@ class TestPgwireParameterizedQueries:
 
         async def _capture(sql, *_):
             received.append(sql)
-            return TrinoResult(rows=[(None,)], column_names=["v"])
+            return EngineResult(rows=[(None,)], column_names=["v"])
 
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
@@ -726,7 +726,7 @@ class TestPgwireTLS:
         state = _make_mock_state("admin", "simple")
 
         async def _one(*_):
-            return TrinoResult(rows=[(1,)], column_names=["v"])
+            return EngineResult(rows=[(1,)], column_names=["v"])
 
         with (
             patch("provisa.auth.providers.simple._provider_instance", provider),
@@ -816,7 +816,7 @@ class TestPgwireTLS:
             client_ssl.verify_mode = ssl.CERT_NONE
 
             async def _one(*_):
-                return TrinoResult(rows=[(1,)], column_names=["v"])
+                return EngineResult(rows=[(1,)], column_names=["v"])
 
             with (
                 patch("provisa.auth.providers.simple._provider_instance", provider),

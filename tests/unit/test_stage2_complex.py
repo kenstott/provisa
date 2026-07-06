@@ -15,7 +15,6 @@ from __future__ import annotations
 import sqlglot
 import sqlglot.expressions as exp
 
-import pytest
 
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import (
@@ -173,7 +172,7 @@ class TestApplyGovernanceRLS:
         )
         sql = "SELECT id FROM orders WHERE status = 'open'"
         result = apply_governance(sql, gov)
-        assert "region = 'eu'" in result
+        assert "\"region\" = 'eu'" in result
         assert "status = 'open'" in result
         assert "AND" in result
 
@@ -184,7 +183,7 @@ class TestApplyGovernanceRLS:
         )
         sql = "SELECT o.id FROM orders o JOIN customers c ON o.cid = c.id"
         result = apply_governance(sql, gov)
-        assert "region = 'us'" in result
+        assert "\"region\" = 'us'" in result
         assert "active" in result.lower()
 
     def test_empty_rls_context_sql_unchanged_where(self):

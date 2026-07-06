@@ -10,7 +10,7 @@
 
 """MongoDB source mapping — collection discovery + override (REQ-250).
 
-Trino MongoDB connector auto-discovers collections. This module generates
+the engine MongoDB connector auto-discovers collections. This module generates
 catalog properties and supports schema inference from sample documents.
 """
 
@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 log = logging.getLogger(__name__)
 
 
-BSON_TO_TRINO = {
+BSON_TO_IR = {
     "string": "VARCHAR",
     "int": "INTEGER",
     "int32": "INTEGER",
@@ -39,7 +39,7 @@ BSON_TO_TRINO = {
     "objectId": "VARCHAR",
     "object": "VARCHAR",
     "array": "VARCHAR",
-    "binData": "VARBINARY",
+    "binData": "bytea",
 }
 
 
@@ -48,7 +48,7 @@ class MongoColumn:  # REQ-251
     """Column override or supplement for a MongoDB collection."""
 
     name: str
-    data_type: str  # Trino type
+    data_type: str  # the engine type
     alias: str | None = None  # Flatten nested path to alias
     path: str | None = None  # Dot-notation path in document
 
@@ -74,7 +74,7 @@ class MongoSourceConfig:  # REQ-250, REQ-251
 
 
 def generate_catalog_properties(config: MongoSourceConfig) -> dict[str, str]:  # REQ-250
-    """Generate Trino MongoDB connector catalog properties."""
+    """Generate the engine MongoDB connector catalog properties."""
     props = {
         "connector.name": "mongodb",
         "mongodb.connection-url": config.connection_url,
@@ -117,11 +117,11 @@ def discover_schema(sample_docs: list[dict], collection_name: str) -> list[dict]
 
     columns = []
     for path, bson_type in sorted(field_types.items()):
-        trino_type = BSON_TO_TRINO.get(bson_type, "VARCHAR")
+        column_type = BSON_TO_IR.get(bson_type, "VARCHAR")
         columns.append(
             {
                 "name": path.replace(".", "_"),
-                "type": trino_type,
+                "type": column_type,
                 "sourcePath": path,
             }
         )

@@ -9,8 +9,8 @@
 
 """Meta-domain SQL view definitions (extracted from api/app.py).
 
-Views replace admin tables that have text[] columns Trino cannot surface;
-arrays are cast to JSON text. PostgreSQL-specific (pgwire/Trino surface).
+Views replace admin tables that have text[] columns the engine cannot surface;
+arrays are cast to JSON text. PostgreSQL-specific (pgwire/the engine surface).
 """
 
 from __future__ import annotations

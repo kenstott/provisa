@@ -12,13 +12,12 @@
 
 from __future__ import annotations
 
-import os
 
 import pytest
-from pytest_bdd import given, parsers, scenario, then, when
+from pytest_bdd import given, scenario, then, when
 
 from provisa.cassandra.source import (
-    CQL_TYPE_TO_TRINO,
+    CQL_TYPE_TO_IR,
     discover_schema,
 )
 
@@ -41,7 +40,6 @@ def shared_data() -> dict:
 
 @scenario(
     "../features/REQ-735.feature",
-
     "REQ-735 default behaviour",
 )
 def test_req_735_default_behaviour():
@@ -108,7 +106,7 @@ def then_cql_types_mapped_and_keys_annotated(shared_data: dict):
     # ------------------------------------------------------------------ #
     # Scalar type mappings
     # ------------------------------------------------------------------ #
-    expected_trino_types = {
+    expected_column_types = {
         "user_id": "UUID",
         "event_time": "TIMESTAMP",
         "session_id": "UUID",
@@ -119,7 +117,7 @@ def then_cql_types_mapped_and_keys_annotated(shared_data: dict):
         "age": "INTEGER",
         "ip_address": "VARCHAR",
     }
-    for col_name, expected_type in expected_trino_types.items():
+    for col_name, expected_type in expected_column_types.items():
         actual_type = col_by_name[col_name]["type"]
         assert actual_type == expected_type, (
             f"Column '{col_name}': expected Trino type '{expected_type}', got '{actual_type}'"
@@ -179,12 +177,12 @@ def then_cql_types_mapped_and_keys_annotated(shared_data: dict):
         )
 
     # ------------------------------------------------------------------ #
-    # Sanity-check the global CQL_TYPE_TO_TRINO mapping for key entries
+    # Sanity-check the global CQL_TYPE_TO_IR mapping for key entries
     # ------------------------------------------------------------------ #
-    assert CQL_TYPE_TO_TRINO["text"] == "VARCHAR"
-    assert CQL_TYPE_TO_TRINO["bigint"] == "BIGINT"
-    assert CQL_TYPE_TO_TRINO["timestamp"] == "TIMESTAMP"
-    assert CQL_TYPE_TO_TRINO["uuid"] == "UUID"
-    assert CQL_TYPE_TO_TRINO["list"] == "VARCHAR"
-    assert CQL_TYPE_TO_TRINO["map"] == "VARCHAR"
-    assert CQL_TYPE_TO_TRINO["set"] == "VARCHAR"
+    assert CQL_TYPE_TO_IR["text"] == "VARCHAR"
+    assert CQL_TYPE_TO_IR["bigint"] == "BIGINT"
+    assert CQL_TYPE_TO_IR["timestamp"] == "TIMESTAMP"
+    assert CQL_TYPE_TO_IR["uuid"] == "UUID"
+    assert CQL_TYPE_TO_IR["list"] == "VARCHAR"
+    assert CQL_TYPE_TO_IR["map"] == "VARCHAR"
+    assert CQL_TYPE_TO_IR["set"] == "VARCHAR"

@@ -25,8 +25,8 @@ import httpx
 from provisa.kafka.source import (
     KafkaColumn,
     ValueFormat,
-    map_avro_to_trino,
-    map_json_schema_to_trino,
+    map_avro_to_ir,
+    map_json_schema_to_ir,
 )
 
 # Requirements: REQ-147, REQ-150
@@ -98,11 +98,11 @@ def columns_from_avro_schema(schema_str: str) -> list[KafkaColumn]:  # REQ-147, 
 
     columns = []
     for field in schema.get("fields", []):
-        trino_type, is_complex = map_avro_to_trino(field["type"])
+        column_type, is_complex = map_avro_to_ir(field["type"])
         columns.append(
             KafkaColumn(
                 name=field["name"],
-                data_type=trino_type,
+                data_type=column_type,
                 is_complex=is_complex,
             )
         )
@@ -121,11 +121,11 @@ def columns_from_json_schema(schema_str: str) -> list[KafkaColumn]:  # REQ-147, 
     columns = []
     for name, prop in schema.get("properties", {}).items():
         json_type = prop.get("type", "string")
-        trino_type, is_complex = map_json_schema_to_trino(json_type)
+        column_type, is_complex = map_json_schema_to_ir(json_type)
         columns.append(
             KafkaColumn(
                 name=name,
-                data_type=trino_type,
+                data_type=column_type,
                 is_complex=is_complex,
             )
         )

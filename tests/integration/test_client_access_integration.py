@@ -127,7 +127,7 @@ def _make_app_state_with_orders():
     state.masking_rules = {}
     state.source_types = {"test-pg": "postgresql"}
     state.source_dialects = {"test-pg": "postgres"}
-    from provisa.executor.trino import QueryResult
+    from provisa.executor.result import QueryResult
 
     _pool = MagicMock()
     _pool.has = MagicMock(return_value=True)
@@ -137,7 +137,7 @@ def _make_app_state_with_orders():
         )
     )
     state.source_pools = _pool
-    state.trino_conn = None
+    state.engine_conn = None
     state.schema_build_cache = {"column_types": {1: []}, "tables": []}
     state.tables = []
     state.approval_hook = None
@@ -183,7 +183,7 @@ class TestGraphQLEndpoint:
 
         # Wire a stub execute path so the test does not need a live DB.
         async def _stub_execute(sql, role_id):
-            from provisa.executor.trino import QueryResult
+            from provisa.executor.result import QueryResult
 
             return QueryResult(
                 rows=[(1, "us-east", 99.99)], column_names=["id", "region", "amount"]
@@ -204,7 +204,7 @@ class TestGraphQLEndpoint:
         state = _make_app_state_with_orders()
 
         async def _stub(sql, role_id):
-            from provisa.executor.trino import QueryResult
+            from provisa.executor.result import QueryResult
 
             return QueryResult(rows=[(1, "us-east", 9.99)], column_names=["id", "region", "amount"])
 
@@ -279,7 +279,7 @@ class TestPresignedURLRedirect:
     async def test_presign_returns_redirect_url(self):
         """upload_and_presign returns a URL and HTTP status 302-compatible payload."""
         from provisa.executor.redirect import RedirectConfig, upload_and_presign
-        from provisa.executor.trino import QueryResult
+        from provisa.executor.result import QueryResult
 
         mock_s3 = MagicMock()
         mock_s3.put_object = MagicMock()
@@ -317,7 +317,7 @@ class TestPresignedURLRedirect:
     async def test_presign_url_contains_expiry(self):
         """REQ-044: presigned URL includes TTL-bounded expiry parameter."""
         from provisa.executor.redirect import RedirectConfig, upload_and_presign
-        from provisa.executor.trino import QueryResult
+        from provisa.executor.result import QueryResult
 
         expected_url = "https://s3.example.com/r/q.ndjson?X-Amz-Expires=1800"
         mock_s3 = MagicMock()

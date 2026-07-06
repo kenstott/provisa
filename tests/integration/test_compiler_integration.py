@@ -159,7 +159,7 @@ class TestSQLGlotTranspilation:
         assert "snowflake" in SUPPORTED_DIALECTS
         assert "bigquery" in SUPPORTED_DIALECTS
 
-    def test_transpile_pg_to_trino(self):
+    def test_transpile_pg_to_physical(self):
         # REQ-066, REQ-068: PG SQL transpiles to Trino
         pg_sql = 'SELECT "id", "amount" FROM "public"."orders" WHERE "status" = $1'
         result = transpile(pg_sql, "trino")
@@ -243,7 +243,6 @@ class TestGraphQLVariableDefaults:
         doc = parse("{ orders(limit: 5, offset: 2) { id } }")
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
-        sql = results[0].sql
         params = results[0].params
         # Params list must carry 5 and 2 (not interpolated in SQL string literally)
         assert 5 in params
@@ -296,7 +295,14 @@ class TestOrderByAlignment:
         assert order_by_enum is not None
         assert isinstance(order_by_enum, GraphQLEnumType)
         values = set(order_by_enum.values.keys())
-        assert {"asc", "desc", "asc_nulls_first", "asc_nulls_last", "desc_nulls_first", "desc_nulls_last"}.issubset(values)
+        assert {
+            "asc",
+            "desc",
+            "asc_nulls_first",
+            "asc_nulls_last",
+            "desc_nulls_first",
+            "desc_nulls_last",
+        }.issubset(values)
 
     def test_order_by_column_keyed_compiles(self):
         # REQ-200: column-keyed order_by input compiles to ORDER BY clause
@@ -411,8 +417,10 @@ class TestAggregates:
                 "table_name": "orders",
                 "governance": "pre-approved",
                 "enable_aggregates": True,
-                "columns": [{"column_name": "id", "visible_to": ["analyst"]},
-                            {"column_name": "amount", "visible_to": ["analyst"]}],
+                "columns": [
+                    {"column_name": "id", "visible_to": ["analyst"]},
+                    {"column_name": "amount", "visible_to": ["analyst"]},
+                ],
             }
         ]
         role_no_agg = {
@@ -465,9 +473,7 @@ class TestGroupBy:
         si = _make_schema_input(enable_group_by=True, enable_aggregates=True)
         schema = generate_schema(si)
         ctx = build_context(si)
-        doc = parse(
-            '{ orders_group_by(by: ["region"]) { aggregates { count } } }'
-        )
+        doc = parse('{ orders_group_by(by: ["region"]) { aggregates { count } } }')
         errors = validate(schema, doc)
         if not errors:
             results = compile_query(doc, ctx)
@@ -813,6 +819,7 @@ class TestCypherQueryFrontend:
     def test_cypher_parser_no_external_dependency(self):
         # REQ-571: parse_cypher is the custom implementation; no library import errors
         from provisa.cypher.parser import parse_cypher
+
         ast = parse_cypher("MATCH (n:Person) RETURN n.name")
         assert ast is not None
         assert ast.return_clause is not None
@@ -835,9 +842,7 @@ class TestCypherQueryFrontend:
         from provisa.cypher.translator import cypher_to_sql
 
         lm = self._make_label_map(multi_source=True)
-        ast = parse_cypher(
-            "MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name, c.name"
-        )
+        ast = parse_cypher("MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name, c.name")
         # Must not raise — cross-source is allowed
         sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
         sql = sql_ast.sql(dialect="trino")
@@ -850,9 +855,7 @@ class TestCypherQueryFrontend:
         from provisa.cypher.translator import cypher_to_sql
 
         lm = self._make_label_map()
-        ast = parse_cypher(
-            "MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name, c.name"
-        )
+        ast = parse_cypher("MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name, c.name")
         sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
         sql = sql_ast.sql(dialect="trino")
         # JOIN must reference table (company), not a separate edges table
@@ -865,9 +868,7 @@ class TestCypherQueryFrontend:
         from provisa.cypher.translator import cypher_to_sql
 
         lm = self._make_label_map()
-        ast = parse_cypher(
-            "MATCH (a:Person)-[:KNOWS]-(b:Person) RETURN a.name, b.name"
-        )
+        ast = parse_cypher("MATCH (a:Person)-[:KNOWS]-(b:Person) RETURN a.name, b.name")
         sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
         sql = sql_ast.sql(dialect="trino")
         assert "UNION" in sql.upper()
@@ -990,6 +991,7 @@ class TestGraphAnalyticsPipeline:
 
     def _build_graph(self, nodes: list[dict], edges: list[dict]):
         import networkx as nx
+
         G = nx.DiGraph()
         for n in nodes:
             nid = n.get("id") or n.get("identity")
@@ -1002,6 +1004,7 @@ class TestGraphAnalyticsPipeline:
 
     def _run_algorithm(self, G, algorithm: str) -> dict:
         import networkx as nx
+
         if algorithm == "pagerank":
             scores = nx.pagerank(G)
             return {n: {"score": s} for n, s in scores.items()}
@@ -1116,8 +1119,18 @@ class TestRLSCompilerFallback:
 
         # Two rules for same role: one table-level (id=1), one domain-level
         rls_rules = [
-            {"role_id": "admin", "table_id": 1, "domain_id": None, "filter_expr": "region = 'us-east'"},
-            {"role_id": "admin", "table_id": None, "domain_id": "sales", "filter_expr": "region = 'global'"},
+            {
+                "role_id": "admin",
+                "table_id": 1,
+                "domain_id": None,
+                "filter_expr": "region = 'us-east'",
+            },
+            {
+                "role_id": "admin",
+                "table_id": None,
+                "domain_id": "sales",
+                "filter_expr": "region = 'global'",
+            },
         ]
         ctx = build_rls_context(rls_rules, "admin")
         # Table-level rule for table_id=1 must be present
@@ -1131,7 +1144,12 @@ class TestRLSCompilerFallback:
         from provisa.compiler.rls import build_rls_context
 
         rls_rules = [
-            {"role_id": "admin", "table_id": None, "domain_id": "sales", "filter_expr": "region = 'global'"},
+            {
+                "role_id": "admin",
+                "table_id": None,
+                "domain_id": "sales",
+                "filter_expr": "region = 'global'",
+            },
         ]
         ctx = build_rls_context(rls_rules, "admin")
         # No table-level rules

@@ -36,48 +36,6 @@ class FlightTransportIT {
     }
 
     @Test
-    @Order(2)
-    void flightTransport_executesQueryWhenAvailable() throws SQLException {
-        var props = new Properties();
-        props.setProperty("user", USER);
-        props.setProperty("password", "");
-        try (var conn = (ProvisaConnection) DriverManager.getConnection(BASE_URL, props)) {
-            if (conn.flightTransport == null) {
-                System.out.println("Flight not available — skipping Flight execution test");
-                return;
-            }
-
-            // Find a valid approved query view
-            ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
-            String viewName = null;
-            while (tables.next()) {
-                String name = tables.getString("TABLE_NAME");
-                if (!name.contains("__unknown")) {
-                    viewName = name;
-                    break;
-                }
-            }
-            if (viewName == null) {
-                System.out.println("No valid approved queries — skipping");
-                return;
-            }
-
-            // Execute via Flight (the statement will use Flight automatically)
-            Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM " + viewName);
-            ResultSetMetaData meta = rs.getMetaData();
-            assertTrue(meta.getColumnCount() > 0, "Should have columns from Flight stream");
-
-            int rowCount = 0;
-            while (rs.next()) {
-                rowCount++;
-                assertNotNull(rs.getObject(1));
-            }
-            assertTrue(rowCount >= 0, "Flight query should execute successfully");
-        }
-    }
-
-    @Test
     @Order(3)
     void httpFallback_worksWhenFlightUnavailable() throws SQLException {
         // Connect to a port where Flight is definitely not running

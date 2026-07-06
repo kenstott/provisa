@@ -47,7 +47,7 @@ from provisa.compiler.introspect import ColumnMetadata  # noqa: E402  # imports 
 from provisa.compiler import naming as _naming  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.compiler.schema_gen import SchemaInput  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.compiler.sql_gen import build_context  # noqa: E402  # imports follow the duckdb importorskip guard
-from provisa.executor.trino import QueryResult  # noqa: E402  # imports follow the duckdb importorskip guard
+from provisa.executor.result import QueryResult  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.pgwire.server import ProvisaConnection, ProvisaServer  # noqa: E402  # imports follow the duckdb importorskip guard
 
 
@@ -116,7 +116,7 @@ def _build_state():
     state.source_pools.has.return_value = False
     state.source_pools.source_ids = ["sales-pg"]
     state.server_limits = {}
-    state.trino_conn = None
+    state.engine_conn = None
     return state
 
 

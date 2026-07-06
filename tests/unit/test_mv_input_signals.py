@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from provisa.executor.trino import QueryResult
+from provisa.executor.result import QueryResult
 from provisa.lineage import resolve_input_version
 from provisa.mv.input_signals import gather_input_signals
 

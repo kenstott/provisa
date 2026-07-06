@@ -36,6 +36,10 @@ import { CacheManager } from "../components/admin/CacheManager";
 import { SystemHealth } from "../components/admin/SystemHealth";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
 import { ObservabilityTab } from "../components/admin/ObservabilityTab";
+import { FederationEngineTab } from "../components/admin/FederationEngineTab";
+import { CacheStorageTab } from "../components/admin/CacheStorageTab";
+import { EncryptionTab } from "../components/admin/EncryptionTab";
+import { AuthTab } from "../components/admin/AuthTab";
 import { LocalUsersTab } from "../components/admin/LocalUsersTab";
 import { OrgsTab } from "../components/admin/OrgsTab";
 
@@ -47,6 +51,10 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/materialized-views": "Materialized Views",
   "/admin/cache": "Cache",
   "/admin/scheduled-tasks": "Scheduled Tasks",
+  "/admin/federation-engine": "Federation Engine",
+  "/admin/cache-storage": "Cache & Storage",
+  "/admin/encryption": "Encryption",
+  "/admin/auth": "Authentication",
   "/admin/system-health": "System Health",
   "/admin/observability": "Observability",
   "/admin/local-users": "Local Users",
@@ -700,6 +708,10 @@ export function AdminPage() {
         {activeTab === "Materialized Views" && <MVManager />}
         {activeTab === "Cache" && <CacheManager />}
         {activeTab === "Scheduled Tasks" && <ScheduledTasks />}
+        {activeTab === "Federation Engine" && <FederationEngineTab />}
+        {activeTab === "Cache & Storage" && <CacheStorageTab />}
+        {activeTab === "Encryption" && <EncryptionTab />}
+        {activeTab === "Authentication" && <AuthTab />}
         {activeTab === "System Health" && <SystemHealth />}
         {activeTab === "Observability" && settings && (
           <ObservabilityTab settings={settings} setSettings={setSettings} />

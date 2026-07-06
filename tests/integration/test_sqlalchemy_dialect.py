@@ -74,7 +74,7 @@ class TestCreateConnectArgs:
 
         dialect = ProvisaDialect()
         url = make_url("provisa+http://admin:secret@localhost:8001")
-        args, kwargs = dialect.create_connect_args(url)
+        _args, kwargs = dialect.create_connect_args(url)
         assert "url" in kwargs
         assert kwargs["url"].startswith("http://")
         assert "localhost" in kwargs["url"]
@@ -86,7 +86,7 @@ class TestCreateConnectArgs:
 
         dialect = ProvisaDialect()
         url = make_url("provisa+https://admin:secret@db.example.com:8001")
-        args, kwargs = dialect.create_connect_args(url)
+        _args, kwargs = dialect.create_connect_args(url)
         assert kwargs["url"].startswith("https://")
 
     def test_default_port_is_8001(self):
@@ -95,7 +95,7 @@ class TestCreateConnectArgs:
 
         dialect = ProvisaDialect()
         url = make_url("provisa+http://admin:secret@localhost")
-        args, kwargs = dialect.create_connect_args(url)
+        _args, kwargs = dialect.create_connect_args(url)
         assert "8001" in kwargs["url"]
 
     def test_username_passed(self):
@@ -173,14 +173,14 @@ class TestLiveSQLAlchemyDialect:
         assert connection is not None
 
     def test_get_tables(self, connection):
-        """get_tables returns registered approved queries as virtual tables."""
+        """get_tables returns registered semantic-model tables as virtual tables."""
         from sqlalchemy import inspect
 
         inspector = inspect(connection)
         tables = inspector.get_table_names()
         assert isinstance(tables, list)
 
-    def test_execute_approved_query(self, connection):
+    def test_execute_table_free_sql(self, connection):
         """SQL SELECT with no table references executes through the governance pipeline."""
         from sqlalchemy import text
 
@@ -194,7 +194,7 @@ class TestLiveSQLAlchemyDialect:
 
         inspector = inspect(connection)
         tables = inspector.get_table_names()
-        # When no approved queries are registered, tables is empty and cols is empty.
+        # When no semantic-model tables are registered, tables is empty and cols is empty.
         if tables:
             cols = inspector.get_columns(tables[0])
             assert isinstance(cols, list)
