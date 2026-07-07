@@ -47,6 +47,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         multitenancy: bool = False,
         default_org_id: str = "root",
         superuser: dict | None = None,
+        config_resolver=None,
     ) -> None:
         super().__init__(app)
         self._provider = provider
@@ -61,20 +62,51 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         self._multitenancy = multitenancy
         self._default_org_id = default_org_id
         self._superuser = superuser
+        # Lazy wiring: when the middleware is installed at create_app (before the lifespan has loaded
+        # auth_config and the control-plane pools), config_resolver returns the settings from live
+        # ``state`` on the first request. None → settings above are already final (test/eager path).
+        self._config_resolver = config_resolver
+        self._resolved = config_resolver is None
+        self._resolve_lock = asyncio.Lock()
+
+    async def _ensure_resolved(self) -> None:
+        if self._resolved:
+            return
+        async with self._resolve_lock:
+            if self._resolved:
+                return
+            resolver = self._config_resolver
+            assert resolver is not None  # _resolved is False only when a resolver was set
+            s = resolver()
+            self._provider = s["provider"]
+            self._mapping_rules = s.get("mapping_rules") or []
+            self._default_role = s["default_role"]
+            self._db_pool = s["db_pool"]
+            self._admin_pool = s["admin_pool"]
+            self._assignments_source = s["assignments_source"]
+            self._default_assignments = s.get("default_assignments") or []
+            self._multitenancy = s["multitenancy"]
+            self._default_org_id = s["default_org_id"]
+            self._superuser = s["superuser"]
+            self._resolved = True
 
     async def dispatch(self, request: Request, call_next):  # REQ-486
         if request.url.path in _SKIP_PATHS:
             return await call_next(request)
 
+        await self._ensure_resolved()
+
         # No auth configured — backward compat: admin identity. REQ-273 caveat: when the
         # server is unsecured, a client-supplied role IS honored (there is no auth to validate
         # against), so X-Provisa-Role is taken at face value here; it defaults to admin.
+        # With no identity provider, the username IS the role (there is nothing else to name the
+        # caller by).
         if self._provider is None:
             unsecured_role = request.headers.get("x-provisa-role") or "admin"
             request.state.identity = AuthIdentity(
-                user_id="anonymous",
+                user_id=unsecured_role,
                 email=None,
-                display_name="Anonymous",
+                display_name=unsecured_role,
                 roles=[unsecured_role],
                 raw_claims={},
             )

@@ -341,7 +341,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     fetchSettings()
       .then((st) => setSettings(st))
       .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -377,7 +376,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       return;
     }
     suggestTableAlias(tableName, domainId, sourceId).then(setTableAlias);
-  }, [tableName, domainId, sourceId]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- suggestTableAlias is a stable hook callback; re-run only when the table selection changes
+  }, [tableName, domainId, sourceId]);
 
   useEffect(() => {
     setColumns([]);
@@ -428,9 +428,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setPage(0);
   }, [tableSearch, checkedDomains, groupBy]);
 
+  const groupByKey = groupBy.join(",");
   useEffect(() => {
     setCollapsedGroups(new Set());
-  }, [groupBy.join(",")]);
+  }, [groupByKey]);
 
   const handleSubmit = async () => {
     setError(null);
@@ -679,14 +680,19 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         />
         <div className="page-actions">
           {!viewsOnly && (
-            <button onClick={() => setShowForm(!showForm)}>
+            <button data-tour="tables-add" onClick={() => setShowForm(!showForm)}>
               {showForm ? "Cancel" : "+ Table"}
             </button>
           )}
           <button onClick={() => navigate("/sql")} title="Create a new view in the SQL Explorer">
             + View
           </button>
-          <button className="btn-icon" title="View ERD" onClick={() => setShowErd(true)}>
+          <button
+            data-tour="tables-erd"
+            className="btn-icon"
+            title="View ERD"
+            onClick={() => setShowErd(true)}
+          >
             <Network size={14} />
           </button>
         </div>
@@ -695,7 +701,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       {error && <div className="error">{error}</div>}
 
       {showForm && !viewsOnly && (
-        <div className="form-card">
+        <div data-tour="tables-form" className="form-card">
           <label>
             Source
             <select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>

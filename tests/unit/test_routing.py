@@ -131,6 +131,16 @@ class TestRoutingDecisions:
         assert decision.route == Route.ENGINE
         assert decision.source_id is None
 
+    def test_single_sqlite_source_routes_engine_not_direct(self):
+        """Regression: sqlite is file-based and reached only via the engine's ATTACH — it has no
+        network direct pool. It must route ENGINE, never DIRECT (which would dial a pool that was
+        never built, KeyError'ing on the source id)."""
+        types = {"notes-sqlite": "sqlite"}
+        dialects = {"notes-sqlite": "sqlite"}
+        decision = decide_route({"notes-sqlite"}, types, dialects)
+        assert decision.route == Route.ENGINE
+        assert decision.source_id is None
+
     def test_kafka_streaming_source_routes_trino(self):
         """A Kafka source (virtual) always routes to Trino."""
         decision = decide_route({"kafka-stream"}, _TYPES, _DIALECTS)

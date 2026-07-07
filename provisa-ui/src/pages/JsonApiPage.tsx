@@ -111,6 +111,8 @@ function SummaryView({ doc }: { doc: any }) {
   );
 }
 
+const JSONAPI_SETTINGS_KEY = "provisa.jsonapi.settings";
+
 export function JsonApiPage() {
   const location = useLocation();
   const { role } = useAuth();
@@ -138,6 +140,16 @@ export function JsonApiPage() {
     return { domainId: match[1], tableName: match[2], pageSize: params.get("page[size]") ?? "20" };
   }, [navUrl]);
 
+  // Persisted explorer settings (survive across sessions). Table selection is restored after the
+  // table list loads (below); page size is stable so it initializes directly.
+  const savedSettings = useMemo<{ selectedTable?: string; pageSize?: string }>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(JSONAPI_SETTINGS_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }, []);
+
   const [selectedTable, setSelectedTable] = useState<string>("");
   const [checkedFields, setCheckedFields] = useState<Set<string>>(new Set());
   const [checkedIncludes, setCheckedIncludes] = useState<Set<string>>(new Set());
@@ -146,7 +158,7 @@ export function JsonApiPage() {
   const [filterValue, setFilterValue] = useState<string>("");
   const [sortField, setSortField] = useState<string>("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [pageSize, setPageSize] = useState<string>("20");
+  const [pageSize, setPageSize] = useState<string>(savedSettings.pageSize ?? "20");
   const [parsedDoc, setParsedDoc] = useState<any>(null);
   const [activeUrl, setActiveUrl] = useState<string>("");
   const [viewTab, setViewTab] = useState<"summary" | "raw">("summary");
@@ -264,6 +276,23 @@ export function JsonApiPage() {
     setSelectedTable(`${match.domainId}/${match.tableName}`);
     setPageSize(parsedNav.pageSize);
   }, [tables, parsedNav]);
+
+  // Restore the persisted table selection once the table list has loaded (nav-from-NL wins). Gating
+  // on tables avoids the "reset selected table if not in list" effect wiping it before load.
+  const restoreDoneRef = useRef(false);
+  useEffect(() => {
+    if (restoreDoneRef.current || parsedNav || tables.length === 0) return;
+    restoreDoneRef.current = true;
+    const saved = savedSettings.selectedTable;
+    if (saved && tables.find((t) => `${t.domainId}/${t.tableName}` === saved)) {
+      setSelectedTable(saved);
+    }
+  }, [tables, parsedNav, savedSettings]);
+
+  // Persist stable explorer settings across sessions.
+  useEffect(() => {
+    localStorage.setItem(JSONAPI_SETTINGS_KEY, JSON.stringify({ selectedTable, pageSize }));
+  }, [selectedTable, pageSize]);
 
   function toggleField(col: string) {
     setCheckedFields((prev) => {

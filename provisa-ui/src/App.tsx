@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { ApolloProvider } from "@apollo/client/react";
 import { client } from "./apolloClient";
 import { AuthProvider } from "./context/AuthContext";
@@ -17,6 +17,7 @@ import { DomainFilterProvider } from "./context/DomainFilterContext";
 import { NavBar } from "./components/NavBar";
 import { CapabilityGate } from "./components/CapabilityGate";
 import { fetchSetupStatus } from "./api/setup";
+import { TourProvider, useTour, hasSeenTour } from "./tour/useTour";
 import "./App.css";
 
 const SourcesPage = lazy(() => import("./pages/SourcesPage").then((m) => ({ default: m.SourcesPage })));
@@ -45,6 +46,33 @@ function NotAuthorized() {
   return <div className="page">You do not have permission to view this page.</div>;
 }
 
+/**
+ * Auto-launches the guided tour when the server is in demo mode (first visit
+ * only) or when the URL carries `?tour=1`, which always starts it and then
+ * strips the param so a refresh doesn't relaunch.
+ */
+function TourAutoStart({ demoMode }: { demoMode: boolean }) {
+  const { startTour } = useTour();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tourParam = searchParams.get("tour");
+  useEffect(() => {
+    if (tourParam !== null) {
+      setSearchParams(
+        (p) => {
+          const n = new URLSearchParams(p);
+          n.delete("tour");
+          return n;
+        },
+        { replace: true },
+      );
+      startTour();
+      return;
+    }
+    if (demoMode && !hasSeenTour()) startTour();
+  }, [tourParam, demoMode, startTour, setSearchParams]);
+  return null;
+}
+
 /** Redirects to /login when auth is enabled and no token is present. */
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -62,10 +90,12 @@ function App() {
   }, []);
   const [setupChecked, setSetupChecked] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [demoMode, setDemoMode] = useState(false);
 
   useEffect(() => {
-    fetchSetupStatus().then(({ needs_setup }) => {
+    fetchSetupStatus().then(({ needs_setup, demo_mode }) => {
       setNeedsSetup(needs_setup);
+      setDemoMode(demo_mode);
       setSetupChecked(true);
     });
   }, []);
@@ -87,6 +117,8 @@ function App() {
           ) : (
             <DomainFilterProvider>
               <RequireAuth>
+                <TourProvider>
+                <TourAutoStart demoMode={demoMode} />
                 <NavBar />
                 <main>
                 <Suspense fallback={<div className="page"><p>Loading...</p></div>}>
@@ -272,6 +304,7 @@ function App() {
                 </Routes>
                 </Suspense>
               </main>
+                </TourProvider>
               </RequireAuth>
             </DomainFilterProvider>
           )}

@@ -198,6 +198,28 @@ def test_graph_vars_populated_for_node_return():
     assert graph_vars["n"] == GraphVarKind.NODE
 
 
+def test_with_scalar_return_projects_columns_not_cte_struct():
+    # Regression: WITH x AS a, y AS b RETURN a, b must project the individual scalar CTE columns.
+    # The bug returned the bare CTE table (SELECT _w0, _w0 FROM _w0), which the engine reads as a
+    # whole-row struct and the client renders as [object Object].
+    import re
+
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person)-[:KNOWS]->(m:Person) "
+        "WITH n.name AS nm, COUNT(m) AS c "
+        "RETURN nm, c ORDER BY c DESC"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "_w0" in sql  # the WITH segment becomes CTE _w0
+    # The outer projection must NOT select the bare CTE table (the defect).
+    assert not re.search(r"SELECT\s+_w0\s*(,|\bFROM\b)", sql, re.IGNORECASE)
+    # Both scalar aliases must be projected as qualified columns of the CTE.
+    assert re.search(r'_w0\."?nm"?', sql, re.IGNORECASE)
+    assert re.search(r'_w0\."?c"?', sql, re.IGNORECASE)
+
+
 def test_inner_join_for_required_match():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name, c.name")

@@ -35,6 +35,8 @@ _PROTO_TYPE_MAP: dict[str, str] = {
     "varchar": "string",
     "char": "string",
     "varbinary": "bytes",
+    "bytea": "bytes",
+    "blob": "bytes",
     "uuid": "string",
     "boolean": "bool",
     "real": "double",

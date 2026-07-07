@@ -38,6 +38,10 @@ API_SOURCES: set[str] = {"openapi", "graphql_api", "grpc_api", "grpc_remote"}
 
 # Virtual sources — always route through the engine (no direct SQL driver)
 VIRTUAL_SOURCES: set[str] = {
+    # File-based: exposed only via the engine's ATTACH (DuckDBSqliteConnector). There is no
+    # network direct pool for a file source, and only the engine attach maps its physical
+    # layout (sqlite exposes tables under ``main``) onto the registered catalog/schema.
+    "sqlite",
     # NoSQL
     "mongodb",
     "cassandra",

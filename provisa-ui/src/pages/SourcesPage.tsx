@@ -2368,6 +2368,7 @@ export function SourcesPage() {
         <div className="page-actions">
           {!editingSourceId && (
             <button
+              data-tour="sources-add"
               onClick={() => {
                 if (showForm) {
                   handleCancelForm();
@@ -2387,6 +2388,7 @@ export function SourcesPage() {
 
       {showForm && !editingSourceId && (
         <form
+          data-tour="sources-form"
           className="form-card"
           onSubmit={
             form.type === "openapi"

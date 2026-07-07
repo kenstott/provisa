@@ -3,7 +3,7 @@ auth:
   default_assignments:
   - domain_id: '*'
     role_id: admin
-  provider: basic
+  provider: none
 cache:
   default_ttl: 300
   enabled: true
@@ -146,15 +146,11 @@ server:
     request_timeout: 60
     trino_query_timeout: 120
 sources:
-- database: provisa
-  description: "Internal pet store inventory \u2014 tracks animals available for sale,\
+- description: "Internal pet store inventory \u2014 tracks animals available for sale,\
     \ pricing, species, and breed assignments managed by the inventory department"
-  host: ${env:POSTGRES_HOST:-postgres}
-  id: pet-store-pg
-  password: ${env:PG_PASSWORD:-provisa}
-  port: 5432
-  type: postgresql
-  username: provisa
+  id: pet-store-sqlite
+  path: ./demo/files/pet_store.sqlite
+  type: sqlite
 - auth_config:
     type: none
   base_url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}
@@ -213,7 +209,7 @@ tables:
   enable_group_by: true
   governance: pre-approved
   schema: pet_store
-  source_id: pet-store-pg
+  source_id: pet-store-sqlite
   table: pets
 - alias: pet_by_status
   columns:

@@ -739,6 +739,7 @@ def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
 async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-012, REQ-221
     """Build direct source connection pools, register websocket/rss sources, and fetch enum types."""
     from provisa.executor.drivers.registry import has_driver
+    from provisa.transpiler.router import VIRTUAL_SOURCES
     from provisa.cache.warm_tables import DEFAULT_ICEBERG_CATALOG as _DEFAULT_ICE_CAT
 
     # Seed system source catalogs
@@ -762,7 +763,11 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
             state.source_federation_hints[src.id] = dict(src.federation_hints)
         if src.allowed_domains:
             state.source_allowed_domains[src.id] = list(src.allowed_domains)
-        if has_driver(src.type.value):
+        # Engine-attached sources (file-based sqlite, NoSQL, lake) are reached only through the
+        # engine's ATTACH — they have no network direct pool. Attempting one builds an invalid DSN
+        # (e.g. sqlite has a file ``path``, not host/port) and would leave the source routable-as-
+        # direct with no driver behind it. Never pool them; the router routes them to the engine.
+        if has_driver(src.type.value) and src.type.value not in VIRTUAL_SOURCES:
             resolved_pw = resolve_secrets(src.password)
             resolved_host = resolve_secrets(src.host) if src.host else "localhost"
             state.source_dsns[src.id] = f"{resolved_host}:{src.port}/{src.database}"
@@ -1805,12 +1810,12 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
                 "generate_schema failed for role %r: %s", role["id"], _schema_err
             )
 
-        try:
-            from provisa.grpc.proto_gen import generate_proto
+        # No swallow: an unmapped column type is a real gap in the proto type map, not a reason to
+        # silently disable gRPC for the role. Let generate_proto raise so it surfaces at startup and
+        # gets fixed at the source (the type map) — never patched around here.
+        from provisa.grpc.proto_gen import generate_proto
 
-            state.proto_files[role["id"]] = generate_proto(si)
-        except ValueError:
-            pass
+        state.proto_files[role["id"]] = generate_proto(si)
 
 
 async def _bg_hydrate_api_endpoints() -> None:

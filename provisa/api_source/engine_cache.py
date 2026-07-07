@@ -95,6 +95,13 @@ def cache_location(  # REQ-318, REQ-309, REQ-327
     return CacheLocation(catalog, cache_schema, backend)
 
 
+def resolved_cache_catalog(engine: Any) -> str:  # REQ-318
+    """The bound engine's cache catalog: a native/ephemeral engine (DuckDB) → its attached
+    materialization store; a broad federator (Trino) → the writable ``provisa_admin`` config catalog.
+    Hardcoding provisa_admin binder-errors on a native engine that never attaches it."""
+    return engine.cache_catalog() or "provisa_admin"
+
+
 def cache_table_name(  # REQ-318, REQ-309, REQ-327
     source_id: str, operation_id: str, native_args: dict
 ) -> str:
