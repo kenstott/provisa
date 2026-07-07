@@ -114,12 +114,6 @@ class AppState:
     ] = {}  # role_id → {gql_field_name → {schema_name, table_name, domain_id}}
     _grpc_server: Any | None = None
     _flight_server: Any | None = None  # ProvisaFlightServer
-    # Bound ports for the separate socket listeners (None = protocol not enabled). Health
-    # probes TCP-connect to these to tell "running" from "down" independently of the HTTP app.
-    _grpc_port: int | None = None
-    _flight_port: int | None = None
-    _pgwire_port: int | None = None
-    _bolt_port: int | None = None
     kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
     kafka_table_configs: dict[str, KafkaTableConfig] = {}  # table_name → KafkaTableConfig
     view_sql_map: dict[str, str] = {}  # view_table_name → SQL (for inline expansion)
@@ -2107,7 +2101,10 @@ def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
 
 async def _start_background_tasks(_log: logging.Logger) -> None:
     """Start MV refresh, warm-table, hot-table refresh, and SQLite staleness background tasks."""
-    if state.mv_registry.get_enabled() and state.engine_conn:
+    # Start the refresh loop whenever an engine terminal exists — not gated on MVs already
+    # being registered. The loop polls and no-ops on an empty registry, so it idles cheaply
+    # and picks up MVs created at runtime on the next tick (no lazy per-creation start needed).
+    if state.engine_conn:
         from provisa.mv.refresh import refresh_loop
 
         state._mv_refresh_task = asyncio.create_task(
@@ -2257,7 +2254,6 @@ async def _start_servers(_log: logging.Logger) -> None:
                 pb2_path,
                 pb2_grpc_path,
             )
-            state._grpc_port = grpc_port
             _log.info("gRPC server listening on %s:%d", state.hostname, grpc_port)
         except Exception:
             _log.exception("gRPC server startup failed")
@@ -2281,7 +2277,6 @@ async def _start_servers(_log: logging.Logger) -> None:
         )
         flight_thread.start()
         state._flight_server = flight_server
-        state._flight_port = flight_port
         _log.info("Arrow Flight server listening on %s:%d", state.hostname, flight_port)
     except Exception:
         _log.exception("Arrow Flight server startup failed")
@@ -2308,7 +2303,6 @@ async def _start_servers(_log: logging.Logger) -> None:
                 ssl_ctx=_ssl_ctx,
                 loop=asyncio.get_running_loop(),
             )
-            state._pgwire_port = pgwire_port
             _log.info(
                 "pgwire server listening on 0.0.0.0:%d (TLS=%s)", pgwire_port, _ssl_ctx is not None
             )
@@ -2334,7 +2328,6 @@ async def _start_servers(_log: logging.Logger) -> None:
                 ssl_ctx=_bolt_ssl_ctx,
                 loop=asyncio.get_running_loop(),
             )
-            state._bolt_port = bolt_port
             _log.info(
                 "bolt server listening on 0.0.0.0:%d (TLS=%s)", bolt_port, _bolt_ssl_ctx is not None
             )

@@ -46,7 +46,6 @@ from provisa.api.admin.types import (
     RLSRuleInput,
     RLSRuleType,
     RoleInput,
-    ProtocolHealthType,
     RoleType,
     ScheduledTaskType,
     SourceInput,
@@ -1168,76 +1167,9 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def system_health(self) -> SystemHealthType:
         """Return system component health status."""
-        import asyncio
+        from provisa.api.admin.system_health import collect_system_health
 
-        from provisa.api.app import state
-        from provisa.cache.store import RedisCacheStore
-
-        engine_ok, engine_worker_count, engine_active_workers = (
-            state.federation_engine.cluster_diagnostics()
-        )
-
-        pg_size, pg_free = 0, 0
-        if state.tenant_db is not None:
-            pg_size = state.tenant_db.get_size()
-            pg_free = state.tenant_db.get_idle_size()
-
-        # Cache: NoopCacheStore = disabled; RedisCacheStore with no URL = embedded fakeredis
-        # (always up, in-process); with a URL = a real server that may be online or not.
-        cache_mode, cache_ok = "disabled", False
-        store = state.response_cache_store
-        if isinstance(store, RedisCacheStore):
-            if store._redis_url:
-                cache_mode = "server"
-                try:
-                    await store._connect()
-                    assert store._redis is not None
-                    await store._redis.ping()
-                    cache_ok = True
-                except Exception:
-                    pass
-            else:
-                cache_mode, cache_ok = "embedded", True
-
-        # Separate socket listeners fail independently of the HTTP app, so probe each with a
-        # short TCP connect. A recorded port means the protocol was started; None = disabled.
-        async def _probe(port: int | None) -> str:
-            if port is None:
-                return "disabled"
-            try:
-                _reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection("127.0.0.1", port), timeout=0.5
-                )
-                writer.close()
-                await writer.wait_closed()
-                return "running"
-            except Exception:
-                return "down"
-
-        _probes = {
-            "gRPC": state._grpc_port,
-            "Arrow Flight": state._flight_port,
-            "pgwire": state._pgwire_port,
-            "bolt": state._bolt_port,
-        }
-        _statuses = await asyncio.gather(*(_probe(p) for p in _probes.values()))
-        protocols = [
-            ProtocolHealthType(name=name, status=status, port=port)
-            for (name, port), status in zip(_probes.items(), _statuses)
-        ]
-
-        return SystemHealthType(
-            engine_connected=engine_ok,
-            engine_worker_count=engine_worker_count,
-            engine_active_workers=engine_active_workers,
-            pg_pool_size=pg_size,
-            pg_pool_free=pg_free,
-            cache_mode=cache_mode,
-            cache_connected=cache_ok,
-            protocols=protocols,
-            mv_refresh_loop_running=hasattr(state, "_mv_refresh_task")
-            and state._mv_refresh_task is not None,
-        )
+        return await collect_system_health()
 
     # ── Admin: Scheduled Tasks ──
 
