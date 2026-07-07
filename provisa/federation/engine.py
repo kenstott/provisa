@@ -390,6 +390,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         PostgresFdwConnector,
         SqliteFdwConnector,
     )
+    from provisa.federation.native_backend import NativeEngineBackend
 
     return FederationEngine(
         name,
@@ -406,6 +407,8 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         native_store="postgres",  # its own tables are native; attached sources reference in place
         driver_class=DriverClass.PARTIAL,
         mpp=False,  # single-node: cross-server joins materialize locally (REQ-894)
+        backend_factory=NativeEngineBackend,  # shared in-process terminal (runtime wiring: separate)
+        default_materialize_store=_platform_db_materialize_default,
     )
 
 
@@ -426,6 +429,7 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
         ClickHouseParquetConnector,
         ClickHousePostgresConnector,
     )
+    from provisa.federation.native_backend import NativeEngineBackend
 
     return FederationEngine(
         "clickhouse",
@@ -439,6 +443,8 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
         native_store="clickhouse",  # its own tables are native; attached sources reference in place
         driver_class=DriverClass.PARTIAL,
         mpp=True,  # ClickHouse distributes across shards/replicas
+        backend_factory=NativeEngineBackend,  # shared in-process terminal (runtime wiring: separate)
+        default_materialize_store=_platform_db_materialize_default,
         capabilities=frozenset(
             {EngineCapability.ROWS, EngineCapability.ARROW}
         ),  # query_arrow (REQ-909)
@@ -458,6 +464,7 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
     ClickHouse, ...) is a usable engine with no per-source connector. The URL comes
     from the arg or ``$PROVISA_ENGINE_URL``; its scheme names the native store."""
     from provisa.federation.connector import WarehouseNativeConnector
+    from provisa.federation.native_backend import NativeEngineBackend
 
     dsn = url or configured_engine_url()
     if not dsn:
@@ -469,6 +476,8 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
         native_store=backend,
         driver_class=DriverClass.SELF_ONLY,  # reaches only its own store; everything lands in
         mpp=False,
+        backend_factory=NativeEngineBackend,  # shared in-process terminal (runtime wiring: separate)
+        default_materialize_store=_platform_db_materialize_default,
     )
 
 
