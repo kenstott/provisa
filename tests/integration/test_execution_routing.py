@@ -613,7 +613,7 @@ class TestFederationHints:
         loc = cache_location("my-source", None, "api_cache")
         assert loc.catalog == "my_source"  # hyphens → underscores
         assert loc.schema == "api_cache"
-        assert loc.backend == "postgresql"
+        assert loc.backend == "relational"
 
     async def test_cache_location_iceberg_backend(self):
         # REQ-275: cache_location with "results" catalog uses iceberg backend
