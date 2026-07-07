@@ -26,6 +26,7 @@ This is the engine primitive a live EngineRuntime dispatch would call; routing/H
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import duckdb
@@ -35,6 +36,8 @@ from provisa.federation.engine import build_duckdb_engine
 from provisa.federation.materialize_exec import land_rows_into_pg
 from provisa.transpiler.transpile import transpile
 
+_log = logging.getLogger(__name__)
+
 
 class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def __init__(self, *, materialize_dsn: str | None = None) -> None:
@@ -42,11 +45,23 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
         self._con = duckdb.connect()
         self._engine = build_duckdb_engine()
-        # Default the LAND store from config ($PROVISA_MATERIALIZE_URL / materialize_store_url).
-        self._materialize_dsn = materialize_dsn or configured_materialize_url()
+        # The materialization store DSN, resolved in precedence: explicit constructor arg (tests) →
+        # configured store ($PROVISA_MATERIALIZE_URL / materialize_store_url) → the engine's OWN
+        # declared default store (used with a warning). None here is not a usable fallback:
+        # ensure_materialize_attached() raises at use time.
+        resolved = materialize_dsn if materialize_dsn is not None else configured_materialize_url()
+        if resolved is None:
+            resolved = self._engine.default_materialize_store()
+            if resolved is not None:
+                _log.warning(
+                    "no materialize store configured; falling back to the %r engine's own default "
+                    "store — configure materialize_store_url to silence this",
+                    self._engine.name,
+                )
+        self._materialize_dsn = resolved
         self._sqlite_loaded = False
         self._pg_ext_loaded = False  # postgres DuckDB extension INSTALL/LOAD (source ATTACH)
-        self._pg_attached = False  # matpg materialization store ATTACH (distinct)
+        self._store_attached = False  # materialization-store ATTACH (distinct from source attaches)
         self._phys_catalogs: set[str] = set()  # in-memory catalogs holding the physical views
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
 
@@ -95,37 +110,58 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             remote = f'"{raw_alias}"."{remote_schema}"."{source.table_name}"'
             self._con.execute(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {remote}")
 
+    # The materialization store, attached under this backend-neutral alias. Sources with no connector
+    # and the API-result cache both LAND here (never into DuckDB's own storage); the engine reaches
+    # them through this attach. Its backend is taken from the store URL's scheme — nothing assumed.
+    _MAT_STORE = "mat_store"
+    _ATTACH_TYPE_BY_SCHEME = {"postgresql": "postgres", "postgres": "postgres"}
+
+    def ensure_materialize_attached(self) -> str:
+        """ATTACH the configured materialization store under ``mat_store`` (idempotent); return the
+        alias. Unconfigured store → error (never a fallback). The DuckDB ATTACH type is derived from
+        the store URL scheme; the driver parses the URL (and its own defaults) — the runtime injects
+        no defaults of its own."""
+        if self._materialize_dsn is None:
+            raise RuntimeError("no materialize store configured (materialize_store_url)")
+        if not self._store_attached:
+            from urllib.parse import urlparse
+
+            scheme = urlparse(self._materialize_dsn).scheme.split("+", 1)[0]
+            store_type = self._ATTACH_TYPE_BY_SCHEME.get(scheme)
+            if store_type is None:
+                raise RuntimeError(
+                    f"materialize store scheme {scheme!r} is not attachable by the DuckDB engine"
+                )
+            self._con.execute(f"INSTALL {store_type}")
+            self._con.execute(f"LOAD {store_type}")
+            self._con.execute(
+                f"ATTACH '{self._materialize_dsn}' AS {self._MAT_STORE} (TYPE {store_type})"
+            )
+            self._store_attached = True
+        return self._MAT_STORE
+
+    @property
+    def connection(self):
+        """The underlying DuckDB connection. The backend's cache terminal writes the API-result cache
+        through it against ``mat_store.*`` — landing in the materialization store, not DuckDB."""
+        return self._con
+
     async def materialize_source(
         self, source: Any, columns: list[tuple[str, str]], rows: list[dict]
     ) -> None:
-        """LAND a non-attachable source into the PG store, ATTACH it, expose at physical name."""
-        if self._materialize_dsn is None:
-            raise RuntimeError("no materialize store configured for a non-attachable source")
+        """LAND a source with no connector into the materialization store, then expose it at its
+        catalog-physical name through the store attach."""
         import asyncpg
 
+        store = self.ensure_materialize_attached()  # errors if the store is not configured
         pg = await asyncpg.connect(dsn=self._materialize_dsn)
         try:
             await land_rows_into_pg(pg, schema="mat", table=source.id, columns=columns, rows=rows)
         finally:
             await pg.close()
-        if not self._pg_attached:
-            self._con.execute("INSTALL postgres")
-            self._con.execute("LOAD postgres")
-            self._con.execute(f"ATTACH '{self._dsn_kv()}' AS matpg (TYPE postgres)")
-            self._pg_attached = True
         phys = self._phys_name(source)
         self._con.execute(
-            f'CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM matpg.mat."{source.id}"'
-        )
-
-    def _dsn_kv(self) -> str:
-        # postgresql://user:pw@host:port/db  ->  host=.. port=.. dbname=.. user=.. password=..
-        from urllib.parse import urlparse
-
-        u = urlparse(self._materialize_dsn or "")
-        return (
-            f"host={u.hostname} port={u.port or 5432} dbname={u.path.lstrip('/')} "
-            f"user={u.username} password={u.password}"
+            f'CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {store}.mat."{source.id}"'
         )
 
     # -- metadata --------------------------------------------------------------

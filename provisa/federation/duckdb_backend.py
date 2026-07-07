@@ -17,6 +17,7 @@ lifecycle: build one persistent runtime, attach every registered table into it, 
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
@@ -105,3 +106,18 @@ class DuckDBBackend(EngineBackend):
 
     def execute_sync(self, state: Any, sql: str, params: list | None = None) -> QueryResult:
         return self._runtime_for(state).run_sync(sql, params)
+
+    @contextmanager
+    def isolated_sync(self, state: Any):
+        """The API-result cache terminal: yields the runtime's connection with the materialization
+        store attached. The engine cache writes CREATE TABLE/INSERT against ``mat_store.*``, which
+        land in the store (not DuckDB's own storage)."""
+        rt = self._runtime_for(state)
+        rt.ensure_materialize_attached()
+        yield rt.connection
+
+    def _materialize_store_ref(self, state: Any) -> str | None:
+        """DuckDB's source exposure is ephemeral (in-memory attaches), so API results a source cannot
+        reach live are cached in the EXTERNAL materialization store, attached under its alias — never
+        DuckDB's own storage. Unconfigured store → error (raised by the runtime)."""
+        return self._runtime_for(state).ensure_materialize_attached()
