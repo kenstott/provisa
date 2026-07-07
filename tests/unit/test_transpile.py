@@ -10,6 +10,9 @@
 
 """Unit tests for SQLGlot PG SQL → target dialect transpilation."""
 
+import pytest
+from sqlglot.errors import ParseError
+
 from provisa.transpiler.transpile import (
     transpile,
     transpile_to_trino,
@@ -62,9 +65,9 @@ class TestTranspileToTrino:
         trino_sql = transpile_to_trino(pg)
         assert "is null" in trino_sql.lower()
 
-    def test_empty_sql_returns_empty(self):
-        result = transpile_to_trino("")
-        assert result == ""
+    def test_empty_sql_raises(self):
+        with pytest.raises(ParseError):
+            transpile_to_trino("")
 
     def test_combined_query(self):
         pg = (
@@ -130,9 +133,10 @@ class TestRewriteCorrelatedSubqueries:
         sql = "INSERT INTO foo VALUES (1)"
         assert rewrite_correlated_subqueries_for_trino(sql) == sql
 
-    def test_invalid_sql_unchanged(self):
+    def test_invalid_sql_raises(self):
         sql = "NOT VALID SQL %%% ###"
-        assert rewrite_correlated_subqueries_for_trino(sql) == sql
+        with pytest.raises(ParseError):
+            rewrite_correlated_subqueries_for_trino(sql)
 
     def test_uncorrelated_subquery_unchanged(self):
         # Subquery has no WHERE correlation to outer table

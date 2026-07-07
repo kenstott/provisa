@@ -24,6 +24,8 @@ from provisa.auth.models import AuthIdentity, AuthProvider
 class KeycloakAuthProvider(AuthProvider):  # REQ-120, REQ-122
     """Validates JWTs issued by Keycloak via JWKS."""
 
+    provider_name: str = "keycloak"
+
     def __init__(
         self,
         server_url: str,

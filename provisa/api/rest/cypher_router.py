@@ -850,7 +850,8 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
                 return 0
             return int(rows[0]["cnt"]) if rows else 0
         except Exception:
-            return 0
+            # Swallowing here corrupts totals/pagination — propagate.
+            raise
 
     node_labels = [
         nm.label

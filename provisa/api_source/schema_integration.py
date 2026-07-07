@@ -51,13 +51,20 @@ def _endpoint_to_table_dict(  # REQ-119, REQ-599, REQ-602
 
     Returns (table_dict, column_metadata_list).
     """
-    table_id = 100000 + (endpoint.id or 0)  # offset to avoid collision with DB tables
+    if endpoint.id is None:
+        raise ValueError(
+            f"Endpoint {endpoint.table_name!r} (source {endpoint.source_id!r}) has no id; "
+            "cannot derive table_id"
+        )
+    table_id = 100000 + endpoint.id  # offset to avoid collision with DB tables
 
     columns_for_table: list[dict] = []
     column_metadata: list[ColumnMetadata] = []
 
     for col in endpoint.columns:
-        column_type = _API_TYPE_TO_IR.get(col.type, "varchar")
+        if col.type not in _API_TYPE_TO_IR:
+            raise ValueError(f"Unmapped API column type {col.type!r} for column {col.name!r}")
+        column_type = _API_TYPE_TO_IR[col.type]
         col_dict: dict = {
             "column_name": col.name,
             "visible_to": role_ids,
@@ -83,7 +90,11 @@ def _endpoint_to_table_dict(  # REQ-119, REQ-599, REQ-602
     # Add promoted columns
     if promotions:
         for p in promotions:
-            column_type = _PROMOTION_TYPE_TO_IR.get(p.target_type, "varchar")
+            if p.target_type not in _PROMOTION_TYPE_TO_IR:
+                raise ValueError(
+                    f"Unmapped promotion target_type {p.target_type!r} for column {p.target_column!r}"
+                )
+            column_type = _PROMOTION_TYPE_TO_IR[p.target_type]
             columns_for_table.append(
                 {
                     "column_name": p.target_column,

@@ -22,6 +22,7 @@ from provisa.api_source.models import PromotionConfig
 
 # --- Dot-path to PG expression ---
 
+
 def test_single_level_path():
     expr = dot_path_to_pg_expression("data", "city")
     assert expr == "(data->>'city')"
@@ -43,6 +44,7 @@ def test_empty_path_raises():
 
 
 # --- DDL generation ---
+
 
 def test_generate_promotion_ddl_integer():
     promotions = [
@@ -82,7 +84,9 @@ def test_generate_promotion_ddl_text():
 def test_generate_promotion_ddl_multiple():
     promotions = [
         PromotionConfig(jsonb_column="d", field="a", target_column="col_a", target_type="integer"),
-        PromotionConfig(jsonb_column="d", field="b.c", target_column="col_bc", target_type="boolean"),
+        PromotionConfig(
+            jsonb_column="d", field="b.c", target_column="col_bc", target_type="boolean"
+        ),
     ]
     stmts = generate_promotion_ddl("tbl", promotions)
     assert len(stmts) == 2
@@ -120,7 +124,9 @@ async def test_apply_promotions_executes_ddl():
     conn = _RecordingConn()
     promotions = [
         PromotionConfig(jsonb_column="data", field="a.b", target_column="ab", target_type="text"),
-        PromotionConfig(jsonb_column="data", field="n", target_column="n_int", target_type="integer"),
+        PromotionConfig(
+            jsonb_column="data", field="n", target_column="n_int", target_type="integer"
+        ),
     ]
     n = await apply_promotions(conn, "orders", promotions)
     assert n == 2
@@ -146,7 +152,9 @@ def test_dot_path_cast_source_for_varchar_json():
 @pytest.mark.asyncio
 async def test_apply_promotions_cast_source_emits_jsonb_cast():
     conn = _RecordingConn()
-    promotions = [PromotionConfig(jsonb_column="data", field="city", target_column="city", target_type="text")]
+    promotions = [
+        PromotionConfig(jsonb_column="data", field="city", target_column="city", target_type="text")
+    ]
     await apply_promotions(conn, "cache_tbl", promotions, cast_source=True)
     assert "::jsonb" in conn.executed[0]
 
@@ -156,8 +164,19 @@ def test_table_config_parses_promotions():
     from provisa.core.models import Table
 
     t = Table(
-        source_id="s", domain_id="d", schema="public", table="t", columns=[],
-        promotions=[{"jsonb_column": "data", "field": "addr.city", "target_column": "city", "target_type": "text"}],
+        source_id="s",
+        domain_id="d",
+        schema="public",
+        table="t",
+        columns=[],
+        promotions=[
+            {
+                "jsonb_column": "data",
+                "field": "addr.city",
+                "target_column": "city",
+                "target_type": "text",
+            }
+        ],
     )
     assert t.promotions[0]["target_column"] == "city"
 
@@ -167,11 +186,15 @@ def test_register_api_columns_includes_promoted_columns():
     from provisa.api_source.models import ApiEndpoint
     from provisa.api_source.schema_integration import register_api_columns
 
-    ep = ApiEndpoint(source_id="s", path="/x", table_name="people", columns=[])
+    ep = ApiEndpoint(id=1, source_id="s", path="/x", table_name="people", columns=[])
     tables: list[dict] = []
     col_types: dict = {}
     promotions_map = {
-        "people": [PromotionConfig(jsonb_column="data", field="addr.city", target_column="city", target_type="text")]
+        "people": [
+            PromotionConfig(
+                jsonb_column="data", field="addr.city", target_column="city", target_type="text"
+            )
+        ]
     }
     register_api_columns(
         tables, col_types, [ep], domain_id="api", role_ids=["admin"], promotions_map=promotions_map

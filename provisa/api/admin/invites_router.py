@@ -44,7 +44,10 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
 
     pool = _pool(request)
     identity = getattr(request.state, "identity", None)
-    created_by = identity.user_id if identity else "system"
+    # Audit attribution must be a real user — never fall back to "system".
+    if identity is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    created_by = identity.user_id
     # token and expiry are computed app-side (portable) rather than via
     # PG-specific gen_random_uuid()/interval defaults — the platform control
     # plane may be any SQLAlchemy backend.

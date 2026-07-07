@@ -125,7 +125,7 @@ def ensure_cache_schema(conn, loc: CacheLocation) -> None:  # REQ-318, REQ-309, 
         cur.fetchall()
         _SCHEMA_EXISTS_CACHE.add(key)
     except Exception as exc:
-        log.debug("ensure_cache_schema: %s", exc)
+        raise RuntimeError(f"ensure_cache_schema failed for {key}: {exc}") from exc
 
 
 def table_known_live(loc: CacheLocation, table_name: str) -> bool:  # REQ-318, REQ-309, REQ-327

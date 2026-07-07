@@ -53,6 +53,8 @@ async def login(request: LoginRequest):  # REQ-124
 class SimpleAuthProvider(AuthProvider):  # REQ-120, REQ-124
     """Bcrypt password validation with JWT issuance for testing/simple deployments."""
 
+    provider_name: str = "simple"
+
     def __init__(self, users: list[dict], jwt_secret: str) -> None:
         self._users = {u["username"]: u for u in users}
         self._jwt_secret = jwt_secret

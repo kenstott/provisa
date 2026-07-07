@@ -100,7 +100,11 @@ def infer_columns(sample_rows: list[dict]) -> list[ApiColumn]:
             col_type = ApiColumnType.number
         elif isinstance(sample_value, (dict, list)):
             col_type = ApiColumnType.jsonb
-        else:
+        elif isinstance(sample_value, str):
             col_type = ApiColumnType.string
+        else:
+            raise ValueError(
+                f"unknown sample value type for column {field!r}: {type(sample_value).__name__}"
+            )
         columns.append(ApiColumn(name=field, type=col_type))
     return columns

@@ -25,6 +25,8 @@ from provisa.auth.models import AuthIdentity, AuthProvider
 class OAuthProvider(AuthProvider):  # REQ-120, REQ-123
     """Validates JWTs via generic OIDC discovery."""
 
+    provider_name: str = "oauth"
+
     def __init__(
         self,
         discovery_url: str,

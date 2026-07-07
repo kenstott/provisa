@@ -131,4 +131,6 @@ def _data_format_for(value_type: str) -> str:
         ValueType.ZSET: "json",
         ValueType.LIST: "json",
     }
-    return mapping.get(value_type, "raw")
+    if value_type not in mapping:
+        raise ValueError(f"unknown Redis ValueType: {value_type}")
+    return mapping[value_type]

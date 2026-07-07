@@ -56,8 +56,9 @@ class IngestPollingProvider(NotificationProvider):  # REQ-336
             try:
                 rows = await self._poll(table, watermark)
             except Exception:
-                log.warning("Ingest poll error on table=%s", table, exc_info=True)
-                continue
+                # Surface poll errors instead of silently looping forever on a broken watcher.
+                log.error("Ingest poll error on table=%s", table, exc_info=True)
+                raise
 
             for row in rows:
                 ts = row.get("_updated_at")

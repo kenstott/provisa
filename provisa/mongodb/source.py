@@ -117,7 +117,9 @@ def discover_schema(sample_docs: list[dict], collection_name: str) -> list[dict]
 
     columns = []
     for path, bson_type in sorted(field_types.items()):
-        column_type = BSON_TO_IR.get(bson_type, "VARCHAR")
+        if bson_type not in BSON_TO_IR:
+            raise ValueError(f"unmapped BSON type: {bson_type}")
+        column_type = BSON_TO_IR[bson_type]
         columns.append(
             {
                 "name": path.replace(".", "_"),
@@ -147,4 +149,4 @@ def _extract_fields(doc: dict, prefix: str, field_types: dict[str, str]) -> None
         elif isinstance(value, str):
             field_types.setdefault(full_path, "string")
         else:
-            field_types.setdefault(full_path, "string")
+            raise ValueError(f"unknown value type for field {full_path!r}: {type(value).__name__}")

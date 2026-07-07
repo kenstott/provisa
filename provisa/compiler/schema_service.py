@@ -77,19 +77,11 @@ def invalidate(catalog: str, schema: str, table: str) -> None:  # REQ-636
 def _fetch(catalog: str, schema: str, table: str) -> None:
     if _engine is None:
         return
-    try:
-        # Engine-native column types by physical catalog — through the abstraction.
-        raw = _engine.introspect_by_catalog(catalog, schema, table)
-        columns = {k.lower(): v.lower() for k, v in raw.items()}
-        _cache[(catalog, schema, table)] = _TableEntry(
-            columns=columns,
-            expiry=time.monotonic() + _TTL,
-        )
-    except Exception as exc:
-        log.debug(
-            "[schema_service] fetch failed for %s.%s.%s: %s",
-            catalog,
-            schema,
-            table,
-            exc,
-        )
+    # Introspection failure must propagate: a silent miss leaves the type cache
+    # unpopulated with no signal to callers.
+    raw = _engine.introspect_by_catalog(catalog, schema, table)
+    columns = {k.lower(): v.lower() for k, v in raw.items()}
+    _cache[(catalog, schema, table)] = _TableEntry(
+        columns=columns,
+        expiry=time.monotonic() + _TTL,
+    )

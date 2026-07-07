@@ -408,8 +408,9 @@ class TrinoBackend(EngineBackend):
                 worker_count += cnt
                 if node_state == "active":
                     active_workers = cnt
-        except Exception:
-            return (False, 0, 0)
+        except Exception as exc:
+            # Surface connection/config errors instead of masking them as an unhealthy cluster.
+            raise RuntimeError(f"Trino cluster diagnostics probe failed: {exc}") from exc
         return (connected, worker_count, active_workers)
 
     def ctas_redirect(self, state: Any, physical_sql: str, output_format: str) -> dict:

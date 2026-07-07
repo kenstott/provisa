@@ -96,25 +96,18 @@ async def _build_refresh_sql(mv: MVDefinition, engine=None) -> str:
         jp = mv.join_pattern
         # Prefix all right-table columns as "right_table__col" to avoid
         # duplicate column names when both tables share column names like "id".
-        right_cols = ""
-        if engine is not None:
-            try:
-                rows = (await engine.execute_engine(f'SHOW COLUMNS FROM "{jp.right_table}"')).rows
-                cols = [row[0] for row in rows]
-                right_cols = ", ".join(
-                    f'"{jp.right_table}"."{c}" AS "{jp.right_table}__{c}"' for c in cols
-                )
-            except Exception:
-                log.warning(
-                    "Could not introspect columns for %s, falling back",
-                    jp.right_table,
-                )
-
-        if right_cols:
-            select_clause = f'"{jp.left_table}".*, {right_cols}'
-        else:
-            # Fallback: just take left.* (loses right-side non-join columns)
-            select_clause = f'"{jp.left_table}".*'
+        if engine is None:
+            raise ValueError(f"MV {mv.id}: engine required to introspect right-table columns")
+        try:
+            rows = (await engine.execute_engine(f'SHOW COLUMNS FROM "{jp.right_table}"')).rows
+        except Exception as exc:
+            # Falling back to left.* silently drops right-table columns — fail loud.
+            raise RuntimeError(
+                f"MV {mv.id}: could not introspect columns for {jp.right_table!r}: {exc}"
+            ) from exc
+        cols = [row[0] for row in rows]
+        right_cols = ", ".join(f'"{jp.right_table}"."{c}" AS "{jp.right_table}__{c}"' for c in cols)
+        select_clause = f'"{jp.left_table}".*, {right_cols}'
 
         return (
             f'SELECT {select_clause} FROM "{jp.left_table}" '

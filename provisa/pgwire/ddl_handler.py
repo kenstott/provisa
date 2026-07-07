@@ -85,7 +85,10 @@ class DdlHandler:  # REQ-042, REQ-060
             from provisa.api.app import state  # type: ignore[assignment]
 
         role_id = ctx.session.role_id
-        role = state.roles.get(role_id) or {}
+        role = state.roles.get(role_id)
+        if role is None:
+            # Authenticated role must exist; never substitute an empty (capability-less) role.
+            raise PermissionError(f"Unknown role {role_id!r}")
         caps = role.get("capabilities") or []
         if "ddl" not in caps:
             raise PermissionError(f"Role {role_id!r} lacks 'ddl' capability")

@@ -88,12 +88,10 @@ class TestBuildRefreshSQL:
         result = await _build_refresh_sql(mv)
         assert result == mv.sql
 
-    async def test_join_pattern_without_introspection(self):
+    async def test_join_pattern_without_introspection_raises(self):
         mv = _jp_mv()
-        result = await _build_refresh_sql(mv)
-        assert '"orders".*' in result
-        assert 'LEFT JOIN "customers"' in result
-        assert 'ON "orders"."customer_id" = "customers"."id"' in result
+        with pytest.raises(ValueError, match="engine required to introspect"):
+            await _build_refresh_sql(mv)
 
     async def test_join_pattern_with_column_introspection(self):
         mv = _jp_mv()
@@ -104,12 +102,12 @@ class TestBuildRefreshSQL:
         assert '"customers"."email" AS "customers__email"' in result
         assert '"orders".*' in result
 
-    async def test_join_pattern_introspection_fallback(self):
+    async def test_join_pattern_introspection_failure_raises(self):
         mv = _jp_mv()
         engine = _FakeEngine(raise_all=Exception("introspection failed"))
-        result = await _build_refresh_sql(mv, engine)
-        # Falls back to left.* only
-        assert '"orders".*' in result
+        # Introspection failure must fail loud, not silently drop right-table columns.
+        with pytest.raises(RuntimeError, match="could not introspect columns"):
+            await _build_refresh_sql(mv, engine)
 
     async def test_no_sql_no_join_raises(self):
         mv = MVDefinition(
@@ -170,7 +168,7 @@ class TestRefreshMV:
         await refresh_mv(engine, mv, registry)
 
         assert mv.status == MVStatus.STALE
-        assert mv.last_error == "connection lost"
+        assert "connection lost" in mv.last_error
 
     async def test_refresh_marks_refreshing_during_execution(self):
         mv = _jp_mv()

@@ -46,10 +46,10 @@ class TestRedisDataFormat:
     def test_list_maps_to_json(self):
         assert _data_format_for("list") == "json"
 
-    def test_unknown_value_type_falls_back_to_raw(self):
-        assert _data_format_for("stream") == "raw"
-        assert _data_format_for("") == "raw"
-        assert _data_format_for("SET") == "raw"
+    def test_unknown_value_type_raises(self):
+        for bad in ("stream", "", "SET"):
+            with pytest.raises(ValueError, match="unknown Redis ValueType"):
+                _data_format_for(bad)
 
 
 # --------------------------------------------------------------------------- #

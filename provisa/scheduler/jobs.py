@@ -64,16 +64,14 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
     else:
         target = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    s3_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT") or getattr(
-        state, "otel_s3_endpoint", "http://minio:9000"
-    )
+    s3_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT") or state.otel_s3_endpoint
     logger.warning(
         "compact_otel: starting — s3=%s engine=%s",
         s3_endpoint,
         state.federation_engine is not None,
     )
-    access_key = os.environ.get("PROVISA_OTEL_S3_ACCESS_KEY", "minioadmin")
-    secret_key = os.environ.get("PROVISA_OTEL_S3_SECRET_KEY", "minioadmin")
+    access_key = os.environ["PROVISA_OTEL_S3_ACCESS_KEY"]
+    secret_key = os.environ["PROVISA_OTEL_S3_SECRET_KEY"]
     otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
     file_chunk = getattr(state, "otel_compact_file_chunk", 50)
     engine = state.federation_engine
@@ -139,16 +137,12 @@ def _compact_signal(
 
     service = os.environ.get("OTEL_SERVICE_NAME", "provisa")
     prefix = f"{signal}/{service}/{date_glob}"
-    try:
-        paginator = s3.get_paginator("list_objects_v2")
-        keys = []
-        for page in paginator.paginate(Bucket=otel_bucket, Prefix=prefix):
-            for obj in page.get("Contents", []):
-                if obj["Key"].endswith(".parquet"):
-                    keys.append(obj["Key"])
-    except Exception:
-        logger.warning("compact_otel: cannot list s3://%s/%s", otel_bucket, prefix)
-        return
+    paginator = s3.get_paginator("list_objects_v2")
+    keys = []
+    for page in paginator.paginate(Bucket=otel_bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            if obj["Key"].endswith(".parquet"):
+                keys.append(obj["Key"])
 
     if not keys:
         logger.debug("compact_otel: no %s files for %s", signal, date_glob)
@@ -251,7 +245,9 @@ def _build_iceberg_col_defs(signal: str, table: pa.Table) -> list[str]:
     """Build Iceberg column definition strings from a PyArrow table schema."""
     col_defs = []
     for name, typ in zip(table.schema.names, table.schema.types):
-        column_type = _PA_TO_PHYSICAL.get(typ, "VARCHAR")
+        if typ not in _PA_TO_PHYSICAL:
+            raise ValueError(f"unmapped Arrow type for column {name!r}: {typ}")
+        column_type = _PA_TO_PHYSICAL[typ]
         col_defs.append(f'"{name}" {column_type}')
     if signal == "traces":
         existing = {n.lower() for n in table.schema.names}
@@ -294,15 +290,14 @@ def _cast_table_to_physical_schema(
     cast_fields = []
     for field in table.schema:
         column_type = engine_cols.get(field.name.lower())
-        pa_type = _PHYSICAL_TO_PA.get(column_type, pa.string()) if column_type else field.type  # type: ignore[arg-type]
+        if column_type is None:
+            pa_type = field.type
+        elif column_type not in _PHYSICAL_TO_PA:
+            raise ValueError(f"unknown engine column type for {field.name!r}: {column_type}")
+        else:
+            pa_type = _PHYSICAL_TO_PA[column_type]
         cast_fields.append(pa.field(field.name, pa_type))
-    try:
-        return table.cast(pa.schema(cast_fields), safe=False)
-    except Exception:
-        logger.warning(
-            "compact_otel: could not cast %s table to the engine schema, proceeding as-is", signal
-        )
-        return table
+    return table.cast(pa.schema(cast_fields), safe=False)
 
 
 def _build_insert_columns(
@@ -315,7 +310,9 @@ def _build_insert_columns(
     """Return (parquet_cols, col_names, placeholders) for INSERT statement building."""
 
     def _cast_ph(col_lower: str) -> str:
-        t = _PHYSICAL_CAST.get(engine_cols.get(col_lower, "varchar"), "VARCHAR")
+        if col_lower not in engine_cols:
+            raise ValueError(f"no engine cast type for column {col_lower!r}")
+        t = _PHYSICAL_CAST.get(engine_cols[col_lower], "VARCHAR")
         return f"CAST(? AS {t})"
 
     parquet_cols = [n for n in table.schema.names if n.lower() in engine_cols]
@@ -349,21 +346,15 @@ def _build_row(
     attrs: dict = {}  # type: ignore[type-arg]
     raw = row.get("span_attributes")
     if raw:
-        try:
-            attrs = json.loads(raw)
-        except Exception:
-            pass
+        attrs = json.loads(raw)
     return base + tuple(attrs.get(_ATTR_KEYS[ec]) for ec in extra_cols if ec.lower() in engine_cols)
 
 
 def _resolve_batch_size(signal: str) -> int:
     """Determine INSERT batch size from app state, bounded to safe limits."""
-    try:
-        from provisa.api.app import state as _state
+    from provisa.api.app import state as _state
 
-        batch = min(max(_state.otel_compact_batch_size, 1), 10)
-    except Exception:
-        batch = 10
+    batch = min(max(_state.otel_compact_batch_size, 1), 10)
     if signal == "traces":
         batch = min(batch, 5)
     return batch

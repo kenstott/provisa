@@ -86,7 +86,7 @@ class NlJob:  # REQ-354
             nl_query=d["nl_query"],
             role=d["role"],
             state=d["state"],
-            created_at=d.get("created_at", time.time()),
+            created_at=d["created_at"],
         )
         for k, v in d.get("branches", {}).items():
             job.branches[k] = BranchResult(  # type: ignore[index]

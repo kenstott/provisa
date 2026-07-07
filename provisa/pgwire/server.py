@@ -339,7 +339,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         if _state is None:
             from provisa.api.app import state as _state  # type: ignore[assignment]
 
-        provider = (_state.auth_config or {}).get("provider", "none")
+        if _state.auth_config is None:
+            # Fail closed: absent auth_config must never silently degrade to no-auth/trust.
+            raise RuntimeError("pgwire auth_config not configured")
+        provider = _state.auth_config["provider"]
 
         if provider == "none" or not _state.auth_middleware_active:
             # Trust mode: username maps directly to role_id, password ignored.

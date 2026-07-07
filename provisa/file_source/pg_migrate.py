@@ -130,10 +130,7 @@ async def migrate_sqlite_table(  # REQ-012, REQ-017, REQ-250
 
 async def record_mtime(table_id: int, source_path: str, pg_conn: asyncpg.Connection) -> None:
     """Record the current file mtime for table_id in file_source_mtimes."""
-    try:
-        mtime = os.path.getmtime(source_path)
-    except OSError:
-        return
+    mtime = os.path.getmtime(source_path)
     await pg_conn.execute(
         """INSERT INTO file_source_mtimes (table_id, source_mtime, synced_at)
            VALUES ($1, $2, $3)
@@ -153,10 +150,7 @@ async def migrate_if_stale(  # REQ-012
     pg_table: str,
 ) -> bool:
     """Re-migrate if source file mtime is newer than last recorded. Returns True if migrated."""
-    try:
-        current_mtime = os.path.getmtime(source_path)
-    except OSError:
-        return False
+    current_mtime = os.path.getmtime(source_path)
     row = await pg_conn.fetchrow(
         "SELECT source_mtime FROM file_source_mtimes WHERE table_id = $1", table_id
     )

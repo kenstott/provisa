@@ -130,17 +130,11 @@ def fetch_foreign_keys(
 def prime_source(source: GovDataSource, schemas: list[str]) -> None:  # REQ-492, REQ-540
     """Fetch and cache tables (and columns) for all schemas. Called after source creation."""
     for schema in schemas:
-        try:
-            tables = fetch_tables(source, schema)
-            for table in tables:
-                try:
-                    fetch_columns(source, schema, table)
-                    fetch_primary_keys(source, schema, table)
-                    fetch_foreign_keys(source, schema, table)
-                except Exception:
-                    log.warning("govdata prime_source: columns failed for %s.%s", schema, table)
-        except Exception:
-            log.warning("govdata prime_source: tables failed for schema %s", schema)
+        tables = fetch_tables(source, schema)
+        for table in tables:
+            fetch_columns(source, schema, table)
+            fetch_primary_keys(source, schema, table)
+            fetch_foreign_keys(source, schema, table)
 
 
 def execute_query(source: GovDataSource, sql: str) -> list[dict[str, Any]]:  # REQ-492, REQ-540

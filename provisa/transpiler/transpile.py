@@ -44,10 +44,8 @@ def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
 
 def _rewrite_json_build_object_for_trino(sql: str) -> str:
     """Replace JSON_BUILD_OBJECT(k, v, ...) with JSON_OBJECT('k': v, ...) for Trino."""
-    try:
-        tree = sqlglot.parse_one(sql, read="trino")
-    except Exception:
-        return sql
+    # Parse failure must fail loud: returning input skips the required Trino rewrite.
+    tree = sqlglot.parse_one(sql, read="trino")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_BUILD_OBJECT":
@@ -71,10 +69,8 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
     the aggregate result is used inside an outer json_object(...) call).
     The Python _convert_value layer parses the VARCHAR back to a Python list/dict.
     """
-    try:
-        tree = sqlglot.parse_one(sql, read="trino")
-    except Exception:
-        return sql
+    # Parse failure must fail loud: returning input skips the required Trino rewrite.
+    tree = sqlglot.parse_one(sql, read="trino")
 
     json_type = exp.DataType(this=exp.DataType.Type.JSON)
 
@@ -132,10 +128,8 @@ def transpile(pg_sql: str, target_dialect: str) -> str:  # REQ-066, REQ-068, REQ
 
 def _rewrite_correlated_json_to_ctes(sql: str) -> str:
     """Rewrite correlated json_object/json_agg SELECT subqueries to CTEs."""
-    try:
-        tree = sqlglot.parse_one(sql, read="postgres")
-    except Exception:
-        return sql
+    # Parse failure must fail loud: returning input skips the required Trino CTE rewrite.
+    tree = sqlglot.parse_one(sql, read="postgres")
     if not isinstance(tree, exp.Select):
         return sql
 
@@ -521,10 +515,8 @@ def rewrite_correlated_subqueries_for_trino(sql: str) -> str:  # REQ-066, REQ-06
     recursive nesting, and the SELECT * FROM (inner) AS alias LIMIT N wrapper.
     The original json-specific path is preserved; this is an independent entry point.
     """
-    try:
-        tree = sqlglot.parse_one(sql, read="postgres")
-    except Exception:
-        return sql
+    # Parse failure must fail loud: returning input skips the required Trino CTE rewrite.
+    tree = sqlglot.parse_one(sql, read="postgres")
     if not isinstance(tree, exp.Select):
         return sql
 

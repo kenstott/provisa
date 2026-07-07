@@ -106,14 +106,13 @@ async def webhook(request: Request):
         tenant = await get_tenant_by_stripe_customer(pool, customer_id)
         if tenant:
             items = (obj.get("items") or {}).get("data", [])
-            plan_name = "starter"
-            if items:
-                price = items[0].get("price", {})
-                nickname = (price.get("nickname") or "").lower()
-                for p in ("trial", "starter", "pro"):
-                    if p in nickname:
-                        plan_name = p
-                        break
+            price = items[0].get("price", {}) if items else {}
+            nickname = (price.get("nickname") or "").lower()
+            plan_name = next((p for p in ("trial", "starter", "pro") if p in nickname), None)
+            if plan_name is None:
+                raise HTTPException(
+                    status_code=400, detail=f"Unrecognized Stripe price nickname: {nickname!r}"
+                )
             source_limit = PLAN_LIMITS[plan_name]
             await update_tenant_plan(pool, str(tenant.id), plan_name, source_limit)
 

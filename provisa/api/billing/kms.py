@@ -17,7 +17,9 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 def _kms_client():
-    region = os.environ.get("AWS_KMS_REGION", "us-east-1")
+    region = os.environ.get("AWS_KMS_REGION")
+    if not region:
+        raise RuntimeError("AWS_KMS_REGION is required")
     return boto3.client("kms", region_name=region)
 
 

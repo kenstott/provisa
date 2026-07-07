@@ -56,6 +56,9 @@ def generate_promotion_ddl(  # REQ-119
     stmts: list[str] = []
     for p in promotions:
         expr = dot_path_to_pg_expression(p.jsonb_column, p.field, cast_source=cast_source)
+        # REQ-878: only types needing an explicit JSONB->target coercion appear in
+        # _PG_CAST_MAP; an unmapped target_type is already representable without a
+        # cast, so the empty-string default is the documented intended behavior.
         cast = _PG_CAST_MAP.get(p.target_type, "")
         generated_expr = f"{expr}{cast}"
         stmt = (

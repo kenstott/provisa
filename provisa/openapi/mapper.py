@@ -42,14 +42,16 @@ class OpenAPIMutation:  # REQ-317
 def _resolve_ref(spec: dict, ref: str) -> dict:
     """Resolve a $ref like #/components/schemas/Foo or #/definitions/Foo."""
     if not ref.startswith("#/"):
-        return {}
+        raise ValueError(f"unresolvable external $ref: {ref}")
     parts = ref.lstrip("#/").split("/")
     node = spec
     for part in parts:
-        if not isinstance(node, dict):
-            return {}
-        node = node.get(part, {})
-    return node if isinstance(node, dict) else {}
+        if not isinstance(node, dict) or part not in node:
+            raise ValueError(f"unresolvable $ref: {ref}")
+        node = node[part]
+    if not isinstance(node, dict):
+        raise ValueError(f"$ref does not resolve to an object: {ref}")
+    return node
 
 
 def _resolve_properties(spec: dict, schema: dict) -> dict:

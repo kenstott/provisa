@@ -110,7 +110,14 @@ async def submit_request(body: SubmitBody, request: Request):  # REQ-063, REQ-43
             status_code=400,
             detail=f"Unknown request_type {body.request_type!r}. Must be one of {list(_REJECTION_REASONS)}",
         )
-    required = _REQUIRED_APPROVALS.get(body.request_type, 1)
+    # No default approval count — an unlisted request_type must be rejected
+    # rather than silently requiring a single approval.
+    if body.request_type not in _REQUIRED_APPROVALS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No approval policy for request_type {body.request_type!r}",
+        )
+    required = _REQUIRED_APPROVALS[body.request_type]
     pool = _get_pool()
     async with pool.acquire() as _conn:
         conn = cast(asyncpg.Connection, _conn)

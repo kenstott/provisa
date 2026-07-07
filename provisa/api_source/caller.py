@@ -356,21 +356,16 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
 
     _log = _logging.getLogger(__name__)
     async with httpx.AsyncClient() as client:
-        try:
-            pages = await _paginate(
-                client,
-                endpoint,
-                url,
-                query_params,
-                headers,
-                body=json_body,
-                timeout=timeout,
-                form_body=form_body,
-            )
-        except ApiNotFoundError:
-            _log.debug("API 404 for %s — returning empty result", url)
-            return []
-
+        pages = await _paginate(
+            client,
+            endpoint,
+            url,
+            query_params,
+            headers,
+            body=json_body,
+            timeout=timeout,
+            form_body=form_body,
+        )
     return pages
 
 

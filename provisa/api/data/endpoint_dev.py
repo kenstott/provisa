@@ -469,12 +469,9 @@ def _normalize_sql_tree(raw_sql: str, ctx) -> tuple[str, object]:
     import sqlglot
 
     normalized_sql = rewrite_semantic_to_physical(raw_sql, ctx)
-    try:
-        parsed_tree = sqlglot.parse_one(normalized_sql, read="postgres")
-        return normalized_sql, parsed_tree
-    except Exception:
-        fallback_tree = sqlglot.parse_one(raw_sql, read="postgres")
-        return raw_sql, fallback_tree
+    # Returning un-rewritten raw_sql on parse failure bypasses physical rewrite — raise instead.
+    parsed_tree = sqlglot.parse_one(normalized_sql, read="postgres")
+    return normalized_sql, parsed_tree
 
 
 def _augment_discovery_table_map(gov_ctx, state) -> None:

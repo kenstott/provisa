@@ -25,6 +25,7 @@ from provisa.compiler.naming import source_to_catalog
 from provisa.core.repositories import rls as rls_repo
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.api.admin._config_io import config_path as _config_path, read_config
+from provisa.api.admin._guards import require_active_org_id
 from provisa.core.config_loader import _normalize_op_id
 from provisa.api.admin.types import (
     AvailableColumnType,
@@ -457,6 +458,22 @@ async def _discover_columns_for_registration(source_id: str, table_name: str) ->
     return _call_discover(adapter, row["type"], row, hints)
 
 
+async def _resolve_ref_type_map(conn, ref_names: set[str]) -> dict[str, str]:
+    """Map column_name -> data_type for columns of registered tables referenced by name/alias."""
+    type_map: dict[str, str] = {}
+    if ref_names:
+        rows = await conn.fetch(
+            """SELECT tc.column_name, tc.data_type
+               FROM table_columns tc JOIN registered_tables rt ON rt.id = tc.table_id
+               WHERE (rt.table_name = ANY($1::text[]) OR rt.alias = ANY($1::text[]))
+                 AND tc.data_type IS NOT NULL""",
+            list(ref_names),
+        )
+        for r in rows:
+            type_map.setdefault(r["column_name"], r["data_type"])
+    return type_map
+
+
 async def _introspect_view_columns(conn, view_sql: str, default_roles: list[str]) -> list:
     """Derive a view's columns from its SQL when the caller supplies none.
 
@@ -481,17 +498,7 @@ async def _introspect_view_columns(conn, view_sql: str, default_roles: list[str]
 
     # Resolve types from the registered tables referenced in the view (by table name/alias).
     ref_names = {t.name for t in tree.find_all(exp.Table) if t.name}
-    type_map: dict[str, str] = {}
-    if ref_names:
-        rows = await conn.fetch(
-            """SELECT tc.column_name, tc.data_type
-               FROM table_columns tc JOIN registered_tables rt ON rt.id = tc.table_id
-               WHERE (rt.table_name = ANY($1::text[]) OR rt.alias = ANY($1::text[]))
-                 AND tc.data_type IS NOT NULL""",
-            list(ref_names),
-        )
-        for r in rows:
-            type_map.setdefault(r["column_name"], r["data_type"])
+    type_map = await _resolve_ref_type_map(conn, ref_names)
 
     return [
         ColumnModel(name=n, data_type=type_map.get(n, "varchar"), visible_to=list(default_roles))
@@ -639,18 +646,8 @@ async def _ensure_view_column_types(conn, view_sql: str, columns: list) -> list:
         tree = sqlglot.parse_one(view_sql, read="postgres")
     except Exception:
         tree = None
-    type_map: dict[str, str] = {}
     ref_names = {t.name for t in tree.find_all(exp.Table) if t.name} if tree else set()
-    if ref_names:
-        rows = await conn.fetch(
-            """SELECT tc.column_name, tc.data_type
-               FROM table_columns tc JOIN registered_tables rt ON rt.id = tc.table_id
-               WHERE (rt.table_name = ANY($1::text[]) OR rt.alias = ANY($1::text[]))
-                 AND tc.data_type IS NOT NULL""",
-            list(ref_names),
-        )
-        for r in rows:
-            type_map.setdefault(r["column_name"], r["data_type"])
+    type_map = await _resolve_ref_type_map(conn, ref_names)
     for c in columns:
         if getattr(c, "data_type", None) in (None, ""):
             c.data_type = type_map.get(c.name, "varchar")
@@ -727,7 +724,7 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def domains(self, info: StrawberryInfo) -> list[DomainType]:  # REQ-021, REQ-042
         request = info.context["request"]
-        active_org_id = getattr(request.state, "active_org_id", "root") or "root"
+        active_org_id = require_active_org_id(request)
         identity = getattr(request.state, "identity", None)
         from provisa.api.admin.capabilities import _resolved_capabilities
         from provisa.api.app import state as _state
@@ -820,7 +817,7 @@ class Query:  # REQ-021, REQ-042
         self, info: StrawberryInfo
     ) -> list[RoleType]:  # REQ-042, REQ-059, REQ-060, REQ-215
         request = info.context["request"]
-        active_org_id = getattr(request.state, "active_org_id", "root") or "root"
+        active_org_id = require_active_org_id(request)
         identity = getattr(request.state, "identity", None)
         from provisa.api.admin.capabilities import _resolved_capabilities
         from provisa.api.app import state as _state

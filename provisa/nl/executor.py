@@ -90,12 +90,13 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
     # Render to postgres SQL; make_semantic_sql handles catalog-qualified refs
     sql_str = sql_ast.sql(dialect="postgres")
-    # Governance
-    rls = getattr(app_state, "rls_contexts", {}).get(role, RLSContext.empty())
+    # Governance. A role with no rules is legitimately empty; a missing
+    # rls_contexts/masking_rules attribute is a wiring bug — fail loud.
+    rls = app_state.rls_contexts.get(role, RLSContext.empty())
     gov_ctx = build_governance_context(
         role,
         rls,
-        getattr(app_state, "masking_rules", {}),
+        app_state.masking_rules,
         ctx,
         getattr(app_state, "tables", []),
         role=getattr(app_state, "roles", {}).get(role),

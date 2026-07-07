@@ -100,8 +100,8 @@ def _extract_connection_info(
                 result["port"] = int(port_str)
             else:
                 result["host"] = hp
-        except (ValueError, IndexError):
-            pass
+        except (ValueError, IndexError) as exc:
+            raise ValueError(f"malformed database_url: {db_url!r}") from exc
 
     pool = conn.get("pool_settings", {})
     result["pool_min"] = pool.get("min_connections", 1)
@@ -552,13 +552,14 @@ def convert_metadata(
             )
         auth.provider = provider
         if provider == "firebase":
+            # Direct subscript hard-fails (KeyError) if the env var is absent.
             auth.firebase = {
-                "project_id": auth_env.get("FIREBASE_PROJECT_ID", ""),
+                "project_id": auth_env["FIREBASE_PROJECT_ID"],
             }
         elif provider == "keycloak":
             auth.keycloak = {
-                "url": auth_env.get("KEYCLOAK_URL", ""),
-                "realm": auth_env.get("KEYCLOAK_REALM", ""),
+                "url": auth_env["KEYCLOAK_URL"],
+                "realm": auth_env["KEYCLOAK_REALM"],
             }
         elif provider == "oauth" or auth_env.get("JWK_URL"):
             auth.provider = "oauth"

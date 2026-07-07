@@ -212,14 +212,11 @@ def compile_proto_stubs(  # REQ-329
     proto_file = os.path.join(tmp, f"{proto_name}.proto")
     Path(proto_file).write_text(proto_text)
 
-    try:
-        well_known = pkg_resources.resource_filename("grpc_tools", "_proto")
-    except Exception:
-        well_known = ""
+    # Well-known proto include path is required to compile; a failure here would
+    # otherwise surface as a confusing missing-import protoc error.
+    well_known = pkg_resources.resource_filename("grpc_tools", "_proto")
 
-    include_flags: list[str] = [f"-I{tmp}"]
-    if well_known:
-        include_flags.append(f"-I{well_known}")
+    include_flags: list[str] = [f"-I{tmp}", f"-I{well_known}"]
     for ip in import_paths or []:
         include_flags.append(f"-I{ip}")
 

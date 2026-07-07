@@ -33,7 +33,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):  # REQ-369, REQ-371
             except ClientDisconnect:
                 return Response(status_code=499)
 
-        role = state.roles.get(role_id) or {}
+        # An unknown role must be denied, not silently treated as unlimited.
+        if role_id not in state.roles:
+            return JSONResponse(
+                status_code=403,
+                content={"error": "forbidden", "detail": f"unknown role {role_id!r}"},
+            )
+        role = state.roles[role_id] or {}
         rate_limit = role.get("rate_limit") or {}
         rps = rate_limit.get("requests_per_second")
         if rps:

@@ -243,35 +243,31 @@ def make_embed_fn(app_state: AppState) -> EmbedFn | None:  # REQ-419, REQ-420
 
     Returns None if no vector model is configured so callers can skip embedding.
     """
-    try:
-        config = getattr(app_state, "config", None)
-        if config is None:
-            return None
-        vector_models = getattr(config, "vector_models", [])
-        if not vector_models:
-            return None
-        first = vector_models[0]
-        from provisa.vector.registry import VectorModel
-        from provisa.vector.providers import get_provider
-
-        vm = VectorModel(
-            id=first.id,
-            provider=first.provider,
-            dimensions=first.dimensions,
-            api_key_env=getattr(first, "api_key_env", None),
-            base_url=getattr(first, "base_url", None),
-            enabled=getattr(first, "enabled", True),
-        )
-        if not vm.enabled:
-            return None
-        provider = get_provider(vm.provider)
-
-        import asyncio
-
-        def _embed(texts: list[str]) -> list[list[float]]:
-            return asyncio.get_event_loop().run_until_complete(provider.embed(texts, vm))
-
-        return _embed
-    except Exception as exc:
-        log.debug("Could not build embed_fn: %s", exc)
+    config = getattr(app_state, "config", None)
+    if config is None:
         return None
+    vector_models = getattr(config, "vector_models", [])
+    if not vector_models:
+        return None
+    first = vector_models[0]
+    from provisa.vector.registry import VectorModel
+    from provisa.vector.providers import get_provider
+
+    vm = VectorModel(
+        id=first.id,
+        provider=first.provider,
+        dimensions=first.dimensions,
+        api_key_env=getattr(first, "api_key_env", None),
+        base_url=getattr(first, "base_url", None),
+        enabled=getattr(first, "enabled", True),
+    )
+    if not vm.enabled:
+        return None
+    provider = get_provider(vm.provider)
+
+    import asyncio
+
+    def _embed(texts: list[str]) -> list[list[float]]:
+        return asyncio.get_event_loop().run_until_complete(provider.embed(texts, vm))
+
+    return _embed

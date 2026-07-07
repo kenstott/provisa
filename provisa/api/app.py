@@ -821,11 +821,9 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
         if _src.type.value == "postgresql" and state.source_pools.has(_src.id):
             _driver = state.source_pools.get(_src.id)
             if hasattr(_driver, "fetch_enums"):
-                try:
-                    _reg = await cast(Any, _driver).fetch_enums()
-                    _enum_registry.update(_reg)
-                except Exception:
-                    pass
+                # Swallowing here silently mistypes enum columns — propagate.
+                _reg = await cast(Any, _driver).fetch_enums()
+                _enum_registry.update(_reg)
     state.pg_enum_types = build_enum_types(_enum_registry)
 
 

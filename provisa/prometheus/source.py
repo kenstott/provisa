@@ -92,7 +92,9 @@ def discover_schema(metric_metadata: dict, metric_name: str) -> list[dict]:  # R
         List of column definition dicts.
     """
     labels = metric_metadata.get("labels", [])
-    metric_type = metric_metadata.get("type", "gauge")
+    if "type" not in metric_metadata:
+        raise ValueError(f"missing metric type for {metric_name!r}")
+    metric_type = metric_metadata["type"]
 
     columns = [
         {"name": "timestamp", "type": "TIMESTAMP"},

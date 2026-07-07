@@ -78,10 +78,8 @@ def extract_nf_args(
     - clean_params has consumed positional params removed
     - nf_args maps bare param name (e.g. "id") to its value
     """
-    try:
-        ast = sqlglot.parse_one(sql, dialect="postgres")
-    except Exception:
-        return sql, params, {}
+    # Parse failure must fail loud: returning input skips NF-arg extraction.
+    ast = sqlglot.parse_one(sql, dialect="postgres")
 
     where = ast.find(exp.Where)
     if where is None:
@@ -142,19 +140,13 @@ def extract_nf_args(
 
 def find_api_table_names(sql: str) -> list[str]:  # REQ-599
     """Return table names referenced in FROM/JOIN clauses of a SQL string."""
-    try:
-        ast = sqlglot.parse_one(sql, dialect="postgres")
-    except Exception:
-        return []
+    ast = sqlglot.parse_one(sql, dialect="postgres")
     return [tbl.name for tbl in ast.find_all(exp.Table) if tbl.name]
 
 
 def left_join_table_names(sql: str) -> set[str]:  # REQ-599
     """Return table names that appear in LEFT JOIN clauses."""
-    try:
-        ast = sqlglot.parse_one(sql, dialect="postgres")
-    except Exception:
-        return set()
+    ast = sqlglot.parse_one(sql, dialect="postgres")
     names: set[str] = set()
     for join in ast.find_all(exp.Join):
         if join.side and join.side.upper() == "LEFT":
@@ -166,10 +158,8 @@ def left_join_table_names(sql: str) -> set[str]:  # REQ-599
 
 def drop_joined_table(sql: str, table_name: str) -> str:  # REQ-264
     """Remove any JOIN for *table_name* (any join type) and NULL-out its SELECT-list columns."""
-    try:
-        tree = sqlglot.parse_one(sql, dialect="postgres")
-    except Exception:
-        return sql
+    # Parse failure must fail loud: returning input skips the REQ-264 governance transform.
+    tree = sqlglot.parse_one(sql, dialect="postgres")
 
     for select in tree.find_all(exp.Select):
         joins = select.args.get("joins") or []
@@ -220,10 +210,8 @@ def drop_union_branches_for_table(sql: str, table_name: str) -> str:  # REQ-599
     Works at any nesting depth (including inside CTEs).  Used when a GQL-remote
     table with unsatisfied required_args cannot be dropped as a JOIN.
     """
-    try:
-        tree = sqlglot.parse_one(sql, dialect="postgres")
-    except Exception:
-        return sql
+    # Parse failure must fail loud: returning input skips the union-branch governance transform.
+    tree = sqlglot.parse_one(sql, dialect="postgres")
 
     def _has_from_table(select: exp.Select) -> bool:  # pyright: ignore[reportPrivateImportUsage]
         return any(t.name == table_name for t in select.find_all(exp.Table))
@@ -253,10 +241,7 @@ def drop_union_branches_for_table(sql: str, table_name: str) -> str:  # REQ-599
 
 def where_referenced_tables(sql: str) -> set[str]:  # REQ-599
     """Return table names (or aliases) that appear in WHERE predicates (not JOIN ON conditions)."""
-    try:
-        ast = sqlglot.parse_one(sql, dialect="postgres")
-    except Exception:
-        return set()
+    ast = sqlglot.parse_one(sql, dialect="postgres")
     names: set[str] = set()
     for where in ast.find_all(exp.Where):
         for col in where.find_all(exp.Column):

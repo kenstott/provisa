@@ -182,8 +182,11 @@ async def index_source(
                     f"ORDER BY ordinal_position"
                 )
                 cached.column_names = [row[0] for row in res.rows]
-            except Exception:
-                pass
+            except Exception as exc:
+                raise RuntimeError(
+                    f"catalog_cache: column introspection failed for "
+                    f"{source_id!r}/{schema!r}/{cached.table_name!r}: {exc}"
+                ) from exc
 
         try:
             await write_cache(pool, source_id, schema, tables_with_cols)

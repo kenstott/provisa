@@ -42,6 +42,9 @@ def _make_app_state(has_schema: bool = False) -> MagicMock:
     state.schemas = {}
     state.contexts = {}
     state.engine_conn = None
+    # No vector model configured for these orchestration tests → make_embed_fn
+    # returns None cleanly (a real misconfig now propagates rather than being swallowed).
+    state.config.vector_models = []
     return state
 
 
