@@ -1023,7 +1023,7 @@ async def _mat_api_ep_table(
         if api_source
         else f"org_{_org_id}_api_cache"
     )
-    _cache_loc = cache_location(source_id, _cc, _cs, engine=state.federation_engine)
+    _cache_loc = cache_location(source_id, _cc, _cs)
     cache_tbl = cache_table_name(source_id, tn, {})
     ttl = (
         getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl")
@@ -1665,14 +1665,14 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         )
 
     api_source = state.api_sources.get(source_id)
-    _cc = getattr(api_source, "cache_catalog", None) if api_source else None
+    _cache_catalog = getattr(api_source, "cache_catalog", None) if api_source else None
     _org_id = getattr(state, "org_id", "default")
-    _cs = (
+    _cache_schema = (
         getattr(api_source, "cache_schema", f"org_{_org_id}_api_cache")
         if api_source
         else f"org_{_org_id}_api_cache"
     )
-    _cache_loc = cache_location(source_id, _cc, _cs, engine=state.federation_engine)
+    _cache_loc = cache_location(source_id, _cache_catalog, _cache_schema)
 
     # Resolve native filter args (path/query params) — may be "_"-prefixed on collision.
     url_params: dict = compiled.api_args.copy() if compiled.api_args else {}

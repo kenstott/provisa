@@ -37,7 +37,6 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -71,28 +70,21 @@ _API_TYPE_TO_IR: dict[str, str] = {
 class CacheLocation:  # REQ-318, REQ-309, REQ-327
     catalog: str
     schema: str
-    backend: str  # "iceberg" (S3-backed) or "relational" (any other attached store); only the
-    # iceberg branch is special-cased — the value is never assumed to be a specific DB.
+    backend: str  # "iceberg" or "postgresql" (any non-iceberg catalog)
 
 
 def cache_location(  # REQ-318, REQ-309, REQ-327
     source_id: str,
     cache_catalog: str | None = None,
     cache_schema: str = _DEFAULT_CACHE_SCHEMA,
-    *,
-    engine: Any = None,
 ) -> CacheLocation:
     """Build cache location.
 
-    cache_catalog=None → the bound engine's cache catalog (``engine.cache_catalog()``): a broad
-    federator caches into the source's own catalog (returns None → source_id with hyphens→
-    underscores); a native engine caches into its materialization store's catalog. Any explicit
-    catalog is used as-is; "results" triggers Iceberg S3 behaviour.
+    cache_catalog=None → source's own the engine catalog (source_id with hyphens→underscores).
+    Any other catalog name is used as-is; "results" triggers Iceberg S3 behaviour.
     """
-    if cache_catalog is None and engine is not None:
-        cache_catalog = engine.cache_catalog()
     catalog = cache_catalog if cache_catalog is not None else source_id.replace("-", "_")
-    backend = "iceberg" if catalog == _ICEBERG_CATALOG else "relational"
+    backend = "iceberg" if catalog == _ICEBERG_CATALOG else "postgresql"
     return CacheLocation(catalog, cache_schema, backend)
 
 

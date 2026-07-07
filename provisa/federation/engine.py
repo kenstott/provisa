@@ -168,17 +168,6 @@ class FederationEngine:  # REQ-840
             return WarehouseNativeConnector(self.name, source_type)
         raise UnreachableSource(self.name, source_type)
 
-    # -- materialization store (REQ-826) ---------------------------------------
-
-    def default_materialize_store(self) -> str | None:
-        """A materialization store the engine can offer ITSELF when none is configured.
-
-        An engine that IS a persistent store (a warehouse / bundled Postgres) returns its own DSN;
-        an ephemeral in-process engine (DuckDB in-memory) returns None. This is a DECLARED default,
-        used only with a warning (see the runtime) — never a silent derive-from-whatever fallback.
-        A None here plus no configured store is a hard error at materialize time."""
-        return None
-
     # -- capability discovery (REQ-904) ----------------------------------------
 
     async def discover(self, fetch, *, disabled: frozenset[str] = frozenset()) -> dict:
