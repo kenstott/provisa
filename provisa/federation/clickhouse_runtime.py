@@ -263,14 +263,32 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
 
     async def execute(self, physical_or_governed_sql: str) -> QueryResult:
         """Execute physical SQL (post-governance) on the engine (transpiled to ClickHouse)."""
-        ch_sql = transpile(physical_or_governed_sql, "clickhouse")
+        return await self.run(transpile(physical_or_governed_sql, "clickhouse"))
+
+    # -- NativeEngineBackend runtime protocol ----------------------------------
+
+    def run_sync(self, sql: str, params: list | None = None) -> QueryResult:
+        """Execute SQL ALREADY in the ClickHouse dialect (transpiled by the backend seam)."""
+        rows, cols = self._backend.query(sql)
+        return QueryResult(rows=rows, column_names=cols)
+
+    async def run(self, sql: str, params: list | None = None) -> QueryResult:
         loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: self.run_sync(sql, params))
 
-        def _run() -> QueryResult:
-            rows, cols = self._backend.query(ch_sql)
-            return QueryResult(rows=rows, column_names=cols)
+    @property
+    def connection(self):
+        """The ClickHouse backend (command/query). Used by the cache terminal, which is not yet wired
+        for ClickHouse — see ensure_materialize_attached."""
+        return self._backend
 
-        return await loop.run_in_executor(None, _run)
+    def ensure_materialize_attached(self) -> str:
+        """ClickHouse reaches an external materialization store via CREATE DATABASE ENGINE=PostgreSQL,
+        and the API-result cache write expects a cursor-style terminal — not yet wired for ClickHouse.
+        Federated execution (run) works; the API-cache terminal is explicit follow-up, not a fallback."""
+        raise NotImplementedError(
+            "clickhouse materialization-store cache terminal is not wired (execution works)"
+        )
 
     def close(self) -> None:
         self._backend.close()

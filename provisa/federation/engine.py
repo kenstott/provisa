@@ -429,7 +429,7 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
         ClickHouseParquetConnector,
         ClickHousePostgresConnector,
     )
-    from provisa.federation.native_backend import NativeEngineBackend
+    from provisa.federation.clickhouse_backend import ClickHouseBackend
 
     return FederationEngine(
         "clickhouse",
@@ -443,7 +443,7 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
         native_store="clickhouse",  # its own tables are native; attached sources reference in place
         driver_class=DriverClass.PARTIAL,
         mpp=True,  # ClickHouse distributes across shards/replicas
-        backend_factory=NativeEngineBackend,  # shared in-process terminal (runtime wiring: separate)
+        backend_factory=ClickHouseBackend,  # in-process terminal driving ClickHouseFederationRuntime
         default_materialize_store=_platform_db_materialize_default,
         capabilities=frozenset(
             {EngineCapability.ROWS, EngineCapability.ARROW}
