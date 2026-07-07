@@ -45,13 +45,13 @@ def test_cache_location_default_uses_source_catalog():
     loc = cache_location("petstore-api")
     assert loc.catalog == "petstore_api"
     assert loc.schema == "api_cache"
-    assert loc.backend == "postgresql"
+    assert loc.backend == "relational"
 
 
 def test_cache_location_explicit_catalog():
     loc = cache_location("petstore-api", cache_catalog="analytics_pg")
     assert loc.catalog == "analytics_pg"
-    assert loc.backend == "postgresql"
+    assert loc.backend == "relational"
 
 
 def test_cache_location_iceberg_catalog():
