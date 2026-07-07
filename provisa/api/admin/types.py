@@ -355,14 +355,28 @@ class CacheStatsType:
 
 
 @strawberry.type
+class ProtocolHealthType:
+    """Liveness of a separate socket listener (gRPC, Arrow Flight, pgwire, bolt).
+
+    ``status`` is one of "running" | "down" | "disabled". "disabled" means the protocol was
+    never started (no bound port); "down"/"running" come from a TCP-connect liveness probe.
+    """
+
+    name: str
+    status: str
+    port: int | None
+
+
+@strawberry.type
 class SystemHealthType:
     engine_connected: bool
     engine_worker_count: int
     engine_active_workers: int
     pg_pool_size: int
     pg_pool_free: int
+    cache_mode: str  # "disabled" | "embedded" | "server"
     cache_connected: bool
-    flight_server_running: bool
+    protocols: list[ProtocolHealthType]
     mv_refresh_loop_running: bool
 
 

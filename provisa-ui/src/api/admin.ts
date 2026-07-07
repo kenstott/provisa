@@ -668,14 +668,21 @@ export interface CacheStats {
   storeType: string;
 }
 
+export interface ProtocolHealth {
+  name: string;
+  status: "running" | "down" | "disabled";
+  port: number | null;
+}
+
 export interface SystemHealth {
   engineConnected: boolean;
   engineWorkerCount: number;
   engineActiveWorkers: number;
   pgPoolSize: number;
   pgPoolFree: number;
+  cacheMode: "disabled" | "embedded" | "server";
   cacheConnected: boolean;
-  flightServerRunning: boolean;
+  protocols: ProtocolHealth[];
   mvRefreshLoopRunning: boolean;
 }
 

@@ -1624,3 +1624,161 @@ def then_req797_rel_count(shared_data: dict) -> None:
 def then_req797_positive(shared_data: dict) -> None:
     assert shared_data["node_count"] > 0
     assert shared_data["rel_count"] > 0
+
+
+# (no new steps required - all REQ-714 steps already exist in the file)
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1e45d486-847e-4b9e-8bea-0d8d920c200e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# No new steps required for REQ-716; all steps are already implemented in the existing file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 951e8fc9-6cd9-40ae-bb98-868187ccd759
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3c10be5c-0fd2-4a1b-826a-8395e7be6b2f
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 87056b30-25b2-4031-a62f-c76f92f290de
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-793 are already implemented in the existing steps file.
+# No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7d0a5cdb-2548-4ee1-a105-979db3a999d4
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8cff28d9-d2a8-4b60-8bcb-e72fba07a85f
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-716 are already present in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: abeaede4-fe02-4be3-be0e-0aa9535c08b7
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-719 are already implemented in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9f61c611-dc75-4b9c-ab58-db74471bebfe
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps required for REQ-793 are already present in the existing file.
+# No new step definitions are appended.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 032dd09b-d229-49b7-9b95-ab9529da0608
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-714 are already implemented in the existing file.
+# No new step definitions are needed.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1955d62f-001f-41d2-b794-70e2af4c4980
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d9ae0dc5-3ff2-4d6c-929e-69d0ffcc08f1
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 18b2da6d-2c5c-4413-acf0-fd0c99aa2124
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2fa76d61-d669-4514-bdfd-b8cb5c280d66
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3d9df6cd-2a09-4cbd-ae1b-70d7f1b1e13e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 39383cc8-eb24-4b9c-81a7-1eba6a5201cb
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fe554e8f-2d31-4d96-99e7-01a6712771a7
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-714 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 51c1fc57-4579-4f6b-b23c-ffb5e1aad6df
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 73c84d3c-6db5-47ab-8b4f-7a6886d0c92a
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d9ac9a97-d660-4a81-b446-8f43c7faf022
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d83693cc-6acf-4adf-bb34-aad9b6932b3b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 56ab2b0f-567e-4a83-9625-5f55aa19d314
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 515f8679-ebc2-4483-abad-8ef0c8a59455
+#
+# This source code is licensed under the Business Source License 1.1

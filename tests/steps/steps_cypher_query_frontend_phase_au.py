@@ -2061,3 +2061,70 @@ def then_typed_response_shape(shared_data: dict) -> None:
     assert row["p"]["label"] == "Person"
     assert set(["id", "label", "tableLabel", "properties"]).issubset(row["p"].keys())
     assert resp["error"] is None
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e3dc39fb-134d-44f0-9bc8-64260d958977
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-752 are already implemented above (given_multi_hop_query,
+# when_translator_processes, then_multi_hop_aliases). No new definitions needed.
+
+
+# (no new code required - all REQ-757 steps are already present in the existing file)
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ca97b04b-2441-4873-abcf-3e938c12118d
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0f91dffe-0e35-405e-ad1d-456e4f401a68
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 33f0cccc-e92a-4be2-b861-0cdc07bf094d
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9468e460-b9c0-490c-a949-047de74822f9
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fc83ab58-c739-4692-9a30-00f4462088a7
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5b47326a-9676-46fb-bd5d-4f0e1c6a69b8
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2893943f-b743-4247-91c8-d6cf89221496
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c77f2ac7-bdae-4b4f-9845-716dc69170d0
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e88a8b24-e9d1-4cac-a185-f6ed9717dadd
+#
+# This source code is licensed under the Business Source License 1.1

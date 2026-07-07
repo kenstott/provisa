@@ -1523,3 +1523,62 @@ def then_stewards_accept_or_reject(shared_data):
 
 
 # No new steps required for REQ-317; all steps already exist in the file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 70ea6d7a-4417-491b-9188-2a2b0e363369
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fb360721-752b-489c-a5cb-4f384ad5578b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# No new steps required for REQ-601; all steps already exist in the file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6e9de7d5-7e6a-4d4c-a71f-e0b89a2b5fbd
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 35c9ea7e-63cb-4fbe-91b8-d2f0d37d4bf2
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# No new steps required for REQ-601; all steps already exist in the file.
+
+
+# No new steps required for REQ-316; all steps already exist in the file.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# No new steps required for REQ-601; all steps already exist in the file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 52340432-1c7c-44d1-a758-38ea630b3a2d
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# No new steps required for REQ-601; all steps already exist in the file.

@@ -1060,3 +1060,52 @@ def then_source_type_not_used_to_dispatch(shared_data: dict) -> None:
 
 
 # (no new steps required - all REQ-261 steps are already implemented in the existing file)
+
+
+# All REQ-260 steps are already implemented in the existing steps file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: cac03b53-1419-4004-8884-3005227c7e7f
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All REQ-260 steps are already present in the existing steps file - nothing to append.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6d3ef5ae-f220-485f-89a4-5ed8d0e01c23
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-261 are already present in the existing steps file.
+# No new step definitions are required.
+
+
+# All REQ-260 steps are already implemented in the existing steps file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f0117899-962c-4287-8cd6-0bd0ea1ac383
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-261 are already present in the existing steps file.
+# No new step definitions are required.
+
+
+# No new step definitions required for REQ-260.
+# All steps (Given/When/Then) for "REQ-260 default behaviour" are already
+# implemented in this file:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+
+
+# No new step definitions required for REQ-261.
+# All steps for the "REQ-261 default behaviour" scenario are already
+# implemented in the existing file:
+#   - given_mysql_source_via_debezium  (Given a MySQL source is connected via Debezium and Kafka)
+#   - when_row_changed_in_mysql        (When a row is inserted, updated, or deleted in MySQL)
+#   - then_change_streamed_as_sse      (Then the change is captured by Debezium...)

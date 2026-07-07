@@ -534,3 +534,27 @@ def then_returns_stable_integer_ids_in_result_edges(shared_data: dict) -> None:
 
 
 scenarios("../features/REQ-784.feature")
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ede2c72e-8c05-4499-98d9-98f052d5d099
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 77eed91a-ef29-41c6-af43-16a168a110a4
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2941b42f-e77e-452a-9a80-5401607b1ba2
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d9e64a00-6da5-4066-a4c2-76e32e1dfc2c
+#
+# This source code is licensed under the Business Source License 1.1

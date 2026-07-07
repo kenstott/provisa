@@ -47,9 +47,10 @@ import re
 import urllib.parse
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, cast
 
 from sqlalchemy import Table, event, text
+from sqlalchemy.pool import QueuePool
 from sqlalchemy.dialects.mysql import insert as _mysql_insert
 from sqlalchemy.dialects.postgresql import insert as _pg_insert
 from sqlalchemy.dialects.sqlite import insert as _sqlite_insert
@@ -515,6 +516,15 @@ class Database:
     async def fetchval(self, sql: str, *args: Any, column: int = 0) -> Any:
         async with self.acquire() as conn:
             return await conn.fetchval(sql, *args, column=column)
+
+    def get_size(self) -> int:
+        """Current pool size (checked-out + idle connections)."""
+        pool = cast(QueuePool, self._engine.pool)
+        return pool.checkedout() + pool.checkedin()
+
+    def get_idle_size(self) -> int:
+        """Idle (checked-in) connections in the pool."""
+        return cast(QueuePool, self._engine.pool).checkedin()
 
     async def close(self) -> None:
         await self._engine.dispose()

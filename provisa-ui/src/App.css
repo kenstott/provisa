@@ -500,6 +500,34 @@ main {
   margin-bottom: 1.5rem;
 }
 
+/* Dark-theme form controls for settings tabs (Federation Engine, Cache & Storage,
+   Encryption, Authentication). These render raw inputs/selects with only inline sizing,
+   so scope the theme colors here rather than to browser defaults (white bg). */
+.admin-tab-content input[type="text"],
+.admin-tab-content input[type="number"],
+.admin-tab-content input[type="password"],
+.admin-tab-content select,
+.admin-tab-content textarea {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.admin-tab-content input[type="text"]:focus,
+.admin-tab-content input[type="number"]:focus,
+.admin-tab-content input[type="password"]:focus,
+.admin-tab-content select:focus,
+.admin-tab-content textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.admin-tab-content input::placeholder,
+.admin-tab-content textarea::placeholder { color: var(--text-muted); }
+.admin-tab-content input[type="checkbox"] { accent-color: var(--primary); }
+
 /* Status badges */
 .status-badge {
   padding: 0.1rem 0.4rem;

@@ -958,3 +958,48 @@ def subscribers_receive_sse_with_governance(shared_data):
 
 
 # All steps for REQ-331 default behaviour are already implemented in this file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 577575ff-811c-4492-9d83-cff100e5664a
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d3671984-86a9-4ab7-b5ce-aa817548c7a8
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 913cbe32-d3be-45fa-9827-c4fecb7d91bd
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 17d897d6-d231-4f43-addb-6fa082c650b7
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8fe8b140-fe5d-497a-8b26-224fc14a60ee
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c5ac3297-a2e5-4500-9a19-5af2a11e499d
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5ca7787e-48ec-4270-9dbb-e87ca1fb4d11
+#
+# This source code is licensed under the Business Source License 1.1

@@ -749,3 +749,65 @@ def the_table_is_created_with_the_supplied_column_definitions(shared_data):
 
 
 # No new steps are required for REQ-726; all steps are already defined in the existing file.
+
+
+# No new steps required for REQ-726; all steps are already defined in the existing file.
+
+
+# No new steps required for REQ-728; all steps are already defined in the existing file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5098be31-33ed-4877-a1d0-b722daa51689
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2814d913-f234-47b1-9ddd-a93625886352
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ac5ff101-494a-476c-b78f-9043f6695c4c
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 21680bac-7d40-49f4-bb8f-86fb551085c3
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e5a94157-9c6b-4766-8489-10f277cc25c2
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 728d431b-07e2-4e38-880b-1d6fc61e6615
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.

@@ -796,3 +796,46 @@ def then_federated_query_routed_through_federation_engine(shared_data: dict) -> 
 
 
 # All REQ-279 steps are already implemented in the existing file; no new definitions required.
+
+
+# (no new definitions required - all REQ-279 steps are already present in the existing file)
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a6b32ce1-d1c7-4346-9fcb-60fe3bd18971
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# REQ-279 steps are fully implemented above; no additional definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5fe64966-28ed-4624-b7a9-45c80cd0ad71
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All REQ-279 steps are already implemented in the existing file; no new definitions required.
+
+
+# No new step definitions required for REQ-811.
+# All steps for the scenario are already implemented in the existing file:
+#   - given: 'a GraphQL query annotated with the comment hint "{hint}"'
+#             -> given_graphql_query_with_route_hint
+#   - when:  "the query is compiled"
+#             -> when_the_query_is_compiled (handles graphql_query dispatch)
+#   - then:  "the query is routed to single-source direct execution"
+#             -> then_query_routed_direct
+#   - then:  'a query annotated with "# @provisa route=federated" is routed through the federation engine'
+#             -> then_federated_query_routed_through_federation_engine
+
+
+# (no new step definitions required for REQ-279 - all steps already exist in the file)
+
+
+# REQ-811 scenario steps are fully covered by existing definitions in this file.
+# given_graphql_query_with_route_hint covers the Given step.
+# when_the_query_is_compiled covers the When step via graphql_query dispatch.
+# then_query_routed_direct covers the first Then step.
+# then_federated_query_routed_through_federation_engine covers the second Then step.

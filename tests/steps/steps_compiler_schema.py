@@ -2104,3 +2104,135 @@ def req655_assert_filter_where(shared_data):
     assert "WHERE" in sql_upper, f"Expected a WHERE clause for row-level filtering in SQL:\n{sql}"
     assert "GROUP BY" in sql_upper, f"Expected GROUP BY in SQL:\n{sql}"
     assert "HAVING" in sql_upper, f"Expected HAVING in SQL:\n{sql}"
+
+
+# REQ-008 steps are fully implemented above; no additional definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a5eef558-ff16-4cdb-abfe-9e722aee4887
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bde7dcc1-d8e2-476b-94cc-e3aae86f752a
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# No new steps required for REQ-259; all definitions already exist in the steps file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1414102c-1f77-43b1-be77-d63f477ee933
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# REQ-008 scenario steps are fully implemented in the existing file; no new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 615e4d2f-8a81-4658-a120-e232d30ed609
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-252 are already implemented in the existing steps file.
+# No new steps are required.
+
+
+# (no new steps required for REQ-253; all definitions already exist in the steps file)
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f95f5944-8894-4886-ba58-78b4ebba228b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-259 are already implemented in the existing steps file.
+# No new steps are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6f748cfa-6bbc-4af7-b729-d70cd2ad75b7
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c40fc04e-3342-45cb-8cb7-5b2056e31521
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 33d90ac4-99af-411f-ae63-f7b46f9e0bee
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-252 are already present in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b8a7c500-6cc8-4cb7-a9b5-34143eeee724
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b80000eb-90dc-472a-8d2b-273dba104e01
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6110a782-4bd6-41c1-9fc9-f3d1ce405ad2
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-534 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 95a63e42-f2b2-41c8-94d2-105ff15d87ac
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-008 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1f30547a-0cae-40d4-b037-41920de6f32f
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-252 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f0623238-7408-430c-a3ec-b8462e433426
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-253 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: cec8e593-6a4a-406e-a8e6-b3c325a706a0
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-259 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3c7f484d-6766-45a2-8908-75b6bce9eb53
+#
+# This source code is licensed under the Business Source License 1.1

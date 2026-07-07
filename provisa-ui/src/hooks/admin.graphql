@@ -284,8 +284,13 @@ query SystemHealth {
     engineActiveWorkers
     pgPoolSize
     pgPoolFree
+    cacheMode
     cacheConnected
-    flightServerRunning
+    protocols {
+      name
+      status
+      port
+    }
     mvRefreshLoopRunning
   }
 }

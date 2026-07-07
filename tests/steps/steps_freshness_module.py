@@ -234,3 +234,206 @@ def _verify_pg_cache_delegates(shared_data):
 
 
 # No new steps required; all steps for REQ-859 are already implemented in the existing file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 79256dbb-6ebe-4e05-8688-1ff315e2cdb6
+#
+# This source code is licensed under the Business Source License 1.1
+
+"""BDD step implementations for REQ-859: Freshness Module - Source Connectors."""
+
+
+
+import pytest
+from pytest_bdd import given, scenarios, then, when
+
+
+scenarios("../features/REQ-859.feature")
+
+
+@pytest.fixture
+def shared_data():
+    return {}
+
+
+@given(
+    "a materialized view and an API/pg cache entry, each with its own last-refresh state",
+    target_fixture="shared_data",
+)
+def given_mv_and_pg_cache_with_refresh_state():
+    mv_refresh_epoch = 1_000.0
+    mv = MVDefinition(
+        id="bdd-mv-859",
+        source_tables=["orders"],
+        target_catalog="iceberg",
+        target_schema="public",
+        refresh_interval=100,
+    )
+    mv.status = MVStatus.FRESH
+    mv.last_refresh_at = mv_refresh_epoch
+    mv.last_error = None
+
+    pg_cached_at = datetime.now(UTC) - timedelta(seconds=10)
+
+    mv_stale = MVDefinition(
+        id="bdd-mv-859-stale",
+        source_tables=["orders"],
+        target_catalog="iceberg",
+        target_schema="public",
+        refresh_interval=100,
+    )
+    mv_stale.status = MVStatus.FRESH
+    mv_stale.last_refresh_at = mv_refresh_epoch
+    mv_stale.last_error = None
+
+    pg_cached_at_stale = datetime.now(UTC) - timedelta(seconds=600)
+
+    return {
+        "mv": mv,
+        "mv_refresh_epoch": mv_refresh_epoch,
+        "mv_now_fresh": mv_refresh_epoch + 50,
+        "mv_now_stale": mv_refresh_epoch + 200,
+        "pg_cached_at_fresh": pg_cached_at,
+        "pg_cached_at_stale": pg_cached_at_stale,
+        "pg_ttl": 300,
+    }
+
+
+@when("their freshness is evaluated")
+def when_freshness_is_evaluated(shared_data):
+    mv: MVDefinition = shared_data["mv"]
+
+    mv_subject = mv.freshness_subject()
+    shared_data["mv_subject"] = mv_subject
+
+    ttl_mv = Ttl(mv.refresh_interval)
+    result_mv_fresh = evaluate(mv_subject, ttl_mv, now=shared_data["mv_now_fresh"])
+    result_mv_stale = evaluate(mv_subject, ttl_mv, now=shared_data["mv_now_stale"])
+    shared_data["result_mv_fresh"] = result_mv_fresh
+    shared_data["result_mv_stale"] = result_mv_stale
+
+    shared_data["mv_is_fresh_at_true"] = mv.is_fresh_at(shared_data["mv_now_fresh"])
+    shared_data["mv_is_fresh_at_false"] = mv.is_fresh_at(shared_data["mv_now_stale"])
+
+    pg_cached_epoch_fresh = shared_data["pg_cached_at_fresh"].replace(tzinfo=UTC).timestamp()
+    pg_subject_fresh = StateSubject(refreshed_at=pg_cached_epoch_fresh)
+    shared_data["pg_subject_fresh"] = pg_subject_fresh
+
+    import time as _time
+    now_epoch = _time.time()
+
+    result_pg_fresh = evaluate(pg_subject_fresh, Ttl(shared_data["pg_ttl"]), now=now_epoch)
+    shared_data["result_pg_fresh"] = result_pg_fresh
+
+    pg_cached_epoch_stale = shared_data["pg_cached_at_stale"].replace(tzinfo=UTC).timestamp()
+    pg_subject_stale = StateSubject(refreshed_at=pg_cached_epoch_stale)
+    shared_data["pg_subject_stale"] = pg_subject_stale
+    result_pg_stale = evaluate(pg_subject_stale, Ttl(shared_data["pg_ttl"]), now=now_epoch)
+    shared_data["result_pg_stale"] = result_pg_stale
+
+
+@then(
+    "both expose that state as a FreshnessSubject and the TTL decision is produced by"
+    " the one shared FreshnessPredicate, yielding the same fresh/stale result as the"
+    " prior per-consumer checks."
+)
+def then_both_are_freshness_subjects_with_unified_predicate(shared_data):
+    mv_subject: StateSubject = shared_data["mv_subject"]
+    pg_subject_fresh: StateSubject = shared_data["pg_subject_fresh"]
+    pg_subject_stale: StateSubject = shared_data["pg_subject_stale"]
+
+    assert isinstance(mv_subject, FreshnessSubject), (
+        "MV freshness_subject() must return a FreshnessSubject"
+    )
+    assert isinstance(pg_subject_fresh, FreshnessSubject), (
+        "pg-cache StateSubject must conform to FreshnessSubject"
+    )
+    assert isinstance(pg_subject_stale, FreshnessSubject), (
+        "pg-cache StateSubject (stale) must conform to FreshnessSubject"
+    )
+
+    mv: MVDefinition = shared_data["mv"]
+    assert mv_subject.last_refresh_at() == mv.last_refresh_at
+    assert mv_subject.last_refresh_ok() is True
+
+    assert shared_data["result_mv_fresh"].is_fresh is True, (
+        "MV evaluated within TTL must be fresh"
+    )
+    assert shared_data["result_mv_stale"].is_fresh is False, (
+        "MV evaluated beyond TTL must be stale"
+    )
+    assert shared_data["result_pg_fresh"].is_fresh is True, (
+        "pg-cache entry cached 10 s ago (TTL=300) must be fresh"
+    )
+    assert shared_data["result_pg_stale"].is_fresh is False, (
+        "pg-cache entry cached 600 s ago (TTL=300) must be stale"
+    )
+
+    assert shared_data["mv_is_fresh_at_true"] is True, (
+        "is_fresh_at() within TTL should return True when status is FRESH"
+    )
+    assert shared_data["mv_is_fresh_at_false"] is False, (
+        "is_fresh_at() beyond TTL should return False"
+    )
+
+    mv_refreshing = MVDefinition(
+        id="bdd-mv-859-refreshing",
+        source_tables=["orders"],
+        target_catalog="iceberg",
+        target_schema="public",
+        refresh_interval=100,
+    )
+    mv_refreshing.status = MVStatus.REFRESHING
+    mv_refreshing.last_refresh_at = mv.last_refresh_at
+    mv_refreshing.last_error = None
+    assert mv_refreshing.is_fresh_at(shared_data["mv_now_fresh"]) is False, (
+        "REFRESHING status must short-circuit to False"
+    )
+
+    _verify_pg_cache_delegates(shared_data)
+
+
+def _verify_pg_cache_delegates(shared_data):
+    import asyncio
+
+    pg_cache._mem_fresh.clear()
+
+    async def _run_fresh():
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(return_value=shared_data["pg_cached_at_fresh"])
+        return await pg_cache._is_fresh(conn, "sch", "tbl", "phash_f", ttl=300)
+
+    async def _run_stale():
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(return_value=shared_data["pg_cached_at_stale"])
+        return await pg_cache._is_fresh(conn, "sch", "tbl", "phash_s", ttl=300)
+
+    result_fresh = asyncio.run(_run_fresh())
+    assert result_fresh is True, (
+        "pg_cache._is_fresh must return True for a recently cached entry"
+    )
+
+    pg_cache._mem_fresh.clear()
+    result_stale = asyncio.run(_run_stale())
+    assert result_stale is False, (
+        "pg_cache._is_fresh must return False for an expired cache entry"
+    )
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fdecb4f8-7f41-4724-bfe8-7ed61bc4aceb
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 80b71203-3b36-43ee-93fb-35618c75fe5d
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 05b76961-cd9b-4356-b479-781c6735b260
+#
+# This source code is licensed under the Business Source License 1.1

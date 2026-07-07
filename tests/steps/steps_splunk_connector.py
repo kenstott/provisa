@@ -548,3 +548,63 @@ def step_req724_assert_app_and_ssl(shared_data):
     assert "password" not in props, (
         f"REQ-724: 'password' key must not appear when use_token=True; props={props}"
     )
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 425824b6-6df8-43d4-9ec7-6cbaf1c51044
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-721 are already present in the existing steps file.
+# This file intentionally contains no additional step definitions.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d262cd34-44ac-4faa-ad89-8c6e3b01caca
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0ae9dfd0-13d1-4b42-b9b5-6793f481777d
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-721 are already present in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9bb8e518-19d1-4d67-beee-20960fc1d370
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 249f2838-a5d7-4ba5-bea7-4187d1c5bde3
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-721 are already present in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a328689b-ecb7-4fd1-922b-104203ddefa2
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3d8f9063-e5cf-44a2-848a-03ea1a2ad97d
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 00398f33-4c73-4162-8a23-d05ed629be5a
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-722 are already present in the existing steps file.
+# No new step definitions are required for this requirement.

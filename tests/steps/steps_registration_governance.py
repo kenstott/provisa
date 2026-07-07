@@ -2079,3 +2079,126 @@ def _req638_then(shared_data):
 
     assert hasattr(_intro, "native_schemas")
     assert hasattr(_intro, "native_tables")
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d31fc482-ba19-473b-b519-77474716306e
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 are already present in the existing steps file.
+# This file intentionally left with no new definitions to avoid duplication.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f4602ada-9cb6-43e8-af23-6d44bae6ee8e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 38df88b5-9b74-4a1b-91a4-ca36b36da610
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8e9ce92d-9e4e-45ef-8ea6-f72426c5e4f4
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5d3e2987-654b-44e8-b957-7730322195a3
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e8551083-594b-4828-9677-95fcbf86465e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7527e3f6-51c6-4fc2-a7f2-9ce04fe6f33b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# (no new definitions required - all REQ-417 steps already exist in the file)
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ef197754-b821-43a4-b9de-f565fc2470aa
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0be15985-1ae6-4e1d-8abf-4ac0ab55a21a
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9fef5a67-137d-45db-a24b-4e7618032a34
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 59e4f0d4-fc06-4561-98e0-94448ecf0b97
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4f147df8-d50e-45cd-8c0b-8537d721a9a1
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3e6ca350-dccc-4ac7-81bf-7dc280f04d21
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: cf7a8ee0-e2df-437c-878a-148ac32343cc
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 84f735e7-d505-46f6-af2d-759b44a1a3dd
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 646de519-0fef-4154-9d07-53c8c3161813
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a6ee5945-95ba-45fc-8642-f7264bb1da91
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-417 steps and the scenarios() binding already exist in the existing
+# steps file.  No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ac19581b-bccd-4023-a2a2-82e7a2760fd2
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e15bec8c-1761-49aa-ae50-84df06a7e320
+#
+# This source code is licensed under the Business Source License 1.1

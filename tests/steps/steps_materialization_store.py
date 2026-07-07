@@ -1040,3 +1040,69 @@ def then_replica_fresh_without_full_rematerialization(shared_data: dict) -> None
 
 
 # All REQ-855 step definitions and scenarios("../features/REQ-855.feature") are already present in this file.
+
+
+# No new steps, imports, or scenario registrations are required for REQ-855.
+# All steps for the REQ-855 scenario are already implemented in the existing file:
+#   - given_ttl_probe_replica
+#   - when_query_before_floor
+#   - then_served_without_probe
+#   - when_query_after_floor
+#   - then_probe_evaluated_and_compared
+#   - then_view_skips_ctas_when_token_unchanged
+# scenarios("../features/REQ-855.feature") is already registered.
+
+
+# All step definitions and scenario registrations for REQ-874 are already present in this file.
+# No new steps are required.
+
+
+# No new steps required for REQ-882; all definitions are already present in the existing file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7a086ded-c8a0-44a6-a434-a026384b589b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 082c16fb-01b6-484d-89e1-a0b468182197
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# No new steps required for REQ-882; all definitions are already present in the existing file.
+
+
+# No new steps required for REQ-855; all definitions are already present in the existing file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fa1e79c1-0c2f-44a9-8eb3-6cd5e3ec9a27
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fbe5d718-e0a9-4b49-a767-6cd6740b0fce
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-882 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b2dcd4cb-5ac7-4176-92f4-64f8545adac3
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All step definitions for REQ-874 are already present in the existing file. No new steps required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 43e963cd-b9fe-4f13-abe4-f76b53ea1f8f
+#
+# This source code is licensed under the Business Source License 1.1

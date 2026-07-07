@@ -550,3 +550,49 @@ def then_excluded_function_not_visible(shared_data: dict) -> None:
     finally:
         db.close()
         shared_data["catalog_db"] = None
+
+
+# (no new steps required - all REQ-870 steps are already present in the existing file)
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b9bbdd8d-c1db-41e3-bde1-462ba2596514
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# (no new steps required - all REQ-870 steps are already present in the existing file)
+
+
+# No new steps required for REQ-871 - all scenario steps are already implemented in the existing file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5744864c-1b5a-451a-82e1-b65a282dd8e1
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-870 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: dcf959a1-d06e-479c-98e8-ba47e62ab59f
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-871 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 90b246e5-53b2-4ef9-b649-83129ec8a30e
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-870 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-871 are already implemented in the existing file.
+# No new step definitions are required.
