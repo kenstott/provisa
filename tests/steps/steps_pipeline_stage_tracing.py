@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
-scenarios("../features/req_914_pipeline_stage_tracing.feature")
+scenarios("../features/REQ-914.feature")
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def shared_data() -> dict[str, Any]:
 
 def _make_recording_span():
     """Return a live SDK span that records events, inside an active context."""
-    otel_sdk = pytest.importorskip("opentelemetry.sdk.trace")
+    pytest.importorskip("opentelemetry.sdk.trace")
     from opentelemetry.sdk.trace import TracerProvider
 
     provider = TracerProvider()
@@ -150,8 +150,7 @@ def then_events_carry_stage_but_no_sql(shared_data):
     # There must be at least one event emitted for the stage.
     assert len(events) >= 1, "Expected at least one span event in off mode"
 
-    sql = shared_data["sql"]
-    # Extract all literal substrings from the SQL that we know are there.
+    # Literal substrings known to be in the SQL that must NOT leak into span attributes.
     literals_to_check = ["us-east", "active", "SELECT ssn"]
 
     for event in events:
@@ -192,9 +191,9 @@ def then_each_event_has_redacted_sql(shared_data):
 
         redacted_val = attrs["sql.redacted"]
         # The redacted SQL must contain a placeholder marker - sqlglot uses %s for Placeholder.
-        assert "%s" in redacted_val or "?" in redacted_val or "PLACEHOLDER" in redacted_val.upper(), (
-            f"Redacted SQL does not appear to contain a placeholder: {redacted_val}"
-        )
+        assert (
+            "%s" in redacted_val or "?" in redacted_val or "PLACEHOLDER" in redacted_val.upper()
+        ), f"Redacted SQL does not appear to contain a placeholder: {redacted_val}"
 
 
 @then("no literal value (e.g. an RLS predicate value or SSN) appears in any attribute")

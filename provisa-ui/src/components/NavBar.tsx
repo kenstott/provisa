@@ -10,8 +10,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { User } from "lucide-react";
+import { User, Compass } from "lucide-react";
 import { CapabilityGate } from "./CapabilityGate";
+import { useTour } from "../tour/useTour";
 import { RoleSelector } from "./RoleSelector";
 import { OrgSwitcher } from "./OrgSwitcher";
 import { UserProfileModal } from "./UserProfileModal";
@@ -106,6 +107,7 @@ export function NavBar() {
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
   const { displayName, email, devMode } = useAuth();
+  const { startTour } = useTour();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
   const [domainOpen, setDomainOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -205,17 +207,18 @@ export function NavBar() {
         </div>
         <div className="navbar-links">
           <CapabilityGate capability="source_registration">
-            <NavLink to="/sources">Sources</NavLink>
+            <NavLink to="/sources" data-tour="nav-sources">Sources</NavLink>
           </CapabilityGate>
           <CapabilityGate capability="table_registration">
-            <NavLink to="/tables">Tables</NavLink>
+            <NavLink to="/tables" data-tour="nav-tables">Tables</NavLink>
           </CapabilityGate>
-          <NavLink to="/relationships">Relationships</NavLink>
+          <NavLink to="/relationships" data-tour="nav-relationships">Relationships</NavLink>
           {NAV_GROUPS.map((group) => {
             const isActive = routeGroup === group.id || pinnedGroup === group.id;
             return (
               <button
                 key={group.id}
+                data-tour={`nav-${group.id}`}
                 className={`nav-group-label${isActive ? " nav-group-active" : ""}`}
                 onClick={() => toggleGroup(group.id)}
               >
@@ -248,6 +251,14 @@ export function NavBar() {
             </div>
           )}
           <RoleSelector />
+          <button
+            className="navbar-tour-btn"
+            title="Take a guided tour"
+            aria-label="Take a guided tour"
+            onClick={() => startTour()}
+          >
+            <Compass size={16} />
+          </button>
           <div className="navbar-user-wrapper" ref={userMenuRef}>
             <button
               className="navbar-user-btn"

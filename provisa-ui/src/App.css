@@ -164,6 +164,17 @@ body {
   align-items: center;
 }
 .navbar-user-btn:hover { border-color: var(--text-muted); color: var(--text); }
+.navbar-tour-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 0.375rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+.navbar-tour-btn:hover { border-color: var(--text-muted); color: var(--text); }
 .navbar-user-panel {
   position: absolute;
   top: calc(100% + 4px);

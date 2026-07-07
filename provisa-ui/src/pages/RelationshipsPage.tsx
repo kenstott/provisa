@@ -362,7 +362,11 @@ export function RelationshipsPage() {
         />
         <div className="page-actions">
           {canManage && (
-            <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+            <button
+              data-tour="rels-add"
+              className="btn-primary"
+              onClick={() => setShowForm(!showForm)}
+            >
               {showForm ? "Cancel" : "+ Relationship"}
             </button>
           )}
@@ -373,7 +377,12 @@ export function RelationshipsPage() {
           >
             <Code2 size={14} />
           </button>
-          <button className="btn-icon" title="View ERD" onClick={() => setShowErd(true)}>
+          <button
+            data-tour="rels-erd"
+            className="btn-icon"
+            title="View ERD"
+            onClick={() => setShowErd(true)}
+          >
             <Network size={14} />
           </button>
           {canManage && (
@@ -402,14 +411,16 @@ export function RelationshipsPage() {
       )}
 
       {showForm && (
-        <AddRelationshipForm
-          form={form}
-          setForm={setForm}
-          tables={tables}
-          functions={functions}
-          saving={saving}
-          onSave={handleAdd}
-        />
+        <div data-tour="rels-form">
+          <AddRelationshipForm
+            form={form}
+            setForm={setForm}
+            tables={tables}
+            functions={functions}
+            saving={saving}
+            onSave={handleAdd}
+          />
+        </div>
       )}
 
       <div style={{ overflowX: "auto" }}>

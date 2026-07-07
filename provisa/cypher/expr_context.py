@@ -86,7 +86,12 @@ class TranslatorExprContext:
         lateral = self._t._call_var_to_lateral.get(name)
         if lateral is not None:
             return _col(name, lateral)
-        alias = self._t._var_table.get(name, (name, None))[0]
+        alias, meta = self._t._var_table.get(name, (name, None))
+        # A WITH-projected scalar (in _cte_sources, no node mapping) lives as a column named ``name``
+        # inside CTE ``alias`` — resolve to that qualified column. Returning the bare CTE table alias
+        # instead makes the engine read the whole-row struct (rendered client-side as [object Object]).
+        if meta is None and alias != name and name in self._t._cte_sources:
+            return _col(name, alias)
         return exp.column(alias)
 
     def resolve_property(self, obj: exp.Expression, name: str) -> exp.Expression:

@@ -33,10 +33,16 @@ async def me(request: Request):
         role_rows = await conn.fetch("SELECT id FROM roles")
     all_role_ids = {r["id"] for r in role_rows}
 
-    if identity is None or identity.user_id == "anonymous":
-        # Dev mode: expose every configured role with wildcard domain access
+    # Dev/no-auth mode is keyed on "no auth provider configured" (auth_config is None) — NOT on the
+    # username. Unsecured mode honors X-Provisa-Role, so the username IS the selected role (not
+    # "anonymous"); every configured role is exposed with wildcard domain access so all are selectable.
+    unsecured = getattr(state, "auth_config", None) is None
+    if unsecured or identity is None:
+        uid = identity.user_id if identity is not None else "anonymous"
         return {
-            "user_id": "anonymous",
+            "user_id": uid,
+            "email": None,
+            "display_name": uid,
             "dev_mode": True,
             "active_org_id": "root",
             "org_memberships": [{"org_id": "root", "org_name": "Enterprise"}],

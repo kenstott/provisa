@@ -82,15 +82,76 @@ def build_auth_provider(
     raise ValueError(f"Unknown auth provider: {provider_name!r}")
 
 
+def _resolve_auth_settings() -> dict:  # REQ-120, REQ-125
+    """Resolve AuthMiddleware settings from live app ``state``.
+
+    Called lazily on the middleware's first request. The middleware is installed at create_app time,
+    but its inputs — ``auth_config`` and the control-plane pools — are only populated later, in the
+    lifespan (``_load_and_build``). Starlette builds the middleware stack on the lifespan ASGI call,
+    so the middleware must be *added* at create_app; its configuration is resolved here, on the first
+    request, by which point the lifespan has run.
+
+    ``auth_config is None`` (no ``auth`` section, or ``provider: none``) → unsecured: no provider, so
+    the middleware honors ``X-Provisa-Role`` at face value (REQ-273)."""
+    from provisa.api.app import state
+
+    auth_config = getattr(state, "auth_config", None)
+    cfg = getattr(state, "config", None)
+    multitenancy = getattr(cfg, "multitenancy", False) if cfg else False
+    default_org_id = getattr(cfg, "default_org_id", "root") if cfg else "root"
+    base = {
+        "mapping_rules": [],
+        "default_role": "analyst",
+        "db_pool": None,
+        "admin_pool": None,
+        "assignments_source": "claims",
+        "default_assignments": [],
+        "multitenancy": multitenancy,
+        "default_org_id": default_org_id,
+        "superuser": None,
+    }
+    if auth_config is None:
+        return {**base, "provider": None}
+
+    admin_pool = getattr(state, "admin_db", None)
+    provider = build_auth_provider(auth_config, admin_pool=admin_pool)
+    if auth_config["provider"] == "simple":
+        from provisa.auth.providers import simple as simple_mod
+
+        simple_mod._provider_instance = provider
+    return {
+        **base,
+        "provider": provider,
+        "mapping_rules": auth_config.get("role_mapping", []),
+        "default_role": auth_config.get("default_role", "analyst"),
+        "db_pool": getattr(state, "tenant_db", None),
+        "admin_pool": admin_pool,
+        "assignments_source": auth_config.get("assignments_source", "claims"),
+        "default_assignments": auth_config.get("default_assignments", []),
+        "superuser": resolve_superuser_config(auth_config.get("superuser")),
+    }
+
+
 def wire_auth(
     app: FastAPI, auth_config: dict | None, db_pool=None, admin_pool=None
 ) -> None:  # REQ-120, REQ-125
-    """Conditionally register AuthMiddleware and auth routes based on config.
+    """Register AuthMiddleware (and auth routes) on the application.
 
     ``db_pool`` is the tenant control plane (``user_role_assignments``);
     ``admin_pool`` is the platform control plane (``local_users``,
-    ``user_profiles``, ``user_org_memberships``)."""
+    ``user_profiles``, ``user_org_memberships``).
+
+    Called from create_app before the config + control-plane pools exist, so the middleware is
+    always installed and resolves its settings lazily from ``state`` (see ``_resolve_auth_settings``).
+    An explicit ``auth_config`` (tests / eager callers) takes the original eager path unchanged."""
+    from provisa.api.app import state as _app_state
+
+    _app_state.auth_middleware_active = True
+
     if auth_config is None:
+        from provisa.auth.middleware import AuthMiddleware
+
+        app.add_middleware(AuthMiddleware, config_resolver=_resolve_auth_settings)
         return
 
     provider = build_auth_provider(auth_config, admin_pool=admin_pool)

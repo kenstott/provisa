@@ -43,6 +43,7 @@
     "cytoscape-fcose": "^2.2.0",
     "cytoscape-layout-utilities": "^1.1.1",
     "cytoscape-svg": "^0.4.0",
+    "driver.js": "^1.6.0",
     "esbuild": "^0.28.0",
     "firebase": "^12.14.0",
     "graphiql": "^5.2.3",

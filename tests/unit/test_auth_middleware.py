@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import base64
+
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -65,8 +67,20 @@ def test_no_auth_configured_backward_compat():
     resp = client.get("/test")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["user_id"] == "anonymous"
+    # Unsecured: no identity provider, so the username IS the role (defaults to admin).
+    assert data["user_id"] == "admin"
     assert data["role"] == "admin"
+
+
+def test_no_auth_configured_username_is_role():
+    """Unsecured + explicit X-Provisa-Role → identity username equals that role."""
+    app = _make_app(provider=None)
+    client = TestClient(app)
+    resp = client.get("/test", headers={"x-provisa-role": "analyst"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["user_id"] == "analyst"
+    assert data["role"] == "analyst"
 
 
 def test_valid_token():
@@ -115,8 +129,6 @@ def test_malformed_auth_header():
 
 
 # --- REQ-125: superuser bootstrap short-circuit -----------------------------
-
-import base64
 
 _SU = {"username": "root", "password": "s3cr3t"}
 

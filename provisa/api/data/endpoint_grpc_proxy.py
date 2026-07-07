@@ -25,62 +25,13 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from provisa.compiler.parser import parse_query
-from provisa.compiler.sql_gen import compile_query
-from provisa.executor.serialize import serialize_rows
-from provisa.grpc.proto_gen import _to_proto_field_name, _to_proto_type_name
+from provisa.grpc.query_ir import grpc_table_to_semantic_sql
+from provisa.grpc.proto_gen import _to_proto_field_name
 from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/data", tags=["data"])
-
-
-def _is_scalar_field(gql_type) -> bool:
-    from graphql import GraphQLEnumType, GraphQLNonNull, GraphQLScalarType
-
-    if isinstance(gql_type, GraphQLNonNull):
-        return _is_scalar_field(gql_type.of_type)
-    return isinstance(gql_type, (GraphQLScalarType, GraphQLEnumType))
-
-
-def _unwrap(gql_type):
-    """Strip NonNull/List wrappers to reach the underlying named type."""
-    from graphql import GraphQLList, GraphQLNonNull
-
-    while isinstance(gql_type, (GraphQLNonNull, GraphQLList)):
-        gql_type = gql_type.of_type
-    return gql_type
-
-
-def _resolve_field_name(query_type, type_name: str) -> str | None:
-    """Return the query field whose object type maps to *type_name*, using the naming
-    authority (proto_gen._to_proto_type_name) rather than a local case transform."""
-    for fname, fld in query_type.fields.items():
-        inner_t = _unwrap(fld.type)
-        if hasattr(inner_t, "name") and _to_proto_type_name(inner_t.name) == type_name:
-            return fname
-    return None
-
-
-def _build_field_selections(inner) -> list[str]:
-    """GQL selections: scalars directly, object types as nested scalar sub-selections."""
-    selections: list[str] = []
-    for fname, f in inner.fields.items():
-        if _is_scalar_field(f.type):
-            selections.append(fname)
-            continue
-        ftype = _unwrap(f.type)
-        if not hasattr(ftype, "fields"):
-            continue
-        sub_scalars = [
-            sn
-            for sn, sf in ftype.fields.items()
-            if _is_scalar_field(sf.type) and not (sn.startswith("_") and sn.endswith("_"))
-        ]
-        if sub_scalars:
-            selections.append(f"{fname} {{ {' '.join(sub_scalars)} }}")
-    return selections
 
 
 def _parse_read_mask(body: dict) -> dict[str, set[str] | None]:
@@ -103,63 +54,6 @@ def _parse_read_mask(body: dict) -> dict[str, set[str] | None]:
         elif not sub:
             mask_map[top] = None
     return mask_map
-
-
-def _gql_literal(val) -> str:
-    if isinstance(val, str):
-        return f'"{val}"'
-    if isinstance(val, bool):
-        return str(val).lower()
-    return str(val)
-
-
-def _build_arg_clause(field, filter_dict, limit: int) -> tuple[str, dict]:
-    """Build the GQL arg clause + native-filter api_args from body["filter"].
-
-    schema_gen prefixes a GQL arg with "_" when the bare name collides with a
-    response field (bare "id" → GQL arg "_id"); we look up both the prefixed and
-    bare name, and store the bare name in api_args so it matches required_args.
-    """
-    arg_parts: list[str] = []
-    api_args: dict = {}
-    if isinstance(filter_dict, dict):
-        for arg_name, arg_def in field.args.items():
-            if not (arg_def.description and "Native API filter" in arg_def.description):
-                continue
-            bare = arg_name.lstrip("_")
-            val = filter_dict.get(arg_name) if arg_name in filter_dict else filter_dict.get(bare)
-            if val is not None:
-                arg_parts.append(f"{arg_name}: {_gql_literal(val)}")
-                api_args[bare] = val
-    if limit > 0:
-        arg_parts.append(f"limit: {limit}")
-    arg_clause = f"({', '.join(arg_parts)})" if arg_parts else ""
-    return arg_clause, api_args
-
-
-def _rekey_to_proto(gql_rows, columns):
-    """Re-key serialized GQL output to the exact proto field names a native gRPC
-    client sees, reusing proto_gen's own authority (physical column → proto name)."""
-
-    def _col_pair(c):
-        # ColumnRef carries (field_name → GQL, column → physical); a bare str is both.
-        if isinstance(c, str):
-            return c, c
-        return c.field_name, c.column
-
-    gql_to_proto = {gql: _to_proto_field_name(phys) for gql, phys in map(_col_pair, columns)}
-
-    def _proto_key(k: str) -> str:
-        return gql_to_proto.get(k) or _to_proto_field_name(k)
-
-    def _walk(obj):
-        if isinstance(obj, dict):
-            return {_proto_key(k): _walk(v) for k, v in obj.items()}
-        if isinstance(obj, list):
-            return [_walk(item) for item in obj]
-        return obj
-
-    return _walk(gql_rows)
 
 
 def _apply_read_mask(proto_rows, mask_map: dict[str, set[str] | None]):
@@ -203,55 +97,39 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
     if role_id not in state.schemas:
         raise HTTPException(status_code=404, detail=f"No schema for role {role_id!r}")
 
-    schema = state.schemas[role_id]
     ctx = state.contexts[role_id]
-    query_type = schema.query_type
-    if query_type is None:
-        raise HTTPException(status_code=404, detail=f"No query type for role {role_id!r}")
+    mask_map = _parse_read_mask(body)
 
-    field_name = _resolve_field_name(query_type, type_name)
-    if field_name is None:
+    # Same IR path as the native gRPC servicer (query language → IR → governed IR → plan → physical).
+    # Lower the request straight to a semantic SELECT — never round-trip through GraphQL.
+    semantic_sql = grpc_table_to_semantic_sql(ctx, type_name, limit)
+    if semantic_sql is None:
         raise HTTPException(
             status_code=404,
             detail=f"No query field for proto type {type_name!r} under role {role_id!r}",
         )
 
-    inner = _unwrap(query_type.fields[field_name].type)
-    if not hasattr(inner, "fields"):
-        raise HTTPException(status_code=400, detail=f"{type_name} is not an object type")
-
-    field_selections = _build_field_selections(inner)
-    if not field_selections:
-        raise HTTPException(status_code=400, detail=f"No fields found for {type_name}")
-
-    mask_map = _parse_read_mask(body)
-    arg_clause, nf_api_args = _build_arg_clause(
-        query_type.fields[field_name], body.get("filter") or {}, limit
-    )
-    gql_query = f"{{ {field_name}{arg_clause} {{ {' '.join(field_selections)} }} }}"
-
-    document = parse_query(schema, gql_query)
-    compiled_queries = compile_query(document, ctx)
-    if not compiled_queries:
-        raise HTTPException(status_code=500, detail="No compiled queries")
-    compiled = compiled_queries[0]
-
     try:
-        plan = await _govern_and_route_compiled(
-            compiled.sql,
-            role_id,
-            exec_params=compiled.params or None,
-            state=state,
-            api_args=nf_api_args or None,
-        )
+        plan = await _govern_and_route_compiled(semantic_sql, role_id, state=state)
         result = await _execute_plan(plan, state)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    serialized = serialize_rows(result.rows, compiled.columns, field_name)
-    gql_rows = (serialized.get("data") or {}).get(field_name) or []
-    proto_rows = _rekey_to_proto(gql_rows, compiled.columns)
+    # Key each row by the proto field name (the physical column → proto name authority), then apply
+    # the read-mask field restriction.
+    proto_cols = [_to_proto_field_name(c) for c in result.column_names]
+    proto_rows = [
+        {
+            proto_cols[i]: row[i]
+            for i in range(len(proto_cols))
+            if i < len(row) and row[i] is not None
+        }
+        for row in result.rows
+    ]
     proto_rows = _apply_read_mask(proto_rows, mask_map)
-    return JSONResponse(proto_rows)
+    # Coerce driver-native scalars (PG Decimal, date/datetime) the JSON encoder can't emit directly.
+    from fastapi.encoders import jsonable_encoder
+
+    return JSONResponse(jsonable_encoder(proto_rows))

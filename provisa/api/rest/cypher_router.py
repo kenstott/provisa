@@ -1383,7 +1383,10 @@ async def _execute_with_gql_remote(
 
         cache_loc = cache_location(
             info["source_id"],
-            info["cache_catalog"],
+            # The bound engine's cache catalog (native DuckDB → attached materialization store, which
+            # isolated_sync attaches below; Trino → provisa_admin). Hardcoding provisa_admin
+            # binder-errors on a native engine that never attaches it.
+            state.federation_engine.cache_catalog() or info["cache_catalog"],
             f"org_{getattr(state, 'org_id', 'default')}_gql_cache",
         )
         cache_tbl = cache_table_name(info["source_id"], tn, gql_vars)

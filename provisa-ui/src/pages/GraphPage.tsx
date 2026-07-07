@@ -339,14 +339,23 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
     [role],
   );
 
-  // Auto-execute a query forwarded from another page (e.g. Cypher panel → Graph).
+  // Auto-execute a query forwarded from another page (e.g. NL "Open in Cypher", or the Cypher panel).
   useEffect(() => {
+    // NL forwards the query via navigate state with autoRun; run it on arrival.
+    const st = location.state as { query?: string; autoRun?: boolean } | null;
+    if (st?.query && st.autoRun) {
+      setHistoryQuery(st.query);
+      runQuery(st.query);
+      return;
+    }
     const pending = localStorage.getItem("provisa.graph.pending_query");
     if (pending) {
       localStorage.removeItem("provisa.graph.pending_query");
       setHistoryQuery(pending);
       runQuery(pending);
     }
+    // Run once on mount for the forwarded query; deps intentionally exclude location.state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runQuery]);
 
   const closeFrame = useCallback((id: string) => {

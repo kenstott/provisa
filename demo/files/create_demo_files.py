@@ -301,6 +301,36 @@ def create_inquiries_sqlite() -> None:
     print("Created inquiries.sqlite")
 
 
+def create_pet_store_sqlite() -> None:
+    # Pet-store inventory — file-based (SQLite) so the native/desktop demo needs no PostgreSQL.
+    # Names match the petstore3 API default seed so JOIN on name works reliably.
+    db_path = HERE / "pet_store.sqlite"
+    db_path.unlink(missing_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE pets (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            species TEXT NOT NULL,
+            breed_name TEXT NOT NULL,
+            price REAL NOT NULL,
+            available INTEGER NOT NULL DEFAULT 1
+        );
+
+        INSERT INTO pets (id, name, species, breed_name, price, available) VALUES
+            (1, 'Cat 1',    'cat',    'Siamese',           380.00, 1),
+            (2, 'Cat 2',    'cat',    'Maine Coon',        450.00, 1),
+            (3, 'Dog 1',    'dog',    'Golden Retriever',  800.00, 1),
+            (4, 'Lion 1',   'lion',   'African Lion',     1500.00, 0),
+            (5, 'Lion 2',   'lion',   'African Lion',     1500.00, 1),
+            (6, 'Lion 3',   'lion',   'Barbary Lion',     1600.00, 1),
+            (7, 'Rabbit 1', 'rabbit', 'Holland Lop',       150.00, 1);
+    """)
+    conn.commit()
+    conn.close()
+    print("Created pet_store.sqlite")
+
+
 if __name__ == "__main__":
     from concurrent.futures import ThreadPoolExecutor
 
@@ -310,6 +340,7 @@ if __name__ == "__main__":
         create_products_parquet,
         create_orders_sqlite,
         create_inquiries_sqlite,
+        create_pet_store_sqlite,
         create_pgwire_cert,
     )
     with ThreadPoolExecutor(max_workers=len(_tasks)) as _ex:

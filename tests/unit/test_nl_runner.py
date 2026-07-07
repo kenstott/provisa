@@ -15,12 +15,35 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from provisa.nl.job import InMemoryJobStore, NlJob, new_job_id
+from provisa.nl.job import InMemoryJobStore, NlJob, RedisJobStore, make_job_store, new_job_id
 from provisa.nl.loop import LLMClient
 from provisa.nl.runner import run_nl_job
 
 
 _SDL = "type Query { persons: [Person] }\ntype Person { id: ID! }"
+
+
+def test_make_job_store_embedded_uses_fakeredis(monkeypatch):
+    """Regression: PROVISA_REDIS_EMBEDDED must force the embedded fakeredis store even when
+    REDIS_URL points at a Redis server — the native/desktop tier has no Redis running, so dialing
+    it (the old behavior) 500'd every NL submit."""
+    monkeypatch.setenv("PROVISA_REDIS_EMBEDDED", "1")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
+    store = make_job_store()
+    assert isinstance(store, RedisJobStore)
+    # The client must be embedded fakeredis, not a real-server connection to localhost:6379.
+    assert type(store._redis).__module__.startswith("fakeredis")
+
+
+async def test_embedded_job_store_roundtrips_without_a_server(monkeypatch):
+    """The embedded store must put/get without any Redis server listening."""
+    monkeypatch.setenv("PROVISA_REDIS_EMBEDDED", "1")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
+    store = make_job_store()
+    job = NlJob(job_id=new_job_id(), nl_query="q", role="admin")
+    await store.put(job)
+    got = await store.get(job.job_id)
+    assert got is not None and got.nl_query == "q"
 
 
 class _ValidLLM(LLMClient):

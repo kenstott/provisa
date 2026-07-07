@@ -81,7 +81,7 @@ def test_run_async_delegates_to_run_sync():
         calls.append((sql, params))
         return QueryResult(rows=[(1,)], column_names=["x"])
 
-    res = asyncio.get_event_loop().run_until_complete(run_async(run_sync, "SELECT 1", [7]))
+    res = asyncio.run(run_async(run_sync, "SELECT 1", [7]))
     assert calls == [("SELECT 1", [7])]
     assert res.rows == [(1,)] and res.column_names == ["x"]
 
@@ -93,5 +93,5 @@ def test_run_async_default_params_none():
         seen.params = params
         return QueryResult(rows=[], column_names=[])
 
-    asyncio.get_event_loop().run_until_complete(run_async(run_sync, "SELECT 1"))
+    asyncio.run(run_async(run_sync, "SELECT 1"))
     assert seen.params is None

@@ -103,10 +103,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
         await context.abort(grpc.StatusCode.UNIMPLEMENTED, f"Insert{type_name} not yet implemented")
 
     async def _handle_query(self, request, context, type_name: str, field_name: str):
-        """Generic query handler for any table RPC."""
+        """Lower a proto query request directly to the IR (a semantic SELECT), then run the shared
+        governance → routing → physical pipeline — the same path SQL and Cypher use. gRPC never
+        round-trips through GraphQL (query language → IR → governed IR → plan → physical)."""
 
-        from provisa.compiler.parser import parse_query
-        from provisa.compiler.sql_gen import compile_query
+        from provisa.grpc.query_ir import grpc_table_to_semantic_sql
         from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
         # Use await context.abort() directly rather than raising AbortError, which
@@ -118,53 +119,43 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return
         state = self._state
 
-        if role_id not in state.schemas:
+        if role_id not in state.contexts:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No schema for role {role_id!r}")
             return
-
-        schema = state.schemas[role_id]
         ctx = state.contexts[role_id]
 
-        # Build a GraphQL query from the proto request
-        limit_clause = f"(limit: {request.limit})" if request.limit > 0 else ""
-        gql_query = f"{{ {field_name}{limit_clause} {{ "
-        # Get visible fields from the message type
         msg_cls = getattr(self._pb2, type_name, None)
         if msg_cls is None:
             await context.abort(grpc.StatusCode.INTERNAL, f"Unknown message type {type_name}")
             return
         descriptor = msg_cls.DESCRIPTOR
-        field_names = [f.name for f in descriptor.fields if not f.message_type]
-        gql_query += " ".join(field_names)
-        gql_query += " } }"
 
-        # Parse and compile
-        document = parse_query(schema, gql_query)
-        compiled_queries = compile_query(document, ctx)
-        if not compiled_queries:
-            await context.abort(grpc.StatusCode.INTERNAL, "No query fields compiled")
+        # IR: lower the request straight to a semantic SELECT (shared with the HTTP gRPC proxy), then
+        # govern → route → physical exactly as the SQL/Cypher transports do.
+        semantic_sql = grpc_table_to_semantic_sql(ctx, type_name, request.limit)
+        if semantic_sql is None:
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
             return
-        compiled = compiled_queries[0]
 
-        # Governance + routing via Stage 2 (REQ-266) — unified with the GraphQL/REST
-        # paths so gRPC cannot bypass RLS, masking, visibility, or the row cap.
+        def _norm(s: str) -> str:
+            return s.replace("_", "").lower()
+
         try:
-            plan = await _govern_and_route_compiled(
-                compiled.sql, role_id, exec_params=compiled.params or None, state=state
-            )
+            plan = await _govern_and_route_compiled(semantic_sql, role_id, state=state)
             result = await _execute_plan(plan, state)
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
             return
 
-        # Stream rows as proto messages
-        msg_cls = getattr(self._pb2, type_name)
-        col_names = [c.field_name for c in compiled.columns if c.nested_in is None]
+        # Stream rows as proto messages, mapping result column names to proto fields by the same key
+        # (governance may re-case or alias a column).
+        _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
+        out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
         for row in result.rows:
             kwargs = {}
-            for i, col_name in enumerate(col_names):
+            for i, col in enumerate(out_cols):
                 if i < len(row) and row[i] is not None:
-                    kwargs[col_name] = row[i]
+                    kwargs[col] = row[i]
             yield msg_cls(**kwargs)
 
 

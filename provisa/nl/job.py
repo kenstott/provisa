@@ -132,10 +132,12 @@ class InMemoryJobStore:
 class RedisJobStore:  # REQ-371
     """Redis-backed job store."""
 
-    def __init__(self, redis_url: str) -> None:
-        import redis.asyncio as aioredis
+    def __init__(self, redis_url: str | None) -> None:
+        # REQ-829: route through the shared factory so a falsy URL yields embedded fakeredis
+        # (native/desktop tier) instead of dialing a Redis server that isn't running.
+        from provisa.core.redis_factory import make_redis
 
-        self._redis = aioredis.from_url(redis_url)
+        self._redis = make_redis(redis_url, decode_responses=False)
 
     def _key(self, job_id: str) -> str:
         return f"nl:job:{job_id}"
@@ -165,9 +167,15 @@ class RedisJobStore:  # REQ-371
 
 
 def make_job_store(redis_url: str | None = None) -> InMemoryJobStore | RedisJobStore:
-    """Return Redis-backed store if URL given, else in-memory."""
+    """Return Redis-backed store if URL given, else in-memory.
+
+    REQ-829: ``PROVISA_REDIS_EMBEDDED`` forces the embedded fakeredis path (native/desktop tier),
+    ignoring any configured ``REDIS_URL`` — mirrors the app-state resolution in ``app.py`` so a
+    Redis server is never dialed when none is running."""
     import os
 
+    if os.environ.get("PROVISA_REDIS_EMBEDDED", "").lower() in ("1", "true", "yes"):
+        return RedisJobStore(None)
     url = redis_url or os.environ.get("REDIS_URL", "")
     if url:
         return RedisJobStore(url)

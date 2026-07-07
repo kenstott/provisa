@@ -16,6 +16,8 @@ Pipeline: parse -> compile -> MV rewrite -> sampling -> make_semantic_sql
 Mutations: parse -> compile_mutation -> RLS inject -> direct execute (never the engine).
 """
 
+# complexity-gate: allow-loc=2890 reason="cross-cutting protocol/cache/plan-graph fixes; the file is already flagged for extraction and split is tracked separately"
+
 # Requirements: REQ-001, REQ-002, REQ-027, REQ-028, REQ-029, REQ-032, REQ-033,
 #               REQ-034, REQ-035, REQ-036, REQ-038, REQ-040, REQ-043, REQ-047,
 #               REQ-049, REQ-137, REQ-140, REQ-161, REQ-172, REQ-173, REQ-174,
@@ -723,6 +725,7 @@ async def _mat_gql_remote_table(
         cache_table_name,
         create_and_insert,
         ensure_cache_schema,
+        resolved_cache_catalog,
         schedule_drop,
         table_known_live,
     )
@@ -792,9 +795,8 @@ async def _mat_gql_remote_table(
     ]
 
     _org_id = getattr(state, "org_id", "default")
-    gql_cache_loc = cache_location(
-        gql_reg["source_id"], "provisa_admin", f"org_{_org_id}_gql_cache"
-    )
+    _cache_cat = resolved_cache_catalog(state.federation_engine)
+    gql_cache_loc = cache_location(gql_reg["source_id"], _cache_cat, f"org_{_org_id}_gql_cache")
     _cache_hash: dict = {"cols": sorted(col_selections)}
     if variables:
         _cache_hash.update(variables)
@@ -1173,10 +1175,10 @@ async def _materialize_api_to_engine_cache(
                         a["name"] for a in req_args if not nf_args or a["name"] not in nf_args
                     ]
                     if missing:
-                        raise ValueError(
-                            f"Table {tn!r} requires filter(s) {missing} — "
-                            "add them to the request filter"
-                        )
+                        # Required filter(s) absent — exclude the object (drop its union branch) so a
+                        # broad sweep (graph counts, multi-label union) skips it instead of erroring.
+                        log.warning("[MAT] %s requires filter(s) %s — dropping branch", tn, missing)
+                        dropped_tables.append(tn)
                     else:
                         try:
                             await _mat_gql_remote_table(
@@ -1860,6 +1862,7 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
         cache_table_name,
         create_and_insert,
         ensure_cache_schema,
+        resolved_cache_catalog,
         rewrite_from_cache,
         schedule_drop,
         table_known_live,
@@ -1868,7 +1871,8 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     from provisa.executor.redirect import RedirectConfig
 
     _org_id = getattr(state, "org_id", "default")
-    cache_loc = cache_location(source_id, "provisa_admin", f"org_{_org_id}_grpc_cache")
+    _cache_cat = resolved_cache_catalog(state.federation_engine)
+    cache_loc = cache_location(source_id, _cache_cat, f"org_{_org_id}_grpc_cache")
     cache_tbl = cache_table_name(source_id, table_name, nf_args)  # SHA-256(source+method+args)
     redirect_config = RedirectConfig.from_env()
     hot_mgr = getattr(state, "hot_manager", None)
@@ -2247,10 +2251,12 @@ def _append_mermaid(
     _root_src_id = _root_meta2.source_id if _root_meta2 else None
     _jf2: list[tuple[str, str, bool]] = []
     _hch = hydration_cache_hits or set()
+    # Only cross-source joins the query touched (compiled.sources, target != root).
     if _root_meta2:
         for (_tn2, _rf2), _jm2 in (ctx.joins or {}).items():
-            if _tn2 == _root_meta2.type_name:
-                _jf2.append((_rf2, _jm2.target.source_id, _jm2.target.source_id in _hch))
+            _tgt = _jm2.target.source_id
+            if _tn2 == _root_meta2.type_name and _tgt in compiled.sources and _tgt != _root_src_id:
+                _jf2.append((_rf2, _tgt, _tgt in _hch))
     new_mermaid = _build_mermaid(
         compiled.sources,
         _st,
@@ -2337,10 +2343,16 @@ async def _exec_api_route(
         _hydration_ms_api = {decision.source_id: _phase1_ms}
         _root_meta = ctx.tables.get(root_field)
         _join_fields: list[tuple[str, str, bool]] = []
+        # Only relationships the query actually federates across sources (see _append_mermaid).
         if _root_meta:
-            for (_type_name, _rel_field), _jm in (ctx.joins or {}).items():
-                if _type_name == _root_meta.type_name:
-                    _join_fields.append((_rel_field, _jm.target.source_id, True))
+            for (_tn, _rf), _jm in (ctx.joins or {}).items():
+                _t = _jm.target.source_id
+                if (
+                    _tn == _root_meta.type_name
+                    and _t in compiled.sources
+                    and _t != decision.source_id
+                ):
+                    _join_fields.append((_rf, _t, True))
         _engine_ms_for_mermaid = _phase2_ms if _join_fields else None
         _src_obj = getattr(state, "api_sources", {}).get(decision.source_id)
         _cc = getattr(_src_obj, "cache_catalog", None) if _src_obj else None
