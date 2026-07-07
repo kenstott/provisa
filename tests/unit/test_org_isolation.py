@@ -184,6 +184,10 @@ class _FakeEngine:
     def isolated_sync(self):
         yield MagicMock()
 
+    def cache_catalog(self):
+        # A broad federator / store-engine caches into the source's own catalog (None).
+        return None
+
 
 class TestOrgScopedCacheLocation:
     def test_cache_location_uses_org_prefix_as_default(self):  # REQ-698
