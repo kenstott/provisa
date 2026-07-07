@@ -162,6 +162,18 @@ class EngineBackend:
     ) -> dict[str, str]:
         """Column types as the native engine reports them (DuckDB DESCRIBE / ClickHouse DESCRIBE).
         Returns ``{column_name: type_name}``; ``{}`` when the engine cannot introspect live."""
+        # A native-store engine exposes a source by ATTACHing it, then DESCRIBEs the attached
+        # relation. A non-attachable remote source (openapi/graphql_remote/grpc/NoSQL/…) instead
+        # LANDs into the materialization store — there is nothing attached to DESCRIBE until its
+        # rows are materialized on demand. Decide this ONCE here, engine-agnostically, so no engine
+        # runtime has to: keep the config-declared column types rather than dispatching an attach
+        # that would fail. (Pure federators like Trino never attach at introspect — they fall
+        # through to the {} contract below and don't consult connector_for.)
+        if self.engine.native_store is not None:
+            from provisa.federation.connector import Mechanism
+
+            if self.engine.connector_for(source.type.value).mechanism is Mechanism.LAND:
+                return {}
         if self.engine.native_store == "duckdb":
             from types import SimpleNamespace
 

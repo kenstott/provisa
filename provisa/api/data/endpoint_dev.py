@@ -431,7 +431,7 @@ async def _execute_engine_route(
     if _rewrites:
         _qualified = rewrite_all_from_cache(_qualified, _rewrites)
     sql_to_run = state.federation_engine.transpile_physical(_qualified)
-    if state.engine_conn is None:
+    if not state.federation_engine.is_connected():
         raise HTTPException(status_code=503, detail="the engine connection not available")
     exec_params = embedded_params or None
     return await state.federation_engine.execute_engine(sql_to_run, params=exec_params)

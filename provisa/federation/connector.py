@@ -188,7 +188,8 @@ class DuckDBPostgresConnector(Connector):
             f"user={source.username}{pw}"
         )
         # Quote the alias: source ids carry hyphens (e.g. pet-store-pg) that DuckDB's
-        # ATTACH grammar rejects unquoted.
+        # ATTACH grammar rejects unquoted. An attached Postgres exposes its own schemas verbatim,
+        # so the remote schema IS the registered schema — the runtime defaults there (no override).
         return {"attach": f"ATTACH '{dsn}' AS \"{source.id}\" (TYPE postgres)"}
 
 
@@ -231,7 +232,12 @@ class DuckDBSqliteConnector(Connector):
         return Capability(predicate_pushdown=True, write=True)
 
     def details(self, source: Source) -> dict:
-        return {"attach": f"ATTACH '{source.path}' AS \"{source.id}\" (TYPE sqlite)"}
+        return {
+            "attach": f"ATTACH '{source.path}' AS \"{source.id}\" (TYPE sqlite)",
+            # DuckDB's sqlite scanner exposes every table under the catalog's ``main`` schema,
+            # regardless of the registered schema name — the runtime references the remote there.
+            "remote_schema": "main",
+        }
 
 
 # --- DuckDB extensions: external DB / warehouse / lake / SaaS reach in place (REQ-899) ---

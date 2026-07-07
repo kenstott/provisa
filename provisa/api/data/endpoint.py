@@ -2053,7 +2053,7 @@ async def _execute_engine_standard(
     from provisa.api_source.engine_cache import rewrite_all_from_cache
     from provisa.compiler.hints import extract_hints
 
-    if state.engine_conn is None:
+    if not state.federation_engine.is_connected():
         raise HTTPException(status_code=503, detail="the engine not connected")
 
     (

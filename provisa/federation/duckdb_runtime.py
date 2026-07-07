@@ -47,21 +47,34 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._sqlite_loaded = False
         self._pg_ext_loaded = False  # postgres DuckDB extension INSTALL/LOAD (source ATTACH)
         self._pg_attached = False  # matpg materialization store ATTACH (distinct)
+        self._phys_catalogs: set[str] = set()  # in-memory catalogs holding the physical views
+        self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
 
     # -- source exposure -------------------------------------------------------
 
+    def _phys_name(self, source: Any) -> str:
+        """The catalog-qualified physical name the compiler emits: ``"catalog"."schema"."table"``.
+        The engine's catalog for a source is its id with hyphens normalized (see core.catalog)."""
+        from provisa.core.catalog import _to_catalog_name
+
+        catalog = _to_catalog_name(source.id)
+        if catalog not in self._phys_catalogs:
+            # A writable in-memory catalog so the 3-part physical name resolves (an ATTACHed remote
+            # DB is read-only and cannot host the schema/view the compiler references).
+            self._con.execute(f"ATTACH ':memory:' AS \"{catalog}\"")
+            self._phys_catalogs.add(catalog)
+        self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{source.schema_name}"')
+        return f'"{catalog}"."{source.schema_name}"."{source.table_name}"'
+
     def attach_source(self, source: Any) -> None:
-        """Expose an ATTACH source at its physical ``schema.table`` via the engine's connector."""
+        """Expose an ATTACH source at its catalog-physical name via the engine's connector."""
         entry = self._engine.resolve(source)  # picks the (duckdb, source_type) connector
         details = entry.details
-        # The physical view lives in a DuckDB schema named after the source's schema —
-        # create it first (DuckDB's default schema is "main"; anything else must exist).
-        self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{source.schema_name}"')
-        phys = f'"{source.schema_name}"."{source.table_name}"'
+        phys = self._phys_name(source)
         if "view_ddl" in details:  # csv / parquet scanner
             scan = details["view_ddl"].split(" AS ", 1)[1]
-            self._con.execute(f"CREATE VIEW {phys} AS {scan}")
-        else:  # ATTACH postgres / sqlite, then view the remote table
+            self._con.execute(f"CREATE VIEW IF NOT EXISTS {phys} AS {scan}")
+        else:  # ATTACH postgres / sqlite once, then view the remote table
             if source.type.value == "sqlite" and not self._sqlite_loaded:
                 self._con.execute("INSTALL sqlite")
                 self._con.execute("LOAD sqlite")
@@ -70,11 +83,15 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._con.execute("INSTALL postgres")
                 self._con.execute("LOAD postgres")
                 self._pg_ext_loaded = True
-            self._con.execute(details["attach"])
-            # Reference the attached table as alias.schema.table (postgres/sqlite expose the
-            # remote schema); quote each part so hyphenated ids and mixed case survive.
-            remote = f'"{source.id}"."{source.schema_name}"."{source.table_name}"'
-            self._con.execute(f"CREATE VIEW {phys} AS SELECT * FROM {remote}")
+            if source.id not in self._raw_attached:
+                self._con.execute(details["attach"])
+                self._raw_attached.add(source.id)
+            # The connector declares WHERE its attached remote exposes the table: postgres keeps its
+            # own (registered) schema; sqlite lands everything under ``main``. The runtime composes
+            # the reference with the actual table, so no per-source-type layout is hardcoded here.
+            remote_schema = details.get("remote_schema", source.schema_name)
+            remote = f'"{source.id}"."{remote_schema}"."{source.table_name}"'
+            self._con.execute(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {remote}")
 
     async def materialize_source(
         self, source: Any, columns: list[tuple[str, str]], rows: list[dict]
@@ -94,8 +111,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._con.execute("LOAD postgres")
             self._con.execute(f"ATTACH '{self._dsn_kv()}' AS matpg (TYPE postgres)")
             self._pg_attached = True
-        phys = f'"{source.schema_name}"."{source.table_name}"'
-        self._con.execute(f"CREATE VIEW {phys} AS SELECT * FROM matpg.mat.{source.id}")
+        phys = self._phys_name(source)
+        self._con.execute(
+            f'CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM matpg.mat."{source.id}"'
+        )
 
     def _dsn_kv(self) -> str:
         # postgresql://user:pw@host:port/db  ->  host=.. port=.. dbname=.. user=.. password=..
@@ -115,7 +134,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         Returns {column_name: duckdb_type_name}. This is the DuckDB implementation of
         the engine-introspection seam (REQ-825/840); callers reach it via EngineRuntime."""
         self.attach_source(source)
-        phys = f'"{source.schema_name}"."{source.table_name}"'
+        phys = self._phys_name(source)
         res = self._con.execute(f"DESCRIBE {phys}")
         # DESCRIBE rows: (column_name, column_type, null, key, default, extra)
         return {row[0]: str(row[1]).lower() for row in res.fetchall()}
@@ -124,15 +143,25 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
     async def execute(self, physical_or_governed_sql: str) -> QueryResult:
         """Execute physical SQL (post-governance) on the engine (transpiled to DuckDB)."""
-        duck_sql = transpile(physical_or_governed_sql, "duckdb")
+        return await self.run(transpile(physical_or_governed_sql, "duckdb"))
+
+    async def run(self, duck_sql: str, params: list | None = None) -> QueryResult:
+        """Execute SQL ALREADY in the DuckDB dialect (the backend transpiled it via the seam) against
+        the connection, whose attached sources expose every physical ``schema.table`` view."""
         loop = asyncio.get_event_loop()
 
         def _run() -> QueryResult:
-            res = self._con.execute(duck_sql)
+            res = self._con.execute(duck_sql, params) if params else self._con.execute(duck_sql)
             cols = [d[0] for d in res.description] if res.description else []
             return QueryResult(rows=res.fetchall(), column_names=cols)
 
         return await loop.run_in_executor(None, _run)
+
+    def run_sync(self, duck_sql: str, params: list | None = None) -> QueryResult:
+        """Synchronous variant of run() for callers already on a worker thread (Arrow Flight, etc.)."""
+        res = self._con.execute(duck_sql, params) if params else self._con.execute(duck_sql)
+        cols = [d[0] for d in res.description] if res.description else []
+        return QueryResult(rows=res.fetchall(), column_names=cols)
 
     def close(self) -> None:
         self._con.close()

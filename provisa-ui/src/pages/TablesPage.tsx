@@ -2208,7 +2208,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                     >
                                       Live delivery is not available for{" "}
                                       <code>{stype || "this"}</code> sources — no CDC provider and
-                                      not watermark-pollable through Trino.
+                                      not watermark-pollable through the federation engine.
                                     </p>
                                   ) : (
                                     <>

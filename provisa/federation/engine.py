@@ -144,13 +144,29 @@ class FederationEngine:  # REQ-840
     # -- reachability (REQ-840) ------------------------------------------------
 
     def reachable(self, source_type: str) -> bool:
-        return source_type in self.connectors
+        return source_type in self.connectors or self._is_landable(source_type)
+
+    def _is_landable(self, source_type: str) -> bool:
+        """A non-attachable remote source (openapi/graphql_remote/grpc/NoSQL/stream) is reachable
+        by LANDing into the tenant materialization store — every engine can do this. This mirrors
+        strategy.federate()'s ``_MATERIALIZE_ONLY`` gate so catalog projection and query strategy
+        agree on which sources land instead of attach (REQ-826/841)."""
+        from provisa.federation.strategy import _MATERIALIZE_ONLY
+
+        return source_type in _MATERIALIZE_ONLY
 
     def connector_for(self, source_type: str) -> Connector:
         connector = self.connectors.get(source_type)
-        if connector is None:
-            raise UnreachableSource(self.name, source_type)
-        return connector
+        if connector is not None:
+            return connector
+        # No attach/scan connector. A non-attachable remote source is not unreachable — it LANDs
+        # into the materialization store (the user rule: "remote schemas are all required to be
+        # landed"). Hand back a land-into-store connector so resolve() projects a LAND entry.
+        if self._is_landable(source_type):
+            from provisa.federation.connector import WarehouseNativeConnector
+
+            return WarehouseNativeConnector(self.name, source_type)
+        raise UnreachableSource(self.name, source_type)
 
     # -- capability discovery (REQ-904) ----------------------------------------
 
@@ -262,6 +278,7 @@ def build_trino_engine() -> FederationEngine:  # REQ-840 broad federator
 
 
 def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
+    from provisa.federation.duckdb_backend import DuckDBBackend
     from provisa.federation.runtime import EngineCapability
     from provisa.federation.connector import (
         DuckDBAirportConnector,
@@ -298,6 +315,7 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
         native_store="duckdb",
         driver_class=DriverClass.PARTIAL,
         mpp=False,  # single-node embedded engine (REQ-894)
+        backend_factory=DuckDBBackend,  # in-process execution terminal (the engine's own model)
         capabilities=frozenset({EngineCapability.ROWS, EngineCapability.ARROW}),
     )
 
@@ -423,8 +441,8 @@ _ENGINE_BUILDERS = {
 ENGINE_REGISTRY: list[dict] = [
     {
         "key": "trino",
-        "label": "Trino",
-        "description": "Broad MPP federator. Reaches many external source types via a Trino cluster.",
+        "label": "Distributed (MPP)",
+        "description": "Broad MPP federator. Reaches many external source types via a distributed query cluster.",
         "config_fields": [
             {
                 "config_key": "federation_engine_host",
