@@ -20,6 +20,20 @@ import trino
 
 from provisa.compiler import naming as _naming
 
+# A native engine caches/lands into a materialization store, which MUST exist (the engine invariant).
+# Positive-case tests therefore define one, built from the same PG_* the test PG uses; a negative
+# test that asserts the "no store" error overrides it. setdefault so an explicit outer value wins.
+os.environ.setdefault(
+    "PROVISA_MATERIALIZE_URL",
+    "postgresql://{u}:{pw}@{h}:{p}/{db}".format(
+        u=os.environ.get("PG_USER", "provisa"),
+        pw=os.environ.get("PG_PASSWORD", "provisa"),
+        h=os.environ.get("PG_HOST", "localhost"),
+        p=os.environ.get("PG_PORT", "5432"),
+        db=os.environ.get("PG_DATABASE", "provisa"),
+    ),
+)
+
 _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 _CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
 _OBS_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.observability.yml")
