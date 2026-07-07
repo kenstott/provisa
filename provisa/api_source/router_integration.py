@@ -96,7 +96,7 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
             _cc = getattr(source, "cache_catalog", None) if source else None
             _default_cs = f"org_{org_id}_api_cache"
             _cs = getattr(source, "cache_schema", _default_cs) if source else _default_cs
-            loc = cache_location(endpoint.source_id, _cc, _cs)
+            loc = cache_location(endpoint.source_id, _cc, _cs, engine=engine)
 
         with engine.isolated_sync() as _c:
             _hit = table_exists(_c, loc, tbl, ttl=ttl)

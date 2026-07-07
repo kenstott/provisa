@@ -45,6 +45,18 @@ class UnreachableSource(Exception):  # REQ-841
         super().__init__(f"engine {engine!r} cannot reach source type {source_type!r}")
 
 
+class MaterializeStoreUnconfigured(Exception):  # REQ-826
+    """No materialization store exists — neither an explicit ``materialize_store_url`` nor a default
+    declared by the engine. A store MUST exist; this is a hard error, never a fallback."""
+
+    def __init__(self, engine: str) -> None:
+        self.engine = engine
+        super().__init__(
+            f"engine {engine!r} has no materialization store: set materialize_store_url or use an "
+            "engine that declares a default store"
+        )
+
+
 class DriverClass(str, Enum):  # REQ-840
     BROAD = "broad"  # reaches many external source types (Trino)
     PARTIAL = "partial"  # reaches a subset (DuckDB)
@@ -87,8 +99,12 @@ class FederationEngine:  # REQ-840
         mpp: bool = False,
         backend_factory: Any = None,
         capabilities: Any = None,
+        default_materialize_store: Any = None,
     ) -> None:
         self.name = name
+        # A zero-arg callable returning this engine's DECLARED default materialization-store DSN (or
+        # None). Set per engine in build_*_engine — the ONE place an engine names its own default.
+        self._default_store_fn = default_materialize_store
         # Transports this engine advertises (REQ-825), e.g. Arrow Flight. The engine declares its own
         # capabilities here — the generic seam reads them and never hardcodes a per-engine table.
         self._capabilities = capabilities
@@ -167,6 +183,23 @@ class FederationEngine:  # REQ-840
 
             return WarehouseNativeConnector(self.name, source_type)
         raise UnreachableSource(self.name, source_type)
+
+    # -- materialization store (REQ-826) ---------------------------------------
+
+    def default_materialize_store(self) -> str | None:
+        """The store this engine offers ITSELF as its materialization target, absent explicit config —
+        the DECLARED default set at construction (never a silent derive-from-whatever). An engine that
+        declares none returns None (then a store must be explicitly configured, else error)."""
+        return self._default_store_fn() if self._default_store_fn is not None else None
+
+    def materialize_store(self) -> str:
+        """The materialization store DSN. A store MUST exist: the explicitly-configured
+        ``materialize_store_url`` wins, else the engine's declared default; if neither exists that is
+        a hard error (never a fallback to inline / the engine's own runtime)."""
+        dsn = configured_materialize_url() or self.default_materialize_store()
+        if dsn is None:
+            raise MaterializeStoreUnconfigured(self.name)
+        return dsn
 
     # -- capability discovery (REQ-904) ----------------------------------------
 
@@ -317,7 +350,23 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
         mpp=False,  # single-node embedded engine (REQ-894)
         backend_factory=DuckDBBackend,  # in-process execution terminal (the engine's own model)
         capabilities=frozenset({EngineCapability.ROWS, EngineCapability.ARROW}),
+        default_materialize_store=_platform_db_materialize_default,  # DECLARED default: platform DB
     )
+
+
+def _platform_db_materialize_default() -> str | None:
+    """The DECLARED default materialization store for an ephemeral in-process engine: the platform's
+    own tenant database (``TENANT_DATABASE_URL``) — the persistent store the platform always
+    provisions. Explicit ``materialize_store_url`` still overrides it. Normalized to a driver-agnostic
+    DSN (the SQLAlchemy ``+driver`` suffix stripped) for the store attach / asyncpg land. None when the
+    platform DB is unset — then a store must be configured explicitly, else a hard error."""
+    import os
+
+    url = os.environ.get("TENANT_DATABASE_URL")
+    if not url:
+        return None
+    scheme, sep, rest = url.partition("://")
+    return f"{scheme.split('+', 1)[0]}://{rest}" if sep else None
 
 
 def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904

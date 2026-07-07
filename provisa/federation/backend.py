@@ -149,6 +149,19 @@ class EngineBackend:
         """Native engines share the bound in-process connection."""
         yield state.engine_conn
 
+    def cache_catalog(self, state: Any) -> str | None:
+        """Catalog the API-result cache lives in for THIS engine — the reference to its materialization
+        store. Generic across every engine: it always resolves through ``_materialize_store_ref``."""
+        return self._materialize_store_ref(state)
+
+    def _materialize_store_ref(self, state: Any) -> str | None:
+        """The catalog under which this engine references its materialization store (attaching it on
+        first use). ``None`` means the engine materializes into its OWN persistent store — its source
+        catalogs are already durable (a broad federator, or a store-engine). An engine whose source
+        exposure is EPHEMERAL (DuckDB in-memory) overrides this to attach the store and return its
+        catalog. A missing store is a hard error at attach time (never a fallback)."""
+        return None
+
     # -- introspection ---------------------------------------------------------
 
     def introspect_by_catalog(

@@ -37,6 +37,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from typing import Any
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -77,14 +78,20 @@ def cache_location(  # REQ-318, REQ-309, REQ-327
     source_id: str,
     cache_catalog: str | None = None,
     cache_schema: str = _DEFAULT_CACHE_SCHEMA,
+    *,
+    engine: Any = None,
 ) -> CacheLocation:
     """Build cache location.
 
-    cache_catalog=None → source's own the engine catalog (source_id with hyphens→underscores).
-    Any other catalog name is used as-is; "results" triggers Iceberg S3 behaviour.
+    cache_catalog=None → the bound engine's cache catalog (``engine.cache_catalog()``): a broad
+    federator / store-engine caches into the source's own (durable) catalog (returns None → source_id
+    with hyphens→underscores); an ephemeral engine caches into its attached materialization store.
+    Any explicit catalog is used as-is; "results" triggers Iceberg S3 behaviour.
     """
+    if cache_catalog is None and engine is not None:
+        cache_catalog = engine.cache_catalog()
     catalog = cache_catalog if cache_catalog is not None else source_id.replace("-", "_")
-    backend = "iceberg" if catalog == _ICEBERG_CATALOG else "postgresql"
+    backend = "iceberg" if catalog == _ICEBERG_CATALOG else "relational"
     return CacheLocation(catalog, cache_schema, backend)
 
 

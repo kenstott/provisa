@@ -184,6 +184,11 @@ class EngineRuntime:  # REQ-825, REQ-840
         engines run in-process and are always connected."""
         return self._backend.is_connected(self._state)
 
+    def cache_catalog(self) -> str | None:
+        """The catalog the API-result cache lives in for the bound engine (``None`` = the source's
+        own engine catalog; an ephemeral engine returns its attached materialization-store catalog)."""
+        return self._backend.cache_catalog(self._state)
+
     def provision(self, ops_views: list, retention_hours: int | None) -> None:
         """Boot-time: connect the engine terminal and seed the OTel ops store (no-op for native
         engines, whose telemetry lands in the dedicated ops store)."""
