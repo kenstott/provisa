@@ -41,12 +41,12 @@ a live EngineRuntime dispatch calls; routing/HTTP wiring is separate — mirrors
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
 from provisa.executor.result import QueryResult
 from provisa.federation.engine import build_clickhouse_engine
+from provisa.federation.runtime_support import columns_from_describe, run_async
 from provisa.transpiler.transpile import transpile
 
 
@@ -257,7 +257,7 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         phys = f'"{source.schema_name}"."{source.table_name}"'
         rows, _ = self._backend.query(f"DESCRIBE TABLE {phys}")
         # DESCRIBE columns: name, type, default_type, default_expression, ...
-        return {row[0]: str(row[1]).lower() for row in rows}
+        return columns_from_describe(rows)
 
     # -- execution -------------------------------------------------------------
 
@@ -273,8 +273,7 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         return QueryResult(rows=rows, column_names=cols)
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, lambda: self.run_sync(sql, params))
+        return await run_async(self.run_sync, sql, params)
 
     @property
     def connection(self):

@@ -20,13 +20,13 @@ attach_source, ensure_materialize_attached.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import psycopg2
 
 from provisa.executor.result import QueryResult
 from provisa.federation.engine import build_pg_engine
+from provisa.federation.runtime_support import result_from_dbapi, run_async
 
 
 class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
@@ -97,13 +97,10 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         """Execute SQL already in the Postgres dialect (transpiled by the backend seam)."""
         cur = self._con.cursor()
         cur.execute(sql, params or None)
-        cols = [d[0] for d in cur.description] if cur.description else []
-        rows = cur.fetchall() if cur.description else []
-        return QueryResult(rows=rows, column_names=cols)
+        return result_from_dbapi(cur)
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, lambda: self.run_sync(sql, params))
+        return await run_async(self.run_sync, sql, params)
 
     def close(self) -> None:
         self._con.close()

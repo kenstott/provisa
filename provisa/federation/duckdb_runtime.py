@@ -33,6 +33,7 @@ import duckdb
 from provisa.executor.result import QueryResult
 from provisa.federation.engine import build_duckdb_engine
 from provisa.federation.materialize_exec import land_rows_into_pg
+from provisa.federation.runtime_support import columns_from_describe, result_from_dbapi
 from provisa.transpiler.transpile import transpile
 
 
@@ -162,7 +163,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         phys = self._phys_name(source)
         res = self._con.execute(f"DESCRIBE {phys}")
         # DESCRIBE rows: (column_name, column_type, null, key, default, extra)
-        return {row[0]: str(row[1]).lower() for row in res.fetchall()}
+        return columns_from_describe(res.fetchall())
 
     # -- execution -------------------------------------------------------------
 
@@ -185,8 +186,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def run_sync(self, duck_sql: str, params: list | None = None) -> QueryResult:
         """Synchronous variant of run() for callers already on a worker thread (Arrow Flight, etc.)."""
         res = self._con.execute(duck_sql, params) if params else self._con.execute(duck_sql)
-        cols = [d[0] for d in res.description] if res.description else []
-        return QueryResult(rows=res.fetchall(), column_names=cols)
+        return result_from_dbapi(res)
 
     def close(self) -> None:
         self._con.close()
