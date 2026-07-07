@@ -390,7 +390,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         PostgresFdwConnector,
         SqliteFdwConnector,
     )
-    from provisa.federation.native_backend import NativeEngineBackend
+    from provisa.federation.pg_backend import PgBackend
 
     return FederationEngine(
         name,
@@ -407,7 +407,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         native_store="postgres",  # its own tables are native; attached sources reference in place
         driver_class=DriverClass.PARTIAL,
         mpp=False,  # single-node: cross-server joins materialize locally (REQ-894)
-        backend_factory=NativeEngineBackend,  # shared in-process terminal (runtime wiring: separate)
+        backend_factory=PgBackend,  # in-process terminal driving PgFederationRuntime
         default_materialize_store=_platform_db_materialize_default,
     )
 
