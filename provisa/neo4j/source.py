@@ -90,9 +90,12 @@ def infer_columns(sample_rows: list[dict]) -> list[ApiColumn]:
     fields = list(sample_rows[0].keys())
     columns: list[ApiColumn] = []
     for field in fields:
-        # Sample the first non-None value to guess type
+        # Sample the first non-None value to guess type.
         sample_value = next((row[field] for row in sample_rows if row.get(field) is not None), None)
-        if isinstance(sample_value, bool):
+        if sample_value is None:
+            # All sampled values are None — type cannot be inferred; default to string.
+            col_type = ApiColumnType.string
+        elif isinstance(sample_value, bool):
             col_type = ApiColumnType.boolean
         elif isinstance(sample_value, int):
             col_type = ApiColumnType.integer
@@ -101,6 +104,13 @@ def infer_columns(sample_rows: list[dict]) -> list[ApiColumn]:
         elif isinstance(sample_value, (dict, list)):
             col_type = ApiColumnType.jsonb
         elif isinstance(sample_value, str):
+            col_type = ApiColumnType.string
+        elif isinstance(sample_value, (bytes, bytearray)):
+            # Cypher ByteArray — no binary IR type; represent as string.
+            col_type = ApiColumnType.string
+        elif type(sample_value).__module__.split(".", 1)[0] == "neo4j":
+            # Driver temporal (Date/Time/DateTime/Duration), spatial (Point), and Vector
+            # values have no dedicated IR type; render as string.
             col_type = ApiColumnType.string
         else:
             raise ValueError(

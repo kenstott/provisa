@@ -26258,7 +26258,7 @@
     - REQ-913
     - REQ-302
     - REQ-303
-- id: REQ-915
+- id: REQ-920
   status: complete
   since: "2026-07"
   group: "1. Configuration & Deployment"
@@ -26276,7 +26276,7 @@
   code:
     - provisa/ddn/mapper.py
   related_reqs: []
-- id: REQ-916
+- id: REQ-921
   status: complete
   since: "2026-07"
   group: "6. Materialized Views & Caching"
@@ -26291,10 +26291,18 @@
   use_case: >-
     Promotion coercion maps only the types that need explicit PostgreSQL casts; types not
     requiring coercion do not need a cast and the absence signals correct representation.
+  scenario: |
+    Given a promotion with a target_type that is in _PG_CAST_MAP
+    When generate_promotion_ddl generates the coercion SQL
+    Then the output includes an explicit CAST expression
+    When a promotion with a target_type not in _PG_CAST_MAP
+    Then the output omits the CAST and relies on JSONB native representation
   code:
     - provisa/api_source/promotions.py
+  tests:
+    - tests/unit/test_api_promotions.py
   related_reqs: []
-- id: REQ-917
+- id: REQ-922
   status: complete
   since: "2026-07"
   group: "7. Connectors & Source Adapters"
@@ -26316,9 +26324,12 @@
     And the watermark does not advance beyond real events
   code:
     - provisa/subscriptions/debezium_provider.py
+  tests:
+    - tests/unit/test_debezium_provider.py
+    - tests/integration/test_debezium_cdc.py
   related_reqs:
     - REQ-343
-- id: REQ-918
+- id: REQ-923
   status: complete
   since: "2026-07"
   group: "2. Query Execution & Planning"
@@ -26342,4 +26353,7 @@
     Then the error propagates without retry
   code:
     - provisa/compiler/introspect.py
+  tests:
+    - tests/unit/test_compiler_introspect.py
+    - tests/integration/test_introspect.py
   related_reqs: []

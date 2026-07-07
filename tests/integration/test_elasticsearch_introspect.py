@@ -124,10 +124,18 @@ class TestDiscoverSchema:
         cols = discover_schema(mapping)
         assert cols[0]["type"] == "VARCHAR"
 
-    def test_unknown_type_defaults_to_varchar(self):
+    def test_genuinely_unknown_type_raises(self):
+        # The ES type map is exhaustive over real ES field types, so only a
+        # genuinely novel/invalid type string reaches the guard — which fails loud.
         mapping = {"custom": {"type": "some_unknown_type"}}
-        cols = discover_schema(mapping)
-        assert cols[0]["type"] == "VARCHAR"
+        with pytest.raises(ValueError, match="unmapped ES type"):
+            discover_schema(mapping)
+
+    def test_real_es_types_all_mapped(self):
+        # Every real ES field data type must resolve without raising (complete map).
+        for es_type, expected in ES_TYPE_TO_IR.items():
+            cols = discover_schema({"f": {"type": es_type}})
+            assert cols[0]["type"] == expected
 
 
 class TestESTypeMappings:

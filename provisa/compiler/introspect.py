@@ -21,7 +21,7 @@ import trino
 
 _SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
-# REQ-880: a coordinator that is (re)starting reports SERVER_STARTING_UP for up to
+# REQ-923: a coordinator that is (re)starting reports SERVER_STARTING_UP for up to
 # several minutes. Introspection during boot retries with backoff until the
 # coordinator is query-ready rather than masking the transient state with {} or
 # aborting. All other Trino errors (bad catalog, syntax) propagate immediately.
@@ -191,7 +191,7 @@ def introspect_column_types(  # REQ-636
 def _fetch_with_startup_retry(conn: trino.dbapi.Connection, sql: str) -> list:
     """Execute sql, retrying only while the coordinator reports SERVER_STARTING_UP.
 
-    REQ-880: transient boot state is retried with backoff up to the ready timeout;
+    REQ-923: transient boot state is retried with backoff up to the ready timeout;
     every other Trino error propagates so real failures are never masked.
     """
     deadline = time.monotonic() + _STARTUP_TIMEOUT_SECS

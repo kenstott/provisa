@@ -43,6 +43,7 @@ pytestmark = [pytest.mark.integration]
 # build_api_source — no live service required
 # ---------------------------------------------------------------------------
 
+
 class TestBuildApiSource:
     def test_builds_http_base_url(self):
         cfg = Neo4jSourceConfig(source_id="neo4j-1", host="localhost", port=7474)
@@ -51,7 +52,9 @@ class TestBuildApiSource:
         assert source.base_url == "http://localhost:7474"
 
     def test_builds_https_when_flag_set(self):
-        cfg = Neo4jSourceConfig(source_id="neo4j-2", host="db.example.com", port=7473, use_https=True)
+        cfg = Neo4jSourceConfig(
+            source_id="neo4j-2", host="db.example.com", port=7473, use_https=True
+        )
         source = build_api_source(cfg)
         assert source.base_url.startswith("https://")
 
@@ -70,12 +73,14 @@ class TestBuildApiSource:
 # build_endpoint — no live service required
 # ---------------------------------------------------------------------------
 
+
 class TestBuildEndpoint:
     def _cfg(self):
         return Neo4jSourceConfig(source_id="neo4j-1", host="localhost", port=7474, database="neo4j")
 
     def test_builds_endpoint(self):
         from provisa.api_source.models import ApiColumn, ApiColumnType
+
         cfg = self._cfg()
         cols = [ApiColumn(name="id", type=ApiColumnType.integer)]
         ep = build_endpoint(cfg, "users", "MATCH (u:User) RETURN u.id AS id", cols)
@@ -83,6 +88,7 @@ class TestBuildEndpoint:
 
     def test_uses_cypher_http_path(self):
         from provisa.api_source.models import ApiColumn
+
         cfg = self._cfg()
         cols = [ApiColumn(name="id", type=ApiColumnType.integer)]
         ep = build_endpoint(cfg, "users", "MATCH (u:User) RETURN u.id AS id", cols)
@@ -91,37 +97,49 @@ class TestBuildEndpoint:
 
     def test_response_normalizer_is_neo4j_tabular(self):
         from provisa.api_source.models import ApiColumn
+
         cfg = self._cfg()
         ep = build_endpoint(
-            cfg, "users", "MATCH (u) RETURN u.id",
+            cfg,
+            "users",
+            "MATCH (u) RETURN u.id",
             [ApiColumn(name="id", type=ApiColumnType.integer)],
         )
         assert ep.response_normalizer == "neo4j_tabular"
 
     def test_body_encoding_is_json(self):
         from provisa.api_source.models import ApiColumn
+
         cfg = self._cfg()
         ep = build_endpoint(
-            cfg, "users", "MATCH (u) RETURN u.id",
+            cfg,
+            "users",
+            "MATCH (u) RETURN u.id",
             [ApiColumn(name="id", type=ApiColumnType.integer)],
         )
         assert ep.body_encoding == "json"
 
     def test_query_template_stored(self):
         from provisa.api_source.models import ApiColumn
+
         cypher = "MATCH (u:User) WHERE u.active = true RETURN u.id, u.name"
         cfg = self._cfg()
         ep = build_endpoint(
-            cfg, "active_users", cypher,
+            cfg,
+            "active_users",
+            cypher,
             [ApiColumn(name="id", type=ApiColumnType.integer)],
         )
         assert ep.query_template == cypher
 
     def test_method_is_post(self):
         from provisa.api_source.models import ApiColumn
+
         cfg = self._cfg()
         ep = build_endpoint(
-            cfg, "nodes", "MATCH (n) RETURN n",
+            cfg,
+            "nodes",
+            "MATCH (n) RETURN n",
             [ApiColumn(name="n", type=ApiColumnType.jsonb)],
         )
         assert ep.method == "POST"
@@ -129,29 +147,38 @@ class TestBuildEndpoint:
     def test_custom_database(self):
         cfg = Neo4jSourceConfig(source_id="neo4j-1", host="localhost", database="movies")
         from provisa.api_source.models import ApiColumn
+
         ep = build_endpoint(
-            cfg, "films", "MATCH (m:Movie) RETURN m.title",
+            cfg,
+            "films",
+            "MATCH (m:Movie) RETURN m.title",
             [ApiColumn(name="title", type=ApiColumnType.string)],
         )
         assert "movies" in ep.path
 
     def test_ttl_default(self):
         from provisa.api_source.models import ApiColumn
+
         cfg = self._cfg()
-        ep = build_endpoint(cfg, "t", "MATCH (n) RETURN n", [ApiColumn(name="n", type=ApiColumnType.string)])
+        ep = build_endpoint(
+            cfg, "t", "MATCH (n) RETURN n", [ApiColumn(name="n", type=ApiColumnType.string)]
+        )
         assert ep.ttl == 300
 
     def test_custom_ttl(self):
         from provisa.api_source.models import ApiColumn
+
         cfg = self._cfg()
-        ep = build_endpoint(cfg, "t", "MATCH (n) RETURN n",
-                            [ApiColumn(name="n", type=ApiColumnType.string)], ttl=60)
+        ep = build_endpoint(
+            cfg, "t", "MATCH (n) RETURN n", [ApiColumn(name="n", type=ApiColumnType.string)], ttl=60
+        )
         assert ep.ttl == 60
 
 
 # ---------------------------------------------------------------------------
 # infer_columns — pure Python type inference
 # ---------------------------------------------------------------------------
+
 
 class TestInferColumns:
     def test_empty_returns_empty(self):
@@ -191,6 +218,26 @@ class TestInferColumns:
         cols = infer_columns([{"notes": None}, {"notes": None}])
         assert cols[0].type == ApiColumnType.string
 
+    def test_bytes_field_maps_to_string(self):
+        """Cypher ByteArray values have no binary IR type — represented as string."""
+        cols = infer_columns([{"blob": b"\x00\x01"}])
+        assert cols[0].type == ApiColumnType.string
+
+    def test_neo4j_temporal_maps_to_string(self):
+        """Driver temporal/spatial values (neo4j.* types) map to string."""
+        neo4j_time = pytest.importorskip("neo4j.time")
+        cols = infer_columns([{"when": neo4j_time.Date(2026, 7, 7)}])
+        assert cols[0].type == ApiColumnType.string
+
+    def test_genuinely_unknown_type_raises(self):
+        """A value type that is neither a builtin nor a neo4j driver type fails loud."""
+
+        class _Weird:
+            pass
+
+        with pytest.raises(ValueError, match="unknown sample value type"):
+            infer_columns([{"x": _Weird()}])
+
     def test_skips_none_to_find_first_value(self):
         """infer_columns inspects first non-None value to guess type."""
         cols = infer_columns([{"score": None}, {"score": 42}])
@@ -210,6 +257,7 @@ class TestInferColumns:
 # ---------------------------------------------------------------------------
 # Live-service tests (requires a running Neo4j instance)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.requires_neo4j
 class TestLiveNeo4jExecution:
@@ -239,12 +287,6 @@ class TestLiveNeo4jExecution:
         from provisa.api_source.normalizers import neo4j_tabular
 
         cypher = "UNWIND range(1, 3) AS n RETURN n"
-        endpoint = build_endpoint(
-            cfg, "numbers", cypher,
-            [__import__("provisa.api_source.models", fromlist=["ApiColumn"]).ApiColumn(
-                name="n", type=ApiColumnType.integer)],
-        )
-
         payload = {"statements": [{"statement": cypher}]}
         async with httpx.AsyncClient() as client:
             resp = await client.post(
