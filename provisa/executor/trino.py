@@ -34,6 +34,7 @@ _RETRYABLE_ERROR_NAMES: frozenset[str] = frozenset(
     {
         "COORDINATOR_NOT_AVAILABLE",
         "SERVER_SHUTTING_DOWN",
+        "SERVER_STARTING_UP",  # coordinator restarted mid-query — comes back through this state
         "NO_NODES_AVAILABLE",
         "TOO_MANY_REQUESTS_FAILED",
         "REMOTE_TASK_FAILED",

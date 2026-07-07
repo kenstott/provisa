@@ -15,12 +15,40 @@
 import logging
 import os
 import re
+import time
 
 import trino
 
 from provisa.core.models import Source
 
 log = logging.getLogger(__name__)
+
+# A coordinator that (re)started reports SERVER_STARTING_UP until it finishes
+# initializing. Catalog registration runs on every app boot and must work
+# "regardless of Trino start order" (see create_kafka_catalog), so it waits for
+# the coordinator to become query-ready rather than failing boot.
+_STARTING_UP = "SERVER_STARTING_UP"
+_READY_TIMEOUT_SECS = float(os.environ.get("PROVISA_TRINO_READY_TIMEOUT", "120"))
+
+
+def wait_until_ready(conn: trino.dbapi.Connection, timeout: float = _READY_TIMEOUT_SECS) -> None:
+    """Block until the coordinator answers a trivial query (past SERVER_STARTING_UP).
+
+    Raises the last error if the coordinator is still initializing at the deadline —
+    a genuinely down engine must surface, not be swallowed.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            return
+        except trino.exceptions.TrinoQueryError as e:
+            if e.error_name != _STARTING_UP or time.monotonic() >= deadline:
+                raise
+            time.sleep(2)
+
 
 _VALID_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
@@ -236,6 +264,7 @@ def create_kafka_catalog(conn: trino.dbapi.Connection, kafka_source: dict) -> No
     from provisa.core.trino_catalog_files import kafka_catalog_props
 
     catalog_name = _to_catalog_name(kafka_source["id"])
+    wait_until_ready(conn)  # a coordinator that just restarted races app boot
     if catalog_exists(conn, catalog_name):
         return
     props = kafka_catalog_props(kafka_source)

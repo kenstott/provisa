@@ -100,6 +100,15 @@ def docker_stack():
         yield
         return
 
+    # Remove any volumes left by a crashed prior run before bringing the stack up:
+    # a lingering pg_data would freeze the schema (see teardown note) since `up`
+    # reuses an existing volume rather than reprovisioning it.
+    subprocess.run(
+        ["docker", "compose", "-p", _PROJECT, *_COMPOSE_ARGS, "down", "-v"],
+        cwd=_REPO_ROOT,
+        check=False,
+    )
+
     # --wait blocks until every service with a healthcheck (postgres, redis,
     # trino, zaychik) reports healthy, so tests never start against a Trino that
     # is up but not yet query-ready. -p isolates the stack in its own project.
@@ -119,8 +128,14 @@ def docker_stack():
 
     yield
 
+    # `down -v` removes the project's named volumes (pg_data, kafka_e2e_data, …) so
+    # the isolated e2e stack is truly ephemeral. A persisted pg_data volume freezes
+    # the schema at whatever `CREATE TABLE IF NOT EXISTS` first ran (e.g. rls_rules.
+    # filter_expr TEXT before REQ-686 made it BYTEA), and no migration reconciles it
+    # on later runs. Ephemeral volumes guarantee every run provisions the current
+    # schema.sql from scratch.
     subprocess.run(
-        ["docker", "compose", "-p", _PROJECT, *_COMPOSE_ARGS, "down"],
+        ["docker", "compose", "-p", _PROJECT, *_COMPOSE_ARGS, "down", "-v"],
         cwd=_REPO_ROOT,
         check=True,
     )
