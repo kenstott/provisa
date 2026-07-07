@@ -118,13 +118,11 @@ def build_values_cte_sql(
                 tbl.set("db", None)
                 tbl.set("this", exp.to_identifier(cte_name))
         rewritten = tree.sql(dialect="postgres")
-    except Exception:
-        rewritten = re.sub(
-            r'"[^"]*"\."[^"]*"\."' + re.escape(table_name) + r'"',
-            f'"{cte_name}"',
-            sql,
-            count=1,
-        )
+    except Exception as exc:
+        # A regex fallback can rewrite the wrong occurrence — fail loud on parse error.
+        raise ValueError(
+            f"Failed to parse SQL for hot-table CTE rewrite of {table_name!r}"
+        ) from exc
 
     _with_re = re.compile(r"^\s*WITH\s+", re.IGNORECASE)
     if _with_re.match(rewritten):

@@ -108,7 +108,8 @@ async def _generate_sql_from_nl(
     if ctx is None:
         return None, f"No schema context for role: {role}"
 
-    rls = getattr(app_state, "rls_contexts", {}).get(role, RLSContext.empty())
+    # Missing rls_contexts attribute is a wiring bug; a role with no rules is legitimately empty.
+    rls = app_state.rls_contexts.get(role, RLSContext.empty())
     role_obj = getattr(app_state, "roles", {}).get(role)
     gov_ctx = build_governance_context(
         role,
@@ -181,12 +182,13 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
             log.debug("Query embedding failed: %s", exc)
     relevant_entities = format_entities(matcher.top_k(query_emb))
 
-    compilers = {
-        "cypher": make_cypher_compiler(),
-        "graphql": make_graphql_compiler(graphql_schema)
-        if graphql_schema
-        else make_cypher_compiler(),
-    }
+    # A role may have no GraphQL schema. Never validate the GraphQL branch with the
+    # Cypher compiler (that masks the absence); instead omit the graphql compiler so
+    # the graphql branch fails independently as a per-branch error (see _run_branch),
+    # leaving the other branches unaffected.
+    compilers = {"cypher": make_cypher_compiler()}
+    if graphql_schema is not None:
+        compilers["graphql"] = make_graphql_compiler(graphql_schema)
 
     ctx = getattr(app_state, "contexts", {}).get(role)
     cypher_schema_block = ""
@@ -234,7 +236,9 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
             if target == "openapi":
                 q, e = _generate_openapi_query(shared_selected_types, shared_user_nodes)
                 return target, q, e
-            compiler = compilers[target]  # type: ignore[index]
+            compiler = compilers.get(target)  # type: ignore[arg-type]
+            if compiler is None:
+                return target, None, f"No GraphQL schema for role: {role}"
             entities = cypher_schema_block if target == "cypher" else relevant_entities
             valid_query, error = await generation_loop(
                 nl_query,
@@ -305,9 +309,6 @@ def _get_schema_sdl(app_state: AppState, role: str) -> str:
     schema = getattr(app_state, "schemas", {}).get(role)
     if schema is None:
         return ""
-    try:
-        from graphql import print_schema
+    from graphql import print_schema
 
-        return print_schema(schema)
-    except Exception:
-        return ""
+    return print_schema(schema)

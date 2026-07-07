@@ -408,8 +408,9 @@ class TrinoBackend(EngineBackend):
                 worker_count += cnt
                 if node_state == "active":
                     active_workers = cnt
-        except Exception:
-            return (False, 0, 0)
+        except Exception as exc:
+            # Surface connection/config errors instead of masking them as an unhealthy cluster.
+            raise RuntimeError(f"Trino cluster diagnostics probe failed: {exc}") from exc
         return (connected, worker_count, active_workers)
 
     def ctas_redirect(self, state: Any, physical_sql: str, output_format: str) -> dict:
@@ -467,10 +468,29 @@ class TrinoBackend(EngineBackend):
         conn = state.engine_conn
         if conn is None:
             return {}
+        import trino.exceptions
+
         from provisa.compiler.introspect import introspect_column_types
         from provisa.compiler.naming import source_to_catalog
 
-        return introspect_column_types(conn, source_to_catalog(source.id), schema_name, table_name)
+        try:
+            return introspect_column_types(
+                conn, source_to_catalog(source.id), schema_name, table_name
+            )
+        except trino.exceptions.Error as exc:
+            # REQ-636/REQ-251 contract: introspection is best-effort type enrichment. A source
+            # whose catalog is unavailable (not registered, unreachable, table absent) yields {}
+            # so the caller keeps the YAML-declared types and startup stays resilient to a down
+            # source. Transient SERVER_STARTING_UP is already retried inside introspect_column_types
+            # before it can reach here; only a genuinely unresolvable engine error degrades.
+            _log.debug(
+                "introspect_columns degraded to {} for %s.%s.%s: %s",
+                source.id,
+                schema_name,
+                table_name,
+                exc,
+            )
+            return {}
 
     # -- execution -------------------------------------------------------------
 

@@ -30,6 +30,10 @@ from typing import AsyncGenerator, AsyncIterator, Callable, Protocol, runtime_ch
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
+# REQ-922: missing/unparseable ts_ms sorts oldest via a stable sentinel (mirrors
+# the RSS provider's REQ-343), never now() — which would advance the watermark.
+_UNPARSEABLE_TS = datetime.min.replace(tzinfo=timezone.utc)
+
 
 @runtime_checkable
 class _KafkaConsumer(Protocol):
@@ -138,15 +142,19 @@ class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
         if not isinstance(row, dict):
             row = {}
 
-        # Watermark: Debezium stores event time in ts_ms (epoch milliseconds)
+        # Watermark: Debezium stores event time in ts_ms (epoch milliseconds).
+        # REQ-922: ts_ms is optional (snapshot/tombstone envelopes may omit it and
+        # values can be malformed). A missing/unparseable ts_ms sorts oldest via a
+        # stable sentinel rather than now(), which would advance the watermark and
+        # drop later real events.
         ts_ms = payload.get("ts_ms")
-        if ts_ms is not None:
+        if ts_ms is None:
+            timestamp = _UNPARSEABLE_TS
+        else:
             try:
                 timestamp = datetime.fromtimestamp(int(ts_ms) / 1000, tz=timezone.utc)
             except (ValueError, OSError):
-                timestamp = datetime.now(timezone.utc)
-        else:
-            timestamp = datetime.now(timezone.utc)
+                timestamp = _UNPARSEABLE_TS
 
         return ChangeEvent(
             operation=operation,

@@ -37,7 +37,9 @@ class FirebaseAuthProvider(AuthProvider):  # REQ-120, REQ-121
     def __init__(self, firebase_config: dict) -> None:
         if not _HAS_FIREBASE:
             raise ImportError("firebase-admin is required: pip install provisa[firebase]")
-        project_id = firebase_config.get("project_id", "")
+        project_id = firebase_config.get("project_id")
+        if not project_id:
+            raise ValueError("firebase.project_id is required")
         # Resolve ${env:...} placeholders; an unset FIREBASE_SERVICE_ACCOUNT_KEY
         # yields "" (no key file) rather than a literal path that would be opened.
         service_account_key = resolve_secrets(firebase_config.get("service_account_key") or "")

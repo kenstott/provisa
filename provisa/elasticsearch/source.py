@@ -23,24 +23,74 @@ log = logging.getLogger(__name__)
 
 # Requirements: REQ-017, REQ-250, REQ-251, REQ-252
 
+# Complete Elasticsearch field data type → IR type map (ES 8.x/9.x). Kept exhaustive
+# so a real index mapping never hits the unmapped-type guard; only a genuinely novel
+# (future/invalid) type string raises. Source: Elasticsearch "Field data types" ref.
 ES_TYPE_TO_IR = {
-    "text": "VARCHAR",
-    "keyword": "VARCHAR",
+    # Numeric
     "long": "BIGINT",
     "integer": "INTEGER",
     "short": "SMALLINT",
-    "byte": "smallint",
+    "byte": "smallint",  # postgres-dialect IR (no TINYINT)
+    "unsigned_long": "BIGINT",
     "double": "DOUBLE",
     "float": "REAL",
     "half_float": "REAL",
     "scaled_float": "DOUBLE",
+    # Boolean
     "boolean": "BOOLEAN",
+    # Date/time
     "date": "TIMESTAMP",
-    "ip": "VARCHAR",
+    "date_nanos": "TIMESTAMP",
+    # Binary / hash
     "binary": "bytea",
-    "nested": "VARCHAR",
+    "murmur3": "VARCHAR",
+    # Keyword & text family (all string-shaped)
+    "keyword": "VARCHAR",
+    "constant_keyword": "VARCHAR",
+    "wildcard": "VARCHAR",
+    "text": "VARCHAR",
+    "match_only_text": "VARCHAR",
+    "pattern_text": "VARCHAR",
+    "annotated_text": "VARCHAR",
+    "completion": "VARCHAR",
+    "search_as_you_type": "VARCHAR",
+    "semantic_text": "VARCHAR",
+    "token_count": "INTEGER",
+    # Identifiers / misc scalars
+    "ip": "VARCHAR",
+    "version": "VARCHAR",
+    # Objects / relational (rendered as JSON text)
     "object": "VARCHAR",
+    "nested": "VARCHAR",
+    "flattened": "VARCHAR",
+    "join": "VARCHAR",
+    "passthrough": "VARCHAR",
+    "alias": "VARCHAR",
+    # Range types
+    "integer_range": "VARCHAR",
+    "long_range": "VARCHAR",
+    "float_range": "VARCHAR",
+    "double_range": "VARCHAR",
+    "date_range": "VARCHAR",
+    "ip_range": "VARCHAR",
+    # Spatial
     "geo_point": "VARCHAR",
+    "geo_shape": "VARCHAR",
+    "point": "VARCHAR",
+    "shape": "VARCHAR",
+    # Vector / ranking
+    "dense_vector": "VARCHAR",
+    "sparse_vector": "VARCHAR",
+    "rank_feature": "REAL",
+    "rank_features": "VARCHAR",
+    # Aggregate / sketch
+    "aggregate_metric_double": "VARCHAR",
+    "histogram": "VARCHAR",
+    "exponential_histogram": "VARCHAR",
+    "tdigest": "VARCHAR",
+    # Query
+    "percolator": "VARCHAR",
 }
 
 
@@ -171,8 +221,12 @@ def _flatten_mapping(properties: dict, prefix: str, columns: list[dict]) -> None
             _flatten_mapping(nested_props, f"{full_path}.", columns)
             continue
 
-        es_type = field_def.get("type", "object")
-        column_type = ES_TYPE_TO_IR.get(es_type, "VARCHAR")
+        if "type" not in field_def:
+            raise ValueError(f"ES field {full_path!r} has neither 'type' nor 'properties'")
+        es_type = field_def["type"]
+        if es_type not in ES_TYPE_TO_IR:
+            raise ValueError(f"unmapped ES type: {es_type}")
+        column_type = ES_TYPE_TO_IR[es_type]
         columns.append(
             {
                 "name": full_path.replace(".", "_"),

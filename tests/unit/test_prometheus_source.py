@@ -283,12 +283,10 @@ class TestDiscoverSchema:
         col_names = [c["name"] for c in cols]
         assert col_names == ["timestamp", "value"]
 
-    def test_missing_type_key_defaults_to_gauge_behaviour(self):
+    def test_missing_type_key_raises(self):
         metadata = {"labels": []}
-        cols = discover_schema(metadata, "some_metric")
-        col_names = [c["name"] for c in cols]
-        assert "le" not in col_names
-        assert "quantile" not in col_names
+        with pytest.raises(ValueError, match="missing metric type"):
+            discover_schema(metadata, "some_metric")
 
     def test_histogram_with_labels_includes_both(self):
         metadata = {"labels": ["handler"], "type": "histogram"}

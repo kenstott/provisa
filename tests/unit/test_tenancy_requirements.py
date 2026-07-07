@@ -14,7 +14,7 @@ import pytest
 class TestKMSRegionConfiguration:
     """REQ-593: KMS client reads AWS_KMS_REGION from environment, defaults to us-east-1."""
 
-    def test_kms_client_defaults_to_us_east_1_when_env_var_absent(self):
+    def test_kms_client_raises_when_env_var_absent(self):
         # REQ-593
         env = {k: v for k, v in os.environ.items() if k != "AWS_KMS_REGION"}
         with patch.dict(os.environ, env, clear=True):
@@ -23,9 +23,9 @@ class TestKMSRegionConfiguration:
                 import importlib
 
                 importlib.reload(kms_module)
-                kms_module._kms_client()
-                mock_boto3_client.assert_called_once_with("kms", region_name="us-east-1")
-                assert mock_boto3_client.call_count == 1
+                with pytest.raises(RuntimeError, match="AWS_KMS_REGION is required"):
+                    kms_module._kms_client()
+                mock_boto3_client.assert_not_called()
 
     def test_kms_client_uses_aws_kms_region_env_var_when_set(self):
         # REQ-593

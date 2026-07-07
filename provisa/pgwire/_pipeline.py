@@ -141,8 +141,11 @@ async def _govern_and_route(
                             "V000", f"Table {full_key!r} not accessible for role {role_id!r}"
                         )
                     )
-        except Exception:
-            pass
+        except Exception as exc:
+            # SECURITY: never skip the domain-access check on a parse/lookup error — fail closed.
+            raise PermissionError(
+                f"Domain-access check could not be evaluated for role {role_id!r}: {exc}"
+            ) from exc
 
     if violations:
         msgs = "; ".join(f"[{v.code}] {v.message}" for v in violations)
@@ -214,8 +217,6 @@ async def _govern_and_route(
                     )
         except ValueError:
             raise
-        except Exception:
-            pass
         physical_sql = state.federation_engine.transpile_physical(_qualified)
         return _Plan(
             route=Route.ENGINE,
@@ -380,8 +381,6 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
                         )
         except ValueError:
             raise
-        except Exception:
-            pass
         physical_sql = state.federation_engine.transpile_physical(_exec_sql)
         # REQ-041/402: RLS is added to the governed semantic SQL as a
         # current_setting('provisa.<var>') predicate; PostgreSQL resolves it

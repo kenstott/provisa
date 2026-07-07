@@ -67,10 +67,12 @@ def _build_url(
     if not dialect:
         dialect = "postgresql+asyncpg"
     if not host:
-        host = "localhost"
+        raise ValueError("ingest DB host is required")
     if not port:
-        port = 5432
+        raise ValueError("ingest DB port is required")
+    if not password:
+        raise ValueError("ingest DB password is required")
     import urllib.parse
 
-    pw = urllib.parse.quote_plus(password or "")
+    pw = urllib.parse.quote_plus(password)
     return f"{dialect}://{username}:{pw}@{host}:{port}/{database}"

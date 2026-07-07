@@ -429,8 +429,12 @@ def _make_traversal_node(
     phys_props: dict[str, str] = {_apply_cql_property(c): c for c in col_names}
     _phys_id = _resolve_id_column(tgt_type_name, col_names, {}, [])
     id_col = _col_alias.get(_phys_id) or _apply_sql_name(_phys_id)
-    tgt_source_id = tgt_table.get("source_id") or ""
-    tgt_schema = tgt_table.get("schema_name") or ""
+    tgt_source_id = tgt_table.get("source_id")
+    if not tgt_source_id:
+        raise ValueError(f"Target table {tgt_type_name!r} missing source_id")
+    tgt_schema = tgt_table.get("schema_name")
+    if not tgt_schema:
+        raise ValueError(f"Target table {tgt_type_name!r} missing schema_name")
     tgt_catalog = (source_catalogs or {}).get(tgt_source_id) or (
         _s2c(tgt_source_id) if tgt_source_id else ""
     )

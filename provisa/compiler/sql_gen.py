@@ -951,10 +951,8 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
                 if orig_nl is not None:
                     by_schema_name[(domain_sl, orig_nl)] = (meta.schema_name, meta.table_name)
 
-    try:
-        tree = sqlglot.parse_one(sql, read="postgres")
-    except Exception:
-        return sql
+    # Parse failure must fail loud: returning un-rewritten SQL skips physical/catalog qualification.
+    tree = sqlglot.parse_one(sql, read="postgres")
 
     def _rewrite(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         if not isinstance(node, exp.Table):

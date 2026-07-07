@@ -176,13 +176,10 @@ async def _is_fresh(
 ) -> bool:
     if _mem_fresh.get((pg_schema, pg_table, phash), 0) > _time.monotonic():
         return True
-    try:
-        cached_at = await pg_conn.fetchval(
-            f'SELECT _cached_at FROM "{pg_schema}"."{pg_table}" WHERE _params_hash = $1 LIMIT 1',
-            phash,
-        )
-    except Exception:
-        return False
+    cached_at = await pg_conn.fetchval(
+        f'SELECT _cached_at FROM "{pg_schema}"."{pg_table}" WHERE _params_hash = $1 LIMIT 1',
+        phash,
+    )
     if cached_at is None:
         return False
     # Delegate the TTL decision to the shared freshness module (REQ-859).
@@ -224,17 +221,9 @@ async def cache_openapi_table(  # REQ-318
     phash = _hash_params(default_params)
     if not has_path_params:
         url = base_url.rstrip("/") + path
-        try:
-            r = httpx.get(url, params=default_params, timeout=30, follow_redirects=True)
-            r.raise_for_status()
-            rows = _normalize_rows(r.json())
-        except Exception as exc:
-            _is_client_err = (
-                isinstance(exc, httpx.HTTPStatusError) and 400 <= exc.response.status_code < 500
-            )
-            (_log := log.debug if _is_client_err else log.warning)(
-                "OpenAPI fetch failed for %s: %s — creating empty table", url, exc
-            )
+        r = httpx.get(url, params=default_params, timeout=30, follow_redirects=True)
+        r.raise_for_status()
+        rows = _normalize_rows(r.json())
 
     all_cols = entity_cols + _META_COLS
     col_defs = ", ".join(f'"{name}" {pg_type}' for name, pg_type in all_cols)
@@ -278,23 +267,14 @@ async def fill_api_table(  # REQ-318
         return 0
 
     url = base_url.rstrip("/") + path
-    try:
-        r = httpx.get(url, params=params, timeout=30, follow_redirects=True)
-        r.raise_for_status()
-        data = r.json()
-        err = _check_error_path(data, error_path)
-        if err:
-            log.warning("fill_api_table API error at %s (error_path=%s): %s", url, error_path, err)
-            return 0
-        rows = _normalize_rows(data, response_root)
-    except Exception as exc:
-        _is_client_err = (
-            isinstance(exc, httpx.HTTPStatusError) and 400 <= exc.response.status_code < 500
-        )
-        (_log := log.debug if _is_client_err else log.warning)(
-            "fill_api_table fetch failed for %s: %s", url, exc
-        )
+    r = httpx.get(url, params=params, timeout=30, follow_redirects=True)
+    r.raise_for_status()
+    data = r.json()
+    err = _check_error_path(data, error_path)
+    if err:
+        log.warning("fill_api_table API error at %s (error_path=%s): %s", url, error_path, err)
         return 0
+    rows = _normalize_rows(data, response_root)
 
     if not rows:
         return 0

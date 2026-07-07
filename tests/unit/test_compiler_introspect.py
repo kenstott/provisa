@@ -14,8 +14,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
 import trino.exceptions
 
+from provisa.compiler import introspect as _introspect
 from provisa.compiler.introspect import introspect_column_types
 
 
@@ -39,25 +41,20 @@ class TestIntrospectColumnTypes:
 
         assert result == {"id": "integer", "name": "varchar"}
 
-    def test_returns_empty_on_trino_user_error(self):
-        """TrinoUserError (catalog not found etc.) returns {} without raising."""
+    def test_raises_on_trino_user_error(self):
+        """A real Trino error (catalog not found) propagates — no {} mask (REQ-880)."""
         exc = trino.exceptions.TrinoUserError(
             {"errorName": "CATALOG_NOT_FOUND", "errorType": "USER_ERROR", "message": "no catalog"},
             query_id="q1",
         )
         conn = _conn_raising(exc)
 
-        result = introspect_column_types(conn, "nocat", "s", "t")
+        with pytest.raises(trino.exceptions.TrinoUserError):
+            introspect_column_types(conn, "nocat", "s", "t")
 
-        assert result == {}
-
-    def test_returns_empty_on_server_starting_up(self):
-        """SERVER_STARTING_UP (INTERNAL_ERROR TrinoQueryError) returns {} without raising.
-
-        Regression: introspect_column_types caught only TrinoUserError; a plain
-        TrinoQueryError with error_name=SERVER_STARTING_UP propagated to the lifespan
-        context and aborted app startup.
-        """
+    def test_retries_on_server_starting_up_then_succeeds(self, monkeypatch):
+        """SERVER_STARTING_UP is transient during boot: retry with backoff, then succeed (REQ-880)."""
+        monkeypatch.setattr(_introspect, "_STARTUP_BACKOFF_SECS", 0.0)
         exc = trino.exceptions.TrinoQueryError(
             {
                 "errorName": "SERVER_STARTING_UP",
@@ -66,8 +63,26 @@ class TestIntrospectColumnTypes:
             },
             query_id="q2",
         )
-        conn = _conn_raising(exc)
+        starting = MagicMock()
+        starting.execute.side_effect = exc
+        ready = MagicMock()
+        ready.fetchall.return_value = [("id", "integer")]
+        conn = MagicMock()
+        conn.cursor.side_effect = [starting, ready]
 
         result = introspect_column_types(conn, "mycat", "s", "t")
 
-        assert result == {}
+        assert result == {"id": "integer"}
+
+    def test_raises_when_still_starting_up_at_deadline(self, monkeypatch):
+        """A coordinator that never finishes booting propagates at the deadline (REQ-880)."""
+        monkeypatch.setattr(_introspect, "_STARTUP_BACKOFF_SECS", 0.0)
+        monkeypatch.setattr(_introspect, "_STARTUP_TIMEOUT_SECS", 0.0)
+        exc = trino.exceptions.TrinoQueryError(
+            {"errorName": "SERVER_STARTING_UP", "errorType": "INTERNAL_ERROR", "message": "init"},
+            query_id="q3",
+        )
+        conn = _conn_raising(exc)
+
+        with pytest.raises(trino.exceptions.TrinoQueryError):
+            introspect_column_types(conn, "mycat", "s", "t")

@@ -536,14 +536,16 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
         rls_filter: str | None = None
 
         if role_id:
-            from provisa.compiler.rls import RLSContext
             from provisa.compiler.stage2 import build_governance_context
 
             if role_id not in state.contexts:
                 raise HTTPException(status_code=422, detail=f"Unknown role '{role_id}'")
 
             ctx = state.contexts[role_id]
-            rls = state.rls_contexts.get(role_id, RLSContext.empty())
+            # Invariant: contexts and rls_contexts are written together per-role
+            # (app.py). role_id is present in contexts (checked above), so it must
+            # be in rls_contexts — a missing key is an invariant break, fail loud.
+            rls = state.rls_contexts[role_id]
             role = state.roles.get(role_id)
             gov_ctx = build_governance_context(
                 role_id,

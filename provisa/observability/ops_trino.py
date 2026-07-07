@@ -26,6 +26,12 @@ from provisa.observability.ops_schema import OPS_TABLES
 from provisa.compiler.type_map import OPS_PG_TO_PHYSICAL
 
 
+def _ops_physical(pg_type: str) -> str:
+    if pg_type not in OPS_PG_TO_PHYSICAL:
+        raise ValueError(f"unmapped ops pg type: {pg_type}")
+    return OPS_PG_TO_PHYSICAL[pg_type]
+
+
 def seed_ops_trino(  # REQ-016
     trino_conn: trino.dbapi.Connection,
     ops_views: list[tuple[str, list[tuple[str, str, bool]], str]],
@@ -44,10 +50,7 @@ def seed_ops_trino(  # REQ-016
     try:
         _exec("CREATE SCHEMA IF NOT EXISTS otel.signals")
         for tbl_name, cols in OPS_TABLES.items():
-            col_defs = [
-                f'"{col_name}" {OPS_PG_TO_PHYSICAL.get(pg_type, "VARCHAR")}'
-                for col_name, pg_type, _ in cols
-            ]
+            col_defs = [f'"{col_name}" {_ops_physical(pg_type)}' for col_name, pg_type, _ in cols]
             col_names_lower = {col_name.lower() for col_name, _, _ in cols}
             partition_cols = (
                 ["'table_name'", "'_date'"] if "table_name" in col_names_lower else ["'_date'"]
@@ -72,7 +75,7 @@ def seed_ops_trino(  # REQ-016
                 existing_cols = {row[0].lower() for row in cur.fetchall()}
                 for col_name, pg_type, _ in cols:
                     if col_name.lower() not in existing_cols:
-                        trino_type = OPS_PG_TO_PHYSICAL.get(pg_type, "VARCHAR")
+                        trino_type = _ops_physical(pg_type)
                         try:
                             _exec(
                                 f'ALTER TABLE otel.signals.{tbl_name} ADD COLUMN "{col_name}" {trino_type}'

@@ -753,8 +753,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         try:
             # No dialect: $N executor placeholders must survive as identifiers.
             return sqlglot.parse_one(text)  # pyright: ignore[reportReturnType]
-        except Exception:
-            return exp.column(text)  # pyright: ignore[reportReturnType]
+        except Exception as exc:
+            # Treating an unparseable UNWIND source as a bare column emits wrong SQL — fail loud.
+            raise ValueError(f"Cannot parse UNWIND source expression {text!r}") from exc
 
     def _build_unwind_joins(
         self,

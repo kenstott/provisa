@@ -222,8 +222,10 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
             logger.error("Invalid JSON payload on channel %s: %s", channel, payload)
             return
 
-        # Filter by operation
-        operation = data.get("operation", "").lower()
+        # Filter by operation — self-emitted payload always carries "operation".
+        if "operation" not in data:
+            raise ValueError(f"Trigger payload missing 'operation' on channel {channel}: {payload}")
+        operation = data["operation"].lower()
         if operation not in [op.lower() for op in trigger.operations]:
             return
 

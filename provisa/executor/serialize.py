@@ -371,7 +371,8 @@ def _detect_truncated_paths(
         parts = nest_path.split(".")
         target = prev_obj
         for part in parts[:-1]:
-            target = target.get(part) or {}
+            # A missing intermediate key is a structural bug — fail loud, don't mask with {}.
+            target = target[part]
         prev_val = target.get(parts[-1])
         prev_vals = tuple(prev_val.values()) if isinstance(prev_val, dict) else (prev_val,)
         if cur_vals != prev_vals:

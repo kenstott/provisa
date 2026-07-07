@@ -404,7 +404,9 @@ async def _acquire_sse_slot(state, role_id: str | None) -> str | None:  # REQ-36
     limiter = getattr(state, "rate_limiter", None)
     if not (limiter and role_id):
         return None
-    role = state.roles.get(role_id) or {}
+    if role_id not in state.roles:
+        raise HTTPException(status_code=403, detail=f"Unknown role {role_id!r}")
+    role = state.roles[role_id]
     cap = (role.get("rate_limit") or {}).get("max_sse_subscriptions")
     if not cap:
         return None

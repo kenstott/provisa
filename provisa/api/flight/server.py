@@ -246,7 +246,10 @@ class ProvisaFlightServer(
             # REQ-369: cap concurrent Arrow Flight query streams per role. The slot is
             # held for the execution window (results are materialized in _execute_query).
             limiter = getattr(self._state, "rate_limiter", None)
-            role_id = str(request.get("role", "admin"))
+            # role scopes the rate-limit bucket; defaulting to admin would bypass authz.
+            if not request.get("role"):
+                raise flight.FlightServerError("role is required")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            role_id = str(request["role"])
             role = self._state.roles.get(role_id) or {}
             cap = (role.get("rate_limit") or {}).get("max_flight_streams")
             if limiter and cap:
@@ -423,7 +426,10 @@ class ProvisaFlightServer(
         from provisa.pgwire._pipeline import _govern_and_route_compiled
 
         query_text = str(request.get("query", ""))
-        role_id = str(request.get("role", "admin"))
+        # role drives governance/RLS routing; defaulting to admin would bypass authz.
+        if not request.get("role"):
+            raise flight.FlightServerError("role is required")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        role_id = str(request["role"])
         params_obj = request.get("params") or {}
         params: dict[str, object] = params_obj if isinstance(params_obj, dict) else {}
 

@@ -32,17 +32,25 @@ def _build_auth_headers(auth_config: dict[str, str] | None) -> dict[str, str]:  
         return {}
     auth_type = auth_config.get("type", "none")
     if auth_type == "bearer":
-        return {"Authorization": f"Bearer {auth_config.get('token', '')}"}
+        token = auth_config.get("token")
+        if not token:
+            raise ValueError("bearer auth requires a 'token'")
+        return {"Authorization": f"Bearer {token}"}
     if auth_type == "basic":
         import base64
 
-        creds = base64.b64encode(
-            f"{auth_config.get('username', '')}:{auth_config.get('password', '')}".encode()
-        ).decode()
+        username = auth_config.get("username")
+        password = auth_config.get("password")
+        if not username or not password:
+            raise ValueError("basic auth requires 'username' and 'password'")
+        creds = base64.b64encode(f"{username}:{password}".encode()).decode()
         return {"Authorization": f"Basic {creds}"}
     if auth_type == "api_key":
         header_name = auth_config.get("header_name", "X-API-Key")
-        return {header_name: auth_config.get("api_key", "")}
+        api_key = auth_config.get("api_key")
+        if not api_key:
+            raise ValueError("api_key auth requires an 'api_key'")
+        return {header_name: api_key}
     return {}
 
 

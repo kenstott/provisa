@@ -486,10 +486,8 @@ def extract_sources(
 
     Matches table names against the CompilationContext to find source_ids.
     """
-    try:
-        tree = sqlglot.parse_one(sql, read="postgres")
-    except Exception:
-        return set()
+    # Parse failure must fail loud: a swallowed error mis-routes by yielding no sources.
+    tree = sqlglot.parse_one(sql, read="postgres")
 
     sources: set[str] = set()
     for tbl in physical_tables(tree):

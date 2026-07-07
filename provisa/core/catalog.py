@@ -68,6 +68,15 @@ def _to_catalog_name(source_id: str) -> str:
     return _validate_identifier(source_id.replace("-", "_"))
 
 
+def _first_env(*names: str) -> str:
+    """First non-empty env var among names; raise if none set (no hardcoded default)."""
+    for name in names:
+        val = os.environ.get(name)
+        if val:
+            return val
+    raise KeyError(f"none of {names} set in environment")
+
+
 def _build_catalog_properties(
     source: Source, resolved_password: str
 ) -> dict[str, str]:  # REQ-250, REQ-251
@@ -90,11 +99,12 @@ def _build_catalog_properties(
     # SQLite and OpenAPI sources — data lives in the local PG instance
     # (SQLite tables are migrated to PG at registration; OpenAPI responses cached there)
     if stype in ("sqlite", "openapi"):
-        pg_host = os.environ.get("POSTGRES_HOST", os.environ.get("PG_HOST", "postgres"))
+        # Required credentials — fail loud rather than fall back to hardcoded "provisa".
+        pg_host = _first_env("POSTGRES_HOST", "PG_HOST")
         pg_port = os.environ.get("PG_PORT", "5432")
-        pg_database = os.environ.get("PG_DATABASE", "provisa")
-        pg_user = os.environ.get("PG_USER", "provisa")
-        pg_pw = os.environ.get("PG_PASSWORD", "provisa")
+        pg_database = os.environ["PG_DATABASE"]
+        pg_user = os.environ["PG_USER"]
+        pg_pw = os.environ["PG_PASSWORD"]
         jdbc = f"jdbc:postgresql://{pg_host}:{pg_port}/{pg_database}?autosave=conservative"
         return {
             "connection-url": jdbc,
@@ -237,18 +247,10 @@ def create_catalog(
     props_sql = ", ".join(f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in props.items())
     sql = f"CREATE CATALOG IF NOT EXISTS {catalog_name} USING {connector} WITH ({props_sql})"
 
-    try:
-        cur = conn.cursor()
-        cur.execute(sql)
-        cur.fetchall()
-    except Exception as e:
-        log.warning(
-            "Catalog creation failed for %s (connector=%s): %s. "
-            "Source may need static catalog config or manual setup.",
-            catalog_name,
-            connector,
-            e,
-        )
+    # Failed source registration must not continue silently — propagate.
+    cur = conn.cursor()
+    cur.execute(sql)
+    cur.fetchall()
 
 
 def create_kafka_catalog(conn: trino.dbapi.Connection, kafka_source: dict) -> None:  # REQ-147

@@ -93,7 +93,9 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
 
     table_name = table_meta.table_name
     source_id = table_meta.source_id
-    source_type = (state.source_types or {}).get(source_id, "postgresql")
+    if not state.source_types or source_id not in state.source_types:
+        raise KeyError(f"Unknown source_id {source_id!r} in source_types")
+    source_type = state.source_types[source_id]
 
     # Collect all tables referenced in the selection (root + related via joins)
     ctx = state.contexts[role_id]

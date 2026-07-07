@@ -58,7 +58,15 @@ async def me(request: Request):
             identity.user_id,
         )
 
-    active_org_id = getattr(request.state, "active_org_id", "root")
+    # The auth middleware always resolves active_org_id for an authenticated identity;
+    # a missing value is a wiring bug, not a reason to silently grant the 'root' org.
+    active_org_id = getattr(request.state, "active_org_id", None)
+    if active_org_id is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=500, detail="active_org_id not resolved for authenticated user"
+        )
     return {
         "user_id": identity.user_id,
         "email": identity.email,

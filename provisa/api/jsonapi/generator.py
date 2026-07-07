@@ -270,7 +270,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         from provisa.api.jsonapi.spec import generate_jsonapi_openapi_spec
 
         auth_role = getattr(request.state, "role", None)
-        role_id = auth_role or role or "admin"
+        role_id = auth_role or role
+        if not role_id:
+            return _jsonapi_error_response(401, "Unauthorized", "role required")
         domain_list = [d for d in domains.split(",") if d] if domains else None
         spec = generate_jsonapi_openapi_spec(state, role_id, domains=domain_list)
         download = request.query_params.get("download")
@@ -293,7 +295,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             )
 
         auth_role = getattr(request.state, "role", None)
-        role_id = auth_role or "admin"
+        if not auth_role:
+            return _jsonapi_error_response(401, "Unauthorized", "authenticated role required")
+        role_id = auth_role
 
         if role_id not in state.schemas:
             return _jsonapi_error_response(

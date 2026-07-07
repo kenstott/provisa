@@ -44,7 +44,10 @@ def build_auth_provider(
         from provisa.auth.providers.simple import SimpleAuthProvider
 
         simple_cfg = auth_config.get("simple", {})
-        jwt_secret = auth_config.get("jwt_secret", "")
+        # An empty HMAC signing key silently accepts forged tokens — require it.
+        jwt_secret = auth_config.get("jwt_secret")
+        if not jwt_secret:
+            raise ValueError("auth.jwt_secret is required for provider 'simple'")
         if jwt_secret.startswith("${env:"):
             env_key = jwt_secret[6:-1]
             jwt_secret = os.environ[env_key]

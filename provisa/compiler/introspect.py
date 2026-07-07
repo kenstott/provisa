@@ -12,12 +12,22 @@
 
 # Requirements: REQ-008, REQ-018, REQ-393, REQ-413, REQ-421
 
+import os
 import re
+import time
 from dataclasses import dataclass
 
 import trino
 
 _SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+# REQ-923: a coordinator that is (re)starting reports SERVER_STARTING_UP for up to
+# several minutes. Introspection during boot retries with backoff until the
+# coordinator is query-ready rather than masking the transient state with {} or
+# aborting. All other Trino errors (bad catalog, syntax) propagate immediately.
+_STARTING_UP = "SERVER_STARTING_UP"
+_STARTUP_TIMEOUT_SECS = float(os.environ.get("PROVISA_TRINO_READY_TIMEOUT", "120"))
+_STARTUP_BACKOFF_SECS = 2.0
 
 
 def _validate_ident(value: str) -> str:
@@ -169,16 +179,31 @@ def introspect_column_types(  # REQ-636
     cat = _validate_ident(catalog)
     sch = _escape_literal(schema)
     tbl = _escape_literal(table)
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            f"SELECT column_name, data_type "
-            f"FROM {cat}.information_schema.columns "
-            f"WHERE table_schema = '{sch}' AND table_name = '{tbl}'"
-        )
-        return {row[0]: row[1] for row in cur.fetchall()}
-    except Exception:
-        return {}
+    rows = _fetch_with_startup_retry(
+        conn,
+        f"SELECT column_name, data_type "
+        f"FROM {cat}.information_schema.columns "
+        f"WHERE table_schema = '{sch}' AND table_name = '{tbl}'",
+    )
+    return {row[0]: row[1] for row in rows}
+
+
+def _fetch_with_startup_retry(conn: trino.dbapi.Connection, sql: str) -> list:
+    """Execute sql, retrying only while the coordinator reports SERVER_STARTING_UP.
+
+    REQ-923: transient boot state is retried with backoff up to the ready timeout;
+    every other Trino error propagates so real failures are never masked.
+    """
+    deadline = time.monotonic() + _STARTUP_TIMEOUT_SECS
+    while True:
+        cur = conn.cursor()
+        try:
+            cur.execute(sql)
+            return cur.fetchall()
+        except trino.exceptions.TrinoQueryError as e:
+            if getattr(e, "error_name", None) != _STARTING_UP or time.monotonic() >= deadline:
+                raise
+            time.sleep(_STARTUP_BACKOFF_SECS)
 
 
 def introspect_pk_columns(  # REQ-393, REQ-394

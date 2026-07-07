@@ -115,16 +115,26 @@ def discover_schema(keyspace_metadata: dict) -> list[dict]:  # REQ-252
     Returns:
         List of column definition dicts with key annotations.
     """
-    columns_meta = keyspace_metadata.get("columns", [])
-    partition_keys = set(keyspace_metadata.get("partition_keys", []))
-    clustering_keys = set(keyspace_metadata.get("clustering_keys", []))
+    if "columns" not in keyspace_metadata:
+        raise ValueError("keyspace metadata missing 'columns'")
+    if "partition_keys" not in keyspace_metadata:
+        raise ValueError("keyspace metadata missing 'partition_keys'")
+    if "clustering_keys" not in keyspace_metadata:
+        raise ValueError("keyspace metadata missing 'clustering_keys'")
+    columns_meta = keyspace_metadata["columns"]
+    partition_keys = set(keyspace_metadata["partition_keys"])
+    clustering_keys = set(keyspace_metadata["clustering_keys"])
 
     columns = []
     for col in columns_meta:
-        cql_type = col.get("type", "text")
+        if "type" not in col:
+            raise ValueError(f"column missing 'type': {col.get('name')}")
+        cql_type = col["type"]
         # Strip collection wrappers like list<text> -> list
         base_type = cql_type.split("<")[0].strip()
-        column_type = CQL_TYPE_TO_IR.get(base_type, "VARCHAR")
+        if base_type not in CQL_TYPE_TO_IR:
+            raise ValueError(f"unmapped CQL type: {cql_type}")
+        column_type = CQL_TYPE_TO_IR[base_type]
 
         col_def = {
             "name": col["name"],

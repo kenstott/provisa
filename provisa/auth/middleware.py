@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
+
+import jwt
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -90,16 +93,19 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                 try:
                     decoded = base64.b64decode(auth_header[len("Basic ") :]).decode("utf-8")
                     su_username, su_password = decoded.split(":", 1)
-                except Exception:
-                    su_username = su_password = None
-                if su_username is not None and su_password is not None:
-                    su_identity = check_superuser(su_username, su_password, self._superuser)
-                    if su_identity is not None:
-                        request.state.identity = su_identity
-                        request.state.role = "admin"
-                        request.state.assignments = [RoleAssignment(role_id="admin", domain_id="*")]
-                        request.state.active_org_id = self._default_org_id
-                        return await call_next(request)
+                except (ValueError, binascii.Error):
+                    # Malformed Basic header — reject rather than fall through silently.
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Malformed Basic Authorization header"},
+                    )
+                su_identity = check_superuser(su_username, su_password, self._superuser)
+                if su_identity is not None:
+                    request.state.identity = su_identity
+                    request.state.role = "admin"
+                    request.state.assignments = [RoleAssignment(role_id="admin", domain_id="*")]
+                    request.state.active_org_id = self._default_org_id
+                    return await call_next(request)
 
         scheme = getattr(self._provider, "auth_scheme", "bearer")
         if scheme == "basic":
@@ -117,7 +123,9 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         token = auth_header[len(expected_prefix) :]
         try:
             identity = await self._provider.validate_token(token)
-        except Exception:
+        except (ValueError, jwt.PyJWTError):
+            # Only genuine token-validation failures map to 401; infra/unexpected
+            # errors (DB down, JWKS fetch failure, misconfig) must propagate.
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid or expired token"},
@@ -163,22 +171,23 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         if self._admin_pool is not None:
             _admin_pool = self._admin_pool
 
+            # provider_name is part of the AuthProvider contract; a missing one is a
+            # wiring bug, not something to mask with an "unknown" audit record.
+            provider_name = self._provider.provider_name
+
             async def _upsert():
-                try:
-                    async with _admin_pool.acquire() as conn:
-                        await conn.execute(
-                            """INSERT INTO user_profiles (user_id, email, display_name, provider, last_seen)
-                               VALUES ($1, $2, $3, $4, NOW())
-                               ON CONFLICT (user_id) DO UPDATE
-                               SET email = EXCLUDED.email, display_name = EXCLUDED.display_name,
-                                   provider = EXCLUDED.provider, last_seen = NOW()""",
-                            identity.user_id,
-                            identity.email,
-                            identity.display_name,
-                            getattr(self._provider, "provider_name", "unknown"),
-                        )
-                except Exception:
-                    pass
+                async with _admin_pool.acquire() as conn:
+                    await conn.execute(
+                        """INSERT INTO user_profiles (user_id, email, display_name, provider, last_seen)
+                           VALUES ($1, $2, $3, $4, NOW())
+                           ON CONFLICT (user_id) DO UPDATE
+                           SET email = EXCLUDED.email, display_name = EXCLUDED.display_name,
+                               provider = EXCLUDED.provider, last_seen = NOW()""",
+                        identity.user_id,
+                        identity.email,
+                        identity.display_name,
+                        provider_name,
+                    )
 
             asyncio.ensure_future(_upsert())
 

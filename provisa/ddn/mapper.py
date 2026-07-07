@@ -104,6 +104,11 @@ def _map_connectors(  # REQ-183
         sid = _safe_id(conn.name)
         stype = _source_type_from_url(conn.url)
 
+        # REQ-920: DDN is a config-GENERATION tool — an HML subgraph carries no
+        # host/port/db. When no source-override is supplied, emit an editable
+        # placeholder connection (localhost/${env:DB_PASSWORD}) for the operator
+        # to fill in. This documented default is intentional, not a runtime
+        # fallback: the generated config is reviewed before deployment.
         defaults: dict[str, SourceFieldValue] = {
             "id": sid,
             "type": stype,

@@ -590,11 +590,13 @@ class TestJSONAPIPaginationHTTP:
         """
         from fastapi import FastAPI
         from provisa.api.jsonapi.generator import create_jsonapi_router
+        from provisa.auth.middleware import AuthMiddleware
 
         state = _make_app_state()
         router = create_jsonapi_router(state)
 
         app = FastAPI()
+        app.add_middleware(AuthMiddleware)
         app.include_router(router)
         return app, state
 
@@ -678,9 +680,12 @@ class TestJSONAPIPaginationHTTP:
         from fastapi import FastAPI
         from provisa.api.jsonapi.generator import create_jsonapi_router
 
+        from provisa.auth.middleware import AuthMiddleware
+
         state = _make_app_state()
         router = create_jsonapi_router(state)
         app = FastAPI()
+        app.add_middleware(AuthMiddleware)
         app.include_router(router)
 
         async with httpx.AsyncClient(
@@ -746,10 +751,12 @@ class TestJSONAPIPaginationHTTP:
         import httpx
         from fastapi import FastAPI
         from provisa.api.jsonapi.generator import create_jsonapi_router
+        from provisa.auth.middleware import AuthMiddleware
 
         state = _make_app_state()
         router = create_jsonapi_router(state)
         app = FastAPI()
+        app.add_middleware(AuthMiddleware)
         app.include_router(router)
 
         async with httpx.AsyncClient(
@@ -796,9 +803,12 @@ class TestJSONAPIPaginationHTTP:
         from fastapi import FastAPI
         from provisa.api.jsonapi.generator import create_jsonapi_router
 
+        from provisa.auth.middleware import AuthMiddleware
+
         state = _make_app_state()
         router = create_jsonapi_router(state)
         app = FastAPI()
+        app.add_middleware(AuthMiddleware)
         app.include_router(router)
 
         async with httpx.AsyncClient(

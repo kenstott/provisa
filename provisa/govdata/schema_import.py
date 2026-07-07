@@ -68,7 +68,9 @@ class _ColumnInfo(TypedDict):
 
 
 def _jdbc_type_name(type_code: int) -> str:
-    return _JDBC_TYPE_MAP.get(type_code, "String")
+    if type_code not in _JDBC_TYPE_MAP:
+        raise ValueError(f"unmapped JDBC type code: {type_code}")
+    return _JDBC_TYPE_MAP[type_code]
 
 
 def _read_tables(meta, schema: str) -> list[tuple[str, str]]:
@@ -116,19 +118,16 @@ def _read_fks(meta, schema: str, table: str) -> list[dict[str, str]]:
 
 
 def _read_view_sql(conn, schema: str, table: str) -> str | None:
-    """Attempt to retrieve VIEW definition via INFORMATION_SCHEMA."""
-    try:
-        stmt = conn.createStatement()
-        rs = stmt.executeQuery(
-            f"SELECT VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS "
-            f"WHERE TABLE_SCHEMA = '{schema.upper()}' AND TABLE_NAME = '{table.upper()}'"
-        )
-        result = str(rs.getString(1)) if rs.next() else None
-        rs.close()
-        stmt.close()
-        return result
-    except Exception:
-        return None
+    """Retrieve VIEW definition via INFORMATION_SCHEMA."""
+    stmt = conn.createStatement()
+    rs = stmt.executeQuery(
+        f"SELECT VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS "
+        f"WHERE TABLE_SCHEMA = '{schema.upper()}' AND TABLE_NAME = '{table.upper()}'"
+    )
+    result = str(rs.getString(1)) if rs.next() else None
+    rs.close()
+    stmt.close()
+    return result
 
 
 def import_govdata_source(  # REQ-492, REQ-540, REQ-018, REQ-413

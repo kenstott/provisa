@@ -75,11 +75,9 @@ async def ingest_event(  # REQ-331, REQ-333, REQ-335
         if not isinstance(event, dict):
             continue
         row_data = _extract_row(event, columns)
-        try:
-            await _insert_row(cast("AsyncEngine", engine), table, row_data)
-            inserted += 1
-        except Exception:
-            log.warning("Failed to insert ingest row into %s.%s", source_id, table, exc_info=True)
+        # Surface insert failures — never report "accepted" for rows that did not persist.
+        await _insert_row(cast("AsyncEngine", engine), table, row_data)
+        inserted += 1
 
     return {"status": "accepted", "inserted": str(inserted)}
 

@@ -377,7 +377,10 @@ class TestRESTAutoGenEndpoint:
         state.source_pools = source_pool
 
         try:
+            from provisa.auth.middleware import AuthMiddleware
+
             app = FastAPI()
+            app.add_middleware(AuthMiddleware)
             rest_router = create_rest_router(state)
             app.include_router(rest_router)
 
@@ -412,7 +415,10 @@ class TestRESTAutoGenEndpoint:
         state.source_pools = source_pool
 
         try:
+            from provisa.auth.middleware import AuthMiddleware
+
             app = FastAPI()
+            app.add_middleware(AuthMiddleware)
             app.include_router(create_rest_router(state))
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -451,7 +457,10 @@ class TestRESTAutoGenEndpoint:
         state.source_pools = source_pool
 
         try:
+            from provisa.auth.middleware import AuthMiddleware
+
             app = FastAPI()
+            app.add_middleware(AuthMiddleware)
             app.include_router(create_rest_router(state))
             transport = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:

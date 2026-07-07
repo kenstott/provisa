@@ -314,11 +314,15 @@ def _compile_cypher_for_result(  # REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
     from provisa.cypher.label_map import CypherLabelMap
     from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
 
+    # A missing role would silently grant unrestricted domain_access — require it.
+    if role is None:
+        raise ValueError("role is required to compile Cypher (domain_access unknown)")
+
     try:
         _cache = getattr(state, "schema_build_cache", {})
         _label_map = CypherLabelMap.from_schema(
             ctx,
-            domain_access=role.get("domain_access") if role else None,
+            domain_access=role.get("domain_access"),
             all_tables=_cache.get("tables"),
             all_relationships=_cache.get("relationships"),
             all_column_types=_cache.get("column_types"),
@@ -380,7 +384,6 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
         coerce_variable_defaults,
         parse_query,
     )
-    from provisa.compiler.rls import RLSContext
     from provisa.compiler.sql_gen import compile_query as _compile_query, make_semantic_sql
     from provisa.security.rights import has_capability, Capability
     from graphql import GraphQLSyntaxError
@@ -390,7 +393,9 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
 
     schema = state.schemas[role_id]
     ctx = state.contexts[role_id]
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())
+    # Invariant: contexts and rls_contexts are written together per-role; if a
+    # schema/context exists for role_id, its RLSContext must too. Fail loud.
+    rls = state.rls_contexts[role_id]
     role = state.roles.get(role_id)
 
     directives, sql_comment_prefix = _parse_directives(query)

@@ -133,38 +133,36 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if not pool.has(source_id):
         return None
 
-    try:
-        if t == "postgresql":
-            pg_exclude = "','".join(sorted(_PG_SYSTEM_SCHEMAS))
-            result = await pool.execute(
-                source_id,
-                f"SELECT schema_name FROM information_schema.schemata "
-                f"WHERE schema_name NOT IN ('{pg_exclude}') "
-                f"ORDER BY schema_name",
-            )
-            return [row[0] for row in result.rows]
+    # Let introspection errors propagate — swallowing them here masks a real
+    # source failure as an empty schema list.
+    if t == "postgresql":
+        pg_exclude = "','".join(sorted(_PG_SYSTEM_SCHEMAS))
+        result = await pool.execute(
+            source_id,
+            f"SELECT schema_name FROM information_schema.schemata "
+            f"WHERE schema_name NOT IN ('{pg_exclude}') "
+            f"ORDER BY schema_name",
+        )
+        return [row[0] for row in result.rows]
 
-        if t in ("mysql", "mariadb"):
-            result = await pool.execute(source_id, "SHOW DATABASES")
-            return [row[0] for row in result.rows if row[0] not in _MYSQL_SYSTEM_DBS]
+    if t in ("mysql", "mariadb"):
+        result = await pool.execute(source_id, "SHOW DATABASES")
+        return [row[0] for row in result.rows if row[0] not in _MYSQL_SYSTEM_DBS]
 
-        if t == "sqlserver":
-            ss_exclude = "','".join(sorted(_SQLSERVER_SYSTEM_SCHEMAS))
-            result = await pool.execute(
-                source_id,
-                f"SELECT name FROM sys.schemas WHERE name NOT IN ('{ss_exclude}') ORDER BY name",
-            )
-            return [row[0] for row in result.rows]
+    if t == "sqlserver":
+        ss_exclude = "','".join(sorted(_SQLSERVER_SYSTEM_SCHEMAS))
+        result = await pool.execute(
+            source_id,
+            f"SELECT name FROM sys.schemas WHERE name NOT IN ('{ss_exclude}') ORDER BY name",
+        )
+        return [row[0] for row in result.rows]
 
-        if t == "duckdb":
-            result = await pool.execute(
-                source_id,
-                "SELECT schema_name FROM information_schema.schemata ORDER BY schema_name",
-            )
-            return [row[0] for row in result.rows]
-
-    except Exception:
-        return None
+    if t == "duckdb":
+        result = await pool.execute(
+            source_id,
+            "SELECT schema_name FROM information_schema.schemata ORDER BY schema_name",
+        )
+        return [row[0] for row in result.rows]
 
     return None
 

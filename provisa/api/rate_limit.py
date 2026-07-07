@@ -115,11 +115,9 @@ class RedisRateLimiter:  # REQ-369, REQ-371
 def build_rate_limiter(redis_url: str | None) -> RateLimiter:  # REQ-369, REQ-371, REQ-829
     """Construct a RedisRateLimiter over real Redis, or embedded fakeredis when no
     URL is configured (REQ-829) so desktop exercises the same limiter code path as
-    production. Falls back to a no-op limiter only if client construction fails."""
-    try:
-        from provisa.core.redis_factory import make_redis
+    production. Redis construction failures propagate — silently degrading to a no-op
+    limiter would disable rate limiting without any signal."""
+    from provisa.core.redis_factory import make_redis
 
-        client = make_redis(redis_url, decode_responses=True)
-        return RedisRateLimiter(cast(_RedisClient, client))
-    except Exception:
-        return NoopRateLimiter()
+    client = make_redis(redis_url, decode_responses=True)
+    return RedisRateLimiter(cast(_RedisClient, client))

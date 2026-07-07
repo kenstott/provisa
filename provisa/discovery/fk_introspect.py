@@ -50,6 +50,7 @@ def _engine() -> "_Engine":
         _inflect = inflect.engine()
     return _inflect
 
+
 # Requirements: REQ-018, REQ-399, REQ-413, REQ-414, REQ-415
 
 # ---------------------------------------------------------------------------
@@ -227,7 +228,9 @@ async def _govdata_fks(
 
     try:
         row = await config_conn.fetchrow("SELECT username FROM sources WHERE id = $1", source_id)
-        api_key = _resolve_secrets((row["username"] or "") if row else "")
+        if row is None or row["username"] is None:
+            raise ValueError(f"Source {source_id!r} has no username (govdata api_key)")
+        api_key = _resolve_secrets(row["username"])
         gds = GovDataSource(
             id=source_id,
             subject=GovDataSubject.all,

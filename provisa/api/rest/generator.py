@@ -134,7 +134,9 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         from provisa.api.rest.openapi_spec import generate_rest_openapi_spec
 
         auth_role = getattr(request.state, "role", None)
-        role_id = auth_role or role or "admin"
+        role_id = auth_role or role
+        if not role_id:
+            raise HTTPException(status_code=401, detail="role required")
         domain_list = [d for d in domains.split(",") if d] if domains else None
         spec = generate_rest_openapi_spec(state, role_id, domains=domain_list)
         download = request.query_params.get("download")
@@ -158,7 +160,9 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         fields: str | None = Query(None),
     ):
         auth_role = getattr(request.state, "role", None)
-        role_id = auth_role or "admin"
+        if not auth_role:
+            raise HTTPException(status_code=401, detail="authenticated role required")
+        role_id = auth_role
 
         if role_id not in state.schemas:
             raise HTTPException(

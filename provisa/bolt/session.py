@@ -91,12 +91,13 @@ class BoltSession:
         The role set becomes the user's selectable databases (provisa_<role>). Selecting
         a role narrows to that role's domain rights; the user can never exceed this set.
         """
-        try:
-            from provisa.api.app import state as app_state
-        except Exception:
-            return None
+        # An import failure is a server fault, not an auth failure — propagate it.
+        from provisa.api.app import state as app_state
 
-        provider = (app_state.auth_config or {}).get("provider", "none")
+        if app_state.auth_config is None:
+            # Fail closed: absent auth_config must never silently degrade to no-auth.
+            raise RuntimeError("bolt auth_config not configured")
+        provider = app_state.auth_config["provider"]
         all_roles = list(app_state.contexts.keys())
 
         if provider == "none" or not getattr(app_state, "auth_middleware_active", False):

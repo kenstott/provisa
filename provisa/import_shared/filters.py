@@ -120,8 +120,10 @@ def _convert_node(node: Mapping[str, Any], table_alias: str) -> str:
             if not isinstance(value, dict):
                 continue
             tbl = value.get("_table", {})
-            schema = tbl.get("schema", "public") if isinstance(tbl, dict) else "public"
-            table = tbl.get("name", "unknown") if isinstance(tbl, dict) else "unknown"
+            if not isinstance(tbl, dict) or "name" not in tbl:
+                raise ValueError(f"_exists filter missing table name: {value!r}")
+            schema = tbl.get("schema", "public")
+            table = tbl["name"]
             where_node = value.get("_where", {})
             where = _convert_node(where_node, "") if isinstance(where_node, dict) else "TRUE"
             parts.append(f"EXISTS (SELECT 1 FROM {schema}.{table} WHERE {where})")
