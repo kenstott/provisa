@@ -372,8 +372,9 @@ class SystemHealthType:
     engine_connected: bool
     engine_worker_count: int
     engine_active_workers: int
-    pg_pool_size: int
-    pg_pool_free: int
+    metadata_pool_size: int  # tenant metadata-DB pool; -1 = pool doesn't track size
+    metadata_pool_free: int
+    metadata_dialect: str  # sqlalchemy dialect of the metadata DB (postgresql, sqlite, …)
     cache_mode: str  # "disabled" | "embedded" | "server"
     cache_connected: bool
     protocols: list[ProtocolHealthType]

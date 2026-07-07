@@ -678,8 +678,9 @@ export interface SystemHealth {
   engineConnected: boolean;
   engineWorkerCount: number;
   engineActiveWorkers: number;
-  pgPoolSize: number;
-  pgPoolFree: number;
+  metadataPoolSize: number;
+  metadataPoolFree: number;
+  metadataDialect: string;
   cacheMode: "disabled" | "embedded" | "server";
   cacheConnected: boolean;
   protocols: ProtocolHealth[];

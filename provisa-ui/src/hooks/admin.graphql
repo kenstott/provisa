@@ -282,8 +282,9 @@ query SystemHealth {
     engineConnected
     engineWorkerCount
     engineActiveWorkers
-    pgPoolSize
-    pgPoolFree
+    metadataPoolSize
+    metadataPoolFree
+    metadataDialect
     cacheMode
     cacheConnected
     protocols {

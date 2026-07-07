@@ -47,7 +47,7 @@ import re
 import urllib.parse
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, cast
+from typing import Any, AsyncGenerator
 
 from sqlalchemy import Table, event, text
 from sqlalchemy.pool import QueuePool
@@ -518,13 +518,23 @@ class Database:
             return await conn.fetchval(sql, *args, column=column)
 
     def get_size(self) -> int:
-        """Current pool size (checked-out + idle connections)."""
-        pool = cast(QueuePool, self._engine.pool)
-        return pool.checkedout() + pool.checkedin()
+        """Current pool size (checked-out + idle connections).
+
+        Returns -1 when the engine uses a pool that doesn't track connection
+        counts (NullPool/StaticPool — e.g. some SQLite configs), which has no
+        meaningful size.
+        """
+        pool = self._engine.pool
+        if isinstance(pool, QueuePool):
+            return pool.checkedout() + pool.checkedin()
+        return -1
 
     def get_idle_size(self) -> int:
-        """Idle (checked-in) connections in the pool."""
-        return cast(QueuePool, self._engine.pool).checkedin()
+        """Idle (checked-in) connections, or -1 for a non-sized pool (see get_size)."""
+        pool = self._engine.pool
+        if isinstance(pool, QueuePool):
+            return pool.checkedin()
+        return -1
 
     async def close(self) -> None:
         await self._engine.dispose()

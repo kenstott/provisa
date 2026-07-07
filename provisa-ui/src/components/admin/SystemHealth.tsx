@@ -48,9 +48,16 @@ export function SystemHealth() {
           <td>{health.engineConnected ? `${health.engineWorkerCount} worker${health.engineWorkerCount !== 1 ? "s" : ""} (${health.engineActiveWorkers} active)` : ""}</td>
         </tr>
         <tr>
-          <td>PostgreSQL Pool</td>
-          <td><StatusDot ok={health.pgPoolSize > 0} /> {health.pgPoolSize > 0 ? "Active" : "No pool"}</td>
-          <td>{health.pgPoolSize} connections ({health.pgPoolFree} idle)</td>
+          <td>Metadata DB{health.metadataDialect ? ` (${health.metadataDialect})` : ""}</td>
+          <td>
+            <StatusDot ok={health.metadataPoolSize < 0 ? null : health.metadataPoolSize > 0} />{" "}
+            {health.metadataPoolSize < 0 ? "Unpooled" : health.metadataPoolSize > 0 ? "Active" : "No pool"}
+          </td>
+          <td>
+            {health.metadataPoolSize < 0
+              ? "pool does not track connections"
+              : `${health.metadataPoolSize} connections (${health.metadataPoolFree} idle)`}
+          </td>
         </tr>
         <tr>
           <td>Cache</td>

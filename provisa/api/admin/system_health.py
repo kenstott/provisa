@@ -56,10 +56,13 @@ async def collect_system_health() -> SystemHealthType:
 
     engine_ok, worker_count, active = state.federation_engine.cluster_diagnostics()
 
-    pg_size = pg_free = 0
+    # Tenant metadata DB (control-plane, org-scoped) — any SQLAlchemy dialect, not just PG.
+    md_size = md_free = 0
+    md_dialect = ""
     if state.tenant_db is not None:
-        pg_size = state.tenant_db.get_size()
-        pg_free = state.tenant_db.get_idle_size()
+        md_size = state.tenant_db.get_size()
+        md_free = state.tenant_db.get_idle_size()
+        md_dialect = state.tenant_db.dialect
 
     # Cache: NoopCacheStore = disabled; RedisCacheStore with no URL = embedded fakeredis
     # (always up, in-process); with a URL = a real server that may be online or not.
@@ -101,8 +104,9 @@ async def collect_system_health() -> SystemHealthType:
         engine_connected=engine_ok,
         engine_worker_count=worker_count,
         engine_active_workers=active,
-        pg_pool_size=pg_size,
-        pg_pool_free=pg_free,
+        metadata_pool_size=md_size,
+        metadata_pool_free=md_free,
+        metadata_dialect=md_dialect,
         cache_mode=cache_mode,
         cache_connected=cache_ok,
         protocols=protocols,
