@@ -187,10 +187,14 @@ class DuckDBPostgresConnector(Connector):
             f"host={source.host} port={source.port} dbname={source.database} "
             f"user={source.username}{pw}"
         )
-        # Quote the alias: source ids carry hyphens (e.g. pet-store-pg) that DuckDB's
-        # ATTACH grammar rejects unquoted. An attached Postgres exposes its own schemas verbatim,
-        # so the remote schema IS the registered schema — the runtime defaults there (no override).
-        return {"attach": f"ATTACH '{dsn}' AS \"{source.id}\" (TYPE postgres)"}
+        # Attach the raw remote under a private ``_src_`` alias, distinct from the physical catalog
+        # (``_to_catalog_name(id)``) the runtime creates for the compiler-visible views — else a
+        # hyphen-free id collides (id "ordr" → catalog "ordr" == attach alias "ordr"). Quote it:
+        # source ids carry hyphens (pet-store-pg) that DuckDB's ATTACH grammar rejects unquoted. An
+        # attached Postgres exposes its own schemas verbatim, so the remote schema IS the registered
+        # schema — the runtime defaults there (no remote_schema override).
+        alias = f"_src_{source.id}"
+        return {"attach": f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres)", "raw_alias": alias}
 
 
 class DuckDBCsvConnector(Connector):
@@ -232,10 +236,13 @@ class DuckDBSqliteConnector(Connector):
         return Capability(predicate_pushdown=True, write=True)
 
     def details(self, source: Source) -> dict:
+        # ``_src_`` alias: distinct from the physical catalog the runtime creates (see the postgres
+        # connector). DuckDB's sqlite scanner exposes every table under the catalog's ``main`` schema
+        # regardless of the registered schema name — the runtime references the remote there.
+        alias = f"_src_{source.id}"
         return {
-            "attach": f"ATTACH '{source.path}' AS \"{source.id}\" (TYPE sqlite)",
-            # DuckDB's sqlite scanner exposes every table under the catalog's ``main`` schema,
-            # regardless of the registered schema name — the runtime references the remote there.
+            "attach": f"ATTACH '{source.path}' AS \"{alias}\" (TYPE sqlite)",
+            "raw_alias": alias,
             "remote_schema": "main",
         }
 

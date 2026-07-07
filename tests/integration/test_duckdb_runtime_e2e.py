@@ -31,7 +31,7 @@ from provisa.compiler.schema_gen import SchemaInput, generate_schema  # noqa: E4
 from provisa.compiler.sql_gen import (  # noqa: E402
     build_context,
     compile_query,
-    rewrite_semantic_to_physical,
+    rewrite_semantic_to_catalog_physical,
 )
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime  # noqa: E402
 
@@ -138,7 +138,9 @@ async def test_runtime_federates_all_demo_source_types():
             ),
             ctx,
         )[0]
-        res = await rt.execute(rewrite_semantic_to_physical(compiled.sql, ctx))
+        # Drive the runtime with catalog-physical names (catalog.schema.table) — exactly what the
+        # request path (rewrite_semantic_to_catalog_physical) emits to every engine backend.
+        res = await rt.execute(rewrite_semantic_to_catalog_physical(compiled.sql, ctx))
 
         # 30 orders (sqlite), each carrying its customer (csv) and product (parquet).
         assert len(res.rows) == 30
@@ -146,8 +148,8 @@ async def test_runtime_federates_all_demo_source_types():
         first = dict(zip(res.column_names, res.rows[0]))
         assert "firstName" in first["customer"] and "category" in first["product"]
 
-        # the materialized openapi source is queryable on the same engine
-        evt = await rt.execute('SELECT count(*) AS n FROM "main"."events"')
+        # the materialized openapi source is queryable on the same engine (catalog-physical name)
+        evt = await rt.execute('SELECT count(*) AS n FROM "evt"."main"."events"')
         assert evt.rows[0][0] == 2
     finally:
         pg = await asyncpg.connect(dsn=_dsn())

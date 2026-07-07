@@ -83,14 +83,16 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._con.execute("INSTALL postgres")
                 self._con.execute("LOAD postgres")
                 self._pg_ext_loaded = True
-            if source.id not in self._raw_attached:
+            # The connector attaches the raw remote under a private alias (distinct from the physical
+            # catalog) and declares WHERE it exposes the table: postgres keeps its own (registered)
+            # schema; sqlite lands everything under ``main``. The runtime composes the reference with
+            # the actual table, so no per-source-type layout is hardcoded here.
+            raw_alias = details.get("raw_alias", source.id)
+            if raw_alias not in self._raw_attached:
                 self._con.execute(details["attach"])
-                self._raw_attached.add(source.id)
-            # The connector declares WHERE its attached remote exposes the table: postgres keeps its
-            # own (registered) schema; sqlite lands everything under ``main``. The runtime composes
-            # the reference with the actual table, so no per-source-type layout is hardcoded here.
+                self._raw_attached.add(raw_alias)
             remote_schema = details.get("remote_schema", source.schema_name)
-            remote = f'"{source.id}"."{remote_schema}"."{source.table_name}"'
+            remote = f'"{raw_alias}"."{remote_schema}"."{source.table_name}"'
             self._con.execute(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {remote}")
 
     async def materialize_source(
