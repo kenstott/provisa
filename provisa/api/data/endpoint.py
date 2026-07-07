@@ -948,14 +948,26 @@ def _mat_store_rows(
     values_cte_entries: dict,
     all_ep_col_names: list | None = None,
 ) -> None:
-    """Store materialized rows as hot VALUES CTE or in the engine cache."""
+    """ALWAYS persist rows to the materialization store (the durable source of truth), then inline a
+    small table as a VALUES CTE for this query — the hot cache is a rebuildable projection of the
+    store, so an inlined small table survives a restart (re-promoted from the store, not re-fetched)."""
     from provisa.api_source.engine_cache import create_and_insert, schedule_drop
+    from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+
+    # Column names must match the compiler's snake_case output.
+    _name_map = {c.name: _apply_sql_name(c.name) for c in response_cols}
+    _snake_cols = [c.model_copy(update={"name": _apply_sql_name(c.name)}) for c in response_cols]
+    _snake_rows = [{_name_map.get(k, k): v for k, v in r.items()} for r in rows]
+    with engine.isolated_sync() as _c:
+        create_and_insert(_c, _cache_loc, cache_tbl, _snake_rows, _snake_cols)
+    asyncio.create_task(schedule_drop(engine, _cache_loc, cache_tbl, ttl, redirect_config))
+    log.warning("[MAT] persisted %d rows → store %s", len(rows), cache_tbl)
 
     if 0 < len(rows) <= _hot_threshold:
         from provisa.cache.hot_tables import HotTableEntry
 
-        # Include all endpoint columns (response + params) in the hot CTE so that
-        # generated SQL referencing param columns (e.g. "status") resolves to NULL.
+        # Small + not hot → promote to the hot cache and inline for THIS query. Include all endpoint
+        # columns (response + params) so generated SQL referencing a param column resolves to NULL.
         hot_col_names = all_ep_col_names if all_ep_col_names else col_names
         entry = HotTableEntry(
             table_name=tn,
@@ -969,28 +981,9 @@ def _mat_store_rows(
         if hot_mgr is not None:
             hot_mgr._hot_tables[tn] = entry
         values_cte_entries[tn] = entry
-        log.warning("[MAT] VALUES CTE inline for %s (%d rows)", tn, len(rows))
+        log.warning("[MAT] + hot VALUES CTE inline for %s (%d rows)", tn, len(rows))
     else:
         cache_rewrites[tn] = (_cache_loc, cache_tbl)
-        log.warning(
-            "[MAT] materialized %d rows → the engine cache %s.%s.%s",
-            len(rows),
-            _cache_loc.catalog,
-            _cache_loc.schema,
-            cache_tbl,
-        )
-        # the engine cache column names must match what the SQL compiler generates (snake_case).
-        # Remap both column objects and row keys from camelCase to snake_case.
-        from provisa.compiler.naming import apply_sql_name as _apply_sql_name
-
-        _name_map = {c.name: _apply_sql_name(c.name) for c in response_cols}
-        _snake_cols = [
-            c.model_copy(update={"name": _apply_sql_name(c.name)}) for c in response_cols
-        ]
-        _snake_rows = [{_name_map.get(k, k): v for k, v in r.items()} for r in rows]
-        with engine.isolated_sync() as _c:
-            create_and_insert(_c, _cache_loc, cache_tbl, _snake_rows, _snake_cols)
-        asyncio.create_task(schedule_drop(engine, _cache_loc, cache_tbl, ttl, redirect_config))
 
 
 async def _mat_api_ep_table(
