@@ -464,7 +464,7 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
     ClickHouse, ...) is a usable engine with no per-source connector. The URL comes
     from the arg or ``$PROVISA_ENGINE_URL``; its scheme names the native store."""
     from provisa.federation.connector import WarehouseNativeConnector
-    from provisa.federation.native_backend import NativeEngineBackend
+    from provisa.federation.sqlalchemy_backend import SqlAlchemyBackend
 
     dsn = url or configured_engine_url()
     if not dsn:
@@ -476,7 +476,7 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
         native_store=backend,
         driver_class=DriverClass.SELF_ONLY,  # reaches only its own store; everything lands in
         mpp=False,
-        backend_factory=NativeEngineBackend,  # shared in-process terminal (runtime wiring: separate)
+        backend_factory=SqlAlchemyBackend,  # in-process terminal driving SqlAlchemyFederationRuntime
         default_materialize_store=_platform_db_materialize_default,
     )
 
