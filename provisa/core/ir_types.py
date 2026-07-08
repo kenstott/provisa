@@ -21,7 +21,6 @@ resolved at registration — never lazily backfilled, and never silently default
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import (
@@ -140,18 +139,37 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
 }
 
 # Optional value transforms (REQ-846). A translator is primarily a TYPE lookup (native→IR name). A
-# few native types also need the VALUE modified on landing — the driver returns a form the store
-# can't take directly — so register a transform for that (platform, native) pair here. SPARSE: most
-# types need none (the driver already returns a store-compatible Python value). Absent → identity.
-_PLATFORM_TRANSFORMS: dict[tuple[str, str], Callable[[Any], Any]] = {}
+# few native types also need the VALUE modified on landing — a transform is a SQL EXPRESSION, not a
+# Python callable, so it applies SET-BASED in the land/generation query (pushed to the engine/store);
+# a per-cell Python function would pull every value through Python and never scale. Each entry is a
+# SQL-expression template with a ``{col}`` placeholder for the column reference (e.g. bit→boolean is
+# ``"{col} <> 0"``). SPARSE: most native types need none (the driver already yields a store-
+# compatible value). Absent → identity (project the column as-is).
+_PLATFORM_TRANSFORMS: dict[tuple[str, str], str] = {
+    # Most native types are passthrough; the handful that need the VALUE reshaped are complex types
+    # — chiefly date/time. Each expression is a SQL projection over the source, so it runs set-based.
+    ("sqlserver", "bit"): "{col} <> 0",  # bit 0/1 → boolean
+    (
+        "trino",
+        "timestamp with time zone",
+    ): "CAST({col} AT TIME ZONE 'UTC' AS timestamp)",  # tz→UTC naive
+    ("duckdb", "timestamptz"): "{col} AT TIME ZONE 'UTC'",  # tz-aware → UTC timestamp
+    # A column whose STRING content is a date (e.g. a varchar in "MM/DD/YYYY") is NOT a type-level
+    # transform — that is a per-column declared expression (the enrich path), not a platform native
+    # type. Register only TYPE-level reshapes here.
+}
 
 IR_TYPES: frozenset[str] = frozenset(_IR_TO_SA)
 
 
-def value_transform(native_type: str, platform: str | None = None) -> Callable[[Any], Any] | None:
-    """The optional per-value transform for a (platform, native type), or None (identity) — applied
-    by the land path per cell for the rare native type whose value representation differs from what
-    the IR/store expects. The type NAME mapping is the lookup (``to_ir``); this is the VALUE side."""
+def value_transform(native_type: str, platform: str | None = None) -> str | None:
+    """The optional SQL-EXPRESSION transform for a (platform, native type), or None (identity).
+
+    Returns a SQL-expression template with a ``{col}`` placeholder — the land/generation path
+    substitutes the column reference and injects it into the projection SQL, so the transform runs
+    SET-BASED in the engine/store (never per-cell in Python — that would not scale). The type NAME
+    mapping is the lookup (``to_ir``); this is the VALUE side, and it stays SQL for the same reason
+    the whole write face does."""
     if not platform:
         return None
     base = native_type.split("(", 1)[0].strip().lower()

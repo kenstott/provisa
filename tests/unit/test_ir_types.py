@@ -39,10 +39,16 @@ def test_platform_translators_native_to_ir():
         to_ir("uniqueidentifier")
 
 
-def test_value_transform_default_identity():
-    # sparse registry — no transform registered → None (identity), the common case
-    assert value_transform("bit", "sqlserver") is None
-    assert value_transform("integer") is None
+def test_value_transform_passthrough_default_and_sql_expression():
+    # passthrough is the default (None = project as-is) — the common case
+    assert value_transform("integer", "sqlserver") is None
+    assert value_transform("varchar", "trino") is None
+    assert value_transform("integer") is None  # no platform → always passthrough
+    # the handful of complex-type reshapes return a SQL-EXPRESSION template ({col} placeholder),
+    # so the transform runs set-based in the land/generation query — never per-cell in Python
+    assert value_transform("bit", "sqlserver") == "{col} <> 0"
+    tz = value_transform("timestamp with time zone", "trino")
+    assert tz is not None and "{col}" in tz and "UTC" in tz
 
 
 def test_aliases_canonicalize_to_one_ir_name():
