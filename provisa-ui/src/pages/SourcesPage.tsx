@@ -2332,9 +2332,13 @@ export function SourcesPage() {
           </label>
           {domainsEnabled && (
             <label>
-              Allowed Domains{" "}
-              <span style={{ fontWeight: "normal", color: "var(--text-muted)", fontSize: "0.75rem" }}>
-                (none selected = all)
+              <span style={{ display: "flex", alignItems: "baseline", gap: "0.35rem" }}>
+                Allowed Domains
+                <span
+                  style={{ fontWeight: "normal", color: "var(--text-muted)", fontSize: "0.75rem" }}
+                >
+                  (none selected = all)
+                </span>
               </span>
               <MultiSelect
                 options={domains.map((d) => ({ id: d.id, label: d.id }))}
