@@ -89,6 +89,7 @@ def _source_from_row(row) -> SourceType:
         allowed_domains=list(row.get("allowed_domains") or []),
         description=row.get("description") or "",
         mapping_json=mapping_json,
+        change_signal=row.get("change_signal") or "ttl",  # REQ-929
         cdc=_cdc_from_row(row),
     )
 

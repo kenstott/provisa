@@ -60,6 +60,7 @@ query SourcesQuery {
     allowedDomains
     description
     mappingJson
+    changeSignal
     cdc {
       bootstrapServers
       topicPrefix

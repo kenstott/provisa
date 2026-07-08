@@ -1538,6 +1538,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             path=input.path,
             description=input.description,
             mapping=_parse_mapping_json(input.mapping_json),
+            change_signal=input.change_signal,
             cdc=_cdc_model_from_input(input),
         )
         from provisa.api.app import state
@@ -1601,6 +1602,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 path=input.path,
                 description=input.description,
                 mapping=_parse_mapping_json(input.mapping_json),
+                change_signal=input.change_signal,
                 cdc=_cdc_model_from_input(input),
             )
             await source_repo.upsert(_conn, model)

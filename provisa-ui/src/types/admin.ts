@@ -34,6 +34,7 @@ export interface Source {
   allowedDomains: string[];
   description: string;
   mappingJson?: string | null;
+  changeSignal: string; // REQ-929: source default change signal, inherited by its tables
   cdc?: SourceCdcConfig | null;
 }
 

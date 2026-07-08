@@ -44,6 +44,7 @@ class SourceType:  # REQ-012
     allowed_domains: list[str] = strawberry.field(default_factory=list)
     description: str = ""
     mapping_json: str = "{}"
+    change_signal: str = "ttl"  # REQ-929: source default change signal (inherited by its tables)
     cdc: SourceCdcConfigType | None = None  # REQ-824: source-level CDC transport
 
 
@@ -221,6 +222,7 @@ class SourceInput:  # REQ-012
     description: str = ""
     allowed_domains: list[str] = strawberry.field(default_factory=list)
     mapping_json: str | None = None
+    change_signal: str = "ttl"  # REQ-929: source default change signal
     cdc: SourceCdcConfigInput | None = None  # REQ-824: source-level CDC transport
 
 

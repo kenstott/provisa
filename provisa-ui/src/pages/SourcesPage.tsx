@@ -30,7 +30,17 @@ import { SchemaDiscovery } from "../components/SchemaDiscovery";
 import { TableMappingBuilder } from "../components/TableMappingBuilder";
 import type { TableMapping } from "../components/TableMappingBuilder";
 import type { Source } from "../types/admin";
-import { cdcTransportApplicable } from "../liveCapability";
+import { cdcTransportApplicable, sourceChangeSignals } from "../liveCapability";
+
+// REQ-929: human labels for the source change-signal options.
+const CHANGE_SIGNAL_LABELS: Record<string, string> = {
+  ttl: "ttl (timer)",
+  probe: "probe (freshness query)",
+  ttl_probe: "probe + ttl",
+  native: "native (source push)",
+  debezium: "debezium",
+  kafka: "kafka",
+};
 
 /** Source types that support schema discovery via adapter. */
 const DISCOVERABLE_TYPES = new Set(["mongodb", "elasticsearch", "cassandra", "prometheus"]);
@@ -225,6 +235,7 @@ export function SourcesPage() {
     cacheTtl: "",
     cacheEnabled: true,
     preferMaterialized: false,
+    changeSignal: "ttl",
     path: "" as string,
     allowedDomains: "" as string,
     description: "" as string,
@@ -382,7 +393,10 @@ export function SourcesPage() {
   };
 
   const handleTypeChange = (type: string) => {
-    setForm({ ...form, type, port: getDefaultPort(type), description: "" });
+    // REQ-929: keep change_signal valid for the new type's capabilities.
+    const signals = sourceChangeSignals(type);
+    const changeSignal = signals.includes(form.changeSignal) ? form.changeSignal : signals[0];
+    setForm({ ...form, type, port: getDefaultPort(type), description: "", changeSignal });
     setAuthType("none");
     setAuthFields({});
     resetSpFields();
@@ -401,6 +415,7 @@ export function SourcesPage() {
       cacheTtl: s.cacheTtl != null ? String(s.cacheTtl) : "",
       cacheEnabled: s.cacheEnabled,
       preferMaterialized: s.preferMaterialized ?? false,
+      changeSignal: s.changeSignal || "ttl",
       path: s.type === "files" ? parseFilesPath(s.path ?? "").path : (s.path ?? ""),
       allowedDomains: (s.allowedDomains ?? []).join(", "),
       description: s.description ?? "",
@@ -483,6 +498,7 @@ export function SourcesPage() {
       cacheTtl: "",
       cacheEnabled: true,
       preferMaterialized: false,
+      changeSignal: "ttl",
       path: "",
       allowedDomains: "",
       description: "",
@@ -2297,6 +2313,19 @@ export function SourcesPage() {
               style={{ width: "auto" }}
             />
             Prefer Materialized
+          </label>
+          <label title="Default change-detection signal inherited by this source's tables (each table can override it). Options are gated by the source type's capabilities.">
+            Change Signal
+            <select
+              value={form.changeSignal}
+              onChange={(e) => setForm({ ...form, changeSignal: e.target.value })}
+            >
+              {sourceChangeSignals(form.type).map((cs) => (
+                <option key={cs} value={cs}>
+                  {CHANGE_SIGNAL_LABELS[cs] ?? cs}
+                </option>
+              ))}
+            </select>
           </label>
           {domainsEnabled && (
             <label>
