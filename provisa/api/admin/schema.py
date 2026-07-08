@@ -1856,6 +1856,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
 
         await _rebuild_schemas()
+        # Schema-currency reconcile (REQ-846/932): a UI (re)registration re-enters the convergent
+        # reconcile — the new/changed table's landing schema is created (or recreated on a column
+        # drift) and its read view attached. Same primitive as the boot pass. Best-effort: a store
+        # hiccup logs but does not fail the registration.
+        try:
+            from provisa.api.app import state as _rc_state
+
+            await _rc_state.federation_engine.reconcile_landed_tables()
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "landed-table reconcile after registration failed"
+            )
         return MutationResult(
             success=True,
             message=f"Table {input.table_name!r} registered (id={table_id})",
