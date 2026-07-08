@@ -82,13 +82,16 @@ def test_sa_type_maps_and_raises():
 
 
 @pytest.mark.asyncio
-async def test_replace_drops_creates_inserts():
+async def test_replace_deletes_and_reinserts():
     conn = _FakeConn()
     table = build_table("mat", "pets", COLUMNS)
     await land_replace(conn, table, [{"id": 1, "status": "new"}])
     joined = " | ".join(conn.sql())
-    assert "DROP TABLE" in joined  # replace = full refresh
-    assert "CREATE TABLE" in joined and "pets" in joined
+    assert (
+        "DROP TABLE" not in joined
+    )  # replace = DELETE+INSERT, never drops the reconcile-managed table
+    assert "CREATE TABLE" in joined and "IF NOT EXISTS" in joined  # create-if-absent only
+    assert "DELETE FROM" in joined  # full refresh of contents
     assert "INSERT INTO" in joined
 
 

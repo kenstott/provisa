@@ -31,7 +31,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from sqlalchemy import Column, MetaData, Table
-from sqlalchemy.schema import CreateTable, DropTable
+from sqlalchemy.schema import CreateTable
 
 from provisa.core.ir_types import to_sqlalchemy
 
@@ -70,9 +70,14 @@ def build_table(
 
 
 async def land_replace(conn: StoreConn, table: Table, rows: list[dict]) -> str:
-    """REPLACE land: drop+create+insert ``rows`` into ``table`` (full refresh, no watermark)."""
-    await conn.execute_core(DropTable(table, if_exists=True))
-    await conn.execute_core(CreateTable(table))
+    """REPLACE land: **DELETE + INSERT** — a full refresh of the table's CONTENTS (REQ-932).
+
+    Never DROPs the table: its existence/schema/grants are the reconcile controller's concern (a
+    pre-created, restart-surviving, reconcile-managed table). Creates it only if absent (first land
+    before reconcile ran), then deletes all rows and re-inserts — so ``replace`` replaces contents,
+    not the table."""
+    await conn.execute_core(CreateTable(table, if_not_exists=True))
+    await conn.execute_core(table.delete())
     for row in rows:
         await conn.execute_core(table.insert().values(**row))
     return _qualified(table)
