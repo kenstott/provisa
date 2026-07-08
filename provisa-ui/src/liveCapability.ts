@@ -84,14 +84,15 @@ export function availableStrategies(sourceType: string | null | undefined): stri
   return STRATEGIES_BY_SOURCE_TYPE[t] ?? ["poll"];
 }
 
-// REQ-929: source-level change_signal options, gated by source type. "poll" strategy maps to the
-// polling change signals (ttl/probe/ttl_probe); native/debezium/kafka map through directly.
+// REQ-929: source-level change_signal options, gated by source type. Only source-wide mechanisms
+// belong here: ttl (timer) and the transport-driven push signals. probe/ttl_probe are TABLE-level
+// only — their token comes from a per-table probe_query (or MAX(watermark_column)), neither of which
+// exists on a Source — so they are offered on the table editor, not here.
 export function sourceChangeSignals(sourceType: string | null | undefined): string[] {
   const strat = availableStrategies(sourceType);
-  const out: string[] = [];
-  if (strat.includes("poll") || strat.length === 0) out.push("ttl", "probe", "ttl_probe");
+  const out: string[] = ["ttl"]; // poll → timer default; every source can fall back to ttl
   if (strat.includes("native")) out.push("native");
   if (strat.includes("debezium")) out.push("debezium");
   if (strat.includes("kafka")) out.push("kafka");
-  return out.length ? out : ["ttl"];
+  return out;
 }
