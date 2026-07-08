@@ -485,10 +485,12 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
 # ``pg`` engine on a bundled instance (its FDW/pg_duckdb connectors are probed by discover).
 # Snowflake is a SOURCE reached by an engine's connector, not an engine.
 _ENGINE_BUILDERS = {
-    "trino": build_trino_engine,  # broad federator (needs a Trino cluster)
+    "trino": build_trino_engine,  # embedded MPP federator (Provisa-managed Trino cluster)
+    "trino-byo": build_trino_engine,  # external Trino coordinator (same runtime; connection only)
     "pg": build_pg_engine,  # PostgreSQL (BYO or embedded) — FDW/pg_duckdb federation
     "duckdb": build_duckdb_engine,  # native in-process partial federator
-    "clickhouse": build_clickhouse_engine,  # OLAP federator via native integration engines (REQ-909)
+    "clickhouse": build_clickhouse_engine,  # embedded chdb OLAP federator (REQ-909)
+    "clickhouse-server": build_clickhouse_engine,  # external ClickHouse server/cloud (same runtime, URL-driven)
     "sqlalchemy": build_sqlalchemy_engine,  # any SQLAlchemy URL, zero connectors (self-only)
 }
 
@@ -496,11 +498,83 @@ _ENGINE_BUILDERS = {
 # Selectable-engine registry (REQ-916): metadata + config schema the admin UI renders to pick and
 # configure the federation engine. ``config_fields[].config_key`` names the ProvisaConfig field the
 # value persists to; the selected engine's own implementation reads it. Applied on service restart.
+# Execution-engine tuning for the embedded (Provisa-managed) Trino cluster. These persist as
+# top-level config keys and are read by write_trino_config to regenerate the cluster's jvm.config /
+# config.properties on restart. A bring-your-own coordinator is unmanaged, so it does NOT expose them.
+_TRINO_EXEC_FIELDS: list[dict] = [
+    {
+        "config_key": "jvm_heap_gb",
+        "label": "JVM Heap (GB)",
+        "type": "number",
+        "required": False,
+        "placeholder": "8",
+    },
+    {
+        "config_key": "query_max_memory",
+        "label": "Query Max Memory",
+        "type": "string",
+        "required": False,
+        "placeholder": "4GB",
+    },
+    {
+        "config_key": "query_max_memory_per_node",
+        "label": "Query Max Memory / Node",
+        "type": "string",
+        "required": False,
+        "placeholder": "2GB",
+    },
+    {
+        "config_key": "query_max_total_memory",
+        "label": "Query Max Total Memory",
+        "type": "string",
+        "required": False,
+        "placeholder": "8GB",
+    },
+    {
+        "config_key": "fault_tolerant_execution",
+        "label": "Fault-tolerant execution",
+        "type": "boolean",
+        "required": False,
+    },
+    {
+        "config_key": "fault_tolerant_task_memory",
+        "label": "Fault-tolerant Task Memory",
+        "type": "string",
+        "required": False,
+        "placeholder": "1GB",
+    },
+    {
+        "config_key": "exchange_spool_dir",
+        "label": "Exchange Spool Directory",
+        "type": "string",
+        "required": False,
+        "placeholder": "/data/provisa/exchange",
+    },
+]
+
 ENGINE_REGISTRY: list[dict] = [
     {
         "key": "trino",
-        "label": "Distributed (MPP)",
-        "description": "Broad MPP federator. Reaches many external source types via a distributed query cluster.",
+        "label": "Provisa Federation Engine",
+        "description": "Embedded distributed MPP engine, managed by Provisa (bundled Trino cluster). Reaches many external source types. Each instance runs as a coordinator or a worker; memory sizing and fault-tolerant execution below regenerate the cluster config and take effect on restart.",
+        "config_fields": [
+            {
+                "config_key": "node_role",
+                "label": "Node role",
+                "type": "select",
+                "required": False,
+                "options": [
+                    {"value": "coordinator", "label": "Coordinator (schedules + serves queries)"},
+                    {"value": "worker", "label": "Worker (executes tasks only)"},
+                ],
+            },
+            *_TRINO_EXEC_FIELDS,
+        ],
+    },
+    {
+        "key": "trino-byo",
+        "label": "Trino (bring-your-own)",
+        "description": "Connect to an external Trino coordinator you operate. Provisa does not manage its process, JVM, or memory — only the connection.",
         "config_fields": [
             {
                 "config_key": "federation_engine_host",
@@ -540,8 +614,22 @@ ENGINE_REGISTRY: list[dict] = [
     },
     {
         "key": "clickhouse",
-        "label": "ClickHouse",
-        "description": "OLAP federator via native integration engines. Server (clickhouse://) or embedded chdb (chdb://).",
+        "label": "ClickHouse (embedded)",
+        "description": "In-process chdb — the ClickHouse engine linked into Provisa. No external service. An optional data directory persists the store; blank keeps it in-memory.",
+        "config_fields": [
+            {
+                "config_key": "federation_engine_url",
+                "label": "Data directory (chdb)",
+                "type": "string",
+                "required": False,
+                "placeholder": "chdb:///var/lib/provisa/chdb — blank = in-memory",
+            },
+        ],
+    },
+    {
+        "key": "clickhouse-server",
+        "label": "ClickHouse (Server / Cloud)",
+        "description": "OLAP federator against an external ClickHouse server or ClickHouse Cloud, via native integration engines.",
         "config_fields": [
             {
                 "config_key": "federation_engine_url",

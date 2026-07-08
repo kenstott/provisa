@@ -74,87 +74,85 @@ export function AuthTab() {
     setConfig((c) => ({ ...c, [provider]: { ...(c[provider] ?? {}), [key]: value } }));
 
   return (
-    <div className="auth-tab" style={{ maxWidth: 640 }}>
+    <div className="auth-tab" style={{ maxWidth: 720 }}>
       <p className="muted">
         Authentication verifies who is calling; roles + RLS decide what they can see. Pick the
         identity provider and configure its connection.
       </p>
 
-      <label style={{ display: "block", fontWeight: 600, marginTop: "1rem" }}>Provider</label>
-      <select
-        value={provider}
-        onChange={(e) => setProvider(e.target.value)}
-        style={{ width: "100%", padding: "0.5rem", marginTop: "0.25rem" }}
-      >
-        {s.providers.map((p) => (
-          <option key={p.key} value={p.key}>
-            {p.label}
-            {p.key === s.provider ? " (current)" : ""}
-          </option>
-        ))}
-      </select>
-      {current && <p className="muted" style={{ marginTop: "0.25rem" }}>{current.description}</p>}
+      <div className="form-card">
+        <label style={{ gridColumn: "1 / -1" }}>
+          Provider
+          <select value={provider} onChange={(e) => setProvider(e.target.value)}>
+            {s.providers.map((p) => (
+              <option key={p.key} value={p.key}>
+                {p.label}
+                {p.key === s.provider ? " (current)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        {current && (
+          <p className="muted" style={{ gridColumn: "1 / -1", margin: 0, fontSize: "0.8rem" }}>
+            {current.description}
+          </p>
+        )}
 
-      {(current?.config_fields ?? []).map((f) => (
-        <div key={f.config_key} style={{ marginTop: "0.75rem" }}>
-          <label style={{ display: "block", fontWeight: 600 }}>
+        {(current?.config_fields ?? []).map((f) => (
+          <label key={f.config_key} style={{ gridColumn: "1 / -1" }}>
             {f.label}
             {f.required ? " *" : ""}
+            <input
+              type={f.secret ? "password" : "text"}
+              value={config[provider]?.[f.config_key] ?? ""}
+              placeholder={f.placeholder}
+              autoComplete={f.secret ? "new-password" : "off"}
+              onChange={(e) => setField(f.config_key, e.target.value)}
+            />
           </label>
-          <input
-            type={f.secret ? "password" : "text"}
-            value={config[provider]?.[f.config_key] ?? ""}
-            placeholder={f.placeholder}
-            autoComplete={f.secret ? "new-password" : "off"}
-            onChange={(e) => setField(f.config_key, e.target.value)}
-            style={{ width: "100%", padding: "0.5rem", marginTop: "0.25rem" }}
-          />
-        </div>
-      ))}
+        ))}
 
-      {provider === "simple" && (
-        <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.75rem" }}>
-          <input
-            type="checkbox"
-            checked={common.allow_simple_auth}
-            onChange={(e) => setCommon({ ...common, allow_simple_auth: e.target.checked })}
-          />
-          Allow simple auth (production guard — required to enable username/password)
-        </label>
-      )}
+        {provider === "simple" && (
+          <label style={{ gridColumn: "1 / -1" }}>
+            <input
+              type="checkbox"
+              checked={common.allow_simple_auth}
+              onChange={(e) => setCommon({ ...common, allow_simple_auth: e.target.checked })}
+            />
+            Allow simple auth (production guard — required to enable username/password)
+          </label>
+        )}
+      </div>
 
-      <h3 style={{ marginTop: "1.5rem" }}>Roles</h3>
-      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 160 }}>
-          <label style={{ display: "block", fontWeight: 600 }}>Default role</label>
+      <h3>Roles</h3>
+      <div className="form-card">
+        <label>
+          Default role
           <input
             type="text"
             value={common.default_role}
             onChange={(e) => setCommon({ ...common, default_role: e.target.value })}
-            style={{ width: "100%", padding: "0.5rem" }}
           />
-        </div>
-        <div style={{ flex: 1, minWidth: 160 }}>
-          <label style={{ display: "block", fontWeight: 600 }}>Role assignments from</label>
+        </label>
+        <label>
+          Role assignments from
           <select
             value={common.assignments_source}
             onChange={(e) => setCommon({ ...common, assignments_source: e.target.value })}
-            style={{ width: "100%", padding: "0.5rem" }}
           >
             <option value="claims">Token claims</option>
             <option value="provisa">Provisa (local assignments)</option>
           </select>
-        </div>
+        </label>
+        <label style={{ gridColumn: "1 / -1" }}>
+          <input
+            type="checkbox"
+            checked={common.trust_upstream}
+            onChange={(e) => setCommon({ ...common, trust_upstream: e.target.checked })}
+          />
+          Trust upstream proxy identity headers
+        </label>
       </div>
-
-      <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.75rem" }}>
-        <input
-          type="checkbox"
-          checked={common.trust_upstream}
-          onChange={(e) => setCommon({ ...common, trust_upstream: e.target.checked })}
-        />
-        Trust upstream proxy identity headers
-      </label>
 
       <div
         className="warn-banner"

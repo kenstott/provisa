@@ -157,25 +157,46 @@ function cleanupPrep(): void {
   localStorage.removeItem(NL_BACKUP_KEY);
 }
 
+// Step index the tour was on when dismissed early (X / Esc / backdrop). Lets the next launch pick
+// up where the user left off. Cleared on completion (Done on the last step).
+const TOUR_PROGRESS_KEY = "provisa_tour_progress";
+
 /** True once the guided tour has been completed or dismissed on this browser. */
 export function hasSeenTour(): boolean {
   return localStorage.getItem(TOUR_SEEN_KEY) === "true";
 }
 
+/**
+ * The saved mid-tour step to resume from, or null if none / out of range. Only
+ * steps past the first resume — the opening step is a fresh start.
+ */
+export function tourResumeStep(): number | null {
+  const raw = localStorage.getItem(TOUR_PROGRESS_KEY);
+  if (raw === null) return null;
+  const n = parseInt(raw, 10);
+  return Number.isInteger(n) && n > 0 && n < TOUR_STEPS.length ? n : null;
+}
+
 interface TourContextValue {
-  /** Launch the guided feature tour from the first step. */
-  startTour: () => void;
+  /** Launch the guided feature tour. Resumes from saved progress unless { restart: true }. */
+  startTour: (opts?: { restart?: boolean }) => void;
   running: boolean;
+  /** True when an earlier session was dismissed mid-tour and can be resumed. */
+  canResume: boolean;
 }
 
 const TourContext = createContext<TourContextValue | null>(null);
 
 /**
  * Resolve when an element matching `selector` is present in the DOM. Rejects
- * after `timeoutMs` so a missing anchor surfaces as a real error rather than
- * hanging the tour. No silent fallback — a failed wait aborts the tour.
+ * after `timeoutMs` so a genuinely missing anchor surfaces as a real error
+ * rather than hanging the tour. No silent fallback — a failed wait aborts.
+ *
+ * The window is generous because each step may navigate to a lazily-loaded
+ * route whose chunk is compiled/fetched on first visit; a short cap would abort
+ * the whole tour on a cold chunk (observed killing it at the NL step in dev).
  */
-function waitForElement(selector: string, timeoutMs = 5000): Promise<HTMLElement> {
+function waitForElement(selector: string, timeoutMs = 15000): Promise<HTMLElement> {
   const existing = document.querySelector<HTMLElement>(selector);
   if (existing) return Promise.resolve(existing);
   return new Promise((resolve, reject) => {
@@ -205,12 +226,23 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [activeStep, setActiveStep] = useState<number | null>(null);
   const driverRef = useRef<Driver | null>(null);
   const currentPathRef = useRef<string>("");
+  // Mirrors activeStep for handlers (onDestroyed) whose closure predates the current step.
+  const activeStepRef = useRef<number | null>(null);
 
-  const finish = useCallback(() => {
+  // End the tour. `completed` (Done on the last step) clears saved progress; an early dismissal
+  // saves the current step so the next launch resumes there.
+  const endTour = useCallback((completed: boolean) => {
     localStorage.setItem(TOUR_SEEN_KEY, "true");
+    if (completed) {
+      localStorage.removeItem(TOUR_PROGRESS_KEY);
+    } else if (activeStepRef.current != null) {
+      localStorage.setItem(TOUR_PROGRESS_KEY, String(activeStepRef.current));
+    }
     cleanupPrep();
-    driverRef.current?.destroy();
+    // Null the ref before destroy so onDestroyed treats this as an intentional end, not a dismissal.
+    const inst = driverRef.current;
     driverRef.current = null;
+    inst?.destroy();
     setActiveStep(null);
   }, []);
 
@@ -223,6 +255,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (activeStep === null) return;
     const i = activeStep;
+    activeStepRef.current = i;
     let cancelled = false;
     (async () => {
       try {
@@ -254,7 +287,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
             prevBtnText: "Back",
             onNextClick: () => {
               clickIfPresent(step.clickAfterNext);
-              if (isLast) finish();
+              if (isLast) endTour(true);
               else setActiveStep(i + 1);
             },
             onPrevClick: () => {
@@ -263,22 +296,24 @@ export function TourProvider({ children }: { children: ReactNode }) {
             },
             onCloseClick: () => {
               clickIfPresent(step.clickAfterNext);
-              finish();
+              endTour(false);
             },
           },
         });
       } catch {
         // Anchor never appeared (layout changed / gated by permission) — end
-        // gracefully rather than trap the user behind an overlay.
-        finish();
+        // gracefully, saving progress so the user can resume rather than being
+        // trapped behind an overlay.
+        endTour(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [activeStep, navigate, finish]);
+  }, [activeStep, navigate, endTour]);
 
-  const startTour = useCallback(() => {
+  // Start the tour. Resumes from saved progress by default; pass { restart: true } to force step 0.
+  const startTour = useCallback((opts?: { restart?: boolean }) => {
     if (driverRef.current) return;
     currentPathRef.current = "";
     driverRef.current = driver({
@@ -288,20 +323,26 @@ export function TourProvider({ children }: { children: ReactNode }) {
       stageRadius: 8,
       disableActiveInteraction: true,
       onDestroyed: () => {
-        // Covers backdrop clicks / Esc, which bypass onCloseClick.
+        // Covers backdrop clicks / Esc, which bypass onCloseClick — treat as an early
+        // dismissal and save the current step so the next launch resumes there.
         if (driverRef.current) {
           localStorage.setItem(TOUR_SEEN_KEY, "true");
+          if (activeStepRef.current != null) {
+            localStorage.setItem(TOUR_PROGRESS_KEY, String(activeStepRef.current));
+          }
           cleanupPrep();
           driverRef.current = null;
           setActiveStep(null);
         }
       },
     });
-    setActiveStep(0);
+    setActiveStep(opts?.restart ? 0 : (tourResumeStep() ?? 0));
   }, []);
 
   return (
-    <TourContext.Provider value={{ startTour, running: activeStep !== null }}>
+    <TourContext.Provider
+      value={{ startTour, running: activeStep !== null, canResume: tourResumeStep() !== null }}
+    >
       {children}
     </TourContext.Provider>
   );

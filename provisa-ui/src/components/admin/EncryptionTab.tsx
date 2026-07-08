@@ -84,69 +84,85 @@ export function EncryptionTab() {
   if (!s) return <div>Loading…</div>;
 
   return (
-    <div className="encryption-tab" style={{ maxWidth: 640 }}>
+    <div className="encryption-tab" style={{ maxWidth: 720 }}>
       <p className="muted">
         Column encryption at rest. Choose a provider and manage its master key. Envelope encryption
         wraps a per-column data key with the master key.
       </p>
 
-      <label style={{ display: "block", fontWeight: 600, marginTop: "1rem" }}>Provider</label>
-      <select
-        value={provider}
-        onChange={(e) => setProvider(e.target.value)}
-        style={{ width: "100%", padding: "0.5rem", marginTop: "0.25rem" }}
-      >
-        {s.providers.map((p) => (
-          <option key={p.key} value={p.key}>
-            {p.label}
-            {p.key === s.provider ? " (current)" : ""}
-          </option>
-        ))}
-      </select>
-      {current && <p className="muted" style={{ marginTop: "0.25rem" }}>{current.description}</p>}
+      <div className="form-card">
+        <label style={{ gridColumn: "1 / -1" }}>
+          Provider
+          <select value={provider} onChange={(e) => setProvider(e.target.value)}>
+            {s.providers.map((p) => (
+              <option key={p.key} value={p.key}>
+                {p.label}
+                {p.key === s.provider ? " (current)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        {current && (
+          <p className="muted" style={{ gridColumn: "1 / -1", margin: 0, fontSize: "0.8rem" }}>
+            {current.description}
+          </p>
+        )}
 
-      {provider === "local" && (
-        <>
-          <label style={{ display: "block", fontWeight: 600, marginTop: "0.75rem" }}>Key ID</label>
-          <input
-            type="text"
-            value={keyId}
-            placeholder="master"
-            onChange={(e) => setKeyId(e.target.value)}
-            style={{ width: "100%", padding: "0.5rem", marginTop: "0.25rem" }}
-          />
+        {provider === "local" && (
+          <>
+            <label style={{ gridColumn: "1 / -1" }}>
+              Key ID
+              <input
+                type="text"
+                value={keyId}
+                placeholder="master"
+                onChange={(e) => setKeyId(e.target.value)}
+              />
+            </label>
 
-          <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.75rem", alignItems: "center" }}>
-            <span>
-              Master key:{" "}
-              {s.key_present ? (
-                <strong style={{ color: "#2e7d32" }}>present</strong>
-              ) : (
-                <strong style={{ color: "#c62828" }}>missing</strong>
-              )}
-            </span>
-            <button className="btn-secondary" onClick={generate} disabled={generating}>
-              {generating ? "Generating…" : s.key_present ? "Rotate master key" : "Generate master key"}
-            </button>
-          </div>
-
-          {generatedKey && (
             <div
               style={{
-                marginTop: "0.75rem",
-                padding: "0.5rem 0.75rem",
-                border: "1px solid #c62828",
-                borderRadius: 4,
-                wordBreak: "break-all",
-                fontFamily: "monospace",
-                fontSize: "0.85rem",
+                gridColumn: "1 / -1",
+                display: "flex",
+                gap: "0.75rem",
+                alignItems: "center",
               }}
             >
-              {generatedKey}
+              <span>
+                Master key:{" "}
+                {s.key_present ? (
+                  <strong style={{ color: "#2e7d32" }}>present</strong>
+                ) : (
+                  <strong style={{ color: "#c62828" }}>missing</strong>
+                )}
+              </span>
+              <button className="btn-secondary" onClick={generate} disabled={generating}>
+                {generating
+                  ? "Generating…"
+                  : s.key_present
+                    ? "Rotate master key"
+                    : "Generate master key"}
+              </button>
             </div>
-          )}
-        </>
-      )}
+
+            {generatedKey && (
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  padding: "0.5rem 0.75rem",
+                  border: "1px solid #c62828",
+                  borderRadius: 4,
+                  wordBreak: "break-all",
+                  fontFamily: "monospace",
+                  fontSize: "0.85rem",
+                }}
+              >
+                {generatedKey}
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       <div
         className="warn-banner"

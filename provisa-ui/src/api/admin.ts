@@ -351,9 +351,11 @@ export async function fetchSettings(): Promise<PlatformSettings> {
 export interface EngineConfigField {
   config_key: string;
   label: string;
-  type: "string" | "number";
+  type: "string" | "number" | "boolean" | "select";
   required: boolean;
   placeholder?: string;
+  /** Choices for `type: "select"`. */
+  options?: { value: string; label: string }[];
 }
 
 export interface EngineRegistryEntry {
@@ -365,11 +367,8 @@ export interface EngineRegistryEntry {
 
 export interface FederationEngineState {
   current: string;
-  config: {
-    federation_engine_url: string | null;
-    federation_engine_host: string;
-    federation_engine_port: number;
-  };
+  /** Current value of every config key any engine declares (connection + execution tuning). */
+  config: Record<string, string | number | boolean | null>;
   engines: EngineRegistryEntry[];
   restart_required_note: string;
 }
@@ -381,12 +380,7 @@ export async function fetchFederationEngine(): Promise<FederationEngineState> {
 }
 
 export async function setFederationEngine(
-  body: {
-    engine: string;
-    federation_engine_url?: string | null;
-    federation_engine_host?: string;
-    federation_engine_port?: number;
-  },
+  body: { engine: string } & Record<string, unknown>,
 ): Promise<{ success: boolean; updated: string[]; restart_required: boolean }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/federation-engine`, {
     method: "PUT",

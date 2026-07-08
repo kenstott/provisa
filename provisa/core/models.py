@@ -931,6 +931,9 @@ class ProvisaConfig(BaseModel):
     federation_engine_url: str | None = None  # DSN for sqlalchemy/clickhouse/pg engines
     federation_engine_host: str = "localhost"  # coordinator host (engine)
     federation_engine_port: int = 8080  # coordinator port (engine)
+    # This embedded-MPP instance's role in the cluster: "coordinator" (also schedules work on itself)
+    # or "worker". Drives which template write_trino_config renders into config.properties.
+    node_role: str = "coordinator"
     jvm_heap_gb: int = 8
     query_max_memory: str = "4GB"
     query_max_memory_per_node: str = "2GB"

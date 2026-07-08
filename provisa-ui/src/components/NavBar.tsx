@@ -107,7 +107,7 @@ export function NavBar() {
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
   const { displayName, email, devMode } = useAuth();
-  const { startTour } = useTour();
+  const { startTour, canResume } = useTour();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
   const [domainOpen, setDomainOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -253,8 +253,8 @@ export function NavBar() {
           <RoleSelector />
           <button
             className="navbar-tour-btn"
-            title="Take a guided tour"
-            aria-label="Take a guided tour"
+            title={canResume ? "Resume guided tour" : "Take a guided tour"}
+            aria-label={canResume ? "Resume guided tour" : "Take a guided tour"}
             onClick={() => startTour()}
           >
             <Compass size={16} />

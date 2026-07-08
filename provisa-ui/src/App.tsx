@@ -65,10 +65,11 @@ function TourAutoStart({ demoMode }: { demoMode: boolean }) {
         },
         { replace: true },
       );
-      startTour();
+      // ?tour=1 always starts fresh from the top.
+      startTour({ restart: true });
       return;
     }
-    if (demoMode && !hasSeenTour()) startTour();
+    if (demoMode && !hasSeenTour()) startTour({ restart: true });
   }, [tourParam, demoMode, startTour, setSearchParams]);
   return null;
 }

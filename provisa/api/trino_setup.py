@@ -132,22 +132,24 @@ def write_trino_config(config_path: str) -> None:  # REQ-055, REQ-250
         os.path.join(trino_etc, "jvm.config"),
         _JVM_TEMPLATE.format(heap_gb=heap_gb),
     )
+    coordinator_props = _COORDINATOR_TEMPLATE.format(
+        query_max_memory=query_max_memory,
+        query_max_memory_per_node=query_max_memory_per_node,
+        query_max_total_memory=query_max_total_memory,
+        fte_block=fte_block,
+    )
+    worker_props = _WORKER_TEMPLATE.format(
+        query_max_memory_per_node=query_max_memory_per_node,
+        fte_block=fte_block,
+    )
+    # This instance's config.properties reflects its selected role (REQ-916); the worker/ variant is
+    # always emitted so a multi-node deployment can mount it on worker instances.
+    this_role = _cfg(cfg, "node_role")
     _write(
         os.path.join(trino_etc, "config.properties"),
-        _COORDINATOR_TEMPLATE.format(
-            query_max_memory=query_max_memory,
-            query_max_memory_per_node=query_max_memory_per_node,
-            query_max_total_memory=query_max_total_memory,
-            fte_block=fte_block,
-        ),
+        worker_props if this_role == "worker" else coordinator_props,
     )
-    _write(
-        os.path.join(trino_etc, "worker", "config.properties"),
-        _WORKER_TEMPLATE.format(
-            query_max_memory_per_node=query_max_memory_per_node,
-            fte_block=fte_block,
-        ),
-    )
+    _write(os.path.join(trino_etc, "worker", "config.properties"), worker_props)
     if fte_block:
         _write(
             os.path.join(trino_etc, "exchange-manager.properties"),

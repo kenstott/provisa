@@ -290,13 +290,41 @@ def test_engine_registry_lists_all_selectable_engines():
 
     reg = engine_registry()
     keys = {e["key"] for e in reg}
-    assert keys == {"trino", "duckdb", "pg", "clickhouse", "sqlalchemy"}
-    # every entry carries UI metadata + a config schema
+    # embedded (Provisa-managed) Trino and ClickHouse are split from their bring-your-own variants
+    assert keys == {
+        "trino",
+        "trino-byo",
+        "duckdb",
+        "pg",
+        "clickhouse",
+        "clickhouse-server",
+        "sqlalchemy",
+    }
+    # every entry carries UI metadata + a config schema; every field declares a type
     for e in reg:
         assert e["label"] and e["description"]
         assert isinstance(e["config_fields"], list)
+        for f in e["config_fields"]:
+            assert f["type"] in {"string", "number", "boolean", "select"}
+    # embedded Trino: node role (coordinator/worker) + execution tuning (managed cluster);
+    # BYO exposes only the connection
     trino = next(e for e in reg if e["key"] == "trino")
     assert {f["config_key"] for f in trino["config_fields"]} == {
+        "node_role",
+        "jvm_heap_gb",
+        "query_max_memory",
+        "query_max_memory_per_node",
+        "query_max_total_memory",
+        "fault_tolerant_execution",
+        "fault_tolerant_task_memory",
+        "exchange_spool_dir",
+    }
+    assert any(f["type"] == "boolean" for f in trino["config_fields"])
+    node_role = next(f for f in trino["config_fields"] if f["config_key"] == "node_role")
+    assert node_role["type"] == "select"
+    assert {o["value"] for o in node_role["options"]} == {"coordinator", "worker"}
+    trino_byo = next(e for e in reg if e["key"] == "trino-byo")
+    assert {f["config_key"] for f in trino_byo["config_fields"]} == {
         "federation_engine_host",
         "federation_engine_port",
     }

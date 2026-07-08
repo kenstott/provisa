@@ -47,45 +47,43 @@ export function CacheStorageTab() {
   const num = (v: string) => (v.trim() === "" ? null : Number(v));
 
   return (
-    <div className="cache-storage-tab" style={{ maxWidth: 640 }}>
+    <div className="cache-storage-tab" style={{ maxWidth: 720 }}>
       <h3>Hot Cache (Redis)</h3>
       <p className="muted">
         The hot cache promotes frequently-queried tables into Redis. Leave the URL empty to use the
         embedded in-process store (fakeredis).
       </p>
 
-      <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.5rem" }}>
-        <input
-          type="checkbox"
-          checked={s.cache.enabled}
-          onChange={(e) => setS({ ...s, cache: { ...s.cache, enabled: e.target.checked } })}
-        />
-        Enable hot cache
-      </label>
+      <div className="form-card">
+        <label style={{ gridColumn: "1 / -1" }}>
+          <input
+            type="checkbox"
+            checked={s.cache.enabled}
+            onChange={(e) => setS({ ...s, cache: { ...s.cache, enabled: e.target.checked } })}
+          />
+          Enable hot cache
+        </label>
 
-      <label style={{ display: "block", fontWeight: 600, marginTop: "0.75rem" }}>Redis URL</label>
-      <input
-        type="text"
-        value={s.cache.redis_url}
-        placeholder="redis://:password@host:6379/0  (empty → embedded)"
-        onChange={(e) => setS({ ...s, cache: { ...s.cache, redis_url: e.target.value } })}
-        style={{ width: "100%", padding: "0.5rem", marginTop: "0.25rem" }}
-      />
+        <label style={{ gridColumn: "1 / -1" }}>
+          Redis URL
+          <input
+            type="text"
+            value={s.cache.redis_url}
+            placeholder="redis://:password@host:6379/0  (empty → embedded)"
+            onChange={(e) => setS({ ...s, cache: { ...s.cache, redis_url: e.target.value } })}
+          />
+        </label>
 
-      <div style={{ display: "flex", gap: "1rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 140 }}>
-          <label style={{ display: "block", fontWeight: 600 }}>Default TTL (s)</label>
+        <label>
+          Default TTL (s)
           <input
             type="number"
             value={s.cache.default_ttl ?? ""}
-            onChange={(e) =>
-              setS({ ...s, cache: { ...s.cache, default_ttl: num(e.target.value) } })
-            }
-            style={{ width: "100%", padding: "0.5rem" }}
+            onChange={(e) => setS({ ...s, cache: { ...s.cache, default_ttl: num(e.target.value) } })}
           />
-        </div>
-        <div style={{ flex: 1, minWidth: 140 }}>
-          <label style={{ display: "block", fontWeight: 600 }}>Promote after N queries</label>
+        </label>
+        <label>
+          Promote after N queries
           <input
             type="number"
             value={s.hot_tables.auto_threshold}
@@ -95,48 +93,46 @@ export function CacheStorageTab() {
                 hot_tables: { ...s.hot_tables, auto_threshold: Number(e.target.value) },
               })
             }
-            style={{ width: "100%", padding: "0.5rem" }}
           />
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: "1rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 140 }}>
-          <label style={{ display: "block", fontWeight: 600 }}>Max rows</label>
+        </label>
+        <label>
+          Max rows
           <input
             type="number"
             value={s.hot_tables.max_rows}
             onChange={(e) =>
               setS({ ...s, hot_tables: { ...s.hot_tables, max_rows: Number(e.target.value) } })
             }
-            style={{ width: "100%", padding: "0.5rem" }}
           />
-        </div>
-        <div style={{ flex: 1, minWidth: 140 }}>
-          <label style={{ display: "block", fontWeight: 600 }}>Max bytes</label>
+        </label>
+        <label>
+          Max bytes
           <input
             type="number"
             value={s.hot_tables.max_bytes}
             onChange={(e) =>
               setS({ ...s, hot_tables: { ...s.hot_tables, max_bytes: Number(e.target.value) } })
             }
-            style={{ width: "100%", padding: "0.5rem" }}
           />
-        </div>
+        </label>
       </div>
 
-      <h3 style={{ marginTop: "1.5rem" }}>Materialize Store</h3>
+      <h3>Materialize Store</h3>
       <p className="muted">
         PostgreSQL database where non-attachable sources (OpenAPI, GraphQL) are landed for native
         engines. Empty disables the native materialize path.
       </p>
-      <input
-        type="text"
-        value={s.materialize.store_url}
-        placeholder="postgresql://user:pass@host:5432/materialize"
-        onChange={(e) => setS({ ...s, materialize: { store_url: e.target.value } })}
-        style={{ width: "100%", padding: "0.5rem", marginTop: "0.25rem" }}
-      />
+      <div className="form-card">
+        <label style={{ gridColumn: "1 / -1" }}>
+          Store URL
+          <input
+            type="text"
+            value={s.materialize.store_url}
+            placeholder="postgresql://user:pass@host:5432/materialize"
+            onChange={(e) => setS({ ...s, materialize: { store_url: e.target.value } })}
+          />
+        </label>
+      </div>
 
       <div
         className="warn-banner"

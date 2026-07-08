@@ -200,13 +200,6 @@ export function AdminPage() {
     setSettingsSaving(false);
   }, [settings]);
 
-  const updateEngine = (key: string, value: unknown) => {
-    if (!settings) return;
-    setSettings({
-      ...settings,
-      engine: { ...settings.engine, [key]: value },
-    });
-  };
 
   const applyDomainPolicy = useCallback(async () => {
     setPolicyApplying(true);
@@ -474,76 +467,10 @@ export function AdminPage() {
                     className="settings-note"
                     style={{ margin: "0 0 0.5rem", fontSize: "0.8rem", opacity: 0.75 }}
                   >
-                    Memory sizing and fault-tolerant execution. Changes are written to the
-                    config and regenerate the engine config, but require an{" "}
-                    <strong>engine restart</strong> to take effect.
+                    Memory sizing and fault-tolerant execution now live with the engine, on{" "}
+                    <strong>Admin → Federation Engine</strong> — the available settings depend on the
+                    selected engine.
                   </p>
-                  <label>
-                    JVM Heap (GB)
-                    <input
-                      type="number"
-                      value={settings.engine.jvm_heap_gb}
-                      onChange={(e) => updateEngine("jvm_heap_gb", parseInt(e.target.value) || 0)}
-                    />
-                  </label>
-                  <label>
-                    Query Max Memory
-                    <input
-                      type="text"
-                      value={settings.engine.query_max_memory}
-                      onChange={(e) => updateEngine("query_max_memory", e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Query Max Memory / Node
-                    <input
-                      type="text"
-                      value={settings.engine.query_max_memory_per_node}
-                      onChange={(e) => updateEngine("query_max_memory_per_node", e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Query Max Total Memory
-                    <input
-                      type="text"
-                      value={settings.engine.query_max_total_memory}
-                      onChange={(e) => updateEngine("query_max_total_memory", e.target.value)}
-                    />
-                  </label>
-                  <label
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={settings.engine.fault_tolerant_execution}
-                      onChange={(e) => updateEngine("fault_tolerant_execution", e.target.checked)}
-                      style={{ width: "auto" }}
-                    />
-                    Fault-tolerant execution
-                  </label>
-                  <label>
-                    Fault-tolerant Task Memory
-                    <input
-                      type="text"
-                      value={settings.engine.fault_tolerant_task_memory}
-                      disabled={!settings.engine.fault_tolerant_execution}
-                      onChange={(e) => updateEngine("fault_tolerant_task_memory", e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Exchange Spool Directory
-                    <input
-                      type="text"
-                      value={settings.engine.exchange_spool_dir}
-                      disabled={!settings.engine.fault_tolerant_execution}
-                      onChange={(e) => updateEngine("exchange_spool_dir", e.target.value)}
-                    />
-                  </label>
                 </div>
                 <div className="settings-actions">
                   <button className="btn-primary" onClick={saveSettings} disabled={settingsSaving}>

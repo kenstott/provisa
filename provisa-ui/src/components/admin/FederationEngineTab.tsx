@@ -19,7 +19,8 @@ import {
 export function FederationEngineTab() {
   const [state, setState] = useState<FederationEngineState | null>(null);
   const [selected, setSelected] = useState<string>("");
-  const [values, setValues] = useState<Record<string, string>>({});
+  // String for text/number fields; boolean for checkbox fields.
+  const [values, setValues] = useState<Record<string, string | boolean>>({});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
@@ -29,12 +30,13 @@ export function FederationEngineTab() {
       .then((s) => {
         setState(s);
         setSelected(s.current);
-        setValues({
-          federation_engine_url: s.config.federation_engine_url ?? "",
-          federation_engine_host: s.config.federation_engine_host ?? "",
-          federation_engine_port:
-            s.config.federation_engine_port != null ? String(s.config.federation_engine_port) : "",
-        });
+        // Seed every declared key from the returned config, keeping booleans as booleans.
+        const seeded: Record<string, string | boolean> = {};
+        for (const key of Object.keys(s.config)) {
+          const v = s.config[key];
+          seeded[key] = typeof v === "boolean" ? v : v == null ? "" : String(v);
+        }
+        setValues(seeded);
       })
       .catch((e) => setError(String(e)));
   }, []);
@@ -47,7 +49,7 @@ export function FederationEngineTab() {
   const missingRequired = useMemo(
     () =>
       (currentEngine?.config_fields ?? []).some(
-        (f) => f.required && !(values[f.config_key] ?? "").trim(),
+        (f) => f.required && !String(values[f.config_key] ?? "").trim(),
       ),
     [currentEngine, values],
   );
@@ -60,9 +62,14 @@ export function FederationEngineTab() {
     try {
       const body: Record<string, unknown> = { engine: selected };
       for (const f of currentEngine?.config_fields ?? []) {
-        const raw = (values[f.config_key] ?? "").trim();
-        if (raw === "") continue;
-        body[f.config_key] = f.type === "number" ? Number(raw) : raw;
+        const v = values[f.config_key];
+        if (f.type === "boolean") {
+          body[f.config_key] = v === true;
+          continue;
+        }
+        const raw = String(v ?? "").trim();
+        // Send blanks too, so clearing a field resets it server-side.
+        body[f.config_key] = f.type === "number" && raw !== "" ? Number(raw) : raw;
       }
       const res = await setFederationEngine(body);
       setMsg(
@@ -81,45 +88,75 @@ export function FederationEngineTab() {
   if (!state) return <div>Loading…</div>;
 
   return (
-    <div className="federation-engine-tab" style={{ maxWidth: 640 }}>
+    <div className="federation-engine-tab" style={{ maxWidth: 720 }}>
       <p className="muted">
-        The federation engine executes every federated query. Pick the engine and configure its
-        connection; other components (routing, governance, cache) are unchanged.
+        The federation engine executes every federated query. Pick the engine and configure it;
+        other components (routing, governance, cache) are unchanged.
       </p>
 
-      <label style={{ display: "block", fontWeight: 600, marginTop: "1rem" }}>Engine</label>
-      <select
-        value={selected}
-        onChange={(e) => {
-          setSelected(e.target.value);
-          setMsg("");
-        }}
-        style={{ width: "100%", padding: "0.5rem", marginTop: "0.25rem" }}
-      >
-        {state.engines.map((e) => (
-          <option key={e.key} value={e.key}>
-            {e.label}
-            {e.key === state.current ? " (current)" : ""}
-          </option>
-        ))}
-      </select>
-      {currentEngine && <p className="muted" style={{ marginTop: "0.25rem" }}>{currentEngine.description}</p>}
+      <div className="form-card">
+        <label style={{ gridColumn: "1 / -1" }}>
+          Engine
+          <select
+            value={selected}
+            onChange={(e) => {
+              setSelected(e.target.value);
+              setMsg("");
+            }}
+          >
+            {state.engines.map((e) => (
+              <option key={e.key} value={e.key}>
+                {e.label}
+                {e.key === state.current ? " (current)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        {currentEngine && (
+          <p className="muted" style={{ gridColumn: "1 / -1", margin: 0, fontSize: "0.8rem" }}>
+            {currentEngine.description}
+          </p>
+        )}
 
-      {(currentEngine?.config_fields ?? []).map((f) => (
-        <div key={f.config_key} style={{ marginTop: "0.75rem" }}>
-          <label style={{ display: "block", fontWeight: 600 }}>
-            {f.label}
-            {f.required ? " *" : ""}
-          </label>
-          <input
-            type={f.type === "number" ? "number" : "text"}
-            value={values[f.config_key] ?? ""}
-            placeholder={f.placeholder}
-            onChange={(e) => setValues((v) => ({ ...v, [f.config_key]: e.target.value }))}
-            style={{ width: "100%", padding: "0.5rem", marginTop: "0.25rem" }}
-          />
-        </div>
-      ))}
+        {(currentEngine?.config_fields ?? []).map((f) =>
+          f.type === "boolean" ? (
+            <label key={f.config_key} style={{ gridColumn: "1 / -1" }}>
+              <input
+                type="checkbox"
+                checked={values[f.config_key] === true}
+                onChange={(e) => setValues((v) => ({ ...v, [f.config_key]: e.target.checked }))}
+              />
+              {f.label}
+            </label>
+          ) : f.type === "select" ? (
+            <label key={f.config_key} style={{ gridColumn: "1 / -1" }}>
+              {f.label}
+              {f.required ? " *" : ""}
+              <select
+                value={String(values[f.config_key] ?? "")}
+                onChange={(e) => setValues((v) => ({ ...v, [f.config_key]: e.target.value }))}
+              >
+                {(f.options ?? []).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label key={f.config_key} style={{ gridColumn: "1 / -1" }}>
+              {f.label}
+              {f.required ? " *" : ""}
+              <input
+                type={f.type === "number" ? "number" : "text"}
+                value={String(values[f.config_key] ?? "")}
+                placeholder={f.placeholder}
+                onChange={(e) => setValues((v) => ({ ...v, [f.config_key]: e.target.value }))}
+              />
+            </label>
+          ),
+        )}
+      </div>
 
       <div
         className="warn-banner"
