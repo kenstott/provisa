@@ -9,7 +9,40 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.core.ir_types import IR_TYPES, is_ir_type, to_ir, to_sqlalchemy
+from provisa.core.ir_types import (
+    IR_TYPES,
+    is_ir_type,
+    to_ir,
+    to_physical,
+    to_sqlalchemy,
+    value_transform,
+)
+
+
+def test_platform_translators_native_to_ir():
+    # SQL Server platform spellings
+    assert to_ir("bit", "sqlserver") == "boolean"
+    assert to_ir("nvarchar", "sqlserver") == "text"
+    assert to_ir("uniqueidentifier", "sqlserver") == "uuid"
+    assert to_ir("datetime2", "sqlserver") == "timestamp"
+    # Trino
+    assert to_ir("varbinary", "trino") == "bytea"
+    assert to_ir("row", "trino") == "text"
+    # DuckDB
+    assert to_ir("hugeint", "duckdb") == "bigint"
+    assert to_ir("blob", "duckdb") == "bytea"
+    # common types fall through to generic aliases regardless of platform
+    assert to_ir("integer", "trino") == "integer"
+    assert to_ir("varchar", "duckdb") == "text"
+    # a platform-specific spelling is unknown without the platform
+    with pytest.raises(ValueError, match="not in the IR vocabulary"):
+        to_ir("uniqueidentifier")
+
+
+def test_value_transform_default_identity():
+    # sparse registry — no transform registered → None (identity), the common case
+    assert value_transform("bit", "sqlserver") is None
+    assert value_transform("integer") is None
 
 
 def test_aliases_canonicalize_to_one_ir_name():
@@ -42,6 +75,14 @@ def test_to_sqlalchemy_maps_ir_and_native():
 def test_is_ir_type():
     assert is_ir_type("varchar") and is_ir_type("timestamp with time zone")
     assert not is_ir_type("geography")
+
+
+def test_to_physical_renders_per_dialect():
+    # IR → a platform's physical type, via SQLAlchemy's dialect compiler (no hand-maintained table)
+    assert to_physical("text", "postgresql") == "TEXT"
+    assert to_physical("bigint", "postgresql") == "BIGINT"
+    assert to_physical("timestamp", "mysql") == "DATETIME"  # mysql renders DateTime as DATETIME
+    assert to_physical("varchar", "postgresql") == "TEXT"  # native spelling normalized to IR first
 
 
 def test_ir_types_are_canonical_names():

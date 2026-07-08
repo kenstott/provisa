@@ -21,6 +21,7 @@ resolved at registration — never lazily backfilled, and never silently default
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import (
@@ -82,33 +83,127 @@ _ALIASES: dict[str, str] = {
     "blob": "bytea",
 }
 
+# Per-platform native→IR translators (REQ-846). Each platform has type spellings the generic
+# aliases don't cover — SQL Server bit/nvarchar/uniqueidentifier, Trino varbinary/row, DuckDB
+# hugeint/blob. These overlays take precedence over the generic aliases; common types (integer,
+# varchar, boolean, …) fall through to _ALIASES. Keyed by the SQLAlchemy/engine dialect name.
+_PLATFORM_ALIASES: dict[str, dict[str, str]] = {
+    "trino": {
+        "tinyint": "smallint",
+        "real": "float",
+        "varbinary": "bytea",
+        "json": "text",
+        "timestamp with time zone": "timestamp",
+        "time with time zone": "time",
+        "ipaddress": "text",
+        "uuid": "uuid",
+        "row": "text",
+        "array": "text",
+        "map": "text",
+    },
+    "sqlserver": {
+        "bit": "boolean",
+        "tinyint": "smallint",
+        "int": "integer",
+        "money": "numeric",
+        "smallmoney": "numeric",
+        "datetime": "timestamp",
+        "datetime2": "timestamp",
+        "smalldatetime": "timestamp",
+        "datetimeoffset": "timestamp",
+        "nvarchar": "text",
+        "nchar": "text",
+        "ntext": "text",
+        "binary": "bytea",
+        "varbinary": "bytea",
+        "image": "bytea",
+        "uniqueidentifier": "uuid",
+        "xml": "text",
+    },
+    "duckdb": {
+        "tinyint": "smallint",
+        "utinyint": "smallint",
+        "usmallint": "integer",
+        "uinteger": "bigint",
+        "ubigint": "bigint",
+        "hugeint": "bigint",
+        "uhugeint": "bigint",
+        "real": "float",
+        "blob": "bytea",
+        "timestamptz": "timestamp",
+        "timestamp with time zone": "timestamp",
+        "json": "text",
+        "list": "text",
+        "struct": "text",
+        "map": "text",
+    },
+}
+
+# Optional value transforms (REQ-846). A translator is primarily a TYPE lookup (native→IR name). A
+# few native types also need the VALUE modified on landing — the driver returns a form the store
+# can't take directly — so register a transform for that (platform, native) pair here. SPARSE: most
+# types need none (the driver already returns a store-compatible Python value). Absent → identity.
+_PLATFORM_TRANSFORMS: dict[tuple[str, str], Callable[[Any], Any]] = {}
+
 IR_TYPES: frozenset[str] = frozenset(_IR_TO_SA)
 
 
-def to_ir(native_type: str) -> str:
-    """Normalize a native/source SQL type string to a canonical IR name (REQ-846).
-
-    Strips a length/precision qualifier (``varchar(255)`` → ``varchar``), lowercases, and maps
-    dialect aliases to the one canonical name. Raises on an unknown type — never a silent
-    ``varchar`` default: a landed column's type must be known at design time, and an unmapped type
-    is a gap to close in the vocabulary, not to paper over."""
+def value_transform(native_type: str, platform: str | None = None) -> Callable[[Any], Any] | None:
+    """The optional per-value transform for a (platform, native type), or None (identity) — applied
+    by the land path per cell for the rare native type whose value representation differs from what
+    the IR/store expects. The type NAME mapping is the lookup (``to_ir``); this is the VALUE side."""
+    if not platform:
+        return None
     base = native_type.split("(", 1)[0].strip().lower()
-    canon = _ALIASES.get(base, base)
+    return _PLATFORM_TRANSFORMS.get((platform.split("+", 1)[0], base))
+
+
+def to_ir(native_type: str, platform: str | None = None) -> str:
+    """Translate a native/source SQL type string to a canonical IR name (REQ-846).
+
+    ``platform`` (a dialect name — trino, sqlserver, duckdb, postgresql, mysql, …) selects a
+    per-platform translator whose spellings take precedence; without it, only the generic aliases
+    apply. Strips a length/precision qualifier (``varchar(255)`` → ``varchar``) and lowercases.
+    Raises on an unknown type — never a silent ``varchar`` default: a landed column's type must be
+    known at design time, and an unmapped type is a vocabulary gap to close, not to paper over."""
+    base = native_type.split("(", 1)[0].strip().lower()
+    canon: str | None = None
+    if platform:
+        canon = _PLATFORM_ALIASES.get(platform.split("+", 1)[0], {}).get(base)
+    if canon is None:
+        canon = _ALIASES.get(base, base)
     if canon not in _IR_TO_SA:
         raise ValueError(
-            f"unknown SQL type {native_type!r}: not in the IR vocabulary {sorted(IR_TYPES)} "
-            f"(add it to ir_types if a source legitimately produces it)"
+            f"unknown SQL type {native_type!r}"
+            f"{f' for platform {platform!r}' if platform else ''}: not in the IR vocabulary "
+            f"{sorted(IR_TYPES)} (add it to ir_types if a source legitimately produces it)"
         )
     return canon
 
 
-def is_ir_type(name: str) -> bool:
-    """Whether ``name`` is a resolvable IR type (canonical or a known alias)."""
-    base = name.split("(", 1)[0].strip().lower()
-    return _ALIASES.get(base, base) in _IR_TO_SA
+def is_ir_type(name: str, platform: str | None = None) -> bool:
+    """Whether ``name`` is a resolvable IR type (canonical, a generic alias, or platform-specific)."""
+    try:
+        to_ir(name, platform)
+        return True
+    except ValueError:
+        return False
 
 
 def to_sqlalchemy(type_name: str) -> Any:
     """The SQLAlchemy generic type for an IR name (or a native spelling, normalized via ``to_ir``).
     This is the write face's IR → SQLAlchemy mapping; it renders per-dialect at DDL time."""
     return _IR_TO_SA[to_ir(type_name)]
+
+
+def to_physical(type_name: str, dialect_name: str) -> str:
+    """Render an IR (or native) type as a platform's PHYSICAL column type — the IR → native
+    equivalence (REQ-846). ``dialect_name`` is a SQLAlchemy dialect (postgresql, mysql, sqlite, …);
+    the equivalence comes free from SQLAlchemy's own dialect compiler, so there is no hand-maintained
+    per-platform table to drift. e.g. ``to_physical("text","mysql")`` → ``TEXT``; ``to_physical(
+    "timestamp","mysql")`` → ``DATETIME``. This is the engine edge of the type hub: sources map
+    native→IR (``to_ir``); engines map IR→their physical type (here); the store maps IR→SQLAlchemy."""
+    from sqlalchemy.dialects import registry
+
+    dialect = registry.load(dialect_name)()
+    return to_sqlalchemy(type_name)().compile(dialect=dialect)
