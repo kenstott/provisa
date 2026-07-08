@@ -12,9 +12,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
-import pytest
 
 from provisa.api.admin.dev_queries import EnforcementMetadata, _build_enforcement_metadata
 from provisa.compiler.rls import RLSContext
@@ -30,6 +27,7 @@ from provisa.security.masking import MaskingRule, MaskType
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _table_meta(table_id: int = 1, table_name: str = "orders") -> TableMeta:
     return TableMeta(
@@ -48,7 +46,8 @@ def _compiled(root_field: str = "orders", columns: list[ColumnRef] | None = None
         sql="SELECT id FROM orders",
         params=[],
         root_field=root_field,
-        columns=columns or [
+        columns=columns
+        or [
             ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
         ],
         sources={"pg"},
@@ -68,6 +67,7 @@ def _rls(rules: dict | None = None) -> RLSContext:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestEnforcementMetadataFields:
     def test_enforcement_metadata_fields(self):

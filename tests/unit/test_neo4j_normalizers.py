@@ -18,7 +18,6 @@ from provisa.api_source.normalizers import (
     neo4j_graph_rels,
     neo4j_legacy_cypher,
     neo4j_query_v2,
-    neo4j_tabular,
 )
 
 
@@ -94,8 +93,16 @@ class TestNeo4jGraphNodes:
                         {
                             "graph": {
                                 "nodes": [
-                                    {"id": "1", "labels": ["Person"], "properties": {"name": "Alice"}},
-                                    {"id": "2", "labels": ["Person"], "properties": {"name": "Bob"}},
+                                    {
+                                        "id": "1",
+                                        "labels": ["Person"],
+                                        "properties": {"name": "Alice"},
+                                    },
+                                    {
+                                        "id": "2",
+                                        "labels": ["Person"],
+                                        "properties": {"name": "Bob"},
+                                    },
                                 ],
                                 "relationships": [],
                             }
@@ -127,7 +134,9 @@ class TestNeo4jGraphNodes:
 
     def test_no_nodes_in_graph(self):
         response = {
-            "results": [{"columns": ["n"], "data": [{"graph": {"nodes": [], "relationships": []}}]}],
+            "results": [
+                {"columns": ["n"], "data": [{"graph": {"nodes": [], "relationships": []}}]}
+            ],
             "errors": [],
         }
         assert neo4j_graph_nodes(response) == []
@@ -188,9 +197,7 @@ class TestNeo4jGraphRels:
             "errors": [],
         }
         rows = neo4j_graph_rels(response)
-        assert rows == [
-            {"_id": "9", "_type": "KNOWS", "_start": "1", "_end": "2", "since": 2020}
-        ]
+        assert rows == [{"_id": "9", "_type": "KNOWS", "_start": "1", "_end": "2", "since": 2020}]
 
     def test_no_properties(self):
         response = {
@@ -202,7 +209,13 @@ class TestNeo4jGraphRels:
                             "graph": {
                                 "nodes": [],
                                 "relationships": [
-                                    {"id": "5", "type": "HAS", "startNode": "1", "endNode": "3", "properties": {}},
+                                    {
+                                        "id": "5",
+                                        "type": "HAS",
+                                        "startNode": "1",
+                                        "endNode": "3",
+                                        "properties": {},
+                                    },
                                 ],
                             }
                         }
@@ -247,9 +260,7 @@ class TestNeo4jQueryV2:
         response = {
             "data": {
                 "fields": ["person"],
-                "values": [
-                    [{"labels": ["Person"], "properties": {"name": "Phil", "age": 40}}]
-                ],
+                "values": [[{"labels": ["Person"], "properties": {"name": "Phil", "age": 40}}]],
             }
         }
         rows = neo4j_query_v2(response)
@@ -285,7 +296,13 @@ class TestNeo4jQueryV2:
 
 class TestGetNormalizerRegistry:
     def test_all_neo4j_normalizers_registered(self):
-        for name in ("neo4j_tabular", "neo4j_legacy_cypher", "neo4j_graph_nodes", "neo4j_graph_rels", "neo4j_query_v2"):
+        for name in (
+            "neo4j_tabular",
+            "neo4j_legacy_cypher",
+            "neo4j_graph_nodes",
+            "neo4j_graph_rels",
+            "neo4j_query_v2",
+        ):
             fn = get_normalizer(name)
             assert callable(fn)
 

@@ -6,8 +6,6 @@
 
 """Unit tests for ingest router helpers (path extraction, row building)."""
 
-import pytest
-
 from provisa.ingest.router import _extract_row
 
 

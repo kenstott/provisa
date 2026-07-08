@@ -27,7 +27,6 @@ from provisa.core.models import (
     ProvisaConfig,
     RLSRule,
     Role,
-    Source,
     flatten_roles,
 )
 
@@ -35,6 +34,7 @@ from provisa.core.models import (
 # ---------------------------------------------------------------------------
 # Minimal valid building blocks
 # ---------------------------------------------------------------------------
+
 
 def _minimal_source(source_id: str = "pg-src") -> dict:
     return {
@@ -85,6 +85,7 @@ def _minimal_config(**overrides) -> dict:
 # ---------------------------------------------------------------------------
 # TestMissingRequiredTopLevelFields
 # ---------------------------------------------------------------------------
+
 
 class TestMissingRequiredTopLevelFields:
     """parse_config_dict must raise when any of the four required list fields
@@ -138,6 +139,7 @@ class TestMissingRequiredTopLevelFields:
 # TestInvalidSourceType
 # ---------------------------------------------------------------------------
 
+
 class TestInvalidSourceType:
     """Source.type must be a valid SourceType enum member.
     test_models.py covers Source directly; here we test via parse_config_dict
@@ -145,41 +147,53 @@ class TestInvalidSourceType:
     """
 
     def test_unknown_connector_type_in_config_dict_raises(self):
-        data = _minimal_config(sources=[{
-            "id": "bad-src",
-            "type": "fakedb",
-            "host": "localhost",
-            "port": 5432,
-            "database": "d",
-            "username": "u",
-            "password": "p",
-        }])
+        data = _minimal_config(
+            sources=[
+                {
+                    "id": "bad-src",
+                    "type": "fakedb",
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "d",
+                    "username": "u",
+                    "password": "p",
+                }
+            ]
+        )
         with pytest.raises(ValidationError):
             parse_config_dict(data)
 
     def test_numeric_type_value_raises(self):
-        data = _minimal_config(sources=[{
-            "id": "numeric-src",
-            "type": 42,
-            "host": "localhost",
-            "port": 5432,
-            "database": "d",
-            "username": "u",
-            "password": "p",
-        }])
+        data = _minimal_config(
+            sources=[
+                {
+                    "id": "numeric-src",
+                    "type": 42,
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "d",
+                    "username": "u",
+                    "password": "p",
+                }
+            ]
+        )
         with pytest.raises(ValidationError):
             parse_config_dict(data)
 
     def test_empty_string_type_raises(self):
-        data = _minimal_config(sources=[{
-            "id": "empty-type-src",
-            "type": "",
-            "host": "localhost",
-            "port": 5432,
-            "database": "d",
-            "username": "u",
-            "password": "p",
-        }])
+        data = _minimal_config(
+            sources=[
+                {
+                    "id": "empty-type-src",
+                    "type": "",
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "d",
+                    "username": "u",
+                    "password": "p",
+                }
+            ]
+        )
         with pytest.raises(ValidationError):
             parse_config_dict(data)
 
@@ -188,60 +202,77 @@ class TestInvalidSourceType:
 # TestSourceIdValidation
 # ---------------------------------------------------------------------------
 
+
 class TestSourceIdValidation:
     """Source.id is restricted to ^[a-zA-Z][a-zA-Z0-9_-]*$ by a field_validator.
     Not tested via parse_config_dict in any existing file.
     """
 
     def test_source_id_starting_with_digit_raises(self):
-        data = _minimal_config(sources=[{
-            "id": "1invalid",
-            "type": "postgresql",
-            "host": "localhost",
-            "port": 5432,
-            "database": "d",
-            "username": "u",
-            "password": "p",
-        }])
+        data = _minimal_config(
+            sources=[
+                {
+                    "id": "1invalid",
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "d",
+                    "username": "u",
+                    "password": "p",
+                }
+            ]
+        )
         with pytest.raises(ValidationError, match="Source id"):
             parse_config_dict(data)
 
     def test_source_id_with_space_raises(self):
-        data = _minimal_config(sources=[{
-            "id": "has space",
-            "type": "postgresql",
-            "host": "localhost",
-            "port": 5432,
-            "database": "d",
-            "username": "u",
-            "password": "p",
-        }])
+        data = _minimal_config(
+            sources=[
+                {
+                    "id": "has space",
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "d",
+                    "username": "u",
+                    "password": "p",
+                }
+            ]
+        )
         with pytest.raises(ValidationError, match="Source id"):
             parse_config_dict(data)
 
     def test_source_id_with_dot_raises(self):
-        data = _minimal_config(sources=[{
-            "id": "src.name",
-            "type": "postgresql",
-            "host": "localhost",
-            "port": 5432,
-            "database": "d",
-            "username": "u",
-            "password": "p",
-        }])
+        data = _minimal_config(
+            sources=[
+                {
+                    "id": "src.name",
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "d",
+                    "username": "u",
+                    "password": "p",
+                }
+            ]
+        )
         with pytest.raises(ValidationError, match="Source id"):
             parse_config_dict(data)
 
     def test_valid_source_id_with_hyphens_and_underscores_parses(self):
-        data = _minimal_config(sources=[{
-            "id": "my-pg_source",
-            "type": "postgresql",
-            "host": "localhost",
-            "port": 5432,
-            "database": "d",
-            "username": "u",
-            "password": "p",
-        }])
+        data = _minimal_config(
+            sources=[
+                {
+                    "id": "my-pg_source",
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "d",
+                    "username": "u",
+                    "password": "p",
+                }
+            ]
+        )
         config = parse_config_dict(data)
         assert config.sources[0].id == "my-pg_source"
 
@@ -249,6 +280,7 @@ class TestSourceIdValidation:
 # ---------------------------------------------------------------------------
 # TestRLSFilterField
 # ---------------------------------------------------------------------------
+
 
 class TestRLSFilterField:
     """RLSRule.filter is a plain str with no Pydantic validator.
@@ -280,11 +312,15 @@ class TestRLSFilterField:
         assert rule.filter == ""
 
     def test_rls_rule_filter_via_parse_config_dict(self):
-        data = _minimal_config(rls_rules=[{
-            "table_id": "orders",
-            "role_id": "analyst",
-            "filter": "user_id = current_user_id()",
-        }])
+        data = _minimal_config(
+            rls_rules=[
+                {
+                    "table_id": "orders",
+                    "role_id": "analyst",
+                    "filter": "user_id = current_user_id()",
+                }
+            ]
+        )
         config = parse_config_dict(data)
         assert len(config.rls_rules) == 1
         assert config.rls_rules[0].filter == "user_id = current_user_id()"
@@ -298,6 +334,7 @@ class TestRLSFilterField:
 # ---------------------------------------------------------------------------
 # TestColumnPresetFields
 # ---------------------------------------------------------------------------
+
 
 class TestColumnPresetFields:
     """ColumnPreset.source is a plain str (no enum validator).
@@ -356,6 +393,7 @@ class TestColumnPresetFields:
 # TestRoleSelfReference
 # ---------------------------------------------------------------------------
 
+
 class TestRoleSelfReference:
     """Role.parent_role_id is str | None with no self-reference guard in the model.
 
@@ -376,12 +414,16 @@ class TestRoleSelfReference:
         assert role.parent_role_id == role.id
 
     def test_self_referencing_role_via_parse_config_dict_parses(self):
-        data = _minimal_config(roles=[{
-            "id": "loop-role",
-            "capabilities": ["read"],
-            "domain_access": ["d1"],
-            "parent_role_id": "loop-role",
-        }])
+        data = _minimal_config(
+            roles=[
+                {
+                    "id": "loop-role",
+                    "capabilities": ["read"],
+                    "domain_access": ["d1"],
+                    "parent_role_id": "loop-role",
+                }
+            ]
+        )
         config = parse_config_dict(data)
         assert config.roles[0].parent_role_id == "loop-role"
 
@@ -390,6 +432,7 @@ class TestRoleSelfReference:
         infinite recursion.  RecursionError (or a stack overflow) is expected.
         """
         import sys
+
         role = Role(
             id="loop",
             capabilities=["read"],
@@ -409,6 +452,7 @@ class TestRoleSelfReference:
 # TestDuplicateSourceIds
 # ---------------------------------------------------------------------------
 
+
 class TestDuplicateSourceIds:
     """Two Source entries with the same id are NOT rejected by Pydantic.
 
@@ -418,28 +462,32 @@ class TestDuplicateSourceIds:
     """
 
     def test_duplicate_source_ids_both_parse_into_sources_list(self):
-        data = _minimal_config(sources=[
-            _minimal_source("dup-src"),
-            {
-                "id": "dup-src",
-                "type": "mysql",
-                "host": "other-host",
-                "port": 3306,
-                "database": "d2",
-                "username": "u2",
-                "password": "p2",
-            },
-        ])
+        data = _minimal_config(
+            sources=[
+                _minimal_source("dup-src"),
+                {
+                    "id": "dup-src",
+                    "type": "mysql",
+                    "host": "other-host",
+                    "port": 3306,
+                    "database": "d2",
+                    "username": "u2",
+                    "password": "p2",
+                },
+            ]
+        )
         config = parse_config_dict(data)
         assert len(config.sources) == 2
         assert all(s.id == "dup-src" for s in config.sources)
 
     def test_duplicate_source_ids_preserves_insertion_order(self):
-        data = _minimal_config(sources=[
-            _minimal_source("first"),
-            _minimal_source("second"),
-            _minimal_source("first"),  # duplicate
-        ])
+        data = _minimal_config(
+            sources=[
+                _minimal_source("first"),
+                _minimal_source("second"),
+                _minimal_source("first"),  # duplicate
+            ]
+        )
         config = parse_config_dict(data)
         ids = [s.id for s in config.sources]
         assert ids == ["first", "second", "first"]
@@ -448,6 +496,7 @@ class TestDuplicateSourceIds:
 # ---------------------------------------------------------------------------
 # TestValidMinimalConfig
 # ---------------------------------------------------------------------------
+
 
 class TestValidMinimalConfig:
     """A config with the bare minimum fields must parse completely without error."""
@@ -481,14 +530,18 @@ class TestValidMinimalConfig:
     def test_minimal_config_all_valid_source_types_parse(self):
         """Spot-check a variety of valid SourceType values through parse_config_dict."""
         for src_type in ("mysql", "snowflake", "bigquery", "clickhouse", "mongodb"):
-            data = _minimal_config(sources=[{
-                "id": "src-a",
-                "type": src_type,
-                "host": "host",
-                "port": 5432,
-                "database": "db",
-                "username": "u",
-                "password": "p",
-            }])
+            data = _minimal_config(
+                sources=[
+                    {
+                        "id": "src-a",
+                        "type": src_type,
+                        "host": "host",
+                        "port": 5432,
+                        "database": "db",
+                        "username": "u",
+                        "password": "p",
+                    }
+                ]
+            )
             config = parse_config_dict(data)
             assert config.sources[0].type.value == src_type

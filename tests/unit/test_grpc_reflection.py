@@ -28,7 +28,7 @@ import pytest
 
 reflection = pytest.importorskip("grpc_reflection.v1alpha.reflection")
 
-from provisa.grpc.reflection import enable_reflection
+from provisa.grpc.reflection import enable_reflection  # noqa: E402
 
 
 def _mock_server() -> MagicMock:

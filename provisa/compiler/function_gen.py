@@ -34,13 +34,13 @@ from graphql import (
     GraphQLString as _GraphQLString,
 )
 
+from provisa.compiler.type_map import BigInt, Date, DateTime, JSONScalar
+from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
+
 GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
 GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
 GraphQLFloat: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLFloat)
 GraphQLBoolean: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLBoolean)
-
-from provisa.compiler.type_map import BigInt, Date, DateTime, JSONScalar
-from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
 
 # Map config type names to GraphQL scalars
 _SCALAR_MAP: dict[str, GraphQLScalarType] = {
@@ -73,14 +73,17 @@ def _build_args(arguments: list[FunctionArgument]) -> dict[str, GraphQLArgument]
 
 
 def _build_inline_return_type(
-    name: str, fields: list[InlineType],
+    name: str,
+    fields: list[InlineType],
 ) -> GraphQLObjectType:
     """Build a GraphQL object type from inline type definitions."""
     gql_fields: dict[str, GraphQLField] = {}
     for f in fields:
         scalar = _resolve_scalar(f.type)
         gql_fields[f.name] = GraphQLField(scalar)
-    return cast(GraphQLObjectType, GraphQLObjectType(f"{name}Result", lambda fields=gql_fields: fields))
+    return cast(
+        GraphQLObjectType, GraphQLObjectType(f"{name}Result", lambda fields=gql_fields: fields)
+    )
 
 
 def build_function_mutations(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-210, REQ-211, REQ-304, REQ-305, REQ-306, REQ-360, REQ-361, REQ-362
@@ -135,9 +138,7 @@ def build_function_mutations(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, RE
         # Resolve return type: table-backed or inline
         wh_return_type: GraphQLOutputType
         if wh.returns and wh.returns in table_gql_types:
-            wh_return_type = GraphQLList(
-                GraphQLNonNull(table_gql_types[wh.returns])
-            )
+            wh_return_type = GraphQLList(GraphQLNonNull(table_gql_types[wh.returns]))
         elif wh.inline_return_type:
             inline_type = _build_inline_return_type(wh.name, wh.inline_return_type)
             wh_return_type = inline_type
@@ -156,15 +157,14 @@ def build_function_mutations(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, RE
     return mutation_fields
 
 
-def build_function_sql(func: Function, arg_values: list) -> tuple[str, list]:  # REQ-205, REQ-208, REQ-211
+def build_function_sql(
+    func: Function, arg_values: list
+) -> tuple[str, list]:  # REQ-205, REQ-208, REQ-211
     """Build SQL for a tracked function call.
 
     Returns (sql, params) tuple.
     Example: SELECT * FROM "public"."process_order"($1, $2)
     """
     placeholders = ", ".join(f"${i + 1}" for i in range(len(arg_values)))
-    sql = (
-        f'SELECT * FROM "{func.schema_name}"."{func.function_name}"'
-        f"({placeholders})"
-    )
+    sql = f'SELECT * FROM "{func.schema_name}"."{func.function_name}"({placeholders})'
     return sql, list(arg_values)

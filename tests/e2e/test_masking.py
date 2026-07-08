@@ -28,7 +28,6 @@ from provisa.security.masking import (
     MaskType,
     MaskingRule,
     MaskingValidationError,
-    build_mask_expression,
     validate_masking_rule,
 )
 
@@ -77,7 +76,8 @@ class TestAdminSeesRawData:
     def test_admin_email_unmasked(self):
         compiled = CompiledQuery(
             sql='SELECT "email", "name" FROM "public"."customers"',
-            params=[], root_field="customers",
+            params=[],
+            root_field="customers",
             columns=[
                 ColumnRef(alias=None, column="email", field_name="email", nested_in=None),
                 ColumnRef(alias=None, column="name", field_name="name", nested_in=None),
@@ -85,14 +85,18 @@ class TestAdminSeesRawData:
             sources={"pg"},
         )
         ctx = CompilationContext()
-        ctx.tables = {"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        ctx.tables = {
+            "customers": _meta(table_id=2, field_name="customers", table_name="customers")
+        }
         ctx.joins = {}
 
         # Analyst has masking, admin does not
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (
-                    MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"),
+                    MaskingRule(
+                        mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"
+                    ),
                     "varchar",
                 ),
             }
@@ -109,7 +113,8 @@ class TestAnalystRegexMasking:
     def test_analyst_email_regex_masked(self):
         compiled = CompiledQuery(
             sql='SELECT "email", "region" FROM "public"."customers"',
-            params=[], root_field="customers",
+            params=[],
+            root_field="customers",
             columns=[
                 ColumnRef(alias=None, column="email", field_name="email", nested_in=None),
                 ColumnRef(alias=None, column="region", field_name="region", nested_in=None),
@@ -117,13 +122,17 @@ class TestAnalystRegexMasking:
             sources={"pg"},
         )
         ctx = CompilationContext()
-        ctx.tables = {"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        ctx.tables = {
+            "customers": _meta(table_id=2, field_name="customers", table_name="customers")
+        }
         ctx.joins = {}
 
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (
-                    MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"),
+                    MaskingRule(
+                        mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"
+                    ),
                     "varchar",
                 ),
             }
@@ -138,20 +147,25 @@ class TestAnalystRegexMasking:
     def test_analyst_name_initials_masked(self):
         compiled = CompiledQuery(
             sql='SELECT "name" FROM "public"."customers"',
-            params=[], root_field="customers",
+            params=[],
+            root_field="customers",
             columns=[
                 ColumnRef(alias=None, column="name", field_name="name", nested_in=None),
             ],
             sources={"pg"},
         )
         ctx = CompilationContext()
-        ctx.tables = {"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        ctx.tables = {
+            "customers": _meta(table_id=2, field_name="customers", table_name="customers")
+        }
         ctx.joins = {}
 
         rules: MaskingRules = {
             (2, "analyst"): {
                 "name": (
-                    MaskingRule(mask_type=MaskType.regex, pattern="^(.).* (.).*$", replace="$1. $2."),
+                    MaskingRule(
+                        mask_type=MaskType.regex, pattern="^(.).* (.).*$", replace="$1. $2."
+                    ),
                     "varchar",
                 ),
             }
@@ -167,14 +181,17 @@ class TestMaskedViewerConstantMasking:
     def test_email_constant_masked(self):
         compiled = CompiledQuery(
             sql='SELECT "email" FROM "public"."customers"',
-            params=[], root_field="customers",
+            params=[],
+            root_field="customers",
             columns=[
                 ColumnRef(alias=None, column="email", field_name="email", nested_in=None),
             ],
             sources={"pg"},
         )
         ctx = CompilationContext()
-        ctx.tables = {"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        ctx.tables = {
+            "customers": _meta(table_id=2, field_name="customers", table_name="customers")
+        }
         ctx.joins = {}
 
         rules: MaskingRules = {
@@ -195,7 +212,8 @@ class TestNumericConstantMasking:
     def test_amount_masked_to_zero(self):
         compiled = CompiledQuery(
             sql='SELECT "t0"."amount" FROM "public"."orders" "t0"',
-            params=[], root_field="orders",
+            params=[],
+            root_field="orders",
             columns=[
                 ColumnRef(alias="t0", column="amount", field_name="amount", nested_in=None),
             ],
@@ -223,7 +241,8 @@ class TestDateTruncateMasking:
     def test_created_at_truncated(self):
         compiled = CompiledQuery(
             sql='SELECT "t0"."created_at" FROM "public"."orders" "t0"',
-            params=[], root_field="orders",
+            params=[],
+            root_field="orders",
             columns=[
                 ColumnRef(alias="t0", column="created_at", field_name="created_at", nested_in=None),
             ],
@@ -261,13 +280,17 @@ class TestFilterOnMaskedColumn:
             sources={"pg"},
         )
         ctx = CompilationContext()
-        ctx.tables = {"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        ctx.tables = {
+            "customers": _meta(table_id=2, field_name="customers", table_name="customers")
+        }
         ctx.joins = {}
 
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (
-                    MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"),
+                    MaskingRule(
+                        mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"
+                    ),
                     "varchar",
                 ),
             }
@@ -287,7 +310,8 @@ class TestJoinedTableMasking:
         ctx = _ctx_with_customers_and_orders()
         compiled = CompiledQuery(
             sql='SELECT "t0"."id", "t1"."email" FROM "public"."orders" "t0" LEFT JOIN "public"."customers" "t1" ON "t0"."customer_id" = "t1"."id"',
-            params=[], root_field="orders",
+            params=[],
+            root_field="orders",
             columns=[
                 ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
                 ColumnRef(alias="t1", column="email", field_name="email", nested_in="customers"),
@@ -297,7 +321,9 @@ class TestJoinedTableMasking:
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (
-                    MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"),
+                    MaskingRule(
+                        mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"
+                    ),
                     "varchar",
                 ),
             }
@@ -315,20 +341,25 @@ class TestDifferentMasksPerRole:
     def test_analyst_gets_regex_viewer_gets_constant(self):
         compiled = CompiledQuery(
             sql='SELECT "email" FROM "public"."customers"',
-            params=[], root_field="customers",
+            params=[],
+            root_field="customers",
             columns=[
                 ColumnRef(alias=None, column="email", field_name="email", nested_in=None),
             ],
             sources={"pg"},
         )
         ctx = CompilationContext()
-        ctx.tables = {"customers": _meta(table_id=2, field_name="customers", table_name="customers")}
+        ctx.tables = {
+            "customers": _meta(table_id=2, field_name="customers", table_name="customers")
+        }
         ctx.joins = {}
 
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (
-                    MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"),
+                    MaskingRule(
+                        mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2"
+                    ),
                     "varchar",
                 ),
             },

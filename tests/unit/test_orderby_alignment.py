@@ -17,7 +17,6 @@ asc_nulls_last, desc_nulls_first, desc_nulls_last.
 Column names in order_by enum values must preserve original case (REQ-157).
 """
 
-import pytest
 from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
@@ -32,8 +31,11 @@ def _col(name, data_type="varchar(100)", nullable=False):
 def _build(role_id="admin"):
     tables = [
         {
-            "id": 1, "source_id": "sales-pg", "domain_id": "sales",
-            "schema_name": "public", "table_name": "orders",
+            "id": 1,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "orders",
             "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin", "analyst"]},
@@ -54,7 +56,9 @@ def _build(role_id="admin"):
         ],
     }
     si = SchemaInput(
-        tables=tables, relationships=[], column_types=col_types,
+        tables=tables,
+        relationships=[],
+        column_types=col_types,
         naming_rules=[],
         role={"id": role_id, "capabilities": ["admin"], "domain_access": ["*"]},
         domains=[{"id": "sales", "description": "Sales"}],
@@ -66,7 +70,7 @@ def _build(role_id="admin"):
 class TestOrderByAsc:
     def test_asc_produces_order_by(self):
         schema, ctx = _build()
-        doc = parse('{ orders(order_by: { amount: asc }) { id amount } }')
+        doc = parse("{ orders(order_by: { amount: asc }) { id amount } }")
         assert not validate(schema, doc)
         result = compile_query(doc, ctx)[0]
         assert "ORDER BY" in result.sql
@@ -74,7 +78,7 @@ class TestOrderByAsc:
 
     def test_asc_column_name_present(self):
         schema, ctx = _build()
-        doc = parse('{ orders(order_by: { amount: asc }) { id amount } }')
+        doc = parse("{ orders(order_by: { amount: asc }) { id amount } }")
         assert not validate(schema, doc)
         result = compile_query(doc, ctx)[0]
         assert '"amount"' in result.sql
@@ -83,7 +87,7 @@ class TestOrderByAsc:
 class TestOrderByDesc:
     def test_desc_produces_order_by(self):
         schema, ctx = _build()
-        doc = parse('{ orders(order_by: { amount: desc }) { id amount } }')
+        doc = parse("{ orders(order_by: { amount: desc }) { id amount } }")
         assert not validate(schema, doc)
         result = compile_query(doc, ctx)[0]
         assert "ORDER BY" in result.sql
@@ -91,7 +95,7 @@ class TestOrderByDesc:
 
     def test_desc_does_not_contain_asc(self):
         schema, ctx = _build()
-        doc = parse('{ orders(order_by: { amount: desc }) { id amount } }')
+        doc = parse("{ orders(order_by: { amount: desc }) { id amount } }")
         assert not validate(schema, doc)
         result = compile_query(doc, ctx)[0]
         # DESC direction should not fall back to ASC
@@ -104,7 +108,7 @@ class TestOrderByDesc:
 class TestOrderByNullsDirections:
     def test_asc_nulls_first(self):
         schema, ctx = _build()
-        doc = parse('{ orders(order_by: { amount: asc_nulls_first }) { id amount } }')
+        doc = parse("{ orders(order_by: { amount: asc_nulls_first }) { id amount } }")
         assert not validate(schema, doc)
         result = compile_query(doc, ctx)[0]
         sql_upper = result.sql.upper()
@@ -113,7 +117,7 @@ class TestOrderByNullsDirections:
 
     def test_asc_nulls_last(self):
         schema, ctx = _build()
-        doc = parse('{ orders(order_by: { amount: asc_nulls_last }) { id amount } }')
+        doc = parse("{ orders(order_by: { amount: asc_nulls_last }) { id amount } }")
         assert not validate(schema, doc)
         result = compile_query(doc, ctx)[0]
         sql_upper = result.sql.upper()
@@ -121,7 +125,7 @@ class TestOrderByNullsDirections:
 
     def test_desc_nulls_first(self):
         schema, ctx = _build()
-        doc = parse('{ orders(order_by: { amount: desc_nulls_first }) { id amount } }')
+        doc = parse("{ orders(order_by: { amount: desc_nulls_first }) { id amount } }")
         assert not validate(schema, doc)
         result = compile_query(doc, ctx)[0]
         sql_upper = result.sql.upper()
@@ -130,7 +134,7 @@ class TestOrderByNullsDirections:
 
     def test_desc_nulls_last(self):
         schema, ctx = _build()
-        doc = parse('{ orders(order_by: { amount: desc_nulls_last }) { id amount } }')
+        doc = parse("{ orders(order_by: { amount: desc_nulls_last }) { id amount } }")
         assert not validate(schema, doc)
         result = compile_query(doc, ctx)[0]
         sql_upper = result.sql.upper()
@@ -196,7 +200,7 @@ class TestOrderByColumnCasePreservation:
 
     def test_mixedcase_column_preserved(self):
         schema, ctx = _build()
-        doc = parse('{ orders(order_by: { mixedCase: asc }) { id mixedCase } }')
+        doc = parse("{ orders(order_by: { mixedCase: asc }) { id mixedCase } }")
         assert not validate(schema, doc)
         result = compile_query(doc, ctx)[0]
         # Column name must appear in ORDER BY with original case
@@ -208,7 +212,7 @@ class TestOrderByWithPagination:
 
     def test_order_by_with_limit(self):
         schema, ctx = _build()
-        doc = parse('{ orders(order_by: { id: asc }, limit: 10) { id } }')
+        doc = parse("{ orders(order_by: { id: asc }, limit: 10) { id } }")
         assert not validate(schema, doc)
         result = compile_query(doc, ctx)[0]
         sql_upper = result.sql.upper()
@@ -217,7 +221,7 @@ class TestOrderByWithPagination:
 
     def test_order_by_with_offset(self):
         schema, ctx = _build()
-        doc = parse('{ orders(order_by: { id: desc }, limit: 5, offset: 20) { id } }')
+        doc = parse("{ orders(order_by: { id: desc }, limit: 5, offset: 20) { id } }")
         assert not validate(schema, doc)
         result = compile_query(doc, ctx)[0]
         sql_upper = result.sql.upper()

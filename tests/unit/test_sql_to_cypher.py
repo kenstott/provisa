@@ -22,6 +22,7 @@ from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
 # Minimal stubs for CompilationContext / TableMeta
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class _TableMeta:
     table_id: int
@@ -47,9 +48,13 @@ class _Ctx:
 def _make_simple_ctx_and_label_map():
     """Single table, no domain prefix in field_name."""
     meta = _TableMeta(
-        table_id=1, field_name="persons", type_name="Person",
-        source_id="pg-main", catalog_name="postgresql",
-        schema_name="public", table_name="persons",
+        table_id=1,
+        field_name="persons",
+        type_name="Person",
+        source_id="pg-main",
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
         domain_id="public",
     )
     ctx = _Ctx(
@@ -57,10 +62,17 @@ def _make_simple_ctx_and_label_map():
         aggregate_columns={1: [("id", "integer"), ("name", "varchar")]},
     )
     node = NodeMapping(
-        label="Person", type_name="Person", domain_label=None,
-        table_label="Person", table_id=1, source_id="pg-main",
-        id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="persons",
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
         properties={"id": "id", "name": "name"},
     )
     lm = CypherLabelMap(nodes={"Person": node}, relationships={})
@@ -75,9 +87,13 @@ def _make_prefixed_ctx_and_label_map():
     ("sales_analytics", "sa__orders").
     """
     meta = _TableMeta(
-        table_id=2, field_name="sa__orders", type_name="Sa_Orders",
-        source_id="pg-main", catalog_name="postgresql",
-        schema_name="sales_analytics", table_name="sa_orders",
+        table_id=2,
+        field_name="sa__orders",
+        type_name="Sa_Orders",
+        source_id="pg-main",
+        catalog_name="postgresql",
+        schema_name="sales_analytics",
+        table_name="sa_orders",
         domain_id="sales_analytics",
     )
     ctx = _Ctx(
@@ -85,10 +101,16 @@ def _make_prefixed_ctx_and_label_map():
         aggregate_columns={2: [("id", "integer"), ("amount", "float")]},
     )
     node = NodeMapping(
-        label="SalesAnalytics:Orders", type_name="Sa_Orders",
-        domain_label="SalesAnalytics", table_label="Orders",
-        table_id=2, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="sales_analytics",
+        label="SalesAnalytics:Orders",
+        type_name="Sa_Orders",
+        domain_label="SalesAnalytics",
+        table_label="Orders",
+        table_id=2,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="sales_analytics",
         table_name="orders",
         properties={"id": "id", "amount": "amount"},
     )
@@ -99,6 +121,7 @@ def _make_prefixed_ctx_and_label_map():
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestSimpleTable:
     def test_simple_select_produces_match(self):
@@ -185,9 +208,13 @@ class TestTraversalOnlyNode:
     def _make_ctx_and_label_map(self):
         # ctx only contains the 'pets' table — user has access to it
         pets_meta = _TableMeta(
-            table_id=1, field_name="pets", type_name="Pets",
-            source_id="pg-main", catalog_name="postgresql",
-            schema_name="public", table_name="pets",
+            table_id=1,
+            field_name="pets",
+            type_name="Pets",
+            source_id="pg-main",
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="pets",
             domain_id="public",
         )
         ctx = _Ctx(
@@ -195,18 +222,32 @@ class TestTraversalOnlyNode:
             aggregate_columns={1: [("id", "integer"), ("name", "varchar")]},
         )
         pets_node = NodeMapping(
-            label="Pets", type_name="Pets", domain_label=None,
-            table_label="Pets", table_id=1, source_id="pg-main",
-            id_column="id", pk_columns=[],
-            catalog_name="postgresql", schema_name="public", table_name="pets",
+            label="Pets",
+            type_name="Pets",
+            domain_label=None,
+            table_label="Pets",
+            table_id=1,
+            source_id="pg-main",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="pets",
             properties={"id": "id", "name": "name"},
         )
         # Traversal-only node for ops.spans — not in ctx.tables
         spans_node = NodeMapping(
-            label="Ops:Traces", type_name="Ops_Traces", domain_label="Ops",
-            table_label="Traces", table_id=99, source_id="ops",
-            id_column="span_id", pk_columns=[],
-            catalog_name="ops", schema_name="ops", table_name="spans",
+            label="Ops:Traces",
+            type_name="Ops_Traces",
+            domain_label="Ops",
+            table_label="Traces",
+            table_id=99,
+            source_id="ops",
+            id_column="span_id",
+            pk_columns=[],
+            catalog_name="ops",
+            schema_name="ops",
+            table_name="spans",
             properties={"serviceName": "service_name", "spanId": "span_id"},
             traversal_only=True,
             domain_id="ops",
@@ -309,7 +350,9 @@ class TestTraversalOnlyNode:
         )
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None
-        assert "collect(" in result, f"Expected collect() in CALL subquery to avoid cartesian product: {result}"
+        assert "collect(" in result, (
+            f"Expected collect() in CALL subquery to avoid cartesian product: {result}"
+        )
         # Per-property collect: list comprehensions replaced by direct list var references (issue #49)
         assert "_list AS " in result, f"Expected per-property list var in RETURN: {result}"
         assert "OPTIONAL MATCH" not in result.split("CALL")[0].lstrip("MATCH"), (
@@ -329,12 +372,13 @@ class TestTraversalOnlyNode:
         assert result is not None
         # collect(b) would be ARRAY_AGG(table_alias) — invalid in Trino
         import re
-        bare_collect = re.search(r'\bcollect\s*\(\s*[a-z]\s*\)', result)
+
+        bare_collect = re.search(r"\bcollect\s*\(\s*[a-z]\s*\)", result)
         assert bare_collect is None, (
             f"Regression #49: collect() must not use bare node alias: {result}"
         )
         # collect(b.prop) is the correct form
-        assert re.search(r'\bcollect\s*\(\s*[a-z]\s*\.\s*\w+\s*\)', result), (
+        assert re.search(r"\bcollect\s*\(\s*[a-z]\s*\.\s*\w+\s*\)", result), (
             f"Regression #49: collect() must reference a property: {result}"
         )
 
@@ -344,25 +388,41 @@ class TestOneManyNonLateralJoin:
 
     def _make_ctx_and_label_map(self):
         pets_meta = _TableMeta(
-            table_id=1, field_name="pets", type_name="Pets",
-            source_id="pg-main", catalog_name="postgresql",
-            schema_name="public", table_name="pets",
+            table_id=1,
+            field_name="pets",
+            type_name="Pets",
+            source_id="pg-main",
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="pets",
             domain_id="public",
         )
         reg_tables_meta = _TableMeta(
-            table_id=2, field_name="registered_tables", type_name="RegisteredTables",
-            source_id="pg-main", catalog_name="postgresql",
-            schema_name="public", table_name="registered_tables",
+            table_id=2,
+            field_name="registered_tables",
+            type_name="RegisteredTables",
+            source_id="pg-main",
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="registered_tables",
             domain_id="public",
         )
         table_cols_meta = _TableMeta(
-            table_id=3, field_name="table_columns", type_name="TableColumns",
-            source_id="pg-main", catalog_name="postgresql",
-            schema_name="public", table_name="table_columns",
+            table_id=3,
+            field_name="table_columns",
+            type_name="TableColumns",
+            source_id="pg-main",
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="table_columns",
             domain_id="public",
         )
         ctx = _Ctx(
-            tables={"pets": pets_meta, "registered_tables": reg_tables_meta, "table_columns": table_cols_meta},
+            tables={
+                "pets": pets_meta,
+                "registered_tables": reg_tables_meta,
+                "table_columns": table_cols_meta,
+            },
             aggregate_columns={
                 1: [("id", "integer"), ("name", "varchar")],
                 2: [("id", "integer"), ("alias", "varchar"), ("schema_name", "varchar")],
@@ -370,23 +430,45 @@ class TestOneManyNonLateralJoin:
             },
         )
         pets_node = NodeMapping(
-            label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
-            table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
-            catalog_name="postgresql", schema_name="public", table_name="pets",
+            label="Pets",
+            type_name="Pets",
+            domain_label=None,
+            table_label="Pets",
+            table_id=1,
+            source_id="pg-main",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="pets",
             properties={"id": "id", "name": "name"},
         )
         reg_node = NodeMapping(
-            label="RegisteredTables", type_name="RegisteredTables", domain_label=None,
-            table_label="RegisteredTables", table_id=2, source_id="pg-main",
-            id_column="id", pk_columns=[],
-            catalog_name="postgresql", schema_name="public", table_name="registered_tables",
+            label="RegisteredTables",
+            type_name="RegisteredTables",
+            domain_label=None,
+            table_label="RegisteredTables",
+            table_id=2,
+            source_id="pg-main",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="registered_tables",
             properties={"id": "id", "alias": "alias", "schemaName": "schema_name"},
         )
         col_node = NodeMapping(
-            label="TableColumns", type_name="TableColumns", domain_label=None,
-            table_label="TableColumns", table_id=3, source_id="pg-main",
-            id_column="id", pk_columns=[],
-            catalog_name="postgresql", schema_name="public", table_name="table_columns",
+            label="TableColumns",
+            type_name="TableColumns",
+            domain_label=None,
+            table_label="TableColumns",
+            table_id=3,
+            source_id="pg-main",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="table_columns",
             properties={"id": "id", "columnName": "column_name", "isForeignKey": "is_foreign_key"},
         )
         has_table_rel = RelationshipMapping(
@@ -424,7 +506,7 @@ class TestOneManyNonLateralJoin:
             'FROM "public"."pets" '
             'LEFT JOIN "public"."registered_tables" ON "registered_tables"."table_id" = "pets"."id" '
             'LEFT JOIN "public"."table_columns" ON "table_columns"."table_id" = "registered_tables"."id" '
-            'LIMIT 1'
+            "LIMIT 1"
         )
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None
@@ -439,7 +521,7 @@ class TestOneManyNonLateralJoin:
             'SELECT "pets"."name", "registered_tables"."alias" '
             'FROM "public"."pets" '
             'LEFT JOIN "public"."registered_tables" ON "registered_tables"."table_id" = "pets"."id" '
-            'LIMIT 1'
+            "LIMIT 1"
         )
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None
@@ -454,7 +536,7 @@ class TestOneManyNonLateralJoin:
             'FROM "public"."pets" '
             'LEFT JOIN "public"."registered_tables" ON "registered_tables"."table_id" = "pets"."id" '
             'LEFT JOIN "public"."table_columns" ON "table_columns"."table_id" = "registered_tables"."id" '
-            'LIMIT 1'
+            "LIMIT 1"
         )
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None
@@ -476,21 +558,33 @@ class TestArrayAggChainedJoin:
 
     def _make_ctx_and_label_map(self):
         pets_meta = _TableMeta(
-            table_id=1, field_name="shelter__pets", type_name="Pets",
-            source_id="shelter-db", catalog_name="shelter",
-            schema_name="shelter", table_name="pets",
+            table_id=1,
+            field_name="shelter__pets",
+            type_name="Pets",
+            source_id="shelter-db",
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="pets",
             domain_id="shelter",
         )
         assignments_meta = _TableMeta(
-            table_id=2, field_name="shelter__assignments", type_name="Assignments",
-            source_id="shelter-db", catalog_name="shelter",
-            schema_name="shelter", table_name="assignments",
+            table_id=2,
+            field_name="shelter__assignments",
+            type_name="Assignments",
+            source_id="shelter-db",
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="assignments",
             domain_id="shelter",
         )
         employees_meta = _TableMeta(
-            table_id=3, field_name="shelter__employees", type_name="Employees",
-            source_id="shelter-db", catalog_name="shelter",
-            schema_name="shelter", table_name="employees",
+            table_id=3,
+            field_name="shelter__employees",
+            type_name="Employees",
+            source_id="shelter-db",
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="employees",
             domain_id="shelter",
         )
         ctx = _Ctx(
@@ -501,28 +595,55 @@ class TestArrayAggChainedJoin:
             },
             aggregate_columns={
                 1: [("id", "integer"), ("name", "varchar"), ("breed_name", "varchar")],
-                2: [("id", "integer"), ("pet_id", "integer"), ("employee_id", "integer"), ("breed_name", "varchar")],
+                2: [
+                    ("id", "integer"),
+                    ("pet_id", "integer"),
+                    ("employee_id", "integer"),
+                    ("breed_name", "varchar"),
+                ],
                 3: [("id", "integer"), ("last_name", "varchar")],
             },
         )
         pets_node = NodeMapping(
-            label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
-            table_id=1, source_id="shelter-db", id_column="id", pk_columns=[],
-            catalog_name="shelter", schema_name="shelter", table_name="pets",
+            label="Pets",
+            type_name="Pets",
+            domain_label=None,
+            table_label="Pets",
+            table_id=1,
+            source_id="shelter-db",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="pets",
             properties={"id": "id", "name": "name", "breedName": "breed_name"},
         )
         assignments_node = NodeMapping(
-            label="Assignments", type_name="Assignments", domain_label=None,
-            table_label="Assignments", table_id=2, source_id="shelter-db",
-            id_column="id", pk_columns=[],
-            catalog_name="shelter", schema_name="shelter", table_name="assignments",
+            label="Assignments",
+            type_name="Assignments",
+            domain_label=None,
+            table_label="Assignments",
+            table_id=2,
+            source_id="shelter-db",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="assignments",
             properties={"id": "id", "breedName": "breed_name"},
         )
         employees_node = NodeMapping(
-            label="Employees", type_name="Employees", domain_label=None,
-            table_label="Employees", table_id=3, source_id="shelter-db",
-            id_column="id", pk_columns=[],
-            catalog_name="shelter", schema_name="shelter", table_name="employees",
+            label="Employees",
+            type_name="Employees",
+            domain_label=None,
+            table_label="Employees",
+            table_id=3,
+            source_id="shelter-db",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="employees",
             properties={"id": "id", "lastName": "last_name"},
         )
         is_assignment_rel = RelationshipMapping(
@@ -556,7 +677,7 @@ class TestArrayAggChainedJoin:
         """ARRAY_AGG(t2.col) FROM t1 JOIN t2 must emit OPTIONAL MATCH for t1 and t2."""
         ctx, lm = self._make_ctx_and_label_map()
         sql = (
-            'SELECT t0.name, '
+            "SELECT t0.name, "
             '(SELECT ARRAY_AGG(t1.breed_name) FROM "shelter"."assignments" AS t1 WHERE t1.pet_id = t0.id) AS "assignment__breedName", '
             '(SELECT ARRAY_AGG(t2.last_name) FROM "shelter"."assignments" AS t1 JOIN "shelter"."employees" AS t2 ON t2.id = t1.employee_id WHERE t1.pet_id = t0.id) AS "assignment__employee__lastName" '
             'FROM "shelter"."pets" AS t0 LIMIT 100'
@@ -573,7 +694,7 @@ class TestArrayAggChainedJoin:
         """Both [:IS_ASSIGNMENT] and [:HAS_EMPLOYEE] must appear in the Cypher."""
         ctx, lm = self._make_ctx_and_label_map()
         sql = (
-            'SELECT t0.name, '
+            "SELECT t0.name, "
             '(SELECT ARRAY_AGG(t2.last_name) FROM "shelter"."assignments" AS t1 JOIN "shelter"."employees" AS t2 ON t2.id = t1.employee_id WHERE t1.pet_id = t0.id) AS "assignment__employee__lastName" '
             'FROM "shelter"."pets" AS t0 LIMIT 100'
         )
@@ -586,7 +707,7 @@ class TestArrayAggChainedJoin:
         """When both breedName and employee.lastName appear, Assignments OPTIONAL MATCH must appear once only."""
         ctx, lm = self._make_ctx_and_label_map()
         sql = (
-            'SELECT t0.name, '
+            "SELECT t0.name, "
             '(SELECT ARRAY_AGG(t1.breed_name) FROM "shelter"."assignments" AS t1 WHERE t1.pet_id = t0.id) AS "assignment__breedName", '
             '(SELECT ARRAY_AGG(t2.last_name) FROM "shelter"."assignments" AS t1 JOIN "shelter"."employees" AS t2 ON t2.id = t1.employee_id WHERE t1.pet_id = t0.id) AS "assignment__employee__lastName" '
             'FROM "shelter"."pets" AS t0 LIMIT 100'
@@ -601,7 +722,7 @@ class TestArrayAggChainedJoin:
         """node_only=True must include the chained JOIN alias in RETURN."""
         ctx, lm = self._make_ctx_and_label_map()
         sql = (
-            'SELECT t0.name, '
+            "SELECT t0.name, "
             '(SELECT ARRAY_AGG(t2.last_name) FROM "shelter"."assignments" AS t1 JOIN "shelter"."employees" AS t2 ON t2.id = t1.employee_id WHERE t1.pet_id = t0.id) AS "assignment__employee__lastName" '
             'FROM "shelter"."pets" AS t0 LIMIT 100'
         )
@@ -609,7 +730,7 @@ class TestArrayAggChainedJoin:
         assert result is not None
         # node_only RETURN must include the employees alias (c or similar)
         lines = result.splitlines()
-        return_line = next((l for l in lines if l.startswith("RETURN")), "")
+        return_line = next((ln for ln in lines if ln.startswith("RETURN")), "")
         # Should have at least 3 aliases: base (a), assignments (b), employees (c)
         aliases_in_return = [p.strip() for p in return_line.replace("RETURN", "").split(",")]
         assert len(aliases_in_return) >= 3, (
@@ -638,21 +759,33 @@ class TestJsonAggChainedSubquery:
 
     def _make_ctx_and_label_map(self):
         pets_meta = _TableMeta(
-            table_id=1, field_name="shelter__pets", type_name="Pets",
-            source_id="shelter-db", catalog_name="shelter",
-            schema_name="shelter", table_name="pets",
+            table_id=1,
+            field_name="shelter__pets",
+            type_name="Pets",
+            source_id="shelter-db",
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="pets",
             domain_id="shelter",
         )
         assignments_meta = _TableMeta(
-            table_id=2, field_name="shelter__assignments", type_name="Assignments",
-            source_id="shelter-db", catalog_name="shelter",
-            schema_name="shelter", table_name="assignments",
+            table_id=2,
+            field_name="shelter__assignments",
+            type_name="Assignments",
+            source_id="shelter-db",
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="assignments",
             domain_id="shelter",
         )
         employees_meta = _TableMeta(
-            table_id=3, field_name="shelter__employees", type_name="Employees",
-            source_id="shelter-db", catalog_name="shelter",
-            schema_name="shelter", table_name="employees",
+            table_id=3,
+            field_name="shelter__employees",
+            type_name="Employees",
+            source_id="shelter-db",
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="employees",
             domain_id="shelter",
         )
         ctx = _Ctx(
@@ -663,28 +796,55 @@ class TestJsonAggChainedSubquery:
             },
             aggregate_columns={
                 1: [("id", "integer"), ("name", "varchar")],
-                2: [("id", "integer"), ("pet_id", "integer"), ("employee_id", "integer"), ("breed_name", "varchar")],
+                2: [
+                    ("id", "integer"),
+                    ("pet_id", "integer"),
+                    ("employee_id", "integer"),
+                    ("breed_name", "varchar"),
+                ],
                 3: [("id", "integer"), ("last_name", "varchar")],
             },
         )
         pets_node = NodeMapping(
-            label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
-            table_id=1, source_id="shelter-db", id_column="id", pk_columns=[],
-            catalog_name="shelter", schema_name="shelter", table_name="pets",
+            label="Pets",
+            type_name="Pets",
+            domain_label=None,
+            table_label="Pets",
+            table_id=1,
+            source_id="shelter-db",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="pets",
             properties={"id": "id", "name": "name"},
         )
         assignments_node = NodeMapping(
-            label="Assignments", type_name="Assignments", domain_label=None,
-            table_label="Assignments", table_id=2, source_id="shelter-db",
-            id_column="id", pk_columns=[],
-            catalog_name="shelter", schema_name="shelter", table_name="assignments",
+            label="Assignments",
+            type_name="Assignments",
+            domain_label=None,
+            table_label="Assignments",
+            table_id=2,
+            source_id="shelter-db",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="assignments",
             properties={"id": "id", "breedName": "breed_name"},
         )
         employees_node = NodeMapping(
-            label="Employees", type_name="Employees", domain_label=None,
-            table_label="Employees", table_id=3, source_id="shelter-db",
-            id_column="id", pk_columns=[],
-            catalog_name="shelter", schema_name="shelter", table_name="employees",
+            label="Employees",
+            type_name="Employees",
+            domain_label=None,
+            table_label="Employees",
+            table_id=3,
+            source_id="shelter-db",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="employees",
             properties={"id": "id", "lastName": "last_name"},
         )
         is_assignment_rel = RelationshipMapping(
@@ -717,10 +877,10 @@ class TestJsonAggChainedSubquery:
     def _sql(self) -> str:
         return (
             'SELECT t0."name",'
-            ' (SELECT json_agg(_t) FROM'
-            '  (SELECT json_object(KEY \'breedName\' VALUE t1."breed_name",'
-            '                      KEY \'employee\' VALUE'
-            '                        (SELECT json_object(KEY \'lastName\' VALUE t2."last_name")'
+            " (SELECT json_agg(_t) FROM"
+            "  (SELECT json_object(KEY 'breedName' VALUE t1.\"breed_name\","
+            "                      KEY 'employee' VALUE"
+            "                        (SELECT json_object(KEY 'lastName' VALUE t2.\"last_name\")"
             '                         FROM "shelter"."employees" AS t2'
             '                         WHERE t2."id" = t1."employee_id" LIMIT 1))'
             '   AS _t FROM "shelter"."assignments" AS t1'
@@ -744,7 +904,7 @@ class TestJsonAggChainedSubquery:
         ctx, lm = self._make_ctx_and_label_map()
         result = semantic_sql_to_cypher(self._sql(), lm, ctx)
         assert result is not None, "semantic_sql_to_cypher returned None"
-        lines = [l.strip() for l in result.splitlines() if "Employees" in l]
+        lines = [ln.strip() for ln in result.splitlines() if "Employees" in ln]
         assert lines, f"No line with Employees in:\n{result}"
         employees_line = lines[0]
         # The source node for Employees must be Assignments, not Pets
@@ -767,9 +927,9 @@ class TestJsonAggChainedSubquery:
         """Direct json_agg(json_object(...)) form — no LIMIT wrapper."""
         return (
             'SELECT t0."name",'
-            ' (SELECT json_agg(json_object(KEY \'breedName\' VALUE t1."breed_name",'
-            '                              KEY \'employee\' VALUE'
-            '                                (SELECT json_object(KEY \'lastName\' VALUE t2."last_name")'
+            " (SELECT json_agg(json_object(KEY 'breedName' VALUE t1.\"breed_name\","
+            "                              KEY 'employee' VALUE"
+            "                                (SELECT json_object(KEY 'lastName' VALUE t2.\"last_name\")"
             '                                 FROM "shelter"."employees" AS t2'
             '                                 WHERE t2."id" = t1."employee_id" LIMIT 1)))'
             '  FROM "shelter"."assignments" AS t1'
@@ -786,7 +946,8 @@ class TestJsonAggChainedSubquery:
         assert "collect(" in result, f"Expected collect() in RETURN for one-to-many: {result}"
         # Must not return a bare node alias as 'assignment'
         import re
-        bare = re.search(r'\bRETURN\b.*\b[a-z]\s+AS\s+assignment\b', result)
+
+        bare = re.search(r"\bRETURN\b.*\b[a-z]\s+AS\s+assignment\b", result)
         assert bare is None, f"RETURN must not use bare node alias for assignment: {result}"
         # The map must include the selected fields
         assert "breedName" in result, f"breedName missing from RETURN map: {result}"
@@ -801,21 +962,33 @@ class TestFlatReturnClause:
 
     def _make_ctx_and_label_map(self):
         pets_meta = _TableMeta(
-            table_id=1, field_name="shelter__pets", type_name="Pets",
-            source_id="shelter-db", catalog_name="shelter",
-            schema_name="shelter", table_name="pets",
+            table_id=1,
+            field_name="shelter__pets",
+            type_name="Pets",
+            source_id="shelter-db",
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="pets",
             domain_id="shelter",
         )
         assignments_meta = _TableMeta(
-            table_id=2, field_name="shelter__assignments", type_name="Assignments",
-            source_id="shelter-db", catalog_name="shelter",
-            schema_name="shelter", table_name="assignments",
+            table_id=2,
+            field_name="shelter__assignments",
+            type_name="Assignments",
+            source_id="shelter-db",
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="assignments",
             domain_id="shelter",
         )
         employees_meta = _TableMeta(
-            table_id=3, field_name="shelter__employees", type_name="Employees",
-            source_id="shelter-db", catalog_name="shelter",
-            schema_name="shelter", table_name="employees",
+            table_id=3,
+            field_name="shelter__employees",
+            type_name="Employees",
+            source_id="shelter-db",
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="employees",
             domain_id="shelter",
         )
         ctx = _Ctx(
@@ -826,28 +999,55 @@ class TestFlatReturnClause:
             },
             aggregate_columns={
                 1: [("id", "integer"), ("name", "varchar"), ("breed_name", "varchar")],
-                2: [("id", "integer"), ("pet_id", "integer"), ("employee_id", "integer"), ("breed_name", "varchar")],
+                2: [
+                    ("id", "integer"),
+                    ("pet_id", "integer"),
+                    ("employee_id", "integer"),
+                    ("breed_name", "varchar"),
+                ],
                 3: [("id", "integer"), ("last_name", "varchar")],
             },
         )
         pets_node = NodeMapping(
-            label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
-            table_id=1, source_id="shelter-db", id_column="id", pk_columns=[],
-            catalog_name="shelter", schema_name="shelter", table_name="pets",
+            label="Pets",
+            type_name="Pets",
+            domain_label=None,
+            table_label="Pets",
+            table_id=1,
+            source_id="shelter-db",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="pets",
             properties={"id": "id", "name": "name", "breedName": "breed_name"},
         )
         assignments_node = NodeMapping(
-            label="Assignments", type_name="Assignments", domain_label=None,
-            table_label="Assignments", table_id=2, source_id="shelter-db",
-            id_column="id", pk_columns=[],
-            catalog_name="shelter", schema_name="shelter", table_name="assignments",
+            label="Assignments",
+            type_name="Assignments",
+            domain_label=None,
+            table_label="Assignments",
+            table_id=2,
+            source_id="shelter-db",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="assignments",
             properties={"id": "id", "breedName": "breed_name"},
         )
         employees_node = NodeMapping(
-            label="Employees", type_name="Employees", domain_label=None,
-            table_label="Employees", table_id=3, source_id="shelter-db",
-            id_column="id", pk_columns=[],
-            catalog_name="shelter", schema_name="shelter", table_name="employees",
+            label="Employees",
+            type_name="Employees",
+            domain_label=None,
+            table_label="Employees",
+            table_id=3,
+            source_id="shelter-db",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="shelter",
+            schema_name="shelter",
+            table_name="employees",
             properties={"id": "id", "lastName": "last_name"},
         )
         is_assignment_rel = RelationshipMapping(
@@ -874,17 +1074,21 @@ class TestFlatReturnClause:
                 "IS_ASSIGNMENT::Pets→Assignments": is_assignment_rel,
                 "HAS_EMPLOYEE::Assignments→Employees": has_employee_rel,
             },
-            nodes_by_table={"Pets": ["Pets"], "Assignments": ["Assignments"], "Employees": ["Employees"]},
+            nodes_by_table={
+                "Pets": ["Pets"],
+                "Assignments": ["Assignments"],
+                "Employees": ["Employees"],
+            },
         )
         return ctx, lm
 
     def _sql(self) -> str:
         return (
             'SELECT t0."name", t0."breed_name",'
-            ' (SELECT json_agg(_t) FROM'
-            '  (SELECT json_object(KEY \'breedName\' VALUE t1."breed_name",'
-            '                      KEY \'employee\' VALUE'
-            '                        (SELECT json_object(KEY \'lastName\' VALUE t2."last_name")'
+            " (SELECT json_agg(_t) FROM"
+            "  (SELECT json_object(KEY 'breedName' VALUE t1.\"breed_name\","
+            "                      KEY 'employee' VALUE"
+            "                        (SELECT json_object(KEY 'lastName' VALUE t2.\"last_name\")"
             '                         FROM "shelter"."employees" AS t2'
             '                         WHERE t2."id" = t1."employee_id" LIMIT 1))'
             '   AS _t FROM "shelter"."assignments" AS t1'
@@ -895,11 +1099,12 @@ class TestFlatReturnClause:
     def test_flat_return_expands_assignment_fields(self):
         """flat=True must expand assignment fields as node.prop AS label__prop, not bare node alias."""
         import re
+
         ctx, lm = self._make_ctx_and_label_map()
         result = semantic_sql_to_cypher(self._sql(), lm, ctx, flat=True)
         assert result is not None, "semantic_sql_to_cypher returned None"
         # Must not have bare 'b AS assignment'
-        bare = re.search(r'\b[a-z]\s+AS\s+assignment\b', result)
+        bare = re.search(r"\b[a-z]\s+AS\s+assignment\b", result)
         assert bare is None, f"RETURN must not use bare node alias: {result}"
         # Must have per-property paths
         assert "assignments__breedName" in result, f"Missing assignments__breedName in: {result}"

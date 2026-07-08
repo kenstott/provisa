@@ -88,9 +88,10 @@ def _make_compiled(sql: str, root_field: str = "orders") -> CompiledQuery:
 # Stage 1 tests
 # ---------------------------------------------------------------------------
 
+
 class TestStage1:
     def test_stage1_compiles_graphql_to_sql(self):
-        doc = _parse('{ orders { id } }')
+        doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
         results = compile_graphql(doc, ctx)
         assert len(results) == 1
@@ -100,22 +101,21 @@ class TestStage1:
         assert compiled.root_field == "orders"
 
     def test_stage1_selects_only_requested_columns(self):
-        doc = _parse('{ orders { id } }')
+        doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
         results = compile_graphql(doc, ctx)
-        sql = results[0].sql.lower()
         # Only "id" should appear in the SELECT, not other columns
         assert '"id"' in results[0].sql
 
     def test_stage1_applies_limit_argument(self):
-        doc = _parse('{ orders(limit: 10) { id } }')
+        doc = _parse("{ orders(limit: 10) { id } }")
         ctx = _basic_ctx()
         results = compile_graphql(doc, ctx)
         assert "LIMIT" in results[0].sql.upper()
         assert results[0].params == [10]
 
     def test_stage1_applies_where_argument(self):
-        doc = _parse('{ orders(where: { id: { eq: 42 } }) { id } }')
+        doc = _parse("{ orders(where: { id: { eq: 42 } }) { id } }")
         ctx = _basic_ctx()
         results = compile_graphql(doc, ctx)
         sql = results[0].sql
@@ -124,7 +124,7 @@ class TestStage1:
         assert "42" in sql or "$1" in sql
 
     def test_stage1_multiple_fields_compile_independently(self):
-        doc = _parse('{ orders { id } customers { id } }')
+        doc = _parse("{ orders { id } customers { id } }")
         ctx = _basic_ctx()
         results = compile_graphql(doc, ctx)
         assert len(results) == 2
@@ -133,13 +133,13 @@ class TestStage1:
         assert "customers" in root_fields
 
     def test_stage1_unknown_table_raises(self):
-        doc = _parse('{ nonexistent { id } }')
+        doc = _parse("{ nonexistent { id } }")
         ctx = _basic_ctx()
         with pytest.raises((ValueError, KeyError)):
             compile_graphql(doc, ctx)
 
     def test_stage1_produces_compiled_query_type(self):
-        doc = _parse('{ orders { id } }')
+        doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
         results = compile_graphql(doc, ctx)
         assert isinstance(results[0], CompiledQuery)
@@ -151,6 +151,7 @@ class TestStage1:
 # ---------------------------------------------------------------------------
 # Stage 2 (governance) tests
 # ---------------------------------------------------------------------------
+
 
 class TestStage2:
     def _make_gov_ctx(
@@ -171,7 +172,12 @@ class TestStage2:
             "customers": CUSTOMERS_TABLE_ID,
         }
         gov.all_columns = {
-            ORDERS_TABLE_ID: [("id", "integer"), ("amount", "double"), ("region", "varchar"), ("email", "varchar")],
+            ORDERS_TABLE_ID: [
+                ("id", "integer"),
+                ("amount", "double"),
+                ("region", "varchar"),
+                ("email", "varchar"),
+            ],
             CUSTOMERS_TABLE_ID: [("id", "integer"), ("name", "varchar"), ("email", "varchar")],
         }
         gov.limit_ceiling = limit_ceiling
@@ -188,6 +194,7 @@ class TestStage2:
     def test_stage2_injects_masking_into_sql(self):
         """apply_governance replaces masked columns with CASE/mask expressions."""
         from provisa.security.masking import MaskingRule, MaskType
+
         rule = MaskingRule(mask_type=MaskType.constant, value=None)
         sql = 'SELECT "t0"."id", "t0"."email" FROM "public"."orders" "t0"'
         gov = self._make_gov_ctx(
@@ -247,10 +254,11 @@ class TestStage2:
 # Full pipeline (Stage1 + RLS + masking) tests
 # ---------------------------------------------------------------------------
 
+
 class TestFullPipeline:
     def test_full_pipeline_graphql_to_governed_sql_rls(self):
         """Stage1 output fed into inject_rls produces governed SQL with WHERE clause."""
-        doc = _parse('{ orders { id } }')
+        doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
         compiled_list = compile_graphql(doc, ctx)
         compiled = compiled_list[0]
@@ -262,7 +270,7 @@ class TestFullPipeline:
 
     def test_full_pipeline_graphql_to_governed_sql_masking(self):
         """Stage1 output fed into inject_masking rewrites masked column."""
-        doc = _parse('{ orders { id } }')
+        doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
         # Inject email column into orders table meta and context
         meta = _orders_meta()
@@ -279,7 +287,7 @@ class TestFullPipeline:
 
     def test_full_pipeline_rls_then_masking(self):
         """Chaining inject_rls + inject_masking produces both WHERE and masked projection."""
-        doc = _parse('{ orders { id } }')
+        doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
         compiled_list = compile_graphql(doc, ctx)
         compiled = compiled_list[0]
@@ -298,7 +306,7 @@ class TestFullPipeline:
 
     def test_full_pipeline_empty_rls_no_where(self):
         """Empty RLS context leaves SQL unchanged — no WHERE appended."""
-        doc = _parse('{ orders { id } }')
+        doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
         compiled_list = compile_graphql(doc, ctx)
         original_sql = compiled_list[0].sql

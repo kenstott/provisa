@@ -16,7 +16,6 @@ Also tests Source.allowed_domains model field parsing.
 
 from __future__ import annotations
 
-import pytest
 
 from provisa.api.app import _filter_tables_by_schema_cfg
 from provisa.core.models import Source
@@ -25,6 +24,7 @@ from provisa.core.models import Source
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _table(table_name: str, domain_id: str, source_id: str = "pg-main") -> dict:
     return {"table_name": table_name, "domain_id": domain_id, "source_id": source_id}
@@ -132,9 +132,7 @@ class TestIncludeMetrics:
     def test_include_ops_false_takes_precedence_over_include_metrics(self):
         """When include_ops is false, include_metrics has no additional effect."""
         tables = _mixed_tables()
-        result_ops_false = _filter_tables_by_schema_cfg(
-            tables, {"include_ops": False}, {}
-        )
+        result_ops_false = _filter_tables_by_schema_cfg(tables, {"include_ops": False}, {})
         result_both_false = _filter_tables_by_schema_cfg(
             tables, {"include_ops": False, "include_metrics": False}, {}
         )
@@ -191,9 +189,7 @@ class TestSourceAllowedDomains:
             _table("invoices", "finance", "pg-main"),
             _table("employees", "hr", "pg-main"),
         ]
-        result = _filter_tables_by_schema_cfg(
-            tables, {}, {"pg-main": ["sales", "finance"]}
-        )
+        result = _filter_tables_by_schema_cfg(tables, {}, {"pg-main": ["sales", "finance"]})
         names = {t["table_name"] for t in result}
         assert "orders" in names
         assert "invoices" in names
@@ -204,9 +200,7 @@ class TestSourceAllowedDomains:
             _table("orders", "sales", "pg-main"),
             _table("employees", "hr", "pg-secondary"),
         ]
-        result = _filter_tables_by_schema_cfg(
-            tables, {}, {"pg-main": ["sales"]}
-        )
+        result = _filter_tables_by_schema_cfg(tables, {}, {"pg-main": ["sales"]})
         # pg-secondary has no restriction, so hr table passes through
         assert len(result) == 2
 

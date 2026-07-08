@@ -26,6 +26,7 @@ pytestmark = [pytest.mark.integration]
 
 try:
     import pyarrow as pa
+
     _HAVE_PYARROW = True
 except ImportError:
     _HAVE_PYARROW = False
@@ -34,27 +35,26 @@ except ImportError:
 # Helpers
 # ---------------------------------------------------------------------------
 
-from provisa.compiler.sql_gen import ColumnRef
-from provisa.executor.formats.ndjson import rows_to_ndjson
-from provisa.executor.formats.tabular import rows_to_csv, rows_to_parquet
-from provisa.executor.formats.arrow import rows_to_arrow_ipc, rows_to_arrow_table
+from provisa.compiler.sql_gen import ColumnRef  # noqa: E402
+from provisa.executor.formats.ndjson import rows_to_ndjson  # noqa: E402
+from provisa.executor.formats.tabular import rows_to_csv  # noqa: E402
+from provisa.executor.formats.arrow import rows_to_arrow_ipc, rows_to_arrow_table  # noqa: E402
 
 
 def _make_cols(*names: str, nested_in: str | None = None) -> list[ColumnRef]:
-    return [
-        ColumnRef(alias=None, column=n, field_name=n, nested_in=nested_in)
-        for n in names
-    ]
+    return [ColumnRef(alias=None, column=n, field_name=n, nested_in=nested_in) for n in names]
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest_asyncio.fixture(scope="session")
 async def source_pool():
     """Real PG pool for execute_direct tests."""
     from provisa.executor.pool import SourcePool
+
     sp = SourcePool()
     await sp.add(
         "test-pg",
@@ -72,8 +72,10 @@ async def source_pool():
 async def _fetch_orders(source_pool):
     """Fetch a small result set from PG for format tests."""
     from provisa.executor.direct import execute_direct
+
     result = await execute_direct(
-        source_pool, "test-pg",
+        source_pool,
+        "test-pg",
         'SELECT "id", "amount" FROM "public"."orders" LIMIT 5',
     )
     return result
@@ -82,6 +84,7 @@ async def _fetch_orders(source_pool):
 # ---------------------------------------------------------------------------
 # NDJSON tests
 # ---------------------------------------------------------------------------
+
 
 class TestNdjsonFormat:
     def test_ndjson_format_produces_one_json_per_line(self):
@@ -133,6 +136,7 @@ class TestNdjsonFormat:
 # ---------------------------------------------------------------------------
 # Tabular (CSV) tests
 # ---------------------------------------------------------------------------
+
 
 class TestTabularFormat:
     def test_tabular_normalized_format(self):
@@ -188,6 +192,7 @@ class TestTabularFormat:
 # Arrow tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.skipif(not _HAVE_PYARROW, reason="pyarrow not installed")
 class TestArrowFormat:
     def test_arrow_format_produces_record_batch(self):
@@ -197,7 +202,6 @@ class TestArrowFormat:
         assert isinstance(ipc_bytes, bytes)
         assert len(ipc_bytes) > 0
         # Round-trip: read the IPC stream back
-        import io
         reader = pa.ipc.open_stream(pa.BufferReader(ipc_bytes))
         table = reader.read_all()
         assert table.num_rows == 2
@@ -218,7 +222,9 @@ class TestArrowFormat:
         schema_map = {f.name: f.type for f in table.schema}
         assert pa.types.is_integer(schema_map["int_col"])
         assert pa.types.is_floating(schema_map["float_col"])
-        assert pa.types.is_large_string(schema_map["str_col"]) or pa.types.is_string(schema_map["str_col"])
+        assert pa.types.is_large_string(schema_map["str_col"]) or pa.types.is_string(
+            schema_map["str_col"]
+        )
 
     def test_arrow_empty_rows(self):
         cols = _make_cols("id")
@@ -227,7 +233,6 @@ class TestArrowFormat:
         assert "id" in [f.name for f in table.schema]
 
     def test_arrow_ipc_roundtrip(self):
-        import io
         rows = [(i, float(i) * 1.1) for i in range(50)]
         cols = _make_cols("id", "val")
         ipc_bytes = rows_to_arrow_ipc(rows, cols)

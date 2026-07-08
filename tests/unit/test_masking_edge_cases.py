@@ -35,7 +35,6 @@ New coverage here:
 
 from __future__ import annotations
 
-import pytest
 
 from provisa.compiler.mask_inject import MaskingRules, inject_masking
 from provisa.compiler.sql_gen import (
@@ -119,9 +118,7 @@ class TestMaskedColumnInWhereClause:
             ],
             params=["bob@example.com"],
         )
-        ctx = _ctx(
-            tables={"customers": _table_meta(CUSTOMERS_TABLE_ID, "customers", "customers")}
-        )
+        ctx = _ctx(tables={"customers": _table_meta(CUSTOMERS_TABLE_ID, "customers", "customers")})
         rules: MaskingRules = {
             (CUSTOMERS_TABLE_ID, "analyst"): {
                 "email": (
@@ -172,7 +169,7 @@ class TestMaskedColumnInWhereClause:
         sql_with_rls = (
             'SELECT "t0"."email", "t0"."region" '
             'FROM "public"."customers" "t0" '
-            'WHERE (region = \'us-east\')'
+            "WHERE (region = 'us-east')"
         )
         compiled = _q(
             sql=sql_with_rls,
@@ -182,9 +179,7 @@ class TestMaskedColumnInWhereClause:
                 ColumnRef(alias="t0", column="region", field_name="region", nested_in=None),
             ],
         )
-        ctx = _ctx(
-            tables={"customers": _table_meta(CUSTOMERS_TABLE_ID, "customers", "customers")}
-        )
+        ctx = _ctx(tables={"customers": _table_meta(CUSTOMERS_TABLE_ID, "customers", "customers")})
         rules: MaskingRules = {
             (CUSTOMERS_TABLE_ID, "analyst"): {
                 "email": (
@@ -443,9 +438,7 @@ class TestMaskingInjectionSideEffects:
             root_field="customers",
             columns=[ColumnRef(alias=None, column="email", field_name="email", nested_in=None)],
         )
-        ctx = _ctx(
-            tables={"customers": _table_meta(CUSTOMERS_TABLE_ID, "customers", "customers")}
-        )
+        ctx = _ctx(tables={"customers": _table_meta(CUSTOMERS_TABLE_ID, "customers", "customers")})
         rules: MaskingRules = {
             (CUSTOMERS_TABLE_ID, "analyst"): {
                 "email": (MaskingRule(mask_type=MaskType.constant, value="X"), "varchar"),
@@ -463,9 +456,7 @@ class TestMaskingInjectionSideEffects:
             columns=[ColumnRef(alias=None, column="email", field_name="email", nested_in=None)],
             sources={"pg", "replica"},
         )
-        ctx = _ctx(
-            tables={"customers": _table_meta(CUSTOMERS_TABLE_ID, "customers", "customers")}
-        )
+        ctx = _ctx(tables={"customers": _table_meta(CUSTOMERS_TABLE_ID, "customers", "customers")})
         rules: MaskingRules = {
             (CUSTOMERS_TABLE_ID, "analyst"): {
                 "email": (MaskingRule(mask_type=MaskType.constant, value="X"), "varchar"),
@@ -482,9 +473,7 @@ class TestMaskingInjectionSideEffects:
             root_field="customers",
             columns=[col_ref],
         )
-        ctx = _ctx(
-            tables={"customers": _table_meta(CUSTOMERS_TABLE_ID, "customers", "customers")}
-        )
+        ctx = _ctx(tables={"customers": _table_meta(CUSTOMERS_TABLE_ID, "customers", "customers")})
         rules: MaskingRules = {
             (CUSTOMERS_TABLE_ID, "analyst"): {
                 "email": (MaskingRule(mask_type=MaskType.constant, value="X"), "varchar"),

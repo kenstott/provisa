@@ -23,7 +23,6 @@ import json
 import os
 
 import pytest
-import pytest_asyncio
 
 from provisa.subscriptions.base import ChangeEvent
 
@@ -33,6 +32,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
+
 
 def _pg_env() -> dict:
     return dict(
@@ -47,6 +47,7 @@ def _pg_env() -> dict:
 async def _try_pg_pool():
     """Create an asyncpg pool; raises if PG is unavailable."""
     import asyncpg  # noqa: PLC0415
+
     env = _pg_env()
     pool = await asyncio.wait_for(
         asyncpg.create_pool(
@@ -67,6 +68,7 @@ async def _try_pg_pool():
 # ---------------------------------------------------------------------------
 # PgNotificationProvider integration test (skipped if PG unavailable)
 # ---------------------------------------------------------------------------
+
 
 class TestPgNotificationProvider:
     async def test_pg_provider_yields_change_event(self):
@@ -91,7 +93,7 @@ class TestPgNotificationProvider:
         # Send a NOTIFY from a separate connection
         async with pool.acquire() as notify_conn:
             payload = json.dumps({"op": "insert", "row": {"id": 42, "amount": 9.99}})
-            await notify_conn.execute(f"SELECT pg_notify($1, $2)", channel, payload)
+            await notify_conn.execute("SELECT pg_notify($1, $2)", channel, payload)
 
         try:
             await asyncio.wait_for(task, timeout=5.0)

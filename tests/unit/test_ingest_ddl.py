@@ -6,8 +6,6 @@
 
 """Unit tests for ingest DDL generation (provisa/ingest/ddl.py)."""
 
-import pytest
-
 from provisa.ingest.ddl import generate_create_table, extract_value, _safe_type
 
 
@@ -123,9 +121,5 @@ def test_extract_empty_path():
 
 
 def test_extract_deeply_nested():
-    payload = {
-        "resourceLogs": [
-            {"resource": {"attributes": [{"key": "host", "value": "srv1"}]}}
-        ]
-    }
+    payload = {"resourceLogs": [{"resource": {"attributes": [{"key": "host", "value": "srv1"}]}}]}
     assert extract_value(payload, "resourceLogs.0.resource.attributes.0.key") == "host"

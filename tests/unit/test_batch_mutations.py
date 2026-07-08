@@ -15,7 +15,6 @@ each compiled independently and correctly, with RLS and rights applied per
 operation.
 """
 
-import pytest
 from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
@@ -34,8 +33,11 @@ def _col(name, data_type="varchar(100)", nullable=False):
 def _build(extra_tables=None):
     tables = [
         {
-            "id": 1, "source_id": "sales-pg", "domain_id": "sales",
-            "schema_name": "public", "table_name": "orders",
+            "id": 1,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "orders",
             "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
@@ -45,8 +47,11 @@ def _build(extra_tables=None):
             ],
         },
         {
-            "id": 2, "source_id": "sales-pg", "domain_id": "sales",
-            "schema_name": "public", "table_name": "customers",
+            "id": 2,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "customers",
             "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
@@ -59,13 +64,18 @@ def _build(extra_tables=None):
         tables.extend(extra_tables)
 
     col_types = {
-        1: [_col("id", "integer"), _col("amount", "decimal(10,2)"),
-            _col("region", "varchar(50)"), _col("status", "varchar(20)")],
-        2: [_col("id", "integer"), _col("name", "varchar(100)"),
-            _col("email", "varchar(255)")],
+        1: [
+            _col("id", "integer"),
+            _col("amount", "decimal(10,2)"),
+            _col("region", "varchar(50)"),
+            _col("status", "varchar(20)"),
+        ],
+        2: [_col("id", "integer"), _col("name", "varchar(100)"), _col("email", "varchar(255)")],
     }
     si = SchemaInput(
-        tables=tables, relationships=[], column_types=col_types,
+        tables=tables,
+        relationships=[],
+        column_types=col_types,
         naming_rules=[],
         role={"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]},
         domains=[{"id": "sales", "description": "Sales"}],

@@ -10,38 +10,62 @@
 
 """Unit tests for provisa/cypher/translator.py — expressions, subqueries, map projections."""
 
-import pytest
-
 from provisa.cypher.parser import parse_cypher
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
-from provisa.cypher.translator import cypher_to_sql, cypher_calls_to_sql_list
+from provisa.cypher.translator import cypher_to_sql
 
 
 def _make_label_map_multi_path() -> CypherLabelMap:
     """Label map with two 1-hop paths from Person to Company: WORKS_AT and MANAGES."""
     person_meta = NodeMapping(
-        label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="persons",
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
         properties={"name": "name", "age": "age"},
     )
     company_meta = NodeMapping(
-        label="Company", type_name="Company", domain_label=None, table_label="Company",
-        table_id=2, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="companies",
+        label="Company",
+        type_name="Company",
+        domain_label=None,
+        table_label="Company",
+        table_id=2,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="companies",
         properties={"name": "name"},
     )
     rels = {
         "WORKS_AT": RelationshipMapping(
-            rel_type="WORKS_AT", source_label="Person", target_label="Company",
-            join_source_column="company_id", join_target_column="id", field_name="works_at",
+            rel_type="WORKS_AT",
+            source_label="Person",
+            target_label="Company",
+            join_source_column="company_id",
+            join_target_column="id",
+            field_name="works_at",
         ),
         "MANAGES": RelationshipMapping(
-            rel_type="MANAGES", source_label="Person", target_label="Company",
-            join_source_column="managed_company_id", join_target_column="id", field_name="manages",
+            rel_type="MANAGES",
+            source_label="Person",
+            target_label="Company",
+            join_source_column="managed_company_id",
+            join_target_column="id",
+            field_name="manages",
         ),
     }
-    return CypherLabelMap(nodes={"Person": person_meta, "Company": company_meta}, relationships=rels)
+    return CypherLabelMap(
+        nodes={"Person": person_meta, "Company": company_meta}, relationships=rels
+    )
 
 
 def _make_label_map(multi_source: bool = False, with_domains: bool = False) -> CypherLabelMap:
@@ -98,47 +122,91 @@ def _make_label_map(multi_source: bool = False, with_domains: bool = False) -> C
 def _make_label_map_self_ref() -> CypherLabelMap:
     """Label map with a self-referential KNOWS relationship for recursive path tests."""
     person_meta = NodeMapping(
-        label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="persons",
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
         properties={"name": "name", "age": "age"},
     )
     knows_rel = RelationshipMapping(
-        rel_type="KNOWS", source_label="Person", target_label="Person",
-        join_source_column="person_id", join_target_column="id", field_name="knows",
+        rel_type="KNOWS",
+        source_label="Person",
+        target_label="Person",
+        join_source_column="person_id",
+        join_target_column="id",
+        field_name="knows",
     )
     return CypherLabelMap(nodes={"Person": person_meta}, relationships={"KNOWS": knows_rel})
 
 
 def _make_label_map_three_hop() -> CypherLabelMap:
     person = NodeMapping(
-        label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="persons",
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
         properties={"name": "name"},
     )
     company = NodeMapping(
-        label="Company", type_name="Company", domain_label=None, table_label="Company",
-        table_id=2, source_id="pg", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="companies",
+        label="Company",
+        type_name="Company",
+        domain_label=None,
+        table_label="Company",
+        table_id=2,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="companies",
         properties={"name": "name"},
     )
     dept = NodeMapping(
-        label="Department", type_name="Department", domain_label=None, table_label="Department",
-        table_id=3, source_id="pg", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="departments",
+        label="Department",
+        type_name="Department",
+        domain_label=None,
+        table_label="Department",
+        table_id=3,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="departments",
         properties={"title": "title"},
     )
     return CypherLabelMap(
         nodes={"Person": person, "Company": company, "Department": dept},
         relationships={
             "WORKS_AT": RelationshipMapping(
-                rel_type="WORKS_AT", source_label="Person", target_label="Company",
-                join_source_column="company_id", join_target_column="id", field_name="works_at",
+                rel_type="WORKS_AT",
+                source_label="Person",
+                target_label="Company",
+                join_source_column="company_id",
+                join_target_column="id",
+                field_name="works_at",
             ),
             "HAS_DEPT": RelationshipMapping(
-                rel_type="HAS_DEPT", source_label="Company", target_label="Department",
-                join_source_column="dept_id", join_target_column="id", field_name="has_dept",
+                rel_type="HAS_DEPT",
+                source_label="Company",
+                target_label="Department",
+                join_source_column="dept_id",
+                join_target_column="id",
+                field_name="has_dept",
             ),
         },
     )
@@ -147,33 +215,60 @@ def _make_label_map_three_hop() -> CypherLabelMap:
 def _make_label_map_bidirectional() -> CypherLabelMap:
     """Label map with Person→Company (WORKS_AT) and Company→Person (EMPLOYS)."""
     person_meta = NodeMapping(
-        label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="persons",
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
         properties={"name": "name", "age": "age"},
     )
     company_meta = NodeMapping(
-        label="Company", type_name="Company", domain_label=None, table_label="Company",
-        table_id=2, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="companies",
+        label="Company",
+        type_name="Company",
+        domain_label=None,
+        table_label="Company",
+        table_id=2,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="companies",
         properties={"name": "name"},
     )
     rels = {
         "WORKS_AT": RelationshipMapping(
-            rel_type="WORKS_AT", source_label="Person", target_label="Company",
-            join_source_column="company_id", join_target_column="id", field_name="works_at",
+            rel_type="WORKS_AT",
+            source_label="Person",
+            target_label="Company",
+            join_source_column="company_id",
+            join_target_column="id",
+            field_name="works_at",
         ),
         "EMPLOYS": RelationshipMapping(
-            rel_type="EMPLOYS", source_label="Company", target_label="Person",
-            join_source_column="employee_id", join_target_column="id", field_name="employs",
+            rel_type="EMPLOYS",
+            source_label="Company",
+            target_label="Person",
+            join_source_column="employee_id",
+            join_target_column="id",
+            field_name="employs",
         ),
     }
-    return CypherLabelMap(nodes={"Person": person_meta, "Company": company_meta}, relationships=rels)
+    return CypherLabelMap(
+        nodes={"Person": person_meta, "Company": company_meta}, relationships=rels
+    )
 
 
 # ---------------------------------------------------------------------------
 # Gap #12 — Intermediate node property access in multi-hop patterns
 # ---------------------------------------------------------------------------
+
 
 def test_intermediate_node_property_access():
     lm = _make_label_map_three_hop()
@@ -208,6 +303,7 @@ def test_intermediate_node_where_filter():
 # ---------------------------------------------------------------------------
 # Gap #5 — Path object RETURN p
 # ---------------------------------------------------------------------------
+
 
 def test_return_path_flat_join_emits_json_object():
     lm = _make_label_map()
@@ -253,6 +349,7 @@ def test_return_path_with_alias():
 # Gap #8 — Correlated CALL subqueries (CALL { WITH x MATCH ... })
 # ---------------------------------------------------------------------------
 
+
 def test_correlated_call_lateral_join_emitted():
     """CALL { WITH p MATCH (p)-[:KNOWS]->(f:Person) ... } → CROSS JOIN LATERAL."""
     lm = _make_label_map()
@@ -286,6 +383,7 @@ def test_correlated_call_inner_where_condition():
 def test_correlated_call_multiple_imported_vars():
     """CALL { WITH a, b MATCH ... } — both vars imported (parser smoke-test)."""
     from provisa.cypher.parser import parse_cypher as _parse
+
     ast = _parse(
         "MATCH (a:Person)-[:KNOWS]->(b:Person) "
         "CALL { WITH a, b MATCH (a)-[:WORKS_AT]->(c:Company) RETURN c.name AS cn } "
@@ -300,9 +398,7 @@ def test_correlated_call_multiple_imported_vars():
 def test_non_correlated_call_not_lateral():
     """CALL { MATCH (n:Person) RETURN n } without WITH → not a LATERAL."""
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (p:Person) RETURN p.name"
-    )
+    ast = parse_cypher("MATCH (p:Person) RETURN p.name")
     # No CALL subqueries → no lateral joins
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
@@ -312,6 +408,7 @@ def test_non_correlated_call_not_lateral():
 # ---------------------------------------------------------------------------
 # G5 — Node label alternation (n:A|B)
 # ---------------------------------------------------------------------------
+
 
 def test_node_label_alternation():
     lm = _make_label_map()
@@ -326,6 +423,7 @@ def test_node_label_alternation():
 # ---------------------------------------------------------------------------
 # G2 — EXISTS { MATCH ... } subquery predicate
 # ---------------------------------------------------------------------------
+
 
 def test_exists_subquery_in_where():
     lm = _make_label_map()
@@ -342,6 +440,7 @@ def test_exists_subquery_in_where():
 # G3 — COUNT { MATCH ... } subquery expression
 # ---------------------------------------------------------------------------
 
+
 def test_count_subquery_in_return():
     lm = _make_label_map()
     ast = parse_cypher(
@@ -357,6 +456,7 @@ def test_count_subquery_in_return():
 # G4 — COLLECT { MATCH ... RETURN ... } subquery expression
 # ---------------------------------------------------------------------------
 
+
 def test_collect_subquery_in_return():
     lm = _make_label_map()
     ast = parse_cypher(
@@ -371,6 +471,7 @@ def test_collect_subquery_in_return():
 # ---------------------------------------------------------------------------
 # G8 — left() / right() functions
 # ---------------------------------------------------------------------------
+
 
 def test_trim_function():
     lm = _make_label_map()
@@ -409,6 +510,7 @@ def test_right_function():
 # G10 — size() polymorphism
 # ---------------------------------------------------------------------------
 
+
 def test_size_on_string_literal():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) RETURN size('hello') AS len")
@@ -428,6 +530,7 @@ def test_size_on_list_expr():
 # ---------------------------------------------------------------------------
 # G11 — count(DISTINCT x) passes through correctly
 # ---------------------------------------------------------------------------
+
 
 def test_count_distinct():
     lm = _make_label_map()
@@ -452,6 +555,7 @@ def test_reduce_basic():
 def test_reduce_string_concat():
     """reduce emits Trino lambda form: reduce(list, init, (acc, x) -> expr, acc -> acc)."""
     from provisa.cypher.comprehension import rewrite_reduce
+
     result = rewrite_reduce("reduce(acc = '', x IN names | acc || x)")
     assert result == "reduce(names, '', (acc, x) -> acc || x, acc -> acc)"
 
@@ -459,6 +563,7 @@ def test_reduce_string_concat():
 # ---------------------------------------------------------------------------
 # G9 — Legacy {param} syntax
 # ---------------------------------------------------------------------------
+
 
 def test_legacy_param_syntax():
     """Legacy {param} syntax is normalized to $param before parsing."""
@@ -471,9 +576,7 @@ def test_legacy_param_syntax():
 def test_legacy_param_syntax_multiple():
     """Multiple legacy {param} references are all normalized."""
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (n:Person) WHERE n.age > {min} AND n.age < {max} RETURN n.name"
-    )
+    ast = parse_cypher("MATCH (n:Person) WHERE n.age > {min} AND n.age < {max} RETURN n.name")
     sql_ast, param_names, _ = cypher_to_sql(ast, lm, {"min": 20, "max": 60})
     assert "min" in param_names
     assert "max" in param_names
@@ -483,11 +586,10 @@ def test_legacy_param_syntax_multiple():
 # G1 — Implicit GROUP BY
 # ---------------------------------------------------------------------------
 
+
 def test_group_by_implicit_single_key():
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN c.name, count(n) AS cnt"
-    )
+    ast = parse_cypher("MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN c.name, count(n) AS cnt")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "GROUP BY" in sql.upper()
@@ -495,9 +597,7 @@ def test_group_by_implicit_single_key():
 
 def test_group_by_implicit_multiple_keys():
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (n:Person) RETURN n.age, n.name, count(*) AS cnt"
-    )
+    ast = parse_cypher("MATCH (n:Person) RETURN n.age, n.name, count(*) AS cnt")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "GROUP BY" in sql.upper()
@@ -516,9 +616,7 @@ def test_no_group_by_without_agg():
 
 def test_group_by_collect():
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (n:Person) RETURN n.age, collect(n.name) AS names"
-    )
+    ast = parse_cypher("MATCH (n:Person) RETURN n.age, collect(n.name) AS names")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "GROUP BY" in sql.upper()
@@ -526,9 +624,7 @@ def test_group_by_collect():
 
 def test_with_clause_group_by():
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (n:Person) WITH n.age AS age, count(*) AS cnt RETURN age, cnt"
-    )
+    ast = parse_cypher("MATCH (n:Person) WITH n.age AS age, count(*) AS cnt RETURN age, cnt")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "GROUP BY" in sql.upper()
@@ -536,11 +632,10 @@ def test_with_clause_group_by():
 
 # --- type(r) resolution ---
 
+
 def test_type_function_in_return():
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (p:Person)-[r:KNOWS]->(f:Person) RETURN type(r)"
-    )
+    ast = parse_cypher("MATCH (p:Person)-[r:KNOWS]->(f:Person) RETURN type(r)")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "'KNOWS'" in sql
@@ -548,9 +643,7 @@ def test_type_function_in_return():
 
 def test_type_function_in_where():
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (p:Person)-[r]->(c:Company) WHERE type(r) = 'WORKS_AT' RETURN p.name"
-    )
+    ast = parse_cypher("MATCH (p:Person)-[r]->(c:Company) WHERE type(r) = 'WORKS_AT' RETURN p.name")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "'WORKS_AT'" in sql
@@ -559,15 +652,14 @@ def test_type_function_in_where():
 def test_type_function_unbound_passthrough():
     """type(x) where x is not a known rel var passes through without crash."""
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (p:Person) RETURN p.name"
-    )
+    ast = parse_cypher("MATCH (p:Person) RETURN p.name")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert sql is not None
 
 
 # --- G6: Map projections ---
+
 
 def test_map_projection_dot_props():
     """n { .name, .age } → MAP(ARRAY['name','age'], ARRAY[n."name",n."age"])"""
@@ -620,6 +712,7 @@ def test_map_projection_named_key():
 # Bidirectional traversal
 # ---------------------------------------------------------------------------
 
+
 def test_bidirectional_single_candidate_no_union():
     """(a)-[]-(b) with only one direction → no UNION ALL."""
     lm = _make_label_map()  # only WORKS_AT: Person→Company, no reverse
@@ -658,12 +751,11 @@ def test_bidirectional_typed_rel_no_expansion():
 # G20 — bare map literals in collect()
 # ---------------------------------------------------------------------------
 
+
 def test_collect_bare_map_simple():
     """collect({name: b.name, email: b.email}) → array_agg(MAP(ARRAY[...], ARRAY[...]))."""
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (n:Person) RETURN collect({name: n.name, age: n.age}) AS data"
-    )
+    ast = parse_cypher("MATCH (n:Person) RETURN collect({name: n.name, age: n.age}) AS data")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "array['name', 'age']" in sql.lower()

@@ -15,7 +15,6 @@ Pure logic — no I/O, no database required.
 
 from __future__ import annotations
 
-import pytest
 
 from provisa.mv.aggregate_catalog import AggregateMVCatalog
 from provisa.mv.models import MVDefinition, MVStatus
@@ -60,6 +59,7 @@ def _fresh_catalog(*mvs: MVDefinition) -> AggregateMVCatalog:
 # ---------------------------------------------------------------------------
 # find_aggregate_mv tests
 # ---------------------------------------------------------------------------
+
 
 class TestCatalogFinding:
     def test_catalog_finds_mv_for_table(self):
@@ -126,10 +126,13 @@ class TestCatalogFinding:
 # rewrite_sql tests
 # ---------------------------------------------------------------------------
 
+
 class TestRewriteSql:
     def test_rewrite_sql_uses_mv_table(self):
         """rewrite_sql produces a SELECT against the MV backing table."""
-        mv = _make_mv(target_table="mv_orders_agg", target_schema="public", target_catalog="test_pg")
+        mv = _make_mv(
+            target_table="mv_orders_agg", target_schema="public", target_catalog="test_pg"
+        )
         catalog = _fresh_catalog(mv)
         sql = 'SELECT SUM("amount"), COUNT(*) FROM "public"."orders"'
         rewritten = catalog.rewrite_sql(sql, mv, ["amount"], [])
@@ -184,6 +187,7 @@ class TestRewriteSql:
 # Pipeline integration (catalog + rewrite chain)
 # ---------------------------------------------------------------------------
 
+
 class TestAggregateMVPipeline:
     def test_pipeline_find_and_rewrite(self):
         """Full flow: find_aggregate_mv → rewrite_sql produces governed SQL."""
@@ -229,5 +233,6 @@ class TestAggregateMVPipeline:
     def test_global_catalog_get_returns_instance(self):
         """get_aggregate_catalog returns the module-level singleton."""
         from provisa.mv.aggregate_catalog import get_aggregate_catalog
+
         cat = get_aggregate_catalog()
         assert isinstance(cat, AggregateMVCatalog)

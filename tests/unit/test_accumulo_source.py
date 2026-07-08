@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from provisa.accumulo.source import (
     AccumuloColumn,

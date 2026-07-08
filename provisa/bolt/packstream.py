@@ -323,26 +323,32 @@ def _unpack_one(data: bytes, offset: int) -> tuple[Any, int]:
         return struct.unpack("!q", data[offset : offset + 8])[0], offset + 8
     # Bytes
     if marker == 0xCC:
-        n = data[offset]; offset += 1
+        n = data[offset]
+        offset += 1
         return bytes(data[offset : offset + n]), offset + n
     if marker == 0xCD:
-        n = struct.unpack("!H", data[offset : offset + 2])[0]; offset += 2
+        n = struct.unpack("!H", data[offset : offset + 2])[0]
+        offset += 2
         return bytes(data[offset : offset + n]), offset + n
     if marker == 0xCE:
-        n = struct.unpack("!I", data[offset : offset + 4])[0]; offset += 4
+        n = struct.unpack("!I", data[offset : offset + 4])[0]
+        offset += 4
         return bytes(data[offset : offset + n]), offset + n
     # String (PackStream: 0x80-0x8F tiny, 0xD0-0xD2 for larger)
     if 0x80 <= marker <= 0x8F:
         n = marker & 0x0F
         return data[offset : offset + n].decode("utf-8"), offset + n
     if marker == 0xD0:
-        n = data[offset]; offset += 1
+        n = data[offset]
+        offset += 1
         return data[offset : offset + n].decode("utf-8"), offset + n
     if marker == 0xD1:
-        n = struct.unpack("!H", data[offset : offset + 2])[0]; offset += 2
+        n = struct.unpack("!H", data[offset : offset + 2])[0]
+        offset += 2
         return data[offset : offset + n].decode("utf-8"), offset + n
     if marker == 0xD2:
-        n = struct.unpack("!I", data[offset : offset + 4])[0]; offset += 4
+        n = struct.unpack("!I", data[offset : offset + 4])[0]
+        offset += 4
         return data[offset : offset + n].decode("utf-8"), offset + n
     # List (0x90-0x9F tiny, 0xD4-0xD6 for larger)
     if 0x90 <= marker <= 0x9F:
@@ -353,21 +359,24 @@ def _unpack_one(data: bytes, offset: int) -> tuple[Any, int]:
             lst.append(v)
         return lst, offset
     if marker == 0xD4:
-        n = data[offset]; offset += 1
+        n = data[offset]
+        offset += 1
         lst = []
         for _ in range(n):
             v, offset = _unpack_one(data, offset)
             lst.append(v)
         return lst, offset
     if marker == 0xD5:
-        n = struct.unpack("!H", data[offset : offset + 2])[0]; offset += 2
+        n = struct.unpack("!H", data[offset : offset + 2])[0]
+        offset += 2
         lst = []
         for _ in range(n):
             v, offset = _unpack_one(data, offset)
             lst.append(v)
         return lst, offset
     if marker == 0xD6:
-        n = struct.unpack("!I", data[offset : offset + 4])[0]; offset += 4
+        n = struct.unpack("!I", data[offset : offset + 4])[0]
+        offset += 4
         lst = []
         for _ in range(n):
             v, offset = _unpack_one(data, offset)
@@ -383,7 +392,8 @@ def _unpack_one(data: bytes, offset: int) -> tuple[Any, int]:
             d[k] = v
         return d, offset
     if marker == 0xD8:
-        n = data[offset]; offset += 1
+        n = data[offset]
+        offset += 1
         d = {}
         for _ in range(n):
             k, offset = _unpack_one(data, offset)
@@ -391,7 +401,8 @@ def _unpack_one(data: bytes, offset: int) -> tuple[Any, int]:
             d[k] = v
         return d, offset
     if marker == 0xD9:
-        n = struct.unpack("!H", data[offset : offset + 2])[0]; offset += 2
+        n = struct.unpack("!H", data[offset : offset + 2])[0]
+        offset += 2
         d = {}
         for _ in range(n):
             k, offset = _unpack_one(data, offset)
@@ -399,7 +410,8 @@ def _unpack_one(data: bytes, offset: int) -> tuple[Any, int]:
             d[k] = v
         return d, offset
     if marker == 0xDA:
-        n = struct.unpack("!I", data[offset : offset + 4])[0]; offset += 4
+        n = struct.unpack("!I", data[offset : offset + 4])[0]
+        offset += 4
         d = {}
         for _ in range(n):
             k, offset = _unpack_one(data, offset)
@@ -409,7 +421,8 @@ def _unpack_one(data: bytes, offset: int) -> tuple[Any, int]:
     # Struct (0xB0-0xBF tiny struct)
     if 0xB0 <= marker <= 0xBF:
         n_fields = marker & 0x0F
-        tag_byte = data[offset]; offset += 1
+        tag_byte = data[offset]
+        offset += 1
         struct_fields: list = []
         for _ in range(n_fields):
             v, offset = _unpack_one(data, offset)

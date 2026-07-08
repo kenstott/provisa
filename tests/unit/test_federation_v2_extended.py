@@ -45,7 +45,6 @@ from graphql import (
     GraphQLNonNull,
     GraphQLObjectType,
     GraphQLSchema,
-    GraphQLString,
     GraphQLUnionType,
     graphql_sync,
 )
@@ -74,8 +73,7 @@ def _schema_with_types(*type_names: str) -> GraphQLSchema:
     """Build a minimal schema with one query field per type name."""
     types = {n: _make_type(n) for n in type_names}
     query_fields = {
-        n.lower(): GraphQLField(GraphQLList(GraphQLNonNull(t)))
-        for n, t in types.items()
+        n.lower(): GraphQLField(GraphQLList(GraphQLNonNull(t))) for n, t in types.items()
     }
     return GraphQLSchema(query=GraphQLObjectType("Query", query_fields))
 
@@ -131,9 +129,7 @@ class TestKeyDirectiveAllTypes:
 
         # All three types must be annotated with @key
         for type_name in ["Orders", "Customers", "Products"]:
-            assert f"type {type_name} @key" in sdl, (
-                f"@key directive missing for {type_name}"
-            )
+            assert f"type {type_name} @key" in sdl, f"@key directive missing for {type_name}"
 
     def test_composite_pk_key_directive_correct_fields_string(self):
         """Composite PK with three columns must generate space-separated @key field list."""
@@ -169,6 +165,7 @@ class TestEntitiesFieldStructure:
         fed = build_federation_schema(schema, tables, pk)
         entities_field = fed.query_type.fields["_entities"]
         from graphql import GraphQLNonNull, GraphQLList
+
         assert isinstance(entities_field.type, GraphQLNonNull)
         assert isinstance(entities_field.type.of_type, GraphQLList)
 

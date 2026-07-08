@@ -45,7 +45,9 @@ def _csv_source(path: str) -> FileSourceConfig:
     return FileSourceConfig(id="test-csv", source_type="csv", path=path)
 
 
-def _make_csv(tmp_path: Path, filename: str, headers: list[str], rows: list[list] | None = None) -> Path:
+def _make_csv(
+    tmp_path: Path, filename: str, headers: list[str], rows: list[list] | None = None
+) -> Path:
     p = tmp_path / filename
     with p.open("w", newline="") as f:
         writer = csv.writer(f)
@@ -181,11 +183,13 @@ class TestCsvHeaderToGraphqlFieldName:
         f.name = name
         f.nullable = True
         import pyarrow as pa
+
         f.type = pa.string()
         return f
 
     def _mock_schema(self, names: list[str]) -> MagicMock:
         import pyarrow as pa
+
         fields = []
         for name in names:
             fld = MagicMock()
@@ -351,7 +355,7 @@ class TestFilesConnectorEnumerationIsLazy:
         _make_csv(subdir, "b.csv", ["y"])
 
         # Before call: no traversal has happened (just verifying no side-effects on construction)
-        src = Source(id="lake1", type=SourceType.files, path=str(tmp_path / "**" / "*.csv"))
+        _src = Source(id="lake1", type=SourceType.files, path=str(tmp_path / "**" / "*.csv"))
 
         # After explicit call: traversal happens
         found = _walk_local(str(tmp_path), max_depth=None)

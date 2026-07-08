@@ -10,8 +10,6 @@
 
 """Unit tests for secrets provider."""
 
-import os
-
 import pytest
 
 from provisa.core.secrets import resolve_secrets, resolve_secrets_in_dict

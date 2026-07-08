@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import io
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -110,8 +109,9 @@ actions:
 """
 
 
-def _build_metadata_dir(tmp_path: Path, tables_yaml: str = TABLES_YAML,
-                         actions_yaml: str | None = ACTIONS_YAML) -> Path:
+def _build_metadata_dir(
+    tmp_path: Path, tables_yaml: str = TABLES_YAML, actions_yaml: str | None = ACTIONS_YAML
+) -> Path:
     """Write a minimal Hasura metadata directory to a temp directory."""
     md_dir = tmp_path / "metadata"
     md_dir.mkdir()
@@ -124,6 +124,7 @@ def _build_metadata_dir(tmp_path: Path, tables_yaml: str = TABLES_YAML,
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestHasuraConverter:
     async def test_converts_tracked_tables(self, tmp_path):
@@ -157,9 +158,10 @@ class TestHasuraConverter:
         assert any("orders" in rid for rid in rel_ids)
 
         # Check cardinalities
-        cardinalities = {r.id: r.cardinality for r in config.relationships}
         obj_rel = next(r for r in config.relationships if "customer" in r.id)
-        arr_rel = next(r for r in config.relationships if "orders" in r.id and "customers" in r.source_table_id)
+        arr_rel = next(
+            r for r in config.relationships if "orders" in r.id and "customers" in r.source_table_id
+        )
         assert obj_rel.cardinality == "many-to-one"
         assert arr_rel.cardinality == "one-to-many"
 

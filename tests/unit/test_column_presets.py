@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import pytest
 
 from provisa.compiler.mutation_gen import apply_column_presets
 
@@ -25,6 +24,7 @@ from provisa.compiler.mutation_gen import apply_column_presets
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _preset(column: str, source: str, *, name: str | None = None, value: str | None = None) -> dict:
     """Build a preset dict matching the ColumnPreset field layout."""
@@ -34,6 +34,7 @@ def _preset(column: str, source: str, *, name: str | None = None, value: str | N
 # ---------------------------------------------------------------------------
 # source="now"
 # ---------------------------------------------------------------------------
+
 
 class TestSourceNow:
     def test_now_sets_iso_datetime_string(self):
@@ -71,6 +72,7 @@ class TestSourceNow:
 # ---------------------------------------------------------------------------
 # source="header"
 # ---------------------------------------------------------------------------
+
 
 class TestSourceHeader:
     def test_header_reads_correct_header_name(self):
@@ -122,6 +124,7 @@ class TestSourceHeader:
 # source="literal"
 # ---------------------------------------------------------------------------
 
+
 class TestSourceLiteral:
     def test_literal_injects_fixed_value(self):
         """source=literal injects the preset's value field verbatim."""
@@ -156,6 +159,7 @@ class TestSourceLiteral:
 # Combined / multi-preset scenarios
 # ---------------------------------------------------------------------------
 
+
 class TestMultiplePresets:
     def test_multiple_presets_all_applied(self):
         """All presets in the list are applied to the result dict."""
@@ -187,6 +191,7 @@ class TestMultiplePresets:
 # Empty presets list
 # ---------------------------------------------------------------------------
 
+
 class TestEmptyPresets:
     def test_empty_presets_returns_input_unchanged(self):
         """No presets → input_data returned as-is (a shallow copy)."""
@@ -208,6 +213,7 @@ class TestEmptyPresets:
 # Unknown / unsupported source type
 # ---------------------------------------------------------------------------
 
+
 class TestUnknownSource:
     def test_unknown_source_leaves_column_unset(self):
         """An unrecognised source value silently skips the preset (no if-branch matches).
@@ -224,6 +230,7 @@ class TestUnknownSource:
 # ---------------------------------------------------------------------------
 # Preset targeting a column not already in input_data
 # ---------------------------------------------------------------------------
+
 
 class TestColumnNotInInput:
     def test_literal_adds_new_column(self):

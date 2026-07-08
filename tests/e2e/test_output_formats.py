@@ -83,7 +83,7 @@ class TestCSV:
         )
         assert resp.status_code == 200
         assert "csv" in resp.headers.get("content-type", "")
-        lines = [l.strip() for l in resp.text.strip().splitlines()]
+        lines = [ln.strip() for ln in resp.text.strip().splitlines()]
         assert lines[0] == "id,amount"
         assert len(lines) >= 2  # header + at least 1 row
 

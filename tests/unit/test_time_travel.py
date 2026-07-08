@@ -18,7 +18,7 @@ Verifies:
 """
 
 import pytest
-from graphql import parse, validate
+from graphql import parse
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema

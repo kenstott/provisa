@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -25,6 +25,7 @@ from provisa.subscriptions.registry import get_provider
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _provider(**kwargs) -> DebeziumNotificationProvider:
     defaults = dict(
@@ -53,7 +54,9 @@ def _make_msg(value_dict: dict | None, ts_ms: int | None = None) -> MagicMock:
     return msg
 
 
-def _envelope(op: str, after: dict | None = None, before: dict | None = None, ts_ms: int | None = None) -> dict:
+def _envelope(
+    op: str, after: dict | None = None, before: dict | None = None, ts_ms: int | None = None
+) -> dict:
     """Build a Debezium bare-envelope dict."""
     payload: dict = {"op": op}
     if after is not None:
@@ -98,6 +101,7 @@ def _make_aiokafka_module(messages: list) -> MagicMock:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestTopicName:
     def test_topic_name_postgresql_uses_schema(self):
         """For PostgreSQL, topic uses pg_schema (not database) in path."""
@@ -108,8 +112,10 @@ class TestTopicName:
     def test_topic_name_postgresql_custom_schema(self):
         """pg_schema parameter overrides the default 'public' schema segment."""
         provider = _provider(
-            topic_prefix="myprefix", database="salesdb",
-            source_type="postgresql", pg_schema="myschema",
+            topic_prefix="myprefix",
+            database="salesdb",
+            source_type="postgresql",
+            pg_schema="myschema",
         )
         assert provider._build_topic("orders") == "myprefix.myschema.orders"
 

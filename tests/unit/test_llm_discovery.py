@@ -40,7 +40,7 @@ This file adds:
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -52,6 +52,7 @@ from provisa.discovery.prompt import build_prompt
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_table(
     table_id: int,
@@ -80,8 +81,10 @@ def _make_di(tables: list[TableMeta] | None = None) -> DiscoveryInput:
 
 
 def _candidate_json(
-    src_table=1, src_col="customer_id",
-    tgt_table=2, tgt_col="id",
+    src_table=1,
+    src_col="customer_id",
+    tgt_table=2,
+    tgt_col="id",
     cardinality="many-to-one",
     confidence=0.9,
     reasoning="FK pattern",
@@ -109,6 +112,7 @@ def _patch_complete_sync(return_text: str):
 # FK suggestion request/response shape
 # ---------------------------------------------------------------------------
 
+
 class TestFKSuggestionRequestResponseShape:
     """The analyzer must call the LLM and produce RelationshipCandidate objects
     with the correct field types."""
@@ -132,8 +136,10 @@ class TestFKSuggestionRequestResponseShape:
     def test_response_field_values_match_llm_output(self):
         """All candidate fields must map to their LLM response counterparts."""
         raw = _candidate_json(
-            src_table=1, src_col="customer_id",
-            tgt_table=2, tgt_col="id",
+            src_table=1,
+            src_col="customer_id",
+            tgt_table=2,
+            tgt_col="id",
             cardinality="many-to-one",
             confidence=0.92,
             reasoning="Name pattern match",
@@ -155,6 +161,7 @@ class TestFKSuggestionRequestResponseShape:
 # Confidence threshold boundary
 # ---------------------------------------------------------------------------
 
+
 class TestConfidenceThresholdBoundary:
     """Candidates exactly at min_confidence must be included; just below excluded."""
 
@@ -173,14 +180,16 @@ class TestConfidenceThresholdBoundary:
 
     def test_mixed_confidence_returns_only_passing(self):
         """Three candidates: two pass, one does not."""
-        di = _make_di([
-            _make_table(1, "orders", ["id", "customer_id", "product_id"]),
-            _make_table(2, "customers", ["id", "name"]),
-            _make_table(3, "products", ["id", "title"]),
-        ])
+        di = _make_di(
+            [
+                _make_table(1, "orders", ["id", "customer_id", "product_id"]),
+                _make_table(2, "customers", ["id", "name"]),
+                _make_table(3, "products", ["id", "title"]),
+            ]
+        )
         payload = [
             _candidate_json(src_col="customer_id", tgt_table=2, confidence=0.95),
-            _candidate_json(src_col="product_id", tgt_table=3, confidence=0.5),   # filtered
+            _candidate_json(src_col="product_id", tgt_table=3, confidence=0.5),  # filtered
             {
                 "source_table_id": 2,
                 "source_column": "id",
@@ -213,6 +222,7 @@ class TestConfidenceThresholdBoundary:
 # ---------------------------------------------------------------------------
 # Error when LLM unavailable
 # ---------------------------------------------------------------------------
+
 
 class TestLLMUnavailableError:
     """LLM errors must propagate — the analyzer must not swallow them."""
@@ -255,6 +265,7 @@ class TestLLMUnavailableError:
 # Additional validation edge cases
 # ---------------------------------------------------------------------------
 
+
 class TestCandidateValidation:
     """_validate_candidate covers structural / referential integrity checks."""
 
@@ -287,18 +298,22 @@ class TestCandidateValidation:
         """A well-formed candidate referencing known tables and columns passes."""
         di = _make_di()
         raw = _candidate_json(
-            src_table=1, src_col="customer_id",
-            tgt_table=2, tgt_col="id",
+            src_table=1,
+            src_col="customer_id",
+            tgt_table=2,
+            tgt_col="id",
             cardinality="many-to-one",
         )
         assert _validate_candidate(raw, di)
 
     def test_one_to_many_cardinality_passes_validation(self):
         """one-to-many is a valid cardinality value."""
-        di = _make_di([
-            _make_table(1, "customers", ["id"]),
-            _make_table(2, "orders", ["id", "customer_id"]),
-        ])
+        di = _make_di(
+            [
+                _make_table(1, "customers", ["id"]),
+                _make_table(2, "orders", ["id", "customer_id"]),
+            ]
+        )
         raw = {
             "source_table_id": 1,
             "source_column": "id",
@@ -314,6 +329,7 @@ class TestCandidateValidation:
 # ---------------------------------------------------------------------------
 # Prompt output-format section
 # ---------------------------------------------------------------------------
+
 
 class TestPromptOutputFormat:
     """build_prompt must include the JSON output format specification."""
@@ -331,8 +347,14 @@ class TestPromptOutputFormat:
     def test_prompt_lists_required_keys(self):
         di = _make_di()
         prompt = build_prompt(di)
-        for key in ("source_table_id", "source_column", "target_table_id",
-                    "target_column", "cardinality", "confidence"):
+        for key in (
+            "source_table_id",
+            "source_column",
+            "target_table_id",
+            "target_column",
+            "cardinality",
+            "confidence",
+        ):
             assert key in prompt
 
     def test_prompt_specifies_cardinality_values(self):
@@ -349,8 +371,11 @@ class TestPromptOutputFormat:
     def test_sample_values_included_in_prompt(self):
         """Tables with sample_values must have them in the prompt."""
         t1 = TableMeta(
-            table_id=1, source_id="src1", domain_id="d1",
-            schema_name="public", table_name="orders",
+            table_id=1,
+            source_id="src1",
+            domain_id="d1",
+            schema_name="public",
+            table_name="orders",
             columns=[{"name": "id", "type": "integer"}],
             sample_values=[{"id": "42"}],
         )
@@ -362,8 +387,11 @@ class TestPromptOutputFormat:
     def test_empty_sample_values_skipped(self):
         """Tables with no sample_values should not emit a 'Sample rows' line."""
         t1 = TableMeta(
-            table_id=1, source_id="src1", domain_id="d1",
-            schema_name="public", table_name="orders",
+            table_id=1,
+            source_id="src1",
+            domain_id="d1",
+            schema_name="public",
+            table_name="orders",
             columns=[{"name": "id", "type": "integer"}],
             sample_values=[],
         )

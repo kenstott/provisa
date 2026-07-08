@@ -10,8 +10,6 @@
 
 """Unit tests for relationship alias support (REQ-388, REQ-389, REQ-390, REQ-391, REQ-392)."""
 
-import pytest
-
 from provisa.core.models import Relationship, Cardinality
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 
@@ -19,6 +17,7 @@ from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMa
 # ---------------------------------------------------------------------------
 # REQ-388: Relationship model accepts alias field
 # ---------------------------------------------------------------------------
+
 
 def test_relationship_model_accepts_alias():
     """REQ-388: Relationship Pydantic model has optional alias field."""
@@ -51,15 +50,14 @@ def test_relationship_model_alias_defaults_none():
 # REQ-389: Alias uniqueness enforced per source table (via ValueError)
 # ---------------------------------------------------------------------------
 
+
 def test_relationship_alias_duplicate_raises_valueerror():
     """REQ-389: duplicate alias for same source table raises ValueError (simulated)."""
     # The actual enforcement is in the DB via UNIQUE constraint and caught in the repo.
     # Here we verify the ValueError message format used in the repo.
     alias = "WORKS_FOR"
     source = "employees"
-    exc = ValueError(
-        f"Alias {alias!r} already exists for source table {source!r}"
-    )
+    exc = ValueError(f"Alias {alias!r} already exists for source table {source!r}")
     assert "WORKS_FOR" in str(exc)
     assert "employees" in str(exc)
 
@@ -68,17 +66,34 @@ def test_relationship_alias_duplicate_raises_valueerror():
 # REQ-390: CypherLabelMap aliases index enables alias-based lookup
 # ---------------------------------------------------------------------------
 
+
 def _make_alias_label_map() -> CypherLabelMap:
     emp = NodeMapping(
-        label="Employee", type_name="Hr_Employee", domain_label="Hr", table_label="Employee",
-        table_id=1, source_id="pg", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="hr", table_name="employees",
+        label="Employee",
+        type_name="Hr_Employee",
+        domain_label="Hr",
+        table_label="Employee",
+        table_id=1,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="hr",
+        table_name="employees",
         properties={"id": "id", "dept_id": "dept_id", "name": "name"},
     )
     dept = NodeMapping(
-        label="Department", type_name="Hr_Department", domain_label="Hr", table_label="Department",
-        table_id=2, source_id="pg", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="hr", table_name="departments",
+        label="Department",
+        type_name="Hr_Department",
+        domain_label="Hr",
+        table_label="Department",
+        table_id=2,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="hr",
+        table_name="departments",
         properties={"id": "id", "name": "name"},
     )
     rm = RelationshipMapping(
@@ -136,34 +151,67 @@ def test_relationship_mapping_alias_defaults_none():
 # REQ-391: Multiple schema paths with same alias trigger UNION ALL
 # ---------------------------------------------------------------------------
 
+
 def _make_shared_alias_label_map() -> CypherLabelMap:
     emp = NodeMapping(
-        label="Employee", type_name="Hr_Employee", domain_label="Hr", table_label="Employee",
-        table_id=10, source_id="pg", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="hr", table_name="employees",
+        label="Employee",
+        type_name="Hr_Employee",
+        domain_label="Hr",
+        table_label="Employee",
+        table_id=10,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="hr",
+        table_name="employees",
         properties={"id": "id", "manager_id": "manager_id"},
     )
     mgr = NodeMapping(
-        label="Manager", type_name="Hr_Manager", domain_label="Hr", table_label="Manager",
-        table_id=11, source_id="pg", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="hr", table_name="managers",
+        label="Manager",
+        type_name="Hr_Manager",
+        domain_label="Hr",
+        table_label="Manager",
+        table_id=11,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="hr",
+        table_name="managers",
         properties={"id": "id", "director_id": "director_id"},
     )
     director = NodeMapping(
-        label="Director", type_name="Hr_Director", domain_label="Hr", table_label="Director",
-        table_id=12, source_id="pg", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="hr", table_name="directors",
+        label="Director",
+        type_name="Hr_Director",
+        domain_label="Hr",
+        table_label="Director",
+        table_id=12,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="hr",
+        table_name="directors",
         properties={"id": "id"},
     )
     rm1 = RelationshipMapping(
-        rel_type="REPORTS_TO", source_label="Employee", target_label="Manager",
-        join_source_column="manager_id", join_target_column="id",
-        field_name="REPORTS_TO", alias="REPORTS_TO",
+        rel_type="REPORTS_TO",
+        source_label="Employee",
+        target_label="Manager",
+        join_source_column="manager_id",
+        join_target_column="id",
+        field_name="REPORTS_TO",
+        alias="REPORTS_TO",
     )
     rm2 = RelationshipMapping(
-        rel_type="REPORTS_TO", source_label="Manager", target_label="Director",
-        join_source_column="director_id", join_target_column="id",
-        field_name="REPORTS_TO", alias="REPORTS_TO",
+        rel_type="REPORTS_TO",
+        source_label="Manager",
+        target_label="Director",
+        join_source_column="director_id",
+        join_target_column="id",
+        field_name="REPORTS_TO",
+        alias="REPORTS_TO",
     )
     return CypherLabelMap(
         nodes={"Employee": emp, "Manager": mgr, "Director": director},
@@ -184,6 +232,7 @@ def test_shared_alias_has_multiple_entries_in_aliases():
 # ---------------------------------------------------------------------------
 # REQ-392: GraphQL field uses alias as field name when set
 # ---------------------------------------------------------------------------
+
 
 def test_schema_gen_uses_alias_as_field_name():
     """REQ-392: when alias is set, GraphQL field name equals alias, not target type name."""

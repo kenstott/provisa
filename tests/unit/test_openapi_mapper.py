@@ -10,7 +10,6 @@
 
 """Unit tests for provisa.openapi.mapper."""
 
-import pytest
 from provisa.openapi.mapper import parse_spec, OpenAPIQuery, OpenAPIMutation
 
 
@@ -23,16 +22,18 @@ def _spec(paths: dict) -> dict:
 
 
 def test_get_operation_produces_query():
-    spec = _spec({
-        "/users": {
-            "get": {
-                "operationId": "listUsers",
-                "summary": "List users",
-                "parameters": [],
-                "responses": {"200": {"description": "ok"}},
+    spec = _spec(
+        {
+            "/users": {
+                "get": {
+                    "operationId": "listUsers",
+                    "summary": "List users",
+                    "parameters": [],
+                    "responses": {"200": {"description": "ok"}},
+                }
             }
         }
-    })
+    )
     queries, mutations = parse_spec(spec)
     assert len(queries) == 1
     assert len(mutations) == 0
@@ -45,14 +46,16 @@ def test_get_operation_produces_query():
 
 
 def test_post_operation_produces_mutation():
-    spec = _spec({
-        "/users": {
-            "post": {
-                "operationId": "createUser",
-                "responses": {"200": {"description": "ok"}},
+    spec = _spec(
+        {
+            "/users": {
+                "post": {
+                    "operationId": "createUser",
+                    "responses": {"200": {"description": "ok"}},
+                }
             }
         }
-    })
+    )
     queries, mutations = parse_spec(spec)
     assert len(queries) == 0
     assert len(mutations) == 1
@@ -63,17 +66,24 @@ def test_post_operation_produces_mutation():
 
 
 def test_path_params_extracted():
-    spec = _spec({
-        "/users/{id}": {
-            "get": {
-                "operationId": "getUser",
-                "parameters": [
-                    {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}},
-                ],
-                "responses": {"200": {"description": "ok"}},
+    spec = _spec(
+        {
+            "/users/{id}": {
+                "get": {
+                    "operationId": "getUser",
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        },
+                    ],
+                    "responses": {"200": {"description": "ok"}},
+                }
             }
         }
-    })
+    )
     queries, _ = parse_spec(spec)
     assert len(queries) == 1
     q = queries[0]
@@ -82,50 +92,57 @@ def test_path_params_extracted():
 
 
 def test_query_params_extracted():
-    spec = _spec({
-        "/items": {
-            "get": {
-                "operationId": "listItems",
-                "parameters": [
-                    {"name": "limit", "in": "query", "schema": {"type": "integer"}},
-                    {"name": "offset", "in": "query", "schema": {"type": "integer"}},
-                ],
-                "responses": {"200": {"description": "ok"}},
+    spec = _spec(
+        {
+            "/items": {
+                "get": {
+                    "operationId": "listItems",
+                    "parameters": [
+                        {"name": "limit", "in": "query", "schema": {"type": "integer"}},
+                        {"name": "offset", "in": "query", "schema": {"type": "integer"}},
+                    ],
+                    "responses": {"200": {"description": "ok"}},
+                }
             }
         }
-    })
+    )
     queries, _ = parse_spec(spec)
     q = queries[0]
-    assert q.query_params == [{"name": "limit", "type": "integer"}, {"name": "offset", "type": "integer"}]
+    assert q.query_params == [
+        {"name": "limit", "type": "integer"},
+        {"name": "offset", "type": "integer"},
+    ]
 
 
 def test_array_response_unwrapped():
-    spec = _spec({
-        "/users": {
-            "get": {
-                "operationId": "listUsers",
-                "responses": {
-                    "200": {
-                        "description": "ok",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "id": {"type": "integer"},
-                                            "name": {"type": "string"},
+    spec = _spec(
+        {
+            "/users": {
+                "get": {
+                    "operationId": "listUsers",
+                    "responses": {
+                        "200": {
+                            "description": "ok",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": {"type": "integer"},
+                                                "name": {"type": "string"},
+                                            },
                                         },
-                                    },
+                                    }
                                 }
-                            }
-                        },
-                    }
-                },
+                            },
+                        }
+                    },
+                }
             }
         }
-    })
+    )
     queries, _ = parse_spec(spec)
     q = queries[0]
     assert q.response_schema is not None
@@ -134,28 +151,30 @@ def test_array_response_unwrapped():
 
 
 def test_object_response_kept():
-    spec = _spec({
-        "/status": {
-            "get": {
-                "operationId": "getStatus",
-                "responses": {
-                    "200": {
-                        "description": "ok",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "status": {"type": "string"},
-                                    },
+    spec = _spec(
+        {
+            "/status": {
+                "get": {
+                    "operationId": "getStatus",
+                    "responses": {
+                        "200": {
+                            "description": "ok",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "status": {"type": "string"},
+                                        },
+                                    }
                                 }
-                            }
-                        },
-                    }
-                },
+                            },
+                        }
+                    },
+                }
             }
         }
-    })
+    )
     queries, _ = parse_spec(spec)
     q = queries[0]
     assert q.response_schema is not None
@@ -163,27 +182,31 @@ def test_object_response_kept():
 
 
 def test_operation_id_absent_slugified():
-    spec = _spec({
-        "/my-resource/{id}/details": {
-            "get": {
-                "responses": {"200": {"description": "ok"}},
+    spec = _spec(
+        {
+            "/my-resource/{id}/details": {
+                "get": {
+                    "responses": {"200": {"description": "ok"}},
+                }
             }
         }
-    })
+    )
     queries, _ = parse_spec(spec)
     q = queries[0]
     assert q.operation_id == "get_my_resource_id_details"
 
 
 def test_operation_id_present_used():
-    spec = _spec({
-        "/foo": {
-            "get": {
-                "operationId": "myOp",
-                "responses": {"200": {"description": "ok"}},
+    spec = _spec(
+        {
+            "/foo": {
+                "get": {
+                    "operationId": "myOp",
+                    "responses": {"200": {"description": "ok"}},
+                }
             }
         }
-    })
+    )
     queries, _ = parse_spec(spec)
     assert queries[0].operation_id == "myOp"
 

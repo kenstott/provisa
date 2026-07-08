@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """Unit tests for provisa/grpc_remote/loader.py — pure proto text parsing (no I/O)."""
-import pytest
+
 from provisa.grpc_remote.loader import parse_proto_text
 
 SAMPLE_PROTO = """

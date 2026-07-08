@@ -13,15 +13,9 @@
 import pytest
 
 from provisa.cypher.parser import (
-    CypherAST,
     CallSubquery,
     CypherParseError,
-    MatchClause,
-    NodePattern,
     PathFunction,
-    RelPattern,
-    ReturnClause,
-    WhereClause,
     extract_parameters,
     parse_cypher,
 )
@@ -30,6 +24,7 @@ from provisa.cypher.parser import (
 # ---------------------------------------------------------------------------
 # Happy-path parsing
 # ---------------------------------------------------------------------------
+
 
 def test_simple_match_return():
     ast = parse_cypher("MATCH (n:Person) RETURN n.name")
@@ -44,9 +39,7 @@ def test_simple_match_return():
 
 
 def test_optional_match_flag():
-    ast = parse_cypher(
-        "MATCH (n:Person) OPTIONAL MATCH (n)-[:KNOWS]->(m:Person) RETURN n.name"
-    )
+    ast = parse_cypher("MATCH (n:Person) OPTIONAL MATCH (n)-[:KNOWS]->(m:Person) RETURN n.name")
     assert ast.match_clauses[0].optional is False
     assert ast.match_clauses[1].optional is True
 
@@ -76,7 +69,7 @@ def test_return_alias():
 
 
 def test_named_parameters_extracted():
-    ast = parse_cypher("MATCH (n:Person) WHERE n.age > $min AND n.age < $max RETURN n")
+    _ast = parse_cypher("MATCH (n:Person) WHERE n.age > $min AND n.age < $max RETURN n")
     params = extract_parameters("MATCH (n:Person) WHERE n.age > $min AND n.age < $max RETURN n")
     assert "min" in params
     assert "max" in params
@@ -91,9 +84,7 @@ def test_relationship_pattern_parsed():
 
 
 def test_shortest_path_parsed():
-    ast = parse_cypher(
-        "MATCH p = shortestPath((a:Person)-[:KNOWS*..5]->(b:Person)) RETURN p"
-    )
+    ast = parse_cypher("MATCH p = shortestPath((a:Person)-[:KNOWS*..5]->(b:Person)) RETURN p")
     clause = ast.match_clauses[0]
     assert isinstance(clause.pattern, PathFunction)
     assert clause.pattern.func_name == "shortestpath"
@@ -104,9 +95,7 @@ def test_shortest_path_parsed():
 
 
 def test_all_shortest_paths_parsed():
-    ast = parse_cypher(
-        "MATCH p = allShortestPaths((a:Person)-[:KNOWS*..3]->(b:Company)) RETURN p"
-    )
+    ast = parse_cypher("MATCH p = allShortestPaths((a:Person)-[:KNOWS*..3]->(b:Company)) RETURN p")
     clause = ast.match_clauses[0]
     assert isinstance(clause.pattern, PathFunction)
     assert "allshortestpaths" in clause.pattern.func_name.lower()
@@ -115,6 +104,7 @@ def test_all_shortest_paths_parsed():
 # ---------------------------------------------------------------------------
 # Rejection tests
 # ---------------------------------------------------------------------------
+
 
 def test_create_rejected():
     with pytest.raises(CypherParseError, match="CREATE"):
@@ -165,6 +155,7 @@ def test_missing_return_rejected():
 # CALL {} subquery tests
 # ---------------------------------------------------------------------------
 
+
 def test_call_subquery_parsed():
     query = (
         "CALL {\n"
@@ -208,11 +199,7 @@ def test_call_subquery_with_outer_return():
 
 
 def test_call_subquery_no_outer_return():
-    query = (
-        "CALL {\n"
-        "  MATCH (n:Person) RETURN n.name AS name\n"
-        "}"
-    )
+    query = "CALL {\n  MATCH (n:Person) RETURN n.name AS name\n}"
     ast = parse_cypher(query)
     assert len(ast.call_subqueries) == 1
     assert ast.return_clause is None
@@ -222,12 +209,9 @@ def test_call_subquery_no_outer_return():
 # UNION tests
 # ---------------------------------------------------------------------------
 
+
 def test_union_parsed():
-    query = (
-        "MATCH (n:Person) RETURN n.name "
-        "UNION "
-        "MATCH (n:Person) RETURN n.name"
-    )
+    query = "MATCH (n:Person) RETURN n.name UNION MATCH (n:Person) RETURN n.name"
     ast = parse_cypher(query)
     assert len(ast.union_parts) == 1
     sub_ast, is_all = ast.union_parts[0]
@@ -236,11 +220,7 @@ def test_union_parsed():
 
 
 def test_union_all_parsed():
-    query = (
-        "MATCH (n:Person) RETURN n.name "
-        "UNION ALL "
-        "MATCH (n:Person) RETURN n.name"
-    )
+    query = "MATCH (n:Person) RETURN n.name UNION ALL MATCH (n:Person) RETURN n.name"
     ast = parse_cypher(query)
     assert len(ast.union_parts) == 1
     _, is_all = ast.union_parts[0]
@@ -248,11 +228,7 @@ def test_union_all_parsed():
 
 
 def test_union_sub_ast_has_match():
-    query = (
-        "MATCH (n:Person) RETURN n.name "
-        "UNION "
-        "MATCH (c:Company) RETURN c.name"
-    )
+    query = "MATCH (n:Person) RETURN n.name UNION MATCH (c:Company) RETURN c.name"
     ast = parse_cypher(query)
     sub_ast, _ = ast.union_parts[0]
     assert sub_ast.match_clauses[0].pattern.nodes[0].labels == ["Company"]
@@ -262,9 +238,11 @@ def test_union_sub_ast_has_match():
 # WITH pipeline tests
 # ---------------------------------------------------------------------------
 
+
 def test_with_creates_pipeline_stages():
     ast = parse_cypher("MATCH (n:Person) WITH n.name AS nm RETURN nm")
     from provisa.cypher.parser import MatchStep, WithClause
+
     assert len(ast.pipeline) == 2
     assert isinstance(ast.pipeline[0], MatchStep)
     assert isinstance(ast.pipeline[1], WithClause)
@@ -274,6 +252,7 @@ def test_with_creates_pipeline_stages():
 def test_with_preserves_match_group_where():
     ast = parse_cypher("MATCH (n:Person) WHERE n.age > 30 WITH n RETURN n")
     from provisa.cypher.parser import MatchStep
+
     step = ast.pipeline[0]
     assert isinstance(step, MatchStep)
     assert step.where is not None
@@ -290,6 +269,7 @@ def test_multi_with_pipeline():
     )
     ast = parse_cypher(q)
     from provisa.cypher.parser import MatchStep, WithClause
+
     assert len(ast.pipeline) == 4  # MatchStep, WithClause, MatchStep, WithClause
     assert isinstance(ast.pipeline[0], MatchStep)
     assert isinstance(ast.pipeline[1], WithClause)
@@ -312,36 +292,44 @@ def test_where_property_backward_compat():
 # _detect_procedure (cypher_router)
 # ---------------------------------------------------------------------------
 
+
 def test_detect_procedure_labels():
     from provisa.api.rest.cypher_router import _detect_procedure
+
     assert _detect_procedure("CALL db.labels()") == "db.labels"
 
 
 def test_detect_procedure_relationship_types():
     from provisa.api.rest.cypher_router import _detect_procedure
+
     assert _detect_procedure("CALL db.relationshipTypes()") == "db.relationshiptypes"
 
 
 def test_detect_procedure_property_keys():
     from provisa.api.rest.cypher_router import _detect_procedure
+
     assert _detect_procedure("CALL db.propertyKeys()") == "db.propertykeys"
 
 
 def test_detect_procedure_case_insensitive():
     from provisa.api.rest.cypher_router import _detect_procedure
+
     assert _detect_procedure("call DB.LABELS()") == "db.labels"
 
 
 def test_detect_procedure_with_whitespace():
     from provisa.api.rest.cypher_router import _detect_procedure
+
     assert _detect_procedure("  CALL  db.labels(  )  ") == "db.labels"
 
 
 def test_detect_procedure_non_procedure_returns_none():
     from provisa.api.rest.cypher_router import _detect_procedure
+
     assert _detect_procedure("MATCH (n:Person) RETURN n") is None
 
 
 def test_detect_procedure_unknown_proc_returns_none():
     from provisa.api.rest.cypher_router import _detect_procedure
+
     assert _detect_procedure("CALL db.unknown()") is None

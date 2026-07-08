@@ -15,17 +15,18 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from provisa.subscriptions.base import ChangeEvent, NotificationProvider
+from provisa.subscriptions.base import ChangeEvent
 from provisa.subscriptions.registry import get_provider
 
 
 # ---------------------------------------------------------------------------
 # ChangeEvent
 # ---------------------------------------------------------------------------
+
 
 class TestChangeEvent:
     def test_fields(self):
@@ -44,6 +45,7 @@ class TestChangeEvent:
 # PgNotificationProvider
 # ---------------------------------------------------------------------------
 
+
 class FakeConnection:
     def __init__(self):
         self._listeners: dict[str, list] = {}
@@ -53,9 +55,7 @@ class FakeConnection:
 
     async def remove_listener(self, channel: str, callback):
         if channel in self._listeners:
-            self._listeners[channel] = [
-                cb for cb in self._listeners[channel] if cb is not callback
-            ]
+            self._listeners[channel] = [cb for cb in self._listeners[channel] if cb is not callback]
 
     def fire(self, channel: str, payload: str):
         for cb in self._listeners.get(channel, []):
@@ -141,6 +141,7 @@ class TestPgProvider:
 # MongoNotificationProvider
 # ---------------------------------------------------------------------------
 
+
 class FakeChangeStream:
     def __init__(self, events):
         self._events = events
@@ -163,12 +164,14 @@ class TestMongoProvider:
     async def test_emits_insert_events(self):
         from provisa.subscriptions.mongo_provider import MongoNotificationProvider
 
-        stream = FakeChangeStream([
-            {
-                "operationType": "insert",
-                "fullDocument": {"_id": "abc", "name": "test"},
-            },
-        ])
+        stream = FakeChangeStream(
+            [
+                {
+                    "operationType": "insert",
+                    "fullDocument": {"_id": "abc", "name": "test"},
+                },
+            ]
+        )
         collection = MagicMock()
         collection.watch.return_value = stream
         db = MagicMock()
@@ -187,12 +190,14 @@ class TestMongoProvider:
     async def test_emits_delete_events(self):
         from provisa.subscriptions.mongo_provider import MongoNotificationProvider
 
-        stream = FakeChangeStream([
-            {
-                "operationType": "delete",
-                "documentKey": {"_id": "abc123"},
-            },
-        ])
+        stream = FakeChangeStream(
+            [
+                {
+                    "operationType": "delete",
+                    "documentKey": {"_id": "abc123"},
+                },
+            ]
+        )
         collection = MagicMock()
         collection.watch.return_value = stream
         db = MagicMock()
@@ -222,8 +227,10 @@ class TestMongoProvider:
 # PollingNotificationProvider
 # ---------------------------------------------------------------------------
 
+
 class FakeRow(dict):
     """Dict subclass that supports asyncpg-style Record access."""
+
     pass
 
 
@@ -279,6 +286,7 @@ class TestPollingProvider:
 # ---------------------------------------------------------------------------
 # KafkaNotificationProvider
 # ---------------------------------------------------------------------------
+
 
 class FakeKafkaMessage:
     def __init__(self, value, timestamp=None):
@@ -374,28 +382,32 @@ class TestKafkaProvider:
 # Registry
 # ---------------------------------------------------------------------------
 
+
 class TestRegistry:
     def test_pg_provider(self):
         provider = get_provider("postgresql", {"pool": MagicMock()})
         from provisa.subscriptions.pg_provider import PgNotificationProvider
+
         assert isinstance(provider, PgNotificationProvider)
 
     def test_mongo_provider(self):
         provider = get_provider("mongodb", {"database": MagicMock()})
         from provisa.subscriptions.mongo_provider import MongoNotificationProvider
+
         assert isinstance(provider, MongoNotificationProvider)
 
     def test_kafka_provider(self):
         provider = get_provider("kafka", {"bootstrap_servers": "localhost:9092"})
         from provisa.subscriptions.kafka_provider import KafkaNotificationProvider
+
         assert isinstance(provider, KafkaNotificationProvider)
 
     def test_polling_fallback(self):
         provider = get_provider("mysql", {"pool": MagicMock()})
         from provisa.subscriptions.polling_provider import PollingNotificationProvider
+
         assert isinstance(provider, PollingNotificationProvider)
 
     def test_unknown_raises(self):
         with pytest.raises(ValueError, match="No subscription provider"):
             get_provider("unknown_db", {})
-

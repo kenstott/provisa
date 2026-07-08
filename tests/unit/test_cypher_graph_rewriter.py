@@ -14,7 +14,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.cypher.graph_rewriter import apply_graph_rewrites
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.cypher.label_map import CypherLabelMap, NodeMapping
 from provisa.cypher.translator import GraphVarKind
 
 
@@ -82,6 +82,7 @@ def _parse_sql(sql: str) -> exp.Select:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def test_scalar_column_untouched():
     sql = 'SELECT n."name" FROM "public"."persons" AS n'
     ast = _parse_sql(sql)
@@ -101,7 +102,9 @@ def test_node_variable_wrapped():
     result = apply_graph_rewrites(ast, graph_vars, lm)
     result_sql = result.sql(dialect="trino")
     # Should contain CAST and ROW or JSON wrapping
-    assert "CAST" in result_sql.upper() or "ROW" in result_sql.upper() or "JSON" in result_sql.upper()
+    assert (
+        "CAST" in result_sql.upper() or "ROW" in result_sql.upper() or "JSON" in result_sql.upper()
+    )
 
 
 def test_mixed_scalar_and_node():
@@ -154,6 +157,7 @@ def test_no_duplicate_id_key_when_column_named_id():
     result_sql = result.sql(dialect="trino")
     # Count occurrences of 'id' as a JSON key — should appear exactly once
     import re
+
     id_key_count = len(re.findall(r"'id'", result_sql))
     assert id_key_count == 1, f"Duplicate 'id' JSON key found in: {result_sql}"
 

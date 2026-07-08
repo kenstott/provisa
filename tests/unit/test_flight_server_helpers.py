@@ -23,9 +23,9 @@ import pytest
 
 pa = pytest.importorskip("pyarrow")
 
-from provisa.api.flight.server import ProvisaFlightServer
-from provisa.executor.formats.arrow import rows_to_arrow_table
-from provisa.compiler.sql_gen import ColumnRef
+from provisa.api.flight.server import ProvisaFlightServer  # noqa: E402
+from provisa.executor.formats.arrow import rows_to_arrow_table  # noqa: E402
+from provisa.compiler.sql_gen import ColumnRef  # noqa: E402
 
 pytestmark = [pytest.mark.asyncio]
 
@@ -81,6 +81,7 @@ class TestFlightServerBuildCatalogTable:
         assert "description" in table.schema.names
         assert table.num_rows == 1
 
+
 class TestRowsToArrowTable:
     """Unit tests for the rows → Arrow table conversion used by Flight."""
 
@@ -105,6 +106,7 @@ class TestRowsToArrowTable:
 
     async def test_nested_column_uses_dotted_name(self):
         from provisa.executor.formats.arrow import _column_names
+
         columns = [
             ColumnRef(alias=None, column="name", field_name="name", nested_in="customer"),
         ]

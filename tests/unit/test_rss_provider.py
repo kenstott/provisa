@@ -67,9 +67,11 @@ EMPTY_FEED = b"""<?xml version="1.0"?>
 # parse_feed
 # ---------------------------------------------------------------------------
 
+
 class TestParseFeed:
     def test_rss_returns_items(self):
         from provisa.subscriptions.rss_provider import parse_feed
+
         items = parse_feed(RSS_FEED)
         assert len(items) == 2
         assert items[0]["title"] == "Item One"
@@ -77,6 +79,7 @@ class TestParseFeed:
 
     def test_rss_item_fields(self):
         from provisa.subscriptions.rss_provider import parse_feed
+
         item = parse_feed(RSS_FEED)[0]
         assert item["link"] == "https://example.com/1"
         assert item["description"] == "First item"
@@ -85,12 +88,14 @@ class TestParseFeed:
 
     def test_atom_returns_entries(self):
         from provisa.subscriptions.rss_provider import parse_feed
+
         items = parse_feed(ATOM_FEED)
         assert len(items) == 2
         assert items[0]["title"] == "Atom Entry One"
 
     def test_atom_entry_fields(self):
         from provisa.subscriptions.rss_provider import parse_feed
+
         item = parse_feed(ATOM_FEED)[0]
         assert item["link"] == "https://example.com/a1"
         assert item["description"] == "First atom entry"
@@ -98,10 +103,12 @@ class TestParseFeed:
 
     def test_empty_channel_returns_empty(self):
         from provisa.subscriptions.rss_provider import parse_feed
+
         assert parse_feed(EMPTY_FEED) == []
 
     def test_unknown_root_returns_empty(self):
         from provisa.subscriptions.rss_provider import parse_feed
+
         assert parse_feed(b"<other><item/></other>") == []
 
 
@@ -109,15 +116,18 @@ class TestParseFeed:
 # _parse_date
 # ---------------------------------------------------------------------------
 
+
 class TestParseDate:
     def test_iso8601_z(self):
         from provisa.subscriptions.rss_provider import _parse_date
+
         dt = _parse_date("2026-04-09T12:00:00Z")
         assert dt.year == 2026
         assert dt.tzinfo is not None
 
     def test_rfc2822(self):
         from provisa.subscriptions.rss_provider import _parse_date
+
         dt = _parse_date("Thu, 09 Apr 2026 12:00:00 +0000")
         assert dt.year == 2026
         assert dt.tzinfo is not None
@@ -125,12 +135,14 @@ class TestParseDate:
     def test_none_returns_sentinel(self):
         # REQ-343: empty date → datetime.min sentinel (sorts oldest), not now().
         from provisa.subscriptions.rss_provider import _UNPARSEABLE_DATE, _parse_date
+
         dt = _parse_date(None)
         assert dt == _UNPARSEABLE_DATE
         assert dt == datetime.min.replace(tzinfo=timezone.utc)
 
     def test_garbage_returns_sentinel(self):
         from provisa.subscriptions.rss_provider import _UNPARSEABLE_DATE, _parse_date
+
         dt = _parse_date("not a date")
         assert dt == _UNPARSEABLE_DATE
 
@@ -138,6 +150,7 @@ class TestParseDate:
 # ---------------------------------------------------------------------------
 # RSSNotificationProvider
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_response(content: bytes, status: int = 200) -> MagicMock:
     resp = MagicMock()
@@ -172,10 +185,6 @@ class TestRSSProvider:
             provider._running = True
 
             events = []
-            # Force watermark to before the items
-            import provisa.subscriptions.rss_provider as _mod
-            orig_now = _mod.datetime
-
             async for ev in provider.watch("news"):
                 events.append(ev)
                 if len(events) >= 2:
@@ -260,6 +269,7 @@ class TestRSSProvider:
 # ---------------------------------------------------------------------------
 # Registry integration
 # ---------------------------------------------------------------------------
+
 
 class TestRSSRegistry:
     def test_registry_returns_rss_provider(self):

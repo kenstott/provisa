@@ -610,21 +610,6 @@ class TestParseMetadataDir:
     """Tests for parse_metadata_dir using tmp_path-based YAML files."""
 
     def test_minimal_flat_metadata_parses(self, tmp_path: Path):
-        metadata_dict = {
-            "version": 3,
-            "sources": [
-                {
-                    "name": "default",
-                    "kind": "postgres",
-                    "tables": [{"table": {"name": "orders", "schema": "public"}}],
-                    "configuration": {
-                        "connection_info": {
-                            "database_url": "postgres://user:pass@db:5432/app"
-                        }
-                    },
-                }
-            ],
-        }
         tables_yaml = [{"table": {"name": "orders", "schema": "public"}}]
         (tmp_path / "tables.yaml").write_text(yaml.dump(tables_yaml))
 
@@ -1089,7 +1074,8 @@ class TestConvertMetadata:
         config = convert_metadata(md)
         # analyst and admin have empty filters — no RLS rules for them on orders
         analyst_rls = [
-            r for r in config.rls_rules
+            r
+            for r in config.rls_rules
             if r.role_id == "analyst" and r.table_id is not None and "orders" in r.table_id
         ]
         assert len(analyst_rls) == 0
@@ -1097,18 +1083,14 @@ class TestConvertMetadata:
     def test_object_relationship_converted(self):
         md = _build_full_metadata()
         config = convert_metadata(md)
-        customer_rel = next(
-            (r for r in config.relationships if "customer" in r.id), None
-        )
+        customer_rel = next((r for r in config.relationships if "customer" in r.id), None)
         assert customer_rel is not None
         assert customer_rel.cardinality.value == "many-to-one"
 
     def test_array_relationship_converted(self):
         md = _build_full_metadata()
         config = convert_metadata(md)
-        items_rel = next(
-            (r for r in config.relationships if "order_items" in r.id), None
-        )
+        items_rel = next((r for r in config.relationships if "order_items" in r.id), None)
         assert items_rel is not None
         assert items_rel.cardinality.value == "one-to-many"
 
@@ -1235,9 +1217,7 @@ class TestConvertMetadata:
         md = _build_full_metadata()
         config = convert_metadata(md)
         orders = next(t for t in config.tables if t.table_name == "orders")
-        notes_col = next(
-            (c for c in orders.columns if c.name == "internal_notes"), None
-        )
+        notes_col = next((c for c in orders.columns if c.name == "internal_notes"), None)
         assert notes_col is not None
         assert "admin" in notes_col.visible_to
         assert "analyst" not in notes_col.visible_to
@@ -1346,10 +1326,12 @@ class TestBoolExprToSql:
     def test_nested_boolean_expression(self):
         expr = {
             "_and": [
-                {"_or": [
-                    {"department": {"_eq": "sales"}},
-                    {"department": {"_eq": "marketing"}},
-                ]},
+                {
+                    "_or": [
+                        {"department": {"_eq": "sales"}},
+                        {"department": {"_eq": "marketing"}},
+                    ]
+                },
                 {"active": {"_eq": True}},
             ]
         }
@@ -1621,9 +1603,7 @@ class TestParseActionAndCronHelpers:
     def test_parse_computed_field_name(self):
         raw = {
             "name": "full_name",
-            "definition": {
-                "function": {"name": "compute_full_name", "schema": "public"}
-            },
+            "definition": {"function": {"name": "compute_full_name", "schema": "public"}},
         }
         cf = _parse_computed_field(raw)
         assert cf.name == "full_name"
@@ -1684,9 +1664,7 @@ class TestCollectRoles:
                 HasuraPermission(role="admin", columns=["id"]),
             ],
         )
-        md = HasuraMetadata(
-            sources=[HasuraSource(name="default", kind="postgres", tables=[tbl])]
-        )
+        md = HasuraMetadata(sources=[HasuraSource(name="default", kind="postgres", tables=[tbl])])
         roles = _collect_roles(md)
         assert "analyst" in roles
         assert "admin" in roles
@@ -1730,9 +1708,7 @@ class TestCollectRoles:
             select_permissions=[HasuraPermission(role="editor", columns=["id"])],
             insert_permissions=[HasuraPermission(role="editor", columns=["amount"])],
         )
-        md = HasuraMetadata(
-            sources=[HasuraSource(name="default", kind="postgres", tables=[tbl])]
-        )
+        md = HasuraMetadata(sources=[HasuraSource(name="default", kind="postgres", tables=[tbl])])
         roles = _collect_roles(md)
         assert "write" in roles["editor"].capabilities
 

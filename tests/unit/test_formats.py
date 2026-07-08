@@ -67,14 +67,14 @@ class TestNDJSON:
 class TestCSV:
     def test_basic(self):
         result = rows_to_csv(ROWS, _cols())
-        lines = [l.strip() for l in result.strip().splitlines()]
+        lines = [ln.strip() for ln in result.strip().splitlines()]
         assert lines[0] == "id,amount,name"
         assert "Alice" in lines[1]
         assert len(lines) == 4  # header + 3 rows
 
     def test_empty(self):
         result = rows_to_csv([], _cols())
-        lines = [l.strip() for l in result.strip().splitlines()]
+        lines = [ln.strip() for ln in result.strip().splitlines()]
         assert len(lines) == 1  # header only
 
     def test_json_string_cells_flattened(self):
@@ -84,11 +84,19 @@ class TestCSV:
             ColumnRef(alias=None, column="pet", field_name="pet", nested_in=None),
         ]
         rows = [
-            ("closed", '{"name":"Alice Nguyen"}', '{"species":"lion","price":1600.0,"animalBreed":{"careLevel":"expert","avgLifespanYears":18}}'),
-            ("open",   '{"name":"Bob Martinez"}', '{"species":"cat","price":380.0,"animalBreed":{"careLevel":"moderate","avgLifespanYears":15}}'),
+            (
+                "closed",
+                '{"name":"Alice Nguyen"}',
+                '{"species":"lion","price":1600.0,"animalBreed":{"careLevel":"expert","avgLifespanYears":18}}',
+            ),
+            (
+                "open",
+                '{"name":"Bob Martinez"}',
+                '{"species":"cat","price":380.0,"animalBreed":{"careLevel":"moderate","avgLifespanYears":15}}',
+            ),
         ]
         result = rows_to_csv(rows, cols)
-        lines = [l.strip() for l in result.strip().splitlines()]
+        lines = [ln.strip() for ln in result.strip().splitlines()]
         headers = lines[0].split(",")
         assert "status" in headers
         assert "user.name" in headers
@@ -109,7 +117,7 @@ class TestCSV:
         ]
         rows = [("open", {"name": "Alice", "age": 30})]
         result = rows_to_csv(rows, cols)
-        lines = [l.strip() for l in result.strip().splitlines()]
+        lines = [ln.strip() for ln in result.strip().splitlines()]
         headers = lines[0].split(",")
         assert "user.name" in headers
         assert "user.age" in headers
