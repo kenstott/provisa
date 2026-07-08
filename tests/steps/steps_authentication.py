@@ -1093,17 +1093,22 @@ def any_request_arrives(shared_data: dict) -> None:
     shared_data["anon_status_code"] = response.status_code
 
 
-@then("it is treated as the anonymous identity with all roles and wildcard domain access")
-def anonymous_identity_with_all_roles(shared_data: dict) -> None:
+@then(
+    "it is treated as a role identity (admin by default) with all roles and wildcard domain access"
+)
+def role_identity_admin_default(shared_data: dict) -> None:
     response = shared_data["anon_response"]
 
     assert response.status_code == 200, (
-        f"Anonymous requests must succeed (200); got {response.status_code}"
+        f"Dev-mode requests must succeed (200); got {response.status_code}"
     )
 
     body = response.json()
-    assert body["user_id"] == "anonymous", (
-        f"Anonymous identity user_id must be 'anonymous'; got {body['user_id']!r}"
+    # REQ-535: with no auth provider the username IS the role, defaulting to "admin".
+    assert body["user_id"] == "admin", (
+        f"Dev-mode identity user_id must equal the role 'admin'; got {body['user_id']!r}"
     )
-    assert body["roles"], "Anonymous identity must have at least one role"
+    assert "admin" in body["roles"], (
+        f"Dev-mode identity roles must include 'admin'; got {body['roles']}"
+    )
     shared_data["anon_identity_response"] = body
