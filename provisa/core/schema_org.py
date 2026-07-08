@@ -565,3 +565,48 @@ source_catalog_cache = Table(
     Column("indexed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     PrimaryKeyConstraint("source_id", "schema_name", "table_name"),
 )
+
+
+# --- Event substrate (REQ-940/941): the control-plane event table as a transactional outbox. ---
+# The fleet-shared change-event queue. Injectors POST events here (in the same tx as the state
+# change → atomic); table processors CLAIM their work via event_status; repeaters fanout-read events
+# by id cursor. Two tables: `events` (posted once) + `event_status` (one row per event × dependent
+# table = the fanout work item, exactly-once claim/lease). V1: schema-defined, no migration.
+
+events = Table(
+    "events",
+    metadata,
+    # id is the ordering key AND the repeater replay cursor.
+    Column(
+        "id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    ),
+    # the node/table this event is ABOUT (a data source table or an MV).
+    Column("source_table", Text, nullable=False),
+    # delta (upsert by PK) | append (insert) | replace (delete+insert) | warn (advise) | error (halt)
+    Column("event_type", Text, nullable=False),
+    # cursor / changed rows (bounded to jsonb; over the ceiling degrade to replace) / warn|error detail.
+    Column("payload", JSON, default=dict, server_default="{}"),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint(
+        "event_type IN ('delta','append','replace','warn','error')",
+        name="events_event_type_check",
+    ),
+)
+
+event_status = Table(
+    "event_status",
+    metadata,
+    # the fanout work item: one row per (event, dependent node) — dispatched from the SQLGlot lineage.
+    Column("event_id", BigInteger, ForeignKey("events.id", ondelete="CASCADE"), nullable=False),
+    Column("dependent_table", Text, nullable=False),
+    # unclaimed → claimed (heartbeat-leased) → completed; a stale heartbeat reverts to unclaimed.
+    Column("claim_status", Text, nullable=False, server_default="unclaimed"),
+    Column("processor_name", Text),  # the lease owner while claimed
+    Column("heartbeat_at", DateTime(timezone=True)),  # lease; stale → reaper reclaims
+    Column("completed_at", DateTime(timezone=True)),
+    PrimaryKeyConstraint("event_id", "dependent_table"),
+    CheckConstraint(
+        "claim_status IN ('unclaimed','claimed','completed')",
+        name="event_status_claim_status_check",
+    ),
+)
