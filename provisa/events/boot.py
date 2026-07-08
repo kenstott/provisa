@@ -51,6 +51,90 @@ class NodeSpec:
     probe_factory: Callable[[], Probe] | None = None  # poll nodes: a fresh probe per fire
 
 
+def specs_from_config(
+    *,
+    sources: list[Any],
+    tables: list[Any],
+    mvs: list[Any],
+    engine: Any,
+    store_dsn: str,
+    source_fetch: Callable[[Any, Any], Any],
+    mv_columns: Callable[[Any], list[tuple[str, str]]],
+    mv_run_query: Callable[[Any], Any],
+) -> list[NodeSpec]:
+    """Bind the config to :class:`NodeSpec`s (REQ-941). A MATERIALIZED source table (``federate`` ==
+    MATERIALIZED) becomes a source spec — its landing args resolved from config, its ``fetch`` the
+    source adapter's loader (injected). An MV becomes an mv spec — its output ``columns`` from a live
+    engine introspection and its ``run_query`` the engine's SELECT (both injected, since neither is
+    in the model). The engine classifies reachability; untyped tables are skipped (types are filled
+    at registration). The three live collaborators are injected so this binder stays pure/testable."""
+    from provisa.events.handlers import make_mv_generate, make_source_land
+    from provisa.federation.engine import UnreachableSource
+    from provisa.federation.residency import resolve_landing_args
+    from provisa.federation.strategy import Strategy, federate
+
+    src_by_id = {s.id: s for s in sources}
+    specs: list[NodeSpec] = []
+
+    for tbl in tables:
+        src = src_by_id.get(tbl.source_id)
+        if src is None:
+            continue
+        try:
+            if federate(src, engine) is not Strategy.MATERIALIZED:
+                continue  # live/scan federates in place — not landed, not a source processor
+        except UnreachableSource:
+            continue
+        try:
+            args = resolve_landing_args(src, tbl)
+        except ValueError:
+            continue  # a column's type is not yet resolved — reconcile skips it too
+        node = f"{tbl.schema_name}.{tbl.table_name}"
+        mat_table = f"{src.id}__{tbl.schema_name}__{tbl.table_name}"  # matches _mat_table_name
+        handle = make_source_land(
+            store_dsn,
+            schema="mat",
+            table=mat_table,
+            columns=args.columns,
+            change_signal=args.change_signal,
+            watermark_column=args.watermark_column,
+            pk_columns=args.pk_columns,
+            fetch=source_fetch(src, tbl),
+        )
+        specs.append(
+            NodeSpec(
+                node=node,
+                kind="source",
+                change_signal=args.change_signal,
+                watermark_column=args.watermark_column,
+                handle=handle,
+                poll_seconds=getattr(tbl, "cache_ttl", None),
+            )
+        )
+
+    for mv in mvs:
+        node = f"{mv.target_schema}.{mv.target_table}"
+        handle = make_mv_generate(
+            store_dsn,
+            schema=mv.target_schema,
+            table=mv.target_table,
+            columns=mv_columns(mv),
+            run_query=mv_run_query(mv),
+        )
+        specs.append(
+            NodeSpec(
+                node=node,
+                kind="mv",
+                change_signal=mv.freshness_mode,
+                watermark_column=None,
+                handle=handle,
+                poll_seconds=mv.refresh_interval,
+            )
+        )
+
+    return specs
+
+
 def build_processors(
     specs: list[NodeSpec], *, db: Any, dependents_of: Callable[[str], list[str]]
 ) -> list[TableProcessor]:
