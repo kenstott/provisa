@@ -200,6 +200,12 @@ class EngineRuntime:  # REQ-825, REQ-840
         engines, whose telemetry lands in the dedicated ops store)."""
         self._backend.provision(self._state, ops_views, retention_hours)
 
+    async def reconcile_landed_tables(self) -> list[tuple[str, str]]:
+        """Converge the store's landing schema for MATERIALIZED tables and attach their read views
+        (REQ-846/932) — the schema-currency controller. Driven at boot and after (re)registration;
+        convergent + idempotent. No-op on a broad federator. Returns the reconciled (source, table)."""
+        return await self._backend.reconcile_landed_tables(self._state)
+
     async def provision_infra(self) -> None:
         """Boot-time engine-terminal infra (Arrow Flight proxy, object store, results schema).
         No-op for a native engine."""

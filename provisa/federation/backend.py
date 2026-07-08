@@ -73,6 +73,12 @@ class EngineBackend:
     async def provision_infra(self, state: Any) -> None:
         """No Arrow-Flight proxy / object store / results schema for a native engine."""
 
+    async def reconcile_landed_tables(self, state: Any) -> list[tuple[str, str]]:
+        """Schema-currency reconcile of MATERIALIZED landing tables (REQ-846/932). No-op on the base
+        / broad-federator engine; NativeEngineBackend overrides it to converge + attach."""
+        del state
+        return []
+
     async def watchdog(self, state: Any) -> None:
         """No external process to watch."""
 
