@@ -10,6 +10,8 @@
 
 """Admin GraphQL schema — queries + mutations for all config entities."""
 
+# complexity-gate: allow-loc=2345 reason="REQ-932 change_signal wiring (freshness derivation + probe_query pass-through); file already flagged for extraction, split tracked separately"
+
 # Requirements: REQ-012, REQ-013, REQ-016, REQ-019, REQ-020, REQ-021, REQ-041, REQ-042, REQ-063, REQ-133, REQ-155, REQ-156, REQ-158, REQ-215, REQ-252, REQ-253, REQ-276, REQ-304, REQ-305, REQ-306, REQ-366, REQ-393, REQ-399, REQ-400, REQ-402, REQ-413, REQ-416, REQ-432, REQ-433, REQ-434
 
 from __future__ import annotations
@@ -372,6 +374,8 @@ async def _fetch_table_with_columns(
         column_presets=presets,
         api_endpoint=api_endpoint,
         view_sql=view_sql,
+        change_signal=row.get("change_signal"),
+        probe_query=row.get("probe_query"),
         materialize=bool(row.get("materialize", False)),
         mv_refresh_interval=int(row.get("mv_refresh_interval") or 300),
         data_product=bool(row.get("data_product", False)),
@@ -1464,13 +1468,19 @@ def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
     )
 
 
-def _sync_view_mv(table_name: str, view_sql: str, refresh_interval: int) -> None:
+def _sync_view_mv(
+    table_name: str, view_sql: str, refresh_interval: int, change_signal: str | None = None
+) -> None:
     """Register or update an MVDefinition for a materialized user-defined view."""
     from provisa.api.app import state
     from provisa.mv.models import MVDefinition, MVStatus
+    from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
 
     mv_id = f"view-{table_name}"
     existing = state.mv_registry.get(mv_id)
+    # REQ-932: derive the refresh gate from change_signal. A user view has no backing source, so
+    # resolve falls to the global default. Push signals return None → keep ttl until CDC-apply.
+    freshness = to_freshness_mode(resolve(change_signal, None)) or "ttl"
     mv = MVDefinition(
         id=mv_id,
         source_tables=[],
@@ -1482,6 +1492,7 @@ def _sync_view_mv(table_name: str, view_sql: str, refresh_interval: int) -> None
         sql=view_sql,
         expose_in_sdl=False,
         status=existing.status if existing is not None else MVStatus.STALE,
+        freshness_mode=freshness,
     )
     state.mv_registry.register(mv)
 
@@ -1821,6 +1832,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             description=input.description,
             columns=columns,
             watermark_column=input.watermark_column,
+            change_signal=input.change_signal,
+            probe_query=input.probe_query,
             column_presets=presets,
             view_sql=input.view_sql or None,
             materialize=input.materialize,
@@ -1900,7 +1913,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     )
 
         if input.view_sql and input.materialize:
-            _sync_view_mv(input.table_name, input.view_sql, input.mv_refresh_interval)
+            _sync_view_mv(
+                input.table_name, input.view_sql, input.mv_refresh_interval, input.change_signal
+            )
 
         await _rebuild_schemas()
         return MutationResult(
@@ -1953,6 +1968,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             description=input.description,
             columns=columns,
             watermark_column=input.watermark_column,
+            change_signal=input.change_signal,
+            probe_query=input.probe_query,
             column_presets=presets,
             view_sql=input.view_sql or None,
             materialize=input.materialize,
@@ -2002,7 +2019,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 src_row, _conn, input.source_id, input.table_name, input.schema_name
             )
         if input.view_sql and input.materialize:
-            _sync_view_mv(input.table_name, input.view_sql, input.mv_refresh_interval)
+            _sync_view_mv(
+                input.table_name, input.view_sql, input.mv_refresh_interval, input.change_signal
+            )
         elif not input.materialize:
             _remove_view_mv(input.table_name)
         await _rebuild_schemas()

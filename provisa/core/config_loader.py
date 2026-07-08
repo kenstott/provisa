@@ -641,6 +641,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250
     openapi_specs = _load_openapi_specs(config)
     _validate_table_kafka_sinks(config)
     _validate_table_live_delivery(config)
+    _validate_change_signal(config)
     await _upsert_tables(conn, engine, config, openapi_specs)
 
     # 6. Relationships (tables must exist first)
@@ -755,6 +756,29 @@ def _validate_table_live_delivery(config) -> None:
             raise ValueError(
                 f"Table {table.table_name!r}: live.strategy={strategy} on source {source.id!r} "
                 f"({stype}) requires source-level cdc transport (bootstrap_servers/topic_prefix)"
+            )
+
+
+def _validate_change_signal(config) -> None:  # REQ-932
+    """Capability-gate change_signal. Push transports (debezium/kafka) require the source's cdc
+    block (a "kafka" source type carries its own transport). The signal resolves table → source."""
+    from provisa.core.change_signal import resolve  # noqa: PLC0415
+
+    sources_by_id = {s.id: s for s in config.sources}
+    for table in config.tables:
+        source = sources_by_id.get(table.source_id)
+        source_signal = getattr(source, "change_signal", None) if source else None
+        sig = resolve(getattr(table, "change_signal", None), source_signal)
+        if sig not in ("debezium", "kafka"):
+            continue
+        stype = getattr(source, "type", None) if source else None
+        stype_val = getattr(stype, "value", stype)
+        if stype_val == "kafka":
+            continue
+        if source is None or getattr(source, "cdc", None) is None:
+            raise ValueError(
+                f"Table {table.table_name!r}: change_signal={sig} requires source-level cdc "
+                f"transport on {table.source_id!r} (bootstrap_servers/topic_prefix)"
             )
 
 

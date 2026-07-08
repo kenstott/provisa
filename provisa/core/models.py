@@ -168,7 +168,10 @@ class SourceCdcConfig(BaseModel):  # REQ-824
     bootstrap_servers: str  # Kafka bootstrap servers for the Debezium/Kafka delta stream
     topic_prefix: str  # Debezium connector topic prefix; topics derived {prefix}.{schema}.{table}
     schema_registry_url: str | None = None  # Confluent Schema Registry URL (Avro); None = JSON
-    consumer_group_id: str = "provisa-debezium"  # Kafka consumer group for this source's stream
+    # REQ-931: consumer group is a RECEIVER-side setting (Provisa's consumer identity), not sender-
+    # dictated like the transport fields above. None = inherit the Provisa-level default
+    # (ProvisaConfig.cdc_consumer_group_id); set only for deliberate per-source offset isolation.
+    consumer_group_id: str | None = None
 
 
 class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250, REQ-251, REQ-281
@@ -204,6 +207,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # Force MATERIALIZED federation for this source's tables even when it could be reached live —
     # the manual counterpart to cost-based promotion, for when the connector is a poor fit (REQ-826).
     prefer_materialized: bool = False
+    # REQ-929: source-level default change signal — how Provisa learns rows changed. Orthogonal to a
+    # table's watermark_column (which gates the poll subscription path + append landing, REQ-926/927).
+    # Pull: ttl | probe | ttl_probe. Push: native | debezium | kafka. Tables inherit unless overriding.
+    change_signal: str = "ttl"
     cache_catalog: str | None = (
         None  # the engine catalog for API cache; None = source's own catalog
     )
@@ -454,7 +461,19 @@ class Table(
     )
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
     live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)
-    watermark_column: str | None = None  # column used by polling subscription provider
+    # REQ-924/926/927: the single watermark column (an existing column). Set → append landing +
+    # incremental refresh (WHERE wm > cursor) + poll-path subscription (insert/update grain, no
+    # hard deletes). Unset → replace landing, full refresh, no poll-path subscription.
+    watermark_column: str | None = None
+    # REQ-929: change signal for this table; None = inherit the source's. Push variants (debezium/
+    # kafka) carry the rows and form the CDC subscription path (deletes included) with no watermark.
+    change_signal: str | None = None
+    # REQ-929: source-native freshness probe for change_signal in {probe, ttl_probe}; the query
+    # returns one comparable token. None → derive MAX(watermark_column) when a watermark exists.
+    probe_query: str | None = None
+    # REQ-930: cache_ttl is the SINGLE per-table TTL. change_signal in {ttl, ttl_probe} requires it
+    # (the poll/staleness cadence); when materialized it is also the refresh cadence. One value, so
+    # the change-detection interval and the materialized-copy lifetime can never diverge.
     view_sql: str | None = None  # when set, table is a Provisa-managed view
     materialize: bool = False  # when True, view_sql is materialized as a physical CTAS in mv_cache
     mv_refresh_interval: int = 300  # seconds between MV refreshes (only used when materialize=True)
@@ -947,6 +966,9 @@ class ProvisaConfig(BaseModel):
     # PostgreSQL DSN where non-attachable sources LAND for native (duckdb/…) engines; set via the
     # admin UI. Empty → the native materialize path is unavailable. Applied on restart.
     materialize_store_url: str | None = None
+    # REQ-931: Provisa-level Kafka consumer group for inbound CDC (Debezium/Kafka). Receiver-side —
+    # one consumer identity across all sources; a source's cdc.consumer_group_id overrides it.
+    cdc_consumer_group_id: str = "provisa-debezium"
     warm_tables: WarmTablesConfig = Field(default_factory=WarmTablesConfig)
     materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
     observability: OtelConfig = Field(default_factory=OtelConfig)

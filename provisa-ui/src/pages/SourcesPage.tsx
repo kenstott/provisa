@@ -234,7 +234,7 @@ export function SourcesPage() {
     bootstrapServers: "",
     topicPrefix: "",
     schemaRegistryUrl: "",
-    consumerGroupId: "provisa-debezium",
+    consumerGroupId: "",
   };
   const [cdc, setCdc] = useState({ ...emptyCdc });
   const [authType, setAuthType] = useState("none");
@@ -412,7 +412,7 @@ export function SourcesPage() {
             bootstrapServers: s.cdc.bootstrapServers ?? "",
             topicPrefix: s.cdc.topicPrefix ?? "",
             schemaRegistryUrl: s.cdc.schemaRegistryUrl ?? "",
-            consumerGroupId: s.cdc.consumerGroupId ?? "provisa-debezium",
+            consumerGroupId: s.cdc.consumerGroupId ?? "",
           }
         : { ...emptyCdc },
     );
@@ -551,7 +551,7 @@ export function SourcesPage() {
                 bootstrapServers: cdc.bootstrapServers,
                 topicPrefix: cdc.topicPrefix,
                 schemaRegistryUrl: cdc.schemaRegistryUrl || null,
-                consumerGroupId: cdc.consumerGroupId || "provisa-debezium",
+                consumerGroupId: cdc.consumerGroupId.trim() || null,
               }
             : null,
       };
@@ -2340,11 +2340,11 @@ export function SourcesPage() {
                 />
               </label>
               <label>
-                Consumer Group ID
+                Consumer Group ID (optional)
                 <input
                   value={cdc.consumerGroupId}
                   onChange={(e) => setCdc({ ...cdc, consumerGroupId: e.target.value })}
-                  placeholder="provisa-debezium"
+                  placeholder="inherit global (provisa-debezium)"
                 />
               </label>
             </fieldset>
@@ -2409,7 +2409,11 @@ export function SourcesPage() {
           </label>
           <label>
             Type
-            <select value={form.type} onChange={(e) => handleTypeChange(e.target.value)}>
+            <select
+              data-tour="sources-type"
+              value={form.type}
+              onChange={(e) => handleTypeChange(e.target.value)}
+            >
               {CATEGORIES.map((cat) => (
                 <optgroup key={cat} label={cat}>
                   {SOURCE_TYPES.filter((s) => s.category === cat).map((s) => (

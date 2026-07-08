@@ -100,6 +100,9 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
             "auto_track_fk": os.environ.get("PROVISA_AUTO_TRACK_FK", "true").lower()
             not in ("0", "false", "no"),
         },
+        "cdc": {  # REQ-931: Provisa-level inbound-CDC consumer group (receiver identity)
+            "consumer_group_id": _eng("cdc_consumer_group_id"),
+        },
         "sampling": {
             "default_sample_size": int(os.environ.get("PROVISA_SAMPLE_SIZE", "10000")),
         },
@@ -266,6 +269,20 @@ async def update_settings(request: Request):  # REQ-165, REQ-194, REQ-253, REQ-3
     if "otel" in body:
         _apply_otel(body["otel"], updated)
 
+    if "cdc" in body:  # REQ-931: Provisa-level inbound-CDC consumer group; applied on restart
+        c = body["cdc"]
+        if "consumer_group_id" in c:
+            path = config_path()
+            cfg = read_config()
+            val = (c["consumer_group_id"] or "").strip()
+            if val:
+                cfg["cdc_consumer_group_id"] = val
+            else:
+                cfg.pop("cdc_consumer_group_id", None)  # blank → inherit the model default
+            write_config(path, cfg)
+            updated.append("cdc.consumer_group_id")
+            restart_required = True
+
     return {"success": True, "updated": updated, "restart_required": restart_required}
 
 
@@ -346,13 +363,12 @@ async def get_federation_engine():  # REQ-916
     def _eng(key: str):
         return cfg.get(key, ProvisaConfig.model_fields[key].default)
 
+    # Return current values for every config key any engine declares (each is a ProvisaConfig
+    # field), so the tab can render per-engine fields — connection AND execution tuning — generically.
+    all_keys = {f["config_key"] for e in engine_registry() for f in e["config_fields"]}
     return {
         "current": _eng("federation_engine"),
-        "config": {
-            "federation_engine_url": _eng("federation_engine_url"),
-            "federation_engine_host": _eng("federation_engine_host"),
-            "federation_engine_port": _eng("federation_engine_port"),
-        },
+        "config": {k: _eng(k) for k in sorted(all_keys)},
         "engines": engine_registry(),
         "restart_required_note": "Changing the federation engine takes effect after the service is restarted.",
     }
@@ -363,9 +379,12 @@ async def set_federation_engine(request: Request):  # REQ-916
     """Persist the federation-engine selection + connection config. Applied on service restart."""
     from provisa.federation.engine import engine_registry
 
+    from provisa.api.app import state
+
     body = await request.json()
     engine = body.get("engine")
-    valid = {e["key"] for e in engine_registry()}
+    registry = engine_registry()
+    valid = {e["key"] for e in registry}
     if engine not in valid:
         raise HTTPException(
             status_code=400, detail=f"unknown engine {engine!r}; valid: {sorted(valid)}"
@@ -375,19 +394,40 @@ async def set_federation_engine(request: Request):  # REQ-916
     cfg = read_config()
     cfg["federation_engine"] = engine
     updated = ["federation_engine"]
-    # Only the config keys this engine declares are accepted, so one engine's fields can't smuggle
-    # into another's persisted config.
-    allowed = {
-        f["config_key"] for e in engine_registry() if e["key"] == engine for f in e["config_fields"]
+
+    def _coerce(field: dict, val):
+        if val in (None, ""):
+            return None
+        t = field["type"]
+        return int(val) if t == "number" else bool(val) if t == "boolean" else val
+
+    # Persist only the keys this engine declares (connection + execution tuning), coerced by the
+    # field's declared type. A blank value resets the key to its ProvisaConfig default.
+    selected_fields = {
+        f["config_key"]: f for e in registry if e["key"] == engine for f in e["config_fields"]
     }
-    for key in ("federation_engine_url", "federation_engine_host", "federation_engine_port"):
-        if key in body and key in allowed:
-            val = body[key]
-            cfg[key] = (
-                int(val) if key == "federation_engine_port" and val not in (None, "") else val
-            )
-            updated.append(key)
+    for ck, field in selected_fields.items():
+        if ck in body:
+            coerced = _coerce(field, body[ck])
+            if coerced is None:
+                cfg.pop(ck, None)
+            else:
+                cfg[ck] = coerced
+            updated.append(ck)
+
+    # Reset keys OTHER engines declare but this one doesn't, so switching engines never leaves a
+    # stale coordinator host / URL that the newly selected engine (which reads config by key) picks up.
+    other_keys = {f["config_key"] for e in registry for f in e["config_fields"]} - set(
+        selected_fields
+    )
+    for ck in other_keys:
+        if cfg.pop(ck, None) is not None:
+            updated.append(f"-{ck}")
+
     write_config(path, cfg)
+    # Regenerate the engine's derived config (e.g. Trino jvm.config/config.properties) so sizing
+    # changes are written out; a native engine's write_config is a no-op. Applies on restart.
+    state.federation_engine.write_config(str(path))
     return {"success": True, "updated": updated, "restart_required": True}
 
 

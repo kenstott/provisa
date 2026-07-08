@@ -10,6 +10,8 @@
 
 """FastAPI app factory with startup hooks for config load and schema generation."""
 
+# complexity-gate: allow-loc=2445 reason="REQ-932 change_signal→freshness derivation in the view→MV loader; file already flagged for extraction, split tracked separately"
+
 # Requirements: REQ-012, REQ-016, REQ-057, REQ-086, REQ-133, REQ-135, REQ-147, REQ-158, REQ-159,
 #               REQ-171, REQ-203, REQ-221, REQ-247, REQ-250, REQ-252, REQ-289, REQ-369, REQ-371,
 #               REQ-510
@@ -1866,7 +1868,8 @@ async def _register_user_views_in_state(_pg: asyncpg.Connection, raw_config: dic
     """Register __provisa__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal."""
     try:
         _view_rows = await _pg.fetch(
-            "SELECT table_name, view_sql, materialize, mv_refresh_interval FROM registered_tables"
+            "SELECT table_name, view_sql, materialize, mv_refresh_interval, change_signal"
+            " FROM registered_tables"
             " WHERE source_id = '__provisa__' AND view_sql IS NOT NULL"
         )
         # REQ-199: MVs without an explicit interval fall back to the configured default TTL.
@@ -1876,8 +1879,14 @@ async def _register_user_views_in_state(_pg: asyncpg.Connection, raw_config: dic
         for _vr in _view_rows:
             if _vr.get("materialize"):
                 from provisa.mv.models import MVDefinition, MVStatus
+                from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
 
                 _mv_id = f"view-{_vr['table_name']}"
+                # REQ-932: derive the refresh gate from change_signal. A __provisa__ view has no
+                # backing source, so resolve falls to the global default. Push signals return None
+                # (event-driven, no poll gate) → keep the ttl default until CDC-apply landing exists.
+                _sig = resolve(_vr.get("change_signal"), None)
+                _fresh = to_freshness_mode(_sig) or "ttl"  # REQ-932: push → ttl until Phase 3
                 if state.mv_registry.get(_mv_id) is None:
                     state.mv_registry.register(
                         MVDefinition(
@@ -1891,6 +1900,7 @@ async def _register_user_views_in_state(_pg: asyncpg.Connection, raw_config: dic
                             sql=_vr["view_sql"].rstrip().rstrip(";"),
                             expose_in_sdl=False,
                             status=MVStatus.STALE,
+                            freshness_mode=_fresh,
                         )
                     )
             else:

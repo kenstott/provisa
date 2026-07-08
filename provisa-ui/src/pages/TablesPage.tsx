@@ -595,6 +595,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         alias: editingTable.alias || undefined,
         description: editingTable.description || undefined,
         watermarkColumn: editingTable.watermarkColumn || null,
+        changeSignal: editingTable.changeSignal || null,
+        probeQuery: editingTable.probeQuery || null,
         viewSql: editingTable.viewSql || undefined,
         materialize: editingTable.materialize,
         mvRefreshInterval: editingTable.mvRefreshInterval,
@@ -2076,8 +2078,144 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                   />
                                 </label>
                               )}
-                              {
-                                <label>
+                              <label>
+                                <span
+                                  style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
+                                >
+                                  Change Signal{" "}
+                                  <span
+                                    title="How Provisa learns rows changed. ttl = refresh on the Cache TTL timer; probe = source-native freshness query, re-pull only on change; ttl_probe = probe after the TTL floor elapses; native/debezium/kafka = source push. Inherit = follow the source-level default."
+                                    style={{
+                                      cursor: "help",
+                                      color: "var(--text-muted)",
+                                      fontSize: "0.75rem",
+                                      lineHeight: 1,
+                                    }}
+                                  >
+                                    ⓘ
+                                  </span>
+                                </span>
+                                <select
+                                  value={editingTable.changeSignal ?? ""}
+                                  onChange={(e) =>
+                                    setEditingTable({
+                                      ...editingTable,
+                                      changeSignal: e.target.value || null,
+                                    })
+                                  }
+                                >
+                                  <option value="">Inherit source</option>
+                                  <option value="ttl">ttl (timer)</option>
+                                  <option value="probe">probe (freshness query)</option>
+                                  <option value="ttl_probe">probe + ttl</option>
+                                  <option value="native">native (source push)</option>
+                                  <option value="debezium">debezium</option>
+                                  <option value="kafka">kafka</option>
+                                </select>
+                              </label>
+                              {(editingTable.changeSignal === "ttl" ||
+                                editingTable.changeSignal === "ttl_probe") &&
+                                (() => {
+                                  const cs = sources.find((s) => s.id === editingTable.sourceId);
+                                  // Mirror the Cache TTL input's value resolution: the staged edit
+                                  // (cacheTtlEdits) wins, then the table value, then the source.
+                                  const staged = cacheTtlEdits[editingTable.id]?.value;
+                                  const tableTtl =
+                                    staged != null && staged !== ""
+                                      ? Number(staged)
+                                      : staged === ""
+                                        ? null
+                                        : editingTable.cacheTtl;
+                                  const effTtl = tableTtl ?? cs?.cacheTtl ?? null;
+                                  const fromTable = tableTtl != null;
+                                  return effTtl == null ? (
+                                    <p
+                                      style={{
+                                        gridColumn: "1 / -1",
+                                        margin: 0,
+                                        color: "var(--warning, #d19a00)",
+                                        fontSize: "0.8rem",
+                                      }}
+                                    >
+                                      ttl needs an interval — set <strong>Cache TTL (seconds)</strong>{" "}
+                                      above (neither the table nor the source defines one).
+                                    </p>
+                                  ) : (
+                                    <p
+                                      style={{
+                                        gridColumn: "1 / -1",
+                                        margin: 0,
+                                        color: "var(--text-muted)",
+                                        fontSize: "0.8rem",
+                                      }}
+                                    >
+                                      Refreshes every {effTtl}s (from {fromTable ? "table" : "source"}{" "}
+                                      Cache TTL).
+                                    </p>
+                                  );
+                                })()}
+                              {(editingTable.changeSignal === "debezium" ||
+                                editingTable.changeSignal === "kafka") &&
+                                (() => {
+                                  const cs = sources.find((s) => s.id === editingTable.sourceId);
+                                  const hasCdc = !!cs?.cdc?.bootstrapServers;
+                                  const hasPk = editingTable.columns.some((c) => c.isPrimaryKey);
+                                  // Debezium derives {prefix}.{schema}.{table}; a plain Kafka feed
+                                  // consumes the topic named for the table (kafka_provider: topic=table).
+                                  const topic =
+                                    editingTable.changeSignal === "debezium"
+                                      ? `${cs?.cdc?.topicPrefix}.${editingTable.schemaName}.${editingTable.tableName}`
+                                      : editingTable.tableName;
+                                  return (
+                                    <>
+                                      {hasCdc ? (
+                                        <p
+                                          style={{
+                                            gridColumn: "1 / -1",
+                                            margin: 0,
+                                            color: "var(--text-muted)",
+                                            fontSize: "0.8rem",
+                                          }}
+                                        >
+                                          Provisa consumes the source's CDC transport (
+                                          {cs!.cdc!.bootstrapServers}); topic <code>{topic}</code>. No
+                                          per-table transport config needed.
+                                        </p>
+                                      ) : (
+                                        <p
+                                          style={{
+                                            gridColumn: "1 / -1",
+                                            margin: 0,
+                                            color: "var(--warning, #d19a00)",
+                                            fontSize: "0.8rem",
+                                          }}
+                                        >
+                                          {editingTable.changeSignal} needs the source's CDC transport
+                                          (bootstrap servers, topic prefix) — configure it on the{" "}
+                                          <strong>source</strong>. It isn't set, so no change events
+                                          will arrive.
+                                        </p>
+                                      )}
+                                      {!hasPk && (
+                                        <p
+                                          style={{
+                                            gridColumn: "1 / -1",
+                                            margin: 0,
+                                            color: "var(--warning, #d19a00)",
+                                            fontSize: "0.8rem",
+                                          }}
+                                        >
+                                          No primary key set — the receiver can't apply updates or
+                                          deletes (tombstones) without one. Mark a <strong>PK</strong>{" "}
+                                          column below.
+                                        </p>
+                                      )}
+                                    </>
+                                  );
+                                })()}
+                              {(editingTable.changeSignal === "probe" ||
+                                editingTable.changeSignal === "ttl_probe") && (
+                                <label style={{ gridColumn: "1 / -1" }}>
                                   <span
                                     style={{
                                       display: "flex",
@@ -2085,9 +2223,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                       gap: "0.25rem",
                                     }}
                                   >
-                                    Watermark Column{" "}
+                                    Freshness probe{" "}
                                     <span
-                                      title="A timestamp or incrementing integer column used to detect new/changed rows for CDC (Change Data Capture) and real-time subscriptions. Required for GraphQL subscriptions on SQL sources; optional for CDC sources like PostgreSQL that use triggers."
+                                      title="Source-native query returning one comparable token; blank → MAX(watermark). Provisa compares stored vs. fresh by equality and re-pulls only on change."
                                       style={{
                                         cursor: "help",
                                         color: "var(--text-muted)",
@@ -2098,55 +2236,47 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                       ⓘ
                                     </span>
                                   </span>
-                                  <span
-                                    style={{ fontWeight: "normal", color: "var(--text-muted)" }}
-                                  >
-                                    {CDC_TYPES.has(
-                                      sources.find((s) => s.id === editingTable.sourceId)?.type ??
-                                        "",
-                                    )
-                                      ? "(optional — polling fallback if triggers unavailable)"
-                                      : "(required for subscriptions)"}
-                                  </span>
-                                  <select
-                                    value={editingTable.watermarkColumn || ""}
+                                  <input
+                                    value={editingTable.probeQuery ?? ""}
                                     onChange={(e) =>
                                       setEditingTable({
                                         ...editingTable,
-                                        watermarkColumn: e.target.value || null,
+                                        probeQuery: e.target.value || null,
                                       })
                                     }
-                                  >
-                                    <option value="">
-                                      {CDC_TYPES.has(
-                                        sources.find((s) => s.id === editingTable.sourceId)?.type ??
-                                          "",
-                                      )
-                                        ? "None (use triggers)"
-                                        : "None (no subscriptions)"}
-                                    </option>
-                                    {editingTable.columns
-                                      .filter((c) => {
-                                        const dt = editingColumnTypes[c.columnName];
-                                        return !dt || isWatermarkEligible(dt);
-                                      })
-                                      .map((c) => (
-                                        <option key={c.columnName} value={c.columnName}>
-                                          {c.columnName}
-                                          {editingColumnTypes[c.columnName]
-                                            ? ` (${editingColumnTypes[c.columnName]})`
-                                            : ""}
-                                        </option>
-                                      ))}
-                                  </select>
+                                    placeholder="SELECT MAX(id) FROM …"
+                                  />
                                 </label>
-                              }
-                            </div>
+                              )}
                             {(() => {
                               const src = sources.find((s) => s.id === editingTable.sourceId);
                               const stype = (src?.type ?? "").toLowerCase();
-                              const { liveCapable } = liveCapability(stype);
-                              const strategies = availableStrategies(stype);
+                              const isEngineDerived = stype === "trino" || src?.id === "__provisa__";
+                              // Native CDC needs a CDC-capable source (real table) or, for a
+                              // materialized view, a CDC-capable materialization store (PostgreSQL
+                              // LISTEN/NOTIFY, or a Debezium-integrated DB).
+                              const matStoreScheme = (settings?.materialize?.store_url ?? "")
+                                .split("://")[0]
+                                .split("+")[0]
+                                .toLowerCase();
+                              const matStoreCdc =
+                                !!editingTable.materialize &&
+                                (matStoreScheme === "postgresql" || matStoreScheme === "postgres");
+                              const nativeCdc =
+                                matStoreCdc || (!isEngineDerived && liveCapability(stype).cdcAvail);
+                              // debezium + kafka are always offerable — the operator owns the
+                              // connector/feed's health. poll is always offerable (it needs a
+                              // watermark column, set above); native only when CDC-capable. So live
+                              // delivery is always available.
+                              const strategies = Array.from(
+                                new Set([
+                                  "poll",
+                                  ...(nativeCdc ? ["native"] : []),
+                                  "debezium",
+                                  "kafka",
+                                  ...(isEngineDerived ? [] : availableStrategies(stype)),
+                                ]),
+                              );
                               const live = editingTable.live;
                               const setLive = (patch: Partial<LiveDeliveryConfig>) =>
                                 setEditingTable(
@@ -2197,27 +2327,25 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                     border: "1px solid var(--border)",
                                     borderRadius: "0.4rem",
                                     padding: "0.5rem 0.75rem",
-                                    margin: "0.5rem 0",
-                                    opacity: liveCapable ? 1 : 0.55,
                                   }}
                                 >
                                   <legend style={{ fontSize: "0.8rem", fontWeight: 600 }}>
                                     Live Delivery{live ? " — active" : ""}
                                   </legend>
-                                  {!liveCapable ? (
-                                    <p
-                                      style={{
-                                        margin: 0,
-                                        fontSize: "0.75rem",
-                                        color: "var(--text-muted)",
-                                      }}
-                                    >
-                                      Live delivery is not available for{" "}
-                                      <code>{stype || "this"}</code> sources — no CDC provider and
-                                      not watermark-pollable through the federation engine.
-                                    </p>
-                                  ) : (
+                                  {(
                                     <>
+                                      {isEngineDerived && !editingTable.materialize && (
+                                        <p
+                                          style={{
+                                            margin: "0 0 0.4rem",
+                                            fontSize: "0.72rem",
+                                            color: "var(--warn, #d99)",
+                                          }}
+                                        >
+                                          Each poll recomputes this view. For frequent polling, check{" "}
+                                          <em>Materialized View</em> so polls read the stored table.
+                                        </p>
+                                      )}
                                       <label
                                         style={{
                                           display: "flex",
@@ -2235,6 +2363,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                               live: e.target.checked ? defaultLive : null,
                                             })
                                           }
+                                          style={{ width: "auto" }}
                                         />
                                         Enable live delivery
                                       </label>
@@ -2267,8 +2396,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                           <label>
                                             Query ID
                                             <input
-                                              value={live.queryId ?? ""}
-                                              onChange={(e) => setLive({ queryId: e.target.value })}
+                                              readOnly
+                                              value={`${editingTable.sourceId}.${editingTable.tableName}`}
+                                              style={{ color: "var(--text-muted)", cursor: "default" }}
                                             />
                                           </label>
                                           {live.strategy === "poll" && (
@@ -2369,7 +2499,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                                 fontWeight: "normal",
                                               }}
                                             >
-                                              <input type="checkbox" checked readOnly disabled />
+                                              <input
+                                                type="checkbox"
+                                                checked
+                                                readOnly
+                                                disabled
+                                                style={{ width: "auto" }}
+                                              />
                                               SSE fanout (always on)
                                             </label>
                                             <label
@@ -2392,6 +2528,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                                       ),
                                                     });
                                                 }}
+                                                style={{ width: "auto" }}
                                               />
                                               Kafka sink
                                             </label>
@@ -2446,6 +2583,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                 </fieldset>
                               );
                             })()}
+                            </div>
                             {(() => {
                               const NOSQL = new Set(["mongodb", "cassandra"]);
                               const src = sources.find((s) => s.id === editingTable.sourceId);
