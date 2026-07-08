@@ -77,6 +77,33 @@ async def test_reconcile_creates_keeps_recreates(tmp_path):
     assert rows[0][0] == 0
 
 
+def test_check_source_drift_ratios_and_floor():
+    from provisa.federation.store_writer import check_source_drift
+
+    # full match → ratio 1.0
+    assert check_source_drift(_COLS, [{"id": 1, "status": "a"}]) == 1.0
+    # partial match → ratio, extra keys dropped, missing land NULL
+    assert check_source_drift(_COLS, [{"id": 1, "extra": 9}]) == 0.5
+    # empty rows → no drift to judge
+    assert check_source_drift(_COLS, []) == 1.0
+    # 0% overlap at the default floor → refuse (mangled source → error)
+    with pytest.raises(ValueError, match="source drift"):
+        check_source_drift(_COLS, [{"nope": 1, "other": 2}])
+    # a raised floor rejects partial drift too
+    with pytest.raises(ValueError, match="source drift"):
+        check_source_drift(_COLS, [{"id": 1, "extra": 9}], match_floor=0.5)
+
+
+@pytest.mark.asyncio
+async def test_land_refuses_fully_drifted_source(tmp_path):
+    dsn = _dsn(tmp_path)
+    await store_writer.ensure_table(dsn, schema="", table="pets", columns=_COLS)
+    with pytest.raises(ValueError, match="source drift"):
+        await store_writer.land(
+            dsn, schema="", table="pets", columns=_COLS, rows=[{"x": 1, "y": 2}]
+        )
+
+
 @pytest.mark.asyncio
 async def test_land_replace_is_full_refresh(tmp_path):
     dsn = _dsn(tmp_path)

@@ -150,6 +150,31 @@ async def reconcile_table(
         return "recreated"
 
 
+def check_source_drift(
+    columns: list[tuple[str, str]], rows: list[dict], *, match_floor: float = 0.0
+) -> float:
+    """Source-drift guard (REQ-932): the incoming ``rows`` are mapped to the target ``columns`` by
+    NAME — matched columns land, unmatched target columns are NULL, extra incoming keys are dropped
+    (best-effort). If the fraction of target columns present in the incoming data is ``<= match_floor``
+    the source has drifted beyond recognition; raise rather than land a mangled table (the caller
+    turns this into an ``error`` event). ``match_floor=0.0`` fails only at 0% overlap. Returns the
+    match ratio."""
+    if not rows:
+        return 1.0
+    target = {name for name, _ in columns}
+    if not target:
+        return 1.0
+    incoming: set[str] = set().union(*(r.keys() for r in rows))
+    ratio = len(target & incoming) / len(target)
+    if ratio <= match_floor:
+        raise ValueError(
+            f"source drift: {len(target & incoming)}/{len(target)} target columns present in the "
+            f"incoming data ({ratio:.0%} <= floor {match_floor:.0%}) — refusing to land a mangled "
+            f"table; expected {sorted(target)}, got {sorted(incoming)}"
+        )
+    return ratio
+
+
 async def land(
     store_dsn: str,
     *,
@@ -160,13 +185,16 @@ async def land(
     change_signal: str = "ttl",
     watermark_column: str | None = None,
     pk_columns: list[str] | None = None,
+    match_floor: float = 0.0,
 ) -> str:
     """Land ``rows`` into ``schema.table`` of the materialization store, through the write face.
 
     The shape is chosen from ``change_signal`` (REQ-932): a poll signal with a watermark AMENDS
     (append the watermark-filtered delta); every other batch is a full REPLACE. Hard-delete CDC is
-    the separate streaming path (subscriptions.cdc_landing). Returns the qualified landed name. The
-    engine is never the writer — this opens the store's own connection."""
+    the separate streaming path (subscriptions.cdc_landing). ``match_floor`` guards against upstream
+    source drift — below it the land is refused (see ``check_source_drift``). Returns the qualified
+    landed name. The engine is never the writer — this opens the store's own connection."""
+    check_source_drift(columns, rows, match_floor=match_floor)
     shape = select_landing_shape(change_signal, watermark_column)
     tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
     async with store_connection(store_dsn) as conn:
