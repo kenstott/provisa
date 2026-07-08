@@ -52,6 +52,32 @@ async def test_land_replace_writes_rows_through_write_face(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_reconcile_creates_keeps_recreates(tmp_path):
+    dsn = _dsn(tmp_path)
+    # absent → created
+    assert (
+        await store_writer.reconcile_table(dsn, schema="", table="pets", columns=_COLS) == "created"
+    )
+    await store_writer.land(
+        dsn, schema="", table="pets", columns=_COLS, rows=[{"id": 1, "status": "a"}]
+    )
+    # unchanged schema → kept, landed data survives (the restart / re-register-no-change case)
+    assert await store_writer.reconcile_table(dsn, schema="", table="pets", columns=_COLS) == "kept"
+    async with store_writer.store_connection(dsn) as conn:
+        rows = await conn.fetch("SELECT id FROM pets")
+    assert [r[0] for r in rows] == [1]
+    # drifted schema (a table config change) → recreated, data dropped (re-landed on next refresh)
+    drifted = _COLS + [("added", "text")]
+    assert (
+        await store_writer.reconcile_table(dsn, schema="", table="pets", columns=drifted)
+        == "recreated"
+    )
+    async with store_writer.store_connection(dsn) as conn:
+        rows = await conn.fetch("SELECT count(*) FROM pets")
+    assert rows[0][0] == 0
+
+
+@pytest.mark.asyncio
 async def test_land_replace_is_full_refresh(tmp_path):
     dsn = _dsn(tmp_path)
     await store_writer.land(

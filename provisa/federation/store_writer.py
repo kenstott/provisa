@@ -26,7 +26,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy.schema import CreateTable
+from sqlalchemy.schema import CreateTable, DropTable
 
 from provisa.core.change_signal import APPEND, select_landing_shape
 from provisa.federation.materialize_exec import build_table, land_append, land_replace
@@ -105,6 +105,49 @@ async def ensure_table(
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
         await conn.execute_core(CreateTable(tbl, if_not_exists=True))
     return _qualified(schema, table)
+
+
+async def reconcile_table(
+    store_dsn: str,
+    *,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    pk_columns: list[str] | None = None,
+) -> str:
+    """Converge the store's landing table to the config schema (REQ-846) — a reconcile, not a blind
+    create, so the store SURVIVES a restart:
+
+    - absent            -> create.
+    - schema matches     -> KEEP (landed data intact — the restart case).
+    - schema drifted      -> RECREATE (drop+create; a table/engine config change is authoritative,
+      landed data is re-landed on the next refresh).
+
+    Drift is a change to the column SET/order vs config (design-driven). Upstream *source* drift
+    (the live source's schema moving) is a separate land-time concern (best-effort name-map). Returns
+    ``created`` | ``kept`` | ``recreated``. The engine is never the writer."""
+    want = [name for name, _ in columns]
+    tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
+    async with store_connection(store_dsn) as conn:
+        if conn.capabilities.schemas:
+            from sqlalchemy.schema import CreateSchema
+
+            await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        from sqlalchemy.exc import NoSuchTableError
+
+        try:
+            existing = await conn.reflect_columns(table, schema or None)
+        except NoSuchTableError:
+            existing = []  # not yet created → treat as absent
+        have = [c["column_name"] for c in existing]
+        if not have:
+            await conn.execute_core(CreateTable(tbl))
+            return "created"
+        if have == want:
+            return "kept"
+        await conn.execute_core(DropTable(tbl, if_exists=True))
+        await conn.execute_core(CreateTable(tbl))
+        return "recreated"
 
 
 async def land(
