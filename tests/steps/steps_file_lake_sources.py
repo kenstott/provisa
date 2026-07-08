@@ -32,7 +32,6 @@ from provisa.file_source.source import (
     discover_schema,
     execute_query,
     generate_table_definitions,
-    _camel_to_snake,
     _sqlite_type_to_sql,
 )
 from provisa.file_source.crawler import crawl_directory
@@ -166,7 +165,9 @@ def then_time_travel_emitted_and_rejected(shared_data):
 # ---------------------------------------------------------------------------
 
 
-def _write_csv(directory: Path, filename: str, headers: list[str], rows: list[list] | None = None) -> Path:
+def _write_csv(
+    directory: Path, filename: str, headers: list[str], rows: list[list] | None = None
+) -> Path:
     """Write a CSV file with the given headers and optional rows."""
     p = directory / filename
     with p.open("w", newline="") as f:
@@ -225,7 +226,7 @@ def given_directory_with_csv_files(shared_data, tmp_path):
 @when("a file connector source is registered with the directory glob pattern")
 def when_file_connector_registered(shared_data):
     """Use the Provisa file source APIs to register the connector with the glob."""
-    glob_pattern = shared_data["glob_pattern"]
+    _glob_pattern = shared_data["glob_pattern"]
     csv_dir = shared_data["csv_dir"]
 
     # Build the FileSourceConfig that maps to the glob directory
@@ -290,9 +291,7 @@ def then_schema_extracted_from_headers(shared_data):
 
         # Introspect the schema for this table definition
         schema_columns = discover_schema(config, td)
-        assert schema_columns, (
-            f"discover_schema returned empty columns for table '{td.table_name}'"
-        )
+        assert schema_columns, f"discover_schema returned empty columns for table '{td.table_name}'"
 
         # Normalise column names to lowercase for comparison (handles snake_case mapping)
         discovered_col_names = {col.column_name.lower().replace("_", "") for col in schema_columns}
@@ -443,15 +442,16 @@ def then_headers_converted_to_snake_case(shared_data):
                 missing.append(f"{camel!r} → expected {snake!r}, got {sorted(discovered_names)}")
 
     assert not missing, (
-        "The following camelCase headers were NOT converted to snake_case:\n"
-        + "\n".join(missing)
+        "The following camelCase headers were NOT converted to snake_case:\n" + "\n".join(missing)
     )
 
     # Additionally, assert that no discovered column name contains a camelCase
     # boundary (an uppercase letter preceded by a lowercase letter), which would
     # indicate that conversion did NOT occur.
     camel_pattern = re.compile(r"[a-z][A-Z]")
-    camel_columns = [col.column_name for col in schema_columns if camel_pattern.search(col.column_name)]
+    camel_columns = [
+        col.column_name for col in schema_columns if camel_pattern.search(col.column_name)
+    ]
     assert not camel_columns, (
         f"The following column names still contain camelCase boundaries after "
         f"conversion: {camel_columns}"
@@ -468,8 +468,7 @@ def then_graphql_fields_reflect_snake_case(shared_data):
     # Build a minimal SchemaInput so we can run generate_schema and inspect
     # the resulting GraphQL type definitions.
     columns_for_schema = [
-        {"column_name": col.column_name, "visible_to": ["admin"]}
-        for col in schema_columns
+        {"column_name": col.column_name, "visible_to": ["admin"]} for col in schema_columns
     ]
     column_types_map = {99: list(schema_columns)}
 
@@ -626,9 +625,7 @@ def when_user_clicks_add_table_and_selects_file_source(shared_data):
 
     # The UI backend crawls recursively from the source root
     discovered_entries = crawl_directory(str(data_root), pattern="*.csv", recursive=True)
-    assert discovered_entries, (
-        f"crawl_directory returned no entries for data root {data_root}"
-    )
+    assert discovered_entries, f"crawl_directory returned no entries for data root {data_root}"
     shared_data["ui_discovered_entries"] = discovered_entries
 
     # Generate table definitions for every discovered file
@@ -640,7 +637,11 @@ def when_user_clicks_add_table_and_selects_file_source(shared_data):
     # The schema is derived from the immediate parent directory of each CSV file.
     schemas_to_tables: dict[str, list] = {}
     for td in table_defs:
-        schema_key = td.schema_name if hasattr(td, "schema_name") and td.schema_name else _infer_schema_from_path(td, data_root)
+        schema_key = (
+            td.schema_name
+            if hasattr(td, "schema_name") and td.schema_name
+            else _infer_schema_from_path(td, data_root)
+        )
         schemas_to_tables.setdefault(schema_key, []).append(td)
 
     shared_data["ui_schemas_to_tables"] = schemas_to_tables
@@ -854,9 +855,7 @@ def when_graphql_query_issued_for_customers(shared_data):
     csv_path = shared_data["csv_path_791"]
     file_config = FileSourceConfig(id=config.id, source_type="csv", path=str(csv_path))
     raw_rows = execute_query(file_config, f'SELECT * FROM "{csv_path.stem}"')  # noqa: S608
-    result_rows = [
-        {_camel_to_snake(k): v for k, v in row.items()} for row in raw_rows
-    ]
+    result_rows = [{_camel_to_snake(k): v for k, v in row.items()} for row in raw_rows]
     shared_data["result_rows_791"] = result_rows
 
 
@@ -950,8 +949,7 @@ def given_sqlite_database_with_multiple_tables(shared_data, tmp_path):
             "note TEXT)"
         )
         conn.executemany(
-            "INSERT INTO customers (id, name, balance, active, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO customers (id, name, balance, active, created_at) VALUES (?, ?, ?, ?, ?)",
             [
                 (1, "Acme Corp", 250.50, 1, "2024-01-10 09:00:00"),
                 (2, "Globex", 0.0, 0, "2024-02-01 12:30:00"),
@@ -988,9 +986,7 @@ def when_adapter_discovers_and_queries(shared_data):
     shared_data["table_defs_736"] = table_defs
 
     # Discover typed column metadata for the customers table.
-    customers_td = TableDefinition(
-        table_name="customers", source_id=config.id, path=config.path
-    )
+    customers_td = TableDefinition(table_name="customers", source_id=config.id, path=config.path)
     shared_data["customers_columns_736"] = discover_schema(config, customers_td)
 
     # Execute real queries against the SQLite file and collect row dicts.

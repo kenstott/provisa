@@ -166,10 +166,7 @@ def _simulate_cursor_query(
         has_previous_page = len(working) > last
         working = working[-last:]
 
-    edges = [
-        {"cursor": _encode_cursor({sort_key: row[sort_key]}), "node": row}
-        for row in working
-    ]
+    edges = [{"cursor": _encode_cursor({sort_key: row[sort_key]}), "node": row} for row in working]
 
     start_cursor = edges[0]["cursor"] if edges else None
     end_cursor = edges[-1]["cursor"] if edges else None
@@ -246,9 +243,9 @@ def _parse_sse_events(raw: str) -> list[dict]:
     for line in raw.splitlines():
         line = line.rstrip()
         if line.startswith("event:"):
-            current["event"] = line[len("event:"):].strip()
+            current["event"] = line[len("event:") :].strip()
         elif line.startswith("data:"):
-            current["data"] = json.loads(line[len("data:"):].strip())
+            current["data"] = json.loads(line[len("data:") :].strip())
         elif line == "" and current:
             events.append(current)
             current = {}
@@ -277,7 +274,7 @@ async def _mock_asyncpg_listen_notify(
     notifications: list[dict],
 ) -> AsyncIterator[str]:
     """Mock asyncpg LISTEN/NOTIFY: yield SSE-formatted events for each notification."""
-    channel = f"provisa_{table}_changes"
+    _channel = f"provisa_{table}_changes"
     for notification in notifications:
         event_type = notification["event_type"]
         row = notification["row"]
@@ -539,12 +536,13 @@ async def _run_event_trigger_pipeline(
 # column is the UDT name (e.g. "order_status").  The schema builder then looks
 # up the pg_enum rows to learn the valid values.
 
+
 class PgEnumDefinition:
     """Models a PostgreSQL user-defined enum type (from pg_enum / pg_type)."""
 
     def __init__(self, type_name: str, values: list[str]) -> None:
-        self.type_name = type_name          # e.g. "order_status"
-        self.values = list(values)          # e.g. ["pending", "processing", "shipped"]
+        self.type_name = type_name  # e.g. "order_status"
+        self.values = list(values)  # e.g. ["pending", "processing", "shipped"]
 
     def to_graphql_enum_type(self) -> GraphQLEnumType:
         """Build a GraphQLEnumType from this PG enum definition."""
@@ -591,6 +589,7 @@ def _build_enum_aware_schema(
 
     # Non-enum columns (always present in our test table)
     from graphql import GraphQLField, GraphQLInt
+
     fields["id"] = GraphQLField(GraphQLNonNull(GraphQLInt))  # type: ignore[arg-type]
 
     for col_name, pg_type_name in enum_columns.items():
@@ -757,9 +756,7 @@ def _build_graphql_query_from_rest_params(
         args_parts.append(f"where: {where_clause}")
 
     if "order_by" in params:
-        order_items = ", ".join(
-            f"{{{item}}}" for item in params["order_by"]
-        )
+        order_items = ", ".join(f"{{{item}}}" for item in params["order_by"])
         args_parts.append(f"order_by: [{order_items}]")
 
     args = f"({', '.join(args_parts)})" if args_parts else ""
@@ -1045,7 +1042,9 @@ def when_table_change_occurs(shared_data: dict) -> None:
     shared_data["dispatched"] = dispatched
 
 
-@then("an HTTP POST is fired to the configured URL via the asyncpg listener with retry policy applied")
+@then(
+    "an HTTP POST is fired to the configured URL via the asyncpg listener with retry policy applied"
+)
 def then_webhook_fired(shared_data: dict) -> None:
     """Verify webhooks fired for matching operations only, via the http client."""
     dispatched = shared_data["dispatched"]
@@ -1056,14 +1055,10 @@ def then_webhook_fired(shared_data: dict) -> None:
     assert len(dispatched) == 2, (
         f"expected 2 dispatched webhooks (INSERT + UPDATE), got {len(dispatched)}"
     )
-    assert len(http_client.calls) == 2, (
-        f"expected 2 HTTP POST calls, got {len(http_client.calls)}"
-    )
+    assert len(http_client.calls) == 2, f"expected 2 HTTP POST calls, got {len(http_client.calls)}"
 
     for call in http_client.calls:
-        assert call["url"] == trigger_config.webhook_url, (
-            f"webhook URL mismatch: {call['url']}"
-        )
+        assert call["url"] == trigger_config.webhook_url, f"webhook URL mismatch: {call['url']}"
         payload = call["payload"]
         assert "trigger" in payload, "webhook payload must include 'trigger'"
         assert "event" in payload, "webhook payload must include 'event'"
@@ -1114,7 +1109,9 @@ def when_enum_schema_built(shared_data: dict) -> None:
     assert enum_type_map, "enum_type_map must be non-empty"
 
 
-@then("GraphQL enum types are generated and enum columns are mapped to GraphQL enum types instead of String")
+@then(
+    "GraphQL enum types are generated and enum columns are mapped to GraphQL enum types instead of String"
+)
 def then_enum_types_generated(shared_data: dict) -> None:
     """Verify enum columns resolve to GraphQLEnumType, not GraphQLString."""
     enum_type_map = shared_data["enum_type_map"]
@@ -1133,8 +1130,10 @@ def then_enum_types_generated(shared_data: dict) -> None:
     # GraphQLEnumType values must match PG enum labels
     status_enum: GraphQLEnumType = enum_type_map["order_status"]
     assert isinstance(status_enum, GraphQLEnumType)
-    assert "pending" in status_enum.values or "PENDING" in status_enum.values or any(
-        v.lower() == "pending" for v in status_enum.values
+    assert (
+        "pending" in status_enum.values
+        or "PENDING" in status_enum.values
+        or any(v.lower() == "pending" for v in status_enum.values)
     ), f"'pending' must be a value of order_status enum, got {list(status_enum.values)}"
 
     region_enum: GraphQLEnumType = enum_type_map["region_code"]

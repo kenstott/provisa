@@ -1662,10 +1662,10 @@
   priority: SHOULD
   type: behavioral
   description: When no auth provider is configured (dev mode), any request is treated
-    as the `anonymous` identity. This identity maps to all configured roles with wildcard
-    domain access, enabling unrestricted local development without configuring an
-    IdP.
-  use_case: Dev mode anonymous identity lets developers test without an IdP while
+    as a role identity — the username IS the role, taken from the `x-provisa-role` header
+    or defaulting to `admin`. This identity maps to all configured roles with wildcard
+    domain access, enabling unrestricted local development without configuring an IdP.
+  use_case: Dev mode role identity lets developers test without an IdP while
     still exercising role-based code paths.
   code:
   - provisa/auth/middleware.py
@@ -1677,12 +1677,12 @@
 
     When any request arrives
 
-    Then it is treated as the anonymous identity with all roles and wildcard domain
-    access
+    Then it is treated as a role identity (admin by default) with all roles and wildcard
+    domain access
 
     '
   integration_test: not_required
-  integration_test_reason: Anonymous identity fallback is pure middleware logic; role
+  integration_test_reason: Role-identity fallback is pure middleware logic; role
     mapping verified via unit/integration mocks.
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
