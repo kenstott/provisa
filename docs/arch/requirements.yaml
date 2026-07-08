@@ -24820,18 +24820,13 @@
   priority: MUST
   type: constraint
   target: 2026-Q3
-  description: 'A cache backend is valid iff a connector exists for it in the configured
-    engine AND a write face exists for landing into it. A land-target backend must
-    have a connector whose mechanism is attach (else the engine cannot read what was
-    landed — a land-into-land regress); config pointing materialization_store at a
-    backend with no connector, or with only a land connector, is rejected at startup
-    (e.g., a separate Postgres materialization_store is invalid under a self-only
-    warehouse-native engine, which has no connector for it). DONE (2026-07): provisa/federation/materialization.py::validate_materialization_backend
-    rejects a backend the engine could not read back — valid only when it is the engine''s
-    own native store or has an ATTACH connector; no connector or a LAND-only connector
-    raises InvalidMaterializationBackend (the land-into-land regress). select_write_face
-    validates the backend before returning a face, so an invalid backend is rejected
-    wherever a write is set up.'
+  description: >-
+    The engine's usable materialized-store set is DERIVED from its connectors — a
+    `materialized_store` flag on a Connector marks a reachable backend that can also
+    be a store; FederationEngine.materialize_stores is a computed property over the
+    connectors so flagged. PG-only today. DONE (2026-07): provisa/federation/connector.py
+    (materialized_store flag on PG connectors), provisa/federation/engine.py (materialize_stores
+    property).
   code:
   - provisa/federation/materialization.py
   - provisa/federation/engine.py
@@ -24875,18 +24870,16 @@
   category: Materialization Store
   priority: SHOULD
   type: structural
-  description: 'The cache write face is pluggable — {engine-native CTAS/load, SQLAlchemy
-    upsert, app-side land}. It collapses into the federation engine when the cache
-    backend is the engine''s own native store (DuckDB-as-engine caching into DuckDB
-    tables; a warehouse-native engine caching into itself), and uses SQLAlchemy upsert
-    when the backend is a separate but attach-able relational store. DONE (2026-07):
-    the write-face SELECTION is implemented — provisa/federation/materialization.py::
-    select_write_face returns ENGINE_NATIVE when the backend is the engine''s own
-    native store (collapse into the engine), SQLALCHEMY_UPSERT for a separate attach-able
-    relational store, else APP_LAND; it validates the backend first (REQ-846). REMAINING
-    (kept in-progress): the write-face IMPLEMENTATIONS that execute the land (engine
-    CTAS/load, the SQLAlchemy upsert over the Database abstraction, app-side land)
-    — wired with the store''s load path.'
+  description: >-
+    The federation engine NEVER writes a materialization store; it merely attaches/links
+    and READS the landed replica. ALL data-source landing goes through ONE write-face
+    abstraction (store_writer.land / ensure_table / reconcile_table), vanilla SQLAlchemy
+    Core today, with pluggable platform branches behind it (pyiceberg for an Iceberg
+    store). The "collapse into the engine" applies only to an engine writing its OWN
+    native store, never a separate/attached one. Read-only engines (Databricks/Snowflake
+    external-linking Iceberg) are first-class readers. DONE (2026-07): provisa/federation/store_writer.py,
+    provisa/federation/materialize_exec.py, provisa/api_source/engine_cache.py (land_api_cache),
+    provisa/federation/duckdb_runtime.py.
   code:
   - provisa/federation/materialization.py
   - provisa/federation/engine.py
@@ -28100,13 +28093,14 @@
   priority: MUST
   type: structural
   description: >-
-    `change_signal` (on Table/Source, values: ttl|probe|ttl_probe|native|debezium|kafka)
-    becomes the single authoritative inbound change-detection axis. Poll signals {ttl,
-    probe, ttl_probe} derive MV `freshness_mode`; push signals {native, debezium, kafka}
-    derive the subscription provider. `Table.watermark_column` is orthogonal (set →
-    incremental append + subscribable; unset → full replace). `materialize`/`cache_ttl`
-    is separate (whether a landed copy exists). `live.strategy` and `live.watermark_column`
-    are deprecated, superseded by `change_signal` + `Table.watermark_column`.
+    The change_signal→landing-shape mapping (push→CDC upsert/tombstone by PK,
+    poll+watermark→APPEND, else REPLACE) is implemented as store_writer.select_landing_shape
+    + the DB-agnostic Core ops in materialize_exec (land_replace/land_append/apply_cdc
+    via the dialect-agnostic Connection.upsert), NOT engine CTAS in mv/refresh. The
+    named integration tests (test_landing_replace/append_delete/publish_downstream) do
+    not exist; coverage lives in unit tests (test_change_signal, test_materialize_landing,
+    test_subscribe_publish). DONE (2026-07): provisa/federation/store_writer.py,
+    provisa/federation/materialize_exec.py, provisa/core/change_signal.py.
   use_case: >-
     Eliminates redundant encoding of change-detection intent across three independent
     fields (`change_signal`, `freshness_mode`, `live.strategy`). Centralizes the
@@ -28129,3 +28123,239 @@
   related_reqs:
     - REQ-931
     - REQ-929
+- id: REQ-933
+  status: complete
+  since: 2026-07
+  group: 9. Live Data & Events
+  category: Execution & Routing
+  priority: MUST
+  type: structural
+  description: >-
+    SQLAlchemy generic types are the ONE canonical engine-independent IR type registry
+    (provisa/core/ir_types.py). Sources map native→IR (to_ir), fed engines map IR→physical
+    dialect, the write face maps IR→SQLAlchemy — so the fed engine is never the type
+    authority. to_ir normalizes native/dialect spellings to one canonical IR name
+    (varchar→text, int4→integer, jsonb→text), strips length/precision, and RAISES on
+    an unknown type (no silent varchar default). data_type is an IR name: authoritative
+    for a LANDED table (drives store DDL), informational for a LIVE source (engine's
+    live resolution wins). Types resolved at registration, never lazily backfilled.
+    DONE (2026-07): provisa/core/ir_types.py, provisa/federation/materialize_exec.py;
+    tests: tests/unit/test_ir_types.py.
+  code:
+    - provisa/core/ir_types.py
+    - provisa/federation/materialize_exec.py
+  tests:
+    - tests/unit/test_ir_types.py
+- id: REQ-934
+  status: complete
+  since: 2026-07
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: MUST
+  type: behavioral
+  description: >-
+    The materialization store is RECONCILED, not blindly created: an existing landing
+    table whose columns match config is KEPT (survives restart, data intact); a
+    config/table/engine drift that changes the column set RECREATES it (drop+create,
+    re-landed on next refresh); absent → create. Convergent + idempotent. Two triggers,
+    one primitive: boot (after config load) and runtime UI (re)registration. Eager-creates
+    landing tables (DDL) + attaches the engine's read view WITHOUT landing data —
+    DDL/DML split so the catalog is complete at startup; landed sources only, live
+    sources attach live. DONE (2026-07): provisa/federation/store_writer.py (reconcile_table),
+    provisa/federation/native_backend.py (reconcile_landed_tables), provisa/federation/duckdb_runtime.py
+    (attach_landed_source), provisa/federation/runtime.py, provisa/api/app.py, provisa/api/admin/schema.py;
+    tests: tests/unit/test_reconcile_landed.py, tests/unit/test_store_writer.py.
+  scenario: |
+    Given a source with a landing table matching config columns
+    When the engine boots
+    Then the table is kept intact and reused
+    Given a config/table drift that changes columns
+    When reconcile_table is called
+    Then the table is dropped and recreated
+    Given a source without a landing table
+    When reconcile is triggered
+    Then DDL creates the table without landing data
+  code:
+    - provisa/federation/store_writer.py
+    - provisa/federation/native_backend.py
+    - provisa/federation/duckdb_runtime.py
+    - provisa/federation/runtime.py
+    - provisa/api/app.py
+    - provisa/api/admin/schema.py
+  tests:
+    - tests/unit/test_reconcile_landed.py
+    - tests/unit/test_store_writer.py
+- id: REQ-935
+  status: complete
+  since: 2026-07
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    At land time, incoming rows are mapped to the target columns by NAME (matched land,
+    unmatched target NULL, extra keys dropped — best-effort); the land is REFUSED when
+    the fraction of target columns present is <= a match floor (default 0.0 fails only
+    at 0% overlap), turned by the caller into an error event — never silently land a
+    mangled table. Distinct from config/design drift (which recreates, authoritative).
+    DONE (2026-07): provisa/federation/store_writer.py (check_source_drift); tests:
+    tests/unit/test_store_writer.py.
+  scenario: |
+    Given incoming rows with columns matching the target schema by name
+    When check_source_drift is called
+    Then rows are mapped to target columns with unmatched targets set to NULL
+    Given incoming rows below the match floor threshold
+    When check_source_drift is called
+    Then the land is refused and an error event is emitted
+  code:
+    - provisa/federation/store_writer.py
+  tests:
+    - tests/unit/test_store_writer.py
+- id: REQ-936
+  status: proposed
+  target: 2026-Q3
+  group: 9. Live Data & Events
+  category: Live Data & Events
+  priority: MUST
+  type: structural
+  description: >-
+    One event loop over one queue; base sources and MVs are homogeneous nodes. FIVE event
+    kinds in three categories: APPLY {delta, append, replace} → landing shapes; ADVISE
+    {warn} → alert/at-risk/DAG-tint, no enforcement, data still flows; HALT {error} →
+    freeze (landed) / detach (live). Delta is UPSERT by PK (insert/update + tombstone delete);
+    append is INSERT (rows + cursor WHERE watermark > last). Append carries the cursor/rows;
+    a delta payload above the jsonb size ceiling degrades to replace. The emitted kind is set
+    by the node's incremental-maintainability (may differ from consumed; non-maintainable → replace).
+  use_case: >-
+    Unified event model provides a single, homogeneous abstraction for all data-movement
+    primitives (sources, MVs, subscriptions) with clear semantics for change operations (delta,
+    append, replace), advisory warnings, and error handling.
+- id: REQ-937
+  status: proposed
+  target: 2026-Q3
+  group: 6. Execution, Routing, Caching & Performance
+  category: Execution & Routing
+  priority: MUST
+  type: structural
+  description: >-
+    Every node = generate (fetch for a source | SQL for an MV — the only difference)
+    → post-process (enrich and/or validate/gate) → emit one of the 5 events. Post-processing
+    (enrich and/or validate) applies to sources AND MVs alike. Landing is OPTIONAL: a
+    change event can trigger validation/reaction on LIVE data without materializing.
+  use_case: >-
+    Single-threaded node model (generate→post-process→emit) provides a clear, composable
+    architecture for incremental data flows while keeping all processing layers visible
+    and auditable.
+- id: REQ-938
+  status: proposed
+  target: 2026-Q3
+  group: 6. Execution, Routing, Caching & Performance
+  category: Execution & Routing
+  priority: MUST
+  type: structural
+  description: >-
+    Every MV is SQL, authored to REFERENCE its inputs (SQLGlot extracts the dependency
+    edges — reuse the exp.Table extraction already in provisa/api/admin/_table_ops.py)
+    and DECLARE its full output schema; columns the SQL doesn't derive are constant
+    placeholders completed by post-processing. The input reference (count/key/max(watermark))
+    doubles as the node's change/freshness token. Guarantees lineage is always derivable
+    — no node ever has opaque inputs. DAG is acyclic (cycle detection at registration);
+    re-parsed on registration. One event fans out to many dependents → the exclusive
+    unit of work is (event × dependent-table).
+  use_case: >-
+    SQL lineage extraction from MV definitions ensures the DAG is always derivable and
+    transparent; combining with change tokens enables correct cascading materialization
+    and versioning.
+- id: REQ-939
+  status: proposed
+  target: 2026-Q3
+  group: 6. Execution, Routing, Caching & Performance
+  category: Execution & Routing
+  priority: SHOULD
+  type: structural
+  description: >-
+    SQL is always the lineage/schema authority; processors are SUBORDINATE, attached to
+    COLUMNS (post-process completing declared columns, or a UDF sugar; external UDFs
+    deferred to a batched post-process). Processor contract: pure function of declared
+    inputs → declared output model, no side effects, deterministic (or a declared
+    best-effort). Tiers by robustness: in-engine SQL → in-process UDF → external env.
+    MV compute resources are OPERATOR-SUPPLIED (the fed engine, sized to need — MPP for
+    big views; Provisa builds no distributed compute and orchestrates the supplied engine).
+    DQ metrics / ML features / enrichment are external processors — bring your compute,
+    Provisa governs the OUTPUT as a first-class governed data product.
+  use_case: >-
+    Processors provide an imperative escape hatch when SQL is insufficient, while keeping
+    lineage and schema declaration authoritative; tiers enable plugging any compute backend.
+- id: REQ-940
+  status: proposed
+  target: 2026-Q3
+  group: 6. Execution, Routing, Caching & Performance
+  category: Execution & Routing
+  priority: MAY
+  type: infrastructure
+  description: >-
+    The external processor tier is a toolkit of transport adapters — shell (stdin/stdout),
+    HTTP (streamed request/response), gRPC (bidi-stream, hardened) — all conforming to
+    ONE streaming input→output contract: a stream of schema-declared rows in, a stream
+    of schema-declared rows out; pure; no side effects; schema-validated both ends.
+    NDJSON default framing, Arrow-stream for throughput. The toolkit owns framing/streaming/backpressure/schema-validation/idempotent-retries/sandboxed
+    invocation; the author implements only the transform.
+  use_case: >-
+    Pluggable transport adapters allow external processors to be invoked over any
+    mechanism (shell, HTTP, gRPC) while maintaining a single streaming contract and
+    declarative schema validation.
+- id: REQ-941
+  status: proposed
+  target: 2026-Q3
+  group: 9. Live Data & Events
+  category: Live Data & Events
+  priority: MUST
+  type: constraint
+  description: >-
+    A gate is a validate-processor with halt authority; outcome ∈ {pass → data event;
+    warn → advisory warn event (no enforcement, data flows); fail → error event (halt)}
+    — declared per node. Hard-fail enforcement: landed → freeze last-good; live → detach
+    + alert (declared-severe and rare; eventual + catalog-granular, no per-row/in-flight
+    block over federation). error is emitted by ANY hard node failure (source-land failure,
+    hard gate, drift-below-floor, unreachable source, unknown type), propagates
+    blocked-upstream transitively, downstream freezes last-good, vintage stays honest
+    ("as of last good land, known-blocked since T"). Recovery = re-registration through
+    the reconcile controller (no dedicated re-attach event, no default background loop);
+    auto-recovery is an opt-in health-probe policy that owns cadence + hysteresis.
+  use_case: >-
+    Gates provide declarative data validation and enforcement, with clear semantics for
+    warnings (advisory) and errors (halt), ensuring data correctness while maintaining
+    transparent recovery paths and vintage honesty.
+- id: REQ-942
+  status: proposed
+  target: 2026-Q3
+  group: 9. Live Data & Events
+  category: Live Data & Events
+  priority: MUST
+  type: infrastructure
+  description: >-
+    A shared event substrate is the third fleet-shared pillar (with control-plane DB +
+    shared cache), PLUGGABLE: in-process (single-node/embedded) → durable log (fleet).
+    Default backend is a control-plane EVENT TABLE as a transactional outbox (the event
+    is enqueued in the SAME transaction as the state change → atomic; superior to a broker
+    for correctness); SELECT FOR UPDATE SKIP LOCKED claim + LISTEN/NOTIFY wake + a reaper;
+    graduate to Kafka only for raw-event volume. Two tables: events (posted once) + event_status
+    (one row per event × dependent-table = the fanout work item). Claim by TARGET TABLE
+    (not per-event): cross-table parallel, same-table serialized, coalesce at drain;
+    heartbeat lease, stale → reclaim, idempotent apply = effectively-once. High-volume
+    raw CDC is digested at the injector edge into coalesced node-level events; the table
+    holds only digested events. Three roles: INJECTORS (external → post events, one per
+    modality; delta/append payloads above jsonb ceiling degrade to replace), TABLE PROCESSORS (claim → generate/land
+    → post-process/gate → complete → re-post downstream events; homogeneous/stateless/horizontally-scaled),
+    REPEATERS (cursor-based fanout read for SSE-to-local-clients; forward, never claim).
+    Dispatch rule (the N-boxes test): CLAIM exactly-once for anything whose duplication
+    across the fleet is wrong — landing, side-effecting reactions (warn/error handlers:
+    email/ticket/page), Kafka-sink produce; FANOUT (cursor read-all) ONLY for per-box-local
+    delivery (SSE). In-loop = pure/convergent (constrained); out-of-loop reactions = arbitrary
+    side-effecting automation (free), including error/warn-event automation — but to change
+    the governed DATA you must re-enter the governed loop (inject/re-register/re-ingest),
+    never a side-channel store write.
+  use_case: >-
+    A shared event substrate provides the scalability and correctness foundation for
+    fleet-wide data propagation, with clear role separation (injector, processor, repeater)
+    and dispatch semantics (claim for mutations, fanout for broadcast).
