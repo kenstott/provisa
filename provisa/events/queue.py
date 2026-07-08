@@ -126,6 +126,17 @@ async def reclaim_stale(conn: Any, *, older_than: datetime) -> int:
     return len(result.fetchall())
 
 
+async def get_events(conn: Any, event_ids: list[int]) -> list[dict]:
+    """The event rows for ``event_ids`` in id order — a table processor fetches its claimed set to
+    coalesce and hand to its handler (land / generate). Returns row dicts."""
+    if not event_ids:
+        return []
+    result = await conn.execute_core(
+        select(events).where(events.c.id.in_(event_ids)).order_by(events.c.id)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
 async def read_since(conn: Any, *, cursor: int, limit: int = 100) -> list[dict]:
     """Repeater fanout read: events with ``id > cursor`` in id order (each repeater tracks its own
     cursor and forwards to its SSE/Kafka subscribers — never a claim, so every repeater sees every
