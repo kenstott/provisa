@@ -22,7 +22,7 @@ import asyncio
 import logging
 from typing import Any
 
-from provisa.federation.materialize_exec import apply_cdc_events_into_pg
+from provisa.federation.materialize_exec import apply_cdc, build_table
 
 log = logging.getLogger(__name__)
 
@@ -42,18 +42,12 @@ async def consume_cdc_into_store(
     Returns cumulative {upsert, delete} counts. Stops when ``disconnect`` is set or the provider
     stream ends; always closes the provider. A primary key is required (enforced downstream)."""
     totals = {"upsert": 0, "delete": 0}
+    landed = build_table(schema, table, columns, tuple(pk_columns))
     try:
         async for event in provider.watch(table):
             if disconnect.is_set():
                 break
-            counts = await apply_cdc_events_into_pg(
-                conn,
-                schema=schema,
-                table=table,
-                columns=columns,
-                pk_columns=pk_columns,
-                events=[event],
-            )
+            counts = await apply_cdc(conn, landed, pk_columns, [event])
             totals["upsert"] += counts["upsert"]
             totals["delete"] += counts["delete"]
         log.info(

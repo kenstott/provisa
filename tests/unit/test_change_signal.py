@@ -8,18 +8,37 @@
 import pytest
 
 from provisa.core.change_signal import (
+    APPEND,
+    CDC,
     DEFAULT_SIGNAL,
     POLL_SIGNALS,
     PUSH_SIGNALS,
+    REPLACE,
     VALID_SIGNALS,
     from_legacy_strategy,
     is_poll,
     is_push,
     resolve,
     resolve_effective,
+    select_landing_shape,
     to_freshness_mode,
     to_provider,
 )
+
+
+class TestSelectLandingShape:
+    def test_push_signal_is_cdc(self):
+        for sig in ("debezium", "kafka", "native"):
+            assert select_landing_shape(sig, None) == CDC
+            assert select_landing_shape(sig, "updated_at") == CDC  # push ignores watermark
+
+    def test_poll_with_watermark_appends(self):
+        assert select_landing_shape("ttl_probe", "updated_at") == APPEND
+        assert select_landing_shape("probe", "seq") == APPEND
+
+    def test_poll_without_watermark_replaces(self):
+        assert select_landing_shape("ttl", None) == REPLACE
+        assert select_landing_shape("probe", None) == REPLACE  # a probe has no deltas
 
 
 class TestResolve:

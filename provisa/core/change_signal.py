@@ -57,6 +57,28 @@ def to_freshness_mode(sig: str) -> str | None:
     return sig if sig in POLL_SIGNALS else None
 
 
+# REQ-932: the landing shape a change signal drives when the source is materialized into a store.
+# A push signal (debezium/kafka/native) carries per-row change events → CDC (upsert + tombstone by
+# PK). A poll signal with a watermark carries a filtered delta → APPEND. A poll signal without a
+# watermark has no deltas (a ttl lapse / probe just re-queries the whole result) → REPLACE.
+REPLACE = "replace"
+APPEND = "append"
+CDC = "cdc"
+
+
+def select_landing_shape(sig: str, watermark_column: str | None) -> str:
+    """Landing shape for materializing a source whose effective change_signal is ``sig``.
+
+    push → CDC (delta events, hard deletes); poll+watermark → APPEND (watermark-filtered delta);
+    poll without a watermark → REPLACE (no deltas — full refresh). ``sig`` is validated upstream.
+    """
+    if is_push(sig):
+        return CDC
+    if watermark_column:
+        return APPEND
+    return REPLACE
+
+
 def to_provider(sig: str, source_type: str) -> str:
     """Subscription provider for a push/poll signal.
 

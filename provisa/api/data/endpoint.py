@@ -16,7 +16,7 @@ Pipeline: parse -> compile -> MV rewrite -> sampling -> make_semantic_sql
 Mutations: parse -> compile_mutation -> RLS inject -> direct execute (never the engine).
 """
 
-# complexity-gate: allow-loc=2890 reason="cross-cutting protocol/cache/plan-graph fixes; the file is already flagged for extraction and split is tracked separately"
+# complexity-gate: allow-loc=2892 reason="REQ-848 route api-cache landing off engine writes onto the SQLAlchemy write face (land_api_cache); +2 lines on a file already flagged for extraction, split tracked separately"
 
 # Requirements: REQ-001, REQ-002, REQ-027, REQ-028, REQ-029, REQ-032, REQ-033,
 #               REQ-034, REQ-035, REQ-036, REQ-038, REQ-040, REQ-043, REQ-047,
@@ -723,8 +723,8 @@ async def _mat_gql_remote_table(
     from provisa.api_source.engine_cache import (
         cache_location,
         cache_table_name,
-        create_and_insert,
         ensure_cache_schema,
+        land_api_cache,
         resolved_cache_catalog,
         schedule_drop,
         table_known_live,
@@ -830,8 +830,9 @@ async def _mat_gql_remote_table(
 
     # Hydrate to the engine cache (best-effort)
     try:
-        with state.federation_engine.isolated_sync() as _c:
-            create_and_insert(_c, gql_cache_loc, gql_cache_tbl, gql_rows, col_objs)
+        await land_api_cache(
+            state.federation_engine, gql_cache_loc, gql_cache_tbl, gql_rows, col_objs
+        )
         asyncio.create_task(
             schedule_drop(
                 state.federation_engine, gql_cache_loc, gql_cache_tbl, 300, redirect_config
@@ -1860,8 +1861,8 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     from provisa.api_source.engine_cache import (
         cache_location,
         cache_table_name,
-        create_and_insert,
         ensure_cache_schema,
+        land_api_cache,
         resolved_cache_catalog,
         rewrite_from_cache,
         schedule_drop,
@@ -1920,8 +1921,9 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
         materialized = False
         if rows:
             try:
-                with state.federation_engine.isolated_sync() as _c:
-                    create_and_insert(_c, cache_loc, cache_tbl, rows, cache_cols)
+                await land_api_cache(
+                    state.federation_engine, cache_loc, cache_tbl, rows, cache_cols
+                )
                 asyncio.create_task(
                     schedule_drop(
                         state.federation_engine,

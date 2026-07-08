@@ -99,6 +99,11 @@ class Connector(ABC):  # REQ-842
     extension: str | None = None
     install_from_community: bool = False
     probe_symbol: str | None = None
+    # REQ-846: connectors are what the engine can REACH; this flags a reachable backend that can ALSO
+    # serve as the engine's MATERIALIZED STORE — i.e. it can be read back (this connector) AND has a
+    # write face to land into (store_writer). The engine's usable-store set is the connectors so
+    # flagged. False for a reach-only source (no write face, or not a landing target).
+    materialized_store: bool = False
     # Non-Postgres/-engine shared libraries this connector's extension links at runtime, each tagged by
     # who provides it: "system" (OS-provided), "bundled" (we ship + relocate it), "operator" (BYO must
     # install). Empty for core contrib (postgres_fdw/file_fdw) with no external dependency. Documents
@@ -157,6 +162,7 @@ class _TrinoAttachConnector(Connector):
 
 class TrinoPostgresConnector(_TrinoAttachConnector):
     source_type = "postgresql"
+    materialized_store = True  # REQ-846: PG is the one proven materialized store today
     _jdbc_scheme = "postgresql"
 
 
@@ -176,6 +182,7 @@ class TrinoSqlServerConnector(_TrinoAttachConnector):
 class DuckDBPostgresConnector(Connector):
     engine = "duckdb"
     source_type = "postgresql"
+    materialized_store = True  # REQ-846: PG is the one proven materialized store today
     mechanism = Mechanism.ATTACH
 
     def capability(self) -> Capability:
@@ -449,6 +456,7 @@ class PostgresFdwConnector(Connector):  # REQ-893
 
     engine = "postgres"
     source_type = "postgresql"
+    materialized_store = True  # REQ-846: PG is the one proven materialized store today
     mechanism = Mechanism.ATTACH
     key = "postgres_fdw"
 
@@ -713,6 +721,7 @@ class ClickHousePostgresConnector(Connector):
 
     engine = "clickhouse"
     source_type = "postgresql"
+    materialized_store = True  # REQ-846: PG is the one proven materialized store today
     mechanism = Mechanism.ATTACH
     key = "clickhouse_postgres"
 

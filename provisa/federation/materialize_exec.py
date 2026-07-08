@@ -8,120 +8,184 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Materialization LAND executor for a relational (Postgres) store (REQ-844, REQ-848, REQ-932).
+"""Materialization LAND executor for a relational store (REQ-844, REQ-848, REQ-932).
 
 Non-attachable sources (openapi/API, graphql_remote) cannot be referenced in place, so a
-single-node engine (DuckDB/Postgres) LANDs them into a relational store it can then attach and
-federate. ``select_write_face`` (REQ-848) chooses ``WriteFace.SQLALCHEMY_UPSERT`` for such a store;
-this module is that write face's execution.
+single-node engine LANDs them into a relational store it can then attach and federate. All three
+landing shapes execute through the ``Connection`` abstraction (``provisa/core/database.py``) with
+vanilla SQLAlchemy Core — no dialect-specific SQL here. Whatever relational backend the store is
+(the reachable superset ``_RELATIONAL``: postgresql/mysql/mariadb/sqlite/duckdb/sqlserver/
+singlestore), the same code path runs; the one dialect decision (upsert = UPDATE-then-INSERT)
+lives inside ``Connection.upsert``.
 
-Three landing shapes, selected by the table's change_signal + watermark_column (REQ-932):
-- REPLACE  — ``land_rows_into_pg`` — drop+create+insert; a full refresh (no watermark).
-- APPEND   — ``append_rows_into_pg`` — insert a watermark-filtered delta into the existing table.
-- CDC      — ``apply_cdc_events_into_pg`` — upsert (insert/update) and tombstone (delete) by PK,
-  the only shape that carries hard deletes; fed by a Debezium/Kafka provider.
+Three landing shapes, selected by the table's change_signal + watermark_column (REQ-932,
+``select_landing_shape``):
+- REPLACE — ``land_replace`` — drop+create+insert; a full refresh (poll signal, no watermark).
+- APPEND  — ``land_append``  — insert a watermark-filtered delta into the existing table.
+- CDC     — ``apply_cdc``    — upsert (insert/update) and tombstone (delete) by PK, the only shape
+  that carries hard deletes; fed by a Debezium/Kafka/native provider stream.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    Integer,
+    LargeBinary,
+    MetaData,
+    Numeric,
+    Table,
+    Text,
+    Time,
+    Uuid,
+)
+from sqlalchemy.schema import CreateTable, DropTable
 
 
-def _col_defs(columns: list[tuple[str, str]]) -> str:
-    return ", ".join(f'"{name}" {pg_type}' for name, pg_type in columns)
+class StoreConn(Protocol):
+    """The materialization-store write face these ops need — the structural subset of
+    ``provisa.core.database.Connection`` (which satisfies it): run a Core statement, upsert a row
+    dialect-agnostically, and expose per-dialect capabilities. Structural so any conforming
+    connection (or a test fake) works without importing the concrete class."""
+
+    capabilities: Any
+
+    async def execute_core(self, stmt: Any) -> Any: ...
+
+    async def upsert(self, table: Table, values: dict, *, index_elements: list[str]) -> None: ...
 
 
-async def land_rows_into_pg(
-    conn: Any,
-    *,
+# SQL type string (as reported by column reflection/introspection) → SQLAlchemy generic type.
+# Generic types render per-dialect at DDL time, so the landed table is portable across the store
+# backends in ``_RELATIONAL``. The input vocabulary is bounded: reflection lowercases the type and
+# collapses array/json to text before it reaches here.
+_TYPE_MAP: dict[str, Any] = {
+    "smallint": Integer,
+    "int2": Integer,
+    "integer": Integer,
+    "int": Integer,
+    "int4": Integer,
+    "bigint": BigInteger,
+    "int8": BigInteger,
+    "text": Text,
+    "varchar": Text,
+    "character varying": Text,
+    "char": Text,
+    "character": Text,
+    "string": Text,
+    "boolean": Boolean,
+    "bool": Boolean,
+    "real": Float,
+    "float4": Float,
+    "float8": Float,
+    "double": Float,
+    "double precision": Float,
+    "float": Float,
+    "numeric": Numeric,
+    "decimal": Numeric,
+    "date": Date,
+    "timestamp": DateTime,
+    "timestamp without time zone": DateTime,
+    "timestamp with time zone": DateTime,
+    "timestamptz": DateTime,
+    "datetime": DateTime,
+    "time": Time,
+    "uuid": Uuid,
+    "bytea": LargeBinary,
+    "blob": LargeBinary,
+}
+
+
+def _sa_type(sql_type: str) -> Any:
+    """Map a SQL type string to a SQLAlchemy generic type. Strips a length/precision qualifier
+    (``varchar(255)`` → ``varchar``) and lowercases. Raises on an unmapped type so a gap surfaces
+    immediately rather than silently widening the landed column."""
+    base = sql_type.split("(", 1)[0].strip().lower()
+    sa = _TYPE_MAP.get(base)
+    if sa is None:
+        raise ValueError(
+            f"cannot land column of SQL type {sql_type!r}: no SQLAlchemy type mapping "
+            f"(add {base!r} to materialize_exec._TYPE_MAP)"
+        )
+    return sa
+
+
+def build_table(
     schema: str,
     table: str,
     columns: list[tuple[str, str]],
-    rows: list[dict],
-) -> str:
-    """REPLACE land: drop+create+insert ``rows`` into ``schema.table`` (full refresh, no watermark).
-
-    ``columns`` are (name, pg_type) pairs — the projected shape of the source result."""
-    await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-    await conn.execute(f'DROP TABLE IF EXISTS "{schema}"."{table}"')
-    await conn.execute(f'CREATE TABLE "{schema}"."{table}" ({_col_defs(columns)})')
-    if rows:
-        names = [name for name, _ in columns]
-        cols_sql = ", ".join(f'"{n}"' for n in names)
-        placeholders = ", ".join(f"${i + 1}" for i in range(len(names)))
-        insert = f'INSERT INTO "{schema}"."{table}" ({cols_sql}) VALUES ({placeholders})'
-        for r in rows:
-            await conn.execute(insert, *[r.get(n) for n in names])
-    return f"{schema}.{table}"
+    pk_columns: tuple[str, ...] | list[str] = (),
+) -> Table:
+    """A Core ``Table`` for the landed relation on a fresh ``MetaData``. ``columns`` are
+    (name, sql_type) pairs — the projected source result shape. ``pk_columns`` names the primary
+    key (required for the CDC shape; empty for replace/append)."""
+    pk = set(pk_columns)
+    cols = [Column(name, _sa_type(sql_type), primary_key=name in pk) for name, sql_type in columns]
+    return Table(table, MetaData(), *cols, schema=schema or None)
 
 
-async def append_rows_into_pg(
-    conn: Any,
-    *,
-    schema: str,
-    table: str,
-    columns: list[tuple[str, str]],
-    rows: list[dict],
-) -> str:
+async def land_replace(conn: StoreConn, table: Table, rows: list[dict]) -> str:
+    """REPLACE land: drop+create+insert ``rows`` into ``table`` (full refresh, no watermark)."""
+    await conn.execute_core(DropTable(table, if_exists=True))
+    await conn.execute_core(CreateTable(table))
+    for row in rows:
+        await conn.execute_core(table.insert().values(**row))
+    return _qualified(table)
+
+
+async def land_append(conn: StoreConn, table: Table, rows: list[dict]) -> str:
     """APPEND land: insert ``rows`` into an existing table without dropping it (REQ-932).
 
     ``rows`` are the already-watermark-filtered delta (``WHERE watermark > cursor`` upstream), so
     this only creates-if-absent and inserts — no truncation. The caller advances the cursor."""
-    await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-    await conn.execute(f'CREATE TABLE IF NOT EXISTS "{schema}"."{table}" ({_col_defs(columns)})')
-    if rows:
-        names = [name for name, _ in columns]
-        cols_sql = ", ".join(f'"{n}"' for n in names)
-        placeholders = ", ".join(f"${i + 1}" for i in range(len(names)))
-        insert = f'INSERT INTO "{schema}"."{table}" ({cols_sql}) VALUES ({placeholders})'
-        for r in rows:
-            await conn.execute(insert, *[r.get(n) for n in names])
-    return f"{schema}.{table}"
+    await conn.execute_core(CreateTable(table, if_not_exists=True))
+    for row in rows:
+        await conn.execute_core(table.insert().values(**row))
+    return _qualified(table)
 
 
-async def apply_cdc_events_into_pg(
-    conn: Any,
-    *,
-    schema: str,
-    table: str,
-    columns: list[tuple[str, str]],
+async def apply_cdc(
+    conn: StoreConn,
+    table: Table,
     pk_columns: list[str],
     events: list,
 ) -> dict[str, int]:
     """CDC land: apply change events to a landed table by primary key (REQ-932).
 
-    insert/update → upsert (``ON CONFLICT (pk) DO UPDATE``); delete → tombstone (``DELETE … WHERE
-    pk``). ``events`` are ChangeEvent-like objects with ``.operation`` (insert|update|delete) and
-    ``.row``. A primary key is REQUIRED — without it there is no identity to upsert or delete by."""
+    insert/update → upsert (UPDATE-by-PK, else INSERT — dialect-agnostic via ``Connection.upsert``);
+    delete → tombstone (``DELETE … WHERE pk``). ``events`` are ChangeEvent-like objects with
+    ``.operation`` (insert|update|delete) and ``.row``. A primary key is REQUIRED — without it
+    there is no identity to upsert or delete by."""
     if not pk_columns:
         raise ValueError(
-            f'CDC land into "{schema}"."{table}" requires primary key columns for upsert/delete'
+            f"CDC land into {_qualified(table)} requires primary key columns for upsert/delete"
         )
-    names = [name for name, _ in columns]
-    pk_sql = ", ".join(f'"{pk}"' for pk in pk_columns)
-    await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-    await conn.execute(
-        f'CREATE TABLE IF NOT EXISTS "{schema}"."{table}" '
-        f"({_col_defs(columns)}, PRIMARY KEY ({pk_sql}))"
-    )
-    cols_sql = ", ".join(f'"{n}"' for n in names)
-    placeholders = ", ".join(f"${i + 1}" for i in range(len(names)))
-    non_pk = [n for n in names if n not in pk_columns]
-    if non_pk:
-        set_sql = ", ".join(f'"{n}" = EXCLUDED."{n}"' for n in non_pk)
-        conflict = f"ON CONFLICT ({pk_sql}) DO UPDATE SET {set_sql}"
-    else:
-        conflict = f"ON CONFLICT ({pk_sql}) DO NOTHING"
-    upsert = f'INSERT INTO "{schema}"."{table}" ({cols_sql}) VALUES ({placeholders}) {conflict}'
-    delete_where = " AND ".join(f'"{pk}" = ${i + 1}' for i, pk in enumerate(pk_columns))
-    delete = f'DELETE FROM "{schema}"."{table}" WHERE {delete_where}'
+    await conn.execute_core(CreateTable(table, if_not_exists=True))
 
     counts = {"upsert": 0, "delete": 0}
     for ev in events:
         if ev.operation.lower() == "delete":
-            await conn.execute(delete, *[ev.row.get(pk) for pk in pk_columns])
+            where = _pk_where(table, pk_columns, ev.row)
+            await conn.execute_core(table.delete().where(where))
             counts["delete"] += 1
         else:  # insert / update → upsert
-            await conn.execute(upsert, *[ev.row.get(n) for n in names])
+            await conn.upsert(table, dict(ev.row), index_elements=pk_columns)
             counts["upsert"] += 1
     return counts
+
+
+def _pk_where(table: Table, pk_columns: list[str], row: dict) -> Any:
+    from sqlalchemy import and_
+
+    return and_(*[table.c[pk] == row.get(pk) for pk in pk_columns])
+
+
+def _qualified(table: Table) -> str:
+    return f"{table.schema}.{table.name}" if table.schema else table.name

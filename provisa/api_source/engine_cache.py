@@ -271,6 +271,66 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
     )
 
 
+def _land_columns(columns: list) -> list[tuple[str, str]]:
+    """API endpoint columns → (name, sql_type) pairs for the write face. The api type enum maps to
+    an IR SQL type the store_writer type map understands (VARCHAR/BIGINT/DOUBLE/BOOLEAN)."""
+    out: list[tuple[str, str]] = []
+    for c in columns:
+        raw = c.type.value if hasattr(c.type, "value") else str(c.type)
+        out.append((c.name, _API_TYPE_TO_IR.get(raw, "VARCHAR")))
+    return out
+
+
+def _analyze_cache_table(engine, loc: CacheLocation, table_name: str) -> None:  # REQ-280
+    """Collect cost statistics on the landed cache table via the engine (a READ-side stats op, not a
+    data write — the engine analyzes its own attached view). Best-effort: ANALYZE support varies by
+    connector, so a failure is logged, not raised (matching analyze_source_tables, REQ-275)."""
+    try:
+        with engine.isolated_sync() as conn:
+            cur = conn.cursor()
+            cur.execute(f'ANALYZE {loc.catalog}.{loc.schema}."{table_name}"')
+            cur.fetchall()
+    except Exception:
+        log.warning(
+            "[API CACHE] ANALYZE failed for %s.%s.%s",
+            loc.catalog,
+            loc.schema,
+            table_name,
+            exc_info=True,
+        )
+
+
+async def land_api_cache(  # REQ-318, REQ-848, REQ-932
+    engine, loc: CacheLocation, table_name: str, rows: list[dict], columns: list
+) -> None:
+    """Land API-response rows into the cache table through the ONE write face (store_writer.land),
+    then ANALYZE via the engine. The engine NEVER writes the store — it only reads the landed table
+    back through its attach (``loc.catalog``). An Iceberg-backed cache is written by the pyiceberg
+    branch of the same abstraction (not yet implemented); there is no engine-write fallback."""
+    from provisa.federation import store_writer
+
+    if loc.backend == "iceberg":
+        raise NotImplementedError(
+            "Iceberg api-cache landing requires the pyiceberg write-face branch (REQ-848); "
+            "the engine must not write the store"
+        )
+    await store_writer.land(
+        engine.materialize_store_dsn(),
+        schema=loc.schema,
+        table=table_name,
+        columns=_land_columns(columns),
+        rows=rows,
+    )
+    _analyze_cache_table(engine, loc, table_name)
+    log.info(
+        '[API CACHE] materialized %d rows → %s.%s."%s"',
+        len(rows),
+        loc.catalog,
+        loc.schema,
+        table_name,
+    )
+
+
 def rewrite_from_cache(
     sql: str, loc: CacheLocation, table_name: str
 ) -> str:  # REQ-318, REQ-309, REQ-327

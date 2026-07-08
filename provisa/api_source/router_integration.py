@@ -33,7 +33,7 @@ from provisa.api_source.engine_cache import (
     CacheLocation,
     cache_location,
     cache_table_name,
-    create_and_insert,
+    land_api_cache,
     schedule_drop,
     table_exists,
 )
@@ -120,16 +120,9 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
             )
             all_rows.extend(rows)
 
-        with engine.isolated_sync() as _c:
-            create_and_insert(_c, loc, tbl, all_rows, endpoint.columns)
-        log.info(
-            "[API CACHE] miss — %d rows materialized → %s.%s.%s (ttl=%ds)",
-            len(all_rows),
-            loc.catalog,
-            loc.schema,
-            tbl,
-            ttl,
-        )
+        # LAND through the ONE write face (store_writer, via land_api_cache) — the engine NEVER
+        # writes the store; it only reads the landed table back through its attach (loc.catalog).
+        await land_api_cache(engine, loc, tbl, all_rows, endpoint.columns)
         span.set_attribute("api_source.rows_materialized", len(all_rows))
 
         # REQ-119: promote JSONB fields to generated columns on the (PG-backed) cache table.

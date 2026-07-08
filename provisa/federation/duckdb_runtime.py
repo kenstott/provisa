@@ -16,8 +16,9 @@ the query executes unchanged:
 
 - ATTACH sources (postgres/sqlite/csv/parquet) are referenced in place via the (duckdb, source_type)
   connector's DDL, then wrapped in a physical-named view.
-- NON-attachable sources (openapi/graphql_remote) are LANDED into the Postgres materialization store
-  (land_rows_into_pg), which DuckDB ATTACHes, then wrapped in a physical-named view.
+- NON-attachable sources (openapi/graphql_remote) are LANDED into the relational materialization
+  store (via materialize_exec, through the SQLAlchemy write face), which DuckDB ATTACHes, then
+  wrapped in a physical-named view.
 
 execute() runs governed semantic SQL through rewrite_semantic_to_physical -> transpile("duckdb").
 This is the engine primitive a live EngineRuntime dispatch would call; routing/HTTP wiring is separate.
@@ -31,10 +32,18 @@ from typing import Any
 import duckdb
 
 from provisa.executor.result import QueryResult
+from provisa.federation import store_writer
 from provisa.federation.engine import build_duckdb_engine
-from provisa.federation.materialize_exec import land_rows_into_pg
 from provisa.federation.runtime_support import columns_from_describe, result_from_dbapi
 from provisa.transpiler.transpile import transpile
+
+
+def _mat_table_name(source: Any) -> str:
+    """The internal ``mat`` schema table name for a landed (source, physical table). Keyed by the
+    source id AND its physical schema/table so a multi-table materialize-only source lands each
+    table in its own store table instead of colliding on the source id. Only the runtime references
+    it (through the physical-named view it creates); the compiler never sees it."""
+    return f"{source.id}__{source.schema_name}__{source.table_name}"
 
 
 class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
@@ -135,21 +144,38 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         return self._con
 
     async def materialize_source(
-        self, source: Any, columns: list[tuple[str, str]], rows: list[dict]
+        self,
+        source: Any,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        *,
+        change_signal: str = "ttl",
+        watermark_column: str | None = None,
+        pk_columns: list[str] | None = None,
     ) -> None:
         """LAND a source with no connector into the materialization store, then expose it at its
-        catalog-physical name through the store attach."""
-        import asyncpg
+        catalog-physical name through the store attach.
 
+        The batch land shape is chosen from the effective change_signal (REQ-932): a poll signal
+        with a watermark AMENDS (append the watermark-filtered delta); every other batch is a full
+        REPLACE. Hard-delete CDC is the separate streaming path (subscriptions.cdc_landing) — a push
+        signal's one-shot materialize is a full snapshot seed."""
         store = self.ensure_materialize_attached()  # errors if the store is not configured
-        pg = await asyncpg.connect(dsn=self._store_dsn())
-        try:
-            await land_rows_into_pg(pg, schema="mat", table=source.id, columns=columns, rows=rows)
-        finally:
-            await pg.close()
-        phys = self._phys_name(source)
+        mat_table = _mat_table_name(source)  # unique per (source, physical table) — no collision
+        # Land through the ONE write face (store_writer.land) — the engine never writes the store.
+        await store_writer.land(
+            self._store_dsn(),
+            schema="mat",
+            table=mat_table,
+            columns=columns,
+            rows=rows,
+            change_signal=change_signal,
+            watermark_column=watermark_column,
+            pk_columns=pk_columns,
+        )
+        phys = self._phys_name(source)  # the engine only READS the landed replica
         self._con.execute(
-            f'CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {store}.mat."{source.id}"'
+            f'CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {store}.mat."{mat_table}"'
         )
 
     # -- metadata --------------------------------------------------------------

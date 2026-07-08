@@ -8,7 +8,7 @@ the DuckDB engine (REQ-844, REQ-848, REQ-893).
 
 The earlier engine e2e tests only exercised ATTACH sources (files/DBs referenced in place). This one
 covers what those omitted: a source that CANNOT be attached (openapi/graphql_remote) is LANDED into a
-Postgres materialization store via land_rows_into_pg (WriteFace.SQLALCHEMY_UPSERT execution), and the
+Postgres materialization store via land_replace (WriteFace.SQLALCHEMY_UPSERT execution), and the
 DuckDB engine then ATTACHes that PG store and federates the materialized data with an in-place file
 source — through the real compile/govern/transpile/execute pipeline, with RLS asserted.
 """
@@ -36,20 +36,21 @@ from provisa.compiler.sql_gen import (  # noqa: E402
     rewrite_semantic_to_physical,
 )
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
-from provisa.federation.materialize_exec import land_rows_into_pg  # noqa: E402
+from provisa.core.database import Database, create_engine_from_url  # noqa: E402
+from provisa.federation.materialize_exec import build_table, land_replace  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
 
 _CSV = str(Path(__file__).parent.parent.parent / "demo" / "files" / "customers.csv")
 _ADMIN = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
 
 
-def _dsn() -> str:
+def _dsn(driver: str = "") -> str:
     u = os.environ.get("PG_USER", "provisa")
     pw = os.environ.get("PG_PASSWORD", "provisa")
     h = os.environ.get("PG_HOST", "localhost")
     p = os.environ.get("PG_PORT", "5432")
     db = os.environ.get("PG_DATABASE", "provisa")
-    return f"postgresql://{u}:{pw}@{h}:{p}/{db}"
+    return f"postgresql{driver}://{u}:{pw}@{h}:{p}/{db}"
 
 
 def _col(n: str, d: str = "varchar", nl: bool = True) -> ColumnMetadata:
@@ -116,13 +117,20 @@ async def test_materialized_api_source_federates_via_pg_store():
             {"id": 11, "customer_id": 2, "amount": 49.99},  # customer 2 = Bob / CA
             {"id": 12, "customer_id": 1, "amount": 5.0},
         ]
-        loc = await land_rows_into_pg(
-            conn,
-            schema="e2e_materialize",
-            table="orders",
-            columns=[("id", "int"), ("customer_id", "int"), ("amount", "double precision")],
-            rows=api_rows,
-        )
+        from sqlalchemy.schema import CreateSchema
+
+        eng = create_engine_from_url(_dsn("+asyncpg"), pool_size=1)
+        try:
+            async with Database(eng, name="mat").acquire() as sconn:
+                await sconn.execute_core(CreateSchema("e2e_materialize", if_not_exists=True))
+                table = build_table(
+                    "e2e_materialize",
+                    "orders",
+                    [("id", "int"), ("customer_id", "int"), ("amount", "double precision")],
+                )
+                loc = await land_replace(sconn, table, api_rows)
+        finally:
+            await eng.dispose()
         assert loc == "e2e_materialize.orders"
         landed = await conn.fetch("SELECT * FROM e2e_materialize.orders ORDER BY id")
         assert len(landed) == 3  # the API source really landed in the store

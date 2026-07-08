@@ -94,3 +94,18 @@ def test_reactive_set_excludes_scannable_and_unreachable():
     api = _src("api", SourceType.openapi, base_url="http://x")
     # On DuckDB: csv SCANs, pg VIRTUAL → neither reactive; api MATERIALIZED → reactive.
     assert reactive_sources(build_duckdb_engine(), [csv, pg, api]) == {"api"}
+
+
+# ---- reachable materialized-store set (REQ-846) -----------------------------
+
+
+def test_materialize_stores_derived_from_connectors():
+    # Connector-derived: only backends flagged materialized_store (PG today) are usable stores.
+    assert build_duckdb_engine().materialize_stores == frozenset({"postgresql"})
+    assert build_trino_engine().materialize_stores == frozenset({"postgresql"})
+
+
+def test_materialize_stores_excludes_unflagged_reachable_backends():
+    # DuckDB reaches iceberg/mongodb/snowflake (connectors) but none is a materialized store yet.
+    stores = build_duckdb_engine().materialize_stores
+    assert "iceberg" not in stores and "mongodb" not in stores and "snowflake" not in stores

@@ -3,7 +3,11 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-932: the three landing shapes — replace, append, CDC (upsert + tombstone)."""
+"""REQ-932: the three landing shapes — replace, append, CDC (upsert + tombstone).
+
+The ops run through the ``Connection`` abstraction with vanilla SQLAlchemy Core (no dialect SQL),
+so the fake here records the Core statements executed and the dialect-agnostic ``upsert`` calls.
+"""
 
 from __future__ import annotations
 
@@ -12,10 +16,13 @@ from typing import Any
 
 import pytest
 
+from provisa.core.database import Capabilities
 from provisa.federation.materialize_exec import (
-    apply_cdc_events_into_pg,
-    append_rows_into_pg,
-    land_rows_into_pg,
+    _sa_type,
+    apply_cdc,
+    build_table,
+    land_append,
+    land_replace,
 )
 
 
@@ -25,107 +32,121 @@ class _Event:
     row: dict[str, Any]
 
 
-class _RecordingConn:
-    """Records every execute(sql, *args) call."""
+class _Result:
+    rowcount = 0
 
-    def __init__(self):
-        self.calls: list[tuple[str, tuple]] = []
+    def fetchone(self):
+        return None
 
-    async def execute(self, sql, *args):
-        self.calls.append((sql, args))
 
-    def sql_at(self, i):
-        return self.calls[i][0]
+class _FakeConn:
+    """Records execute_core() Core statements and upsert() calls; renders SQL for assertions."""
 
-    @property
-    def sqls(self):
-        return [c[0] for c in self.calls]
+    def __init__(self, dialect: str = "postgresql"):
+        self.capabilities = Capabilities.for_dialect(dialect)
+        self._dialect_name = dialect
+        self.stmts: list[Any] = []
+        self.upserts: list[tuple[Any, dict, list[str]]] = []
+
+    async def execute_core(self, stmt):
+        self.stmts.append(stmt)
+        return _Result()
+
+    async def upsert(self, table, values, *, index_elements, update_columns=None, set_extra=None):
+        self.upserts.append((table, dict(values), list(index_elements)))
+
+    def sql(self) -> list[str]:
+        from sqlalchemy.dialects import postgresql
+
+        out = []
+        for s in self.stmts:
+            try:
+                out.append(str(s.compile(dialect=postgresql.dialect())))
+            except Exception:
+                out.append(str(s))
+        return out
 
 
 COLUMNS = [("id", "bigint"), ("status", "text")]
 
 
+def test_sa_type_maps_and_raises():
+    from sqlalchemy import BigInteger, Text
+
+    assert build_table("mat", "t", COLUMNS).c["id"].type.__class__ is BigInteger
+    assert build_table("mat", "t", COLUMNS).c["status"].type.__class__ is Text
+    # a length qualifier is stripped
+    assert _sa_type("varchar(255)").__name__ == "Text"
+    with pytest.raises(ValueError, match="no SQLAlchemy type mapping"):
+        _sa_type("geography")
+
+
 @pytest.mark.asyncio
 async def test_replace_drops_creates_inserts():
-    conn = _RecordingConn()
-    await land_rows_into_pg(
-        conn, schema="mat", table="pets", columns=COLUMNS, rows=[{"id": 1, "status": "new"}]
-    )
-    joined = " | ".join(conn.sqls)
-    assert "DROP TABLE IF EXISTS" in joined  # replace = full refresh
-    assert 'CREATE TABLE "mat"."pets"' in joined
-    insert = conn.calls[-1]
-    assert insert[0].startswith('INSERT INTO "mat"."pets" ("id", "status") VALUES ($1, $2)')
-    assert insert[1] == (1, "new")
+    conn = _FakeConn()
+    table = build_table("mat", "pets", COLUMNS)
+    await land_replace(conn, table, [{"id": 1, "status": "new"}])
+    joined = " | ".join(conn.sql())
+    assert "DROP TABLE" in joined  # replace = full refresh
+    assert "CREATE TABLE" in joined and "pets" in joined
+    assert "INSERT INTO" in joined
 
 
 @pytest.mark.asyncio
 async def test_append_does_not_drop():
-    conn = _RecordingConn()
-    await append_rows_into_pg(
-        conn, schema="mat", table="pets", columns=COLUMNS, rows=[{"id": 2, "status": "sold"}]
-    )
-    joined = " | ".join(conn.sqls)
+    conn = _FakeConn()
+    table = build_table("mat", "pets", COLUMNS)
+    await land_append(conn, table, [{"id": 2, "status": "sold"}])
+    joined = " | ".join(conn.sql())
     assert "DROP TABLE" not in joined  # append never truncates
-    assert "CREATE TABLE IF NOT EXISTS" in joined
-    assert conn.calls[-1][1] == (2, "sold")
+    assert "CREATE TABLE" in joined and "IF NOT EXISTS" in joined
+    assert "INSERT INTO" in joined
 
 
 @pytest.mark.asyncio
 async def test_append_empty_rows_creates_only():
-    conn = _RecordingConn()
-    await append_rows_into_pg(conn, schema="mat", table="pets", columns=COLUMNS, rows=[])
-    assert not any(s.startswith("INSERT") for s in conn.sqls)
+    conn = _FakeConn()
+    table = build_table("mat", "pets", COLUMNS)
+    await land_append(conn, table, [])
+    assert not any("INSERT INTO" in s for s in conn.sql())
 
 
 @pytest.mark.asyncio
 async def test_cdc_requires_pk():
-    conn = _RecordingConn()
+    conn = _FakeConn()
+    table = build_table("mat", "pets", COLUMNS)
     with pytest.raises(ValueError, match="requires primary key"):
-        await apply_cdc_events_into_pg(
-            conn, schema="mat", table="pets", columns=COLUMNS, pk_columns=[], events=[]
-        )
+        await apply_cdc(conn, table, [], [])
 
 
 @pytest.mark.asyncio
 async def test_cdc_upsert_and_delete_by_pk():
-    conn = _RecordingConn()
+    conn = _FakeConn()
+    table = build_table("mat", "pets", COLUMNS, ("id",))
     events = [
         _Event("insert", {"id": 1, "status": "new"}),
         _Event("update", {"id": 1, "status": "pending"}),
         _Event("delete", {"id": 1, "status": None}),
     ]
-    counts = await apply_cdc_events_into_pg(
-        conn, schema="mat", table="pets", columns=COLUMNS, pk_columns=["id"], events=events
-    )
+    counts = await apply_cdc(conn, table, ["id"], events)
     assert counts == {"upsert": 2, "delete": 1}
-    # table created WITH a primary key (needed for ON CONFLICT)
-    assert any('PRIMARY KEY ("id")' in s for s in conn.sqls)
-    # insert/update → upsert on the PK, updating non-PK columns
-    upsert_calls = [c for c in conn.calls if c[0].startswith("INSERT")]
-    assert len(upsert_calls) == 2
-    assert 'ON CONFLICT ("id") DO UPDATE SET "status" = EXCLUDED."status"' in upsert_calls[0][0]
-    assert upsert_calls[1][1] == (1, "pending")
-    # delete → tombstone by PK
-    delete_call = next(c for c in conn.calls if c[0].startswith("DELETE"))
-    assert delete_call[0] == 'DELETE FROM "mat"."pets" WHERE "id" = $1'
-    assert delete_call[1] == (1,)
+    # insert/update → dialect-agnostic upsert on the PK
+    assert len(conn.upserts) == 2
+    assert conn.upserts[0][2] == ["id"]
+    assert conn.upserts[1][1] == {"id": 1, "status": "pending"}
+    # delete → tombstone by PK (a Core DELETE … WHERE id = …)
+    deletes = [s for s in conn.sql() if s.startswith("DELETE FROM")]
+    assert len(deletes) == 1
+    assert "WHERE" in deletes[0] and "id" in deletes[0]
 
 
 @pytest.mark.asyncio
-async def test_cdc_all_pk_columns_do_nothing():
-    conn = _RecordingConn()
+async def test_cdc_insert_routes_to_upsert():
+    conn = _FakeConn()
     cols = [("id", "bigint")]
-    await apply_cdc_events_into_pg(
-        conn,
-        schema="mat",
-        table="k",
-        columns=cols,
-        pk_columns=["id"],
-        events=[_Event("insert", {"id": 7})],
-    )
-    upsert = next(c for c in conn.calls if c[0].startswith("INSERT"))
-    assert 'ON CONFLICT ("id") DO NOTHING' in upsert[0]
+    table = build_table("mat", "k", cols, ("id",))
+    await apply_cdc(conn, table, ["id"], [_Event("insert", {"id": 7})])
+    assert conn.upserts == [(table, {"id": 7}, ["id"])]
 
 
 class _FakeProvider:
@@ -153,7 +174,7 @@ async def test_cdc_landing_consumer_drains_provider():
         _Event("delete", {"id": 1, "status": None}),
     ]
     provider = _FakeProvider(events)
-    conn = _RecordingConn()
+    conn = _FakeConn()
 
     totals = await consume_cdc_into_store(
         provider,
@@ -166,4 +187,4 @@ async def test_cdc_landing_consumer_drains_provider():
     )
     assert totals == {"upsert": 2, "delete": 1}
     assert provider.closed
-    assert any(s.startswith("DELETE") for s in conn.sqls)
+    assert any(s.startswith("DELETE FROM") for s in conn.sql())

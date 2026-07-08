@@ -39,20 +39,21 @@ from provisa.compiler.sql_gen import (  # noqa: E402
     rewrite_semantic_to_physical,
 )
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
-from provisa.federation.materialize_exec import land_rows_into_pg  # noqa: E402
+from provisa.core.database import Database, create_engine_from_url  # noqa: E402
+from provisa.federation.materialize_exec import build_table, land_replace  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
 _ADMIN = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
 
 
-def _dsn() -> str:
+def _dsn(driver: str = "") -> str:
     u = os.environ.get("PG_USER", "provisa")
     pw = os.environ.get("PG_PASSWORD", "provisa")
     h = os.environ.get("PG_HOST", "localhost")
     p = os.environ.get("PG_PORT", "5432")
     db = os.environ.get("PG_DATABASE", "provisa")
-    return f"postgresql://{u}:{pw}@{h}:{p}/{db}"
+    return f"postgresql{driver}://{u}:{pw}@{h}:{p}/{db}"
 
 
 def _col(n: str, d: str = "varchar", nl: bool = True) -> ColumnMetadata:
@@ -120,20 +121,32 @@ async def test_postgres_zero_connector_engine_lands_everything():
     conn = await asyncpg.connect(dsn=_dsn())
     try:
         # ZERO connectors => every source materializes into the engine's OWN native store (no FDW).
-        await land_rows_into_pg(
-            conn,
-            schema="pgself",
-            table="customers",
-            columns=[("id", "int"), ("first_name", "text"), ("state", "text")],
-            rows=customers,
-        )
-        await land_rows_into_pg(
-            conn,
-            schema="pgself",
-            table="orders",
-            columns=[("id", "int"), ("customer_id", "int"), ("amount", "double precision")],
-            rows=orders,
-        )
+        from sqlalchemy.schema import CreateSchema
+
+        eng = create_engine_from_url(_dsn("+asyncpg"), pool_size=1)
+        try:
+            async with Database(eng, name="mat").acquire() as sconn:
+                await sconn.execute_core(CreateSchema("pgself", if_not_exists=True))
+                await land_replace(
+                    sconn,
+                    build_table(
+                        "pgself",
+                        "customers",
+                        [("id", "int"), ("first_name", "text"), ("state", "text")],
+                    ),
+                    customers,
+                )
+                await land_replace(
+                    sconn,
+                    build_table(
+                        "pgself",
+                        "orders",
+                        [("id", "int"), ("customer_id", "int"), ("amount", "double precision")],
+                    ),
+                    orders,
+                )
+        finally:
+            await eng.dispose()
 
         ctx = build_context(_si())
         compiled = compile_query(

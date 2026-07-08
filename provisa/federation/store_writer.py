@@ -1,0 +1,105 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The one write face for landing a data source into the materialization store (REQ-848, REQ-932).
+
+Every site that LANDS source rows into the store goes through ``land`` here — never through a
+federation-engine connection. The engine only READS the landed replica (attach / external link);
+it is never on the write path, so a read-only engine (Databricks/Snowflake external-linking live
+Iceberg, or any engine attaching a separate store) is fully supported.
+
+The write face is a single abstraction. Today its one branch is SQLAlchemy Core (``StoreConn`` over
+``provisa.core.database.Connection``), which lands into any relational store dialect. Future
+platform branches (e.g. a pyiceberg writer for an Iceberg store) slot in behind ``land`` by store
+backend, without changing any caller. The landing SHAPE (replace / append / CDC) is chosen from the
+effective change_signal (REQ-932) inside this one place.
+"""
+
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Any
+
+from provisa.core.change_signal import APPEND, select_landing_shape
+from provisa.federation.materialize_exec import build_table, land_append, land_replace
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+# The async SQLAlchemy driver per relational store backend (materialization._RELATIONAL). A store
+# DSN naming a bare scheme gets the async driver injected; a DSN that already names a +driver (or a
+# future non-relational branch) is used as-is.
+_ASYNC_DRIVER = {
+    "postgresql": "asyncpg",
+    "mysql": "aiomysql",
+    "mariadb": "aiomysql",
+    "sqlite": "aiosqlite",
+}
+
+
+def async_store_url(dsn: str) -> str:
+    """Normalize a relational store DSN to an async SQLAlchemy URL, injecting the async driver when
+    the DSN carries none. Raises on a backend with no known async driver rather than guessing."""
+    from sqlalchemy import make_url
+
+    url = make_url(dsn)
+    if "+" in url.drivername:
+        return url.render_as_string(hide_password=False)
+    backend = url.get_backend_name()
+    driver = _ASYNC_DRIVER.get(backend)
+    if driver is None:
+        raise ValueError(
+            f"no async SQLAlchemy driver known for materialize store backend {backend!r}"
+        )
+    return url.set(drivername=f"{backend}+{driver}").render_as_string(hide_password=False)
+
+
+@asynccontextmanager
+async def store_connection(dsn: str) -> AsyncGenerator[Any]:
+    """A SQLAlchemy ``Connection`` (the ``StoreConn`` write face) to the relational store ``dsn``.
+
+    Built per landing (landing is on-demand, not hot) and disposed after. This is the ONE place a
+    store connection for writing is opened; the federation engine never opens one for writes."""
+    from provisa.core.database import Database, create_engine_from_url
+
+    engine = create_engine_from_url(async_store_url(dsn), pool_size=1)
+    try:
+        async with Database(engine, name="materialize").acquire() as conn:
+            yield conn
+    finally:
+        await engine.dispose()
+
+
+async def land(
+    store_dsn: str,
+    *,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    rows: list[dict],
+    change_signal: str = "ttl",
+    watermark_column: str | None = None,
+    pk_columns: list[str] | None = None,
+) -> str:
+    """Land ``rows`` into ``schema.table`` of the materialization store, through the write face.
+
+    The shape is chosen from ``change_signal`` (REQ-932): a poll signal with a watermark AMENDS
+    (append the watermark-filtered delta); every other batch is a full REPLACE. Hard-delete CDC is
+    the separate streaming path (subscriptions.cdc_landing). Returns the qualified landed name. The
+    engine is never the writer — this opens the store's own connection."""
+    shape = select_landing_shape(change_signal, watermark_column)
+    tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
+    async with store_connection(store_dsn) as conn:
+        if conn.capabilities.schemas:
+            from sqlalchemy.schema import CreateSchema
+
+            await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        if shape == APPEND:
+            return await land_append(conn, tbl, rows)
+        return await land_replace(conn, tbl, rows)  # REPLACE, or a push signal's snapshot seed

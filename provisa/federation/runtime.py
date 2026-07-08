@@ -189,6 +189,12 @@ class EngineRuntime:  # REQ-825, REQ-840
         own engine catalog; an ephemeral engine returns its attached materialization-store catalog)."""
         return self._backend.cache_catalog(self._state)
 
+    def materialize_store_dsn(self) -> str:
+        """The materialization-store DSN — where landed source data is WRITTEN, through the write
+        face (store_writer.land), never through the engine. A store MUST exist (engine invariant);
+        this raises if none is configured. The engine only READS the landed replica back."""
+        return self.engine.materialize_store()
+
     def provision(self, ops_views: list, retention_hours: int | None) -> None:
         """Boot-time: connect the engine terminal and seed the OTel ops store (no-op for native
         engines, whose telemetry lands in the dedicated ops store)."""

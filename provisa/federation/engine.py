@@ -186,6 +186,19 @@ class FederationEngine:  # REQ-840
 
     # -- materialization store (REQ-826) ---------------------------------------
 
+    @property
+    def materialize_stores(self) -> frozenset[str]:
+        """The materialized-store backends this engine can USE (REQ-846) — DERIVED from its
+        connectors (connectors are what the engine can reach): the source_types of the reachable
+        connectors flagged ``materialized_store`` (read-back + a write face to land into). Selecting
+        an engine constrains the store choice to this set. Today the proven set is ``{postgresql}``;
+        it expands as connectors are flagged once each is validated end-to-end."""
+        return frozenset(
+            c.source_type
+            for c in self.connectors.values()
+            if getattr(c, "materialized_store", False)
+        )
+
     def default_materialize_store(self) -> str | None:
         """The store this engine offers ITSELF as its materialization target, absent explicit config —
         the DECLARED default set at construction (never a silent derive-from-whatever). An engine that
