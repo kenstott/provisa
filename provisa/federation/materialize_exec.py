@@ -30,23 +30,10 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from sqlalchemy import (
-    BigInteger,
-    Boolean,
-    Column,
-    Date,
-    DateTime,
-    Float,
-    Integer,
-    LargeBinary,
-    MetaData,
-    Numeric,
-    Table,
-    Text,
-    Time,
-    Uuid,
-)
+from sqlalchemy import Column, MetaData, Table
 from sqlalchemy.schema import CreateTable, DropTable
+
+from provisa.core.ir_types import to_sqlalchemy
 
 
 class StoreConn(Protocol):
@@ -62,59 +49,10 @@ class StoreConn(Protocol):
     async def upsert(self, table: Table, values: dict, *, index_elements: list[str]) -> None: ...
 
 
-# SQL type string (as reported by column reflection/introspection) → SQLAlchemy generic type.
-# Generic types render per-dialect at DDL time, so the landed table is portable across the store
-# backends in ``_RELATIONAL``. The input vocabulary is bounded: reflection lowercases the type and
-# collapses array/json to text before it reaches here.
-_TYPE_MAP: dict[str, Any] = {
-    "smallint": Integer,
-    "int2": Integer,
-    "integer": Integer,
-    "int": Integer,
-    "int4": Integer,
-    "bigint": BigInteger,
-    "int8": BigInteger,
-    "text": Text,
-    "varchar": Text,
-    "character varying": Text,
-    "char": Text,
-    "character": Text,
-    "string": Text,
-    "boolean": Boolean,
-    "bool": Boolean,
-    "real": Float,
-    "float4": Float,
-    "float8": Float,
-    "double": Float,
-    "double precision": Float,
-    "float": Float,
-    "numeric": Numeric,
-    "decimal": Numeric,
-    "date": Date,
-    "timestamp": DateTime,
-    "timestamp without time zone": DateTime,
-    "timestamp with time zone": DateTime,
-    "timestamptz": DateTime,
-    "datetime": DateTime,
-    "time": Time,
-    "uuid": Uuid,
-    "bytea": LargeBinary,
-    "blob": LargeBinary,
-}
-
-
-def _sa_type(sql_type: str) -> Any:
-    """Map a SQL type string to a SQLAlchemy generic type. Strips a length/precision qualifier
-    (``varchar(255)`` → ``varchar``) and lowercases. Raises on an unmapped type so a gap surfaces
-    immediately rather than silently widening the landed column."""
-    base = sql_type.split("(", 1)[0].strip().lower()
-    sa = _TYPE_MAP.get(base)
-    if sa is None:
-        raise ValueError(
-            f"cannot land column of SQL type {sql_type!r}: no SQLAlchemy type mapping "
-            f"(add {base!r} to materialize_exec._TYPE_MAP)"
-        )
-    return sa
+# The write face's IR → SQLAlchemy mapping is the canonical ir_types registry (REQ-846): one
+# engine-independent vocabulary, so the fed engine is never the type authority. ``_sa_type`` is the
+# store-DDL side of that hub; it raises on an unknown type (never a silent varchar widen).
+_sa_type = to_sqlalchemy
 
 
 def build_table(
