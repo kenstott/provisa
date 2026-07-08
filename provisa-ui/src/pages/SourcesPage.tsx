@@ -24,7 +24,9 @@ import {
   useUpdateSourcePreferMaterialized,
   useUpdateSourceNaming,
   useUpdateSourceAllowedDomains,
+  useDomains,
 } from "../hooks/useAdminQueries";
+import { MultiSelect } from "../components/MultiSelect";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SchemaDiscovery } from "../components/SchemaDiscovery";
 import { TableMappingBuilder } from "../components/TableMappingBuilder";
@@ -207,6 +209,7 @@ export function SourcesPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { sources, loading: sourcesLoading, refetch: refetchSources } = useSources();
+  const { domains } = useDomains();
   const { createSource } = useCreateSource();
   const { updateSource } = useUpdateSource();
   const { renameSource } = useRenameSource();
@@ -2329,11 +2332,19 @@ export function SourcesPage() {
           </label>
           {domainsEnabled && (
             <label>
-              Allowed Domains
-              <input
-                value={form.allowedDomains}
-                onChange={(e) => setForm({ ...form, allowedDomains: e.target.value })}
-                placeholder="comma-separated domain IDs, blank = unrestricted"
+              Allowed Domains{" "}
+              <span style={{ fontWeight: "normal", color: "var(--text-muted)", fontSize: "0.75rem" }}>
+                (none selected = all)
+              </span>
+              <MultiSelect
+                options={domains.map((d) => ({ id: d.id, label: d.id }))}
+                value={form.allowedDomains
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean)}
+                onChange={(selected) =>
+                  setForm({ ...form, allowedDomains: selected.join(", ") })
+                }
               />
             </label>
           )}
