@@ -195,8 +195,7 @@ def when_query_references_table(shared_data):
     shared_data["request"] = request
 
 
-@then(
-    "the approval hook is called after RLS injection and before execution with the query context")
+@then("the approval hook is called after RLS injection and before execution with the query context")
 def then_hook_called_with_context(shared_data):
     order = shared_data["order"]
     captured = shared_data["captured"]
@@ -278,9 +277,7 @@ def when_compiler_evaluates_query(shared_data):
     source_approval_hooks = shared_data["source_approval_hooks"]
 
     # Scoping decision happens at compile time, before any I/O.
-    triggered = _call_should_check(
-        config, request, table_approval_hooks, source_approval_hooks
-    )
+    triggered = _call_should_check(config, request, table_approval_hooks, source_approval_hooks)
     shared_data["triggered"] = triggered
 
     # The compiler only invokes the hook when scoping says it must.
@@ -349,9 +346,7 @@ def _install_fake_grpc(channel_calls: dict, stub: object):
     fake_pb2_grpc.ApprovalServiceStub = stub_ctor
 
     fake_pb2 = MagicMock(name="approval_pb2")
-    fake_pb2.ApprovalRequest = MagicMock(
-        name="ApprovalRequestProto", return_value=MagicMock()
-    )
+    fake_pb2.ApprovalRequest = MagicMock(name="ApprovalRequestProto", return_value=MagicMock())
 
     modules = {
         "grpc": fake_grpc,
@@ -541,13 +536,12 @@ def when_threshold_reached(shared_data):
     shared_data["failure_call_count"] = call_count["n"]
 
 
-@then(
-    "the circuit opens and enters half-open state after the configured cooldown period")
+@then("the circuit opens and enters half-open state after the configured cooldown period")
 def then_circuit_opens_then_half_open(shared_data):
     hook = shared_data["hook"]
     request = shared_data["request"]
     cooldown_s = shared_data["cooldown_s"]
-    threshold = shared_data["threshold"]
+    _threshold = shared_data["threshold"]
     breaker = hook._breaker
 
     # Immediately after reaching the threshold, the circuit is OPEN and not yet

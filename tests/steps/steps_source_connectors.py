@@ -3,11 +3,20 @@
 #
 # This source code is licensed under the Business Source License 1.1
 
+import asyncio
 import json
 
 import pytest
 import httpx
-from pytest_bdd import given, when, then, scenarios
+from pytest_bdd import given, when, then, scenarios, parsers
+
+from provisa.federation.connector import (
+    MysqlFdwConnector,
+    SqliteFdwConnector,
+    Mechanism,
+    ProbeResult,
+)
+from provisa.federation.engine import FederationEngine
 
 
 scenarios("../features/REQ-673.feature")
@@ -107,27 +116,7 @@ def assert_remote_queried(shared_data):
     assert count == 4242, f"expected remote-derived node count 4242, got {count}"
 
 
-import asyncio
-import os
-
-import pytest
-from pytest_bdd import parsers
-
-from provisa.federation.connector import (
-    MysqlFdwConnector,
-    SqliteFdwConnector,
-    Mechanism,
-    ProbeResult,
-)
-from provisa.federation.engine import FederationEngine
-
-
 scenarios("../features/REQ-907.feature")
-
-
-@pytest.fixture
-def shared_data():
-    return {}
 
 
 class _FakeFetch:
@@ -231,9 +220,9 @@ def connector_probes_functional_availability(shared_data):
     )
 
     assert len(mysql_connector.runtime_deps) > 0, "MysqlFdwConnector must declare runtime_deps"
-    assert any("mysql" in dep.lower() or "mariadb" in dep.lower() for dep in mysql_connector.runtime_deps), (
-        "MysqlFdwConnector runtime_deps must reference libmysqlclient or mariadb-connector-c"
-    )
+    assert any(
+        "mysql" in dep.lower() or "mariadb" in dep.lower() for dep in mysql_connector.runtime_deps
+    ), "MysqlFdwConnector runtime_deps must reference libmysqlclient or mariadb-connector-c"
     assert any("bundled" in dep.lower() for dep in mysql_connector.runtime_deps), (
         "MysqlFdwConnector libmysqlclient must be tagged as bundled"
     )
@@ -264,7 +253,7 @@ def connector_attaches_sources(shared_data):
     sqlite_ddl = sqlite_details["attach_ddl"]
 
     assert isinstance(sqlite_ddl, (list, tuple)), "attach_ddl must be a sequence of DDL statements"
-    ddl_text = " ".join(sqlite_ddl)
+    _ddl_text = " ".join(sqlite_ddl)
 
     assert "CREATE EXTENSION IF NOT EXISTS sqlite_fdw" in sqlite_ddl[0], (
         "First SQLite DDL statement must create the extension"
@@ -294,7 +283,9 @@ def connector_attaches_sources(shared_data):
     mysql_details = mysql_connector.details(mysql_source)
     mysql_ddl = mysql_details["attach_ddl"]
 
-    assert isinstance(mysql_ddl, (list, tuple)), "MySQL attach_ddl must be a sequence of DDL statements"
+    assert isinstance(mysql_ddl, (list, tuple)), (
+        "MySQL attach_ddl must be a sequence of DDL statements"
+    )
 
     assert "CREATE EXTENSION IF NOT EXISTS mysql_fdw" in mysql_ddl[0], (
         "First MySQL DDL statement must create the extension"
@@ -322,12 +313,8 @@ def queries_route_through_attached_foreign_schema(shared_data):
     report: dict = shared_data["probe_report"]
 
     # After discover(), both source types must be reachable through active connectors
-    assert engine.reachable("sqlite"), (
-        "Engine must have sqlite as reachable after successful probe"
-    )
-    assert engine.reachable("mysql"), (
-        "Engine must have mysql as reachable after successful probe"
-    )
+    assert engine.reachable("sqlite"), "Engine must have sqlite as reachable after successful probe"
+    assert engine.reachable("mysql"), "Engine must have mysql as reachable after successful probe"
 
     # The active connectors must be the FDW connectors
     sqlite_active = engine.connectors.get("sqlite")
@@ -404,7 +391,7 @@ def connector_probes_iceberg_scan_registered(shared_data):
 
     # Case 1: pg_duckdb preloaded + installed + iceberg_scan registered -> available
     async def _run_available():
-        fetch_ok = _FakeFetch(
+        _fetch_ok = _FakeFetch(
             installed={"pg_duckdb"},
             available=set(),
         )
@@ -459,9 +446,7 @@ def connector_probes_iceberg_scan_registered(shared_data):
     shared_data["probe_result_unavailable"] = unavailable_result
 
 
-@then(
-    "if available, queries emit iceberg_scan('<root>', allow_moved_paths := true)"
-)
+@then("if available, queries emit iceberg_scan('<root>', allow_moved_paths := true)")
 def queries_emit_iceberg_scan_with_allow_moved_paths(shared_data):
     from provisa.core.models import Source, SourceType
 
@@ -478,9 +463,7 @@ def queries_emit_iceberg_scan_with_allow_moved_paths(shared_data):
     assert "scan" in details, "connector details must contain a 'scan' key"
     scan = details["scan"]
 
-    assert "iceberg_scan(" in scan, (
-        f"scan must call iceberg_scan(); got: {scan!r}"
-    )
+    assert "iceberg_scan(" in scan, f"scan must call iceberg_scan(); got: {scan!r}"
     assert "s3://my-bucket/warehouse/orders" in scan, (
         f"scan must reference the table root path; got: {scan!r}"
     )
@@ -513,9 +496,7 @@ def governance_predicates_pushed_down_into_scan(shared_data):
     # Verify the runtime_deps document static-linked libs (no extra runtime dylib required)
     deps = connector.runtime_deps
     assert len(deps) > 0, "PgDuckdbIcebergConnector must declare runtime_deps"
-    assert any("libduckdb" in d for d in deps), (
-        "runtime_deps must reference libduckdb"
-    )
+    assert any("libduckdb" in d for d in deps), "runtime_deps must reference libduckdb"
     assert any("aws-sdk-cpp" in d and "static-linked" in d for d in deps), (
         "runtime_deps must document that aws-sdk-cpp is static-linked (no extra runtime dylib)"
     )
@@ -526,7 +507,7 @@ def results_correctly_federated_with_other_sources(shared_data):
     from provisa.core.models import Source, SourceType
 
     engine: FederationEngine = shared_data["engine"]
-    connector = shared_data["iceberg_connector"]
+    _connector = shared_data["iceberg_connector"]
 
     # Run discover with iceberg_scan registered so connector becomes active
     class _FullIcebergFetch:
@@ -564,7 +545,9 @@ def results_correctly_federated_with_other_sources(shared_data):
     )
 
     entry = engine.on_asset_create(source)
-    assert entry.engine == "postgres", f"catalog entry engine must be postgres; got {entry.engine!r}"
+    assert entry.engine == "postgres", (
+        f"catalog entry engine must be postgres; got {entry.engine!r}"
+    )
     assert entry.source_type == "iceberg", (
         f"catalog entry source_type must be iceberg; got {entry.source_type!r}"
     )

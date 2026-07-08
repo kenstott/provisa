@@ -5,11 +5,10 @@
 
 from __future__ import annotations
 
-import os
 from unittest.mock import MagicMock
 
 import pytest
-from pytest_bdd import given, parsers, scenario, then, when
+from pytest_bdd import given, scenario, then, when
 
 from provisa.executor.writable import WritePath, resolve_write_path
 
@@ -74,9 +73,7 @@ def when_resolve_write_path_called(shared_data):
 @then("postgresql returns NATIVE (native asyncpg driver + dialect available)")
 def then_postgresql_returns_native(shared_data):
     result = shared_data["results"]["postgresql"]
-    assert result == WritePath.NATIVE, (
-        f"Expected WritePath.NATIVE for postgresql, got {result!r}"
-    )
+    assert result == WritePath.NATIVE, f"Expected WritePath.NATIVE for postgresql, got {result!r}"
 
 
 @then("sqlite returns SQLALCHEMY (no native driver, SQLAlchemy fallback + dialect available)")
@@ -90,9 +87,7 @@ def then_sqlite_returns_sqlalchemy(shared_data):
 @then("cassandra returns ENGINE (no direct driver/dialect, only connector write=True)")
 def then_cassandra_returns_engine(shared_data):
     result = shared_data["results"]["cassandra"]
-    assert result == WritePath.ENGINE, (
-        f"Expected WritePath.ENGINE for cassandra, got {result!r}"
-    )
+    assert result == WritePath.ENGINE, f"Expected WritePath.ENGINE for cassandra, got {result!r}"
 
 
 @then("if engine is None, only NATIVE and SQLALCHEMY remain as possible routes")

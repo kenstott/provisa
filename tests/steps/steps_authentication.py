@@ -77,14 +77,14 @@ _FIREBASE_ISSUER = f"https://securetoken.google.com/{_FIREBASE_PROJECT_ID}"
 # Mapping of Firebase sign-in providers to their token ``sign_in_provider``
 # values as set in the ``firebase`` claim.
 _FIREBASE_SIGN_IN_PROVIDERS = [
-    "password",       # email/password
-    "google.com",     # Google
-    "apple.com",      # Apple
-    "github.com",     # GitHub
-    "phone",          # phone number
-    "anonymous",      # anonymous
-    "saml.my-saml",   # SAML SSO
-    "oidc.my-oidc",   # OIDC SSO
+    "password",  # email/password
+    "google.com",  # Google
+    "apple.com",  # Apple
+    "github.com",  # GitHub
+    "phone",  # phone number
+    "anonymous",  # anonymous
+    "saml.my-saml",  # SAML SSO
+    "oidc.my-oidc",  # OIDC SSO
 ]
 
 
@@ -175,17 +175,13 @@ def firebase_configured_as_auth_provider(shared_data: dict) -> None:
     assert app.project_id == _FIREBASE_PROJECT_ID, (
         f"App project ID must be {_FIREBASE_PROJECT_ID!r}; got {app.project_id!r}"
     )
-    assert callable(_verify_id_token_mock), (
-        "firebase_admin.auth.verify_id_token must be callable"
-    )
+    assert callable(_verify_id_token_mock), "firebase_admin.auth.verify_id_token must be callable"
 
     # Verify the fake module is importable via the standard import path.
     import firebase_admin  # noqa: F401  (checks sys.modules injection)
     import firebase_admin.auth as fb_auth  # noqa: F401
 
-    assert hasattr(fb_auth, "verify_id_token"), (
-        "firebase_admin.auth must expose verify_id_token"
-    )
+    assert hasattr(fb_auth, "verify_id_token"), "firebase_admin.auth must expose verify_id_token"
 
 
 # ---------------------------------------------------------------------------
@@ -348,13 +344,13 @@ def firebase_token_validated_and_identity_resolved(shared_data: dict) -> None:
         uid = decoded["uid"]
         email = decoded.get("email") or ""
         display_name = decoded.get("name") or uid
-        sign_in_provider = decoded["firebase"]["sign_in_provider"]
+        _sign_in_provider = decoded["firebase"]["sign_in_provider"]
 
         identity = AuthIdentity(
             user_id=uid,
             email=email,
             display_name=display_name,
-            roles=[],          # roles are resolved via role mapping, not from Firebase claims
+            roles=[],  # roles are resolved via role mapping, not from Firebase claims
             raw_claims=decoded,
         )
 
@@ -447,11 +443,7 @@ def _map_keycloak_roles(claims: dict, client_id: str) -> list[str]:
         if mapped and mapped not in provisa_roles:
             provisa_roles.append(mapped)
 
-    client_roles: list[str] = (
-        claims.get("resource_access", {})
-        .get(client_id, {})
-        .get("roles", [])
-    )
+    client_roles: list[str] = claims.get("resource_access", {}).get(client_id, {}).get("roles", [])
     for raw in client_roles:
         mapped = _KC_CLIENT_ROLE_MAP.get(raw)
         if mapped and mapped not in provisa_roles:
@@ -517,13 +509,19 @@ def keycloak_configured_as_oidc_provider(shared_data: dict) -> None:
         "grant_types_supported": ["authorization_code", "refresh_token", "client_credentials"],
         "scopes_supported": ["openid", "email", "profile", "roles"],
         "claims_supported": [
-            "sub", "iss", "aud", "exp", "iat", "jti",
-            "email", "preferred_username", "name",
-            "realm_access", "resource_access",
+            "sub",
+            "iss",
+            "aud",
+            "exp",
+            "iat",
+            "jti",
+            "email",
+            "preferred_username",
+            "name",
+            "realm_access",
+            "resource_access",
         ],
-        "token_endpoint_auth_methods_supported": [
-            "client_secret_basic", "client_secret_post"
-        ],
+        "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
     }
 
     # Store in shared_data for When/Then steps.
@@ -545,9 +543,7 @@ def keycloak_configured_as_oidc_provider(shared_data: dict) -> None:
         f"Discovery issuer must equal the realm base URL {_KC_ISSUER!r}; "
         f"got {discovery['issuer']!r}"
     )
-    assert "jwks_uri" in discovery, (
-        "Keycloak OIDC discovery document must advertise a jwks_uri"
-    )
+    assert "jwks_uri" in discovery, "Keycloak OIDC discovery document must advertise a jwks_uri"
     assert discovery["jwks_uri"].endswith("/protocol/openid-connect/certs"), (
         "Keycloak JWKS URI must end with /protocol/openid-connect/certs; "
         f"got {discovery['jwks_uri']!r}"
@@ -575,20 +571,15 @@ def keycloak_configured_as_oidc_provider(shared_data: dict) -> None:
     assert published_jwk["kty"] == "RSA", (
         f"Keycloak signing key must be RSA; got kty={published_jwk['kty']!r}"
     )
-    assert published_jwk["use"] == "sig", (
-        "Keycloak signing JWK must have use=sig"
-    )
-    assert published_jwk["alg"] == "RS256", (
-        "Keycloak signing JWK must specify alg=RS256"
-    )
+    assert published_jwk["use"] == "sig", "Keycloak signing JWK must have use=sig"
+    assert published_jwk["alg"] == "RS256", "Keycloak signing JWK must specify alg=RS256"
 
     # Verify the JWK round-trips: reconstruct the public key from the JWK and
     # confirm it is an RSA public key (proves the JWK serialisation is valid).
     from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
+
     reconstructed = RSAAlgorithm.from_jwk(json.dumps(published_jwk))
-    assert isinstance(reconstructed, RSAPublicKey), (
-        "JWK must deserialise back to an RSA public key"
-    )
+    assert isinstance(reconstructed, RSAPublicKey), "JWK must deserialise back to an RSA public key"
 
     # Confirm the reconstructed key matches the original public key by
     # comparing public key numbers.
@@ -701,7 +692,9 @@ def request_with_keycloak_jwt(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-@then("the token is validated via OIDC discovery and JWKS, and realm/client roles are mapped to Provisa roles")
+@then(
+    "the token is validated via OIDC discovery and JWKS, and realm/client roles are mapped to Provisa roles"
+)
 def keycloak_token_validated_and_roles_mapped(shared_data: dict) -> None:
     token = shared_data["kc_token"]
     payload = shared_data["kc_payload"]
@@ -880,9 +873,7 @@ def generic_token_validated_and_roles_mapped(shared_data: dict) -> None:
     claim_key = claim_mapping["claim"]
     role_map = claim_mapping["mapping"]
     raw_roles: list[str] = decoded.get(claim_key, [])
-    provisa_roles = [
-        role_map[r] for r in raw_roles if r in role_map
-    ]
+    provisa_roles = [role_map[r] for r in raw_roles if r in role_map]
     # Deduplicate while preserving order.
     seen: set[str] = set()
     provisa_roles_deduped = [r for r in provisa_roles if not (r in seen or seen.add(r))]
@@ -918,19 +909,21 @@ def simple_auth_configured(shared_data: dict) -> None:
     password_plain = "hunter2"
     password_hash = bcrypt.hashpw(password_plain.encode(), bcrypt.gensalt()).decode()
 
-    config_yaml = yaml.dump({
-        "allow_simple_auth": True,
-        "simple_auth_secret": _SIMPLE_AUTH_SECRET,
-        "simple_auth_token_ttl": _SIMPLE_AUTH_TOKEN_TTL,
-        "users": [
-            {
-                "username": "dev-user",
-                "password_hash": password_hash,
-                "roles": ["analyst"],
-                "email": "dev@example.com",
-            }
-        ],
-    })
+    config_yaml = yaml.dump(
+        {
+            "allow_simple_auth": True,
+            "simple_auth_secret": _SIMPLE_AUTH_SECRET,
+            "simple_auth_token_ttl": _SIMPLE_AUTH_TOKEN_TTL,
+            "users": [
+                {
+                    "username": "dev-user",
+                    "password_hash": password_hash,
+                    "roles": ["analyst"],
+                    "email": "dev@example.com",
+                }
+            ],
+        }
+    )
 
     config = yaml.safe_load(config_yaml)
 
@@ -952,9 +945,7 @@ def developer_submits_valid_credentials(shared_data: dict) -> None:
     username = shared_data["simple_auth_username"]
     password = shared_data["simple_auth_plain_password"]
 
-    user_record = next(
-        (u for u in config["users"] if u["username"] == username), None
-    )
+    user_record = next((u for u in config["users"] if u["username"] == username), None)
     assert user_record is not None, f"User {username!r} not found in config"
     assert bcrypt.checkpw(password.encode(), user_record["password_hash"].encode()), (
         "Password must match the stored bcrypt hash"
@@ -982,7 +973,7 @@ def developer_submits_valid_credentials(shared_data: dict) -> None:
 @then("a short-lived JWT is issued for local testing")
 def short_lived_jwt_issued(shared_data: dict) -> None:
     token = shared_data["simple_auth_token"]
-    claims = shared_data["simple_auth_claims"]
+    _claims = shared_data["simple_auth_claims"]
     config = shared_data["simple_auth_config"]
 
     decoded = jwt.decode(
@@ -996,9 +987,7 @@ def short_lived_jwt_issued(shared_data: dict) -> None:
     assert decoded["iss"] == "provisa-simple-auth"
     assert decoded["roles"] == ["analyst"]
     ttl = decoded["exp"] - decoded["iat"]
-    assert ttl == _SIMPLE_AUTH_TOKEN_TTL, (
-        f"Token TTL must be {_SIMPLE_AUTH_TOKEN_TTL}s; got {ttl}s"
-    )
+    assert ttl == _SIMPLE_AUTH_TOKEN_TTL, f"Token TTL must be {_SIMPLE_AUTH_TOKEN_TTL}s; got {ttl}s"
     assert ttl <= 86400, "Simple-auth tokens must be short-lived (≤ 24 h)"
 
     identity = AuthIdentity(
@@ -1118,4 +1107,3 @@ def anonymous_identity_with_all_roles(shared_data: dict) -> None:
     )
     assert body["roles"], "Anonymous identity must have at least one role"
     shared_data["anon_identity_response"] = body
-

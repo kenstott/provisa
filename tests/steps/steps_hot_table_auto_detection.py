@@ -13,8 +13,7 @@ import os
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import pytest_asyncio
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, scenarios
 
 from provisa.cache.hot_tables import (
     HOT_PREFIX,
@@ -33,7 +32,8 @@ def shared_data():
 
 
 @given(
-    "a table that is the target of a many-to-one relationship or has row count <= auto_threshold")
+    "a table that is the target of a many-to-one relationship or has row count <= auto_threshold"
+)
 def given_auto_hot_candidate(shared_data):
     """Define a schema where 'countries' is the target of a many-to-one relationship.
 
@@ -106,15 +106,12 @@ def when_schema_built(shared_data):
             await manager.close()
             return fetched
 
-        shared_data["cached_rows"] = asyncio.run(_cache()
-        )
+        shared_data["cached_rows"] = asyncio.run(_cache())
     else:
         # In-memory Redis substitute: faithfully store and return the JSON blob.
         store: dict[str, str] = {}
         mock_redis = MagicMock()
-        mock_redis.set = AsyncMock(
-            side_effect=lambda k, v, **kw: store.__setitem__(k, v)
-        )
+        mock_redis.set = AsyncMock(side_effect=lambda k, v, **kw: store.__setitem__(k, v))
         mock_redis.get = AsyncMock(side_effect=lambda k: store.get(k))
         mock_redis.exists = AsyncMock(side_effect=lambda k: int(k in store))
         manager._redis = mock_redis
@@ -133,8 +130,7 @@ def when_schema_built(shared_data):
             blob = await manager._redis.get(blob_key)
             return json.loads(blob)
 
-        shared_data["cached_rows"] = asyncio.run(_cache()
-        )
+        shared_data["cached_rows"] = asyncio.run(_cache())
 
     shared_data["manager"] = manager
 
@@ -181,9 +177,7 @@ def given_hot_false_table(shared_data):
     shared_data["auto_threshold"] = 1000
 
     # Sanity: without the opt-out this table WOULD be auto-detected.
-    would_detect = detect_hot_tables(
-        shared_data["tables"], shared_data["relationships"], {}
-    )
+    would_detect = detect_hot_tables(shared_data["tables"], shared_data["relationships"], {})
     assert "countries" in would_detect, (
         "Test precondition broken: 'countries' must meet auto-detection criteria "
         "so that the hot:false opt-out is meaningful."
@@ -232,14 +226,11 @@ def when_schema_rebuilt(shared_data):
             await manager.close()
             return exists
 
-        shared_data["countries_blob_exists"] = asyncio.run(_cache()
-        )
+        shared_data["countries_blob_exists"] = asyncio.run(_cache())
     else:
         store: dict[str, str] = {}
         mock_redis = MagicMock()
-        mock_redis.set = AsyncMock(
-            side_effect=lambda k, v, **kw: store.__setitem__(k, v)
-        )
+        mock_redis.set = AsyncMock(side_effect=lambda k, v, **kw: store.__setitem__(k, v))
         mock_redis.get = AsyncMock(side_effect=lambda k: store.get(k))
         mock_redis.exists = AsyncMock(side_effect=lambda k: int(k in store))
         mock_redis.delete = AsyncMock(side_effect=lambda k: store.pop(k, None))
@@ -261,8 +252,7 @@ def when_schema_rebuilt(shared_data):
             blob_key = HOT_PREFIX + "countries:blob"
             return bool(await manager._redis.exists(blob_key))
 
-        shared_data["countries_blob_exists"] = asyncio.run(_cache()
-        )
+        shared_data["countries_blob_exists"] = asyncio.run(_cache())
 
     shared_data["manager"] = manager
 

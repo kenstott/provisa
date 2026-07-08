@@ -15,13 +15,12 @@ favorite from the panel and localStorage immediately.
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
-from pytest_bdd import given, parsers, scenarios, then, when
+from pytest_bdd import given, scenarios, then, when
 
 # ---------------------------------------------------------------------------
 # Bind all scenarios from the feature files
@@ -67,9 +66,7 @@ class FavoritesStore:
 
     def rename(self, fav_id: str, new_label: str) -> GraphExplorerFavorite:
         fav = self._items[fav_id]
-        self._items[fav_id] = GraphExplorerFavorite(
-            id=fav.id, label=new_label, cypher=fav.cypher
-        )
+        self._items[fav_id] = GraphExplorerFavorite(id=fav.id, label=new_label, cypher=fav.cypher)
         return self._items[fav_id]
 
     def delete(self, fav_id: str) -> None:
@@ -143,8 +140,7 @@ class LocalStorageSimulator:
     def save_favorites(self, favorites: list[GraphExplorerFavorite]) -> None:
         """Persist the list of favorites as JSON, mirroring the UI contract."""
         payload = [
-            {"id": fav.id, "label": fav.label, "query": fav.cypher, "ts": 0}
-            for fav in favorites
+            {"id": fav.id, "label": fav.label, "query": fav.cypher, "ts": 0} for fav in favorites
         ]
         self.set_item(_LOCAL_STORAGE_KEY, json.dumps(payload))
 
@@ -454,9 +450,7 @@ def text_input_appears_focused_with_current_label(shared_data: dict[str, Any]) -
     rename_widget: RenameInputWidget = shared_data["rename_widget"]
     displayed_label: str = shared_data["displayed_label"]
 
-    assert rename_widget.is_visible, (
-        "Expected the rename input to be visible, but it is hidden."
-    )
+    assert rename_widget.is_visible, "Expected the rename input to be visible, but it is hidden."
     assert rename_widget.is_focused, (
         "Expected the rename input to be focused immediately after appearing."
     )
@@ -471,9 +465,7 @@ def user_types_new_label_and_presses_enter(shared_data: dict[str, Any]) -> None:
     """Simulate typing a new label into the input and pressing Enter to commit."""
     rename_widget: RenameInputWidget = shared_data["rename_widget"]
 
-    assert rename_widget.is_visible, (
-        "Cannot type into rename input — it is not visible."
-    )
+    assert rename_widget.is_visible, "Cannot type into rename input — it is not visible."
 
     # Type the new label (mirrors Playwright's .fill() followed by .press("Enter"))
     rename_widget.type_text(_REQ782_NEW_LABEL)
@@ -524,15 +516,13 @@ def input_closes_and_favorite_displays_new_label(shared_data: dict[str, Any]) ->
     updated = store.get(fav.id)
     assert updated is not None, "Favorite disappeared from the store after rename."
     assert updated.label == _REQ782_NEW_LABEL, (
-        f"Store label mismatch after rename: expected '{_REQ782_NEW_LABEL}', "
-        f"got '{updated.label}'."
+        f"Store label mismatch after rename: expected '{_REQ782_NEW_LABEL}', got '{updated.label}'."
     )
 
     # The displayed label (panel surface) must show the new name
     displayed: str = shared_data["displayed_label"]
     assert displayed == _REQ782_NEW_LABEL, (
-        f"Panel displayed label mismatch: expected '{_REQ782_NEW_LABEL}', "
-        f"got '{displayed}'."
+        f"Panel displayed label mismatch: expected '{_REQ782_NEW_LABEL}', got '{displayed}'."
     )
 
 
@@ -543,21 +533,17 @@ def change_persists_in_local_storage(shared_data: dict[str, Any]) -> None:
     fav: GraphExplorerFavorite = shared_data["favorite"]
 
     ls_items = local_storage.load_favorites()
-    assert len(ls_items) >= 1, (
-        "localStorage is empty; expected at least one favorite entry."
-    )
+    assert len(ls_items) >= 1, "localStorage is empty; expected at least one favorite entry."
 
     # Find the renamed favorite by id in the persisted list
     matching = [item for item in ls_items if item["id"] == fav.id]
     assert len(matching) == 1, (
-        f"Expected exactly 1 entry with id '{fav.id}' in localStorage, "
-        f"found {len(matching)}."
+        f"Expected exactly 1 entry with id '{fav.id}' in localStorage, found {len(matching)}."
     )
 
     persisted_label = matching[0]["label"]
     assert persisted_label == _REQ782_NEW_LABEL, (
-        f"localStorage label mismatch: expected '{_REQ782_NEW_LABEL}', "
-        f"got '{persisted_label}'."
+        f"localStorage label mismatch: expected '{_REQ782_NEW_LABEL}', got '{persisted_label}'."
     )
 
     # Also verify the query/cypher is untouched by the rename
@@ -571,11 +557,8 @@ def change_persists_in_local_storage(shared_data: dict[str, Any]) -> None:
     raw_json = local_storage.get_item(_LOCAL_STORAGE_KEY)
     assert raw_json is not None, "localStorage key is missing after save."
     round_tripped = json.loads(raw_json)
-    assert any(
-        item["label"] == _REQ782_NEW_LABEL for item in round_tripped
-    ), (
-        f"Round-tripped JSON does not contain label '{_REQ782_NEW_LABEL}': "
-        f"{round_tripped}"
+    assert any(item["label"] == _REQ782_NEW_LABEL for item in round_tripped), (
+        f"Round-tripped JSON does not contain label '{_REQ782_NEW_LABEL}': {round_tripped}"
     )
 
 
@@ -622,9 +605,7 @@ def favorites_panel_with_at_least_one_favorite(shared_data: dict[str, Any]) -> N
     assert panel.item_count == 1, (
         f"Panel should show 1 favorite item, but shows {panel.item_count}."
     )
-    assert panel.contains(fav.id), (
-        f"Panel does not contain the seeded favorite with id '{fav.id}'."
-    )
+    assert panel.contains(fav.id), f"Panel does not contain the seeded favorite with id '{fav.id}'."
     assert not panel.placeholder_visible, (
         "Placeholder is showing even though a favorite exists — panel logic error."
     )

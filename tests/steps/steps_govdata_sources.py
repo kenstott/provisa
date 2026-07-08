@@ -23,7 +23,6 @@ def shared_data() -> dict:
 
 @scenario(
     "../features/REQ-540.feature",
-
     "REQ-540 default behaviour",
 )
 def test_req540_default_behaviour():
@@ -56,7 +55,7 @@ def govdata_source_configured(shared_data):
 
 @when("the source is registered")
 def register_source(shared_data):
-    source = shared_data["source"]
+    _source = shared_data["source"]
     subject = shared_data["subject"]
     # Registration resolves the subject grouping into the set of exposed schemas.
     exposed_schemas = GOVDATA_SUBJECT_SCHEMAS.get(subject)

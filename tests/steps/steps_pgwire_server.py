@@ -100,9 +100,7 @@ def pgwire_listener_disabled_then_enabled(shared_data):
     assert shared_data["pgwire_started"] is False, (
         "pgwire listener must NOT start when PROVISA_PGWIRE_PORT is absent or zero"
     )
-    assert shared_data["bind_address"] is None, (
-        "bind_address must be None when pgwire is disabled"
-    )
+    assert shared_data["bind_address"] is None, "bind_address must be None when pgwire is disabled"
 
     # -----------------------------------------------------------------------
     # Part 2 — verify the env-var guard logic with port 0 and absent var
@@ -159,9 +157,7 @@ def pgwire_listener_disabled_then_enabled(shared_data):
     # -----------------------------------------------------------------------
     for nonzero_port in (5432, 5439, 15432, 1):
         enabled = nonzero_port != 0
-        assert enabled is True, (
-            f"Port {nonzero_port} must be treated as enabled (non-zero)"
-        )
+        assert enabled is True, f"Port {nonzero_port} must be treated as enabled (non-zero)"
 
     # -----------------------------------------------------------------------
     # Part 5 — unit-level guard: the start_pgwire_server function is NOT called
@@ -177,6 +173,7 @@ def pgwire_listener_disabled_then_enabled(shared_data):
             candidate_port = int(zero_val) if zero_val else 0
             if candidate_port != 0:
                 from provisa.pgwire.server import start_pgwire_server as _s
+
                 _s("0.0.0.0", candidate_port, None, None)
 
     assert called_ports == [], (
@@ -213,7 +210,7 @@ def attempt_authentication(shared_data):
     """Invoke the ProvisaHandler authentication path and capture the outcome."""
     from provisa.pgwire.server import ProvisaHandler
 
-    provider = shared_data["provider"]
+    _provider = shared_data["provider"]
     fatal_error = None
     error_raised = False
 
@@ -267,9 +264,7 @@ def fatal_login_error_returned(shared_data):
 
     fatal_error = shared_data["fatal_error"]
     assert fatal_error is not None, "Fatal error message must not be None"
-    assert "FATAL" in fatal_error, (
-        f"Error must be FATAL-level; got: {fatal_error!r}"
-    )
+    assert "FATAL" in fatal_error, f"Error must be FATAL-level; got: {fatal_error!r}"
 
     provider = shared_data["provider"]
     assert provider in fatal_error, (
@@ -299,9 +294,7 @@ def fatal_login_error_returned(shared_data):
             f"FATAL: unsupported auth provider: {bad_provider!r}; "
             f"only 'none' (trust) and 'simple' are supported over pgwire"
         )
-        assert "FATAL" in expected_msg, (
-            f"Error for provider {bad_provider!r} must be FATAL-level"
-        )
+        assert "FATAL" in expected_msg, f"Error for provider {bad_provider!r} must be FATAL-level"
         assert bad_provider in expected_msg, (
             f"Error must reference the offending provider {bad_provider!r}"
         )
@@ -338,9 +331,7 @@ def fatal_login_error_returned(shared_data):
         with patch("provisa.pgwire.server.state", bad_state):
             prov_val = bad_state.auth_config.get("provider", "none")
             is_fatal = prov_val not in ("none", "simple")
-            assert is_fatal is True, (
-                f"Provider {bad_prov!r} must trigger a FATAL error path"
-            )
+            assert is_fatal is True, f"Provider {bad_prov!r} must trigger a FATAL error path"
 
 
 # ===========================================================================
@@ -373,9 +364,11 @@ def pgwire_cert_and_key_are_set(monkeypatch, tmp_path, shared_data):
             public_exponent=65537,
             key_size=2048,
         )
-        subject = issuer = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, "provisa-test"),
-        ])
+        subject = issuer = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COMMON_NAME, "provisa-test"),
+            ]
+        )
         cert = (
             x509.CertificateBuilder()
             .subject_name(subject)
@@ -409,12 +402,20 @@ def pgwire_cert_and_key_are_set(monkeypatch, tmp_path, shared_data):
         if openssl_bin:
             result = subprocess.run(
                 [
-                    openssl_bin, "req", "-x509", "-newkey", "rsa:2048",
-                    "-keyout", str(key_path),
-                    "-out", str(cert_path),
-                    "-days", "1",
+                    openssl_bin,
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "rsa:2048",
+                    "-keyout",
+                    str(key_path),
+                    "-out",
+                    str(cert_path),
+                    "-days",
+                    "1",
                     "-nodes",
-                    "-subj", "/CN=provisa-test",
+                    "-subj",
+                    "/CN=provisa-test",
                 ],
                 capture_output=True,
                 timeout=30,
@@ -554,6 +555,7 @@ def client_connects(shared_data):
             shared_data["server_stores_ssl_ctx"] = getattr(srv, "ssl_ctx", None) is mock_ssl_ctx
         except Exception:
             import inspect
+
             sig = inspect.signature(ProvisaServer.__init__)
             shared_data["server_stores_ssl_ctx"] = "ssl_ctx" in sig.parameters
 
@@ -611,8 +613,7 @@ def client_connects(shared_data):
             loop2 = MagicMock(spec=asyncio.AbstractEventLoop)
             start_pgwire_server("0.0.0.0", 5439, None, loop2)
             shared_data["start_pgwire_no_ssl_ctx"] = (
-                len(captured_ssl_ctx_absent) > 0
-                and captured_ssl_ctx_absent[0] is None
+                len(captured_ssl_ctx_absent) > 0 and captured_ssl_ctx_absent[0] is None
             )
         finally:
             if env_backup_cert:
@@ -729,9 +730,7 @@ def server_reports_version(shared_data):
 def version_is_14_0_provisa(shared_data):
     """Assert the server_version parameter is exactly '14.0.provisa'."""
     params = shared_data["parameters"]
-    assert "server_version" in params, (
-        "parameters() must include 'server_version'"
-    )
+    assert "server_version" in params, "parameters() must include 'server_version'"
     assert params["server_version"] == "14.0.provisa", (
         f"server_version must be '14.0.provisa'; got {params['server_version']!r}"
     )
@@ -762,18 +761,15 @@ def pgwire_receives_message(shared_data):
 def statements_split_and_executed(shared_data):
     """Assert that the semicolon split produced the correct individual statements."""
     stmts = shared_data["stmts"]
-    assert len(stmts) == 3, (
-        f"Expected 3 statements after split; got {len(stmts)}: {stmts!r}"
-    )
+    assert len(stmts) == 3, f"Expected 3 statements after split; got {len(stmts)}: {stmts!r}"
     assert stmts[0] == "SELECT 1", f"First statement wrong: {stmts[0]!r}"
     assert stmts[1] == "SELECT 2", f"Second statement wrong: {stmts[1]!r}"
     assert stmts[2] == "SELECT 3", f"Third statement wrong: {stmts[2]!r}"
 
     # Also verify handle_query exists on ProvisaHandler
     from provisa.pgwire.server import ProvisaHandler
-    assert hasattr(ProvisaHandler, "handle_query"), (
-        "ProvisaHandler must implement handle_query"
-    )
+
+    assert hasattr(ProvisaHandler, "handle_query"), "ProvisaHandler must implement handle_query"
 
 
 # ===========================================================================
@@ -829,7 +825,9 @@ def ddl_statement_submitted(shared_data):
     shared_data["alter_table_sql"] = "ALTER TABLE my_table ADD COLUMN age INTEGER"
 
 
-@when("ddl_catalog is a Trino catalog only CREATE TABLE and CREATE VIEW are allowed; when it is a registered source ID full DDL is supported")
+@when(
+    "ddl_catalog is a Trino catalog only CREATE TABLE and CREATE VIEW are allowed; when it is a registered source ID full DDL is supported"
+)
 def ddl_catalog_routing(shared_data):
     """Verify the two DDL dispatch paths using DdlHandler internals."""
     from provisa.pgwire.ddl_handler import _catalog_to_source_id, _CREATE_TABLE_OR_VIEW_RE
@@ -913,6 +911,7 @@ def ddl_execution_completes(shared_data):
 
     with patch.object(ddl_handler, "state", mock_state):
         from provisa.pgwire.ddl_handler import _register_ddl_object
+
         _register_ddl_object(
             shared_data["role_id"],
             shared_data["table_name"],
@@ -952,7 +951,10 @@ def role_with_domain_access(shared_data):
     # domain_write_targets is populated by app.py startup logic:
     # ddl_catalog defaults to "iceberg", ddl_schema defaults to domain id
     mock_state.domain_write_targets = {
-        "sales": ("iceberg", "sales"),  # no explicit ddl_catalog → "iceberg"; no ddl_schema → "sales"
+        "sales": (
+            "iceberg",
+            "sales",
+        ),  # no explicit ddl_catalog → "iceberg"; no ddl_schema → "sales"
     }
     mock_state.roles = {
         "analyst": {
@@ -1103,9 +1105,7 @@ def empty_success_for_txn_commands(shared_data):
     mock_state.contexts = {}
     for sql in ["BEGIN", "COMMIT", "ROLLBACK", "START TRANSACTION"]:
         result = answer(sql, "test_role", mock_state)
-        assert result.rows == [], (
-            f"answer({sql!r}) must return empty rows; got {result.rows!r}"
-        )
+        assert result.rows == [], f"answer({sql!r}) must return empty rows; got {result.rows!r}"
         assert result.column_names == [], (
             f"answer({sql!r}) must return empty column_names; got {result.column_names!r}"
         )
@@ -1243,9 +1243,7 @@ def oids_decoded_or_raise(shared_data):
                 f"OID {oid}: expected ~{expected}; got {decoded_val!r}"
             )
         else:
-            assert decoded_val == expected, (
-                f"OID {oid}: expected {expected!r}; got {decoded_val!r}"
-            )
+            assert decoded_val == expected, f"OID {oid}: expected {expected!r}; got {decoded_val!r}"
 
     # An OID not in TYPE_OIDS must cause an error during handle_bind
     # (the code does `type = TYPE_OIDS.get(typeoid); if type: ... else: raise Exception(...)`)

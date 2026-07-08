@@ -36,7 +36,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from pytest_bdd import given, parsers, scenarios, then, when
+from pytest_bdd import given, scenarios, then, when
 
 from provisa.live.engine import _build_incremental_sql
 from provisa.live.outputs.sse import SSEFanout
@@ -184,7 +184,8 @@ class _RecordingKafkaSink:
 
 
 @given(
-    "a table configured for poll-based delivery with both SSE subscription and Kafka sink outputs")
+    "a table configured for poll-based delivery with both SSE subscription and Kafka sink outputs"
+)
 def configure_dual_output_table(shared_data: dict) -> None:
     source_rows = [
         {"id": 1, "updated_at": "2026-01-01T00:00:00", "val": "alpha"},
@@ -225,9 +226,7 @@ def poll_interval_fires(shared_data: dict) -> None:
 
     async def _run_poll() -> None:
         # The Live Query Engine builds one incremental query for this poll.
-        sql = _build_incremental_sql(
-            shared_data["base_sql"], shared_data["watermark_column"], None
-        )
+        sql = _build_incremental_sql(shared_data["base_sql"], shared_data["watermark_column"], None)
         # Execute the query exactly once.
         async with pool.acquire() as poll_conn:
             records = await poll_conn.fetch(sql)
@@ -251,7 +250,8 @@ def poll_interval_fires(shared_data: dict) -> None:
 
 
 @then(
-    "the Live Query Engine executes the query once and delivers results to both SSE and Kafka outputs")
+    "the Live Query Engine executes the query once and delivers results to both SSE and Kafka outputs"
+)
 def assert_single_query_dual_delivery(shared_data: dict) -> None:
     delivered = shared_data["delivered_rows"]
     assert delivered, "poll produced no rows to deliver"
@@ -314,8 +314,7 @@ def provisa_starts_up(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-@then(
-    "config validation fails with an error indicating CDC is not supported for that source")
+@then("config validation fails with an error indicating CDC is not supported for that source")
 def assert_cdc_validation_fails(shared_data: dict) -> None:
     error = shared_data["validation_error"]
     assert error is not None, "expected delivery validation to fail for Trino + cdc"
@@ -431,18 +430,13 @@ def kafka_consumer_falls_behind(shared_data: dict) -> None:
 
     # Capture the resulting independent watermarks for assertion.
     async def _read() -> None:
-        shared_data["sse_watermark"] = await get_watermark(
-            conn, source, "sse_subscription"
-        )
-        shared_data["kafka_watermark"] = await get_watermark(
-            conn, source, "kafka_sink"
-        )
+        shared_data["sse_watermark"] = await get_watermark(conn, source, "sse_subscription")
+        shared_data["kafka_watermark"] = await get_watermark(conn, source, "kafka_sink")
 
     asyncio.run(_read())
 
 
-@then(
-    "SSE delivery continues at normal intervals unaffected by the Kafka consumer lag")
+@then("SSE delivery continues at normal intervals unaffected by the Kafka consumer lag")
 def assert_sse_unaffected_by_kafka_lag(shared_data: dict) -> None:
     poll_watermarks: list[str] = shared_data["poll_watermarks"]
 
