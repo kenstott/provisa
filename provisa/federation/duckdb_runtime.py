@@ -173,7 +173,25 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             watermark_column=watermark_column,
             pk_columns=pk_columns,
         )
-        phys = self._phys_name(source)  # the engine only READS the landed replica
+        self._expose_landed(source, store, mat_table)  # the engine only READS the landed replica
+
+    async def attach_landed_source(
+        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+    ) -> None:
+        """Eager reconcile + attach (boot / (re)registration): converge the landing table in the
+        store to ``columns`` — survives restart, recreated on a config drift — and expose the
+        engine's READ view over it, WITHOUT landing data (that is the refresh's job). Splitting the
+        DDL from the DML makes the catalog complete at startup. The engine never writes the store."""
+        store = self.ensure_materialize_attached()
+        mat_table = _mat_table_name(source)
+        await store_writer.reconcile_table(
+            self._store_dsn(), schema="mat", table=mat_table, columns=columns, pk_columns=pk_columns
+        )
+        self._expose_landed(source, store, mat_table)
+
+    def _expose_landed(self, source: Any, store: str, mat_table: str) -> None:
+        """Create the engine's physical-named READ view over the landed store table (idempotent)."""
+        phys = self._phys_name(source)
         self._con.execute(
             f'CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {store}.mat."{mat_table}"'
         )

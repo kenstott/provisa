@@ -157,6 +157,53 @@ class NativeEngineBackend(EngineBackend):
             loader=loader,
         )
 
+    async def reconcile_landed_tables(self, state: Any) -> list[tuple[str, str]]:
+        """Reconcile the store's landing SCHEMA to config for every MATERIALIZED table, then attach
+        the engine's read view — the schema-currency controller (REQ-846/932). DDL only: no data is
+        landed (that is the refresh's job); an existing matching table is KEPT (survives restart), a
+        drifted one RECREATED. Drives both the boot pass (all tables) and runtime (re)registration
+        (the changed table re-enters here). Convergent + idempotent.
+
+        Per-table isolation: a table whose columns lack a resolved type is skipped (logged) — landing
+        needs the type; it is filled at registration. Returns the (source_id, table_name) reconciled."""
+        from provisa.federation.engine import UnreachableSource
+        from provisa.federation.residency import resolve_landing_args
+        from provisa.federation.strategy import Strategy, federate
+
+        config = getattr(state, "config", None)
+        if config is None:
+            return []
+        runtime = self._runtime_for(state)
+        if not hasattr(runtime, "attach_landed_source"):
+            return []  # this engine's runtime has no eager-landing terminal
+        sources = {s.id: s for s in config.sources}
+        reconciled: list[tuple[str, str]] = []
+        for tbl in config.tables:
+            src = sources.get(tbl.source_id)
+            if src is None:
+                continue
+            try:
+                if federate(src, self.engine) is not Strategy.MATERIALIZED:
+                    continue  # live/scan → attached live, not eager-landed
+            except UnreachableSource:
+                continue
+            try:
+                args = resolve_landing_args(src, tbl)
+            except ValueError:
+                _log.warning(
+                    "%s: skip eager reconcile of %s.%s — column type not yet resolved",
+                    self.engine.name,
+                    tbl.schema_name,
+                    tbl.table_name,
+                )
+                continue
+            merged = SimpleNamespace(
+                id=src.id, type=src.type, schema_name=tbl.schema_name, table_name=tbl.table_name
+            )
+            await runtime.attach_landed_source(merged, args.columns, pk_columns=args.pk_columns)
+            reconciled.append((src.id, tbl.table_name))
+        return reconciled
+
     # -- execution -------------------------------------------------------------
 
     async def execute(
