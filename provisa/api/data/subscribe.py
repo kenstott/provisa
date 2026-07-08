@@ -158,42 +158,58 @@ def _build_cdc_config(state, source_id: str) -> dict:  # REQ-824
             f"cdc transport config (bootstrap_servers/topic_prefix)."
         )
     cdc = src.cdc
+    # REQ-931: consumer group resolves source-override → Provisa-level default. The transport
+    # fields are sender-dictated (per source); the consumer group is Provisa's receiver identity.
+    # state.config.cdc_consumer_group_id always carries the model default ("provisa-debezium").
     return {
         "bootstrap_servers": cdc.bootstrap_servers,
         "topic_prefix": cdc.topic_prefix,
         "schema_registry_url": cdc.schema_registry_url,
-        "consumer_group_id": cdc.consumer_group_id,
+        "consumer_group_id": cdc.consumer_group_id or state.config.cdc_consumer_group_id,
         "database": src.database,
         "source_type": src.type.value,
     }
 
 
-def _resolve_provider_type(source_type: str, source_id: str, tbl_meta, state) -> str:  # REQ-814
-    """Resolve the subscription provider from the table's live.strategy, not source_type.
+def _resolve_provider_type(source_type: str, source_id: str, tbl_meta, state) -> str:  # REQ-932
+    """Resolve the subscription provider from the table's change_signal (REQ-932).
 
-    Dispatch keys off ``live.strategy`` (REQ-814). Only when a table declares no live
-    strategy do we fall back to source_type dispatch (rss/websocket/ingest/etc.), plus
-    the REQ-824 heuristic that routes a cdc-declaring RDBMS to Debezium.
+    change_signal is the single inbound axis; ``to_provider`` maps its push values to their
+    providers and poll/native to source-type dispatch. A legacy ``live.strategy`` is read through
+    until the field is deleted (Phase 4). When a table declares neither, we keep the legacy
+    source_type dispatch (rss/websocket/ingest/etc.) plus the REQ-824 heuristic that routes a
+    cdc-declaring RDBMS to Debezium.
     """
+    from provisa.core.change_signal import (  # noqa: PLC0415
+        from_legacy_strategy,
+        resolve_effective,
+        to_provider,
+    )
+
     live = getattr(tbl_meta, "live", None)
-    strategy = getattr(live, "strategy", None) if live is not None else None
-    if strategy == "debezium":
-        return "debezium"
-    if strategy == "kafka":
-        return "kafka"
-    if strategy in ("native", "poll"):
-        # native → source-native push (postgresql LISTEN/NOTIFY, mongodb change streams);
-        # poll → the federated SQL source's polling provider. Both key off source_type,
-        # but the *decision* was driven by strategy.
+    legacy_strategy = getattr(live, "strategy", None) if live is not None else None
+    table_signal = getattr(tbl_meta, "change_signal", None)
+
+    if table_signal is None and from_legacy_strategy(legacy_strategy) is None:
+        # No explicit signal and no legacy strategy: legacy source_type dispatch + REQ-824 cdc.
+        if (
+            source_type in _CDC_DEBEZIUM_SOURCE_TYPES
+            and state.cdc_sources
+            and source_id in state.cdc_sources
+        ):
+            return "debezium"
         return source_type
-    # No explicit strategy: legacy source_type dispatch + REQ-824 cdc fallback.
-    if (
-        source_type in _CDC_DEBEZIUM_SOURCE_TYPES
-        and state.cdc_sources
-        and source_id in state.cdc_sources
-    ):
-        return "debezium"
-    return source_type
+
+    source_signal = next(
+        (
+            getattr(s, "change_signal", None)
+            for s in getattr(state.config, "sources", [])
+            if s.id == source_id
+        ),
+        None,
+    )
+    sig = resolve_effective(table_signal, source_signal, legacy_strategy)
+    return to_provider(sig, source_type)
 
 
 def _build_provider_config(  # REQ-258

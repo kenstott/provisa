@@ -335,6 +335,9 @@ export interface PlatformSettings {
     support_redact_sql_literals: boolean;
     support_redact_attributes: string[];
   };
+  cdc: {
+    consumer_group_id: string;
+  };
 }
 
 export async function fetchSettings(): Promise<PlatformSettings> {

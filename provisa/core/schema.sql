@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS sources (
     cache_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     cache_ttl     INTEGER,
     prefer_materialized BOOLEAN NOT NULL DEFAULT FALSE,  -- force MATERIALIZED federation for this source's tables
+    change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka)
     gql_naming_convention TEXT,
     path          TEXT  -- file path or URL for file-based sources (csv, parquet, sqlite)
     -- password never stored; resolved at runtime via secrets provider
@@ -59,6 +60,8 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     prefer_materialized BOOLEAN,  -- NULL = inherit source; overrides federation strategy to MATERIALIZED
     gql_naming_convention TEXT,
     watermark_column TEXT,
+    change_signal TEXT,  -- REQ-929: override source change signal; NULL = inherit
+    probe_query TEXT,    -- REQ-929: source-native freshness probe for change_signal in {probe, ttl_probe}
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -111,9 +114,12 @@ DO $$ BEGIN
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS mapping JSONB NOT NULL DEFAULT '{}';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cdc JSONB;  -- REQ-824: source-level CDC transport
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS change_signal TEXT NOT NULL DEFAULT 'ttl';  -- REQ-929
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS prefer_materialized BOOLEAN;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS change_signal TEXT;  -- REQ-929
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS probe_query TEXT;  -- REQ-929
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS column_presets JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS data_product BOOLEAN NOT NULL DEFAULT FALSE;

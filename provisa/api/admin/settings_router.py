@@ -100,6 +100,9 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
             "auto_track_fk": os.environ.get("PROVISA_AUTO_TRACK_FK", "true").lower()
             not in ("0", "false", "no"),
         },
+        "cdc": {  # REQ-931: Provisa-level inbound-CDC consumer group (receiver identity)
+            "consumer_group_id": _eng("cdc_consumer_group_id"),
+        },
         "sampling": {
             "default_sample_size": int(os.environ.get("PROVISA_SAMPLE_SIZE", "10000")),
         },
@@ -265,6 +268,20 @@ async def update_settings(request: Request):  # REQ-165, REQ-194, REQ-253, REQ-3
 
     if "otel" in body:
         _apply_otel(body["otel"], updated)
+
+    if "cdc" in body:  # REQ-931: Provisa-level inbound-CDC consumer group; applied on restart
+        c = body["cdc"]
+        if "consumer_group_id" in c:
+            path = config_path()
+            cfg = read_config()
+            val = (c["consumer_group_id"] or "").strip()
+            if val:
+                cfg["cdc_consumer_group_id"] = val
+            else:
+                cfg.pop("cdc_consumer_group_id", None)  # blank → inherit the model default
+            write_config(path, cfg)
+            updated.append("cdc.consumer_group_id")
+            restart_required = True
 
     return {"success": True, "updated": updated, "restart_required": restart_required}
 

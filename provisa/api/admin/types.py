@@ -22,7 +22,9 @@ class SourceCdcConfigType:  # REQ-824
     bootstrap_servers: str
     topic_prefix: str
     schema_registry_url: str | None = None
-    consumer_group_id: str = "provisa-debezium"
+    consumer_group_id: str | None = (
+        None  # REQ-931: None = inherit Provisa-level cdc_consumer_group_id
+    )
 
 
 @strawberry.type
@@ -103,6 +105,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     column_presets: list[ColumnPresetType] = strawberry.field(default_factory=list)
     api_endpoint: str | None = None
     view_sql: str | None = None
+    change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
+    probe_query: str | None = None  # REQ-929: source-native freshness probe
     materialize: bool = False
     mv_refresh_interval: int = 300
     data_product: bool = False
@@ -199,7 +203,9 @@ class SourceCdcConfigInput:  # REQ-824
     bootstrap_servers: str
     topic_prefix: str
     schema_registry_url: str | None = None
-    consumer_group_id: str = "provisa-debezium"
+    consumer_group_id: str | None = (
+        None  # REQ-931: None = inherit Provisa-level cdc_consumer_group_id
+    )
 
 
 @strawberry.input
@@ -291,6 +297,8 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     watermark_column: str | None = None
     column_presets: list[ColumnPresetInput] = strawberry.field(default_factory=list)
     view_sql: str | None = None
+    change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
+    probe_query: str | None = None  # REQ-929: source-native freshness probe
     materialize: bool = False
     mv_refresh_interval: int = 300
     data_product: bool = False
