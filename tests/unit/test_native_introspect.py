@@ -217,7 +217,9 @@ async def test_native_tables_sqlite_reads_file(tmp_path):
     sq.close()
 
     config_conn = AsyncMock()
-    config_conn.fetchrow = AsyncMock(return_value={"path": str(db)})
+    _res = MagicMock()
+    _res.fetchone.return_value = (str(db),)
+    config_conn.execute_core = AsyncMock(return_value=_res)
 
     result = await native_tables("src", "sqlite", "main", _empty_pool(), config_conn, MagicMock())
     assert result is not None
@@ -263,7 +265,9 @@ async def test_native_tables_postgresql():
 @pytest.mark.asyncio
 async def test_native_tables_kafka():
     config_conn = AsyncMock()
-    config_conn.fetch = AsyncMock(return_value=[{"topic": "orders"}, {"topic": "events"}])
+    _res = MagicMock()
+    _res.fetchall.return_value = [("orders",), ("events",)]
+    config_conn.execute_core = AsyncMock(return_value=_res)
     result = await native_tables("src", "kafka", "kafka", _empty_pool(), config_conn, MagicMock())
     assert result is not None
     assert [t.name for t in result] == ["orders", "events"]

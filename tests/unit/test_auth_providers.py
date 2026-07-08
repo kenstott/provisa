@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import base64
+from unittest.mock import MagicMock
 
 import bcrypt
 import jwt
@@ -43,7 +44,8 @@ def provider():
             "username": "bob",
             "password_hash": _hash_pw("bob-pass"),
             "roles": ["admin", "analyst"],
-        }]
+        },
+    ]
     return SimpleAuthProvider(users=users, jwt_secret=JWT_SECRET)
 
 
@@ -94,7 +96,6 @@ class TestJWTValidationRoundTrip:
             await provider.validate_token(tampered)
 
     async def test_wrong_secret_rejected(self):
-        provider_a = SimpleAuthProvider(users=[], jwt_secret="secret-a-for-unit-tests-padded!x")
         provider_b = SimpleAuthProvider(users=[], jwt_secret="secret-b-for-unit-tests-padded!x")
         token = jwt.encode(
             {"sub": "x", "roles": []}, "secret-a-for-unit-tests-padded!x", algorithm="HS256"
@@ -312,9 +313,7 @@ class TestOAuthProvider:
         assert identity.roles == ["solo"]
 
     async def test_custom_role_claim(self, monkeypatch):
-        provider = self._provider(
-            monkeypatch, {"sub": "u", "groups": ["g1"]}, role_claim="groups"
-        )
+        provider = self._provider(monkeypatch, {"sub": "u", "groups": ["g1"]}, role_claim="groups")
         identity = await provider.validate_token("t")
         assert identity.roles == ["g1"]
 
@@ -331,8 +330,10 @@ class TestBasicProvider:
         from provisa.auth.providers.basic import BasicAuthProvider
 
         class _Conn:
-            async def fetchrow(self, query, *args):
-                return row
+            async def execute_core(self, statement):
+                result = MagicMock()
+                result.fetchone.return_value = None if row is None else MagicMock(_mapping=row)
+                return result
 
         class _Ctx:
             async def __aenter__(self):
@@ -394,24 +395,21 @@ class TestRoleMappingFromJWT:
     async def test_role_from_claims_contains_rule(self, provider):
         token = provider.login("bob", "bob-pass")
         identity = await provider.validate_token(token)
-        rules = [
-            {"type": "contains", "claim": "roles", "value": "admin", "role": "admin"}]
+        rules = [{"type": "contains", "claim": "roles", "value": "admin", "role": "admin"}]
         role = resolve_role(identity, rules, default_role="viewer")
         assert role == "admin"
 
     async def test_role_from_claims_exact_rule(self, provider):
         token = provider.login("alice", "alice-pass")
         identity = await provider.validate_token(token)
-        rules = [
-            {"type": "exact", "claim": "sub", "value": "alice", "role": "power-user"}]
+        rules = [{"type": "exact", "claim": "sub", "value": "alice", "role": "power-user"}]
         role = resolve_role(identity, rules, default_role="viewer")
         assert role == "power-user"
 
     async def test_default_role_when_no_rule_matches(self, provider):
         token = provider.login("alice", "alice-pass")
         identity = await provider.validate_token(token)
-        rules = [
-            {"type": "exact", "claim": "sub", "value": "charlie", "role": "admin"}]
+        rules = [{"type": "exact", "claim": "sub", "value": "charlie", "role": "admin"}]
         role = resolve_role(identity, rules, default_role="viewer")
         assert role == "viewer"
 

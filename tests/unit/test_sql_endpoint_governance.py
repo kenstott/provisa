@@ -72,7 +72,10 @@ async def sql_client():
     app_mod.state.schemas = {"admin": MagicMock()}
     app_mod.state.contexts = {"admin": ctx}
     app_mod.state.rls_contexts = {"admin": rls}
-    app_mod.state.roles = {}
+    # Role must exist in state.roles or the rate-limit middleware rejects it as unknown
+    # (REQ-369). admin capability keeps the endpoint's QUERY_DEVELOPMENT check passing;
+    # empty domain_access preserves the table-access (V000) governance under test.
+    app_mod.state.roles = {"admin": {"id": "admin", "capabilities": ["admin"]}}
     app_mod.state.masking_rules = {}
     app_mod.state.source_types = {"pg": "postgresql"}
     app_mod.state.source_dialects = {"pg": "postgres"}

@@ -14,14 +14,21 @@
 
 from __future__ import annotations
 
-import asyncpg
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import delete as _delete, insert, or_, select, update
+
+from provisa.core.schema_org import roles
+
+if TYPE_CHECKING:
+    from provisa.core.database import Database
 
 router = APIRouter(prefix="/admin/roles", tags=["admin"])
 
 
-def _pool(_request: Request) -> asyncpg.Pool:  # pyright: ignore[reportUnusedParameter]
+def _pool(_request: Request) -> "Database":  # pyright: ignore[reportUnusedParameter]
     from provisa.api.app import state
 
     assert state.tenant_db is not None
@@ -44,12 +51,13 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
     org_id = request.headers.get("x-org-id", "root")
     pool = _pool(request)
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT id, capabilities, domain_access, org_id FROM roles "
-            "WHERE org_id IS NULL OR org_id = $1 ORDER BY id",
-            org_id,
+        result = await conn.execute_core(
+            select(roles.c.id, roles.c.capabilities, roles.c.domain_access, roles.c.org_id)
+            .where(or_(roles.c.org_id.is_(None), roles.c.org_id == org_id))
+            .order_by(roles.c.id)
         )
-    return [dict(r) for r in rows]
+        rows = result.fetchall()
+    return [dict(r._mapping) for r in rows]
 
 
 @router.post("/")
@@ -57,15 +65,20 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
     org_id = request.headers.get("x-org-id", "root")
     pool = _pool(request)
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "INSERT INTO roles (id, capabilities, domain_access, org_id) "
-            "VALUES ($1, $2, $3, $4) RETURNING id, capabilities, domain_access, org_id",
-            body.id,
-            body.capabilities,
-            body.domain_access,
-            org_id,
+        await conn.execute_core(
+            insert(roles).values(
+                id=body.id,
+                capabilities=body.capabilities,
+                domain_access=body.domain_access,
+                org_id=org_id,
+            )
         )
-    return dict(row)
+    return {
+        "id": body.id,
+        "capabilities": body.capabilities,
+        "domain_access": body.domain_access,
+        "org_id": org_id,
+    }
 
 
 @router.put("/{role_id}")
@@ -74,12 +87,15 @@ async def update_role(
 ):  # REQ-042, REQ-059, REQ-060, REQ-215
     pool = _pool(request)
     async with pool.acquire() as conn:
-        existing = await conn.fetchrow(
-            "SELECT id, capabilities, domain_access, org_id FROM roles WHERE id = $1",
-            role_id,
+        result = await conn.execute_core(
+            select(roles.c.id, roles.c.capabilities, roles.c.domain_access, roles.c.org_id).where(
+                roles.c.id == role_id
+            )
         )
+        existing = result.fetchone()
         if existing is None:
             raise HTTPException(status_code=404, detail="Role not found")
+        existing = dict(existing._mapping)
         if existing["org_id"] is None:
             raise HTTPException(status_code=400, detail="Cannot modify system roles")
 
@@ -88,28 +104,29 @@ async def update_role(
             body.domain_access if body.domain_access is not None else existing["domain_access"]
         )
 
-        row = await conn.fetchrow(
-            "UPDATE roles SET capabilities = $1, domain_access = $2 WHERE id = $3 "
-            "RETURNING id, capabilities, domain_access, org_id",
-            new_caps,
-            new_domains,
-            role_id,
+        await conn.execute_core(
+            update(roles)
+            .where(roles.c.id == role_id)
+            .values(capabilities=new_caps, domain_access=new_domains)
         )
-    return dict(row)
+    return {
+        "id": role_id,
+        "capabilities": new_caps,
+        "domain_access": new_domains,
+        "org_id": existing["org_id"],
+    }
 
 
 @router.delete("/{role_id}")
 async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-060
     pool = _pool(request)
     async with pool.acquire() as conn:
-        existing = await conn.fetchrow(
-            "SELECT org_id FROM roles WHERE id = $1",
-            role_id,
-        )
+        result = await conn.execute_core(select(roles.c.org_id).where(roles.c.id == role_id))
+        existing = result.fetchone()
         if existing is None:
             raise HTTPException(status_code=404, detail="Role not found")
-        if existing["org_id"] is None:
+        if existing._mapping["org_id"] is None:
             raise HTTPException(status_code=400, detail="Cannot delete system roles")
 
-        await conn.execute("DELETE FROM roles WHERE id = $1", role_id)
+        await conn.execute_core(_delete(roles).where(roles.c.id == role_id))
     return {"deleted": role_id}

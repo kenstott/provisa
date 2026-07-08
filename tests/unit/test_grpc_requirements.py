@@ -340,41 +340,28 @@ class TestREQ617RoleSelectionViaMetadata:
         request = MagicMock()
         request.limit = 0
 
-        fake_compiled = SimpleNamespace(
-            sql="SELECT id, amount FROM orders",
-            params=[],
-            sources=["test-pg"],
-            columns=[
-                SimpleNamespace(field_name="id", nested_in=None),
-                SimpleNamespace(field_name="amount", nested_in=None),
-            ],
+        # New pipeline seam: govern/route/execute via provisa.pgwire._pipeline. Three rows in.
+        fake_plan = SimpleNamespace(route=Route.DIRECT, source_id="test-pg")
+        fake_result = SimpleNamespace(
+            column_names=["id", "amount"], rows=[[1, 10.0], [2, 20.0], [3, 30.0]]
         )
-        # Three rows in the result
-        fake_result = SimpleNamespace(rows=[[1, 10.0], [2, 20.0], [3, 30.0]])
 
         with (
-            patch("provisa.compiler.parser.parse_query"),
-            patch("provisa.compiler.sql_gen.compile_query", return_value=[fake_compiled]),
-            patch("provisa.compiler.rls.inject_rls", return_value=fake_compiled),
-            patch("provisa.compiler.mask_inject.inject_masking", return_value=fake_compiled),
-            patch("provisa.mv.rewriter.rewrite_if_mv_match", return_value=fake_compiled),
-            patch("provisa.transpiler.router.decide_route") as mock_route,
-            patch("provisa.security.rights.has_capability", return_value=False),
-            patch("provisa.compiler.sampling.apply_sampling", return_value=fake_compiled),
-            patch("provisa.compiler.sampling.get_sample_size", return_value=100),
             patch(
-                "provisa.transpiler.transpile.transpile",
+                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
                 return_value="SELECT id, amount FROM orders",
             ),
             patch(
-                "provisa.executor.direct.execute_direct",
+                "provisa.pgwire._pipeline._govern_and_route_compiled",
+                new_callable=AsyncMock,
+                return_value=fake_plan,
+            ),
+            patch(
+                "provisa.pgwire._pipeline._execute_plan",
                 new_callable=AsyncMock,
                 return_value=fake_result,
             ),
         ):
-            mock_route.return_value = SimpleNamespace(
-                route=Route.DIRECT, source_id="test-pg", dialect="postgres"
-            )
             rows_yielded = []
             async for msg in servicer._handle_query(request, context, "Orders", "orders"):
                 rows_yielded.append(msg)

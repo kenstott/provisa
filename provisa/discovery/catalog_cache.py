@@ -21,24 +21,19 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-log = logging.getLogger(__name__)
+from sqlalchemy import delete as _delete, func, select
 
-_DDL = """
-CREATE TABLE IF NOT EXISTS source_catalog_cache (
-    source_id   TEXT        NOT NULL,
-    schema_name TEXT        NOT NULL,
-    table_name  TEXT        NOT NULL,
-    column_names TEXT[]     NOT NULL DEFAULT '{}',
-    comment     TEXT,
-    indexed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (source_id, schema_name, table_name)
-)
-"""
+from provisa.core.schema_org import source_catalog_cache
+
+log = logging.getLogger(__name__)
 
 
 async def ensure_table(pool) -> None:
-    async with pool.acquire() as conn:
-        await conn.execute(_DDL)
+    """Create the source catalog cache table via portable SQLAlchemy metadata."""
+    from provisa.core.schema_org import metadata
+
+    async with pool.engine.begin() as conn:
+        await conn.run_sync(lambda sc: metadata.create_all(sc, tables=[source_catalog_cache]))
 
 
 @dataclass
@@ -52,13 +47,13 @@ class CachedTable:
 async def read_cache(pool, source_id: str, schema_name: str) -> list[CachedTable] | None:  # REQ-464
     """Return cached tables for source+schema, or None if cache is cold."""
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT schema_name, table_name, column_names, comment "
-            "FROM source_catalog_cache "
-            "WHERE source_id = $1 AND schema_name = $2",
-            source_id,
-            schema_name,
+        result = await conn.execute_core(
+            select(source_catalog_cache).where(
+                (source_catalog_cache.c.source_id == source_id)
+                & (source_catalog_cache.c.schema_name == schema_name)
+            )
         )
+        rows = [dict(r._mapping) for r in result.fetchall()]
     if not rows:
         return None
     return [
@@ -80,22 +75,31 @@ async def write_cache(
 ) -> None:  # REQ-464
     if not tables:
         return
-    async with pool.acquire() as conn:
-        await conn.executemany(
-            "INSERT INTO source_catalog_cache "
-            "(source_id, schema_name, table_name, column_names, comment, indexed_at) "
-            "VALUES ($1, $2, $3, $4, $5, NOW()) "
-            "ON CONFLICT (source_id, schema_name, table_name) DO UPDATE SET "
-            "column_names = EXCLUDED.column_names, "
-            "comment = EXCLUDED.comment, "
-            "indexed_at = EXCLUDED.indexed_at",
-            [(source_id, schema_name, t.table_name, t.column_names, t.comment) for t in tables],
-        )
+    async with pool.acquire() as conn, conn.transaction():
+        # One transaction so a mid-batch failure rolls the whole write back (matches the original
+        # single multi-row upsert's atomicity).
+        for t in tables:
+            await conn.upsert(
+                source_catalog_cache,
+                {
+                    "source_id": source_id,
+                    "schema_name": schema_name,
+                    "table_name": t.table_name,
+                    # JSON column takes a Python list directly.
+                    "column_names": t.column_names,
+                    "comment": t.comment,
+                    "indexed_at": func.now(),
+                },
+                index_elements=["source_id", "schema_name", "table_name"],
+                update_columns=["column_names", "comment", "indexed_at"],
+            )
 
 
 async def invalidate_source(pool, source_id: str) -> None:  # REQ-464
     async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM source_catalog_cache WHERE source_id = $1", source_id)
+        await conn.execute_core(
+            _delete(source_catalog_cache).where(source_catalog_cache.c.source_id == source_id)
+        )
 
 
 async def index_source(

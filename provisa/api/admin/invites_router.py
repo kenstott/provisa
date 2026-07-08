@@ -16,8 +16,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import delete as _delete, select
 
 from provisa.core.database import Database
+from provisa.core.schema_admin import org_invites, orgs
 
 router = APIRouter(prefix="/admin/invites", tags=["admin"])
 
@@ -49,55 +51,69 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
         raise HTTPException(status_code=401, detail="Authentication required")
     created_by = identity.user_id
     # token and expiry are computed app-side (portable) rather than via
-    # PG-specific gen_random_uuid()/interval defaults — the platform control
+    # PG-specific server-side UUID/interval defaults — the platform control
     # plane may be any SQLAlchemy backend.
     token = str(uuid.uuid4())
     expires_at = datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(
         days=body.expires_in_days
     )
     async with pool.acquire() as conn:
-        org = await conn.fetchrow("SELECT id FROM orgs WHERE id = $1", body.org_id)
-        if not org:
+        result = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == body.org_id))
+        if result.fetchone() is None:
             raise HTTPException(status_code=404, detail="Org not found")
-        row = await conn.fetchrow(
-            """
-            INSERT INTO org_invites (token, org_id, role_id, created_by, expires_at)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING token, org_id, role_id, created_by, expires_at
-            """,
-            token,
-            body.org_id,
-            body.role_id,
-            created_by,
-            expires_at,
+        result = await conn.execute_core(
+            org_invites.insert()
+            .values(
+                token=token,
+                org_id=body.org_id,
+                role_id=body.role_id,
+                created_by=created_by,
+                expires_at=expires_at,
+            )
+            .returning(
+                org_invites.c.token,
+                org_invites.c.org_id,
+                org_invites.c.role_id,
+                org_invites.c.created_by,
+                org_invites.c.expires_at,
+            )
         )
-    return dict(row)
+        row = result.fetchone()
+    return dict(row._mapping)
 
 
 @router.get("/")
 async def list_invites(request: Request):  # REQ-516
     pool = _pool(request)
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT i.token, i.org_id, o.name as org_name, i.role_id,
-                   i.created_by, i.expires_at, i.used_at, i.used_by
-            FROM org_invites i
-            JOIN orgs o ON o.id = i.org_id
-            ORDER BY i.expires_at DESC
-            """
+        result = await conn.execute_core(
+            select(
+                org_invites.c.token,
+                org_invites.c.org_id,
+                orgs.c.name.label("org_name"),
+                org_invites.c.role_id,
+                org_invites.c.created_by,
+                org_invites.c.expires_at,
+                org_invites.c.used_at,
+                org_invites.c.used_by,
+            )
+            .select_from(org_invites.join(orgs, orgs.c.id == org_invites.c.org_id))
+            .order_by(org_invites.c.expires_at.desc())
         )
-    return [dict(r) for r in rows]
+        rows = result.fetchall()
+    return [dict(r._mapping) for r in rows]
 
 
 @router.delete("/{token}")
 async def revoke_invite(token: str, request: Request):  # REQ-516
     pool = _pool(request)
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "DELETE FROM org_invites WHERE token = $1 AND used_at IS NULL RETURNING token",
-            token,
+        result = await conn.execute_core(
+            _delete(org_invites)
+            .where(org_invites.c.token == token, org_invites.c.used_at.is_(None))
+            .returning(org_invites.c.token)
         )
+        row = result.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Invite not found or already used")
     return {"revoked": token}

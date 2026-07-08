@@ -31,7 +31,6 @@ from sqlalchemy import (
     Uuid,
 )
 
-from provisa.api.billing.tenant_db import BILLING_SCHEMA_SQL
 from provisa.audit.query_log import AUDIT_SCHEMA_SQL
 from provisa.core import schema_admin, schema_org
 
@@ -47,10 +46,18 @@ REGISTRY_ONLY_TABLES = {
     "user_org_memberships",
     "local_users",
     "org_invites",
+    # Billing tables are now portable metadata too (schema_admin), created via
+    # metadata.create_all — no raw SQL DDL to mirror.
+    "tenants",
+    "tenant_config",
 }
 
-# Admin/platform tables that DO have raw SQL DDL (billing schema).
-ADMIN_TABLES_IN_SCHEMA_SQL = {"tenants", "tenant_config"}
+# No admin/platform table has raw SQL DDL any longer — all are metadata-authoritative.
+ADMIN_TABLES_IN_SCHEMA_SQL: set[str] = set()
+
+# Tables authored ONLY as portable SQLAlchemy metadata (created via metadata.create_all),
+# with no raw SQL DDL to mirror — excluded from SQL<->metadata parity on either module.
+METADATA_ONLY_TABLES = REGISTRY_ONLY_TABLES | {"query_sla_log", "source_catalog_cache"}
 
 _CONSTRAINT_KW = {
     "unique",
@@ -215,7 +222,7 @@ def _parse_sql(*sql_blobs: str) -> dict[str, ParsedTable]:
 
 @pytest.fixture(scope="module")
 def parsed() -> dict[str, ParsedTable]:
-    return _parse_sql(SCHEMA_SQL.read_text(), BILLING_SCHEMA_SQL, AUDIT_SCHEMA_SQL)
+    return _parse_sql(SCHEMA_SQL.read_text(), AUDIT_SCHEMA_SQL)
 
 
 def _bucket(parsed: dict[str, ParsedTable], admin: bool) -> set[str]:
@@ -228,10 +235,8 @@ def _bucket(parsed: dict[str, ParsedTable], admin: bool) -> set[str]:
 )
 def test_table_set_matches(parsed, meta_module, is_admin):
     expected = _bucket(parsed, is_admin)
-    if is_admin:
-        # Registry tables exist only in metadata (no SQL DDL to parse).
-        expected |= REGISTRY_ONLY_TABLES
-    actual = set(meta_module.metadata.tables.keys())
+    # Metadata-only tables have no parsed SQL counterpart; compare on the raw-DDL-mirrored set.
+    actual = set(meta_module.metadata.tables.keys()) - METADATA_ONLY_TABLES
     assert actual == expected, (
         f"table mismatch (admin={is_admin}): missing={expected - actual}, extra={actual - expected}"
     )
@@ -240,7 +245,7 @@ def test_table_set_matches(parsed, meta_module, is_admin):
 @pytest.mark.parametrize("meta_module", [schema_org, schema_admin])
 def test_columns_and_pk_match(parsed, meta_module):
     for tname, table in meta_module.metadata.tables.items():
-        if tname in REGISTRY_ONLY_TABLES:
+        if tname in METADATA_ONLY_TABLES:
             continue  # metadata-authoritative; no SQL counterpart
         pt = parsed[tname]
         meta_cols = set(table.columns.keys())
@@ -255,7 +260,7 @@ def test_columns_and_pk_match(parsed, meta_module):
 @pytest.mark.parametrize("meta_module", [schema_org, schema_admin])
 def test_type_families_match(parsed, meta_module):
     for tname, table in meta_module.metadata.tables.items():
-        if tname in REGISTRY_ONLY_TABLES:
+        if tname in METADATA_ONLY_TABLES:
             continue  # metadata-authoritative; no SQL counterpart
         pt = parsed[tname]
         for col in table.columns:

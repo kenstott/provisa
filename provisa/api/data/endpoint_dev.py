@@ -128,17 +128,21 @@ async def proto_endpoint(role_id: str, domains: str = ""):  # REQ-525
 
 async def _execute_govdata(source_id: str, sql: str, state) -> "QueryResult":
     log.warning("_execute_govdata called: sql=%s", sql[:300])
+    from sqlalchemy import select
+
     from provisa.core.models import GovDataSource, GovDataSubject
+    from provisa.core.schema_org import sources
     from provisa.core.secrets import resolve_secrets
     from provisa.executor.result import QueryResult
     from provisa.govdata.source import execute_query
 
     pool = state.tenant_db
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT username, database FROM sources WHERE id = $1",
-            source_id,
+        result = await conn.execute_core(
+            select(sources.c.username, sources.c.database).where(sources.c.id == source_id)
         )
+        _row = result.fetchone()
+    row = dict(_row._mapping) if _row is not None else None
 
     api_key = resolve_secrets(row["username"] or "")
     database = row["database"] or ""

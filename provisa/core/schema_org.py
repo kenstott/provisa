@@ -79,6 +79,7 @@ sources = Table(
     Column("description", Text, nullable=False, server_default=""),
     Column("mapping", JSON, nullable=False, default=dict, server_default="{}"),
     Column("cdc", JSON),
+    Column("change_signal", Text, nullable=False, server_default="ttl"),  # REQ-929
 )
 
 domains = Table(
@@ -114,6 +115,8 @@ registered_tables = Table(
     Column("prefer_materialized", Boolean),
     Column("gql_naming_convention", Text),
     Column("watermark_column", Text),
+    Column("change_signal", Text),  # REQ-929: override source change signal; NULL = inherit
+    Column("probe_query", Text),  # REQ-929: source-native freshness probe
     Column("column_presets", JSON, nullable=False, default=list, server_default="[]"),
     Column("view_sql", Text),
     Column("data_product", Boolean, nullable=False, server_default=false()),
@@ -496,7 +499,9 @@ user_role_assignments = Table(
 node_ids = Table(
     "node_ids",
     metadata,
-    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column(
+        "id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    ),
     Column("composite_id", Text, nullable=False, unique=True),
     Column("label", Text, nullable=False),
     Column("properties", JSON, nullable=False, default=dict, server_default="{}"),
@@ -505,7 +510,9 @@ node_ids = Table(
 rel_ids = Table(
     "rel_ids",
     metadata,
-    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column(
+        "id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    ),
     Column("composite_id", Text, nullable=False, unique=True),
     Column("rel_type", Text, nullable=False),
     Column("properties", JSON, nullable=False, default=dict, server_default="{}"),
@@ -516,7 +523,9 @@ rel_ids = Table(
 query_audit_log = Table(
     "query_audit_log",
     metadata,
-    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column(
+        "id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    ),
     Column("tenant_id", Uuid),
     Column("user_id", Text, nullable=False),
     Column("role_id", Text, nullable=False),
@@ -528,4 +537,31 @@ query_audit_log = Table(
     Column("status_code", Integer, nullable=False),
     Column("duration_ms", Integer, nullable=False),
     Column("logged_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# SLA telemetry (REQ-074, REQ-506) — DDL in provisa/audit/sla_monitor.py.
+query_sla_log = Table(
+    "query_sla_log",
+    metadata,
+    Column(
+        "id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    ),
+    Column("tenant_id", Uuid),
+    Column("duration_ms", Integer, nullable=False),
+    Column("status_code", Integer, nullable=False),
+    Column("window_start", DateTime(timezone=True), nullable=False),
+    Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# Source catalog cache (REQ-464) — DDL in provisa/discovery/catalog_cache.py.
+source_catalog_cache = Table(
+    "source_catalog_cache",
+    metadata,
+    Column("source_id", Text, nullable=False),
+    Column("schema_name", Text, nullable=False),
+    Column("table_name", Text, nullable=False),
+    Column("column_names", JSON, nullable=False, default=list, server_default="[]"),
+    Column("comment", Text),
+    Column("indexed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("source_id", "schema_name", "table_name"),
 )

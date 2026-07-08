@@ -12,13 +12,19 @@
 
 from __future__ import annotations
 
-import asyncpg
+from typing import TYPE_CHECKING
+
+from sqlalchemy import select
 
 from provisa.core.change_signal import is_poll, resolve_effective  # REQ-932
+from provisa.core.schema_org import registered_tables as _rt
 from provisa.live.engine import LiveSpec
 
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
-async def reconcile_live_engine(conn: asyncpg.Connection, engine) -> None:  # REQ-565, REQ-932
+
+async def reconcile_live_engine(conn: "Connection", engine) -> None:  # REQ-565, REQ-932
     """Rebuild the engine's poll jobs from registered_tables.
 
     A table drives a watermark poll job when its effective change_signal is a poll signal
@@ -29,10 +35,17 @@ async def reconcile_live_engine(conn: asyncpg.Connection, engine) -> None:  # RE
     if engine is None:
         return
 
-    rows = await conn.fetch(
-        "SELECT source_id, schema_name, table_name, live, change_signal, watermark_column "
-        "FROM registered_tables WHERE live IS NOT NULL"
+    result = await conn.execute_core(
+        select(
+            _rt.c.source_id,
+            _rt.c.schema_name,
+            _rt.c.table_name,
+            _rt.c.live,
+            _rt.c.change_signal,
+            _rt.c.watermark_column,
+        ).where(_rt.c.live.isnot(None))
     )
+    rows = [dict(r._mapping) for r in result.fetchall()]
     specs: list[LiveSpec] = []
     for row in rows:
         live = row["live"]

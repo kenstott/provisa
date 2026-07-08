@@ -679,57 +679,54 @@ class TestSSEFanout:
 class TestWatermark:
     """Tests for get_watermark and set_watermark in provisa.live.watermark."""
 
+    def _result(self, row):
+        result = MagicMock()
+        result.fetchone.return_value = row
+        return result
+
     async def test_get_watermark_returns_value_when_row_exists(self):
         from provisa.live.watermark import get_watermark
 
         conn = _make_conn()
-        conn.fetchrow = AsyncMock(return_value={"last_watermark": "2026-01-15"})
-        result = await get_watermark(conn, "q1", "sse")
-        assert result == "2026-01-15"
-        conn.fetchrow.assert_called_once_with(
-            "SELECT last_watermark FROM live_query_state WHERE source = $1 AND output_type = $2",
-            "q1",
-            "sse",
+        conn.execute_core = AsyncMock(
+            return_value=self._result(MagicMock(_mapping={"last_watermark": "2026-01-15"}))
         )
+        assert await get_watermark(conn, "q1", "sse") == "2026-01-15"
+        # filters by source + output_type
+        compiled = str(
+            conn.execute_core.await_args.args[0].compile(compile_kwargs={"literal_binds": True})
+        )
+        assert "q1" in compiled and "sse" in compiled
 
     async def test_get_watermark_returns_none_when_no_row(self):
         from provisa.live.watermark import get_watermark
 
         conn = _make_conn()
-        conn.fetchrow = AsyncMock(return_value=None)
-        result = await get_watermark(conn, "q-missing", "sse")
-        assert result is None
+        conn.execute_core = AsyncMock(return_value=self._result(None))
+        assert await get_watermark(conn, "q-missing", "sse") is None
 
-    async def test_set_watermark_calls_execute_with_upsert(self):
+    async def test_set_watermark_upserts_value(self):
         from provisa.live.watermark import set_watermark
 
         conn = _make_conn()
+        conn.upsert = AsyncMock()
         await set_watermark(conn, "q1", "sse", "2026-03-20")
-        conn.execute.assert_called_once()
-        args = conn.execute.call_args[0]
-        # First arg is the SQL string; second is source, third is output_type, fourth is value
-        assert "INSERT INTO live_query_state" in args[0]
-        assert "ON CONFLICT" in args[0]
-        assert args[1] == "q1"
-        assert args[2] == "sse"
-        assert args[3] == "2026-03-20"
+        conn.upsert.assert_awaited_once()
+        table_arg, values = conn.upsert.await_args.args[0], conn.upsert.await_args.args[1]
+        assert table_arg.name == "live_query_state"
+        assert values["source"] == "q1"
+        assert values["output_type"] == "sse"
+        assert values["last_watermark"] == "2026-03-20"
 
-    async def test_set_watermark_upsert_sql_updates_on_conflict(self):
+    async def test_set_watermark_updates_watermark_on_conflict(self):
         from provisa.live.watermark import set_watermark
 
         conn = _make_conn()
+        conn.upsert = AsyncMock()
         await set_watermark(conn, "q1", "sse", "2026-03-20")
-        sql = conn.execute.call_args[0][0]
-        assert "DO UPDATE SET last_watermark" in sql
-
-    async def test_get_watermark_query_uses_positional_param(self):
-        from provisa.live.watermark import get_watermark
-
-        conn = _make_conn()
-        conn.fetchrow = AsyncMock(return_value=None)
-        await get_watermark(conn, "test-q", "sse")
-        sql = conn.fetchrow.call_args[0][0]
-        assert "$1" in sql
+        kwargs = conn.upsert.await_args.kwargs
+        assert kwargs["index_elements"] == ["source", "output_type"]
+        assert "last_watermark" in kwargs["update_columns"]
 
 
 # ---------------------------------------------------------------------------

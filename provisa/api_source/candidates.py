@@ -8,63 +8,69 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""PG repository for API endpoint candidates (Phase U)."""
+"""Repository for API endpoint candidates (Phase U), via SQLAlchemy Core (dialect-portable)."""
 
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
-import asyncpg
+from sqlalchemy import case, select, update
 
 from provisa.api_source.models import ApiColumn, ApiEndpoint, ApiEndpointCandidate
+from provisa.core.schema_org import api_endpoint_candidates, api_endpoints
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 # Requirements: REQ-308, REQ-314, REQ-316
 
 
 async def store_candidates(  # REQ-314, REQ-316
-    conn: asyncpg.Connection,
+    conn: "Connection",
     source_id: str,
     candidates: list[ApiEndpointCandidate],
 ) -> list[int]:
     """Store discovered candidates. Returns list of inserted IDs."""
     ids: list[int] = []
     for c in candidates:
-        columns_json = json.dumps([col.model_dump() for col in c.columns])
-        row = await conn.fetchrow(
-            """
-            INSERT INTO api_endpoint_candidates (source_id, path, method, table_name, columns, status)
-            VALUES ($1, $2, $3, $4, $5::jsonb, 'discovered')
-            ON CONFLICT (source_id, path, method) DO UPDATE
-                SET table_name = EXCLUDED.table_name,
-                    columns = EXCLUDED.columns,
-                    status = CASE WHEN api_endpoint_candidates.status = 'registered' THEN 'registered' ELSE 'discovered' END
-            RETURNING id
-            """,
-            source_id,
-            c.path,
-            c.method,
-            c.table_name,
-            columns_json,
+        row_id = await conn.upsert_returning(
+            api_endpoint_candidates,
+            {
+                "source_id": source_id,
+                "path": c.path,
+                "method": c.method,
+                "table_name": c.table_name,
+                # JSON column takes a Python object directly.
+                "columns": [col.model_dump() for col in c.columns],
+                "status": "discovered",
+            },
+            index_elements=["source_id", "path", "method"],
+            returning="id",
+            update_columns=["table_name", "columns"],
+            # A registered candidate stays registered; anything else becomes discovered.
+            set_extra={
+                "status": case(
+                    (api_endpoint_candidates.c.status == "registered", "registered"),
+                    else_="discovered",
+                )
+            },
         )
-        assert row is not None
-        ids.append(row["id"])
+        ids.append(row_id)
     return ids
 
 
 async def list_candidates(  # REQ-599
-    conn: asyncpg.Connection,
+    conn: "Connection",
     source_id: str | None = None,
 ) -> list[ApiEndpointCandidate]:
     """List pending (discovered) candidates."""
+    stmt = select(api_endpoint_candidates).where(api_endpoint_candidates.c.status == "discovered")
     if source_id:
-        rows = await conn.fetch(
-            "SELECT * FROM api_endpoint_candidates WHERE source_id = $1 AND status = 'discovered' ORDER BY id",
-            source_id,
-        )
-    else:
-        rows = await conn.fetch(
-            "SELECT * FROM api_endpoint_candidates WHERE status = 'discovered' ORDER BY id",
-        )
+        stmt = stmt.where(api_endpoint_candidates.c.source_id == source_id)
+    stmt = stmt.order_by(api_endpoint_candidates.c.id)
+    result = await conn.execute_core(stmt)
+    rows = [dict(r._mapping) for r in result.fetchall()]
 
     def _parse_columns(raw) -> list[ApiColumn]:
         data = raw if isinstance(raw, list) else json.loads(raw)
@@ -85,17 +91,18 @@ async def list_candidates(  # REQ-599
 
 
 async def accept_candidate(  # REQ-308, REQ-314, REQ-316
-    conn: asyncpg.Connection,
+    conn: "Connection",
     candidate_id: int,
     overrides: dict | None = None,
 ) -> ApiEndpoint:
     """Accept a candidate: register it as an endpoint."""
-    row = await conn.fetchrow(
-        "SELECT * FROM api_endpoint_candidates WHERE id = $1",
-        candidate_id,
+    result = await conn.execute_core(
+        select(api_endpoint_candidates).where(api_endpoint_candidates.c.id == candidate_id)
     )
+    row = result.fetchone()
     if row is None:
         raise ValueError(f"Candidate {candidate_id} not found")
+    row = dict(row._mapping)
     if row["status"] != "discovered":
         raise ValueError(f"Candidate {candidate_id} status is {row['status']!r}, not 'discovered'")
 
@@ -108,43 +115,45 @@ async def accept_candidate(  # REQ-308, REQ-314, REQ-316
     pk_column = overrides.get("pk_column")
 
     # Insert or update endpoint
-    ep_row = await conn.fetchrow(
-        """
-        INSERT INTO api_endpoints (source_id, path, method, table_name, columns, ttl, response_root, error_path, pk_column)
-        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9)
-        ON CONFLICT (table_name) DO UPDATE
-            SET source_id = EXCLUDED.source_id,
-                path = EXCLUDED.path,
-                method = EXCLUDED.method,
-                columns = EXCLUDED.columns,
-                ttl = EXCLUDED.ttl,
-                response_root = EXCLUDED.response_root,
-                error_path = EXCLUDED.error_path,
-                pk_column = EXCLUDED.pk_column
-        RETURNING id
-        """,
-        row["source_id"],
-        row["path"],
-        row["method"],
-        table_name,
-        columns,
-        ttl,
-        response_root,
-        error_path,
-        pk_column,
+    ep_id = await conn.upsert_returning(
+        api_endpoints,
+        {
+            "source_id": row["source_id"],
+            "path": row["path"],
+            "method": row["method"],
+            "table_name": table_name,
+            # JSON column takes a Python object directly.
+            "columns": columns,
+            "ttl": ttl,
+            "response_root": response_root,
+            "error_path": error_path,
+            "pk_column": pk_column,
+        },
+        index_elements=["table_name"],
+        returning="id",
+        update_columns=[
+            "source_id",
+            "path",
+            "method",
+            "columns",
+            "ttl",
+            "response_root",
+            "error_path",
+            "pk_column",
+        ],
     )
 
     # Update candidate status
-    await conn.execute(
-        "UPDATE api_endpoint_candidates SET status = 'registered' WHERE id = $1",
-        candidate_id,
+    await conn.execute_core(
+        update(api_endpoint_candidates)
+        .where(api_endpoint_candidates.c.id == candidate_id)
+        .values(status="registered")
     )
 
-    assert ep_row is not None
     raw_cols = columns if isinstance(columns, list) else json.loads(columns)
     columns_parsed = [ApiColumn(**c) for c in raw_cols]
     return ApiEndpoint(
-        id=ep_row["id"],
+        id=ep_id,
         source_id=row["source_id"],
         path=row["path"],
         method=row["method"],
@@ -158,13 +167,15 @@ async def accept_candidate(  # REQ-308, REQ-314, REQ-316
 
 
 async def reject_candidate(
-    conn: asyncpg.Connection,
+    conn: "Connection",
     candidate_id: int,
 ) -> None:
     """Reject a candidate."""
-    result = await conn.execute(
-        "UPDATE api_endpoint_candidates SET status = 'rejected' WHERE id = $1 AND status = 'discovered'",
-        candidate_id,
+    result = await conn.execute_core(
+        update(api_endpoint_candidates)
+        .where(api_endpoint_candidates.c.id == candidate_id)
+        .where(api_endpoint_candidates.c.status == "discovered")
+        .values(status="rejected")
     )
-    if result == "UPDATE 0":
+    if (result.rowcount or 0) == 0:
         raise ValueError(f"Candidate {candidate_id} not found or not in 'discovered' status")

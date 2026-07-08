@@ -49,6 +49,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    select,
     true,
 )
 
@@ -158,6 +159,9 @@ async def init_registry_schema(db: "Database") -> None:  # REQ-696
     async with db.engine.begin() as conn:
         await conn.run_sync(lambda sc: metadata.create_all(sc, tables=REGISTRY_TABLES))
     async with db.acquire() as conn:
-        exists = await conn.fetchval("SELECT id FROM orgs WHERE id = $1", "root")
-        if exists is None:
-            await conn.execute("INSERT INTO orgs (id, name) VALUES ($1, $2)", "root", "Enterprise")
+        result = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == "root"))
+        if result.scalar() is None:
+            # Insert-if-absent (DO NOTHING): seed the default root org idempotently.
+            await conn.upsert(
+                orgs, {"id": "root", "name": "Enterprise"}, index_elements=["id"], update_columns=[]
+            )

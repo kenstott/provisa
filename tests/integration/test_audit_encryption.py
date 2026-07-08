@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS {_SCHEMA}.query_audit_log (
     role_id TEXT NOT NULL,
     query_hash TEXT NOT NULL,
     query_text_enc BYTEA,
-    table_ids TEXT[] NOT NULL DEFAULT '{{}}',
+    table_ids JSONB NOT NULL DEFAULT '[]',
     source TEXT NOT NULL,
     status_code INT NOT NULL,
     duration_ms INT NOT NULL,

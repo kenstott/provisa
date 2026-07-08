@@ -171,11 +171,16 @@ class TestDomainRLS:
         """
         import inspect
 
+        from sqlalchemy import select
+
         import provisa.api.app as app_module
         from provisa.core.repositories import rls as rls_repo
+        from provisa.core.schema_org import rls_rules
 
         assert "_rls_repo.list_all(conn)" in inspect.getsource(app_module)
-        assert "SELECT * FROM rls_rules" in inspect.getsource(rls_repo.list_all)
+        # list_all selects the whole table (select(rls_rules)) => domain_id included
+        assert "select(rls_rules)" in inspect.getsource(rls_repo.list_all)
+        assert "domain_id" in str(select(rls_rules))
 
 
 class TestInjectRLS:

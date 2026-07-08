@@ -13,115 +13,133 @@ pending request; a rights-holder later executes or rejects it.
 
 from __future__ import annotations
 
-import json
+from typing import TYPE_CHECKING
 
-import asyncpg
+from sqlalchemy import func, select, update
+
+from provisa.core.schema_org import creation_requests
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 
 async def create(  # REQ-063, REQ-434
-    conn: asyncpg.Connection,
+    conn: "Connection",
     request_type: str,
     capability: str,
     payload: dict,
     requested_by: str | None,
 ) -> int:
     """Persist a pending creation request; return its id."""
-    rid = await conn.fetchval(
-        """
-        INSERT INTO creation_requests (request_type, capability, payload, requested_by)
-        VALUES ($1, $2, $3::jsonb, $4)
-        RETURNING id
-        """,
-        request_type,
-        capability,
-        json.dumps(payload),
-        requested_by,
+    rid = await conn.insert_returning(
+        creation_requests,
+        {
+            "request_type": request_type,
+            "capability": capability,
+            "payload": payload,
+            "requested_by": requested_by,
+        },
+        returning="id",
     )
     assert rid is not None
     return int(rid)
 
 
-async def list_pending(conn: asyncpg.Connection) -> list[dict]:  # REQ-063, REQ-434
+async def list_pending(conn: "Connection") -> list[dict]:  # REQ-063, REQ-434
     """Return all pending requests, oldest first."""
-    rows = await conn.fetch(
-        "SELECT * FROM creation_requests WHERE status = 'pending' ORDER BY created_at"
+    result = await conn.execute_core(
+        select(creation_requests)
+        .where(creation_requests.c.status == "pending")
+        .order_by(creation_requests.c.created_at)
     )
-    return [_row_to_dict(r) for r in rows]
+    return [_row_to_dict(r) for r in result.fetchall()]
 
 
-async def get(conn: asyncpg.Connection, request_id: int) -> dict | None:  # REQ-480
-    row = await conn.fetchrow("SELECT * FROM creation_requests WHERE id = $1", request_id)
-    return _row_to_dict(row) if row else None
+async def get(conn: "Connection", request_id: int) -> dict | None:  # REQ-480
+    result = await conn.execute_core(
+        select(creation_requests).where(creation_requests.c.id == request_id)
+    )
+    row = result.fetchone()
+    return _row_to_dict(row) if row is not None else None
 
 
 async def mark_executed(
-    conn: asyncpg.Connection, request_id: int, resolved_by: str | None
+    conn: "Connection", request_id: int, resolved_by: str | None
 ) -> bool:  # REQ-063, REQ-434
-    result = await conn.execute(
-        "UPDATE creation_requests SET status = 'executed', resolved_by = $2, resolved_at = NOW() "
-        "WHERE id = $1 AND status = 'pending'",
-        request_id,
-        resolved_by,
+    result = await conn.execute_core(
+        update(creation_requests)
+        .where(
+            creation_requests.c.id == request_id,
+            creation_requests.c.status == "pending",
+        )
+        .values(status="executed", resolved_by=resolved_by, resolved_at=func.now())
     )
-    return result == "UPDATE 1"
+    return (result.rowcount or 0) > 0
 
 
 async def mark_rejected(  # REQ-063, REQ-434
-    conn: asyncpg.Connection, request_id: int, reason: str, resolved_by: str | None
+    conn: "Connection", request_id: int, reason: str, resolved_by: str | None
 ) -> bool:
-    result = await conn.execute(
-        "UPDATE creation_requests SET status = 'rejected', rejection_reason = $2, "
-        "resolved_by = $3, resolved_at = NOW() WHERE id = $1 AND status = 'pending'",
-        request_id,
-        reason,
-        resolved_by,
+    result = await conn.execute_core(
+        update(creation_requests)
+        .where(
+            creation_requests.c.id == request_id,
+            creation_requests.c.status == "pending",
+        )
+        .values(
+            status="rejected",
+            rejection_reason=reason,
+            resolved_by=resolved_by,
+            resolved_at=func.now(),
+        )
     )
-    return result == "UPDATE 1"
+    return (result.rowcount or 0) > 0
 
 
 async def add_approval(
-    conn: asyncpg.Connection, request_id: int, approver: str
+    conn: "Connection", request_id: int, approver: str
 ) -> dict | None:  # REQ-480
     """Append an approval entry. Returns updated row or None if not found/already resolved."""
-    entry = json.dumps({"approver": approver, "approved_at": "now"})
-    row = await conn.fetchrow(
-        """
-        UPDATE creation_requests
-        SET approvals = approvals || $2::jsonb
-        WHERE id = $1 AND status = 'pending'
-        RETURNING *
-        """,
-        request_id,
-        f"[{entry}]",
-    )
-    return _row_to_dict(row) if row else None
+    entry = {"approver": approver, "approved_at": "now"}
+    async with conn.transaction():
+        result = await conn.execute_core(
+            select(creation_requests).where(
+                creation_requests.c.id == request_id,
+                creation_requests.c.status == "pending",
+            )
+        )
+        row = result.fetchone()
+        if row is None:
+            return None
+        approvals = list(row._mapping["approvals"] or [])
+        approvals.append(entry)
+        await conn.execute_core(
+            update(creation_requests)
+            .where(creation_requests.c.id == request_id)
+            .values(approvals=approvals)
+        )
+        result = await conn.execute_core(
+            select(creation_requests).where(creation_requests.c.id == request_id)
+        )
+        updated = result.fetchone()
+    return _row_to_dict(updated) if updated is not None else None
 
 
 async def list_all(  # REQ-480
-    conn: asyncpg.Connection,
+    conn: "Connection",
     status: str | None = None,
     request_type: str | None = None,
 ) -> list[dict]:
     """Return all requests, newest first, with optional filters."""
-    conditions = []
-    params: list = []
+    stmt = select(creation_requests)
     if status:
-        params.append(status)
-        conditions.append(f"status = ${len(params)}")
+        stmt = stmt.where(creation_requests.c.status == status)
     if request_type:
-        params.append(request_type)
-        conditions.append(f"request_type = ${len(params)}")
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    rows = await conn.fetch(
-        f"SELECT * FROM creation_requests {where} ORDER BY created_at DESC",
-        *params,
-    )
-    return [_row_to_dict(r) for r in rows]
+        stmt = stmt.where(creation_requests.c.request_type == request_type)
+    stmt = stmt.order_by(creation_requests.c.created_at.desc())
+    result = await conn.execute_core(stmt)
+    return [_row_to_dict(r) for r in result.fetchall()]
 
 
 def _row_to_dict(row) -> dict:
-    d = dict(row)
-    payload = d.get("payload")
-    if isinstance(payload, str):
-        d["payload"] = json.loads(payload)
-    return d
+    return dict(row._mapping)

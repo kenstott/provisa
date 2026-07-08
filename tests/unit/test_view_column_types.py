@@ -12,7 +12,7 @@ snapshots view columns by running the SQL, and a column whose type can't be trac
 _ensure_view_column_types resolves those — from referenced tables, else varchar.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -20,13 +20,17 @@ from provisa.api.admin.schema import _ensure_view_column_types
 from provisa.core.models import Column
 
 
+def _conn_with_rows(rows):
+    conn = AsyncMock()
+    result = MagicMock()
+    result.fetchall.return_value = [MagicMock(column_name=cn, data_type=dt) for cn, dt in rows]
+    conn.execute_core = AsyncMock(return_value=result)
+    return conn
+
+
 @pytest.mark.asyncio
 async def test_fills_null_from_referenced_table():
-    conn = AsyncMock()
-    conn.fetch.return_value = [
-        {"column_name": "careLevel", "data_type": "varchar"},
-        {"column_name": "avgLifespanYears", "data_type": "integer"},
-    ]
+    conn = _conn_with_rows([("careLevel", "varchar"), ("avgLifespanYears", "integer")])
     cols = [
         Column(name="careLevel", data_type=None, visible_to=[]),
         Column(name="avgLifespanYears", data_type=None, visible_to=[]),
@@ -40,28 +44,25 @@ async def test_fills_null_from_referenced_table():
 
 @pytest.mark.asyncio
 async def test_untraceable_column_defaults_to_varchar():
-    conn = AsyncMock()
-    conn.fetch.return_value = []  # no referenced-table match (e.g. aliased projection)
+    conn = _conn_with_rows([])  # no referenced-table match (e.g. aliased projection)
     cols = [Column(name="user_name", data_type=None, visible_to=[])]
-    out = await _ensure_view_column_types(
-        conn, "SELECT users.name AS user_name FROM users", cols
-    )
+    out = await _ensure_view_column_types(conn, "SELECT users.name AS user_name FROM users", cols)
     assert out[0].data_type == "varchar"
 
 
 @pytest.mark.asyncio
 async def test_no_nulls_short_circuits_without_db():
     conn = AsyncMock()
+    conn.execute_core = AsyncMock()
     cols = [Column(name="id", data_type="bigint", visible_to=[])]
     out = await _ensure_view_column_types(conn, "SELECT id FROM t", cols)
     assert out[0].data_type == "bigint"
-    conn.fetch.assert_not_called()
+    conn.execute_core.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_never_returns_null_type():
-    conn = AsyncMock()
-    conn.fetch.return_value = []
+    conn = _conn_with_rows([])
     cols = [Column(name=f"c{i}", data_type=None, visible_to=[]) for i in range(5)]
     out = await _ensure_view_column_types(conn, "SELECT c0,c1,c2,c3,c4 FROM t", cols)
     assert all(c.data_type for c in out)

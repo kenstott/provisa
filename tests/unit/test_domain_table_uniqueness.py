@@ -10,7 +10,7 @@ layer addresses a table as domain.table. Two same-named tables in one domain mak
 reference ambiguous, so registration rejects it and startup validates the whole registry.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -48,7 +48,9 @@ class TestRegistrationCheck:
     @pytest.mark.asyncio
     async def test_conflict_with_different_source_rejected(self):
         conn = AsyncMock()
-        conn.fetchrow.return_value = {"source_id": "other", "schema_name": "public"}
+        result = MagicMock()
+        result.fetchone.return_value = MagicMock(source_id="other", schema_name="public")
+        conn.execute_core = AsyncMock(return_value=result)
         msg = await _domain_table_conflict(conn, "d1", "pets", "s1", "public")
         assert msg is not None
         assert "pets" in msg and "d1" in msg
@@ -56,7 +58,9 @@ class TestRegistrationCheck:
     @pytest.mark.asyncio
     async def test_no_conflict_returns_none(self):
         conn = AsyncMock()
-        conn.fetchrow.return_value = None
+        result = MagicMock()
+        result.fetchone.return_value = None
+        conn.execute_core = AsyncMock(return_value=result)
         msg = await _domain_table_conflict(conn, "d1", "pets", "s1", "public")
         assert msg is None
 
@@ -64,9 +68,13 @@ class TestRegistrationCheck:
     async def test_re_registering_same_table_allowed(self):
         # The query excludes the same (source, schema) — so an update never self-conflicts.
         conn = AsyncMock()
-        conn.fetchrow.return_value = None
+        result = MagicMock()
+        result.fetchone.return_value = None
+        conn.execute_core = AsyncMock(return_value=result)
         msg = await _domain_table_conflict(conn, "d1", "pets", "s1", "public")
         assert msg is None
         # Verify the exclusion is part of the query.
-        sql = conn.fetchrow.call_args.args[0]
-        assert "NOT (source_id" in sql
+        stmt = conn.execute_core.await_args.args[0]
+        compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "source_id != " in compiled
+        assert "schema_name != " in compiled

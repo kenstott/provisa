@@ -14,55 +14,32 @@
 
 from __future__ import annotations
 
-import json
 import logging
-from typing import cast
+from typing import TYPE_CHECKING
 
-import asyncpg
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import delete as _delete, func, select, update
 
 import httpx
+
+from provisa.core.schema_org import tracked_functions, tracked_webhooks
+
+if TYPE_CHECKING:
+    from provisa.core.database import Database
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/actions", tags=["admin", "actions"])
 
-_INIT_SQL = """
-CREATE TABLE IF NOT EXISTS tracked_functions (
-    name          TEXT PRIMARY KEY,
-    source_id     TEXT NOT NULL DEFAULT '',
-    schema_name   TEXT NOT NULL DEFAULT 'public',
-    function_name TEXT NOT NULL DEFAULT '',
-    returns       TEXT NOT NULL DEFAULT '',
-    arguments     JSONB NOT NULL DEFAULT '[]',
-    visible_to    TEXT[] NOT NULL DEFAULT '{}',
-    writable_by   TEXT[] NOT NULL DEFAULT '{}',
-    domain_id     TEXT NOT NULL DEFAULT '',
-    description   TEXT,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
 
-CREATE TABLE IF NOT EXISTS tracked_webhooks (
-    name               TEXT PRIMARY KEY,
-    url                TEXT NOT NULL DEFAULT '',
-    method             TEXT NOT NULL DEFAULT 'POST',
-    timeout_ms         INTEGER NOT NULL DEFAULT 5000,
-    returns            TEXT,
-    inline_return_type JSONB NOT NULL DEFAULT '[]',
-    arguments          JSONB NOT NULL DEFAULT '[]',
-    visible_to         TEXT[] NOT NULL DEFAULT '{}',
-    domain_id          TEXT NOT NULL DEFAULT '',
-    description        TEXT,
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-"""
+async def _ensure_tables(pool: "Database") -> None:
+    """Create the tracked-function/webhook tables via portable SQLAlchemy metadata."""
+    from provisa.core.schema_org import metadata
 
-
-async def _ensure_tables(pool) -> None:
-    async with pool.acquire() as conn:
-        await conn.execute(_INIT_SQL)
+    async with pool.engine.begin() as conn:
+        await conn.run_sync(
+            lambda sc: metadata.create_all(sc, tables=[tracked_functions, tracked_webhooks])
+        )
 
 
 def _row_to_function(row: dict) -> dict:
@@ -72,9 +49,7 @@ def _row_to_function(row: dict) -> dict:
         "schemaName": row["schema_name"],
         "functionName": row["function_name"],
         "returns": row["returns"],
-        "arguments": json.loads(row["arguments"])
-        if isinstance(row["arguments"], str)
-        else (row["arguments"] or []),
+        "arguments": row["arguments"] or [],
         "visibleTo": list(row["visible_to"] or []),
         "writableBy": list(row["writable_by"] or []),
         "domainId": row["domain_id"],
@@ -91,12 +66,8 @@ def _row_to_webhook(row: dict) -> dict:
         "method": row["method"],
         "timeoutMs": row["timeout_ms"],
         "returns": row.get("returns"),
-        "inlineReturnType": json.loads(row["inline_return_type"])
-        if isinstance(row["inline_return_type"], str)
-        else (row["inline_return_type"] or []),
-        "arguments": json.loads(row["arguments"])
-        if isinstance(row["arguments"], str)
-        else (row["arguments"] or []),
+        "inlineReturnType": row["inline_return_type"] or [],
+        "arguments": row["arguments"] or [],
         "visibleTo": list(row["visible_to"] or []),
         "domainId": row["domain_id"],
         "description": row.get("description"),
@@ -115,12 +86,18 @@ async def list_actions():  # REQ-205, REQ-209
     await _ensure_tables(state.tenant_db)
 
     async with state.tenant_db.acquire() as conn:
-        fn_rows = await conn.fetch("SELECT * FROM tracked_functions ORDER BY name")
-        wh_rows = await conn.fetch("SELECT * FROM tracked_webhooks ORDER BY name")
+        fn_result = await conn.execute_core(
+            select(tracked_functions).order_by(tracked_functions.c.name)
+        )
+        fn_rows = fn_result.fetchall()
+        wh_result = await conn.execute_core(
+            select(tracked_webhooks).order_by(tracked_webhooks.c.name)
+        )
+        wh_rows = wh_result.fetchall()
 
     return {
-        "functions": [_row_to_function(dict(r)) for r in fn_rows],
-        "webhooks": [_row_to_webhook(dict(r)) for r in wh_rows],
+        "functions": [_row_to_function(dict(r._mapping)) for r in fn_rows],
+        "webhooks": [_row_to_webhook(dict(r._mapping)) for r in wh_rows],
     }
 
 
@@ -180,12 +157,9 @@ async def create_function(
         description=body.description,
         kind=body.kind,
     )
-    return_schema = json.dumps(body.returnSchema) if body.returnSchema is not None else None
-
+    # return_schema is a JSON column — pass the Python object directly (no double-encoding).
     async with state.tenant_db.acquire() as _conn:
-        await function_repo.upsert_function(
-            cast(asyncpg.Connection, _conn), func, return_schema=return_schema
-        )
+        await function_repo.upsert_function(_conn, func, return_schema=body.returnSchema)
 
     log.info("Saved tracked function %s", body.name)
     from provisa.api.app import _rebuild_schemas
@@ -205,38 +179,26 @@ async def update_function(name: str, body: FunctionInput):  # REQ-205, REQ-253, 
     await _ensure_tables(state.tenant_db)
 
     async with state.tenant_db.acquire() as conn:
-        result = await conn.execute(
-            """
-            UPDATE tracked_functions SET
-                source_id     = $2,
-                schema_name   = $3,
-                function_name = $4,
-                returns       = $5,
-                arguments     = $6,
-                visible_to    = $7,
-                writable_by   = $8,
-                domain_id     = $9,
-                description   = $10,
-                kind          = $11,
-                return_schema = $12,
-                updated_at    = NOW()
-            WHERE name = $1
-            """,
-            name,
-            body.sourceId,
-            body.schemaName,
-            body.functionName,
-            body.returns,
-            json.dumps(body.arguments),
-            body.visibleTo,
-            body.writableBy,
-            body.domainId,
-            body.description,
-            body.kind,
-            json.dumps(body.returnSchema) if body.returnSchema is not None else None,
+        result = await conn.execute_core(
+            update(tracked_functions)
+            .where(tracked_functions.c.name == name)
+            .values(
+                source_id=body.sourceId,
+                schema_name=body.schemaName,
+                function_name=body.functionName,
+                returns=body.returns,
+                arguments=body.arguments,
+                visible_to=body.visibleTo,
+                writable_by=body.writableBy,
+                domain_id=body.domainId,
+                description=body.description,
+                kind=body.kind,
+                return_schema=body.returnSchema,
+                updated_at=func.now(),
+            )
         )
 
-    if result == "UPDATE 0":
+    if (result.rowcount or 0) == 0:
         raise HTTPException(status_code=404, detail=f"Function '{name}' not found")
 
     log.info("Updated tracked function %s", name)
@@ -257,9 +219,11 @@ async def delete_function(name: str):  # REQ-205, REQ-253
     await _ensure_tables(state.tenant_db)
 
     async with state.tenant_db.acquire() as conn:
-        result = await conn.execute("DELETE FROM tracked_functions WHERE name = $1", name)
+        result = await conn.execute_core(
+            _delete(tracked_functions).where(tracked_functions.c.name == name)
+        )
 
-    if result == "DELETE 0":
+    if (result.rowcount or 0) == 0:
         raise HTTPException(status_code=404, detail=f"Function '{name}' not found")
 
     log.info("Deleted tracked function %s", name)
@@ -282,43 +246,43 @@ async def create_webhook(body: WebhookInput):  # REQ-209, REQ-210, REQ-211, REQ-
     from provisa.core.repositories import creation_request as cr_repo
 
     async with state.tenant_db.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO tracked_webhooks
-                (name, url, method, timeout_ms, returns,
-                 inline_return_type, arguments, visible_to, domain_id, description, kind)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            ON CONFLICT (name) DO UPDATE SET
-                url                = EXCLUDED.url,
-                method             = EXCLUDED.method,
-                timeout_ms         = EXCLUDED.timeout_ms,
-                returns            = EXCLUDED.returns,
-                inline_return_type = EXCLUDED.inline_return_type,
-                arguments          = EXCLUDED.arguments,
-                visible_to         = EXCLUDED.visible_to,
-                domain_id          = EXCLUDED.domain_id,
-                description        = EXCLUDED.description,
-                kind               = EXCLUDED.kind,
-                updated_at         = NOW()
-            """,
-            body.name,
-            body.url,
-            body.method,
-            body.timeoutMs,
-            body.returns,
-            json.dumps(body.inlineReturnType),
-            json.dumps(body.arguments),
-            body.visibleTo,
-            body.domainId,
-            body.description,
-            body.kind,
+        await conn.upsert(
+            tracked_webhooks,
+            {
+                "name": body.name,
+                "url": body.url,
+                "method": body.method,
+                "timeout_ms": body.timeoutMs,
+                "returns": body.returns,
+                "inline_return_type": body.inlineReturnType,
+                "arguments": body.arguments,
+                "visible_to": body.visibleTo,
+                "domain_id": body.domainId,
+                "description": body.description,
+                "kind": body.kind,
+                "updated_at": func.now(),
+            },
+            index_elements=["name"],
+            update_columns=[
+                "url",
+                "method",
+                "timeout_ms",
+                "returns",
+                "inline_return_type",
+                "arguments",
+                "visible_to",
+                "domain_id",
+                "description",
+                "kind",
+                "updated_at",
+            ],
         )
         # REQ-209: a webhook is exposed only after a steward approves it. Approval is tracked
         # via the creation_requests queue — a webhook is approved when its most recent
         # "webhook" request is executed. Registering or editing enqueues a fresh pending
         # request, so any edit resets approval until re-approved.
         request_id = await cr_repo.create(
-            cast(asyncpg.Connection, conn),
+            conn,
             "webhook",
             "webhook_registration",
             {"name": body.name},
@@ -352,36 +316,25 @@ async def update_webhook(name: str, body: WebhookInput):  # REQ-209, REQ-253
     await _ensure_tables(state.tenant_db)
 
     async with state.tenant_db.acquire() as conn:
-        result = await conn.execute(
-            """
-            UPDATE tracked_webhooks SET
-                url                = $2,
-                method             = $3,
-                timeout_ms         = $4,
-                returns            = $5,
-                inline_return_type = $6,
-                arguments          = $7,
-                visible_to         = $8,
-                domain_id          = $9,
-                description        = $10,
-                kind               = $11,
-                updated_at         = NOW()
-            WHERE name = $1
-            """,
-            name,
-            body.url,
-            body.method,
-            body.timeoutMs,
-            body.returns,
-            json.dumps(body.inlineReturnType),
-            json.dumps(body.arguments),
-            body.visibleTo,
-            body.domainId,
-            body.description,
-            body.kind,
+        result = await conn.execute_core(
+            update(tracked_webhooks)
+            .where(tracked_webhooks.c.name == name)
+            .values(
+                url=body.url,
+                method=body.method,
+                timeout_ms=body.timeoutMs,
+                returns=body.returns,
+                inline_return_type=body.inlineReturnType,
+                arguments=body.arguments,
+                visible_to=body.visibleTo,
+                domain_id=body.domainId,
+                description=body.description,
+                kind=body.kind,
+                updated_at=func.now(),
+            )
         )
 
-    if result == "UPDATE 0":
+    if (result.rowcount or 0) == 0:
         raise HTTPException(status_code=404, detail=f"Webhook '{name}' not found")
 
     log.info("Updated tracked webhook %s", name)
@@ -402,9 +355,11 @@ async def delete_webhook(name: str):  # REQ-209, REQ-253
     await _ensure_tables(state.tenant_db)
 
     async with state.tenant_db.acquire() as conn:
-        result = await conn.execute("DELETE FROM tracked_webhooks WHERE name = $1", name)
+        result = await conn.execute_core(
+            _delete(tracked_webhooks).where(tracked_webhooks.c.name == name)
+        )
 
-    if result == "DELETE 0":
+    if (result.rowcount or 0) == 0:
         raise HTTPException(status_code=404, detail=f"Webhook '{name}' not found")
 
     log.info("Deleted tracked webhook %s", name)
@@ -518,9 +473,13 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
 
     if body.actionType == "function":
         async with state.tenant_db.acquire() as conn:
-            row = await conn.fetchrow("SELECT * FROM tracked_functions WHERE name = $1", body.name)
-        if not row:
+            result = await conn.execute_core(
+                select(tracked_functions).where(tracked_functions.c.name == body.name)
+            )
+            fetched = result.fetchone()
+        if not fetched:
             raise HTTPException(status_code=404, detail=f"Function '{body.name}' not found")
+        row = dict(fetched._mapping)
 
         src_id = row["source_id"]
         fn = row["function_name"]
@@ -589,9 +548,13 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
 
     elif body.actionType == "webhook":
         async with state.tenant_db.acquire() as conn:
-            row = await conn.fetchrow("SELECT * FROM tracked_webhooks WHERE name = $1", body.name)
-        if not row:
+            result = await conn.execute_core(
+                select(tracked_webhooks).where(tracked_webhooks.c.name == body.name)
+            )
+            fetched = result.fetchone()
+        if not fetched:
             raise HTTPException(status_code=404, detail=f"Webhook '{body.name}' not found")
+        row = dict(fetched._mapping)
 
         url = row["url"]
         method = row["method"].upper()

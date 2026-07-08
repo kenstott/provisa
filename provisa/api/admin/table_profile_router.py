@@ -13,11 +13,17 @@
 from __future__ import annotations
 import logging
 import os
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
+from sqlalchemy import select
 
 from provisa.api.app import state
 from provisa.compiler.naming import source_to_catalog
+from provisa.core.schema_org import registered_tables
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection  # noqa: F401
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/tables", tags=["admin", "tables"])
@@ -37,18 +43,23 @@ async def profile_table(table_id: int) -> dict:  # REQ-452
     engine = state.federation_engine
 
     async with state.tenant_db.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT source_id, schema_name, table_name, view_sql"
-            " FROM registered_tables WHERE id = $1",
-            table_id,
+        result = await conn.execute_core(
+            select(
+                registered_tables.c.source_id,
+                registered_tables.c.schema_name,
+                registered_tables.c.table_name,
+                registered_tables.c.view_sql,
+            ).where(registered_tables.c.id == table_id)
         )
+        row = result.fetchone()
     if row is None:
         raise HTTPException(404, f"Table {table_id} not found")
 
-    source_id: str = row["source_id"]
-    schema_name: str = row["schema_name"]
-    table_name: str = row["table_name"]
-    view_sql: str | None = row["view_sql"]
+    m = row._mapping
+    source_id: str = m["source_id"]
+    schema_name: str = m["schema_name"]
+    table_name: str = m["table_name"]
+    view_sql: str | None = m["view_sql"]
 
     # For __provisa__ view tables, sample the view_sql directly
     if source_id == "__provisa__" and view_sql:

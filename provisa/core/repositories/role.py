@@ -8,40 +8,45 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Role repository — CRUD for roles in PG config DB."""
+"""Role repository — CRUD for roles, via SQLAlchemy Core (dialect-portable)."""
 
 # Requirements: REQ-042, REQ-059, REQ-060, REQ-215
 
-import asyncpg
+from typing import TYPE_CHECKING
+
+from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import Role
+from provisa.core.schema_org import roles
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 
-async def upsert(conn: asyncpg.Connection, role: Role) -> None:  # REQ-042, REQ-059, REQ-060
-    await conn.execute(
-        """
-        INSERT INTO roles (id, capabilities, domain_access)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (id) DO UPDATE SET
-            capabilities = EXCLUDED.capabilities,
-            domain_access = EXCLUDED.domain_access
-        """,
-        role.id,
-        role.capabilities,
-        role.domain_access,
+async def upsert(conn: "Connection", role: Role) -> None:  # REQ-042, REQ-059, REQ-060
+    await conn.upsert(
+        roles,
+        {
+            "id": role.id,
+            "capabilities": role.capabilities,  # JSON column — list passes through
+            "domain_access": role.domain_access,
+        },
+        index_elements=["id"],
+        update_columns=["capabilities", "domain_access"],
     )
 
 
-async def get(conn: asyncpg.Connection, role_id: str) -> dict | None:  # REQ-042, REQ-215
-    row = await conn.fetchrow("SELECT * FROM roles WHERE id = $1", role_id)
-    return dict(row) if row else None
+async def get(conn: "Connection", role_id: str) -> dict | None:  # REQ-042, REQ-215
+    result = await conn.execute_core(select(roles).where(roles.c.id == role_id))
+    row = result.fetchone()
+    return dict(row._mapping) if row is not None else None
 
 
-async def list_all(conn: asyncpg.Connection) -> list[dict]:  # REQ-042, REQ-059
-    rows = await conn.fetch("SELECT * FROM roles ORDER BY id")
-    return [dict(r) for r in rows]
+async def list_all(conn: "Connection") -> list[dict]:  # REQ-042, REQ-059
+    result = await conn.execute_core(select(roles).order_by(roles.c.id))
+    return [dict(r._mapping) for r in result.fetchall()]
 
 
-async def delete(conn: asyncpg.Connection, role_id: str) -> bool:  # REQ-042
-    result = await conn.execute("DELETE FROM roles WHERE id = $1", role_id)
-    return result == "DELETE 1"
+async def delete(conn: "Connection", role_id: str) -> bool:  # REQ-042
+    result = await conn.execute_core(_delete(roles).where(roles.c.id == role_id))
+    return (result.rowcount or 0) > 0

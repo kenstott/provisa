@@ -8,166 +8,175 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Function/webhook repository — CRUD for tracked functions and webhooks in PG config DB."""
+"""Function/webhook repository — CRUD for tracked functions and webhooks, via SQLAlchemy Core."""
 
 # Requirements: REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-210, REQ-211, REQ-304, REQ-305, REQ-306, REQ-360, REQ-361, REQ-362
 
 from __future__ import annotations
 
-import json
+from typing import TYPE_CHECKING
 
-import asyncpg
+from sqlalchemy import delete as _delete, func as _sa_func, select
 
 from provisa.core import domain_policy
 from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
+from provisa.core.schema_org import tracked_functions, tracked_webhooks
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 
 async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-306
-    conn: asyncpg.Connection,
+    conn: "Connection",
     func: Function,
-    return_schema: str | None = None,
+    return_schema: dict | None = None,
 ) -> int | None:
     """Upsert a tracked DB function. Returns the row id."""
-    func_id = await conn.fetchval(
-        """
-        INSERT INTO tracked_functions
-            (name, source_id, schema_name, function_name, returns,
-             arguments, visible_to, writable_by, domain_id, description, kind,
-             return_schema)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        ON CONFLICT (name) DO UPDATE SET
-            source_id     = EXCLUDED.source_id,
-            schema_name   = EXCLUDED.schema_name,
-            function_name = EXCLUDED.function_name,
-            returns       = EXCLUDED.returns,
-            arguments     = EXCLUDED.arguments,
-            visible_to    = EXCLUDED.visible_to,
-            -- REQ-870: re-introspection registers discovered mutations with an empty
-            -- writable_by; existing admin grants are preserved by name. An explicit,
-            -- non-empty writable_by (e.g. a config-declared grant) still applies.
-            writable_by   = CASE
-                WHEN cardinality(EXCLUDED.writable_by) > 0 THEN EXCLUDED.writable_by
-                ELSE tracked_functions.writable_by
-            END,
-            domain_id     = EXCLUDED.domain_id,
-            description   = EXCLUDED.description,
-            kind          = EXCLUDED.kind,
-            return_schema = EXCLUDED.return_schema,
-            updated_at    = NOW()
-        RETURNING id
-        """,
-        func.name,
-        func.source_id,
-        func.schema_name,
-        func.function_name,
-        func.returns,
-        json.dumps([a.model_dump() for a in func.arguments]),
-        func.visible_to,
-        func.writable_by,
-        domain_policy.resolve_domain_id(func.domain_id),
-        func.description,
-        func.kind,
-        return_schema,
+    vals = {
+        "name": func.name,
+        "source_id": func.source_id,
+        "schema_name": func.schema_name,
+        "function_name": func.function_name,
+        "returns": func.returns,
+        # JSON columns take Python objects directly.
+        "arguments": [a.model_dump() for a in func.arguments],
+        "visible_to": func.visible_to,
+        "writable_by": func.writable_by,
+        "domain_id": domain_policy.resolve_domain_id(func.domain_id),
+        "description": func.description,
+        "kind": func.kind,
+        "return_schema": return_schema,
+    }
+    # REQ-870: re-introspection registers discovered mutations with an empty writable_by; existing
+    # admin grants are preserved. An explicit, non-empty writable_by still applies. The preserve
+    # branch is on a Python value, so resolve it here — exclude writable_by from the update set when
+    # empty (leaving the stored grants untouched); otherwise update it.
+    update_cols = [
+        "source_id",
+        "schema_name",
+        "function_name",
+        "returns",
+        "arguments",
+        "visible_to",
+        "domain_id",
+        "description",
+        "kind",
+        "return_schema",
+    ]
+    if func.writable_by:
+        update_cols.append("writable_by")
+    return await conn.upsert_returning(
+        tracked_functions,
+        vals,
+        index_elements=["name"],
+        returning="id",
+        update_columns=update_cols,
+        set_extra={"updated_at": _sa_func.now()},
     )
-    return func_id
 
 
-async def get_function(conn: asyncpg.Connection, name: str) -> dict | None:  # REQ-205, REQ-304
+async def get_function(conn: "Connection", name: str) -> dict | None:  # REQ-205, REQ-304
     """Get a tracked function by name."""
-    row = await conn.fetchrow("SELECT * FROM tracked_functions WHERE name = $1", name)
-    if not row:
+    result = await conn.execute_core(
+        select(tracked_functions).where(tracked_functions.c.name == name)
+    )
+    row = result.fetchone()
+    if row is None:
         return None
-    result = dict(row)
-    result["arguments"] = json.loads(result["arguments"]) if result["arguments"] else []
-    return result
+    r = dict(row._mapping)
+    r["arguments"] = r["arguments"] or []
+    return r
 
 
-async def list_functions(conn: asyncpg.Connection) -> list[dict]:  # REQ-205, REQ-360
+async def list_functions(conn: "Connection") -> list[dict]:  # REQ-205, REQ-360
     """List all tracked functions."""
-    rows = await conn.fetch("SELECT * FROM tracked_functions ORDER BY id")
-    result = []
-    for row in rows:
-        r = dict(row)
-        r["arguments"] = json.loads(r["arguments"]) if r["arguments"] else []
-        result.append(r)
-    return result
+    result = await conn.execute_core(select(tracked_functions).order_by(tracked_functions.c.id))
+    out = []
+    for row in result.fetchall():
+        r = dict(row._mapping)
+        r["arguments"] = r["arguments"] or []
+        out.append(r)
+    return out
 
 
-async def delete_function(conn: asyncpg.Connection, name: str) -> bool:  # REQ-205
+async def delete_function(conn: "Connection", name: str) -> bool:  # REQ-205
     """Delete a tracked function by name."""
-    result = await conn.execute("DELETE FROM tracked_functions WHERE name = $1", name)
-    return result == "DELETE 1"
+    result = await conn.execute_core(
+        _delete(tracked_functions).where(tracked_functions.c.name == name)
+    )
+    return (result.rowcount or 0) > 0
 
 
 async def upsert_webhook(
-    conn: asyncpg.Connection, wh: Webhook
+    conn: "Connection", wh: Webhook
 ) -> int | None:  # REQ-209, REQ-210, REQ-211
     """Upsert a tracked webhook. Returns the row id."""
-    wh_id = await conn.fetchval(
-        """
-        INSERT INTO tracked_webhooks
-            (name, url, method, timeout_ms, returns, inline_return_type,
-             arguments, visible_to, domain_id, description, kind)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        ON CONFLICT (name) DO UPDATE SET
-            url = EXCLUDED.url,
-            method = EXCLUDED.method,
-            timeout_ms = EXCLUDED.timeout_ms,
-            returns = EXCLUDED.returns,
-            inline_return_type = EXCLUDED.inline_return_type,
-            arguments = EXCLUDED.arguments,
-            visible_to = EXCLUDED.visible_to,
-            domain_id = EXCLUDED.domain_id,
-            description = EXCLUDED.description,
-            kind = EXCLUDED.kind
-        RETURNING id
-        """,
-        wh.name,
-        wh.url,
-        wh.method,
-        wh.timeout_ms,
-        wh.returns,
-        json.dumps([t.model_dump() for t in wh.inline_return_type]),
-        json.dumps([a.model_dump() for a in wh.arguments]),
-        wh.visible_to,
-        domain_policy.resolve_domain_id(wh.domain_id),
-        wh.description,
-        wh.kind,
+    vals = {
+        "name": wh.name,
+        "url": wh.url,
+        "method": wh.method,
+        "timeout_ms": wh.timeout_ms,
+        "returns": wh.returns,
+        # JSON columns take Python objects directly.
+        "inline_return_type": [t.model_dump() for t in wh.inline_return_type],
+        "arguments": [a.model_dump() for a in wh.arguments],
+        "visible_to": wh.visible_to,
+        "domain_id": domain_policy.resolve_domain_id(wh.domain_id),
+        "description": wh.description,
+        "kind": wh.kind,
+    }
+    return await conn.upsert_returning(
+        tracked_webhooks,
+        vals,
+        index_elements=["name"],
+        returning="id",
+        update_columns=[
+            "url",
+            "method",
+            "timeout_ms",
+            "returns",
+            "inline_return_type",
+            "arguments",
+            "visible_to",
+            "domain_id",
+            "description",
+            "kind",
+        ],
     )
-    return wh_id
 
 
-async def get_webhook(conn: asyncpg.Connection, name: str) -> dict | None:  # REQ-209, REQ-210
+async def get_webhook(conn: "Connection", name: str) -> dict | None:  # REQ-209, REQ-210
     """Get a tracked webhook by name."""
-    row = await conn.fetchrow("SELECT * FROM tracked_webhooks WHERE name = $1", name)
-    if not row:
-        return None
-    result = dict(row)
-    result["arguments"] = json.loads(result["arguments"]) if result["arguments"] else []
-    result["inline_return_type"] = (
-        json.loads(result["inline_return_type"]) if result["inline_return_type"] else []
+    result = await conn.execute_core(
+        select(tracked_webhooks).where(tracked_webhooks.c.name == name)
     )
-    return result
+    row = result.fetchone()
+    if row is None:
+        return None
+    r = dict(row._mapping)
+    r["arguments"] = r["arguments"] or []
+    r["inline_return_type"] = r["inline_return_type"] or []
+    return r
 
 
-async def list_webhooks(conn: asyncpg.Connection) -> list[dict]:  # REQ-209, REQ-360
+async def list_webhooks(conn: "Connection") -> list[dict]:  # REQ-209, REQ-360
     """List all tracked webhooks."""
-    rows = await conn.fetch("SELECT * FROM tracked_webhooks ORDER BY id")
-    result = []
-    for row in rows:
-        r = dict(row)
-        r["arguments"] = json.loads(r["arguments"]) if r["arguments"] else []
-        r["inline_return_type"] = (
-            json.loads(r["inline_return_type"]) if r["inline_return_type"] else []
-        )
-        result.append(r)
-    return result
+    result = await conn.execute_core(select(tracked_webhooks).order_by(tracked_webhooks.c.id))
+    out = []
+    for row in result.fetchall():
+        r = dict(row._mapping)
+        r["arguments"] = r["arguments"] or []
+        r["inline_return_type"] = r["inline_return_type"] or []
+        out.append(r)
+    return out
 
 
-async def delete_webhook(conn: asyncpg.Connection, name: str) -> bool:  # REQ-209
+async def delete_webhook(conn: "Connection", name: str) -> bool:  # REQ-209
     """Delete a tracked webhook by name."""
-    result = await conn.execute("DELETE FROM tracked_webhooks WHERE name = $1", name)
-    return result == "DELETE 1"
+    result = await conn.execute_core(
+        _delete(tracked_webhooks).where(tracked_webhooks.c.name == name)
+    )
+    return (result.rowcount or 0) > 0
 
 
 def function_from_dict(d: dict) -> Function:  # REQ-205, REQ-304

@@ -14,7 +14,15 @@ from __future__ import annotations
 import json
 import logging
 import re
+from typing import TYPE_CHECKING
+
+from sqlalchemy import delete as _delete
+
+from provisa.core.schema_org import api_endpoints, api_sources, registered_tables
 from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, parse_spec
+
+if TYPE_CHECKING:
+    pass
 
 # Requirements: REQ-314, REQ-316, REQ-317, REQ-319, REQ-320, REQ-321
 
@@ -188,17 +196,11 @@ async def upsert_table(  # REQ-316, REQ-320
         if auth_config
         else None
     )
-    await conn.execute(
-        """
-        INSERT INTO api_sources (id, type, base_url, auth)
-        VALUES ($1, 'openapi', $2, $3)
-        ON CONFLICT (id) DO UPDATE SET
-            base_url = EXCLUDED.base_url,
-            auth     = EXCLUDED.auth
-        """,
-        source_id,
-        base_url,
-        _auth_enc,
+    await conn.upsert(
+        api_sources,
+        {"id": source_id, "type": "openapi", "base_url": base_url, "auth": _auth_enc},
+        index_elements=["id"],
+        update_columns=["base_url", "auth"],
     )
 
     # Build ApiColumn JSON for api_endpoints
@@ -245,21 +247,19 @@ async def upsert_table(  # REQ-316, REQ-320
                 }
             )
 
-    await conn.execute(
-        """
-        INSERT INTO api_endpoints (source_id, path, method, table_name, columns, ttl)
-        VALUES ($1, $2, 'GET', $3, $4::jsonb, $5)
-        ON CONFLICT (table_name) DO UPDATE SET
-            source_id = EXCLUDED.source_id,
-            path      = EXCLUDED.path,
-            columns   = EXCLUDED.columns,
-            ttl       = EXCLUDED.ttl
-        """,
-        source_id,
-        query.path,
-        table_name,
-        json.dumps(api_columns),
-        cache_ttl,
+    await conn.upsert(
+        api_endpoints,
+        {
+            "source_id": source_id,
+            "path": query.path,
+            "method": "GET",
+            "table_name": table_name,
+            # JSON column takes the Python list directly.
+            "columns": api_columns,
+            "ttl": cache_ttl,
+        },
+        index_elements=["table_name"],
+        update_columns=["source_id", "path", "columns", "ttl"],
     )
 
 
@@ -307,9 +307,11 @@ async def auto_register_openapi_source(  # REQ-314, REQ-316, REQ-317, REQ-321
 ) -> tuple[int, int]:
     """Parse spec and upsert virtual tables + tracked functions. Returns (n_tables, n_mutations)."""
     # Delete stale rows (e.g. pre-fix verb-prefixed names) before upserting fresh set
-    await conn.execute(
-        "DELETE FROM registered_tables WHERE source_id = $1 AND schema_name = 'openapi'",
-        source_id,
+    await conn.execute_core(
+        _delete(registered_tables).where(
+            registered_tables.c.source_id == source_id,
+            registered_tables.c.schema_name == "openapi",
+        )
     )
     queries, mutations = parse_spec(spec)
     for q in queries:

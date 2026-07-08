@@ -8,8 +8,8 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 import types
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -19,57 +19,62 @@ pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
 class _Conn:
-    def __init__(self, *, fetchval=None, rows=None, row=None, execute="UPDATE 1"):
-        self._fetchval = fetchval
+    """Vanilla SQLAlchemy Core connection stub."""
+
+    def __init__(self, *, insert_returning=None, rows=None, row=None, rowcount=1):
+        self._insert_returning = insert_returning
         self._rows = rows or []
         self._row = row
-        self._execute = execute
-        self.calls: list[tuple] = []
+        self._rowcount = rowcount
+        self.insert_calls: list[tuple] = []
+        self.core_calls: list = []
 
-    async def fetchval(self, query, *args):
-        self.calls.append(("fetchval", query, args))
-        return self._fetchval
+    async def insert_returning(self, table, values, returning="id"):
+        self.insert_calls.append((table, values, returning))
+        return self._insert_returning
 
-    async def fetch(self, query, *args):
-        self.calls.append(("fetch", query, args))
-        return self._rows
-
-    async def fetchrow(self, query, *args):
-        self.calls.append(("fetchrow", query, args))
-        return self._row
-
-    async def execute(self, query, *args):
-        self.calls.append(("execute", query, args))
-        return self._execute
+    async def execute_core(self, stmt):
+        self.core_calls.append(stmt)
+        result = MagicMock()
+        result.fetchall.return_value = [MagicMock(_mapping=r) for r in self._rows]
+        result.fetchone.return_value = (
+            MagicMock(_mapping=self._row) if self._row is not None else None
+        )
+        result.rowcount = self._rowcount
+        return result
 
 
 class TestRepo:
     async def test_create_returns_id_and_serializes_payload(self):
-        conn = _Conn(fetchval=7)
-        rid = await cr_repo.create(conn, "relationship", "create_relationship", {"id": "r1"}, "alice")
+        conn = _Conn(insert_returning=7)
+        rid = await cr_repo.create(
+            conn, "relationship", "create_relationship", {"id": "r1"}, "alice"
+        )
         assert rid == 7
-        # payload is JSON-encoded for the jsonb column
-        _, _, args = conn.calls[0]
-        assert json.loads(args[2]) == {"id": "r1"}
+        # payload is a native dict passed straight to the JSON column (no manual encoding)
+        _, values, _ = conn.insert_calls[0]
+        assert values["payload"] == {"id": "r1"}
 
     async def test_list_pending_decodes_payload(self):
-        conn = _Conn(rows=[{"id": 1, "request_type": "view", "payload": '{"a": 1}', "status": "pending"}])
+        conn = _Conn(
+            rows=[{"id": 1, "request_type": "view", "payload": {"a": 1}, "status": "pending"}]
+        )
         out = await cr_repo.list_pending(conn)
         assert out[0]["payload"] == {"a": 1}
 
     async def test_mark_executed_true_on_update(self):
-        conn = _Conn(execute="UPDATE 1")
+        conn = _Conn(rowcount=1)
         assert await cr_repo.mark_executed(conn, 1, "bob") is True
 
     async def test_mark_executed_false_when_not_pending(self):
-        conn = _Conn(execute="UPDATE 0")
+        conn = _Conn(rowcount=0)
         assert await cr_repo.mark_executed(conn, 1, "bob") is False
 
     async def test_mark_rejected_records_reason(self):
-        conn = _Conn(execute="UPDATE 1")
+        conn = _Conn(rowcount=1)
         assert await cr_repo.mark_rejected(conn, 1, "bad join", "bob") is True
-        _, _, args = conn.calls[0]
-        assert "bad join" in args
+        stmt = conn.core_calls[0]
+        assert "bad join" in stmt.compile().params.values()
 
 
 # --- has_capability gating -------------------------------------------------
@@ -103,9 +108,7 @@ class TestHasCapability:
     async def test_holder_true_nonholder_false(self, monkeypatch):
         from provisa.api.admin.capabilities import has_capability
 
-        self._setup_roles(
-            monkeypatch, {"steward": {"capabilities": ["create_relationship"]}}
-        )
+        self._setup_roles(monkeypatch, {"steward": {"capabilities": ["create_relationship"]}})
         ident = types.SimpleNamespace(user_id="u1", roles=["steward"])
         assert has_capability(_info(ident), "create_relationship") is True
         assert has_capability(_info(ident), "create_view") is False
@@ -120,8 +123,12 @@ class TestPayloadRoundTrip:
         from provisa.api.admin.types import RelationshipInput
 
         ri = RelationshipInput(
-            id="r1", source_table_id="orders", target_table_id="customers",
-            source_column="customer_id", target_column="id", cardinality="many-to-one",
+            id="r1",
+            source_table_id="orders",
+            target_table_id="customers",
+            source_column="customer_id",
+            target_column="id",
+            cardinality="many-to-one",
         )
         rebuilt = _rebuild_relationship_input(dataclasses.asdict(ri))
         assert rebuilt.id == "r1"
@@ -132,8 +139,11 @@ class TestPayloadRoundTrip:
         from provisa.api.admin.types import ColumnInput, TableInput
 
         ti = TableInput(
-            source_id="__provisa__", domain_id="sales", schema_name="public",
-            table_name="rev", columns=[ColumnInput(name="id", visible_to=["admin"])],
+            source_id="__provisa__",
+            domain_id="sales",
+            schema_name="public",
+            table_name="rev",
+            columns=[ColumnInput(name="id", visible_to=["admin"])],
             view_sql="SELECT 1 AS id",
         )
         rebuilt = _rebuild_table_input(dataclasses.asdict(ti))

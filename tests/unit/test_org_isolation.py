@@ -12,6 +12,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
+def _conn_with_advisory_lock() -> AsyncMock:
+    """A mocked Connection whose advisory_lock(key) is an async context manager (matches the
+    migrated ``core.db.init_schema`` PG path)."""
+    conn = AsyncMock()
+    lock_cm = AsyncMock(
+        __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
+    )
+    conn.advisory_lock = MagicMock(return_value=lock_cm)
+    return conn
+
+
 # ---------------------------------------------------------------------------
 # REQ-695: asyncpg pool sets search_path=org_<org_id> via init hook
 # ---------------------------------------------------------------------------
@@ -55,36 +66,61 @@ class TestPoolSearchPath:
 
 
 class TestPlatformSchemaIsolation:
-    def test_billing_ddl_uses_platform_schema(self):  # REQ-696
-        from provisa.api.billing.tenant_db import BILLING_SCHEMA_SQL
+    # REQ-696 (portable): the platform control plane uses the ``Database`` abstraction and
+    # vanilla SQLAlchemy metadata only — no PG-only ``CREATE SCHEMA platform`` / ``platform.*``
+    # qualification (SQLite has no schemas). The billing tables live in the shared registry
+    # metadata and are created via ``metadata.create_all``.
+    def test_billing_tables_are_schema_unqualified(self):  # REQ-696
+        import provisa.api.billing.tenant_db as td
+        from provisa.core.schema_admin import tenant_config, tenants
 
-        assert "CREATE SCHEMA IF NOT EXISTS platform" in BILLING_SCHEMA_SQL
-        assert "platform.tenants" in BILLING_SCHEMA_SQL
-        assert "platform.tenant_config" in BILLING_SCHEMA_SQL
-
-    def test_billing_ddl_has_no_unqualified_table_references(self):  # REQ-696
-        from provisa.api.billing.tenant_db import BILLING_SCHEMA_SQL
-
-        lines = BILLING_SCHEMA_SQL.splitlines()
-        for line in lines:
-            stripped = line.strip().upper()
-            if stripped.startswith("CREATE TABLE IF NOT EXISTS"):
-                assert "PLATFORM." in stripped, f"Unqualified table in: {line}"
+        # No raw PG-schema DDL constant survives, and the Table objects carry no
+        # ``platform`` schema — they are created in the platform engine's default schema.
+        assert not hasattr(td, "BILLING_SCHEMA_SQL")
+        assert tenants.schema is None
+        assert tenant_config.schema is None
 
     @pytest.mark.asyncio
-    async def test_create_tenant_uses_fully_qualified_insert(self):  # REQ-696
+    async def test_init_billing_schema_uses_portable_metadata(self):  # REQ-696
+        from provisa.api.billing.tenant_db import init_billing_schema
+        from provisa.core.schema_admin import tenant_config, tenants
+
+        sync_conn = AsyncMock()
+        begin_ctx = AsyncMock(
+            __aenter__=AsyncMock(return_value=sync_conn),
+            __aexit__=AsyncMock(return_value=False),
+        )
+        mock_pool = MagicMock()
+        mock_pool.engine.begin = MagicMock(return_value=begin_ctx)
+
+        await init_billing_schema(mock_pool)
+
+        # create_all is applied via run_sync(lambda) restricted to the billing tables.
+        sync_conn.run_sync.assert_awaited_once()
+        fn = sync_conn.run_sync.await_args.args[0]
+        created = MagicMock()
+        with patch.object(tenants.metadata, "create_all") as create_all:
+            fn(created)
+        create_all.assert_called_once()
+        assert create_all.call_args.kwargs["tables"] == [tenants, tenant_config]
+
+    @pytest.mark.asyncio
+    async def test_create_tenant_inserts_into_unqualified_tenants(self):  # REQ-696
         from provisa.api.billing.tenant_db import create_tenant
 
-        row = {
-            "id": "11111111-0000-0000-0000-000000000001",
-            "kms_key_arn": "arn:aws:kms:us-east-1:123:key/abc",
-            "stripe_customer_id": None,
-            "plan": "trial",
-            "source_limit": 2,
-            "created_at": None,
-        }
+        result = MagicMock()
+        result.fetchone.return_value = MagicMock(
+            _mapping={
+                "id": "11111111-0000-0000-0000-000000000001",
+                "kms_key_arn": "arn:aws:kms:us-east-1:123:key/abc",
+                "stripe_customer_id": None,
+                "plan": "trial",
+                "source_limit": 2,
+                "created_at": None,
+            }
+        )
         mock_conn = AsyncMock()
-        mock_conn.fetchrow = AsyncMock(return_value=row)
+        mock_conn.execute_core = AsyncMock(return_value=result)
         mock_pool = MagicMock()
         mock_pool.acquire = MagicMock(
             return_value=AsyncMock(
@@ -94,8 +130,9 @@ class TestPlatformSchemaIsolation:
         )
 
         await create_tenant(mock_pool, "arn:aws:kms:us-east-1:123:key/abc")
-        sql = mock_conn.fetchrow.await_args.args[0]
-        assert "platform.tenants" in sql.lower()
+        stmt = mock_conn.execute_core.await_args.args[0]
+        assert stmt.table.name == "tenants"
+        assert stmt.table.schema is None  # no platform.* qualification
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +145,7 @@ class TestInitSchema:
     async def test_init_schema_creates_org_schema(self):  # REQ-697
         from provisa.core.db import init_schema
 
-        mock_conn = AsyncMock()
+        mock_conn = _conn_with_advisory_lock()
         mock_pool = MagicMock()
         mock_pool.acquire = MagicMock(
             return_value=AsyncMock(
@@ -120,15 +157,16 @@ class TestInitSchema:
         mock_pool.dialect = "postgresql"
         await init_schema(mock_pool, "SELECT 1", org_id="myorg")
 
-        executed = [c.args[0] for c in mock_conn.execute.await_args_list if c.args]
-        assert any("org_myorg" in s for s in executed)
-        assert any("CREATE SCHEMA" in s and "org_myorg" in s for s in executed)
+        # CREATE SCHEMA is now issued via execute_core(CreateSchema(...)); its compiled SQL
+        # carries the org_<id> schema name.
+        core_sql = [str(c.args[0]) for c in mock_conn.execute_core.await_args_list if c.args]
+        assert any("org_myorg" in s for s in core_sql)
 
     @pytest.mark.asyncio
     async def test_init_schema_sets_search_path_before_running_sql(self):  # REQ-697
         from provisa.core.db import init_schema
 
-        mock_conn = AsyncMock()
+        mock_conn = _conn_with_advisory_lock()
         mock_pool = MagicMock()
         mock_pool.acquire = MagicMock(
             return_value=AsyncMock(
@@ -140,9 +178,8 @@ class TestInitSchema:
         mock_pool.dialect = "postgresql"
         await init_schema(mock_pool, "CREATE TABLE t (id INT)", org_id="myorg")
 
-        # Invariant (REQ-697): search_path is set before the schema DDL runs.
-        # init_schema issues both via conn.execute (the control-plane Database
-        # shim auto-routes the multi-statement schema SQL to the raw driver).
+        # Invariant (REQ-697): search_path is set before the schema DDL runs. Both the
+        # SET search_path and the multi-statement schema SQL go through conn.execute.
         executed = [c.args[0] for c in mock_conn.execute.await_args_list if c.args]
         search_path_idx = next(
             i for i, s in enumerate(executed) if "SET search_path" in s and "org_myorg" in s
@@ -412,11 +449,19 @@ class TestDemoSeedOrgScoping:
         from provisa.api.app import _seed_meta_domain
 
         mock_conn = AsyncMock()
-        mock_conn.fetchval = AsyncMock(return_value=1)
+        mock_conn.reflect_columns = AsyncMock(return_value=[])  # empty → skip column loops
+        mock_conn.upsert_returning = AsyncMock(return_value=1)
+        result = MagicMock()
+        result.scalar.return_value = 1
+        result.fetchone.return_value = None
+        mock_conn.execute_core = AsyncMock(return_value=result)
 
         await _seed_meta_domain(mock_conn, org_id="demo")
 
+        # org_<id> schema name reaches the portable reflection and the registered_tables upsert.
         all_calls = [
-            str(c) for c in mock_conn.fetchval.await_args_list + mock_conn.execute.await_args_list
+            str(c)
+            for c in mock_conn.reflect_columns.await_args_list
+            + mock_conn.upsert_returning.await_args_list
         ]
         assert any("org_demo" in c for c in all_calls)

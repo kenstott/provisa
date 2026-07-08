@@ -18,6 +18,7 @@ import binascii
 
 import jwt
 
+from sqlalchemy import func, select
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -25,6 +26,8 @@ from starlette.responses import JSONResponse
 from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment
 from provisa.auth.role_mapping import resolve_assignments, resolve_role
 from provisa.auth.superuser import check_superuser
+from provisa.core.schema_admin import user_org_memberships, user_profiles
+from provisa.core.schema_org import user_role_assignments
 
 # Requirements: REQ-120, REQ-125, REQ-273
 
@@ -165,10 +168,13 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
 
         if self._assignments_source == "provisa" and self._db_pool is not None:
             async with self._db_pool.acquire() as conn:
-                rows = await conn.fetch(
-                    "SELECT role_id, domain_id FROM user_role_assignments WHERE user_id = $1",
-                    identity.user_id,
+                result = await conn.execute_core(
+                    select(
+                        user_role_assignments.c.role_id,
+                        user_role_assignments.c.domain_id,
+                    ).where(user_role_assignments.c.user_id == identity.user_id)
                 )
+                rows = [dict(r._mapping) for r in result.fetchall()]
             if rows:
                 assignments = [
                     RoleAssignment(role_id=r["role_id"], domain_id=r["domain_id"]) for r in rows
@@ -209,16 +215,17 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
 
             async def _upsert():
                 async with _admin_pool.acquire() as conn:
-                    await conn.execute(
-                        """INSERT INTO user_profiles (user_id, email, display_name, provider, last_seen)
-                           VALUES ($1, $2, $3, $4, NOW())
-                           ON CONFLICT (user_id) DO UPDATE
-                           SET email = EXCLUDED.email, display_name = EXCLUDED.display_name,
-                               provider = EXCLUDED.provider, last_seen = NOW()""",
-                        identity.user_id,
-                        identity.email,
-                        identity.display_name,
-                        provider_name,
+                    await conn.upsert(
+                        user_profiles,
+                        {
+                            "user_id": identity.user_id,
+                            "email": identity.email,
+                            "display_name": identity.display_name,
+                            "provider": provider_name,
+                            "last_seen": func.now(),
+                        },
+                        index_elements=["user_id"],
+                        update_columns=["email", "display_name", "provider", "last_seen"],
                     )
 
             asyncio.ensure_future(_upsert())
@@ -235,10 +242,12 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                     active_org_id = header_org
                 elif self._admin_pool is not None:
                     async with self._admin_pool.acquire() as conn:
-                        org_rows = await conn.fetch(
-                            "SELECT org_id FROM user_org_memberships WHERE user_id = $1",
-                            identity.user_id,
+                        result = await conn.execute_core(
+                            select(user_org_memberships.c.org_id).where(
+                                user_org_memberships.c.user_id == identity.user_id
+                            )
                         )
+                        org_rows = [dict(r._mapping) for r in result.fetchall()]
                     if len(org_rows) == 1:
                         active_org_id = org_rows[0]["org_id"]
                     else:

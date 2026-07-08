@@ -8,176 +8,205 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Table repository — CRUD for registered tables and columns in PG config DB."""
+"""Table repository — CRUD for registered tables and columns, via SQLAlchemy Core (dialect-portable)."""
 
 # Requirements: REQ-013, REQ-014, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
 
-import json
+from typing import TYPE_CHECKING
 
-import asyncpg
+from sqlalchemy import delete as _delete, select
 
 from provisa.core import domain_policy
 from provisa.core.models import Table
+from provisa.core.schema_org import registered_tables, table_columns
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
+
+_COLUMN_PROJECTION = [
+    table_columns.c.column_name,
+    table_columns.c.data_type,
+    table_columns.c.visible_to,
+    table_columns.c.writable_by,
+    table_columns.c.unmasked_to,
+    table_columns.c.mask_type,
+    table_columns.c.mask_pattern,
+    table_columns.c.mask_replace,
+    table_columns.c.mask_value,
+    table_columns.c.mask_precision,
+    table_columns.c.native_filter_type,
+    table_columns.c.is_primary_key,
+    table_columns.c.is_foreign_key,
+    table_columns.c.is_alternate_key,
+    table_columns.c.object_fields,
+    table_columns.c.scope,
+]
+
+
+async def _load_columns(conn: "Connection", table_id: int) -> list[dict]:
+    result = await conn.execute_core(
+        select(*_COLUMN_PROJECTION)
+        .where(table_columns.c.table_id == table_id)
+        .order_by(table_columns.c.id)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
 
 
 async def upsert(
-    conn: asyncpg.Connection, table: Table
+    conn: "Connection", table: Table
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
     """Upsert a registered table and its columns. Returns the table row id."""
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
-    table_id = await conn.fetchval(
-        """
-        INSERT INTO registered_tables
-            (source_id, domain_id, schema_name, table_name, alias, description, watermark_column, column_presets, view_sql, data_product, materialize, mv_refresh_interval, enable_aggregates, enable_group_by, live, change_signal, probe_query)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-        ON CONFLICT (source_id, schema_name, table_name) DO UPDATE SET
-            domain_id = EXCLUDED.domain_id,
-            alias = EXCLUDED.alias,
-            description = EXCLUDED.description,
-            watermark_column = EXCLUDED.watermark_column,
-            column_presets = EXCLUDED.column_presets,
-            view_sql = EXCLUDED.view_sql,
-            data_product = EXCLUDED.data_product,
-            materialize = EXCLUDED.materialize,
-            mv_refresh_interval = EXCLUDED.mv_refresh_interval,
-            enable_aggregates = EXCLUDED.enable_aggregates,
-            enable_group_by = EXCLUDED.enable_group_by,
-            live = EXCLUDED.live,
-            change_signal = EXCLUDED.change_signal,
-            probe_query = EXCLUDED.probe_query
-        RETURNING id
-        """,
-        table.source_id,
-        domain_id,
-        table.schema_name,
-        table.table_name,
-        getattr(table, "alias", None),
-        getattr(table, "description", None),
-        getattr(table, "watermark_column", None),
-        json.dumps([p.model_dump() for p in getattr(table, "column_presets", [])]),
-        getattr(table, "view_sql", None),
-        getattr(table, "data_product", False),
-        getattr(table, "materialize", False),
-        getattr(table, "mv_refresh_interval", 300),
-        getattr(table, "enable_aggregates", False),
-        getattr(table, "enable_group_by", False),
-        json.dumps(table.live.model_dump()) if table.live else None,
-        getattr(table, "change_signal", None),
-        getattr(table, "probe_query", None),
+    # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
+    values = {
+        "source_id": table.source_id,
+        "domain_id": domain_id,
+        "schema_name": table.schema_name,
+        "table_name": table.table_name,
+        "alias": getattr(table, "alias", None),
+        "description": getattr(table, "description", None),
+        "watermark_column": getattr(table, "watermark_column", None),
+        "column_presets": [p.model_dump() for p in getattr(table, "column_presets", [])],
+        "view_sql": getattr(table, "view_sql", None),
+        "data_product": getattr(table, "data_product", False),
+        "materialize": getattr(table, "materialize", False),
+        "mv_refresh_interval": getattr(table, "mv_refresh_interval", 300),
+        "enable_aggregates": getattr(table, "enable_aggregates", False),
+        "enable_group_by": getattr(table, "enable_group_by", False),
+        "live": table.live.model_dump() if table.live else None,
+        "change_signal": getattr(table, "change_signal", None),
+        "probe_query": getattr(table, "probe_query", None),
+    }
+    _update_columns = [
+        "domain_id",
+        "alias",
+        "description",
+        "watermark_column",
+        "column_presets",
+        "view_sql",
+        "data_product",
+        "materialize",
+        "mv_refresh_interval",
+        "enable_aggregates",
+        "enable_group_by",
+        "live",
+        "change_signal",
+        "probe_query",
+    ]
+    table_id = await conn.upsert_returning(
+        registered_tables,
+        values,
+        index_elements=["source_id", "schema_name", "table_name"],
+        returning="id",
+        update_columns=_update_columns,
     )
 
     # Replace columns: delete existing, insert new
-    await conn.execute("DELETE FROM table_columns WHERE table_id = $1", table_id)
+    await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
     for col in table.columns:
         object_fields_raw = getattr(col, "object_fields", [])
-        object_fields_json = json.dumps(
-            [f.model_dump() if hasattr(f, "model_dump") else f for f in object_fields_raw]
-        )
-        await conn.execute(
-            """
-            INSERT INTO table_columns (table_id, column_name, visible_to, writable_by, unmasked_to,
-                mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
-                alias, description, data_type, path, native_filter_type, is_primary_key,
-                is_foreign_key, is_alternate_key, object_fields, scope)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20)
-            """,
-            table_id,
-            col.name,
-            col.visible_to,
-            getattr(col, "writable_by", []),
-            getattr(col, "unmasked_to", []),
-            getattr(col, "mask_type", None),
-            getattr(col, "mask_pattern", None),
-            getattr(col, "mask_replace", None),
-            getattr(col, "mask_value", None),
-            getattr(col, "mask_precision", None),
-            getattr(col, "alias", None),
-            getattr(col, "description", None),
-            getattr(col, "data_type", None),
-            getattr(col, "path", None),
-            getattr(col, "native_filter_type", None),
-            getattr(col, "is_primary_key", False),
-            getattr(col, "is_foreign_key", False),
-            getattr(col, "is_alternate_key", False),
-            object_fields_json,
-            getattr(col, "scope", "domain"),
+        object_fields = [
+            f.model_dump() if hasattr(f, "model_dump") else f for f in object_fields_raw
+        ]
+        await conn.execute_core(
+            table_columns.insert().values(
+                table_id=table_id,
+                column_name=col.name,
+                visible_to=col.visible_to,
+                writable_by=getattr(col, "writable_by", []),
+                unmasked_to=getattr(col, "unmasked_to", []),
+                mask_type=getattr(col, "mask_type", None),
+                mask_pattern=getattr(col, "mask_pattern", None),
+                mask_replace=getattr(col, "mask_replace", None),
+                mask_value=getattr(col, "mask_value", None),
+                mask_precision=getattr(col, "mask_precision", None),
+                alias=getattr(col, "alias", None),
+                description=getattr(col, "description", None),
+                data_type=getattr(col, "data_type", None),
+                path=getattr(col, "path", None),
+                native_filter_type=getattr(col, "native_filter_type", None),
+                is_primary_key=getattr(col, "is_primary_key", False),
+                is_foreign_key=getattr(col, "is_foreign_key", False),
+                is_alternate_key=getattr(col, "is_alternate_key", False),
+                object_fields=object_fields,
+                scope=getattr(col, "scope", "domain"),
+            )
         )
     return table_id
 
 
-async def get(conn: asyncpg.Connection, table_id: int) -> dict | None:  # REQ-013, REQ-393, REQ-399
-    row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", table_id)
-    if not row:
-        return None
-    result = dict(row)
-    cols = await conn.fetch(
-        "SELECT column_name, data_type, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields, scope FROM table_columns WHERE table_id = $1 ORDER BY id",
-        table_id,
+async def get(conn: "Connection", table_id: int) -> dict | None:  # REQ-013, REQ-393, REQ-399
+    result = await conn.execute_core(
+        select(registered_tables).where(registered_tables.c.id == table_id)
     )
-    result["columns"] = [dict(c) for c in cols]
-    return result
+    row = result.fetchone()
+    if row is None:
+        return None
+    result_dict = dict(row._mapping)
+    result_dict["columns"] = await _load_columns(conn, table_id)
+    return result_dict
 
 
 async def get_by_name(
-    conn: asyncpg.Connection, source_id: str, schema_name: str, table_name: str
+    conn: "Connection", source_id: str, schema_name: str, table_name: str
 ) -> dict | None:  # REQ-013, REQ-155
-    row = await conn.fetchrow(
-        """
-        SELECT * FROM registered_tables
-        WHERE source_id = $1 AND schema_name = $2 AND table_name = $3
-        """,
-        source_id,
-        schema_name,
-        table_name,
+    result = await conn.execute_core(
+        select(registered_tables).where(
+            registered_tables.c.source_id == source_id,
+            registered_tables.c.schema_name == schema_name,
+            registered_tables.c.table_name == table_name,
+        )
     )
-    if not row:
+    row = result.fetchone()
+    if row is None:
         return None
-    result = dict(row)
-    cols = await conn.fetch(
-        "SELECT column_name, data_type, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields, scope FROM table_columns WHERE table_id = $1 ORDER BY id",
-        result["id"],
-    )
-    result["columns"] = [dict(c) for c in cols]
-    return result
+    result_dict = dict(row._mapping)
+    result_dict["columns"] = await _load_columns(conn, result_dict["id"])
+    return result_dict
 
 
 async def find_by_table_name(
-    conn: asyncpg.Connection, table_name: str
+    conn: "Connection", table_name: str
 ) -> dict | None:  # REQ-014, REQ-155
     """Find a registered table by its virtual name.
 
     The virtual name is alias when set, otherwise table_name.
     Raises ValueError if multiple tables match.
     """
-    rows = await conn.fetch(
-        "SELECT * FROM registered_tables WHERE alias = $1 OR (alias IS NULL AND table_name = $1)",
-        table_name,
+    result = await conn.execute_core(
+        select(registered_tables).where(
+            (registered_tables.c.alias == table_name)
+            | (
+                (registered_tables.c.alias.is_(None))
+                & (registered_tables.c.table_name == table_name)
+            )
+        )
     )
+    rows = result.fetchall()
     if not rows:
         return None
     if len(rows) > 1:
-        sources = [r["source_id"] for r in rows]
+        sources = [r._mapping["source_id"] for r in rows]
         raise ValueError(
             f"Ambiguous table name {table_name!r}: found in sources {sources}. "
             f"Use source-qualified lookup instead."
         )
-    return dict(rows[0])
+    return dict(rows[0]._mapping)
 
 
-async def list_all(conn: asyncpg.Connection) -> list[dict]:  # REQ-013, REQ-016
-    rows = await conn.fetch("SELECT * FROM registered_tables ORDER BY id")
-    result = []
+async def list_all(conn: "Connection") -> list[dict]:  # REQ-013, REQ-016
+    result = await conn.execute_core(select(registered_tables).order_by(registered_tables.c.id))
+    rows = result.fetchall()
+    out = []
     for row in rows:
-        r = dict(row)
-        cols = await conn.fetch(
-            "SELECT column_name, data_type, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields, scope FROM table_columns WHERE table_id = $1 ORDER BY id",
-            r["id"],
-        )
-        r["columns"] = [dict(c) for c in cols]
-        result.append(r)
-    return result
+        r = dict(row._mapping)
+        r["columns"] = await _load_columns(conn, r["id"])
+        out.append(r)
+    return out
 
 
-async def delete(conn: asyncpg.Connection, table_id: int) -> bool:  # REQ-014
-    result = await conn.execute("DELETE FROM registered_tables WHERE id = $1", table_id)
-    return result == "DELETE 1"
+async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014
+    result = await conn.execute_core(
+        _delete(registered_tables).where(registered_tables.c.id == table_id)
+    )
+    return (result.rowcount or 0) > 0

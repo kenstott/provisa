@@ -15,8 +15,10 @@ from __future__ import annotations
 import base64
 
 import bcrypt
+from sqlalchemy import select
 
 from provisa.auth.models import AuthIdentity, AuthProvider
+from provisa.core.schema_admin import local_users
 
 # Requirements: REQ-124
 
@@ -41,13 +43,23 @@ class BasicAuthProvider(AuthProvider):  # REQ-124
             raise ValueError("Invalid credentials")
 
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT id, username, password_hash, email, display_name, attributes "
-                "FROM local_users WHERE username = $1 AND is_active = true",
-                username,
+            result = await conn.execute_core(
+                select(
+                    local_users.c.id,
+                    local_users.c.username,
+                    local_users.c.password_hash,
+                    local_users.c.email,
+                    local_users.c.display_name,
+                    local_users.c.attributes,
+                ).where(
+                    local_users.c.username == username,
+                    local_users.c.is_active == True,  # noqa: E712
+                )
             )
-            if row is None:
+            fetched = result.fetchone()
+            if fetched is None:
                 raise ValueError("Invalid credentials")
+            row = dict(fetched._mapping)
 
             if not bcrypt.checkpw(password.encode("utf-8"), row["password_hash"].encode("utf-8")):
                 raise ValueError("Invalid credentials")

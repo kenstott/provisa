@@ -51,9 +51,6 @@ from typing import Any, AsyncGenerator
 
 from sqlalchemy import Table, event, text
 from sqlalchemy.pool import QueuePool
-from sqlalchemy.dialects.mysql import insert as _mysql_insert
-from sqlalchemy.dialects.postgresql import insert as _pg_insert
-from sqlalchemy.dialects.sqlite import insert as _sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 
@@ -268,44 +265,6 @@ def _status(sql: str, rowcount: int) -> str:
     return verb
 
 
-def build_upsert(
-    dialect: str,
-    table: Table,
-    values: dict[str, Any],
-    *,
-    index_elements: list[str],
-    update_columns: list[str] | None = None,
-):
-    """Build a portable INSERT ... ON CONFLICT DO UPDATE statement.
-
-    Replaces hand-written PG-only ``ON CONFLICT`` SQL with a dialect-aware Core
-    construct so the same repository code targets PostgreSQL, SQLite (>=3.35),
-    and MySQL 8. ``update_columns`` defaults to all inserted columns except the
-    conflict keys."""
-    d = dialect.split("+", 1)[0]
-    cols = (
-        update_columns
-        if update_columns is not None
-        else [c for c in values if c not in index_elements]
-    )
-    if d == "postgresql":
-        stmt = _pg_insert(table).values(**values)
-        return stmt.on_conflict_do_update(
-            index_elements=index_elements,
-            set_={c: getattr(stmt.excluded, c) for c in cols},
-        )
-    if d == "sqlite":
-        stmt = _sqlite_insert(table).values(**values)
-        return stmt.on_conflict_do_update(
-            index_elements=index_elements,
-            set_={c: getattr(stmt.excluded, c) for c in cols},
-        )
-    if d in ("mysql", "mariadb"):
-        stmt = _mysql_insert(table).values(**values)
-        return stmt.on_duplicate_key_update(**{c: getattr(stmt.inserted, c) for c in cols})
-    raise ValueError(f"upsert not supported for dialect {dialect!r}")
-
-
 # --------------------------------------------------------------------------- #
 # connection
 # --------------------------------------------------------------------------- #
@@ -363,9 +322,81 @@ class Connection:
         await self._commit_if_autocommit()
         return r[column] if r is not None else None
 
+    async def reflect_columns(self, table: str, schema: str | None = None) -> list[dict]:
+        """Portable column reflection via the SQLAlchemy Inspector — replaces raw
+        ``information_schema`` queries so it runs on any backend. Returns one dict per
+        column: ``{column_name, data_type, is_primary_key}``. ``data_type`` is the
+        lowercased SQL type name with array/json collapsed to ``text`` (mirroring the
+        engine surface, which sees those columns as text).
+
+        ``schema`` is the org-isolation schema; it is honoured only on schema-capable
+        backends (``capabilities.schemas``) and ignored on schema-less ones (SQLite),
+        so callers pass the org schema unconditionally and the dialect decision stays
+        inside the abstraction."""
+        eff_schema = schema if self.capabilities.schemas else None
+
+        def _inspect(sync_conn: Any) -> list[dict]:
+            from sqlalchemy import inspect as _sa_inspect
+
+            insp = _sa_inspect(sync_conn)
+            pk = set(
+                insp.get_pk_constraint(table, schema=eff_schema).get("constrained_columns") or []
+            )
+            cols: list[dict] = []
+            for c in insp.get_columns(table, schema=eff_schema):
+                type_name = str(c["type"]).split("(")[0].strip().lower()
+                if "[]" in type_name or type_name in ("array", "json", "jsonb"):
+                    type_name = "text"
+                cols.append(
+                    {
+                        "column_name": c["name"],
+                        "data_type": type_name,
+                        "is_primary_key": c["name"] in pk,
+                    }
+                )
+            return cols
+
+        return await self._ac.run_sync(_inspect)
+
+    # -- advisory locks (dialect-portable; a no-op where the backend has none) --
+    async def advisory_xact_lock(self, key: int) -> None:
+        """Take a transaction-scoped advisory lock keyed by ``key`` (auto-released at commit).
+        A no-op on backends without advisory locks — single-writer file DBs (SQLite) need none."""
+        caps = self.capabilities
+        if not caps.advisory_lock:
+            return
+        if caps.dialect == "postgresql":
+            await self.execute(f"SELECT pg_advisory_xact_lock({key})")
+        elif caps.dialect in ("mysql", "mariadb"):
+            await self.execute(f"SELECT GET_LOCK('{key}', -1)")
+
+    @asynccontextmanager
+    async def advisory_lock(self, key: int) -> "AsyncGenerator[Connection]":
+        """Hold a session advisory lock keyed by ``key`` for the ``with`` block, released on exit.
+        A no-op on backends without advisory locks."""
+        caps = self.capabilities
+        held = caps.advisory_lock and caps.dialect in ("postgresql", "mysql", "mariadb")
+        if held:
+            take = (
+                f"SELECT pg_advisory_lock({key})"
+                if caps.dialect == "postgresql"
+                else f"SELECT GET_LOCK('{key}', -1)"
+            )
+            await self.execute(take)
+        try:
+            yield self
+        finally:
+            if held:
+                release = (
+                    f"SELECT pg_advisory_unlock({key})"
+                    if caps.dialect == "postgresql"
+                    else f"SELECT RELEASE_LOCK('{key}')"
+                )
+                await self.execute(release)
+
     # -- portable Core helpers (dialect-agnostic; used by migrated repositories) --
     async def execute_core(self, stmt: Any) -> Any:
-        """Execute a SQLAlchemy Core statement (e.g. from :func:`build_upsert`)
+        """Execute a SQLAlchemy Core statement (select/insert/update/delete)
         and return the CursorResult. Autocommits outside a transaction."""
         result = await self._ac.execute(stmt)
         await self._commit_if_autocommit()
@@ -378,16 +409,73 @@ class Connection:
         *,
         index_elements: list[str],
         update_columns: list[str] | None = None,
+        set_extra: dict[str, Any] | None = None,
     ) -> None:
-        """Portable INSERT ... ON CONFLICT DO UPDATE (see :func:`build_upsert`)."""
-        stmt = build_upsert(
-            self.capabilities.dialect,
+        """Upsert a row, dialect-AGNOSTICALLY: UPDATE by the conflict keys, and INSERT if no row
+        matched. Uses only generic Core (update/insert/select) — no dialect-specific ON CONFLICT /
+        MERGE / ON DUPLICATE KEY, so it works on EVERY SQLAlchemy backend, not an enumerated few.
+
+        ``update_columns`` defaults to all inserted columns except the conflict keys; an empty list
+        means DO NOTHING (insert-if-absent). ``set_extra`` adds/overrides set assignments with Core
+        expressions (e.g. ``{"version": table.c.version + 1}``)."""
+        from sqlalchemy import (
+            and_,
+            insert as _insert,
+            literal,
+            select as _select,
+            update as _update,
+        )
+        from sqlalchemy.exc import IntegrityError
+
+        cols = (
+            update_columns
+            if update_columns is not None
+            else [c for c in values if c not in index_elements]
+        )
+        set_map: dict[str, Any] = {c: values[c] for c in cols}
+        set_map.update(set_extra or {})
+        where = and_(*[table.c[k] == values[k] for k in index_elements])
+
+        if set_map:
+            res = await self.execute_core(_update(table).where(where).values(**set_map))
+            if (res.rowcount or 0) > 0:
+                return
+        else:
+            exists = await self.execute_core(_select(literal(1)).select_from(table).where(where))
+            if exists.fetchone() is not None:
+                return  # DO NOTHING — row already present
+        try:
+            await self.execute_core(_insert(table).values(**values))
+        except IntegrityError:
+            # Lost an insert race with a concurrent writer — fall back to the update.
+            if set_map:
+                await self.execute_core(_update(table).where(where).values(**set_map))
+
+    async def upsert_returning(
+        self,
+        table: Table,
+        values: dict[str, Any],
+        *,
+        index_elements: list[str],
+        returning: str,
+        update_columns: list[str] | None = None,
+        set_extra: dict[str, Any] | None = None,
+    ) -> Any:
+        """Upsert (see :meth:`upsert`) then return one column of the row (e.g. its id), via a plain
+        SELECT on the conflict keys — dialect-agnostic, no RETURNING dependency."""
+        from sqlalchemy import and_, select as _select
+
+        await self.upsert(
             table,
             values,
             index_elements=index_elements,
             update_columns=update_columns,
+            set_extra=set_extra,
         )
-        await self.execute_core(stmt)
+        where = and_(*[table.c[k] == values[k] for k in index_elements])
+        res = await self.execute_core(_select(table.c[returning]).where(where))
+        row = res.fetchone()
+        return row[0] if row is not None else None
 
     async def insert_returning(self, table: Table, values: dict[str, Any], returning: str) -> Any:
         """INSERT and return one generated column value, portably.
@@ -434,15 +522,25 @@ class Connection:
                 self._tx_depth -= 1
 
     async def execute_script(self, sql: str) -> None:
-        """Run a multi-statement SQL script (DDL bootstrap) on the raw asyncpg
-        driver connection.
+        """Run a multi-statement SQL script (DDL bootstrap).
 
-        SQLAlchemy ``text()`` uses the extended protocol, which rejects multiple
-        statements and ``DO $$`` blocks in a single call; asyncpg's simple query
-        protocol allows them. PostgreSQL only — Tier-2 backends build DDL from
-        metadata instead (Phase 2)."""
-        conn = await self._driver_connection()
-        await conn.execute(sql)
+        PostgreSQL: SQLAlchemy ``text()`` uses the extended protocol, which rejects
+        multiple statements and ``DO $$`` blocks in a single call, so route the whole
+        script to asyncpg's simple query protocol (``conn.execute``), which allows both.
+
+        Other dialects: split into individual statements and run each through the
+        SQLAlchemy connection via ``exec_driver_sql`` (dialect-agnostic — no driver-
+        specific method). The non-PG scripts we emit are plain DDL (e.g. meta-view
+        ``DROP``/``CREATE``) with no procedural blocks or embedded statement separators;
+        tables come from ``metadata.create_all``, not this path."""
+        if self.capabilities.dialect == "postgresql":
+            conn = await self._driver_connection()
+            await conn.execute(sql)
+            return
+        for stmt in sql.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                await self._ac.exec_driver_sql(stmt)
 
     async def prepare(self, sql: str) -> Any:
         """Prepare a statement on the raw asyncpg driver connection and return

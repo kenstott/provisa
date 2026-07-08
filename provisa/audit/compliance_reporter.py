@@ -18,8 +18,14 @@ import csv
 import io
 import json
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-import asyncpg
+from sqlalchemy import select
+
+from provisa.core.schema_org import query_audit_log
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 _AUDIT_COLUMNS = (
     "id",
@@ -35,7 +41,7 @@ _AUDIT_COLUMNS = (
 )
 
 
-def _row_to_dict(row: asyncpg.Record) -> dict:
+def _row_to_dict(row: dict) -> dict:
     d = dict(row)
     # Serialize non-JSON-native types
     if isinstance(d.get("logged_at"), datetime):
@@ -52,26 +58,32 @@ def _row_to_dict(row: asyncpg.Record) -> dict:
 
 
 async def export_audit_log(  # REQ-074
-    conn: asyncpg.Connection,
+    conn: "Connection",
     tenant_id: str | None,
     start_ts: datetime,
     end_ts: datetime,
     format: str = "json",
 ) -> str:
-    rows = await conn.fetch(
-        "SELECT id, tenant_id, user_id, role_id, query_hash, table_ids,"
-        "       source, status_code, duration_ms, logged_at"
-        " FROM query_audit_log"
-        " WHERE tenant_id = $1"
-        "   AND logged_at >= $2"
-        "   AND logged_at <= $3"
-        " ORDER BY logged_at ASC",
-        tenant_id,
-        start_ts,
-        end_ts,
+    result = await conn.execute_core(
+        select(
+            query_audit_log.c.id,
+            query_audit_log.c.tenant_id,
+            query_audit_log.c.user_id,
+            query_audit_log.c.role_id,
+            query_audit_log.c.query_hash,
+            query_audit_log.c.table_ids,
+            query_audit_log.c.source,
+            query_audit_log.c.status_code,
+            query_audit_log.c.duration_ms,
+            query_audit_log.c.logged_at,
+        )
+        .where(query_audit_log.c.tenant_id == tenant_id)
+        .where(query_audit_log.c.logged_at >= start_ts)
+        .where(query_audit_log.c.logged_at <= end_ts)
+        .order_by(query_audit_log.c.logged_at.asc())
     )
 
-    records = [_row_to_dict(r) for r in rows]
+    records = [_row_to_dict(dict(r._mapping)) for r in result.fetchall()]
 
     if format == "json":
         return json.dumps(records, default=str)

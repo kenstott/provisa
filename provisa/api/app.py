@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+
 import asyncio
 import json
 import logging
@@ -41,11 +42,18 @@ from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.rls import RLSContext, build_rls_context
 from provisa.compiler.sql_gen import CompilationContext, build_context
+from sqlalchemy import select
 from provisa.core.config_loader import load_config, parse_config_dict
-from provisa.core.db import init_schema
-from provisa.core.database import Database, create_engine_from_url
-from provisa.core.control_plane import bring_up_platform
-from provisa.api._meta_views import _META_TABLE_VIEWS
+from provisa.core.database import Connection, Database
+from provisa.core.schema_org import (
+    domains as _domains_t,
+    naming_rules as _naming_rules_t,
+    registered_tables as _registered_tables_t,
+    roles as _roles_t,
+    sources as _sources_t,
+    table_columns as _table_columns_t,
+    tracked_functions as _tracked_functions_t,
+)
 from provisa.core.secrets import resolve_secrets
 from provisa.executor.pool import SourcePool
 from provisa.compiler.mask_inject import MaskingRules
@@ -262,263 +270,7 @@ _META_TABLES = [
 # receiver's tables and the ops-domain registration never drift.
 from provisa.observability.ops_schema import OPS_TABLES as _OPS_TABLES  # noqa: E402
 from provisa.compiler.type_map import OPS_PG_TO_PHYSICAL as _OPS_PG_TO_PHYSICAL  # noqa: E402
-
-# Views registered in the ops domain alongside the raw Iceberg tables.
-# Each entry: (view_name, [(col_name, data_type, is_pk)], ddl_sql)
-_OPS_VIEWS: list[tuple[str, list[tuple[str, str, bool]], str]] = [
-    (
-        "queries",
-        [
-            ("trace_id", "text", True),
-            ("span_id", "text", False),
-            ("parent_span_id", "text", False),
-            ("span_name", "text", False),
-            ("service_name", "text", False),
-            ("timestamp", "bigint", False),
-            ("end_timestamp", "bigint", False),
-            ("duration", "bigint", False),
-            ("status_code", "integer", False),
-            ("table_name", "text", False),
-            ("domain_id", "text", False),
-            ("role_id", "text", False),
-            ("query_text", "text", False),
-            ("_date", "date", False),
-        ],
-        """\
-CREATE OR REPLACE VIEW otel.signals.queries AS
-SELECT
-    trace_id,
-    span_id,
-    parent_span_id,
-    span_name,
-    service_name,
-    "timestamp",
-    end_timestamp,
-    duration,
-    status_code,
-    table_name,
-    domain_id,
-    role_id,
-    query_text,
-    _date
-FROM otel.signals.traces
-WHERE span_name LIKE 'provisa.query%'
-""",
-    ),
-]
-
-
-async def _seed_meta_domain(
-    conn: asyncpg.Connection, org_id: str = "default"
-) -> None:  # REQ-012, REQ-016, REQ-695
-    """Register admin tables in the built-in meta domain (idempotent)."""
-    schema_name = f"org_{org_id}"
-    for ddl in _META_TABLE_VIEWS.values():
-        await conn.execute(ddl)
-
-    # Remove any stale view-named entries left by older code versions.
-    for view_name in _META_TABLE_ALIAS.values():
-        await conn.execute(
-            "DELETE FROM registered_tables "
-            "WHERE source_id = 'provisa-admin' AND schema_name = $1 AND table_name = $2",
-            schema_name,
-            view_name,
-        )
-
-    for tbl in _META_TABLES:
-        table_id = await conn.fetchval(
-            """
-            INSERT INTO registered_tables
-                (source_id, domain_id, schema_name, table_name)
-            VALUES ('provisa-admin', 'meta', $1, $2)
-            ON CONFLICT (source_id, schema_name, table_name)
-                DO UPDATE SET domain_id = 'meta'
-            RETURNING id
-            """,
-            schema_name,
-            tbl,
-        )
-        pk_cols = {
-            row["column_name"]
-            for row in await conn.fetch(
-                """
-                SELECT kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.table_schema = $1 AND tc.table_name = $2
-                  AND tc.constraint_type = 'PRIMARY KEY'
-                """,
-                schema_name,
-                tbl,
-            )
-        }
-        # Use the view name when available so column list reflects the exposed schema.
-        view_name = _META_TABLE_ALIAS.get(tbl, tbl)
-        cols = await conn.fetch(
-            """
-            SELECT column_name,
-                   CASE WHEN data_type IN ('ARRAY', 'jsonb', 'json') THEN 'text' ELSE data_type END AS data_type
-            FROM information_schema.columns
-            WHERE table_schema = $1 AND table_name = $2
-            ORDER BY ordinal_position
-            """,
-            schema_name,
-            view_name,
-        )
-        col_names = {col["column_name"] for col in cols}
-        # Remove stale columns that no longer appear in the view.
-        await conn.execute(
-            "DELETE FROM table_columns WHERE table_id = $1 AND column_name != ALL($2::text[])",
-            table_id,
-            list(col_names),
-        )
-        for col in cols:
-            await conn.execute(
-                """
-                INSERT INTO table_columns
-                    (table_id, column_name, visible_to, data_type, is_primary_key)
-                VALUES ($1, $2, '{}', $3, $4)
-                ON CONFLICT (table_id, column_name) DO NOTHING
-                """,
-                table_id,
-                col["column_name"],
-                col["data_type"],
-                col["column_name"] in pk_cols,
-            )
-
-    # Register registered_tables → table_columns relationship (table_id FK)
-    await conn.execute(
-        """
-        INSERT INTO relationships (id, source_table_id, target_table_id,
-                                   source_column, target_column, cardinality,
-                                   materialize, refresh_interval,
-                                   target_function_name, function_arg,
-                                   alias, graphql_alias, disable_cypher, source_json_key)
-        SELECT 'meta:registered_tables:table_columns', rt.id, tc.id,
-               'id', 'table_id', 'one-to-many',
-               false, 300, null, null, null, null, false, null
-        FROM registered_tables rt, registered_tables tc
-        WHERE rt.source_id = 'provisa-admin' AND rt.table_name = 'registered_tables'
-          AND tc.source_id = 'provisa-admin' AND tc.table_name = 'table_columns'
-        ON CONFLICT (id) DO NOTHING
-        """
-    )
-
-
-async def _seed_meta_relationships(conn: asyncpg.Connection) -> None:
-    """Seed FK relationships between meta and ops tables (idempotent, runs after both seeds)."""
-    _REL_INSERT = """
-        INSERT INTO relationships (id, source_table_id, target_table_id,
-                                   source_column, target_column, cardinality,
-                                   materialize, refresh_interval,
-                                   target_function_name, function_arg,
-                                   alias, graphql_alias, disable_cypher, source_json_key)
-        SELECT $1, src.id, tgt.id,
-               $4, $5, $6,
-               false, 300, null, null, $9, $10, false, null
-        FROM (SELECT id FROM registered_tables WHERE source_id = $2 AND table_name = $3 LIMIT 1) src
-        CROSS JOIN (SELECT id FROM registered_tables WHERE source_id = $7 AND table_name = $8 LIMIT 1) tgt
-        ON CONFLICT (id) DO UPDATE
-            SET source_table_id = EXCLUDED.source_table_id,
-                target_table_id = EXCLUDED.target_table_id,
-                source_column   = EXCLUDED.source_column,
-                target_column   = EXCLUDED.target_column,
-                cardinality     = EXCLUDED.cardinality,
-                alias           = EXCLUDED.alias,
-                graphql_alias   = EXCLUDED.graphql_alias
-    """
-    from provisa.api._meta_seed import META_RELATIONSHIPS
-
-    static = META_RELATIONSHIPS
-
-    for row in static:
-        await conn.execute(_REL_INSERT, *row)
-
-
-async def _compute_and_store_clusters(conn: asyncpg.Connection) -> int:  # REQ-510
-    """Run Louvain on the schema graph and write l1/l2/l3_cluster onto registered_tables."""
-    from provisa.schema_clusters import compute_clusters
-
-    rows = await conn.fetch("SELECT id FROM registered_tables")
-    table_ids = [r["id"] for r in rows]
-
-    rel_rows = await conn.fetch(
-        "SELECT source_table_id, target_table_id FROM relationships "
-        "WHERE source_table_id IS NOT NULL AND target_table_id IS NOT NULL"
-    )
-    edges = [(r["source_table_id"], r["target_table_id"]) for r in rel_rows]
-
-    if not table_ids:
-        return 0
-
-    clusters = compute_clusters(table_ids, edges)
-
-    await conn.executemany(
-        """
-        UPDATE registered_tables
-        SET l1_cluster = $2, l2_cluster = $3, l3_cluster = $4,
-            clusters_computed_at = NOW()
-        WHERE id = $1
-        """,
-        [(tid, l1, l2, l3) for tid, (l1, l2, l3) in clusters.items()],
-    )
-    return len(clusters)
-
-
-async def _seed_ops_pg(conn: asyncpg.Connection) -> None:  # REQ-016
-    """Register ops tables/views in PG registered_tables + table_columns (idempotent)."""
-    for tbl_name, cols in _OPS_TABLES.items():
-        table_id = await conn.fetchval(
-            """
-            INSERT INTO registered_tables
-                (source_id, domain_id, schema_name, table_name)
-            VALUES ('provisa-otel', 'ops', 'signals', $1)
-            ON CONFLICT (source_id, schema_name, table_name)
-                DO UPDATE SET domain_id = 'ops'
-            RETURNING id
-            """,
-            tbl_name,
-        )
-        for col_name, pg_type, is_pk in cols:
-            await conn.execute(
-                """
-                INSERT INTO table_columns
-                    (table_id, column_name, visible_to, data_type, is_primary_key)
-                VALUES ($1, $2, '{}', $3, $4)
-                ON CONFLICT (table_id, column_name) DO NOTHING
-                """,
-                table_id,
-                col_name,
-                pg_type,
-                is_pk,
-            )
-    for view_name, cols, _ in _OPS_VIEWS:
-        table_id = await conn.fetchval(
-            """
-            INSERT INTO registered_tables
-                (source_id, domain_id, schema_name, table_name)
-            VALUES ('provisa-otel', 'ops', 'signals', $1)
-            ON CONFLICT (source_id, schema_name, table_name)
-                DO UPDATE SET domain_id = 'ops'
-            RETURNING id
-            """,
-            view_name,
-        )
-        for col_name, pg_type, is_pk in cols:
-            await conn.execute(
-                """
-                INSERT INTO table_columns
-                    (table_id, column_name, visible_to, data_type, is_primary_key)
-                VALUES ($1, $2, '{}', $3, $4)
-                ON CONFLICT (table_id, column_name) DO NOTHING
-                """,
-                table_id,
-                col_name,
-                pg_type,
-                is_pk,
-            )
+from provisa.api.startup_seed import _seed_meta_domain  # noqa: E402,F401  re-export for test back-compat
 
 
 async def _init_meta_rls(conn: asyncpg.Connection) -> None:  # REQ-041, REQ-402
@@ -540,97 +292,6 @@ async def _init_meta_rls(conn: asyncpg.Connection) -> None:  # REQ-041, REQ-402
             END $$
             """
         )
-
-
-async def _init_control_planes(
-    config_path: str | None,
-) -> tuple[str, int, str, str]:  # REQ-057, REQ-837
-    """Bring up both control planes from config and init tenant schema + audit.
-
-    Returns the tenant DB connection parts (host, port, database, user) for the
-    the engine self-catalog. All connection details come from the config layer
-    (``control_plane``), which is the only place the environment is read — both
-    planes are driven purely by SQLAlchemy, each by its own URI."""
-    from provisa.core.config_loader import load_control_plane
-
-    cp = load_control_plane(config_path)
-    org_id = cp.resolved_org_id()
-    state.org_id = org_id
-
-    # Tenant plane: schema-scoped to ``org_<id>`` via search_path (the tenant-scope
-    # mechanism). Platform plane (bring_up_platform): global registry + billing,
-    # never org-scoped. Two independent engines, each its own SQLAlchemy URI.
-    tenant_engine = create_engine_from_url(
-        cp.resolved_tenant_url(), pool_size=cp.pool_max, max_overflow=cp.max_overflow
-    )
-    state.tenant_db = Database(tenant_engine, name="org", search_path=f"org_{org_id}")
-    state.admin_db = await bring_up_platform(
-        cp.resolved_platform_url(), pool_size=cp.pool_max, pool_min=cp.pool_min
-    )
-
-    schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
-    if schema_sql_path.exists():
-        await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
-
-    from provisa.audit.query_log import init_audit_schema
-
-    await init_audit_schema(state.tenant_db, org_id=org_id)
-
-    host, port, database, username, _pw = cp.tenant_parts()
-    assert host and database and username, (
-        "control_plane.tenant_url must specify host, database, and user"
-    )
-    return host, port, database, username
-
-
-async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
-    pg_host: str, pg_port: int, pg_database: str, pg_user: str
-) -> None:
-    """Seed provisa-admin, provisa-otel, and __provisa__ source rows; seed meta domain and ops; compute clusters."""
-    assert state.tenant_db is not None
-    from provisa.federation.engine import configured_engine_endpoint
-
-    engine_host_early, engine_port_early = configured_engine_endpoint()
-    async with state.tenant_db.acquire() as _conn:
-        await _conn.execute(
-            """
-            INSERT INTO sources (id, type, host, port, database, username, dialect, description)
-            VALUES ('provisa-admin', 'postgresql', $1, $2, $3, $4, 'postgresql', 'Provisa internal administration database — stores source registrations, table metadata, relationships, roles, and governance configuration')
-            ON CONFLICT (id) DO UPDATE SET description = COALESCE(NULLIF(sources.description, ''), EXCLUDED.description)
-            """,
-            pg_host,
-            pg_port,
-            pg_database,
-            pg_user,
-        )
-        _engine_name = state.federation_engine.name
-        await _conn.execute(
-            """
-            INSERT INTO sources (id, type, host, port, database, username, dialect, description)
-            VALUES ('provisa-otel', 'iceberg', $1, $2, 'otel', 'provisa', $3, 'Observability telemetry store — OpenTelemetry spans and traces collected from Provisa query execution, used for performance monitoring and query analytics')
-            ON CONFLICT (id) DO UPDATE SET description = COALESCE(NULLIF(sources.description, ''), EXCLUDED.description)
-            """,
-            engine_host_early,
-            engine_port_early,
-            _engine_name,
-        )
-        await _conn.execute(
-            """
-            INSERT INTO sources (id, type, description)
-            VALUES ('__provisa__', $1, 'Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products')
-            ON CONFLICT (id) DO NOTHING
-            """,
-            _engine_name,
-        )
-        _pg_conn = cast(asyncpg.Connection, _conn)
-        await _seed_meta_domain(_pg_conn, org_id=state.org_id)
-        await _seed_ops_pg(_pg_conn)
-        await _seed_meta_relationships(_pg_conn)
-        needs_clusters = await _conn.fetchval(
-            "SELECT COUNT(*) FROM registered_tables WHERE l1_cluster IS NULL"
-        )
-        if needs_clusters:
-            await _compute_and_store_clusters(_pg_conn)
 
 
 def _apply_server_and_engine_config(raw_config: dict) -> None:
@@ -665,6 +326,8 @@ def _apply_server_and_engine_config(raw_config: dict) -> None:
     # The engine terminal is only provisioned when it has one (the engine connects a cluster and seeds
     # its otel catalog). A native engine (duckdb/embedded-pg/…) has nothing to connect here —
     # telemetry lands in the dedicated ops store (ops_schema/otlp2sql), so provision() is a no-op.
+    from provisa.api.startup_seed import _OPS_VIEWS
+
     state.federation_engine.provision(
         _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
     )
@@ -834,64 +497,22 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
     state.pg_enum_types = build_enum_types(_enum_registry)
 
 
-async def _resolve_pk_from_sources() -> None:
-    """Second pass — resolve PRIMARY KEYs from each native RDBMS source's information_schema."""
-    assert state.tenant_db is not None
-    _startup_log = logging.getLogger("uvicorn.error")
-    _PK_RDBMS_TYPES = ("postgresql", "mysql", "mariadb", "singlestore", "sqlserver", "redshift")
-    _PK_SOURCE_TYPES = _PK_RDBMS_TYPES + ("sqlite",)
-    async with state.tenant_db.acquire() as _pk_conn:
-        _pk_rows = await _pk_conn.fetch(
-            "SELECT rt.id, rt.source_id, rt.schema_name, rt.table_name, s.type AS source_type "
-            "FROM registered_tables rt JOIN sources s ON s.id = rt.source_id "
-            "WHERE s.type = ANY($1::text[])",
-            list(_PK_SOURCE_TYPES),
-        )
-        for _pk_t in _pk_rows:
-            _sch = _pk_t["schema_name"].replace("'", "''")
-            _tbl = _pk_t["table_name"].replace("'", "''")
-            _pk_sql = (
-                "SELECT kcu.column_name "
-                "FROM information_schema.table_constraints tc "
-                "JOIN information_schema.key_column_usage kcu "
-                "  ON tc.constraint_name = kcu.constraint_name "
-                "  AND tc.table_schema = kcu.table_schema "
-                "WHERE tc.constraint_type = 'PRIMARY KEY' "
-                f"  AND tc.table_schema = '{_sch}' AND tc.table_name = '{_tbl}'"
-            )
-            try:
-                if _pk_t["source_type"] == "sqlite":
-                    _pk_cols = [_r[0] for _r in await _pk_conn.fetch(_pk_sql)]
-                elif state.source_pools.has(_pk_t["source_id"]):
-                    _pk_res = await state.source_pools.execute(_pk_t["source_id"], _pk_sql, None)
-                    _pk_cols = [_row[0] for _row in _pk_res.rows]
-                else:
-                    continue
-            except Exception:
-                _startup_log.warning(
-                    "PK resolve failed for %s.%s.%s",
-                    _pk_t["source_id"],
-                    _pk_t["schema_name"],
-                    _pk_t["table_name"],
-                    exc_info=True,
-                )
-                continue
-            if _pk_cols:
-                await _pk_conn.execute(
-                    "UPDATE table_columns SET is_primary_key = true "
-                    "WHERE table_id = $1 AND column_name = ANY($2::text[])",
-                    _pk_t["id"],
-                    _pk_cols,
-                )
-
-
 async def _load_openapi_specs() -> None:
     """Reload OpenAPI specs from DB into state (survives hot reloads and restarts)."""
     assert state.tenant_db is not None
     async with state.tenant_db.acquire() as conn:
-        openapi_rows = await conn.fetch(
-            "SELECT id, path FROM sources WHERE type = 'openapi' AND path IS NOT NULL AND path != ''"
-        )
+        openapi_rows = [
+            dict(_r._mapping)
+            for _r in (
+                await conn.execute_core(
+                    select(_sources_t.c.id, _sources_t.c.path).where(
+                        _sources_t.c.type == "openapi",
+                        _sources_t.c.path.is_not(None),
+                        _sources_t.c.path != "",
+                    )
+                )
+            ).fetchall()
+        ]
     from provisa.openapi.loader import load_spec
     from provisa.core.secrets import resolve_secrets as _resolve_secrets
 
@@ -1078,9 +699,21 @@ async def _init_ingest_engines() -> None:
 
         _ingest_log = logging.getLogger(__name__)
         async with state.tenant_db.acquire() as _pg_conn:
-            _ingest_sources = await _pg_conn.fetch(
-                "SELECT id, host, port, database, username, dialect FROM sources WHERE type = 'ingest'"
-            )
+            _ingest_sources = [
+                dict(_r._mapping)
+                for _r in (
+                    await _pg_conn.execute_core(
+                        select(
+                            _sources_t.c.id,
+                            _sources_t.c.host,
+                            _sources_t.c.port,
+                            _sources_t.c.database,
+                            _sources_t.c.username,
+                            _sources_t.c.dialect,
+                        ).where(_sources_t.c.type == "ingest")
+                    )
+                ).fetchall()
+            ]
         for _isrc in _ingest_sources:
             _sid = _isrc["id"]
             _pw = _resolve_secrets("")
@@ -1095,16 +728,27 @@ async def _init_ingest_engines() -> None:
             )
             state.ingest_engines[_sid] = _eng
             async with state.tenant_db.acquire() as _pg_conn:
-                _itables = await _pg_conn.fetch(
-                    """
-                    SELECT rt.table_name, tc.column_name, tc.path, tc.data_type
-                    FROM registered_tables rt
-                    JOIN table_columns tc ON tc.table_id = rt.id
-                    WHERE rt.source_id = $1
-                    ORDER BY rt.table_name, tc.id
-                    """,
-                    _sid,
-                )
+                _itables = [
+                    dict(_r._mapping)
+                    for _r in (
+                        await _pg_conn.execute_core(
+                            select(
+                                _registered_tables_t.c.table_name,
+                                _table_columns_t.c.column_name,
+                                _table_columns_t.c.path,
+                                _table_columns_t.c.data_type,
+                            )
+                            .select_from(
+                                _registered_tables_t.join(
+                                    _table_columns_t,
+                                    _table_columns_t.c.table_id == _registered_tables_t.c.id,
+                                )
+                            )
+                            .where(_registered_tables_t.c.source_id == _sid)
+                            .order_by(_registered_tables_t.c.table_name, _table_columns_t.c.id)
+                        )
+                    ).fetchall()
+                ]
             _tbl_map: dict[str, list[dict]] = {}
             for _row in _itables:
                 _tn = _row["table_name"]
@@ -1154,6 +798,12 @@ async def _load_and_build(
     # Bring up the control planes + init schema unconditionally — the DB must be
     # available even before a full config exists (admin UI needs it on first
     # start). Connection details come from the config's control_plane section.
+    from provisa.api.startup_seed import (
+        _init_control_planes,
+        _seed_built_in_sources,
+        _resolve_pk_from_sources,
+    )
+
     pg_host, pg_port, pg_database, pg_user = await _init_control_planes(config_path)
 
     _mark("pg-pool")
@@ -1328,26 +978,52 @@ async def _load_graphql_remote_sources_from_db() -> None:
         return
     try:
         async with state.tenant_db.acquire() as _conn:
-            src_rows = await _conn.fetch(
-                "SELECT id, path FROM sources WHERE type = 'graphql_remote'"
-            )
+            src_rows = [
+                dict(_r._mapping)
+                for _r in (
+                    await _conn.execute_core(
+                        select(_sources_t.c.id, _sources_t.c.path).where(
+                            _sources_t.c.type == "graphql_remote"
+                        )
+                    )
+                ).fetchall()
+            ]
             for src in src_rows:
                 source_id = src["id"]
                 url = src["path"] or ""
                 if source_id in getattr(state, "graphql_remote_sources", {}):
                     continue
-                tbl_rows = await _conn.fetch(
-                    "SELECT id, table_name, domain_id, description FROM registered_tables "
-                    "WHERE source_id = $1 AND schema_name = 'graphql'",
-                    source_id,
-                )
+                tbl_rows = [
+                    dict(_r._mapping)
+                    for _r in (
+                        await _conn.execute_core(
+                            select(
+                                _registered_tables_t.c.id,
+                                _registered_tables_t.c.table_name,
+                                _registered_tables_t.c.domain_id,
+                                _registered_tables_t.c.description,
+                            ).where(
+                                _registered_tables_t.c.source_id == source_id,
+                                _registered_tables_t.c.schema_name == "graphql",
+                            )
+                        )
+                    ).fetchall()
+                ]
                 tables: list[dict] = []
                 for tr in tbl_rows:
-                    col_rows = await _conn.fetch(
-                        "SELECT column_name, data_type, object_fields, native_filter_type "
-                        "FROM table_columns WHERE table_id = $1",
-                        tr["id"],
-                    )
+                    col_rows = [
+                        dict(_r._mapping)
+                        for _r in (
+                            await _conn.execute_core(
+                                select(
+                                    _table_columns_t.c.column_name,
+                                    _table_columns_t.c.data_type,
+                                    _table_columns_t.c.object_fields,
+                                    _table_columns_t.c.native_filter_type,
+                                ).where(_table_columns_t.c.table_id == tr["id"])
+                            )
+                        ).fetchall()
+                    ]
                     columns = []
                     required_args: list[dict] = []
                     for cr in col_rows:
@@ -1515,6 +1191,8 @@ def _synthesize_column_metadata(
     gql_remote_srcs: dict,
 ) -> None:
     """Synthesize ColumnMetadata for ops, provisa-admin, graphql_remote, and govdata tables."""
+    from provisa.api.startup_seed import _OPS_VIEWS
+
     # Ops tables: static columns when the engine introspection returns empty
     _ops_static_cols: dict[str, list[ColumnMetadata]] = {
         tbl_name: [
@@ -1639,11 +1317,23 @@ async def _load_masking_rules(  # REQ-040, REQ-263
     """Load masking rules from table_columns and populate state.masking_rules."""
     from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
 
-    masking_rows = await conn.fetch(
-        "SELECT table_id, column_name, unmasked_to, mask_type, mask_pattern, "
-        "mask_replace, mask_value, mask_precision FROM table_columns "
-        "WHERE mask_type IS NOT NULL"
-    )
+    masking_rows = [
+        dict(_r._mapping)
+        for _r in (
+            await conn.execute_core(
+                select(
+                    _table_columns_t.c.table_id,
+                    _table_columns_t.c.column_name,
+                    _table_columns_t.c.unmasked_to,
+                    _table_columns_t.c.mask_type,
+                    _table_columns_t.c.mask_pattern,
+                    _table_columns_t.c.mask_replace,
+                    _table_columns_t.c.mask_value,
+                    _table_columns_t.c.mask_precision,
+                ).where(_table_columns_t.c.mask_type.is_not(None))
+            )
+        ).fetchall()
+    ]
     for mrow in masking_rows:
         mask_rule = MaskingRule(
             mask_type=MaskType(mrow["mask_type"]),
@@ -1684,7 +1374,14 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     from provisa.discovery.catalog_cache import ensure_table as _ensure_catalog_cache
 
     await _ensure_catalog_cache(state.tenant_db)
-    fn_rows = await conn.fetch("SELECT * FROM tracked_functions ORDER BY name")
+    fn_rows = [
+        dict(_r._mapping)
+        for _r in (
+            await conn.execute_core(
+                select(_tracked_functions_t).order_by(_tracked_functions_t.c.name)
+            )
+        ).fetchall()
+    ]
     # REQ-209: only steward-approved webhooks are exposed and callable. A webhook is approved
     # when its most recent "webhook" creation_request is executed (editing enqueues a fresh
     # pending request, which resets approval). Tracked in creation_requests — no column on
@@ -1864,14 +1561,26 @@ async def _reconcile_live_engine(conn: asyncpg.Connection) -> None:  # REQ-565, 
     await reconcile_live_engine(conn, state.live_engine)
 
 
-async def _register_user_views_in_state(_pg: asyncpg.Connection, raw_config: dict | None) -> None:
+async def _register_user_views_in_state(conn: "Connection", raw_config: dict | None) -> None:
     """Register __provisa__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal."""
     try:
-        _view_rows = await _pg.fetch(
-            "SELECT table_name, view_sql, materialize, mv_refresh_interval, change_signal"
-            " FROM registered_tables"
-            " WHERE source_id = '__provisa__' AND view_sql IS NOT NULL"
-        )
+        _view_rows = [
+            dict(_r._mapping)
+            for _r in (
+                await conn.execute_core(
+                    select(
+                        _registered_tables_t.c.table_name,
+                        _registered_tables_t.c.view_sql,
+                        _registered_tables_t.c.materialize,
+                        _registered_tables_t.c.mv_refresh_interval,
+                        _registered_tables_t.c.change_signal,
+                    ).where(
+                        _registered_tables_t.c.source_id == "__provisa__",
+                        _registered_tables_t.c.view_sql.is_not(None),
+                    )
+                )
+            ).fetchall()
+        ]
         # REQ-199: MVs without an explicit interval fall back to the configured default TTL.
         _mv_default_ttl = int(
             (raw_config or {}).get("materialized_views", {}).get("default_ttl", 300)
@@ -1916,7 +1625,7 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
     if state.live_engine is not None and state.tenant_db is not None:
         try:
             async with state.tenant_db.acquire() as _lc:
-                await _reconcile_live_engine(cast(asyncpg.Connection, _lc))
+                await _reconcile_live_engine(_lc)
         except Exception:
             _rebuild_log.exception("live engine reconcile failed")
 
@@ -1977,16 +1686,36 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             if tbl.get("watermark_column")
         }
         naming_rules = [
-            dict(r) for r in await conn.fetch("SELECT pattern, replacement FROM naming_rules")
+            dict(r._mapping)
+            for r in (
+                await conn.execute_core(
+                    select(_naming_rules_t.c.pattern, _naming_rules_t.c.replacement)
+                )
+            ).fetchall()
         ]
 
         # Load per-table cache TTLs
-        cache_rows = await conn.fetch(
-            "SELECT id, cache_ttl FROM registered_tables WHERE cache_ttl IS NOT NULL"
-        )
+        cache_rows = [
+            dict(r._mapping)
+            for r in (
+                await conn.execute_core(
+                    select(_registered_tables_t.c.id, _registered_tables_t.c.cache_ttl).where(
+                        _registered_tables_t.c.cache_ttl.is_not(None)
+                    )
+                )
+            ).fetchall()
+        ]
         state.table_cache = {r["id"]: r["cache_ttl"] for r in cache_rows}
-        domains = [dict(r) for r in await conn.fetch("SELECT id, description FROM domains")]
-        sources = {r["id"]: dict(r) for r in await conn.fetch("SELECT * FROM sources")}
+        domains = [
+            dict(r._mapping)
+            for r in (
+                await conn.execute_core(select(_domains_t.c.id, _domains_t.c.description))
+            ).fetchall()
+        ]
+        sources = {
+            r._mapping["id"]: dict(r._mapping)
+            for r in (await conn.execute_core(select(_sources_t))).fetchall()
+        }
         # Backfill state.source_types; patch postgresql sources to use the engine catalog names.
         for _sid, _src_dict in list(sources.items()):
             if _sid not in state.source_types and _src_dict.get("type"):
@@ -1994,7 +1723,12 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             if _src_dict.get("type") == "postgresql":
                 sources[_sid] = {**_src_dict, "database": source_to_catalog(_sid)}
         roles = [
-            dict(r) for r in await conn.fetch("SELECT id, capabilities, domain_access FROM roles")
+            dict(r._mapping)
+            for r in (
+                await conn.execute_core(
+                    select(_roles_t.c.id, _roles_t.c.capabilities, _roles_t.c.domain_access)
+                )
+            ).fetchall()
         ]
 
         # Merge PG-stored allowed_domains into state; inject source naming into table dicts.
@@ -2008,11 +1742,13 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
 
         # Ensure ops tables exist before introspection — idempotent, self-healing if boot seeding
         # raced the otel catalog. No-op for a native engine (telemetry lives in the ops store).
+        from provisa.api.startup_seed import _OPS_VIEWS
+
         state.federation_engine.reseed_ops(
             _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
         )
 
-        await _register_user_views_in_state(_pg, raw_config)
+        await _register_user_views_in_state(conn, raw_config)
 
         # Introspect the engine metadata
         col_types_converted: dict[int, list[ColumnMetadata]] = introspect_tables(
@@ -2219,12 +1955,29 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                     continue
                 async with state.tenant_db.acquire() as conn:
                     _sc = cast(asyncpg.Connection, conn)
-                    rows = await _sc.fetch(
-                        """SELECT rt.id, rt.table_name, rt.schema_name, s.path
-                           FROM registered_tables rt
-                           JOIN sources s ON s.id = rt.source_id
-                           WHERE s.type = 'sqlite' AND s.path IS NOT NULL"""
-                    )
+                    rows = [
+                        dict(_r._mapping)
+                        for _r in (
+                            await conn.execute_core(
+                                select(
+                                    _registered_tables_t.c.id,
+                                    _registered_tables_t.c.table_name,
+                                    _registered_tables_t.c.schema_name,
+                                    _sources_t.c.path,
+                                )
+                                .select_from(
+                                    _registered_tables_t.join(
+                                        _sources_t,
+                                        _sources_t.c.id == _registered_tables_t.c.source_id,
+                                    )
+                                )
+                                .where(
+                                    _sources_t.c.type == "sqlite",
+                                    _sources_t.c.path.is_not(None),
+                                )
+                            )
+                        ).fetchall()
+                    ]
                     for r in rows:
                         try:
                             migrated = await migrate_if_stale(
@@ -2362,7 +2115,7 @@ async def _start_servers(_log: logging.Logger) -> None:
         # subscription providers, not the poll engine.
         if state.tenant_db is not None:
             async with state.tenant_db.acquire() as _lc:
-                await _reconcile_live_engine(cast(asyncpg.Connection, _lc))
+                await _reconcile_live_engine(_lc)
     except Exception:
         _log.exception("Live Query Engine startup failed")
 
@@ -2479,16 +2232,33 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
             _demo_pool = state.tenant_db
             if _demo_pool is not None:
                 async with _demo_pool.acquire() as _conn:
-                    await _conn.execute(
-                        """
-                        INSERT INTO sources (id, type, host, port, database, username, dialect, path, description)
-                        VALUES ('graphql-demo', 'graphql_remote', '', 0, '', '', '', $1, 'Animal shelter GraphQL API — staff schedules, breed catalogue, and animal assignment records managed by shelter operations')
-                        ON CONFLICT (id) DO UPDATE SET path = EXCLUDED.path, description = EXCLUDED.description
-                        """,
-                        _graphql_demo_url,
+                    await _conn.upsert(
+                        _sources_t,
+                        {
+                            "id": "graphql-demo",
+                            "type": "graphql_remote",
+                            "host": "",
+                            "port": 0,
+                            "database": "",
+                            "username": "",
+                            "dialect": "",
+                            "path": _graphql_demo_url,
+                            "description": (
+                                "Animal shelter GraphQL API — staff schedules, breed catalogue, "
+                                "and animal assignment records managed by shelter operations"
+                            ),
+                        },
+                        index_elements=["id"],
+                        update_columns=["path", "description"],
                     )
-                    await _conn.execute(
-                        "INSERT INTO domains (id, description) VALUES ('shelter', 'Animal shelter staff and breed management') ON CONFLICT (id) DO NOTHING",
+                    await _conn.upsert(
+                        _domains_t,
+                        {
+                            "id": "shelter",
+                            "description": "Animal shelter staff and breed management",
+                        },
+                        index_elements=["id"],
+                        update_columns=[],
                     )
                 await _upsert_tables_to_semantic_layer(
                     "graphql-demo",

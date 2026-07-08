@@ -19,8 +19,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from sqlalchemy import select
+
+from provisa.core.schema_org import kafka_topics, sources
+
 if TYPE_CHECKING:
     from provisa.api.admin.types import AvailableTableType
+    from provisa.core.database import Connection
     from provisa.executor.pool import SourcePool
 
 _MYSQL_SYSTEM_DBS = {"information_schema", "mysql", "performance_schema", "sys"}
@@ -97,7 +102,7 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     source_id: str,
     source_type: str,
     pool: "SourcePool",
-    config_conn,
+    config_conn: "Connection",
 ) -> list[str] | None:
     """Return schema list via native introspection or None to fall back to the engine."""
     t = source_type.lower()
@@ -124,9 +129,12 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         return ["main"]
 
     if t == "govdata":
-        row = await config_conn.fetchrow("SELECT database FROM sources WHERE id = $1", source_id)
-        if row and row["database"]:
-            return [s.strip().lower() for s in row["database"].split(",") if s.strip()]
+        result = await config_conn.execute_core(
+            select(sources.c.database).where(sources.c.id == source_id)
+        )
+        row = result.fetchone()
+        if row and row[0]:
+            return [s.strip().lower() for s in row[0].split(",") if s.strip()]
         return []
 
     # RDBMS — requires a live driver in source_pools
@@ -215,7 +223,7 @@ async def _native_tables_openapi(  # REQ-314, REQ-316
 async def _native_tables_graphql(  # REQ-307, REQ-308
     source_id: str,
     schema_name: str,
-    config_conn,
+    config_conn: "Connection",
     state,
 ) -> "list[AvailableTableType] | None":
     from provisa.api.admin.types import AvailableTableType
@@ -229,8 +237,11 @@ async def _native_tables_graphql(  # REQ-307, REQ-308
         auth = reg.get("auth") or reg.get("auth_config")
     else:
         # Source not yet in state (no registered tables) — query the physical endpoint directly.
-        row = await config_conn.fetchrow("SELECT path FROM sources WHERE id = $1", source_id)
-        url = (row["path"] or "") if row else ""
+        result = await config_conn.execute_core(
+            select(sources.c.path).where(sources.c.id == source_id)
+        )
+        row = result.fetchone()
+        url = (row[0] or "") if row else ""
         auth = None
     if not url:
         return []
@@ -293,17 +304,17 @@ async def _native_tables_grpc(  # REQ-322, REQ-323, REQ-325
 async def _native_tables_kafka(  # REQ-147
     source_id: str,
     schema_name: str,
-    config_conn,
+    config_conn: "Connection",
 ) -> "list[AvailableTableType] | None":
     from provisa.api.admin.types import AvailableTableType
 
     if schema_name != "kafka":
         return []
     try:
-        rows = await config_conn.fetch(
-            "SELECT topic FROM kafka_topics WHERE source_id = $1", source_id
+        result = await config_conn.execute_core(
+            select(kafka_topics.c.topic).where(kafka_topics.c.source_id == source_id)
         )
-        return [AvailableTableType(name=row["topic"], comment=None) for row in rows]
+        return [AvailableTableType(name=row[0], comment=None) for row in result.fetchall()]
     except Exception:
         return None
 
@@ -311,7 +322,7 @@ async def _native_tables_kafka(  # REQ-147
 async def _native_tables_sqlite(
     source_id: str,
     schema_name: str,
-    config_conn,
+    config_conn: "Connection",
 ) -> "list[AvailableTableType] | None":
     import sqlite3 as _sqlite3
 
@@ -319,10 +330,11 @@ async def _native_tables_sqlite(
 
     if schema_name != "main":
         return []
-    row = await config_conn.fetchrow("SELECT path FROM sources WHERE id = $1", source_id)
-    if not row or not row["path"]:
+    result = await config_conn.execute_core(select(sources.c.path).where(sources.c.id == source_id))
+    row = result.fetchone()
+    if not row or not row[0]:
         return None
-    sq = _sqlite3.connect(row["path"])
+    sq = _sqlite3.connect(row[0])
     try:
         names = [
             r[0]
@@ -338,7 +350,7 @@ async def _native_tables_sqlite(
 async def _native_tables_govdata(
     source_id: str,
     schema_name: str,
-    config_conn,
+    config_conn: "Connection",
 ) -> "list[AvailableTableType] | None":
     import asyncio as _asyncio
     import logging as _logging
@@ -350,8 +362,11 @@ async def _native_tables_govdata(
 
     schema_lower = schema_name.lower()
 
-    cred_row = await config_conn.fetchrow("SELECT username FROM sources WHERE id = $1", source_id)
-    api_key = _resolve_secrets((cred_row["username"] or "") if cred_row else "")
+    result = await config_conn.execute_core(
+        select(sources.c.username).where(sources.c.id == source_id)
+    )
+    cred_row = result.fetchone()
+    api_key = _resolve_secrets((cred_row[0] or "") if cred_row else "")
 
     gds = GovDataSource(
         id=source_id,
@@ -432,7 +447,7 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     source_type: str,
     schema_name: str,
     pool: "SourcePool",
-    config_conn,
+    config_conn: "Connection",
     state,
 ) -> "list[AvailableTableType] | None":
     """Return table list via native introspection or None to fall back to the engine."""

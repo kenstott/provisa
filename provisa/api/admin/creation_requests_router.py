@@ -15,11 +15,16 @@
 from __future__ import annotations
 
 import json
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-import asyncpg
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
+from sqlalchemy import and_, func, select, update
+
+from provisa.core.schema_org import creation_requests
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection, Database
 
 router = APIRouter(prefix="/admin/creation-requests", tags=["admin"])
 
@@ -52,7 +57,7 @@ _REQUIRED_APPROVALS: dict[str, int] = {
 }
 
 
-def _get_pool() -> asyncpg.Pool:
+def _get_pool() -> "Database":
     from provisa.api.app import state
 
     assert state.tenant_db is not None
@@ -120,19 +125,17 @@ async def submit_request(body: SubmitBody, request: Request):  # REQ-063, REQ-43
     required = _REQUIRED_APPROVALS[body.request_type]
     pool = _get_pool()
     async with pool.acquire() as _conn:
-        conn = cast(asyncpg.Connection, _conn)
-        rid = await conn.fetchval(
-            """
-            INSERT INTO creation_requests
-                (request_type, capability, payload, requested_by, required_approvals)
-            VALUES ($1, $2, $3::jsonb, $4, $5)
-            RETURNING id
-            """,
-            body.request_type,
-            body.capability,
-            json.dumps(body.payload),
-            _user_id(request),
-            required,
+        conn = cast("Connection", _conn)
+        rid = await conn.insert_returning(
+            creation_requests,
+            {
+                "request_type": body.request_type,
+                "capability": body.capability,
+                "payload": body.payload,
+                "requested_by": _user_id(request),
+                "required_approvals": required,
+            },
+            returning="id",
         )
     return {"id": rid, "status": "pending"}
 
@@ -148,23 +151,18 @@ async def list_requests(  # REQ-063, REQ-434  # pyright: ignore[reportUnusedPara
     status: str | None = Query(None),
     request_type: str | None = Query(None),
 ):
-    conditions: list[str] = []
-    params: list[object] = []
+    stmt = select(creation_requests)
     if status:
-        params.append(status)
-        conditions.append(f"status = ${len(params)}")
+        stmt = stmt.where(creation_requests.c.status == status)
     if request_type:
-        params.append(request_type)
-        conditions.append(f"request_type = ${len(params)}")
-    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        stmt = stmt.where(creation_requests.c.request_type == request_type)
+    stmt = stmt.order_by(creation_requests.c.created_at.desc())
     pool = _get_pool()
     async with pool.acquire() as _conn:
-        conn = cast(asyncpg.Connection, _conn)
-        rows = await conn.fetch(
-            f"SELECT * FROM creation_requests {where} ORDER BY created_at DESC",
-            *params,
-        )
-    return [_deserialize(dict(r)) for r in rows]
+        conn = cast("Connection", _conn)
+        result = await conn.execute_core(stmt)
+        rows = result.fetchall()
+    return [_deserialize(dict(r._mapping)) for r in rows]
 
 
 @router.post("/{request_id}/approve")
@@ -172,35 +170,48 @@ async def approve_request(request_id: int, request: Request):  # REQ-063, REQ-36
     user_id = _user_id(request)
     pool = _get_pool()
     async with pool.acquire() as _conn:
-        conn = cast(asyncpg.Connection, _conn)
-        row = await conn.fetchrow("SELECT * FROM creation_requests WHERE id = $1", request_id)
+        conn = cast("Connection", _conn)
+        result = await conn.execute_core(
+            select(creation_requests).where(creation_requests.c.id == request_id)
+        )
+        row = result.fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Request not found")
+        row = _deserialize(dict(row._mapping))
         if row["status"] != "pending":
             raise HTTPException(status_code=409, detail=f"Request is already {row['status']}")
         _require_capability(request, row["capability"])
-        entry = json.dumps([{"approver": user_id, "approved_at": "now"}])
-        updated_row = await conn.fetchrow(
-            """
-            UPDATE creation_requests
-            SET approvals = approvals || $2::jsonb
-            WHERE id = $1 AND status = 'pending'
-            RETURNING *
-            """,
-            request_id,
-            entry,
+        new_approvals = list(row.get("approvals") or []) + [
+            {"approver": user_id, "approved_at": "now"}
+        ]
+        upd = await conn.execute_core(
+            update(creation_requests)
+            .where(
+                and_(
+                    creation_requests.c.id == request_id,
+                    creation_requests.c.status == "pending",
+                )
+            )
+            .values(approvals=new_approvals)
         )
-        if updated_row is None:
+        if (upd.rowcount or 0) == 0:
             raise HTTPException(status_code=409, detail="Could not record approval")
-        updated = _deserialize(dict(updated_row))
+        result = await conn.execute_core(
+            select(creation_requests).where(creation_requests.c.id == request_id)
+        )
+        updated = _deserialize(dict(result.fetchone()._mapping))
         approvals = updated.get("approvals") or []
         required = updated.get("required_approvals", 1)
         if len(approvals) >= required:
-            await conn.execute(
-                "UPDATE creation_requests SET status = 'executed', resolved_by = $2, resolved_at = NOW() "
-                "WHERE id = $1 AND status = 'pending'",
-                request_id,
-                user_id,
+            await conn.execute_core(
+                update(creation_requests)
+                .where(
+                    and_(
+                        creation_requests.c.id == request_id,
+                        creation_requests.c.status == "pending",
+                    )
+                )
+                .values(status="executed", resolved_by=user_id, resolved_at=func.now())
             )
             updated["status"] = "executed"
     return updated
@@ -212,10 +223,14 @@ async def reject_request(
 ):  # REQ-063, REQ-366, REQ-434
     pool = _get_pool()
     async with pool.acquire() as _conn:
-        conn = cast(asyncpg.Connection, _conn)
-        row = await conn.fetchrow("SELECT * FROM creation_requests WHERE id = $1", request_id)
+        conn = cast("Connection", _conn)
+        result = await conn.execute_core(
+            select(creation_requests).where(creation_requests.c.id == request_id)
+        )
+        row = result.fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Request not found")
+        row = dict(row._mapping)
         if row["status"] != "pending":
             raise HTTPException(status_code=409, detail=f"Request is already {row['status']}")
         _require_capability(request, row["capability"])
@@ -225,14 +240,22 @@ async def reject_request(
                 status_code=400,
                 detail=f"Invalid reason {body.reason!r} for type {row['request_type']!r}. Valid: {valid}",
             )
-        result = await conn.execute(
-            "UPDATE creation_requests SET status = 'rejected', rejection_reason = $2, "
-            "resolved_by = $3, resolved_at = NOW() WHERE id = $1 AND status = 'pending'",
-            request_id,
-            body.reason,
-            _user_id(request),
+        result = await conn.execute_core(
+            update(creation_requests)
+            .where(
+                and_(
+                    creation_requests.c.id == request_id,
+                    creation_requests.c.status == "pending",
+                )
+            )
+            .values(
+                status="rejected",
+                rejection_reason=body.reason,
+                resolved_by=_user_id(request),
+                resolved_at=func.now(),
+            )
         )
-        if result != "UPDATE 1":
+        if (result.rowcount or 0) != 1:
             raise HTTPException(status_code=409, detail="Could not reject request")
     return {"id": request_id, "status": "rejected", "reason": body.reason}
 
@@ -241,19 +264,27 @@ async def reject_request(
 async def execute_request(request_id: int, request: Request):  # REQ-063, REQ-366, REQ-434
     pool = _get_pool()
     async with pool.acquire() as _conn:
-        conn = cast(asyncpg.Connection, _conn)
-        row = await conn.fetchrow("SELECT * FROM creation_requests WHERE id = $1", request_id)
+        conn = cast("Connection", _conn)
+        result = await conn.execute_core(
+            select(creation_requests).where(creation_requests.c.id == request_id)
+        )
+        row = result.fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Request not found")
+        row = dict(row._mapping)
         if row["status"] != "pending":
             raise HTTPException(status_code=409, detail=f"Request is already {row['status']}")
         _require_capability(request, row["capability"])
-        result = await conn.execute(
-            "UPDATE creation_requests SET status = 'executed', resolved_by = $2, resolved_at = NOW() "
-            "WHERE id = $1 AND status = 'pending'",
-            request_id,
-            _user_id(request),
+        result = await conn.execute_core(
+            update(creation_requests)
+            .where(
+                and_(
+                    creation_requests.c.id == request_id,
+                    creation_requests.c.status == "pending",
+                )
+            )
+            .values(status="executed", resolved_by=_user_id(request), resolved_at=func.now())
         )
-        if result != "UPDATE 1":
+        if (result.rowcount or 0) != 1:
             raise HTTPException(status_code=409, detail="Could not execute request")
     return {"id": request_id, "status": "executed"}

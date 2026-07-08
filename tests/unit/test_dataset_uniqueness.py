@@ -8,6 +8,8 @@ cannot be registered by another (normalized name, per source)."""
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from provisa.api.admin.schema import _dataset_ownership_conflict, _normalize_dataset_name
@@ -19,12 +21,14 @@ class _Conn:
     def __init__(self, rows):
         self._rows = rows
 
-    async def fetch(self, query, *args):
-        return self._rows
+    async def execute_core(self, stmt):
+        res = MagicMock()
+        res.fetchall.return_value = self._rows
+        return res
 
 
 def _rows(*pairs):
-    return [{"domain_id": d, "table_name": t} for d, t in pairs]
+    return [MagicMock(domain_id=d, table_name=t) for d, t in pairs]
 
 
 class TestNormalization:

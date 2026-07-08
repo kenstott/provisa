@@ -7,7 +7,10 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
+from sqlalchemy.sql.dml import Update
 
 from provisa.core.models import Cardinality, Relationship
 from provisa.core.repositories.relationship import mark_relationships_for_review
@@ -18,13 +21,14 @@ pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 class _Conn:
     def __init__(self, rows):
         self._rows = rows
-        self.executed: list[tuple] = []
+        self.executed: list = []  # recorded UPDATE statements
 
-    async def fetch(self, query, *args):
-        return self._rows
-
-    async def execute(self, query, *args):
-        self.executed.append((query, args))
+    async def execute_core(self, stmt):
+        if isinstance(stmt, Update):
+            self.executed.append(stmt)
+        result = MagicMock()
+        result.fetchall.return_value = [MagicMock(_mapping=r) for r in self._rows]
+        return result
 
 
 def _rel(rid, src_tid, tgt_tid, src_col, tgt_col):
@@ -39,8 +43,12 @@ def _rel(rid, src_tid, tgt_tid, src_col, tgt_col):
 
 async def test_model_defaults():
     rel = Relationship(
-        id="r", source_table_id="a", target_table_id="b",
-        source_column="x", target_column="y", cardinality=Cardinality.many_to_one,
+        id="r",
+        source_table_id="a",
+        target_table_id="b",
+        source_column="x",
+        target_column="y",
+        cardinality=Cardinality.many_to_one,
     )
     assert rel.owner is None
     assert rel.version == 1
@@ -49,8 +57,12 @@ async def test_model_defaults():
 
 async def test_model_accepts_owner():
     rel = Relationship(
-        id="r", source_table_id="a", target_table_id="b",
-        source_column="x", target_column="y", cardinality=Cardinality.many_to_one,
+        id="r",
+        source_table_id="a",
+        target_table_id="b",
+        source_column="x",
+        target_column="y",
+        cardinality=Cardinality.many_to_one,
         owner="alice",
     )
     assert rel.owner == "alice"
@@ -62,7 +74,8 @@ class TestMarkForReview:
         conn = _Conn([_rel("r1", 1, 2, "customer_id", "id")])
         flagged = await mark_relationships_for_review(conn, 1, ["id", "amount"])
         assert flagged == ["r1"]
-        assert "needs_review = TRUE" in conn.executed[0][0]
+        sql = str(conn.executed[0].compile(compile_kwargs={"literal_binds": True}))
+        assert "needs_review" in sql
 
     async def test_flags_relationship_with_missing_target_column(self):
         conn = _Conn([_rel("r1", 2, 1, "fk", "old_pk")])  # table 1 is the target

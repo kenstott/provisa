@@ -19,12 +19,17 @@ discover_schema() and returns candidate columns.
 from __future__ import annotations
 
 import logging
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 
+from provisa.core.schema_org import sources
 from provisa.source_adapters.registry import get_adapter
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 
 class _SampleableDriver(Protocol):
@@ -83,7 +88,10 @@ async def discover_source_schema(
 
     # Fetch source record from DB
     async with state.tenant_db.acquire() as conn:
-        row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", source_id)
+        conn = cast("Connection", conn)
+        result = await conn.execute_core(select(sources).where(sources.c.id == source_id))
+        fetched = result.fetchone()
+        row = dict(fetched._mapping) if fetched is not None else None
 
     if row is None:
         raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")

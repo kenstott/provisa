@@ -27,37 +27,46 @@ Schema:
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
+
+from sqlalchemy import func, select
+
+from provisa.core.schema_org import live_query_state
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 # Requirements: REQ-283, REQ-286, REQ-287
 
 log = logging.getLogger(__name__)
 
 
-async def get_watermark(conn, source: str, output_type: str) -> str | None:  # REQ-287
-    row = await conn.fetchrow(
-        "SELECT last_watermark FROM live_query_state WHERE source = $1 AND output_type = $2",
-        source,
-        output_type,
+async def get_watermark(conn: "Connection", source: str, output_type: str) -> str | None:  # REQ-287
+    result = await conn.execute_core(
+        select(live_query_state.c.last_watermark).where(
+            live_query_state.c.source == source,
+            live_query_state.c.output_type == output_type,
+        )
     )
-    return row["last_watermark"] if row else None
+    row = result.fetchone()
+    return row._mapping["last_watermark"] if row is not None else None
 
 
 async def set_watermark(  # REQ-283, REQ-286, REQ-287
-    conn, source: str, output_type: str, value: str, status: str = "active"
+    conn: "Connection", source: str, output_type: str, value: str, status: str = "active"
 ) -> None:
-    await conn.execute(
-        """
-        INSERT INTO live_query_state (source, output_type, last_watermark, last_polled_at, status)
-        VALUES ($1, $2, $3, NOW(), $4)
-        ON CONFLICT (source, output_type)
-        DO UPDATE SET last_watermark = EXCLUDED.last_watermark,
-                      last_polled_at = NOW(),
-                      status = EXCLUDED.status
-        """,
-        source,
-        output_type,
-        value,
-        status,
+    await conn.upsert(
+        live_query_state,
+        {
+            "source": source,
+            "output_type": output_type,
+            "last_watermark": value,
+            "last_polled_at": func.now(),
+            "status": status,
+        },
+        index_elements=["source", "output_type"],
+        update_columns=["last_watermark", "status"],
+        set_extra={"last_polled_at": func.now()},
     )
     log.debug(
         "[LIVE] watermark updated: source=%s output_type=%s value=%s",

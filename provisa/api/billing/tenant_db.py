@@ -3,7 +3,12 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""Billing schema DDL and asyncpg CRUD for tenants and tenant_config."""
+"""Billing schema init + CRUD for tenants and tenant_config.
+
+Goes through the control-plane ``Database`` abstraction only — portable SQLAlchemy metadata for the
+schema and vanilla SQLAlchemy Core for the CRUD — so the platform control plane works on any backend
+(PostgreSQL or SQLite). No engine-specific DDL/functions/ON CONFLICT here.
+"""
 
 # Requirements: REQ-052
 
@@ -12,83 +17,54 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
+from sqlalchemy import func, insert, select, update
+
 from provisa.api.billing.models import Plan, Tenant
+from provisa.core.schema_admin import tenant_config, tenants
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
 
-BILLING_SCHEMA_SQL = """
-CREATE SCHEMA IF NOT EXISTS platform;
-
-CREATE TABLE IF NOT EXISTS platform.tenants (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    kms_key_arn TEXT NOT NULL,
-    stripe_customer_id TEXT,
-    plan TEXT NOT NULL DEFAULT 'trial',
-    source_limit INT NOT NULL DEFAULT 2,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS platform.tenant_config (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES platform.tenants(id) ON DELETE CASCADE,
-    entity_type TEXT NOT NULL,
-    entity_id TEXT NOT NULL,
-    encrypted_dek BYTEA NOT NULL,
-    ciphertext BYTEA NOT NULL,
-    iv BYTEA NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (tenant_id, entity_type, entity_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_tenant_config_lookup ON platform.tenant_config (tenant_id, entity_type);
-"""
-
 
 def _row_to_tenant(row) -> Tenant:
+    d = dict(row._mapping)
     return Tenant(
-        id=row["id"],
-        kms_key_arn=row["kms_key_arn"],
-        stripe_customer_id=row["stripe_customer_id"],
-        plan=Plan(row["plan"]),
-        source_limit=row["source_limit"],
-        created_at=row["created_at"],
+        id=d["id"],
+        kms_key_arn=d["kms_key_arn"],
+        stripe_customer_id=d["stripe_customer_id"],
+        plan=Plan(d["plan"]),
+        source_limit=d["source_limit"],
+        created_at=d["created_at"],
     )
 
 
 async def init_billing_schema(pool: "Database") -> None:  # REQ-592, REQ-696
-    async with pool.acquire() as conn:
-        await conn.execute("SELECT pg_advisory_lock(7338)")
-        try:
-            # multi-statement script (CREATE SCHEMA + tables + index); raw asyncpg
-            # runs it natively, the Database shim auto-routes to the driver.
-            await conn.execute(BILLING_SCHEMA_SQL)
-        finally:
-            await conn.execute("SELECT pg_advisory_unlock(7338)")
+    """Create the SaaS billing tables via portable SQLAlchemy metadata (dialect-appropriate DDL),
+    mirroring ``init_registry_schema``. The ``tenants``/``tenant_config`` Table objects live in the
+    shared registry metadata; no PG-only ``CREATE SCHEMA`` / functions are emitted."""
+    from provisa.core.schema_admin import metadata
+
+    async with pool.engine.begin() as conn:
+        await conn.run_sync(lambda sc: metadata.create_all(sc, tables=[tenants, tenant_config]))
 
 
 async def create_tenant(pool: "Database", kms_key_arn: str) -> Tenant:  # REQ-592
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO platform.tenants (kms_key_arn)
-            VALUES ($1)
-            RETURNING id, kms_key_arn, stripe_customer_id, plan, source_limit, created_at
-            """,
-            kms_key_arn,
+        # id is generated app-side (portable across dialects); plan/source_limit/created_at fall to
+        # the table's server defaults.
+        result = await conn.execute_core(
+            insert(tenants).values(id=uuid.uuid4(), kms_key_arn=kms_key_arn).returning(tenants)
         )
+        row = result.fetchone()
     return _row_to_tenant(row)
 
 
 async def get_tenant(pool: "Database", tenant_id: str) -> Tenant | None:  # REQ-592
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT id, kms_key_arn, stripe_customer_id, plan, source_limit, created_at
-            FROM platform.tenants WHERE id = $1
-            """,
-            uuid.UUID(tenant_id),
+        result = await conn.execute_core(
+            select(tenants).where(tenants.c.id == uuid.UUID(tenant_id))
         )
+        row = result.fetchone()
     if row is None:
         return None
     return _row_to_tenant(row)
@@ -98,13 +74,10 @@ async def get_tenant_by_stripe_customer(  # REQ-592
     pool: "Database", stripe_customer_id: str
 ) -> Tenant | None:
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT id, kms_key_arn, stripe_customer_id, plan, source_limit, created_at
-            FROM platform.tenants WHERE stripe_customer_id = $1
-            """,
-            stripe_customer_id,
+        result = await conn.execute_core(
+            select(tenants).where(tenants.c.stripe_customer_id == stripe_customer_id)
         )
+        row = result.fetchone()
     if row is None:
         return None
     return _row_to_tenant(row)
@@ -114,11 +87,10 @@ async def update_tenant_plan(  # REQ-592
     pool: "Database", tenant_id: str, plan: str, source_limit: int
 ) -> None:
     async with pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE platform.tenants SET plan = $1, source_limit = $2 WHERE id = $3",
-            plan,
-            source_limit,
-            uuid.UUID(tenant_id),
+        await conn.execute_core(
+            update(tenants)
+            .where(tenants.c.id == uuid.UUID(tenant_id))
+            .values(plan=plan, source_limit=source_limit)
         )
 
 
@@ -126,10 +98,10 @@ async def update_tenant_stripe_customer(  # REQ-592
     pool: "Database", tenant_id: str, stripe_customer_id: str
 ) -> None:
     async with pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE platform.tenants SET stripe_customer_id = $1 WHERE id = $2",
-            stripe_customer_id,
-            uuid.UUID(tenant_id),
+        await conn.execute_core(
+            update(tenants)
+            .where(tenants.c.id == uuid.UUID(tenant_id))
+            .values(stripe_customer_id=stripe_customer_id)
         )
 
 
@@ -143,22 +115,20 @@ async def upsert_config_entity(  # REQ-458
     iv: bytes,
 ) -> None:
     async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO platform.tenant_config (tenant_id, entity_type, entity_id, encrypted_dek, ciphertext, iv)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (tenant_id, entity_type, entity_id)
-            DO UPDATE SET encrypted_dek = EXCLUDED.encrypted_dek,
-                          ciphertext = EXCLUDED.ciphertext,
-                          iv = EXCLUDED.iv,
-                          updated_at = now()
-            """,
-            uuid.UUID(tenant_id),
-            entity_type,
-            entity_id,
-            encrypted_dek,
-            ciphertext,
-            iv,
+        await conn.upsert(
+            tenant_config,
+            {
+                "id": uuid.uuid4(),
+                "tenant_id": uuid.UUID(tenant_id),
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "encrypted_dek": encrypted_dek,
+                "ciphertext": ciphertext,
+                "iv": iv,
+            },
+            index_elements=["tenant_id", "entity_type", "entity_id"],
+            update_columns=["encrypted_dek", "ciphertext", "iv"],
+            set_extra={"updated_at": func.now()},
         )
 
 
@@ -166,13 +136,17 @@ async def fetch_config_entities(
     pool: "Database", tenant_id: str, entity_type: str
 ) -> list[dict]:  # REQ-458
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT entity_id, encrypted_dek, ciphertext, iv, updated_at
-            FROM platform.tenant_config
-            WHERE tenant_id = $1 AND entity_type = $2
-            """,
-            uuid.UUID(tenant_id),
-            entity_type,
+        result = await conn.execute_core(
+            select(
+                tenant_config.c.entity_id,
+                tenant_config.c.encrypted_dek,
+                tenant_config.c.ciphertext,
+                tenant_config.c.iv,
+                tenant_config.c.updated_at,
+            ).where(
+                tenant_config.c.tenant_id == uuid.UUID(tenant_id),
+                tenant_config.c.entity_type == entity_type,
+            )
         )
-    return [dict(r) for r in rows]
+        rows = result.fetchall()
+    return [dict(r._mapping) for r in rows]

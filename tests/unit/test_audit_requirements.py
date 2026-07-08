@@ -11,6 +11,17 @@ import hashlib
 from unittest.mock import AsyncMock, MagicMock
 
 
+def _acquire_pool() -> tuple:
+    """A pool whose acquire() yields a mocked Connection (the migrated Core path)."""
+    conn = AsyncMock()
+    acq = MagicMock()
+    acq.__aenter__ = AsyncMock(return_value=conn)
+    acq.__aexit__ = AsyncMock(return_value=False)
+    pool = MagicMock()
+    pool.acquire = MagicMock(return_value=acq)
+    return pool, conn
+
+
 # ---------------------------------------------------------------------------
 # REQ-567: watch_many called with all physical tables from join walk
 # ---------------------------------------------------------------------------
@@ -201,8 +212,7 @@ class TestREQ596AuditLogSchema:
         query_text = "SELECT * FROM sensitive_table"
         expected_hash = hashlib.sha256(query_text.encode()).hexdigest()
 
-        mock_pool = AsyncMock()
-        mock_pool.execute = AsyncMock()
+        mock_pool, conn = _acquire_pool()
 
         import asyncio
 
@@ -226,22 +236,17 @@ class TestREQ596AuditLogSchema:
             )
         )
 
-        call_args = mock_pool.execute.call_args
-        # The positional args after the SQL string are the bound params
-        params = call_args[0][1:]  # (tenant_id, user_id, role_id, query_hash, ...)
-        # query_hash is the 4th positional param (index 3)
-        query_hash_param = params[3]
-        assert query_hash_param == expected_hash
+        params = conn.execute_core.await_args.args[0].compile().params
+        assert params["query_hash"] == expected_hash
         # REQ-689: query text is stored encrypted, so the plaintext never appears
         # anywhere in the DB call — not even in query_text_enc.
-        assert query_text not in str(call_args)
+        assert query_text not in str(params)
 
     def test_log_query_inserts_all_required_fields(self):
         # REQ-596: insert must include all required audit fields
         from provisa.audit.query_log import log_query
 
-        mock_pool = AsyncMock()
-        mock_pool.execute = AsyncMock()
+        mock_pool, conn = _acquire_pool()
 
         import asyncio
 
@@ -262,20 +267,17 @@ class TestREQ596AuditLogSchema:
             )
         )
 
-        mock_pool.execute.assert_awaited_once()
-        call_args = mock_pool.execute.call_args[0]
-        sql = call_args[0]
-        assert "query_audit_log" in sql
-        params = call_args[1:]
-        # tenant_id, user_id, role_id, query_hash, query_text_enc, table_ids, source,
-        # status_code, duration_ms (query_text_enc inserted at index 4 per REQ-689)
-        assert params[0] == "tenant-abc"
-        assert params[1] == "user-xyz"
-        assert params[2] == "analyst"
-        assert params[5] == ["users"]
-        assert params[6] == "graphql"
-        assert params[7] == 200
-        assert params[8] == 15
+        conn.execute_core.assert_awaited_once()
+        stmt = conn.execute_core.await_args.args[0]
+        assert stmt.table.name == "query_audit_log"
+        params = stmt.compile().params
+        assert params["tenant_id"] == "tenant-abc"
+        assert params["user_id"] == "user-xyz"
+        assert params["role_id"] == "analyst"
+        assert params["table_ids"] == ["users"]
+        assert params["source"] == "graphql"
+        assert params["status_code"] == 200
+        assert params["duration_ms"] == 15
 
 
 # ---------------------------------------------------------------------------

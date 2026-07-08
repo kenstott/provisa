@@ -14,8 +14,7 @@
 
 from __future__ import annotations
 
-import asyncpg
-from typing import cast
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from urllib.parse import urlparse
@@ -32,6 +31,8 @@ from provisa.api_source.introspect import (
     introspect_openapi,
 )
 from provisa.api_source.models import ApiSourceType
+from sqlalchemy.exc import IntegrityError
+from provisa.core.schema_org import api_sources
 from provisa.otel_compat import get_tracer as _get_tracer
 
 _tracer = _get_tracer(__name__)
@@ -76,21 +77,17 @@ async def discover(req: DiscoverRequest):  # REQ-307, REQ-314, REQ-322
 
         pool = state.tenant_db
         assert pool is not None
-        async with pool.acquire() as _conn:
-            conn = cast(asyncpg.Connection, _conn)
-            await conn.execute(
-                """
-                INSERT INTO api_sources (id, type, base_url, spec_url)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (id) DO UPDATE
-                    SET type = EXCLUDED.type,
-                        base_url = EXCLUDED.base_url,
-                        spec_url = EXCLUDED.spec_url
-                """,
-                req.source_id,
-                req.type.value,
-                base_url,
-                req.spec_url,
+        async with pool.acquire() as conn:
+            await conn.upsert(
+                api_sources,
+                {
+                    "id": req.source_id,
+                    "type": req.type.value,
+                    "base_url": base_url,
+                    "spec_url": req.spec_url,
+                },
+                index_elements=["id"],
+                update_columns=["type", "base_url", "spec_url"],
             )
             ids = await store_candidates(conn, req.source_id, candidates)
 
@@ -108,7 +105,7 @@ async def get_candidates(source_id: str | None = None):  # REQ-308, REQ-316, REQ
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        candidates = await list_candidates(cast(asyncpg.Connection, _conn), source_id)
+        candidates = await list_candidates(_conn, source_id)
 
     return [c.model_dump() for c in candidates]
 
@@ -126,10 +123,8 @@ async def accept(candidate_id: int, req: AcceptRequest | None = None):  # REQ-31
     assert pool is not None
     try:
         async with pool.acquire() as _conn:
-            endpoint = await accept_candidate(
-                cast(asyncpg.Connection, _conn), candidate_id, overrides
-            )
-    except asyncpg.UniqueViolationError as e:
+            endpoint = await accept_candidate(_conn, candidate_id, overrides)
+    except IntegrityError as e:
         raise HTTPException(status_code=400, detail=f"Endpoint already registered: {e}")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -148,6 +143,6 @@ async def reject(candidate_id: int):  # REQ-311, REQ-321, REQ-329
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        await reject_candidate(cast(asyncpg.Connection, _conn), candidate_id)
+        await reject_candidate(_conn, candidate_id)
 
     return {"status": "rejected"}

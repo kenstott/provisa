@@ -119,7 +119,9 @@ class TestReconcileLiveEngine:
             },
         ]
         conn = AsyncMock()
-        conn.fetch = AsyncMock(return_value=rows)
+        _result = MagicMock()
+        _result.fetchall.return_value = [MagicMock(_mapping=r) for r in rows]
+        conn.execute_core = AsyncMock(return_value=_result)
         engine = MagicMock()
 
         with patch.object(app_mod, "state", SimpleNamespace(live_engine=engine)):
@@ -151,8 +153,6 @@ class TestReconcileLiveEngine:
 class TestRepoUpsertSerializesLive:
     @pytest.mark.asyncio
     async def test_live_persisted_as_json(self):
-        import json
-
         from provisa.core.models import Column, LiveDeliveryConfig, LiveOutputConfig, Table
         from provisa.core.repositories import table as table_repo
 
@@ -172,16 +172,15 @@ class TestRepoUpsertSerializesLive:
             live=live,
         )
         conn = AsyncMock()
-        conn.fetchval = AsyncMock(return_value=1)
-        conn.execute = AsyncMock(return_value=None)
+        conn.upsert_returning = AsyncMock(return_value=1)
+        conn.execute_core = AsyncMock(return_value=None)
 
         await table_repo.upsert(conn, tbl)
 
-        # live is serialized to JSON and passed to the upsert. Assert by value, not position, so
-        # the test survives added columns (change_signal/probe_query now follow live — REQ-929).
-        live_json = json.dumps(live.model_dump())
-        assert live_json in conn.fetchval.call_args.args
-        assert json.loads(live_json) == live.model_dump()
+        # The JSON `live` column takes the Python dict directly (SQLAlchemy serializes per dialect) —
+        # no manual json.dumps. Assert the value passed to the Core upsert.
+        values = conn.upsert_returning.await_args.args[1]
+        assert values["live"] == live.model_dump()
 
     @pytest.mark.asyncio
     async def test_live_none_persists_null(self):
@@ -197,12 +196,13 @@ class TestRepoUpsertSerializesLive:
             live=None,
         )
         conn = AsyncMock()
-        conn.fetchval = AsyncMock(return_value=1)
-        conn.execute = AsyncMock(return_value=None)
+        conn.upsert_returning = AsyncMock(return_value=1)
+        conn.execute_core = AsyncMock(return_value=None)
 
         await table_repo.upsert(conn, tbl)
 
-        assert conn.fetchval.call_args.args[-1] is None
+        values = conn.upsert_returning.await_args.args[1]
+        assert values["live"] is None
 
 
 class TestAdminLiveMapping:

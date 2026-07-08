@@ -17,6 +17,8 @@ import os
 from enum import Enum, auto
 from typing import Any
 
+from sqlalchemy import select
+
 import provisa.bolt.messages as msg
 from provisa.bolt.packstream import pack_message
 from provisa.bolt.websocket import BoltWriter
@@ -619,10 +621,15 @@ async def _impute_relationships(
     label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
     nm_by_label = {nm.label: nm for nm in label_map.nodes.values()}
 
+    from provisa.core.schema_org import node_ids
+
     async with tenant_db.acquire() as conn:
-        pg_rows = await conn.fetch(
-            "SELECT id, label, composite_id FROM node_ids WHERE id = ANY($1::int[])", int_ids
+        result = await conn.execute_core(
+            select(node_ids.c.id, node_ids.c.label, node_ids.c.composite_id).where(
+                node_ids.c.id.in_(int_ids)
+            )
         )
+        pg_rows = [dict(r._mapping) for r in result.fetchall()]
 
     by_label: dict[str, list[Any]] = {}
     for r in pg_rows:

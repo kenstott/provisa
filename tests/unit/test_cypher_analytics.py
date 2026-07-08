@@ -128,7 +128,9 @@ class TestImputeRelationshipsEdgeGeneration:
         state.tenant_db = MagicMock()
 
         conn_ctx = AsyncMock()
-        conn_ctx.fetch = AsyncMock(return_value=pg_rows)
+        exec_result = MagicMock()
+        exec_result.fetchall.return_value = [MagicMock(_mapping=r) for r in pg_rows]
+        conn_ctx.execute_core = AsyncMock(return_value=exec_result)
         acquire_ctx = MagicMock()
         acquire_ctx.__aenter__ = AsyncMock(return_value=conn_ctx)
         acquire_ctx.__aexit__ = AsyncMock(return_value=False)
@@ -336,6 +338,7 @@ class TestImputeRelationshipsEdgeGeneration:
                 side_effect=_fake_execute_call_body,
             ),
             patch("provisa.cypher.assembler.register_node_ids", new_callable=AsyncMock),
+            patch("provisa.cypher.assembler.register_rel_ids", new_callable=AsyncMock),
             patch("provisa.cypher.parser.parse_cypher", return_value=MagicMock()),
             patch("provisa.cypher.assembler.assemble_rows", return_value=assembled_rows),
         ):
@@ -454,10 +457,12 @@ class TestImputeStableIds:
         """register_node_ids upserts to DB and mutates rows in place with returned ids."""
         from provisa.cypher.assembler import register_node_ids
 
-        db_rows = [{"composite_id": "Person|5", "id": 555}]
-
         conn = AsyncMock()
-        conn.fetch = AsyncMock(return_value=db_rows)
+        # No pre-existing node_ids row → JSON merge falls back to new props.
+        existing = MagicMock()
+        existing.fetchone.return_value = None
+        conn.execute_core = AsyncMock(return_value=existing)
+        conn.upsert_returning = AsyncMock(return_value=555)
 
         acquire_ctx = MagicMock()
         acquire_ctx.__aenter__ = AsyncMock(return_value=conn)
@@ -469,7 +474,7 @@ class TestImputeStableIds:
         rows = [{"node": {"id": "Person|5", "label": "Person", "properties": {}}}]
         await register_node_ids(rows, tenant_db)
 
-        conn.fetch.assert_called_once()
+        conn.upsert_returning.assert_called_once()
         assert rows[0]["node"]["id"] == 555
 
     @pytest.mark.asyncio

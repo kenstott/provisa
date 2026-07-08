@@ -17,6 +17,8 @@ import json
 from typing import TYPE_CHECKING, Any
 
 import asyncpg
+from sqlalchemy import insert, select
+from sqlalchemy.schema import CreateSchema
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
@@ -119,15 +121,16 @@ async def _init_schema_portable(pool: "Database") -> None:
     neutral mirror; ``create_all`` emits per-dialect DDL. Org isolation is the
     default schema on these single-tenant backends (no ``search_path``)."""
     from provisa.core import schema_org
+    from provisa.core.schema_org import domains
 
     async with pool.engine.begin() as conn:
         await conn.run_sync(schema_org.metadata.create_all)
     async with pool.acquire() as conn:
         for domain_id, description in _SEED_DOMAINS:
-            exists = await conn.fetchval("SELECT id FROM domains WHERE id = $1", domain_id)
-            if exists is None:
-                await conn.execute(
-                    "INSERT INTO domains (id, description) VALUES ($1, $2)", domain_id, description
+            result = await conn.execute_core(select(domains.c.id).where(domains.c.id == domain_id))
+            if result.fetchone() is None:
+                await conn.execute_core(
+                    insert(domains).values(id=domain_id, description=description)
                 )
 
 
@@ -144,17 +147,16 @@ async def init_schema(pool: "Database", schema_sql: str, org_id: str = "default"
         return
     schema_name = f"org_{org_id}"
     async with pool.acquire() as conn:
-        await conn.execute("SELECT pg_advisory_lock(7337)")
-        try:
-            await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
-            await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}_mv_cache")
+        # This branch is PostgreSQL-only (non-PG returned above); the advisory lock is taken through
+        # the abstraction so no PG-specific lock SQL appears here.
+        async with conn.advisory_lock(7337):
+            await conn.execute_core(CreateSchema(schema_name, if_not_exists=True))
+            await conn.execute_core(CreateSchema(f"{schema_name}_mv_cache", if_not_exists=True))
             await conn.execute(f"SET search_path TO {schema_name}")
             # schema_sql is a multi-statement script (DO $$ blocks). Raw asyncpg
             # runs it natively; the control-plane Database shim auto-detects the
             # multi-statement case and routes to the raw driver.
             await conn.execute(schema_sql)
-        finally:
-            await conn.execute("SELECT pg_advisory_unlock(7337)")
 
 
 async def set_tenant_context(

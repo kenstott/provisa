@@ -17,6 +17,10 @@ from __future__ import annotations
 import hashlib
 from typing import TYPE_CHECKING
 
+from sqlalchemy import insert, select
+
+from provisa.core.schema_org import query_audit_log
+
 if TYPE_CHECKING:
     from provisa.core.database import Database
     from provisa.encryption import EncryptionService
@@ -29,7 +33,7 @@ CREATE TABLE IF NOT EXISTS query_audit_log (
     role_id TEXT NOT NULL,
     query_hash TEXT NOT NULL,
     query_text_enc BYTEA,
-    table_ids TEXT[] NOT NULL DEFAULT '{}',
+    table_ids JSONB NOT NULL DEFAULT '[]',
     source TEXT NOT NULL,
     status_code INT NOT NULL,
     duration_ms INT NOT NULL,
@@ -88,21 +92,21 @@ async def log_query(  # REQ-074, REQ-689
     indexing/dedup. Pass NullEncryption in dev/test; a real provider in production."""
     query_hash = hashlib.sha256(query_text.encode()).hexdigest()
     query_text_enc = encryption.encrypt(query_text.encode("utf-8"))
-    await pool.execute(
-        "INSERT INTO query_audit_log"
-        " (tenant_id, user_id, role_id, query_hash, query_text_enc, table_ids, source,"
-        " status_code, duration_ms)"
-        " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
-        tenant_id,
-        user_id,
-        role_id,
-        query_hash,
-        query_text_enc,
-        table_ids,
-        source,
-        status_code,
-        duration_ms,
-    )
+    async with pool.acquire() as conn:
+        await conn.execute_core(
+            insert(query_audit_log).values(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                role_id=role_id,
+                query_hash=query_hash,
+                # Binary column takes bytes directly; JSON table_ids takes the list directly.
+                query_text_enc=query_text_enc,
+                table_ids=table_ids,
+                source=source,
+                status_code=status_code,
+                duration_ms=duration_ms,
+            )
+        )
 
 
 async def read_query_text(  # REQ-689
@@ -113,7 +117,11 @@ async def read_query_text(  # REQ-689
     Callers MUST gate this on an admin capability; decryption is only meaningful with
     the provider/key that wrote the row. Returns None when the row or column is absent.
     """
-    row = await pool.fetchrow("SELECT query_text_enc FROM query_audit_log WHERE id = $1", audit_id)
-    if row is None or row["query_text_enc"] is None:
+    async with pool.acquire() as conn:
+        result = await conn.execute_core(
+            select(query_audit_log.c.query_text_enc).where(query_audit_log.c.id == audit_id)
+        )
+        row = result.fetchone()
+    if row is None or row[0] is None:
         return None
-    return encryption.decrypt(bytes(row["query_text_enc"])).decode("utf-8")
+    return encryption.decrypt(bytes(row[0])).decode("utf-8")

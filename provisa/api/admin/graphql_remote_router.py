@@ -19,9 +19,16 @@ Endpoints:
 
 from __future__ import annotations
 import logging
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import and_, delete
+
+from provisa.core.schema_org import domains, registered_tables, sources
+
+if TYPE_CHECKING:
+    pass
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/sources/graphql-remote", tags=["admin", "graphql-remote"])
@@ -127,9 +134,13 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
 
     async with tenant_db.acquire() as conn:
         # Delete stale rows (e.g. pre-fix camelCase names) before upserting fresh sql-convention set
-        await conn.execute(
-            "DELETE FROM registered_tables WHERE source_id = $1 AND schema_name = 'graphql'",
-            source_id,
+        await conn.execute_core(
+            delete(registered_tables).where(
+                and_(
+                    registered_tables.c.source_id == source_id,
+                    registered_tables.c.schema_name == "graphql",
+                )
+            )
         )
         for t in tables:
             _sql_name = apply_sql_name(t["name"])
@@ -239,20 +250,28 @@ async def register_graphql_remote_source(  # REQ-307, REQ-308, REQ-311, REQ-312,
     _tenant_db = state.tenant_db
     if _tenant_db is not None:
         async with _tenant_db.acquire() as _conn:
-            await _conn.execute(
-                """
-                INSERT INTO sources (id, type, host, port, database, username, dialect, path, description)
-                VALUES ($1, 'graphql_remote', '', 0, '', '', '', $2, $3)
-                ON CONFLICT (id) DO UPDATE SET path = EXCLUDED.path, description = EXCLUDED.description
-                """,
-                body.source_id,
-                body.url,
-                body.description,
+            await _conn.upsert(
+                sources,
+                {
+                    "id": body.source_id,
+                    "type": "graphql_remote",
+                    "host": "",
+                    "port": 0,
+                    "database": "",
+                    "username": "",
+                    "dialect": "",
+                    "path": body.url,
+                    "description": body.description,
+                },
+                index_elements=["id"],
+                update_columns=["path", "description"],
             )
             if body.domain_id:
-                await _conn.execute(
-                    "INSERT INTO domains (id) VALUES ($1) ON CONFLICT (id) DO NOTHING",
-                    body.domain_id,
+                await _conn.upsert(
+                    domains,
+                    {"id": body.domain_id},
+                    index_elements=["id"],
+                    update_columns=[],
                 )
         await _upsert_tables_to_semantic_layer(
             body.source_id,

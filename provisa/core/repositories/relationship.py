@@ -12,14 +12,20 @@
 
 # Requirements: REQ-018, REQ-019, REQ-020, REQ-399, REQ-400
 
-import asyncpg
+from typing import TYPE_CHECKING
+
+from sqlalchemy import delete as _delete, func, or_, select, update
 
 from provisa.core.models import Relationship
 from provisa.core.repositories import table as table_repo
+from provisa.core.schema_org import relationships, table_columns
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 
 async def upsert(
-    conn: asyncpg.Connection, rel: Relationship
+    conn: "Connection", rel: Relationship
 ) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400
     """Upsert a relationship. Resolves table names to registered_tables IDs."""
     source_tbl = await table_repo.find_by_table_name(conn, rel.source_table_id)
@@ -36,52 +42,48 @@ async def upsert(
             raise ValueError(f"Target table not registered: {rel.target_table_id}")
         target_tbl_id = target_tbl["id"]
 
+    vals = {
+        "id": rel.id,
+        "source_table_id": source_tbl["id"],
+        "target_table_id": target_tbl_id,
+        "source_column": rel.source_column,
+        "target_column": rel.target_column or None,
+        "cardinality": rel.cardinality.value,
+        "materialize": rel.materialize,
+        "refresh_interval": rel.refresh_interval,
+        "target_function_name": rel.target_function_name,
+        "function_arg": rel.function_arg,
+        "alias": rel.alias or None,
+        "graphql_alias": rel.graphql_alias or None,
+        "disable_cypher": rel.disable_cypher,
+        "source_json_key": rel.source_json_key or None,
+        "owner": rel.owner or None,
+        "version": rel.version,
+        "needs_review": rel.needs_review,
+    }
     try:
-        await conn.execute(
-            """
-            INSERT INTO relationships (id, source_table_id, target_table_id,
-                                       source_column, target_column, cardinality,
-                                       materialize, refresh_interval,
-                                       target_function_name, function_arg, alias, graphql_alias,
-                                       disable_cypher, source_json_key,
-                                       owner, version, needs_review)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-            ON CONFLICT (id) DO UPDATE SET
-                source_table_id = EXCLUDED.source_table_id,
-                target_table_id = EXCLUDED.target_table_id,
-                source_column = EXCLUDED.source_column,
-                target_column = EXCLUDED.target_column,
-                cardinality = EXCLUDED.cardinality,
-                materialize = EXCLUDED.materialize,
-                refresh_interval = EXCLUDED.refresh_interval,
-                target_function_name = EXCLUDED.target_function_name,
-                function_arg = EXCLUDED.function_arg,
-                alias = EXCLUDED.alias,
-                graphql_alias = EXCLUDED.graphql_alias,
-                disable_cypher = EXCLUDED.disable_cypher,
-                source_json_key = EXCLUDED.source_json_key,
-                -- REQ-020: bump version on every save, clear the re-review flag (a
-                -- save is an explicit re-review), preserve the original owner.
-                version = relationships.version + 1,
-                needs_review = FALSE
-            """,
-            rel.id,
-            source_tbl["id"],
-            target_tbl_id,
-            rel.source_column,
-            rel.target_column or None,
-            rel.cardinality.value,
-            rel.materialize,
-            rel.refresh_interval,
-            rel.target_function_name,
-            rel.function_arg,
-            rel.alias or None,
-            rel.graphql_alias or None,
-            rel.disable_cypher,
-            rel.source_json_key or None,
-            rel.owner or None,
-            rel.version,
-            rel.needs_review,
+        # REQ-020: on conflict bump version, clear the re-review flag (a save is an explicit
+        # re-review), and preserve the original owner (owner is not in the update set).
+        await conn.upsert(
+            relationships,
+            vals,
+            index_elements=["id"],
+            update_columns=[
+                "source_table_id",
+                "target_table_id",
+                "source_column",
+                "target_column",
+                "cardinality",
+                "materialize",
+                "refresh_interval",
+                "target_function_name",
+                "function_arg",
+                "alias",
+                "graphql_alias",
+                "disable_cypher",
+                "source_json_key",
+            ],
+            set_extra={"version": relationships.c.version + 1, "needs_review": False},
         )
     except Exception as e:
         if "relationships_source_alias_unique" in str(e):
@@ -92,10 +94,13 @@ async def upsert(
 
     # Mark source_column as FK on source table
     if rel.source_column:
-        await conn.execute(
-            "UPDATE table_columns SET is_foreign_key = TRUE WHERE table_id = $1 AND column_name = $2",
-            source_tbl["id"],
-            rel.source_column,
+        await conn.execute_core(
+            update(table_columns)
+            .where(
+                table_columns.c.table_id == source_tbl["id"],
+                table_columns.c.column_name == rel.source_column,
+            )
+            .values(is_foreign_key=True)
         )
 
     # Mark target_column as PK (or AK if another PK already exists) on target table.
@@ -104,42 +109,54 @@ async def upsert(
     from provisa.core.models import Cardinality
 
     if target_tbl_id and rel.target_column and rel.cardinality == Cardinality.many_to_one:
-        conflicting_pk = await conn.fetchval(
-            "SELECT COUNT(*) FROM table_columns WHERE table_id = $1 AND is_primary_key = TRUE AND column_name != $2",
-            target_tbl_id,
-            rel.target_column,
+        result = await conn.execute_core(
+            select(func.count())
+            .select_from(table_columns)
+            .where(
+                table_columns.c.table_id == target_tbl_id,
+                table_columns.c.is_primary_key == True,  # noqa: E712
+                table_columns.c.column_name != rel.target_column,
+            )
         )
+        conflicting_pk = result.scalar()
         if conflicting_pk:
-            await conn.execute(
-                "UPDATE table_columns SET is_alternate_key = TRUE WHERE table_id = $1 AND column_name = $2",
-                target_tbl_id,
-                rel.target_column,
+            await conn.execute_core(
+                update(table_columns)
+                .where(
+                    table_columns.c.table_id == target_tbl_id,
+                    table_columns.c.column_name == rel.target_column,
+                )
+                .values(is_alternate_key=True)
             )
         else:
-            await conn.execute(
-                "UPDATE table_columns SET is_primary_key = TRUE WHERE table_id = $1 AND column_name = $2",
-                target_tbl_id,
-                rel.target_column,
+            await conn.execute_core(
+                update(table_columns)
+                .where(
+                    table_columns.c.table_id == target_tbl_id,
+                    table_columns.c.column_name == rel.target_column,
+                )
+                .values(is_primary_key=True)
             )
 
 
-async def get(conn: asyncpg.Connection, rel_id: str) -> dict | None:  # REQ-018, REQ-019
-    row = await conn.fetchrow("SELECT * FROM relationships WHERE id = $1", rel_id)
-    return dict(row) if row else None
+async def get(conn: "Connection", rel_id: str) -> dict | None:  # REQ-018, REQ-019
+    result = await conn.execute_core(select(relationships).where(relationships.c.id == rel_id))
+    row = result.fetchone()
+    return dict(row._mapping) if row is not None else None
 
 
-async def list_all(conn: asyncpg.Connection) -> list[dict]:  # REQ-018, REQ-019
-    rows = await conn.fetch("SELECT * FROM relationships ORDER BY id")
-    return [dict(r) for r in rows]
+async def list_all(conn: "Connection") -> list[dict]:  # REQ-018, REQ-019
+    result = await conn.execute_core(select(relationships).order_by(relationships.c.id))
+    return [dict(r._mapping) for r in result.fetchall()]
 
 
-async def delete(conn: asyncpg.Connection, rel_id: str) -> bool:  # REQ-019
-    result = await conn.execute("DELETE FROM relationships WHERE id = $1", rel_id)
-    return result == "DELETE 1"
+async def delete(conn: "Connection", rel_id: str) -> bool:  # REQ-019
+    result = await conn.execute_core(_delete(relationships).where(relationships.c.id == rel_id))
+    return (result.rowcount or 0) > 0
 
 
 async def mark_relationships_for_review(  # REQ-020
-    conn: asyncpg.Connection, table_id: int, valid_columns: list[str]
+    conn: "Connection", table_id: int, valid_columns: list[str]
 ) -> list[str]:
     """Flag relationships whose join column on ``table_id`` is no longer present (REQ-020).
 
@@ -147,29 +164,39 @@ async def mark_relationships_for_review(  # REQ-020
     column on this table is absent from ``valid_columns`` is flagged ``needs_review``
     (and its version bumped). Returns the flagged relationship ids.
     """
-    rows = await conn.fetch(
-        "SELECT id, source_table_id, target_table_id, source_column, target_column "
-        "FROM relationships WHERE source_table_id = $1 OR target_table_id = $1",
-        table_id,
+    result = await conn.execute_core(
+        select(
+            relationships.c.id,
+            relationships.c.source_table_id,
+            relationships.c.target_table_id,
+            relationships.c.source_column,
+            relationships.c.target_column,
+        ).where(
+            or_(
+                relationships.c.source_table_id == table_id,
+                relationships.c.target_table_id == table_id,
+            )
+        )
     )
+    rows = result.fetchall()
     valid = set(valid_columns)
     flagged: list[str] = []
     for r in rows:
         stale = (
-            r["source_table_id"] == table_id
-            and r["source_column"]
-            and r["source_column"] not in valid
+            r._mapping["source_table_id"] == table_id
+            and r._mapping["source_column"]
+            and r._mapping["source_column"] not in valid
         ) or (
-            r["target_table_id"] == table_id
-            and r["target_column"]
-            and r["target_column"] not in valid
+            r._mapping["target_table_id"] == table_id
+            and r._mapping["target_column"]
+            and r._mapping["target_column"] not in valid
         )
         if stale:
-            flagged.append(r["id"])
+            flagged.append(r._mapping["id"])
     if flagged:
-        await conn.execute(
-            "UPDATE relationships SET needs_review = TRUE, version = version + 1 "
-            "WHERE id = ANY($1)",
-            flagged,
+        await conn.execute_core(
+            update(relationships)
+            .where(relationships.c.id.in_(flagged))
+            .values(needs_review=True, version=relationships.c.version + 1)
         )
     return flagged

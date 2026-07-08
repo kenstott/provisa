@@ -83,15 +83,14 @@ def _make_mock_conn(rows: list[dict]) -> AsyncMock:
     records = []
     for row in rows:
         rec = MagicMock()
-        rec.__iter__ = MagicMock(return_value=iter(row.items()))
-        rec.keys = MagicMock(return_value=list(row.keys()))
-        rec.__getitem__ = MagicMock(side_effect=row.__getitem__)
-        # Make dict(rec) work by supporting mapping protocol
-        rec.items = MagicMock(return_value=row.items())
+        rec._mapping = dict(row)
         records.append(rec)
 
+    result = MagicMock()
+    result.fetchall = MagicMock(return_value=records)
+
     conn = AsyncMock()
-    conn.fetch = AsyncMock(return_value=records)
+    conn.execute_core = AsyncMock(return_value=result)
     return conn
 
 

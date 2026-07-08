@@ -8,92 +8,112 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Repository for relationship_candidates table."""
+"""Repository for relationship_candidates table — via SQLAlchemy Core (dialect-portable)."""
 
 # Requirements: REQ-018, REQ-019, REQ-020, REQ-167, REQ-612
 
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
-import asyncpg
+from sqlalchemy import delete as _delete, insert, select, update
 
+from provisa.core.schema_org import relationship_candidates, relationships
 from provisa.discovery.analyzer import RelationshipCandidate
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 
 async def store_candidates(
-    conn: asyncpg.Connection,
+    conn: "Connection",
     candidates: list[RelationshipCandidate],
     scope: str,
 ) -> list[int]:  # REQ-018, REQ-167, REQ-612
     """Store candidates with dedup via ON CONFLICT. Returns list of IDs."""
     ids: list[int] = []
     for c in candidates:
-        row_id = await conn.fetchval(
-            """
-            INSERT INTO relationship_candidates
-                (source_table_id, target_table_id, source_column, target_column,
-                 cardinality, confidence, reasoning, suggested_name, scope)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (source_table_id, source_column, target_table_id, target_column)
-            DO UPDATE SET
-                cardinality = EXCLUDED.cardinality,
-                confidence = EXCLUDED.confidence,
-                reasoning = EXCLUDED.reasoning,
-                suggested_name = EXCLUDED.suggested_name,
-                scope = EXCLUDED.scope,
-                status = 'suggested'
-            RETURNING id
-            """,
-            c.source_table_id,
-            c.target_table_id,
-            c.source_column,
-            c.target_column,
-            c.cardinality,
-            c.confidence,
-            c.reasoning,
-            c.suggested_name or None,
-            scope,
+        row_id = await conn.upsert_returning(
+            relationship_candidates,
+            {
+                "source_table_id": c.source_table_id,
+                "target_table_id": c.target_table_id,
+                "source_column": c.source_column,
+                "target_column": c.target_column,
+                "cardinality": c.cardinality,
+                "confidence": c.confidence,
+                "reasoning": c.reasoning,
+                "suggested_name": c.suggested_name or None,
+                "scope": scope,
+            },
+            index_elements=[
+                "source_table_id",
+                "source_column",
+                "target_table_id",
+                "target_column",
+            ],
+            returning="id",
+            update_columns=[
+                "cardinality",
+                "confidence",
+                "reasoning",
+                "suggested_name",
+                "scope",
+            ],
+            set_extra={"status": "suggested"},
         )
         assert row_id is not None
         ids.append(row_id)
     return ids
 
 
-async def list_pending(conn: asyncpg.Connection) -> list[dict]:  # REQ-018, REQ-167
+async def list_pending(conn: "Connection") -> list[dict]:  # REQ-018, REQ-167
     """List all candidates with status='suggested'."""
-    rows = await conn.fetch(
-        "SELECT * FROM relationship_candidates WHERE status = 'suggested' ORDER BY confidence DESC"
+    result = await conn.execute_core(
+        select(relationship_candidates)
+        .where(relationship_candidates.c.status == "suggested")
+        .order_by(relationship_candidates.c.confidence.desc())
     )
-    return [dict(r) for r in rows]
+    return [dict(r._mapping) for r in result.fetchall()]
 
 
 async def accept(
-    conn: asyncpg.Connection, candidate_id: int, rel_id: str | None = None
+    conn: "Connection", candidate_id: int, rel_id: str | None = None
 ) -> dict:  # REQ-019, REQ-020
     """Accept a candidate: mark accepted and create a relationship."""
-    row = await conn.fetchrow(
-        "UPDATE relationship_candidates SET status = 'accepted' "
-        "WHERE id = $1 AND status = 'suggested' RETURNING *",
-        candidate_id,
-    )
-    if row is None:
-        raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")
+    async with conn.transaction():
+        result = await conn.execute_core(
+            select(relationship_candidates).where(
+                relationship_candidates.c.id == candidate_id,
+                relationship_candidates.c.status == "suggested",
+            )
+        )
+        found = result.fetchone()
+        if found is None:
+            raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")
+        row = dict(found._mapping)
 
-    rel_id = rel_id or row.get("suggested_name") or f"disc-{uuid.uuid4().hex[:12]}"
-    await conn.execute(
-        """
-        INSERT INTO relationships (id, source_table_id, target_table_id,
-                                   source_column, target_column, cardinality)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        """,
-        rel_id,
-        row["source_table_id"],
-        row["target_table_id"],
-        row["source_column"],
-        row["target_column"],
-        row["cardinality"],
-    )
+        await conn.execute_core(
+            update(relationship_candidates)
+            .where(
+                relationship_candidates.c.id == candidate_id,
+                relationship_candidates.c.status == "suggested",
+            )
+            .values(status="accepted")
+        )
+
+        rel_id = rel_id or row.get("suggested_name") or f"disc-{uuid.uuid4().hex[:12]}"
+        await conn.execute_core(
+            insert(relationships).values(
+                id=rel_id,
+                source_table_id=row["source_table_id"],
+                target_table_id=row["target_table_id"],
+                source_column=row["source_column"],
+                target_column=row["target_column"],
+                cardinality=row["cardinality"],
+            )
+        )
 
     return {
         "relationship_id": rel_id,
@@ -105,19 +125,23 @@ async def accept(
     }
 
 
-async def clear_rejections(conn: asyncpg.Connection) -> int:  # REQ-167
+async def clear_rejections(conn: "Connection") -> int:  # REQ-167
     """Delete all rejected candidates. Returns count deleted."""
-    result = await conn.execute("DELETE FROM relationship_candidates WHERE status = 'rejected'")
-    return int(result.split()[-1])
-
-
-async def reject(conn: asyncpg.Connection, candidate_id: int, reason: str) -> None:  # REQ-167
-    """Reject a candidate with a reason."""
-    result = await conn.execute(
-        "UPDATE relationship_candidates SET status = 'rejected', rejection_reason = $2 "
-        "WHERE id = $1 AND status = 'suggested'",
-        candidate_id,
-        reason,
+    result = await conn.execute_core(
+        _delete(relationship_candidates).where(relationship_candidates.c.status == "rejected")
     )
-    if result == "UPDATE 0":
+    return result.rowcount or 0
+
+
+async def reject(conn: "Connection", candidate_id: int, reason: str) -> None:  # REQ-167
+    """Reject a candidate with a reason."""
+    result = await conn.execute_core(
+        update(relationship_candidates)
+        .where(
+            relationship_candidates.c.id == candidate_id,
+            relationship_candidates.c.status == "suggested",
+        )
+        .values(status="rejected", rejection_reason=reason)
+    )
+    if (result.rowcount or 0) == 0:
         raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")

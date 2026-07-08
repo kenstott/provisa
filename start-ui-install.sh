@@ -14,7 +14,7 @@ for arg in "$@"; do
   case "$arg" in
     --keep-docker) KEEP_DOCKER=true ;;
     --fast) FAST=true; KEEP_DOCKER=true ;;
-    --demo) DEMO=true ;;
+    --demo) DEMO=true; NATIVE=true ;;  # demo is always native: no Docker, in-process engine + SQLite control plane
     --native) NATIVE=true ;;
     --idp=*) IDP="${arg#--idp=}" ;;
     *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--demo] [--native] [--idp=basic|firebase]"; exit 1 ;;
@@ -151,6 +151,9 @@ if [ "$DEMO" = true ]; then
   COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.observability.yml"
   echo "Resetting volumes for pristine demo environment..."
   docker compose $COMPOSE_FILES down -v 2>/dev/null || true
+  # The demo control plane is file-based SQLite — wipe it so every start is pristine (session-created
+  # sources/tables/views are cleared and rebuilt from the config). Data files are regenerated below.
+  rm -f "${PROVISA_HOME:-$HOME/.provisa}/demo/tenant.db" "${PROVISA_HOME:-$HOME/.provisa}/demo/platform.db"
   # Ensure demo files exist (SQLite inquiries DB, etc.)
   if [ -f "$SCRIPT_DIR/demo/files/create_demo_files.py" ]; then
     echo "Generating demo files..."
@@ -356,7 +359,19 @@ fi
 # embedded instance's unix socket. Defaults (Docker mode) are localhost:5432.
 CP_PG_HOST=localhost
 CP_PG_PORT=5432
-if [ "$NATIVE" = true ]; then
+# Human-readable control-plane store, reported on startup.
+CP_STORE_DESC=""
+if [ "$DEMO" = true ]; then
+  # Demo control plane: file-based SQLite (no pgserver) — instant, zero external process, and reset
+  # by simply wiping the files above. The SQLAlchemy control-plane abstraction runs the same code
+  # path on SQLite (REQ-837). Tenant + platform registries share one directory (single-tenant).
+  CP_SQLITE_DIR="${PROVISA_HOME:-$HOME/.provisa}/demo"
+  mkdir -p "$CP_SQLITE_DIR"
+  export TENANT_DATABASE_URL="sqlite+aiosqlite:///$CP_SQLITE_DIR/tenant.db"
+  export PLATFORM_DATABASE_URL="sqlite+aiosqlite:///$CP_SQLITE_DIR/platform.db"
+  CP_STORE_DESC="SQLite files under $CP_SQLITE_DIR (platform.db + tenant.db)"
+  echo "Control plane: $CP_STORE_DESC"
+elif [ "$NATIVE" = true ]; then
   CP_PG_DIR="${PROVISA_HOME:-$HOME/.provisa}/control-pg"
   echo -n "Booting embedded control-plane PostgreSQL ($CP_PG_DIR)... "
   if _CP_OUT="$("$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg start "$CP_PG_DIR" --init-sql db/init.sql 2>>"$LOG_DIR/control-plane-pg.log")"; then
@@ -368,11 +383,14 @@ if [ "$NATIVE" = true ]; then
     # and platform planes share this one embedded database (single-tenant desktop).
     export TENANT_DATABASE_URL="postgresql+asyncpg://provisa:provisa@/provisa?host=${CP_PG_HOST}"
     export PLATFORM_DATABASE_URL="postgresql+asyncpg://provisa:provisa@/provisa?host=${CP_PG_HOST}"
+    CP_STORE_DESC="embedded PostgreSQL (pgserver, socket $CP_PG_HOST:$CP_PG_PORT)"
   else
     echo "FAILED — see $LOG_DIR/control-plane-pg.log"
     echo "Native bring-up requires pgserver (Python <=3.12). Aborting."
     exit 1
   fi
+else
+  CP_STORE_DESC="PostgreSQL container (localhost:${CP_PG_PORT})"
 fi
 
 BACKEND_PID=""
@@ -553,6 +571,7 @@ if [ "$DEMO" = true ]; then
   echo "Provisa running (demo mode):"
   echo "  Backend: http://localhost:8000  (logs: tail -f $LOG_DIR/backend.log)"
   echo "  UI:      http://localhost:3000"
+  echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
   echo ""
@@ -565,6 +584,7 @@ else
   echo "Provisa running (install mode):"
   echo "  Backend: http://localhost:8000  (logs: tail -f $LOG_DIR/backend.log)"
   echo "  UI:      http://localhost:3000"
+  echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
   echo ""

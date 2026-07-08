@@ -126,7 +126,9 @@ class TestDiscoverSourceSchemaMongoIssue13:
         row = _make_source_row(source_id)
 
         mock_conn = AsyncMock()
-        mock_conn.fetchrow = AsyncMock(return_value=row)
+        _res = MagicMock()
+        _res.fetchone.return_value = MagicMock(_mapping=row)
+        mock_conn.execute_core = AsyncMock(return_value=_res)
 
         mock_pool_ctx = AsyncMock()
         mock_pool_ctx.__aenter__ = AsyncMock(return_value=mock_conn)
@@ -165,7 +167,9 @@ class TestDiscoverSourceSchemaMongoIssue13:
         sample_docs = [{"title": "Book", "year": 2020}]
 
         mock_conn = AsyncMock()
-        mock_conn.fetchrow = AsyncMock(return_value=row)
+        _res = MagicMock()
+        _res.fetchone.return_value = MagicMock(_mapping=row)
+        mock_conn.execute_core = AsyncMock(return_value=_res)
 
         mock_pool_ctx = AsyncMock()
         mock_pool_ctx.__aenter__ = AsyncMock(return_value=mock_conn)

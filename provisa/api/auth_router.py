@@ -14,8 +14,17 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
+from sqlalchemy import func, insert, select, update
+
+from provisa.core.schema_admin import local_users, org_invites, orgs, user_org_memberships
+from provisa.core.schema_org import roles
+
+if TYPE_CHECKING:
+    pass
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -30,8 +39,9 @@ async def me(request: Request):
     tenant_db = state.tenant_db
     assert tenant_db is not None
     async with tenant_db.acquire() as conn:
-        role_rows = await conn.fetch("SELECT id FROM roles")
-    all_role_ids = {r["id"] for r in role_rows}
+        result = await conn.execute_core(select(roles.c.id))
+        role_rows = result.fetchall()
+    all_role_ids = {r[0] for r in role_rows}
 
     # Dev/no-auth mode is keyed on "no auth provider configured" (auth_config is None) — NOT on the
     # username. Unsecured mode honors X-Provisa-Role, so the username IS the selected role (not
@@ -58,11 +68,14 @@ async def me(request: Request):
     admin_db = state.admin_db
     assert admin_db is not None
     async with admin_db.acquire() as conn:
-        org_rows = await conn.fetch(
-            "SELECT m.org_id, o.name as org_name FROM user_org_memberships m "
-            "JOIN orgs o ON o.id = m.org_id WHERE m.user_id = $1",
-            identity.user_id,
+        result = await conn.execute_core(
+            select(user_org_memberships.c.org_id, orgs.c.name.label("org_name"))
+            .select_from(
+                user_org_memberships.join(orgs, orgs.c.id == user_org_memberships.c.org_id)
+            )
+            .where(user_org_memberships.c.user_id == identity.user_id)
         )
+        org_rows = [dict(r._mapping) for r in result.fetchall()]
 
     # The auth middleware always resolves active_org_id for an authenticated identity;
     # a missing value is a wiring bug, not a reason to silently grant the 'root' org.
@@ -108,15 +121,20 @@ async def get_invite(token: str):  # REQ-516
     admin_db = state.admin_db
     assert admin_db is not None
     async with admin_db.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT i.token, i.org_id, o.name as org_name, i.role_id, i.expires_at, i.used_at
-            FROM org_invites i
-            JOIN orgs o ON o.id = i.org_id
-            WHERE i.token = $1
-            """,
-            token,
+        result = await conn.execute_core(
+            select(
+                org_invites.c.token,
+                org_invites.c.org_id,
+                orgs.c.name.label("org_name"),
+                org_invites.c.role_id,
+                org_invites.c.expires_at,
+                org_invites.c.used_at,
+            )
+            .select_from(org_invites.join(orgs, orgs.c.id == org_invites.c.org_id))
+            .where(org_invites.c.token == token)
         )
+        fetched = result.fetchone()
+    row = dict(fetched._mapping) if fetched is not None else None
     if row is None:
         from fastapi import HTTPException
 
@@ -180,21 +198,23 @@ async def register(body: RegisterRequest):
     admin_db = state.admin_db
     assert admin_db is not None
     async with admin_db.acquire() as conn:
-        existing = await conn.fetchrow(
-            "SELECT id FROM local_users WHERE username = $1", body.username
+        result = await conn.execute_core(
+            select(local_users.c.id).where(local_users.c.username == body.username)
         )
+        existing = result.fetchone()
         if existing:
             from fastapi import HTTPException
 
             raise HTTPException(status_code=409, detail="Username already exists")
-        await conn.execute(
-            "INSERT INTO local_users (id, username, password_hash, email, display_name, is_active) "
-            "VALUES ($1, $2, $3, $4, $5, true)",
-            user_id,
-            body.username,
-            password_hash,
-            body.email,
-            body.display_name,
+        await conn.execute_core(
+            insert(local_users).values(
+                id=user_id,
+                username=body.username,
+                password_hash=password_hash,
+                email=body.email,
+                display_name=body.display_name,
+                is_active=True,
+            )
         )
         if body.invite_token:
             import datetime
@@ -202,20 +222,27 @@ async def register(body: RegisterRequest):
             from fastapi import HTTPException
 
             now = datetime.datetime.now(tz=timezone.utc)
-            invite = await conn.fetchrow(
-                "SELECT org_id, role_id, expires_at, used_at FROM org_invites WHERE token = $1",
-                body.invite_token,
+            result = await conn.execute_core(
+                select(
+                    org_invites.c.org_id,
+                    org_invites.c.role_id,
+                    org_invites.c.expires_at,
+                    org_invites.c.used_at,
+                ).where(org_invites.c.token == body.invite_token)
             )
+            fetched = result.fetchone()
+            invite = dict(fetched._mapping) if fetched is not None else None
             if invite is None or invite["used_at"] is not None or invite["expires_at"] < now:
                 raise HTTPException(status_code=400, detail="Invalid or expired invite token")
-            await conn.execute(
-                "INSERT INTO user_org_memberships (user_id, org_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                user_id,
-                invite["org_id"],
+            await conn.upsert(
+                user_org_memberships,
+                {"user_id": user_id, "org_id": invite["org_id"]},
+                index_elements=["user_id", "org_id"],
+                update_columns=[],
             )
-            await conn.execute(
-                "UPDATE org_invites SET used_at = NOW(), used_by = $1 WHERE token = $2",
-                user_id,
-                body.invite_token,
+            await conn.execute_core(
+                update(org_invites)
+                .where(org_invites.c.token == body.invite_token)
+                .values(used_at=func.now(), used_by=user_id)
             )
     return {"user_id": user_id, "username": body.username}

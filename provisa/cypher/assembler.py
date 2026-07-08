@@ -22,6 +22,9 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy import select
+
+from provisa.core.schema_org import node_ids, rel_ids
 from provisa.cypher.translator import GraphVarKind
 
 
@@ -362,8 +365,6 @@ async def register_rel_ids(serializable_rows: list[dict], tenant_db: Any) -> Non
     Mutates serializable_rows in place.  No-op if tenant_db is None or no edges found.
     Mirrors register_node_ids so relationships get durable IDs the same way nodes do.
     """
-    import json as _json
-
     if tenant_db is None:
         return
 
@@ -375,29 +376,24 @@ async def register_rel_ids(serializable_rows: list[dict], tenant_db: Any) -> Non
     if not edges:
         return
 
-    composite_ids = list(edges.keys())
-    rel_types = [edges[c][0] for c in composite_ids]
-    props_json = [
-        _json.dumps({k: v for k, v in edges[c][1].items() if v is not None}) for c in composite_ids
-    ]
-
+    rel_map: dict[str, int] = {}
     async with tenant_db.acquire() as conn:
-        db_rows = await conn.fetch(
-            """
-            INSERT INTO rel_ids (composite_id, rel_type, properties)
-            SELECT t.cid, t.rt, t.props::jsonb
-            FROM UNNEST(CAST($1 AS text[]), CAST($2 AS text[]), CAST($3 AS text[])) AS t(cid, rt, props)
-            ON CONFLICT (composite_id) DO UPDATE
-                SET rel_type   = EXCLUDED.rel_type,
-                    properties = rel_ids.properties || EXCLUDED.properties
-            RETURNING id, composite_id
-            """,
-            composite_ids,
-            rel_types,
-            props_json,
-        )
-
-    rel_map: dict[str, int] = {row["composite_id"]: row["id"] for row in db_rows}
+        for cid, (rel_type, props) in edges.items():
+            new_props = {k: v for k, v in props.items() if v is not None}
+            # Conflict SET merged existing || excluded; resolve the JSON merge in Python.
+            existing = await conn.execute_core(
+                select(rel_ids.c.properties).where(rel_ids.c.composite_id == cid)
+            )
+            erow = existing.fetchone()
+            merged = {**(erow[0] or {}), **new_props} if erow is not None else new_props
+            rid = await conn.upsert_returning(
+                rel_ids,
+                {"composite_id": cid, "rel_type": rel_type, "properties": merged},
+                index_elements=["composite_id"],
+                returning="id",
+                update_columns=["rel_type", "properties"],
+            )
+            rel_map[cid] = rid
 
     for i, row in enumerate(serializable_rows):
         serializable_rows[i] = {k: _apply_rel_id_map(v, rel_map) for k, v in row.items()}
@@ -408,8 +404,6 @@ async def register_node_ids(serializable_rows: list[dict], tenant_db: Any) -> No
 
     Mutates serializable_rows in place.  No-op if tenant_db is None or no nodes found.
     """
-    import json as _json
-
     if tenant_db is None:
         return
 
@@ -421,29 +415,24 @@ async def register_node_ids(serializable_rows: list[dict], tenant_db: Any) -> No
     if not nodes:
         return
 
-    composite_ids = list(nodes.keys())
-    labels = [nodes[c][0] for c in composite_ids]
-    props_json = [
-        _json.dumps({k: v for k, v in nodes[c][1].items() if v is not None}) for c in composite_ids
-    ]
-
+    id_map: dict[str, int] = {}
     async with tenant_db.acquire() as conn:
-        db_rows = await conn.fetch(
-            """
-            INSERT INTO node_ids (composite_id, label, properties)
-            SELECT t.cid, t.lbl, t.props::jsonb
-            FROM UNNEST(CAST($1 AS text[]), CAST($2 AS text[]), CAST($3 AS text[])) AS t(cid, lbl, props)
-            ON CONFLICT (composite_id) DO UPDATE
-                SET label      = EXCLUDED.label,
-                    properties = node_ids.properties || EXCLUDED.properties
-            RETURNING id, composite_id
-            """,
-            composite_ids,
-            labels,
-            props_json,
-        )
-
-    id_map: dict[str, int] = {row["composite_id"]: row["id"] for row in db_rows}
+        for cid, (label, props) in nodes.items():
+            new_props = {k: v for k, v in props.items() if v is not None}
+            # Conflict SET merged existing || excluded; resolve the JSON merge in Python.
+            existing = await conn.execute_core(
+                select(node_ids.c.properties).where(node_ids.c.composite_id == cid)
+            )
+            erow = existing.fetchone()
+            merged = {**(erow[0] or {}), **new_props} if erow is not None else new_props
+            nid = await conn.upsert_returning(
+                node_ids,
+                {"composite_id": cid, "label": label, "properties": merged},
+                index_elements=["composite_id"],
+                returning="id",
+                update_columns=["label", "properties"],
+            )
+            id_map[cid] = nid
 
     for i, row in enumerate(serializable_rows):
         serializable_rows[i] = {k: _apply_id_map(v, id_map) for k, v in row.items()}

@@ -19,6 +19,9 @@ import os
 import bcrypt
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import func, insert, select
+
+from provisa.core.schema_admin import local_users
 
 router = APIRouter(prefix="/setup", tags=["setup"])
 
@@ -57,14 +60,21 @@ async def _auto_configure_idp(provider: str, pool) -> None:
             }
     elif provider == "basic" and pool:
         async with pool.acquire() as conn:
-            count = await conn.fetchval("SELECT COUNT(*) FROM local_users")
+            count_result = await conn.execute_core(select(func.count()).select_from(local_users))
+            count = count_result.scalar()
             if count == 0:
                 pw_hash = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode("utf-8")
-                await conn.execute(
-                    "INSERT INTO local_users (id, username, password_hash, display_name, is_active) "
-                    "VALUES ($1, 'admin', $2, 'Admin', true) ON CONFLICT DO NOTHING",
-                    str(uuid.uuid4()),
-                    pw_hash,
+                await conn.upsert(
+                    local_users,
+                    {
+                        "id": str(uuid.uuid4()),
+                        "username": "admin",
+                        "password_hash": pw_hash,
+                        "display_name": "Admin",
+                        "is_active": True,
+                    },
+                    index_elements=["username"],
+                    update_columns=[],
                 )
 
     cfg["auth"] = auth_section
@@ -104,7 +114,8 @@ async def setup_status():  # REQ-539
     provider = auth_cfg.get("provider") if isinstance(auth_cfg, dict) else None
     if provider == "basic" and state.admin_db:
         async with state.admin_db.acquire() as conn:
-            count = await conn.fetchval("SELECT COUNT(*) FROM local_users")
+            count_result = await conn.execute_core(select(func.count()).select_from(local_users))
+            count = count_result.scalar()
         if count == 0:
             return {"needs_setup": True, "demo_mode": False}
 
@@ -178,17 +189,19 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
         admin_db = state.admin_db
         assert admin_db is not None
         async with admin_db.acquire() as conn:
-            existing = await conn.fetchrow(
-                "SELECT id FROM local_users WHERE username = $1", body.admin_username
+            existing_result = await conn.execute_core(
+                select(local_users.c.id).where(local_users.c.username == body.admin_username)
             )
-            if existing:
+            if existing_result.fetchone() is not None:
                 raise HTTPException(status_code=409, detail="Username already exists")
-            await conn.execute(
-                "INSERT INTO local_users (id, username, password_hash, display_name, is_active) "
-                "VALUES ($1, $2, $3, 'Admin', true)",
-                str(uuid.uuid4()),
-                body.admin_username,
-                pw_hash,
+            await conn.execute_core(
+                insert(local_users).values(
+                    id=str(uuid.uuid4()),
+                    username=body.admin_username,
+                    password_hash=pw_hash,
+                    display_name="Admin",
+                    is_active=True,
+                )
             )
 
     elif body.provider == "firebase":

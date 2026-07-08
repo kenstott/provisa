@@ -436,11 +436,13 @@ class TestWebhookResponseMapping:
 
 class _FakeConn:
     def __init__(self):
-        self.executed: list[tuple] = []
+        self.upserts: list[tuple] = []
 
-    async def execute(self, sql, *args):
-        self.executed.append((sql, args))
-        return "INSERT 0 1"
+    async def upsert(
+        self, table, values, *, index_elements=None, update_columns=None, set_extra=None
+    ):
+        self.upserts.append((table, values))
+        return None
 
 
 class _FakePool:

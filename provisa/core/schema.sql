@@ -69,13 +69,13 @@ CREATE TABLE IF NOT EXISTS table_columns (
     id          SERIAL PRIMARY KEY,
     table_id    INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
     column_name TEXT NOT NULL,
-    visible_to  TEXT[] NOT NULL DEFAULT '{}',
+    visible_to  JSONB NOT NULL DEFAULT '[]',
     alias       TEXT,
     description TEXT,
     path        TEXT,
     data_type   TEXT,
-    writable_by  TEXT[] NOT NULL DEFAULT '{}',
-    unmasked_to  TEXT[] NOT NULL DEFAULT '{}',
+    writable_by  JSONB NOT NULL DEFAULT '[]',
+    unmasked_to  JSONB NOT NULL DEFAULT '[]',
     mask_type    TEXT CHECK (mask_type IN ('regex', 'constant', 'truncate')),
     mask_pattern TEXT,
     mask_replace TEXT,
@@ -92,8 +92,8 @@ DO $$ BEGIN
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS alias TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS description TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS path TEXT;
-    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS writable_by TEXT[] NOT NULL DEFAULT '{}';
-    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS unmasked_to TEXT[] NOT NULL DEFAULT '{}';
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS writable_by JSONB NOT NULL DEFAULT '[]';
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS unmasked_to JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_type TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_pattern TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_replace TEXT;
@@ -110,7 +110,7 @@ DO $$ BEGIN
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS prefer_materialized BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS path TEXT;
-    ALTER TABLE sources ADD COLUMN IF NOT EXISTS allowed_domains TEXT[] NOT NULL DEFAULT '{}';
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS allowed_domains JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS mapping JSONB NOT NULL DEFAULT '{}';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cdc JSONB;  -- REQ-824: source-level CDC transport
@@ -172,8 +172,8 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS roles (
     id              TEXT PRIMARY KEY,
-    capabilities    TEXT[] NOT NULL DEFAULT '{}',
-    domain_access   TEXT[] NOT NULL DEFAULT '{}',
+    capabilities    JSONB NOT NULL DEFAULT '[]',
+    domain_access   JSONB NOT NULL DEFAULT '[]',
     parent_role_id  TEXT REFERENCES roles(id)
 );
 
@@ -207,7 +207,7 @@ END $$;
 -- Materialized Views (Phase P)
 CREATE TABLE IF NOT EXISTS materialized_views (
     id              TEXT PRIMARY KEY,
-    source_tables   TEXT[] NOT NULL,
+    source_tables   JSONB NOT NULL,
     target_catalog  TEXT NOT NULL,
     target_schema   TEXT NOT NULL,
     target_table    TEXT NOT NULL,
@@ -385,8 +385,8 @@ CREATE TABLE IF NOT EXISTS tracked_functions (
     function_name TEXT NOT NULL DEFAULT '',
     returns       TEXT NOT NULL DEFAULT '',
     arguments     JSONB NOT NULL DEFAULT '[]',
-    visible_to    TEXT[] NOT NULL DEFAULT '{}',
-    writable_by   TEXT[] NOT NULL DEFAULT '{}',
+    visible_to    JSONB NOT NULL DEFAULT '[]',
+    writable_by   JSONB NOT NULL DEFAULT '[]',
     domain_id     TEXT NOT NULL DEFAULT '',
     description   TEXT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -403,7 +403,7 @@ CREATE TABLE IF NOT EXISTS tracked_webhooks (
     returns            TEXT,
     inline_return_type JSONB NOT NULL DEFAULT '[]',
     arguments          JSONB NOT NULL DEFAULT '[]',
-    visible_to         TEXT[] NOT NULL DEFAULT '{}',
+    visible_to         JSONB NOT NULL DEFAULT '[]',
     domain_id          TEXT NOT NULL DEFAULT '',
     description        TEXT,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),

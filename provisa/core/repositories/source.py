@@ -8,91 +8,74 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Source repository — CRUD for data sources in PG config DB."""
+"""Source repository — CRUD for data sources, via SQLAlchemy Core (dialect-portable)."""
 
 # Requirements: REQ-012, REQ-013, REQ-014, REQ-250
 
-import json as _json
+from typing import TYPE_CHECKING
 
-import asyncpg
+from sqlalchemy import delete as _delete, select, update
 
 from provisa.core.models import Source
+from provisa.core.schema_org import registered_tables, sources
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 
-async def upsert(conn: asyncpg.Connection, source: Source) -> None:  # REQ-012, REQ-250
-    await conn.execute(
-        """
-        INSERT INTO sources (id, type, host, port, database, username, dialect, path, description, mapping, cdc, change_signal)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12)
-        ON CONFLICT (id) DO UPDATE SET
-            type = EXCLUDED.type,
-            host = EXCLUDED.host,
-            port = EXCLUDED.port,
-            database = EXCLUDED.database,
-            username = EXCLUDED.username,
-            dialect = EXCLUDED.dialect,
-            path = EXCLUDED.path,
-            description = EXCLUDED.description,
-            mapping = EXCLUDED.mapping,
-            cdc = EXCLUDED.cdc,
-            change_signal = EXCLUDED.change_signal
-        """,
-        source.id,
-        source.type.value,
-        source.host,
-        source.port,
-        source.database,
-        source.username,
-        source.dialect or "",
-        source.path,
-        source.description,
-        _json.dumps(source.mapping or {}),
-        _json.dumps(source.cdc.model_dump()) if source.cdc else None,  # REQ-824
-        getattr(source, "change_signal", "ttl"),  # REQ-929
-    )
+def _source_values(source: Source) -> dict:
+    return {
+        "id": source.id,
+        "type": source.type.value,
+        "host": source.host,
+        "port": source.port,
+        "database": source.database,
+        "username": source.username,
+        "dialect": source.dialect or "",
+        "path": source.path,
+        "description": source.description,
+        # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
+        "mapping": source.mapping or {},
+        "cdc": source.cdc.model_dump() if source.cdc else None,  # REQ-824
+        "change_signal": getattr(source, "change_signal", "ttl"),  # REQ-929
+    }
 
 
-async def get(conn: asyncpg.Connection, source_id: str) -> dict | None:  # REQ-012
-    row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", source_id)
-    return dict(row) if row else None
+async def upsert(conn: "Connection", source: Source) -> None:  # REQ-012, REQ-250
+    await conn.upsert(sources, _source_values(source), index_elements=["id"])
 
 
-async def list_all(conn: asyncpg.Connection) -> list[dict]:  # REQ-012
-    rows = await conn.fetch("SELECT * FROM sources ORDER BY id")
-    return [dict(r) for r in rows]
+async def get(conn: "Connection", source_id: str) -> dict | None:  # REQ-012
+    result = await conn.execute_core(select(sources).where(sources.c.id == source_id))
+    row = result.fetchone()
+    return dict(row._mapping) if row is not None else None
 
 
-async def delete(conn: asyncpg.Connection, source_id: str) -> bool:  # REQ-014
-    result = await conn.execute("DELETE FROM sources WHERE id = $1", source_id)
-    return result == "DELETE 1"
+async def list_all(conn: "Connection") -> list[dict]:  # REQ-012
+    result = await conn.execute_core(select(sources).order_by(sources.c.id))
+    return [dict(r._mapping) for r in result.fetchall()]
 
 
-async def rename(conn: asyncpg.Connection, old_id: str, new_id: str) -> bool:  # REQ-012
+async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014
+    result = await conn.execute_core(_delete(sources).where(sources.c.id == source_id))
+    return (result.rowcount or 0) > 0
+
+
+async def rename(conn: "Connection", old_id: str, new_id: str) -> bool:  # REQ-012
     """Rename a source: copy to new_id, retarget registered_tables, delete old_id."""
     async with conn.transaction():
-        row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", old_id)
+        result = await conn.execute_core(select(sources).where(sources.c.id == old_id))
+        row = result.fetchone()
         if row is None:
             return False
-        await conn.execute(
-            """
-            INSERT INTO sources (id, type, host, port, database, username, dialect, path, description)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (id) DO NOTHING
-            """,
-            new_id,
-            row["type"],
-            row["host"],
-            row["port"],
-            row["database"],
-            row["username"],
-            row["dialect"],
-            row["path"],
-            row.get("description", ""),
+        vals = dict(row._mapping)
+        vals["id"] = new_id
+        # Insert the copy; leave an existing new_id untouched (DO NOTHING semantics).
+        await conn.upsert(sources, vals, index_elements=["id"], update_columns=[])
+        await conn.execute_core(
+            update(registered_tables)
+            .where(registered_tables.c.source_id == old_id)
+            .values(source_id=new_id)
         )
-        await conn.execute(
-            "UPDATE registered_tables SET source_id = $1 WHERE source_id = $2",
-            new_id,
-            old_id,
-        )
-        await conn.execute("DELETE FROM sources WHERE id = $1", old_id)
+        await conn.execute_core(_delete(sources).where(sources.c.id == old_id))
     return True

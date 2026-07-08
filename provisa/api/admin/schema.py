@@ -16,12 +16,29 @@
 
 from __future__ import annotations
 
-import logging
-from typing import Optional, cast
 
-import asyncpg
+import logging
+from typing import TYPE_CHECKING, Optional, cast
+
 import strawberry
+from sqlalchemy import delete as _delete, func, or_, select, update
 from strawberry.types.info import Info as StrawberryInfo
+
+from provisa.core.schema_org import (
+    domains,
+    file_source_mtimes,
+    registered_tables,
+    relationship_candidates,
+    relationships,
+    roles,
+    sources,
+    table_columns,
+    table_meta_links,
+    tracked_webhooks,
+)
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection, Database
 
 from provisa.compiler.naming import source_to_catalog
 from provisa.core.repositories import rls as rls_repo
@@ -92,7 +109,7 @@ _SOURCE_TYPE_DISPLAY_NAMES: dict[str, str] = {
 }
 
 
-async def _get_pool() -> asyncpg.Pool:
+async def _get_pool() -> "Database":
     from provisa.api.app import state
 
     assert state.tenant_db is not None
@@ -137,7 +154,11 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
     if not pool:
         return False
     async with pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT type, path FROM sources WHERE id = $1", source_id)
+        result = await conn.execute_core(
+            select(sources.c.type, sources.c.path).where(sources.c.id == source_id)
+        )
+        _r = result.fetchone()
+    row = dict(_r._mapping) if _r is not None else None
     if not row or row["type"] != "openapi" or not row["path"]:
         return False
     try:
@@ -192,8 +213,9 @@ async def _govdata_columns(  # pyright: ignore[reportUnusedParameter]
 
     pool = await _get_pool()
     async with pool.acquire() as _conn:
-        row = await _conn.fetchrow("SELECT username FROM sources WHERE id = $1", source_id)
-    api_key = _resolve_secrets((row["username"] or "") if row else "")
+        _res = await _conn.execute_core(select(sources.c.username).where(sources.c.id == source_id))
+        row = _res.fetchone()
+    api_key = _resolve_secrets((row.username or "") if row else "")
 
     gds = GovDataSource(
         id=source_id,
@@ -279,13 +301,12 @@ def _compute_can_deploy_to_db(
 async def _fetch_table_with_columns(
     conn, row, all_tables: list | None = None, user_can_deploy: bool = True
 ) -> RegisteredTableType:
-    col_rows = await conn.fetch(
-        "SELECT id, column_name, visible_to, writable_by, unmasked_to, "
-        "mask_type, mask_pattern, mask_replace, mask_value, mask_precision, "
-        "alias, description, data_type, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, scope "
-        "FROM table_columns WHERE table_id = $1 ORDER BY id",
-        row["id"],
+    _col_res = await conn.execute_core(
+        select(table_columns)
+        .where(table_columns.c.table_id == row["id"])
+        .order_by(table_columns.c.id)
     )
+    col_rows = [dict(r._mapping) for r in _col_res.fetchall()]
     from provisa.compiler.naming import apply_sql_name
 
     columns = [
@@ -414,100 +435,11 @@ async def _maybe_migrate_sqlite(
             _log.warning("SQLite → PG migration failed for %s.%s: %s", source_id, table_name, _e)
 
 
-def _build_column_models(columns: list) -> list:
-    from provisa.core.models import Column as ColumnModel
-
-    return [
-        ColumnModel(
-            name=c.name,
-            visible_to=c.visible_to,
-            writable_by=c.writable_by,
-            unmasked_to=c.unmasked_to,
-            mask_type=c.mask_type,
-            mask_pattern=c.mask_pattern,
-            mask_replace=c.mask_replace,
-            mask_value=c.mask_value,
-            mask_precision=c.mask_precision,
-            alias=c.alias,
-            description=c.description,
-            native_filter_type=c.native_filter_type,
-            is_primary_key=c.is_primary_key,
-            is_foreign_key=c.is_foreign_key,
-            is_alternate_key=c.is_alternate_key,
-            scope=getattr(c, "scope", "domain"),
-        )
-        for c in columns
-    ]
-
-
-async def _discover_columns_for_registration(source_id: str, table_name: str) -> list[dict]:
-    """REQ-252: infer columns from a live NoSQL source via its adapter discover_schema.
-
-    Reuses the same dispatch as the admin discovery endpoint. The table name is the target
-    index/collection/keyspace. Raises (HTTPException or transport error) on failure so the
-    caller can refuse to register an empty schema.
-    """
-    from provisa.api.admin.discovery_schema import DiscoverRequest, _call_discover
-    from provisa.source_adapters.registry import get_adapter
-
-    pool = await _get_pool()
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", source_id)
-    if row is None:
-        raise ValueError(f"source {source_id!r} not found for discovery")
-    adapter = get_adapter(row["type"])
-    hints = DiscoverRequest(
-        collection=table_name, index=table_name, keyspace=table_name, table=table_name
-    )
-    return _call_discover(adapter, row["type"], row, hints)
-
-
-async def _resolve_ref_type_map(conn, ref_names: set[str]) -> dict[str, str]:
-    """Map column_name -> data_type for columns of registered tables referenced by name/alias."""
-    type_map: dict[str, str] = {}
-    if ref_names:
-        rows = await conn.fetch(
-            """SELECT tc.column_name, tc.data_type
-               FROM table_columns tc JOIN registered_tables rt ON rt.id = tc.table_id
-               WHERE (rt.table_name = ANY($1::text[]) OR rt.alias = ANY($1::text[]))
-                 AND tc.data_type IS NOT NULL""",
-            list(ref_names),
-        )
-        for r in rows:
-            type_map.setdefault(r["column_name"], r["data_type"])
-    return type_map
-
-
-async def _introspect_view_columns(conn, view_sql: str, default_roles: list[str]) -> list:
-    """Derive a view's columns from its SQL when the caller supplies none.
-
-    Output column names come from the SELECT projection (SQLGlot). Each column's
-    data_type is resolved from the stored columns of the registered tables the view
-    references (by name match), falling back to varchar for expressions/aggregates the
-    type can't be traced to. visible_to defaults to all roles. This makes a view's
-    schema self-describing — the view SQL is the source of truth for its columns.
-    """
-    import sqlglot
-    import sqlglot.expressions as exp
-
-    from provisa.core.models import Column as ColumnModel
-
-    try:
-        tree = sqlglot.parse_one(view_sql, read="postgres")
-    except Exception:
-        return []
-    output_names = list(getattr(tree, "named_selects", []) or [])
-    if not output_names:
-        return []
-
-    # Resolve types from the registered tables referenced in the view (by table name/alias).
-    ref_names = {t.name for t in tree.find_all(exp.Table) if t.name}
-    type_map = await _resolve_ref_type_map(conn, ref_names)
-
-    return [
-        ColumnModel(name=n, data_type=type_map.get(n, "varchar"), visible_to=list(default_roles))
-        for n in output_names
-    ]
+from provisa.api.admin._table_ops import (  # noqa: E402
+    _build_column_models,  # noqa: F401  (re-export: tests + steps import from schema)
+    _build_columns_for_input,
+    _ensure_view_column_types,  # noqa: F401  (re-export: tests import from schema)
+)
 
 
 async def _domain_table_conflict(  # REQ-432
@@ -524,19 +456,24 @@ async def _domain_table_conflict(  # REQ-432
     Re-registering the same physical table (same source+schema) is allowed (upsert).
     Providing an alias that differs from a conflicting table_name resolves the conflict."""
     effective_name = alias or table_name
-    row = await conn.fetchrow(
-        "SELECT source_id, schema_name FROM registered_tables "
-        "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
-        "AND NOT (source_id = $3 AND schema_name = $4) LIMIT 1",
-        domain_id,
-        effective_name,
-        source_id,
-        schema_name,
+    _res = await conn.execute_core(
+        select(registered_tables.c.source_id, registered_tables.c.schema_name)
+        .where(
+            registered_tables.c.domain_id == domain_id,
+            func.coalesce(registered_tables.c.alias, registered_tables.c.table_name)
+            == effective_name,
+            or_(
+                registered_tables.c.source_id != source_id,
+                registered_tables.c.schema_name != schema_name,
+            ),
+        )
+        .limit(1)
     )
+    row = _res.fetchone()
     if row:
         return (
             f"Name {effective_name!r} is already used in domain {domain_id!r} "
-            f"from {row['source_id']}.{row['schema_name']} — effective name (alias or table_name) must be unique."
+            f"from {row.source_id}.{row.schema_name} — effective name (alias or table_name) must be unique."
         )
     return None
 
@@ -564,15 +501,16 @@ async def _dataset_ownership_conflict(  # REQ-433
 
     target_domain = domain_policy.resolve_domain_id(domain_id)
     norm = _normalize_dataset_name(table_name)
-    rows = await conn.fetch(
-        "SELECT domain_id, table_name FROM registered_tables WHERE source_id = $1",
-        source_id,
+    _res = await conn.execute_core(
+        select(registered_tables.c.domain_id, registered_tables.c.table_name).where(
+            registered_tables.c.source_id == source_id
+        )
     )
-    for r in rows:
-        if _normalize_dataset_name(r["table_name"]) == norm and r["domain_id"] != target_domain:
+    for r in _res.fetchall():
+        if _normalize_dataset_name(r.table_name) == norm and r.domain_id != target_domain:
             return (
                 f"Table {table_name!r} on source {source_id!r} is already claimed by "
-                f"domain {r['domain_id']!r} (first-come ownership)."
+                f"domain {r.domain_id!r} (first-come ownership)."
             )
     return None
 
@@ -621,7 +559,7 @@ async def _queue_creation_request(  # REQ-434
     pool = await _get_pool()
     async with pool.acquire() as conn:
         rid = await cr_repo.create(
-            cast(asyncpg.Connection, conn), request_type, capability, payload, requested_by
+            cast("Connection", conn), request_type, capability, payload, requested_by
         )
     return MutationResult(
         success=True,
@@ -632,30 +570,17 @@ async def _queue_creation_request(  # REQ-434
     )
 
 
-async def _ensure_view_column_types(conn, view_sql: str, columns: list) -> list:
-    """Fill any null/empty data_type on caller-supplied view columns.
+def _resolve_admin_context(info: StrawberryInfo) -> tuple[str, bool]:
+    """Return (active_org_id, is_admin) for the current request identity."""
+    from provisa.api.admin.capabilities import _resolved_capabilities
+    from provisa.api.app import state as _state
 
-    The admin UI snapshots a view's columns by running its SQL; a column whose type
-    can't be traced (e.g. it references a source not yet introspected) arrives with
-    data_type=None. introspect_tables requires every SQL-catalog column to have a
-    type, so resolve nulls the same way _introspect_view_columns does — from the
-    referenced tables, else varchar — so a view can never be persisted schema-broken.
-    """
-    if not any(getattr(c, "data_type", None) in (None, "") for c in columns):
-        return columns
-    import sqlglot
-    import sqlglot.expressions as exp
-
-    try:
-        tree = sqlglot.parse_one(view_sql, read="postgres")
-    except Exception:
-        tree = None
-    ref_names = {t.name for t in tree.find_all(exp.Table) if t.name} if tree else set()
-    type_map = await _resolve_ref_type_map(conn, ref_names)
-    for c in columns:
-        if getattr(c, "data_type", None) in (None, ""):
-            c.data_type = type_map.get(c.name, "varchar")
-    return columns
+    request = info.context["request"]
+    active_org_id = require_active_org_id(request)
+    identity = getattr(request.state, "identity", None)
+    caps = _resolved_capabilities(identity, _state) if identity else set()
+    is_admin = bool(caps & {"superadmin", "admin"})
+    return active_org_id, is_admin
 
 
 @strawberry.type
@@ -671,7 +596,7 @@ class Query:  # REQ-021, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await cr_repo.list_pending(cast(asyncpg.Connection, conn))
+            rows = await cr_repo.list_pending(cast("Connection", conn))
         return [
             CreationRequestType(
                 id=r["id"],
@@ -693,19 +618,28 @@ class Query:  # REQ-021, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            domains = await conn.fetch(
-                "SELECT id, description, graphql_alias FROM domains ORDER BY id"
+            _dres = await conn.execute_core(
+                select(domains.c.id, domains.c.description, domains.c.graphql_alias).order_by(
+                    domains.c.id
+                )
             )
-            tables = await conn.fetch("SELECT id FROM registered_tables ORDER BY id")
-            rels = await conn.fetch(
-                "SELECT id FROM relationships WHERE id NOT LIKE 'gql_auto__%' ORDER BY id"
+            domain_rows = _dres.fetchall()
+            _tres = await conn.execute_core(
+                select(registered_tables.c.id).order_by(registered_tables.c.id)
             )
+            table_rows = _tres.fetchall()
+            _rres = await conn.execute_core(
+                select(relationships.c.id)
+                .where(relationships.c.id.not_like("gql_auto__%"))
+                .order_by(relationships.c.id)
+            )
+            rel_rows = _rres.fetchall()
 
         # Hash the schema state
         schema_data = {
-            "domains": [dict(d) for d in domains],
-            "tables": [dict(t) for t in tables],
-            "relationships": [dict(r) for r in rels],
+            "domains": [dict(d._mapping) for d in domain_rows],
+            "tables": [dict(t._mapping) for t in table_rows],
+            "relationships": [dict(r._mapping) for r in rel_rows],
         }
         schema_json = json.dumps(schema_data, sort_keys=True, default=str)
         version_hash = hashlib.sha256(schema_json.encode()).hexdigest()
@@ -715,36 +649,33 @@ class Query:  # REQ-021, REQ-042
     async def sources(self) -> list[SourceType]:  # REQ-012, REQ-013
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await conn.fetch("SELECT * FROM sources ORDER BY id")
-            return [_source_from_row(r) for r in rows]
+            _res = await conn.execute_core(select(sources).order_by(sources.c.id))
+            return [_source_from_row(dict(r._mapping)) for r in _res.fetchall()]
 
     @strawberry.field
     async def source(self, id: str) -> Optional[SourceType]:  # REQ-012, REQ-013
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", id)
-            return _source_from_row(row) if row else None
+            _res = await conn.execute_core(select(sources).where(sources.c.id == id))
+            row = _res.fetchone()
+            return _source_from_row(dict(row._mapping)) if row else None
 
     @strawberry.field
     async def domains(self, info: StrawberryInfo) -> list[DomainType]:  # REQ-021, REQ-042
-        request = info.context["request"]
-        active_org_id = require_active_org_id(request)
-        identity = getattr(request.state, "identity", None)
-        from provisa.api.admin.capabilities import _resolved_capabilities
-        from provisa.api.app import state as _state
-
-        caps = _resolved_capabilities(identity, _state) if identity else set()
-        is_admin = bool(caps & {"superadmin", "admin"})
+        active_org_id, is_admin = _resolve_admin_context(info)
         pool = await _get_pool()
         async with pool.acquire() as conn:
             if is_admin:
-                rows = await conn.fetch("SELECT * FROM domains WHERE id != '' ORDER BY id")
-            else:
-                rows = await conn.fetch(
-                    "SELECT * FROM domains WHERE id != '' AND org_id = $1 ORDER BY id",
-                    active_org_id,
+                _res = await conn.execute_core(
+                    select(domains).where(domains.c.id != "").order_by(domains.c.id)
                 )
-            return [_domain_from_row(r) for r in rows]
+            else:
+                _res = await conn.execute_core(
+                    select(domains)
+                    .where(domains.c.id != "", domains.c.org_id == active_org_id)
+                    .order_by(domains.c.id)
+                )
+            return [_domain_from_row(dict(r._mapping)) for r in _res.fetchall()]
 
     @strawberry.field
     async def tables(
@@ -763,14 +694,22 @@ class Query:  # REQ-021, REQ-042
 
             pool = await _get_pool()
             async with pool.acquire() as conn:
-                rows = await conn.fetch("SELECT * FROM registered_tables ORDER BY id")
-                all_tables = await conn.fetch(
-                    """SELECT rt.source_id, rt.domain_id, rt.schema_name, rt.table_name, rt.alias
-                       FROM registered_tables rt
-                       WHERE rt.source_id != '__provisa__'""",
+                _res = await conn.execute_core(
+                    select(registered_tables).order_by(registered_tables.c.id)
                 )
+                rows = [dict(r._mapping) for r in _res.fetchall()]
+                _ares = await conn.execute_core(
+                    select(
+                        registered_tables.c.source_id,
+                        registered_tables.c.domain_id,
+                        registered_tables.c.schema_name,
+                        registered_tables.c.table_name,
+                        registered_tables.c.alias,
+                    ).where(registered_tables.c.source_id != "__provisa__")
+                )
+                all_tables = [dict(r._mapping) for r in _ares.fetchall()]
                 return [
-                    await _fetch_table_with_columns(conn, r, list(all_tables), user_can_deploy)
+                    await _fetch_table_with_columns(conn, r, all_tables, user_can_deploy)
                     for r in rows
                 ]
 
@@ -780,20 +719,28 @@ class Query:  # REQ-021, REQ-042
 
         convention = state.global_gql_naming_convention
         pool = await _get_pool()
+        _st = registered_tables.alias("st")
+        _tt = registered_tables.alias("tt")
         async with pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT r.*, "
-                "st.table_name AS source_table_name, "
-                "st.domain_id AS source_domain_id, "
-                "tt.table_name AS target_table_name "
-                "FROM relationships r "
-                "JOIN registered_tables st ON r.source_table_id = st.id "
-                "LEFT JOIN registered_tables tt ON r.target_table_id = tt.id "
-                "WHERE r.id NOT LIKE 'gql_auto__%' "
-                "AND r.id NOT LIKE 'meta:%' "
-                "ORDER BY r.id"
+            _res = await conn.execute_core(
+                select(
+                    relationships,
+                    _st.c.table_name.label("source_table_name"),
+                    _st.c.domain_id.label("source_domain_id"),
+                    _tt.c.table_name.label("target_table_name"),
+                )
+                .select_from(
+                    relationships.join(_st, relationships.c.source_table_id == _st.c.id).join(
+                        _tt, relationships.c.target_table_id == _tt.c.id, isouter=True
+                    )
+                )
+                .where(
+                    relationships.c.id.not_like("gql_auto__%"),
+                    relationships.c.id.not_like("meta:%"),
+                )
+                .order_by(relationships.c.id)
             )
-            return [_rel_from_row(r, convention) for r in rows]
+            return [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
 
     @strawberry.field
     async def all_relationships(self) -> list[RelationshipType]:  # REQ-019, REQ-020
@@ -802,42 +749,42 @@ class Query:  # REQ-021, REQ-042
 
         convention = state.global_gql_naming_convention
         pool = await _get_pool()
+        _st = registered_tables.alias("st")
+        _tt = registered_tables.alias("tt")
         async with pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT r.*, "
-                "st.table_name AS source_table_name, "
-                "st.domain_id AS source_domain_id, "
-                "tt.table_name AS target_table_name "
-                "FROM relationships r "
-                "JOIN registered_tables st ON r.source_table_id = st.id "
-                "LEFT JOIN registered_tables tt ON r.target_table_id = tt.id "
-                "WHERE r.id NOT LIKE 'gql_auto__%' "
-                "ORDER BY r.id"
+            _res = await conn.execute_core(
+                select(
+                    relationships,
+                    _st.c.table_name.label("source_table_name"),
+                    _st.c.domain_id.label("source_domain_id"),
+                    _tt.c.table_name.label("target_table_name"),
+                )
+                .select_from(
+                    relationships.join(_st, relationships.c.source_table_id == _st.c.id).join(
+                        _tt, relationships.c.target_table_id == _tt.c.id, isouter=True
+                    )
+                )
+                .where(relationships.c.id.not_like("gql_auto__%"))
+                .order_by(relationships.c.id)
             )
-            return [_rel_from_row(r, convention) for r in rows]
+            return [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
 
     @strawberry.field
     async def roles(
         self, info: StrawberryInfo
     ) -> list[RoleType]:  # REQ-042, REQ-059, REQ-060, REQ-215
-        request = info.context["request"]
-        active_org_id = require_active_org_id(request)
-        identity = getattr(request.state, "identity", None)
-        from provisa.api.admin.capabilities import _resolved_capabilities
-        from provisa.api.app import state as _state
-
-        caps = _resolved_capabilities(identity, _state) if identity else set()
-        is_admin = bool(caps & {"superadmin", "admin"})
+        active_org_id, is_admin = _resolve_admin_context(info)
         pool = await _get_pool()
         async with pool.acquire() as conn:
             if is_admin:
-                rows = await conn.fetch("SELECT * FROM roles ORDER BY id")
+                _res = await conn.execute_core(select(roles).order_by(roles.c.id))
             else:
-                rows = await conn.fetch(
-                    "SELECT * FROM roles WHERE (org_id IS NULL OR org_id = $1) ORDER BY id",
-                    active_org_id,
+                _res = await conn.execute_core(
+                    select(roles)
+                    .where(or_(roles.c.org_id.is_(None), roles.c.org_id == active_org_id))
+                    .order_by(roles.c.id)
                 )
-            return [_role_from_row(r) for r in rows]
+            return [_role_from_row(dict(r._mapping)) for r in _res.fetchall()]
 
     @strawberry.field
     async def rls_rules(self) -> list[RLSRuleType]:  # REQ-041, REQ-402, REQ-686
@@ -1076,47 +1023,37 @@ class Query:  # REQ-021, REQ-042
         from provisa.compiler.naming import apply_convention
 
         pool = await _get_pool()
-        async with pool.acquire() as conn:
-            convention = (
-                await conn.fetchval(
-                    "SELECT gql_naming_convention FROM sources WHERE id = $1", source_id
+
+        def _conflict_stmt(name: str):
+            return (
+                select(registered_tables.c.id)
+                .where(
+                    registered_tables.c.domain_id == domain_id,
+                    func.coalesce(registered_tables.c.alias, registered_tables.c.table_name)
+                    == name,
+                    registered_tables.c.source_id != source_id,
                 )
-                or "apollo_graphql"
+                .limit(1)
             )
+
+        async with pool.acquire() as conn:
+            _cres = await conn.execute_core(
+                select(sources.c.gql_naming_convention).where(sources.c.id == source_id)
+            )
+            convention = _cres.scalar() or "apollo_graphql"
             candidate: str = apply_convention(table_name, convention)
-            conflict = await conn.fetchrow(
-                "SELECT 1 FROM registered_tables "
-                "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
-                "AND source_id != $3 LIMIT 1",
-                domain_id,
-                candidate,
-                source_id,
-            )
+            conflict = (await conn.execute_core(_conflict_stmt(candidate))).fetchone()
             if not conflict:
                 return candidate
             # Prefix with source_id to disambiguate
             prefixed: str = apply_convention(f"{source_id}_{table_name}", convention)
-            conflict2 = await conn.fetchrow(
-                "SELECT 1 FROM registered_tables "
-                "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
-                "AND source_id != $3 LIMIT 1",
-                domain_id,
-                prefixed,
-                source_id,
-            )
+            conflict2 = (await conn.execute_core(_conflict_stmt(prefixed))).fetchone()
             if not conflict2:
                 return prefixed
             # Last resort: add numeric suffix
             for i in range(1, 100):
                 suffixed: str = apply_convention(f"{source_id}_{table_name}_{i}", convention)
-                taken = await conn.fetchrow(
-                    "SELECT 1 FROM registered_tables "
-                    "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
-                    "AND source_id != $3 LIMIT 1",
-                    domain_id,
-                    suffixed,
-                    source_id,
-                )
+                taken = (await conn.execute_core(_conflict_stmt(suffixed))).fetchone()
                 if not taken:
                     return suffixed
             return prefixed
@@ -1237,7 +1174,10 @@ class Query:  # REQ-021, REQ-042
             pool = await _get_pool()
             tid = int(table_id)
             async with pool.acquire() as conn:
-                row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
+                _res = await conn.execute_core(
+                    select(registered_tables).where(registered_tables.c.id == tid)
+                )
+                row = _res.fetchone()
                 if row is None:
                     print(
                         f"[DEBUG] table {table_id} not found — save the view/table first",
@@ -1245,13 +1185,16 @@ class Query:  # REQ-021, REQ-042
                         flush=True,
                     )
                     return "Save the view first before generating descriptions"
-                col_rows = await conn.fetch(
-                    "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
+                _cres = await conn.execute_core(
+                    select(table_columns.c.column_name)
+                    .where(table_columns.c.table_id == tid)
+                    .order_by(table_columns.c.id)
                 )
-            table_name = row["table_name"]
-            schema_name = row["schema_name"]
-            source_id = row["source_id"]
-            columns = [r["column_name"] for r in col_rows]
+                col_rows = _cres.fetchall()
+            table_name = row.table_name
+            schema_name = row.schema_name
+            source_id = row.source_id
+            columns = [r.column_name for r in col_rows]
             prompt = (
                 f"You are a data catalog assistant. Write a concise one-to-two sentence description "
                 f"for a database table named '{table_name}' in schema '{schema_name}' "
@@ -1282,7 +1225,10 @@ class Query:  # REQ-021, REQ-042
             pool = await _get_pool()
             tid = int(table_id)
             async with pool.acquire() as conn:
-                row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
+                _res = await conn.execute_core(
+                    select(registered_tables).where(registered_tables.c.id == tid)
+                )
+                row = _res.fetchone()
                 if row is None:
                     print(
                         f"[DEBUG] table {table_id} not found — save the view/table first",
@@ -1290,13 +1236,16 @@ class Query:  # REQ-021, REQ-042
                         flush=True,
                     )
                     return "Save the view first before generating descriptions"
-                col_rows = await conn.fetch(
-                    "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
+                _cres = await conn.execute_core(
+                    select(table_columns.c.column_name)
+                    .where(table_columns.c.table_id == tid)
+                    .order_by(table_columns.c.id)
                 )
-            table_name = row["table_name"]
-            schema_name = row["schema_name"]
-            source_id = row["source_id"]
-            all_columns = [r["column_name"] for r in col_rows]
+                col_rows = _cres.fetchall()
+            table_name = row.table_name
+            schema_name = row.schema_name
+            source_id = row.source_id
+            all_columns = [r.column_name for r in col_rows]
             prompt = (
                 f"You are a data catalog assistant. Write a concise one-sentence description "
                 f"for the column '{column_name}' in table '{table_name}' (schema '{schema_name}', "
@@ -1356,10 +1305,8 @@ async def _upsert_source_with_domains(pool, model, input: SourceInput) -> None:
         await source_repo.upsert(conn, model)
         _domains = [d for d in (input.allowed_domains or []) if d.strip()]
         if _domains:
-            await conn.execute(
-                "UPDATE sources SET allowed_domains = $1 WHERE id = $2",
-                _domains,
-                input.id,
+            await conn.execute_core(
+                update(sources).where(sources.c.id == input.id).values(allowed_domains=_domains)
             )
 
 
@@ -1419,11 +1366,13 @@ async def _analyze_source_on_engine(state, pool, model, input: SourceInput) -> N
             self.table_name = table_name
 
     async with pool.acquire() as _conn:
-        rows = await _conn.fetch(
-            "SELECT schema_name, table_name FROM registered_tables WHERE source_id = $1",
-            input.id,
+        _res = await _conn.execute_core(
+            select(registered_tables.c.schema_name, registered_tables.c.table_name).where(
+                registered_tables.c.source_id == input.id
+            )
         )
-    table_refs = [_TblRef(input.id, r["schema_name"], r["table_name"]) for r in rows]
+        rows = _res.fetchall()
+    table_refs = [_TblRef(input.id, r.schema_name, r.table_name) for r in rows]
     if table_refs:
         state.federation_engine.analyze(model, table_refs)
 
@@ -1587,7 +1536,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            _conn = cast(asyncpg.Connection, conn)
+            _conn = cast("Connection", conn)
             existing = await source_repo.get(_conn, input.id)
             if existing is None:
                 return MutationResult(success=False, message=f"Source {input.id!r} not found")
@@ -1607,10 +1556,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             await source_repo.upsert(_conn, model)
             if input.allowed_domains is not None:
-                await conn.execute(
-                    "UPDATE sources SET allowed_domains = $1 WHERE id = $2",
-                    input.allowed_domains,
-                    input.id,
+                await conn.execute_core(
+                    update(sources)
+                    .where(sources.c.id == input.id)
+                    .values(allowed_domains=input.allowed_domains)
                 )
 
         if input.type == "govdata" and input.username:
@@ -1682,7 +1631,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return MutationResult(success=False, message="New ID must not be empty")
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            renamed = await source_repo.rename(cast(asyncpg.Connection, conn), old_id, new_id)
+            renamed = await source_repo.rename(cast("Connection", conn), old_id, new_id)
         if renamed:
             return MutationResult(success=True, message=f"Source renamed {old_id!r} → {new_id!r}")
         return MutationResult(success=False, message=f"Source {old_id!r} not found")
@@ -1694,7 +1643,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await source_repo.delete(cast(asyncpg.Connection, conn), id)
+            deleted = await source_repo.delete(cast("Connection", conn), id)
         if deleted:
             state.graphql_remote_sources.pop(id, None)
             await _rebuild_schemas()
@@ -1711,7 +1660,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             id=input.id, description=input.description, graphql_alias=input.graphql_alias or None
         )
         async with pool.acquire() as conn:
-            await domain_repo.upsert(cast(asyncpg.Connection, conn), model)
+            await domain_repo.upsert(cast("Connection", conn), model)
         return MutationResult(success=True, message=f"Domain {input.id!r} created")
 
     @strawberry.mutation
@@ -1720,7 +1669,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await domain_repo.delete(cast(asyncpg.Connection, conn), id)
+            deleted = await domain_repo.delete(cast("Connection", conn), id)
         if deleted:
             return MutationResult(success=True, message=f"Domain {id!r} deleted")
         return MutationResult(success=False, message=f"Domain {id!r} not found")
@@ -1739,7 +1688,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             domain_access=input.domain_access,
         )
         async with pool.acquire() as conn:
-            await role_repo.upsert(cast(asyncpg.Connection, conn), model)
+            await role_repo.upsert(cast("Connection", conn), model)
         return MutationResult(success=True, message=f"Role {input.id!r} created")
 
     @strawberry.mutation
@@ -1775,42 +1724,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()
-        columns = _build_column_models(input.columns)
-        # A view's columns are defined by its SQL — if the caller supplied none
-        # (e.g. the SQL was edited after the column snapshot), derive them from the
-        # view_sql so the view is never registered with an empty schema.
-        if input.view_sql and not columns:
-            async with pool.acquire() as _vc:
-                _roles = [r["id"] for r in await _vc.fetch("SELECT id FROM roles")]
-                columns = await _introspect_view_columns(_vc, input.view_sql, _roles or ["admin"])
-        elif input.view_sql and columns:
-            async with pool.acquire() as _vc:
-                columns = await _ensure_view_column_types(_vc, input.view_sql, columns)
-        elif getattr(input, "discover", False):
-            # REQ-252: infer columns from the live NoSQL source; explicit columns take
-            # precedence. Discovery failures raise rather than registering an empty schema.
-            from provisa.api.admin.types import ColumnInput as _ColInput
-            from provisa.discovery.column_inference import merge_discovered_columns
-
-            try:
-                discovered = await _discover_columns_for_registration(
-                    input.source_id, input.table_name
-                )
-            except Exception as e:
-                return MutationResult(success=False, message=f"Schema discovery failed: {e}")
-            discovered_models = _build_column_models(
-                [_ColInput(name=d["name"], visible_to=[]) for d in discovered]
-            )
-            columns = merge_discovered_columns(columns, discovered_models)
+        columns, _col_err = await _build_columns_for_input(pool, input)
+        if _col_err is not None:
+            return _col_err
         alias = input.alias or None
         if not alias:
             from provisa.compiler.naming import apply_convention
 
             async with pool.acquire() as conn:
-                src = await conn.fetchrow(
-                    "SELECT gql_naming_convention FROM sources WHERE id = $1", input.source_id
+                _sres = await conn.execute_core(
+                    select(sources.c.gql_naming_convention).where(sources.c.id == input.source_id)
                 )
-            convention = (src["gql_naming_convention"] if src else None) or "apollo_graphql"
+                src = _sres.fetchone()
+            convention = (src.gql_naming_convention if src else None) or "apollo_graphql"
             alias = apply_convention(input.table_name, convention)
 
         from provisa.core.models import ColumnPreset as ColumnPresetModel
@@ -1846,7 +1772,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             live=_live_model_from_input(input.live),
         )
         async with pool.acquire() as conn:
-            _conn = cast(asyncpg.Connection, conn)
+            _conn = cast("Connection", conn)
             _conflict = await _domain_table_conflict(
                 _conn, model.domain_id, model.table_name, model.source_id, model.schema_name, alias
             )
@@ -1860,30 +1786,40 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if input.source_id == "__provisa__":
                 from provisa.api.app import state
 
-                await _conn.execute(
-                    """
-                    INSERT INTO sources (id, type, description)
-                    VALUES ('__provisa__', $1, 'Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products')
-                    ON CONFLICT (id) DO NOTHING
-                    """,
-                    state.federation_engine.name,
+                await _conn.upsert(
+                    sources,
+                    {
+                        "id": "__provisa__",
+                        "type": state.federation_engine.name,
+                        "description": "Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products",
+                    },
+                    index_elements=["id"],
+                    update_columns=[],
                 )
             table_id = await table_repo.upsert(_conn, model)
-            src_row = await _conn.fetchrow(
-                "SELECT type, path FROM sources WHERE id = $1", input.source_id
+            _sres = await _conn.execute_core(
+                select(sources.c.type, sources.c.path).where(sources.c.id == input.source_id)
             )
+            _srow = _sres.fetchone()
+            src_row = dict(_srow._mapping) if _srow is not None else None
             await _maybe_migrate_sqlite(
                 src_row, _conn, input.source_id, input.table_name, input.schema_name
             )
             if input.domain_id != "meta":
-                meta_rt_id = await _conn.fetchval(
-                    "SELECT id FROM registered_tables WHERE source_id = 'provisa-admin' AND domain_id = 'meta' AND table_name = 'registered_tables'"
+                _mres = await _conn.execute_core(
+                    select(registered_tables.c.id).where(
+                        registered_tables.c.source_id == "provisa-admin",
+                        registered_tables.c.domain_id == "meta",
+                        registered_tables.c.table_name == "registered_tables",
+                    )
                 )
+                meta_rt_id = _mres.scalar()
                 if meta_rt_id:
-                    await _conn.execute(
-                        "INSERT INTO table_meta_links (source_table_id, target_table_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                        table_id,
-                        meta_rt_id,
+                    await _conn.upsert(
+                        table_meta_links,
+                        {"source_table_id": table_id, "target_table_id": meta_rt_id},
+                        index_elements=["source_table_id"],
+                        update_columns=[],
                     )
 
             import os as _os
@@ -1939,16 +1875,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()
-        columns = _build_column_models(input.columns)
-        # Re-derive a view's columns from its SQL when none are supplied (e.g. the SQL
-        # was edited without re-running it), so an edit can't leave the view schema-less.
-        if input.view_sql and not columns:
-            async with pool.acquire() as _vc:
-                _roles = [r["id"] for r in await _vc.fetch("SELECT id FROM roles")]
-                columns = await _introspect_view_columns(_vc, input.view_sql, _roles or ["admin"])
-        elif input.view_sql and columns:
-            async with pool.acquire() as _vc:
-                columns = await _ensure_view_column_types(_vc, input.view_sql, columns)
+        columns, _ = await _build_columns_for_input(pool, input)
         from provisa.core.models import ColumnPreset as ColumnPresetModel
 
         presets = [
@@ -1982,7 +1909,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             live=_live_model_from_input(input.live),
         )
         async with pool.acquire() as conn:
-            _conn = cast(asyncpg.Connection, conn)
+            _conn = cast("Connection", conn)
             _conflict = await _domain_table_conflict(
                 _conn,
                 model.domain_id,
@@ -2000,11 +1927,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 return MutationResult(success=False, message=_owner_conflict)
             table_id = await table_repo.upsert(_conn, model)
             if table_id is not None:
-                await _conn.execute(
-                    "UPDATE registered_tables SET enable_aggregates=$1, enable_group_by=$2 WHERE id=$3",
-                    input.enable_aggregates,
-                    input.enable_group_by,
-                    table_id,
+                await _conn.execute_core(
+                    update(registered_tables)
+                    .where(registered_tables.c.id == table_id)
+                    .values(
+                        enable_aggregates=input.enable_aggregates,
+                        enable_group_by=input.enable_group_by,
+                    )
                 )
             # REQ-020: a column change may invalidate a relationship's join field — flag
             # any relationship whose join column on this table is no longer present.
@@ -2014,9 +1943,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 await _rel_repo.mark_relationships_for_review(
                     _conn, table_id, [c.name for c in model.columns]
                 )
-            src_row = await _conn.fetchrow(
-                "SELECT type, path FROM sources WHERE id = $1", input.source_id
+            _sres = await _conn.execute_core(
+                select(sources.c.type, sources.c.path).where(sources.c.id == input.source_id)
             )
+            _srow = _sres.fetchone()
+            src_row = dict(_srow._mapping) if _srow is not None else None
             await _maybe_migrate_sqlite(
                 src_row, _conn, input.source_id, input.table_name, input.schema_name
             )
@@ -2038,7 +1969,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await table_repo.delete(cast(asyncpg.Connection, conn), id)
+            deleted = await table_repo.delete(cast("Connection", conn), id)
         if deleted:
             await _rebuild_schemas()
             return MutationResult(success=True, message=f"Table {id} deleted")
@@ -2050,7 +1981,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await role_repo.delete(cast(asyncpg.Connection, conn), id)
+            deleted = await role_repo.delete(cast("Connection", conn), id)
         if deleted:
             return MutationResult(success=True, message=f"Role {id!r} deleted")
         return MutationResult(success=False, message=f"Role {id!r} not found")
@@ -2068,7 +1999,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
         try:
             async with pool.acquire() as conn:
-                await rls_repo.upsert(cast(asyncpg.Connection, conn), model)
+                await rls_repo.upsert(cast("Connection", conn), model)
         except ValueError as e:
             return MutationResult(success=False, message=str(e))
         target = f"domain {input.domain_id!r}" if input.domain_id else f"table {input.table_id!r}"
@@ -2088,7 +2019,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             deleted = await rls_repo.delete(
-                cast(asyncpg.Connection, conn), role_id, table_id=table_id, domain_id=domain_id
+                cast("Connection", conn), role_id, table_id=table_id, domain_id=domain_id
             )
         if deleted:
             return MutationResult(success=True, message="RLS rule deleted")
@@ -2104,7 +2035,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            req = await cr_repo.get(cast(asyncpg.Connection, conn), request_id)
+            req = await cr_repo.get(cast("Connection", conn), request_id)
         if req is None or req["status"] != "pending":
             return MutationResult(success=False, message="Request not found or already resolved")
         try:
@@ -2125,9 +2056,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             # executed. Verify the webhook still exists, then rebuild.
             wh_name = req["payload"]["name"]
             async with pool.acquire() as conn:
-                exists = await conn.fetchval(
-                    "SELECT 1 FROM tracked_webhooks WHERE name = $1", wh_name
+                _ex = await conn.execute_core(
+                    select(tracked_webhooks.c.id).where(tracked_webhooks.c.name == wh_name)
                 )
+                exists = _ex.scalar()
             if not exists:
                 return MutationResult(success=False, message=f"Webhook {wh_name!r} not found")
             from provisa.api.app import _rebuild_schemas
@@ -2144,7 +2076,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         identity = _identity_from_info(info)
         resolved_by = getattr(identity, "user_id", None) if identity is not None else None
         async with pool.acquire() as conn:
-            await cr_repo.mark_executed(cast(asyncpg.Connection, conn), request_id, resolved_by)
+            await cr_repo.mark_executed(cast("Connection", conn), request_id, resolved_by)
         return MutationResult(success=True, message=f"Executed creation request #{request_id}")
 
     @strawberry.mutation
@@ -2159,7 +2091,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return MutationResult(success=False, message="A rejection reason is required")
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            req = await cr_repo.get(cast(asyncpg.Connection, conn), request_id)
+            req = await cr_repo.get(cast("Connection", conn), request_id)
             if req is None or req["status"] != "pending":
                 return MutationResult(
                     success=False, message="Request not found or already resolved"
@@ -2171,7 +2103,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             identity = _identity_from_info(info)
             resolved_by = getattr(identity, "user_id", None) if identity is not None else None
             await cr_repo.mark_rejected(
-                cast(asyncpg.Connection, conn), request_id, reason.strip(), resolved_by
+                cast("Connection", conn), request_id, reason.strip(), resolved_by
             )
         return MutationResult(success=True, message=f"Rejected creation request #{request_id}")
 
@@ -2216,30 +2148,39 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             owner=_owner,
         )
         async with pool.acquire() as conn:
-            _conn = cast(asyncpg.Connection, conn)
+            _conn = cast("Connection", conn)
             await rel_repo.upsert(_conn, model)
             if input.record_candidate and not input.target_function_name:
-                rel_row = await _conn.fetchrow(
-                    "SELECT source_table_id, target_table_id FROM relationships WHERE id = $1",
-                    input.id,
+                _rres = await _conn.execute_core(
+                    select(relationships.c.source_table_id, relationships.c.target_table_id).where(
+                        relationships.c.id == input.id
+                    )
                 )
-                if rel_row and rel_row["target_table_id"] is not None:
-                    await _conn.execute(
-                        """
-                        INSERT INTO relationship_candidates
-                            (source_table_id, target_table_id, source_column, target_column,
-                             cardinality, confidence, reasoning, suggested_name, scope, status)
-                        VALUES ($1, $2, $3, $4, $5, 1.0, 'SQL modeling (admin)', $6, 'admin', 'accepted')
-                        ON CONFLICT (source_table_id, source_column, target_table_id, target_column)
-                        DO UPDATE SET status = 'accepted', confidence = 1.0,
-                                      reasoning = 'SQL modeling (admin)'
-                        """,
-                        rel_row["source_table_id"],
-                        rel_row["target_table_id"],
-                        input.source_column,
-                        input.target_column or None,
-                        input.cardinality,
-                        input.id,
+                rel_row = _rres.fetchone()
+                if rel_row and rel_row.target_table_id is not None:
+                    # DO UPDATE sets the same literal values it inserts (accepted / 1.0 /
+                    # 'SQL modeling (admin)'), so an EXCLUDED-column upsert is equivalent.
+                    await _conn.upsert(
+                        relationship_candidates,
+                        {
+                            "source_table_id": rel_row.source_table_id,
+                            "target_table_id": rel_row.target_table_id,
+                            "source_column": input.source_column,
+                            "target_column": input.target_column or None,
+                            "cardinality": input.cardinality,
+                            "confidence": 1.0,
+                            "reasoning": "SQL modeling (admin)",
+                            "suggested_name": input.id,
+                            "scope": "admin",
+                            "status": "accepted",
+                        },
+                        index_elements=[
+                            "source_table_id",
+                            "source_column",
+                            "target_table_id",
+                            "target_column",
+                        ],
+                        update_columns=["status", "confidence", "reasoning"],
                     )
         await _rebuild_schemas()
         return MutationResult(
@@ -2253,7 +2194,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await rel_repo.delete(cast(asyncpg.Connection, conn), id)
+            deleted = await rel_repo.delete(cast("Connection", conn), id)
         if deleted:
             await _rebuild_schemas()
             return MutationResult(success=True, message=f"Relationship {id!r} deleted")
@@ -2268,13 +2209,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Update cache settings for a source."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE sources SET cache_enabled = $1, cache_ttl = $2 WHERE id = $3",
-                cache_enabled,
-                cache_ttl,
-                source_id,
+            result = await conn.execute_core(
+                update(sources)
+                .where(sources.c.id == source_id)
+                .values(cache_enabled=cache_enabled, cache_ttl=cache_ttl)
             )
-            if result == "UPDATE 0":
+            if (result.rowcount or 0) == 0:
                 return MutationResult(success=False, message=f"Source {source_id!r} not found")
         return MutationResult(
             success=True, message=f"Cache settings updated for source {source_id!r}"
@@ -2287,12 +2227,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Update cache TTL for a registered table."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE registered_tables SET cache_ttl = $1 WHERE id = $2",
-                cache_ttl,
-                table_id,
+            result = await conn.execute_core(
+                update(registered_tables)
+                .where(registered_tables.c.id == table_id)
+                .values(cache_ttl=cache_ttl)
             )
-            if result == "UPDATE 0":
+            if (result.rowcount or 0) == 0:
                 return MutationResult(success=False, message=f"Table {table_id} not found")
         return MutationResult(success=True, message=f"Cache TTL updated for table {table_id}")
 
@@ -2303,12 +2243,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Force (or release) MATERIALIZED federation for a source's tables — the source-level default."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE sources SET prefer_materialized = $1 WHERE id = $2",
-                prefer_materialized,
-                source_id,
+            result = await conn.execute_core(
+                update(sources)
+                .where(sources.c.id == source_id)
+                .values(prefer_materialized=prefer_materialized)
             )
-            if result == "UPDATE 0":
+            if (result.rowcount or 0) == 0:
                 return MutationResult(success=False, message=f"Source {source_id!r} not found")
         return MutationResult(
             success=True, message=f"prefer_materialized set for source {source_id!r}"
@@ -2321,12 +2261,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Override MATERIALIZED federation for one table; None = inherit the source-level default."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE registered_tables SET prefer_materialized = $1 WHERE id = $2",
-                prefer_materialized,
-                table_id,
+            result = await conn.execute_core(
+                update(registered_tables)
+                .where(registered_tables.c.id == table_id)
+                .values(prefer_materialized=prefer_materialized)
             )
-            if result == "UPDATE 0":
+            if (result.rowcount or 0) == 0:
                 return MutationResult(success=False, message=f"Table {table_id} not found")
         return MutationResult(success=True, message=f"prefer_materialized set for table {table_id}")
 
@@ -2358,12 +2298,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Update naming convention for a source."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE sources SET gql_naming_convention = $1 WHERE id = $2",
-                gql_naming_convention,
-                source_id,
+            result = await conn.execute_core(
+                update(sources)
+                .where(sources.c.id == source_id)
+                .values(gql_naming_convention=gql_naming_convention)
             )
-            if result == "UPDATE 0":
+            if (result.rowcount or 0) == 0:
                 return MutationResult(success=False, message=f"Source {source_id!r} not found")
         await _rebuild_schemas()
         return MutationResult(
@@ -2377,12 +2317,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Set the allowed domain list for a source (empty list = unrestricted)."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE sources SET allowed_domains = $1 WHERE id = $2",
-                allowed_domains,
-                source_id,
+            result = await conn.execute_core(
+                update(sources)
+                .where(sources.c.id == source_id)
+                .values(allowed_domains=allowed_domains)
             )
-            if result == "UPDATE 0":
+            if (result.rowcount or 0) == 0:
                 return MutationResult(success=False, message=f"Source {source_id!r} not found")
         from provisa.api.app import state
 
@@ -2402,12 +2342,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Update naming convention for a registered table."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE registered_tables SET gql_naming_convention = $1 WHERE id = $2",
-                gql_naming_convention,
-                table_id,
+            result = await conn.execute_core(
+                update(registered_tables)
+                .where(registered_tables.c.id == table_id)
+                .values(gql_naming_convention=gql_naming_convention)
             )
-            if result == "UPDATE 0":
+            if (result.rowcount or 0) == 0:
                 return MutationResult(success=False, message=f"Table {table_id} not found")
         await _rebuild_schemas()
         return MutationResult(
@@ -2482,14 +2422,22 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Force re-migration of a file-backed (SQLite) table into PG."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            _conn = cast(asyncpg.Connection, conn)
-            row = await _conn.fetchrow(
-                """SELECT rt.table_name, rt.schema_name, s.type, s.path, s.id as source_id
-                   FROM registered_tables rt
-                   JOIN sources s ON s.id = rt.source_id
-                   WHERE rt.id = $1""",
-                table_id,
+            _conn = cast("Connection", conn)
+            _res = await _conn.execute_core(
+                select(
+                    registered_tables.c.table_name,
+                    registered_tables.c.schema_name,
+                    sources.c.type,
+                    sources.c.path,
+                    sources.c.id.label("source_id"),
+                )
+                .select_from(
+                    registered_tables.join(sources, sources.c.id == registered_tables.c.source_id)
+                )
+                .where(registered_tables.c.id == table_id)
             )
+            _srow = _res.fetchone()
+            row = dict(_srow._mapping) if _srow is not None else None
             if not row:
                 return MutationResult(success=False, message=f"Table {table_id} not found")
             if row["type"] != "sqlite":
@@ -2499,7 +2447,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             from provisa.file_source.pg_migrate import migrate_sqlite_table, record_mtime
 
             try:
-                await _conn.execute("DELETE FROM file_source_mtimes WHERE table_id = $1", table_id)
+                await _conn.execute_core(
+                    _delete(file_source_mtimes).where(file_source_mtimes.c.table_id == table_id)
+                )
                 await migrate_sqlite_table(
                     row["path"], row["table_name"], _conn, row["schema_name"], row["table_name"]
                 )
@@ -2557,10 +2507,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return MutationResult(success=False, message="Database pool not available")
 
         async with pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT schema_name, table_name FROM registered_tables WHERE source_id = $1",
-                source_id,
+            _res = await conn.execute_core(
+                select(registered_tables.c.schema_name, registered_tables.c.table_name).where(
+                    registered_tables.c.source_id == source_id
+                )
             )
+            rows = _res.fetchall()
 
         if not rows:
             return MutationResult(
@@ -2573,7 +2525,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         source_catalog = source_to_catalog(source_id)
 
         for row in rows:
-            full_name = f"{source_catalog}.{row['schema_name']}.{row['table_name']}"
+            full_name = f"{source_catalog}.{row.schema_name}.{row.table_name}"
             try:
                 await state.federation_engine.execute_engine(f"ANALYZE {full_name}")
                 analyzed.append(full_name)
@@ -2650,32 +2602,49 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT id, source_id, domain_id, schema_name, table_name, alias, view_sql FROM registered_tables WHERE id = $1",
-                table_id,
+            _res = await conn.execute_core(
+                select(
+                    registered_tables.c.id,
+                    registered_tables.c.source_id,
+                    registered_tables.c.domain_id,
+                    registered_tables.c.schema_name,
+                    registered_tables.c.table_name,
+                    registered_tables.c.alias,
+                    registered_tables.c.view_sql,
+                ).where(registered_tables.c.id == table_id)
             )
+            row = _res.fetchone()
         if not row:
             return MutationResult(success=False, message=f"Table {table_id} not found")
-        if row["source_id"] != "__provisa__":
+        if row.source_id != "__provisa__":
             return MutationResult(
                 success=False,
                 message="Table is not a virtual Provisa view (source_id != '__provisa__')",
             )
-        if not row["view_sql"]:
+        if not row.view_sql:
             return MutationResult(success=False, message="Table has no view_sql")
 
-        view_sql = row["view_sql"]
-        view_name = row["alias"] or row["table_name"]
+        view_sql = row.view_sql
+        view_name = row.alias or row.table_name
 
         # Fetch all non-provisa registered tables with domain_id, source info
         async with pool.acquire() as conn:
-            all_tables = await conn.fetch(
-                """SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name, rt.alias,
-                          s.type as source_type
-                   FROM registered_tables rt
-                   JOIN sources s ON s.id = rt.source_id
-                   WHERE rt.source_id != '__provisa__'""",
+            _ares = await conn.execute_core(
+                select(
+                    registered_tables.c.id,
+                    registered_tables.c.source_id,
+                    registered_tables.c.domain_id,
+                    registered_tables.c.schema_name,
+                    registered_tables.c.table_name,
+                    registered_tables.c.alias,
+                    sources.c.type.label("source_type"),
+                )
+                .select_from(
+                    registered_tables.join(sources, sources.c.id == registered_tables.c.source_id)
+                )
+                .where(registered_tables.c.source_id != "__provisa__")
             )
+            all_tables = [dict(r._mapping) for r in _ares.fetchall()]
 
         # Build replacement dict: virtual ref → physical ref, tracking source_ids hit
         # Sort by length descending so longest match wins
@@ -2722,11 +2691,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         await state.source_pools.execute_ddl(target_source_id, ddl)
 
         async with pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE registered_tables SET source_id=$1, schema_name=$2, view_sql=NULL WHERE id=$3",
-                target_source_id,
-                target_schema,
-                table_id,
+            await conn.execute_core(
+                update(registered_tables)
+                .where(registered_tables.c.id == table_id)
+                .values(source_id=target_source_id, schema_name=target_schema, view_sql=None)
             )
 
         await _rebuild_schemas()

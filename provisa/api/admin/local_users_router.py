@@ -19,8 +19,11 @@ from typing import Any
 import bcrypt
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import delete as _delete, func, insert, select, update
 
 from provisa.core.database import Database
+from provisa.core.schema_admin import local_users
+from provisa.core.schema_org import user_role_assignments
 
 router = APIRouter(prefix="/admin/users", tags=["admin"])
 
@@ -56,7 +59,7 @@ def _hash(password: str) -> str:
 
 
 def _strip_hash(row) -> dict:
-    d = dict(row)
+    d = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
     d.pop("password_hash", None)
     return d
 
@@ -84,22 +87,23 @@ async def create_user(body: CreateUserBody, request: Request):  # REQ-124, REQ-1
     pool = _admin_pool(request)
     async with pool.acquire() as conn:
         # id is generated app-side (portable) rather than via a PG-specific
-        # gen_random_uuid() server default — the platform control plane may be
+        # server-side UUID default — the platform control plane may be
         # any SQLAlchemy backend.
-        row = await conn.fetchrow(
-            """
-            INSERT INTO local_users (id, username, password_hash, email, display_name, roles, attributes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING *
-            """,
-            str(uuid.uuid4()),
-            body.username,
-            _hash(body.password),
-            body.email,
-            body.display_name,
-            body.roles,
-            body.attributes,
+        result = await conn.execute_core(
+            insert(local_users)
+            .values(
+                id=str(uuid.uuid4()),
+                username=body.username,
+                password_hash=_hash(body.password),
+                email=body.email,
+                display_name=body.display_name,
+                # JSON columns take Python objects directly.
+                roles=body.roles,
+                attributes=body.attributes,
+            )
+            .returning(local_users)
         )
+        row = result.fetchone()
     return _strip_hash(row)
 
 
@@ -107,7 +111,8 @@ async def create_user(body: CreateUserBody, request: Request):  # REQ-124, REQ-1
 async def list_users(request: Request):
     pool = _admin_pool(request)
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT * FROM local_users ORDER BY created_at")
+        result = await conn.execute_core(select(local_users).order_by(local_users.c.created_at))
+        rows = result.fetchall()
     return [_strip_hash(r) for r in rows]
 
 
@@ -115,7 +120,8 @@ async def list_users(request: Request):
 async def get_user(user_id: str, request: Request):
     pool = _admin_pool(request)
     async with pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT * FROM local_users WHERE id = $1", user_id)
+        result = await conn.execute_core(select(local_users).where(local_users.c.id == user_id))
+        row = result.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="User not found")
     return _strip_hash(row)
@@ -124,38 +130,29 @@ async def get_user(user_id: str, request: Request):
 @router.put("/{user_id}")
 async def update_user(user_id: str, body: UpdateUserBody, request: Request):
     pool = _admin_pool(request)
-    sets = []
-    params: list[Any] = []
-    idx = 1
+    values: dict[str, Any] = {}
     if body.email is not None:
-        sets.append(f"email = ${idx}")
-        params.append(body.email)
-        idx += 1
+        values["email"] = body.email
     if body.display_name is not None:
-        sets.append(f"display_name = ${idx}")
-        params.append(body.display_name)
-        idx += 1
+        values["display_name"] = body.display_name
     if body.roles is not None:
-        sets.append(f"roles = ${idx}")
-        params.append(body.roles)
-        idx += 1
+        # JSON columns take Python objects directly.
+        values["roles"] = body.roles
     if body.attributes is not None:
-        sets.append(f"attributes = ${idx}")
-        params.append(body.attributes)
-        idx += 1
+        values["attributes"] = body.attributes
     if body.is_active is not None:
-        sets.append(f"is_active = ${idx}")
-        params.append(body.is_active)
-        idx += 1
-    if not sets:
+        values["is_active"] = body.is_active
+    if not values:
         raise HTTPException(status_code=400, detail="No fields to update")
-    sets.append("updated_at = NOW()")
-    params.append(user_id)
+    values["updated_at"] = func.now()
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            f"UPDATE local_users SET {', '.join(sets)} WHERE id = ${idx} RETURNING *",
-            *params,
+        result = await conn.execute_core(
+            update(local_users)
+            .where(local_users.c.id == user_id)
+            .values(**values)
+            .returning(local_users)
         )
+        row = result.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="User not found")
     return _strip_hash(row)
@@ -165,51 +162,67 @@ async def update_user(user_id: str, body: UpdateUserBody, request: Request):
 async def change_password(user_id: str, body: ChangePasswordBody, request: Request):  # REQ-124
     pool = _admin_pool(request)
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "UPDATE local_users SET password_hash = $1, updated_at = NOW() WHERE id = $2 RETURNING id",
-            _hash(body.password),
-            user_id,
+        result = await conn.execute_core(
+            update(local_users)
+            .where(local_users.c.id == user_id)
+            .values(password_hash=_hash(body.password), updated_at=func.now())
+            .returning(local_users.c.id)
         )
+        row = result.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"id": row["id"]}
+    return {"id": row[0]}
 
 
 @router.delete("/{user_id}")
 async def delete_user(user_id: str, request: Request):
     pool = _admin_pool(request)
     async with pool.acquire() as conn:
-        row = await conn.fetchrow("DELETE FROM local_users WHERE id = $1 RETURNING id", user_id)
+        result = await conn.execute_core(
+            _delete(local_users).where(local_users.c.id == user_id).returning(local_users.c.id)
+        )
+        row = result.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"deleted": row["id"]}
+    return {"deleted": row[0]}
 
 
 @router.get("/{user_id}/assignments")
 async def list_assignments(user_id: str, request: Request):
     pool = _pool(request)
+    t = user_role_assignments
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT id, role_id, domain_id, created_at FROM user_role_assignments "
-            "WHERE user_id = $1 ORDER BY role_id, domain_id",
-            user_id,
+        result = await conn.execute_core(
+            select(t.c.id, t.c.role_id, t.c.domain_id, t.c.created_at)
+            .where(t.c.user_id == user_id)
+            .order_by(t.c.role_id, t.c.domain_id)
         )
-    return [dict(r) for r in rows]
+        rows = result.fetchall()
+    return [dict(r._mapping) for r in rows]
 
 
 @router.post("/{user_id}/assignments")
 async def add_assignment(user_id: str, body: AssignmentBody, request: Request):  # REQ-042
     pool = _pool(request)
+    t = user_role_assignments
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "INSERT INTO user_role_assignments (user_id, role_id, domain_id) "
-            "VALUES ($1, $2, $3) ON CONFLICT (user_id, role_id, domain_id) DO NOTHING RETURNING id, role_id, domain_id",
-            user_id,
-            body.role_id,
-            body.domain_id,
+        # Insert-if-absent (idempotent assignment), then read the row back.
+        await conn.upsert(
+            t,
+            {"user_id": user_id, "role_id": body.role_id, "domain_id": body.domain_id},
+            index_elements=["user_id", "role_id", "domain_id"],
+            update_columns=[],
         )
+        result = await conn.execute_core(
+            select(t.c.id, t.c.role_id, t.c.domain_id).where(
+                t.c.user_id == user_id,
+                t.c.role_id == body.role_id,
+                t.c.domain_id == body.domain_id,
+            )
+        )
+        row = result.fetchone()
     return (
-        dict(row)
+        dict(row._mapping)
         if row
         else {"user_id": user_id, "role_id": body.role_id, "domain_id": body.domain_id}
     )
@@ -218,12 +231,12 @@ async def add_assignment(user_id: str, body: AssignmentBody, request: Request): 
 @router.delete("/{user_id}/assignments/{assignment_id}")
 async def remove_assignment(user_id: str, assignment_id: int, request: Request):
     pool = _pool(request)
+    t = user_role_assignments
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "DELETE FROM user_role_assignments WHERE id = $1 AND user_id = $2 RETURNING id",
-            assignment_id,
-            user_id,
+        result = await conn.execute_core(
+            _delete(t).where(t.c.id == assignment_id, t.c.user_id == user_id).returning(t.c.id)
         )
+        row = result.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Assignment not found")
-    return {"deleted": row["id"]}
+    return {"deleted": row[0]}

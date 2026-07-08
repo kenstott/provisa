@@ -20,6 +20,7 @@ Five-stage pipeline:
 
 from __future__ import annotations
 
+
 # Requirements: REQ-345, REQ-346, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-392, REQ-398
 
 import logging
@@ -34,8 +35,12 @@ if TYPE_CHECKING:
     from provisa.cypher.label_map import CypherLabelMap  # noqa: F401
     from provisa.api.app import AppState  # noqa: F401
     from provisa.compiler.sql_gen import CompilationContext  # noqa: F401
+    from provisa.core.database import Connection  # noqa: F401
 
 import re as _re
+from sqlalchemy import select
+
+from provisa.core.schema_org import node_ids
 from provisa.api.rest.registered_call import (
     _detect_procedure,  # noqa: F401 — re-exported for tests
     _handle_procedure,  # noqa: F401 — re-exported for tests
@@ -71,10 +76,12 @@ async def _resolve_id_references(query: str, tenant_db: Any, label_map: "CypherL
         return query
 
     async with tenant_db.acquire() as _conn:
-        rows = await _conn.fetch(
-            "SELECT id, composite_id, label FROM node_ids WHERE id = ANY($1::int[])",
-            sorted(all_ints),
+        _result = await _conn.execute_core(
+            select(node_ids.c.id, node_ids.c.composite_id, node_ids.c.label).where(
+                node_ids.c.id.in_(sorted(all_ints))
+            )
         )
+        rows = [dict(r._mapping) for r in _result.fetchall()]
 
     nm_by_label = {nm.label: nm for nm in label_map.nodes.values()}
     # Also index by table_label for nodes stored with just the table label
@@ -177,6 +184,14 @@ def _federation_error(exc: Exception) -> str:
             parts.append(f"query_id={query_id}")
         return "FederationUserError(" + ", ".join(parts) + ")"
     return _scrub(str(exc))
+
+
+def _exec_error(status: int, exc: Exception, sql: str) -> JSONResponse:
+    """Neutral execution-error response (scrubbed message + the physical SQL)."""
+    return JSONResponse(
+        status_code=status,
+        content={"error": f"Execution failed: {_federation_error(exc)}", "sql": sql},
+    )
 
 
 class CypherRequest(BaseModel):  # REQ-345
@@ -312,10 +327,7 @@ async def _dispatch_execution(
         )
     except OSError as exc:
         log.warning("Cypher execution: network error: %s", exc)
-        return JSONResponse(
-            status_code=503,
-            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": physical_sql},
-        )
+        return _exec_error(503, exc, physical_sql)
     except Exception as exc:
         # Engine driver errors are classified through the seam (no engine-specific exception
         # import): connection loss → 503, query error → 400. Then HTTP-transport failures → 503,
@@ -323,22 +335,10 @@ async def _dispatch_execution(
         kind = state.federation_engine.classify_error(exc)
         if kind == "connection":
             log.warning("Cypher execution: engine connection failed: %s", exc)
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "error": f"Execution failed: {_federation_error(exc)}",
-                    "sql": physical_sql,
-                },
-            )
+            return _exec_error(503, exc, physical_sql)
         if kind == "query":
             log.warning("Cypher execution: engine query error: %s", exc)
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": f"Execution failed: {_federation_error(exc)}",
-                    "sql": physical_sql,
-                },
-            )
+            return _exec_error(400, exc, physical_sql)
 
         import httpx as _httpx
 
@@ -353,18 +353,9 @@ async def _dispatch_execution(
             ),
         ):
             log.warning("Cypher execution: HTTP network error: %s", exc)
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "error": f"Execution failed: {_federation_error(exc)}",
-                    "sql": physical_sql,
-                },
-            )
+            return _exec_error(503, exc, physical_sql)
         log.exception("Cypher execution failed: %s", physical_sql)
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": physical_sql},
-        )
+        return _exec_error(500, exc, physical_sql)
     return rows
 
 
@@ -399,10 +390,7 @@ async def _dispatch_execution_direct(
         return [dict(zip(result.column_names, row)) for row in result.rows]
     except Exception as exc:
         log.exception("Cypher direct execution failed: %s", exec_sql)
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": exec_sql},
-        )
+        return _exec_error(500, exc, exec_sql)
 
 
 def _serialize_rows(
@@ -949,10 +937,12 @@ async def impute_relationships(
     by_label: dict[str, list[Any]] = {}
     if int_ids and state.tenant_db:
         async with state.tenant_db.acquire() as _pg_conn:
-            _pg_rows = await _pg_conn.fetch(
-                "SELECT id, label, composite_id FROM node_ids WHERE id = ANY($1::int[])",
-                int_ids,
+            _pg_result = await _pg_conn.execute_core(
+                select(node_ids.c.id, node_ids.c.label, node_ids.c.composite_id).where(
+                    node_ids.c.id.in_(int_ids)
+                )
             )
+            _pg_rows = [dict(r._mapping) for r in _pg_result.fetchall()]
         for _r in _pg_rows:
             _nm = nm_by_label.get(_r["label"])
             if _nm is None:

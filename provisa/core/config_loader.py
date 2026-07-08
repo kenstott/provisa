@@ -15,13 +15,29 @@
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import asyncpg
 import yaml
+from sqlalchemy import column as _sa_column
+from sqlalchemy import delete as _delete
+from sqlalchemy import insert, or_, select, update
+from sqlalchemy import table as _sa_table
 
 from provisa.core.models import ControlPlaneConfig, Domain, ProvisaConfig, Source, Table
 from provisa.core import domain_policy
+from provisa.core.schema_org import (
+    api_endpoints,
+    api_sources,
+    domains,
+    naming_rules,
+    registered_tables,
+    relationships,
+    roles,
+    sources,
+    table_columns,
+    tracked_functions,
+    tracked_webhooks,
+)
 from provisa.core.secrets import resolve_secrets
 from provisa.openapi.mapper import OpenAPIQuery
 from provisa.core.repositories import (
@@ -34,31 +50,50 @@ from provisa.core.repositories import (
     function as function_repo,
 )
 
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
+
 log = logging.getLogger(__name__)
+
+# Lightweight reference to PG's information_schema.columns — a DB system view (not a
+# provisa metadata table), read over the same connection to see uncommitted writes.
+_information_schema_columns = _sa_table(
+    "columns",
+    _sa_column("column_name"),
+    _sa_column("data_type"),
+    _sa_column("table_schema"),
+    _sa_column("table_name"),
+    schema="information_schema",
+)
 
 
 async def _fill_null_column_types(
-    conn: asyncpg.Connection, source_id: str, schema: str, table: str, types: dict[str, str]
+    conn: "Connection", source_id: str, schema: str, table: str, types: dict[str, str]
 ) -> None:
     """Set table_columns.data_type for columns the YAML left null, from `types`
     (column_name -> data_type). Never overrides an explicit YAML-declared type."""
     if not types:
         return
-    table_id = await conn.fetchval(
-        "SELECT id FROM registered_tables WHERE source_id=$1 AND schema_name=$2 AND table_name=$3",
-        source_id,
-        schema,
-        table,
+    result = await conn.execute_core(
+        select(registered_tables.c.id).where(
+            registered_tables.c.source_id == source_id,
+            registered_tables.c.schema_name == schema,
+            registered_tables.c.table_name == table,
+        )
     )
+    row = result.fetchone()
+    table_id = row[0] if row is not None else None
     if table_id is None:
         return
     for _col, _dt in types.items():
-        await conn.execute(
-            "UPDATE table_columns SET data_type=$1 "
-            "WHERE table_id=$2 AND column_name=$3 AND data_type IS NULL",
-            _dt,
-            table_id,
-            _col,
+        await conn.execute_core(
+            update(table_columns)
+            .where(
+                table_columns.c.table_id == table_id,
+                table_columns.c.column_name == _col,
+                table_columns.c.data_type.is_(None),
+            )
+            .values(data_type=_dt)
         )
 
 
@@ -84,18 +119,20 @@ _PG_TO_PHYSICAL_TYPE = {
 }
 
 
-async def _pg_column_types(
-    conn: asyncpg.Connection, pg_schema: str, pg_table: str
-) -> dict[str, str]:
+async def _pg_column_types(conn: "Connection", pg_schema: str, pg_table: str) -> dict[str, str]:
     """Return {column_name: column_type} for a PG table read over the same asyncpg
     connection — sees uncommitted writes (e.g. an OpenAPI cache table just created
     in this transaction), which a separate the engine JDBC connection cannot."""
-    rows = await conn.fetch(
-        "SELECT column_name, data_type FROM information_schema.columns "
-        "WHERE table_schema=$1 AND table_name=$2",
-        pg_schema,
-        pg_table,
+    result = await conn.execute_core(
+        select(
+            _information_schema_columns.c.column_name,
+            _information_schema_columns.c.data_type,
+        ).where(
+            _information_schema_columns.c.table_schema == pg_schema,
+            _information_schema_columns.c.table_name == pg_table,
+        )
     )
+    rows = [dict(r._mapping) for r in result.fetchall()]
     return {
         r["column_name"]: _PG_TO_PHYSICAL_TYPE[r["data_type"]]
         for r in rows
@@ -175,40 +212,30 @@ _OAPI_PHYSICAL = {
 
 
 async def _replace_mode_cleanup(
-    conn: asyncpg.Connection, config: ProvisaConfig
+    conn: "Connection", config: ProvisaConfig
 ) -> None:  # REQ-013, REQ-014
     """Delete all rows not present in the new config (full replace semantics)."""
     new_source_ids = list({src.id for src in config.sources} | set(_SYSTEM_SOURCE_IDS))
     new_domain_ids = list({d.id for d in config.domains} | set(domain_policy.system_domain_ids()))
     new_role_ids = [r.id for r in config.roles]
     keep_sources = new_source_ids if new_source_ids else _SYSTEM_SOURCE_IDS
-    await conn.execute(
-        "DELETE FROM registered_tables WHERE source_id != ALL($1::text[])",
-        keep_sources,
+    await conn.execute_core(
+        _delete(registered_tables).where(registered_tables.c.source_id.not_in(keep_sources))
     )
-    await conn.execute(
-        "DELETE FROM sources WHERE id != ALL($1::text[])",
-        keep_sources,
-    )
+    await conn.execute_core(_delete(sources).where(sources.c.id.not_in(keep_sources)))
     keep_domains = new_domain_ids if new_domain_ids else domain_policy.system_domain_ids()
-    await conn.execute(
-        "DELETE FROM domains WHERE id != ALL($1::text[])",
-        keep_domains,
-    )
+    await conn.execute_core(_delete(domains).where(domains.c.id.not_in(keep_domains)))
     if new_role_ids:
-        await conn.execute(
-            "DELETE FROM roles WHERE id != ALL($1::text[])",
-            new_role_ids,
-        )
+        await conn.execute_core(_delete(roles).where(roles.c.id.not_in(new_role_ids)))
     else:
-        await conn.execute("DELETE FROM roles")
-    await conn.execute("DELETE FROM relationships WHERE id NOT LIKE 'meta:%'")
-    await conn.execute("DELETE FROM tracked_functions")
-    await conn.execute("DELETE FROM tracked_webhooks")
+        await conn.execute_core(_delete(roles))
+    await conn.execute_core(_delete(relationships).where(relationships.c.id.notlike("meta:%")))
+    await conn.execute_core(_delete(tracked_functions))
+    await conn.execute_core(_delete(tracked_webhooks))
 
 
 async def _upsert_sources(  # REQ-012, REQ-250
-    conn: asyncpg.Connection,
+    conn: "Connection",
     engine: Any,
     config: ProvisaConfig,
 ) -> None:
@@ -223,13 +250,11 @@ async def _upsert_sources(  # REQ-012, REQ-250
                 pass  # register_source / catalog.create_catalog already log warnings
 
 
-async def _upsert_naming_rules(conn: asyncpg.Connection, config: ProvisaConfig) -> None:
-    await conn.execute("DELETE FROM naming_rules")
+async def _upsert_naming_rules(conn: "Connection", config: ProvisaConfig) -> None:
+    await conn.execute_core(_delete(naming_rules))
     for rule in config.naming.rules:
-        await conn.execute(
-            "INSERT INTO naming_rules (pattern, replacement) VALUES ($1, $2)",
-            rule.pattern,
-            rule.replace,
+        await conn.execute_core(
+            insert(naming_rules).values(pattern=rule.pattern, replacement=rule.replace)
         )
 
 
@@ -273,7 +298,7 @@ def _enrich_openapi_table_columns(
 
 
 async def _handle_sqlite_table(
-    conn: asyncpg.Connection,
+    conn: "Connection",
     tbl: Table,
     src: Source,
 ) -> None:
@@ -338,7 +363,7 @@ def _build_api_columns(match: OpenAPIQuery) -> tuple[list[dict], set[str]]:
 
 
 async def _register_api_endpoint(
-    conn: asyncpg.Connection,
+    conn: "Connection",
     tbl: Table,
     src: Source,
     match: OpenAPIQuery,
@@ -346,54 +371,44 @@ async def _register_api_endpoint(
     default_params: dict,
     api_columns: list[dict],
 ) -> None:
-    import json as _json
     from provisa.openapi.register import _schema_to_columns
 
-    await conn.execute(
-        """
-        INSERT INTO api_sources (id, type, base_url, auth)
-        VALUES ($1, 'openapi', $2, $3)
-        ON CONFLICT (id) DO UPDATE SET base_url = EXCLUDED.base_url
-        """,
-        src.id,
-        resolved_base_url,
-        None,
+    await conn.upsert(
+        api_sources,
+        {"id": src.id, "type": "openapi", "base_url": resolved_base_url, "auth": None},
+        index_elements=["id"],
+        update_columns=["base_url"],
     )
-    await conn.execute(
-        """
-        INSERT INTO api_endpoints
-            (source_id, path, method, table_name, columns, ttl, default_params, promotions)
-        VALUES ($1, $2, 'GET', $3, $4::jsonb, $5, $6::jsonb, $7::jsonb)
-        ON CONFLICT (table_name) DO UPDATE SET
-            source_id     = EXCLUDED.source_id,
-            path          = EXCLUDED.path,
-            columns       = EXCLUDED.columns,
-            ttl           = EXCLUDED.ttl,
-            default_params = EXCLUDED.default_params,
-            promotions    = EXCLUDED.promotions
-        """,
-        src.id,
-        match.path,
-        tbl.table_name,
-        _json.dumps(api_columns),
-        src.cache_ttl or 300,
-        _json.dumps(default_params) if default_params else None,
-        _json.dumps(getattr(tbl, "promotions", []) or []),
+    await conn.upsert(
+        api_endpoints,
+        {
+            "source_id": src.id,
+            "path": match.path,
+            "method": "GET",
+            "table_name": tbl.table_name,
+            "columns": api_columns,
+            "ttl": src.cache_ttl or 300,
+            "default_params": default_params if default_params else None,
+            "promotions": getattr(tbl, "promotions", []) or [],
+        },
+        index_elements=["table_name"],
+        update_columns=["source_id", "path", "columns", "ttl", "default_params", "promotions"],
     )
     for col_data in api_columns:
         if col_data.get("object_fields"):
-            await conn.execute(
-                """UPDATE table_columns tc
-                   SET object_fields = $1::jsonb
-                   FROM registered_tables rt
-                   WHERE tc.table_id = rt.id
-                     AND rt.source_id = $2
-                     AND rt.table_name = $3
-                     AND tc.column_name = $4""",
-                _json.dumps(col_data["object_fields"]),
-                tbl.source_id,
-                tbl.table_name,
-                col_data["name"],
+            await conn.execute_core(
+                update(table_columns)
+                .where(
+                    table_columns.c.table_id
+                    == select(registered_tables.c.id)
+                    .where(
+                        registered_tables.c.source_id == tbl.source_id,
+                        registered_tables.c.table_name == tbl.table_name,
+                    )
+                    .scalar_subquery(),
+                    table_columns.c.column_name == col_data["name"],
+                )
+                .values(object_fields=col_data["object_fields"])
             )
     # Persist column data_type from the spec. OpenAPI tables are
     # API-backed: their cached response may be empty (so the engine can't
@@ -426,7 +441,7 @@ async def _register_api_endpoint(
 
 
 async def _handle_openapi_table(
-    conn: asyncpg.Connection,
+    conn: "Connection",
     tbl: Table,
     src: Source,
     spec: dict,
@@ -483,7 +498,7 @@ async def _handle_openapi_table(
 
 
 async def _upsert_single_table(
-    conn: asyncpg.Connection,
+    conn: "Connection",
     engine: Any,
     tbl: Table,
     src: Source | None,
@@ -519,16 +534,17 @@ async def _upsert_single_table(
         )
 
 
-async def _purge_removed_tables(conn: asyncpg.Connection, config: ProvisaConfig) -> None:
+async def _purge_removed_tables(conn: "Connection", config: ProvisaConfig) -> None:
     """Delete registered_tables rows whose table_name is no longer in config (handles renames)."""
     tables_by_source: dict[str, list[str]] = {}
     for tbl in config.tables:
         tables_by_source.setdefault(tbl.source_id, []).append(tbl.table_name)
     for src_id, current_names in tables_by_source.items():
-        await conn.execute(
-            "DELETE FROM registered_tables WHERE source_id = $1 AND table_name != ALL($2::text[])",
-            src_id,
-            current_names,
+        await conn.execute_core(
+            _delete(registered_tables).where(
+                registered_tables.c.source_id == src_id,
+                registered_tables.c.table_name.not_in(current_names),
+            )
         )
 
 
@@ -542,7 +558,7 @@ async def _analyze_sources(engine: Any, config: ProvisaConfig) -> None:  # REQ-2
 
 
 async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
-    conn: asyncpg.Connection,
+    conn: "Connection",
     engine: Any,
     config: ProvisaConfig,
     openapi_specs: dict[str, dict],
@@ -560,37 +576,36 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
 
 
 async def _upsert_relationships(
-    conn: asyncpg.Connection, config: ProvisaConfig
+    conn: "Connection", config: ProvisaConfig
 ) -> None:  # REQ-018, REQ-019, REQ-020
     """Delete stale relationships and upsert config-declared ones."""
     current_rel_ids = [rel.id for rel in config.relationships]
+    graphql_remote_exists = (
+        select(1)
+        .select_from(registered_tables.join(sources, registered_tables.c.source_id == sources.c.id))
+        .where(
+            or_(
+                registered_tables.c.id == relationships.c.source_table_id,
+                registered_tables.c.id == relationships.c.target_table_id,
+            ),
+            sources.c.type == "graphql_remote",
+        )
+        .exists()
+    )
     if current_rel_ids:
-        await conn.execute(
-            """
-            DELETE FROM relationships r
-            WHERE r.id != ALL($1::text[])
-            AND r.id NOT LIKE 'meta:%'
-            AND NOT EXISTS (
-                SELECT 1 FROM registered_tables rt
-                JOIN sources s ON rt.source_id = s.id
-                WHERE (rt.id = r.source_table_id OR rt.id = r.target_table_id)
-                AND s.type = 'graphql_remote'
+        await conn.execute_core(
+            _delete(relationships).where(
+                relationships.c.id.not_in(current_rel_ids),
+                relationships.c.id.notlike("meta:%"),
+                ~graphql_remote_exists,
             )
-            """,
-            current_rel_ids,
         )
     else:
-        await conn.execute(
-            """
-            DELETE FROM relationships r
-            WHERE r.id NOT LIKE 'meta:%'
-            AND NOT EXISTS (
-                SELECT 1 FROM registered_tables rt
-                JOIN sources s ON rt.source_id = s.id
-                WHERE (rt.id = r.source_table_id OR rt.id = r.target_table_id)
-                AND s.type = 'graphql_remote'
+        await conn.execute_core(
+            _delete(relationships).where(
+                relationships.c.id.notlike("meta:%"),
+                ~graphql_remote_exists,
             )
-            """,
         )
     for rel in config.relationships:
         try:
@@ -601,7 +616,7 @@ async def _upsert_relationships(
 
 async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250
     config: ProvisaConfig,
-    conn: asyncpg.Connection,
+    conn: "Connection",
     engine: Any = None,
     replace: bool = False,
 ) -> None:
@@ -614,8 +629,9 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250
     domain_policy.configure(config.naming.use_domains, config.naming.default_domain)
 
     # Serialize concurrent config loads to prevent deadlocks when multiple
-    # processes (e.g. parallel test app lifespans) upsert the same rows.
-    await conn.execute("SELECT pg_advisory_xact_lock(7261748190)")
+    # processes (e.g. parallel test app lifespans) upsert the same rows. Taken through the DB
+    # abstraction — a no-op on single-writer backends (SQLite) that need no cross-process lock.
+    await conn.advisory_xact_lock(7261748190)
 
     if replace:
         await _replace_mode_cleanup(conn, config)
@@ -782,15 +798,19 @@ def _validate_change_signal(config) -> None:  # REQ-932
             )
 
 
-async def _validate_existing_domains(conn: asyncpg.Connection, default_domain: str) -> None:
-    rows = await conn.fetch(
-        """
-        SELECT source_id, schema_name, table_name, domain_id
-        FROM registered_tables
-        WHERE domain_id <> '' AND domain_id <> ALL($1::text[])
-        """,
-        [default_domain, "meta", "ops"],
+async def _validate_existing_domains(conn: "Connection", default_domain: str) -> None:
+    result = await conn.execute_core(
+        select(
+            registered_tables.c.source_id,
+            registered_tables.c.schema_name,
+            registered_tables.c.table_name,
+            registered_tables.c.domain_id,
+        ).where(
+            registered_tables.c.domain_id != "",
+            registered_tables.c.domain_id.not_in([default_domain, "meta", "ops"]),
+        )
     )
+    rows = [dict(r._mapping) for r in result.fetchall()]
     if rows:
         offenders = ", ".join(
             f"{r['source_id']}.{r['schema_name']}.{r['table_name']}={r['domain_id']!r}"
@@ -804,7 +824,7 @@ async def _validate_existing_domains(conn: asyncpg.Connection, default_domain: s
 
 async def load_config(  # REQ-012, REQ-016, REQ-250
     config: ProvisaConfig,
-    pg_conn: asyncpg.Connection,
+    pg_conn: "Connection",
     engine: Any = None,
     replace: bool = False,
 ) -> None:
@@ -821,7 +841,7 @@ async def load_config(  # REQ-012, REQ-016, REQ-250
 
 async def load_config_from_yaml(  # REQ-012, REQ-016, REQ-250
     path: str | Path,
-    pg_conn: asyncpg.Connection,
+    pg_conn: "Connection",
     engine: Any = None,
     replace: bool = False,
 ) -> ProvisaConfig:
