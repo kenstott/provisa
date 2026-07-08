@@ -309,7 +309,7 @@ export function NativeFilterModal({
           ))}
           <div className="nf-modal-actions">
             <button type="button" className="nf-modal-cancel" onClick={onCancel}>
-              Cancel
+              ✕
             </button>
             <button type="submit" className="nf-modal-run">
               Run

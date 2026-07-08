@@ -153,7 +153,7 @@ export function OrgsTab() {
         />
         <div className="page-actions">
           <button onClick={() => setShowCreateOrg((v) => !v)}>
-            {showCreateOrg ? "Cancel" : "+ Org"}
+            {showCreateOrg ? "✕" : "+ Org"}
           </button>
         </div>
       </div>
@@ -293,7 +293,7 @@ export function OrgsTab() {
         />
         <div className="page-actions">
           <button onClick={() => setShowInviteForm((v) => !v)}>
-            {showInviteForm ? "Cancel" : "+ Invite Link"}
+            {showInviteForm ? "✕" : "+ Invite Link"}
           </button>
         </div>
       </div>

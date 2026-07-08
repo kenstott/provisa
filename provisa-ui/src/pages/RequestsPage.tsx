@@ -212,7 +212,7 @@ export function RequestsPage() {
           </label>
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button onClick={doReject} disabled={!rejectReason || busy}>Confirm</button>
-            <button onClick={() => { setRejectingId(null); setRejectReason(""); }}>Cancel</button>
+            <button onClick={() => { setRejectingId(null); setRejectReason(""); }}>✕</button>
           </div>
         </div>
       )}

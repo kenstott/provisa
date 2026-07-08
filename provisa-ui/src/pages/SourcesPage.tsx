@@ -2421,7 +2421,7 @@ export function SourcesPage() {
                 }
               }}
             >
-              {showForm ? "Cancel" : "+ Source"}
+              {showForm ? "✕" : "+ Source"}
             </button>
           )}
         </div>

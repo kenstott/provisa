@@ -709,7 +709,7 @@ export function CommandsPage() {
                 if (showForm) handleCancel();
               }}
             >
-              {showForm ? "Cancel" : "+ Command"}
+              {showForm ? "✕" : "+ Command"}
             </button>
           )}
         </div>

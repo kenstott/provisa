@@ -148,7 +148,7 @@ export function ReverseRelationshipModal({
         </div>
         <div className="modal-actions">
           <button className="btn-secondary" onClick={() => setReverseForm(null)}>
-            Cancel
+            ✕
           </button>
           <button className="btn-primary" onClick={onSave} disabled={saving === "reverse"}>
             Save

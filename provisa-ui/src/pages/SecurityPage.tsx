@@ -250,7 +250,7 @@ export function SecurityRolesPage() {
               }
             }}
           >
-            {showRoleForm ? "Cancel" : "+ Role"}
+            {showRoleForm ? "✕" : "+ Role"}
           </button>
         </div>
       </div>
@@ -622,7 +622,7 @@ export function SecurityRlsPage() {
               }
             }}
           >
-            {showRuleForm ? "Cancel" : "+ RLS"}
+            {showRuleForm ? "✕" : "+ RLS"}
           </button>
         </div>
       </div>

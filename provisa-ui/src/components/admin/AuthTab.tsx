@@ -8,6 +8,7 @@
 // permission from the copyright holder.
 
 import { useEffect, useMemo, useState } from "react";
+import { Save } from "lucide-react";
 import { fetchAuthConfig, setAuthConfig, type AuthConfigState } from "../../api/admin";
 
 // REQ-919: configure the authentication provider (firebase/keycloak/oauth/simple) + role settings.
@@ -162,8 +163,13 @@ export function AuthTab() {
       </div>
 
       <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", alignItems: "center" }}>
-        <button className="btn-primary" onClick={save} disabled={saving || missingRequired}>
-          {saving ? "Saving…" : "Save auth settings"}
+        <button
+          className="btn-primary"
+          onClick={save}
+          disabled={saving || missingRequired}
+          title="Save auth settings"
+        >
+          {saving ? <span className="btn-spinner" /> : <Save size={14} />}
         </button>
         {msg && <span className="success-text">{msg}</span>}
         {error && <span className="error-text">{error}</span>}

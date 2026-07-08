@@ -317,7 +317,7 @@ export function TableMappingBuilder({ sourceType, onSave, onCancel }: TableMappi
     <div className="form-card" style={{ marginTop: "1rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h3 style={{ margin: 0 }}>Table Mapping: {sourceType}</h3>
-        <button onClick={onCancel} style={{ padding: "0.25rem 0.5rem" }}>Cancel</button>
+        <button onClick={onCancel} style={{ padding: "0.25rem 0.5rem" }}>✕</button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginTop: "0.5rem" }}>

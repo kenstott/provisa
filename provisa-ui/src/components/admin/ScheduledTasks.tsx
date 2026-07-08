@@ -86,7 +86,7 @@ export function ScheduledTasks() {
     <div>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
         <button onClick={() => { setShowForm((v) => !v); setFormMsg(""); }}>
-          {showForm ? "Cancel" : "+ Scheduled Task"}
+          {showForm ? "✕" : "+ Scheduled Task"}
         </button>
       </div>
 

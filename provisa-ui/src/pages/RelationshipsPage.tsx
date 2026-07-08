@@ -367,7 +367,7 @@ export function RelationshipsPage() {
               className="btn-primary"
               onClick={() => setShowForm(!showForm)}
             >
-              {showForm ? "Cancel" : "+ Relationship"}
+              {showForm ? "✕" : "+ Relationship"}
             </button>
           )}
           <button

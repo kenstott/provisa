@@ -683,7 +683,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         <div className="page-actions">
           {!viewsOnly && (
             <button data-tour="tables-add" onClick={() => setShowForm(!showForm)}>
-              {showForm ? "Cancel" : "+ Table"}
+              {showForm ? "✕" : "+ Table"}
             </button>
           )}
           <button onClick={() => navigate("/sql")} title="Create a new view in the SQL Explorer">

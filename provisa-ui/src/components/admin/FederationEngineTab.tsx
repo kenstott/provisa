@@ -8,6 +8,7 @@
 // permission from the copyright holder.
 
 import { useEffect, useMemo, useState } from "react";
+import { Save } from "lucide-react";
 import {
   fetchFederationEngine,
   setFederationEngine,
@@ -171,8 +172,13 @@ export function FederationEngineTab() {
       </div>
 
       <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", alignItems: "center" }}>
-        <button className="btn-primary" onClick={save} disabled={saving || missingRequired}>
-          {saving ? "Saving…" : "Save engine selection"}
+        <button
+          className="btn-primary"
+          onClick={save}
+          disabled={saving || missingRequired}
+          title="Save engine selection"
+        >
+          {saving ? <span className="btn-spinner" /> : <Save size={14} />}
         </button>
         {msg && <span className="success-text">{msg}</span>}
         {error && <span className="error-text">{error}</span>}

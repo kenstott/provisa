@@ -8,6 +8,7 @@
 // permission from the copyright holder.
 
 import { useEffect, useMemo, useState } from "react";
+import { Save } from "lucide-react";
 import {
   fetchEncryption,
   setEncryption,
@@ -173,8 +174,8 @@ export function EncryptionTab() {
       </div>
 
       <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", alignItems: "center" }}>
-        <button className="btn-primary" onClick={save} disabled={saving}>
-          {saving ? "Saving…" : "Save encryption settings"}
+        <button className="btn-primary" onClick={save} disabled={saving} title="Save encryption settings">
+          {saving ? <span className="btn-spinner" /> : <Save size={14} />}
         </button>
         {msg && <span className="success-text">{msg}</span>}
         {error && <span className="error-text">{error}</span>}

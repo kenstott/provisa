@@ -43,7 +43,7 @@ export function ConfirmDialog({ title, consequence, onConfirm, children }: Props
             <p className="consequence">{consequence}</p>
             <div className="modal-actions">
               <button onClick={() => setOpen(false)} disabled={loading}>
-                Cancel
+                ✕
               </button>
               <button
                 className="destructive"
