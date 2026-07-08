@@ -26,8 +26,15 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy.schema import CreateTable
+
 from provisa.core.change_signal import APPEND, select_landing_shape
 from provisa.federation.materialize_exec import build_table, land_append, land_replace
+
+
+def _qualified(schema: str, table: str) -> str:
+    return f"{schema}.{table}" if schema else table
+
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -74,6 +81,30 @@ async def store_connection(dsn: str) -> AsyncGenerator[Any]:
             yield conn
     finally:
         await engine.dispose()
+
+
+async def ensure_table(
+    store_dsn: str,
+    *,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    pk_columns: list[str] | None = None,
+) -> str:
+    """Eagerly CREATE the (empty) landing table if absent — the DDL half of landing, split from the
+    DML so the catalog is complete at startup and the engine attaches an already-existing table.
+
+    Idempotent (``CREATE TABLE IF NOT EXISTS`` + schema-if-absent); never drops or writes rows. Only
+    for LANDED sources — a live source is attached live, not pre-created. Returns the qualified name.
+    The engine is never the writer — this opens the store's own connection."""
+    tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
+    async with store_connection(store_dsn) as conn:
+        if conn.capabilities.schemas:
+            from sqlalchemy.schema import CreateSchema
+
+            await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        await conn.execute_core(CreateTable(tbl, if_not_exists=True))
+    return _qualified(schema, table)
 
 
 async def land(
