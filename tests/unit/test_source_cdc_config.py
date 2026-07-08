@@ -21,7 +21,7 @@ from provisa.api.data.subscribe import (
     _resolve_provider_type,
     _CDC_DEBEZIUM_SOURCE_TYPES,
 )
-from provisa.core.config_loader import _validate_table_live_delivery
+from provisa.core.config_loader import _validate_change_signal, _validate_table_live_delivery
 from provisa.core.models import Source, SourceCdcConfig, SourceType
 
 
@@ -39,7 +39,9 @@ class TestSourceCdcModel:
     def test_defaults(self):
         c = SourceCdcConfig(bootstrap_servers="b:9092", topic_prefix="dbserver1")
         assert c.schema_registry_url is None
-        assert c.consumer_group_id == "provisa-debezium"
+        # REQ-931: consumer_group_id is a receiver-side setting; None = inherit the Provisa-level
+        # cdc_consumer_group_id. Only set per-source for deliberate offset isolation.
+        assert c.consumer_group_id is None
 
     def test_source_cdc_defaults_none(self):
         s = Source(id="s1", type=SourceType.mysql)
@@ -91,22 +93,28 @@ class TestProviderRouting:
         live = SimpleNamespace(strategy=strategy) if strategy is not None else None
         return SimpleNamespace(live=live)
 
+    # REQ-932: _resolve_provider_type resolves source-level change_signal inherit from
+    # state.config.sources; an empty list means no source override (table/legacy signal wins).
+    _EMPTY_CFG = SimpleNamespace(sources=[])
+
     def test_strategy_debezium_routes_to_debezium(self):
-        state = SimpleNamespace(cdc_sources={"s1": _source_with_cdc("mysql")})
+        state = SimpleNamespace(
+            cdc_sources={"s1": _source_with_cdc("mysql")}, config=self._EMPTY_CFG
+        )
         assert _resolve_provider_type("mysql", "s1", self._tbl("debezium"), state) == "debezium"
 
     def test_strategy_kafka_routes_to_kafka(self):
-        state = SimpleNamespace(cdc_sources={})
+        state = SimpleNamespace(cdc_sources={}, config=self._EMPTY_CFG)
         assert _resolve_provider_type("postgresql", "s1", self._tbl("kafka"), state) == "kafka"
 
     def test_strategy_native_on_pg_routes_to_source_type(self):
-        state = SimpleNamespace(cdc_sources={})
+        state = SimpleNamespace(cdc_sources={}, config=self._EMPTY_CFG)
         assert (
             _resolve_provider_type("postgresql", "s1", self._tbl("native"), state) == "postgresql"
         )
 
     def test_strategy_poll_routes_to_source_type(self):
-        state = SimpleNamespace(cdc_sources={})
+        state = SimpleNamespace(cdc_sources={}, config=self._EMPTY_CFG)
         assert _resolve_provider_type("mysql", "s1", self._tbl("poll"), state) == "mysql"
 
     def test_no_strategy_falls_back_to_cdc_heuristic(self):
@@ -141,3 +149,36 @@ class TestProviderRouting:
         state = SimpleNamespace(cdc_sources={})
         with pytest.raises(ValueError, match="no source-level"):
             _build_cdc_config(state, "s1")
+
+
+class TestChangeSignalValidation:
+    """REQ-932: change_signal capability gate (push transports need the source's cdc block)."""
+
+    @staticmethod
+    def _cfg(source, table_signal):
+        table = SimpleNamespace(
+            source_id=source.id, table_name="orders", change_signal=table_signal
+        )
+        return SimpleNamespace(sources=[source], tables=[table])
+
+    def test_debezium_requires_cdc_block(self):
+        src = Source(id="s1", type=SourceType.mysql, database="app")  # no cdc block
+        with pytest.raises(ValueError, match="requires source-level cdc"):
+            _validate_change_signal(self._cfg(src, "debezium"))
+
+    def test_debezium_with_cdc_block_ok(self):
+        _validate_change_signal(self._cfg(_source_with_cdc("mysql"), "debezium"))
+
+    def test_kafka_source_type_needs_no_block(self):
+        src = Source(id="s1", type=SourceType.kafka, database="app")
+        _validate_change_signal(self._cfg(src, "kafka"))
+
+    def test_poll_signal_unrestricted(self):
+        src = Source(id="s1", type=SourceType.mysql, database="app")
+        _validate_change_signal(self._cfg(src, "ttl"))
+
+    def test_table_inherits_source_signal(self):
+        # No table override; source declares debezium but has no cdc block → still rejected.
+        src = Source(id="s1", type=SourceType.mysql, database="app", change_signal="debezium")
+        with pytest.raises(ValueError, match="requires source-level cdc"):
+            _validate_change_signal(self._cfg(src, None))

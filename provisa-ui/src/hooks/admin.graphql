@@ -90,6 +90,8 @@ query TablesQuery {
     preferMaterialized
     gqlNamingConvention
     watermarkColumn
+    changeSignal
+    probeQuery
     apiEndpoint
     viewSql
     materialize

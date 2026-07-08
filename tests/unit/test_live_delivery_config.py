@@ -85,11 +85,15 @@ class TestReconcileLiveEngine:
     async def test_builds_trino_qualified_poll_specs(self):
         from provisa.api import app as app_mod
 
+        # REQ-932: reconcile keys off change_signal (legacy live.strategy read through) + the
+        # top-level watermark_column.
         rows = [
             {
                 "source_id": "sales-db",
                 "schema_name": "public",
                 "table_name": "orders",
+                "change_signal": None,  # inherit; legacy live.strategy=poll → ttl (a poll signal)
+                "watermark_column": "updated_at",
                 "live": {
                     "strategy": "poll",
                     "watermark_column": "updated_at",
@@ -109,6 +113,8 @@ class TestReconcileLiveEngine:
                 "source_id": "pg",
                 "schema_name": "public",
                 "table_name": "events",
+                "change_signal": None,
+                "watermark_column": "ts",
                 "live": {"strategy": "debezium", "watermark_column": "ts"},
             },
         ]
@@ -171,8 +177,11 @@ class TestRepoUpsertSerializesLive:
 
         await table_repo.upsert(conn, tbl)
 
-        live_arg = conn.fetchval.call_args.args[-1]
-        assert json.loads(live_arg) == live.model_dump()
+        # live is serialized to JSON and passed to the upsert. Assert by value, not position, so
+        # the test survives added columns (change_signal/probe_query now follow live — REQ-929).
+        live_json = json.dumps(live.model_dump())
+        assert live_json in conn.fetchval.call_args.args
+        assert json.loads(live_json) == live.model_dump()
 
     @pytest.mark.asyncio
     async def test_live_none_persists_null(self):

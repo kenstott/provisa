@@ -15,7 +15,7 @@ export interface SourceCdcConfig {
   bootstrapServers: string;
   topicPrefix: string;
   schemaRegistryUrl?: string | null;
-  consumerGroupId?: string;
+  consumerGroupId?: string | null; // REQ-931: null/omitted = inherit Provisa-level default
 }
 
 export interface Source {
@@ -119,6 +119,8 @@ export interface RegisteredTable {
   preferMaterialized: boolean | null;
   gqlNamingConvention: string | null;
   watermarkColumn: string | null;
+  changeSignal: string | null;
+  probeQuery: string | null;
   columns: TableColumn[];
   columnPresets: ColumnPreset[];
   apiEndpoint: string | null;

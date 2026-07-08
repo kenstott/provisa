@@ -14,31 +14,34 @@ from __future__ import annotations
 
 import asyncpg
 
+from provisa.core.change_signal import is_poll, resolve_effective  # REQ-932
 from provisa.live.engine import LiveSpec
 
 
-def _live_is_poll(live: dict) -> bool:  # REQ-813
-    """True when a live config uses watermark polling. Maps the legacy delivery field."""
-    if live.get("strategy"):
-        return live["strategy"] == "poll"
-    return live.get("delivery", "poll") == "poll"
+async def reconcile_live_engine(conn: asyncpg.Connection, engine) -> None:  # REQ-565, REQ-932
+    """Rebuild the engine's poll jobs from registered_tables.
 
-
-async def reconcile_live_engine(conn: asyncpg.Connection, engine) -> None:  # REQ-565, REQ-813
-    """Rebuild the engine's poll jobs from registered_tables.live (strategy=poll only)."""
+    A table drives a watermark poll job when its effective change_signal is a poll signal
+    (ttl/probe/ttl_probe) and it has a watermark_column (the append/subscribable gate). The
+    signal resolves table.change_signal → legacy live.strategy → default; the watermark resolves
+    the top-level Table.watermark_column → legacy live.watermark_column (REQ-932).
+    """
     if engine is None:
         return
 
     rows = await conn.fetch(
-        "SELECT source_id, schema_name, table_name, live FROM registered_tables "
-        "WHERE live IS NOT NULL"
+        "SELECT source_id, schema_name, table_name, live, change_signal, watermark_column "
+        "FROM registered_tables WHERE live IS NOT NULL"
     )
     specs: list[LiveSpec] = []
     for row in rows:
         live = row["live"]
-        if not live or not _live_is_poll(live):
+        if not live:
             continue
-        watermark = live.get("watermark_column")
+        sig = resolve_effective(row["change_signal"], None, live.get("strategy"))
+        if not is_poll(sig):
+            continue
+        watermark = row["watermark_column"] or live.get("watermark_column")
         if not watermark:
             continue
         catalog = row["source_id"].replace("-", "_")

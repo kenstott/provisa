@@ -429,6 +429,28 @@ export function AdminPage() {
                   </label>
                 </div>
                 <div className="settings-section">
+                  <h4>Change Data Capture</h4>
+                  <label>
+                    Consumer Group ID
+                    <input
+                      type="text"
+                      value={settings.cdc.consumer_group_id}
+                      placeholder="provisa-debezium"
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          cdc: { consumer_group_id: e.target.value },
+                        })
+                      }
+                    />
+                    <span className="field-hint">
+                      Provisa's Kafka consumer identity for inbound Debezium/Kafka CDC. One group
+                      across all sources; a source may override it for offset isolation. Applied on
+                      restart.
+                    </span>
+                  </label>
+                </div>
+                <div className="settings-section">
                   <h4>Cache</h4>
                   <label>
                     Default TTL (seconds)
