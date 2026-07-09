@@ -24,8 +24,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from provisa.core.change_signal import is_push
-from provisa.events import supervisor
+from provisa.core.change_signal import is_poll, is_push
+from provisa.events import queue, supervisor
 from provisa.events.injector import Probe
 from provisa.events.processor import (
     MVTableProcessor,
@@ -49,6 +49,17 @@ class NodeSpec:
     handle: Handle
     poll_seconds: int | None = None  # poll nodes: the timer cadence
     probe_factory: Callable[[], Probe] | None = None  # poll nodes: a fresh probe per fire
+
+
+def _poll_probe_factory() -> Callable[[], Probe]:
+    """A poll source re-queries its current rows each cadence and lands them (REPLACE). The TTL lapse
+    IS the change, so the probe always reports changed. (Token/watermark probing to skip an unchanged
+    poll is a per-source optimization for a later pass; re-querying is correct, just not minimal.)"""
+
+    async def _probe() -> tuple[bool, str | None]:
+        return True, None
+
+    return lambda: _probe
 
 
 def specs_from_config(
@@ -109,6 +120,9 @@ def specs_from_config(
                 watermark_column=args.watermark_column,
                 handle=handle,
                 poll_seconds=getattr(tbl, "cache_ttl", None),
+                # Poll sources refresh on their own cadence (register_runtime schedules the injector);
+                # push sources are driven by their listener. Boot lands the first copy either way.
+                probe_factory=_poll_probe_factory() if is_poll(args.change_signal) else None,
             )
         )
 
@@ -182,6 +196,14 @@ def register_runtime(
     async def _reap() -> None:
         await supervisor.reap(db, lease_seconds=lease_seconds)
 
+    async def _boot() -> None:
+        # Design: replicas are BUILT at boot, then REFRESHED by events. Seed each source's first land
+        # and drain the DAG so every replica (and its MVs) exists; the poll/push jobs keep them fresh.
+        await boot_create(db, specs)
+        await supervisor.drain(db, processors)
+
+    # One-shot: run once as soon as the scheduler starts (no trigger = immediate single fire).
+    scheduler.add_job(_boot, id="events:boot", replace_existing=True)
     scheduler.add_job(
         _tick,
         trigger=IntervalTrigger(seconds=tick_seconds),
@@ -203,3 +225,21 @@ def register_runtime(
         by_node[spec.node].register_poll_job(
             scheduler, seconds=spec.poll_seconds, probe_factory=spec.probe_factory
         )
+
+
+async def boot_create(db: Any, specs: list[NodeSpec]) -> int:
+    """Seed the initial landing of every source node so all replicas exist after boot (REQ-941): the
+    design is replicas are BUILT at boot, then REFRESHED by events. Posts one ``replace`` event per
+    source node; the caller drains the DAG so each lands its current rows and fans out to its MVs.
+    Idempotent — a ``replace`` re-lands the source's full current state, so re-running on every boot
+    is safe. Returns the number of source nodes seeded."""
+    seeded = 0
+    for spec in specs:
+        if spec.kind != "source":
+            continue
+        async with db.acquire() as conn:
+            await queue.post_event(
+                conn, source_table=spec.node, event_type="replace", payload={"bootstrap": True}
+            )
+        seeded += 1
+    return seeded

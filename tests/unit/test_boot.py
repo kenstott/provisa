@@ -124,6 +124,8 @@ def test_specs_from_config_binds_materialized_sources_and_mvs():
     }  # virtual + untyped skipped
     src = next(s for s in specs if s.kind == "source")
     assert src.change_signal == "ttl" and src.poll_seconds == 300
+    # A poll source carries a probe_factory so register_runtime schedules its refresh (REQ-941).
+    assert src.probe_factory is not None
     assert next(s for s in specs if s.kind == "mv").poll_seconds == 600
 
 
@@ -137,5 +139,34 @@ def test_register_runtime_adds_tick_reaper_and_poll_jobs():
     sched = _Sched()
     register_runtime(sched, db=object(), processors=procs, specs=specs)
     assert "events:tick" in sched.jobs and "events:reaper" in sched.jobs
+    assert "events:boot" in sched.jobs  # one-shot boot-create job (build replicas at boot)
     assert "poll:s.poll" in sched.jobs  # only the poll node with a cadence gets its own job
     assert "poll:s.kafka" not in sched.jobs and "poll:mv.driven" not in sched.jobs
+
+
+@pytest.mark.asyncio
+async def test_boot_create_seeds_one_replace_event_per_source(monkeypatch):
+    # Design: replicas are BUILT at boot. boot_create posts one 'replace' event per SOURCE node
+    # (never MV nodes — those are driven downstream); the caller drains to land them.
+    posted: list[tuple[str, str]] = []
+
+    async def _fake_post(conn, *, source_table, event_type, payload=None):
+        posted.append((source_table, event_type))
+        return len(posted)
+
+    monkeypatch.setattr("provisa.events.boot.queue.post_event", _fake_post)
+
+    class _Ctx:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, *a):
+            return False
+
+    db = SimpleNamespace(acquire=lambda: _Ctx())
+    from provisa.events.boot import boot_create
+
+    specs = [_spec("s.a", "source"), _spec("mv.x", "mv"), _spec("s.b", "source")]
+    n = await boot_create(db, specs)
+    assert n == 2
+    assert posted == [("s.a", "replace"), ("s.b", "replace")]

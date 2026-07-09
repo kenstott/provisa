@@ -157,9 +157,12 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any) -> int:
             mv_run_query=mv_run_query,
         )
         processors = build_processors(specs, db=db, dependents_of=dependents_of)
+        # register_runtime schedules the tick/reaper, each poll node's job, AND a one-shot boot-create
+        # job: replicas are BUILT at boot (that job lands every source + fans out to its MVs), then
+        # REFRESHED by the poll/push events.
         register_runtime(scheduler, db=db, processors=processors, specs=specs)
         log.info(
-            "event loop wired: %d node(s) on the scheduler (source fetch + MV columns pending)",
+            "event loop wired: %d node(s) on the scheduler (boot-create + refresh scheduled)",
             len(processors),
         )
         return len(processors)
