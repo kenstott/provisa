@@ -28546,24 +28546,27 @@
   priority: MUST
   type: structural
   description: >-
-    Unified connector list per federation engine = (a) sources the engine federates via
-    its own connectors PLUS (b) sources the engine cannot reach but Provisa lands directly
-    via its own adapters (the API/push types: openapi, graphql_remote, grpc_remote, ingest,
-    websocket, rss). Introduce a third Mechanism (e.g. FETCH) for (b): Provisa's adapter
-    fetches the rows and the write face lands them; the engine only reads the replica.
-    The source-creation dropdown is then a pure projection of engine.connectors
-    (federatable ∪ Provisa-direct), per selected engine — no hardcoded source-type list.
-    This retires the parallel SOURCE_TO_CONNECTOR map and the event-loop's _ADAPTER_FETCH_ONLY
-    set / adapter_loaders special-casing (source_fetch dispatches on connector.mechanism).
+    engine.connectors (the unified connector registry per federation engine) must include
+    a connector for EVERY source type the engine can offer: (a) federated via engine's
+    own connectors, (b) direct-route via Provisa's native async drivers (executor/drivers/registry.py),
+    and (c) adapter-materializable (source_adapters/_ADAPTER_MAP). Only then is the
+    source-creation dropdown a pure projection of engine.connectors; today direct-only
+    sources (e.g., duckdb when used alone) and adapter-only sources (accumulo, govdata)
+    are absent from engine.connectors and would be dropped from that projection. Introduce
+    a third Mechanism (FETCH) for (c): Provisa's adapter fetches rows; write face lands
+    them; engine reads the replica. This retires the parallel SOURCE_TO_CONNECTOR map and
+    adapter_loaders special-casing.
   use_case: >-
-    Eliminating the parallel SOURCE_TO_CONNECTOR map and adapter_loaders special-casing
-    by introducing a FETCH Mechanism allows the source-creation dropdown to dynamically
-    reflect exactly what each federation engine can reach, whether through its native
-    connectors or Provisa's direct adapters.
+    engine.connectors must be complete — federatable ∪ Provisa-direct ∪ adapter-materializable —
+    so that the source-creation dropdown dynamically reflects exactly what each federation
+    engine can reach, whether through its native connectors, direct drivers, or adapters.
+    Eliminates hardcoded source-type lists and parallel registry maps.
   code:
     - provisa/federation/connector.py
     - provisa/federation/engine.py
     - provisa/events/source_loader.py
+    - provisa/executor/drivers/registry.py
+    - provisa/source_adapters/_ADAPTER_MAP
 - id: REQ-948
   status: proposed
   target: "2026-Q3"
@@ -28609,3 +28612,55 @@
   code:
     - provisa/federation/connector.py
     - provisa/federation/engine.py
+- id: REQ-950
+  status: complete
+  group: "4. Source Connectors"
+  category: Wire-compatible RDB Families
+  priority: MUST
+  type: structural
+  description: >-
+    Wire-compatible RDB reuses its base wire's native async driver, SQLGlot dialect, and
+    Trino connector via registry data only. Implemented for CockroachDB/YugabyteDB/Greenplum
+    (Postgres-wire) and TiDB (MySQL-wire) via SourceType + SOURCE_TO_CONNECTOR + SOURCE_TO_DIALECT
+    + _PG_WIRE_TYPES/_MYSQL_WIRE_TYPES + jdbc_url + _TRINO_JDBC_TYPES + _DRIVER_FACTORIES.
+    Each federates VIRTUAL on Trino and is direct-route capable.
+  code:
+    - provisa/core/models.py
+    - provisa/federation/connector.py
+    - provisa/executor/drivers/registry.py
+  tests:
+    - tests/unit/test_wire_compatible_rdbs.py
+  since: "2026-07"
+- id: REQ-951
+  status: proposed
+  target: "2026-Q3"
+  group: "4. Source Connectors"
+  category: Connector Abstraction
+  priority: MUST
+  type: structural
+  description: >-
+    Connector declares a CAPABILITY SET of reach modes (mechanisms: frozenset[Mechanism])
+    instead of a single fixed mechanism. Extend Mechanism to include SCAN and a
+    Provisa-direct materialize member (FETCH). Examples: Trino postgresql = {ATTACH, LAND};
+    API source (openapi/graphql_remote/grpc_remote) = {FETCH} (Provisa fetches + write-face
+    lands; engine reads replica); lake file on DuckDB = {SCAN}; warehouse-native = {LAND
+    into self}. federate(), strategy.py, CatalogEntry.mechanism, materialization.py, and
+    promote.py read the declared capability set and pick a reach mode per policy/cost
+    instead of a single mechanism plus scattered heuristics (prefer_materialized, cost-based
+    promotion). Materializer's flag (materialize_store) and planner logic are simplified.
+  use_case: >-
+    Declaring a full set of reach modes per connector enables federate() and the planner
+    to intelligently select reach modes per policy and cost, eliminating ad-hoc heuristics
+    and making reach flexibility explicit and testable.
+  code:
+    - provisa/federation/connector.py
+    - provisa/federation/strategy.py
+    - provisa/federation/materialization.py
+    - provisa/federation/promote.py
+    - provisa/core/catalog.py
+  tests:
+    - tests/unit/test_connector_reach_modes.py
+  related_reqs:
+    - REQ-947
+    - REQ-841
+    - REQ-846
