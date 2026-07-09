@@ -13,13 +13,13 @@ Called once after the scheduler starts: builds the node specs from config + the 
 the processors, and registers the runtime jobs (tick / reaper / poll) on the embedded APScheduler.
 Fully best-effort — any failure logs and returns, never bricks boot (the app runs without the loop).
 
-One live collaborator is still a per-adapter follow-up and is declared here explicitly:
-- ``source_fetch`` — a source's change-event → its current rows. No generic primitive exists (each
-  adapter is per-operation), so this is stubbed (logs once, lands nothing) pending the per-adapter
-  loader. Source *nodes* are registered; they just land nothing until the loader is wired.
-``mv_columns`` is now real: each MV's output columns come from a LIMIT-0 probe of its SELECT (the
-engine returns typed columns), translated native→IR. ``mv_run_query`` (the engine SELECT) and
-everything else are real.
+``source_fetch`` reads a source's current rows through the engine terminal (``SourceRowLoader``);
+every SQL-federatable source works. Row-oriented API / push sources (openapi, ingest, …) have no
+engine-scannable table — their adapter fetch is a per-adapter follow-up, so ``SourceRowLoader``
+raises ``UnsupportedSourceFetch`` and the node lands nothing (logged once) until that is wired.
+``mv_columns`` reads each MV's output columns from a LIMIT-0 probe of its SELECT (the engine returns
+typed columns), translated native→IR. ``mv_run_query`` (the engine SELECT) and everything else are
+real.
 """
 
 # complexity-gate: allow-ble=1 reason="boot boundary: wire_event_loop must never propagate into app startup — it logs and the app runs without the loop"
@@ -65,16 +65,25 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any) -> int:
             return 0
 
         _warned: set[str] = set()
+        from provisa.events.source_loader import SourceRowLoader, UnsupportedSourceFetch
+
+        row_loader = SourceRowLoader(engine)  # reads source rows via the engine terminal
 
         def source_fetch(src: Any, tbl: Any) -> Any:
             async def _fetch(_pending: list[dict]) -> list[dict]:
-                if src.id not in _warned:
-                    log.warning(
-                        "event loop: source fetch for %s not yet wired per adapter — landing skipped",
-                        src.id,
-                    )
-                    _warned.add(src.id)
-                return []
+                try:
+                    return await row_loader.load(src, tbl)
+                except UnsupportedSourceFetch:
+                    # API/push source with no engine-scannable table — its adapter fetch is a
+                    # per-adapter follow-up. Land nothing (logged once) rather than fail the node.
+                    if src.id not in _warned:
+                        log.warning(
+                            "event loop: %s has no engine row-scan; adapter fetch not yet wired "
+                            "— landing skipped",
+                            src.id,
+                        )
+                        _warned.add(src.id)
+                    return []
 
             return _fetch
 
