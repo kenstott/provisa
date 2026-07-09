@@ -13,13 +13,14 @@ Called once after the scheduler starts: builds the node specs from config + the 
 the processors, and registers the runtime jobs (tick / reaper / poll) on the embedded APScheduler.
 Fully best-effort — any failure logs and returns, never bricks boot (the app runs without the loop).
 
-``source_fetch`` reads a source's current rows through the engine terminal (``SourceRowLoader``);
-every SQL-federatable source works. Row-oriented API / push sources (openapi, ingest, …) have no
-engine-scannable table — their adapter fetch is a per-adapter follow-up, so ``SourceRowLoader``
-raises ``UnsupportedSourceFetch`` and the node lands nothing (logged once) until that is wired.
-``mv_columns`` reads each MV's output columns from a LIMIT-0 probe of its SELECT (the engine returns
-typed columns), translated native→IR. ``mv_run_query`` (the engine SELECT) and everything else are
-real.
+``source_fetch`` reads a source's current rows through the engine terminal (``SourceRowLoader``) for
+every SQL-federatable source, and through the openapi adapter (call_api → flatten, via
+``make_openapi_loader`` over the registered endpoints + api-source config in state) for openapi
+sources. Other API/push types (ingest, websocket, …) still have no wired fetch, so
+``SourceRowLoader`` raises ``UnsupportedSourceFetch`` and the node lands nothing (logged once) until
+theirs is added. ``mv_columns`` reads each MV's output columns from a LIMIT-0 probe of its SELECT
+(the engine returns typed columns), translated native→IR. ``mv_run_query`` (the engine SELECT) and
+everything else are real.
 """
 
 # complexity-gate: allow-ble=1 reason="boot boundary: wire_event_loop must never propagate into app startup — it logs and the app runs without the loop"
@@ -65,9 +66,22 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any) -> int:
             return 0
 
         _warned: set[str] = set()
-        from provisa.events.source_loader import SourceRowLoader, UnsupportedSourceFetch
+        from provisa.events.source_loader import (
+            SourceRowLoader,
+            UnsupportedSourceFetch,
+            make_openapi_loader,
+        )
 
-        row_loader = SourceRowLoader(engine)  # reads source rows via the engine terminal
+        # openapi sources have no engine table; their rows come from calling the operation (the
+        # registered endpoint + api-source config live in app state). Other adapter-only types
+        # (ingest/websocket/…) still raise UnsupportedSourceFetch until their fetch is wired.
+        _adapter_loaders: dict[str, Any] = {}
+        _api_endpoints = getattr(state, "api_endpoints", None)
+        _api_sources = getattr(state, "api_sources", None)
+        if _api_endpoints and _api_sources is not None:
+            _adapter_loaders["openapi"] = make_openapi_loader(_api_endpoints, _api_sources)
+
+        row_loader = SourceRowLoader(engine, adapter_loaders=_adapter_loaders)
 
         def source_fetch(src: Any, tbl: Any) -> Any:
             async def _fetch(_pending: list[dict]) -> list[dict]:

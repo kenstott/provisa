@@ -51,26 +51,78 @@ def _source_type(source: Any) -> str:
     return stype.value if hasattr(stype, "value") else str(stype)
 
 
+AdapterLoader = Any  # Callable[[source, table], Awaitable[list[dict]]] — a per-type row fetcher.
+
+
 class SourceRowLoader:
-    """Reads a MATERIALIZED source table's current rows via the federation engine (REQ-941/846).
+    """Reads a MATERIALIZED source table's current rows (REQ-941/846).
 
-    ``engine`` is the engine runtime wrapper (the one exposing ``execute_engine``). ``load`` ignores
-    the claimed events and returns a full snapshot; an incremental (watermark-filtered) read is a
-    later refinement keyed off the change event's cursor."""
+    ``engine`` is the engine runtime wrapper (the one exposing ``execute_engine``) — the default
+    reader for every SQL-federatable source. ``adapter_loaders`` maps a source type in
+    ``_ADAPTER_FETCH_ONLY`` (openapi, ingest, …) to an ``async (source, table) -> list[dict]`` fetcher
+    that calls the adapter instead of scanning a table; a type without one raises
+    :class:`UnsupportedSourceFetch`. ``load`` ignores the claimed events and returns a full snapshot;
+    an incremental (watermark-filtered) read is a later refinement keyed off the change cursor."""
 
-    def __init__(self, engine: Any) -> None:
+    def __init__(
+        self, engine: Any, adapter_loaders: dict[str, AdapterLoader] | None = None
+    ) -> None:
         self._engine = engine
+        self._adapter_loaders = adapter_loaders or {}
 
     async def load(self, source: Any, table: Any) -> list[dict]:
         stype = _source_type(source)
         if stype in _ADAPTER_FETCH_ONLY:
-            raise UnsupportedSourceFetch(
-                f"source type {stype!r} has no engine-scannable table — its adapter row-fetch is a "
-                f"per-adapter follow-up (source {source.id!r})"
-            )
+            loader = self._adapter_loaders.get(stype)
+            if loader is None:
+                raise UnsupportedSourceFetch(
+                    f"source type {stype!r} has no engine-scannable table and no adapter row-fetch "
+                    f"is wired (source {source.id!r})"
+                )
+            return await loader(source, table)
         from provisa.compiler.naming import source_to_catalog
 
         catalog = source_to_catalog(source.id)
         ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
         result = await self._engine.execute_engine(f"SELECT * FROM {ref}")
         return [dict(zip(result.column_names, row)) for row in result.rows]
+
+
+def make_openapi_loader(
+    endpoints_by_table: dict[str, Any], sources_by_id: dict[str, Any]
+) -> AdapterLoader:
+    """Build the openapi adapter row-fetch (REQ-941/846): resolve the table's registered
+    ``ApiEndpoint`` and its ``ApiSource`` (base_url + auth) from live state, call the operation with
+    its default params, and flatten the response pages into row dicts — the same call_api → flatten
+    chain the API-cache path uses. The engine never touches this; the write face lands the result.
+
+    A table with no registered endpoint, or a source with no api-source config, raises
+    :class:`UnsupportedSourceFetch` (explicit — never a silent empty snapshot)."""
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        from provisa.api_source.caller import call_api
+        from provisa.api_source.flattener import flatten_response
+
+        endpoint = endpoints_by_table.get(table.table_name)
+        api_source = sources_by_id.get(source.id)
+        if endpoint is None or api_source is None:
+            raise UnsupportedSourceFetch(
+                f"openapi source {source.id!r} table {table.table_name!r}: no registered endpoint "
+                f"or api-source config to fetch from"
+            )
+        pages = await call_api(
+            endpoint,
+            dict(endpoint.default_params),
+            base_url=api_source.base_url,
+            auth=api_source.auth,
+        )
+        rows: list[dict] = []
+        for page in pages:
+            rows.extend(
+                flatten_response(
+                    page, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
+                )
+            )
+        return rows
+
+    return _load
