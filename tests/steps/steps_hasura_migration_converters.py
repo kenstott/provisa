@@ -2801,3 +2801,688 @@ def _then_v2_table_alias(shared_data: dict) -> None:
 #          use --source-overrides"
 #         -> _then_v2_placeholder_values
 # No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f0dda407-8803-4dbc-a375-b30c3bb6422b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-182 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-182 default behaviour scenario map to:
+#   Given "a Hasura v2 metadata export directory"
+#         -> _given_v2_metadata
+#   When  "the CLI converter is run against it"
+#         -> _when_v2_converter_run
+#   Then  "valid Provisa YAML config is emitted covering tables, relationships,
+#          permissions, roles, and auth"
+#         -> _then_v2_config_complete
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-183 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-183 default behaviour scenario map to:
+#   Given "a Hasura DDN supergraph project"       -> _given_ddn_project
+#   When  "the HML converter CLI tool is run"     -> _when_ddn_converter_run
+#   Then  "valid Provisa YAML config is emitted covering ObjectTypes, Models,
+#          Relationships, TypePermissions, ModelPermissions, and DataConnectorLinks"
+#                                                 -> _then_ddn_config_complete
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-184 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-184 default behaviour scenario map to:
+#   Given "a Hasura boolean filter expression using operators like _eq, _in, _and, _or, _not"
+#         -> _given_bool_expr
+#   When  "the shared converter processes it"
+#         -> _when_bool_expr_converted
+#   Then  "valid SQL is produced with session variable references mapped to
+#          current_setting('provisa.<name>')"
+#         -> _then_bool_expr_sql
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 07097fbe-4860-4c20-8d1a-10df70446fd5
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-185 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-185 default behaviour scenario map to:
+#   Given "a Hasura v2 metadata export with select_permissions[].columns per role"
+#         -> _given_v2_select_perms
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "each column's visible_to is populated from the role's column list,
+#          with "*" meaning all columns"
+#         -> _then_visible_to
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 80bdebd3-4adc-44f4-b05e-1f763f7a709b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-187 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-187 default behaviour scenario map to:
+#   Given "a Hasura v2 select_permissions[].filter boolean expression"
+#         -> _given_v2_filter
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "rls_rules[] are generated via boolean expression-to-SQL conversion,
+#          with empty filter producing no RLS rule"
+#         -> _then_rls_rules
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 080a8915-e943-47ff-80a2-de4c91bf4544
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-188 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-188 default behaviour scenario map to:
+#   Given "a Hasura v2 metadata export with object_relationships and array_relationships"
+#         -> _given_v2_relationships
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "object_relationships become cardinality=many-to-one and array_relationships
+#          become cardinality=one-to-many"
+#         -> _then_cardinality
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-189 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-189 default behaviour scenario map to:
+#   Given "a DDN supergraph with ObjectType.dataConnectorTypeMapping[].fieldMapping entries"
+#         -> _given_ddn_field_mappings
+#   When  "the DDN converter runs"
+#         -> _when_ddn_converter_runs
+#   Then  "all GraphQL field names in relationships, permissions, and column definitions
+#          are resolved to physical column names"
+#         -> _then_ddn_fields_resolved
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-190 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-190 default behaviour scenario map to:
+#   Given "a Hasura v2 auth config with JWT jwk_url, claims_map, or admin secret"
+#         -> _given_v2_auth_config
+#   When  "the v2 converter runs with --auth-env-file"
+#         -> _when_v2_auth_converter_runs
+#   Then  "JWT becomes provider: oauth with role_mapping[], admin secret becomes superuser,
+#          and webhook auth emits a warning"
+#         -> _then_v2_auth_converted
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0062b5e8-ce82-4fe8-98e5-865d1a48c950
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-621 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-621 default behaviour scenario map to:
+#   Given "a completed Hasura v2 or DDN conversion"
+#         -> _given_completed_conversion
+#   When  "the output config is inspected"
+#         -> _when_output_config_inspected
+#   Then  "placeholder credentials (host: localhost, password: ${env:DB_PASSWORD}) are present
+#          and Provisa refuses to start without real values"
+#         -> _then_placeholder_credentials
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-623 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-623 default behaviour scenario map to:
+#   Given "a Hasura v2 source config with kind, database_url, and pool_settings"
+#         -> _given_v2_source_kind_url_pool
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "SourceType is mapped correctly and connection URL is parsed into components
+#          with pool settings preserved"
+#         -> _then_v2_source_mapped
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4ce6ec53-767b-4ead-a1b0-6d871753ea98
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-625 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-625 default behaviour scenario map to:
+#   Given "a Hasura v2 source with database_url as an env var reference or unparseable URL"
+#         -> _given_v2_source_env_url
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "placeholder connection values are substituted and operators are directed to
+#          use --source-overrides"
+#         -> _then_v2_placeholder_values
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 883ad2f6-ccf5-4314-9d7d-3b2b32eccb32
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-182 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-182 default behaviour scenario map to:
+#   Given "a Hasura v2 metadata export directory"
+#         -> _given_v2_metadata
+#   When  "the CLI converter is run against it"
+#         -> _when_v2_converter_run
+#   Then  "valid Provisa YAML config is emitted covering tables, relationships,
+#          permissions, roles, and auth"
+#         -> _then_v2_config_complete
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-183 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-183 default behaviour scenario map to:
+#   Given "a Hasura DDN supergraph project"       -> _given_ddn_project
+#   When  "the HML converter CLI tool is run"     -> _when_ddn_converter_run
+#   Then  "valid Provisa YAML config is emitted covering ObjectTypes, Models,
+#          Relationships, TypePermissions, ModelPermissions, and DataConnectorLinks"
+#                                                 -> _then_ddn_config_complete
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8ce15052-2702-480d-815b-4de33f247803
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-184 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-184 default behaviour scenario map to:
+#   Given "a Hasura boolean filter expression using operators like _eq, _in, _and, _or, _not"
+#         -> _given_bool_expr
+#   When  "the shared converter processes it"
+#         -> _when_bool_expr_converted
+#   Then  "valid SQL is produced with session variable references mapped to
+#          current_setting('provisa.<name>')"
+#         -> _then_bool_expr_sql
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 72f34322-cbc1-4d06-9754-5fb4e4f6b512
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-185 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-185 default behaviour scenario map to:
+#   Given "a Hasura v2 metadata export with select_permissions[].columns per role"
+#         -> _given_v2_select_perms
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "each column's visible_to is populated from the role's column list,
+#          with "*" meaning all columns"
+#         -> _then_visible_to
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ef5d44c3-92d1-4e1c-aec1-2d98e170dd21
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-187 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-187 default behaviour scenario map to:
+#   Given "a Hasura v2 select_permissions[].filter boolean expression"
+#         -> _given_v2_filter
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "rls_rules[] are generated via boolean expression-to-SQL conversion,
+#          with empty filter producing no RLS rule"
+#         -> _then_rls_rules
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a1b6e5cc-da18-4fa9-99f9-b4f9f193974b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-188 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-188 default behaviour scenario map to:
+#   Given "a Hasura v2 metadata export with object_relationships and array_relationships"
+#         -> _given_v2_relationships
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "object_relationships become cardinality=many-to-one and array_relationships
+#          become cardinality=one-to-many"
+#         -> _then_cardinality
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f80b4bce-24ce-4718-bca9-584ef761f902
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-189 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-189 default behaviour scenario map to:
+#   Given "a DDN supergraph with ObjectType.dataConnectorTypeMapping[].fieldMapping entries"
+#         -> _given_ddn_field_mappings
+#   When  "the DDN converter runs"
+#         -> _when_ddn_converter_runs
+#   Then  "all GraphQL field names in relationships, permissions, and column definitions
+#          are resolved to physical column names"
+#         -> _then_ddn_fields_resolved
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 29047e44-14ce-4b4c-b996-d571f79d4a3b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-190 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-190 default behaviour scenario map to:
+#   Given "a Hasura v2 auth config with JWT jwk_url, claims_map, or admin secret"
+#         -> _given_v2_auth_config
+#   When  "the v2 converter runs with --auth-env-file"
+#         -> _when_v2_auth_converter_runs
+#   Then  "JWT becomes provider: oauth with role_mapping[], admin secret becomes superuser,
+#          and webhook auth emits a warning"
+#         -> _then_v2_auth_converted
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 54739661-ad1b-43b7-b183-e04edec65a7c
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-621 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-621 default behaviour scenario map to:
+#   Given "a completed Hasura v2 or DDN conversion"
+#         -> _given_completed_conversion
+#   When  "the output config is inspected"
+#         -> _when_output_config_inspected
+#   Then  "placeholder credentials (host: localhost, password: ${env:DB_PASSWORD}) are present
+#          and Provisa refuses to start without real values"
+#         -> _then_placeholder_credentials
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 00c72548-f090-4a25-aaee-d44212147a28
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-623 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-623 default behaviour scenario map to:
+#   Given "a Hasura v2 source config with kind, database_url, and pool_settings"
+#         -> _given_v2_source_kind_url_pool
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "SourceType is mapped correctly and connection URL is parsed into components
+#          with pool settings preserved"
+#         -> _then_v2_source_mapped
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: da26c588-8498-490a-9f68-003e440281ba
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-625 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-625 default behaviour scenario map to:
+#   Given "a Hasura v2 source with database_url as an env var reference or unparseable URL"
+#         -> _given_v2_source_env_url
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "placeholder connection values are substituted and operators are directed to
+#          use --source-overrides"
+#         -> _then_v2_placeholder_values
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 39b4113c-b80b-41c8-be7c-deabca1f0094
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-182 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-182 default behaviour scenario map to:
+#   Given "a Hasura v2 metadata export directory"
+#         -> _given_v2_metadata
+#   When  "the CLI converter is run against it"
+#         -> _when_v2_converter_run
+#   Then  "valid Provisa YAML config is emitted covering tables, relationships,
+#          permissions, roles, and auth"
+#         -> _then_v2_config_complete
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 88f6beb2-2c28-43b8-8e71-d12ddd8166ab
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-183 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-183 default behaviour scenario map to:
+#   Given "a Hasura DDN supergraph project"       -> _given_ddn_project
+#   When  "the HML converter CLI tool is run"     -> _when_ddn_converter_run
+#   Then  "valid Provisa YAML config is emitted covering ObjectTypes, Models,
+#          Relationships, TypePermissions, ModelPermissions, and DataConnectorLinks"
+#                                                 -> _then_ddn_config_complete
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d21b0dae-c36b-474c-bff7-6f9583de0803
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-184 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-184 default behaviour scenario map to:
+#   Given "a Hasura boolean filter expression using operators like _eq, _in, _and, _or, _not"
+#         -> _given_bool_expr
+#   When  "the shared converter processes it"
+#         -> _when_bool_expr_converted
+#   Then  "valid SQL is produced with session variable references mapped to
+#          current_setting('provisa.<name>')"
+#         -> _then_bool_expr_sql
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: cc0bf708-2c41-43e7-93a3-2d4c90afb658
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-185 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-185 default behaviour scenario map to:
+#   Given "a Hasura v2 metadata export with select_permissions[].columns per role"
+#         -> _given_v2_select_perms
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "each column's visible_to is populated from the role's column list,
+#          with "*" meaning all columns"
+#         -> _then_visible_to
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9570e5f1-8507-44f0-8cac-d62e19d02116
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-187 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-187 default behaviour scenario map to:
+#   Given "a Hasura v2 select_permissions[].filter boolean expression"
+#         -> _given_v2_filter
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "rls_rules[] are generated via boolean expression-to-SQL conversion,
+#          with empty filter producing no RLS rule"
+#         -> _then_rls_rules
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-188 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-188 default behaviour scenario map to:
+#   Given "a Hasura v2 metadata export with object_relationships and array_relationships"
+#         -> _given_v2_relationships
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "object_relationships become cardinality=many-to-one and array_relationships
+#          become cardinality=one-to-many"
+#         -> _then_cardinality
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-189 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-189 default behaviour scenario map to:
+#   Given "a DDN supergraph with ObjectType.dataConnectorTypeMapping[].fieldMapping entries"
+#         -> _given_ddn_field_mappings
+#   When  "the DDN converter runs"
+#         -> _when_ddn_converter_runs
+#   Then  "all GraphQL field names in relationships, permissions, and column definitions
+#          are resolved to physical column names"
+#         -> _then_ddn_fields_resolved
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1e635cb8-f2ff-4d3f-a4e0-dc8d9e9528f8
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-190 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-190 default behaviour scenario map to:
+#   Given "a Hasura v2 auth config with JWT jwk_url, claims_map, or admin secret"
+#         -> _given_v2_auth_config
+#   When  "the v2 converter runs with --auth-env-file"
+#         -> _when_v2_auth_converter_runs
+#   Then  "JWT becomes provider: oauth with role_mapping[], admin secret becomes superuser,
+#          and webhook auth emits a warning"
+#         -> _then_v2_auth_converted
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fb96657a-b2bd-441d-ba48-0696890f9d84
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-621 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-621 default behaviour scenario map to:
+#   Given "a completed Hasura v2 or DDN conversion"
+#         -> _given_completed_conversion
+#   When  "the output config is inspected"
+#         -> _when_output_config_inspected
+#   Then  "placeholder credentials (host: localhost, password: ${env:DB_PASSWORD}) are present
+#          and Provisa refuses to start without real values"
+#         -> _then_placeholder_credentials
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9ccbab98-c3d4-4dcc-b981-bf5ec8e426cc
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-623 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-623 default behaviour scenario map to:
+#   Given "a Hasura v2 source config with kind, database_url, and pool_settings"
+#         -> _given_v2_source_kind_url_pool
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "SourceType is mapped correctly and connection URL is parsed into components
+#          with pool settings preserved"
+#         -> _then_v2_source_mapped
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-625 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-625 default behaviour scenario map to:
+#   Given "a Hasura v2 source with database_url as an env var reference or unparseable URL"
+#         -> _given_v2_source_env_url
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "placeholder connection values are substituted and operators are directed to
+#          use --source-overrides"
+#         -> _then_v2_placeholder_values
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0bb2fb60-d501-49a7-a526-e49df52cca2b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-182 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-182 default behaviour scenario map to:
+#   Given "a Hasura v2 metadata export directory"
+#         -> _given_v2_metadata
+#   When  "the CLI converter is run against it"
+#         -> _when_v2_converter_run
+#   Then  "valid Provisa YAML config is emitted covering tables, relationships,
+#          permissions, roles, and auth"
+#         -> _then_v2_config_complete
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-183 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-183 default behaviour scenario map to:
+#   Given "a Hasura DDN supergraph project"       -> _given_ddn_project
+#   When  "the HML converter CLI tool is run"     -> _when_ddn_converter_run
+#   Then  "valid Provisa YAML config is emitted covering ObjectTypes, Models,
+#          Relationships, TypePermissions, ModelPermissions, and DataConnectorLinks"
+#                                                 -> _then_ddn_config_complete
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4135b0b2-8f3e-4fee-a742-cf593894bcd0
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-184 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-184 default behaviour scenario map to:
+#   Given "a Hasura boolean filter expression using operators like _eq, _in, _and, _or, _not"
+#         -> _given_bool_expr
+#   When  "the shared converter processes it"
+#         -> _when_bool_expr_converted
+#   Then  "valid SQL is produced with session variable references mapped to
+#          current_setting('provisa.<name>')"
+#         -> _then_bool_expr_sql
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ecedd57c-b787-4855-b989-eac6ea8ed38d
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-185 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-185 default behaviour scenario map to:
+#   Given "a Hasura v2 metadata export with select_permissions[].columns per role"
+#         -> _given_v2_select_perms
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "each column's visible_to is populated from the role's column list,
+#          with \"*\" meaning all columns"
+#         -> _then_visible_to
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5d134b99-a675-4f9d-898c-d192dc88f038
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-187 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-187 default behaviour scenario map to:
+#   Given "a Hasura v2 select_permissions[].filter boolean expression"
+#         -> _given_v2_filter
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "rls_rules[] are generated via boolean expression-to-SQL conversion,
+#          with empty filter producing no RLS rule"
+#         -> _then_rls_rules
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9dace4ff-8552-4be3-9f3f-62094c2c89e8
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-188 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-188 default behaviour scenario map to:
+#   Given "a Hasura v2 metadata export with object_relationships and array_relationships"
+#         -> _given_v2_relationships
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "object_relationships become cardinality=many-to-one and array_relationships
+#          become cardinality=one-to-many"
+#         -> _then_cardinality
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a014a61d-5558-4bfd-abaa-043ea68d9b66
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-189 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-189 default behaviour scenario map to:
+#   Given "a DDN supergraph with ObjectType.dataConnectorTypeMapping[].fieldMapping entries"
+#         -> _given_ddn_field_mappings
+#   When  "the DDN converter runs"
+#         -> _when_ddn_converter_runs
+#   Then  "all GraphQL field names in relationships, permissions, and column definitions
+#          are resolved to physical column names"
+#         -> _then_ddn_fields_resolved
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7b4690d7-aa48-43b0-a012-74502d2e9488
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-190 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-190 default behaviour scenario map to:
+#   Given "a Hasura v2 auth config with JWT jwk_url, claims_map, or admin secret"
+#         -> _given_v2_auth_config
+#   When  "the v2 converter runs with --auth-env-file"
+#         -> _when_v2_auth_converter_runs
+#   Then  "JWT becomes provider: oauth with role_mapping[], admin secret becomes superuser,
+#          and webhook auth emits a warning"
+#         -> _then_v2_auth_converted
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 76ecc3d8-1c77-462a-b3af-3741aa17d77f
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-621 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-621 default behaviour scenario map to:
+#   Given "a completed Hasura v2 or DDN conversion"
+#         -> _given_completed_conversion
+#   When  "the output config is inspected"
+#         -> _when_output_config_inspected
+#   Then  "placeholder credentials (host: localhost, password: ${env:DB_PASSWORD}) are present
+#          and Provisa refuses to start without real values"
+#         -> _then_placeholder_credentials
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-623 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-623 default behaviour scenario map to:
+#   Given "a Hasura v2 source config with kind, database_url, and pool_settings"
+#         -> _given_v2_source_kind_url_pool
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "SourceType is mapped correctly and connection URL is parsed into components
+#          with pool settings preserved"
+#         -> _then_v2_source_mapped
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6ee789a2-3a73-4afc-9201-0519b31baa45
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-625 are already implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-625 default behaviour scenario map to:
+#   Given "a Hasura v2 source with database_url as an env var reference or unparseable URL"
+#         -> _given_v2_source_env_url
+#   When  "the v2 converter runs"
+#         -> _when_v2_converter_runs
+#   Then  "placeholder connection values are substituted and operators are directed to
+#          use --source-overrides"
+#         -> _then_v2_placeholder_values
+# No new step definitions are required for this requirement.

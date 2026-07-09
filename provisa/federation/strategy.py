@@ -105,16 +105,20 @@ def federate(
     connector = engine.connectors.get(source_type)
 
     if connector is not None and not prefer_materialized:
-        if connector.mechanism is Mechanism.LAND:
-            return Strategy.MATERIALIZED  # engine lands it into its own reachable store
-        # ATTACH: a file/object type is a SCAN view; a live source is VIRTUAL.
-        strategy = Strategy.SCAN if source_type in _SCANNABLE else Strategy.VIRTUAL
-        if demand is not None and estimate is not None:
-            from provisa.federation.promote import should_promote
+        modes = connector.reach_modes
+        # A source the engine can read LIVE in place (ATTACH_*): a file/object type is a SCAN view,
+        # a live source is VIRTUAL.
+        if Mechanism.ATTACH_RW in modes or Mechanism.ATTACH_R in modes:
+            strategy = Strategy.SCAN if source_type in _SCANNABLE else Strategy.VIRTUAL
+            if demand is not None and estimate is not None:
+                from provisa.federation.promote import should_promote
 
-            if should_promote(connector.capability(), demand, estimate):
-                return Strategy.MATERIALIZED  # reachable but weak pushdown on a large scan
-        return strategy
+                if should_promote(connector.capability(), demand, estimate):
+                    return Strategy.MATERIALIZED  # reachable but weak pushdown on a large scan
+            return strategy
+        # Only DIRECT/FETCH — the engine cannot read the source live, so it is ALWAYS materialized
+        # (landed + refreshed) so the engine can see it via the replica (REQ-951).
+        return Strategy.MATERIALIZED
 
     # No connector (or forced): only materializable sources federate via the store.
     if prefer_materialized or source_type in _MATERIALIZE_ONLY:

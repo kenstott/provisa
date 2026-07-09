@@ -23,8 +23,10 @@ scenarios("../features/REQ-911.feature")
 
 
 class Mechanism(str, Enum):
-    ATTACH = "attach"
-    LAND = "land"
+    ATTACH_RW = "attach_rw"
+    ATTACH_R = "attach_r"
+    DIRECT = "direct"
+    FETCH = "fetch"
 
 
 @dataclass(frozen=True)
@@ -47,7 +49,7 @@ class CatalogEntry:
 class ClickHousePostgresConnector:
     engine = "clickhouse"
     source_type = "postgresql"
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True, write=True)
@@ -76,7 +78,7 @@ class ClickHousePostgresConnector:
 class ClickHouseMongoDBConnector:
     engine = "clickhouse"
     source_type = "mongodb"
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=False, write=False)
@@ -110,7 +112,7 @@ class ClickHouseMongoDBConnector:
 class ClickHouseS3ParquetConnector:
     engine = "clickhouse"
     source_type = "parquet"
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True, write=False)
@@ -136,7 +138,7 @@ class ClickHouseS3ParquetConnector:
 class ClickHouseMySQLConnector:
     engine = "clickhouse"
     source_type = "mysql"
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True, write=True)
@@ -339,7 +341,9 @@ def then_pg_mounts_as_database(shared_data: dict) -> None:
 
     assert entry.engine == "clickhouse"
     assert entry.source_type == "postgresql"
-    assert entry.mechanism == Mechanism.ATTACH, "PostgreSQL must mount via ATTACH (not LAND)"
+    assert entry.mechanism == Mechanism.ATTACH_RW, (
+        "PostgreSQL must mount via ATTACH (not materialized)"
+    )
 
     details = entry.details
     assert details["ddl_type"] == "DATABASE", (
@@ -362,7 +366,7 @@ def then_mongo_mounts_as_table_with_columns(shared_data: dict) -> None:
 
     assert entry.engine == "clickhouse"
     assert entry.source_type == "mongodb"
-    assert entry.mechanism == Mechanism.ATTACH
+    assert entry.mechanism == Mechanism.ATTACH_RW
 
     details = entry.details
     assert details["ddl_type"] == "TABLE", "MongoDB source must project as TABLE"
@@ -397,7 +401,7 @@ def then_s3_parquet_mounts_as_table_inferred(shared_data: dict) -> None:
 
     assert entry.engine == "clickhouse"
     assert entry.source_type == "parquet"
-    assert entry.mechanism == Mechanism.ATTACH
+    assert entry.mechanism == Mechanism.ATTACH_RW
 
     details = entry.details
     assert details["ddl_type"] == "TABLE", "S3 parquet source must project as TABLE"

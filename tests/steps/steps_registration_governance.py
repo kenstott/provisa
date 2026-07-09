@@ -2483,3 +2483,134 @@ def _req638_then(shared_data):
 # Canary: abbd9e61-be0d-4214-a636-4e9abb58231b
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 and the scenarios() binding are already fully present
+# in the existing file. No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d14a4f45-8899-4753-a83e-3841260a9508
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e9941b38-73be-41d6-aeba-01a5d35df89c
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 27604ce0-cec2-40f3-b761-5535eb19c7f8
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 285b6b8d-c578-4b13-92ac-38becf3cb4a4
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a privileged steward with registration rights")
+#   @when("they submit a new source registration")
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")
+# The scenarios() binding for REQ-012.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b4868e62-a855-476e-9665-1cc1ce2c4a8f
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-016 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 798d989e-d1b6-49b0-b023-05f97016d60e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7030a37d-4ca0-44a6-92f8-ecfe91e35d19
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ea2bdc32-af7a-4300-a78d-e1d098b5fd0b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a privileged steward with registration rights")
+#   @when("they submit a new source registration")
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")
+# The scenarios() binding for REQ-012.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3f0006ef-c9b3-471e-affc-b9f1aed0c15d
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-016 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b778a5a5-bedf-4b75-9670-28c38a6a40b9
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 20d450ec-6bb9-4230-8c69-8b87542f9916
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4bd570f6-b501-4d91-ac9e-ee883608fbbf
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-635 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+
+
+# All three steps for REQ-012 and the scenarios() binding are already present
+# in the existing file. No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f3bdce94-91f7-4a53-bb6f-d9851a1c5b98
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2538da26-95fa-4b53-8a18-3780029236d7
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: da9f8cdc-9152-481c-8aaf-5d94fb4ac2e6
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f32c0f84-35d7-4d30-992a-35aaf4998632
+#
+# This source code is licensed under the Business Source License 1.1

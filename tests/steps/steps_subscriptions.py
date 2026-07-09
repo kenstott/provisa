@@ -1169,3 +1169,23 @@ def then_source_type_not_used_to_dispatch(shared_data: dict) -> None:
 
 # All steps for REQ-260 "default behaviour" scenario are already implemented
 # in the existing steps file. No new step definitions are required.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7d60716b-4f49-4085-8fd8-3902a2c86b28
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b1b1c096-0fbe-4afa-b03f-ede25e26bbc6
+#
+# This source code is licensed under the Business Source License 1.1

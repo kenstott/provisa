@@ -191,7 +191,10 @@ class EngineBackend:
         if self.engine.native_store is not None:
             from provisa.federation.connector import Mechanism
 
-            if self.engine.connector_for(source.type.value).mechanism is Mechanism.LAND:
+            if self.engine.connector_for(source.type.value).mechanism in (
+                Mechanism.DIRECT,
+                Mechanism.FETCH,
+            ):
                 return {}
         if self.engine.native_store == "duckdb":
             from types import SimpleNamespace

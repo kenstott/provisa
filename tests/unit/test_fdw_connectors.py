@@ -57,7 +57,7 @@ def test_sqlite_fdw_identity_and_runtime_deps():
     assert c.engine == "postgres"
     assert c.source_type == "sqlite"
     assert c.key == "sqlite_fdw"
-    assert c.mechanism is Mechanism.ATTACH
+    assert c.mechanism is Mechanism.ATTACH_RW
     assert c.runtime_deps == ("libsqlite3 (system — OS-provided on macOS/Linux)",)
 
 
@@ -66,7 +66,7 @@ def test_mysql_fdw_identity_and_runtime_deps():
     assert c.engine == "postgres"
     assert c.source_type == "mysql"
     assert c.key == "mysql_fdw"
-    assert c.mechanism is Mechanism.ATTACH
+    assert c.mechanism is Mechanism.ATTACH_RW
     assert c.runtime_deps == (
         "libmysqlclient / mariadb-connector-c (bundled — must ship + relocate)",
     )

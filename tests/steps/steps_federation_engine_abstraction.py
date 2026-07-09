@@ -276,12 +276,12 @@ def then_connector_mechanism_or_rejected(shared_data):
         f"Entry mechanism {entry.mechanism!r} does not match connector's fixed "
         f"mechanism {connector.mechanism!r}"
     )
-    assert entry.mechanism in (Mechanism.ATTACH, Mechanism.LAND), (
-        f"Mechanism must be ATTACH or LAND, got {entry.mechanism!r}"
+    assert entry.mechanism in (Mechanism.ATTACH_RW, Mechanism.ATTACH_R), (
+        f"Mechanism must be an ATTACH_* live-read mode, got {entry.mechanism!r}"
     )
 
     # For ATTACH: details must describe the in-place reference (no data movement).
-    if entry.mechanism is Mechanism.ATTACH:
+    if entry.mechanism is Mechanism.ATTACH_RW:
         assert entry.details, (
             "ATTACH mechanism must provide details describing the in-place reference"
         )

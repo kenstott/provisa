@@ -14,10 +14,12 @@ A Connector is indexed by ``(federation_engine, source_type)`` and encapsulates 
 engine-specific catalog operations for that source type: it projects a source (asset)
 into a persisted engine ``CatalogEntry`` and declares its capability and mechanism.
 
-The mechanism is a fixed property of the connector, not chosen per query (REQ-841):
-- ATTACH — reference the source in place, no data movement (Trino catalog, DuckDB ATTACH).
-- LAND   — materialize the source into the engine's own reachable store (warehouse-native
-           engines land into self; broad/partial federators land where no attach exists).
+A connector declares HOW the engine/Provisa obtains a source's rows — the ``Mechanism`` (REQ-841/
+947/951): ATTACH_RW / ATTACH_R (engine reads the live source in place, read-write / read-only),
+DIRECT (Provisa's native driver reads it single-source, bypassing the engine), FETCH (Provisa's
+adapter reads an API/push source). Materialization (landing into a store) is an ORTHOGONAL strategy,
+not a mechanism — any readable source is landable (``materializable``); a FETCH/DIRECT source, which
+the engine cannot read live, is ALWAYS materialized so the engine can see it via the replica.
 
 ``CatalogEntry`` is derived, rebuildable engine state (REQ-843) — never a migrated table.
 """
@@ -35,12 +37,17 @@ if TYPE_CHECKING:
     from provisa.core.models import Source
 
 
-class Mechanism(str, Enum):  # REQ-841, REQ-947
-    ATTACH = "attach"  # reference the live source in place (Trino catalog, DuckDB ATTACH) — VIRTUAL
-    SCAN = "scan"  # reference a file/object in place as a scan view (csv/parquet/iceberg) — SCAN
-    LAND = "land"  # materialize the source into the engine's own reachable store — MATERIALIZED
-    FETCH = "fetch"  # Provisa's own adapter fetches the rows + the write face lands; engine only
-    # reads the replica (API/push sources: openapi/graphql_remote/grpc_remote/…) — MATERIALIZED-direct
+class Mechanism(str, Enum):  # REQ-841, REQ-947, REQ-951
+    # How the engine/Provisa OBTAINS a source's rows. Materialization (landing into a store) is an
+    # orthogonal STRATEGY, not a mechanism — any readable source is landable (see ``materializable``).
+    ATTACH_RW = "attach_rw"  # engine attaches the live source in place, read + write upstream
+    ATTACH_R = "attach_r"  # engine attaches/scans the live source in place, read-only (files, RO)
+    DIRECT = "direct"  # Provisa's native driver reads the source directly, bypassing the engine
+    FETCH = "fetch"  # Provisa's adapter reads an API/push source (openapi/graphql_remote/grpc/…)
+    # ATTACH_* → the engine reads the LIVE source (VIRTUAL). DIRECT/FETCH → the engine can't read it
+    # live, so Provisa reads it (driver/adapter) and materializes a refreshed REPLICA (an MV of the
+    # source) that the engine reads → MATERIALIZED. "Materialize into a store" is that replica, an
+    # OUTPUT of a DIRECT/FETCH read — not a reach mechanism of its own (REQ-951).
 
 
 @dataclass(frozen=True)
@@ -94,11 +101,16 @@ class Connector(ABC):  # REQ-842
     # The PRIMARY reach mode — the default federate() picks and CatalogEntry records. Kept for
     # back-compat; the full self-description is ``reach_modes`` (REQ-947).
     mechanism: Mechanism
-    # The FULL set of reach modes this connector supports (REQ-947): a source that can be attached
-    # live can ALSO be materialized for latency/CDC/freshness, so a relational connector declares
-    # {ATTACH, LAND}. Empty ⇒ derive {mechanism}. Read via ``reach_modes``; the planner/source UI
-    # choose a mode from it per policy/cost instead of assuming the single ``mechanism``.
+    # The FULL set of reach modes this connector supports (REQ-947/951): a source may be reachable
+    # more than one way — e.g. a relational source both attached by the engine AND read by Provisa's
+    # native driver → {ATTACH_RW, DIRECT}. Empty ⇒ derive {mechanism}. Read via ``reach_modes``; the
+    # planner/source UI choose a mode from it instead of assuming the single ``mechanism``.
     mechanisms: frozenset[Mechanism] = frozenset()
+    # MATERIALIZATION is orthogonal to the reach mechanism (REQ-951): any readable source can be
+    # landed into a store (for latency/CDC/freshness, or — for FETCH/DIRECT sources the engine can't
+    # read live — as the ONLY way the engine sees it). Nearly always True; False only for a source
+    # that must never be cached.
+    materializable: bool = True
     key: str = (
         ""  # stable identity for probe reports + override strike-list (falls back to source_type)
     )
@@ -170,10 +182,7 @@ class _TrinoConnector(Connector):
     ``CREATE CATALOG ... USING <trino_connector>`` clause supplies)."""
 
     engine = "trino"
-    mechanism = Mechanism.ATTACH  # primary: federated live in place
-    # Trino attaches these live (VIRTUAL) but they can ALSO be landed for latency/CDC/freshness — so
-    # every Trino ATTACH connector is both virtual and materializable (REQ-947).
-    mechanisms = frozenset({Mechanism.ATTACH, Mechanism.LAND})
+    mechanism = Mechanism.ATTACH_RW  # primary: federated live in place
     trino_connector: str = ""  # the Trino connector.name for the USING clause
 
     def capability(self) -> Capability:
@@ -253,12 +262,11 @@ _TRINO_JDBC_TYPES: dict[str, str] = {
 
 class TrinoPgBackedConnector(_TrinoConnector):
     """sqlite/openapi: their data is LANDED into the local Postgres (sqlite migrated at registration,
-    openapi responses cached) and Trino reads that PG replica. So the mechanism is LAND — Provisa
-    materializes them first, then Trino reads — not an in-place ATTACH of the live source."""
+    openapi responses cached) and Trino reads that PG replica. FETCH — Provisa materializes them
+    first, then Trino reads the replica — not an in-place ATTACH of the live source."""
 
     trino_connector = "postgresql"
-    mechanism = Mechanism.LAND
-    mechanisms = frozenset({Mechanism.LAND})  # PG-cache materialized, not attachable live
+    mechanism = Mechanism.FETCH  # Provisa lands sqlite/openapi into PG; Trino reads the replica
 
     def details(self, source: Source) -> dict:
         import os
@@ -494,7 +502,7 @@ class DuckDBPostgresConnector(Connector):
     engine = "duckdb"
     source_type = "postgresql"
     materialized_store = True  # REQ-846: PG is the one proven materialized store today
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True, write=True)
@@ -518,7 +526,7 @@ class DuckDBPostgresConnector(Connector):
 class DuckDBCsvConnector(Connector):
     engine = "duckdb"
     source_type = "csv"
-    mechanism = Mechanism.ATTACH  # a scanner view references the file in place
+    mechanism = Mechanism.ATTACH_RW  # a scanner view references the file in place
 
     def capability(self) -> Capability:
         return Capability()
@@ -532,7 +540,7 @@ class DuckDBCsvConnector(Connector):
 class DuckDBParquetConnector(Connector):
     engine = "duckdb"
     source_type = "parquet"
-    mechanism = Mechanism.ATTACH  # a scanner view references the file in place
+    mechanism = Mechanism.ATTACH_RW  # a scanner view references the file in place
 
     def capability(self) -> Capability:
         return Capability(
@@ -548,7 +556,7 @@ class DuckDBParquetConnector(Connector):
 class DuckDBSqliteConnector(Connector):
     engine = "duckdb"
     source_type = "sqlite"
-    mechanism = Mechanism.ATTACH  # the sqlite extension attaches the file in place
+    mechanism = Mechanism.ATTACH_RW  # the sqlite extension attaches the file in place
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True, write=True)
@@ -578,7 +586,7 @@ class DuckDBSqliteConnector(Connector):
 class _DuckDBExtensionConnector(Connector):  # REQ-899
     engine = "duckdb"
     mechanism = (
-        Mechanism.ATTACH
+        Mechanism.ATTACH_RW
     )  # referenced in place (ATTACH catalog or scanner view), never landed
     install_from_community = True
 
@@ -768,7 +776,7 @@ class PostgresFdwConnector(Connector):  # REQ-893
     engine = "postgres"
     source_type = "postgresql"
     materialized_store = True  # REQ-846: PG is the one proven materialized store today
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
     key = "postgres_fdw"
 
     async def probe(
@@ -814,7 +822,7 @@ class FileFdwConnector(Connector):  # REQ-893
 
     engine = "postgres"
     source_type = "csv"
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
     key = "file_fdw"
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904
@@ -844,7 +852,7 @@ class SqliteFdwConnector(Connector):  # REQ-907
 
     engine = "postgres"
     source_type = "sqlite"
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
     key = "sqlite_fdw"
     runtime_deps = ("libsqlite3 (system — OS-provided on macOS/Linux)",)
 
@@ -880,7 +888,7 @@ class MysqlFdwConnector(Connector):  # REQ-907
 
     engine = "postgres"
     source_type = "mysql"
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
     key = "mysql_fdw"
     runtime_deps = ("libmysqlclient / mariadb-connector-c (bundled — must ship + relocate)",)
 
@@ -925,7 +933,7 @@ class _PgDuckdbScanConnector(Connector):  # REQ-901
     """
 
     engine = "postgres"
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
     _reader = ""  # read_csv | read_parquet | read_json | iceberg_scan
     _scan_args = ""  # extra reader args appended after the path, e.g. ", allow_moved_paths := true"
     runtime_deps = (
@@ -1033,7 +1041,7 @@ class ClickHousePostgresConnector(Connector):
     engine = "clickhouse"
     source_type = "postgresql"
     materialized_store = True  # REQ-846: PG is the one proven materialized store today
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
     key = "clickhouse_postgres"
 
     def capability(self) -> Capability:
@@ -1063,7 +1071,7 @@ class ClickHouseMysqlConnector(Connector):
 
     engine = "clickhouse"
     source_type = "mysql"
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
     key = "clickhouse_mysql"
 
     def capability(self) -> Capability:
@@ -1092,7 +1100,7 @@ class ClickHouseMongoConnector(Connector):
 
     engine = "clickhouse"
     source_type = "mongodb"
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
     key = "clickhouse_mongo"
 
     def capability(self) -> Capability:
@@ -1134,7 +1142,7 @@ class _ClickHouseFileConnector(Connector):
     """
 
     engine = "clickhouse"
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH_RW
     _format = ""  # ClickHouse input-format name
 
     def details(self, source: Source) -> dict:
@@ -1163,9 +1171,11 @@ class ClickHouseParquetConnector(_ClickHouseFileConnector):
 
 
 class WarehouseNativeConnector(Connector):
-    """A self-only engine reaches only its own store; the asset is already native."""
+    """A self-only engine (e.g. Snowflake) cannot attach an external source live; Provisa reads
+    it and lands a replica into the engine's store, which the engine reads — MATERIALIZED, not a
+    live attach (the engine never lands; Provisa does — REQ-848/951)."""
 
-    mechanism = Mechanism.LAND
+    mechanism = Mechanism.DIRECT
 
     def __init__(self, engine: str, source_type: str) -> None:
         self.engine = engine

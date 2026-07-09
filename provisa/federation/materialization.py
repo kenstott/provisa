@@ -63,10 +63,10 @@ def validate_materialization_backend(
             f"engine {engine.name!r} has no connector for materialization backend {backend_type!r} "
             f"— it could not read what was landed"
         )
-    if connector.mechanism is not Mechanism.ATTACH:
+    if connector.mechanism not in (Mechanism.ATTACH_RW, Mechanism.ATTACH_R):
         raise InvalidMaterializationBackend(
-            f"materialization backend {backend_type!r} on engine {engine.name!r} has only a LAND "
-            f"connector — landing into a land target is a regress"
+            f"materialization backend {backend_type!r} on engine {engine.name!r} is not attach-"
+            f"readable (FETCH/DIRECT) — the engine could not read what was landed"
         )
 
 

@@ -57,7 +57,7 @@ def test_iceberg_connector_identity_and_reader():
     assert c.engine == "postgres"
     assert c.source_type == "iceberg"
     assert c.key == "pg_duckdb_iceberg"
-    assert c.mechanism is Mechanism.ATTACH
+    assert c.mechanism is Mechanism.ATTACH_RW
     assert c._reader == "iceberg_scan"
 
 

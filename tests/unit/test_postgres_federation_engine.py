@@ -71,7 +71,7 @@ def test_postgres_fdw_connector_identity():
     assert c.engine == "postgres"
     assert c.source_type == "postgresql"
     assert c.key == "postgres_fdw"
-    assert c.mechanism is Mechanism.ATTACH  # references in place, no data movement
+    assert c.mechanism is Mechanism.ATTACH_RW  # references in place, no data movement
 
 
 def test_postgres_fdw_capability_full_pushdown_and_writable():

@@ -663,3 +663,43 @@ def then_excluded_function_not_visible(shared_data: dict) -> None:
 
 # No new step definitions are required for REQ-871 - all steps for the scenario
 # "REQ-871 default behaviour" are already implemented in the existing file.
+
+
+# All steps for REQ-870 scenario "REQ-870 default behaviour" are already present in the existing file. No new definitions are required.
+
+
+# No new step definitions are required for REQ-871 - all steps for the scenario
+# "REQ-871 default behaviour" are already implemented in the existing file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ffac6c2e-8148-4c66-b02e-acc74dd0a632
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-870 scenario "REQ-870 default behaviour" are already present
+# in the existing file. No new step definitions are required.
+
+
+# No new step definitions are required for REQ-871 - all steps for the scenario
+# "REQ-871 default behaviour" are already implemented in the existing file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8b4954d4-ca3c-406c-9f8d-f493a35246ec
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-870 scenario "REQ-870 default behaviour" are already present
+# in the existing file. No new step definitions are required.
+
+
+# No new step definitions are required for REQ-871 - all steps for the scenario
+# "REQ-871 default behaviour" are already implemented in the existing file.
+
+
+# All steps for REQ-870 scenario "REQ-870 default behaviour" are already present in the existing file. No new definitions are required.
+
+
+# No new step definitions are required for REQ-871 - all steps for the scenario
+# "REQ-871 default behaviour" are already implemented in the existing file.

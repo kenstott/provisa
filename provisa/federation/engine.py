@@ -250,8 +250,11 @@ class FederationEngine:  # REQ-840
             return self._driver_class
         from provisa.federation.connector import Mechanism
 
-        if all(c.mechanism is Mechanism.LAND for c in self.connectors.values()):
-            return DriverClass.SELF_ONLY
+        if self.native_store is not None and all(
+            c.mechanism not in (Mechanism.ATTACH_RW, Mechanism.ATTACH_R)
+            for c in self.connectors.values()
+        ):
+            return DriverClass.SELF_ONLY  # cannot attach anything live — all materialized into self
         # Undeclared ad-hoc engine: infer from breadth. BROAD-by-count is only a fallback — real
         # engines declare their class since BROAD means MPP, which connector count cannot imply.
         return (
@@ -429,7 +432,7 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
 
     Relational sources mount as a DATABASE engine (PostgreSQL/MySQL) that auto-exposes every remote
     table; file sources (csv/parquet) and MongoDB mount as a per-table TABLE engine. Everything is
-    referenced in place (Mechanism.ATTACH) — nothing lands. ClickHouse is its own native store, so a
+    referenced in place (Mechanism.ATTACH_RW) — nothing lands. ClickHouse is its own native store, so a
     source of type ``clickhouse`` is already native. Single-node reach model like DuckDB/Postgres.
     """
     from provisa.federation.connector import (

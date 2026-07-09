@@ -45,7 +45,7 @@ def test_all_clickhouse_connectors_are_attach_on_the_clickhouse_engine():
         ClickHouseParquetConnector(),
     ):
         assert c.engine == "clickhouse"
-        assert c.mechanism is Mechanism.ATTACH
+        assert c.mechanism is Mechanism.ATTACH_RW
 
 
 # ---- relational DATABASE engine (auto-import) --------------------------------

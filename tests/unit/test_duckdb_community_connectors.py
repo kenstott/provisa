@@ -84,7 +84,7 @@ def test_connector_identity_and_community_install(cls, stype, key, ext, sym):
     assert c.key == key
     assert c.extension == ext
     assert c.probe_symbol == sym
-    assert c.mechanism is Mechanism.ATTACH  # referenced in place, never landed
+    assert c.mechanism is Mechanism.ATTACH_RW  # referenced in place, never landed
     assert c.install_from_community is True  # community registry
     assert c._install_sql() == f"INSTALL {ext} FROM community"
 
@@ -92,7 +92,13 @@ def test_connector_identity_and_community_install(cls, stype, key, ext, sym):
 def test_all_seven_community_connectors_are_present():
     assert len(_COMMUNITY) == 7
     assert {stype for _, stype, *_ in _COMMUNITY} == {
-        "sqlserver", "mongodb", "snowflake", "bigquery", "firebird", "google_sheets", "airport"
+        "sqlserver",
+        "mongodb",
+        "snowflake",
+        "bigquery",
+        "firebird",
+        "google_sheets",
+        "airport",
     }
 
 
@@ -137,7 +143,9 @@ def _src(sid, type_, **kw):
 
 
 def test_mssql_attach_uses_tds_dsn():
-    d = DuckDBMssqlConnector().details(_src("sql", SourceType.sqlserver, host="mssqlhost", port=1433))
+    d = DuckDBMssqlConnector().details(
+        _src("sql", SourceType.sqlserver, host="mssqlhost", port=1433)
+    )
     assert "ATTACH" in d["attach"] and "(TYPE mssql)" in d["attach"]
     assert "Server=mssqlhost,1433" in d["attach"]
 
@@ -158,12 +166,16 @@ def test_bigquery_attach_reads_project_from_federation_hints():
 def test_gsheets_view_reads_spreadsheet_id_from_hints_and_has_no_pushdown():
     conn = DuckDBGsheetsConnector()
     assert conn.capability().predicate_pushdown is False
-    d = conn.details(_src("gs", SourceType.google_sheets, federation_hints={"spreadsheet_id": "abc123"}))
+    d = conn.details(
+        _src("gs", SourceType.google_sheets, federation_hints={"spreadsheet_id": "abc123"})
+    )
     assert "read_gsheet('abc123')" in d["view_ddl"]
 
 
 def test_airport_attach_uses_base_url():
-    d = DuckDBAirportConnector().details(_src("air", SourceType.airport, base_url="grpc://flight:8815"))
+    d = DuckDBAirportConnector().details(
+        _src("air", SourceType.airport, base_url="grpc://flight:8815")
+    )
     assert "ATTACH 'grpc://flight:8815'" in d["attach"] and "TYPE AIRPORT" in d["attach"]
 
 

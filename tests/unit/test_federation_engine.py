@@ -211,21 +211,21 @@ def test_swapping_engine_swaps_reachability():
 
 def test_trino_postgres_attach_details():
     entry = build_trino_engine().resolve(_PG)
-    assert entry.mechanism is Mechanism.ATTACH
+    assert entry.mechanism is Mechanism.ATTACH_RW
     assert entry.engine == "trino" and entry.source_type == "postgresql"
     assert entry.details["connection-url"] == "jdbc:postgresql://h:5432/db?autosave=conservative"
 
 
 def test_duckdb_postgres_attach_dsn():
     entry = build_duckdb_engine().resolve(_PG)
-    assert entry.mechanism is Mechanism.ATTACH
+    assert entry.mechanism is Mechanism.ATTACH_RW
     assert "ATTACH" in entry.details["attach"] and "TYPE postgres" in entry.details["attach"]
 
 
 def test_warehouse_native_lands_into_self():
     eng = build_sqlalchemy_engine("postgresql://h/db")
     entry = eng.resolve(_src("pg", SourceType.postgresql))
-    assert entry.mechanism is Mechanism.LAND
+    assert entry.mechanism is Mechanism.DIRECT
     assert entry.details == {}  # already native — nothing to attach
 
 

@@ -148,12 +148,12 @@ def source_configured_with_fdw_connectors(shared_data):
     assert sqlite_connector.source_type == "sqlite"
     assert sqlite_connector.key == "sqlite_fdw"
     assert sqlite_connector.engine == "postgres"
-    assert sqlite_connector.mechanism is Mechanism.ATTACH
+    assert sqlite_connector.mechanism is Mechanism.ATTACH_RW
 
     assert mysql_connector.source_type == "mysql"
     assert mysql_connector.key == "mysql_fdw"
     assert mysql_connector.engine == "postgres"
-    assert mysql_connector.mechanism is Mechanism.ATTACH
+    assert mysql_connector.mechanism is Mechanism.ATTACH_RW
 
     shared_data["sqlite_connector"] = sqlite_connector
     shared_data["mysql_connector"] = mysql_connector
@@ -372,7 +372,7 @@ def source_configured_with_pg_duckdb_iceberg(shared_data):
     assert connector.engine == "postgres"
     assert connector.source_type == "iceberg"
     assert connector.key == "pg_duckdb_iceberg"
-    assert connector.mechanism is Mechanism.ATTACH
+    assert connector.mechanism is Mechanism.ATTACH_RW
 
     shared_data["iceberg_connector"] = connector
 
@@ -551,7 +551,7 @@ def results_correctly_federated_with_other_sources(shared_data):
     assert entry.source_type == "iceberg", (
         f"catalog entry source_type must be iceberg; got {entry.source_type!r}"
     )
-    assert entry.mechanism is Mechanism.ATTACH, (
+    assert entry.mechanism is Mechanism.ATTACH_RW, (
         "iceberg connector must use ATTACH mechanism (no data movement)"
     )
 
