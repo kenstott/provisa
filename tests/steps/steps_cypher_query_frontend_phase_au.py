@@ -2225,3 +2225,7 @@ def then_typed_response_shape(shared_data: dict) -> None:
 #
 # scenarios("../features/REQ-752.feature") is also already registered above.
 # Nothing new to append.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.

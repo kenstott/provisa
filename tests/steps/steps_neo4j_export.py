@@ -2120,3 +2120,50 @@ def then_req797_positive(shared_data: dict) -> None:
 
 # All steps and scenario binding for REQ-793 are already present in the existing file.
 # No new step definitions are required.
+
+
+# All steps for REQ-714 are already implemented in the existing file.
+# given_single_node_with_table_label, when_single_node_exported, and
+# then_neo4j_node_merge_provisa_id_and_set_operator are all present.
+# No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3bd83c16-99a3-4ab0-bb6f-9293ea4c5e5f
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a2596492-803f-4abc-b318-314483dff3f7
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 06bf80cb-9eb2-41cb-8481-df12bc87d70f
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9ee47706-033e-474c-8481-d38f8b39cbcf
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f51bfa87-19eb-4012-836a-ae1ac2d3b7d8
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 40739f5e-4903-488b-8d81-b753cab4d357
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-793 (given_req793_query, when_req793_cypher_called,
+# then_req793_rows_shape, then_req793_param_error) and the scenario binding
+# (test_req_793_default_behaviour) are already present in the existing file.
+# No new step definitions are required for REQ-793.

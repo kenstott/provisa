@@ -2499,3 +2499,29 @@ def req655_assert_filter_where(shared_data):
 
 # All step definitions for REQ-534 are already implemented in the existing steps file.
 # No new steps are required for this requirement.
+
+
+# All step definitions for REQ-008 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 82a2e67e-15ed-4b8b-b45b-1b6a2da420d9
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 18958332-5938-493f-9feb-acef243990f1
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All step definitions for REQ-259 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 83e543cd-6fb3-4ca3-adbe-2b5a10647bf6
+#
+# This source code is licensed under the Business Source License 1.1

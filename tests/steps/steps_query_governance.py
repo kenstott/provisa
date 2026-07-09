@@ -945,3 +945,12 @@ def then_logged_in_append_only_audit_log(shared_data, audit_pool):
 # Canary: dab8e082-d3ca-4b19-bab0-24a622bd6422
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4f766f10-22b0-4881-a4cf-febed1e6ede1
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-001 are already implemented in the existing steps file.
+# No new step definitions are required.

@@ -333,3 +333,6 @@ scenarios("../features/REQ-824.feature")
 
 
 # No new steps required - all steps for REQ-824 are already defined in the existing file.
+
+
+# (no new steps or imports needed - all steps for REQ-824 are already defined)

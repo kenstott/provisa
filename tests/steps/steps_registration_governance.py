@@ -2447,3 +2447,39 @@ def _req638_then(shared_data):
 # Canary: f384d9f5-a045-4076-9d6b-3a84af4af487
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a privileged steward with registration rights")
+#   @when("they submit a new source registration")
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")
+# The scenarios() binding for REQ-012.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b73c7e2a-6252-4795-b97e-833fc6e5f9d8
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-016 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f76779e8-345c-48cc-9e69-c2f145d24f58
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 366963c1-f3e9-446e-af0b-d074c70fd5fe
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: abbd9e61-be0d-4214-a636-4e9abb58231b
+#
+# This source code is licensed under the Business Source License 1.1

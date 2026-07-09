@@ -899,3 +899,15 @@ def the_table_is_created_with_the_supplied_column_definitions(shared_data):
 # This source code is licensed under the Business Source License 1.1
 
 # All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5ea4ea11-68e3-407e-9f79-4d0d0a9cd932
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.

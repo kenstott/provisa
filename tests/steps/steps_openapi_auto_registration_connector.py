@@ -1612,3 +1612,14 @@ def then_stewards_accept_or_reject(shared_data):
 
 
 # No new steps required for REQ-601; all steps already exist in the file.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# No new steps required for REQ-601; all steps already exist in the file.

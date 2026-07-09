@@ -1431,3 +1431,29 @@ def then_land_refused_error_event(shared_data):
 
 # All REQ-882 steps are already present in the existing steps file.
 # No new step definitions are required for this requirement.
+
+
+# All REQ-855 steps are already fully implemented in the existing steps file.
+# The scenarios() call for REQ-855.feature is already present.
+# No new step definitions or imports are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bb13b349-9888-47f4-882f-d015471cf3ad
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-874 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-874.feature") call is already present.
+# No new step definitions or imports are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a1911e14-e88e-4a3e-bdd3-e177e6774fbf
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-882 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-882.feature") call is present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.

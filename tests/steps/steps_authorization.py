@@ -653,3 +653,13 @@ def then_excluded_function_not_visible(shared_data: dict) -> None:
 
 # No new step definitions are required for REQ-871 - all steps for the scenario
 # "REQ-871 default behaviour" are already implemented in the existing file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1b33a66f-146f-4d6b-81b5-88dbcfce3269
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# No new step definitions are required for REQ-871 - all steps for the scenario
+# "REQ-871 default behaviour" are already implemented in the existing file.
