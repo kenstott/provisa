@@ -28393,3 +28393,33 @@
   tests:
     - tests/unit/test_event_queue.py
     - tests/unit/test_injector.py
+- id: REQ-943
+  status: complete
+  since: 2026-07
+  group: 9. Live Data & Events
+  category: Live Data & Events
+  priority: MUST
+  type: behavioral
+  description: >-
+    The event-loop source-land path fetches current rows from a materialized source table
+    through the federation engine's SQL terminal. SourceRowLoader.load(source, table) issues
+    a qualified/quoted SELECT * via engine.execute_engine and returns row dicts. Row-oriented
+    API/push source types (openapi, ingest, websocket, rss, grpc_remote, prometheus, google_sheets)
+    have no engine-scannable table; load() raises UnsupportedSourceFetch (explicit, never silent),
+    and the boot wiring lands nothing for that node (logged once) until a per-adapter fetch is wired.
+  use_case: >-
+    The event-loop source-land path requires a unified interface to fetch current snapshots
+    of materialized source tables through the federated SQL engine, with explicit failure signaling
+    for source types that lack engine-scannable tables and deferred adapter-specific fetch logic.
+  code:
+    - provisa/events/source_loader.py
+    - provisa/events/app_wiring.py
+  tests:
+    - tests/unit/test_source_loader.py
+  scenario: |
+    Given a materialized source with current rows in the federation catalog
+    When SourceRowLoader.load(source, table) is invoked
+    Then engine.execute_engine issues SELECT * FROM "<catalog>"."<schema>"."<table>" and returns row dicts
+    Given a row-oriented API/push source type with no engine-scannable table
+    When SourceRowLoader.load(source, table) is invoked
+    Then UnsupportedSourceFetch is raised and no scan is issued
