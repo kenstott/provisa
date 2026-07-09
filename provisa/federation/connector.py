@@ -573,6 +573,27 @@ class DuckDBSqliteConnector(Connector):
         }
 
 
+class DuckDBDuckdbConnector(Connector):
+    engine = "duckdb"
+    source_type = "duckdb"
+    mechanism = Mechanism.ATTACH_RW  # DuckDB attaches another DuckDB database file in place (core)
+
+    def capability(self) -> Capability:
+        return Capability(
+            predicate_pushdown=True, join_pushdown=True, aggregate_pushdown=True, write=True
+        )
+
+    def details(self, source: Source) -> dict:
+        # A DuckDB→DuckDB ATTACH exposes the remote database's own schemas; the runtime references the
+        # remote under its default ``main`` schema, aliased away from the physical catalog.
+        alias = f"_src_{source.id}"
+        return {
+            "attach": f"ATTACH '{source.path}' AS \"{alias}\" (TYPE duckdb)",
+            "raw_alias": alias,
+            "remote_schema": "main",
+        }
+
+
 # --- DuckDB extensions: external DB / warehouse / lake / SaaS reach in place (REQ-899) ---
 #
 # Each connector declares the extension that gives DuckDB the source (Connector.extension), staged into
