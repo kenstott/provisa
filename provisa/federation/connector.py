@@ -212,6 +212,11 @@ _TRINO_JDBC_TYPES: dict[str, str] = {
     "mariadb": "mariadb",
     "singlestore": "singlestore",
     "oracle": "oracle",
+    # Wire-compatible RDBs read via the base wire's Trino connector (REQ-950)
+    "cockroachdb": "postgresql",
+    "yugabytedb": "postgresql",
+    "greenplum": "postgresql",
+    "tidb": "mysql",
     "snowflake": "snowflake",
     "bigquery": "bigquery",
     "clickhouse": "clickhouse",

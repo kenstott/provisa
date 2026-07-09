@@ -37,6 +37,12 @@ class SourceType(str, Enum):
     oracle = "oracle"
     firebird = "firebird"  # Firebird 3/4/5 — DuckDB firebird community extension (REQ-899)
     duckdb = "duckdb"
+    # Postgres-wire-compatible RDBs — reuse the postgres driver/dialect/Trino connector (REQ-950)
+    cockroachdb = "cockroachdb"
+    yugabytedb = "yugabytedb"
+    greenplum = "greenplum"
+    # MySQL-wire-compatible RDBs — reuse the mysql driver/dialect/Trino connector (REQ-950)
+    tidb = "tidb"
     # Cloud DW
     snowflake = "snowflake"
     bigquery = "bigquery"
@@ -101,6 +107,11 @@ SOURCE_TO_CONNECTOR: dict[str, str] = {
     "singlestore": "singlestore",
     "sqlserver": "sqlserver",
     "oracle": "oracle",
+    # Wire-compatible RDBs read via the postgresql/mysql Trino connector (REQ-950)
+    "cockroachdb": "postgresql",
+    "yugabytedb": "postgresql",
+    "greenplum": "postgresql",
+    "tidb": "mysql",
     "mongodb": "mongodb",
     "cassandra": "cassandra",
     "duckdb": "memory",
@@ -127,12 +138,23 @@ SOURCE_TO_CONNECTOR: dict[str, str] = {
     "files": "file",
 }
 
+# Wire-protocol families (REQ-950): a wire-compatible RDB reuses its base wire's JDBC driver,
+# native async driver, and SQLGlot dialect — it only needs registry entries, no new code.
+_PG_WIRE_TYPES: frozenset[str] = frozenset({"postgresql", "cockroachdb", "yugabytedb", "greenplum"})
+_MYSQL_WIRE_TYPES: frozenset[str] = frozenset({"mysql", "tidb"})
+
+
 # Map source types to SQLGlot dialect names (enables direct-route single-source queries)
 SOURCE_TO_DIALECT: dict[str, str] = {
     "postgresql": "postgres",
     "mysql": "mysql",
     "mariadb": "mysql",
     "singlestore": "singlestore",
+    # Wire-compatible RDBs — same SQLGlot dialect as their base wire (REQ-950)
+    "cockroachdb": "postgres",
+    "yugabytedb": "postgres",
+    "greenplum": "postgres",
+    "tidb": "mysql",
     "sqlite": "sqlite",  # served by the SQLAlchemy fallback driver (no native async driver)
     "sqlserver": "tsql",
     "oracle": "oracle",
@@ -247,27 +269,29 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         return self.id.replace("-", "_")
 
     def jdbc_url(self, host: str | None = None, port: int | None = None) -> str:
+        st = self.type.value
+        h = host or self.host
+        po = port or self.port
+        # Postgres-wire RDBs (postgres + cockroach/yugabyte/greenplum) all use the pgjdbc driver;
+        # autosave=conservative prevents pgjdbc crashing on the pg_type_typname_nsp_index
+        # duplicate-key race when two concurrent queries register the same anonymous composite type.
+        if st in _PG_WIRE_TYPES:
+            return f"jdbc:postgresql://{h}:{po}/{self.database}?autosave=conservative"
+        # MySQL-wire RDBs (mysql + tidb) use the MySQL JDBC driver; mariadb keeps its own.
+        if st in _MYSQL_WIRE_TYPES:
+            return f"jdbc:mysql://{h}:{po}/{self.database}"
         prefix = {
-            "postgresql": "jdbc:postgresql",
-            "mysql": "jdbc:mysql",
             "sqlserver": "jdbc:sqlserver",
             "oracle": "jdbc:oracle:thin",
             "mariadb": "jdbc:mariadb",
         }
-        p = prefix.get(self.type.value)
+        p = prefix.get(st)
         if p is None:
             return ""
-        h = host or self.host
-        po = port or self.port
         if self.type == SourceType.sqlserver:
             return f"{p}://{h}:{po};databaseName={self.database}"
         if self.type == SourceType.oracle:
             return f"{p}:@{h}:{po}/{self.database}"
-        if self.type == SourceType.postgresql:
-            # autosave=conservative prevents pgjdbc from crashing on the
-            # pg_type_typname_nsp_index duplicate-key race when two concurrent
-            # queries register the same anonymous composite type.
-            return f"{p}://{h}:{po}/{self.database}?autosave=conservative"
         return f"{p}://{h}:{po}/{self.database}"
 
 

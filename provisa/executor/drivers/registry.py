@@ -61,6 +61,11 @@ _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     "duckdb": _make_duckdb,
     "sqlserver": _make_sqlserver,
     "oracle": _make_oracle,
+    # Wire-compatible RDBs reuse the base wire's native driver (REQ-950)
+    "cockroachdb": _make_pg,
+    "yugabytedb": _make_pg,
+    "greenplum": _make_pg,
+    "tidb": _make_mysql,
 }
 
 # FALLBACK: source types with no bespoke async driver, served by the generic SQLAlchemy driver
