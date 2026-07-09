@@ -24824,14 +24824,25 @@
     The engine's usable materialized-store set is DERIVED from its connectors — a
     `materialized_store` flag on a Connector marks a reachable backend that can also
     be a store; FederationEngine.materialize_stores is a computed property over the
-    connectors so flagged. PG-only today. DONE (2026-07): provisa/federation/connector.py
-    (materialized_store flag on PG connectors), provisa/federation/engine.py (materialize_stores
-    property).
+    connectors so flagged. PG-only today. Native→IR type translation for MATERIALIZED
+    source landing occurs at the landing boundary in `resolve_landing_args`
+    (provisa/federation/residency.py), not in the shared config/repository write path.
+    Each column's stored engine-normalized native type is translated to a canonical IR
+    name via `provisa.core.ir_types.to_ir(native, platform)`, where `platform` is the
+    federation engine's dialect. This containment is necessary because stored `data_type`
+    across the system is engine-physical and consumed as such by GraphQL/SQL generation,
+    masking, and filters. Unmapped native types raise (IR vocabulary gap), never silent
+    varchar defaults. DONE (2026-07): provisa/federation/connector.py
+    (materialized_store flag on PG connectors), provisa/federation/engine.py
+    (materialize_stores property), provisa/federation/residency.py (resolve_landing_args
+    with to_ir translation).
   code:
   - provisa/federation/materialization.py
   - provisa/federation/engine.py
+  - provisa/federation/residency.py
   tests:
   - tests/unit/test_federation_materialization.py
+  - tests/unit/test_residency.py
   related_reqs:
   - REQ-844
   - REQ-840
