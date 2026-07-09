@@ -206,6 +206,8 @@ export function SchemaDiscovery({
           visibleTo: ["*"],
           alias: c.alias || undefined,
           description: c.description || undefined,
+          // Persist the steward's assigned canonical IR type (REQ-846).
+          dataType: c.type || undefined,
         })),
       });
       if (!result.success) throw new Error(result.message);

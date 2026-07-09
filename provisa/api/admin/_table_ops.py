@@ -47,6 +47,7 @@ def _build_column_models(columns: list) -> list:
             mask_precision=c.mask_precision,
             alias=c.alias,
             description=c.description,
+            data_type=getattr(c, "data_type", None),
             native_filter_type=c.native_filter_type,
             is_primary_key=c.is_primary_key,
             is_foreign_key=c.is_foreign_key,

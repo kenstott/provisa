@@ -246,6 +246,10 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     mask_precision: str | None = None
     alias: str | None = None
     description: str | None = None
+    # Canonical IR data-type (REQ-846) a steward assigned during schema discovery. Authoritative for
+    # a manually-defined column (a non-SQL source the engine can't introspect); the landing write
+    # face maps IR → the store's physical type. Null when the type is filled by introspection.
+    data_type: str | None = None
     native_filter_type: str | None = None
     is_primary_key: bool = False
     is_foreign_key: bool = False

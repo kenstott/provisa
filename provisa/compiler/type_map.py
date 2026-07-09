@@ -105,6 +105,7 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         # Floating point
         "real": GraphQLFloat,
         "float4": GraphQLFloat,  # postgres real alias
+        "float": GraphQLFloat,  # canonical IR floating type (REQ-846)
         "double": GraphQLFloat,
         "float8": GraphQLFloat,  # postgres double precision alias
         "decimal": GraphQLFloat,
