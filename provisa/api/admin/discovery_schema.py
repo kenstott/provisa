@@ -44,6 +44,16 @@ router = APIRouter(prefix="/admin/schema-discovery", tags=["schema-discovery"])
 _NO_DISCOVER = {"redis", "accumulo"}
 
 
+@router.get("/ir-types", response_model=list[str])
+async def list_ir_types() -> list[str]:
+    """The canonical IR data-type vocabulary (REQ-846) — the type names the UI offers when a steward
+    assigns a column's type during schema discovery, so an assigned type is engine-independent (the
+    landing write face maps IR → the store's physical type). Sorted for a stable dropdown order."""
+    from provisa.core.ir_types import IR_TYPES
+
+    return sorted(IR_TYPES)
+
+
 def _get_source_pool():
     """Return the current source_pools from app state."""
     from provisa.api.app import state

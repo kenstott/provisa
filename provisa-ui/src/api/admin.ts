@@ -279,6 +279,15 @@ export async function discoverSourceSchema(
   return resp.json();
 }
 
+// The canonical IR data-type vocabulary (REQ-846) offered when a steward assigns a
+// column's type during schema discovery — engine-independent, translated to the store's
+// physical type at landing.
+export async function fetchIrTypes(): Promise<string[]> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/schema-discovery/ir-types`);
+  if (!resp.ok) throw new Error(`IR types fetch failed: ${resp.status}`);
+  return resp.json();
+}
+
 // --- Config ---
 
 export async function downloadConfig(): Promise<string> {

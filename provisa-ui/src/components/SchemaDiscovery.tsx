@@ -8,26 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState } from "react";
-import { discoverSourceSchema } from "../api/admin";
+import { useEffect, useState } from "react";
+import { discoverSourceSchema, fetchIrTypes } from "../api/admin";
 import type { DiscoveredColumn } from "../api/admin";
 import { useRegisterTable } from "../hooks/useAdminQueries";
-
-const TRINO_TYPES = [
-  "VARCHAR",
-  "INTEGER",
-  "BIGINT",
-  "SMALLINT",
-  "TINYINT",
-  "DOUBLE",
-  "REAL",
-  "DECIMAL",
-  "BOOLEAN",
-  "DATE",
-  "TIMESTAMP",
-  "VARBINARY",
-  "JSON",
-];
+import { IR_TYPES_FALLBACK, toIrType } from "../lib/irTypes";
 
 interface ColumnRow {
   selected: boolean;
@@ -49,7 +34,7 @@ function toColumnRows(cols: DiscoveredColumn[]): ColumnRow[] {
   return cols.map((c) => ({
     selected: true,
     name: c.name,
-    type: c.type,
+    type: toIrType(c.type),
     alias: "",
     description: c.description,
     sourcePath: c.source_path,
@@ -134,6 +119,15 @@ export function SchemaDiscovery({
   onRegistered,
 }: SchemaDiscoveryProps) {
   const [columns, setColumns] = useState<ColumnRow[]>([]);
+  // IR type vocabulary for the per-column type dropdown (REQ-846), from the backend.
+  const [irTypes, setIrTypes] = useState<string[]>(IR_TYPES_FALLBACK);
+  useEffect(() => {
+    fetchIrTypes()
+      .then((t) => {
+        if (t.length > 0) setIrTypes(t);
+      })
+      .catch(() => setIrTypes(IR_TYPES_FALLBACK));
+  }, []);
   const [hints, setHints] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -177,7 +171,7 @@ export function SchemaDiscovery({
       {
         selected: true,
         name: "",
-        type: "VARCHAR",
+        type: "text",
         alias: "",
         description: "",
         sourcePath: "",
@@ -297,7 +291,7 @@ export function SchemaDiscovery({
                       value={col.type}
                       onChange={(e) => updateColumn(idx, { type: e.target.value })}
                     >
-                      {TRINO_TYPES.map((t) => (
+                      {irTypes.map((t) => (
                         <option key={t} value={t}>
                           {t}
                         </option>
