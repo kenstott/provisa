@@ -28503,3 +28503,109 @@
     Given an openapi source with no registered ApiEndpoint
     When SourceRowLoader.load(source, table) is invoked
     Then UnsupportedSourceFetch is raised
+- id: REQ-946
+  status: complete
+  since: 2026-07
+  group: "4. Source Connectors"
+  category: Connector Abstraction
+  priority: MUST
+  type: structural
+  description: >-
+    Trino Connector class is the single source of truth for a source type's Trino catalog
+    and its reach (realizes REQ-842). Each catalogable source type has a Trino Connector
+    (provisa/federation/connector.py) declaring trino_connector (the Trino connector.name for
+    CREATE CATALOG ... USING) and details() (the catalog .properties). build_trino_engine
+    registers the full set via build_trino_connectors(); provisa/core/catalog.py
+    create_catalog/_build_catalog_properties derive name+props from the TRINO_CONNECTORS
+    registry — a source type with no Trino connector gets NO catalog. sqlite/openapi are
+    Mechanism.LAND (data landed into local PG cache, then Trino reads it); all other
+    catalogable types are ATTACH. Consequence: federate() classifies Trino's connector
+    types as VIRTUAL (federated live) rather than MATERIALIZED — engine.connectors is
+    the engine's true reach.
+  use_case: >-
+    Centralizing connector registration through a single registry eliminates parallel
+    type→name maps and hardcoded property branches, ensuring consistent catalog generation
+    and reach classification across all source types.
+  code:
+    - provisa/federation/connector.py
+    - provisa/core/catalog.py
+  tests:
+    - tests/unit/test_federation_strategy.py
+    - tests/unit/test_federation_engine.py
+    - tests/unit/test_federation_materialization.py
+    - tests/unit/test_sharepoint_connector.py
+    - tests/unit/test_splunk_connector.py
+    - tests/unit/test_trino_catalog_files.py
+  related_reqs:
+    - REQ-842
+- id: REQ-947
+  status: proposed
+  target: "2026-Q3"
+  group: "4. Source Connectors"
+  category: Connector Abstraction
+  priority: MUST
+  type: structural
+  description: >-
+    Unified connector list per federation engine = (a) sources the engine federates via
+    its own connectors PLUS (b) sources the engine cannot reach but Provisa lands directly
+    via its own adapters (the API/push types: openapi, graphql_remote, grpc_remote, ingest,
+    websocket, rss). Introduce a third Mechanism (e.g. FETCH) for (b): Provisa's adapter
+    fetches the rows and the write face lands them; the engine only reads the replica.
+    The source-creation dropdown is then a pure projection of engine.connectors
+    (federatable ∪ Provisa-direct), per selected engine — no hardcoded source-type list.
+    This retires the parallel SOURCE_TO_CONNECTOR map and the event-loop's _ADAPTER_FETCH_ONLY
+    set / adapter_loaders special-casing (source_fetch dispatches on connector.mechanism).
+  use_case: >-
+    Eliminating the parallel SOURCE_TO_CONNECTOR map and adapter_loaders special-casing
+    by introducing a FETCH Mechanism allows the source-creation dropdown to dynamically
+    reflect exactly what each federation engine can reach, whether through its native
+    connectors or Provisa's direct adapters.
+  code:
+    - provisa/federation/connector.py
+    - provisa/federation/engine.py
+    - provisa/events/source_loader.py
+- id: REQ-948
+  status: proposed
+  target: "2026-Q3"
+  group: "4. Source Connectors"
+  category: Driver Management
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Driver availability is per-connector data, not new machinery: Connector.runtime_deps
+    entries are tagged by who provides the driver — "system" (OS-provided), "bundled"
+    (Provisa ships + relocates it), "operator" (BYO, must install) — and Connector.probe()
+    (REQ-904) reports functional availability + operator remediation. A source is shown in
+    the dropdown but rendered disabled with its remediation when its driver is operator-provided
+    and not installed. Bundled subset Provisa distributes: postgres (libpq), duckdb (libduckdb),
+    sqlite (system libsqlite3), csv, parquet, iceberg, sqlserver, mysql, plus any source
+    reachable via SQLAlchemy fallback driver. Niche drivers (e.g. oracle, some SaaS) stay
+    operator/BYO.
+  use_case: >-
+    Tagging driver availability per-connector allows stewards to see which sources are
+    available, which require operator installation, and what remediation is needed —
+    without silent failures or hardcoded availability checks.
+  code:
+    - provisa/federation/connector.py
+  related_reqs:
+    - REQ-904
+- id: REQ-949
+  status: proposed
+  target: "2026-Q4"
+  group: "4. Source Connectors"
+  category: Connector Abstraction
+  priority: SHOULD
+  type: structural
+  description: >-
+    Structural debt: provisa/federation/connector.py and provisa/federation/engine.py are
+    monoliths that do not scale as more federation engines are added. Split them into
+    per-engine modules (e.g. provisa/federation/connectors/<engine>.py and per-engine engine
+    builders) before/as new engines land.
+  use_case: >-
+    As Provisa adds support for additional federation engines (DuckDB, ClickHouse, etc.),
+    centralizing all engine-specific code in monolithic modules becomes unmaintainable.
+    Per-engine module organization enables independent engine contributions without merge
+    conflicts or coupling.
+  code:
+    - provisa/federation/connector.py
+    - provisa/federation/engine.py
