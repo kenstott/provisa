@@ -15,10 +15,11 @@ the write face (the engine never writes). This is the same terminal the MV path 
 (``execute_engine``), so a SQL-federatable source needs no bespoke primitive.
 
 Row-oriented API / push / stream sources (openapi, ingest, websocket, rss, grpc_remote, prometheus,
-google_sheets) have no engine-scannable table — their current rows come from calling the adapter, a
-per-adapter follow-up. For those the loader raises :class:`UnsupportedSourceFetch` rather than
-silently returning nothing, so the boundary is explicit and the caller decides (the boot wiring skips
-that node and logs; it never fabricates an empty snapshot).
+google_sheets) have no engine-scannable table — their current rows come from calling the adapter.
+Those are served by injected per-type ``adapter_loaders`` (openapi is wired via
+:func:`make_openapi_loader`); a type with no loader raises :class:`UnsupportedSourceFetch` rather
+than silently returning nothing, so the boundary is explicit and the caller decides (the boot wiring
+lands nothing for that node and logs; it never fabricates an empty snapshot).
 """
 
 from __future__ import annotations
