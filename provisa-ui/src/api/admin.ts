@@ -375,6 +375,10 @@ export interface EngineRegistryEntry {
   label: string;
   description: string;
   config_fields: EngineConfigField[];
+  /** Types this engine reads LIVE via a live-attach connector (queried in place, always fresh). */
+  reachable_source_types?: string[];
+  /** Every type configurable on this engine: live-attach ∪ landed-replica reach (REQ-947). */
+  live_source_types?: string[];
 }
 
 export interface FederationEngineState {

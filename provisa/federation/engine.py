@@ -670,9 +670,70 @@ ENGINE_REGISTRY: list[dict] = [
 ]
 
 
+def _provisa_direct_types() -> frozenset[str]:
+    """Source types Provisa reads directly — native drivers (DIRECT) + source adapters (FETCH) —
+    and lands into the engine's store. Reachable on ANY engine because Provisa, not the engine,
+    obtains the rows, then materializes a refreshed replica the engine reads (REQ-947)."""
+    from provisa.executor.drivers.registry import _DRIVER_FACTORIES
+    from provisa.source_adapters.registry import _ADAPTER_MAP
+
+    return frozenset(_DRIVER_FACTORIES) | frozenset(_ADAPTER_MAP)
+
+
+def live_source_types(engine_key: str) -> list[str]:
+    """Source types the given engine reads LIVE via a live-attach connector (ATTACH_*): queried in
+    place, no replica, always fresh (REQ-947). The dropdown tags these ``LIVE``; everything else
+    reachable is a Provisa-landed ``REPLICA``."""
+    builder = _ENGINE_BUILDERS.get(engine_key)
+    if builder is None:
+        return []
+    # Building reads only the in-memory connector registry; a URL-driven engine that cannot build
+    # without config contributes no attach connectors (its replica reach still applies).
+    try:
+        engine = builder()
+    except ValueError:
+        # A URL-driven engine (sqlalchemy) cannot build without config; it contributes no attach
+        # connectors, so its live set is empty until configured.
+        return []
+    from provisa.federation.connector import Mechanism
+
+    attach_modes = {Mechanism.ATTACH_RW, Mechanism.ATTACH_R}
+    return sorted(t for t, c in engine.connectors.items() if c.reach_modes & attach_modes)
+
+
+def reachable_source_types(engine_key: str) -> list[str]:
+    """Every source type CONFIGURABLE on the given engine (REQ-947). The union of three reach
+    faces: the engine's live-attach connectors, the API/push types that only federate by being
+    landed (``_MATERIALIZE_ONLY``), and the types Provisa reads directly then lands
+    (``_provisa_direct_types``). This drives the source-creation dropdown: types outside the
+    current engine's union are shown disabled with the engine(s) that do reach them."""
+    from provisa.federation.strategy import _MATERIALIZE_ONLY
+
+    builder = _ENGINE_BUILDERS.get(engine_key)
+    attach: set[str] = set()
+    if builder is not None:
+        # A URL-driven engine that cannot build without config contributes no attach connectors; its
+        # direct/materialize reach still applies, so an unconfigured engine still lists what it lands.
+        try:
+            attach = set(builder().connectors)
+        except ValueError:
+            attach = set()
+    return sorted(attach | set(_MATERIALIZE_ONLY) | _provisa_direct_types())
+
+
 def engine_registry() -> list[dict]:
-    """The selectable-engine registry (metadata + config schema) for the admin UI."""
-    return ENGINE_REGISTRY
+    """The selectable-engine registry (metadata + config schema + reach faces) for the admin UI.
+    Per entry, ``reachable_source_types`` gates the source-creation dropdown to the selected engine
+    and ``live_source_types`` distinguishes LIVE (attach) from REPLICA (landed) reach, educating on
+    the impact of the engine choice (REQ-947)."""
+    return [
+        {
+            **e,
+            "reachable_source_types": reachable_source_types(e["key"]),
+            "live_source_types": live_source_types(e["key"]),
+        }
+        for e in ENGINE_REGISTRY
+    ]
 
 
 def _engine_config() -> dict:

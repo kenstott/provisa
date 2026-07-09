@@ -28664,3 +28664,39 @@
     - REQ-947
     - REQ-841
     - REQ-846
+- id: REQ-952
+  status: complete
+  since: "2026-07"
+  group: "4. Source Connectors"
+  category: Source Type Availability
+  priority: MUST
+  type: ui
+  description: >-
+    The source-creation type dropdown displays the UNION of all possible source types,
+    gated and annotated against the currently-configured federation engine to educate users
+    on the impact of engine choice. Backend engine_registry() exposes per-engine reach faces:
+    live_source_types (types read LIVE via attach connector — ATTACH_RW/ATTACH_R) and
+    reachable_source_types (every configurable type = live-attach ∪ _MATERIALIZE_ONLY ∪
+    Provisa-direct drivers/adapters that land a refreshed replica). UI tags each option:
+    LIVE (attach, in place, fresh) or REPLICA (Provisa lands a refreshed copy). An unreachable
+    type is disabled and annotated "LIVE w/ {engine labels}" naming the engines that reach it live.
+  use_case: >-
+    Users can see at source-creation time which types are available live on the current
+    engine and which would require materialization, enabling informed connectivity choices
+    without trial-and-error or missing sources in the dropdown.
+  code:
+    - provisa/federation/engine.py
+    - provisa-ui/src/pages/SourcesPage.tsx
+  tests:
+    - tests/unit/test_engine_reach_faces.py
+  scenario: |
+    Given a federation engine with live_source_types = [postgres, mysql] and reachable_source_types = [postgres, mysql, oracle, csv]
+    When the source-creation dropdown renders
+    Then postgres and mysql are tagged LIVE and enabled
+    And oracle and csv are tagged REPLICA and enabled
+    Given a different federation engine where oracle is live but csv is not reachable
+    When the source-creation dropdown renders
+    Then csv is disabled and annotated "LIVE w/ Oracle, JDBC Engines"
+  related_reqs:
+    - REQ-947
+    - REQ-951

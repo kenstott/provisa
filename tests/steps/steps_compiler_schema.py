@@ -2639,3 +2639,7 @@ def req655_assert_filter_where(shared_data):
 # Canary: a4ca02d5-97d8-46c7-8dd5-1ab02a841beb
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# All step definitions for REQ-008 are already implemented in the existing steps file.
+# No new steps are required for this requirement.

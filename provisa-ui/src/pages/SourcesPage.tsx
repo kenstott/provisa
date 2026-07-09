@@ -12,8 +12,8 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Trash2, Pencil, Save, X, ArrowRight } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
-import { fetchSettings } from "../api/admin";
-import type { PlatformSettings } from "../api/admin";
+import { fetchSettings, fetchFederationEngine } from "../api/admin";
+import type { PlatformSettings, FederationEngineState } from "../api/admin";
 import {
   useSources,
   useCreateSource,
@@ -145,6 +145,44 @@ const CATEGORIES = [...new Set(SOURCE_TYPES.map((s) => s.category))];
 function getCategory(type: string) {
   return SOURCE_TYPES.find((s) => s.value === type)?.category ?? "RDBMS";
 }
+// UI source-type values → backend SourceType vocabulary where the two differ (REQ-947).
+const TYPE_ALIAS: Record<string, string> = { graphql: "graphql_remote", grpc: "grpc_remote" };
+const backendType = (uiValue: string) => TYPE_ALIAS[uiValue] ?? uiValue;
+
+type ReachTag = "live" | "replica" | "unreachable";
+interface ReachInfo {
+  tag: ReachTag;
+  /** LIVE (attach) and REPLICA (landed) are selectable on the current engine; unreachable is not. */
+  selectable: boolean;
+  /** Engine labels that read this type LIVE — the hint for a type unreachable on the current engine. */
+  liveEngines: string[];
+}
+
+// Classify a source type against the CURRENTLY-configured engine, so the dropdown can annotate and
+// gate it — LIVE (engine attaches it in place), REPLICA (Provisa lands a refreshed copy the engine
+// reads), or unreachable here but LIVE on another engine (REQ-947). Educates on the engine choice.
+function reachInfoFor(uiValue: string, engineState: FederationEngineState | null): ReachInfo {
+  if (!engineState) return { tag: "live", selectable: true, liveEngines: [] };
+  const t = backendType(uiValue);
+  const current = engineState.engines.find((e) => e.key === engineState.current);
+  const liveEngines = engineState.engines
+    .filter((e) => (e.live_source_types ?? []).includes(t))
+    .map((e) => e.label);
+  if (current) {
+    if ((current.live_source_types ?? []).includes(t))
+      return { tag: "live", selectable: true, liveEngines };
+    if ((current.reachable_source_types ?? []).includes(t))
+      return { tag: "replica", selectable: true, liveEngines };
+  }
+  return { tag: "unreachable", selectable: false, liveEngines };
+}
+
+function reachSuffix(info: ReachInfo): string {
+  if (info.tag === "live") return " · LIVE";
+  if (info.tag === "replica") return " · REPLICA";
+  return info.liveEngines.length ? ` · LIVE w/ ${info.liveEngines.join(", ")}` : " · unreachable";
+}
+
 function getDefaultPort(type: string) {
   return SOURCE_TYPES.find((s) => s.value === type)?.defaultPort ?? 5432;
 }
@@ -254,6 +292,7 @@ export function SourcesPage() {
   const [authType, setAuthType] = useState("none");
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const [engineState, setEngineState] = useState<FederationEngineState | null>(null);
   const domainsEnabled = settings?.naming.use_domains !== false;
   const [discoverSourceId, setDiscoverSourceId] = useState<string | null>(null);
   const [discoverSourceType, setDiscoverSourceType] = useState<string | null>(null);
@@ -379,6 +418,13 @@ export function SourcesPage() {
       .finally(() => setSettingsLoading(false));
   }, []);
 
+  // Reach faces of the configured federation engine — gates + annotates the type dropdown (REQ-947).
+  useEffect(() => {
+    fetchFederationEngine()
+      .then(setEngineState)
+      .catch((e) => setError(String(e)));
+  }, []);
+
   const loading = sourcesLoading || settingsLoading;
 
   const getEffectiveTtl = (source: Source): string => {
@@ -386,6 +432,23 @@ export function SourcesPage() {
     if (settings) return `${settings.cache.default_ttl}s (global)`;
     return "default";
   };
+
+  // Type dropdown annotated + gated by the current engine's reach (REQ-947): each option shows
+  // LIVE / REPLICA, and a type the engine cannot reach is disabled with the engine(s) that can.
+  const renderTypeOptions = () =>
+    CATEGORIES.map((cat) => (
+      <optgroup key={cat} label={cat}>
+        {SOURCE_TYPES.filter((s) => s.category === cat).map((s) => {
+          const info = reachInfoFor(s.value, engineState);
+          return (
+            <option key={s.value} value={s.value} disabled={!info.selectable}>
+              {s.label}
+              {reachSuffix(info)}
+            </option>
+          );
+        })}
+      </optgroup>
+    ));
 
   const resetSpFields = () => {
     setSpAuthType("CLIENT_CREDENTIALS");
@@ -2458,15 +2521,7 @@ export function SourcesPage() {
               value={form.type}
               onChange={(e) => handleTypeChange(e.target.value)}
             >
-              {CATEGORIES.map((cat) => (
-                <optgroup key={cat} label={cat}>
-                  {SOURCE_TYPES.filter((s) => s.category === cat).map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
+              {renderTypeOptions()}
             </select>
           </label>
           {renderFormFields()}
@@ -2600,15 +2655,7 @@ export function SourcesPage() {
                                 value={form.type}
                                 onChange={(e) => handleTypeChange(e.target.value)}
                               >
-                                {CATEGORIES.map((cat) => (
-                                  <optgroup key={cat} label={cat}>
-                                    {SOURCE_TYPES.filter((st) => st.category === cat).map((st) => (
-                                      <option key={st.value} value={st.value}>
-                                        {st.label}
-                                      </option>
-                                    ))}
-                                  </optgroup>
-                                ))}
+                                {renderTypeOptions()}
                               </select>
                             </label>
                             {renderFormFields()}
