@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import uuid
 
@@ -36,30 +37,41 @@ def shared_data() -> dict:
     return {}
 
 
-@pytest.fixture
-def audit_pool(docker_postgres):  # noqa: F811
-    """Initialise audit schema and yield the DSN.
-
-    Each step creates its own pool inside asyncio.run() so the pool never
-    crosses event-loop boundaries (asyncpg pools are tied to the loop that
-    created them).
-    """
-    dsn = os.getenv(
+def _audit_dsn() -> str:
+    return os.getenv(
         "PROVISA_DATABASE_URL",
         "postgresql://provisa:provisa@localhost:5432/provisa",
     )
 
+
+def _audit_db(search_path: str | None = None):
+    """A provisa Database over the pg DSN — init_audit_schema / log_query were migrated off asyncpg
+    to SQLAlchemy Core (execute_core / upsert), so they need a Database, not a raw asyncpg pool."""
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from provisa.core.database import Database
+
+    url = _audit_dsn().replace("postgresql://", "postgresql+asyncpg://", 1)
+    return Database(create_async_engine(url), name="audit-test", search_path=search_path)
+
+
+@pytest.fixture
+def audit_pool(docker_postgres):  # noqa: F811
+    """Initialise audit schema and yield the DSN.
+
+    Each step opens its own engine inside asyncio.run() so a connection never
+    crosses event-loop boundaries.
+    """
+    dsn = _audit_dsn()
+
     async def _setup():
-        pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=2)
-        try:
-            # Drop any stale pre-encryption audit table so init recreates the current schema
-            # (query_text_enc etc.). V1 has no migrations; CREATE TABLE IF NOT EXISTS would
-            # otherwise keep an obsolete table on a long-lived test database.
-            async with pool.acquire() as _c:
-                await _c.execute("DROP TABLE IF EXISTS org_default.query_audit_log CASCADE")
-            await init_audit_schema(pool, org_id="default")
-        finally:
-            await pool.close()
+        db = _audit_db()
+        # Drop any stale pre-encryption audit table so init recreates the current schema
+        # (query_text_enc etc.). V1 has no migrations; CREATE TABLE IF NOT EXISTS would
+        # otherwise keep an obsolete table on a long-lived test database.
+        async with db.acquire() as _c:
+            await _c.execute("DROP TABLE IF EXISTS org_default.query_audit_log CASCADE")
+        await init_audit_schema(db, org_id="default")
 
     asyncio.run(_setup())
     yield dsn
@@ -89,32 +101,22 @@ def given_any_query(shared_data: dict):
 @when("the query completes")
 @pytest.mark.integration
 def when_query_completes(shared_data: dict, audit_pool):
-    dsn = audit_pool
-
     async def _do_log():
-        pool = await asyncpg.create_pool(
-            dsn=dsn,
-            min_size=1,
-            max_size=2,
-            server_settings={"search_path": "org_default"},
-        )
         from provisa.encryption import NullEncryption
 
-        try:
-            await log_query(
-                pool,
-                tenant_id=shared_data["tenant_id"],
-                user_id=shared_data["user_id"],
-                role_id=shared_data["role_id"],
-                query_text=shared_data["query_text"],
-                table_ids=shared_data["table_ids"],
-                source=shared_data["source"],
-                status_code=shared_data["status_code"],
-                duration_ms=shared_data["duration_ms"],
-                encryption=NullEncryption(),
-            )
-        finally:
-            await pool.close()
+        db = _audit_db(search_path="org_default")
+        await log_query(
+            db,
+            tenant_id=shared_data["tenant_id"],
+            user_id=shared_data["user_id"],
+            role_id=shared_data["role_id"],
+            query_text=shared_data["query_text"],
+            table_ids=shared_data["table_ids"],
+            source=shared_data["source"],
+            status_code=shared_data["status_code"],
+            duration_ms=shared_data["duration_ms"],
+            encryption=NullEncryption(),
+        )
 
     asyncio.run(_do_log())
 
@@ -140,10 +142,16 @@ def then_recorded_with_hash_only(shared_data: dict, audit_pool):
 
                 assert row is not None, "query was not recorded in query_audit_log"
 
+                # table_ids is a JSON column; the raw asyncpg read returns it as a JSON string
+                # (asyncpg does not auto-decode JSON), so parse before comparing.
+                table_ids = row["table_ids"]
+                if isinstance(table_ids, str):
+                    table_ids = json.loads(table_ids)
+
                 assert str(row["tenant_id"]) == shared_data["tenant_id"]
                 assert row["user_id"] == shared_data["user_id"]
                 assert row["role_id"] == shared_data["role_id"]
-                assert list(row["table_ids"]) == shared_data["table_ids"]
+                assert list(table_ids) == shared_data["table_ids"]
                 assert row["source"] == shared_data["source"]
                 assert row["status_code"] == shared_data["status_code"]
                 assert row["duration_ms"] == shared_data["duration_ms"]

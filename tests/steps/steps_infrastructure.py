@@ -123,7 +123,8 @@ def stack_first_start(shared_data):
     # that auto-creation is genuinely exercised.
     if client.bucket_exists(bucket):
         for obj in client.list_objects(bucket, recursive=True):
-            client.remove_object(bucket, obj.object_name)
+            if obj.object_name:
+                client.remove_object(bucket, obj.object_name)
         client.remove_bucket(bucket)
 
     assert not client.bucket_exists(bucket), (
@@ -250,11 +251,18 @@ def call_whitelisted_and_protected(shared_data):
 
     from provisa.api.app import state as _state, create_app
 
-    # Clear stale module state left by previous tests that ran a full lifespan.
-    # The tenant_db from a prior test is closed; auth_config must be reset so this
-    # fresh app starts with no assumed auth configuration.
+    # Clear stale module state left by previous tests that ran a full lifespan; the tenant_db from a
+    # prior test is closed. REQ-539 is about enforcement "even when an auth provider is configured",
+    # so configure a real (test-only 'simple') provider — otherwise AuthMiddleware runs unsecured
+    # (backward-compat admin) and never exercises the bearer requirement. With a provider installed,
+    # a missing bearer token on a non-whitelisted endpoint must be rejected with 401.
     _state.tenant_db = None
-    _state.auth_config = None
+    _state.auth_config = {
+        "provider": "simple",
+        "allow_simple_auth": True,
+        "jwt_secret": "req539-test-secret",
+        "simple": {"users": []},
+    }
     _state.auth_middleware_active = False
 
     app = create_app()

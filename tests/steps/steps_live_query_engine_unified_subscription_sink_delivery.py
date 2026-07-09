@@ -335,43 +335,28 @@ def assert_cdc_validation_fails(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-class _FakeWatermarkConn:
-    """In-memory stand-in for the ``live_query_state`` table.
+async def _open_wm_db(dsn: str):
+    """Real file-backed sqlite Database with the live_query_state table, so watermark get/set
+    (SQLAlchemy Core execute_core / upsert, migrated off asyncpg) run against a real backend and
+    each per-output row is a genuine (source, output_type)-keyed row."""
+    from sqlalchemy.ext.asyncio import create_async_engine
 
-    Implements just enough of the asyncpg connection surface that
-    ``provisa.live.watermark.get_watermark`` / ``set_watermark`` need, keying
-    state by (source, output_type) exactly like the real schema's primary key.
-    """
+    from provisa.core.database import Database
+    from provisa.core.schema_org import live_query_state
 
-    def __init__(self) -> None:
-        # (source, output_type) -> {"last_watermark": str, "status": str}
-        self.state: dict[tuple[str, str], dict[str, str]] = {}
-
-    async def fetchrow(self, sql: str, source: str, output_type: str):
-        entry = self.state.get((source, output_type))
-        if entry is None:
-            return None
-        return {"last_watermark": entry["last_watermark"]}
-
-    async def execute(
-        self,
-        sql: str,
-        source: str,
-        output_type: str,
-        value: str,
-        status: str,
-    ):
-        self.state[(source, output_type)] = {
-            "last_watermark": value,
-            "status": status,
-        }
-        return "INSERT 0 1"
+    engine = create_async_engine(dsn)
+    async with engine.begin() as _c:
+        await _c.run_sync(
+            lambda s: live_query_state.metadata.create_all(s, tables=[live_query_state])
+        )
+    return Database(engine, name="wm-test")
 
 
 @given("a table with both sse_subscription and kafka_sink outputs configured")
-def configure_dual_output_watermarks(shared_data: dict) -> None:
-    conn = _FakeWatermarkConn()
+def configure_dual_output_watermarks(shared_data: dict, tmp_path) -> None:
     source = "req-286-orders"
+    # File-backed sqlite so the store survives the separate asyncio.run() calls in later steps.
+    dsn = f"sqlite+aiosqlite:///{tmp_path / 'watermarks.db'}"
 
     # The poll engine produces a sequence of watermark values, one per interval.
     poll_watermarks = [
@@ -385,7 +370,7 @@ def configure_dual_output_watermarks(shared_data: dict) -> None:
     fanout = SSEFanout(source)
     sse_queue = fanout.subscribe()
 
-    shared_data["wm_conn"] = conn
+    shared_data["wm_dsn"] = dsn
     shared_data["source"] = source
     shared_data["poll_watermarks"] = poll_watermarks
     shared_data["fanout"] = fanout
@@ -395,43 +380,48 @@ def configure_dual_output_watermarks(shared_data: dict) -> None:
     async def _seed() -> None:
         # Initialise both outputs at the same starting watermark, proving they
         # are independent rows in live_query_state keyed by output_type.
-        await set_watermark(conn, source, "sse_subscription", "2026-01-01T00:00:00")
-        await set_watermark(conn, source, "kafka_sink", "2026-01-01T00:00:00")
+        db = await _open_wm_db(dsn)
+        async with db.acquire() as conn:
+            await set_watermark(conn, source, "sse_subscription", "2026-01-01T00:00:00")
+            await set_watermark(conn, source, "kafka_sink", "2026-01-01T00:00:00")
+            assert await get_watermark(conn, source, "sse_subscription") is not None
+            assert await get_watermark(conn, source, "kafka_sink") is not None
 
     asyncio.run(_seed())
-
-    assert ("req-286-orders", "sse_subscription") in conn.state
-    assert ("req-286-orders", "kafka_sink") in conn.state
 
 
 @when("the Kafka consumer falls behind")
 def kafka_consumer_falls_behind(shared_data: dict) -> None:
-    conn: _FakeWatermarkConn = shared_data["wm_conn"]
+    dsn: str = shared_data["wm_dsn"]
     source: str = shared_data["source"]
     fanout: SSEFanout = shared_data["fanout"]
     poll_watermarks: list[str] = shared_data["poll_watermarks"]
 
     async def _run_intervals() -> None:
-        delivered = 0
-        for wm in poll_watermarks:
-            # One poll per interval: the engine fetches new rows and delivers
-            # them to SSE, advancing the SSE watermark every time.
-            rows = [{"updated_at": wm}]
-            await fanout.send(rows)
-            await set_watermark(conn, source, "sse_subscription", wm)
-            delivered += 1
+        db = await _open_wm_db(dsn)
+        async with db.acquire() as conn:
+            delivered = 0
+            for wm in poll_watermarks:
+                # One poll per interval: the engine fetches new rows and delivers
+                # them to SSE, advancing the SSE watermark every time.
+                rows = [{"updated_at": wm}]
+                await fanout.send(rows)
+                await set_watermark(conn, source, "sse_subscription", wm)
+                delivered += 1
 
-            # The Kafka consumer is slow: its watermark does NOT advance because
-            # it has not acknowledged the batch. Independent tracking means this
-            # never touches the SSE watermark or blocks SSE delivery.
-        shared_data["sse_deliveries"] = delivered
+                # The Kafka consumer is slow: its watermark does NOT advance because
+                # it has not acknowledged the batch. Independent tracking means this
+                # never touches the SSE watermark or blocks SSE delivery.
+            shared_data["sse_deliveries"] = delivered
 
     asyncio.run(_run_intervals())
 
     # Capture the resulting independent watermarks for assertion.
     async def _read() -> None:
-        shared_data["sse_watermark"] = await get_watermark(conn, source, "sse_subscription")
-        shared_data["kafka_watermark"] = await get_watermark(conn, source, "kafka_sink")
+        db = await _open_wm_db(dsn)
+        async with db.acquire() as conn:
+            shared_data["sse_watermark"] = await get_watermark(conn, source, "sse_subscription")
+            shared_data["kafka_watermark"] = await get_watermark(conn, source, "kafka_sink")
 
     asyncio.run(_read())
 
@@ -456,12 +446,17 @@ def assert_sse_unaffected_by_kafka_lag(shared_data: dict) -> None:
     # ...while the slow Kafka sink's watermark stayed at its starting point.
     assert shared_data["kafka_watermark"] == "2026-01-01T00:00:00"
 
-    # The two outputs are tracked under distinct keys in live_query_state.
-    conn: _FakeWatermarkConn = shared_data["wm_conn"]
+    # The two outputs are tracked under distinct (source, output_type) rows in live_query_state.
     source: str = shared_data["source"]
-    assert (source, "sse_subscription") in conn.state
-    assert (source, "kafka_sink") in conn.state
-    assert (
-        conn.state[(source, "sse_subscription")]["last_watermark"]
-        != conn.state[(source, "kafka_sink")]["last_watermark"]
-    )
+
+    async def _reads() -> tuple:
+        db = await _open_wm_db(shared_data["wm_dsn"])
+        async with db.acquire() as conn:
+            return (
+                await get_watermark(conn, source, "sse_subscription"),
+                await get_watermark(conn, source, "kafka_sink"),
+            )
+
+    sse_wm, kafka_wm = asyncio.run(_reads())
+    assert sse_wm is not None and kafka_wm is not None
+    assert sse_wm != kafka_wm

@@ -584,47 +584,25 @@ def then_first_pk_column_is_canonical_id_column(shared_data: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-class _FakeConnection:
-    """Minimal asyncpg.Connection stand-in for unit-testing the upsert logic.
-
-    Tracks SQL UPDATE statements executed against table_columns so assertions
-    can verify whether is_primary_key or is_alternate_key was set.
-    """
-
-    def __init__(
-        self,
-        source_tbl_row: dict,
-        target_tbl_row: dict,
-        existing_pk_count: int,
-    ) -> None:
-        self._source_tbl = source_tbl_row
-        self._target_tbl = target_tbl_row
-        self._existing_pk_count = existing_pk_count
-        # Records of (sql, *args) for every execute call
-        self.executed: list[tuple[str, tuple]] = []
-
-    async def execute(self, sql: str, *args) -> str:
-        self.executed.append((sql, args))
-        return "UPDATE 1"
-
-    async def fetchrow(self, sql: str, *args):
-        return None
-
-    async def fetchval(self, sql: str, *args):
-        # Called to check conflicting_pk count: COUNT(*) from table_columns
-        # where is_primary_key = TRUE and column_name != target_column.
-        return self._existing_pk_count
+_SRC_TBL_ID = 10
+_TGT_TBL_ID = 20
 
 
-def _build_fake_conn(existing_pk_count: int = 0) -> _FakeConnection:
-    """Return a fake connection pre-loaded with two registered tables."""
-    source_row = {"id": 10, "table_name": "orders"}
-    target_row = {"id": 20, "table_name": "customers"}
-    return _FakeConnection(
-        source_tbl_row=source_row,
-        target_tbl_row=target_row,
-        existing_pk_count=existing_pk_count,
-    )
+async def _open_domain_db(dsn: str):
+    """Real file-backed sqlite Database with relationships + table_columns, so the relationship repo
+    (SQLAlchemy Core upsert / execute_core, migrated off asyncpg) runs against a real backend and the
+    PK/AK flags can be asserted from the stored rows rather than by scraping raw SQL strings."""
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from provisa.core.database import Database
+    from provisa.core.schema_org import relationships, table_columns
+
+    engine = create_async_engine(dsn)
+    async with engine.begin() as _c:
+        await _c.run_sync(
+            lambda s: relationships.metadata.create_all(s, tables=[relationships, table_columns])
+        )
+    return Database(engine, name="domain-test")
 
 
 def _build_relationship(
@@ -644,24 +622,32 @@ def _build_relationship(
     )
 
 
-async def _run_upsert_with_fake_conn(
-    rel: Relationship, fake_conn: _FakeConnection
-) -> _FakeConnection:
-    """Invoke relationship_repo.upsert with mocked table_repo lookups."""
+async def _run_upsert(rel: Relationship, dsn: str, existing_pk_count: int) -> None:
+    """Seed the target table's columns (the target_column plus `existing_pk_count` pre-existing PKs),
+    then run relationship_repo.upsert with the table lookups mocked to the seeded ids."""
     from provisa.core.repositories import relationship as rel_repo
+    from provisa.core.schema_org import table_columns
 
-    source_row = {"id": 10, "table_name": rel.source_table_id}
-    target_row = {"id": 20, "table_name": rel.target_table_id}
-
-    with (
-        patch(
+    db = await _open_domain_db(dsn)
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            table_columns.insert().values(
+                table_id=_TGT_TBL_ID, column_name=rel.target_column, is_primary_key=False
+            )
+        )
+        for i in range(existing_pk_count):
+            await conn.execute_core(
+                table_columns.insert().values(
+                    table_id=_TGT_TBL_ID, column_name=f"existing_pk_{i}", is_primary_key=True
+                )
+            )
+        source_row = {"id": _SRC_TBL_ID, "table_name": rel.source_table_id}
+        target_row = {"id": _TGT_TBL_ID, "table_name": rel.target_table_id}
+        with patch(
             "provisa.core.repositories.relationship.table_repo.find_by_table_name",
             new=AsyncMock(side_effect=[source_row, target_row]),
-        ),
-    ):
-        await rel_repo.upsert(fake_conn, rel)  # type: ignore[arg-type]
-
-    return fake_conn
+        ):
+            await rel_repo.upsert(conn, rel)
 
 
 @given("a relationship being saved where the target table has no existing primary key")
@@ -669,10 +655,7 @@ def given_relationship_no_existing_pk(shared_data: dict) -> None:
     """Set up a many-to-one relationship and a target table with zero existing PKs."""
     rel = _build_relationship()
     # existing_pk_count=0 means no other column in the target table is already a PK.
-    fake_conn = _build_fake_conn(existing_pk_count=0)
-
     shared_data["relationship"] = rel
-    shared_data["fake_conn"] = fake_conn
     shared_data["existing_pk_count"] = 0
 
     # Sanity: the relationship is many-to-one and has a target_column.
@@ -682,38 +665,42 @@ def given_relationship_no_existing_pk(shared_data: dict) -> None:
 
 
 @when("the relationship is persisted")
-def when_relationship_is_persisted(shared_data: dict) -> None:
-    """Run the upsert coroutine synchronously and capture the executed SQL."""
+def when_relationship_is_persisted(shared_data: dict, tmp_path) -> None:
+    """Persist the relationship through the real repo against a file-backed sqlite store."""
     rel: Relationship = shared_data["relationship"]
-    fake_conn: _FakeConnection = shared_data["fake_conn"]
-
-    # Run the async upsert in a fresh event loop (pytest-asyncio not used here
-    # because this step file mixes sync and async steps; asyncio.run is cleaner).
-    executed_conn = asyncio.run(_run_upsert_with_fake_conn(rel, fake_conn))
-    shared_data["executed_statements"] = executed_conn.executed
+    existing_pk_count: int = shared_data.get("existing_pk_count", 0)
+    dsn = f"sqlite+aiosqlite:///{tmp_path / 'domain.db'}"
+    asyncio.run(_run_upsert(rel, dsn, existing_pk_count))
+    shared_data["dsn"] = dsn
 
 
 @then(
     "the target_column is marked is_primary_key=true; if a PK already exists it is marked is_alternate_key=true"
 )
 def then_target_column_marked_pk_or_alternate(shared_data: dict) -> None:
-    """Assert that the upsert SQL marks is_primary_key or is_alternate_key correctly."""
-    statements: list[tuple[str, tuple]] = shared_data.get("executed_statements", [])
+    """Assert the stored target_column row carries is_primary_key / is_alternate_key correctly."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import table_columns
+
+    rel: Relationship = shared_data["relationship"]
     existing_pk_count: int = shared_data.get("existing_pk_count", 0)
 
+    async def _q():
+        db = await _open_domain_db(shared_data["dsn"])
+        async with db.acquire() as conn:
+            result = await conn.execute_core(
+                select(table_columns.c.is_primary_key, table_columns.c.is_alternate_key).where(
+                    table_columns.c.table_id == _TGT_TBL_ID,
+                    table_columns.c.column_name == rel.target_column,
+                )
+            )
+            return result.fetchone()
+
+    row = asyncio.run(_q())
+    assert row is not None, "target_column row must exist after persistence"
+    is_pk, is_ak = row[0], row[1]
     if existing_pk_count == 0:
-        # No existing PK → target_column must be set as primary key
-        pk_updates = [s for s in statements if "is_primary_key" in s[0] and "true" in s[0].lower()]
-        assert pk_updates, (
-            "Expected an SQL statement setting is_primary_key=true for the target_column "
-            "when no existing primary key exists. Statements executed: " + repr(statements)
-        )
+        assert is_pk, "target_column must be is_primary_key=true when no existing PK exists"
     else:
-        # Existing PK present → target_column becomes alternate key
-        alt_updates = [
-            s for s in statements if "is_alternate_key" in s[0] and "true" in s[0].lower()
-        ]
-        assert alt_updates, (
-            "Expected an SQL statement setting is_alternate_key=true for the target_column "
-            "when an existing primary key already exists. Statements executed: " + repr(statements)
-        )
+        assert is_ak, "target_column must be is_alternate_key=true when a PK already exists"

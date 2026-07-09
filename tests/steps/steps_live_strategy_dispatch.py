@@ -32,7 +32,10 @@ def _r814_given() -> dict:
         "source_type": "postgresql",
         "source_id": "pg1",
         "tbl_meta": SimpleNamespace(live=SimpleNamespace(strategy="native")),
-        "state": SimpleNamespace(cdc_sources={}, tenant_db=MagicMock()),
+        # REQ-931: legacy strategy resolution reads state.config.sources for the change_signal.
+        "state": SimpleNamespace(
+            cdc_sources={}, tenant_db=MagicMock(), config=SimpleNamespace(sources=[])
+        ),
     }
 
 
