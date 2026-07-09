@@ -28699,4 +28699,29 @@
     Then csv is disabled and annotated "LIVE w/ Oracle, JDBC Engines"
   related_reqs:
     - REQ-947
+- id: REQ-953
+  status: complete
+  since: "2026-07"
+  group: "9. Event Processing"
+  category: Replica Lifecycle
+  priority: MUST
+  type: behavioral
+  description: >-
+    Source replicas are built at boot by posting replace events for each source,
+    and refreshed by events based on their cache_ttl cadence or push listeners.
+  use_case: >-
+    Ensures all source data is available immediately at startup and stays
+    current during runtime through event-driven updates.
+  code:
+    - provisa/events/boot.py
+  tests:
+    - tests/unit/test_boot.py
+    - tests/unit/test_app_wiring.py
+  scenario: |
+    Given a Provisa instance with source specs configured
+    When the application boots
+    Then register_runtime schedules a one-shot "events:boot" job that posts replace events for each source
+    And supervisor.drain lands every source replica and fans to materialized views once, idempotently
+    And register_runtime schedules refresh injectors for each source at its cache_ttl cadence
+    And push sources are refreshed by their listeners
     - REQ-951

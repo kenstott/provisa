@@ -1544,3 +1544,47 @@ def then_land_refused_error_event(shared_data):
 # The scenarios("../features/REQ-882.feature") call is present, and all
 # Given/When/Then step definitions for the scenario are implemented.
 # No new definitions are required for this requirement.
+
+
+# All REQ-855 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-855.feature") call is already present.
+# No new step definitions or imports are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5c369ed4-4d7e-404a-b171-645bbd078441
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-874 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-874.feature") call is already present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.
+
+
+# All REQ-882 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-882.feature") call is present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.
+
+
+# All REQ-855 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-855.feature") call is already present.
+# No new step definitions or imports are required for this requirement.
+
+
+# All REQ-874 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-874.feature") call is already present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4b089fef-00e0-4233-98a0-53793b465373
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-882 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-882.feature") call is present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.

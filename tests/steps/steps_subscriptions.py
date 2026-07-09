@@ -1189,3 +1189,15 @@ def then_source_type_not_used_to_dispatch(shared_data: dict) -> None:
 # Canary: b1b1c096-0fbe-4afa-b03f-ede25e26bbc6
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3d7e020e-bb3e-43ae-b644-25b40f7b3b34
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 88e4718c-3f2e-4845-a974-e08d8a4199e5
+#
+# This source code is licensed under the Business Source License 1.1

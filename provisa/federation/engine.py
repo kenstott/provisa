@@ -709,7 +709,7 @@ def reachable_source_types(engine_key: str) -> list[str]:
     landed (``_MATERIALIZE_ONLY``), and the types Provisa reads directly then lands
     (``_provisa_direct_types``). This drives the source-creation dropdown: types outside the
     current engine's union are shown disabled with the engine(s) that do reach them."""
-    from provisa.federation.strategy import _MATERIALIZE_ONLY
+    from provisa.federation.strategy import _CONNECTOR_PGWIRE_REPLICA, _MATERIALIZE_ONLY
 
     builder = _ENGINE_BUILDERS.get(engine_key)
     attach: set[str] = set()
@@ -720,7 +720,9 @@ def reachable_source_types(engine_key: str) -> list[str]:
             attach = set(builder().connectors)
         except ValueError:
             attach = set()
-    return sorted(attach | set(_MATERIALIZE_ONLY) | _provisa_direct_types())
+    return sorted(
+        attach | set(_MATERIALIZE_ONLY) | set(_CONNECTOR_PGWIRE_REPLICA) | _provisa_direct_types()
+    )
 
 
 def engine_registry() -> list[dict]:

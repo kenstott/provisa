@@ -54,6 +54,20 @@ def test_materialize_only_type_reachable_on_every_engine():
         assert "rss" not in live_source_types(key), key
 
 
+def test_connector_pgwire_types_reachable_on_every_engine():
+    # files/sharepoint/splunk read via their Calcite pgwire server (generic postgres) → REPLICA on any
+    # engine. On Trino they're LIVE (attach/scan); off Trino they federate as a landed replica.
+    for t in ("files", "sharepoint", "splunk"):
+        for key in ("trino", "duckdb", "pg", "clickhouse"):
+            assert t in reachable_source_types(key), f"{t} on {key}"
+        assert t in live_source_types("trino"), t
+        assert t not in live_source_types("duckdb"), t
+
+
+def test_duckdb_attaches_duckdb_live():
+    assert "duckdb" in live_source_types("duckdb")
+
+
 def test_registry_entries_carry_reach_faces():
     for e in engine_registry():
         assert "reachable_source_types" in e

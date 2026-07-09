@@ -8868,3 +8868,49 @@ def step_given_an_openapi_source_with_no_registered_apiendpoint():
 @then("UnsupportedSourceFetch is raised")
 def step_then_unsupportedsourcefetch_is_raised():
     pytest.skip("step not implemented: UnsupportedSourceFetch is raised")
+
+
+# REQ-953
+@given("a Provisa instance with source specs configured")
+def step_given_a_provisa_instance_with_source_specs_configured():
+    pytest.skip("step not implemented: a Provisa instance with source specs configured")
+
+
+# REQ-953
+@when("the application boots")
+def step_when_the_application_boots():
+    pytest.skip("step not implemented: the application boots")
+
+
+# REQ-953
+@then(
+    'register_runtime schedules a one-shot "events:boot" job that posts replace events for each source'
+)
+def step_then_register_runtime_schedules_a_one_shot_events_boot_job_that_p():
+    pytest.skip(
+        'step not implemented: register_runtime schedules a one-shot "events:boot" job that'
+    )
+
+
+# REQ-953
+@then(
+    "supervisor.drain lands every source replica and fans to materialized views once, idempotently"
+)
+def step_and_supervisor_drain_lands_every_source_replica_and_fans_to_mate():
+    pytest.skip(
+        "step not implemented: supervisor.drain lands every source replica and fans to mate"
+    )
+
+
+# REQ-953
+@then("register_runtime schedules refresh injectors for each source at its cache_ttl cadence")
+def step_and_register_runtime_schedules_refresh_injectors_for_each_source():
+    pytest.skip(
+        "step not implemented: register_runtime schedules refresh injectors for each source"
+    )
+
+
+# REQ-953
+@then("push sources are refreshed by their listeners - REQ-951")
+def step_and_push_sources_are_refreshed_by_their_listeners_req_951():
+    pytest.skip("step not implemented: push sources are refreshed by their listeners - REQ-951")

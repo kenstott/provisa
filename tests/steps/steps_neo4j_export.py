@@ -2334,3 +2334,94 @@ def then_req797_positive(shared_data: dict) -> None:
 # Canary: 37cb7ecc-7f7c-40e6-adfd-dd20fc06e1f9
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-714 are already implemented in the existing file.
+# given_single_node_with_table_label, when_single_node_exported, and
+# then_neo4j_node_merge_provisa_id_and_set_operator are all present.
+# No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 04af0eb1-727d-4cc3-9c7b-62fe1db5b2dd
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-716 are already implemented in the existing file.
+# given_req716_edge, when_req716_edge_exported, and then_req716_relationship are present.
+# No new step definitions are required.
+
+
+# All steps for REQ-717 are already implemented in the existing file.
+# given_req717_credentials, when_req717_export_called, and then_req717_auth_header
+# are all present. No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0748bc3c-a0af-4e52-b862-5b76ae98dd2a
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7f35dc0e-51ac-4a55-a80d-d802513d8ba9
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-720 (given_req720_graph, when_req720_e2e_runs, then_req720_batches)
+# and the scenario binding (test_req_720_default_behaviour) are already present in the
+# existing file. No new step definitions are required for REQ-720.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4ee5feef-73b3-4b25-8c4a-a6043144d14f
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-714 are already implemented in the existing file.
+# given_single_node_with_table_label, when_single_node_exported, and
+# then_neo4j_node_merge_provisa_id_and_set_operator are all present.
+# No new step definitions are required.
+
+
+# All steps for REQ-715 (given_req715_node, when_req715_node_exported, and
+# then_req715_properties_set) and the scenario binding (test_req_715_default_behaviour)
+# are already implemented in the existing file. No new step definitions are required.
+
+
+# All steps for REQ-716 are already implemented in the existing file.
+# given_req716_edge, when_req716_edge_exported, and then_req716_relationship are present.
+# No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a49e487d-1cd4-4bcf-a152-95d283abaf3f
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-717 (given_req717_credentials, when_req717_export_called,
+# and then_req717_auth_header) are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e40a339f-39b3-4c3d-b009-4db716da8e39
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-719 (given_req719_partial, when_req719_export_completes,
+# and then_req719_partial_result) and the scenario binding (test_req_719_default_behaviour)
+# are already implemented in the existing file. No new step definitions are required.
+
+
+# All steps for REQ-720 (given_req720_graph, when_req720_e2e_runs, then_req720_batches)
+# and the scenario binding (test_req_720_default_behaviour) are already present in the
+# existing file. No new step definitions are required for REQ-720.
+
+
+# All steps for REQ-793 (given_req793_query, when_req793_cypher_called,
+# then_req793_rows_shape, then_req793_param_error) and the scenario binding
+# (test_req_793_default_behaviour) are already present in the existing file.
+# No new step definitions are required for REQ-793.

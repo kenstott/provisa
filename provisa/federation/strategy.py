@@ -57,6 +57,13 @@ _SCANNABLE = frozenset(
     {"csv", "parquet", "files", "iceberg", "delta_lake", "hive", "hive_s3", "google_sheets"}
 )
 
+# Types Provisa reaches only through their connector's Calcite pgwire server (REQ-947): Provisa
+# starts that server from the source's backing-store config, connects as generic PostgreSQL, and
+# lands a replica. Reachable as REPLICA on ANY fed engine (the pgwire bridge is the reader, not the
+# engine's own connectors). ``files`` also SCANs live where an engine has a file connector (Trino);
+# off such engines it federates by this replica path.
+_CONNECTOR_PGWIRE_REPLICA = frozenset({"files", "sharepoint", "splunk"})
+
 # Sources with no live/scan representation — APIs, NoSQL, and streaming feeds. They
 # federate only by being loaded into the tenant materialization store (MATERIALIZED).
 _MATERIALIZE_ONLY = frozenset(
@@ -120,8 +127,14 @@ def federate(
         # (landed + refreshed) so the engine can see it via the replica (REQ-951).
         return Strategy.MATERIALIZED
 
-    # No connector (or forced): only materializable sources federate via the store.
-    if prefer_materialized or source_type in _MATERIALIZE_ONLY:
+    # No connector (or forced): only materializable sources federate via the store — API/NoSQL/stream
+    # feeds and the connector-pgwire-replica types (files/sharepoint/splunk read via their Calcite
+    # pgwire server as generic postgres, then landed).
+    if (
+        prefer_materialized
+        or source_type in _MATERIALIZE_ONLY
+        or source_type in _CONNECTOR_PGWIRE_REPLICA
+    ):
         return Strategy.MATERIALIZED
 
     raise UnreachableSource(engine.name, source_type)

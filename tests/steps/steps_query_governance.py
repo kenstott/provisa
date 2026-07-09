@@ -979,3 +979,18 @@ def then_logged_in_append_only_audit_log(shared_data, audit_pool):
 
 # All steps for REQ-001 are already implemented in the existing steps file.
 # No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 44a399f2-8dff-4e4e-94b7-4afdaa981bcc
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 31f805ee-753d-477b-a807-03eba86c55be
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-001 default behaviour scenario are already implemented
+# in the existing steps file. No new step definitions are required.

@@ -952,3 +952,39 @@ def the_table_is_created_with_the_supplied_column_definitions(shared_data):
 
 
 # No new steps required for REQ-731; all steps are already defined in the existing file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1957a66c-c13e-407c-a6d9-030dbc7fae32
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1672c66c-482f-40f9-a48c-c06fa74d02ba
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 481672d3-f7aa-42fc-80f4-965318052d2b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 33cf33b6-30e2-4ede-975d-f3f7c531ff87
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.

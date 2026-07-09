@@ -2249,3 +2249,9 @@ def then_typed_response_shape(shared_data: dict) -> None:
 
 # All steps for REQ-752 are already implemented in the existing file.
 # No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 41ad00c1-e7eb-4fdf-901d-3d2af8e548b0
+#
+# This source code is licensed under the Business Source License 1.1
