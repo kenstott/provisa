@@ -866,3 +866,48 @@ def then_federated_query_routed_through_federation_engine(shared_data: dict) -> 
 # Canary: b7fa59b1-a0e6-4ecb-a04d-729a4d95f1e3
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# All steps required by REQ-279 default behaviour scenario are already
+# implemented in this file:
+#   Given  -> given_query_with_broadcast_hint_comment
+#   When   -> when_the_query_is_compiled
+#   Then   -> then_comment_stripped_and_translated_before_forwarding
+# No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 45c6115d-8226-480d-a270-62b23ac0ce85
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for the REQ-811 default behaviour scenario are already
+# implemented in the existing file. No new step definitions are required.
+#
+# Existing coverage:
+#   Given a GraphQL query annotated with the comment hint "# @provisa route=direct"
+#         -> given_graphql_query_with_route_hint
+#   When the query is compiled
+#         -> when_the_query_is_compiled  (dispatches on graphql_query key)
+#   Then the query is routed to single-source direct execution
+#         -> then_query_routed_direct
+#   And a query annotated with "# @provisa route=federated" is routed through the federation engine
+#         -> then_federated_query_routed_through_federation_engine
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 252e53d0-d501-4bb1-bba5-dc8f238ad230
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps required for the REQ-279 default behaviour scenario are already
+# implemented in the existing steps file. No new definitions are appended.
+#
+# Given a query containing a /*+ BROADCAST(table) */ hint comment
+#       -> given_query_with_broadcast_hint_comment
+# When the query is compiled
+#       -> when_the_query_is_compiled  (dispatches on raw_sql key)
+# Then the comment is stripped and translated to the equivalent Trino session
+#      property before forwarding
+#       -> then_comment_stripped_and_translated_before_forwarding

@@ -187,3 +187,18 @@ scenarios("../features/REQ-642.feature")
 # Canary: 7bed4a85-6dc0-4ba2-8982-f16f7c0e4815
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# No new steps required for REQ-642; all definitions already exist in the steps file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 01b2c56c-ffda-4ed1-a337-3a46ab36ead0
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2d7e1571-af0a-4d5b-be55-30355c24f50e
+#
+# This source code is licensed under the Business Source License 1.1

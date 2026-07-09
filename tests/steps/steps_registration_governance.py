@@ -2293,3 +2293,93 @@ def _req638_then(shared_data):
 # Canary: 3dd8db3d-17e5-44c9-b3d9-e3346e53fef9
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# All three steps for REQ-012 and the scenarios() binding are already present
+# in the existing file. No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 26478d3f-2eeb-43a7-a550-48dd16a50b6a
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e92c1a08-8309-4c54-828f-0f29b921634b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 10336fb8-3ced-40f3-91d1-0f2c1cf7e878
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 68a47b00-e41a-47e3-87e2-81ac01e6316d
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All three steps for REQ-012 and the scenarios() binding are already present
+# in the existing file. No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bed11932-8836-47d4-93a0-4be96d25c71c
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0288dadf-0b1d-4f18-80b0-73a30c9e00de
+#
+# This source code is licensed under the Business Source License 1.1
+
+# REQ-417 steps and scenarios() binding are already present in the existing file.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e8c33b1c-b39e-4049-b8d4-b2b68482a005
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b89e1ca5-7bc2-4690-a13a-a92910bff68d
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All three steps for REQ-012 and the scenarios() binding are already present
+# in the existing file. No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 16ad3280-3c91-454a-96e4-d8f9cbc98e8b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d06b595e-a6e7-4ea9-a77f-de2db17512ea
+#
+# This source code is licensed under the Business Source License 1.1
+
+# REQ-417: All required step definitions and the scenarios() binding are already
+# present in the existing steps file. No new definitions are appended.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9acd17d1-b8fa-4152-8c81-5a24694da40b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 519afc4d-6efb-47b9-914a-dda7e489b020
+#
+# This source code is licensed under the Business Source License 1.1

@@ -843,3 +843,30 @@ def the_table_is_created_with_the_supplied_column_definitions(shared_data):
 
 
 # All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.

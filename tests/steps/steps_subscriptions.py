@@ -1133,3 +1133,22 @@ def then_source_type_not_used_to_dispatch(shared_data: dict) -> None:
 
 
 # All steps for REQ-260 "REQ-260 default behaviour" scenario are fully implemented above.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0a41892e-1029-4a7a-b738-6aac48d1d495
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# No new step definitions required for REQ-260.
+# All steps for the "REQ-260 default behaviour" scenario are already implemented:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All step definitions for REQ-260 "default behaviour" scenario are already present
+# in the existing steps file. No new imports, scenario registrations, or step
+# definitions are required for this requirement.

@@ -2179,3 +2179,27 @@ def then_typed_response_shape(shared_data: dict) -> None:
 # Canary: b6b8f488-0c51-4e41-bbb7-011c57546a21
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e28a3d33-f9dc-4e53-a3e0-f7d971193034
+#
+# This source code is licensed under the Business Source License 1.1
+
+# REQ-752: All required step definitions are already present in the existing file.
+# given_multi_hop_query      -> Given a Cypher query with 3+ node variables in a path
+# when_translator_processes  -> When the translator processes it (shared step)
+# then_multi_hop_aliases     -> Then all node aliases are available in WHERE and RETURN,
+#                               and intermediate property access resolves correctly
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ae7fc437-fa50-4918-8300-d865111139a2
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a8c860f5-baf3-4b99-94d4-6048b1d89233
+#
+# This source code is licensed under the Business Source License 1.1
