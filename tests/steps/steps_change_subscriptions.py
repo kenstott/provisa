@@ -6,7 +6,7 @@
 import pytest
 from pytest_bdd import scenarios, given, when, then
 
-scenarios("../features/req_926_change_subscriptions.feature")
+scenarios("../features/REQ-926.feature")
 
 
 # ---------------------------------------------------------------------------

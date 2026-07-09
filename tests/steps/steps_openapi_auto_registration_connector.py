@@ -1262,84 +1262,23 @@ def then_registrations_updated_governance_preserved(shared_data):
 scenarios("../features/REQ-739.feature")
 
 
-class _FakeCandidateConn:
-    """Minimal in-memory stand-in for an asyncpg connection.
+async def _open_candidate_db(dsn: str):
+    """Real file-backed sqlite Database with the candidate tables created, so the candidates
+    repository (SQLAlchemy Core: upsert_returning / execute_core) exercises a real backend rather
+    than a hand-parsed raw-SQL stand-in — the repo was migrated off asyncpg to Core."""
+    from sqlalchemy.ext.asyncio import create_async_engine
 
-    Backs the real candidates repository (store/list/accept/reject) against an
-    in-memory ``api_endpoint_candidates`` table so the round-trip exercises the
-    real repository code and real Pydantic models — only the live PG boundary
-    is replaced.
-    """
+    from provisa.core.database import Database
+    from provisa.core.schema_org import api_endpoint_candidates, api_endpoints
 
-    def __init__(self) -> None:
-        self.rows: list[dict] = []
-        self._next_id = 1
-
-    async def fetchrow(self, sql: str, *args):
-        sql_l = " ".join(sql.split())
-        if sql_l.startswith("INSERT INTO api_endpoint_candidates"):
-            source_id, path, method, table_name, columns_json = args
-            for r in self.rows:
-                if r["source_id"] == source_id and r["path"] == path and r["method"] == method:
-                    r["table_name"] = table_name
-                    r["columns"] = columns_json
-                    if r["status"] != "registered":
-                        r["status"] = "discovered"
-                    return {"id": r["id"]}
-            row = {
-                "id": self._next_id,
-                "source_id": source_id,
-                "path": path,
-                "method": method,
-                "table_name": table_name,
-                "columns": columns_json,
-                "status": "discovered",
-            }
-            self._next_id += 1
-            self.rows.append(row)
-            return {"id": row["id"]}
-        if sql_l.startswith("SELECT * FROM api_endpoint_candidates WHERE id"):
-            (candidate_id,) = args
-            for r in self.rows:
-                if r["id"] == candidate_id:
-                    return dict(r)
-            return None
-        if sql_l.startswith("INSERT INTO api_endpoints"):
-            # accept_candidate registers an endpoint; return a synthetic id.
-            self._endpoint_id = getattr(self, "_endpoint_id", 0) + 1
-            return {"id": self._endpoint_id}
-        raise AssertionError(f"unexpected fetchrow SQL: {sql_l}")
-
-    async def fetch(self, sql: str, *args):
-        sql_l = " ".join(sql.split())
-        if "WHERE source_id = $1 AND status = 'discovered'" in sql_l:
-            (source_id,) = args
-            return [
-                dict(r)
-                for r in self.rows
-                if r["source_id"] == source_id and r["status"] == "discovered"
-            ]
-        if "WHERE status = 'discovered'" in sql_l:
-            return [dict(r) for r in self.rows if r["status"] == "discovered"]
-        raise AssertionError(f"unexpected fetch SQL: {sql_l}")
-
-    async def execute(self, sql: str, *args):
-        sql_l = " ".join(sql.split())
-        if "SET status = 'rejected'" in sql_l:
-            (candidate_id,) = args
-            for r in self.rows:
-                if r["id"] == candidate_id and r["status"] == "discovered":
-                    r["status"] = "rejected"
-                    return "UPDATE 1"
-            return "UPDATE 0"
-        if "SET status = 'registered'" in sql_l:
-            (candidate_id,) = args
-            for r in self.rows:
-                if r["id"] == candidate_id:
-                    r["status"] = "registered"
-                    return "UPDATE 1"
-            return "UPDATE 0"
-        raise AssertionError(f"unexpected execute SQL: {sql_l}")
+    engine = create_async_engine(dsn)
+    async with engine.begin() as _c:
+        await _c.run_sync(
+            lambda s: api_endpoint_candidates.metadata.create_all(
+                s, tables=[api_endpoints, api_endpoint_candidates]
+            )
+        )
+    return Database(engine, name="candidates-test")
 
 
 _REQ739_SPEC = {
@@ -1432,10 +1371,14 @@ def given_openapi_spec_url(shared_data):
 
 
 @when("the discovery endpoint introspects it")
-def when_discovery_endpoint_introspects(shared_data):
+def when_discovery_endpoint_introspects(shared_data, tmp_path):
     """Run the real introspect_openapi over the served spec and store candidates."""
     from provisa.api_source import candidates as candidates_repo
     from provisa.api_source import introspect as introspect_mod
+
+    # File-backed sqlite so the same store survives the separate asyncio.run() in the accept/reject
+    # step (each step opens its own connection to the one DSN).
+    dsn = f"sqlite+aiosqlite:///{tmp_path / 'candidates.db'}"
 
     async def _run():
         with mock.patch.object(
@@ -1446,16 +1389,17 @@ def when_discovery_endpoint_introspects(shared_data):
         for c in candidates:
             c.source_id = source_id
 
-        conn = _FakeCandidateConn()
-        ids = await candidates_repo.store_candidates(conn, source_id, candidates)  # type: ignore[arg-type]
-        stored = await candidates_repo.list_candidates(conn, source_id)  # type: ignore[arg-type]
-        return candidates, ids, stored, conn
+        db = await _open_candidate_db(dsn)
+        async with db.acquire() as conn:
+            ids = await candidates_repo.store_candidates(conn, source_id, candidates)
+            stored = await candidates_repo.list_candidates(conn, source_id)
+        return candidates, ids, stored
 
-    candidates, ids, stored, conn = asyncio.run(_run())
+    candidates, ids, stored = asyncio.run(_run())
     shared_data["candidates"] = candidates
     shared_data["stored_ids"] = ids
     shared_data["stored"] = stored
-    shared_data["conn"] = conn
+    shared_data["dsn"] = dsn
 
 
 @then("discovered operation candidates are stored and queryable via admin API")
@@ -1488,9 +1432,11 @@ def then_candidates_stored_and_queryable(shared_data):
 @then("stewards can accept or reject each candidate")
 def then_stewards_accept_or_reject(shared_data):
     """Exercise the real accept/reject repository code against stored candidates."""
-    from provisa.api_source import candidates as candidates_repo
+    from sqlalchemy import select
 
-    conn: _FakeCandidateConn = shared_data["conn"]
+    from provisa.api_source import candidates as candidates_repo
+    from provisa.core.schema_org import api_endpoint_candidates
+
     stored = shared_data["stored"]
     assert len(stored) == 2
 
@@ -1499,12 +1445,20 @@ def then_stewards_accept_or_reject(shared_data):
     assert accept_id is not None and reject_id is not None
 
     async def _run():
-        endpoint = await candidates_repo.accept_candidate(conn, accept_id)  # type: ignore[arg-type]
-        await candidates_repo.reject_candidate(conn, reject_id)  # type: ignore[arg-type]
-        remaining = await candidates_repo.list_candidates(conn, shared_data["source_id"])  # type: ignore[arg-type]
-        return endpoint, remaining
+        db = await _open_candidate_db(shared_data["dsn"])
+        async with db.acquire() as conn:
+            endpoint = await candidates_repo.accept_candidate(conn, accept_id)
+            await candidates_repo.reject_candidate(conn, reject_id)
+            remaining = await candidates_repo.list_candidates(conn, shared_data["source_id"])
+            result = await conn.execute_core(
+                select(api_endpoint_candidates.c.id, api_endpoint_candidates.c.status).where(
+                    api_endpoint_candidates.c.id.in_([accept_id, reject_id])
+                )
+            )
+            statuses = {row[0]: row[1] for row in result.fetchall()}
+        return endpoint, remaining, statuses
 
-    endpoint, remaining = asyncio.run(_run())
+    endpoint, remaining, statuses = asyncio.run(_run())
 
     # Accepted candidate becomes a registered endpoint.
     assert endpoint.table_name == stored[0].table_name
@@ -1512,11 +1466,8 @@ def then_stewards_accept_or_reject(shared_data):
 
     # Both candidates leave the 'discovered' queue (one registered, one rejected).
     assert remaining == []
-
-    accepted_row = next(r for r in conn.rows if r["id"] == accept_id)
-    rejected_row = next(r for r in conn.rows if r["id"] == reject_id)
-    assert accepted_row["status"] == "registered"
-    assert rejected_row["status"] == "rejected"
+    assert statuses[accept_id] == "registered"
+    assert statuses[reject_id] == "rejected"
 
 
 # No new steps required for REQ-316; all steps already exist in the file.

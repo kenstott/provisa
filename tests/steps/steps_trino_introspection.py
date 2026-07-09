@@ -27,7 +27,7 @@ from provisa.compiler.introspect import introspect_column_types
 
 
 @scenario(
-    "../../features/req_923_trino_introspection.feature",
+    "../features/REQ-923.feature",
     "REQ-923 default behaviour",
 )
 def test_req_923_default_behaviour():

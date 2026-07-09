@@ -22,7 +22,7 @@ from provisa.subscriptions.debezium_provider import (
     _UNPARSEABLE_TS,
 )
 
-scenarios("../../features/req_922_change_data_capture.feature")
+scenarios("../features/REQ-922.feature")
 
 
 # ---------------------------------------------------------------------------

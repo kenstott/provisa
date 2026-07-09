@@ -10,7 +10,7 @@ from typing import Any, Dict
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
-scenarios("../features/req_930_materialization.feature")
+scenarios("../features/REQ-930.feature")
 
 
 # ---------------------------------------------------------------------------
