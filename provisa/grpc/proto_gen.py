@@ -45,6 +45,7 @@ _PROTO_TYPE_MAP: dict[str, str] = {
     "numeric": "double",
     "timestamp": "google.protobuf.Timestamp",
     "timestamp with time zone": "google.protobuf.Timestamp",
+    "datetime": "google.protobuf.Timestamp",  # SQLite / MySQL timestamp type name
     "date": "string",
     "time": "string",
     "time with time zone": "string",

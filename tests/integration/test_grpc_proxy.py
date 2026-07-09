@@ -13,7 +13,6 @@ boundary is about translation logic, not DB execution.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -117,82 +116,48 @@ class TestUnknownType:
 
 
 class TestTranslation:
-    async def _post(self, client, body: dict):
+    """The proxy lowers the request to a semantic SELECT, governs+routes it, executes the plan, and
+    keys each row by its proto field name. These patch the real pipeline seams (semantic-SQL → govern
+    → execute), not the retired GraphQL round-trip."""
 
-        mock_result = MagicMock()
-        mock_result.rows = [{"id": 1, "name": "Fido", "age": 3, "weight": 10.5}]
-
-        fake_compiled = SimpleNamespace(
-            sql="SELECT ...",
-            params=None,
-            columns=["id", "name", "age", "weight"],
+    @staticmethod
+    def _patches(*, result=None, govern_side_effect=None):
+        semantic = patch(
+            "provisa.api.data.endpoint_grpc_proxy.grpc_table_to_semantic_sql",
+            return_value="SELECT id, name FROM pets",
         )
+        govern_kwargs = (
+            {"side_effect": govern_side_effect}
+            if govern_side_effect is not None
+            else {"return_value": MagicMock()}
+        )
+        govern = patch(
+            "provisa.api.data.endpoint_grpc_proxy._govern_and_route_compiled",
+            new_callable=AsyncMock,
+            **govern_kwargs,
+        )
+        execute = patch(
+            "provisa.api.data.endpoint_grpc_proxy._execute_plan",
+            new_callable=AsyncMock,
+            return_value=result,
+        )
+        return semantic, govern, execute
 
-        with (
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy.parse_query",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy.compile_query",
-                return_value=[fake_compiled],
-            ),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy._govern_and_route_compiled",
-                new_callable=AsyncMock,
-                return_value=MagicMock(),
-            ),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy._execute_plan",
-                new_callable=AsyncMock,
-                return_value=mock_result,
-            ),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy.serialize_rows",
-                return_value={"data": {"pets": [{"id": 1, "name": "Fido"}]}},
-            ),
-        ):
-            async with client:
-                return await client.post("/data/grpc/Pet", json=body)
-
-    async def test_valid_request_returns_200(self, client, state):
+    async def test_valid_request_returns_200(self, state):
         app = _make_app(state)
-
         import httpx
 
         transport = httpx.ASGITransport(app=app)
         c = httpx.AsyncClient(transport=transport, base_url="http://test")
 
-        mock_result = MagicMock()
-        mock_result.rows = []
-        fake_compiled = SimpleNamespace(sql="SELECT ...", params=None, columns=["id", "name"])
+        result = MagicMock()
+        result.column_names = ["id", "name"]
+        result.rows = []
 
-        with (
-            patch("provisa.api.data.endpoint_grpc_proxy.parse_query", return_value=MagicMock()),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy.compile_query",
-                return_value=[fake_compiled],
-            ),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy._govern_and_route_compiled",
-                new_callable=AsyncMock,
-                return_value=MagicMock(),
-            ),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy._execute_plan",
-                new_callable=AsyncMock,
-                return_value=mock_result,
-            ),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy.serialize_rows",
-                return_value={"data": {"pets": []}},
-            ),
-        ):
+        semantic, govern, execute = self._patches(result=result)
+        with semantic, govern, execute:
             async with c:
-                resp = await c.post(
-                    "/data/grpc/Pet",
-                    json={"role_id": "analyst", "limit": 10},
-                )
+                resp = await c.post("/data/grpc/Pet", json={"role_id": "analyst", "limit": 10})
         assert resp.status_code == 200
 
     async def test_response_is_list(self, state):
@@ -202,36 +167,14 @@ class TestTranslation:
         transport = httpx.ASGITransport(app=app)
         c = httpx.AsyncClient(transport=transport, base_url="http://test")
 
-        mock_result = MagicMock()
-        mock_result.rows = []
-        fake_compiled = SimpleNamespace(sql="SELECT ...", params=None, columns=["id"])
+        result = MagicMock()
+        result.column_names = ["id", "name"]
+        result.rows = [[1, "Fido"]]
 
-        with (
-            patch("provisa.api.data.endpoint_grpc_proxy.parse_query", return_value=MagicMock()),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy.compile_query",
-                return_value=[fake_compiled],
-            ),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy._govern_and_route_compiled",
-                new_callable=AsyncMock,
-                return_value=MagicMock(),
-            ),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy._execute_plan",
-                new_callable=AsyncMock,
-                return_value=mock_result,
-            ),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy.serialize_rows",
-                return_value={"data": {"pets": [{"id": 1}]}},
-            ),
-        ):
+        semantic, govern, execute = self._patches(result=result)
+        with semantic, govern, execute:
             async with c:
-                resp = await c.post(
-                    "/data/grpc/Pet",
-                    json={"role_id": "analyst"},
-                )
+                resp = await c.post("/data/grpc/Pet", json={"role_id": "analyst"})
         assert isinstance(resp.json(), list)
 
     async def test_governance_denial_returns_403(self, state):
@@ -241,23 +184,10 @@ class TestTranslation:
         transport = httpx.ASGITransport(app=app)
         c = httpx.AsyncClient(transport=transport, base_url="http://test")
 
-        fake_compiled = SimpleNamespace(sql="SELECT ...", params=None, columns=["id"])
-
-        with (
-            patch("provisa.api.data.endpoint_grpc_proxy.parse_query", return_value=MagicMock()),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy.compile_query",
-                return_value=[fake_compiled],
-            ),
-            patch(
-                "provisa.api.data.endpoint_grpc_proxy._govern_and_route_compiled",
-                new_callable=AsyncMock,
-                side_effect=PermissionError("Access denied"),
-            ),
-        ):
+        semantic, govern, execute = self._patches(
+            govern_side_effect=PermissionError("Access denied")
+        )
+        with semantic, govern, execute:
             async with c:
-                resp = await c.post(
-                    "/data/grpc/Pet",
-                    json={"role_id": "analyst"},
-                )
+                resp = await c.post("/data/grpc/Pet", json={"role_id": "analyst"})
         assert resp.status_code == 403

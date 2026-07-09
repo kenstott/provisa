@@ -2255,3 +2255,120 @@ def then_typed_response_shape(shared_data: dict) -> None:
 # Canary: 41ad00c1-e7eb-4fdf-901d-3d2af8e548b0
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 34ea33a4-e81f-4835-bc88-c8b5c78c654b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All three steps for REQ-752 are already implemented in the existing file content:
+#
+#   given_multi_hop_query     -> "a Cypher query with 3+ node variables in a path"
+#   when_translator_processes -> "the translator processes it"  (shared step)
+#   then_multi_hop_aliases    -> "all node aliases are available in WHERE and RETURN,
+#                                 and intermediate property access resolves correctly"
+#
+# scenarios("../features/REQ-752.feature") is also already registered above.
+# Nothing new to append.

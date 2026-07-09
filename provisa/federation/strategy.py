@@ -34,7 +34,7 @@ by different strategies on different engines.
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from provisa.federation.connector import Mechanism
 from provisa.federation.engine import UnreachableSource
@@ -44,6 +44,26 @@ if TYPE_CHECKING:
     from provisa.federation.cardinality import Estimate
     from provisa.federation.engine import FederationEngine
     from provisa.federation.promote import PushdownDemand
+
+
+def engine_attaches(engine: Any, source_type: str) -> bool:
+    """True iff ``engine`` reaches ``source_type`` LIVE in place (an ATTACH_* connector). Such a
+    source MUST NOT be materialized/landed — the engine reads the file/db directly (DuckDB ATTACHes
+    sqlite). Only FETCH/DIRECT source types are landed. ``engine`` may be the EngineRuntime wrapper
+    or the bare FederationEngine; None (unknown) → False (fall back to landing)."""
+    if engine is None:
+        return False
+    from provisa.federation.connector import Mechanism
+
+    fed = (
+        engine
+        if getattr(engine, "connectors", None) is not None
+        else getattr(engine, "engine", engine)
+    )
+    connector = getattr(fed, "connectors", {}).get(source_type)
+    if connector is None:
+        return False
+    return bool(connector.reach_modes & {Mechanism.ATTACH_RW, Mechanism.ATTACH_R})
 
 
 class Strategy(str, Enum):  # REQ-826

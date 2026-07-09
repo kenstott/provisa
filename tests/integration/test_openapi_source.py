@@ -15,13 +15,12 @@ Requires a live PostgreSQL connection (docker-compose provides it).
 
 from __future__ import annotations
 import json
-import os
 import pathlib
 import tempfile
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -102,35 +101,36 @@ SAMPLE_SPEC = {
 }
 
 
-def _wait_for_trino(timeout: int = 60) -> None:
-    import time
-    import trino.dbapi
-
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            conn = trino.dbapi.connect(host="localhost", port=8080, user="test")
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            cur.fetchall()
-            conn.close()
-            return
-        except Exception:
-            time.sleep(1)
-    raise RuntimeError("Trino did not recover within %ds after lifespan teardown" % timeout)
+_ISOLATED_ORG = "openapi_src_test"
 
 
 @pytest_asyncio.fixture(scope="module")
-async def client():
-    os.environ.setdefault("PG_PASSWORD", "provisa")
-    from provisa.api.app import create_app
+async def _openapi_server():
+    """A DEDICATED Provisa server subprocess in an isolated control-plane org (REQ-697).
 
-    app = create_app()
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            yield c
-    _wait_for_trino()
+    The former in-process fixture shared the module-level ``state`` singleton and
+    org_default with every other in-process app + a live demo, so config registrations
+    collided and ``state`` leaked across tests (non-deterministic startup failures). An
+    isolated subprocess (own ORG_ID, config-replace, free ports) sidesteps that and is
+    torn down (process killed, org schema dropped) so the shared PG is left as found.
+    """
+    from tests.integration.isolated_server import IsolatedServer, drop_org_schema
+
+    server = IsolatedServer(_ISOLATED_ORG)
+    server.start()
+    try:
+        yield server.base_url
+    finally:
+        server.stop_process()
+        await drop_org_schema(_ISOLATED_ORG)
+
+
+@pytest_asyncio.fixture(scope="module")
+async def client(_openapi_server):
+    # Real HTTP against the isolated subprocess (spec_path points at a local temp file,
+    # which the same-host server reads directly).
+    async with AsyncClient(base_url=_openapi_server) as c:
+        yield c
 
 
 @pytest_asyncio.fixture(scope="module")

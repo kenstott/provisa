@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS {_SCHEMA}.rls_rules (
     domain_id TEXT,
     role_id TEXT NOT NULL,
     filter_expr BYTEA NOT NULL,
+    tenant_id UUID,  -- SaaS multi-tenancy column (matches schema.sql / schema_org metadata)
     UNIQUE (domain_id, role_id)
 );
 """

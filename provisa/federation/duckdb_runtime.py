@@ -108,7 +108,26 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     # The materialization store, attached under this backend-neutral alias. A store MUST exist (the
     # engine's invariant); its backend/dialect is taken from the store URL scheme, never assumed.
     _MAT_STORE = "mat_store"
-    _ATTACH_TYPE_BY_SCHEME = {"postgresql": "postgres", "postgres": "postgres"}
+    # DuckDB ATTACH type per store URL scheme. postgres/sqlite are attachable via their extensions;
+    # a relational store also needs an ASYNC SQLAlchemy driver for the write face (store_writer),
+    # which duckdb lacks — so DuckDB is intentionally NOT offered as a materialization store here
+    # (use sqlite for a file-based store, postgres for a server store). sqlite attaches a FILE PATH,
+    # postgres attaches the full connection URL.
+    _ATTACH_TYPE_BY_SCHEME = {
+        "postgresql": "postgres",
+        "postgres": "postgres",
+        "sqlite": "sqlite",
+    }
+    _FILE_ATTACH_TYPES = frozenset({"sqlite"})  # ATTACH a file path, not a URL
+
+    def _store_schema(self) -> str:
+        """The schema the landed replicas live in WITHIN the store. Schema-capable stores (postgres)
+        isolate them under ``mat``; a schema-less store (sqlite) has no namespaces, so they land in
+        its default ``main`` schema. Landing, reconcile, and the engine's READ view all use this."""
+        from urllib.parse import urlparse
+
+        scheme = urlparse(self._store_dsn()).scheme.split("+", 1)[0]
+        return "main" if scheme == "sqlite" else "mat"
 
     def _store_dsn(self) -> str:
         """The materialization-store DSN: the explicit constructor override, else the engine's
@@ -127,13 +146,16 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if not self._store_attached:
             from urllib.parse import urlparse
 
-            scheme = urlparse(dsn).scheme.split("+", 1)[0]
+            parsed = urlparse(dsn)
+            scheme = parsed.scheme.split("+", 1)[0]
             store_type = self._ATTACH_TYPE_BY_SCHEME.get(scheme)
             if store_type is None:
                 raise RuntimeError(f"materialize store scheme {scheme!r} is not attachable")
             self._con.execute(f"INSTALL {store_type}")
             self._con.execute(f"LOAD {store_type}")
-            self._con.execute(f"ATTACH '{dsn}' AS {self._MAT_STORE} (TYPE {store_type})")
+            # A file-backed store (sqlite) attaches the path; postgres attaches the full URL.
+            target = parsed.path if store_type in self._FILE_ATTACH_TYPES else dsn
+            self._con.execute(f"ATTACH '{target}' AS {self._MAT_STORE} (TYPE {store_type})")
             self._store_attached = True
         return self._MAT_STORE
 
@@ -165,7 +187,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # Land through the ONE write face (store_writer.land) — the engine never writes the store.
         await store_writer.land(
             self._store_dsn(),
-            schema="mat",
+            schema=self._store_schema(),
             table=mat_table,
             columns=columns,
             rows=rows,
@@ -185,7 +207,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         store = self.ensure_materialize_attached()
         mat_table = _mat_table_name(source)
         await store_writer.reconcile_table(
-            self._store_dsn(), schema="mat", table=mat_table, columns=columns, pk_columns=pk_columns
+            self._store_dsn(),
+            schema=self._store_schema(),
+            table=mat_table,
+            columns=columns,
+            pk_columns=pk_columns,
         )
         self._expose_landed(source, store, mat_table)
 
@@ -193,7 +219,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         """Create the engine's physical-named READ view over the landed store table (idempotent)."""
         phys = self._phys_name(source)
         self._con.execute(
-            f'CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {store}.mat."{mat_table}"'
+            f"CREATE VIEW IF NOT EXISTS {phys} AS "
+            f'SELECT * FROM {store}."{self._store_schema()}"."{mat_table}"'
         )
 
     # -- metadata --------------------------------------------------------------

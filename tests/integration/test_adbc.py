@@ -19,60 +19,46 @@ To run live tests:
 
 from __future__ import annotations
 
-import os
-
 import pyarrow as pa
 import pytest
+import pytest_asyncio
 
 pytestmark = [pytest.mark.integration]
 
-
-# ---------------------------------------------------------------------------
-# Live-server tests — require running Provisa Arrow Flight server (port 8815)
-# ---------------------------------------------------------------------------
+_ISOLATED_ORG = "adbc_test"
 
 
-@pytest.mark.requires_provisa_server
-class TestLiveAdbcExecution:
-    """Require running Provisa + Arrow Flight service at localhost:8815.
-    Docker Compose stack must include the backend with --port 8815 exposed.
+@pytest_asyncio.fixture(scope="module")
+async def adbc_server():
+    """A DEDICATED Trino-engine Provisa server for the Arrow Flight (ADBC) path.
+
+    The demo on :8000 runs the DuckDB engine, which has no Arrow Flight transport, so
+    these tests need their own Trino server. Spawned in an isolated org with a free
+    Flight port and torn down (process killed, org schema dropped) — the demo is untouched.
     """
+    from tests.integration.isolated_server import IsolatedServer, drop_org_schema
 
-    PROVISA_URL = "http://localhost:8000"
-    FLIGHT_HOST = "localhost"
+    server = IsolatedServer(_ISOLATED_ORG, engine="trino", await_flight=True)
+    server.start()
+    try:
+        yield server
+    finally:
+        server.stop_process()
+        await drop_org_schema(_ISOLATED_ORG)
 
-    @classmethod
-    def _flight_port(cls) -> int:
-        # The provisa_server fixture starts the live server on a dedicated free Flight port and
-        # publishes it here (the shared session FLIGHT_PORT is owned by the in-process ASGI apps).
-        return int(os.environ.get("PROVISA_SERVER_FLIGHT_PORT", "8815"))
 
-    @classmethod
-    def _await_flight(cls, port: int, timeout: float = 60.0) -> None:
-        # /health can precede the Flight gRPC bind; poll the port so we never race the bind.
-        import socket
-        import time
+class TestLiveAdbcExecution:
+    """Drive the ADBC/Arrow-Flight path against a dedicated Trino Provisa server."""
 
-        deadline = time.monotonic() + timeout
-        while True:
-            try:
-                with socket.create_connection((cls.FLIGHT_HOST, port), timeout=1):
-                    return
-            except OSError:
-                if time.monotonic() >= deadline:
-                    raise RuntimeError(
-                        f"Arrow Flight server not listening on {cls.FLIGHT_HOST}:{port} "
-                        f"within {timeout}s"
-                    )
-                time.sleep(1)
+    FLIGHT_HOST = "127.0.0.1"
 
     @pytest.fixture
-    def conn(self):
+    def conn(self, adbc_server):
         from provisa_client.adbc import adbc_connect  # pyright: ignore[reportMissingImports]
 
-        port = self._flight_port()
-        self._await_flight(port)
-        c = adbc_connect(self.PROVISA_URL, user="admin", password="provisa", port=port)
+        c = adbc_connect(
+            adbc_server.base_url, user="admin", password="provisa", port=adbc_server.flight_port
+        )
         yield c
         c.close()
 
@@ -105,11 +91,11 @@ class TestLiveAdbcExecution:
         assert len(rows) <= 3
         assert all(len(r) >= 1 for r in rows)
 
-    def test_context_manager_closes_after_use(self, conn):
+    def test_context_manager_closes_after_use(self, conn, adbc_server):
         from provisa_client.adbc import adbc_connect  # pyright: ignore[reportMissingImports]
 
         fresh = adbc_connect(
-            self.PROVISA_URL, user="admin", password="provisa", port=self._flight_port()
+            adbc_server.base_url, user="admin", password="provisa", port=adbc_server.flight_port
         )
         with fresh as c:
             cursor = c.cursor()

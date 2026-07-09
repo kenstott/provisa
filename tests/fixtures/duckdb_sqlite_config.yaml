@@ -1,0 +1,56 @@
+# A fully DuckDB + SQLite stack for tests: the DuckDB federation engine over a SQLite
+# source, with auth disabled. The control-plane store (SQLite) and the materialize store
+# (DuckDB) are supplied by the test via env/injection, not hardcoded here.
+federation_engine: duckdb
+auth:
+  provider: none
+  assignments_source: provisa
+  default_assignments:
+    - domain_id: '*'
+      role_id: admin
+naming:
+  domain_prefix: false
+  rules: []
+cache:
+  enabled: false
+domains:
+  - id: shelter
+    description: Animal shelter
+roles:
+  - id: admin
+    capabilities:
+      - admin
+      - query_development
+      - source_registration
+      - table_registration
+    domain_access:
+      - '*'
+sources:
+  - id: inquiries-sqlite
+    type: sqlite
+    path: ./demo/files/inquiries.sqlite
+tables:
+  - source_id: inquiries-sqlite
+    table: inquiries
+    schema: default
+    domain_id: shelter
+    governance: pre-approved
+    columns:
+      - name: pet_id
+        data_type: integer
+        visible_to: [admin]
+      - name: user_id
+        data_type: integer
+        visible_to: [admin]
+      - name: inquiry_type
+        data_type: varchar
+        visible_to: [admin]
+      - name: message
+        data_type: varchar
+        visible_to: [admin]
+      - name: status
+        data_type: varchar
+        visible_to: [admin]
+      - name: submitted_at
+        data_type: varchar
+        visible_to: [admin]

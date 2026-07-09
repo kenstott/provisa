@@ -102,16 +102,23 @@ async def migrate_sqlite_table(  # REQ-012, REQ-017, REQ-250
         if pk_cols:
             col_defs += ", PRIMARY KEY (" + ", ".join(f'"{c}"' for c in pk_cols) + ")"
 
-        await pg_conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{pg_schema}"')
-        await pg_conn.execute(f'DROP TABLE IF EXISTS "{pg_schema}"."{pg_table}"')
-        await pg_conn.execute(f'CREATE TABLE "{pg_schema}"."{pg_table}" ({col_defs})')
+        # Honor the target backend's schema capability (REQ-837): schema-capable stores (Postgres)
+        # isolate the replica under ``pg_schema``; a schema-less store (SQLite control plane) has no
+        # namespaces, so land in its default ``main`` and never emit CREATE SCHEMA (a syntax error
+        # there). The abstraction decides — no dialect string is hardcoded at the call site.
+        _schemas = getattr(getattr(pg_conn, "capabilities", None), "schemas", True)
+        _qual = f'"{pg_schema}".' if _schemas else ""
+        if _schemas:
+            await pg_conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{pg_schema}"')
+        await pg_conn.execute(f'DROP TABLE IF EXISTS {_qual}"{pg_table}"')
+        await pg_conn.execute(f'CREATE TABLE {_qual}"{pg_table}" ({col_defs})')
 
         rows = sq.execute(f'SELECT * FROM "{sqlite_table}"').fetchall()
         if rows:
             placeholders = ", ".join(f"${i + 1}" for i in range(len(col_names)))
             col_list = ", ".join(f'"{c}"' for c in col_names)
             await pg_conn.executemany(
-                f'INSERT INTO "{pg_schema}"."{pg_table}" ({col_list}) VALUES ({placeholders})',
+                f'INSERT INTO {_qual}"{pg_table}" ({col_list}) VALUES ({placeholders})',
                 [tuple(row) for row in rows],
             )
 

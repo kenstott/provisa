@@ -97,9 +97,14 @@ class BoltSession:
         from provisa.api.app import state as app_state
 
         if app_state.auth_config is None:
-            # Fail closed: absent auth_config must never silently degrade to no-auth.
-            raise RuntimeError("bolt auth_config not configured")
-        provider = app_state.auth_config["provider"]
+            if getattr(app_state, "auth_middleware_active", False):
+                # A real provider is active but its config is absent — misconfiguration.
+                # Fail closed: never silently degrade a secured server to no-auth.
+                raise RuntimeError("bolt auth_config not configured")
+            # Explicit unsecured mode (provider: none / no auth section) — treat as no-auth.
+            provider = "none"
+        else:
+            provider = app_state.auth_config["provider"]
         all_roles = list(app_state.contexts.keys())
 
         if provider == "none" or not getattr(app_state, "auth_middleware_active", False):

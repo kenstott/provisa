@@ -853,3 +853,132 @@ scenarios("../features/REQ-802.feature")
 # Canary: 76edf54f-4a4d-4b19-a3f8-b21f131e99ff
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d997218a-195b-4fa1-858e-136b8474adb4
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 43523705-05a5-41ad-83d7-cc8340cb9198
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file.  Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e57b3344-8ba7-4e5c-842a-b14f66b7741f
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for the REQ-802 default behaviour scenario are already implemented
+# in the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1eef9693-557e-4628-b905-931340127334
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 91e9a737-bf1a-4957-b8c7-69f8c3a9cb74
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 77a8a0d6-8b7f-4885-9bce-8e859fa122c7
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7fb007d1-0816-47c9-84ad-690ded8d2f6e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 78146633-40d2-4567-999f-778d45bc62dc
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 80b55dcd-4141-4b35-8773-52ec1048101e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.

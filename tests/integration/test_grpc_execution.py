@@ -283,7 +283,13 @@ class TestGrpcQueryExecution:
                     table_name="orders",
                     domain_id="default",
                 )
-            }
+            },
+            # Project only the proto/schema-declared columns; without this the semantic SQL
+            # falls back to SELECT * and returns physical-only columns (customer_id, …) that
+            # the Order proto cannot bind.
+            aggregate_columns={
+                1: [("id", "integer"), ("region", "varchar"), ("amount", "numeric")]
+            },
         )
 
         source_pool = SourcePool()

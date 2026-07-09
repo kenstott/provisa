@@ -334,6 +334,12 @@ class Connection:
         so callers pass the org schema unconditionally and the dialect decision stays
         inside the abstraction."""
         eff_schema = schema if self.capabilities.schemas else None
+        is_sqlite = self.capabilities.dialect == "sqlite"
+
+        # SQLite does not type VIEW columns, so the Inspector reports NullType (→ "null") for the
+        # meta-table views. Rather than default such a column to string, analyze the actual data
+        # in-line with SQL (``typeof``) and pick the best match; storage classes map cleanly.
+        _SQLITE_STORAGE = {"integer": "integer", "real": "double", "text": "text", "blob": "blob"}
 
         def _inspect(sync_conn: Any) -> list[dict]:
             from sqlalchemy import inspect as _sa_inspect
@@ -342,11 +348,24 @@ class Connection:
             pk = set(
                 insp.get_pk_constraint(table, schema=eff_schema).get("constrained_columns") or []
             )
+            ref = f'"{table}"' if eff_schema is None else f'"{eff_schema}"."{table}"'
+
+            def _infer_sqlite(col: str) -> str:
+                # A column with no non-null sample (empty table / all-null) yields no row — the
+                # storage class is genuinely undetermined, so "text" is the neutral class. This is
+                # the design-mandated default (REQ-947 design-time typing), not error-swallowing.
+                row = sync_conn.exec_driver_sql(
+                    f'SELECT typeof("{col}") FROM {ref} WHERE "{col}" IS NOT NULL LIMIT 1'
+                ).fetchone()
+                return _SQLITE_STORAGE.get(row[0], "text") if row else "text"
+
             cols: list[dict] = []
             for c in insp.get_columns(table, schema=eff_schema):
                 type_name = str(c["type"]).split("(")[0].strip().lower()
                 if "[]" in type_name or type_name in ("array", "json", "jsonb"):
                     type_name = "text"
+                elif is_sqlite and type_name in ("null", "nulltype", ""):
+                    type_name = _infer_sqlite(c["name"])
                 cols.append(
                     {
                         "column_name": c["name"],

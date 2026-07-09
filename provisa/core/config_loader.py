@@ -297,16 +297,49 @@ def _enrich_openapi_table_columns(
             col.description = spec_col_map[col.name].get("description")
 
 
+def _sqlite_lands(engine: Any, src: Source) -> bool:
+    """True iff the engine reaches a sqlite source only by LANDING it into the control-plane store
+    (FETCH/DIRECT → MATERIALIZED, e.g. Trino reads a PG replica), so it must be migrated in. An
+    engine that ATTACHes sqlite in place (DuckDB) reads the file directly — no migration, which
+    would also fail on a non-PG control plane (CREATE SCHEMA, etc.). Engine unknown → land (legacy)."""
+    if engine is None:
+        return True
+    from provisa.federation.engine import UnreachableSource
+    from provisa.federation.strategy import Strategy, federate
+
+    # ``engine`` may be the EngineRuntime wrapper or the bare FederationEngine; federate needs the
+    # latter (it reads ``.connectors``). Unwrap the runtime's ``.engine`` when present.
+    fed = (
+        engine
+        if getattr(engine, "connectors", None) is not None
+        else getattr(engine, "engine", engine)
+    )
+    try:
+        return federate(src, fed) is Strategy.MATERIALIZED
+    except UnreachableSource:
+        return False
+
+
 async def _handle_sqlite_table(
     conn: "Connection",
     tbl: Table,
     src: Source,
+    *,
+    land: bool,
 ) -> None:
+    """Post-register a sqlite table. Column types are ALWAYS resolved from the sqlite file at
+    registration (design-time — no runtime typing), so the schema has real types whether the engine
+    attaches the source in place (DuckDB) or reads a landed replica. ``land`` additionally migrates
+    the rows into the control-plane store — only for engines that cannot read the file live (Trino
+    FETCH); it is skipped for ATTACH engines (and would fail on a non-PG control plane anyway)."""
     from provisa.file_source.pg_migrate import migrate_sqlite_table, sqlite_column_types
 
     assert src.path is not None
     try:
-        await migrate_sqlite_table(src.path, tbl.table_name, conn, tbl.schema_name, tbl.table_name)
+        if land:
+            await migrate_sqlite_table(
+                src.path, tbl.table_name, conn, tbl.schema_name, tbl.table_name
+            )
         await _fill_null_column_types(
             conn,
             tbl.source_id,
@@ -315,7 +348,9 @@ async def _handle_sqlite_table(
             sqlite_column_types(src.path, tbl.table_name),
         )
     except Exception as _e:
-        log.warning("SQLite → PG migration failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e)
+        log.warning(
+            "SQLite registration post-step failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e
+        )
 
 
 def _build_api_columns(match: OpenAPIQuery) -> tuple[list[dict], set[str]]:
@@ -513,7 +548,7 @@ async def _upsert_single_table(
     await table_repo.upsert(conn, tbl)
 
     if src and src.type.value == "sqlite" and src.path:
-        await _handle_sqlite_table(conn, tbl, src)
+        await _handle_sqlite_table(conn, tbl, src, land=_sqlite_lands(engine, src))
     elif src and src.type.value == "openapi" and src.base_url:
         spec = openapi_specs.get(src.id, {})
         if spec:

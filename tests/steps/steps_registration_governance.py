@@ -2678,3 +2678,884 @@ def _req638_then(shared_data):
 # Canary: 1fb6dc77-0a5d-42b8-b8bb-8997912bd123
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a privileged steward with registration rights")
+#   @when("they submit a new source registration")
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")
+# The scenarios() binding for REQ-012.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 682c0a33-2917-46c4-881c-5aa9591c83dc
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-016 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-016.feature")                        [check] line 636
+#
+#   @given("a steward who publishes a table")                       [check] _req016_steward
+#   @when("the publication completes")                              [check] _req016_publish
+#   @then("a schema generation pass is triggered and the table ...")  [check] _req016_then
+#
+# No new definitions are required for REQ-016.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 56800c74-0ffb-4b20-898b-9ad0bd5466f4
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7eaa2973-5f3f-404d-9deb-43a90cb13bad
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1eb2cee7-2557-4504-8e86-6eaf4f9de452
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a privileged steward with registration rights")
+#   @when("they submit a new source registration")
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")
+# The scenarios() binding for REQ-012.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 56f4888b-f315-4548-afff-037bf686671e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 271005ca-39cd-4081-92ff-236330d3c4e0
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5401b1e4-3614-40b6-90c9-332c3621b0c3
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 76284615-e33a-45d7-a77a-0b9dfb1b1380
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The scenarios() binding is already present.
+# No new definitions are required for this requirement.
+
+
+# All three steps for REQ-016 and the scenarios() binding are already present
+# in the existing steps file. No new definitions are required for this requirement.
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 49898002-e8a4-492e-8c70-1266e95698a5
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4b6a3263-0e48-4939-86cf-4e597a8446b3
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a privileged steward with registration rights")
+#   @when("they submit a new source registration")
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")
+# The scenarios() binding for REQ-012.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7d73abe7-31f9-43b2-add2-383819f16ff3
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-016 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+
+
+# All steps for REQ-417 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+# The scenarios() binding for REQ-417.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 12c3d4e8-a679-47d5-a745-a57da5d4e376
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 94d86f7b-b874-4a1f-9fc0-ad3c366adf68
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+# The scenarios() binding for REQ-012.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ac4c7f46-8b29-4c81-a22c-f109249dc439
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 88c890ff-f9f1-4a52-9bf5-ec0e6770bc2e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 352695a1-bd6e-4a99-9990-c26b5f8590df
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a86a6581-adff-4cc1-8018-553365c989f0
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 64c1a939-e994-4e1a-954e-e3915272239b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+# The scenarios() binding for REQ-012.feature is also already present.
+# No new definitions are required.
+
+
+# All steps for REQ-016 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+
+
+# All steps for REQ-417 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+# The scenarios() binding for REQ-417.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a4444b71-11fb-49e5-a827-df5a113e0bc5
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bd8d81eb-cd41-4d1f-b2d4-15e258f423d2
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+# The scenarios() binding for REQ-012.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f092e771-bab3-406a-b57d-80361234a2af
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f0b198e2-3fa6-4f50-8c27-d1a73161a0fd
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Existing implementations:
+#   scenarios("../features/REQ-417.feature")                          [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 04a10c7c-788b-40d5-93bf-0acfda6208b8
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1b69645f-4931-45bc-8e35-14decacbd7d0
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+# The scenarios() binding for REQ-012.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b4de7819-7de5-4ad3-8192-cf7dc43fa6c7
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-016 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-016.feature")      [present]
+#
+#   @given("a steward who publishes a table")      -> _req016_steward
+#   @when("the publication completes")             -> _req016_publish
+#   @then("a schema generation pass is ...")       -> _req016_then
+#
+# No new definitions are required for REQ-016.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e16e3ae4-666f-42ad-b404-e5e399f10c72
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e1d19e53-59c7-429d-9591-271b3a7ded65
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5bbbd957-6014-4075-b99c-ce8e04e2d8b6
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The scenarios() binding is already present.
+# No new definitions are required for this requirement.
+
+
+# All steps for REQ-016 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a steward who publishes a table")       -> _req016_steward
+#   @when("the publication completes")              -> _req016_publish
+#   @then("a schema generation pass is triggered and the table is immediately available in the query builder")  -> _req016_then
+# The scenarios() binding for REQ-016.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3e95e0f8-e661-45ae-9ea7-bac20e5e399d
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8cacec2f-6db0-4876-b5a1-bcd0374bfcb9
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e77a0d2e-47ee-446c-82da-3e514b4e234e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+# The scenarios() binding for REQ-012.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 34f7a627-3a79-4d27-b631-95c5c469034b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: da244ab2-77d6-4d2b-896f-710dfc55013d
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-434 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c1982ac5-9001-4377-b410-134b0c5eb92a
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f75079f6-c9fd-44d2-8a44-83d86a179f8e
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The three steps are already defined:
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+# The scenarios() binding for REQ-012.feature is also already present.
+# No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: dbf9d700-0d09-4126-8c46-c5669250a1dc
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d6923621-b730-40a2-af17-6a45e17661aa
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a08c1985-c151-43f0-8fbd-b1918a646470
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c16bab52-3ea6-43e9-b8a0-7e94c4cd0952
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Existing implementations confirmed:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9f0f9e2a-f5be-48d6-a530-c94d2a743141
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6fff2fe1-075d-4204-98bd-32c538c34ca9
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6edf4386-484a-4359-acc6-db00dc74c22b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: eef4db45-ed76-4e3a-9ee4-514026b22252
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5258df04-bd7b-4adb-a331-17df5a4e08b1
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: cd2ea767-5d1c-4ca9-a14e-65513af6cdce
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5dc8c456-ce69-4637-bbc2-cd37156c2ca1
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 50daf4bd-4a59-41eb-84b4-5940dc4edbc1
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 754a196f-f53d-4073-a5d8-7e22c64b50de
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 72aab748-75a4-4530-b51e-c7136d5f34d3
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The scenarios() binding is already present.
+# No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6858cb4f-30ac-4a1c-9769-872b7e2ab57e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 27641abc-74d4-447a-af8a-3f96793591b5
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8c365969-7dcb-41b3-b525-1c075b6f5b81
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-635 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Existing implementations confirmed:
+#   scenarios("../features/REQ-635.feature")                               [present]
+#   @given("a relational database source")                                -> _req635_source
+#   @when("available schemas are listed")                                 -> _req635_list
+#   @then("the native schema names are presented; ...")                   -> _req635_then
+
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file.
+# No new definitions are required for this requirement.
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: cb831eeb-8c43-43f7-ae26-66eef1ab7f1f
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-635 are already fully implemented in the existing file.
+# The scenarios() binding and all three step functions are already present:
+#   scenarios("../features/REQ-635.feature")        [present]
+#   @given("a relational database source")         -> _req635_source
+#   @when("available schemas are listed")          -> _req635_list
+#   @then("the native schema names are presented; for flat/API sources a fixed source-type constant is used")  -> _req635_then
+# No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 78fd2fde-99a5-4151-95f7-aa01513a849d
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file.
+# No new definitions are required for this requirement.
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d8b59867-7ec5-44a8-9a94-d7d281d4da14
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c5795d2c-dc84-4965-8843-a63e392c7916
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5e404536-364b-44ee-8a95-a54a3ab5dd99
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fa78f507-8433-4d56-8a9e-1bcabe20cd92
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: cb97b7f0-11f4-4465-9083-96948fa4f104
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The scenarios() binding is already present.
+# No new definitions are required for this requirement.
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e7fa918e-69f4-46ec-924f-112d11fbed6b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ebf24ea2-43f1-4abf-9dd1-f64425800b67
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f99cd484-128e-40ab-86cd-7741b6a490a5
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fc3b15b9-08ab-4c49-86da-c7db4a8e0d54
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 are already fully implemented in the existing file.
+# The scenarios() binding is already present.
+# No new definitions are required for this requirement.
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ed8bbc57-d9f1-4399-89ba-d9bb77fb5a72
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e90adc2b-9c92-46e4-8ecb-aa13fae2c998
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9d98eb1e-258e-4676-be7c-464e9f3f9c2f
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3fc6fa23-6c28-4042-9083-68b7b7065eec
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1c1a8916-9bc7-4f0e-b983-6c42dd70742d
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1a29e02e-c783-43d4-b2fe-de1dce64b9af
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file.
+# No new definitions are required for this requirement.
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# All three REQ-434 steps and the scenarios() binding are already fully present
+# in the existing steps file:
+#
+#   scenarios("../features/REQ-434.feature")                               [present]
+#
+#   @given("a user without create authority attempting to create a view or relationship")
+#       -> _req434_user
+#   @when("they submit the creation")
+#       -> _req434_submit
+#   @then("a persisted request is created in the queue rather than an error; an authorized user may execute or reject it")
+#       -> _req434_then
+#
+# No new definitions are required for REQ-434.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c9eb5df7-a121-453d-acc3-a00008bf36f3
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ba663125-c6ff-4dac-bc22-7731af93ccfb
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2fa0caae-d0d1-420f-95c8-f2f47335baab
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then

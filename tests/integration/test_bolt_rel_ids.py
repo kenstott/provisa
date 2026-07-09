@@ -203,8 +203,7 @@ class TestRegisterRelIds:
                 composite_id,
             )
         assert row is not None
-        import json
-
-        props = json.loads(row["properties"])
+        # The Database shim's jsonb codec decodes the column to a dict on read.
+        props = row["properties"]
         assert props.get("key") == "value"
         assert props.get("num") == 7

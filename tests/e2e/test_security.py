@@ -47,9 +47,12 @@ class TestColumnVisibility:
 
     async def test_analyst_cannot_see_amount(self, client):
         """Analyst role has no visibility to 'amount' column — query should fail validation."""
+        # Dev mode resolves the role from the x-provisa-role header (REQ-273/535); the body
+        # `role` is ignored (the unsecured middleware defaults state.role to admin).
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__orders { id amount } }", "role": "analyst"},
+            json={"query": "{ sa__orders { id amount } }"},
+            headers={"x-provisa-role": "analyst"},
         )
         # amount is not in analyst's schema — GraphQL validation rejects it
         assert resp.status_code == 400
@@ -58,7 +61,8 @@ class TestColumnVisibility:
         """Analyst can query customers with visible columns (no RLS on customers)."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__customers { id name } }", "role": "analyst"},
+            json={"query": "{ sa__customers { id name } }"},
+            headers={"x-provisa-role": "analyst"},
         )
         assert resp.status_code == 200
         rows = resp.json()["data"]["sa__customers"]
@@ -70,7 +74,8 @@ class TestColumnVisibility:
         """Analyst cannot see product_id on orders."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__orders { id product_id } }", "role": "analyst"},
+            json={"query": "{ sa__orders { id product_id } }"},
+            headers={"x-provisa-role": "analyst"},
         )
         assert resp.status_code == 400  # product_id not in analyst schema
 
@@ -82,7 +87,8 @@ class TestRLSEnforcement:
         the RLS filter was injected into the SQL."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__orders { id } }", "role": "analyst"},
+            json={"query": "{ sa__orders { id } }"},
+            headers={"x-provisa-role": "analyst"},
         )
         # RLS filter references current_setting which isn't set → 500 error
         # This proves the filter IS being injected
@@ -104,7 +110,8 @@ class TestDomainAccess:
         """Analyst only has access to sales-analytics domain, not product-catalog."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ product_catalog__products { id name } }", "role": "analyst"},
+            json={"query": "{ product_catalog__products { id name } }"},
+            headers={"x-provisa-role": "analyst"},
         )
         # products is in product-catalog domain — not in analyst's schema
         assert resp.status_code == 400

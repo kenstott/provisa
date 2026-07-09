@@ -21,6 +21,7 @@ Covered REQ-IDs:
 from __future__ import annotations
 
 import hashlib
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -79,12 +80,12 @@ class TestREQ535AnonymousAuth:
     """
 
     def test_anonymous_identity_user_id(self):
-        # REQ-535: no provider → user_id is "anonymous"
+        # REQ-535: no provider → the username IS the role, defaulting to "admin"
         app = _make_app(provider=None)
         client = TestClient(app)
         resp = client.get("/probe")
         assert resp.status_code == 200
-        assert resp.json()["user_id"] == "anonymous"
+        assert resp.json()["user_id"] == "admin"
 
     def test_anonymous_identity_has_role(self):
         # REQ-535: no provider → resolved role defaults to admin (or x-provisa-role header)
@@ -324,21 +325,50 @@ class TestREQ555GrpcPersistentChannel:
 # ---------------------------------------------------------------------------
 
 
-class TestREQ596AuditLogWriterBoundary:
-    """REQ-596: log_query() → asyncpg pool execute() boundary.
+class _CapturingConn:
+    """Records each Core statement passed to execute_core (the migrated writer seam)."""
 
-    Integration boundary: log_query (real function) → pool.execute (real call
-    signature checked via captured arguments).  Actual DB I/O is avoided:
-    integration: mock-justified — no live PostgreSQL in unit/integration tier;
-    asyncpg pool is patched at the I/O boundary only; all hashing, field
-    assembly, and SQL construction logic runs unmodified.
+    def __init__(self):
+        self.captured = []
+
+    async def execute_core(self, stmt):
+        self.captured.append(stmt)
+        return MagicMock()
+
+
+class _CapturingPool:
+    """A Database-shim stand-in: acquire() yields a conn that captures execute_core."""
+
+    def __init__(self):
+        self.conn = _CapturingConn()
+
+    @asynccontextmanager
+    async def acquire(self):
+        yield self.conn
+
+
+class TestREQ596AuditLogWriterBoundary:
+    """REQ-596: log_query() → Database-shim ``conn.execute_core(insert(...))`` boundary.
+
+    Integration boundary: log_query (real function) → conn.execute_core (real Core
+    INSERT captured).  Actual DB I/O is avoided: integration: mock-justified — no
+    live PostgreSQL at this tier; the shim connection is captured at the I/O boundary
+    only; all hashing, field assembly, and Core statement construction runs unmodified.
     """
 
     def _make_pool(self):
-        """Return an AsyncMock pool whose execute captures call args."""
-        pool = AsyncMock()
-        pool.execute = AsyncMock(return_value=None)
-        return pool
+        """Return a capturing pool whose acquired conn records each Core INSERT."""
+        return _CapturingPool()
+
+    @staticmethod
+    def _values(pool):
+        """The bound column→value map of the last captured INSERT."""
+        stmt = pool.conn.captured[-1]
+        return stmt.compile().params
+
+    @staticmethod
+    def _table_name(pool):
+        return pool.conn.captured[-1].table.name
 
     @pytest.mark.asyncio
     async def test_query_hash_stored_not_plaintext(self):
@@ -367,13 +397,10 @@ class TestREQ596AuditLogWriterBoundary:
             encryption=EnvelopeEncryption(LocalKeychain(os.urandom(32))),
         )
 
-        call_args = pool.execute.call_args[0]
-        # Positional params: (sql, tenant_id, user_id, role_id, query_hash, ...)
-        params = call_args[1:]
-        query_hash_param = params[3]  # 4th positional param is query_hash
-        assert query_hash_param == expected_hash
-        # Raw query text must never appear in any argument (encrypted, not verbatim).
-        assert query_text not in str(call_args)
+        values = self._values(pool)
+        assert values["query_hash"] == expected_hash
+        # Raw query text must never appear in any bound value (encrypted, not verbatim).
+        assert query_text not in str(values)
 
     @pytest.mark.asyncio
     async def test_same_query_produces_same_hash(self):
@@ -409,8 +436,8 @@ class TestREQ596AuditLogWriterBoundary:
             encryption=NullEncryption(),
         )
 
-        hash_a = pool_a.execute.call_args[0][1:][3]
-        hash_b = pool_b.execute.call_args[0][1:][3]
+        hash_a = self._values(pool_a)["query_hash"]
+        hash_b = self._values(pool_b)["query_hash"]
         assert hash_a == hash_b
 
     @pytest.mark.asyncio
@@ -446,8 +473,8 @@ class TestREQ596AuditLogWriterBoundary:
             encryption=NullEncryption(),
         )
 
-        hash_a = pool_a.execute.call_args[0][1:][3]
-        hash_b = pool_b.execute.call_args[0][1:][3]
+        hash_a = self._values(pool_a)["query_hash"]
+        hash_b = self._values(pool_b)["query_hash"]
         assert hash_a != hash_b
 
     @pytest.mark.asyncio
@@ -469,23 +496,20 @@ class TestREQ596AuditLogWriterBoundary:
             encryption=NullEncryption(),
         )
 
-        pool.execute.assert_awaited_once()
-        call_args = pool.execute.call_args[0]
-        sql = call_args[0]
-        params = call_args[1:]
+        assert len(pool.conn.captured) == 1  # exactly one INSERT
+        values = self._values(pool)
 
-        # SQL targets the correct table
-        assert "query_audit_log" in sql
+        # INSERT targets the correct table
+        assert self._table_name(pool) == "query_audit_log"
 
-        # Bound params match expected positions
-        assert params[0] == "tenant-abc"  # tenant_id
-        assert params[1] == "user-xyz"  # user_id
-        assert params[2] == "editor"  # role_id
-        # params[3] is query_hash, params[4] is query_text_enc (REQ-689) — tested elsewhere
-        assert params[5] == ["users", "profiles"]  # table_ids
-        assert params[6] == "graphql"  # source
-        assert params[7] == 200  # status_code
-        assert params[8] == 15  # duration_ms
+        # Bound values match the audit columns (query_hash / query_text_enc REQ-689 tested elsewhere)
+        assert values["tenant_id"] == "tenant-abc"
+        assert values["user_id"] == "user-xyz"
+        assert values["role_id"] == "editor"
+        assert values["table_ids"] == ["users", "profiles"]
+        assert values["source"] == "graphql"
+        assert values["status_code"] == 200
+        assert values["duration_ms"] == 15
 
     @pytest.mark.asyncio
     async def test_tenant_id_can_be_none(self):
@@ -506,8 +530,7 @@ class TestREQ596AuditLogWriterBoundary:
             encryption=NullEncryption(),
         )
 
-        params = pool.execute.call_args[0][1:]
-        assert params[0] is None  # tenant_id
+        assert self._values(pool)["tenant_id"] is None
 
     @pytest.mark.asyncio
     async def test_duration_ms_is_positive_integer(self):
@@ -528,8 +551,7 @@ class TestREQ596AuditLogWriterBoundary:
             encryption=NullEncryption(),
         )
 
-        params = pool.execute.call_args[0][1:]
-        duration = params[8]  # query_text_enc (REQ-689) shifts duration_ms to index 8
+        duration = self._values(pool)["duration_ms"]
         assert isinstance(duration, int)
         assert duration > 0
 
@@ -597,8 +619,7 @@ class TestREQ596AuditLogWriterBoundary:
             encryption=NullEncryption(),
         )
 
-        params = pool.execute.call_args[0][1:]
-        query_hash = params[3]
+        query_hash = self._values(pool)["query_hash"]
         # SHA-256 hex digest is always 64 lowercase hex characters
         assert len(query_hash) == 64
         assert all(c in "0123456789abcdef" for c in query_hash)

@@ -157,6 +157,25 @@ class NativeEngineBackend(EngineBackend):
             loader=loader,
         )
 
+    async def _resolved_column_types(self, state: Any) -> dict:
+        """{(source_id, table_name, column_name): data_type} from the control-plane store — the types
+        resolved at registration. Empty when no control plane is bound (best-effort; landing then
+        falls back to whatever the config carries)."""
+        tdb = getattr(state, "tenant_db", None)
+        if tdb is None:
+            return {}
+        from provisa.api.admin.db_queries import fetch_tables
+
+        out: dict = {}
+        async with tdb.acquire() as conn:
+            for t in await fetch_tables(conn):
+                for col in t["columns"]:
+                    if col.get("data_type"):
+                        out[(t["source_id"], t["table_name"], col["column_name"])] = col[
+                            "data_type"
+                        ]
+        return out
+
     async def reconcile_landed_tables(self, state: Any) -> list[tuple[str, str]]:
         """Reconcile the store's landing SCHEMA to config for every MATERIALIZED table, then attach
         the engine's read view — the schema-currency controller (REQ-846/932). DDL only: no data is
@@ -176,6 +195,10 @@ class NativeEngineBackend(EngineBackend):
         runtime = self._runtime_for(state)
         if not hasattr(runtime, "attach_landed_source"):
             return []  # this engine's runtime has no eager-landing terminal
+        # The in-memory yaml config carries no column types; registration RESOLVED them into the
+        # control plane (design-time). Land the resolved shape — fill each column's data_type from
+        # the control-plane store so materialized remote sources (graphql/openapi) can land.
+        resolved_types = await self._resolved_column_types(state)
         sources = {s.id: s for s in config.sources}
         reconciled: list[tuple[str, str]] = []
         for tbl in config.tables:
@@ -187,6 +210,9 @@ class NativeEngineBackend(EngineBackend):
                     continue  # live/scan → attached live, not eager-landed
             except UnreachableSource:
                 continue
+            for _c in tbl.columns:
+                if _c.data_type is None:
+                    _c.data_type = resolved_types.get((src.id, tbl.table_name, _c.name))
             try:
                 args = resolve_landing_args(src, tbl)
             except ValueError:

@@ -31,7 +31,17 @@ from provisa.core.schema_org import user_role_assignments
 
 # Requirements: REQ-120, REQ-125, REQ-273
 
-_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/auth/login", "/setup/status"}
+# Liveness/readiness probes (/live, /ready) return a static status with no data and must be
+# reachable by unauthenticated orchestrators (k8s, load balancers) — same as /health.
+_SKIP_PATHS = {
+    "/health",
+    "/live",
+    "/ready",
+    "/docs",
+    "/openapi.json",
+    "/auth/login",
+    "/setup/status",
+}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273

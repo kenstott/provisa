@@ -988,3 +988,325 @@ def the_table_is_created_with_the_supplied_column_definitions(shared_data):
 
 
 # All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1dd20ef1-cd38-4d46-a714-a0a42b6f6c9d
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5caca7f7-8af3-42c7-a729-f64c6012dace
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5d8322d1-d22a-4eda-97c5-28c5a2f1c959
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f81b4da1-cc5b-424e-96f6-75878cc6f648
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3d25a2d0-67c7-484d-9599-90cdacd310ce
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9f4a6522-f52e-4406-84c7-0a5ca842cb7e
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2a4d1f50-6271-41fc-b52f-64fdd9078f40
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bf97e06a-6171-422f-af61-acc5610ee682
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6ca29f39-0ef3-44a8-9473-7887d7af4fed
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fd716440-221a-4937-835b-5769bc1124fc
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: dc1be456-8397-4c89-a76a-b9b46334ff1f
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9523fc8d-84f2-4d3f-803f-93a2ec07b6aa
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ca00c3c0-bb90-4baf-8f13-073536dafaed
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 46dd01dd-1ea2-4021-bc85-e09acb5c592a
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fbc55dd4-8698-4570-8e66-b28fcf0d3dcb
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1d94d62d-afd8-4400-bde5-ff9a24e318f2
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 15a3bab1-6e52-4eef-ac47-1a1ab9d81889
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-726 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-728 are already defined in the existing file. No new definitions required.
+
+
+# All steps for REQ-731 are already defined in the existing file. No new definitions required.
+
+
+# All steps required for the REQ-726 default behaviour scenario are already defined in the existing file.
+# Given "a user creates a new source" -> a_user_creates_a_new_source
+# When 'they select type "sharepoint"' -> they_select_type
+# Then "the source is created and can be queried via Trino using the sharepoint connector" -> the_source_is_created_and_can_be_queried_via_trino
+
+
+# All steps required for REQ-728 default behaviour scenario are already defined in the existing file.
+# Given: a_sharepoint_source_req728 / a_sharepoint_source_req728_multiline
+# When: catalog_properties_are_built
+# Then: props_contains_core_sharepoint_fields / certificate_fields_included_when_present_in_mapping
+
+
+# All steps required for REQ-731 default behaviour scenario are already defined in the existing file.
+# Given "a SharePoint source is added in the Provisa UI" -> a_sharepoint_source_is_added_in_the_provisa_ui
+# When "a user navigates to add a table and selects this source" -> a_user_navigates_to_add_a_table_and_selects_this_source
+# Then 'available SharePoint lists (e.g., "calendar", "events") appear in the table dropdown' -> available_sharepoint_lists_appear_in_table_dropdown
+
+
+# All steps required for REQ-728 default behaviour scenario are already defined in the existing file.
+# Given: a_sharepoint_source_req728 / a_sharepoint_source_req728_multiline
+# When: catalog_properties_are_built
+# Then: props_contains_core_sharepoint_fields / certificate_fields_included_when_present_in_mapping
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 81975922-3239-4002-942e-9da3f85bc624
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for the REQ-728 default behaviour scenario are already defined in the existing file. No new definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9e15d916-3327-4b1c-b66b-cdc21f9e19f9
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for the REQ-728 default behaviour scenario are already defined in the existing file. No new definitions are required.

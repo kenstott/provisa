@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 
 from provisa.compiler.naming import source_to_catalog
 from provisa.core.repositories import rls as rls_repo
+from provisa.federation.strategy import engine_attaches
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.api.admin._config_io import config_path as _config_path, read_config
 from provisa.api.admin._guards import require_active_org_id
@@ -423,10 +424,14 @@ async def _maybe_migrate_sqlite(
     src_row, conn, source_id: str, table_name: str, schema_name: str, table_id: int | None = None
 ) -> None:
     if src_row and src_row["type"] == "sqlite" and src_row["path"]:
-        import logging as _logging
+        from provisa.api.app import state
+
+        # An ATTACH engine (DuckDB) reads the sqlite file in place — never materialize it (REQ-947).
+        if engine_attaches(getattr(state, "federation_engine", None), "sqlite"):
+            return
         from provisa.file_source.pg_migrate import migrate_sqlite_table, record_mtime
 
-        _log = _logging.getLogger(__name__)
+        _log = logging.getLogger(__name__)
         try:
             await migrate_sqlite_table(src_row["path"], table_name, conn, schema_name, table_name)
             if table_id is not None:
@@ -2456,6 +2461,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 return MutationResult(
                     success=False, message=f"Source type {row['type']!r} is not sqlite"
                 )
+            from provisa.api.app import state as _state
+
+            # An ATTACH engine (DuckDB) reads the sqlite file live — no replica to re-migrate (REQ-947).
+            if engine_attaches(getattr(_state, "federation_engine", None), "sqlite"):
+                return MutationResult(success=True, message="attached live; no migration needed")
             from provisa.file_source.pg_migrate import migrate_sqlite_table, record_mtime
 
             try:

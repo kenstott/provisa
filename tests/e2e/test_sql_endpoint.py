@@ -45,8 +45,13 @@ class TestSQLEndpoint:
         assert "data" in data
 
     async def test_sql_invalid_role_rejected(self, client):
+        # Dev mode resolves the role from the x-provisa-role header (REQ-273/535); an
+        # unknown role is default-denied by the rate-limit middleware (403) before the
+        # endpoint runs (REQ-369/371). Passing the role in the body is ignored — the
+        # unsecured middleware sets state.role (default admin) which takes precedence.
         resp = await client.post(
             "/data/sql",
-            json={"sql": "SELECT 1", "role": "nonexistent_role"},
+            json={"sql": "SELECT 1"},
+            headers={"x-provisa-role": "nonexistent_role"},
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 403

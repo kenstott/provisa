@@ -18,6 +18,7 @@ grant still applies. Uses a throwaway schema so it never touches real config.
 
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -97,10 +98,13 @@ async def test_reintrospection_preserves_admin_grant(db):
         await function_repo.upsert_function(conn, _fn([]))
         assert await _writable_by(conn) == []
 
-        # 2. Admin grants the mutation to a role (by name).
+        # 2. Admin grants the mutation to a role (by name). writable_by is JSONB, so bind
+        # the value via an explicit CAST (a bare list positional bind would hit asyncpg's
+        # text codec through the Database shim) — this is the shim-supported jsonb write.
         await conn.execute(
-            f"UPDATE {_SCHEMA}.tracked_functions SET writable_by = $1 WHERE name='createOrder'",
-            ["ops"],
+            f"UPDATE {_SCHEMA}.tracked_functions "
+            "SET writable_by = CAST($1 AS jsonb) WHERE name='createOrder'",
+            json.dumps(["ops"]),
         )
         assert await _writable_by(conn) == ["ops"]
 

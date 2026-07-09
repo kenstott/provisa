@@ -91,23 +91,24 @@ def _mock_context(role: str) -> AsyncMock:
     return context
 
 
-def _query_patches(fake_compiled, fake_result):
-    """Return a context manager stack of patches for _handle_query dependencies."""
+def _pipeline_patches(result, *, govern=None):
+    """Patch the real _handle_query pipeline seams: gRPC lowers the request to a semantic SELECT,
+    then governs+routes it and executes the plan (the retired parse→compile→transpile→execute_direct
+    path no longer runs). ``govern`` may be an AsyncMock to capture/assert the govern call."""
+    govern_patch = patch(
+        "provisa.pgwire._pipeline._govern_and_route_compiled",
+        govern if govern is not None else AsyncMock(return_value=MagicMock()),
+    )
     return (
-        patch("provisa.compiler.parser.parse_query"),
-        patch("provisa.compiler.sql_gen.compile_query", return_value=[fake_compiled]),
-        patch("provisa.compiler.rls.inject_rls", return_value=fake_compiled),
-        patch("provisa.compiler.mask_inject.inject_masking", return_value=fake_compiled),
-        patch("provisa.mv.rewriter.rewrite_if_mv_match", return_value=fake_compiled),
-        patch("provisa.transpiler.router.decide_route"),
-        patch("provisa.security.rights.has_capability", return_value=False),
-        patch("provisa.compiler.sampling.apply_sampling", return_value=fake_compiled),
-        patch("provisa.compiler.sampling.get_sample_size", return_value=100),
-        patch("provisa.transpiler.transpile.transpile", return_value=fake_compiled.sql),
         patch(
-            "provisa.executor.direct.execute_direct",
+            "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
+            return_value="SELECT id, amount FROM orders",
+        ),
+        govern_patch,
+        patch(
+            "provisa.pgwire._pipeline._execute_plan",
             new_callable=AsyncMock,
-            return_value=fake_result,
+            return_value=result,
         ),
     )
 
@@ -119,46 +120,11 @@ class TestStreamedQueries:
         state = _make_full_state("admin")
         servicer = ProvisaServicer(state, pb2, MagicMock())
 
-        fake_compiled = SimpleNamespace(
-            sql="SELECT id, amount FROM orders",
-            params=[],
-            sources=["pg1"],
-            columns=[
-                SimpleNamespace(field_name="id", nested_in=None),
-                SimpleNamespace(field_name="amount", nested_in=None),
-            ],
-        )
         rows = [[i, float(i * 100)] for i in range(1, 6)]
-        fake_result = SimpleNamespace(rows=rows)
+        fake_result = SimpleNamespace(column_names=["id", "amount"], rows=rows)
 
-        with (
-            patch("provisa.compiler.parser.parse_query"),
-            patch("provisa.compiler.sql_gen.compile_query", return_value=[fake_compiled]),
-            patch("provisa.compiler.rls.inject_rls", return_value=fake_compiled),
-            patch("provisa.compiler.mask_inject.inject_masking", return_value=fake_compiled),
-            patch("provisa.mv.rewriter.rewrite_if_mv_match", return_value=fake_compiled),
-            patch("provisa.transpiler.router.decide_route") as mock_route,
-            patch("provisa.security.rights.has_capability", return_value=False),
-            patch("provisa.compiler.sampling.apply_sampling", return_value=fake_compiled),
-            patch("provisa.compiler.sampling.get_sample_size", return_value=100),
-            patch(
-                "provisa.transpiler.transpile.transpile",
-                return_value="SELECT id, amount FROM orders",
-            ),
-            patch(
-                "provisa.executor.direct.execute_direct",
-                new_callable=AsyncMock,
-                return_value=fake_result,
-            ),
-        ):
-            from provisa.transpiler.router import Route
-
-            mock_route.return_value = SimpleNamespace(
-                route=Route.DIRECT,
-                source_id="pg1",
-                dialect="postgres",
-            )
-
+        p_semantic, p_govern, p_execute = _pipeline_patches(fake_result)
+        with p_semantic, p_govern, p_execute:
             context = _mock_context("admin")
             request = MagicMock()
             request.limit = 0
@@ -177,45 +143,10 @@ class TestStreamedQueries:
         state = _make_full_state("admin")
         servicer = ProvisaServicer(state, pb2, MagicMock())
 
-        fake_compiled = SimpleNamespace(
-            sql="SELECT id, amount FROM orders WHERE 1=0",
-            params=[],
-            sources=["pg1"],
-            columns=[
-                SimpleNamespace(field_name="id", nested_in=None),
-                SimpleNamespace(field_name="amount", nested_in=None),
-            ],
-        )
-        fake_result = SimpleNamespace(rows=[])
+        fake_result = SimpleNamespace(column_names=["id", "amount"], rows=[])
 
-        with (
-            patch("provisa.compiler.parser.parse_query"),
-            patch("provisa.compiler.sql_gen.compile_query", return_value=[fake_compiled]),
-            patch("provisa.compiler.rls.inject_rls", return_value=fake_compiled),
-            patch("provisa.compiler.mask_inject.inject_masking", return_value=fake_compiled),
-            patch("provisa.mv.rewriter.rewrite_if_mv_match", return_value=fake_compiled),
-            patch("provisa.transpiler.router.decide_route") as mock_route,
-            patch("provisa.security.rights.has_capability", return_value=False),
-            patch("provisa.compiler.sampling.apply_sampling", return_value=fake_compiled),
-            patch("provisa.compiler.sampling.get_sample_size", return_value=100),
-            patch(
-                "provisa.transpiler.transpile.transpile",
-                return_value="SELECT id, amount FROM orders WHERE 1=0",
-            ),
-            patch(
-                "provisa.executor.direct.execute_direct",
-                new_callable=AsyncMock,
-                return_value=fake_result,
-            ),
-        ):
-            from provisa.transpiler.router import Route
-
-            mock_route.return_value = SimpleNamespace(
-                route=Route.DIRECT,
-                source_id="pg1",
-                dialect="postgres",
-            )
-
+        p_semantic, p_govern, p_execute = _pipeline_patches(fake_result)
+        with p_semantic, p_govern, p_execute:
             context = _mock_context("admin")
             request = MagicMock()
             request.limit = 0
@@ -290,39 +221,11 @@ class TestRoleBasedFieldFiltering:
         )
         servicer = ProvisaServicer(state, pb2, MagicMock())
 
-        fake_compiled = SimpleNamespace(
-            sql="SELECT id FROM orders",
-            params=[],
-            sources=["pg1"],
-            columns=[SimpleNamespace(field_name="id", nested_in=None)],
-        )
-        fake_result = SimpleNamespace(rows=[[42]])
+        fake_result = SimpleNamespace(column_names=["id"], rows=[[42]])
 
-        with (
-            patch("provisa.compiler.parser.parse_query") as mock_parse,
-            patch("provisa.compiler.sql_gen.compile_query", return_value=[fake_compiled]),
-            patch("provisa.compiler.rls.inject_rls", return_value=fake_compiled),
-            patch("provisa.compiler.mask_inject.inject_masking", return_value=fake_compiled),
-            patch("provisa.mv.rewriter.rewrite_if_mv_match", return_value=fake_compiled),
-            patch("provisa.transpiler.router.decide_route") as mock_route,
-            patch("provisa.security.rights.has_capability", return_value=False),
-            patch("provisa.compiler.sampling.apply_sampling", return_value=fake_compiled),
-            patch("provisa.compiler.sampling.get_sample_size", return_value=100),
-            patch("provisa.transpiler.transpile.transpile", return_value="SELECT id FROM orders"),
-            patch(
-                "provisa.executor.direct.execute_direct",
-                new_callable=AsyncMock,
-                return_value=fake_result,
-            ),
-        ):
-            from provisa.transpiler.router import Route
-
-            mock_route.return_value = SimpleNamespace(
-                route=Route.DIRECT,
-                source_id="pg1",
-                dialect="postgres",
-            )
-
+        govern = AsyncMock(return_value=MagicMock())
+        p_semantic, p_govern, p_execute = _pipeline_patches(fake_result, govern=govern)
+        with p_semantic as mock_semantic, p_govern, p_execute:
             context = _mock_context("viewer")
             request = MagicMock()
             request.limit = 0
@@ -330,9 +233,13 @@ class TestRoleBasedFieldFiltering:
             async for msg in servicer._handle_query(request, context, "Orders", "orders"):
                 streamed.append(msg)
 
-            mock_parse.assert_called_once()
-            schema_arg = mock_parse.call_args[0][0]
-            assert schema_arg == state.schemas["viewer"]
+            # The servicer selects the schema/context by the metadata role and passes that
+            # role through governance (the IR path replaces the old parse_query(schema) call).
+            mock_semantic.assert_called_once()
+            assert mock_semantic.call_args[0][0] is state.contexts["viewer"]
+            govern.assert_awaited_once()
+            assert govern.await_args[0][1] == "viewer"
+            assert streamed  # rows streamed for the resolved role
 
     async def test_nonexistent_role_aborts(self):
         """A role not in state.schemas aborts with NOT_FOUND."""

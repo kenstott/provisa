@@ -10,7 +10,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+import json
+from typing import TYPE_CHECKING, Any, cast
 
 import asyncpg
 
@@ -101,6 +102,15 @@ def parse_mask_value(raw: str | None) -> int | float | str | None:
     return raw
 
 
+def _as_list(v: Any) -> list:
+    """A JSON list column. On PostgreSQL the jsonb codec deserializes it to a list; on a SQLite
+    control plane (no codec) a raw-SQL read returns the JSON as TEXT, so decode a string here —
+    ``list("[...]")`` would otherwise explode it into characters. Null → empty list."""
+    if isinstance(v, str):
+        return json.loads(v) if v else []
+    return list(v or [])
+
+
 async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:  # REQ-155, REQ-393, REQ-399
     """Fetch registered tables with columns."""
     rows = await conn.fetch(
@@ -118,20 +128,20 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:  # REQ-155, REQ-
             "FROM table_columns WHERE table_id = $1 ORDER BY id",
             row["id"],
         )
-        table["column_presets"] = list(row.get("column_presets") or [])
+        table["column_presets"] = _as_list(row.get("column_presets"))
         table["columns"] = [
             {
                 "column_name": r["column_name"],
                 "data_type": r.get("data_type"),
-                "visible_to": list(r["visible_to"]),
-                "writable_by": list(r.get("writable_by") or []),
-                "unmasked_to": list(r.get("unmasked_to") or []),
+                "visible_to": _as_list(r["visible_to"]),
+                "writable_by": _as_list(r.get("writable_by")),
+                "unmasked_to": _as_list(r.get("unmasked_to")),
                 "mask_type": r.get("mask_type"),
                 "alias": r["alias"],
                 "description": r["description"],
                 "path": r["path"],
                 "is_primary_key": bool(r.get("is_primary_key") or False),
-                "object_fields": list(r.get("object_fields") or []),
+                "object_fields": _as_list(r.get("object_fields")),
                 "native_filter_type": r.get("native_filter_type"),
             }
             for r in col_rows

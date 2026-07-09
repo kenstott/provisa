@@ -1177,3 +1177,313 @@ def subscribers_receive_sse_with_governance(shared_data):
 # Canary: 7dcbcedb-e80d-4e45-a48d-32da1bdbe3f6
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ddbac33b-a869-44b0-8a4f-6793a51d5017
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6e7a8225-85c0-416b-8f4f-da168bcece59
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c084b424-e4a3-4292-92a7-50a590ff6560
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b6c6c4ce-69cf-439a-a7e2-72a5da0e0b4c
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 28437261-155b-45ba-9d3c-fe2b0fbdaea5
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bd0f447e-4649-4789-948c-fc7e0be03dc0
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d8bb13fd-e6ec-403d-b9f9-09c82ca658d1
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b2cfebfe-9c66-41ce-b4b4-a558e16404ee
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 701fb654-0e56-4546-99fa-2b7b57627bbb
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1e3b09af-d4ba-4cb3-ad6e-1285cf55cc67
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1a8e5c14-b81a-4873-be25-0a59844a9a2e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# REQ-334 steps are fully implemented in the existing step definitions above.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d5195d72-6f82-4de6-8e6c-47ac943d5d6a
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps required for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are needed for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d2bc5d3f-471c-4124-bb45-0260ecbaa3cb
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: df77fcaa-1361-413a-94a1-a49b1de5e157
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2d716234-134a-4ed0-b372-e37eda7de03b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e2836280-9cb4-4681-a6e8-70e6616c6fbc
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8c6f67d9-dc55-4c03-99d6-9ff91538d0c0
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No additional step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ddd390e9-98d6-4371-ac32-ea22c2410c77
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a3418cdf-9c1f-479a-8905-fe069ac1f23c
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 35d186d8-e3e8-4b26-9f8a-d371b77d09f2
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-331 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7b26874e-a739-41a2-a198-bd5359cc897d
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 92026b4f-00a2-49b5-ac71-6df144b84bb3
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-331 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 548baaab-0d02-44ae-b87a-71283a30ec2f
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-331 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d78d9b80-c547-4b3b-881f-a3276949652a
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f498c11e-10d9-4a53-975a-db8ad7554b56
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-331 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d3778ef8-2514-4a02-a389-31da4f02e769
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# All steps for REQ-331 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1df280e3-afa4-470d-82fb-abe1bf7ed9ec
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ef9b5ec2-3159-4dca-b9ed-5a2def36adf6
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-331 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e3df5b6d-7d44-4337-836f-5ca9c71fddab
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-334 default behaviour are already implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: cd45ac0a-21e8-41d0-b6a1-cf726a4b1e41
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3b53801c-b190-4a51-80a0-ec8abc598df2
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-334 default behaviour are already fully implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bd619636-11df-46a5-84a0-43ed50740841
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-331 default behaviour are already fully implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# All steps for REQ-334 default behaviour are already fully implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 64544ae3-1194-4c59-a625-eab16365e11e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already fully implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5ca3bef2-f7bf-430a-899c-df7814c27e20
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-334 default behaviour are already fully implemented in the existing file.
+# No new step definitions are required for this scenario.

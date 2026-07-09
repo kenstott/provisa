@@ -69,9 +69,12 @@ def resolve_landing_args(
         live.strategy if live is not None else None,
     )
     watermark = table.watermark_column or (live.watermark_column if live is not None else None)
-    pk_columns = [c.name for c in table.columns if c.is_primary_key]
+    # Native-filter columns (REST/GraphQL query/path params) are synthetic query-arg inputs, never
+    # part of the landed replica — exclude them from the landing shape (they carry no data_type).
+    data_cols = [c for c in table.columns if getattr(c, "native_filter_type", None) is None]
+    pk_columns = [c.name for c in data_cols if c.is_primary_key]
     columns: list[tuple[str, str]] = []
-    for c in table.columns:
+    for c in data_cols:
         if c.data_type is None:
             raise ValueError(
                 f"cannot land {table.schema_name}.{table.table_name}: column {c.name!r} has no "

@@ -122,6 +122,11 @@ def test_distributed_query_fans_out_to_worker():
     conn = _new_conn()
     try:
         cur = conn.cursor()
+        # Force a hash-PARTITIONED join (not BROADCAST) so the small join is guaranteed to fan
+        # out across every node rather than collapsing onto the coordinator — otherwise the
+        # cost-based scheduler may keep a tiny join single-node, making the assertion flaky.
+        cur.execute("SET SESSION join_distribution_type = 'PARTITIONED'")
+        cur.fetchall()
         cur.execute(
             """
             SELECT c.region, count(*)

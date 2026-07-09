@@ -18,10 +18,8 @@ return non-null relationship fields (REQ: petByStatus must not be null).
 from __future__ import annotations
 
 import json
-import os
 import tempfile
 
-import asyncpg
 import httpx
 import pytest
 import pytest_asyncio
@@ -132,16 +130,11 @@ def _make_config(spec_path: str) -> dict:
 
 
 @pytest_asyncio.fixture(scope="module")
-async def pg_conn():
-    conn = await asyncpg.connect(
-        host=os.environ.get("PG_HOST", "localhost"),
-        port=int(os.environ.get("PG_PORT", "5432")),
-        user=os.environ.get("PG_USER", "provisa"),
-        password=os.environ.get("PG_PASSWORD", "provisa"),
-        database=os.environ.get("PG_DATABASE", "provisa"),
-    )
-    yield conn
-    await conn.close()
+async def pg_conn(tenant_db):
+    # load_config runs against the control-plane Database shim (advisory_xact_lock,
+    # execute_core), scoped to org_default — the same connection the app uses.
+    async with tenant_db.acquire() as conn:
+        yield conn
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)

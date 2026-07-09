@@ -146,13 +146,18 @@ def wire_auth(
     An explicit ``auth_config`` (tests / eager callers) takes the original eager path unchanged."""
     from provisa.api.app import state as _app_state
 
-    _app_state.auth_middleware_active = True
-
     if auth_config is None:
+        # Unsecured (no auth section, or provider: none): the middleware runs in passthrough
+        # mode (honors X-Provisa-Role at face value). No REAL provider is active, so the flag is
+        # False — bolt/pgwire read it to allow their no-auth path (a real provider whose config
+        # is absent, by contrast, stays fail-closed there).
+        _app_state.auth_middleware_active = False
         from provisa.auth.middleware import AuthMiddleware
 
         app.add_middleware(AuthMiddleware, config_resolver=_resolve_auth_settings)
         return
+
+    _app_state.auth_middleware_active = True
 
     provider = build_auth_provider(auth_config, admin_pool=admin_pool)
     mapping_rules = auth_config.get("role_mapping", [])

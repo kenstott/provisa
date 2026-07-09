@@ -8911,6 +8911,6 @@ def step_and_register_runtime_schedules_refresh_injectors_for_each_source():
 
 
 # REQ-953
-@then("push sources are refreshed by their listeners - REQ-951")
-def step_and_push_sources_are_refreshed_by_their_listeners_req_951():
-    pytest.skip("step not implemented: push sources are refreshed by their listeners - REQ-951")
+@then("push sources are refreshed by their listeners")
+def step_and_push_sources_are_refreshed_by_their_listeners():
+    pytest.skip("step not implemented: push sources are refreshed by their listeners")

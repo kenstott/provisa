@@ -16,11 +16,41 @@ import asyncio
 import os
 
 import pytest
+import pytest_asyncio
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
-_BOLT_HOST = "localhost"
-_BOLT_PORT = int(os.environ.get("PROVISA_BOLT_PORT", "5251"))
+_BOLT_HOST = "127.0.0.1"
+# Filled in by the _bolt_server fixture with the dedicated server's free Bolt port.
+_BOLT = {"port": int(os.environ.get("PROVISA_BOLT_PORT", "5251"))}
+_ISOLATED_ORG = "bolt_test"
+
+
+@pytest_asyncio.fixture(scope="module", autouse=True)
+async def _bolt_server():
+    """A DEDICATED Bolt-enabled Provisa server in an isolated org (REQ-802/697).
+
+    The former ``requires_provisa_server`` path reused the demo on :8000, which has no Bolt
+    server on :5251 (the tests only passed when a transient in-process app happened to bind
+    it). A dedicated subprocess with Bolt on a free port makes them self-contained; torn down
+    (process killed, org schema dropped) so the shared PG is left as found.
+    """
+    from tests.integration.isolated_server import IsolatedServer, drop_org_schema
+
+    # Use the e2e sales/products/tickets fixture config — its graph is self-contained
+    # (no graphql_demo employees node whose columns need the external demo server).
+    server = IsolatedServer(
+        _ISOLATED_ORG, enable_bolt=True, config="tests/fixtures/sample_config.yaml"
+    )
+    server.start()
+    _BOLT["port"] = server.bolt_port
+    try:
+        yield server
+    finally:
+        server.stop_process()
+        await drop_org_schema(_ISOLATED_ORG)
+
+
 _MAGIC = b"\x60\x60\xb0\x17"
 # Generous client read timeout: RUN/PULL execute a federated graph query that can
 # scan multiple sources (Postgres + cold Kafka/Iceberg), which legitimately takes
@@ -39,7 +69,7 @@ def _no_version() -> bytes:
 
 async def _bolt_connect():
     return await asyncio.wait_for(
-        asyncio.open_connection(_BOLT_HOST, _BOLT_PORT),
+        asyncio.open_connection(_BOLT_HOST, _BOLT["port"]),
         timeout=_TIMEOUT,
     )
 
@@ -83,7 +113,6 @@ async def _recv_msg(reader) -> tuple[int, object]:
     return tag, fields
 
 
-@pytest.mark.requires_provisa_server
 class TestBoltHandshake:
     async def test_server_reachable(self):
         reader, writer = await _bolt_connect()
@@ -115,7 +144,6 @@ class TestBoltHandshake:
             await writer.wait_closed()
 
 
-@pytest.mark.requires_provisa_server
 class TestBoltHello:
     async def _connect_and_handshake(self):
         reader, writer = await _bolt_connect()
@@ -157,7 +185,6 @@ class TestBoltHello:
             await writer.wait_closed()
 
 
-@pytest.mark.requires_provisa_server
 class TestBoltCypherExecution:
     async def _authenticated_session(self):
         reader, writer = await _bolt_connect()

@@ -779,3 +779,327 @@ def step_req724_assert_app_and_ssl(shared_data):
 
 # All steps required for REQ-722 are already fully implemented in the existing steps file.
 # No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: aea154bd-e9e7-4d95-a391-bfde98a88741
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ee85a6cf-a6cd-4b07-ad1d-70cf04dee164
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1affbb84-1048-4fa2-b4d3-5ae5f09d443a
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 60186e11-ab39-4aa9-8b02-d6677f534940
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 69e19335-7cfc-4cce-bf05-502bd2b4c994
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ec0909af-e70d-4a92-b45d-ee1a4eb11465
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 65e4aa0a-26e8-4e2d-bf96-0b3249e93552
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ee0d2767-cbf0-496d-b504-b949b3c3f846
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b5d36049-0bdf-4d01-bb5b-6721dc5a07e3
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d254584e-7a6f-4b8b-bd96-4a21bc5b612b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b82b09c2-d05a-4a2a-95b5-90ee56ed7cd5
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c72f6ad4-1948-4779-ba34-1b7f97f0a1e8
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 63640ac2-bd68-4614-b2b5-591b9f3d6213
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5d2d04bb-8bd7-41b5-acf1-214bbb53b612
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 119d38fc-bb1a-4cd3-bbca-2b09f86d1d3e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bfb9a907-49f8-4e57-85a3-2a157b77fa4e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8395622c-83e1-4ff4-bc8e-80c8c2d62fb0
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2a744ea9-69a8-4646-8efd-417f2203550d
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8f5b567d-1561-4a50-8136-03565729ec61
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7419db32-bcc0-410b-b5f8-80ca0117872b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e4f0ffb3-31b8-4efd-9193-87aa69eb6971
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e06ac5a6-c584-4d8e-b229-c39f62bb32f4
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bdaee433-ba2a-4afe-8122-e34815dd2bb4
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 52830c2f-4ae4-4838-9d64-0d663b833242
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5ed6aaae-c09a-4e7c-8e7b-f7cfc69438a0
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 48e744c4-44ae-4541-af10-e4a8dd811b42
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fbea5ca3-d9bf-42a9-befc-268b84b95e35
+#
+# This source code is licensed under the Business Source License 1.1

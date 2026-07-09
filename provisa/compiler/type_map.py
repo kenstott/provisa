@@ -91,6 +91,7 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         "name": GraphQLString,  # postgres internal identifier type
         "varbinary": GraphQLString,
         "bytea": GraphQLString,  # postgres binary (REQ-686 encrypted-at-rest columns)
+        "blob": GraphQLString,  # sqlite / mysql binary storage class
         "uuid": GraphQLString,
         # Integer types
         "tinyint": GraphQLInt,
@@ -120,6 +121,7 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         "timestamp": DateTime,
         "timestamp with time zone": DateTime,
         "timestamptz": DateTime,  # postgres timestamp with time zone alias
+        "datetime": DateTime,  # sqlite / mysql timestamp type name
         # JSON
         "json": JSONScalar,
         "jsonb": JSONScalar,

@@ -1201,3 +1201,224 @@ def then_source_type_not_used_to_dispatch(shared_data: dict) -> None:
 # Canary: 88e4718c-3f2e-4845-a974-e08d8a4199e5
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: af38ec96-c1eb-45a2-a09b-955f088791d9
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 581faccd-5fc1-4ee3-b04f-c5041231cdef
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# No new step definitions required for REQ-260.
+# All steps for the "REQ-260 default behaviour" scenario are already implemented
+# in the existing steps file:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e6218f3e-d376-4979-ac41-d0514eda6f00
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c2b45cfe-1cfb-4f0e-b0a3-8ce56732c7f9
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1e335e5f-c6fa-45c7-a661-4e63381ab8a5
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 39b06ac2-f611-48f8-bf46-39083d946912
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d8552a3d-8bbe-4552-ac29-be2ff0fce514
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.

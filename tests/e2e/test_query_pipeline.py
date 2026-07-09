@@ -122,11 +122,14 @@ class TestValidationErrors:
         assert resp.status_code == 400
 
     async def test_unknown_role(self, client):
+        # Dev mode resolves the role from the x-provisa-role header (REQ-273/535); an unknown
+        # role is default-denied by the rate-limit middleware (403) before the endpoint runs.
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__orders { id } }", "role": "nonexistent"},
+            json={"query": "{ sa__orders { id } }"},
+            headers={"x-provisa-role": "nonexistent"},
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 403
 
     async def test_syntax_error(self, client):
         resp = await client.post(

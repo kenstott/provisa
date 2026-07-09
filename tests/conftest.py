@@ -348,14 +348,18 @@ def _reserve_flight_port():  # pyright: ignore
     # Tests point it at the same Postgres server as the tenant plane but leave it
     # unscoped (default schema) — a separate engine/pool, per the control-plane
     # split. The subprocess server inherits this via {**os.environ}.
-    os.environ.setdefault(
-        "PLATFORM_DATABASE_URL",
+    _cp_url = (
         f"postgresql+asyncpg://{os.environ.get('PG_USER', 'provisa')}"
         f":{os.environ.get('PG_PASSWORD', 'provisa')}"
         f"@{os.environ.get('PG_HOST', 'localhost')}"
         f":{os.environ.get('PG_PORT', '5432')}"
-        f"/{os.environ.get('PG_DATABASE', 'provisa')}",
+        f"/{os.environ.get('PG_DATABASE', 'provisa')}"
     )
+    os.environ.setdefault("PLATFORM_DATABASE_URL", _cp_url)
+    # Tenant control-plane URL (schema-scoped to org_<id> by the fixtures). Same
+    # canonical SQLAlchemy async URL as the platform plane — one place names the
+    # driver, so no fixture hand-builds it.
+    os.environ.setdefault("TENANT_DATABASE_URL", _cp_url)
 
 
 @pytest.fixture(scope="session")
@@ -370,15 +374,19 @@ def pg_dsn() -> str:
 
 
 @pytest_asyncio.fixture(scope="session")
-async def tenant_db(pg_dsn):
-    pool = await asyncpg.create_pool(
-        pg_dsn,
-        min_size=1,
-        max_size=5,
-        command_timeout=30,
-    )
-    yield pool
-    await pool.close()
+async def tenant_db(_reserve_flight_port):
+    # The tenant control plane is the SQLAlchemy-backed Database shim (execute_core,
+    # advisory_xact_lock, …), replacing the former bare asyncpg pool. search_path is
+    # left unset (role default: public) to match that pool exactly — tests that need
+    # the org_default schema set it per-acquire (e.g. test_schema_gen). init_schema
+    # scopes its own schema internally, so it does not depend on this. URL (driver
+    # included) comes from TENANT_DATABASE_URL, set once in the env.
+    from provisa.core.database import Database, create_engine_from_url
+
+    engine = create_engine_from_url(os.environ["TENANT_DATABASE_URL"], pool_size=5, max_overflow=5)
+    db = Database(engine, name="org", search_path=None)
+    yield db
+    await db.close()
 
 
 @pytest.fixture(scope="session")
@@ -440,19 +448,14 @@ async def graphql_client(docker_postgres):
 
     the_app = create_app()
 
-    from provisa.core.db import create_pool as _create_pool
+    from provisa.core.database import (
+        Database as _Database,
+        create_engine_from_url as _create_engine_from_url,
+    )
 
     org_id = os.environ.get("ORG_ID", "default")
-    pool = await _create_pool(
-        docker_postgres["host"],
-        int(os.environ.get("PG_PORT", "5432")),
-        os.environ.get("PG_DATABASE", "provisa"),
-        os.environ.get("PG_USER", "provisa"),
-        os.environ.get("PG_PASSWORD", "provisa"),
-        min_size=1,
-        max_size=3,
-        org_id=org_id,
-    )
+    _tenant_engine = _create_engine_from_url(os.environ["TENANT_DATABASE_URL"], pool_size=3)
+    pool = _Database(_tenant_engine, name="org", search_path=f"org_{org_id}")
     from unittest.mock import AsyncMock, MagicMock
 
     from provisa.executor.pool import SourcePool

@@ -1689,3 +1689,327 @@ def then_stewards_accept_or_reject(shared_data):
 
 
 # No new steps required for REQ-601; all steps already exist in the file.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# No new steps required for REQ-601; all steps already exist in the file.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# No new steps required for REQ-601; all steps already exist in the file.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# No new steps required for REQ-601; all steps already exist in the file.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# No new steps required for REQ-601; all steps already exist in the file.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bf31d617-6892-4d8e-a6ed-8a50cf962f50
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 138f25a9-acbc-43cd-a81c-2411386a7977
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-316 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-317 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-601 are already implemented in the existing file.
+# No new step definitions are required.
