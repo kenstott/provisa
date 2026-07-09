@@ -35,9 +35,12 @@ if TYPE_CHECKING:
     from provisa.core.models import Source
 
 
-class Mechanism(str, Enum):  # REQ-841
-    ATTACH = "attach"
-    LAND = "land"
+class Mechanism(str, Enum):  # REQ-841, REQ-947
+    ATTACH = "attach"  # reference the live source in place (Trino catalog, DuckDB ATTACH) — VIRTUAL
+    SCAN = "scan"  # reference a file/object in place as a scan view (csv/parquet/iceberg) — SCAN
+    LAND = "land"  # materialize the source into the engine's own reachable store — MATERIALIZED
+    FETCH = "fetch"  # Provisa's own adapter fetches the rows + the write face lands; engine only
+    # reads the replica (API/push sources: openapi/graphql_remote/grpc_remote/…) — MATERIALIZED-direct
 
 
 @dataclass(frozen=True)
@@ -88,7 +91,14 @@ class Connector(ABC):  # REQ-842
 
     engine: str
     source_type: str
+    # The PRIMARY reach mode — the default federate() picks and CatalogEntry records. Kept for
+    # back-compat; the full self-description is ``reach_modes`` (REQ-947).
     mechanism: Mechanism
+    # The FULL set of reach modes this connector supports (REQ-947): a source that can be attached
+    # live can ALSO be materialized for latency/CDC/freshness, so a relational connector declares
+    # {ATTACH, LAND}. Empty ⇒ derive {mechanism}. Read via ``reach_modes``; the planner/source UI
+    # choose a mode from it per policy/cost instead of assuming the single ``mechanism``.
+    mechanisms: frozenset[Mechanism] = frozenset()
     key: str = (
         ""  # stable identity for probe reports + override strike-list (falls back to source_type)
     )
@@ -109,6 +119,13 @@ class Connector(ABC):  # REQ-842
     # install). Empty for core contrib (postgres_fdw/file_fdw) with no external dependency. Documents
     # the packaging surface and feeds the capability report.
     runtime_deps: tuple[str, ...] = ()
+
+    @property
+    def reach_modes(self) -> frozenset[Mechanism]:
+        """The reach modes this connector supports (REQ-947) — the declared ``mechanisms`` set, or
+        ``{mechanism}`` when none is declared. The complete self-description of how the engine can
+        offer this source; the planner/source UI pick a mode from it."""
+        return self.mechanisms or frozenset({self.mechanism})
 
     @abstractmethod
     def capability(self) -> Capability: ...
@@ -153,7 +170,10 @@ class _TrinoConnector(Connector):
     ``CREATE CATALOG ... USING <trino_connector>`` clause supplies)."""
 
     engine = "trino"
-    mechanism = Mechanism.ATTACH
+    mechanism = Mechanism.ATTACH  # primary: federated live in place
+    # Trino attaches these live (VIRTUAL) but they can ALSO be landed for latency/CDC/freshness — so
+    # every Trino ATTACH connector is both virtual and materializable (REQ-947).
+    mechanisms = frozenset({Mechanism.ATTACH, Mechanism.LAND})
     trino_connector: str = ""  # the Trino connector.name for the USING clause
 
     def capability(self) -> Capability:
@@ -238,6 +258,7 @@ class TrinoPgBackedConnector(_TrinoConnector):
 
     trino_connector = "postgresql"
     mechanism = Mechanism.LAND
+    mechanisms = frozenset({Mechanism.LAND})  # PG-cache materialized, not attachable live
 
     def details(self, source: Source) -> dict:
         import os
