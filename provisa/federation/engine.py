@@ -28,6 +28,7 @@ re-projects from the registry — never a fallback or error-and-continue.
 from __future__ import annotations
 
 from enum import Enum
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from provisa.federation.connector import CatalogEntry, Connector
@@ -92,7 +93,7 @@ class FederationEngine:  # REQ-840
     def __init__(
         self,
         name: str,
-        connectors: list[Connector],
+        connectors: Sequence[Connector],
         *,
         native_store: str | None = None,
         driver_class: DriverClass | None = None,
@@ -304,16 +305,12 @@ _BROAD_THRESHOLD = 3  # a connector collection reaching >= this many source type
 
 def build_trino_engine() -> FederationEngine:  # REQ-840 broad federator
     from provisa.federation.backend import TrinoBackend
-    from provisa.federation.connector import (
-        TrinoMysqlConnector,
-        TrinoPostgresConnector,
-        TrinoSqlServerConnector,
-    )
+    from provisa.federation.connector import build_trino_connectors
     from provisa.federation.runtime import EngineCapability
 
     return FederationEngine(
         "trino",
-        [TrinoPostgresConnector(), TrinoMysqlConnector(), TrinoSqlServerConnector()],
+        build_trino_connectors(),  # the complete Trino reach — one connector per catalogable type
         driver_class=DriverClass.BROAD,  # many external source types
         mpp=True,  # distributes across a Trino worker cluster
         backend_factory=TrinoBackend,  # the only backend that references Trino

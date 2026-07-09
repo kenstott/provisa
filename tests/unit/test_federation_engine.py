@@ -213,7 +213,7 @@ def test_trino_postgres_attach_details():
     entry = build_trino_engine().resolve(_PG)
     assert entry.mechanism is Mechanism.ATTACH
     assert entry.engine == "trino" and entry.source_type == "postgresql"
-    assert entry.details["connection-url"] == "jdbc:postgresql://h:5432/db"
+    assert entry.details["connection-url"] == "jdbc:postgresql://h:5432/db?autosave=conservative"
 
 
 def test_duckdb_postgres_attach_dsn():
@@ -230,9 +230,9 @@ def test_warehouse_native_lands_into_self():
 
 
 def test_unreachable_source_rejected_at_resolve():
-    # Trino has no connector for oracle in this build → rejected, not landed.
+    # Trino has no connector for kudu → rejected, not landed.
     with pytest.raises(UnreachableSource):
-        build_trino_engine().resolve(_src("ora", SourceType.oracle))
+        build_trino_engine().resolve(_src("ku", SourceType.kudu))
 
 
 # ---- derived catalog + reconcile (REQ-843) ----------------------------------
@@ -262,8 +262,9 @@ def test_ensure_entry_reprojects_when_stale():
     eng.catalog.add(stale)
     updated = _src("orders_pg", SourceType.postgresql, database="db2")
     fresh = eng.ensure_entry(updated)
-    assert fresh.details["connection-url"].endswith("/db2")
-    assert eng.catalog.get("orders_pg").details["connection-url"].endswith("/db2")
+    assert "/db2?" in fresh.details["connection-url"]
+    _got = eng.catalog.get("orders_pg")
+    assert _got is not None and "/db2?" in _got.details["connection-url"]
 
 
 def test_reconcile_rebuilds_full_projection():

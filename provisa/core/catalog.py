@@ -79,134 +79,16 @@ def _first_env(*names: str) -> str:
 
 def _build_catalog_properties(
     source: Source, resolved_password: str
-) -> dict[str, str]:  # REQ-250, REQ-251
-    """Build Trino connector properties from a source definition."""
-    from provisa.core.secrets import resolve_secrets
+) -> dict[str, str]:  # REQ-250, REQ-251, REQ-842
+    """Trino connector catalog properties for a source — derived from the source type's Trino
+    Connector class (the single source of truth, REQ-842). A type with no Trino connector returns
+    ``{}`` (not reachable by Trino). ``resolved_password`` is unused: the connector resolves secrets
+    itself; the parameter is kept for call-site compatibility."""
+    del resolved_password
+    from provisa.federation.connector import TRINO_CONNECTORS
 
-    stype = source.type.value
-    host = resolve_secrets(source.host or "")
-    port = source.port
-    username = resolve_secrets(source.username or "")
-
-    # REQ-251: NoSQL/non-relational connectors (redis/elasticsearch/prometheus)
-    # build their catalog properties from the type-specific mapping DSL.
-    from provisa.core.trino_catalog_files import catalog_properties_for
-
-    _mapping_props = catalog_properties_for(source, resolved_password)
-    if _mapping_props is not None:
-        return _mapping_props
-
-    # SQLite and OpenAPI sources — data lives in the local PG instance
-    # (SQLite tables are migrated to PG at registration; OpenAPI responses cached there)
-    if stype in ("sqlite", "openapi"):
-        # Required credentials — fail loud rather than fall back to hardcoded "provisa".
-        pg_host = _first_env("POSTGRES_HOST", "PG_HOST")
-        pg_port = os.environ.get("PG_PORT", "5432")
-        pg_database = os.environ["PG_DATABASE"]
-        pg_user = os.environ["PG_USER"]
-        pg_pw = os.environ["PG_PASSWORD"]
-        jdbc = f"jdbc:postgresql://{pg_host}:{pg_port}/{pg_database}?autosave=conservative"
-        return {
-            "connection-url": jdbc,
-            "connection-user": pg_user,
-            "connection-password": pg_pw,
-            "statistics.enabled": "false",
-        }
-
-    # MongoDB connector
-    if stype == "mongodb":
-        url = f"mongodb://{host}:{port}/"
-        if username:
-            url = f"mongodb://{username}:{resolved_password}@{host}:{port}/"
-        return {
-            "mongodb.connection-url": url,
-            "mongodb.schema-collection": "_schema",
-        }
-
-    # SharePoint connector (Apache Calcite, kenstott/calcite)
-    if stype == "sharepoint":
-        mapping = {
-            k: resolve_secrets(v) if isinstance(v, str) else v for k, v in source.mapping.items()
-        }
-        site_url = resolve_secrets(source.base_url or source.host or "")
-        auth_type = mapping.get("auth_type", "CLIENT_CREDENTIALS")
-        props: dict[str, str] = {
-            "site-url": site_url,
-            "auth-type": auth_type,
-        }
-        if username:
-            props["client-id"] = username
-        if resolved_password:
-            props["client-secret"] = resolved_password
-        if source.database:
-            props["tenant-id"] = resolve_secrets(source.database)
-        if mapping.get("certificate_path"):
-            props["certificate-path"] = mapping["certificate_path"]
-        if mapping.get("certificate_password"):
-            props["certificate-password"] = mapping["certificate_password"]
-        props["case-insensitive-name-matching"] = "true"
-        return props
-
-    # Splunk connector (Apache Calcite, kenstott/calcite)
-    if stype == "splunk":
-        mapping = {
-            k: resolve_secrets(v) if isinstance(v, str) else v for k, v in source.mapping.items()
-        }
-        splunk_port = port or 8089
-        splunk_url = resolve_secrets(source.base_url or f"https://{host}:{splunk_port}")
-        props = {"url": splunk_url}
-        use_token = mapping.get("use_token", True)
-        if use_token and resolved_password:
-            props["token"] = resolved_password
-        else:
-            if username:
-                props["user"] = username
-            if resolved_password:
-                props["password"] = resolved_password
-        if source.database:
-            props["app"] = source.database
-        if mapping.get("datamodel_filter"):
-            props["datamodel-filter"] = mapping["datamodel_filter"]
-        if mapping.get("disable_ssl_validation"):
-            props["disable-ssl-validation"] = "true"
-        props["case-insensitive-name-matching"] = "true"
-        return props
-
-    # File connector (Apache Calcite, kenstott/calcite).
-    # LINQ4J workaround: DuckDB engine resolves CSV as .parquet regardless of format
-    # (kenstott/calcite#229). LINQ4J reads CSV/XLSX/JSON/etc. directly via Calcite.
-    if stype == "files":
-        if source.path is None:
-            raise ValueError(
-                f"Source {source.id!r}: 'path' (glob pattern) is required for files connector"
-            )
-        glob = resolve_secrets(source.path)
-        return {
-            "glob": glob,
-            "recursive": "true",
-            "schema-name": source.id.replace("-", "_"),
-            "execution-engine": "LINQ4J",
-            "case-insensitive-name-matching": "true",
-        }
-
-    # Cassandra connector
-    if stype == "cassandra":
-        return {
-            "cassandra.contact-points": host,
-            "cassandra.native-protocol-port": str(port),
-            "cassandra.load-policy.dc-aware.local-dc": "datacenter1",
-            "cassandra.consistency-level": "ONE",
-        }
-
-    # JDBC-based connectors (PG, MySQL, SQL Server, Oracle, etc.)
-    props: dict[str, str] = {}
-    jdbc_url = source.jdbc_url(host=host, port=port)
-    if jdbc_url:
-        props["connection-url"] = jdbc_url
-        props["connection-user"] = username
-        props["connection-password"] = resolved_password
-        props["statistics.enabled"] = "false"
-    return props
+    connector = TRINO_CONNECTORS.get(source.type.value)
+    return connector.details(source) if connector is not None else {}
 
 
 def create_catalog(
@@ -222,19 +104,20 @@ def create_catalog(
     if catalog_exists(conn, catalog_name):
         return
 
+    # REQ-842: the Trino Connector class is the source of truth for reach + catalog. A type with no
+    # Trino connector is not reachable by Trino — no catalog (never a parallel type→name map).
+    from provisa.federation.connector import TRINO_CONNECTORS
+
     stype = source.type.value
-    if stype in ("sqlite", "openapi"):
-        connector = "postgresql"
-    else:
-        try:
-            connector = _validate_identifier(source.connector)
-        except KeyError:
-            log.warning("No Trino connector for source type %r — skipping catalog creation", stype)
-            return
-    props = _build_catalog_properties(source, resolved_password)
+    trino_connector = TRINO_CONNECTORS.get(stype)
+    if trino_connector is None:
+        log.warning("No Trino connector for source type %r — skipping catalog creation", stype)
+        return
+    connector = _validate_identifier(trino_connector.trino_connector)
+    props = trino_connector.details(source)
 
     if not props:
-        # Some source types (e.g., DuckDB) don't have Trino connectors
+        # A reachable type with no Source-row props (e.g. kafka, registered via create_kafka_catalog).
         return
 
     # REQ-250/251: write table-description files the connector reads before the

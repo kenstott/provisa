@@ -46,9 +46,10 @@ def _source(
 
 
 def _props(source: Source, resolved_password: str | None = None) -> dict[str, str]:
-    return _build_catalog_properties(
-        source, resolved_password if resolved_password is not None else source.password
-    )
+    # The Trino connector reads the (resolved) password off the source (REQ-842); prod passes
+    # resolve_secrets(source.password), so put the test's resolved password there.
+    pw = resolved_password if resolved_password is not None else source.password
+    return _build_catalog_properties(source.model_copy(update={"password": pw}), "")
 
 
 def _column(name: str = "Title", data_type: str = "VARCHAR") -> Column:

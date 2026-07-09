@@ -46,7 +46,9 @@ def _source(
 
 
 def _props(source: Source, resolved_password: str = "") -> dict[str, str]:
-    return _build_catalog_properties(source, resolved_password)
+    # The Trino connector reads the (resolved) password off the source (REQ-842); prod passes
+    # resolve_secrets(source.password), so put the test's resolved password there.
+    return _build_catalog_properties(source.model_copy(update={"password": resolved_password}), "")
 
 
 # --------------------------------------------------------------------------- #

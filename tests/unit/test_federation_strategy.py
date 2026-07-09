@@ -55,8 +55,10 @@ def test_api_source_with_no_connector_is_materialized():
     )
 
 
-def test_nosql_source_is_materialized():
-    assert federate(_src("m", SourceType.mongodb), build_trino_engine()) is Strategy.MATERIALIZED
+def test_nosql_source_is_virtual_on_trino():
+    # Trino has a native mongodb connector (REQ-842), so mongodb is federated in place (VIRTUAL),
+    # not materialized — the engine's connector set is its true reach.
+    assert federate(_src("m", SourceType.mongodb), build_trino_engine()) is Strategy.VIRTUAL
 
 
 def test_same_source_different_strategy_per_engine():
@@ -76,9 +78,9 @@ def test_prefer_materialized_overrides_attachable():
 
 
 def test_unreachable_when_neither_attach_scan_nor_materializable():
-    # oracle: a live DB with no Trino oracle connector in this build and not materialize-only.
+    # kudu: no Trino connector and not materialize-only → genuinely unreachable.
     with pytest.raises(UnreachableSource):
-        federate(_src("o", SourceType.oracle), build_trino_engine())
+        federate(_src("o", SourceType.kudu), build_trino_engine())
 
 
 def test_engine_federate_method_matches():

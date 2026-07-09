@@ -46,7 +46,7 @@ def test_attach_reachable_backend_is_valid():
 
 def test_backend_with_no_connector_rejected():
     with pytest.raises(InvalidMaterializationBackend, match="no connector"):
-        validate_materialization_backend(build_trino_engine(), "oracle")
+        validate_materialization_backend(build_trino_engine(), "kudu")
 
 
 def test_land_only_backend_rejected_as_regress():
@@ -73,7 +73,7 @@ def test_separate_relational_store_uses_sqlalchemy_upsert():
 
 def test_write_face_validates_backend_first():
     with pytest.raises(InvalidMaterializationBackend):
-        select_write_face(build_trino_engine(), "oracle")
+        select_write_face(build_trino_engine(), "kudu")
 
 
 # ---- reactive-replica set (REQ-845) -----------------------------------------
@@ -84,8 +84,9 @@ def test_reactive_set_is_engine_relative():
     pg = _src("pg", SourceType.postgresql)
     mongo = _src("m", SourceType.mongodb)
     sources = [api, pg, mongo]
-    # On Trino: pg is VIRTUAL (attach), api + mongo are MATERIALIZED (no connector).
-    assert reactive_sources(build_trino_engine(), sources) == {"api", "m"}
+    # On Trino: pg + mongo are VIRTUAL (both have connectors); only api (openapi, PG-cache LAND) is
+    # MATERIALIZED → reactive. The reactive set is engine-relative to the engine's connector reach.
+    assert reactive_sources(build_trino_engine(), sources) == {"api"}
 
 
 def test_reactive_set_excludes_scannable_and_unreachable():
