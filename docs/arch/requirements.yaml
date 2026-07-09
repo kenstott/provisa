@@ -28437,8 +28437,11 @@
     to populate per-column type dropdowns instead of hardcoded engine-specific types. New
     manually-added columns default to IR "text". Discovered native columns are normalized to
     IR names via toIrType (mirroring backend native→IR aliases) so introspected columns land
-    on valid dropdown values. Type assignments are engine-independent; the landing write path
-    maps IR → the store's physical type.
+    on valid dropdown values. Steward-assigned IR data-types persist through registration via
+    GraphQL ColumnInput.data_type field, which flows into Column model and is saved via
+    table_repo.save. Type assignments are engine-independent; the canonical IR vocabulary
+    maps every IR name to a GraphQL scalar, and the landing write path maps IR → the store's
+    physical type.
   use_case: >-
     Stewards can standardize column types to a canonical vocabulary independent of source
     engine during schema discovery, ensuring consistent data modeling across heterogeneous sources.
@@ -28450,6 +28453,7 @@
     - provisa-ui/src/irTypes.ts
   tests:
     - tests/unit/test_ir_types_endpoint.py
+    - tests/unit/test_ir_type_persistence.py
     - provisa-ui/src/__tests__/schemaDiscovery-irtype.test.ts
   scenario: |
     Given a steward discovering a source with mixed native type names (e.g., Postgres int8, Snowflake BIGINT)
