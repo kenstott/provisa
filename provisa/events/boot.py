@@ -86,7 +86,7 @@ def specs_from_config(
         except UnreachableSource:
             continue
         try:
-            args = resolve_landing_args(src, tbl)
+            args = resolve_landing_args(src, tbl, platform=engine.dialect)
         except ValueError:
             continue  # a column's type is not yet resolved — reconcile skips it too
         node = f"{tbl.schema_name}.{tbl.table_name}"

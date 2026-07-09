@@ -46,13 +46,22 @@ class LandingArgs:  # REQ-932
     pk_columns: list[str]
 
 
-def resolve_landing_args(source: Source, table: Table) -> LandingArgs:
-    """Resolve the landing arguments for one MATERIALIZED table (REQ-932).
+def resolve_landing_args(
+    source: Source, table: Table, *, platform: str | None = None
+) -> LandingArgs:
+    """Resolve the landing arguments for one MATERIALIZED table (REQ-932/846).
 
     change_signal: table override → legacy live.strategy → source default (``resolve_effective``).
     watermark_column: the table's, else its legacy live config. pk_columns: the user-designated
-    primary key columns. columns: (name, data_type) — a column with no resolved type is an error
-    (the type is required to build the landed table; introspection fills it at startup)."""
+    primary key columns. columns: (name, IR data_type) — each column's stored native (engine-
+    normalized) type is translated to a canonical IR name via ``to_ir(native, platform)`` so the
+    landed table's DDL is engine-independent (the store write face maps IR → SQLAlchemy). ``platform``
+    is the federation engine's dialect (its stored types are engine-normalized, e.g. Trino
+    ``varbinary``/``row(...)`` that the generic aliases don't cover). A column with no resolved type
+    is an error (introspection fills it at startup); an unmapped native type is an IR vocabulary gap
+    and raises — never a silent default."""
+    from provisa.core.ir_types import to_ir
+
     live = table.live
     sig = resolve_effective(
         table.change_signal,
@@ -68,7 +77,7 @@ def resolve_landing_args(source: Source, table: Table) -> LandingArgs:
                 f"cannot land {table.schema_name}.{table.table_name}: column {c.name!r} has no "
                 f"resolved data_type (startup introspection must fill it before materialization)"
             )
-        columns.append((c.name, c.data_type))
+        columns.append((c.name, to_ir(c.data_type, platform)))
     return LandingArgs(columns, sig, watermark, pk_columns)
 
 
@@ -98,7 +107,7 @@ async def run_prep(
     for step in plan.prep:
         source = sources_by_id[step.source_id]
         for table in tables_by_source.get(step.source_id, ()):
-            args = resolve_landing_args(source, table)
+            args = resolve_landing_args(source, table, platform=runtime.dialect)
             rows = await loader.load(source, table)
             merged = SimpleNamespace(
                 id=source.id,

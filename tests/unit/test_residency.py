@@ -43,6 +43,32 @@ class TestResolveLandingArgs:
         assert args.columns == [("id", "bigint"), ("status", "text")]
         assert args.pk_columns == ["id"]
 
+    def test_columns_translated_to_ir_by_platform(self):
+        # REQ-846: engine-normalized native spellings the generic aliases don't cover — Trino
+        # varbinary/row/varchar(n)/timestamp-with-tz — resolve to canonical IR at the landing seam.
+        t = _table(
+            columns=[
+                _col("blob", "varbinary"),
+                _col("doc", "row(x integer)"),
+                _col("name", "varchar(255)"),
+                _col("ts", "timestamp with time zone"),
+            ]
+        )
+        args = resolve_landing_args(_source(), t, platform="trino")
+        assert args.columns == [
+            ("blob", "bytea"),
+            ("doc", "text"),
+            ("name", "text"),
+            ("ts", "timestamp"),
+        ]
+
+    def test_unmapped_native_type_raises(self):
+        # REQ-846: an unmapped native type is a vocabulary gap — raise, never a silent varchar default.
+        with pytest.raises(ValueError, match="not in the IR vocabulary"):
+            resolve_landing_args(
+                _source(), _table(columns=[_col("x", "geometry")]), platform="trino"
+            )
+
     def test_table_signal_overrides_source(self):
         args = resolve_landing_args(_source(change_signal="ttl"), _table(change_signal="debezium"))
         assert args.change_signal == "debezium"
@@ -85,6 +111,8 @@ class TestResolveLandingArgs:
 
 
 class _FakeRuntime:
+    dialect = "trino"  # engine-normalized stored types are Trino spellings (REQ-846)
+
     def __init__(self):
         self.calls = []
 

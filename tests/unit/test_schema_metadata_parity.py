@@ -57,7 +57,14 @@ ADMIN_TABLES_IN_SCHEMA_SQL: set[str] = set()
 
 # Tables authored ONLY as portable SQLAlchemy metadata (created via metadata.create_all),
 # with no raw SQL DDL to mirror — excluded from SQL<->metadata parity on either module.
-METADATA_ONLY_TABLES = REGISTRY_ONLY_TABLES | {"query_sla_log", "source_catalog_cache"}
+# events / event_status: the event-loop control plane (REQ-933..942), portable metadata created
+# via metadata.create_all on either pg or sqlite — no raw SQL DDL to mirror.
+METADATA_ONLY_TABLES = REGISTRY_ONLY_TABLES | {
+    "query_sla_log",
+    "source_catalog_cache",
+    "events",
+    "event_status",
+}
 
 _CONSTRAINT_KW = {
     "unique",
