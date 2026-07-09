@@ -891,8 +891,7 @@ async def _load_and_build(
     assert tenant_db is not None
     async with tenant_db.acquire() as conn:
         _replace_mode = os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in ("1", "true", "yes")
-        _conn = cast(asyncpg.Connection, conn)
-        await load_config(config, _conn, state.federation_engine, replace=_replace_mode)
+        await load_config(config, conn, state.federation_engine, replace=_replace_mode)
 
     _mark("load_config")
 
@@ -937,7 +936,7 @@ async def _load_and_build(
         async with state.tenant_db.acquire() as _retry_conn:
             for _rel in state.config.relationships:
                 try:
-                    await _rel_repo.upsert(cast(asyncpg.Connection, _retry_conn), _rel)
+                    await _rel_repo.upsert(_retry_conn, _rel)
                 except ValueError:
                     pass
 
@@ -1381,6 +1380,9 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     """Load tracked functions and webhooks from DB; populate state.tracked_functions/webhooks."""
     from provisa.api.admin.actions_router import _ensure_tables
 
+    assert state.tenant_db is not None, (
+        "tenant_db must be initialized before loading tracked functions"
+    )
     await _ensure_tables(state.tenant_db)
 
     from provisa.discovery.catalog_cache import ensure_table as _ensure_catalog_cache
@@ -1566,7 +1568,7 @@ async def _bg_hydrate_api_endpoints() -> None:
     asyncio.create_task(_bg_hydrate())
 
 
-async def _reconcile_live_engine(conn: asyncpg.Connection) -> None:  # REQ-565, REQ-813
+async def _reconcile_live_engine(conn: "Connection") -> None:  # REQ-565, REQ-813
     """Reconcile the LiveEngine poll jobs from persisted per-table live config."""
     from provisa.live.reconcile import reconcile_live_engine
 
@@ -2296,7 +2298,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                 from provisa.core.repositories import relationship as rel_repo
 
                 async with _demo_pool.acquire() as _rel_conn:
-                    _pg_rel = cast(asyncpg.Connection, _rel_conn)
+                    _pg_rel = _rel_conn
                     for _rel_id, _src_tbl, _tgt_tbl, _src_col, _tgt_col, _card, _alias in [
                         (
                             "employees_to_assignments",
