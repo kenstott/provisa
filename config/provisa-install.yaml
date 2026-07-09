@@ -19,6 +19,7 @@ domains:
 - description: "Animal shelter staff and breed management \u2014 employees, assignments,\
     \ schedules from GraphQL demo server"
   id: shelter
+federation_engine: duckdb
 graphql_remote:
   max_list_depth: 2
   max_list_items: 100
