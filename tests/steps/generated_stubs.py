@@ -8818,3 +8818,53 @@ def step_given_a_row_oriented_api_push_source_type_with_no_engine_scannable():
 @then("UnsupportedSourceFetch is raised and no scan is issued")
 def step_then_unsupportedsourcefetch_is_raised_and_no_scan_is_issued():
     pytest.skip("step not implemented: UnsupportedSourceFetch is raised and no scan is issued")
+
+
+# REQ-945
+@given("an openapi source with a registered ApiEndpoint and ApiSource in live state")
+def step_given_an_openapi_source_with_a_registered_apiendpoint_and_apisourc():
+    pytest.skip(
+        "step not implemented: an openapi source with a registered ApiEndpoint and ApiSourc"
+    )
+
+
+# REQ-945
+@then("make_openapi_loader resolves the ApiEndpoint and ApiSource from state")
+def step_then_make_openapi_loader_resolves_the_apiendpoint_and_apisource_f():
+    pytest.skip(
+        "step not implemented: make_openapi_loader resolves the ApiEndpoint and ApiSource f"
+    )
+
+
+# REQ-945
+@then("calls the operation with default_params via api_source.caller.call_api")
+def step_and_calls_the_operation_with_default_params_via_api_source_calle():
+    pytest.skip(
+        "step not implemented: calls the operation with default_params via api_source.calle"
+    )
+
+
+# REQ-945
+@then("flattens the response pages via api_source.flattener.flatten_response")
+def step_and_flattens_the_response_pages_via_api_source_flattener_flatten():
+    pytest.skip(
+        "step not implemented: flattens the response pages via api_source.flattener.flatten"
+    )
+
+
+# REQ-945
+@then("returns row dicts without issuing an engine SELECT")
+def step_and_returns_row_dicts_without_issuing_an_engine_select():
+    pytest.skip("step not implemented: returns row dicts without issuing an engine SELECT")
+
+
+# REQ-945
+@given("an openapi source with no registered ApiEndpoint")
+def step_given_an_openapi_source_with_no_registered_apiendpoint():
+    pytest.skip("step not implemented: an openapi source with no registered ApiEndpoint")
+
+
+# REQ-945
+@then("UnsupportedSourceFetch is raised")
+def step_then_unsupportedsourcefetch_is_raised():
+    pytest.skip("step not implemented: UnsupportedSourceFetch is raised")

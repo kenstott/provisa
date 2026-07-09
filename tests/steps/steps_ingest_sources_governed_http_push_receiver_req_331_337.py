@@ -1069,3 +1069,27 @@ def subscribers_receive_sse_with_governance(shared_data):
 # Canary: 9b8d20a0-6407-492c-a086-76bbeea58192
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b4b499b1-72b7-40cc-a739-309ddd1405e9
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b724b5f7-47b0-4ce8-b54c-ad7ce054dbba
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 999065b7-b8bf-4a7e-b875-84fa7f4bb0bd
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c66b638d-0df5-41df-8365-e12934c0047c
+#
+# This source code is licensed under the Business Source License 1.1

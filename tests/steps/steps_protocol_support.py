@@ -796,3 +796,15 @@ scenarios("../features/REQ-802.feature")
 # Canary: 3d79105b-77a9-446f-a904-7c04485f4cee
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5742002f-575a-471e-9636-4bf0ab54c760
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 937ea165-6b9c-4e09-89eb-43ac702b2c99
+#
+# This source code is licensed under the Business Source License 1.1

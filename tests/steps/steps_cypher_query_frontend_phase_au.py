@@ -2203,3 +2203,25 @@ def then_typed_response_shape(shared_data: dict) -> None:
 # Canary: a8c860f5-baf3-4b99-94d4-6048b1d89233
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# All three steps for REQ-752 are already implemented in the existing file:
+#
+#   given_multi_hop_query     -> "a Cypher query with 3+ node variables in a path"
+#   when_translator_processes -> "the translator processes it"  (shared step)
+#   then_multi_hop_aliases    -> "all node aliases are available in WHERE and RETURN,
+#                                 and intermediate property access resolves correctly"
+#
+# scenarios("../features/REQ-752.feature") is also already registered above.
+# Nothing new to append.
+
+
+# All three steps for REQ-752 are already implemented in the existing file:
+#
+#   given_multi_hop_query     -> "a Cypher query with 3+ node variables in a path"
+#   when_translator_processes -> "the translator processes it"  (shared step)
+#   then_multi_hop_aliases    -> "all node aliases are available in WHERE and RETURN,
+#                                 and intermediate property access resolves correctly"
+#
+# scenarios("../features/REQ-752.feature") is also already registered above.
+# Nothing new to append.

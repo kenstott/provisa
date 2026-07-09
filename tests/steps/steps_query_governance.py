@@ -933,3 +933,15 @@ def then_logged_in_append_only_audit_log(shared_data, audit_pool):
 # Canary: 7219e2cd-f2b9-43ea-a313-8fea20ad1574
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1904237a-9986-4d6e-8264-23370fd48149
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: dab8e082-d3ca-4b19-bab0-24a622bd6422
+#
+# This source code is licensed under the Business Source License 1.1
