@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { discoverSourceSchema, fetchIrTypes } from "../api/admin";
 import type { DiscoveredColumn } from "../api/admin";
 import { useRegisterTable } from "../hooks/useAdminQueries";
-import { IR_TYPES_FALLBACK, toIrType } from "../lib/irTypes";
+import { IR_TYPES_FALLBACK, toIrType } from "../irTypes";
 
 interface ColumnRow {
   selected: boolean;

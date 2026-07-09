@@ -7,7 +7,7 @@
 // lands on a valid IR dropdown value; the steward's assignment is engine-independent.
 
 import { describe, it, expect } from "vitest";
-import { toIrType } from "../lib/irTypes";
+import { toIrType } from "../irTypes";
 
 describe("toIrType (native → IR)", () => {
   it("maps common engine spellings to canonical IR names", () => {
