@@ -461,17 +461,6 @@ export function AdminPage() {
                     />
                   </label>
                 </div>
-                <div className="settings-section">
-                  <h4>Execution Engine</h4>
-                  <p
-                    className="settings-note"
-                    style={{ margin: "0 0 0.5rem", fontSize: "0.8rem", opacity: 0.75 }}
-                  >
-                    Memory sizing and fault-tolerant execution now live with the engine, on{" "}
-                    <strong>Admin → Federation Engine</strong> — the available settings depend on the
-                    selected engine.
-                  </p>
-                </div>
                 <div className="settings-actions">
                   <button
                     className="btn-primary"
