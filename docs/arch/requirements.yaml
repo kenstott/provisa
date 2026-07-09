@@ -28447,6 +28447,9 @@
     engine during schema discovery, ensuring consistent data modeling across heterogeneous sources.
   code:
     - provisa/api/admin/discovery_schema.py
+    - provisa/api/admin/types.py
+    - provisa/api/admin/_table_ops.py
+    - provisa/compiler/type_map.py
     - provisa/core/ir_types.py
     - provisa-ui/src/components/SchemaDiscovery.tsx
     - provisa-ui/src/api/admin.ts
