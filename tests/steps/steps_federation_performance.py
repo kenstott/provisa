@@ -845,3 +845,24 @@ def then_federated_query_routed_through_federation_engine(shared_data: dict) -> 
 # when_the_query_is_compiled covers the When step via graphql_query dispatch.
 # then_query_routed_direct covers the first Then step.
 # then_federated_query_routed_through_federation_engine covers the second Then step.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c9b9387b-69ed-409c-aeb9-fca9aff6072b
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 92424969-e177-4899-9af4-036d4911b25e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps and scenarios() call for REQ-279 are already present in the existing file; no new definitions required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b7fa59b1-a0e6-4ecb-a04d-729a4d95f1e3
+#
+# This source code is licensed under the Business Source License 1.1

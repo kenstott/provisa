@@ -2156,3 +2156,26 @@ def then_typed_response_shape(shared_data: dict) -> None:
 # given_map_projection      -> Given a Cypher query MATCH (n:Person) RETURN n { .name, .age }
 # when_translator_processes -> When the translator processes it (shared step)
 # then_map_projection       -> Then it emits MAP(ARRAY[...], ARRAY[...])
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a1228d2a-8916-4620-a022-2ea124cf48b5
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 34bdd11f-ed1f-4491-9a0a-020db211ec9f
+#
+# This source code is licensed under the Business Source License 1.1
+
+# REQ-757: All required step definitions are already present in the existing file.
+# given_map_projection      -> Given a Cypher query MATCH (n:Person) RETURN n { .name, .age }
+# when_translator_processes -> When the translator processes it (shared step)
+# then_map_projection       -> Then it emits MAP(ARRAY['name','age'], ARRAY[n."name",n."age"])
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b6b8f488-0c51-4e41-bbb7-011c57546a21
+#
+# This source code is licensed under the Business Source License 1.1

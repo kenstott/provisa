@@ -1126,3 +1126,10 @@ def then_source_type_not_used_to_dispatch(shared_data: dict) -> None:
 #   - when_row_changed_in_mysql        (When a row is inserted, updated, or deleted in MySQL)
 #   - then_change_streamed_as_sse      (Then the change is captured by Debezium, published to Kafka, consumed by Provisa, and streamed as an SSE event to subscribers)
 # No new step definitions are required.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already present in the existing file.
+# No new imports, scenario registrations, or step definitions are required.
+
+
+# All steps for REQ-260 "REQ-260 default behaviour" scenario are fully implemented above.

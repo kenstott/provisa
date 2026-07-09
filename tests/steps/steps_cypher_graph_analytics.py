@@ -564,3 +564,15 @@ scenarios("../features/REQ-784.feature")
 # Canary: f870f978-ded4-48c7-addf-59c11f77a8aa
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 190f2921-c2cc-4f5e-bff5-9a5aa65acb8e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a30b4fa3-66d4-4ca0-94ab-161f8eed9740
+#
+# This source code is licensed under the Business Source License 1.1

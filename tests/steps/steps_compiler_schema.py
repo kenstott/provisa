@@ -2275,3 +2275,71 @@ def req655_assert_filter_where(shared_data):
 # Canary: e2a1e0f0-14a1-4f68-bdef-e88c11c86290
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9a9504c8-1803-4555-8e95-9738aa4e0bb2
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-008 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8300917d-8c53-4ad5-9128-e16330969696
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fcb694bc-2b4e-4dec-bf69-aac5bb601a82
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-253 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6d28b9ac-4592-4fb9-9ddb-11e18d9c1746
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ddb7141f-e38d-44dd-a84f-9d30140e94b0
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All step definitions for REQ-008 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fbd424f5-b8bc-42e5-b5ad-93330fcff23a
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 370e117a-b08f-4864-8809-e4c6a68c24fd
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-253 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e34a09f4-7a06-4f1a-8b9c-f8018c260b4a
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-259 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# All step definitions for REQ-534 are already implemented in the existing steps file.
+# No new steps are required for this requirement.

@@ -1278,3 +1278,51 @@ def then_land_refused_error_event(shared_data):
         match_floor=0.0,
     )
     assert ratio_empty == 1.0, "Empty rows should return ratio 1.0 (no drift to judge)"
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d2c73fc0-8dea-42a1-bd8f-304f84c082a3
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-855 steps are already present in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 125c2ce9-669c-427a-acae-9cc876f681ff
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8fd18588-1bf1-42e7-aabc-a69ae4bf9345
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-882 steps are already present in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 54d6dbdd-04c1-4b98-bd48-d49903e19ccf
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-855 steps are already present in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: eaf41b2b-b336-44e1-8077-67178448aa8a
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-874 steps are already present in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 224f41b7-f396-4683-aa03-c307f0324f06
+#
+# This source code is licensed under the Business Source License 1.1

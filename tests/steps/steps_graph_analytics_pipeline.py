@@ -175,3 +175,15 @@ def then_returns_augmented(shared_data: dict):
 
 
 scenarios("../features/REQ-642.feature")
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 610f3d93-d450-45ab-9e51-aa795a1478f4
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7bed4a85-6dc0-4ba2-8982-f16f7c0e4815
+#
+# This source code is licensed under the Business Source License 1.1

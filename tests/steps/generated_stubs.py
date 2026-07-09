@@ -8780,3 +8780,41 @@ def step_given_incoming_rows_below_the_match_floor_threshold():
 @then("the land is refused and an error event is emitted")
 def step_then_the_land_is_refused_and_an_error_event_is_emitted():
     pytest.skip("step not implemented: the land is refused and an error event is emitted")
+
+
+# REQ-943
+@given("a materialized source with current rows in the federation catalog")
+def step_given_a_materialized_source_with_current_rows_in_the_federation_ca():
+    pytest.skip(
+        "step not implemented: a materialized source with current rows in the federation ca"
+    )
+
+
+# REQ-943
+@when("SourceRowLoader.load(source, table) is invoked")
+def step_when_sourcerowloader_load_source_table_is_invoked():
+    pytest.skip("step not implemented: SourceRowLoader.load(source, table) is invoked")
+
+
+# REQ-943
+@then(
+    'engine.execute_engine issues SELECT * FROM "<catalog>"."<schema>"."<table>" and returns row dicts'
+)
+def step_then_engine_execute_engine_issues_select_from_catalog_schema_tabl():
+    pytest.skip(
+        'step not implemented: engine.execute_engine issues SELECT * FROM "<catalog>"."<sch'
+    )
+
+
+# REQ-943
+@given("a row-oriented API/push source type with no engine-scannable table")
+def step_given_a_row_oriented_api_push_source_type_with_no_engine_scannable():
+    pytest.skip(
+        "step not implemented: a row-oriented API/push source type with no engine-scannable"
+    )
+
+
+# REQ-943
+@then("UnsupportedSourceFetch is raised and no scan is issued")
+def step_then_unsupportedsourcefetch_is_raised_and_no_scan_is_issued():
+    pytest.skip("step not implemented: UnsupportedSourceFetch is raised and no scan is issued")
