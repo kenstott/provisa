@@ -28423,3 +28423,40 @@
     Given a row-oriented API/push source type with no engine-scannable table
     When SourceRowLoader.load(source, table) is invoked
     Then UnsupportedSourceFetch is raised and no scan is issued
+- id: REQ-944
+  status: complete
+  since: 2026-07
+  group: "10. UI & Admin Surfaces"
+  category: Schema Discovery
+  priority: SHOULD
+  type: ui
+  description: >-
+    The schema-discovery admin UI assigns canonical IR data-types to source columns.
+    The backend exposes the IR vocabulary via GET /admin/schema-discovery/ir-types (returns sorted IR_TYPES
+    from provisa/core/ir_types.py). The SchemaDiscovery UI component fetches that vocabulary
+    to populate per-column type dropdowns instead of hardcoded engine-specific types. New
+    manually-added columns default to IR "text". Discovered native columns are normalized to
+    IR names via toIrType (mirroring backend native→IR aliases) so introspected columns land
+    on valid dropdown values. Type assignments are engine-independent; the landing write path
+    maps IR → the store's physical type.
+  use_case: >-
+    Stewards can standardize column types to a canonical vocabulary independent of source
+    engine during schema discovery, ensuring consistent data modeling across heterogeneous sources.
+  code:
+    - provisa/api/admin/discovery_schema.py
+    - provisa/core/ir_types.py
+    - provisa-ui/src/components/SchemaDiscovery.tsx
+    - provisa-ui/src/api/admin.ts
+    - provisa-ui/src/irTypes.ts
+  tests:
+    - tests/unit/test_ir_types_endpoint.py
+    - provisa-ui/src/__tests__/schemaDiscovery-irtype.test.ts
+  scenario: |
+    Given a steward discovering a source with mixed native type names (e.g., Postgres int8, Snowflake BIGINT)
+    When the SchemaDiscovery UI loads the column list
+    Then toIrType normalizes each native type to its IR equivalent (e.g., both → IR "int")
+    And the type dropdown displays only valid IR vocabulary from GET /admin/schema-discovery/ir-types
+    And the steward can assign or override any IR type per column
+    Given a new column added manually to the source
+    When the column is created
+    Then the default type is IR "text"
