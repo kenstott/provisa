@@ -149,12 +149,18 @@ async def test_boot_create_seeds_one_replace_event_per_source(monkeypatch):
     # Design: replicas are BUILT at boot. boot_create posts one 'replace' event per SOURCE node
     # (never MV nodes — those are driven downstream); the caller drains to land them.
     posted: list[tuple[str, str]] = []
+    fanned: list[tuple[int, list]] = []
 
     async def _fake_post(conn, *, source_table, event_type, payload=None):
         posted.append((source_table, event_type))
         return len(posted)
 
+    async def _fake_fan_out(conn, event_id, dependent_tables):
+        fanned.append((event_id, list(dependent_tables)))
+        return len(dependent_tables)
+
     monkeypatch.setattr("provisa.events.boot.queue.post_event", _fake_post)
+    monkeypatch.setattr("provisa.events.boot.queue.fan_out", _fake_fan_out)
 
     class _Ctx:
         async def __aenter__(self):
@@ -170,3 +176,5 @@ async def test_boot_create_seeds_one_replace_event_per_source(monkeypatch):
     n = await boot_create(db, specs)
     assert n == 2
     assert posted == [("s.a", "replace"), ("s.b", "replace")]
+    # each source's boot event is enqueued as work for the source node itself (self-dependent)
+    assert fanned == [(1, ["s.a"]), (2, ["s.b"])]

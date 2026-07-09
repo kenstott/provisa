@@ -196,7 +196,11 @@ def assert_boot_job_registered(shared_data: dict, monkeypatch) -> None:
         drain_calls.append(len(processors))
         return 0
 
+    async def _capture_fan_out(conn, event_id, dependent_tables):
+        return len(dependent_tables)
+
     monkeypatch.setattr(queue, "post_event", _capture_post_event)
+    monkeypatch.setattr(queue, "fan_out", _capture_fan_out)
     monkeypatch.setattr(supervisor, "drain", _capture_drain)
 
     asyncio.run(boot_job["fn"]())
@@ -230,7 +234,11 @@ def assert_drain_idempotent(shared_data: dict, monkeypatch) -> None:
         drain_processor_counts.append(len(processors))
         return 0
 
+    async def _capture_fan_out(conn, event_id, dependent_tables):
+        return len(dependent_tables)
+
     monkeypatch.setattr(queue, "post_event", _capture_post_event)
+    monkeypatch.setattr(queue, "fan_out", _capture_fan_out)
     monkeypatch.setattr(supervisor, "drain", _capture_drain)
 
     async def _boot_twice():

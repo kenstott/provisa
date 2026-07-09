@@ -18,6 +18,15 @@ from provisa.federation.engine import build_duckdb_engine
 _LOG = logging.getLogger("test")
 
 
+@pytest.fixture(autouse=True)
+def _patch_fetch_tables(monkeypatch):
+    # wire_event_loop drives off the REGISTERED tables (control plane); the fake conn carries them.
+    async def _fetch(conn):
+        return getattr(conn, "registered", [])
+
+    monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch)
+
+
 class _Sched:
     def __init__(self):
         self.jobs: list[str] = []
@@ -26,8 +35,23 @@ class _Sched:
         self.jobs.append(id)
 
 
-def _col(name, dt="bigint", pk=False):
-    return SimpleNamespace(name=name, data_type=dt, is_primary_key=pk)
+class _Conn:
+    def __init__(self, registered):
+        self.registered = registered
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+
+def _fake_db(registered):
+    return SimpleNamespace(acquire=lambda: _Conn(registered))
+
+
+def _rcol(name, dt="bigint", pk=False):
+    return {"column_name": name, "data_type": dt, "is_primary_key": pk, "native_filter_type": None}
 
 
 def _state(*, ready=True):
@@ -49,14 +73,24 @@ def _state(*, ready=True):
                 change_signal=None,
                 watermark_column=None,
                 live=None,
-                columns=[_col("id", "bigint", pk=True)],
                 cache_ttl=300,
             )
         ],
     )
+    registered = [
+        {
+            "source_id": "api",
+            "schema_name": "default",
+            "table_name": "events",
+            "columns": [_rcol("id", "bigint", pk=True)],
+        }
+    ]
     registry = SimpleNamespace(get_enabled=lambda: [])
     return SimpleNamespace(
-        tenant_db=object(), federation_engine=engine, config=config, mv_registry=registry
+        tenant_db=_fake_db(registered),
+        federation_engine=engine,
+        config=config,
+        mv_registry=registry,
     )
 
 
@@ -95,7 +129,7 @@ def _state_with_mv(*, column_types):
         refresh_interval=600,
     )
     return SimpleNamespace(
-        tenant_db=object(),
+        tenant_db=_fake_db([]),
         federation_engine=engine,
         config=SimpleNamespace(sources=[], tables=[]),
         mv_registry=SimpleNamespace(get_enabled=lambda: [mv]),

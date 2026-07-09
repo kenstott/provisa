@@ -101,6 +101,20 @@ async def upsert(
         update_columns=_update_columns,
     )
 
+    # Column data_type is resolved at registration (design time) and PERSISTS: a column type once
+    # resolved (by the type-introspection user-assist) survives a config reload even though the YAML
+    # carries no type. Capture the currently-stored types before the column replace and reuse any
+    # that the incoming config leaves unset (REQ-471) — never null a resolved type back out.
+    _existing_types = {
+        r.column_name: r.data_type
+        for r in (
+            await conn.execute_core(
+                select(table_columns.c.column_name, table_columns.c.data_type).where(
+                    table_columns.c.table_id == table_id
+                )
+            )
+        ).fetchall()
+    }
     # Replace columns: delete existing, insert new
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
     for col in table.columns:
@@ -108,6 +122,7 @@ async def upsert(
         object_fields = [
             f.model_dump() if hasattr(f, "model_dump") else f for f in object_fields_raw
         ]
+        _data_type = getattr(col, "data_type", None) or _existing_types.get(col.name)
         await conn.execute_core(
             table_columns.insert().values(
                 table_id=table_id,
@@ -122,7 +137,7 @@ async def upsert(
                 mask_precision=getattr(col, "mask_precision", None),
                 alias=getattr(col, "alias", None),
                 description=getattr(col, "description", None),
-                data_type=getattr(col, "data_type", None),
+                data_type=_data_type,
                 path=getattr(col, "path", None),
                 native_filter_type=getattr(col, "native_filter_type", None),
                 is_primary_key=getattr(col, "is_primary_key", False),

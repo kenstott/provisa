@@ -146,15 +146,54 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any) -> int:
 
             return _run
 
+        # Drive the loop off the design-time REGISTERED tables (semantic sql names + resolved types),
+        # not the raw YAML — the landed replica name must match what the schema-currency reconcile
+        # created, and the types the YAML omits are resolved in the control plane at registration.
+        # Change-signal / cadence / live block stay owned by config (matched on the semantic name).
+        from types import SimpleNamespace
+
+        from provisa.api.admin.db_queries import fetch_tables
+        from provisa.compiler.naming import apply_sql_name
+        from urllib.parse import urlparse
+
+        _store_scheme = urlparse(store_dsn).scheme.split("+", 1)[0]
+        store_schema = "main" if _store_scheme == "sqlite" else "mat"
+        _cfg_by = {(t.source_id, apply_sql_name(t.table_name)): t for t in config.tables}
+        async with db.acquire() as _conn:
+            _registered = await fetch_tables(_conn)
+        registered_tables = []
+        for _rt in _registered:
+            _cfg = _cfg_by.get((_rt["source_id"], _rt["table_name"]))
+            registered_tables.append(
+                SimpleNamespace(
+                    source_id=_rt["source_id"],
+                    schema_name=_rt["schema_name"],
+                    table_name=_rt["table_name"],
+                    columns=[
+                        SimpleNamespace(
+                            name=_c["column_name"],
+                            data_type=_c["data_type"],
+                            is_primary_key=_c["is_primary_key"],
+                            native_filter_type=_c["native_filter_type"],
+                        )
+                        for _c in _rt["columns"]
+                    ],
+                    live=getattr(_cfg, "live", None),
+                    change_signal=getattr(_cfg, "change_signal", None),
+                    watermark_column=getattr(_cfg, "watermark_column", None),
+                    cache_ttl=getattr(_cfg, "cache_ttl", None),
+                )
+            )
         specs = specs_from_config(
             sources=config.sources,
-            tables=config.tables,
+            tables=registered_tables,
             mvs=mvs,
             engine=engine.engine,  # the FederationEngine (federate classification)
             store_dsn=store_dsn,
             source_fetch=source_fetch,
             mv_columns=mv_columns,
             mv_run_query=mv_run_query,
+            store_schema=store_schema,
         )
         processors = build_processors(specs, db=db, dependents_of=dependents_of)
         # register_runtime schedules the tick/reaper, each poll node's job, AND a one-shot boot-create

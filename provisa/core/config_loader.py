@@ -540,6 +540,17 @@ async def _upsert_single_table(
     openapi_specs: dict[str, dict],
 ) -> None:
     """Upsert one table and run source-type-specific post-upsert steps."""
+    # Semantic-SQL naming authority (REQ-471): a source the engine cannot ATTACH in place is
+    # materialized into the store, so its registered/physical name is a semantic alias — not a
+    # source-physical name — and MUST be normalized through the central naming authority so all
+    # data in the store follows one convention. Attach sources keep their source-physical name
+    # (it must match the real table). Never rename inline — always route through apply_sql_name.
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.federation.strategy import engine_attaches
+
+    if src is not None and engine is not None and not engine_attaches(engine, src.type.value):
+        tbl.table_name = apply_sql_name(tbl.table_name)
+
     if src and src.type.value == "openapi" and src.base_url:
         spec = openapi_specs.get(src.id, {})
         if spec:

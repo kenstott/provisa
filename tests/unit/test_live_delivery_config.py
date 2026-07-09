@@ -173,7 +173,9 @@ class TestRepoUpsertSerializesLive:
         )
         conn = AsyncMock()
         conn.upsert_returning = AsyncMock(return_value=1)
-        conn.execute_core = AsyncMock(return_value=None)
+        _empty = MagicMock()
+        _empty.fetchall.return_value = []  # no pre-existing column types to preserve
+        conn.execute_core = AsyncMock(return_value=_empty)
 
         await table_repo.upsert(conn, tbl)
 
@@ -197,7 +199,9 @@ class TestRepoUpsertSerializesLive:
         )
         conn = AsyncMock()
         conn.upsert_returning = AsyncMock(return_value=1)
-        conn.execute_core = AsyncMock(return_value=None)
+        _empty = MagicMock()
+        _empty.fetchall.return_value = []  # no pre-existing column types to preserve
+        conn.execute_core = AsyncMock(return_value=_empty)
 
         await table_repo.upsert(conn, tbl)
 

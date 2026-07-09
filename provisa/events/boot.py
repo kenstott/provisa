@@ -72,13 +72,19 @@ def specs_from_config(
     source_fetch: Callable[[Any, Any], Any],
     mv_columns: Callable[[Any], list[tuple[str, str]] | None],
     mv_run_query: Callable[[Any], Any],
+    store_schema: str = "mat",
 ) -> list[NodeSpec]:
     """Bind the config to :class:`NodeSpec`s (REQ-941). A MATERIALIZED source table (``federate`` ==
     MATERIALIZED) becomes a source spec — its landing args resolved from config, its ``fetch`` the
     source adapter's loader (injected). An MV becomes an mv spec — its output ``columns`` from a live
     engine introspection and its ``run_query`` the engine's SELECT (both injected, since neither is
     in the model). The engine classifies reachability; untyped tables are skipped (types are filled
-    at registration). The three live collaborators are injected so this binder stays pure/testable."""
+    at registration). The three live collaborators are injected so this binder stays pure/testable.
+
+    ``tables`` MUST be the design-time REGISTERED tables (semantic sql names + resolved types), not
+    the raw YAML — the landed replica name (``mat_table``) has to match what the schema-currency
+    reconcile created. ``store_schema`` is where the replicas live in the store (``main`` on a
+    schema-less sqlite store, ``mat`` otherwise) — never assume ``mat``."""
     from provisa.events.handlers import make_mv_generate, make_source_land
     from provisa.federation.engine import UnreachableSource
     from provisa.federation.residency import resolve_landing_args
@@ -104,7 +110,7 @@ def specs_from_config(
         mat_table = f"{src.id}__{tbl.schema_name}__{tbl.table_name}"  # matches _mat_table_name
         handle = make_source_land(
             store_dsn,
-            schema="mat",
+            schema=store_schema,
             table=mat_table,
             columns=args.columns,
             change_signal=args.change_signal,
@@ -238,8 +244,12 @@ async def boot_create(db: Any, specs: list[NodeSpec]) -> int:
         if spec.kind != "source":
             continue
         async with db.acquire() as conn:
-            await queue.post_event(
+            event_id = await queue.post_event(
                 conn, source_table=spec.node, event_type="replace", payload={"bootstrap": True}
             )
+            # A source node is the FIRST dependent of its own change: enqueue the work item for the
+            # node itself so its processor claims + lands it (it then re-posts to the MV dependents).
+            # Without this the boot event has no claimable work and nothing ever lands.
+            await queue.fan_out(conn, event_id, [spec.node])
         seeded += 1
     return seeded

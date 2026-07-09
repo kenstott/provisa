@@ -142,7 +142,7 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
     :class:`UnsupportedSourceFetch`."""
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        from provisa.compiler.naming import apply_sql_name
+        from provisa.compiler.naming import apply_gql_name, apply_sql_name
         from provisa.graphql_remote.executor import execute_remote
 
         normalised = apply_sql_name(table.table_name)
@@ -150,7 +150,20 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
             for tbl in reg.get("tables", []):
                 if tbl.get("sql_name") in (table.table_name, normalised):
                     cols = tbl.get("columns", [])
-                    col_selections = [c.get("gql_selection", c["name"]) for c in cols]
+
+                    # The store lands under the semantic sql name; the remote keys the field by its
+                    # GraphQL name. Both derive from the naming authority. When they differ, emit a
+                    # GraphQL alias ``<sql_name>: <gqlField>`` so the outbound field matches the remote
+                    # AND the response comes back keyed by the sql name the store expects; when they
+                    # coincide, the bare field. gql_selection (nested object path) still wins.
+                    def _selection(c: dict) -> str:
+                        if c.get("gql_selection"):
+                            return c["gql_selection"]
+                        sql_name = apply_sql_name(c["name"])
+                        gql_field = apply_gql_name(c["name"])
+                        return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
+
+                    col_selections = [_selection(c) for c in cols]
                     return await execute_remote(
                         url=reg["url"],
                         auth=reg.get("auth"),
