@@ -32,6 +32,7 @@ from typing import Any
 _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
     {
         "openapi",
+        "graphql_remote",
         "grpc_remote",
         "ingest",
         "websocket",
@@ -125,5 +126,40 @@ def make_openapi_loader(
                 )
             )
         return rows
+
+    return _load
+
+
+def make_graphql_remote_loader(gql_sources: dict[str, Any]) -> AdapterLoader:
+    """Build the graphql_remote adapter row-fetch (REQ-941/846): resolve the table's registration in
+    ``state.graphql_remote_sources`` (by ``sql_name``), forward a minimal GraphQL query to the remote
+    endpoint via :func:`execute_remote`, and return the rows. Refreshes from the remote source — the
+    materialized replica is landed by the write face, not read back from its stale cache.
+
+    ``gql_sources`` maps source_id → a registration dict (``url``, ``auth``, ``tables``); each table
+    carries its ``field_name``/``sql_name`` and ``columns`` (a column's ``gql_selection`` overrides
+    its name for nested object fields). A table with no matching registration raises
+    :class:`UnsupportedSourceFetch`."""
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        from provisa.compiler.naming import apply_sql_name
+        from provisa.graphql_remote.executor import execute_remote
+
+        normalised = apply_sql_name(table.table_name)
+        for reg in gql_sources.values():
+            for tbl in reg.get("tables", []):
+                if tbl.get("sql_name") in (table.table_name, normalised):
+                    cols = tbl.get("columns", [])
+                    col_selections = [c.get("gql_selection", c["name"]) for c in cols]
+                    return await execute_remote(
+                        url=reg["url"],
+                        auth=reg.get("auth"),
+                        field_name=tbl.get("field_name") or tbl["name"],
+                        columns=col_selections,
+                    )
+        raise UnsupportedSourceFetch(
+            f"graphql_remote source {source.id!r} table {table.table_name!r}: no matching "
+            f"registration in graphql_remote_sources"
+        )
 
     return _load

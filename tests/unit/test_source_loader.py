@@ -14,6 +14,7 @@ import pytest
 from provisa.events.source_loader import (
     SourceRowLoader,
     UnsupportedSourceFetch,
+    make_graphql_remote_loader,
     make_openapi_loader,
 )
 from provisa.executor.result import QueryResult
@@ -126,3 +127,45 @@ async def test_make_openapi_loader_missing_endpoint_raises():
     load = make_openapi_loader({}, {"api": SimpleNamespace(id="api", base_url="", auth=None)})
     with pytest.raises(UnsupportedSourceFetch, match="no registered endpoint"):
         await load(_src("api", "openapi"), _tbl("default", "events"))
+
+
+@pytest.mark.asyncio
+async def test_make_graphql_remote_loader_forwards_query(monkeypatch):
+    captured: dict = {}
+
+    async def _fake_execute_remote(*, url, auth, field_name, columns):
+        captured.update(url=url, auth=auth, field_name=field_name, columns=columns)
+        return [{"id": 1}, {"id": 2}]
+
+    monkeypatch.setattr("provisa.graphql_remote.executor.execute_remote", _fake_execute_remote)
+
+    gql_sources = {
+        "gql": {
+            "url": "https://gql.test/graphql",
+            "auth": {"type": "bearer"},
+            "tables": [
+                {
+                    "sql_name": "orders",
+                    "name": "orders",
+                    "field_name": "allOrders",
+                    "columns": [
+                        {"name": "id"},
+                        {"name": "total", "gql_selection": "total { amount }"},
+                    ],
+                }
+            ],
+        }
+    }
+    load = make_graphql_remote_loader(gql_sources)
+    rows = await load(_src("gql", "graphql_remote"), _tbl("default", "orders"))
+    assert rows == [{"id": 1}, {"id": 2}]
+    assert captured["url"] == "https://gql.test/graphql"
+    assert captured["field_name"] == "allOrders"  # field_name overrides the table name
+    assert captured["columns"] == ["id", "total { amount }"]  # gql_selection overrides the name
+
+
+@pytest.mark.asyncio
+async def test_make_graphql_remote_loader_missing_registration_raises():
+    load = make_graphql_remote_loader({})
+    with pytest.raises(UnsupportedSourceFetch, match="no matching"):
+        await load(_src("gql", "graphql_remote"), _tbl("default", "orders"))

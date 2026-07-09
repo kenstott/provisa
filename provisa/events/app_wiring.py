@@ -69,17 +69,21 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any) -> int:
         from provisa.events.source_loader import (
             SourceRowLoader,
             UnsupportedSourceFetch,
+            make_graphql_remote_loader,
             make_openapi_loader,
         )
 
-        # openapi sources have no engine table; their rows come from calling the operation (the
-        # registered endpoint + api-source config live in app state). Other adapter-only types
+        # openapi/graphql_remote sources have no engine table; their rows come from calling the
+        # operation (their registrations live in app state). Other adapter-only types
         # (ingest/websocket/…) still raise UnsupportedSourceFetch until their fetch is wired.
         _adapter_loaders: dict[str, Any] = {}
         _api_endpoints = getattr(state, "api_endpoints", None)
         _api_sources = getattr(state, "api_sources", None)
         if _api_endpoints and _api_sources is not None:
             _adapter_loaders["openapi"] = make_openapi_loader(_api_endpoints, _api_sources)
+        _gql_sources = getattr(state, "graphql_remote_sources", None)
+        if _gql_sources:
+            _adapter_loaders["graphql_remote"] = make_graphql_remote_loader(_gql_sources)
 
         row_loader = SourceRowLoader(engine, adapter_loaders=_adapter_loaders)
 
