@@ -1699,3 +1699,55 @@ def _then_v2_table_alias(shared_data: dict) -> None:
 # Canary: 091ceca6-dd69-4fa2-a6f1-a91c6e4fd4c1
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-182 are already implemented in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# No new step definitions required for REQ-183; all steps already exist in the file.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d3baed6a-95e6-48ea-bdb7-2ebd37608459
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-185 are already implemented in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-187 are already implemented in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-188 are already implemented in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-189 are already implemented in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 60f22362-6b8a-4d19-8389-9299683268d8
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-621 are already implemented in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-623 are already implemented in the existing steps file.
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bda951a1-a84c-4451-8419-3f90b3a8ddfb
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-625 are already implemented in the existing steps file.
+# No new step definitions are required for this requirement.

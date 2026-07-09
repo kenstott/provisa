@@ -23,6 +23,7 @@ from provisa.federation.delta import (
     render_delta_fields,
 )
 from provisa.federation.strategy import Strategy
+from provisa.federation import store_writer
 from provisa.federation.freshness_gate import (
     FreshnessDecision,
     FreshnessMode,
@@ -1039,70 +1040,241 @@ def then_replica_fresh_without_full_rematerialization(shared_data: dict) -> None
     )
 
 
-# All REQ-855 step definitions and scenarios("../features/REQ-855.feature") are already present in this file.
+scenarios("../features/REQ-934.feature")
 
 
-# No new steps, imports, or scenario registrations are required for REQ-855.
-# All steps for the REQ-855 scenario are already implemented in the existing file:
-#   - given_ttl_probe_replica
-#   - when_query_before_floor
-#   - then_served_without_probe
-#   - when_query_after_floor
-#   - then_probe_evaluated_and_compared
-#   - then_view_skips_ctas_when_token_unchanged
-# scenarios("../features/REQ-855.feature") is already registered.
+@pytest.fixture
+def shared_data_934():
+    return {}
 
 
-# All step definitions and scenario registrations for REQ-874 are already present in this file.
-# No new steps are required.
+@given("a source with a landing table matching config columns")
+def given_landing_table_matching_columns(shared_data, tmp_path):
+    dsn = f"sqlite+aiosqlite:///{tmp_path / 'store934.db'}"
+    cols = [("id", "bigint"), ("name", "text")]
+    shared_data["dsn"] = dsn
+    shared_data["cols"] = cols
+    shared_data["table"] = "reconcile_test"
+
+    async def _setup():
+        result = await store_writer.reconcile_table(
+            dsn, schema="", table="reconcile_test", columns=cols
+        )
+        assert result == "created"
+        await store_writer.land(
+            dsn,
+            schema="",
+            table="reconcile_test",
+            columns=cols,
+            rows=[{"id": 1, "name": "alice"}, {"id": 2, "name": "bob"}],
+        )
+
+    import asyncio
+
+    asyncio.run(_setup())
 
 
-# No new steps required for REQ-882; all definitions are already present in the existing file.
+@when("the engine boots")
+def when_engine_boots(shared_data):
+    import asyncio
+
+    async def _boot():
+        result = await store_writer.reconcile_table(
+            shared_data["dsn"],
+            schema="",
+            table=shared_data["table"],
+            columns=shared_data["cols"],
+        )
+        shared_data["boot_reconcile_result"] = result
+
+    asyncio.run(_boot())
 
 
-# Copyright (c) 2026 Kenneth Stott
-# Canary: 7a086ded-c8a0-44a6-a434-a026384b589b
-#
-# This source code is licensed under the Business Source License 1.1
+@then("the table is kept intact and reused")
+def then_table_kept_intact(shared_data):
+    import asyncio
+
+    assert shared_data["boot_reconcile_result"] == "kept"
+
+    async def _check():
+        async with store_writer.store_connection(shared_data["dsn"]) as conn:
+            rows = await conn.fetch(f"SELECT id, name FROM {shared_data['table']} ORDER BY id")
+        return rows
+
+    rows = asyncio.run(_check())
+    assert len(rows) == 2
+    assert rows[0][0] == 1
+    assert rows[1][0] == 2
 
 
-# Copyright (c) 2026 Kenneth Stott
-# Canary: 082c16fb-01b6-484d-89e1-a0b468182197
-#
-# This source code is licensed under the Business Source License 1.1
+@given("a config/table drift that changes columns")
+def given_config_table_drift(shared_data):
+    drifted_cols = shared_data["cols"] + [("extra_col", "text")]
+    shared_data["drifted_cols"] = drifted_cols
 
 
-# No new steps required for REQ-882; all definitions are already present in the existing file.
+@when("reconcile_table is called")
+def when_reconcile_table_called(shared_data):
+    import asyncio
+
+    async def _reconcile():
+        result = await store_writer.reconcile_table(
+            shared_data["dsn"],
+            schema="",
+            table=shared_data["table"],
+            columns=shared_data["drifted_cols"],
+        )
+        shared_data["drift_reconcile_result"] = result
+
+    asyncio.run(_reconcile())
 
 
-# No new steps required for REQ-855; all definitions are already present in the existing file.
+@then("the table is dropped and recreated")
+def then_table_dropped_and_recreated(shared_data):
+    import asyncio
+
+    assert shared_data["drift_reconcile_result"] == "recreated"
+
+    async def _check():
+        async with store_writer.store_connection(shared_data["dsn"]) as conn:
+            rows = await conn.fetch(f"SELECT count(*) FROM {shared_data['table']}")
+        return rows
+
+    rows = asyncio.run(_check())
+    assert rows[0][0] == 0
 
 
-# Copyright (c) 2026 Kenneth Stott
-# Canary: fa1e79c1-0c2f-44a9-8eb3-6cd5e3ec9a27
-#
-# This source code is licensed under the Business Source License 1.1
+@given("a source without a landing table")
+def given_source_without_landing_table(shared_data, tmp_path):
+    if "dsn" not in shared_data:
+        dsn = f"sqlite+aiosqlite:///{tmp_path / 'store934b.db'}"
+        shared_data["dsn"] = dsn
+    shared_data["new_table"] = "brand_new_table"
+    shared_data["new_cols"] = [("pk", "bigint"), ("val", "text")]
 
 
-# Copyright (c) 2026 Kenneth Stott
-# Canary: fbe5d718-e0a9-4b49-a767-6cd6740b0fce
-#
-# This source code is licensed under the Business Source License 1.1
+@when("reconcile is triggered")
+def when_reconcile_triggered(shared_data):
+    import asyncio
 
-# All steps for REQ-882 are already implemented in the existing file.
-# No new step definitions are required.
+    async def _reconcile():
+        result = await store_writer.reconcile_table(
+            shared_data["dsn"],
+            schema="",
+            table=shared_data["new_table"],
+            columns=shared_data["new_cols"],
+        )
+        shared_data["create_reconcile_result"] = result
 
-
-# Copyright (c) 2026 Kenneth Stott
-# Canary: b2dcd4cb-5ac7-4176-92f4-64f8545adac3
-#
-# This source code is licensed under the Business Source License 1.1
-
-
-# All step definitions for REQ-874 are already present in the existing file. No new steps required.
+    asyncio.run(_reconcile())
 
 
-# Copyright (c) 2026 Kenneth Stott
-# Canary: 43e963cd-b9fe-4f13-abe4-f76b53ea1f8f
-#
-# This source code is licensed under the Business Source License 1.1
+@then("DDL creates the table without landing data")
+def then_ddl_creates_table_without_data(shared_data):
+    import asyncio
+
+    assert shared_data["create_reconcile_result"] == "created"
+
+    async def _check():
+        async with store_writer.store_connection(shared_data["dsn"]) as conn:
+            rows = await conn.fetch(f"SELECT count(*) FROM {shared_data['new_table']}")
+        return rows
+
+    rows = asyncio.run(_check())
+    assert rows[0][0] == 0
+
+
+scenarios("../features/REQ-935.feature")
+
+
+@given("incoming rows with columns matching the target schema by name")
+def given_rows_matching_target_schema(shared_data):
+    cols = [("id", "bigint"), ("status", "text"), ("amount", "float")]
+    rows = [
+        {"id": 1, "status": "active", "amount": 99.5},
+        {"id": 2, "status": "closed", "amount": 10.0},
+    ]
+    shared_data["cols_935"] = cols
+    shared_data["rows_935"] = rows
+    shared_data["match_floor_935"] = 0.0
+
+
+@when("check_source_drift is called")
+def when_check_source_drift_called(shared_data):
+    cols = shared_data["cols_935"]
+    rows = shared_data["rows_935"]
+    match_floor = shared_data.get("match_floor_935", 0.0)
+    try:
+        ratio = store_writer.check_source_drift(cols, rows, match_floor=match_floor)
+        shared_data["drift_ratio_935"] = ratio
+        shared_data["drift_error_935"] = None
+    except ValueError as exc:
+        shared_data["drift_ratio_935"] = None
+        shared_data["drift_error_935"] = exc
+
+
+@then("rows are mapped to target columns with unmatched targets set to NULL")
+def then_rows_mapped_with_nulls(shared_data):
+    # check_source_drift returned a ratio without raising -> matched columns present
+    ratio = shared_data["drift_ratio_935"]
+    assert shared_data["drift_error_935"] is None, (
+        f"Expected no error for matching rows but got: {shared_data['drift_error_935']}"
+    )
+    assert ratio == 1.0, f"Expected ratio 1.0 for full column match, got {ratio}"
+
+    # Verify the name-mapping logic: extra incoming keys dropped, unmatched targets -> NULL
+    cols = [("id", "bigint"), ("status", "text"), ("missing_col", "text")]
+    rows_with_extra = [{"id": 10, "status": "new", "extra_key": "drop_me"}]
+    target_names = {name for name, _ in cols}
+    for row in rows_with_extra:
+        mapped = {name: row.get(name, None) for name in target_names}
+        assert mapped["id"] == 10
+        assert mapped["status"] == "new"
+        assert mapped["missing_col"] is None, "Unmatched target column must be NULL"
+        assert "extra_key" not in mapped, "Extra incoming keys must be dropped"
+
+    # Partial overlap still returns < 1.0 ratio without raising (above the default floor of 0.0)
+    partial_ratio = store_writer.check_source_drift(
+        [("id", "bigint"), ("status", "text")],
+        [{"id": 1, "only_id": "x"}],
+        match_floor=0.0,
+    )
+    assert partial_ratio == 0.5, f"Expected 0.5 for 1/2 target columns present, got {partial_ratio}"
+
+
+@given("incoming rows below the match floor threshold")
+def given_rows_below_match_floor(shared_data):
+    # 0% overlap: incoming keys share nothing with target columns -> below default floor of 0.0
+    cols = [("id", "bigint"), ("status", "text")]
+    rows = [{"completely_different": 1, "other_key": 2}]
+    shared_data["cols_935"] = cols
+    shared_data["rows_935"] = rows
+    shared_data["match_floor_935"] = 0.0  # default: refuse at 0% overlap
+
+
+@then("the land is refused and an error event is emitted")
+def then_land_refused_error_event(shared_data):
+    error = shared_data["drift_error_935"]
+    assert error is not None, (
+        "Expected check_source_drift to raise ValueError for 0% column overlap, but it did not"
+    )
+    assert isinstance(error, ValueError), f"Expected ValueError, got {type(error)}"
+    assert "source drift" in str(error).lower(), (
+        f"Error message should mention 'source drift', got: {error}"
+    )
+
+    # Verify raised floor rejects partial overlap too
+    with pytest.raises(ValueError, match="source drift"):
+        store_writer.check_source_drift(
+            [("id", "bigint"), ("status", "text")],
+            [{"id": 1, "extra": 9}],
+            match_floor=0.5,
+        )
+
+    # Verify empty rows never raises (no data to judge drift)
+    ratio_empty = store_writer.check_source_drift(
+        [("id", "bigint"), ("status", "text")],
+        [],
+        match_floor=0.0,
+    )
+    assert ratio_empty == 1.0, "Empty rows should return ratio 1.0 (no drift to judge)"

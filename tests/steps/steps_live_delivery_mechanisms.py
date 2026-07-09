@@ -97,7 +97,10 @@ def then_validation_passes_and_routes_to_debezium(shared_data):
     # Provider dispatch must return "debezium" for a strategy=debezium table
     source: Source = shared_data["source"]
     assert source.cdc is not None
-    state = SimpleNamespace(cdc_sources={source.id: source})
+    # REQ-931: legacy strategy resolution reads state.config.sources for the source's change_signal.
+    state = SimpleNamespace(
+        cdc_sources={source.id: source}, config=SimpleNamespace(sources=[source])
+    )
     provider = _resolve_provider_type(source.type.value, source.id, _tbl_meta("debezium"), state)
     assert provider == "debezium", f"Expected 'debezium', got {provider!r}"
 
@@ -177,7 +180,10 @@ def test_cdc_debezium_source_types_does_not_contain_postgresql():
 def test_source_cdc_config_defaults():
     c = SourceCdcConfig(bootstrap_servers="b:9092", topic_prefix="pfx")
     assert c.schema_registry_url is None
-    assert c.consumer_group_id == "provisa-debezium"
+    # REQ-931: consumer group identity is unified at the global level
+    # (ProvisaConfig.cdc_consumer_group_id="provisa-debezium"); a per-source
+    # consumer_group_id defaults to None and is set only for deliberate offset isolation.
+    assert c.consumer_group_id is None
 
 
 def test_source_cdc_field_defaults_none():
@@ -262,7 +268,8 @@ def test_source_cdc_attached_to_source_model():
 def test_debezium_capable_sources_route_to_debezium_via_strategy(stype):
     """Every Debezium-capable RDBMS type routes to 'debezium' when strategy=debezium."""
     src = _make_source_with_cdc(stype)
-    state = SimpleNamespace(cdc_sources={src.id: src})
+    # REQ-931: legacy strategy resolution reads state.config.sources for the source's change_signal.
+    state = SimpleNamespace(cdc_sources={src.id: src}, config=SimpleNamespace(sources=[src]))
     provider = _resolve_provider_type(src.type.value, src.id, _tbl_meta("debezium"), state)
     assert provider == "debezium", (
         f"Expected 'debezium' for {stype} with strategy=debezium, got {provider!r}"

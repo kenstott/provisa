@@ -2202,3 +2202,33 @@ def _req638_then(shared_data):
 # Canary: e15bec8c-1761-49aa-ae50-84df06a7e320
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 43d83597-38df-4f23-b280-b7b040335e45
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7de7d595-4c25-43f8-9722-fc91bfc53f61
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d25f8d69-0791-488c-b0c4-f9c51d088e37
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1c318552-cb24-4abe-8406-65dc862ca6b7
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8df246e1-1a18-4eab-8b9f-4a31bd5bdb60
+#
+# This source code is licensed under the Business Source License 1.1

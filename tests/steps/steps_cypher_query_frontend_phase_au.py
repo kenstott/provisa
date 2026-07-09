@@ -2128,3 +2128,31 @@ def then_typed_response_shape(shared_data: dict) -> None:
 # Canary: e88a8b24-e9d1-4cac-a185-f6ed9717dadd
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 26a4c7b6-a1c6-430d-80d6-85a65310d8f9
+#
+# This source code is licensed under the Business Source License 1.1
+
+# REQ-345 steps are fully implemented in the existing file above.
+# given_graph_user_submitting_cypher_query -> Given a graph user submitting a Cypher SELECT query to POST /query/cypher
+# when_compiler_processes_it              -> When the compiler processes it
+# then_compiles_executes_governance       -> Then it compiles to SQL, executes via Trino, and applies Stage 2 governance identically to GraphQL queries
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0c180843-8bca-4e5e-9420-c4fffff57e7d
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 17aef2ce-96a5-44e4-9a5c-1c6143e0f43c
+#
+# This source code is licensed under the Business Source License 1.1
+
+# REQ-757: All required step definitions are already present in the existing file.
+# given_map_projection      -> Given a Cypher query MATCH (n:Person) RETURN n { .name, .age }
+# when_translator_processes -> When the translator processes it (shared step)
+# then_map_projection       -> Then it emits MAP(ARRAY[...], ARRAY[...])

@@ -1782,3 +1782,49 @@ def then_req797_positive(shared_data: dict) -> None:
 # Canary: 515f8679-ebc2-4483-abad-8ef0c8a59455
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 41113e29-f470-42d8-b6c7-20501e8ff346
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-714 are already implemented in the existing file.
+# No new step definitions are needed.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5b47d815-0822-4dc2-89fa-40aed0754ce5
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-715 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# All steps for REQ-716 are already implemented in the existing file.
+# No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: bd1badba-c08c-4e58-b40f-70e72e0ac4df
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5e8be6f6-fb57-46a7-b7c8-1e88e0a30f9a
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 172d5d0c-7632-4dc8-ac00-767013bcd52f
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8351f3c1-5aab-40ec-9923-4aaadc3c9df2
+#
+# This source code is licensed under the Business Source License 1.1

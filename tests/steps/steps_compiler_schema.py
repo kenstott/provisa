@@ -2236,3 +2236,42 @@ def req655_assert_filter_where(shared_data):
 # Canary: 3c7f484d-6766-45a2-8908-75b6bce9eb53
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7356a51d-3905-4c7e-ab8d-2607bffe02c5
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4071fe45-6298-4cfe-a4d1-b3ec69f8e91b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-252 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 038a7bfb-9096-4df1-adad-a648202b6d7a
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-253 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 59ef75e9-26af-4d79-9e2e-bc02cc5fbdac
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-259 are already implemented in the existing steps file.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e2a1e0f0-14a1-4f68-bdef-e88c11c86290
+#
+# This source code is licensed under the Business Source License 1.1

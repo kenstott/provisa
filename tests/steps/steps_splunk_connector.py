@@ -608,3 +608,16 @@ def step_req724_assert_app_and_ssl(shared_data):
 
 # All steps for REQ-722 are already present in the existing steps file.
 # No new step definitions are required for this requirement.
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f3a4e4d2-096f-4010-83f3-8bdbcc362d0e
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.

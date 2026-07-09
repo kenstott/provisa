@@ -778,3 +778,9 @@ def test_packstream_pack_message_pull():
 
 
 scenarios("../features/REQ-802.feature")
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c8920ec0-8558-472b-8bf1-89c96e08eaf9
+#
+# This source code is licensed under the Business Source License 1.1

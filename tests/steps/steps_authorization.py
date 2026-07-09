@@ -596,3 +596,9 @@ def then_excluded_function_not_visible(shared_data: dict) -> None:
 
 # All steps for REQ-871 are already implemented in the existing file.
 # No new step definitions are required.
+
+
+# All steps for REQ-870 scenario "REQ-870 default behaviour" are already present in the existing file.
+
+
+# No new steps required for REQ-871 - all scenario steps are already present in the existing file.

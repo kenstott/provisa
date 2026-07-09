@@ -986,6 +986,8 @@ def given_pg_table_with_live_strategy_native(shared_data: dict) -> None:
         rss_sources=None,
         websocket_sources=None,
         tenant_db=MagicMock(),
+        # REQ-931: legacy strategy resolution reads state.config.sources for the change_signal.
+        config=SimpleNamespace(sources=[]),
     )
     shared_data["source_type"] = "postgresql"
     shared_data["source_id"] = "src-pg"
@@ -1109,3 +1111,18 @@ def then_source_type_not_used_to_dispatch(shared_data: dict) -> None:
 #   - given_mysql_source_via_debezium  (Given a MySQL source is connected via Debezium and Kafka)
 #   - when_row_changed_in_mysql        (When a row is inserted, updated, or deleted in MySQL)
 #   - then_change_streamed_as_sse      (Then the change is captured by Debezium...)
+
+
+# No new step definitions required for REQ-260.
+# All steps for the "REQ-260 default behaviour" scenario are already implemented:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+
+
+# All steps for REQ-261 are already present in the existing steps file.
+# The following step functions cover the REQ-261 scenario completely:
+#   - given_mysql_source_via_debezium  (Given a MySQL source is connected via Debezium and Kafka)
+#   - when_row_changed_in_mysql        (When a row is inserted, updated, or deleted in MySQL)
+#   - then_change_streamed_as_sse      (Then the change is captured by Debezium, published to Kafka, consumed by Provisa, and streamed as an SSE event to subscribers)
+# No new step definitions are required.
