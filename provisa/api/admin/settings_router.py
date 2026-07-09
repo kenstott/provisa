@@ -103,6 +103,9 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
         "cdc": {  # REQ-931: Provisa-level inbound-CDC consumer group (receiver identity)
             "consumer_group_id": _eng("cdc_consumer_group_id"),
         },
+        # Materialization-store DSN — the admin UI reads its scheme to decide native-CDC
+        # availability for materialized views. Canonical write path is /admin/cache-storage.
+        "materialize": {"store_url": cfg.get("materialize_store_url") or ""},
         "sampling": {
             "default_sample_size": int(os.environ.get("PROVISA_SAMPLE_SIZE", "10000")),
         },
@@ -721,7 +724,8 @@ async def reload_query_engine_catalog(catalog: str = "otel"):
     REST API so all workers pick up the change via discovery; a native engine has no reloadable
     catalog.
     """
-    from provisa.api.app import _OPS_VIEWS, state
+    from provisa.api.app import state
+    from provisa.api.startup_seed import _OPS_VIEWS
 
     return await state.federation_engine.reload_catalog(
         catalog, _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
@@ -739,6 +743,11 @@ async def restart_query_engine(container: str | None = None):
     container = (
         container or os.environ.get("QUERY_ENGINE_CONTAINER") or state.federation_engine.name
     )
+    if not container:
+        raise HTTPException(
+            status_code=400,
+            detail="no container specified and none resolvable from QUERY_ENGINE_CONTAINER or the bound engine",
+        )
     try:
         proc = await asyncio.create_subprocess_exec(
             "docker",
@@ -765,7 +774,8 @@ async def restart_query_engine(container: str | None = None):
 @router.post("/admin/schema-clusters/recompute")
 async def recompute_schema_clusters():  # REQ-510
     """Rerun Louvain clustering on the schema graph and refresh schema_clusters."""
-    from provisa.api.app import state, _compute_and_store_clusters
+    from provisa.api.app import state
+    from provisa.api.startup_seed import _compute_and_store_clusters
 
     if not state.tenant_db:
         raise HTTPException(status_code=503, detail="Database not available")

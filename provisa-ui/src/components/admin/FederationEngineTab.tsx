@@ -61,7 +61,7 @@ export function FederationEngineTab() {
     setMsg("");
     setError("");
     try {
-      const body: Record<string, unknown> = { engine: selected };
+      const body: { engine: string } & Record<string, unknown> = { engine: selected };
       for (const f of currentEngine?.config_fields ?? []) {
         const v = values[f.config_key];
         if (f.type === "boolean") {

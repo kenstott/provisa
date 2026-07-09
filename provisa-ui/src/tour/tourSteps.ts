@@ -27,6 +27,19 @@ export interface TourStep {
   prep?: string;
   /** CSS selector of the element to highlight. */
   element: string;
+  /**
+   * When the highlighted element is a `<select>`, expand it into an inline list
+   * box (via the `size` attribute) so its options and `<optgroup>` headers are
+   * visible — a native dropdown can't be opened programmatically. The form is
+   * torn down on leaving the step, so no restore is needed.
+   */
+  expandSelect?: boolean;
+  /**
+   * Carry the NL-generated query for this branch into the explorer on navigate
+   * and auto-run it — mirrors the NL page's "Open in X" buttons. The runner maps
+   * the branch to the explorer's state key. Only meaningful with a `route`.
+   */
+  openBranch?: "sql" | "graphql" | "cypher" | "grpc" | "jsonapi" | "openapi";
   title: string;
   description: string;
   /**
@@ -48,6 +61,13 @@ const RELS_ADD = '[data-tour="rels-add"]';
 export const TOUR_STEPS: TourStep[] = [
   {
     route: "/sources",
+    element: ".navbar-brand",
+    title: "Welcome to Provisa",
+    description:
+      "At its core, Provisa is a query-language compiler: one federated model, served as GraphQL, SQL, Cypher, gRPC, JSON:API and REST — and spoken over wire protocols like Postgres (pgwire) and Neo4j (Bolt), so existing tools connect unchanged. (Yes — a modern GraphQL compiler included.) It all runs here on an embedded DuckDB; swap in a distributed engine like Trino or ClickHouse and the same model scales out to the largest enterprises. Let's take a look.",
+  },
+  {
+    route: "/sources",
     element: '[data-tour="nav-sources"]',
     title: "Start with Sources",
     description:
@@ -60,25 +80,26 @@ export const TOUR_STEPS: TourStep[] = [
       "New connections start with this button — PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and 30+ more.",
   },
   {
-    element: '[data-tour="sources-form"]',
-    title: "Connection details",
+    element: '[data-tour="sources-type"]',
+    expandSelect: true,
+    title: "30+ source types",
     description:
-      "Pick a connector, enter host / credentials, and Save. We'll cancel here — nothing is created during the tour.",
+      "One connector list spans every category: Subscriptions (gov data), RDBMS, Cloud DWs (Snowflake, BigQuery), Analytics/OLAP, Data Lakes, NoSQL, Graph, Files, REST/GraphQL/gRPC APIs, Streaming (Kafka), and enterprise SaaS like SharePoint & Splunk. Pick one, fill the connection, Save — we'll cancel for the demo.",
     clickBefore: SOURCES_ADD,
     clickAfterNext: SOURCES_ADD,
   },
   {
     route: "/tables",
     element: '[data-tour="nav-tables"]',
-    title: "Register tables",
+    title: "Everything becomes a table",
     description:
-      "Once a source is connected, you expose the tables (or collections, indices, endpoints) you want in the federated schema.",
+      "Whatever the source — a Mongo collection, a Kafka topic, a REST endpoint, a graph — Provisa decomposes it into a 2D dataset it calls a table. One uniform shape to query across every source. Tables can be grouped into domains, each owned by a data steward who oversees the model's quality as it evolves.",
   },
   {
     element: '[data-tour="tables-form"]',
     title: "Pick columns & policy",
     description:
-      "Choose a source, schema, and table, then select columns — with per-column masking, visibility, and aliases. Cancelling for the demo.",
+      "Choose a source, schema, and table, then select columns — with per-column role-based masking, visibility, and aliases.",
     clickBefore: TABLES_ADD,
     clickAfterNext: TABLES_ADD,
   },
@@ -87,7 +108,7 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="rels-add"]',
     title: "Connect the graph",
     description:
-      "Relationships link tables across sources — even across different databases — turning flat tables into a traversable graph.",
+      "Relationships link tables across sources — even across different databases — turning flat tables into a traversable graph. They can also be enforced, so you can hand people the freedom to explore with sensible guardrails.",
   },
   {
     element: '[data-tour="rels-form"]',
@@ -106,6 +127,27 @@ export const TOUR_STEPS: TourStep[] = [
     clickAfterNext: ".modal--erd .modal-close",
   },
   {
+    route: "/security/roles",
+    element: '.subnav a[href="/security/roles"]',
+    title: "Access control (RBAC)",
+    description:
+      "Registering a table sets per-column read and write access — that's role-based access control, wired straight into roles. The roles themselves are defined here on the Security page.",
+  },
+  {
+    route: "/security/rls",
+    element: '.subnav a[href="/security/rls"]',
+    title: "Row-level security",
+    description:
+      "Once roles exist, go finer: restrict which rows each role can see with attribute-based predicates — data-driven, enforced per row across every source and protocol.",
+  },
+  {
+    route: "/views",
+    element: '[data-tour="nav-model"]',
+    title: "Build your delivery pipeline",
+    description:
+      "Define views over any of these tables — ephemeral or materialized — and views over views. What makes this a real pipeline: liveness guarantees live on the tables and views themselves, so every view republishes as its inputs' freshness changes. Compose your whole delivery pipeline from views and commands — no separate ETL tool. Now let's query it.",
+  },
+  {
     route: "/nl",
     prep: "seedNl",
     element: ".nl-panels",
@@ -115,13 +157,15 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/sql",
+    openBranch: "sql",
     element: '.subnav a[href="/sql"]',
     title: "1 · SQL",
     description:
-      "The NL SQL branch, live in the SQL explorer. Standard SQL federated across every source — join Postgres to Mongo to a CSV in one statement.",
+      "The NL SQL branch, live in the SQL explorer. Standard SQL federated across every source — join Postgres to Mongo to a CSV in one statement. And the model's own metadata and every activity trace are themselves queryable tables here — join your audit log or lineage straight to live data.",
   },
   {
     route: "/query",
+    openBranch: "graphql",
     element: '.subnav a[href="/query"]',
     title: "2 · GraphQL",
     description:
@@ -129,6 +173,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/graph",
+    openBranch: "cypher",
     element: '.subnav a[href="/graph"]',
     title: "3 · Cypher",
     description:
@@ -136,6 +181,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/grpc",
+    openBranch: "grpc",
     element: '.subnav a[href="/grpc"]',
     title: "4 · gRPC",
     description:
@@ -143,6 +189,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/jsonapi",
+    openBranch: "jsonapi",
     element: '.subnav a[href="/jsonapi"]',
     title: "5 · JSON:API",
     description:
@@ -150,9 +197,17 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/openapi",
+    openBranch: "openapi",
     element: '.subnav a[href="/openapi"]',
     title: "6 · OpenAPI / REST",
     description:
-      "And a plain REST endpoint — `GET /data/rest/pet-store/inquiries` — described by OpenAPI. One model, six protocols. That's Provisa — enjoy!",
+      "And a plain REST endpoint — `GET /data/rest/pet-store/inquiries` — described by OpenAPI. One model, six protocols.",
+  },
+  {
+    route: "/admin/overview",
+    element: '[data-tour="nav-admin"]',
+    title: "Operate it",
+    description:
+      "The Admin pages run the platform: choose and configure your federation engine, manage encryption keys, and wire up auth providers. Full observability lives here for the platform owner too — and it can be redirected to any OpenTelemetry collector for enterprise-class trace management. That's Provisa — enjoy!",
   },
 ];

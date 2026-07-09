@@ -142,6 +142,21 @@ const PREP_ACTIONS: Record<string, () => void> = {
   },
 };
 
+// Maps a tour step's `openBranch` to the explorer route's location-state key and the
+// canned query to inject — mirrors NlPage's EXPLORER_ROUTES / openInExplorer so the
+// tour lands on the explorer with the demo query pre-filled and auto-run.
+const BRANCH_NAV: Record<
+  NonNullable<TourStep["openBranch"]>,
+  { stateKey: string; query: string }
+> = {
+  sql: { stateKey: "sql", query: NL_DEMO_BRANCHES.sql.query },
+  graphql: { stateKey: "query", query: NL_DEMO_BRANCHES.graphql.query },
+  cypher: { stateKey: "query", query: NL_DEMO_BRANCHES.cypher.query },
+  grpc: { stateKey: "grpcMethod", query: NL_DEMO_BRANCHES.grpc.query },
+  jsonapi: { stateKey: "jsonapiUrl", query: NL_DEMO_BRANCHES.jsonapi.query },
+  openapi: { stateKey: "openApiUrl", query: NL_DEMO_BRANCHES.openapi.query },
+};
+
 /** Restore any state a prep action stashed. No-op if nothing was seeded. */
 function cleanupPrep(): void {
   const raw = localStorage.getItem(NL_BACKUP_KEY);
@@ -266,7 +281,14 @@ export function TourProvider({ children }: { children: ReactNode }) {
         if (step.prep) PREP_ACTIONS[step.prep]?.();
         if (step.route && step.route !== currentPathRef.current) {
           currentPathRef.current = step.route;
-          navigate(step.route);
+          if (step.openBranch) {
+            // Land on the explorer with the branch's demo query pre-filled + auto-run,
+            // exactly as NlPage's "Open in X" button does.
+            const { stateKey, query } = BRANCH_NAV[step.openBranch];
+            navigate(step.route, { state: { [stateKey]: query, autoRun: true } });
+          } else {
+            navigate(step.route);
+          }
         }
         if (step.clickBefore) {
           const trigger = await waitForElement(step.clickBefore);
@@ -274,6 +296,12 @@ export function TourProvider({ children }: { children: ReactNode }) {
         }
         const element = await waitForElement(step.element);
         if (cancelled || !driverRef.current) return;
+        // Expand a native <select> into an inline list box so its options and
+        // <optgroup> headers are visible (a dropdown can't be opened
+        // programmatically). The form is torn down on leave, so no restore.
+        if (step.expandSelect && element instanceof HTMLSelectElement) {
+          element.size = Math.min(12, element.options.length);
+        }
         element.scrollIntoView({ block: "center", behavior: "smooth" });
 
         const isLast = i === TOUR_STEPS.length - 1;

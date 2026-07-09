@@ -338,6 +338,9 @@ export interface PlatformSettings {
   cdc: {
     consumer_group_id: string;
   };
+  materialize: {
+    store_url: string;
+  };
 }
 
 export async function fetchSettings(): Promise<PlatformSettings> {
