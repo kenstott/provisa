@@ -2200,6 +2200,15 @@ def _start_scheduler(_log: logging.Logger) -> None:
         scheduler.start()
         state._scheduler = scheduler
         _log.info("APScheduler started")
+        # Wire the event loop onto the same scheduler (REQ-941) — best-effort, never bricks boot.
+        try:
+            import asyncio
+
+            from provisa.events.app_wiring import wire_event_loop
+
+            asyncio.ensure_future(wire_event_loop(scheduler, state=state, log=_log))
+        except (ImportError, RuntimeError):
+            _log.exception("event loop wiring could not be scheduled")
     except Exception:
         _log.exception("APScheduler startup failed")
 

@@ -113,12 +113,15 @@ def specs_from_config(
         )
 
     for mv in mvs:
+        cols = mv_columns(mv)
+        if not cols:
+            continue  # output columns not resolvable yet (live introspection) — bound on a later pass
         node = f"{mv.target_schema}.{mv.target_table}"
         handle = make_mv_generate(
             store_dsn,
             schema=mv.target_schema,
             table=mv.target_table,
-            columns=mv_columns(mv),
+            columns=cols,
             run_query=mv_run_query(mv),
         )
         specs.append(

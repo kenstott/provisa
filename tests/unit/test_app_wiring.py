@@ -1,0 +1,88 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+
+"""REQ-941: wire_event_loop — best-effort boot wiring of the event loop onto the scheduler."""
+
+from __future__ import annotations
+
+import logging
+from types import SimpleNamespace
+
+import pytest
+
+from provisa.events.app_wiring import wire_event_loop
+from provisa.federation.engine import build_duckdb_engine
+
+_LOG = logging.getLogger("test")
+
+
+class _Sched:
+    def __init__(self):
+        self.jobs: list[str] = []
+
+    def add_job(self, fn, trigger=None, id=None, replace_existing=None):
+        self.jobs.append(id)
+
+
+def _col(name, dt="bigint", pk=False):
+    return SimpleNamespace(name=name, data_type=dt, is_primary_key=pk)
+
+
+def _state(*, ready=True):
+    if not ready:
+        return SimpleNamespace(tenant_db=None, federation_engine=None, config=None)
+    engine = SimpleNamespace(
+        engine=build_duckdb_engine(),
+        materialize_store_dsn=lambda: "sqlite://",
+    )
+    config = SimpleNamespace(
+        sources=[
+            SimpleNamespace(id="api", type=SimpleNamespace(value="openapi"), change_signal="ttl")
+        ],
+        tables=[
+            SimpleNamespace(
+                source_id="api",
+                schema_name="default",
+                table_name="events",
+                change_signal=None,
+                watermark_column=None,
+                live=None,
+                columns=[_col("id", "bigint", pk=True)],
+                cache_ttl=300,
+            )
+        ],
+    )
+    registry = SimpleNamespace(get_enabled=lambda: [])
+    return SimpleNamespace(
+        tenant_db=object(), federation_engine=engine, config=config, mv_registry=registry
+    )
+
+
+@pytest.mark.asyncio
+async def test_skips_when_prerequisites_missing():
+    sched = _Sched()
+    n = await wire_event_loop(sched, state=_state(ready=False), log=_LOG)
+    assert n == 0 and sched.jobs == []  # no db/engine/config → no-op, boot unharmed
+
+
+@pytest.mark.asyncio
+async def test_registers_source_node_and_runtime_jobs():
+    sched = _Sched()
+    n = await wire_event_loop(sched, state=_state(), log=_LOG)
+    assert n == 1  # the one MATERIALIZED source table (openapi) → a source node
+    assert "events:tick" in sched.jobs and "events:reaper" in sched.jobs
+
+
+@pytest.mark.asyncio
+async def test_never_raises_into_boot():
+    # a malformed state (missing attrs) must be swallowed, not propagated
+    n = await wire_event_loop(
+        _Sched(),
+        state=SimpleNamespace(
+            tenant_db=object(), federation_engine=SimpleNamespace(), config=SimpleNamespace()
+        ),
+        log=_LOG,
+    )
+    assert n == 0
