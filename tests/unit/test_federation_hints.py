@@ -86,7 +86,7 @@ class TestExecuteTrinoSessionHints:
 
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.description = [("id",)]
+        mock_cursor.description = [("id", "bigint", None, None, None, None, None)]
         mock_cursor.fetchall.return_value = [(1,)]
         mock_conn.cursor.return_value = mock_cursor
 
@@ -108,7 +108,7 @@ class TestExecuteTrinoSessionHints:
 
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_cursor.description = [("id",)]
+        mock_cursor.description = [("id", "bigint", None, None, None, None, None)]
         mock_cursor.fetchall.return_value = [(1,)]
         mock_conn.cursor.return_value = mock_cursor
 

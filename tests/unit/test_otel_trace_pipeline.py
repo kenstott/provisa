@@ -43,7 +43,10 @@ class TestExecuteTrinoSpanEmission:
 
     def _make_conn(self):
         cur = MagicMock()
-        cur.description = [("id",), ("name",)]
+        cur.description = [
+            ("id", "bigint", None, None, None, None, None),
+            ("name", "varchar", None, None, None, None, None),
+        ]
         cur.fetchall.return_value = [(1, "a")]
         conn = MagicMock()
         conn.cursor.return_value = cur

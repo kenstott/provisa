@@ -59,7 +59,7 @@ def specs_from_config(
     engine: Any,
     store_dsn: str,
     source_fetch: Callable[[Any, Any], Any],
-    mv_columns: Callable[[Any], list[tuple[str, str]]],
+    mv_columns: Callable[[Any], list[tuple[str, str]] | None],
     mv_run_query: Callable[[Any], Any],
 ) -> list[NodeSpec]:
     """Bind the config to :class:`NodeSpec`s (REQ-941). A MATERIALIZED source table (``federate`` ==

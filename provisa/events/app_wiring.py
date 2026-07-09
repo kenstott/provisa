@@ -13,13 +13,13 @@ Called once after the scheduler starts: builds the node specs from config + the 
 the processors, and registers the runtime jobs (tick / reaper / poll) on the embedded APScheduler.
 Fully best-effort — any failure logs and returns, never bricks boot (the app runs without the loop).
 
-Two live collaborators are still per-source/per-engine follow-ups and are declared here explicitly:
+One live collaborator is still a per-adapter follow-up and is declared here explicitly:
 - ``source_fetch`` — a source's change-event → its current rows. No generic primitive exists (each
   adapter is per-operation), so this is stubbed (logs once, lands nothing) pending the per-adapter
   loader. Source *nodes* are registered; they just land nothing until the loader is wired.
-- ``mv_columns`` — an MV's output column types, which are not in the model and need a live engine
-  introspection of the SELECT. Returns None for now, so MV nodes are skipped until that lands.
-``mv_run_query`` (the engine SELECT) and everything else are real.
+``mv_columns`` is now real: each MV's output columns come from a LIMIT-0 probe of its SELECT (the
+engine returns typed columns), translated native→IR. ``mv_run_query`` (the engine SELECT) and
+everything else are real.
 """
 
 # complexity-gate: allow-ble=1 reason="boot boundary: wire_event_loop must never propagate into app startup — it logs and the app runs without the loop"
@@ -78,8 +78,39 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any) -> int:
 
             return _fetch
 
-        def mv_columns(_mv: Any) -> list[tuple[str, str]] | None:
-            return None  # live output-column introspection pending — MV nodes skipped until then
+        # Pre-introspect each MV's output columns via a LIMIT-0 probe: the engine returns typed
+        # columns (QueryResult.column_types), which we translate native→IR (REQ-846). Done here
+        # (async) so the sync mv_columns callable below is a pure lookup. Best-effort per MV — one
+        # whose sources are not yet reachable is skipped and binds on a later boot.
+        from provisa.core.ir_types import to_ir
+
+        _mv_cols: dict[str, list[tuple[str, str]]] = {}
+        _dialect = engine.engine.dialect
+        for _m in mvs:
+            _sql = getattr(_m, "sql", None)
+            if not _sql:
+                continue
+            _key = f"{_m.target_schema}.{_m.target_table}"
+            try:
+                _probe = await engine.execute_engine(f"SELECT * FROM ({_sql}) AS _mv_probe LIMIT 0")
+            except Exception:
+                log.warning("event loop: MV %s not introspectable yet — skipping", _key)
+                continue
+            if _probe.column_types is None:
+                log.warning(
+                    "event loop: engine returned no column types for MV %s — skipping", _key
+                )
+                continue
+            try:
+                _mv_cols[_key] = [
+                    (n, to_ir(t, _dialect))
+                    for n, t in zip(_probe.column_names, _probe.column_types)
+                ]
+            except ValueError:
+                log.warning("event loop: MV %s has an unmapped output type — skipping", _key)
+
+        def mv_columns(mv: Any) -> list[tuple[str, str]] | None:
+            return _mv_cols.get(f"{mv.target_schema}.{mv.target_table}")
 
         def mv_run_query(mv: Any) -> Any:
             async def _run() -> list[dict]:

@@ -90,6 +90,16 @@ def _alive(conn: trino.dbapi.Connection) -> bool:
         return False
 
 
+def _describe(cur: trino.dbapi.Cursor) -> tuple[list[str], list[str]]:
+    """Split a DBAPI ``cursor.description`` into (column_names, column_type_codes).
+
+    Each description row is (name, type_code, ...); the type_code is the Trino type name, captured
+    for downstream MV output introspection to translate to IR (REQ-846) without a second round-trip.
+    """
+    desc = cur.description or []
+    return [d[0] for d in desc], [str(d[1]) for d in desc]
+
+
 def _close_quietly(conn: trino.dbapi.Connection | None) -> None:
     """Best-effort close of a connection execute_trino owns (opened from conn_kwargs)."""
     if conn is None:
@@ -202,7 +212,7 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
                     else:
                         cur.execute(exec_sql)
                     rows = cur.fetchall()
-                    column_names = [desc[0] for desc in cur.description] if cur.description else []
+                    column_names, column_types = _describe(cur)
 
                     span.set_attribute("db.row_count", len(rows))
                     log.info("[EXEC TRINO] rows=%d", len(rows))
@@ -213,7 +223,9 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
                                 for k, v in _attrs.items():
                                     _child.set_attribute(k, v)
 
-                    return QueryResult(rows=rows, column_names=column_names)
+                    return QueryResult(
+                        rows=rows, column_names=column_names, column_types=column_types
+                    )
 
                 except Exception as exc:
                     from provisa.executor.errors import FederationError

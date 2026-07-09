@@ -318,7 +318,10 @@ def when_query_executed_via_federation(shared_data: dict) -> None:
     # so we can observe exactly which statements are issued — and in what order.
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
-    mock_cursor.description = [("id",), ("name",)]
+    mock_cursor.description = [
+        ("id", "bigint", None, None, None, None, None),
+        ("name", "varchar", None, None, None, None, None),
+    ]
     mock_cursor.fetchall.return_value = [(1, "alice")]
     mock_conn.cursor.return_value = mock_cursor
 
@@ -489,7 +492,10 @@ def then_comment_stripped_and_translated_before_forwarding(shared_data: dict) ->
     # -----------------------------------------------------------------------
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
-    mock_cursor.description = [("id",), ("name",)]
+    mock_cursor.description = [
+        ("id", "bigint", None, None, None, None, None),
+        ("name", "varchar", None, None, None, None, None),
+    ]
     mock_cursor.fetchall.return_value = [(42, "bob")]
     mock_conn.cursor.return_value = mock_cursor
 

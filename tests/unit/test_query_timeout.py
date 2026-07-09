@@ -38,7 +38,7 @@ def _clean_limits(monkeypatch):
 class _FakeCursor:
     def __init__(self) -> None:
         self.executed: list[str] = []
-        self.description = [("n",)]
+        self.description = [("n", "integer", None, None, None, None, None)]
 
     def execute(self, sql, params=None):  # noqa: D401
         self.executed.append(sql)

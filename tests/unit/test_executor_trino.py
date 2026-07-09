@@ -64,7 +64,11 @@ class _FakeCursor:
         self._cols = cols or []
         self.last_sql: str | None = None
         self.last_params = None
-        self.description = [(c,) for c in self._cols]
+        # Mirror the Trino DBAPI description shape: (name, type_code, display_size,
+        # internal_size, precision, scale, null_ok). execute_trino reads desc[0]/desc[1].
+        self.description: list | None = [
+            (c, "varchar", None, None, None, None, None) for c in self._cols
+        ]
 
     def execute(self, sql, params=None):
         self.last_sql = sql
@@ -145,7 +149,7 @@ class TestExecuteTrinoParameterSubstitution:
         executed: list[str] = []
 
         class _TrackingCursor:
-            description = [("n",)]
+            description = [("n", "integer", None, None, None, None, None)]
 
             def execute(self, sql, params=None):
                 executed.append(sql)

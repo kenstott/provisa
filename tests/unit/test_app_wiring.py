@@ -22,7 +22,7 @@ class _Sched:
     def __init__(self):
         self.jobs: list[str] = []
 
-    def add_job(self, fn, trigger=None, id=None, replace_existing=None):
+    def add_job(self, fn, trigger=None, id="", replace_existing=None):
         self.jobs.append(id)
 
 
@@ -73,6 +73,51 @@ async def test_registers_source_node_and_runtime_jobs():
     n = await wire_event_loop(sched, state=_state(), log=_LOG)
     assert n == 1  # the one MATERIALIZED source table (openapi) → a source node
     assert "events:tick" in sched.jobs and "events:reaper" in sched.jobs
+
+
+def _state_with_mv(*, column_types):
+    """State with one enabled MV; its engine probe returns typed output columns."""
+    from provisa.executor.result import QueryResult
+
+    async def _execute_engine(sql, *a, **k):
+        return QueryResult(rows=[], column_names=["d", "n"], column_types=column_types)
+
+    engine = SimpleNamespace(
+        engine=build_duckdb_engine(),
+        materialize_store_dsn=lambda: "sqlite://",
+        execute_engine=_execute_engine,
+    )
+    mv = SimpleNamespace(
+        target_schema="analytics",
+        target_table="daily",
+        sql="SELECT day AS d, count(*) AS n FROM orders GROUP BY day",
+        freshness_mode="ttl",
+        refresh_interval=600,
+    )
+    return SimpleNamespace(
+        tenant_db=object(),
+        federation_engine=engine,
+        config=SimpleNamespace(sources=[], tables=[]),
+        mv_registry=SimpleNamespace(get_enabled=lambda: [mv]),
+    )
+
+
+@pytest.mark.asyncio
+async def test_mv_columns_introspected_and_node_registered():
+    # LIMIT-0 probe yields typed columns → translated native→IR → the MV node registers.
+    n = await wire_event_loop(
+        _Sched(), state=_state_with_mv(column_types=["date", "bigint"]), log=_LOG
+    )
+    assert n == 1  # the one MV node
+
+
+@pytest.mark.asyncio
+async def test_mv_with_unmapped_output_type_skipped():
+    # an unmapped output type is an IR vocabulary gap → the MV is skipped (not silently defaulted).
+    n = await wire_event_loop(
+        _Sched(), state=_state_with_mv(column_types=["date", "geometry"]), log=_LOG
+    )
+    assert n == 0  # no node — its columns did not resolve to IR
 
 
 @pytest.mark.asyncio
