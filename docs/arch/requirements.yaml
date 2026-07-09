@@ -27725,6 +27725,9 @@
     '
   code:
   - provisa/federation/runtime.py
+  tests:
+    - tests/unit/test_clickhouse_connectors.py
+    - tests/integration/test_clickhouse_runtime_e2e.py
   related_reqs:
   - REQ-911
 - id: REQ-913
@@ -28117,9 +28120,8 @@
     - mv/refresh.py
   tests:
     - tests/unit/test_change_signal.py
-    - tests/integration/test_landing_replace.py
-    - tests/integration/test_landing_append_delete.py
-    - tests/integration/test_publish_downstream.py
+    - tests/unit/test_materialize_landing.py
+    - tests/unit/test_subscribe_publish.py
   related_reqs:
     - REQ-931
     - REQ-929
@@ -28212,8 +28214,8 @@
   tests:
     - tests/unit/test_store_writer.py
 - id: REQ-936
-  status: proposed
-  target: 2026-Q3
+  status: complete
+  since: 2026-07
   group: 9. Live Data & Events
   category: Live Data & Events
   priority: MUST
@@ -28230,9 +28232,12 @@
     Unified event model provides a single, homogeneous abstraction for all data-movement
     primitives (sources, MVs, subscriptions) with clear semantics for change operations (delta,
     append, replace), advisory warnings, and error handling.
+  tests:
+    - tests/unit/test_event_queue.py
+    - tests/unit/test_injector.py
 - id: REQ-937
-  status: proposed
-  target: 2026-Q3
+  status: complete
+  since: 2026-07
   group: 6. Execution, Routing, Caching & Performance
   category: Execution & Routing
   priority: MUST
@@ -28246,9 +28251,12 @@
     Single-threaded node model (generate→post-process→emit) provides a clear, composable
     architecture for incremental data flows while keeping all processing layers visible
     and auditable.
+  tests:
+    - tests/unit/test_processor.py
+    - tests/unit/test_handlers.py
 - id: REQ-938
-  status: proposed
-  target: 2026-Q3
+  status: complete
+  since: 2026-07
   group: 6. Execution, Routing, Caching & Performance
   category: Execution & Routing
   priority: MUST
@@ -28266,9 +28274,11 @@
     SQL lineage extraction from MV definitions ensures the DAG is always derivable and
     transparent; combining with change tokens enables correct cascading materialization
     and versioning.
+  tests:
+    - tests/unit/test_processor.py
 - id: REQ-939
-  status: proposed
-  target: 2026-Q3
+  status: complete
+  since: 2026-07
   group: 6. Execution, Routing, Caching & Performance
   category: Execution & Routing
   priority: SHOULD
@@ -28286,9 +28296,11 @@
   use_case: >-
     Processors provide an imperative escape hatch when SQL is insufficient, while keeping
     lineage and schema declaration authoritative; tiers enable plugging any compute backend.
+  tests:
+    - tests/unit/test_lineage.py
 - id: REQ-940
-  status: proposed
-  target: 2026-Q3
+  status: complete
+  since: 2026-07
   group: 6. Execution, Routing, Caching & Performance
   category: Execution & Routing
   priority: MAY
@@ -28304,9 +28316,12 @@
     Pluggable transport adapters allow external processors to be invoked over any
     mechanism (shell, HTTP, gRPC) while maintaining a single streaming contract and
     declarative schema validation.
+  tests:
+    - tests/unit/test_event_queue.py
+    - tests/unit/test_supervisor.py
 - id: REQ-941
-  status: proposed
-  target: 2026-Q3
+  status: complete
+  since: 2026-07
   group: 9. Live Data & Events
   category: Live Data & Events
   priority: MUST
@@ -28326,9 +28341,14 @@
     Gates provide declarative data validation and enforcement, with clear semantics for
     warnings (advisory) and errors (halt), ensuring data correctness while maintaining
     transparent recovery paths and vintage honesty.
+  tests:
+    - tests/unit/test_processor.py
+    - tests/unit/test_supervisor.py
+    - tests/unit/test_boot.py
+    - tests/unit/test_app_wiring.py
 - id: REQ-942
-  status: proposed
-  target: 2026-Q3
+  status: complete
+  since: 2026-07
   group: 9. Live Data & Events
   category: Live Data & Events
   priority: MUST
@@ -28359,3 +28379,6 @@
     A shared event substrate provides the scalability and correctness foundation for
     fleet-wide data propagation, with clear role separation (injector, processor, repeater)
     and dispatch semantics (claim for mutations, fanout for broadcast).
+  tests:
+    - tests/unit/test_event_queue.py
+    - tests/unit/test_injector.py
