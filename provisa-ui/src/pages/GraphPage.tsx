@@ -37,9 +37,22 @@ import { tableLabel as dbTableLabel } from "../naming";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function GraphPage() {
-  const { role } = useAuth();
+  const { role, loading: authLoading } = useAuth();
   const { checkedDomains } = useDomainFilter();
   const location = useLocation();
+  // A query forwarded from NL "Open in Cypher" or the guided tour, captured ONCE at mount.
+  // Consumed after auth resolves so it runs exactly once with the correct role (see below).
+  const [forwardedQuery] = useState<string | null>(() => {
+    const st = location.state as { query?: string; autoRun?: boolean } | null;
+    if (st?.query && st.autoRun) return st.query;
+    const ls = localStorage.getItem("provisa.graph.pending_query");
+    if (ls) {
+      localStorage.removeItem("provisa.graph.pending_query");
+      return ls;
+    }
+    return null;
+  });
+  const forwardedRunRef = useRef(false);
   const [frames, setFrames] = useState<FrameData[]>(graphState.frames);
   const [history, setHistory] = useState<string[]>(graphState.history);
   const [historyQuery, setHistoryQuery] = useState<string | null>(
@@ -341,22 +354,15 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
 
   // Auto-execute a query forwarded from another page (e.g. NL "Open in Cypher", or the Cypher panel).
   useEffect(() => {
-    // NL forwards the query via navigate state with autoRun; run it on arrival.
-    const st = location.state as { query?: string; autoRun?: boolean } | null;
-    if (st?.query && st.autoRun) {
-      setHistoryQuery(st.query);
-      runQuery(st.query);
-      return;
-    }
-    const pending = localStorage.getItem("provisa.graph.pending_query");
-    if (pending) {
-      localStorage.removeItem("provisa.graph.pending_query");
-      setHistoryQuery(pending);
-      runQuery(pending);
-    }
-    // Run once on mount for the forwarded query; deps intentionally exclude location.state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runQuery]);
+    // Run a query forwarded from NL "Open in Cypher" / the guided tour. `runQuery` depends
+    // on `role`, which resolves asynchronously — running on mount would fire with no role
+    // (wrong/empty result) and again when role loads (a duplicate frame). Wait until auth
+    // has resolved, then run exactly once with the correct role.
+    if (authLoading || forwardedRunRef.current || !forwardedQuery) return;
+    forwardedRunRef.current = true;
+    setHistoryQuery(forwardedQuery);
+    runQuery(forwardedQuery);
+  }, [runQuery, authLoading, forwardedQuery]);
 
   const closeFrame = useCallback((id: string) => {
     setFrames((f) => {

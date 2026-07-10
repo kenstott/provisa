@@ -1,0 +1,54 @@
+/* Copyright (c) 2026 Kenneth Stott
+ * Business Source License 1.1 — see LICENSE.
+ *
+ * Rich-content styling for the guided tour. driver.js renders popover descriptions as
+ * HTML (innerHTML), so tour steps may use <ul>/<li>, <strong>, <kbd>, <code>, <img> and
+ * unicode. These rules keep that content tidy and on-brand inside the popover. */
+
+.driver-popover-description ul {
+  margin: 8px 0 2px;
+  padding-left: 18px;
+}
+.driver-popover-description li {
+  margin: 3px 0;
+}
+.driver-popover-description li::marker {
+  color: #10b981; /* emerald signal accent */
+}
+.driver-popover-description strong {
+  color: #4f46e5; /* indigo */
+  font-weight: 600;
+}
+.driver-popover-description code,
+.driver-popover-description kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: 4px;
+  padding: 0.05em 0.4em;
+}
+.driver-popover-description kbd {
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-bottom-width: 2px;
+}
+.driver-popover-description img {
+  display: block;
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 10px 0 2px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+/* Inline category chips (an alternative to bullets for compact lists). */
+.driver-popover-description .tour-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 8px 0 2px;
+}
+.driver-popover-description .tour-tags span {
+  font-size: 0.8em;
+  background: rgba(16, 185, 129, 0.12);
+  color: #0f766e;
+  border-radius: 999px;
+  padding: 2px 9px;
+}

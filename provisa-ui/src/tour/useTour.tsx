@@ -21,6 +21,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { driver, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
+import "./tour.css";
 import { TOUR_STEPS, type TourStep } from "./tourSteps";
 
 const TOUR_SEEN_KEY = "provisa_tour_seen";

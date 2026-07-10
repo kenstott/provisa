@@ -64,7 +64,7 @@ export const TOUR_STEPS: TourStep[] = [
     element: ".navbar-tour-btn",
     title: "Welcome — let's take the tour",
     description:
-      "This compass button starts the tour, and it's how you come back to it. Leave anytime — just click the app or press Esc — and pick up right here whenever you like. Quick preview of where we're headed: Provisa is a query-language compiler — one federated model served as GraphQL, SQL, Cypher, gRPC, JSON:API and REST, and spoken over wire protocols like Postgres (pgwire) and Neo4j (Bolt) so existing tools connect unchanged. It runs here on an embedded DuckDB; swap in Trino or ClickHouse and the same model scales to the largest enterprises. Ready? Let's go.",
+      "This compass button starts the tour, and it's how you come back to it. Leave anytime — just click the app or press <kbd>Esc</kbd> — and pick up right here whenever you like. Quick preview of where we're headed: Provisa is a governed query-language compiler for a scalable, federated data estate — one governed model served as GraphQL, SQL, Cypher, gRPC, JSON:API and REST, and spoken over wire protocols like Postgres (pgwire) and Neo4j (Bolt) so existing tools connect unchanged. The desktop build is razor-thin — embedded DuckDB, no Docker, runs on almost anything — so you can build and validate your changes locally. Want to get closer to production reality and investigate scale-out? We ship all the Docker files, so you can spin up the full Trino or ClickHouse stack (with observability) right on your machine. Already run serious infrastructure? Develop locally but point straight at your enterprise engines and stores. Then promote the exact same model through CI/CD to scale to the largest enterprises — no rewrite. Ready? Let's go.",
   },
   {
     route: "/sources",
@@ -84,7 +84,18 @@ export const TOUR_STEPS: TourStep[] = [
     expandSelect: true,
     title: "30+ source types",
     description:
-      "One connector list spans every category: Subscriptions (gov data), RDBMS, Cloud DWs (Snowflake, BigQuery), Analytics/OLAP, Data Lakes, NoSQL, Graph, Files, REST/GraphQL/gRPC APIs, Streaming (Kafka), and enterprise SaaS like SharePoint & Splunk. Pick one, fill the connection, Save.",
+      "One connector list spans every category:" +
+      "<ul>" +
+      "<li><strong>Databases</strong> — PostgreSQL, MySQL, Oracle, SQL Server</li>" +
+      "<li><strong>Cloud warehouses</strong> — Snowflake, BigQuery, Databricks</li>" +
+      "<li><strong>Analytics / OLAP</strong> — ClickHouse, Druid</li>" +
+      "<li><strong>Lakes &amp; files</strong> — Iceberg, Parquet, CSV, JSON</li>" +
+      "<li><strong>NoSQL &amp; graph</strong> — MongoDB, Neo4j</li>" +
+      "<li><strong>APIs</strong> — REST, GraphQL, gRPC</li>" +
+      "<li><strong>Streaming</strong> — Kafka</li>" +
+      "<li><strong>Enterprise SaaS</strong> — SharePoint, Splunk · plus government data subscriptions</li>" +
+      "</ul>" +
+      "Pick one, fill the connection, Save.",
     clickBefore: SOURCES_ADD,
     clickAfterNext: SOURCES_ADD,
   },
@@ -99,7 +110,7 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="tables-form"]',
     title: "Pick columns & policy",
     description:
-      "Choose a source, schema, and table, then select columns — with per-column role-based masking, visibility, and aliases.",
+      "Choose a source, schema, and table, then select columns — with per-column role-based masking, visibility, and aliases. Once everything is a table, governance becomes tractable: one uniform surface to apply policy on, column by column, across every source.",
     clickBefore: TABLES_ADD,
     clickAfterNext: TABLES_ADD,
   },
