@@ -95,6 +95,7 @@ from provisa.api.admin._table_ops import (
 _tracer = _get_tracer(__name__)
 
 
+from provisa.api.admin.discovery_resilience import discovery_fallback  # noqa: E402
 from provisa.api.admin._row_mappers import (  # noqa: E402
     _parse_mapping_json,
     _cdc_model_from_input,
@@ -354,14 +355,16 @@ class Query:  # REQ-021, REQ-042
         if source_type not in SOURCE_TO_CONNECTOR:
             return []
         catalog = source_to_catalog(source_id)
-        try:
+        schemas: list[str] = []
+        with discovery_fallback(f"engine schemata for {source_id!r}"):
             res = await state.federation_engine.execute_engine(
                 f'SELECT schema_name FROM "{catalog}".information_schema.schemata '
                 f"ORDER BY schema_name"
             )
-            return [row[0].lower() for row in res.rows if not is_provisa_internal(row[0].lower())]
-        except Exception:
-            return []
+            schemas = [
+                row[0].lower() for row in res.rows if not is_provisa_internal(row[0].lower())
+            ]
+        return schemas
 
     @strawberry.field
     async def available_tables(
@@ -382,8 +385,9 @@ class Query:  # REQ-021, REQ-042
         if source_type == "openapi":
             await _ensure_openapi_spec(source_id)
         pool = await _get_pool()
+        result = None
         async with pool.acquire() as config_conn:
-            try:
+            with discovery_fallback(f"native tables for {source_id!r}"):
                 result = await native_tables(
                     source_id,
                     source_type,
@@ -392,8 +396,6 @@ class Query:  # REQ-021, REQ-042
                     config_conn,
                     state,
                 )
-            except Exception:
-                result = None
         if result is not None:
             return result
         # the engine fallback
@@ -401,20 +403,20 @@ class Query:  # REQ-021, REQ-042
 
         catalog = source_to_catalog(source_id)
         skip = PROVISA_INTERNAL_TABLES if schema_name.lower() == "public" else frozenset()
-        try:
+        tables: list[AvailableTableType] = []
+        with discovery_fallback(f"engine tables for {source_id!r}"):
             res = await state.federation_engine.execute_engine(
                 f'SELECT table_name FROM "{catalog}".information_schema.tables '
                 f"WHERE lower(table_schema) = lower('{schema_name}') "
                 f"AND table_type = 'BASE TABLE' "
                 f"ORDER BY table_name"
             )
-            return [
+            tables = [
                 AvailableTableType(name=row[0], comment=None)
                 for row in res.rows
                 if row[0].lower() not in skip
             ]
-        except Exception:
-            return []
+        return tables
 
     @strawberry.field
     async def available_functions(
@@ -452,16 +454,16 @@ class Query:  # REQ-021, REQ-042
             cols = await _govdata_columns(source_id, schema_name, table_name, None)
             return [c.name for c in cols]
         catalog = source_to_catalog(source_id)
-        try:
+        columns: list[str] = []
+        with discovery_fallback(f"engine columns for {source_id!r}.{schema_name}.{table_name}"):
             res = await state.federation_engine.execute_engine(
                 f'SELECT column_name FROM "{catalog}".information_schema.columns '
                 f"WHERE table_schema = '{schema_name}' "
                 f"AND table_name = '{table_name}' "
                 f"ORDER BY ordinal_position"
             )
-            return [row[0] for row in res.rows]
-        except Exception:
-            return []
+            columns = [row[0] for row in res.rows]
+        return columns
 
     @strawberry.field
     async def available_columns_metadata(
@@ -523,7 +525,10 @@ class Query:  # REQ-021, REQ-042
                 for c in cols
             ]
         catalog = source_to_catalog(source_id)
-        try:
+        cols_meta: list[AvailableColumnType] = []
+        with discovery_fallback(
+            f"engine column metadata for {source_id!r}.{schema_name}.{table_name}"
+        ):
             # PK columns + column metadata vithe engine terminal (information_schema).
             pk_res = await state.federation_engine.execute_engine(
                 f"SELECT kcu.column_name "
@@ -543,14 +548,13 @@ class Query:  # REQ-021, REQ-042
                 f"AND table_name = '{table_name}' "
                 f"ORDER BY ordinal_position"
             )
-            return [
+            cols_meta = [
                 AvailableColumnType(
                     name=row[0], data_type=row[1], comment=row[2], is_primary_key=row[0] in pk_cols
                 )
                 for row in col_res.rows
             ]
-        except Exception:
-            return []
+        return cols_meta
 
     @strawberry.field
     async def suggest_table_alias(self, table_name: str, domain_id: str, source_id: str) -> str:
@@ -630,7 +634,7 @@ class Query:  # REQ-021, REQ-042
 
         store = state.response_cache_store
         if isinstance(store, RedisCacheStore):
-            try:
+            with discovery_fallback("redis cache stats"):
                 assert store._redis is not None
                 info = await store._redis.info("stats")
                 return CacheStatsType(
@@ -639,8 +643,6 @@ class Query:  # REQ-021, REQ-042
                     miss_count=info.get("keyspace_misses", 0),
                     store_type="redis",
                 )
-            except Exception:
-                pass
         return CacheStatsType(total_keys=0, hit_count=0, miss_count=0, store_type="noop")
 
     # ── Admin: System Health ──
@@ -668,15 +670,13 @@ class Query:  # REQ-021, REQ-042
         from apscheduler.job import Job as _APSJob
 
         job_map: dict[str, _APSJob] = {}
-        try:
+        with discovery_fallback("scheduler jobs"):
             from provisa.api.app import state
 
             scheduler = getattr(state, "scheduler", None)
             if scheduler is not None:
                 for job in scheduler.get_jobs():
                     job_map[job.id] = job
-        except Exception:
-            pass
 
         result = []
         for t in triggers:
@@ -800,10 +800,7 @@ class Query:  # REQ-021, REQ-042
             )
             return result
         except Exception as e:
-            print(f"[DEBUG] Exception: {e}", file=sys.stderr, flush=True)
-            import traceback
-
-            traceback.print_exc(file=sys.stderr)
+            logging.getLogger(__name__).exception("generateColumnDescription failed: %s", e)
             return ""
 
 
@@ -851,6 +848,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         try:
             await _add_source_pool(state, input)
         except Exception as _conn_err:
+            logging.getLogger(__name__).exception(
+                "create_source: connection validation failed for %r", input.id
+            )
             return MutationResult(
                 success=False,
                 message=f"Source {input.id!r}: connection validation failed: {_conn_err}",
@@ -942,13 +942,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     user=input.username,
                     password=resolve_secrets(input.password),
                 )
-            except Exception as _pool_err:
-                import logging as _log
-
-                _log.getLogger(__name__).warning(
-                    "Direct pool for %r failed: %s — the engine-routed queries still work.",
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Direct pool for %r failed — the engine-routed queries still work.",
                     input.id,
-                    _pool_err,
                 )
         state.source_types[input.id] = input.type
         state.source_dialects[input.id] = ""
@@ -1693,6 +1690,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             await refresh_mv(state.federation_engine, mv, state.mv_registry)
             return MutationResult(success=True, message=f"MV {mv_id!r} refreshed")
         except Exception as e:
+            logging.getLogger(__name__).exception("refresh_mv %r failed", mv_id)
             return MutationResult(success=False, message=str(e))
 
     @strawberry.mutation
@@ -1724,6 +1722,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             count = await state.response_cache_store.invalidate_by_pattern("provisa:cache:*")
             return MutationResult(success=True, message=f"Purged {count} cache entries")
         except Exception as e:
+            logging.getLogger(__name__).exception("purge_cache failed")
             return MutationResult(success=False, message=str(e))
 
     @strawberry.mutation
@@ -1737,6 +1736,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 success=True, message=f"Purged {count} cache entries for table {table_id}"
             )
         except Exception as e:
+            logging.getLogger(__name__).exception("purge_cache_by_table %s failed", table_id)
             return MutationResult(success=False, message=str(e))
 
     @strawberry.mutation
@@ -1786,6 +1786,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     success=True, message=f"Re-migrated {row['source_id']}.{row['table_name']}"
                 )
             except Exception as e:
+                logging.getLogger(__name__).exception(
+                    "invalidate_file_source: re-migration of table %s failed", table_id
+                )
                 return MutationResult(success=False, message=str(e))
 
     # ── Admin: Scheduled Task Management ──
@@ -1858,6 +1861,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 await state.federation_engine.execute_engine(f"ANALYZE {full_name}")
                 analyzed.append(full_name)
             except Exception as exc:
+                logging.getLogger(__name__).exception("ANALYZE %s failed", full_name)
                 errors.append(f"{full_name}: {exc}")
 
         if errors:
