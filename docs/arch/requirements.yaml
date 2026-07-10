@@ -29458,3 +29458,70 @@
     - REQ-939
     - REQ-965
     - REQ-969
+- id: REQ-971
+  status: proposed
+  since: "2026-07"
+  target: "2026-Q4"
+  group: 6. Execution, Routing, Caching & Performance
+  category: Data Masking & Expression Pushdown
+  priority: MUST
+  type: constraint
+  description: >-
+    Column-level data masking MUST be expressed as semantic SQL projection expressions within
+    the governed IR so that masking participates in expression/projection pushdown exactly as RLS
+    predicates participate in predicate pushdown. Where a connector can evaluate the mask
+    expression at the source, the mask MUST push down so the raw, unmasked column value never
+    crosses the wire into the middle tier. Any mask that does NOT push down to the source MUST
+    be evaluated in a bounded-memory streaming stage — either engine-side (the fed engine computes
+    the mask expression and streams results) or per-event/per-batch in the middle tier (as the
+    subscription path already does via _mask_row over an async event stream). It is FORBIDDEN to
+    materialize the full unmasked relation in the middle tier to mask it (no fetchall()-style
+    buffer-then-mask). This streaming constraint ensures masking correctness never depends on
+    fed-engine pushdown capability — a capability gap must never become a data leak — and bounds
+    middle-tier memory to O(batch), not O(relation), minimizing the amount of cleartext resident
+    in the tier at any instant.
+  use_case: >-
+    Masking today injects scalar SQL expressions (REGEXP_REPLACE, DATE_TRUNC, constant) into the
+    governed SELECT projection after RLS injection. This works correctly but lacks first-class
+    pushdown capability: the planner cannot reason about whether a mask pushed to the source,
+    and no Capability flag tracks whether the source can evaluate the mask's functions. Without
+    projection pushdown, the raw cleartext value must transit to the engine even if the source
+    could mask it — a confidentiality gap analogous to forcing RLS evaluation server-side when
+    the source supports it. The design must model masking as a pushdown-capable expression so
+    confidentiality-aware masking (including a governance guard that acknowledges non-pushable
+    masks) becomes explicit in the planner. For masks that cannot push down, the fallback must
+    evaluate them in a streaming stage to prevent the middle tier from buffering the full unmasked
+    relation into memory — rationale: masking correctness must never depend on pushdown capability
+    (a gap is never a data leak), and the middle tier must bound memory to O(batch), not O(relation),
+    with minimal cleartext residence time.
+  code:
+    - provisa/compiler/mask_inject.py
+    - provisa/compiler/stage2.py
+    - provisa/federation/connector.py
+    - provisa/federation/promote.py
+    - provisa/federation/cardinality.py
+    - provisa/api/data/subscribe.py
+  scenario: |
+    Given a column with a masking rule that uses functions the source supports (e.g., DATE_TRUNC)
+    When a query projects that column
+    Then the planner detects the mask is pushable and delegates it to the source
+    And the raw unmasked value does not cross the wire to the middle tier
+    Given a column with a masking rule using a function the source does not support
+    Then the planner accepts the mask will execute engine-side but logs/flags this as a confidentiality fallback
+    Given a mask that cannot push down to the source
+    Then the mask is evaluated in a streaming stage (engine-side or per-batch)
+    And the full unmasked relation is never buffered in the middle tier
+    Given a code path that would fetchall() an unmasked relation into the middle tier before masking
+    Then that path is rejected as a violation of REQ-971
+  related_reqs:
+    - REQ-087
+    - REQ-088
+    - REQ-089
+    - REQ-090
+    - REQ-091
+    - REQ-263
+    - REQ-264
+    - REQ-826
+    - REQ-842
+    - REQ-673
+    - REQ-875
