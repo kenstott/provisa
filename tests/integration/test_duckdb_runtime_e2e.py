@@ -28,7 +28,8 @@ asyncpg = pytest.importorskip("asyncpg")
 from provisa.compiler.introspect import ColumnMetadata  # noqa: E402
 from provisa.compiler.parser import parse_query  # noqa: E402
 from provisa.compiler.schema_gen import SchemaInput, generate_schema  # noqa: E402
-from provisa.compiler.sql_gen import build_context, compile_query  # noqa: E402
+from provisa.compiler.sql_gen import compile_query  # noqa: E402
+from provisa.compiler.context import build_context  # noqa: E402
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical  # noqa: E402
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime  # noqa: E402
 

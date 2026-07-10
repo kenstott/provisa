@@ -16,12 +16,8 @@ from graphql import parse, validate
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.sql_gen import (
-    ColumnRef,
-    CompiledQuery,
-    build_context,
-    compile_query,
-)
+from provisa.compiler.sql_gen import ColumnRef, CompiledQuery, compile_query
+from provisa.compiler.context import build_context
 
 
 def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> ColumnMetadata:

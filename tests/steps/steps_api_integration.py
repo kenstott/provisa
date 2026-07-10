@@ -841,7 +841,7 @@ def _build_orders_schema_ctx():
     """Build a real GraphQL schema and CompilationContext via the real compiler."""
     from provisa.compiler.introspect import ColumnMetadata
     from provisa.compiler.schema_gen import SchemaInput, generate_schema
-    from provisa.compiler.sql_gen import build_context
+    from provisa.compiler.context import build_context
 
     def _col(name, data_type="varchar(100)", nullable=False):
         return ColumnMetadata(column_name=name, data_type=data_type, is_nullable=nullable)

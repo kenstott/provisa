@@ -18,7 +18,7 @@ from provisa.api.rest.generator import (
 )
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.sql_gen import build_context
+from provisa.compiler.context import build_context
 
 
 def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> ColumnMetadata:

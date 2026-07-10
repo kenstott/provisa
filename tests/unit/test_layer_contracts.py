@@ -13,13 +13,8 @@ from graphql import parse, validate
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.sql_gen import (
-    CompilationContext,
-    CompiledQuery,
-    TableMeta,
-    build_context,
-    compile_query,
-)
+from provisa.compiler.sql_gen import CompilationContext, CompiledQuery, TableMeta, compile_query
+from provisa.compiler.context import build_context
 from provisa.executor.result import QueryResult
 
 

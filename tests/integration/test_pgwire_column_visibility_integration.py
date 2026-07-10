@@ -30,7 +30,7 @@ import pytest
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput
-from provisa.compiler.sql_gen import build_context
+from provisa.compiler.context import build_context
 from provisa.pgwire.catalog import (
     _build_catalog_index,
     _populate_is_columns,

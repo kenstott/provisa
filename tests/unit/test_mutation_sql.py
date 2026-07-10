@@ -20,7 +20,7 @@ from provisa.compiler.mutation_gen import (
     inject_rls_into_mutation,
 )
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.sql_gen import build_context
+from provisa.compiler.context import build_context
 
 
 def _col(name, data_type="varchar(100)", nullable=False):
@@ -30,8 +30,11 @@ def _col(name, data_type="varchar(100)", nullable=False):
 def _build():
     tables = [
         {
-            "id": 1, "source_id": "sales-pg", "domain_id": "sales",
-            "schema_name": "public", "table_name": "orders",
+            "id": 1,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "orders",
             "governance": "pre-approved",
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
@@ -44,7 +47,9 @@ def _build():
         1: [_col("id", "integer"), _col("amount", "decimal(10,2)"), _col("region", "varchar(50)")],
     }
     si = SchemaInput(
-        tables=tables, relationships=[], column_types=col_types,
+        tables=tables,
+        relationships=[],
+        column_types=col_types,
         naming_rules=[],
         role={"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]},
         domains=[{"id": "sales", "description": "Sales"}],
@@ -133,7 +138,7 @@ class TestRLSOnMutation:
 
     def test_rls_injected_into_delete(self):
         schema, ctx = _build()
-        doc = parse('mutation { deleteOrders(where: { id: { eq: 1 } }) { affected_rows } }')
+        doc = parse("mutation { deleteOrders(where: { id: { eq: 1 } }) { affected_rows } }")
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
         m = results[0]
         m = inject_rls_into_mutation(m, 1, {1: "region = 'us'"})
@@ -149,7 +154,7 @@ class TestRLSOnMutation:
 
     def test_no_rls_when_no_rule(self):
         schema, ctx = _build()
-        doc = parse('mutation { deleteOrders(where: { id: { eq: 1 } }) { affected_rows } }')
+        doc = parse("mutation { deleteOrders(where: { id: { eq: 1 } }) { affected_rows } }")
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
         m = results[0]
         original_sql = m.sql
@@ -245,9 +250,7 @@ class TestColumnPresets:
     def test_preset_overrides_user_input(self):
         """Preset columns override user-supplied values (security enforcement)."""
         presets = [{"column": "created_by", "source": "literal", "value": "system"}]
-        result = apply_column_presets(
-            {"name": "test", "created_by": "hacker"}, presets
-        )
+        result = apply_column_presets({"name": "test", "created_by": "hacker"}, presets)
         assert result["created_by"] == "system"
 
     def test_header_preset_missing_header(self):

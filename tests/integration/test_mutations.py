@@ -27,7 +27,7 @@ from provisa.compiler.mutation_gen import (
 )
 from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.sql_gen import build_context
+from provisa.compiler.context import build_context
 from provisa.executor.direct import execute_direct
 from provisa.executor.pool import SourcePool
 

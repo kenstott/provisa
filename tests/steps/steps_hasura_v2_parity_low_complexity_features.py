@@ -52,7 +52,8 @@ from provisa.compiler.mutation_gen import (
     compile_upsert,
 )
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.sql_gen import CompilationContext, TableMeta, build_context, compile_query
+from provisa.compiler.sql_gen import CompilationContext, TableMeta, compile_query
+from provisa.compiler.context import build_context
 from provisa.core.models import Role, ScheduledTrigger, flatten_roles
 from provisa.scheduler.jobs import _execute_webhook, build_scheduler
 

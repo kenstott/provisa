@@ -22,7 +22,8 @@ from graphql import parse
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.sql_gen import build_context, compile_query
+from provisa.compiler.sql_gen import compile_query
+from provisa.compiler.context import build_context
 from provisa.core.models import TIME_TRAVEL_SOURCES
 
 

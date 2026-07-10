@@ -48,7 +48,8 @@ from provisa.compiler.introspect import ColumnMetadata, introspect_tables
 from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.rls import RLSContext, build_rls_context
-from provisa.compiler.sql_gen import CompilationContext, build_context
+from provisa.compiler.sql_gen import CompilationContext
+from provisa.compiler.context import build_context
 from sqlalchemy import select
 from provisa.core.config_loader import load_config, parse_config_dict
 from provisa.core.database import Connection, Database

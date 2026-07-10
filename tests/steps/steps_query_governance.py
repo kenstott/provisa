@@ -40,7 +40,7 @@ from pytest_bdd import given, parsers, scenarios, then, when
 
 from provisa.audit.query_log import init_audit_schema
 from provisa.core.database import Database, create_engine
-from provisa.compiler.sql_gen import CompilationContext, JoinMeta, TableMeta
+from provisa.compiler.sql_gen import CompilationContext, JoinMeta, TableMeta  # noqa: E402
 from provisa.compiler.sql_validator import validate_sql
 from provisa.compiler.stage2 import GovernanceContext
 from provisa.security.masking import MaskType, MaskingRule, validate_masking_rule

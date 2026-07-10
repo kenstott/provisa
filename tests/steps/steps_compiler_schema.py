@@ -850,7 +850,8 @@ from graphql import print_schema, parse  # noqa: E402
 from pytest_bdd import given, when, then, scenarios  # noqa: E402
 
 from provisa.compiler.rls import build_rls_context, inject_rls  # noqa: E402
-from provisa.compiler.sql_gen import build_context, compile_query  # noqa: E402
+from provisa.compiler.sql_gen import compile_query  # noqa: E402
+from provisa.compiler.context import build_context  # noqa: E402
 from provisa.cypher.translator_helpers import _coerce_ts_literals  # noqa: E402
 from provisa.grpc.proto_gen import generate_proto  # noqa: E402
 

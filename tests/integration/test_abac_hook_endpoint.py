@@ -59,7 +59,7 @@ async def _pg_ready() -> bool:
 def _build_schema():
     from provisa.compiler.introspect import ColumnMetadata
     from provisa.compiler.schema_gen import SchemaInput, generate_schema
-    from provisa.compiler.sql_gen import build_context
+    from provisa.compiler.context import build_context
 
     tables = [
         {

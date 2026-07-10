@@ -27,7 +27,7 @@ from pytest_bdd import given, when, then, scenarios
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import compile_mutation, inject_rls_into_mutation
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.sql_gen import build_context
+from provisa.compiler.context import build_context
 from provisa.executor.direct import _WRITE_RE
 
 

@@ -28,7 +28,8 @@ from graphql.language.ast import (
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import MutationResult, compile_mutation, compile_upsert
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.sql_gen import TableMeta, build_context, compile_query
+from provisa.compiler.sql_gen import TableMeta, compile_query
+from provisa.compiler.context import build_context
 
 
 # ---------------------------------------------------------------------------
@@ -112,10 +113,7 @@ def _int_val(i: int) -> IntValueNode:
 
 def _obj_val(fields: dict) -> ObjectValueNode:
     """Build an ObjectValueNode from a plain Python dict of {name: AST value node}."""
-    obj_fields = [
-        ObjectFieldNode(name=_name(k), value=v)
-        for k, v in fields.items()
-    ]
+    obj_fields = [ObjectFieldNode(name=_name(k), value=v) for k, v in fields.items()]
     return ObjectValueNode(fields=tuple(obj_fields))
 
 
@@ -146,34 +144,45 @@ def _arg(name: str, value) -> ArgumentNode:
 class TestCompileUpsert:
     def test_basic_upsert_generates_insert_on_conflict(self):
         table = _table_meta()
-        field = _field_node([
-            _arg("input", _obj_val({"id": _int_val(1), "amount": _str_val("42.0")})),
-            _arg("on_conflict", _list_val([_str_val("id")])),
-        ])
+        field = _field_node(
+            [
+                _arg("input", _obj_val({"id": _int_val(1), "amount": _str_val("42.0")})),
+                _arg("on_conflict", _list_val([_str_val("id")])),
+            ]
+        )
         result = compile_upsert(field, table, None)
         assert "INSERT INTO" in result.sql
         assert "ON CONFLICT" in result.sql
 
     def test_conflict_column_in_sql(self):
         table = _table_meta()
-        field = _field_node([
-            _arg("input", _obj_val({"id": _int_val(5), "region": _str_val("eu")})),
-            _arg("on_conflict", _list_val([_str_val("id")])),
-        ])
+        field = _field_node(
+            [
+                _arg("input", _obj_val({"id": _int_val(5), "region": _str_val("eu")})),
+                _arg("on_conflict", _list_val([_str_val("id")])),
+            ]
+        )
         result = compile_upsert(field, table, None)
         assert '"id"' in result.sql
         assert "ON CONFLICT" in result.sql
 
     def test_do_update_set_for_non_conflict_columns(self):
         table = _table_meta()
-        field = _field_node([
-            _arg("input", _obj_val({
-                "id": _int_val(1),
-                "amount": _str_val("99.9"),
-                "region": _str_val("us"),
-            })),
-            _arg("on_conflict", _list_val([_str_val("id")])),
-        ])
+        field = _field_node(
+            [
+                _arg(
+                    "input",
+                    _obj_val(
+                        {
+                            "id": _int_val(1),
+                            "amount": _str_val("99.9"),
+                            "region": _str_val("us"),
+                        }
+                    ),
+                ),
+                _arg("on_conflict", _list_val([_str_val("id")])),
+            ]
+        )
         result = compile_upsert(field, table, None)
         assert "DO UPDATE SET" in result.sql
         assert "EXCLUDED" in result.sql
@@ -183,17 +192,21 @@ class TestCompileUpsert:
 
     def test_missing_input_raises_value_error(self):
         table = _table_meta()
-        field = _field_node([
-            _arg("on_conflict", _list_val([_str_val("id")])),
-        ])
+        field = _field_node(
+            [
+                _arg("on_conflict", _list_val([_str_val("id")])),
+            ]
+        )
         with pytest.raises(ValueError, match="input"):
             compile_upsert(field, table, None)
 
     def test_missing_on_conflict_raises_value_error(self):
         table = _table_meta()
-        field = _field_node([
-            _arg("input", _obj_val({"id": _int_val(1)})),
-        ])
+        field = _field_node(
+            [
+                _arg("input", _obj_val({"id": _int_val(1)})),
+            ]
+        )
         with pytest.raises(ValueError, match="on_conflict"):
             compile_upsert(field, table, None)
 
@@ -202,20 +215,24 @@ class TestCompileUpsert:
         table = _table_meta()
         # Simulate a case where _extract_value returns a string (single enum value)
         # by providing a StringValueNode directly (not wrapped in a list).
-        field = _field_node([
-            _arg("input", _obj_val({"id": _int_val(3), "region": _str_val("ap")})),
-            _arg("on_conflict", _str_val("id")),
-        ])
+        field = _field_node(
+            [
+                _arg("input", _obj_val({"id": _int_val(3), "region": _str_val("ap")})),
+                _arg("on_conflict", _str_val("id")),
+            ]
+        )
         result = compile_upsert(field, table, None)
         # Should not crash; conflict column used
         assert "ON CONFLICT" in result.sql
 
     def test_returns_mutation_result_with_upsert_type(self):
         table = _table_meta()
-        field = _field_node([
-            _arg("input", _obj_val({"id": _int_val(1), "region": _str_val("us")})),
-            _arg("on_conflict", _list_val([_str_val("id")])),
-        ])
+        field = _field_node(
+            [
+                _arg("input", _obj_val({"id": _int_val(1), "region": _str_val("us")})),
+                _arg("on_conflict", _list_val([_str_val("id")])),
+            ]
+        )
         result = compile_upsert(field, table, None)
         assert isinstance(result, MutationResult)
         assert result.mutation_type == "upsert"
@@ -223,29 +240,35 @@ class TestCompileUpsert:
     def test_all_conflict_columns_generates_do_nothing(self):
         """When every input column is a conflict column, emit DO NOTHING."""
         table = _table_meta()
-        field = _field_node([
-            _arg("input", _obj_val({"id": _int_val(7)})),
-            _arg("on_conflict", _list_val([_str_val("id")])),
-        ])
+        field = _field_node(
+            [
+                _arg("input", _obj_val({"id": _int_val(7)})),
+                _arg("on_conflict", _list_val([_str_val("id")])),
+            ]
+        )
         result = compile_upsert(field, table, None)
         assert "DO NOTHING" in result.sql
         assert "DO UPDATE" not in result.sql
 
     def test_returning_clause_present(self):
         table = _table_meta()
-        field = _field_node([
-            _arg("input", _obj_val({"id": _int_val(1), "amount": _str_val("10")})),
-            _arg("on_conflict", _list_val([_str_val("id")])),
-        ])
+        field = _field_node(
+            [
+                _arg("input", _obj_val({"id": _int_val(1), "amount": _str_val("10")})),
+                _arg("on_conflict", _list_val([_str_val("id")])),
+            ]
+        )
         result = compile_upsert(field, table, None)
         assert "RETURNING" in result.sql
 
     def test_source_id_on_result(self):
         table = _table_meta(source_id="crm-pg")
-        field = _field_node([
-            _arg("input", _obj_val({"id": _int_val(1), "region": _str_val("us")})),
-            _arg("on_conflict", _list_val([_str_val("id")])),
-        ])
+        field = _field_node(
+            [
+                _arg("input", _obj_val({"id": _int_val(1), "region": _str_val("us")})),
+                _arg("on_conflict", _list_val([_str_val("id")])),
+            ]
+        )
         result = compile_upsert(field, table, None)
         assert result.source_id == "crm-pg"
 
@@ -371,7 +394,7 @@ class TestDistinctOn:
         # Comma between them
         distinct_start = sql.index("DISTINCT ON")
         close_paren = sql.index(")", distinct_start)
-        distinct_clause = sql[distinct_start:close_paren + 1]
+        distinct_clause = sql[distinct_start : close_paren + 1]
         assert "," in distinct_clause
 
     def test_distinct_on_with_order_by_present(self, schema_and_ctx):

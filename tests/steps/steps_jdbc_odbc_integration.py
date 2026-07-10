@@ -277,7 +277,7 @@ def _req128_visible_columns(table_id, tables, column_types, role_id):
     """
     from provisa.compiler import naming as _naming
     from provisa.compiler.schema_gen import SchemaInput
-    from provisa.compiler.sql_gen import build_context
+    from provisa.compiler.context import build_context
     from provisa.pgwire.catalog import _build_catalog_index
 
     _naming.configure(gql="snake")

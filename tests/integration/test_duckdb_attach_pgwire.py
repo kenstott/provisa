@@ -46,7 +46,7 @@ duckdb = pytest.importorskip("duckdb", reason="duckdb required for ATTACH e2e")
 from provisa.compiler.introspect import ColumnMetadata  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.compiler import naming as _naming  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.compiler.schema_gen import SchemaInput  # noqa: E402  # imports follow the duckdb importorskip guard
-from provisa.compiler.sql_gen import build_context  # noqa: E402  # imports follow the duckdb importorskip guard
+from provisa.compiler.context import build_context  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.executor.result import QueryResult  # noqa: E402  # imports follow the duckdb importorskip guard
 from provisa.pgwire.server import ProvisaConnection, ProvisaServer  # noqa: E402  # imports follow the duckdb importorskip guard
 
