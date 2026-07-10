@@ -567,7 +567,6 @@ async def _graph_counts(
     Mirrors /data/graph-counts (REQ-392); view-labels over the same physical rows
     are counted per-label, matching the internal graph browser.
     """
-    import asyncio
 
     label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
     # A parameterized node (native-filter columns) is a function with no snapshot — count-all is
@@ -591,13 +590,15 @@ async def _graph_counts(
         except Exception:
             return 0
 
-    node_results = await asyncio.gather(
-        *[_count(f"MATCH (n:{lbl}) RETURN count(n) AS cnt") for lbl in node_labels]
-    )
-    rel_results = await asyncio.gather(
-        *[_count(f"MATCH ()-[r:{rt}]->() RETURN count(r) AS cnt") for rt in rel_types]
-    )
-    return sum(node_results), sum(rel_results)
+    # Sequential, not asyncio.gather: a native engine (DuckDB) runs on ONE non-reentrant connection,
+    # so concurrent count queries race and return sporadic zeros for attached/materialized sources.
+    node_count = 0
+    for lbl in node_labels:
+        node_count += await _count(f"MATCH (n:{lbl}) RETURN count(n) AS cnt")
+    rel_count = 0
+    for rt in rel_types:
+        rel_count += await _count(f"MATCH ()-[r:{rt}]->() RETURN count(r) AS cnt")
+    return node_count, rel_count
 
 
 async def _impute_relationships(

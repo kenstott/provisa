@@ -827,8 +827,6 @@ def _countable_labels(label_map, filtered_domains: set[str]) -> tuple[list[str],
 @router.get("/data/graph-counts")
 async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
     """Count nodes and relationships via the normal Cypher pipeline, filtered by domain."""
-    import asyncio
-
     from provisa.api.app import state
     from provisa.cypher.parser import parse_cypher
     from provisa.cypher.translator import cypher_to_sql
@@ -849,7 +847,7 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
 
     label_map = _build_label_map(ctx, role_id, state)
 
-    async def _run_count(cypher: str) -> int:
+    async def _run_count(cypher: str) -> int | None:
         try:
             ast = parse_cypher(cypher)
             body = CypherRequest(query=cypher, params={})
@@ -868,7 +866,7 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
                     plan.exec_sql or "", plan.physical_sql or "", [], state, {}
                 )
             if isinstance(rows, Response):
-                return 0
+                return None
             return int(rows[0]["cnt"]) if rows else 0
         except Exception:
             # Swallowing here corrupts totals/pagination — propagate.
@@ -876,26 +874,28 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
 
     node_labels, rel_types = _countable_labels(label_map, filtered_domains)
 
-    BATCH = 5
-
+    # Counts run SEQUENTIALLY, not via asyncio.gather: a native engine (DuckDB) executes on ONE
+    # connection whose ATTACH/cache state is not reentrant, so concurrent count queries race and
+    # return sporadic zeros for attached/materialized sources. Sequential matches the single-query
+    # path (/data/cypher) exactly.
+    #
+    # A label whose count query the engine cannot execute (its meta/ops catalog is not attached on
+    # this engine, or a parameterized table has no snapshot) returns None — OMIT it rather than
+    # report a misleading 0 (which reads as "zero rows"). The panel then shows counts only for the
+    # labels this engine can actually count.
     label_counts: dict[str, int] = {}
-    for i in range(0, len(node_labels), BATCH):
-        batch = node_labels[i : i + BATCH]
-        results = await asyncio.gather(
-            *[_run_count(f"MATCH (n:{lbl}) RETURN count(n) AS cnt") for lbl in batch]
-        )
-        for lbl, cnt in zip(batch, results):
+    for lbl in node_labels:
+        cnt = await _run_count(f"MATCH (n:{lbl}) RETURN count(n) AS cnt")
+        if cnt is not None:
             label_counts[lbl] = cnt
 
     node_count = sum(label_counts.values())
 
     rel_count = 0
-    for i in range(0, len(rel_types), BATCH):
-        batch = rel_types[i : i + BATCH]
-        results = await asyncio.gather(
-            *[_run_count(f"MATCH ()-[r:{rt}]->() RETURN count(r) AS cnt") for rt in batch]
-        )
-        rel_count += sum(results)
+    for rt in rel_types:
+        cnt = await _run_count(f"MATCH ()-[r:{rt}]->() RETURN count(r) AS cnt")
+        if cnt is not None:
+            rel_count += cnt
 
     return JSONResponse(
         content={"node_count": node_count, "rel_count": rel_count, "label_counts": label_counts}
