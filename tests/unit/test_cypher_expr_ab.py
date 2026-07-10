@@ -19,7 +19,8 @@ from provisa.cypher.expr_parser import parse_expression
 from provisa.cypher.expr_visitor import ExprLowering
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import _Translator, _rewrite_cypher_fn_node
+from provisa.cypher.translator import _Translator
+from provisa.cypher.translator_helpers import _rewrite_cypher_fn_node
 
 _IR = "postgres"
 

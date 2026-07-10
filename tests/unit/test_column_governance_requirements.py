@@ -191,7 +191,7 @@ def test_rls_rule_domain_id_defaults_none():
 
 def test_rewrite_cypher_dquote_strings_converts_to_single_quotes():
     # REQ-410: Double-quoted Cypher string literals must become single-quoted.
-    from provisa.cypher.translator import _rewrite_cypher_dquote_strings
+    from provisa.cypher.translator_helpers import _rewrite_cypher_dquote_strings
 
     result = _rewrite_cypher_dquote_strings('WHERE n.id = "abc123"')
     assert "'" in result
@@ -201,7 +201,7 @@ def test_rewrite_cypher_dquote_strings_converts_to_single_quotes():
 
 def test_rewrite_cypher_dquote_strings_does_not_convert_property_identifiers():
     # REQ-410: Double-quoted identifiers after `.` (property names) must NOT be converted.
-    from provisa.cypher.translator import _rewrite_cypher_dquote_strings
+    from provisa.cypher.translator_helpers import _rewrite_cypher_dquote_strings
 
     expr = 'n."user_id" = 1'
     result = _rewrite_cypher_dquote_strings(expr)
@@ -211,7 +211,7 @@ def test_rewrite_cypher_dquote_strings_does_not_convert_property_identifiers():
 
 def test_rewrite_cypher_dquote_strings_handles_inner_single_quotes():
     # REQ-410: Inner single quotes within the string literal must be escaped.
-    from provisa.cypher.translator import _rewrite_cypher_dquote_strings
+    from provisa.cypher.translator_helpers import _rewrite_cypher_dquote_strings
 
     result = _rewrite_cypher_dquote_strings('WHERE n.name = "O\'Brien"')
     assert "\\'Brien" in result or "O\\'Brien" in result
@@ -219,7 +219,7 @@ def test_rewrite_cypher_dquote_strings_handles_inner_single_quotes():
 
 def test_rewrite_cypher_dquote_strings_produces_valid_where_clause():
     # REQ-410: The resulting WHERE clause uses single-quoted string for PK exclusion.
-    from provisa.cypher.translator import _rewrite_cypher_dquote_strings
+    from provisa.cypher.translator_helpers import _rewrite_cypher_dquote_strings
 
     expr = 'WHERE NOT n.id IN ["pk-value-1", "pk-value-2"]'
     result = _rewrite_cypher_dquote_strings(expr)
@@ -230,7 +230,7 @@ def test_rewrite_cypher_dquote_strings_produces_valid_where_clause():
 
 def test_rewrite_cypher_dquote_strings_leaves_non_string_parts_unchanged():
     # REQ-410: Numeric values and non-string parts of the expression are untouched.
-    from provisa.cypher.translator import _rewrite_cypher_dquote_strings
+    from provisa.cypher.translator_helpers import _rewrite_cypher_dquote_strings
 
     expr = "WHERE n.count > 5"
     result = _rewrite_cypher_dquote_strings(expr)
