@@ -27694,10 +27694,12 @@
   code:
   - provisa/federation/engine.py
   - provisa/federation/connector.py
-  - provisa/compiler/dialects.py
+  - provisa/federation/clickhouse_backend.py
+  - provisa/federation/clickhouse_runtime.py
+  - provisa/transpiler/transpile.py
   tests:
-  - tests/integration/test_clickhouse_federation_e2e.py
-  - tests/unit/test_clickhouse_connector.py
+  - tests/integration/test_clickhouse_runtime_e2e.py
+  - tests/unit/test_clickhouse_connectors.py
   related_reqs:
   - REQ-900
   - REQ-901
