@@ -341,7 +341,7 @@ def write_acl_error(table_meta, ast: WriteAST, mapping: NodeMapping, role_id: st
     if table_meta is None or ast.kind not in ("create", "update"):
         return None
     from fastapi import HTTPException  # noqa: PLC0415
-    from provisa.api.data.endpoint import _check_writable_by  # noqa: PLC0415
+    from provisa.api.data.mutations import _check_writable_by  # noqa: PLC0415
 
     props = list(ast.props) if ast.kind == "create" else [p for p, _ in ast.set_assignments]
     cols = [mapping.properties.get(p, p) for p in props]
