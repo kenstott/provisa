@@ -17,7 +17,6 @@ Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 # Requirements: REQ-007, REQ-008, REQ-010, REQ-021, REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-039, REQ-133, REQ-134, REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-196, REQ-197, REQ-200, REQ-201, REQ-202, REQ-205, REQ-206, REQ-207, REQ-209, REQ-210, REQ-212, REQ-213, REQ-218, REQ-219, REQ-221, REQ-253, REQ-259, REQ-260, REQ-363
 
 import re
-from dataclasses import dataclass, field
 from typing import cast
 
 from graphql import (
@@ -48,7 +47,6 @@ from provisa.compiler.aggregate_gen import (
     build_having_exp_type,
 )
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
-from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import (
     active_gql_convention,
     apply_gql_name,
@@ -60,6 +58,7 @@ from provisa.compiler.naming import (
     to_type_name,
 )
 from provisa.compiler.type_map import FILTER_TYPE_MAP, JSONScalar, column_type_to_graphql
+from provisa.compiler.schema_types import SchemaInput, _TableInfo
 
 # graphql-core 3.2.x: __new__ returns GraphQLNamedType instead of Self;
 # re-bind scalars with explicit GraphQLScalarType annotation so Pyright narrows correctly.
@@ -67,63 +66,6 @@ GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
 GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
 GraphQLBoolean: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLBoolean)
 GraphQLFloat: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLFloat)
-
-
-@dataclass
-class SchemaInput:
-    """All data needed to generate a GraphQL schema for one role."""
-
-    tables: list[dict]  # from table_repo.list_all() — includes "columns" sub-list
-    relationships: list[dict]  # from rel_repo.list_all()
-    column_types: dict[int, list[ColumnMetadata]]  # table_id → the engine column metadata
-    naming_rules: list[dict]  # [{pattern, replacement}]
-    role: dict  # from role_repo.get()
-    domains: list[dict]  # from domain_repo.list_all()
-    source_types: dict[str, str] | None = None  # source_id → type (for mutation eligibility)
-    source_catalogs: dict[str, str] | None = None  # source_id → the engine catalog name
-    domain_prefix: bool = False  # prepend domain_id__ to all names
-    physical_table_map: dict[str, str] | None = None  # virtual → physical table name
-    relay_pagination: bool = False  # global opt-in for _connection fields
-    functions: list[dict] = field(default_factory=list)  # tracked DB functions
-    webhooks: list[dict] = field(default_factory=list)  # tracked webhooks
-    enum_types: dict = field(default_factory=dict)  # pg_name → GraphQLEnumType (REQ-221)
-    root_table_ids: set[int] | None = (
-        None  # if set, only these tables get root query fields; others are type-defs only
-    )
-    gql_object_columns: dict[str, dict[str, list[str]]] = field(
-        default_factory=dict
-    )  # {table_name: {col_name: [sub_fields]}}
-    governed_gql_types: set[str] = field(
-        default_factory=set
-    )  # GQL type names backed by governed tables
-    gql_governed_object_cols: set[tuple[int, str]] = field(
-        default_factory=set
-    )  # (table_id, col_name) pairs where the GQL OBJECT type is a governed registered table
-
-
-@dataclass
-class _TableInfo:
-    """Internal: resolved table info for schema generation."""
-
-    table_id: int
-    field_name: str  # snake_case GraphQL field name
-    type_name: str  # PascalCase GraphQL type name
-    domain_id: str
-    source_id: str
-    schema_name: str
-    table_name: str  # original DB table name
-    visible_columns: list[dict]  # [{column_name, visible_to, alias?, description?}]
-    column_metadata: dict[str, ColumnMetadata]  # column_name → metadata
-    native_filter_columns: list[dict] = field(
-        default_factory=list
-    )  # [{column_name, native_filter_type}]
-    alias: str | None = None  # explicit GraphQL name override
-    description: str | None = None  # GraphQL type/field description
-    gql_convention_override: str | None = None  # None = use naming.active_gql_convention()
-    relay_pagination: bool = False  # resolved relay flag for this table
-    gql_fields: dict[str, GraphQLField] = field(default_factory=dict)
-    enable_aggregates: bool = False  # REQ-653: table-level opt-in for _aggregate root field
-    enable_group_by: bool = False  # REQ-653: table-level opt-in for _group_by root field
 
 
 # --- GraphQL enum for ORDER BY direction ---
