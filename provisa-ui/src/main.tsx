@@ -12,6 +12,17 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+declare global {
+  interface Window {
+    __provisaHideSplash?: () => void
+  }
+}
+
 createRoot(document.getElementById('root')!).render(
   <App />,
 )
+
+// Dismiss the pre-React convergence-splash once the app has mounted and painted its
+// first frame. The splash enforces its own minimum display time + fade, so this only
+// signals readiness.
+requestAnimationFrame(() => requestAnimationFrame(() => window.__provisaHideSplash?.()))
