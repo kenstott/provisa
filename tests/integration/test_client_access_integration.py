@@ -577,21 +577,19 @@ class TestSourceTypeCollapsing:
 
     async def test_graphql_api_and_remote_collapse_to_graphql(self):
         """REQ-405: source_type 'graphql' represents both graphql_api and graphql_remote."""
-        # Probe the admin schema source types exposed to the UI / GraphQL layer.
-        # The canonical values are 'graphql' and 'grpc' — the split remote/api
-        # distinction is internal only.
-        from provisa.api.admin.schema import _SOURCE_TYPE_DISPLAY_NAMES
+        # The canonical source types are the SourceType enum values. REQ-405 requires
+        # the api/remote split to be internal only — no separate 'graphql_api' member.
+        from provisa.core.models import SourceType
 
-        assert (
-            "graphql" in _SOURCE_TYPE_DISPLAY_NAMES
-            or "graphql_api" not in _SOURCE_TYPE_DISPLAY_NAMES
-        )
+        values = {s.value for s in SourceType}
+        assert "graphql_api" not in values
 
     async def test_grpc_api_and_remote_collapse_to_grpc(self):
         """REQ-405: source_type 'grpc' represents both grpc_api and grpc_remote."""
-        from provisa.api.admin.schema import _SOURCE_TYPE_DISPLAY_NAMES
+        from provisa.core.models import SourceType
 
-        assert "grpc" in _SOURCE_TYPE_DISPLAY_NAMES or "grpc_api" not in _SOURCE_TYPE_DISPLAY_NAMES
+        values = {s.value for s in SourceType}
+        assert "grpc_api" not in values
 
 
 # ---------------------------------------------------------------------------
