@@ -704,6 +704,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250
     _validate_table_kafka_sinks(config)
     _validate_table_live_delivery(config)
     _validate_change_signal(config)
+    _validate_probe_type(config)
     _validate_watermark_columns(config)
     await _upsert_tables(conn, engine, config, openapi_specs)
 
@@ -889,6 +890,33 @@ def _validate_change_signal(config) -> None:  # REQ-932
                 f"Table {table.table_name!r}: change_signal={sig} requires source-level cdc "
                 f"transport on {table.source_id!r} (bootstrap_servers/topic_prefix)"
             )
+
+
+def _validate_probe_type(config) -> None:  # REQ-982
+    """Capability-gate probe_type. A table's probe_type must be supported by its source's capability
+    class (probe_capabilities); ttl cadence forces none. Delegates to ``resolve_probe_type``, which
+    raises on an unsupported type or a ttl+explicit-type mismatch — surfaced as a config error."""
+    from provisa.core.change_signal import resolve  # noqa: PLC0415
+    from provisa.events.probes import resolve_probe_type  # noqa: PLC0415
+
+    sources_by_id = {s.id: s for s in config.sources}
+    for table in config.tables:
+        if getattr(table, "probe_type", None) is None:
+            continue  # unset → resolved per class at wiring time; nothing to reject
+        source = sources_by_id.get(table.source_id)
+        source_signal = getattr(source, "change_signal", None) if source else None
+        sig = resolve(getattr(table, "change_signal", None), source_signal)
+        stype = getattr(source, "type", None) if source else None
+        stype_val = getattr(stype, "value", stype)
+        try:
+            resolve_probe_type(
+                table.probe_type,
+                source_type=str(stype_val),
+                change_signal=sig,
+                has_watermark=getattr(table, "watermark_column", None) is not None,
+            )
+        except ValueError as exc:
+            raise ValueError(f"Table {table.table_name!r}: {exc}") from exc
 
 
 async def _validate_existing_domains(conn: "Connection", default_domain: str) -> None:

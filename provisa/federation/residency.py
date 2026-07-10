@@ -44,6 +44,9 @@ class LandingArgs:  # REQ-932
     change_signal: str
     watermark_column: str | None
     pk_columns: list[str]
+    probe_type: str = (
+        "none"  # REQ-982: resolved input-probe method (drives the injected event shape)
+    )
 
 
 def resolve_landing_args(
@@ -81,7 +84,18 @@ def resolve_landing_args(
                 f"resolved data_type (startup introspection must fill it before materialization)"
             )
         columns.append((c.name, to_ir(c.data_type, platform)))
-    return LandingArgs(columns, sig, watermark, pk_columns)
+    # REQ-982: resolve the effective probe_type (validated against the source's capability class;
+    # ttl forces none; unset under a probing cadence defaults per class).
+    from provisa.events.probes import resolve_probe_type
+
+    source_type = source.type.value if hasattr(source.type, "value") else str(source.type)
+    probe_type = resolve_probe_type(
+        getattr(table, "probe_type", None),
+        source_type=source_type,
+        change_signal=sig,
+        has_watermark=watermark is not None,
+    )
+    return LandingArgs(columns, sig, watermark, pk_columns, probe_type)
 
 
 class ResidencyLoader(Protocol):

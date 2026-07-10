@@ -45,7 +45,7 @@ import type {
   LiveKafkaConfig,
   LiveOutputConfig,
 } from "../types/admin";
-import { liveCapability, availableStrategies } from "../liveCapability";
+import { liveCapability, availableStrategies, sourceProbeTypes } from "../liveCapability";
 import { ColumnPresetsEditor } from "../components/admin/ColumnPresetsEditor";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useDomainFilter } from "../context/DomainFilterContext";
@@ -597,6 +597,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         watermarkColumn: editingTable.watermarkColumn || null,
         changeSignal: editingTable.changeSignal || null,
         probeQuery: editingTable.probeQuery || null,
+        probeType: editingTable.probeType || null,
         viewSql: editingTable.viewSql || undefined,
         materialize: editingTable.materialize,
         mvRefreshInterval: editingTable.mvRefreshInterval,
@@ -2211,6 +2212,54 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                         </p>
                                       )}
                                     </>
+                                  );
+                                })()}
+                              {(editingTable.changeSignal === "probe" ||
+                                editingTable.changeSignal === "ttl_probe") &&
+                                (() => {
+                                  const src = sources.find((s) => s.id === editingTable.sourceId);
+                                  const caps = sourceProbeTypes(src?.type);
+                                  if (caps.length === 0) return null;
+                                  return (
+                                    <label style={{ gridColumn: "1 / -1" }}>
+                                      <span
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "0.25rem",
+                                        }}
+                                      >
+                                        Probe type{" "}
+                                        <span
+                                          title="How the freshness probe detects change, gated by source type. watermark → append (fetch rows past MAX(watermark)); hash → replace (content token, e.g. ETag/checksum); count → replace (row-count delta, coarse); none → replace on cadence (the output content-hash still suppresses an unchanged ripple). Auto = resolve per source class."
+                                          style={{
+                                            cursor: "help",
+                                            color: "var(--text-muted)",
+                                            fontSize: "0.75rem",
+                                            lineHeight: 1,
+                                          }}
+                                        >
+                                          ⓘ
+                                        </span>
+                                      </span>
+                                      <select
+                                        value={editingTable.probeType ?? ""}
+                                        onChange={(e) =>
+                                          setEditingTable({
+                                            ...editingTable,
+                                            probeType: e.target.value || null,
+                                          })
+                                        }
+                                      >
+                                        <option value="">Auto (per source type)</option>
+                                        {caps.map((pt) => (
+                                          <option key={pt} value={pt}>
+                                            {pt}
+                                            {pt === "watermark" ? " → append" : " → replace"}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
                                   );
                                 })()}
                               {(editingTable.changeSignal === "probe" ||

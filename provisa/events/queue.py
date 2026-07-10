@@ -28,7 +28,7 @@ from typing import Any
 
 from sqlalchemy import insert, select, update
 
-from provisa.core.schema_org import event_status, events
+from provisa.core.schema_org import event_status, events, node_freshness_state
 
 _VALID_EVENT = {"delta", "append", "replace", "warn", "error"}
 
@@ -135,6 +135,42 @@ async def get_events(conn: Any, event_ids: list[int]) -> list[dict]:
         select(events).where(events.c.id.in_(event_ids)).order_by(events.c.id)
     )
     return [dict(r._mapping) for r in result.fetchall()]
+
+
+async def get_node_state(conn: Any, node: str) -> dict | None:
+    """The persisted freshness state for ``node`` — ``{content_hash, probe_token}`` — or None when the
+    node has never landed. ``content_hash`` is the REQ-981 output-gate baseline; ``probe_token`` is the
+    REQ-982 input-probe baseline. Both nullable independently (a node may have one and not the other)."""
+    result = await conn.execute_core(
+        select(node_freshness_state.c.content_hash, node_freshness_state.c.probe_token).where(
+            node_freshness_state.c.node == node
+        )
+    )
+    row = result.fetchone()
+    if row is None:
+        return None
+    return {"content_hash": row[0], "probe_token": row[1]}
+
+
+async def set_node_state(
+    conn: Any, node: str, *, content_hash: str | None = None, probe_token: str | None = None
+) -> None:
+    """Upsert the freshness state for ``node``. Only the passed fields are written — an omitted
+    (None-defaulted) field is left untouched on an existing row, so the content-hash gate (REQ-981) and
+    the probe baseline (REQ-982) update independently without clobbering each other."""
+    set_cols = {}
+    if content_hash is not None:
+        set_cols["content_hash"] = content_hash
+    if probe_token is not None:
+        set_cols["probe_token"] = probe_token
+    if not set_cols:
+        return
+    await conn.upsert(
+        node_freshness_state,
+        {"node": node, **set_cols},
+        index_elements=["node"],
+        update_columns=list(set_cols),
+    )
 
 
 async def read_since(conn: Any, *, cursor: int, limit: int = 100) -> list[dict]:

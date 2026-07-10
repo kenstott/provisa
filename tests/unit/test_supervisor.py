@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from provisa.core.database import Database
-from provisa.core.schema_org import event_status, events
+from provisa.core.schema_org import event_status, events, node_freshness_state
 from provisa.events import queue, supervisor
 from provisa.events.handlers import make_mv_generate, make_source_land
 from provisa.events.processor import MVTableProcessor, SourceTableProcessor
@@ -27,7 +27,11 @@ _COLS = [("id", "bigint"), ("status", "text")]
 async def _cp(tmp_path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'cp.db'}")
     async with engine.begin() as c:
-        await c.run_sync(lambda s: events.metadata.create_all(s, tables=[events, event_status]))
+        await c.run_sync(
+            lambda s: events.metadata.create_all(
+                s, tables=[events, event_status, node_freshness_state]
+            )
+        )
     try:
         yield Database(engine, name="cp")
     finally:

@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from provisa.core.database import Database
-from provisa.core.schema_org import event_status, events
+from provisa.core.schema_org import event_status, events, node_freshness_state
 from provisa.events import queue
 from provisa.events.processor import MVTableProcessor, SourceTableProcessor, TableProcessor
 
@@ -22,7 +22,11 @@ from provisa.events.processor import MVTableProcessor, SourceTableProcessor, Tab
 async def _db(tmp_path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'q.db'}")
     async with engine.begin() as c:
-        await c.run_sync(lambda s: events.metadata.create_all(s, tables=[events, event_status]))
+        await c.run_sync(
+            lambda s: events.metadata.create_all(
+                s, tables=[events, event_status, node_freshness_state]
+            )
+        )
     try:
         yield Database(engine, name="q")
     finally:
@@ -36,9 +40,11 @@ class _Proc(TableProcessor):
         super().__init__(*a, **k)
         self._result = result
         self.seen = None
+        self.seen_prior_hash = "<unset>"
 
-    async def handle(self, pending):
+    async def handle(self, pending, *, prior_hash):
         self.seen = pending
+        self.seen_prior_hash = prior_hash
         return self._result
 
 
@@ -61,10 +67,15 @@ async def test_process_pending_claims_handles_reposts(tmp_path):
         up = await queue.post_event(conn, source_table="s.orders", event_type="append")
         await queue.fan_out(conn, up, ["mv.a"])
 
-        proc = _proc(db, result=("replace", {"rows": 3}), node="mv.a", deps=["down.x", "down.y"])
+        proc = _proc(
+            db, result=("replace", {"rows": 3}, "h1"), node="mv.a", deps=["down.x", "down.y"]
+        )
         my_event = await proc.process_pending(conn)
 
+        assert proc.seen_prior_hash is None  # first land: no prior baseline
         assert proc.seen and proc.seen[0]["id"] == up  # handle saw the claimed event
+        # persisted the returned content hash as the new baseline
+        assert (await queue.get_node_state(conn, "mv.a"))["content_hash"] == "h1"
         # re-posted the node's OWN change event (replace) for its dependents
         posted = [r for r in await queue.read_since(conn, cursor=0) if r["source_table"] == "mv.a"]
         assert (
@@ -87,7 +98,7 @@ async def test_process_pending_claims_handles_reposts(tmp_path):
 @pytest.mark.asyncio
 async def test_nothing_pending_is_noop(tmp_path):
     async with _db(tmp_path) as db, db.acquire() as conn:
-        assert await _proc(db, result=("replace", {})).process_pending(conn) is None
+        assert await _proc(db, result=("replace", {}, None)).process_pending(conn) is None
 
 
 @pytest.mark.asyncio
@@ -131,11 +142,11 @@ async def test_consume_kafka_posts_delta_per_message(tmp_path):
 async def test_variants_delegate_handle(tmp_path):
     async with _db(tmp_path) as db:
 
-        async def land(pending):
-            return ("append", {"n": len(pending)})
+        async def land(pending, *, prior_hash):
+            return ("append", {"n": len(pending)}, None)
 
-        async def generate(pending):
-            return ("replace", {"g": 1})
+        async def generate(pending, *, prior_hash):
+            return ("replace", {"g": 1}, "mvhash")
 
         src = SourceTableProcessor(
             "s",
@@ -155,5 +166,5 @@ async def test_variants_delegate_handle(tmp_path):
             name="b",
             generate=generate,
         )
-        assert await src.handle([{"x": 1}]) == ("append", {"n": 1})
-        assert await mv.handle([]) == ("replace", {"g": 1})
+        assert await src.handle([{"x": 1}], prior_hash=None) == ("append", {"n": 1}, None)
+        assert await mv.handle([], prior_hash=None) == ("replace", {"g": 1}, "mvhash")

@@ -93,6 +93,7 @@ query TablesQuery {
     watermarkColumn
     changeSignal
     probeQuery
+    probeType
     apiEndpoint
     viewSql
     materialize

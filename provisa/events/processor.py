@@ -49,10 +49,14 @@ class TableProcessor(ABC):
         dependents_of: Callable[[str], list[str]],
         db: Any,
         name: str,
+        probe_type: str | None = None,
     ) -> None:
         self.node = node
         self.change_signal = change_signal
         self.watermark_column = watermark_column
+        self.probe_type = (
+            probe_type  # REQ-982: input-probe method → drives the injected event shape
+        )
         self._dependents_of = dependents_of
         self._db = db
         self.name = name
@@ -104,13 +108,19 @@ class TableProcessor(ABC):
                 watermark_column=self.watermark_column,
                 probe=probe,
                 dependents=self._dependents_of(self.node),
+                probe_type=self.probe_type,
             )
 
     # -- processor side (claim → handle → complete → re-post) ------------------
     async def process_pending(self, conn: Any) -> int | None:
         """Claim this node's pending work (exactly-once via the lease), coalesce, ``handle`` it,
         complete the drained set, and — if the node's table actually changed — re-post the node's OWN
-        change event to its dependents (self-feeding DAG). Returns the re-posted event id, or None."""
+        change event to its dependents (self-feeding DAG). Returns the re-posted event id, or None.
+
+        The content-hash output gate (REQ-981): the prior land's hash is read and passed to ``handle``,
+        which returns the new hash alongside its change; a replace whose hash matches prior returns None
+        from ``handle`` (unchanged → no land, no ripple). A returned hash is persisted as the new
+        baseline before re-posting."""
         now = _now()
         claimed = await queue.claim(
             conn, dependent_table=self.node, processor_name=self.name, now=now
@@ -118,12 +128,17 @@ class TableProcessor(ABC):
         if not claimed:
             return None
         pending = await queue.get_events(conn, claimed)
-        result = await self.handle(pending)  # (event_type, payload) if changed, else None
+        prior = await queue.get_node_state(conn, self.node)
+        prior_hash = prior["content_hash"] if prior else None
+        # (event_type, payload, content_hash|None) when changed, else None.
+        result = await self.handle(pending, prior_hash=prior_hash)
         for eid in claimed:
             await queue.complete(conn, event_id=eid, dependent_table=self.node, now=now)
         if result is None:
-            return None  # token-gate: node output unchanged → no downstream ripple
-        event_type, payload = result
+            return None  # gate: node output unchanged (content hash matched / nothing landed)
+        event_type, payload, new_hash = result
+        if new_hash is not None:
+            await queue.set_node_state(conn, self.node, content_hash=new_hash)
         my_event = await queue.post_event(
             conn, source_table=self.node, event_type=event_type, payload=payload
         )
@@ -131,32 +146,45 @@ class TableProcessor(ABC):
         return my_event
 
     @abstractmethod
-    async def handle(self, pending: list[dict]) -> tuple[str, dict] | None:
-        """Do the node's work from its claimed events (land / generate). Return ``(event_type,
-        payload)`` when the node's table changed → re-post; None when unchanged."""
+    async def handle(
+        self, pending: list[dict], *, prior_hash: str | None
+    ) -> tuple[str, dict, str | None] | None:
+        """Do the node's work from its claimed events (land / generate). Return ``(event_type, payload,
+        content_hash)`` when the node's table changed → re-post; None when unchanged. ``content_hash``
+        is the digest of the landed replace-shaped content (None for append/CDC deltas, which are new
+        by definition). ``prior_hash`` is the last land's digest — a replace matching it returns None
+        (the REQ-981 output gate)."""
 
 
 class SourceTableProcessor(TableProcessor):
     """Lands a data source's rows into the materialization store (the write face)."""
 
-    def __init__(self, *args: Any, land: Callable[[list[dict]], Any], **kwargs: Any) -> None:
+    def __init__(self, *args: Any, land: Callable[..., Any], **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._land = land  # async (pending_events) -> (event_type, payload) | None
+        self._land = land  # async (pending, *, prior_hash) -> (event_type, payload, hash) | None
 
-    async def handle(self, pending: list[dict]) -> tuple[str, dict] | None:
+    async def handle(
+        self, pending: list[dict], *, prior_hash: str | None
+    ) -> tuple[str, dict, str | None] | None:
         """Coalesce the claimed events, land the source's rows via the write face, and report the
-        landing shape as this node's change event (append/delta/replace) — or None if nothing landed."""
-        return await self._land(pending)
+        landing shape as this node's change event (append/delta/replace) with the content hash — or
+        None if nothing landed or (replace) the content matched ``prior_hash`` (REQ-981 gate)."""
+        return await self._land(pending, prior_hash=prior_hash)
 
 
 class MVTableProcessor(TableProcessor):
     """Generates an MV by running its SQL on the engine and landing the result."""
 
-    def __init__(self, *args: Any, generate: Callable[[list[dict]], Any], **kwargs: Any) -> None:
+    def __init__(self, *args: Any, generate: Callable[..., Any], **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._generate = generate  # async (pending_events) -> (event_type, payload) | None
+        self._generate = (
+            generate  # async (pending, *, prior_hash) -> (event_type, payload, hash) | None
+        )
 
-    async def handle(self, pending: list[dict]) -> tuple[str, dict] | None:
+    async def handle(
+        self, pending: list[dict], *, prior_hash: str | None
+    ) -> tuple[str, dict, str | None] | None:
         """Generate the MV (engine runs its SQL) and land the result; report the resulting change as
-        this node's event (replace, or incremental append/delta) — or None if the output was unchanged."""
-        return await self._generate(pending)
+        this node's event (replace) with the content hash — or None if the recomputed output matched
+        ``prior_hash`` (REQ-981 gate: an unchanged MV does not ripple its dependents)."""
+        return await self._generate(pending, prior_hash=prior_hash)
