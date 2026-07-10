@@ -495,6 +495,10 @@ class Table(
     # REQ-929: source-native freshness probe for change_signal in {probe, ttl_probe}; the query
     # returns one comparable token. None → derive MAX(watermark_column) when a watermark exists.
     probe_query: str | None = None
+    # REQ-982: input-side change-detection method ∈ {watermark, hash, count, none}. Gated by the
+    # source's capability class (probe_capabilities) and implies the landing shape (watermark → append,
+    # else replace). None → resolved per class at wiring time (ttl forces none). Validated at parse.
+    probe_type: str | None = None
     # REQ-930: cache_ttl is the SINGLE per-table TTL. change_signal in {ttl, ttl_probe} requires it
     # (the poll/staleness cadence); when materialized it is also the refresh cadence. One value, so
     # the change-detection interval and the materialized-copy lifetime can never diverge.

@@ -58,7 +58,8 @@ def test_aliases_canonicalize_to_one_ir_name():
     assert to_ir("int4") == "integer"
     assert to_ir("int8") == "bigint"
     assert to_ir("bool") == "boolean"
-    assert to_ir("jsonb") == "text"  # reflection collapses json → text
+    assert to_ir("json") == "json"  # REQ-980: first-class JSON
+    assert to_ir("jsonb") == "json"  # jsonb narrows to portable generic JSON
     assert to_ir("timestamptz") == "timestamp"
 
 
@@ -89,6 +90,10 @@ def test_to_physical_renders_per_dialect():
     assert to_physical("bigint", "postgresql") == "BIGINT"
     assert to_physical("timestamp", "mysql") == "DATETIME"  # mysql renders DateTime as DATETIME
     assert to_physical("varchar", "postgresql") == "TEXT"  # native spelling normalized to IR first
+    # REQ-980: first-class JSON renders natively per store dialect
+    assert to_physical("json", "postgresql") == "JSON"
+    assert to_physical("jsonb", "postgresql") == "JSON"  # jsonb narrows to portable generic JSON
+    assert to_physical("json", "sqlite") == "JSON"  # SQLAlchemy JSON on sqlite (TEXT-affinity)
 
 
 def test_ir_types_are_canonical_names():

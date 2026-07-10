@@ -117,6 +117,7 @@ registered_tables = Table(
     Column("watermark_column", Text),
     Column("change_signal", Text),  # REQ-929: override source change signal; NULL = inherit
     Column("probe_query", Text),  # REQ-929: source-native freshness probe
+    Column("probe_type", Text),  # REQ-982: input-probe method; NULL = resolve per source class
     Column("column_presets", JSON, nullable=False, default=list, server_default="[]"),
     Column("view_sql", Text),
     Column("data_product", Boolean, nullable=False, server_default=false()),
@@ -591,6 +592,18 @@ events = Table(
         "event_type IN ('delta','append','replace','warn','error')",
         name="events_event_type_check",
     ),
+)
+
+# Per-node freshness state (REQ-981/982): the content hash of the last land (output gate) and the last
+# probe token (input probe baseline). One row per node; upserted on each successful land. V1:
+# schema-defined, no migration.
+node_freshness_state = Table(
+    "node_freshness_state",
+    metadata,
+    Column("node", Text, primary_key=True),  # the source-table / MV node key
+    Column("content_hash", Text),  # REQ-981: hash of the last landed replace-shaped content
+    Column("probe_token", Text),  # REQ-982: last probe token (watermark/hash/count baseline)
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 event_status = Table(

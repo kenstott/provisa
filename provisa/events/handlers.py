@@ -28,7 +28,8 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
-from provisa.core.change_signal import APPEND, select_landing_shape
+from provisa.core.change_signal import APPEND, REPLACE, select_landing_shape
+from provisa.events.content_hash import content_hash
 from provisa.federation import store_writer
 
 _SHAPE_TO_EVENT = {APPEND: "append"}  # replace is the fallback below; delta is the push/CDC path
@@ -44,15 +45,26 @@ def make_source_land(
     watermark_column: str | None,
     pk_columns: list[str] | None,
     fetch: Callable[[list[dict]], Awaitable[list[dict]]],
-) -> Callable[[list[dict]], Awaitable[tuple[str, dict] | None]]:
+) -> Callable[..., Awaitable[tuple[str, dict, str | None] | None]]:
     """Build ``SourceTableProcessor.land``: from the claimed events, ``fetch`` the source's current
-    rows and land them through the write face (shape from change_signal). Returns (event_type,
-    payload) so the base re-posts the node's change, or None when nothing landed (token-gate)."""
+    rows and land them through the write face (shape from change_signal). Returns (event_type, payload,
+    content_hash) so the base re-posts the node's change + persists the hash, or None when nothing
+    landed or (replace) the content matches ``prior_hash`` (REQ-981 output gate)."""
 
-    async def land(pending: list[dict]) -> tuple[str, dict] | None:
+    async def land(
+        pending: list[dict], *, prior_hash: str | None = None
+    ) -> tuple[str, dict, str | None] | None:
         rows = await fetch(pending)
         if not rows:
             return None  # no delta to land → no downstream ripple
+        shape = select_landing_shape(change_signal, watermark_column)
+        # REQ-981 output gate: a replace whose content is byte-identical to the prior land neither
+        # lands nor ripples. Append/CDC deltas are new rows by definition → no content hash.
+        digest: str | None = None
+        if shape == REPLACE:
+            digest = content_hash(rows, pk_columns)
+            if digest == prior_hash:
+                return None
         loc = await store_writer.land(
             store_dsn,
             schema=schema,
@@ -63,8 +75,7 @@ def make_source_land(
             watermark_column=watermark_column,
             pk_columns=pk_columns,
         )
-        shape = select_landing_shape(change_signal, watermark_column)
-        return _SHAPE_TO_EVENT.get(shape, "replace"), {"rows": len(rows), "landed": loc}
+        return _SHAPE_TO_EVENT.get(shape, "replace"), {"rows": len(rows), "landed": loc}, digest
 
     return land
 
@@ -76,17 +87,24 @@ def make_mv_generate(
     table: str,
     columns: list[tuple[str, str]],
     run_query: Callable[[], Awaitable[list[dict]]],
-) -> Callable[[list[dict]], Awaitable[tuple[str, dict] | None]]:
+) -> Callable[..., Awaitable[tuple[str, dict, str | None] | None]]:
     """Build ``MVTableProcessor.generate``: the engine runs the MV's SQL (``run_query``) and the
     result is landed through the write face — a full ``replace``. The engine computes; the write
-    face writes. Returns (event_type, payload) for the base to re-post."""
+    face writes. Returns (event_type, payload, content_hash) for the base to re-post + persist, or
+    None when the recomputed output matches ``prior_hash`` (REQ-981 gate — an unchanged MV does not
+    ripple its dependents)."""
 
-    async def generate(pending: list[dict]) -> tuple[str, dict] | None:
+    async def generate(
+        pending: list[dict], *, prior_hash: str | None = None
+    ) -> tuple[str, dict, str | None] | None:
         del pending  # an MV refresh recomputes to current state; the claimed events are the trigger
         rows = await run_query()
+        digest = content_hash(rows)  # MVs have no PK → hash over each row's canonical form
+        if digest == prior_hash:
+            return None  # recomputed output identical → no land, no downstream ripple
         loc = await store_writer.land(
             store_dsn, schema=schema, table=table, columns=columns, rows=rows, change_signal="ttl"
         )
-        return "replace", {"rows": len(rows), "landed": loc}
+        return "replace", {"rows": len(rows), "landed": loc}, digest
 
     return generate

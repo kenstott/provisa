@@ -398,6 +398,7 @@ async def _fetch_table_with_columns(
         view_sql=view_sql,
         change_signal=row.get("change_signal"),
         probe_query=row.get("probe_query"),
+        probe_type=row.get("probe_type"),
         materialize=bool(row.get("materialize", False)),
         mv_refresh_interval=int(row.get("mv_refresh_interval") or 300),
         data_product=bool(row.get("data_product", False)),
@@ -408,7 +409,7 @@ async def _fetch_table_with_columns(
     )
 
 
-from provisa.api.admin._live_mappers import live_model_from_input as _live_model_from_input  # noqa: E402
+from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input  # noqa: E402
 
 
 async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
@@ -1723,9 +1724,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     return await _queue_creation_request(info, "view", "create_view", input)
         else:
             require_capability(info, "table_registration", domain_id=input.domain_id)
-        from provisa.core.models import (
-            Table as TableModel,
-        )
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()
@@ -1756,26 +1754,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             for cp in input.column_presets
         ]
-        model = TableModel(
-            source_id=input.source_id,
-            domain_id=input.domain_id,
-            schema_name=input.schema_name,
-            table_name=input.table_name,
-            alias=alias,
-            description=input.description,
-            columns=columns,
-            watermark_column=input.watermark_column,
-            change_signal=input.change_signal,
-            probe_query=input.probe_query,
-            column_presets=presets,
-            view_sql=input.view_sql or None,
-            materialize=input.materialize,
-            mv_refresh_interval=input.mv_refresh_interval,
-            data_product=input.data_product,
-            enable_aggregates=input.enable_aggregates,
-            enable_group_by=input.enable_group_by,
-            live=_live_model_from_input(input.live),
-        )
+        model = _table_model_from_input(input, columns, presets, alias)
         async with pool.acquire() as conn:
             _conn = cast("Connection", conn)
             _conflict = await _domain_table_conflict(
@@ -1886,9 +1865,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin.capabilities import require_capability
 
         require_capability(info, "table_registration", domain_id=input.domain_id)
-        from provisa.core.models import (
-            Table as TableModel,
-        )
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()
@@ -1905,26 +1881,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             for cp in input.column_presets
         ]
-        model = TableModel(
-            source_id=input.source_id,
-            domain_id=input.domain_id,
-            schema_name=input.schema_name,
-            table_name=input.table_name,
-            alias=input.alias,
-            description=input.description,
-            columns=columns,
-            watermark_column=input.watermark_column,
-            change_signal=input.change_signal,
-            probe_query=input.probe_query,
-            column_presets=presets,
-            view_sql=input.view_sql or None,
-            materialize=input.materialize,
-            mv_refresh_interval=input.mv_refresh_interval,
-            data_product=input.data_product,
-            enable_aggregates=input.enable_aggregates,
-            enable_group_by=input.enable_group_by,
-            live=_live_model_from_input(input.live),
-        )
+        model = _table_model_from_input(input, columns, presets, input.alias)
         async with pool.acquire() as conn:
             _conn = cast("Connection", conn)
             _conflict = await _domain_table_conflict(

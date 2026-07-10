@@ -96,3 +96,26 @@ export function sourceChangeSignals(sourceType: string | null | undefined): stri
   if (strat.includes("kafka")) out.push("kafka");
   return out;
 }
+
+// REQ-982: per-table probe_type options, gated by the source's capability class. Mirrors backend
+// provisa/events/probes.py probe_capabilities: file/object sources support only hash|none; HTTP APIs
+// and SQL/engine-scannable sources support all four; streaming/push sources are not on the probe axis
+// (empty). probe_type implies the landing shape (watermark → append, else replace).
+const PROBE_STREAMING_TYPES = new Set(["kafka", "websocket", "ingest"]);
+const PROBE_FILE_TYPES = new Set(["csv", "parquet", "sqlite", "files"]);
+const PROBE_HTTP_API_TYPES = new Set([
+  "openapi",
+  "graphql_remote",
+  "grpc_remote",
+  "rss",
+  "prometheus",
+  "google_sheets",
+]);
+
+export function sourceProbeTypes(sourceType: string | null | undefined): string[] {
+  const t = (sourceType ?? "").toLowerCase();
+  if (PROBE_STREAMING_TYPES.has(t)) return []; // push axis — not polled, no probe
+  if (PROBE_FILE_TYPES.has(t)) return ["hash", "none"];
+  if (PROBE_HTTP_API_TYPES.has(t)) return ["watermark", "hash", "count", "none"];
+  return ["watermark", "hash", "count", "none"]; // SQL / engine-scannable (open-ended default)
+}

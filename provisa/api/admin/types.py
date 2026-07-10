@@ -108,6 +108,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     view_sql: str | None = None
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
     probe_query: str | None = None  # REQ-929: source-native freshness probe
+    probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
     materialize: bool = False
     mv_refresh_interval: int = 300
     data_product: bool = False
@@ -305,6 +306,7 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     view_sql: str | None = None
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
     probe_query: str | None = None  # REQ-929: source-native freshness probe
+    probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
     materialize: bool = False
     mv_refresh_interval: int = 300
     data_product: bool = False

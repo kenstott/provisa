@@ -76,6 +76,7 @@ async def upsert(
         "live": table.live.model_dump() if table.live else None,
         "change_signal": getattr(table, "change_signal", None),
         "probe_query": getattr(table, "probe_query", None),
+        "probe_type": getattr(table, "probe_type", None),
     }
     _update_columns = [
         "domain_id",
@@ -92,6 +93,7 @@ async def upsert(
         "live",
         "change_signal",
         "probe_query",
+        "probe_type",
     ]
     table_id = await conn.upsert_returning(
         registered_tables,

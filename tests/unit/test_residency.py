@@ -21,20 +21,58 @@ def _col(name, data_type: str | None = "text", pk=False):
     return SimpleNamespace(name=name, data_type=data_type, is_primary_key=pk)
 
 
-def _table(source_id="s1", *, change_signal=None, watermark_column=None, live=None, columns=None):
+def _table(
+    source_id="s1",
+    *,
+    change_signal=None,
+    watermark_column=None,
+    live=None,
+    columns=None,
+    probe_type=None,
+):
     return SimpleNamespace(
         source_id=source_id,
         schema_name="public",
         table_name="events",
         change_signal=change_signal,
         watermark_column=watermark_column,
+        probe_type=probe_type,
         live=live,
         columns=columns or [_col("id", "bigint", pk=True), _col("status", "text")],
     )
 
 
-def _source(source_id="s1", *, change_signal="ttl"):
-    return SimpleNamespace(id=source_id, type="openapi", change_signal=change_signal)
+def _source(source_id="s1", *, change_signal="ttl", type="openapi"):
+    return SimpleNamespace(id=source_id, type=type, change_signal=change_signal)
+
+
+class TestResolveProbeType:  # REQ-982
+    def test_ttl_resolves_to_none(self):
+        args = resolve_landing_args(_source(change_signal="ttl"), _table())
+        assert args.probe_type == "none"
+
+    def test_sql_probe_default_watermark(self):
+        args = resolve_landing_args(
+            _source(change_signal="probe", type="postgresql"),
+            _table(watermark_column="updated_at"),
+        )
+        assert args.probe_type == "watermark"
+
+    def test_sql_probe_default_count_without_watermark(self):
+        args = resolve_landing_args(_source(change_signal="probe", type="postgresql"), _table())
+        assert args.probe_type == "count"
+
+    def test_api_probe_default_hash(self):
+        args = resolve_landing_args(_source(change_signal="ttl_probe", type="openapi"), _table())
+        assert args.probe_type == "hash"
+
+    def test_explicit_type_outside_capability_raises(self):
+        import pytest as _pytest
+
+        with _pytest.raises(ValueError, match="not supported"):
+            resolve_landing_args(
+                _source(change_signal="probe", type="csv"), _table(probe_type="watermark")
+            )
 
 
 class TestResolveLandingArgs:

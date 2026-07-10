@@ -33,8 +33,8 @@ from provisa.events.processor import (
     TableProcessor,
 )
 
-# The handle a node runs on its claimed events → (event_type, payload) | None (see handlers.py).
-Handle = Callable[[list[dict]], Awaitable["tuple[str, dict] | None"]]
+# The handle a node runs on its claimed events → (event_type, payload, content_hash) | None (REQ-981).
+Handle = Callable[..., Awaitable["tuple[str, dict, str | None] | None"]]
 
 
 @dataclass(frozen=True)
@@ -49,17 +49,32 @@ class NodeSpec:
     handle: Handle
     poll_seconds: int | None = None  # poll nodes: the timer cadence
     probe_factory: Callable[[], Probe] | None = None  # poll nodes: a fresh probe per fire
+    probe_type: str = "none"  # REQ-982: input-probe method (drives the injected event shape)
 
 
-def _poll_probe_factory() -> Callable[[], Probe]:
-    """A poll source re-queries its current rows each cadence and lands them (REPLACE). The TTL lapse
-    IS the change, so the probe always reports changed. (Token/watermark probing to skip an unchanged
-    poll is a per-source optimization for a later pass; re-querying is correct, just not minimal.)"""
+def _probe_factory(
+    probe_type: str,
+    *,
+    query_scalar: Any | None,
+    ref: str | None,
+    watermark_column: str | None,
+) -> Callable[[], Probe]:
+    """Build a node's probe factory from its resolved ``probe_type`` (REQ-982). Each fire yields a
+    fresh transport (``() -> str | None``) via :func:`probes.build_probe`; ``check_node`` compares the
+    returned token to the persisted baseline. A watermark/count transport needs the SQL scalar runner
+    + table ref (injected); hash/none (and any unwired transport) return a None token, degrading the
+    node to its TTL cadence where the REQ-981 output hash still gates an unchanged ripple."""
+    from provisa.events.probes import build_probe
 
-    async def _probe() -> tuple[bool, str | None]:
-        return True, None
+    def factory() -> Probe:
+        return build_probe(
+            probe_type,
+            query_scalar=query_scalar,
+            ref=ref,
+            watermark_column=watermark_column,
+        )
 
-    return lambda: _probe
+    return factory
 
 
 def specs_from_config(
@@ -73,6 +88,7 @@ def specs_from_config(
     mv_columns: Callable[[Any], list[tuple[str, str]] | None],
     mv_run_query: Callable[[Any], Any],
     store_schema: str = "mat",
+    probe_scalar: Callable[[Any, Any], Any] | None = None,
 ) -> list[NodeSpec]:
     """Bind the config to :class:`NodeSpec`s (REQ-941). A MATERIALIZED source table (``federate`` ==
     MATERIALIZED) becomes a source spec — its landing args resolved from config, its ``fetch`` the
@@ -122,6 +138,22 @@ def specs_from_config(
             pk_columns=args.pk_columns,
             fetch=source_fetch(src, tbl),
         )
+        # REQ-982: build the poll node's probe from its resolved probe_type. watermark/count read the
+        # source through the engine terminal (the SQL scalar runner + engine ref, injected); hash/none
+        # degrade to the TTL cadence (a None token) where the REQ-981 output hash gates the ripple.
+        from provisa.compiler.naming import source_to_catalog
+
+        ref = f'"{source_to_catalog(src.id)}"."{tbl.schema_name}"."{tbl.table_name}"'
+        factory = (
+            _probe_factory(
+                args.probe_type,
+                query_scalar=probe_scalar(src, tbl) if probe_scalar is not None else None,
+                ref=ref,
+                watermark_column=args.watermark_column,
+            )
+            if is_poll(args.change_signal)
+            else None
+        )
         specs.append(
             NodeSpec(
                 node=node,
@@ -132,7 +164,8 @@ def specs_from_config(
                 poll_seconds=getattr(tbl, "cache_ttl", None),
                 # Poll sources refresh on their own cadence (register_runtime schedules the injector);
                 # push sources are driven by their listener. Boot lands the first copy either way.
-                probe_factory=_poll_probe_factory() if is_poll(args.change_signal) else None,
+                probe_factory=factory,
+                probe_type=args.probe_type,
             )
         )
 
@@ -175,6 +208,7 @@ def build_processors(
             "dependents_of": dependents_of,
             "db": db,
             "name": f"{spec.kind}:{spec.node}",
+            "probe_type": spec.probe_type,
         }
         if spec.kind == "source":
             processors.append(SourceTableProcessor(spec.node, land=spec.handle, **common))

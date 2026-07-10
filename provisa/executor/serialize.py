@@ -64,6 +64,10 @@ def _convert_value(
             return _recursive_json_convert(parsed)
         except (json.JSONDecodeError, ValueError):
             pass
+    # A native JSON column (REQ-980) returns an already-parsed dict/list — recurse so nested values
+    # (Decimals, dates, json_format-wrapped strings) convert consistently with the string path above.
+    if isinstance(val, (dict, list)):
+        return _recursive_json_convert(val)
     return val
 
 

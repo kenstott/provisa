@@ -37,8 +37,9 @@ async def test_source_land_lands_rows_and_reports_shape(tmp_path):
         pk_columns=["id"],
         fetch=fetch,
     )
-    result = await land([{"id": 99, "event_type": "append"}])
-    assert result == ("append", {"rows": 2, "landed": "orders"})  # poll+watermark → append
+    result = await land([{"id": 99, "event_type": "append"}], prior_hash=None)
+    # poll+watermark → append; append rows are new by definition → no content hash (None)
+    assert result == ("append", {"rows": 2, "landed": "orders"}, None)
     async with store_writer.store_connection(dsn) as conn:
         rows = await conn.fetch("SELECT id, status FROM orders ORDER BY id")
     assert [(r[0], r[1]) for r in rows] == [(1, "new"), (2, "sold")]
@@ -59,7 +60,7 @@ async def test_source_land_empty_fetch_is_noop(tmp_path):
         pk_columns=None,
         fetch=fetch,
     )
-    assert await land([{"e": 1}]) is None  # token-gate: nothing landed → no re-post
+    assert await land([{"e": 1}], prior_hash=None) is None  # nothing landed → no re-post
 
 
 @pytest.mark.asyncio
@@ -72,7 +73,11 @@ async def test_mv_generate_runs_query_lands_replace(tmp_path):
     generate = make_mv_generate(
         dsn, schema="", table="mv_daily", columns=_COLS, run_query=run_query
     )
-    assert await generate([{"e": 1}]) == ("replace", {"rows": 1, "landed": "mv_daily"})
+    event_type, payload, digest = await generate([{"e": 1}], prior_hash=None)
+    assert (event_type, payload) == ("replace", {"rows": 1, "landed": "mv_daily"})
+    assert isinstance(digest, str) and digest  # MV replace carries a content hash
     async with store_writer.store_connection(dsn) as conn:
         rows = await conn.fetch("SELECT id FROM mv_daily")
     assert [r[0] for r in rows] == [7]
+    # REQ-981: re-generating the identical result matches prior_hash → gated (no re-post)
+    assert await generate([{"e": 2}], prior_hash=digest) is None

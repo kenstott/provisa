@@ -122,6 +122,7 @@ export interface RegisteredTable {
   watermarkColumn: string | null;
   changeSignal: string | null;
   probeQuery: string | null;
+  probeType: string | null;
   columns: TableColumn[];
   columnPresets: ColumnPreset[];
   apiEndpoint: string | null;

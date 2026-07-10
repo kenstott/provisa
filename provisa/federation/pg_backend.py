@@ -27,6 +27,14 @@ class PgBackend(NativeEngineBackend):
 
     _attach_errors = (psycopg2.Error, KeyError)
 
+    def transpile_physical(self, pg_sql: str) -> str:  # REQ-902
+        """Postgres physical SQL, then collapse JSON_OBJECT colon syntax into flat json_build_object so
+        nested-relationship queries survive pg_duckdb's transparent DuckDB execution path (REQ-902).
+        json_build_object is valid in plain Postgres too, so this is unconditional for the pg engine."""
+        from provisa.transpiler.transpile import rewrite_json_object_to_build_object, transpile
+
+        return rewrite_json_object_to_build_object(transpile(pg_sql, self.dialect))
+
     def _new_runtime(self) -> Any:
         from provisa.federation.engine import configured_engine_url
 

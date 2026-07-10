@@ -182,8 +182,19 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any) -> int:
                     change_signal=getattr(_cfg, "change_signal", None),
                     watermark_column=getattr(_cfg, "watermark_column", None),
                     cache_ttl=getattr(_cfg, "cache_ttl", None),
+                    probe_type=getattr(_cfg, "probe_type", None),  # REQ-982
                 )
             )
+
+        # REQ-982: the SQL scalar runner a watermark/count probe uses to read the source through the
+        # engine terminal — the same read path as the row loader, returning the single scalar.
+        def probe_scalar(_src: Any, _tbl: Any) -> Any:
+            async def _scalar(sql: str) -> Any:
+                result = await engine.execute_engine(sql)
+                return result.rows[0][0] if result.rows else None
+
+            return _scalar
+
         specs = specs_from_config(
             sources=config.sources,
             tables=registered_tables,
@@ -194,6 +205,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any) -> int:
             mv_columns=mv_columns,
             mv_run_query=mv_run_query,
             store_schema=store_schema,
+            probe_scalar=probe_scalar,
         )
         processors = build_processors(specs, db=db, dependents_of=dependents_of)
         # register_runtime schedules the tick/reaper, each poll node's job, AND a one-shot boot-create
