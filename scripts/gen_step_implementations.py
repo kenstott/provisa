@@ -234,9 +234,7 @@ def sanitize_fragment(text: str, req_id: str, append_mode: bool) -> str:
     text = _FEATURE_LIT_RE.sub(canonical_path, text)
 
     if append_mode:
-        text = "\n".join(
-            line for line in text.splitlines() if not _FUTURE_RE.match(line)
-        )
+        text = "\n".join(line for line in text.splitlines() if not _FUTURE_RE.match(line))
     elif "scenarios(" in text and not re.search(r"\bscenarios\b", text.split("scenarios(")[0]):
         # New-file mode: the model called scenarios() but forgot to import it. Add it
         # to the existing pytest_bdd import line rather than inventing a new import.
@@ -246,6 +244,21 @@ def sanitize_fragment(text: str, req_id: str, append_mode: bool) -> str:
                 lambda mm: f"{mm.group(1)}{mm.group(2).rstrip()}, scenarios", text, count=1
             )
     return text
+
+
+def is_noop_fragment(text: str) -> bool:
+    """True if the fragment has no executable Python — only comments/blank lines.
+
+    In append mode the model returns a comment-only note ("No new steps required...")
+    plus a re-emitted copyright/canary header whenever a requirement's steps already
+    exist. Such a fragment parses cleanly, so without this guard every regeneration run
+    appends another dead comment block, growing the file unbounded (the observed bug).
+    """
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            return False
+    return True
 
 
 def parse_error(source: str) -> SyntaxError | None:
@@ -377,9 +390,7 @@ async def generate_for_req(
         # Substitute a real per-file canary; the SYSTEM_PROMPT ships the literal
         # placeholder "{canary}", which otherwise lands verbatim in the output.
         system = SYSTEM_PROMPT.replace("{canary}", str(uuid4()))
-        raw, stop_reason = await stream_text(
-            client, system, [{"role": "user", "content": prompt}]
-        )
+        raw, stop_reason = await stream_text(client, system, [{"role": "user", "content": prompt}])
 
         # A truncated (max_tokens) generation is the root cause of mid-statement
         # file corruption — never write it over a good file.
@@ -391,9 +402,7 @@ async def generate_for_req(
             )
             return None
 
-        generated = sanitize_fragment(
-            normalize_unicode(strip_fences(raw)), req_id, append_mode
-        )
+        generated = sanitize_fragment(normalize_unicode(strip_fences(raw)), req_id, append_mode)
 
         # The fragment must parse standalone (imports + scenarios + step functions).
         # If it does not, ask the model to repair its own output before giving up.
@@ -416,6 +425,12 @@ async def generate_for_req(
             # Re-apply structural fixes: repair may reintroduce a __future__ line
             # or an off path.
             generated = sanitize_fragment(repaired, req_id, append_mode)
+
+        # In append mode a comment-only fragment means the model had no new steps to
+        # add. Appending it accumulates dead comment blocks on every run, so drop it.
+        if append_mode and is_noop_fragment(generated):
+            print(f"  skip {req_id}: no new steps to append", flush=True)
+            return None
 
         STEPS_DIR.mkdir(parents=True, exist_ok=True)
         async with file_locks[file_key]:
