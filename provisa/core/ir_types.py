@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     Date,
@@ -53,6 +54,10 @@ _IR_TO_SA: dict[str, Any] = {
     "time": Time,
     "uuid": Uuid,
     "bytea": LargeBinary,
+    # REQ-980: first-class JSON. SQLAlchemy's generic JSON renders as native JSON on
+    # Postgres/MySQL/DuckDB and TEXT-affinity on SQLite — portable via the dialect compiler, no
+    # hand-maintained per-store fallback. Composite/array types stay collapsed to `text` (below).
+    "json": JSON,
 }
 
 # Native / dialect spelling → canonical IR name. Everything a source or reflection reports maps
@@ -67,8 +72,8 @@ _ALIASES: dict[str, str] = {
     "char": "text",
     "character": "text",
     "string": "text",
-    "json": "text",  # reflection collapses json/array to text (matches the engine surface)
-    "jsonb": "text",
+    "json": "json",  # REQ-980: first-class JSON (jsonb narrows to portable generic JSON)
+    "jsonb": "json",
     "bool": "boolean",
     "real": "float",
     "float4": "float",
@@ -91,7 +96,7 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
         "tinyint": "smallint",
         "real": "float",
         "varbinary": "bytea",
-        "json": "text",
+        "json": "json",  # REQ-980
         "timestamp with time zone": "timestamp",
         "time with time zone": "time",
         "ipaddress": "text",
@@ -131,7 +136,7 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
         "blob": "bytea",
         "timestamptz": "timestamp",
         "timestamp with time zone": "timestamp",
-        "json": "text",
+        "json": "json",  # REQ-980
         "list": "text",
         "struct": "text",
         "map": "text",

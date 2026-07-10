@@ -101,6 +101,36 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
     return tree.transform(_transform).sql(dialect="trino")
 
 
+def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
+    """Collapse SQL-standard JSON_OBJECT('k': v, ...) into flat json_build_object('k', v, ...).
+
+    pg_duckdb's transparent execution path cannot emit PostgreSQL 16 nested-JSON syntax
+    (JSON_OBJECT with colon separators); its DuckDB executor rejects the colon form and requires the
+    flat json_build_object(k, v) form. json_build_object is valid in BOTH plain PostgreSQL and
+    pg_duckdb, so this rewrite is safe for the whole pg engine regardless of which sources a query
+    touches. Applied by PgBackend.transpile_physical after the base postgres transpile.
+    """
+    # Parse failure must fail loud: returning input skips the required pg_duckdb JSON rewrite.
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+
+    def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        if isinstance(node, exp.JSONObject):
+            args: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]
+            for kv in node.expressions or []:
+                if not isinstance(kv, exp.JSONKeyValue):
+                    return node  # unexpected shape — leave untouched, fail loud downstream
+                args.append(kv.this)
+                args.append(kv.expression)
+            return exp.Anonymous(this="json_build_object", expressions=args)
+        return node
+
+    # JSON_OBJECT nodes nest (a value can be a subquery selecting another JSON_OBJECT); one transform
+    # pass rewrites only nodes visited before their parent is replaced, so iterate until none remain.
+    while list(tree.find_all(exp.JSONObject)):
+        tree = tree.transform(_transform)
+    return tree.sql(dialect="postgres")
+
+
 def transpile(pg_sql: str, target_dialect: str) -> str:  # REQ-066, REQ-068, REQ-229
     """Transpile PostgreSQL-dialect SQL to a target dialect.
 
@@ -273,7 +303,7 @@ def _try_rewrite_to_cte(
         json_expr = inner_expr.expressions[0]
 
     extra_joins: list[exp.Join] = []
-    flat_json = _flatten_json_subqueries(json_expr, extra_joins, inner_alias)
+    flat_json = _flatten_json_subqueries(json_expr, extra_joins)
     if flat_json is None:
         flat_json = json_expr
 
@@ -368,7 +398,6 @@ def _try_rewrite_to_cte(
 def _flatten_json_subqueries(
     jbo: exp.JSONObject,
     extra_joins: list[exp.Join],
-    outer_alias: str,
 ) -> exp.JSONObject | None:
     """Replace KEY 'k' VALUE (subquery) pairs with direct expressions + LEFT JOINs.
 
@@ -443,7 +472,7 @@ def _flatten_json_subqueries(
             nested_json = inner_expr.expressions[0]
 
         deeper_joins: list[exp.Join] = []
-        flat_nested = _flatten_json_subqueries(nested_json, deeper_joins, nested_alias)
+        flat_nested = _flatten_json_subqueries(nested_json, deeper_joins)
         if flat_nested is None:
             flat_nested = nested_json
 
@@ -645,7 +674,7 @@ def _lift_correlated_in_expr(
         return None
 
     if isinstance(expr, exp.Subquery):
-        result = _try_lift_subquery(expr, outer_aliases, cte_defs, new_joins, cte_counter)
+        result = _try_lift_subquery(expr, cte_defs, new_joins, cte_counter)
         return result  # Column reference or None
 
     if isinstance(expr, exp.JSONObject):
@@ -707,7 +736,6 @@ def _lift_in_json_object(
 
 def _try_lift_subquery(
     subq: exp.Subquery,
-    outer_aliases: set[str],
     cte_defs: list[exp.CTE],
     new_joins: list[exp.Join],
     cte_counter: list[int],
@@ -751,9 +779,8 @@ def _try_lift_subquery(
     is_agg = _is_aggregate_expr(inner_select_expr)
 
     # Recursively flatten nested correlated subqueries within the selected expression
-    inner_aliases_in_scope = {inner_alias}
     extra_joins: list[exp.Join] = []
-    flat_expr = _flatten_nested_in_expr(inner_select_expr, inner_aliases_in_scope, extra_joins)
+    flat_expr = _flatten_nested_in_expr(inner_select_expr, extra_joins)
     if flat_expr is None:
         flat_expr = inner_select_expr
 
@@ -1024,7 +1051,7 @@ def _flatten_walk_subquery(
         return None
     nested_select_expr = inner_exprs_list[0]
     deeper_joins: list[exp.Join] = []
-    flat_nested = _flatten_nested_in_expr(nested_select_expr, {nested_alias}, deeper_joins)
+    flat_nested = _flatten_nested_in_expr(nested_select_expr, deeper_joins)
     if flat_nested is None:
         flat_nested = nested_select_expr
     join_cond = _build_join_condition(corr, local)
@@ -1041,7 +1068,6 @@ def _flatten_walk_subquery(
 
 def _flatten_nested_in_expr(
     expr: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    inner_aliases: set[str],
     extra_joins: list[exp.Join],
 ) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Walk expr inside a CTE body, replacing nested correlated subqueries with LEFT JOINs.

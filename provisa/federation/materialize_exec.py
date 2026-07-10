@@ -28,9 +28,10 @@ Three landing shapes, selected by the table's change_signal + watermark_column (
 
 from __future__ import annotations
 
+import json
 from typing import Any, Protocol
 
-from sqlalchemy import Column, MetaData, Table
+from sqlalchemy import JSON, Column, MetaData, Table
 from sqlalchemy.schema import CreateTable
 
 from provisa.core.ir_types import to_sqlalchemy
@@ -69,6 +70,28 @@ def build_table(
     return Table(table, MetaData(), *cols, schema=schema or None)
 
 
+def _json_columns(table: Table) -> frozenset[str]:
+    """Names of the table's JSON-typed columns (REQ-980)."""
+    return frozenset(c.name for c in table.columns if isinstance(c.type, JSON))
+
+
+def _coerce_json_row(row: dict, json_cols: frozenset[str]) -> dict:
+    """Parse JSON-column string values into Python objects before insert (REQ-980).
+
+    The fed engine returns a JSON column as serialized TEXT; a SQLAlchemy JSON column re-serializes on
+    bind, so a string value would be double-encoded (a JSON string of a JSON string). Parse it here so
+    the store holds the object. A malformed JSON string is a real upstream error — it raises loud (no
+    silent passthrough). ``None`` and already-parsed dict/list values pass through untouched."""
+    if not json_cols:
+        return row
+    out = dict(row)
+    for name in json_cols:
+        val = out.get(name)
+        if isinstance(val, str):
+            out[name] = json.loads(val)  # loud on malformed JSON — upstream contract violation
+    return out
+
+
 async def land_replace(conn: StoreConn, table: Table, rows: list[dict]) -> str:
     """REPLACE land: **DELETE + INSERT** — a full refresh of the table's CONTENTS (REQ-932).
 
@@ -78,8 +101,9 @@ async def land_replace(conn: StoreConn, table: Table, rows: list[dict]) -> str:
     not the table."""
     await conn.execute_core(CreateTable(table, if_not_exists=True))
     await conn.execute_core(table.delete())
+    json_cols = _json_columns(table)
     for row in rows:
-        await conn.execute_core(table.insert().values(**row))
+        await conn.execute_core(table.insert().values(**_coerce_json_row(row, json_cols)))
     return _qualified(table)
 
 
@@ -89,8 +113,9 @@ async def land_append(conn: StoreConn, table: Table, rows: list[dict]) -> str:
     ``rows`` are the already-watermark-filtered delta (``WHERE watermark > cursor`` upstream), so
     this only creates-if-absent and inserts — no truncation. The caller advances the cursor."""
     await conn.execute_core(CreateTable(table, if_not_exists=True))
+    json_cols = _json_columns(table)
     for row in rows:
-        await conn.execute_core(table.insert().values(**row))
+        await conn.execute_core(table.insert().values(**_coerce_json_row(row, json_cols)))
     return _qualified(table)
 
 
@@ -112,6 +137,7 @@ async def apply_cdc(
         )
     await conn.execute_core(CreateTable(table, if_not_exists=True))
 
+    json_cols = _json_columns(table)
     counts = {"upsert": 0, "delete": 0}
     for ev in events:
         if ev.operation.lower() == "delete":
@@ -119,7 +145,9 @@ async def apply_cdc(
             await conn.execute_core(table.delete().where(where))
             counts["delete"] += 1
         else:  # insert / update → upsert
-            await conn.upsert(table, dict(ev.row), index_elements=pk_columns)
+            await conn.upsert(
+                table, _coerce_json_row(dict(ev.row), json_cols), index_elements=pk_columns
+            )
             counts["upsert"] += 1
     return counts
 

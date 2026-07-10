@@ -17,6 +17,7 @@ from provisa.transpiler.transpile import (
     transpile,
     transpile_to_trino,
     rewrite_correlated_subqueries_for_trino,
+    rewrite_json_object_to_build_object,
 )
 
 
@@ -118,6 +119,45 @@ class TestMultiDialect:
     def test_to_bigquery(self):
         result = transpile(self.PG_SQL, "bigquery")
         assert "orders" in result.lower()
+
+
+class TestPgDuckdbJsonEmission:
+    """REQ-902: pg_duckdb's DuckDB executor rejects PG16 JSON_OBJECT('k': v) colon syntax and requires
+    flat json_build_object('k', v). The pg engine's transpile_physical collapses it."""
+
+    def test_flat_json_object_collapses_to_build_object(self):
+        pg = "SELECT json_object(KEY 'name' VALUE a.name) AS obj FROM authors a"
+        out = rewrite_json_object_to_build_object(transpile(pg, "postgres"))
+        assert "JSON_BUILD_OBJECT" in out.upper()
+        assert "JSON_OBJECT(" not in out.upper()
+        assert "':'" not in out and "':" not in out.replace("'name'", "")
+
+    def test_nested_json_object_all_levels_collapse(self):
+        pg = (
+            "SELECT json_object(KEY 'name' VALUE a.name, KEY 'posts' VALUE "
+            "(SELECT json_agg(json_object(KEY 'title' VALUE p.title)) "
+            "FROM posts p WHERE p.author_id = a.id)) AS obj FROM authors a"
+        )
+        out = rewrite_json_object_to_build_object(transpile(pg, "postgres"))
+        assert out.upper().count("JSON_BUILD_OBJECT") == 2
+        assert "JSON_OBJECT(" not in out.upper()
+
+    def test_no_json_object_unchanged(self):
+        pg = transpile('SELECT "id", "name" FROM "public"."orders"', "postgres")
+        assert rewrite_json_object_to_build_object(pg) == pg
+
+    def test_pg_backend_transpile_physical_emits_build_object(self):
+        from provisa.federation.engine import build_pg_engine
+
+        backend = build_pg_engine().backend
+        pg = "SELECT json_object(KEY 'name' VALUE a.name) AS obj FROM authors a"
+        out = backend.transpile_physical(pg)
+        assert "JSON_BUILD_OBJECT" in out.upper()
+        assert "JSON_OBJECT(" not in out.upper()
+
+    def test_invalid_sql_raises(self):
+        with pytest.raises(ParseError):
+            rewrite_json_object_to_build_object("SELECT FROM WHERE ((")
 
 
 class TestRewriteCorrelatedSubqueries:

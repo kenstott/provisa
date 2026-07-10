@@ -25683,8 +25683,8 @@
   - REQ-900
   - REQ-898
 - id: REQ-902
-  status: in-progress
-  target: 2026-Q4
+  status: complete
+  since: "2026-07"
   group: 3. Federation Engines & Data Sources
   category: Query Compilation
   priority: MUST
@@ -25709,7 +25709,10 @@
     but not for nested JSON construction in the output layer. Workaround: route nested queries to non-pg_duckdb
     engines or defer nested-relationship federation to future version.'
   code:
-  - provisa/federation/engine.py
+  - provisa/transpiler/transpile.py
+  - provisa/federation/pg_backend.py
+  tests:
+  - tests/unit/test_transpile.py
   related_reqs:
   - REQ-900
   - REQ-896
@@ -28047,7 +28050,8 @@
   code:
   - provisa/build/
 - id: REQ-980
-  status: proposed
+  status: complete
+  since: "2026-07"
   group: "3. Federation Engines & Data Sources"
   category: Query Compilation
   priority: SHOULD
@@ -28055,14 +28059,24 @@
   description: >-
     Add `json` as a first-class IR type so native JSON in source columns
     preserves through to materialized stores as native JSON where supported,
-    instead of collapsing to `text`.
+    instead of collapsing to `text`. The write face maps IR `json` to
+    SQLAlchemy's generic JSON (native on Postgres/MySQL/DuckDB, TEXT-affinity on
+    SQLite via the dialect compiler); the land path parses a JSON column's
+    serialized-text value into a Python object before insert so the SQLAlchemy
+    JSON column does not double-encode; and the read path converts an
+    already-parsed dict/list consistently with the string path. Composite/array
+    types (row/array/list/struct/map) remain collapsed to `text`.
   use_case: >-
     Federation queries over JSON columns maintain type information and enable
     native JSON operations in target stores, rather than forcing serialization
     fallbacks.
   code:
     - provisa/core/ir_types.py
-  target: "2026-Q4"
+    - provisa/federation/materialize_exec.py
+    - provisa/executor/serialize.py
+  tests:
+    - tests/unit/test_ir_types.py
+    - tests/unit/test_materialize_landing.py
   related_reqs:
     - REQ-846
     - REQ-932
