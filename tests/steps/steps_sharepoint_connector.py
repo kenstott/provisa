@@ -1322,3 +1322,6 @@ def the_table_is_created_with_the_supplied_column_definitions(shared_data):
 
 
 # All steps required for the REQ-728 default behaviour scenario are already defined in the existing file. No new definitions are required.
+
+
+# All steps required for the REQ-728 default behaviour scenario are already defined in the existing file. No new definitions are required.

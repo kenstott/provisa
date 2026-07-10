@@ -7778,3 +7778,78 @@ def _then_v2_table_alias(shared_data: dict) -> None:
 # Canary: 5d4578a6-b932-4785-b96e-cb22907c76bd
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9319a4b1-146e-49f0-899f-4cd4d557eb9e
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3c2c7256-7bcc-4afa-a348-fa135aa8542a
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-183 are already fully implemented in the existing steps file.
+# The Given/When/Then steps for the REQ-183 default behaviour scenario map to:
+#   Given "a Hasura DDN supergraph project"       -> _given_ddn_project
+#   When  "the HML converter CLI tool is run"     -> _when_ddn_converter_run
+#   Then  "valid Provisa YAML config is emitted covering ObjectTypes, Models,
+#          Relationships, TypePermissions, ModelPermissions, and DataConnectorLinks"
+#                                                 -> _then_ddn_config_complete
+# No new step definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 48fcc4ee-34bb-458f-be23-2950e05344c6
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: be673cb9-dd7d-40c7-a55e-bbdf3747cf81
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 12db51dc-e8ef-44d8-9809-8ffda865a66c
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 32abb160-437d-4cb2-b032-4b099f877b5a
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f57d1c34-e729-415d-9b71-b055a166c6f1
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1eea6fc3-7c05-40c4-b067-ac35e42c33de
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 79a22afb-5733-43de-a3b5-e836c483346c
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b0f23e09-972b-4648-bf9c-3d17c284d712
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f33dbaad-2c82-4f26-bfc1-d7b829ffe185
+#
+# This source code is licensed under the Business Source License 1.1

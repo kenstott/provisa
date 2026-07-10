@@ -4003,3 +4003,66 @@ def then_req797_positive(shared_data: dict) -> None:
 # Canary: 50271da1-4f30-41ab-9e58-014010b15832
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fe2460d7-81da-4993-ac4f-fcacfeb90111
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ab4f0f9d-e6c0-4f64-8191-f4f0a28cf934
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-715 (given_req715_node, when_req715_node_exported, and
+# then_req715_properties_set) and the scenario binding (test_req_715_default_behaviour)
+# are already fully implemented in the existing file. No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c0f115e3-c31c-4a99-9c68-316aa945c942
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-716 (given_req716_edge, when_req716_edge_exported, and
+# then_req716_relationship) and the scenario binding (test_req_716_default_behaviour)
+# are already fully implemented in the existing file. No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 010d2870-e9d5-4de1-8364-ef44fab9164e
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-717 (given_req717_credentials, when_req717_export_called,
+# and then_req717_auth_header) are already fully implemented in the existing file.
+# No new step definitions are required for REQ-717.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 75140393-3fa0-4674-902c-0161bc9ffcf9
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 27958b6c-a94d-4549-a5ac-f9b442b21ea9
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-720 (given_req720_graph, when_req720_e2e_runs, then_req720_batches)
+# and the scenario binding (test_req_720_default_behaviour) are already fully implemented
+# in the existing file. No new step definitions are required for REQ-720.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9c018365-5055-49a8-8e58-c4fdaad03fd2
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-793 (given_req793_query, when_req793_cypher_called,
+# then_req793_rows_shape, then_req793_param_error) and the scenario binding
+# (test_req_793_default_behaviour) are already fully implemented in the existing file.
+# No new step definitions are required for REQ-793.

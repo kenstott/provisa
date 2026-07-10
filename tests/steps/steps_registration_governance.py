@@ -3648,3 +3648,30 @@ def _req638_then(shared_data):
 #   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
 #   @when("the migration tool runs")                                       -> _req417_migrate
 #   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2475c77a-f036-4a10-b1f9-ef93a8d9603d
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then

@@ -1466,3 +1466,9 @@ def then_source_type_not_used_to_dispatch(shared_data: dict) -> None:
 #   - then_only_newer_rows_delivered
 #
 # The scenarios() call for REQ-260.feature is also already present.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 455c1f79-3e29-4348-92da-5a4c38206b3b
+#
+# This source code is licensed under the Business Source License 1.1

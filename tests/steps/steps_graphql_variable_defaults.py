@@ -111,3 +111,6 @@ def then_default_applied(shared_data: dict, expected: int) -> None:
     assert "limit" in coerced, "default for omitted variable was not applied"
     assert coerced["limit"] == expected, f"expected default {expected}, got {coerced['limit']!r}"
     assert isinstance(coerced["limit"], int), "Int default must coerce to a Python int"
+
+
+# (no new steps required - all REQ-300 steps already exist in the file)

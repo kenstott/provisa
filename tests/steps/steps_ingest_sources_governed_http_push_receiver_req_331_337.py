@@ -1553,3 +1553,24 @@ def subscribers_receive_sse_with_governance(shared_data):
 # The Given/When/Then steps (ingest_column_with_path, post_payload_received,
 # nested_value_extracted_missing_null) and the scenario binding (test_req_334_default_behaviour)
 # are present and complete. No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d0bf841f-b3fe-4d4f-95b2-2b8ae77a3b06
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-331 default behaviour are already fully implemented in the existing file.
+# The Given/When/Then steps and scenario binding are present and complete.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 1437ba8f-4dd3-4698-bd17-4246ab539f67
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-334 default behaviour are already fully implemented in the existing file.
+# The Given/When/Then steps (ingest_column_with_path, post_payload_received,
+# nested_value_extracted_missing_null) and the scenario binding (test_req_334_default_behaviour)
+# are present and complete. No new step definitions are required for this scenario.

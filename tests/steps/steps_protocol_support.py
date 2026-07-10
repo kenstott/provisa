@@ -1005,3 +1005,7 @@ scenarios("../features/REQ-802.feature")
 
 # All steps for the REQ-802 default behaviour scenario are already present in
 # the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.

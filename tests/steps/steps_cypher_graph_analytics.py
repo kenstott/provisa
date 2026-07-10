@@ -672,3 +672,12 @@ scenarios("../features/REQ-784.feature")
 # Canary: a7482250-9454-4ffa-8de3-bc316220e2d6
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9d417842-300e-4c08-b55a-9dd0ffd8ab8e
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-784 default behaviour scenario are already implemented
+# in the existing steps file. No new definitions are required.

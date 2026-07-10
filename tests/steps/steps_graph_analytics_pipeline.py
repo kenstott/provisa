@@ -420,3 +420,9 @@ scenarios("../features/REQ-642.feature")
 
 # All steps for REQ-642 are already implemented in the existing file content.
 # No new imports, scenarios() calls, or step functions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e7cc66c9-5f12-42ca-be25-ef044bfb7753
+#
+# This source code is licensed under the Business Source License 1.1

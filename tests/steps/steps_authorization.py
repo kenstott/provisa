@@ -1048,3 +1048,13 @@ scenarios("../features/REQ-871.feature")
 
 # All steps for REQ-871 scenario "REQ-871 default behaviour" are already fully implemented
 # in the existing file. No new step definitions are required.
+
+
+# All steps for REQ-870 scenario "REQ-870 default behaviour" are fully implemented
+# in the existing file. No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b8c2ff46-2952-4c86-bcac-297aadec5d8c
+#
+# This source code is licensed under the Business Source License 1.1

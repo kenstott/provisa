@@ -3570,3 +3570,33 @@ def req655_assert_filter_where(shared_data):
 # All step definitions for REQ-534 are already implemented in the existing steps file.
 # The scenarios() call and all Given/When/Then steps for REQ-534 are present above.
 # No new steps are required for this requirement.
+
+
+# All step definitions for REQ-008 are already implemented in the existing steps file.
+# The scenarios() call and all Given/When/Then steps for REQ-008 are present above.
+# No new steps are required for this requirement.
+
+
+# All step definitions for REQ-252 are already implemented in the existing steps file.
+# The scenarios() call and all Given/When/Then steps for REQ-252 are present above.
+# No new steps are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5a09a164-323f-461b-b8cd-b5b4a395d895
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All step definitions for REQ-253 are already implemented in the existing steps file.
+# The scenarios() call and all Given/When/Then steps for REQ-253 are present above.
+# No new steps are required for this requirement.
+
+
+# All step definitions for REQ-259 are already implemented in the existing steps file.
+# The scenarios() call and all Given/When/Then steps for REQ-259 are present above.
+# No new steps are required for this requirement.
+
+
+# All step definitions for REQ-534 are already implemented in the existing steps file.
+# The scenarios() call and all Given/When/Then steps for REQ-534 are present above.
+# No new steps are required for this requirement.

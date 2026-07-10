@@ -1161,3 +1161,13 @@ def step_req724_assert_app_and_ssl(shared_data):
 # Canary: 696a874c-6db5-4f17-a676-562da0851be9
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 36990fdb-5c27-4ffc-9643-f3fb69ce698f
+#
+# This source code is licensed under the Business Source License 1.1
