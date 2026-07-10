@@ -174,7 +174,7 @@ async def _govern_and_route(
     exec_params = embedded_params or None
 
     if decision.route == Route.ENGINE:
-        from provisa.api.data.endpoint import _materialize_api_to_engine_cache
+        from provisa.api.data.materialization import _materialize_api_to_engine_cache
         from provisa.cache.hot_tables import build_values_cte_sql
         from provisa.api_source.engine_cache import rewrite_all_from_cache
 
@@ -196,7 +196,7 @@ async def _govern_and_route(
             "otel",
             "results",
         }
-        from provisa.api.data.endpoint import _lookup_gql_remote_table as _lookup_gql
+        from provisa.api.data.materialization import _lookup_gql_remote_table as _lookup_gql
         import sqlglot as _sg
         import sqlglot.expressions as _exp
 
@@ -294,7 +294,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
     """
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
-    from provisa.api.data.endpoint import _materialize_api_to_engine_cache
+    from provisa.api.data.materialization import _materialize_api_to_engine_cache
     from provisa.api_source.engine_cache import rewrite_all_from_cache
     from provisa.cache.hot_tables import build_values_cte_sql
     from provisa.compiler.rls import RLSContext
@@ -366,7 +366,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         }
         import sqlglot as _sg2
         import sqlglot.expressions as _exp2
-        from provisa.api.data.endpoint import _lookup_gql_remote_table as _lookup_gql2
+        from provisa.api.data.materialization import _lookup_gql_remote_table as _lookup_gql2
 
         try:
             _tree2 = _sg2.parse_one(_exec_sql, dialect="postgres")

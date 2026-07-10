@@ -420,7 +420,7 @@ async def _execute_engine_route(
     state,
     embedded_params: list | None,
 ) -> "QueryResult":
-    from provisa.api.data.endpoint import _materialize_api_to_engine_cache
+    from provisa.api.data.materialization import _materialize_api_to_engine_cache
     from provisa.cache.hot_tables import build_values_cte_sql
     from provisa.api_source.engine_cache import rewrite_all_from_cache
 
