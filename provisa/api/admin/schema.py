@@ -38,6 +38,8 @@ from provisa.core.schema_org import (
 )
 
 if TYPE_CHECKING:
+    import asyncpg
+
     from provisa.core.database import Connection, Database
 
 from provisa.compiler.naming import source_to_catalog
@@ -1821,7 +1823,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     input.source_id,
                     input.schema_name,
                     input.table_name,
-                    _conn,
+                    cast("asyncpg.Connection", _conn),  # provisa Connection proxies asyncpg calls
                     hasura_v2_relationship_style=_v2_style,
                 )
                 if fk_count:
@@ -2429,10 +2431,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 await _conn.execute_core(
                     _delete(file_source_mtimes).where(file_source_mtimes.c.table_id == table_id)
                 )
+                _pg_conn = cast("asyncpg.Connection", _conn)  # provisa Connection proxies asyncpg
                 await migrate_sqlite_table(
-                    row["path"], row["table_name"], _conn, row["schema_name"], row["table_name"]
+                    row["path"], row["table_name"], _pg_conn, row["schema_name"], row["table_name"]
                 )
-                await record_mtime(table_id, row["path"], _conn)
+                await record_mtime(table_id, row["path"], _pg_conn)
                 return MutationResult(
                     success=True, message=f"Re-migrated {row['source_id']}.{row['table_name']}"
                 )

@@ -21,6 +21,7 @@ from sqlalchemy import or_, select
 from provisa.core.schema_org import registered_tables, roles, sources, table_columns
 
 if TYPE_CHECKING:
+    from provisa.api.admin.types import MutationResult
     from provisa.core.database import Database
 
 
@@ -165,7 +166,7 @@ async def _ensure_view_column_types(conn, view_sql: str, columns: list) -> list:
     return columns
 
 
-async def _build_columns_for_input(pool, input) -> tuple[list, object]:
+async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult | None]":
     """Resolve the effective column list for a table registration or update.
 
     Handles three mutually exclusive column-source paths:
