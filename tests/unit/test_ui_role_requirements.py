@@ -122,17 +122,17 @@ def test_superadmin_capability_bypasses_all_checks():
 
 def test_source_registration_capability_string_used_in_codebase():
     # REQ-060: "source_registration" capability is referenced in admin schema.
-    import provisa.api.admin.schema as admin_schema
+    import provisa.api.admin.schema_mutation as admin_mutation
 
-    src = inspect.getsource(admin_schema)
+    src = inspect.getsource(admin_mutation)
     assert "source_registration" in src
 
 
 def test_table_registration_capability_string_used_in_codebase():
     # REQ-060: "table_registration" capability is referenced in admin schema.
-    import provisa.api.admin.schema as admin_schema
+    import provisa.api.admin.schema_mutation as admin_mutation
 
-    src = inspect.getsource(admin_schema)
+    src = inspect.getsource(admin_mutation)
     assert "table_registration" in src
 
 

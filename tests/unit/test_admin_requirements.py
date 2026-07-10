@@ -333,25 +333,25 @@ class TestREQ166EditableRelationships:
     def test_upsert_relationship_exists_in_admin_schema(self):
         # REQ-166: add form requires an upsert_relationship mutation
         import inspect
-        from provisa.api.admin import schema as admin_schema_mod
+        from provisa.api.admin import schema_mutation as admin_mutation_mod
 
-        src = inspect.getsource(admin_schema_mod)
+        src = inspect.getsource(admin_mutation_mod)
         assert "upsert_relationship" in src
 
     def test_delete_relationship_exists_in_admin_schema(self):
         # REQ-166: delete action requires a delete_relationship mutation
         import inspect
-        from provisa.api.admin import schema as admin_schema_mod
+        from provisa.api.admin import schema_mutation as admin_mutation_mod
 
-        src = inspect.getsource(admin_schema_mod)
+        src = inspect.getsource(admin_mutation_mod)
         assert "delete_relationship" in src
 
     def test_materialize_field_present_in_relationship_upsert(self):
         # REQ-166: materialize toggle must be part of the upsert input
         import inspect
-        from provisa.api.admin import schema as admin_schema_mod
+        from provisa.api.admin import schema_mutation as admin_mutation_mod
 
-        src = inspect.getsource(admin_schema_mod)
+        src = inspect.getsource(admin_mutation_mod)
         assert "materialize" in src
 
 
