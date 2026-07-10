@@ -39,11 +39,11 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 asyncpg = pytest.importorskip("asyncpg")
 pgserver = pytest.importorskip("pgserver")
 
-from provisa.federation.connector import (  # noqa: E402
+from provisa.federation.connector_duckdb import (
     PgDuckdbCsvConnector,
     PgDuckdbJsonConnector,
     PgDuckdbParquetConnector,
-)
+)  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"
 _CACHE = Path.home() / ".cache" / "provisa-fdw" / "pg162"
@@ -75,7 +75,9 @@ def embedded_pg_duckdb():
     if sys.platform != "darwin":
         pytest.skip("prebuilt pg_duckdb artifact in this cache is macOS/arm64")
     if not _PGDUCKDB_SO.exists():
-        pytest.skip("pg_duckdb not prebuilt — run scripts/build_pg_duckdb.sh (a ~25-min release/CI step)")
+        pytest.skip(
+            "pg_duckdb not prebuilt — run scripts/build_pg_duckdb.sh (a ~25-min release/CI step)"
+        )
     _install_pg_duckdb_into_pgserver()
     base = tempfile.mkdtemp(prefix="provisa_pgduckdb_")
     server = pgserver.get_server(base)
@@ -86,7 +88,9 @@ def embedded_pg_duckdb():
     yield server
 
 
-def _view_ddl_from_connector(connector, source, schema: str, table: str, cols: list[tuple[str, str]]) -> str:
+def _view_ddl_from_connector(
+    connector, source, schema: str, table: str, cols: list[tuple[str, str]]
+) -> str:
     """Build the named-column view a real EngineRuntime would emit from the connector's scan detail."""
     scan = connector.details(source)["scan"]  # read_csv('..') / read_parquet('..')
     select = ", ".join(f"""r['{name}']::{typ} AS "{name}\"""" for name, typ in cols)
@@ -103,21 +107,35 @@ async def test_pg_duckdb_connectors_federate_csv_and_parquet(embedded_pg_duckdb)
     try:
         await conn.execute("CREATE SCHEMA IF NOT EXISTS e2e_files")
         # ---- attach customers.csv + products.parquet via the REAL pg_duckdb connectors ----
-        await conn.execute(_view_ddl_from_connector(
-            PgDuckdbCsvConnector(), SimpleNamespace(id="cust", path=str(_FILES / "customers.csv")),
-            "e2e_files", "customers", [("id", "int"), ("first_name", "text"), ("state", "text")]))
-        await conn.execute(_view_ddl_from_connector(
-            PgDuckdbParquetConnector(), SimpleNamespace(id="prod", path=str(_FILES / "products.parquet")),
-            "e2e_files", "products", [("id", "int"), ("name", "text"), ("category", "text")]))
+        await conn.execute(
+            _view_ddl_from_connector(
+                PgDuckdbCsvConnector(),
+                SimpleNamespace(id="cust", path=str(_FILES / "customers.csv")),
+                "e2e_files",
+                "customers",
+                [("id", "int"), ("first_name", "text"), ("state", "text")],
+            )
+        )
+        await conn.execute(
+            _view_ddl_from_connector(
+                PgDuckdbParquetConnector(),
+                SimpleNamespace(id="prod", path=str(_FILES / "products.parquet")),
+                "e2e_files",
+                "products",
+                [("id", "int"), ("name", "text"), ("category", "text")],
+            )
+        )
 
         # ---- native orders table (the engine's own store) referencing both file sources ----
         await conn.execute("CREATE SCHEMA IF NOT EXISTS e2e_engine")
         await conn.execute(
             # amount is double precision: pg_duckdb rejects a NUMERIC with unset precision
-            "CREATE TABLE e2e_engine.orders(id int, customer_id int, product_id int, amount double precision)")
+            "CREATE TABLE e2e_engine.orders(id int, customer_id int, product_id int, amount double precision)"
+        )
         await conn.execute(
             "INSERT INTO e2e_engine.orders VALUES "
-            "(10,4,1,19.99),(11,2,2,49.99),(12,7,3,5.00),(13,9,4,7.50),(14,1,5,3.25)")
+            "(10,4,1,19.99),(11,2,2,49.99),(12,7,3,5.00),(13,9,4,7.50),(14,1,5,3.25)"
+        )
         # customers 4/7/9 are TX; 2 is CA, 1 is NY
 
         # ---- federated join executed by pg_duckdb: orders x customers(csv) x products(parquet) ----
@@ -151,7 +169,9 @@ async def test_discover_reports_pg_duckdb_only_after_preload():
     but pg_duckdb only works once it is in shared_preload_libraries. discover() reflects that live.
     """
     if sys.platform != "darwin" or not _PGDUCKDB_SO.exists():
-        pytest.skip("pg_duckdb not prebuilt — run scripts/build_pg_duckdb.sh (a ~25-min release/CI step)")
+        pytest.skip(
+            "pg_duckdb not prebuilt — run scripts/build_pg_duckdb.sh (a ~25-min release/CI step)"
+        )
     from provisa.federation.engine import build_pg_engine
 
     _install_pg_duckdb_into_pgserver()  # the extension files are present the whole test
@@ -191,11 +211,22 @@ async def test_pg_duckdb_reads_json_file(embedded_pg_duckdb, tmp_path):
     conn = await asyncpg.connect(dsn=embedded_pg_duckdb.get_uri())
     try:
         await conn.execute("CREATE SCHEMA IF NOT EXISTS e2e_json")
-        await conn.execute(_view_ddl_from_connector(
-            PgDuckdbJsonConnector(), SimpleNamespace(id="evt", path=str(jpath)),
-            "e2e_json", "events", [("id", "int"), ("kind", "text"), ("state", "text")]))
-        rows = await conn.fetch("SELECT id, kind, state FROM e2e_json.events WHERE state='TX' ORDER BY id")
-        assert [(r["id"], r["kind"]) for r in rows] == [(1, "shipped"), (3, "shipped")]  # json read in place
+        await conn.execute(
+            _view_ddl_from_connector(
+                PgDuckdbJsonConnector(),
+                SimpleNamespace(id="evt", path=str(jpath)),
+                "e2e_json",
+                "events",
+                [("id", "int"), ("kind", "text"), ("state", "text")],
+            )
+        )
+        rows = await conn.fetch(
+            "SELECT id, kind, state FROM e2e_json.events WHERE state='TX' ORDER BY id"
+        )
+        assert [(r["id"], r["kind"]) for r in rows] == [
+            (1, "shipped"),
+            (3, "shipped"),
+        ]  # json read in place
     finally:
         await conn.execute("DROP SCHEMA IF EXISTS e2e_json CASCADE")
         await conn.close()

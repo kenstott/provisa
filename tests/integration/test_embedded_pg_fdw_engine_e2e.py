@@ -44,7 +44,7 @@ from provisa.compiler.schema_gen import SchemaInput, generate_schema  # noqa: E4
 from provisa.compiler.sql_gen import build_context, compile_query  # noqa: E402
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical  # noqa: E402
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
-from provisa.federation.connector import FileFdwConnector, PostgresFdwConnector  # noqa: E402
+from provisa.federation.connector_duckdb import FileFdwConnector, PostgresFdwConnector  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
 
 _FILES = Path(__file__).parent.parent.parent / "demo" / "files"

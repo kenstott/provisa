@@ -22,7 +22,8 @@ from __future__ import annotations
 import pytest
 
 from provisa.core.models import Source, SourceType
-from provisa.federation.connector import Mechanism, PgDuckdbIcebergConnector
+from provisa.federation.connector import Mechanism
+from provisa.federation.connector_duckdb import PgDuckdbIcebergConnector
 
 
 def _src(sid: str, **kw) -> Source:

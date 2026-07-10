@@ -33,7 +33,7 @@ pgserver = pytest.importorskip("pgserver")
 pytest.importorskip("pyiceberg")
 pytest.importorskip("pyarrow")
 
-from provisa.federation.connector import PgDuckdbIcebergConnector  # noqa: E402
+from provisa.federation.connector_duckdb import PgDuckdbIcebergConnector  # noqa: E402
 
 _CACHE = Path.home() / ".cache" / "provisa-fdw" / "pg162"
 _PGDUCKDB_SO = _CACHE / "lib" / "postgresql" / "pg_duckdb.dylib"
@@ -91,7 +91,9 @@ def embedded_pg_duckdb_iceberg():
     server = pgserver.get_server(base)
     server.psql("CREATE EXTENSION pg_duckdb;")
     # skip if this pg_duckdb was built WITHOUT the iceberg extension
-    if "iceberg_scan" not in server.psql("SELECT proname FROM pg_proc WHERE proname = 'iceberg_scan'"):
+    if "iceberg_scan" not in server.psql(
+        "SELECT proname FROM pg_proc WHERE proname = 'iceberg_scan'"
+    ):
         pytest.skip("pg_duckdb prebuilt without the iceberg extension (vcpkg build not run)")
     yield server
 
@@ -110,12 +112,18 @@ async def test_pg_duckdb_iceberg_connector_reads_in_place(embedded_pg_duckdb_ice
     conn = await asyncpg.connect(dsn=embedded_pg_duckdb_iceberg.get_uri())
     try:
         await conn.execute("CREATE SCHEMA IF NOT EXISTS e2e_ice")
-        await conn.execute(_view_ddl(
-            scan, "e2e_ice", "orders",
-            [("id", "int"), ("region", "text"), ("amount", "float8")]))
+        await conn.execute(
+            _view_ddl(
+                scan, "e2e_ice", "orders", [("id", "int"), ("region", "text"), ("amount", "float8")]
+            )
+        )
         rows = await conn.fetch("SELECT id, region, amount FROM e2e_ice.orders ORDER BY id")
-        assert [(r["id"], r["region"]) for r in rows] == \
-            [(1, "us-east"), (2, "us-west"), (3, "us-east"), (4, "apac")]  # read from Iceberg in place
+        assert [(r["id"], r["region"]) for r in rows] == [
+            (1, "us-east"),
+            (2, "us-west"),
+            (3, "us-east"),
+            (4, "apac"),
+        ]  # read from Iceberg in place
 
         # governance predicate applied to the Iceberg-backed relation
         gov = await conn.fetch("SELECT id FROM e2e_ice.orders WHERE region = 'us-east' ORDER BY id")

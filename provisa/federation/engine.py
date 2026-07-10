@@ -31,7 +31,8 @@ from enum import Enum
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
-from provisa.federation.connector import CatalogEntry, Connector
+from provisa.federation.connector import Connector
+from provisa.federation.connector_base import CatalogEntry
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
@@ -228,7 +229,7 @@ class FederationEngine:  # REQ-840
         Returns a per-connector report {key: ProbeResult}. A source whose connectors are all
         unavailable is simply unreachable — resolve() raises UnreachableSource (explicit, no fallback).
         """
-        from provisa.federation.connector import ProbeResult
+        from provisa.federation.connector_base import ProbeResult
 
         report: dict = {}
         active: dict[str, Connector] = {}
@@ -326,7 +327,7 @@ def build_trino_engine() -> FederationEngine:  # REQ-840 broad federator
 def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
     from provisa.federation.duckdb_backend import DuckDBBackend
     from provisa.federation.runtime import EngineCapability
-    from provisa.federation.connector import (
+    from provisa.federation.connector_duckdb import (
         DuckDBAirportConnector,
         DuckDBBigQueryConnector,
         DuckDBCsvConnector,
@@ -395,7 +396,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
     pg_duckdb is unavailable. An operator override may STRIKE connectors from the candidate list by key
     (they are then never probed — see FederationEngine.discover(disabled=...)).
     """
-    from provisa.federation.connector import (
+    from provisa.federation.connector_duckdb import (
         FileFdwConnector,
         MysqlFdwConnector,
         PgDuckdbCsvConnector,

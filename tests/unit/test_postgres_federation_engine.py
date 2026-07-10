@@ -22,7 +22,8 @@ from __future__ import annotations
 import pytest
 
 from provisa.core.models import Source, SourceType
-from provisa.federation.connector import Mechanism, PostgresFdwConnector
+from provisa.federation.connector import Mechanism
+from provisa.federation.connector_duckdb import PostgresFdwConnector
 from provisa.federation.engine import DriverClass, build_pg_engine
 
 

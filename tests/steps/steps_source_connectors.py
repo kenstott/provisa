@@ -10,12 +10,9 @@ import pytest
 import httpx
 from pytest_bdd import given, when, then, scenarios, parsers
 
-from provisa.federation.connector import (
-    MysqlFdwConnector,
-    SqliteFdwConnector,
-    Mechanism,
-    ProbeResult,
-)
+from provisa.federation.connector import Mechanism
+from provisa.federation.connector_base import ProbeResult
+from provisa.federation.connector_duckdb import MysqlFdwConnector, SqliteFdwConnector
 from provisa.federation.engine import FederationEngine
 
 
@@ -365,7 +362,7 @@ scenarios("../features/REQ-908.feature")
     )
 )
 def source_configured_with_pg_duckdb_iceberg(shared_data):
-    from provisa.federation.connector import PgDuckdbIcebergConnector
+    from provisa.federation.connector_duckdb import PgDuckdbIcebergConnector
 
     connector = PgDuckdbIcebergConnector()
 

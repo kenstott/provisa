@@ -176,7 +176,7 @@ async def test_discover_disables_connectors_whose_probe_fails():
 @pytest.mark.asyncio
 async def test_discover_pg_duckdb_wins_csv_when_available():
     # REQ-904: with pg_duckdb preloaded, it owns csv (precedence) and unlocks parquet/json.
-    from provisa.federation.connector import PgDuckdbCsvConnector
+    from provisa.federation.connector_duckdb import PgDuckdbCsvConnector
     from provisa.federation.engine import build_pg_engine
 
     eng = build_pg_engine()
@@ -190,7 +190,7 @@ async def test_discover_pg_duckdb_wins_csv_when_available():
 @pytest.mark.asyncio
 async def test_discover_override_strikes_connector_without_probing():
     # REQ-904: a struck connector is never probed; csv then falls back to file_fdw.
-    from provisa.federation.connector import FileFdwConnector
+    from provisa.federation.connector_duckdb import FileFdwConnector
     from provisa.federation.engine import build_pg_engine
 
     eng = build_pg_engine()
