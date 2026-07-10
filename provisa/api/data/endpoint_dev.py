@@ -142,7 +142,9 @@ async def _execute_govdata(source_id: str, sql: str, state) -> "QueryResult":
             select(sources.c.username, sources.c.database).where(sources.c.id == source_id)
         )
         _row = result.fetchone()
-    row = dict(_row._mapping) if _row is not None else None
+    if _row is None:
+        raise HTTPException(status_code=404, detail=f"No govdata source {source_id!r}")
+    row = dict(_row._mapping)
 
     api_key = resolve_secrets(row["username"] or "")
     database = row["database"] or ""
@@ -676,7 +678,7 @@ def _build_schema_block(
     sql_domain_fn,
     multihop_lines: list[str],
 ) -> str:
-    from provisa.compiler.sql_gen import semantic_table_name
+    from provisa.compiler.sql_rewrite import semantic_table_name
 
     schema_lines: list[str] = []
     for tbl in all_tables:

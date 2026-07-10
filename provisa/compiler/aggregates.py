@@ -11,8 +11,8 @@
 """Aggregate / group-by / connection-node SQL compilation (REQ-196–199, REQ-213).
 
 Compiles _aggregate / _group_by GraphQL root fields and the nodes subquery.
-Extracted from sql_gen.py. sql_gen helpers are reached via the sql_gen module
-object (_sg) to avoid a load-time import cycle; leaf deps imported directly.
+Extracted from sql_gen.py. WHERE/ORDER BY helpers come from sql_where (_sw) and
+nested-JSON builders from sql_selection (_ssel); leaf deps imported directly.
 """
 
 # complexity-gate: allow-cc=47 reason="_compile_group_by_field relocated verbatim from sql_gen.py; its high CC is the GraphQL group-by field-shape dispatch (per-arg where/order/limit + agg-func assembly); per-branch split is separately-tracked debt"
@@ -21,7 +21,8 @@ from __future__ import annotations
 
 from graphql import FieldNode  # noqa: F401
 
-from provisa.compiler import sql_gen as _sg
+from provisa.compiler import sql_where as _sw
+from provisa.compiler import sql_selection as _ssel
 from provisa.compiler.params import ParamCollector  # noqa: F401
 from provisa.compiler.sql_rewrite import (
     _join_column_expr,
@@ -161,7 +162,7 @@ def _resolve_join_src_tgt(
             if isinstance(join_meta.source_constant, str)
             else str(join_meta.source_constant)
         )
-    elif join_meta.source_column in _sg._VIRTUAL_COLS:
+    elif join_meta.source_column in _sw._VIRTUAL_COLS:
         _svc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(
             join_meta.source_column, ""
         )
@@ -180,7 +181,7 @@ def _resolve_join_src_tgt(
         )
     if join_meta.target_expr is not None:
         tgt_expr = join_meta.target_expr.replace("{alias}", _q(join_alias))
-    elif join_meta.target_column in _sg._VIRTUAL_COLS:
+    elif join_meta.target_column in _sw._VIRTUAL_COLS:
         _tvc = (ctx.virtual_columns.get(join_meta.target.table_id) or {}).get(
             join_meta.target_column, ""
         )
@@ -251,7 +252,7 @@ def _build_nodes_subquery(
             src_expr, tgt_expr = _resolve_join_src_tgt(
                 join_meta, root_alias, join_alias, ctx, table
             )
-            _agg_limit = _sg._explicit_limit(node_sel, variables) or join_meta.default_limit
+            _agg_limit = _sw._explicit_limit(node_sel, variables) or join_meta.default_limit
             _from_clause = f"{_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}"
             _where_expr = f"{tgt_expr} = {src_expr}"
             _rel_key = node_sel.alias.value if node_sel.alias else sel_name
@@ -260,7 +261,7 @@ def _build_nodes_subquery(
                 if join_meta.child_src_val is not None
                 else (src_expr if join_meta.source_column_type != "integer" else None)
             )
-            json_expr, alias_counter = _sg._build_rel_json_expr(
+            json_expr, alias_counter = _ssel._build_rel_json_expr(
                 node_sel.selection_set.selections,
                 ctx,
                 join_meta.target.type_name,
@@ -309,7 +310,7 @@ def _build_nodes_subquery(
     nodes_params: list = []
     if "where" in args:
         nodes_collector = ParamCollector()
-        nodes_where_sql = _sg._compile_where(
+        nodes_where_sql = _sw._compile_where(
             args["where"],
             nodes_collector,
             root_alias,
@@ -345,7 +346,7 @@ def _compile_having(
     parts: list[str] = []
     for key, value in having_obj.items():
         if key == "count":
-            parts.extend(_sg._compile_column_filter("COUNT(*)", value, collector))
+            parts.extend(_sw._compile_column_filter("COUNT(*)", value, collector))
         elif key in _SQL_FUNC and isinstance(value, dict):
             sql_func = _SQL_FUNC[key]
             for col_name, col_filter in value.items():
@@ -355,7 +356,7 @@ def _compile_having(
                     else col_name
                 )
                 expr = f"{sql_func}({_q(phys)})"
-                parts.extend(_sg._compile_column_filter(expr, col_filter, collector))
+                parts.extend(_sw._compile_column_filter(expr, col_filter, collector))
     return " AND ".join(parts) if parts else "TRUE"
 
 
@@ -374,7 +375,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
     args: dict = {}
     if field_node.arguments:
         for arg in field_node.arguments:
-            args[arg.name.value] = _sg._extract_value(arg.value, variables)
+            args[arg.name.value] = _sw._extract_value(arg.value, variables)
 
     by_cols: list[str] = args.get("by") or []
     if isinstance(by_cols, str):
@@ -396,7 +397,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
                 if row_sel.arguments:
                     for agg_arg in row_sel.arguments:
                         if agg_arg.name.value == "where":
-                            agg_filter_where = _sg._extract_value(agg_arg.value, variables) or None  # type: ignore[assignment]
+                            agg_filter_where = _sw._extract_value(agg_arg.value, variables) or None  # type: ignore[assignment]
                 if row_sel.selection_set:
                     for agg_sel in row_sel.selection_set.selections:
                         if not isinstance(agg_sel, FieldNode):
@@ -415,7 +416,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
     filter_sql = ""
     if agg_filter_where:
         _vvals = ctx.virtual_columns.get(table.table_id)
-        filter_where_sql = _sg._compile_where(
+        filter_where_sql = _sw._compile_where(
             agg_filter_where, collector, None, _vvals, table.table_id, ctx.exposed_to_physical
         )
         filter_sql = f" FILTER (WHERE {filter_where_sql})"
@@ -461,14 +462,14 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
 
     _vvals = ctx.virtual_columns.get(table.table_id)
     if "where" in args and not agg_filter_where:
-        where_sql = _sg._compile_where(
+        where_sql = _sw._compile_where(
             args["where"], collector, None, _vvals, table.table_id, ctx.exposed_to_physical
         )
         sql += f" WHERE {where_sql}"
     elif "where" in args and agg_filter_where:
         # FILTER params already consumed above; need a fresh sub-collector for WHERE
         where_collector = ParamCollector()
-        where_sql = _sg._compile_where(
+        where_sql = _sw._compile_where(
             args["where"], where_collector, None, _vvals, table.table_id, ctx.exposed_to_physical
         )
         # Re-number params: append where params after filter params
@@ -495,7 +496,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):
             order_by_val = [order_by_val]
-        ob_sql = _sg._compile_order_by(order_by_val, None, table.table_id, ctx.exposed_to_physical)
+        ob_sql = _sw._compile_order_by(order_by_val, None, table.table_id, ctx.exposed_to_physical)
         if ob_sql:
             sql += f" ORDER BY {ob_sql}"
 
@@ -589,11 +590,11 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
     args = {}
     if field_node.arguments:
         for arg in field_node.arguments:
-            args[arg.name.value] = _sg._extract_value(arg.value, variables)
+            args[arg.name.value] = _sw._extract_value(arg.value, variables)
 
     _agg_vvals = ctx.virtual_columns.get(table.table_id)
     if "where" in args:
-        where_sql = _sg._compile_where(
+        where_sql = _sw._compile_where(
             args["where"], collector, None, _agg_vvals, table.table_id, ctx.exposed_to_physical
         )
         sql += f" WHERE {where_sql}"

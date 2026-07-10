@@ -209,7 +209,7 @@ async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360, REQ-869
     field_name: str, field_node, state, variables: dict | None, *, ctx=None, role_id=None
 ) -> list:
     """Execute a tracked function or webhook field, return rows list."""
-    from provisa.compiler.sql_gen import _extract_value
+    from provisa.compiler.sql_where import _extract_value
 
     raw_args: dict = {}
     if hasattr(field_node, "arguments") and field_node.arguments:

@@ -25,7 +25,8 @@ from graphql import DocumentNode, FieldNode, OperationDefinitionNode
 from datetime import datetime, timezone
 
 from provisa.compiler.params import ParamCollector
-from provisa.compiler.sql_gen import CompilationContext, TableMeta, _q, _extract_value
+from provisa.compiler.sql_gen import CompilationContext, TableMeta, _q
+from provisa.compiler.sql_where import _extract_value
 
 
 # NoSQL source types — mutations not supported
