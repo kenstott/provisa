@@ -1510,7 +1510,7 @@ def given_req796_client() -> dict:
 @when("POST /data/cypher is called")
 def when_req796_cypher_called(shared_data: dict) -> None:
     """Resolve the role via the real _resolve_role_id for header vs no-header cases."""
-    from provisa.api.rest.cypher_router import _resolve_role_id
+    from provisa.api.rest.cypher_exec import _resolve_role_id
 
     state = _make_graph_schema_state()
     state.roles = shared_data["roles"]

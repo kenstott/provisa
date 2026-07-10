@@ -99,7 +99,7 @@ class TestResolveRoleId:
     """REQ-796: X-Role (x-provisa-role) header grants access to /data/cypher."""
 
     def _resolve(self, request, state):
-        from provisa.api.rest.cypher_router import _resolve_role_id
+        from provisa.api.rest.cypher_exec import _resolve_role_id
 
         return _resolve_role_id(request, state)
 
@@ -531,7 +531,7 @@ class TestXRoleHeaderAccess:
     """REQ-796: x-provisa-role header controls which role's schema is used."""
 
     def _resolve(self, request, state):
-        from provisa.api.rest.cypher_router import _resolve_role_id
+        from provisa.api.rest.cypher_exec import _resolve_role_id
 
         return _resolve_role_id(request, state)
 
