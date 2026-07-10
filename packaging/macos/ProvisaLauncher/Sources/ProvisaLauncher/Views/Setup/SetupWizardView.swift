@@ -25,23 +25,33 @@ struct SetupWizardView: View {
                 case 0:
                     WelcomeView(onNext: { step = 1 })
                 case 1:
-                    InstallLocationView(config: config,
-                                        onBack: { step = 0 },
-                                        onNext: { step = 2 })
+                    DeploymentView(config: config,
+                                   onBack: { step = 0 },
+                                   onNext: { step = 2 })
                 case 2:
-                    ResourceBudgetView(config: config,
-                                       onBack: { step = 1 },
-                                       onNext: { step = 3 })
+                    InstallLocationView(config: config,
+                                        onBack: { step = 1 },
+                                        onNext: { step = config.needsDocker ? 3 : 4 })
                 case 3:
-                    NetworkView(config: config,
-                                onBack: { step = 2 },
-                                onNext: { beginInstall() })
+                    // Resource budget only matters for the Docker/Lima tier; the native
+                    // tier runs in-process, so skip straight to Network.
+                    ResourceBudgetView(config: config,
+                                       onBack: { step = 2 },
+                                       onNext: { step = 4 })
                 case 4:
+                    NetworkView(config: config,
+                                onBack: { step = config.needsDocker ? 3 : 2 },
+                                onNext: { beginInstall() })
+                case 5:
                     InstallProgressView(state: installState,
                                         onCancel: { runner.cancel() })
                 default:
                     DoneView(config: config, onOpen: {
-                        if let url = URL(string: "http://localhost:\(config.uiPort)") {
+                        // Open the UI at ?tour=1 when the demo was installed so the guided tour
+                        // auto-starts fresh (App.tsx reads the query param).
+                        let base = "http://localhost:\(config.uiPort)"
+                        let target = config.installDemo ? "\(base)/?tour=1" : base
+                        if let url = URL(string: target) {
                             NSWorkspace.shared.open(url)
                         }
                         onComplete()
@@ -61,7 +71,7 @@ struct SetupWizardView: View {
                     UserDefaults.standard.set(config.installDir.path, forKey: "provisaInstallDir")
                     startProvisa()
                 }
-                step = installState.hasFailed ? 4 : 5
+                step = installState.hasFailed ? 5 : 6
             }
         }
     }
@@ -77,7 +87,7 @@ struct SetupWizardView: View {
     }
 
     private func beginInstall() {
-        step = 4
+        step = 5
         Task { @MainActor in
             runner.run(config: config, state: installState)
         }

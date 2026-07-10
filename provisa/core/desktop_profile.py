@@ -57,12 +57,33 @@ def load_profile(
     data_dir: Path | str | None = None,
     capabilities_path: Path | None = None,
     ephemeral: bool = False,
+    engine: str | None = None,
+    engine_url: str | None = None,
+    materialize_url: str | None = None,
+    trino_endpoint: tuple[str, int] | None = None,
+    otlp_endpoint: str | None = None,
 ) -> LaunchProfile:
     """Resolve a capabilities preset into the launch environment for a self-contained desktop start.
 
     A ``sqlite`` control_plane_store yields a TRULY INSTANT control plane (no initdb) via the SQLAlchemy
     ``Database`` abstraction (REQ-837, tested). ``ephemeral=True`` uses in-memory sqlite (zero on-disk
     state, fastest possible) instead of files under ``data_dir``.
+
+    Wizard-time overrides layer the operator's chosen deployment on top of the preset's self-contained
+    base (REQ-910 desktop tiers). Each override maps to the SAME env var the runtime already resolves:
+
+      engine          override the federation engine id (e.g. 'trino' for the Docker engine, or an
+                      external 'sqlalchemy'/'pg'/'clickhouse') -> PROVISA_ENGINE (engine.py:build_engine)
+      engine_url      external engine DSN -> PROVISA_ENGINE_URL (engine.py:configured_engine_url)
+      materialize_url external materialization store DSN -> PROVISA_MATERIALIZE_URL
+                      (engine.py:configured_materialize_url)
+      trino_endpoint  (host, port) of an external/Docker Trino -> TRINO_HOST/TRINO_PORT
+                      (engine.py:configured_engine_endpoint)
+      otlp_endpoint   Provisa's own observability is ALWAYS on (self-telemetry, viewable in Admin).
+                      This override only REDIRECTS the OTLP export to external obs infra —
+                      OTEL_EXPORTER_OTLP_ENDPOINT (otel_setup). Points at either the bundled demo
+                      collector/prometheus/grafana Docker stack or the operator's real collector; left
+                      unset when no external obs integration is chosen.
     """
     caps = yaml.safe_load((capabilities_path or _CAPABILITIES).read_text())
     presets = caps.get("presets", {})
@@ -70,15 +91,30 @@ def load_profile(
         raise ValueError(f"unknown preset {preset!r}; defined: {sorted(presets)}")
     spec = presets[preset]
 
-    engine_id = spec["federation_engine"]
+    engine_id = engine or spec["federation_engine"]
     if engine_id not in _ENGINE_KEY:
-        raise ValueError(f"preset {preset!r} names unknown federation_engine {engine_id!r}")
+        raise ValueError(f"unknown federation_engine {engine_id!r}; known: {sorted(_ENGINE_KEY)}")
     env: dict[str, str] = {"PROVISA_ENGINE": _ENGINE_KEY[engine_id]}
 
     if spec.get("cache") == "in_memory":
         env["PROVISA_REDIS_EMBEDDED"] = "1"  # fakeredis — no Redis server, no Docker
 
     notes: list[str] = []
+    if engine_url:
+        env["PROVISA_ENGINE_URL"] = engine_url
+        notes.append(f"external federation engine: {engine_url.split('://', 1)[0]}://…")
+    if materialize_url:
+        env["PROVISA_MATERIALIZE_URL"] = materialize_url
+        notes.append(f"external materialization store: {materialize_url.split('://', 1)[0]}://…")
+    if trino_endpoint:
+        host, port = trino_endpoint
+        env["TRINO_HOST"] = host
+        env["TRINO_PORT"] = str(port)
+        notes.append(f"Trino engine endpoint: {host}:{port}")
+    if otlp_endpoint:
+        env["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_endpoint
+        notes.append(f"obs export redirected to external collector: {otlp_endpoint}")
+
     cp_store = spec.get("control_plane_store", "embedded_pg")
     if cp_store == "sqlite":
         # SQLAlchemy control plane on sqlite — no initdb, no pgserver, no Python-version gate.
@@ -91,7 +127,7 @@ def load_profile(
             env["PLATFORM_DATABASE_URL"] = f"sqlite+aiosqlite:///{dd / 'platform.db'}"
             env["TENANT_DATABASE_URL"] = f"sqlite+aiosqlite:///{dd / 'tenant.db'}"
             notes.append(f"control plane: sqlite files under {dd} (instant, persistent)")
-    if spec.get("observability", "off") == "off":
+    if spec.get("observability", "off") == "off" and not otlp_endpoint:
         notes.append(
             "observability off: leave OTEL_EXPORTER_OTLP_ENDPOINT unset (config endpoint '')"
         )

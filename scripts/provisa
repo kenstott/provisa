@@ -45,11 +45,29 @@ FED_WORKERS="$(read_config federation_workers 0)"
 RUNTIME="$(read_config runtime docker)"
 LIMA_VM="$(read_config lima_vm provisa)"
 
+# ── Deployment fields (REQ-972..979) ────────────────────────────────────────
+# The native tier runs the bundled Python runtime directly (no Docker). These
+# select the federation engine / external stores / obs export at start.
+DEPLOY_ENGINE="$(read_config engine duckdb)"
+ENGINE_URL="$(read_config engine_url "")"
+MATERIALIZE_URL="$(read_config materialize_url "")"
+TRINO_HOST="$(read_config trino_host "")"
+TRINO_PORT="$(read_config trino_port "")"
+OBS_MODE="$(read_config obs_mode none)"
+OTLP_ENDPOINT="$(read_config otlp_endpoint "")"
+DEMO="$(read_config demo false)"
+
+RUNTIME_DIR="${PROVISA_HOME}/runtime"       # bundled standalone Python (native tier)
+NATIVE_PID_FILE="${PROVISA_HOME}/.native.pid"
+
 # ── Validation ──────────────────────────────────────────────────────────────
-if [ -z "$PROJECT_DIR" ] || [ ! -d "$PROJECT_DIR" ]; then
-    printf "${RED}[provisa]${NC} Project directory not configured or missing.\n" >&2
-    printf "Run install.sh from the Provisa source directory.\n" >&2
-    exit 1
+# The native tier has no compose project; only the Docker tiers need project_dir.
+if [ "$RUNTIME" != "native" ]; then
+    if [ -z "$PROJECT_DIR" ] || [ ! -d "$PROJECT_DIR" ]; then
+        printf "${RED}[provisa]${NC} Project directory not configured or missing.\n" >&2
+        printf "Run install.sh from the Provisa source directory.\n" >&2
+        exit 1
+    fi
 fi
 
 # ── Lima helpers ─────────────────────────────────────────────────────────────
@@ -253,6 +271,99 @@ wait_for_healthy() {
     return 1
 }
 
+# ── Native runtime (no Docker) ───────────────────────────────────────────────
+# The UI URL to open — with ?tour=1 when the demo was installed, so the guided
+# tour auto-starts fresh on launch (App.tsx reads the query param).
+ui_url() {
+    local url="http://localhost:${UI_PORT}"
+    [ "$DEMO" = "true" ] && url="${url}/?tour=1"
+    echo "$url"
+}
+
+native_python() {
+    if [ ! -x "${RUNTIME_DIR}/bin/python3" ]; then
+        err "Native runtime missing at ${RUNTIME_DIR}. Re-run Provisa.app to complete setup."
+        exit 1
+    fi
+    echo "${RUNTIME_DIR}/bin/python3"
+}
+
+native_running() {
+    [ -f "$NATIVE_PID_FILE" ] || return 1
+    local pids; pids="$(cat "$NATIVE_PID_FILE" 2>/dev/null)"
+    [ -n "$pids" ] || return 1
+    local p
+    for p in $pids; do kill -0 "$p" 2>/dev/null && return 0; done
+    return 1
+}
+
+# Deployment env for the native process (mirrors provisa.core.desktop_profile).
+# Values never contain spaces, so array word-splitting is safe under bash 3.2.
+native_env_pairs() {
+    local -a e
+    e=(
+        "PROVISA_ENGINE=${DEPLOY_ENGINE}"
+        "PROVISA_REDIS_EMBEDDED=1"
+        "PLATFORM_DATABASE_URL=sqlite+aiosqlite:///${PROVISA_HOME}/native/platform.db"
+        "TENANT_DATABASE_URL=sqlite+aiosqlite:///${PROVISA_HOME}/native/tenant.db"
+    )
+    [ -n "$ENGINE_URL" ]      && e+=("PROVISA_ENGINE_URL=${ENGINE_URL}")
+    [ -n "$MATERIALIZE_URL" ] && e+=("PROVISA_MATERIALIZE_URL=${MATERIALIZE_URL}")
+    [ -n "$TRINO_HOST" ]      && e+=("TRINO_HOST=${TRINO_HOST}")
+    [ -n "$TRINO_PORT" ]      && e+=("TRINO_PORT=${TRINO_PORT}")
+    [ -n "$OTLP_ENDPOINT" ]   && e+=("OTEL_EXPORTER_OTLP_ENDPOINT=${OTLP_ENDPOINT}")
+    printf '%s\n' "${e[@]}"
+}
+
+cmd_start_native() {
+    printf "${CYAN}${BOLD}Starting Provisa (native — no Docker)...${NC}\n"
+    mkdir -p "$LOG_DIR" "${PROVISA_HOME}/native"
+    if native_running; then
+        info "Provisa is already running."
+        return 0
+    fi
+    local py; py="$(native_python)"
+    local -a env_pairs; env_pairs=()
+    local line
+    while IFS= read -r line; do env_pairs+=("$line"); done < <(native_env_pairs)
+
+    # Two processes: the API app (packaged factory) and the UI server, which
+    # proxies API calls to PROVISA_API_URL and serves the built static UI.
+    nohup env "${env_pairs[@]}" \
+        "$py" -m uvicorn provisa.api.app:create_app --factory --host 0.0.0.0 --port "$API_PORT" \
+        >> "${LOG_DIR}/native-api.log" 2>&1 &
+    local api_pid=$!
+    nohup env "${env_pairs[@]}" PROVISA_API_URL="http://localhost:${API_PORT}" \
+        "$py" -m uvicorn provisa.ui_server:app --host 0.0.0.0 --port "$UI_PORT" \
+        >> "${LOG_DIR}/native-ui.log" 2>&1 &
+    local ui_pid=$!
+    printf '%s %s\n' "$api_pid" "$ui_pid" > "$NATIVE_PID_FILE"
+
+    printf "${GREEN}${BOLD}Provisa is running.${NC}\n"
+    printf "  UI:  ${BOLD}%s${NC}\n" "$(ui_url)"
+    printf "  API: ${BOLD}http://localhost:%s${NC}\n" "$API_PORT"
+    [ "$AUTO_OPEN" = "true" ] && printf "\nRun ${BOLD}provisa open${NC} to open the UI.\n"
+}
+
+cmd_stop_native() {
+    printf "${CYAN}${BOLD}Stopping Provisa...${NC}\n"
+    if [ -f "$NATIVE_PID_FILE" ]; then
+        local p
+        for p in $(cat "$NATIVE_PID_FILE" 2>/dev/null); do kill "$p" 2>/dev/null || true; done
+        rm -f "$NATIVE_PID_FILE"
+    fi
+    printf "${GREEN}${BOLD}Provisa has been shut down.${NC}\n"
+}
+
+cmd_status_native() {
+    if native_running; then
+        printf "${GREEN}Provisa (native) is running.${NC}\n"
+        printf "  UI:  %s\n" "$(ui_url)"
+    else
+        printf "${DIM}Provisa (native) is not running.${NC}\n"
+    fi
+}
+
 # ── Commands ────────────────────────────────────────────────────────────────
 cmd_start() {
     printf "${CYAN}${BOLD}Starting Provisa...${NC}\n"
@@ -342,7 +453,7 @@ cmd_status() {
 }
 
 cmd_open() {
-    local url="http://localhost:${UI_PORT}"
+    local url; url="$(ui_url)"
     printf "Opening Provisa at ${BOLD}${url}${NC}\n"
     case "$(uname -s)" in
         Darwin)  open "$url" ;;
@@ -518,10 +629,10 @@ cmd_help() {
 
 # ── Dispatch ────────────────────────────────────────────────────────────────
 case "${1:-help}" in
-    start)      cmd_start ;;
-    stop)       cmd_stop ;;
-    restart)    cmd_restart ;;
-    status)     cmd_status ;;
+    start)      if [ "$RUNTIME" = "native" ]; then cmd_start_native; else cmd_start; fi ;;
+    stop)       if [ "$RUNTIME" = "native" ]; then cmd_stop_native;  else cmd_stop;  fi ;;
+    restart)    if [ "$RUNTIME" = "native" ]; then cmd_stop_native; printf "\n"; cmd_start_native; else cmd_restart; fi ;;
+    status)     if [ "$RUNTIME" = "native" ]; then cmd_status_native; else cmd_status; fi ;;
     open)       cmd_open ;;
     logs)       shift; cmd_logs "${1:-}" ;;
     export)     shift; cmd_export "${1:-}" ;;

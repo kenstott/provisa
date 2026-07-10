@@ -202,3 +202,17 @@ presets:
     cache: in_memory
     observability: off
     startup_target_seconds: 3
+
+  # The default DESKTOP install: same self-contained runtime as `demo` (DuckDB + sqlite control
+  # plane + in-memory cache, no Trino/Redis/MinIO/Docker) but ships NO demo data — the user starts
+  # with an empty model. The wizard may layer overrides on top (a Trino-on-Docker engine, an
+  # external engine/store URL, an observability collector) via desktop_profile.load_profile.
+  native:
+    federation_engine: duckdb
+    materialization_store: duckdb_file
+    control_plane_store: sqlite
+    sources: []                    # empty model — no demo sources seeded
+    external_services: []          # no trino, redis, minio, otel-collector
+    cache: in_memory
+    observability: off
+    startup_target_seconds: 3

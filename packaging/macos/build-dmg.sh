@@ -305,6 +305,64 @@ embed_compose() {
   ok "Compose files, config, and provisa source embedded."
 }
 
+# ── Bundle the standalone native Python runtime (REQ-979) ────────────────────
+# The native (no-Docker) tier runs provisa on a self-contained interpreter shipped
+# in the app bundle. We download python-build-standalone (a relocatable CPython for
+# macOS arm64), pip-install provisa + its deps INTO it (macOS wheels from PyPI — the
+# native runtime is macOS, so it cannot reuse the linux/arm64 wheels from
+# build_provisa_wheels), and drop the built UI where ui_server expects it
+# (STATIC_DIR = <site-packages>/static). first-launch.sh stages this to
+# ~/.provisa/runtime and scripts/provisa runs uvicorn against it.
+#
+# Pins are overridable so the builder can bump CPython without editing this file.
+PBS_RELEASE="${PBS_RELEASE:-20250612}"
+PBS_PYTHON="${PBS_PYTHON:-3.12.11}"
+RUNTIME_PAYLOAD_DIR="${SCRIPT_DIR}/runtime-payload"   # staged OUTSIDE the .app (hidden DMG content)
+bundle_native_runtime() {
+  # Ships as hidden DMG payload (not inside the notarized .app) — like images/ —
+  # so the .app stays small and notarizes fast. first-launch.sh stages it to
+  # ~/.provisa/runtime and ad-hoc signs + de-quarantines it so it runs.
+  local dest="${RUNTIME_PAYLOAD_DIR}/runtime"
+  if [ -x "${dest}/bin/python3" ] && [ -d "${dest}"/lib/python3.*/site-packages/provisa ]; then
+    info "Native runtime already bundled — skipping."
+    return
+  fi
+  rm -rf "$dest"
+  mkdir -p "$(dirname "$dest")"
+
+  local tarball="cpython-${PBS_PYTHON}+${PBS_RELEASE}-aarch64-apple-darwin-install_only.tar.gz"
+  local url="https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_RELEASE}/${tarball}"
+  local tmp="${SCRIPT_DIR}/tmp-pbs"
+  rm -rf "$tmp"; mkdir -p "$tmp"
+
+  info "Downloading python-build-standalone ${PBS_PYTHON} (macOS arm64)..."
+  curl_retry "$url" "${tmp}/${tarball}"
+  tar -xzf "${tmp}/${tarball}" -C "$tmp"        # extracts to ${tmp}/python/
+  if [ ! -x "${tmp}/python/bin/python3" ]; then
+    err "python-build-standalone extraction failed (no bin/python3)"
+    exit 1
+  fi
+  mv "${tmp}/python" "$dest"
+
+  info "Installing provisa + deps into the native runtime (macOS wheels from PyPI)..."
+  "${dest}/bin/python3" -m pip install --upgrade pip --quiet
+  "${dest}/bin/python3" -m pip install --quiet "${REPO_ROOT}" uvicorn
+
+  # Place the built UI where ui_server resolves it: <site-packages>/static.
+  # embed_compose builds provisa-ui/dist earlier in the pipeline.
+  local site
+  site="$("${dest}/bin/python3" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+  if [ ! -d "${REPO_ROOT}/provisa-ui/dist" ]; then
+    err "provisa-ui/dist not found — embed_compose must build the UI before bundle_native_runtime."
+    exit 1
+  fi
+  mkdir -p "${site}/static"
+  cp -r "${REPO_ROOT}/provisa-ui/dist/." "${site}/static/"
+
+  rm -rf "$tmp"
+  ok "Native runtime bundled ($(du -sh "$dest" | cut -f1))."
+}
+
 # ── Build SwiftUI launcher and embed binary ───────────────────────────────────
 build_launcher() {
   info "Building ProvisaLauncher (Swift)..."
@@ -561,6 +619,12 @@ create_dmg() {
   cp "${VM_IMAGES_DIR}"/*.img "${tmp_dmg}/vm-image/"
   chflags hidden "${tmp_dmg}/vm-image"
 
+  # Native Python runtime (hidden) — first-launch stages it for the no-Docker tier.
+  if [ -d "${RUNTIME_PAYLOAD_DIR}/runtime" ]; then
+    cp -R "${RUNTIME_PAYLOAD_DIR}/runtime" "${tmp_dmg}/runtime"
+    chflags hidden "${tmp_dmg}/runtime"
+  fi
+
   # Remove any existing DMG so create-dmg doesn't complain
   rm -f "${DMG_PATH}"
 
@@ -596,8 +660,9 @@ main() {
   download_vm_images
   save_images
   build_provisa_wheels
-  embed_compose        # copies observability/ from repo; must run before download_otel_agent
+  embed_compose        # copies observability/ from repo; builds provisa-ui/dist; before download_otel_agent
   download_otel_agent  # adds opentelemetry-javaagent.jar into Resources/observability/trino-otel/
+  bundle_native_runtime # standalone Python for the native tier (uses provisa-ui/dist from embed_compose)
   build_launcher       # compile SwiftUI launcher and embed binary
   embed_scripts
   sign_jar_natives  # sign macOS natives inside Trino plugin JARs before outer bundle signing
