@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from provisa.api.rest.cypher_router import (
+from provisa.api.rest.graph_tools_router import (
     Neo4jExportRequest,
     _neo4j_cypher_literal,
     neo4j_export,

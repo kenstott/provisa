@@ -209,7 +209,7 @@ def _run_neo4j_export(
     """
     import asyncio
 
-    from provisa.api.rest.cypher_router import neo4j_export
+    from provisa.api.rest.graph_tools_router import neo4j_export
 
     captured: list[dict[str, Any]] = []
 
@@ -418,7 +418,7 @@ def _neo4j_cypher_literal_impl(value: Any) -> str:
 def _get_cypher_literal_fn() -> Any:
     """Return the real _neo4j_cypher_literal if importable, else the local impl."""
     try:
-        from provisa.api.rest.cypher_router import _neo4j_cypher_literal  # type: ignore
+        from provisa.api.rest.graph_tools_router import _neo4j_cypher_literal  # type: ignore
 
         return _neo4j_cypher_literal
     except (ImportError, AttributeError):
@@ -981,7 +981,7 @@ def given_req715_node() -> dict:
 @when("the node is exported")
 def when_req715_node_exported(shared_data: dict) -> None:
     """Exercise the real neo4j_export handler, capturing the outbound Cypher statement."""
-    from provisa.api.rest.cypher_router import Neo4jExportRequest
+    from provisa.api.rest.graph_tools_router import Neo4jExportRequest
 
     node = shared_data["node"]
     body = Neo4jExportRequest(
@@ -1001,7 +1001,7 @@ def when_req715_node_exported(shared_data: dict) -> None:
 @then("all properties are SET in Neo4j with correct Cypher literal types")
 def then_req715_properties_set(shared_data: dict) -> None:
     """Assert the real handler encoded every property with the correct Cypher literal."""
-    from provisa.api.rest.cypher_router import _neo4j_cypher_literal
+    from provisa.api.rest.graph_tools_router import _neo4j_cypher_literal
 
     statements = _captured_statement_strings(shared_data)
     assert statements, "Expected at least one outbound Cypher statement"
@@ -1050,7 +1050,7 @@ def given_req716_edge(start: int, end: int, rel_type: str) -> dict:
 @when("the edge is exported")
 def when_req716_edge_exported(shared_data: dict) -> None:
     """Exercise the real neo4j_export handler with an edge-only request."""
-    from provisa.api.rest.cypher_router import Neo4jExportRequest
+    from provisa.api.rest.graph_tools_router import Neo4jExportRequest
 
     edge = shared_data["edge"]
     body = Neo4jExportRequest(
@@ -1101,7 +1101,7 @@ def given_req717_credentials(username: str, password: str) -> dict:
 @when("POST /data/neo4j-export is called")
 def when_req717_export_called(shared_data: dict) -> None:
     """Exercise the real handler and capture the outbound Authorization header."""
-    from provisa.api.rest.cypher_router import Neo4jExportRequest
+    from provisa.api.rest.graph_tools_router import Neo4jExportRequest
 
     body = Neo4jExportRequest(
         url=_FAKE_NEO4J_URL,
@@ -1151,7 +1151,7 @@ def given_req719_partial(total: int, failing: int) -> dict:
 @when("POST /data/neo4j-export completes")
 def when_req719_export_completes(shared_data: dict) -> None:
     """Run the real handler with a Neo4j response reporting one constraint error."""
-    from provisa.api.rest.cypher_router import Neo4jExportRequest
+    from provisa.api.rest.graph_tools_router import Neo4jExportRequest
 
     body = Neo4jExportRequest(
         url=_FAKE_NEO4J_URL,
@@ -1195,7 +1195,7 @@ def given_req720_graph(n_nodes: int, n_edges: int) -> dict:
 @when("the E2E export test runs")
 def when_req720_e2e_runs(shared_data: dict) -> None:
     """Batch nodes into 200-sized export calls and edges into one, hitting the real endpoint."""
-    from provisa.api.rest.cypher_router import Neo4jExportRequest
+    from provisa.api.rest.graph_tools_router import Neo4jExportRequest
 
     EXPORT_BATCH = 200
     nodes = shared_data["nodes"]
@@ -1458,7 +1458,7 @@ def given_req795_nodes_exported() -> dict:
 @when("POST /data/neo4j-export is called with empty nodes array and populated edges")
 def when_req795_edge_only(shared_data: dict) -> None:
     """Exercise the real handler with nodes=[] and assert only edge statements are produced."""
-    from provisa.api.rest.cypher_router import Neo4jExportRequest
+    from provisa.api.rest.graph_tools_router import Neo4jExportRequest
 
     body = Neo4jExportRequest(
         url=_FAKE_NEO4J_URL,
@@ -1548,7 +1548,7 @@ def then_req796_rejected(shared_data: dict) -> None:
 )
 def given_req797_export() -> dict:
     """Export N nodes and E edges via the real handler; N includes a duplicate id."""
-    from provisa.api.rest.cypher_router import Neo4jExportRequest
+    from provisa.api.rest.graph_tools_router import Neo4jExportRequest
 
     # Two distinct nodes plus one duplicate _provisa_id (MERGE dedups it in Neo4j).
     nodes = [
