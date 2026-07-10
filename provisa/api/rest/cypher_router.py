@@ -263,7 +263,7 @@ async def _dispatch_execution(
 ) -> list[dict] | Response:
     """Stage 5: route to the correct executor based on table backing. Returns rows or error Response."""
     import asyncio as _asyncio
-    from provisa.api.data.endpoint import _request_timeout
+    from provisa.api.data.endpoint_helpers import _request_timeout
     from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
 
     clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)

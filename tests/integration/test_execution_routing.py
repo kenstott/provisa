@@ -155,7 +155,7 @@ class TestDecideRoute:
 class TestRedirectParams:
     async def test_build_redirect_params_force_redirect(self):
         # REQ-029: X-Provisa-Redirect: true forces redirect regardless of row count
-        from provisa.api.data.endpoint import _build_redirect_params
+        from provisa.api.data.endpoint_helpers import _build_redirect_params
 
         directives = MagicMock()
         directives.redirect_format = None
@@ -166,7 +166,7 @@ class TestRedirectParams:
 
     async def test_build_redirect_params_threshold_header(self):
         # REQ-029: X-Provisa-Redirect-Threshold header sets effective_threshold
-        from provisa.api.data.endpoint import _build_redirect_params
+        from provisa.api.data.endpoint_helpers import _build_redirect_params
 
         directives = MagicMock()
         directives.redirect_format = None
@@ -180,7 +180,7 @@ class TestRedirectParams:
 
     async def test_build_redirect_params_format_without_threshold_forces_redirect(self):
         # REQ-029: redirect_format without threshold implies force_redirect
-        from provisa.api.data.endpoint import _build_redirect_params
+        from provisa.api.data.endpoint_helpers import _build_redirect_params
 
         directives = MagicMock()
         directives.redirect_format = None
@@ -201,7 +201,7 @@ class TestRedirectParams:
 class TestInjectProbeLimit:
     async def test_inject_no_existing_limit(self):
         # REQ-397: inject LIMIT when query has none
-        from provisa.api.data.endpoint import _inject_probe_limit
+        from provisa.api.data.endpoint_helpers import _inject_probe_limit
 
         sql = 'SELECT "id" FROM "public"."orders"'
         result = _inject_probe_limit(sql, 500)
@@ -209,7 +209,7 @@ class TestInjectProbeLimit:
 
     async def test_inject_tightens_existing_literal_limit(self):
         # REQ-397: probe limit tightens existing literal LIMIT
-        from provisa.api.data.endpoint import _inject_probe_limit
+        from provisa.api.data.endpoint_helpers import _inject_probe_limit
 
         sql = 'SELECT "id" FROM "public"."orders" LIMIT 2000'
         result = _inject_probe_limit(sql, 500)
@@ -218,7 +218,7 @@ class TestInjectProbeLimit:
 
     async def test_inject_respects_smaller_existing_limit(self):
         # REQ-397: probe limit leaves existing LIMIT when it is already smaller
-        from provisa.api.data.endpoint import _inject_probe_limit
+        from provisa.api.data.endpoint_helpers import _inject_probe_limit
 
         sql = 'SELECT "id" FROM "public"."orders" LIMIT 100'
         result = _inject_probe_limit(sql, 500)
@@ -226,7 +226,7 @@ class TestInjectProbeLimit:
 
     async def test_inject_skips_parameterized_limit(self):
         # REQ-397: parameterized LIMIT is user-supplied and must not be overridden
-        from provisa.api.data.endpoint import _inject_probe_limit
+        from provisa.api.data.endpoint_helpers import _inject_probe_limit
 
         sql = 'SELECT "id" FROM "public"."orders" LIMIT $1'
         result = _inject_probe_limit(sql, 500)
@@ -652,7 +652,7 @@ class TestFederationHints:
 
     async def test_parse_accept_header(self):
         # REQ-279: _parse_accept returns format name from MIME type
-        from provisa.api.data.endpoint import _parse_accept
+        from provisa.api.data.endpoint_helpers import _parse_accept
 
         assert _parse_accept("application/json") == "json"
         assert _parse_accept("text/csv") == "csv"
@@ -664,7 +664,7 @@ class TestFederationHints:
         # REQ-281: _detect_introspection identifies pure introspection queries
         from graphql import build_schema, parse
 
-        from provisa.api.data.endpoint import _detect_introspection
+        from provisa.api.data.endpoint_helpers import _detect_introspection
 
         build_schema("type Query { _dummy: String }")
 

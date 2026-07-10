@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.api.data.endpoint import _grpc_cache_type
+from provisa.api.data.endpoint_helpers import _grpc_cache_type
 
 
 @pytest.mark.parametrize(

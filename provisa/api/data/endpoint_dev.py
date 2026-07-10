@@ -219,7 +219,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     import sqlglot
 
     from provisa.api.app import state
-    from provisa.api.data.endpoint import _parse_accept, _format_response
+    from provisa.api.data.endpoint_helpers import _parse_accept, _format_response
     from provisa.compiler.stage2 import (
         apply_governance,
         build_governance_context,
