@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from provisa.api.admin.schema_helpers import _domain_table_conflict
-from provisa.api.app import _assert_domain_table_unique
+from provisa.api.app_schema_build import _assert_domain_table_unique
 
 
 def _t(domain, table, source="s1", schema="public"):

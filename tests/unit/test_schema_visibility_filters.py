@@ -17,7 +17,7 @@ Also tests Source.allowed_domains model field parsing.
 from __future__ import annotations
 
 
-from provisa.api.app import _filter_tables_by_schema_cfg
+from provisa.api.app_schema_build import _filter_tables_by_schema_cfg
 from provisa.core.models import Source
 
 
