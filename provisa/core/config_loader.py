@@ -704,6 +704,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250
     _validate_table_kafka_sinks(config)
     _validate_table_live_delivery(config)
     _validate_change_signal(config)
+    _validate_watermark_columns(config)
     await _upsert_tables(conn, engine, config, openapi_specs)
 
     # 6. Relationships (tables must exist first)
@@ -818,6 +819,52 @@ def _validate_table_live_delivery(config) -> None:
             raise ValueError(
                 f"Table {table.table_name!r}: live.strategy={strategy} on source {source.id!r} "
                 f"({stype}) requires source-level cdc transport (bootstrap_servers/topic_prefix)"
+            )
+
+
+# REQ-925: canonical IR types a watermark may take. A watermark drives WHERE wm > cursor
+# incremental reads, so it MUST be monotonic non-decreasing: an incrementing integer or a
+# temporal column. Text/float/boolean/uuid/bytea/numeric are rejected — they give no reliable
+# ordering for delta reads. (numeric is excluded: a scale/rounding column is not an increment.)
+_MONOTONIC_WATERMARK_IR = frozenset({"smallint", "integer", "bigint", "timestamp", "date", "time"})
+
+
+def _validate_watermark_columns(config) -> None:  # REQ-924, REQ-925
+    """A table's watermark must be one of its OWN columns (REQ-924) and monotonic (REQ-925).
+
+    The watermark is the top-level ``Table.watermark_column`` or, for legacy configs, the table's
+    ``live.watermark_column``. It is rejected when it names a column the table does not have, or
+    when that column's type is not a monotonic (integer/temporal) IR type. Type is checked only
+    when the column's ``data_type`` is known — introspection fills it for sources whose columns are
+    reflected at startup, and the selection is re-validated then; existence is always checked when
+    the table declares columns."""
+    from provisa.core.ir_types import to_ir  # noqa: PLC0415
+
+    for table in config.tables:
+        live = getattr(table, "live", None)
+        watermark = table.watermark_column or (live.watermark_column if live is not None else None)
+        if not watermark:
+            continue
+        columns = list(table.columns or [])
+        if not columns:
+            continue  # columns filled by introspection later; re-validated at selection then
+        col = next((c for c in columns if c.name == watermark), None)
+        if col is None:
+            raise ValueError(
+                f"Table {table.table_name!r}: watermark_column {watermark!r} is not a column of "
+                f"the table (watermark must name an existing column, REQ-924)"
+            )
+        if col.data_type is None:
+            continue  # type not yet resolved (deferred introspection); re-checked at selection
+        try:
+            ir = to_ir(col.data_type)
+        except ValueError:
+            ir = None
+        if ir not in _MONOTONIC_WATERMARK_IR:
+            raise ValueError(
+                f"Table {table.table_name!r}: watermark_column {watermark!r} has type "
+                f"{col.data_type!r} which is not monotonic non-decreasing; a watermark must be a "
+                f"timestamp/date/time or an incrementing integer (REQ-925)"
             )
 
 
