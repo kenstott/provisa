@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from provisa.api.admin.schema import _dataset_ownership_conflict, _normalize_dataset_name
+from provisa.api.admin.schema_helpers import _dataset_ownership_conflict, _normalize_dataset_name
 
 pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 

@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from provisa.api.admin.schema import _domain_table_conflict
+from provisa.api.admin.schema_helpers import _domain_table_conflict
 from provisa.api.app import _assert_domain_table_unique
 
 
