@@ -27849,6 +27849,8 @@
     environment variable substitution.
   code:
   - provisa/ddn/mapper.py
+  tests:
+  - tests/unit/test_ddn.py
   related_reqs: []
 - id: REQ-921
   status: complete
@@ -27955,6 +27957,11 @@
     column name or none.
   use_case: The watermark column enables incremental refresh and subscriptions; limiting
     to one existing column simplifies source configuration and avoids synthetic stamping.
+  code:
+  - provisa/core/models.py
+  - provisa/federation/residency.py
+  tests:
+  - tests/unit/test_residency.py
   related_reqs: []
 - id: REQ-925
   status: complete
@@ -27999,9 +28006,14 @@
     Then the system executes REPLACE refresh (full DELETE+INSERT)
 
     And subscriptions to this source are forbidden'
-  unit_test: false
-  unit_test_reason: Settled design constraint; validation occurs in refresh and subscription
-    modules when implemented.
+  code:
+  - provisa/core/change_signal.py
+  - provisa/federation/residency.py
+  - provisa/events/injector.py
+  tests:
+  - tests/unit/test_change_signal.py
+  - tests/unit/test_residency.py
+  - tests/unit/test_injector.py
   related_reqs: []
 - id: REQ-927
   status: complete
@@ -28014,9 +28026,13 @@
     and no incremental refresh.
   use_case: Subscriptions deliver rows WHERE wm > cursor; without a watermark, there
     is no monotonic reference point for incremental delivery.
-  unit_test: false
-  unit_test_reason: Settled design constraint; validation occurs in subscription modules
-    when implemented.
+  code:
+  - provisa/core/change_signal.py
+  - provisa/core/config_loader.py
+  - provisa/live/reconcile.py
+  tests:
+  - tests/unit/test_change_signal.py
+  - tests/unit/test_injector.py
   related_reqs:
   - REQ-926
 - id: REQ-928
@@ -28032,9 +28048,12 @@
     current-state.
   use_case: Subscribers receive a changelog stream ordered by watermark; deletes leave
     no advancing watermark and cannot be signaled within the append-log model.
-  unit_test: false
-  unit_test_reason: Settled design constraint; validation occurs in subscription delivery
-    when implemented.
+  code:
+  - provisa/core/change_signal.py
+  - provisa/events/injector.py
+  tests:
+  - tests/unit/test_injector.py
+  - tests/unit/test_change_signal.py
   related_reqs:
   - REQ-926
 - id: REQ-929
@@ -28051,6 +28070,10 @@
     to maintain feed health.'
   use_case: Change signals are orthogonal to watermarking; different sources may use
     different notification mechanisms (polling vs. push, automatic vs. operator-managed).
+  code:
+  - provisa/core/change_signal.py
+  tests:
+  - tests/unit/test_change_signal.py
   related_reqs: []
 - id: REQ-930
   status: complete
@@ -28081,9 +28104,11 @@
     Then it is queried live without materialization
 
     And optional perf-caching may be applied via TTL'
-  unit_test: false
-  unit_test_reason: Settled design constraint; validation occurs in materialization
-    engine when implemented.
+  code:
+  - provisa/federation/strategy.py
+  - provisa/federation/plan.py
+  tests:
+  - tests/unit/test_federation_strategy.py
   related_reqs: []
 - id: REQ-931
   status: complete
@@ -28100,6 +28125,10 @@
   use_case: Views provide full SQL tooling for composing derived watermarks; sourcing
     synthetic columns at ingest would duplicate this capability and complicate source
     registration.
+  code:
+  - provisa/federation/residency.py
+  tests:
+  - tests/unit/test_residency.py
   related_reqs: []
 - id: REQ-932
   status: complete
@@ -29527,3 +29556,126 @@
     - REQ-842
     - REQ-673
     - REQ-875
+
+- id: REQ-972
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Desktop Installation
+  priority: MUST
+  type: infrastructure
+  description: >-
+    Desktop installers default to a self-contained native install: DuckDB federation engine + sqlite control plane + in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis, or MinIO. A `native` preset in config/capabilities.yaml declares this base tier.
+  use_case: >-
+    Enables zero-dependency installation for lightweight desktop and demo scenarios without external infrastructure.
+  target: "2026-Q3"
+  code:
+    - config/capabilities.yaml
+
+- id: REQ-973
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Desktop Installation
+  priority: SHOULD
+  type: infrastructure
+  description: >-
+    Federation engine is a wizard choice, not a fixed tier: DuckDB (native, default) | Trino-on-Docker | External engine (URL or host+port). Trino-on-Docker and external engines are opt-in overrides layered on the native base.
+  use_case: >-
+    Allows users to upgrade from native DuckDB to Trino or an external federation engine without reinstalling the base system.
+  target: "2026-Q3"
+  code:
+    - provisa/installer/
+
+- id: REQ-974
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Desktop Installation
+  priority: SHOULD
+  type: infrastructure
+  description: >-
+    desktop_profile.load_profile gains engine/engine_url/materialize_url/trino_endpoint/otlp_endpoint overrides mapping to PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL / TRINO_HOST+PORT / OTEL_EXPORTER_OTLP_ENDPOINT environment variables.
+  use_case: >-
+    Enables container orchestrators and deployment tools to override engine and observability endpoints at runtime without modifying the installer-created configuration.
+  target: "2026-Q3"
+  code:
+    - provisa/desktop_profile.py
+
+- id: REQ-975
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Desktop Installation
+  priority: MUST
+  type: infrastructure
+  description: >-
+    Observability is always-on built-in (self-telemetry in Admin). The optional Docker observability stack (otel-collector + prometheus + grafana) is an external demonstration, not an on/off switch; selecting it only redirects OTLP export to external infrastructure.
+  use_case: >-
+    Ensures telemetry is always collected and visible in Admin UI; external obs-integration is optional for enterprise monitoring without adding complexity to the base install.
+  target: "2026-Q3"
+  code:
+    - provisa/observability/
+    - provisa-ui/src/admin/
+
+- id: REQ-976
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Desktop Installation
+  priority: SHOULD
+  type: constraint
+  description: >-
+    Docker and VMs are provisioned only when needed: engine == Trino-on-Docker, OR the obs-integration demo runs on Docker, OR the demo runs on Docker. Otherwise the install is fully native.
+  use_case: >-
+    Minimizes resource footprint for users who do not require Trino or external observability, reducing memory and disk overhead on desktop systems.
+  target: "2026-Q3"
+  code:
+    - provisa/installer/
+
+- id: REQ-977
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Desktop Installation
+  priority: SHOULD
+  type: infrastructure
+  description: >-
+    All heavy add-ons (Trino image set, observability stack, demo) are downloadable and resolved local-first: installer-adjacent directory, then mounted volumes, then ~/Downloads, then GitHub release. Enterprise can pre-stage tarballs for airgapped installation.
+  use_case: >-
+    Enables fully airgapped deployment by allowing enterprises to pre-stage container images and demo datasets alongside the installer.
+  target: "2026-Q3"
+  code:
+    - provisa/installer/download.py
+
+- id: REQ-978
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Desktop Installation
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Installing the demo is optional and OFF by default. When installed, the launcher opens the UI at ?tour=1 to auto-start the guided tour.
+  use_case: >-
+    Separates the base product from demo data; guided tour auto-starts for new users who opt into the demo without manual navigation.
+  target: "2026-Q3"
+  code:
+    - provisa/launcher/
+    - provisa-ui/src/app.tsx
+  scenario: |
+    Given a fresh desktop installation without demo data
+    When the user completes the wizard and launches the app
+    Then the UI loads without demo sources
+    And tour mode is not active
+    Given a user selects "Install demo" during the wizard
+    When the launcher starts the UI
+    Then the UI loads with demo sources
+    And tour mode is active at ?tour=1
+
+- id: REQ-979
+  status: proposed
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Desktop Installation
+  priority: MUST
+  type: infrastructure
+  description: >-
+    The native tier bundles a standalone Python runtime (python-build-standalone + provisa wheel + duckdb/pg_duckdb extensions + aiosqlite) so the base installer runs the app with no Docker or container dependencies. The base installer ships no container images.
+  use_case: >-
+    Ensures the entire native-tier stack is self-contained and runs on any OS (macOS, Windows, Linux) without requiring external Python environments or container runtimes.
+  target: "2026-Q3"
+  code:
+    - provisa/build/

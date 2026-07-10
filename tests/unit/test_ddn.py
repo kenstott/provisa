@@ -653,6 +653,20 @@ class TestMapper:
         assert config.sources[0].host == "prod-db.example.com"
         assert config.sources[0].port == 5433
 
+    def test_placeholder_connection_when_no_override(self) -> None:
+        """REQ-920: with no source-override, the converter emits an editable placeholder
+        connection (localhost/5432/default/postgres/${env:DB_PASSWORD}) for the operator to
+        fill in before deployment — a documented config-generation default, not a runtime
+        fallback."""
+        md = _chinook_metadata()
+        config = convert_hml(md)  # no source_overrides
+        src = config.sources[0]
+        assert src.host == "localhost"
+        assert src.port == 5432
+        assert src.database == "default"
+        assert src.username == "postgres"
+        assert src.password == "${env:DB_PASSWORD}"
+
     def test_warning_collection(self) -> None:
         md = _chinook_metadata()
         md.skipped_kinds["BooleanExpressionType"] = 3

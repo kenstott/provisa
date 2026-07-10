@@ -100,6 +100,38 @@ class TestResolveLandingArgs:
         with pytest.raises(ValueError, match="no resolved data_type"):
             resolve_landing_args(_source(), t)
 
+    def test_watermark_is_a_single_existing_column(self):
+        # REQ-924: the watermark is one column NAME drawn from the table's own columns — a
+        # single string field, never a derived/synthetic source column. Naming a real column
+        # gates APPEND landing; the landed shape carries that column like any other.
+        t = _table(
+            watermark_column="updated_at",
+            columns=[
+                _col("id", "bigint", pk=True),
+                _col("updated_at", "timestamp"),
+            ],
+        )
+        args = resolve_landing_args(_source(change_signal="ttl_probe"), t)
+        assert args.watermark_column == "updated_at"
+        assert "updated_at" in {name for name, _ in args.columns}
+        assert select_landing_shape(args.change_signal, args.watermark_column) == APPEND
+
+    def test_view_derived_watermark_treated_like_source_column(self):
+        # REQ-931: a derived/synthetic watermark is manufactured in the SQL/view layer, so it
+        # reaches residency as an ordinary projected column (e.g. GREATEST(created_at,
+        # updated_at) aliased `wm`). Landing treats it identically — no source-level synthetic
+        # stamping is needed; the computed column gates APPEND like a native one.
+        t = _table(
+            watermark_column="wm",
+            columns=[
+                _col("id", "bigint", pk=True),
+                _col("wm", "timestamp"),  # view-computed GREATEST(...) projected as `wm`
+            ],
+        )
+        args = resolve_landing_args(_source(change_signal="probe"), t)
+        assert args.watermark_column == "wm"
+        assert select_landing_shape(args.change_signal, args.watermark_column) == APPEND
+
     def test_shape_matches_resolved_signal(self):
         # ttl + no watermark → REPLACE; poll + watermark → APPEND; push → CDC
         a = resolve_landing_args(_source(change_signal="ttl"), _table())
