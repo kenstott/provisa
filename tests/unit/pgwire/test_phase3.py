@@ -33,7 +33,8 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
-from provisa.pgwire.catalog import _build_catalog_db, classify
+from provisa.pgwire.catalog import classify
+from provisa.pgwire.catalog_populate import _build_catalog_db
 from provisa.pgwire.server import ProvisaConnection, ProvisaServer  # noqa: F401
 
 
@@ -585,7 +586,9 @@ async def test_er_bulk_attribute_query(pgwire_server_er):
         )
         await conn.close()
 
-    assert len(rows) == 6, f"expected 6 (4 pets + 2 reg), got {len(rows)}: {[r['attname'] for r in rows]}"
+    assert len(rows) == 6, (
+        f"expected 6 (4 pets + 2 reg), got {len(rows)}: {[r['attname'] for r in rows]}"
+    )
     col_names = [r["attname"] for r in rows]
     assert "id" in col_names
     assert "registered_table_id" in col_names
@@ -624,16 +627,29 @@ async def test_er_fk_constraint_deserialized(pgwire_server_er):
     assert conkey is not None and len(conkey) > 0, f"conkey empty: {conkey}"
     assert confkey is not None and len(confkey) > 0, f"confkey empty: {confkey}"
     assert conkey[0] == 4, f"conkey[0] must be 4 (registered_table_id is 4th col), got {conkey[0]}"
-    assert confkey[0] == 1, f"confkey[0] must be 1 (id is 1st col of registered_tables), got {confkey[0]}"
+    assert confkey[0] == 1, (
+        f"confkey[0] must be 1 (id is 1st col of registered_tables), got {confkey[0]}"
+    )
 
 
 @pytest.mark.asyncio
 async def test_er_mermaid_diagram(pgwire_server_er):
     """Wire: catalog queries produce a valid Mermaid ER diagram with FK relationships."""
     _PG_OID_TO_TYPE = {
-        23: "int", 1043: "varchar", 20: "bigint", 16: "bool", 25: "text",
-        114: "json", 3802: "jsonb", 21: "smallint", 700: "float4", 701: "float8",
-        1082: "date", 1114: "timestamp", 1184: "timestamptz", 1700: "numeric",
+        23: "int",
+        1043: "varchar",
+        20: "bigint",
+        16: "bool",
+        25: "text",
+        114: "json",
+        3802: "jsonb",
+        21: "smallint",
+        700: "float4",
+        701: "float8",
+        1082: "date",
+        1114: "timestamp",
+        1184: "timestamptz",
+        1700: "numeric",
     }
     port = pgwire_server_er
     provider = _stub_auth_provider("alice", "secret")
@@ -672,7 +688,14 @@ async def test_er_mermaid_diagram(pgwire_server_er):
     pk_by_table: dict = {}
     for con in cons:
         if con["contype"] == "p" and con["conkey"]:
-            col = next((a["attname"] for a in by_table.get(con["conrelid"], []) if a["attnum"] == con["conkey"][0]), None)
+            col = next(
+                (
+                    a["attname"]
+                    for a in by_table.get(con["conrelid"], [])
+                    if a["attnum"] == con["conkey"][0]
+                ),
+                None,
+            )
             if col:
                 pk_by_table[con["conrelid"]] = col
 

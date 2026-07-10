@@ -37,7 +37,8 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
-from provisa.pgwire.catalog import _build_catalog_db, answer, classify
+from provisa.pgwire.catalog import answer, classify
+from provisa.pgwire.catalog_populate import _build_catalog_db
 
 
 def _free_port() -> int:

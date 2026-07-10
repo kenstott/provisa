@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from provisa.pgwire.catalog import _build_catalog_db
+from provisa.pgwire.catalog_populate import _build_catalog_db
 
 
 def _state_with_functions(functions: dict):

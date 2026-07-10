@@ -264,7 +264,7 @@ def test_catalog_reports_zero_pages_for_single_stream(pgwire_port):
     would re-project pg_class through the row stub); this is the exact pg_class
     row DuckDB's postgres extension reads to decide parallelism.
     """
-    from provisa.pgwire.catalog import _build_catalog_db
+    from provisa.pgwire.catalog_populate import _build_catalog_db
 
     _, state = pgwire_port
     db = _build_catalog_db("admin", state)

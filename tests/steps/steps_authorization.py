@@ -13,7 +13,7 @@ import pytest
 from pytest_bdd import given, scenarios, then, when
 
 from provisa.graphql_remote.mapper import map_schema
-from provisa.pgwire.catalog import _build_catalog_db
+from provisa.pgwire.catalog_populate import _build_catalog_db
 from provisa.security.association_suggester import TableCandidate, suggest_graphql
 from provisa.security.mutation_authz import reclassify_kind
 from provisa.security.rights import Capability, InsufficientRightsError

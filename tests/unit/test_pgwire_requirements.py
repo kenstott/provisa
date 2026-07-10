@@ -31,27 +31,27 @@ class TestReq527PgwireDisabledByDefault:
     """REQ-527: pgwire starts only when PROVISA_PGWIRE_PORT env var is a non-zero integer."""
 
     def test_zero_port_does_not_start(self, monkeypatch):
-        # REQ-527: The startup function in app.py gates on `if pgwire_port:` so port 0 means disabled.
+        # REQ-527: The startup function in app_startup.py gates on `if pgwire_port:` so port 0 means disabled.
         import inspect
-        from provisa.api import app as app_mod
+        from provisa.api import app_startup as app_mod
 
         monkeypatch.setenv("PROVISA_PGWIRE_PORT", "0")
         port = int(os.environ.get("PROVISA_PGWIRE_PORT", "0"))
         assert port == 0, "Port 0 must be treated as disabled"
 
-        # Verify the startup code in app.py uses the correct gating pattern.
+        # Verify the startup code in app_startup.py uses the correct gating pattern.
         src = inspect.getsource(app_mod)
         assert 'PROVISA_PGWIRE_PORT", "0"' in src, (
-            "app.py must read PROVISA_PGWIRE_PORT with default '0'"
+            "app_startup.py must read PROVISA_PGWIRE_PORT with default '0'"
         )
         assert "if pgwire_port:" in src, (
-            "app.py must gate pgwire startup on `if pgwire_port:` so zero disables it"
+            "app_startup.py must gate pgwire startup on `if pgwire_port:` so zero disables it"
         )
 
     def test_absent_env_var_does_not_start(self, monkeypatch):
         # REQ-527: Absent env var → default "0" → int 0 → falsy → server not started.
         import inspect
-        from provisa.api import app as app_mod
+        from provisa.api import app_startup as app_mod
 
         monkeypatch.delenv("PROVISA_PGWIRE_PORT", raising=False)
         port = int(os.environ.get("PROVISA_PGWIRE_PORT", "0"))
@@ -60,7 +60,7 @@ class TestReq527PgwireDisabledByDefault:
         # Confirm the default value used in the source is "0" (falsy).
         src = inspect.getsource(app_mod)
         assert 'os.environ.get("PROVISA_PGWIRE_PORT", "0")' in src, (
-            "app.py must default PROVISA_PGWIRE_PORT to '0' so absent env var disables pgwire"
+            "app_startup.py must default PROVISA_PGWIRE_PORT to '0' so absent env var disables pgwire"
         )
 
     def test_nonzero_port_enables_server(self, monkeypatch):
@@ -203,7 +203,7 @@ class TestReq530TLS:
     def test_no_env_vars_means_no_ssl_ctx(self, monkeypatch):
         # REQ-530: When CERT+KEY are absent, ssl_ctx must be None and no TLS wrapping occurs.
         import inspect
-        from provisa.api import app as app_mod
+        from provisa.api import app_startup as app_mod
 
         monkeypatch.delenv("PROVISA_PGWIRE_CERT", raising=False)
         monkeypatch.delenv("PROVISA_PGWIRE_KEY", raising=False)
@@ -211,12 +211,12 @@ class TestReq530TLS:
         key = os.environ.get("PROVISA_PGWIRE_KEY")
         assert cert is None and key is None
 
-        # Confirm app.py reads CERT+KEY and only builds ssl_ctx when both are present.
+        # Confirm app_startup.py reads CERT+KEY and only builds ssl_ctx when both are present.
         src = inspect.getsource(app_mod)
-        assert "PROVISA_PGWIRE_CERT" in src, "app.py must read PROVISA_PGWIRE_CERT"
-        assert "PROVISA_PGWIRE_KEY" in src, "app.py must read PROVISA_PGWIRE_KEY"
+        assert "PROVISA_PGWIRE_CERT" in src, "app_startup.py must read PROVISA_PGWIRE_CERT"
+        assert "PROVISA_PGWIRE_KEY" in src, "app_startup.py must read PROVISA_PGWIRE_KEY"
         assert "if _cert and _key:" in src, (
-            "app.py must gate SSLContext creation on both CERT and KEY being set"
+            "app_startup.py must gate SSLContext creation on both CERT and KEY being set"
         )
 
     def test_ssl_negotiation_sends_n_when_no_ctx(self):
@@ -870,7 +870,7 @@ class TestReq589BinaryParameters:
         # REQ-589: All required OIDs must be handled
         # These are the OIDs named in the requirement
         required_oids = {16, 17, 20, 21, 23, 25, 700, 701, 1043, 1082, 1114, 1184, 1700, 2950}
-        from provisa.pgwire.catalog import _PG_TYPE_ROWS
+        from provisa.pgwire.catalog_data import _PG_TYPE_ROWS
 
         present_oids = {row[0] for row in _PG_TYPE_ROWS}
         missing = required_oids - present_oids
