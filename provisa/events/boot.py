@@ -102,6 +102,10 @@ def specs_from_config(
                 continue  # live/scan federates in place — not landed, not a source processor
         except UnreachableSource:
             continue
+        # A parameterized source (native-filter query/path-param columns) is a function f(args) ->
+        # rows with no snapshot — fetched real-time at query time, never landed. Not a source node.
+        if any(getattr(c, "native_filter_type", None) is not None for c in tbl.columns):
+            continue
         try:
             args = resolve_landing_args(src, tbl, platform=engine.dialect)
         except ValueError:

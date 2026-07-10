@@ -77,10 +77,16 @@ async def test_reconciles_only_materialized_and_skips_untyped(monkeypatch):
         _rtbl("api", "events", [_rcol("id", "bigint", pk=True), _rcol("status", "text")]),
         _rtbl("pg", "users", [_rcol("id", "bigint", pk=True)]),  # ATTACH → VIRTUAL, not landed
         _rtbl("api", "bad", [_rcol("id", None)]),  # MATERIALIZED but untyped → skipped
+        # PARAMETERIZED (native-filter arg) → a function, no snapshot → never materialized
+        _rtbl(
+            "api",
+            "one",
+            [_rcol("_nf_key", "text", nf="query_param"), _rcol("val", "text")],
+        ),
     ]
     reconciled = await backend.reconcile_landed_tables(_state(cfg, registered, monkeypatch))
 
-    assert reconciled == [("api", "events")]  # only the typed materialized table
+    assert reconciled == [("api", "events")]  # only the typed, non-parameterized materialized table
     assert rt.landed == [("api", "events", [("id", "bigint"), ("status", "text")], ["id"])]
 
 

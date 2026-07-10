@@ -7,6 +7,8 @@
 # NOTICE: Use of this software for training artificial intelligence or
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
+#
+# complexity-gate: allow-loc=1250 reason="REQ-392 exclude parameterized (native-filter) nodes from the schema-wide count sweep so one uncountable label no longer zeroes the whole panel; cypher_router.py breakup into per-stage modules is separately-tracked debt (already flagged by the gate)"
 
 """POST /query/cypher — Cypher query endpoint (Phase AU, REQ-345–353).
 
@@ -791,6 +793,37 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
     )
 
 
+def _countable_labels(label_map, filtered_domains: set[str]) -> tuple[list[str], list[str]]:
+    """The node labels and relationship types the schema-wide count sweep may safely count.
+
+    A PARAMETERIZED node (native-filter columns) is a function f(args) -> rows with no snapshot:
+    ``MATCH (n:Label) RETURN count(n)`` has no arg to satisfy, so it cannot be counted — exclude it
+    and any relationship that touches it. Including one would binder-error and, because ``_run_count``
+    re-raises, zero the WHOLE panel. Domain filtering (when a domain set is supplied) is also applied.
+    """
+    node_labels = [
+        nm.label
+        for nm in label_map.nodes.values()
+        if (not filtered_domains or nm.domain_id in filtered_domains)
+        and not nm.native_filter_columns
+    ]
+    seen: set[str] = set()
+    rel_types: list[str] = []
+    for rel in label_map.relationships.values():
+        src_nm = label_map.nodes[rel.source_label]
+        tgt_nm = label_map.nodes[rel.target_label]
+        if filtered_domains and (
+            src_nm.domain_id not in filtered_domains or tgt_nm.domain_id not in filtered_domains
+        ):
+            continue
+        if src_nm.native_filter_columns or tgt_nm.native_filter_columns:
+            continue  # a rel to/from a parameterized node is uncountable without its arg
+        if rel.rel_type not in seen:
+            seen.add(rel.rel_type)
+            rel_types.append(rel.rel_type)
+    return node_labels, rel_types
+
+
 @router.get("/data/graph-counts")
 async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
     """Count nodes and relationships via the normal Cypher pipeline, filtered by domain."""
@@ -841,24 +874,7 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             # Swallowing here corrupts totals/pagination — propagate.
             raise
 
-    node_labels = [
-        nm.label
-        for nm in label_map.nodes.values()
-        if not filtered_domains or nm.domain_id in filtered_domains
-    ]
-
-    seen_rel_types: set[str] = set()
-    rel_types: list[str] = []
-    for rel in label_map.relationships.values():
-        src_nm = label_map.nodes[rel.source_label]
-        tgt_nm = label_map.nodes[rel.target_label]
-        if filtered_domains and (
-            src_nm.domain_id not in filtered_domains or tgt_nm.domain_id not in filtered_domains
-        ):
-            continue
-        if rel.rel_type not in seen_rel_types:
-            seen_rel_types.add(rel.rel_type)
-            rel_types.append(rel.rel_type)
+    node_labels, rel_types = _countable_labels(label_map, filtered_domains)
 
     BATCH = 5
 

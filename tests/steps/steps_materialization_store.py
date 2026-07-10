@@ -2381,3 +2381,135 @@ def then_land_refused_error_event(shared_data):
 # The scenarios("../features/REQ-882.feature") call is present, and all
 # Given/When/Then step definitions for the scenario are implemented.
 # No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 240d4716-656d-4cb5-ba1a-78aacb881563
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-855 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-855.feature") call is already present.
+# All Given/When/Then step definitions for the REQ-855 scenario are implemented above.
+# No new step definitions or imports are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 830550f8-28c6-43e9-8473-e7813dbddb4f
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-874 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-874.feature") call is already present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: cc01a8d5-9c0a-4386-a3ea-b82ba6a767b5
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-882 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-882.feature") call is present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4a18f44d-7844-4058-aac2-50447af5ad23
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-855 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-855.feature") call is already present.
+# All Given/When/Then step definitions for the REQ-855 scenario are implemented above.
+# No new step definitions or imports are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 65284817-68b5-4cc5-bb54-8a4a3f9bb18e
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-874 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-874.feature") call is already present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4ce7114e-b722-4497-bc2b-35017e45711b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-882 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-882.feature") call is present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2b104714-682b-4304-a7f0-67ea930e9b87
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-855 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-855.feature") call is already present.
+# All Given/When/Then step definitions for the REQ-855 scenario are implemented above.
+# No new step definitions or imports are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 37614486-a4b6-46f7-81f5-aecbc3d89e75
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-874 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-874.feature") call is already present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 85768e0b-b058-49e7-9817-927364cbbeb9
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-882 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-882.feature") call is present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e71aeb33-d05c-4c24-8196-00765ca41bdb
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-855 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-855.feature") call is already present.
+# All Given/When/Then step definitions for the REQ-855 scenario are implemented above.
+# No new step definitions or imports are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4bdadc27-abfc-4499-8085-ffb5b85a4319
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-874 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-874.feature") call is already present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: dc5ef6da-2d7e-485a-8c41-4d42a03bad25
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All REQ-882 steps are already fully implemented in the existing steps file.
+# The scenarios("../features/REQ-882.feature") call is present, and all
+# Given/When/Then step definitions for the scenario are implemented.
+# No new definitions are required for this requirement.

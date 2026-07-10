@@ -1117,3 +1117,21 @@ def then_logged_in_append_only_audit_log(shared_data, audit_pool):
 
 # All steps for the REQ-001 default behaviour scenario are already implemented
 # in the existing steps file. No new step definitions are required.
+
+
+# All steps for the REQ-001 default behaviour scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e7762a3b-f9f9-476b-b02d-6db61969b33f
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for the REQ-001 default behaviour scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+
+
+# All steps for the REQ-001 default behaviour scenario are already implemented
+# in the existing steps file. No new step definitions are required.

@@ -16,7 +16,7 @@ Pipeline: parse -> compile -> MV rewrite -> sampling -> make_semantic_sql
 Mutations: parse -> compile_mutation -> RLS inject -> direct execute (never the engine).
 """
 
-# complexity-gate: allow-loc=2892 reason="REQ-848 route api-cache landing off engine writes onto the SQLAlchemy write face (land_api_cache); +2 lines on a file already flagged for extraction, split tracked separately"
+# complexity-gate: allow-loc=2930 allow-cc=45 reason="REQ-848 api-cache landing on the SQLAlchemy write face; REQ-941/REQ-392 route parameterized (native-filter) graphql_remote tables to a real-time fetch + schema-less-store VALUES-CTE path; endpoint.py breakup into per-route modules is separately-tracked debt (already flagged by the gate)"
 
 # Requirements: REQ-001, REQ-002, REQ-027, REQ-028, REQ-029, REQ-032, REQ-033,
 #               REQ-034, REQ-035, REQ-036, REQ-038, REQ-040, REQ-043, REQ-047,
@@ -707,6 +707,29 @@ def _normalize_mat_value(v):
     return str(v)
 
 
+async def _fetch_gql_remote_rows(
+    gql_reg, gql_tbl, col_selections, variables, gql_to_sql, max_items
+):
+    """Fetch a graphql_remote field (with its native-filter args) and remap each row's GQL field
+    keys to the sql column names the store lands under. A single-record field returns null (→ [None])
+    when nothing matches — drop non-dict rows so the caller lands an empty result, not a crash."""
+    from provisa.graphql_remote.executor import execute_remote
+
+    rows = await execute_remote(
+        url=gql_reg["url"],
+        auth=gql_reg.get("auth"),
+        field_name=gql_tbl.get("field_name") or gql_tbl["name"],
+        columns=col_selections,
+        variables=variables or None,
+        required_args=gql_tbl.get("required_args") or None,
+        limit=max_items,
+        pagination=gql_tbl.get("pagination"),
+    )
+    return [
+        {gql_to_sql.get(k, k): v for k, v in row.items()} for row in rows if isinstance(row, dict)
+    ]
+
+
 async def _mat_gql_remote_table(
     tn: str,
     gql_reg: dict,
@@ -731,7 +754,6 @@ async def _mat_gql_remote_table(
     )
     from provisa.cache.hot_tables import HotTableEntry
     from provisa.executor.redirect import RedirectConfig
-    from provisa.graphql_remote.executor import execute_remote
     from dataclasses import dataclass as _dc
 
     @_dc
@@ -804,6 +826,33 @@ async def _mat_gql_remote_table(
 
     redirect_config = RedirectConfig.from_env()
 
+    # A schema-less materialization store (SQLite) has no separate cache schema to CREATE, so the
+    # engine-cache path (ensure_cache_schema → CREATE SCHEMA) is unavailable. Fetch fresh from the
+    # remote and inject the result INLINE as a VALUES CTE — the parameterized fetch is bounded by
+    # max_list_items, and an empty result still injects an empty CTE (query returns []).
+    from urllib.parse import urlparse as _urlparse
+
+    _store_scheme = _urlparse(state.federation_engine.materialize_store_dsn()).scheme.split("+", 1)[
+        0
+    ]
+    _max_items = state.config.graphql_remote.max_list_items
+    if _store_scheme == "sqlite":
+        gql_rows = await _fetch_gql_remote_rows(
+            gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items
+        )
+        # Inline THIS query only — never register in hot_mgr: a parameterized fetch is keyed by its
+        # arg, so caching it under the bare table name would serve one arg's rows for another.
+        values_cte_entries[tn] = HotTableEntry(
+            table_name=tn,
+            catalog=gql_cache_loc.catalog,
+            schema="main",
+            pk_column=col_names[0] if col_names else "id",
+            rows=gql_rows,
+            column_names=col_names,
+            is_api=True,
+        )
+        return
+
     # Cache hit — only trust in-process table_known_live
     with state.federation_engine.isolated_sync() as _c:
         ensure_cache_schema(_c, gql_cache_loc)
@@ -813,18 +862,9 @@ async def _mat_gql_remote_table(
 
     # Cache miss — fetch from remote
     try:
-        gql_rows = await execute_remote(
-            url=gql_reg["url"],
-            auth=gql_reg.get("auth"),
-            field_name=gql_tbl.get("field_name") or gql_tbl["name"],
-            columns=col_selections,
-            variables=variables or None,
-            required_args=gql_tbl.get("required_args") or None,
-            limit=state.config.graphql_remote.max_list_items,
-            pagination=gql_tbl.get("pagination"),
+        gql_rows = await _fetch_gql_remote_rows(
+            gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items
         )
-        # Remap row keys from GQL camelCase to SQL snake_case to match CTE column headers
-        gql_rows = [{_gql_to_sql.get(k, k): v for k, v in row.items()} for row in gql_rows]
     except Exception as fetch_exc:
         raise RuntimeError(f"GQL remote fetch failed for {tn!r}: {fetch_exc}") from fetch_exc
 
@@ -1167,14 +1207,24 @@ async def _materialize_api_to_engine_cache(
             if gql_reg is not None and gql_tbl is not None:
                 req_args = gql_tbl.get("required_args") or []
                 if req_args:
-                    resolved = {
-                        a["name"]: nf_args[a["name"]]
-                        for a in req_args
-                        if nf_args and a["name"] in nf_args
+                    # required_args carry the REMOTE arg name (e.g. ``name``, ``breedName``); the
+                    # extracted nf_args are keyed by the GraphQL schema arg, which Provisa prefixes
+                    # with ``_`` when it collides with a scalar field and stores in sql convention
+                    # (``breedName`` → ``_breed_name``). Match through the naming authority: both
+                    # sides reduce to the same sql name once the disambiguation ``_`` is dropped.
+                    from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+
+                    _nf_canon = {
+                        _apply_sql_name(k.lstrip("_")): v for k, v in (nf_args or {}).items()
                     }
-                    missing = [
-                        a["name"] for a in req_args if not nf_args or a["name"] not in nf_args
-                    ]
+                    resolved = {}
+                    missing = []
+                    for a in req_args:
+                        canon = _apply_sql_name(a["name"].lstrip("_"))
+                        if canon in _nf_canon:
+                            resolved[a["name"]] = _nf_canon[canon]
+                        else:
+                            missing.append(a["name"])
                     if missing:
                         # Required filter(s) absent — exclude the object (drop its union branch) so a
                         # broad sweep (graph counts, multi-label union) skips it instead of erroring.
@@ -2066,9 +2116,18 @@ async def _execute_engine_standard(
     if probe_limit is not None:
         exec_sql = _inject_probe_limit(exec_sql, probe_limit)
 
+    # A PARAMETERIZED (native-filter) table is a function f(args) -> rows with no snapshot: pull its
+    # _nf_ predicates out of the SQL and resolve the args, so _materialize_api_to_engine_cache FETCHES
+    # the source real-time with them (openapi / grpc_remote / graphql_remote) and injects the rows as
+    # a VALUES CTE — instead of scanning a replica whose _nf_ column was stripped (a binder error).
+    # Mirrors the openapi Phase-2 and Cypher (cypher_router) native-filter paths.
+    from provisa.compiler.nf_extractor import extract_nf_args
+
+    exec_sql, exec_params, _nf_args = extract_nf_args(exec_sql, compiled.params)
+
     # Materialize API-backed tables into the engine cache to avoid INVALID_CAST_ARGUMENT
     _api_cache_rewrites, _api_values_ctes, _api_dropped = await _materialize_api_to_engine_cache(
-        exec_sql, state, compiled.gql_remote_extra_selections
+        exec_sql, state, compiled.gql_remote_extra_selections, nf_args=_nf_args
     )
     if _api_dropped:
         from provisa.compiler.nf_extractor import drop_union_branches_for_table
@@ -2111,7 +2170,7 @@ async def _execute_engine_standard(
 
     result = await state.federation_engine.execute_engine(
         physical_sql,
-        compiled.params,
+        exec_params,
         session_hints=session_hints or None,
         conn_kwargs=_engine_ck,
         span_attrs=_span_attrs,

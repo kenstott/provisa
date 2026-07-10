@@ -10,9 +10,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from pytest_bdd import given, scenario, then, when
+from pytest_bdd import given, scenario, scenarios, then, when
 
-from provisa.events.source_loader import SourceRowLoader, UnsupportedSourceFetch
+from provisa.events.source_loader import (
+    SourceRowLoader,
+    UnsupportedSourceFetch,
+    make_openapi_loader,
+)
 from provisa.executor.result import QueryResult
 
 
@@ -89,14 +93,47 @@ def given_materialized_source(shared_data):
 
 
 @when("SourceRowLoader.load(source, table) is invoked", target_fixture="load_result")
-def when_load_invoked(shared_data):
-    """Call SourceRowLoader.load and store the result (or exception) in shared_data."""
+def when_load_invoked(shared_data, monkeypatch):
+    """Invoke SourceRowLoader.load and capture the result/exception. Two scenarios share this exact
+    step text: the openapi adapter path (REQ-945) seeds ``call_api_calls`` and needs the adapter
+    chain mocked + an adapter loader built; the engine-scannable path (REQ-943) uses the pre-built
+    loader directly. Dispatch on the presence of the openapi setup so one step serves both."""
     import asyncio
 
-    loader: SourceRowLoader = shared_data["loader"]
+    if "call_api_calls" in shared_data:
+        import provisa.api_source.caller as caller_mod
+        import provisa.api_source.flattener as flattener_mod
+
+        call_api_calls = shared_data["call_api_calls"]
+        flatten_calls = shared_data["flatten_calls"]
+        fake_pages = [{"items": [{"id": 1, "title": "Widget"}, {"id": 2, "title": "Gadget"}]}]
+
+        async def _fake_call_api(endpoint, params, *, base_url, auth):
+            call_api_calls.append(
+                {"endpoint": endpoint, "params": params, "base_url": base_url, "auth": auth}
+            )
+            return fake_pages
+
+        def _fake_flatten(page, root, columns, normalizer):
+            flatten_calls.append(
+                {"page": page, "root": root, "columns": columns, "normalizer": normalizer}
+            )
+            return list(page[root])
+
+        monkeypatch.setattr(caller_mod, "call_api", _fake_call_api)
+        monkeypatch.setattr(flattener_mod, "flatten_response", _fake_flatten)
+
+        openapi_loader = make_openapi_loader(
+            shared_data["endpoints_by_table"], shared_data["sources_by_id"]
+        )
+        engine = _FakeEngine(QueryResult(rows=[], column_names=[], column_types=None))
+        loader = SourceRowLoader(engine, adapter_loaders={"openapi": openapi_loader})
+        shared_data["engine"] = engine
+        shared_data["loader"] = loader
+
+    loader = shared_data["loader"]
     source = shared_data["source"]
     table = shared_data["table"]
-
     try:
         rows = asyncio.run(loader.load(source, table))
         shared_data["result"] = rows
@@ -160,4 +197,141 @@ def then_unsupported_fetch_raised(shared_data):
     assert engine.sql is None, (
         f"engine.execute_engine was called with SQL {engine.sql!r} - it must not be called "
         "for adapter-only sources"
+    )
+
+
+scenarios("../features/REQ-945.feature")
+
+
+@given("an openapi source with a registered ApiEndpoint and ApiSource in live state")
+def given_openapi_source_with_registered_endpoint(shared_data):
+    """Set up an openapi source with a registered ApiEndpoint and ApiSource."""
+    endpoint = SimpleNamespace(
+        table_name="products",
+        default_params={"page": 1, "limit": 100},
+        response_root="items",
+        columns=[{"name": "id"}, {"name": "title"}],
+        response_normalizer=None,
+    )
+    api_source = SimpleNamespace(
+        base_url="https://api.example.com",
+        auth={"type": "bearer", "token": "tok-123"},
+    )
+
+    endpoints_by_table = {"products": endpoint}
+    sources_by_id = {"openapi-shop": api_source}
+
+    source = _make_source("openapi-shop", "openapi")
+    table = _make_table("default", "products")
+
+    shared_data["endpoint"] = endpoint
+    shared_data["api_source"] = api_source
+    shared_data["endpoints_by_table"] = endpoints_by_table
+    shared_data["sources_by_id"] = sources_by_id
+    shared_data["source"] = source
+    shared_data["table"] = table
+    shared_data["call_api_calls"] = []
+    shared_data["flatten_calls"] = []
+
+
+@then("make_openapi_loader resolves the ApiEndpoint and ApiSource from state")
+def then_resolves_endpoint_and_api_source(shared_data):
+    """Assert that call_api was invoked (meaning endpoint + api_source were resolved)."""
+    assert shared_data["exception"] is None, f"unexpected exception: {shared_data['exception']}"
+    call_api_calls = shared_data["call_api_calls"]
+    assert len(call_api_calls) >= 1, "call_api was never called - endpoint/api_source not resolved"
+    call = call_api_calls[0]
+    assert call["endpoint"] is shared_data["endpoint"], "wrong endpoint resolved"
+    assert call["base_url"] == shared_data["api_source"].base_url, (
+        f"wrong base_url: {call['base_url']!r}"
+    )
+    assert call["auth"] == shared_data["api_source"].auth, f"wrong auth: {call['auth']!r}"
+
+
+@then("calls the operation with default_params via api_source.caller.call_api")
+def then_calls_with_default_params(shared_data):
+    """Assert call_api was called with the endpoint's default_params."""
+    call_api_calls = shared_data["call_api_calls"]
+    assert len(call_api_calls) >= 1, "call_api was never called"
+    call = call_api_calls[0]
+    expected_params = dict(shared_data["endpoint"].default_params)
+    assert call["params"] == expected_params, (
+        f"expected params {expected_params!r}, got {call['params']!r}"
+    )
+
+
+@then("flattens the response pages via api_source.flattener.flatten_response")
+def then_flattens_response_pages(shared_data):
+    """Assert flatten_response was called for each page returned by call_api."""
+    flatten_calls = shared_data["flatten_calls"]
+    assert len(flatten_calls) >= 1, "flatten_response was never called"
+    call = flatten_calls[0]
+    assert call["root"] == shared_data["endpoint"].response_root, (
+        f"wrong response_root: {call['root']!r}"
+    )
+
+
+@then("returns row dicts without issuing an engine SELECT")
+def then_returns_rows_without_engine_select(shared_data):
+    """Assert rows are returned and no engine SQL was issued."""
+    rows = shared_data["result"]
+    assert rows is not None, "expected row dicts but got None"
+    assert isinstance(rows, list), f"expected list, got {type(rows)}"
+    assert len(rows) > 0, "expected non-empty row list"
+    for row in rows:
+        assert isinstance(row, dict), f"expected dict rows, got {type(row)}"
+    engine: _FakeEngine = shared_data["engine"]
+    assert engine.sql is None, (
+        f"engine.execute_engine was called with {engine.sql!r} - must not scan for openapi source"
+    )
+
+
+@given("an openapi source with no registered ApiEndpoint")
+def given_openapi_source_with_no_endpoint(shared_data):
+    """Set up an openapi source where no ApiEndpoint is registered for the table."""
+    endpoints_by_table = {}  # empty - no endpoint registered
+    sources_by_id = {
+        "openapi-shop": SimpleNamespace(
+            base_url="https://api.example.com",
+            auth={"type": "bearer", "token": "tok-123"},
+        )
+    }
+
+    source = _make_source("openapi-shop", "openapi")
+    table = _make_table("default", "products")
+
+    shared_data["endpoints_by_table"] = endpoints_by_table
+    shared_data["sources_by_id"] = sources_by_id
+    shared_data["source"] = source
+    shared_data["table"] = table
+    shared_data["call_api_calls"] = []
+    shared_data["flatten_calls"] = []
+
+    openapi_loader = make_openapi_loader(endpoints_by_table, sources_by_id)
+    engine = _FakeEngine(QueryResult(rows=[], column_names=[], column_types=None))
+    loader = SourceRowLoader(engine, adapter_loaders={"openapi": openapi_loader})
+    shared_data["engine"] = engine
+    shared_data["loader"] = loader
+
+
+@then("UnsupportedSourceFetch is raised")
+def then_unsupported_source_fetch_is_raised(shared_data):
+    """Assert UnsupportedSourceFetch was raised for the no-endpoint case."""
+    import asyncio
+
+    loader: SourceRowLoader = shared_data["loader"]
+    source = shared_data["source"]
+    table = shared_data["table"]
+
+    exc_raised = None
+    try:
+        asyncio.run(loader.load(source, table))
+    except UnsupportedSourceFetch as exc:
+        exc_raised = exc
+
+    assert exc_raised is not None, (
+        "expected UnsupportedSourceFetch to be raised but no exception was raised"
+    )
+    assert isinstance(exc_raised, UnsupportedSourceFetch), (
+        f"expected UnsupportedSourceFetch, got {type(exc_raised).__name__}"
     )

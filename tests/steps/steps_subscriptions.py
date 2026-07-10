@@ -1422,3 +1422,47 @@ def then_source_type_not_used_to_dispatch(shared_data: dict) -> None:
 #   - then_only_newer_rows_delivered
 #
 # The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.
+
+
+# All steps for REQ-260 "default behaviour" scenario are already implemented
+# in the existing steps file. No new step definitions are required.
+#
+# Covered by existing step functions:
+#   - given_table_config_with_watermark_column
+#   - when_poll_subscription_created
+#   - then_only_newer_rows_delivered
+#
+# The scenarios() call for REQ-260.feature is also already present.

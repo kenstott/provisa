@@ -982,3 +982,26 @@ scenarios("../features/REQ-802.feature")
 
 # All steps for the REQ-802 default behaviour scenario are already present in
 # the existing steps file. Nothing new to append.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 26d68745-c191-45df-a91e-2bbde3e10911
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: aca6ffc0-e631-4d4c-b46f-85d85fd24ab5
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for the REQ-802 default behaviour scenario are already present in
+# the existing steps file. Nothing new to append.

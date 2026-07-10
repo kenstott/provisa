@@ -570,10 +570,16 @@ async def _graph_counts(
     import asyncio
 
     label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
-    node_labels = [nm.label for nm in label_map.nodes.values()]
+    # A parameterized node (native-filter columns) is a function with no snapshot — count-all is
+    # undefined without its arg, so exclude it and any relationship touching it from the count sweep.
+    node_labels = [nm.label for nm in label_map.nodes.values() if not nm.native_filter_columns]
     seen: set[str] = set()
     rel_types: list[str] = []
     for rel in label_map.relationships.values():
+        src_nm = label_map.nodes.get(rel.source_label)
+        tgt_nm = label_map.nodes.get(rel.target_label)
+        if (src_nm and src_nm.native_filter_columns) or (tgt_nm and tgt_nm.native_filter_columns):
+            continue
         if rel.rel_type not in seen:
             seen.add(rel.rel_type)
             rel_types.append(rel.rel_type)

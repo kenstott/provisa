@@ -66,8 +66,8 @@ def _src(sid, stype):
     return SimpleNamespace(id=sid, type=SimpleNamespace(value=stype), change_signal="ttl")
 
 
-def _col(name, data_type: str | None = "bigint", pk=False):
-    return SimpleNamespace(name=name, data_type=data_type, is_primary_key=pk)
+def _col(name, data_type: str | None = "bigint", pk=False, nf=None):
+    return SimpleNamespace(name=name, data_type=data_type, is_primary_key=pk, native_filter_type=nf)
 
 
 def _tbl(sid, tname, cols, *, cache_ttl=300):
@@ -106,6 +106,8 @@ def test_specs_from_config_binds_materialized_sources_and_mvs():
         ),  # MATERIALIZED
         _tbl("pg", "users", [_col("id")]),  # postgresql on duckdb → VIRTUAL (attach) → skip
         _tbl("api", "bad", [_col("id", None)]),  # untyped → skip
+        # parameterized (native-filter arg) → a function, no snapshot → not a source node
+        _tbl("api", "one", [_col("_nf_key", "text", nf="query_param"), _col("val", "text")]),
     ]
     specs = specs_from_config(
         sources=sources,

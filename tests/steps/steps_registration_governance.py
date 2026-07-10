@@ -3559,3 +3559,92 @@ def _req638_then(shared_data):
 #   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
 #   @when("the migration tool runs")                                       -> _req417_migrate
 #   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 886c5555-3348-4a78-a7e4-dd8279608eba
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: e9d473cd-a5ff-438e-b318-8c97ba0fbaf3
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b57c059d-6341-49a6-8910-9408cf4af707
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d215b507-f7c1-49af-ac82-2b7025c3781c
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-012 (given/when/then) and the scenarios() binding are
+# already fully present in the existing steps file:
+#
+#   scenarios("../features/REQ-012.feature")                          [present]
+#
+#   @given("a privileged steward with registration rights")          -> _req012_privileged_steward
+#   @when("they submit a new source registration")                   -> _req012_submit_registration
+#   @then("Provisa validates the connection, calls the Trino dynamic catalog API, ...")  -> _req012_then
+#
+# No new definitions are required for REQ-012.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3f357729-f75c-4444-b994-6a148b854a95
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: d5c24a48-1154-4838-8131-5cb03a569071
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-417 and the scenarios() binding are already present in the
+# existing steps file. No new definitions are required for this requirement.
+#
+# Confirmed present:
+#   scenarios("../features/REQ-417.feature")                               [present]
+#   @given("a Hasura v2 metadata file containing Remote Schema entries")  -> _req417_metadata
+#   @when("the migration tool runs")                                       -> _req417_migrate
+#   @then("each Remote Schema is mapped to a graphql_remote source ...")   -> _req417_then

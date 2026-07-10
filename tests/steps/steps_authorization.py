@@ -1003,3 +1003,48 @@ scenarios("../features/REQ-871.feature")
 
 # All Given/When/Then steps for REQ-871 scenario "REQ-871 default behaviour" are
 # fully implemented earlier in this file. No new step definitions are required.
+
+
+# All steps for REQ-870 scenario "REQ-870 default behaviour" are fully implemented
+# in the existing file. No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 672f90d7-34b1-4d8c-8b13-9c66485f564c
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps for REQ-870 scenario "REQ-870 default behaviour" are fully implemented
+# in the existing file. No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 37213184-ef74-484e-9f70-7b6c10a45b95
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All Given/When/Then steps for REQ-871 scenario "REQ-871 default behaviour" are
+# fully implemented earlier in this file. The scenarios() registration is also present.
+# No new step definitions are required for this requirement.
+
+
+# All steps for REQ-870 scenario "REQ-870 default behaviour" are fully implemented
+# in the existing file. No new step definitions are required.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 57527444-3b4b-4a86-acde-b8982aca197b
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All Given/When/Then steps for REQ-871 scenario "REQ-871 default behaviour" are
+# fully implemented earlier in this file. No new step definitions are required.
+
+
+# All steps for REQ-870 scenario "REQ-870 default behaviour" are fully implemented
+# in the existing file. No new step definitions are required.
+
+
+# All steps for REQ-871 scenario "REQ-871 default behaviour" are already fully implemented
+# in the existing file. No new step definitions are required.

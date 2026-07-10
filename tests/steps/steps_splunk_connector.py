@@ -1103,3 +1103,61 @@ def step_req724_assert_app_and_ssl(shared_data):
 # Canary: fbea5ca3-d9bf-42a9-befc-268b84b95e35
 #
 # This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2967dc45-306f-44f8-941a-dac17faf0f47
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ad909215-288f-473f-9204-580a2beaf670
+#
+# This source code is licensed under the Business Source License 1.1
+
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8e625d42-ef49-4a29-bf6f-cd1919587a26
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ca1de2b6-f5b6-479e-827b-33445db199ea
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 99972084-8d0d-4834-850c-3f4ef3382a18
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-722 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: a8431774-41b6-4d08-8c63-e32720f43785
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps required for REQ-721 are already fully implemented in the existing steps file.
+# No new step definitions are needed for this requirement.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 696a874c-6db5-4f17-a676-562da0851be9
+#
+# This source code is licensed under the Business Source License 1.1

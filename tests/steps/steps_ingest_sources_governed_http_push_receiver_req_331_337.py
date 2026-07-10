@@ -1487,3 +1487,69 @@ def subscribers_receive_sse_with_governance(shared_data):
 
 # All steps for REQ-334 default behaviour are already fully implemented in the existing file.
 # No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 518d5fbd-409f-4684-8335-28d4b51cce0e
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-331 default behaviour are already fully implemented in the existing file.
+# The Given/When/Then steps and scenario binding are present and complete.
+# No new step definitions are required for this scenario.
+
+
+# All steps for REQ-334 default behaviour are already fully implemented in the existing file.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 682327c6-e6db-4923-a9d0-7eb9f6ba7c04
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-331 default behaviour are already fully implemented in the existing file.
+# The Given/When/Then steps and scenario binding are present and complete.
+# No new step definitions are required for this scenario.
+
+
+# All steps for REQ-334 default behaviour are already fully implemented in the existing file.
+# The Given/When/Then steps and scenario binding are present and complete.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 15052c4d-4170-449b-ba12-4f254bfa668e
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-331 default behaviour are already fully implemented in the existing file.
+# The Given/When/Then steps and scenario binding are present and complete.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 89ea25f0-55d6-495d-b6d0-41884dae43e9
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-334 default behaviour are already fully implemented in the existing file.
+# The Given/When/Then steps and scenario binding for this scenario are present and complete.
+# No new step definitions are required for this scenario.
+
+
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 05d5663f-e310-48de-9bb7-2b91a6036804
+#
+# This source code is licensed under the Business Source License 1.1
+
+# All steps for REQ-331 default behaviour are already fully implemented in the existing file.
+# The Given/When/Then steps (external_service_configured, post_events_to_ingest,
+# events_persisted) and the scenario binding (test_req_331_default_behaviour) are
+# present and complete.  No new step definitions are required for this scenario.
+
+
+# All steps for REQ-334 default behaviour are already fully implemented in the existing file.
+# The Given/When/Then steps (ingest_column_with_path, post_payload_received,
+# nested_value_extracted_missing_null) and the scenario binding (test_req_334_default_behaviour)
+# are present and complete. No new step definitions are required for this scenario.

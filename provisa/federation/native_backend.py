@@ -194,8 +194,13 @@ class NativeEngineBackend(EngineBackend):
                     continue  # live/scan → attached live, not eager-landed
             except UnreachableSource:
                 continue
-            # Native-filter columns (REST/GraphQL query/path params) are synthetic query args, not
-            # landed data — excluded from the landing shape.
+            # A PARAMETERIZED source — one with native-filter (query/path-param) columns — is a
+            # function f(args) -> rows with no unparameterized snapshot. It is fetched real-time at
+            # query time (never materialized), so it never lands a replica.
+            if any(c["native_filter_type"] is not None for c in reg["columns"]):
+                continue
+            # Native-filter columns are synthetic query args, not landed data — excluded from the
+            # landing shape (defensive: none remain past the guard above).
             data_cols = [c for c in reg["columns"] if c["native_filter_type"] is None]
             if any(c["data_type"] is None for c in data_cols):
                 _log.warning(
