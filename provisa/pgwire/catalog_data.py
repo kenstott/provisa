@@ -1,0 +1,360 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b2c3d4e5-f6a7-8901-bcde-f12345678901
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""Static PostgreSQL catalog data (pg_type/pg_settings/pg_roles rows, typeinfo, GUCs)."""
+
+from __future__ import annotations
+
+
+_PG_TYPE_ROWS = [
+    # (oid, typname, typnamespace, typlen, typtype, typcategory, typnotnull, typbasetype, typbyval, typalign, typstorage)
+    (16, "bool", 11, 1, "b", "B", False, 0, True, "c", "p"),
+    (17, "bytea", 11, -1, "b", "U", False, 0, False, "i", "x"),
+    (20, "int8", 11, 8, "b", "N", False, 0, True, "d", "p"),
+    (21, "int2", 11, 2, "b", "N", False, 0, True, "s", "p"),
+    (23, "int4", 11, 4, "b", "N", False, 0, True, "i", "p"),
+    (25, "text", 11, -1, "b", "S", False, 0, False, "i", "x"),
+    (114, "json", 11, -1, "b", "U", False, 0, False, "i", "x"),
+    (700, "float4", 11, 4, "b", "N", False, 0, True, "i", "p"),
+    (701, "float8", 11, 8, "b", "N", False, 0, True, "d", "p"),
+    (1043, "varchar", 11, -1, "b", "S", False, 0, False, "i", "x"),
+    (1082, "date", 11, 4, "b", "D", False, 0, True, "i", "p"),
+    (1083, "time", 11, 8, "b", "D", False, 0, True, "d", "p"),
+    (1114, "timestamp", 11, 8, "b", "D", False, 0, True, "d", "p"),
+    (1184, "timestamptz", 11, 8, "b", "D", False, 0, True, "d", "p"),
+    (1700, "numeric", 11, -1, "b", "N", False, 0, False, "i", "m"),
+    (3802, "jsonb", 11, -1, "b", "U", False, 0, False, "i", "x"),
+    (2950, "uuid", 11, 16, "b", "U", False, 0, False, "c", "p"),
+]
+
+# OID → (attlen, attbyval, attalign, attstorage)
+_PG_OID_ATTR_META: dict[int, tuple[int, bool, str, str]] = {
+    16: (1, True, "c", "p"),  # bool
+    17: (-1, False, "i", "x"),  # bytea
+    20: (8, True, "d", "p"),  # int8
+    21: (2, True, "s", "p"),  # int2
+    23: (4, True, "i", "p"),  # int4
+    25: (-1, False, "i", "x"),  # text
+    114: (-1, False, "i", "x"),  # json
+    700: (4, True, "i", "p"),  # float4
+    701: (8, True, "d", "p"),  # float8
+    1043: (-1, False, "i", "x"),  # varchar
+    1082: (4, True, "i", "p"),  # date
+    1083: (8, True, "d", "p"),  # time
+    1114: (8, True, "d", "p"),  # timestamp
+    1184: (8, True, "d", "p"),  # timestamptz
+    1700: (-1, False, "i", "m"),  # numeric
+    3802: (-1, False, "i", "x"),  # jsonb
+    2950: (16, False, "c", "p"),  # uuid
+}
+
+_TYPEINFO_COLS = [
+    "oid",
+    "ns",
+    "name",
+    "kind",
+    "basetype",
+    "elemtype",
+    "elemdelim",
+    "range_subtype",
+    "attrtypoids",
+    "attrnames",
+    "depth",
+    "basetype_name",
+    "elemtype_name",
+    "range_subtype_name",
+]
+# Declare attrtypoids/attrnames as VARCHAR so asyncpg uses built-in text OID (25)
+# and doesn't recurse into array-type introspection for the schema.
+_TYPEINFO_COL_TYPES = [
+    "INTEGER",
+    "VARCHAR",
+    "VARCHAR",
+    "VARCHAR",
+    "INTEGER",
+    "INTEGER",
+    "VARCHAR",
+    "INTEGER",
+    "VARCHAR",
+    "VARCHAR",
+    "INTEGER",
+    "VARCHAR",
+    "VARCHAR",
+    "VARCHAR",
+]
+
+# ns, name, kind, basetype_oid, elemtype_oid, elemdelim, range_subtype_oid
+_TYPEINFO: dict[int, tuple] = {
+    16: ("pg_catalog", "bool", "b", None, None, None, None),
+    17: ("pg_catalog", "bytea", "b", None, None, None, None),
+    18: ("pg_catalog", "char", "b", None, None, None, None),
+    19: ("pg_catalog", "name", "b", None, None, None, None),
+    20: ("pg_catalog", "int8", "b", None, None, None, None),
+    21: ("pg_catalog", "int2", "b", None, None, None, None),
+    23: ("pg_catalog", "int4", "b", None, None, None, None),
+    25: ("pg_catalog", "text", "b", None, None, None, None),
+    26: ("pg_catalog", "oid", "b", None, None, None, None),
+    114: ("pg_catalog", "json", "b", None, None, None, None),
+    700: ("pg_catalog", "float4", "b", None, None, None, None),
+    701: ("pg_catalog", "float8", "b", None, None, None, None),
+    705: ("pg_catalog", "unknown", "b", None, None, None, None),
+    1042: ("pg_catalog", "bpchar", "b", None, None, None, None),
+    1043: ("pg_catalog", "varchar", "b", None, None, None, None),
+    1082: ("pg_catalog", "date", "b", None, None, None, None),
+    1083: ("pg_catalog", "time", "b", None, None, None, None),
+    1114: ("pg_catalog", "timestamp", "b", None, None, None, None),
+    1184: ("pg_catalog", "timestamptz", "b", None, None, None, None),
+    1700: ("pg_catalog", "numeric", "b", None, None, None, None),
+    2950: ("pg_catalog", "uuid", "b", None, None, None, None),
+    3802: ("pg_catalog", "jsonb", "b", None, None, None, None),
+    # Array types
+    199: ("pg_catalog", "_json", "b", None, 114, ",", None),
+    1000: ("pg_catalog", "_bool", "b", None, 16, ",", None),
+    1001: ("pg_catalog", "_bytea", "b", None, 17, ",", None),
+    1002: ("pg_catalog", "_char", "b", None, 18, ",", None),
+    1003: ("pg_catalog", "_name", "b", None, 19, ",", None),
+    1005: ("pg_catalog", "_int2", "b", None, 21, ",", None),
+    1007: ("pg_catalog", "_int4", "b", None, 23, ",", None),
+    1009: ("pg_catalog", "_text", "b", None, 25, ",", None),
+    1015: ("pg_catalog", "_varchar", "b", None, 1043, ",", None),
+    1016: ("pg_catalog", "_int8", "b", None, 20, ",", None),
+    1021: ("pg_catalog", "_float4", "b", None, 700, ",", None),
+    1022: ("pg_catalog", "_float8", "b", None, 701, ",", None),
+    1028: ("pg_catalog", "_oid", "b", None, 26, ",", None),
+    1115: ("pg_catalog", "_timestamp", "b", None, 1114, ",", None),
+    1182: ("pg_catalog", "_date", "b", None, 1082, ",", None),
+    1183: ("pg_catalog", "_time", "b", None, 1083, ",", None),
+    1185: ("pg_catalog", "_timestamptz", "b", None, 1184, ",", None),
+    1231: ("pg_catalog", "_numeric", "b", None, 1700, ",", None),
+    2951: ("pg_catalog", "_uuid", "b", None, 2950, ",", None),
+    3807: ("pg_catalog", "_jsonb", "b", None, 3802, ",", None),
+}
+
+_KNOWN_SETTINGS = {
+    "server_version": "14.0.provisa",
+    "server_version_num": "140000",
+    "server_encoding": "UTF8",
+    "client_encoding": "UTF8",
+    "datestyle": "ISO, MDY",
+    "timezone": "UTC",
+    "integer_datetimes": "on",
+    "standard_conforming_strings": "on",
+    "intervalstyle": "postgres",
+    "search_path": 'public, "$user"',
+    "extra_float_digits": "0",
+    "application_name": "",
+    "is_superuser": "on",
+    "session_authorization": "admin",
+}
+
+_PG_SYSTEM_ROLES: list[tuple] = [
+    # OID, name, super, inherit, createrole, createdb, canlogin, replication, connlimit, bypassrls
+    (3386, "pg_monitor", False, True, False, False, False, False, -1, False),
+    (3387, "pg_read_all_settings", False, True, False, False, False, False, -1, False),
+    (3388, "pg_read_all_stats", False, True, False, False, False, False, -1, False),
+    (3389, "pg_stat_scan_tables", False, True, False, False, False, False, -1, False),
+    (4200, "pg_signal_backend", False, True, False, False, False, False, -1, False),
+    (4569, "pg_read_server_files", False, True, False, False, False, False, -1, False),
+    (4570, "pg_write_server_files", False, True, False, False, False, False, -1, False),
+    (4571, "pg_execute_server_program", False, True, False, False, False, False, -1, False),
+]
+
+_PG_SETTINGS_ROWS: list[tuple] = [
+    (
+        "server_version",
+        "14.0.provisa",
+        None,
+        "Preset Options",
+        "Shows the server version.",
+        None,
+        "internal",
+        "string",
+        "default",
+        None,
+        None,
+        None,
+        "14.0.provisa",
+        "14.0.provisa",
+        None,
+        None,
+        False,
+    ),
+    (
+        "server_version_num",
+        "140000",
+        None,
+        "Preset Options",
+        "Shows the server version as an integer.",
+        None,
+        "internal",
+        "integer",
+        "default",
+        None,
+        None,
+        None,
+        "140000",
+        "140000",
+        None,
+        None,
+        False,
+    ),
+    (
+        "server_encoding",
+        "UTF8",
+        None,
+        "Preset Options",
+        "Sets the server character set encoding.",
+        None,
+        "internal",
+        "string",
+        "default",
+        None,
+        None,
+        None,
+        "UTF8",
+        "UTF8",
+        None,
+        None,
+        False,
+    ),
+    (
+        "client_encoding",
+        "UTF8",
+        None,
+        "Client Connection Defaults",
+        "Sets the client character set encoding.",
+        None,
+        "user",
+        "string",
+        "default",
+        None,
+        None,
+        None,
+        "SQL_ASCII",
+        "UTF8",
+        None,
+        None,
+        False,
+    ),
+    (
+        "DateStyle",
+        "ISO, MDY",
+        None,
+        "Client Connection Defaults",
+        "Sets the display format for date and time values.",
+        None,
+        "user",
+        "string",
+        "default",
+        None,
+        None,
+        None,
+        "ISO, MDY",
+        "ISO, MDY",
+        None,
+        None,
+        False,
+    ),
+    (
+        "TimeZone",
+        "UTC",
+        None,
+        "Client Connection Defaults",
+        "Sets the time zone for displaying and interpreting time stamps.",
+        None,
+        "user",
+        "string",
+        "default",
+        None,
+        None,
+        None,
+        "GMT",
+        "UTC",
+        None,
+        None,
+        False,
+    ),
+    (
+        "max_connections",
+        "100",
+        None,
+        "Connections and Authentication",
+        "Sets the maximum number of concurrent connections.",
+        None,
+        "postmaster",
+        "integer",
+        "default",
+        "1",
+        "262143",
+        None,
+        "100",
+        "100",
+        None,
+        None,
+        False,
+    ),
+    (
+        "standard_conforming_strings",
+        "on",
+        None,
+        "Version and Platform Compatibility",
+        "Causes strings to treat backslashes literally.",
+        None,
+        "user",
+        "bool",
+        "default",
+        None,
+        None,
+        None,
+        "on",
+        "on",
+        None,
+        None,
+        False,
+    ),
+    (
+        "integer_datetimes",
+        "on",
+        None,
+        "Preset Options",
+        "Datetimes are integer based.",
+        None,
+        "internal",
+        "bool",
+        "default",
+        None,
+        None,
+        None,
+        "on",
+        "on",
+        None,
+        None,
+        False,
+    ),
+    (
+        "IntervalStyle",
+        "postgres",
+        None,
+        "Client Connection Defaults",
+        "Sets the display format for interval values.",
+        None,
+        "user",
+        "string",
+        "default",
+        None,
+        None,
+        None,
+        "postgres",
+        "postgres",
+        None,
+        None,
+        False,
+    ),
+]
