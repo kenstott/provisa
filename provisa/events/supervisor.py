@@ -58,9 +58,16 @@ async def drain(db: Any, processors: list[Any], *, max_rounds: int = 20) -> int:
     return max_rounds
 
 
-async def reap(db: Any, *, lease_seconds: float, now: datetime | None = None) -> int:
-    """Reclaim work whose lease lapsed (heartbeat older than ``lease_seconds``) so any processor can
-    re-claim it — a crashed processor never orphans a node. Returns the count reclaimed."""
-    cutoff = (now or datetime.now(timezone.utc)) - timedelta(seconds=lease_seconds)
+async def reap(
+    db: Any, *, lease_seconds: float, grace_seconds: float = 0.0, now: datetime | None = None
+) -> int:
+    """REQ-959 reaper: reclaim work whose owner is gone or stuck. Reclaimable = heartbeat lapsed
+    (older than ``lease_seconds``) OR past its per-claim deadline + ``grace_seconds`` (a stuck-but-
+    alive owner the heartbeat cannot catch) — so a crashed OR wedged processor never orphans a node.
+    Returns the count reclaimed."""
+    _now = now or datetime.now(timezone.utc)
+    heartbeat_cutoff = _now - timedelta(seconds=lease_seconds)
     async with db.acquire() as conn:
-        return await queue.reclaim_stale(conn, older_than=cutoff)
+        return await queue.reclaim(
+            conn, now=_now, heartbeat_cutoff=heartbeat_cutoff, grace_seconds=grace_seconds
+        )

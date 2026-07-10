@@ -75,7 +75,8 @@ async def test_process_pending_claims_handles_reposts(tmp_path):
         assert proc.seen_prior_hash is None  # first land: no prior baseline
         assert proc.seen and proc.seen[0]["id"] == up  # handle saw the claimed event
         # persisted the returned content hash as the new baseline
-        assert (await queue.get_node_state(conn, "mv.a"))["content_hash"] == "h1"
+        _st = await queue.get_node_state(conn, "mv.a")
+        assert _st is not None and _st["content_hash"] == "h1"
         # re-posted the node's OWN change event (replace) for its dependents
         posted = [r for r in await queue.read_since(conn, cursor=0) if r["source_table"] == "mv.a"]
         assert (
@@ -225,19 +226,61 @@ async def test_req960_crash_between_land_and_commit_loses_nothing(tmp_path):
             assert [
                 r for r in await queue.read_since(conn, cursor=0) if r["source_table"] == "mv.a"
             ] == []  # no ripple
-            # The claim is still outstanding (not completed) → recoverable.
-            reclaimed = await queue.reclaim_stale(
-                conn, older_than=datetime.now(timezone.utc).replace(year=2099)
-            )
-            assert reclaimed  # the orphaned claim is reclaimable
+            # The claim is still outstanding and owned by box-1 → resumable via reassert (REQ-959).
+            assert await queue.resume_claims(conn, dependent_table="mv.a", processor_name="box-1")
 
         # 2) Recovery run: re-claim + re-run → idempotent land, ripple now committed.
         async with db.acquire() as conn:
             my_event = await proc.process_pending(conn)
             assert my_event is not None
             assert proc.handle_calls == 2  # land re-ran (idempotent)
-            assert (await queue.get_node_state(conn, "mv.a"))["content_hash"] == "h1"
+            _st = await queue.get_node_state(conn, "mv.a")
+            assert _st is not None and _st["content_hash"] == "h1"
             now = datetime.now(timezone.utc)
             assert await queue.claim(
                 conn, dependent_table="down.x", processor_name="p", now=now
             ) == [my_event]
+
+
+@pytest.mark.asyncio
+async def test_req959_ownership_cas_aborts_ripple_on_peer_takeover(tmp_path):
+    """If a peer reclaims this node's work while it is mid-handle, the ownership CAS at complete fails
+    and the whole commit rolls back — no ripple, no partial completion (REQ-959)."""
+    from datetime import datetime, timedelta, timezone
+
+    async with _db(tmp_path) as db:
+        async with db.acquire() as conn:
+            up = await queue.post_event(conn, source_table="s.o", event_type="append")
+            await queue.fan_out(conn, up, ["mv.a"])
+
+        # A handle that, DURING its run (after land), lets a peer reclaim + re-own the work —
+        # models a stuck-but-alive owner whose deadline passed mid-compute.
+        class _StolenProc(_Proc):
+            async def handle(self, pending, *, prior_hash):
+                async with db.acquire() as c2:
+                    future = datetime.now(timezone.utc) + timedelta(days=1)
+                    await queue.reclaim(c2, now=future, heartbeat_cutoff=future)
+                    await queue.claim(c2, dependent_table="mv.a", processor_name="peer", now=future)
+                return await super().handle(pending, prior_hash=prior_hash)
+
+        proc = _StolenProc(
+            "mv.a",
+            change_signal="ttl",
+            watermark_column=None,
+            dependents_of=lambda n: ["down.x"],
+            db=db,
+            name="box-1",
+            result=("replace", {"rows": 1}, "h1"),
+        )
+        async with db.acquire() as conn:
+            assert await proc.process_pending(conn) is None  # OwnershipLost → no-op
+
+        async with db.acquire() as conn:
+            # No ripple committed, baseline not set — the peer now owns the work.
+            assert [
+                r for r in await queue.read_since(conn, cursor=0) if r["source_table"] == "mv.a"
+            ] == []
+            assert await queue.get_node_state(conn, "mv.a") is None
+            assert await queue.resume_claims(
+                conn, dependent_table="mv.a", processor_name="peer"
+            ) == [up]

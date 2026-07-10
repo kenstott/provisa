@@ -34,6 +34,12 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class OwnershipLost(Exception):
+    """REQ-959: raised inside the commit transaction when the ownership CAS fails — a peer reclaimed
+    this node's work (deadline/heartbeat) mid-flight. Aborts the commit so no ripple double-commits;
+    the loop treats it as a no-op (the peer now owns the work)."""
+
+
 class TableProcessor(ABC):
     """Base: owns a node, its lifecycle, and the common claim→handle→complete→re-post loop.
 
@@ -122,9 +128,23 @@ class TableProcessor(ABC):
         from ``handle`` (unchanged → no land, no ripple). A returned hash is persisted as the new
         baseline before re-posting."""
         now = _now()
-        claimed = await queue.claim(
-            conn, dependent_table=self.node, processor_name=self.name, now=now
+        # REQ-959 reassert-on-restart: resume any claim this processor still owns from a prior
+        # (crashed) run before taking new work, and refresh its lease so the reaper does not race us.
+        resumed = await queue.resume_claims(
+            conn, dependent_table=self.node, processor_name=self.name
         )
+        if resumed:
+            await queue.heartbeat(
+                conn, dependent_table=self.node, processor_name=self.name, now=now
+            )
+        newly = await queue.claim(
+            conn,
+            dependent_table=self.node,
+            processor_name=self.name,
+            now=now,
+            deadline=self._claim_deadline(now),
+        )
+        claimed = sorted(set(resumed) | set(newly))
         if not claimed:
             return None
         pending = await queue.get_events(conn, claimed)
@@ -137,23 +157,46 @@ class TableProcessor(ABC):
         # REQ-960: post + fan_out + complete run AFTER land in ONE control-plane transaction,
         # post-BEFORE-complete. A crash between land and this commit re-claims and re-runs (the
         # land is idempotent), so the downstream ripple is never lost and the claim never orphaned.
-        async with conn.transaction():
-            if result is None:
-                # Gate hit (content unchanged / nothing landed): no ripple, but the claimed events
-                # are processed — complete them so they do not re-fire.
-                for eid in claimed:
-                    await queue.complete(conn, event_id=eid, dependent_table=self.node, now=now)
-                return None
-            event_type, payload, new_hash = result
-            if new_hash is not None:
-                await queue.set_node_state(conn, self.node, content_hash=new_hash)
-            my_event = await queue.post_event(
-                conn, source_table=self.node, event_type=event_type, payload=payload
-            )
-            await queue.fan_out(conn, my_event, self._dependents_of(self.node))
-            for eid in claimed:
-                await queue.complete(conn, event_id=eid, dependent_table=self.node, now=now)
+        # REQ-959: each complete is an ownership CAS (processor_name = self); a lost CAS raises
+        # OwnershipLost → the whole commit rolls back (a peer took over → no double effect).
+        try:
+            async with conn.transaction():
+                if result is None:
+                    # Gate hit (content unchanged / nothing landed): no ripple, but the claimed
+                    # events are processed — complete them so they do not re-fire.
+                    await self._complete_all(conn, claimed, now)
+                    return None
+                event_type, payload, new_hash = result
+                if new_hash is not None:
+                    await queue.set_node_state(conn, self.node, content_hash=new_hash)
+                my_event = await queue.post_event(
+                    conn, source_table=self.node, event_type=event_type, payload=payload
+                )
+                await queue.fan_out(conn, my_event, self._dependents_of(self.node))
+                await self._complete_all(conn, claimed, now)
+        except OwnershipLost:
+            return None
         return my_event
+
+    def _claim_deadline(self, now: datetime) -> datetime | None:
+        """The per-claim fire-by deadline (REQ-959). None by default (reclaim on heartbeat lapse only);
+        the live-MV debounce processor overrides this with min(last+quiet, first+max_delay) (REQ-963)."""
+        return None
+
+    async def _complete_all(self, conn: Any, claimed: list[int], now: datetime) -> None:
+        """Complete every claimed item under the REQ-959 ownership CAS. A failed CAS on ANY item means
+        a peer reclaimed this work → raise OwnershipLost to abort the commit (no partial completion,
+        no ripple)."""
+        for eid in claimed:
+            ok = await queue.complete(
+                conn,
+                event_id=eid,
+                dependent_table=self.node,
+                processor_name=self.name,
+                now=now,
+            )
+            if not ok:
+                raise OwnershipLost(self.node)
 
     @abstractmethod
     async def handle(
@@ -169,8 +212,10 @@ class TableProcessor(ABC):
 class SourceTableProcessor(TableProcessor):
     """Lands a data source's rows into the materialization store (the write face)."""
 
-    def __init__(self, *args: Any, land: Callable[..., Any], **kwargs: Any) -> None:
+    def __init__(self, *args: Any, land: Callable[..., Any] | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        # None is valid for a push-only (kafka/debezium) source that drains via consume_kafka and
+        # never reaches handle; a poll/land source supplies the write-face callable.
         self._land = land  # async (pending, *, prior_hash) -> (event_type, payload, hash) | None
 
     async def handle(
@@ -179,6 +224,7 @@ class SourceTableProcessor(TableProcessor):
         """Coalesce the claimed events, land the source's rows via the write face, and report the
         landing shape as this node's change event (append/delta/replace) with the content hash — or
         None if nothing landed or (replace) the content matched ``prior_hash`` (REQ-981 gate)."""
+        assert self._land is not None, "SourceTableProcessor.handle requires a land callable"
         return await self._land(pending, prior_hash=prior_hash)
 
 

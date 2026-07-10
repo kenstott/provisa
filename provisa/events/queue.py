@@ -13,7 +13,7 @@ the control-plane ``events`` + ``event_status`` tables.
 Roles, all through this one API (portable SQLAlchemy Core — pg/sqlite; the fed engine is never
 involved): INJECTORS ``post_event`` (in the SAME tx as the state change → atomic); a dispatcher
 ``fan_out`` to the dependents (from the SQLGlot lineage); TABLE PROCESSORS ``claim`` a target's
-pending work, ``heartbeat`` the lease, ``complete`` it; a reaper ``reclaim_stale``; REPEATERS
+pending work, ``heartbeat`` the lease, ``complete`` it; a reaper ``reclaim``; REPEATERS
 ``read_since`` by id cursor (fanout, never claim).
 
 Claim granularity is the TARGET TABLE (not a lone event): one processor drains a table's pending
@@ -26,7 +26,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import and_, insert, or_, select, update
 
 from provisa.core.schema_org import event_status, events, node_freshness_state
 
@@ -66,20 +66,45 @@ async def fan_out(conn: Any, event_id: int, dependent_tables: list[str]) -> int:
 
 
 async def claim(
-    conn: Any, *, dependent_table: str, processor_name: str, now: datetime
+    conn: Any,
+    *,
+    dependent_table: str,
+    processor_name: str,
+    now: datetime,
+    deadline: datetime | None = None,
 ) -> list[int]:
     """Claim ALL pending (unclaimed) work for ``dependent_table`` — the claim-by-target-table unit.
     Atomically flips them to ``claimed`` with the lease owner + heartbeat and returns the claimed
     event ids (in id order) for the processor to drain and coalesce. A concurrent claimant on the
-    same table gets none (the row flip serializes)."""
+    same table gets none (the row flip serializes). ``deadline`` (REQ-959) is the per-claim fire-by;
+    a stuck-but-alive owner past deadline+grace is reclaimable even with a fresh heartbeat."""
     result = await conn.execute_core(
         update(event_status)
         .where(
             event_status.c.dependent_table == dependent_table,
             event_status.c.claim_status == "unclaimed",
         )
-        .values(claim_status="claimed", processor_name=processor_name, heartbeat_at=now)
+        .values(
+            claim_status="claimed",
+            processor_name=processor_name,
+            heartbeat_at=now,
+            deadline=deadline,
+        )
         .returning(event_status.c.event_id)
+    )
+    return sorted(r[0] for r in result.fetchall())
+
+
+async def resume_claims(conn: Any, *, dependent_table: str, processor_name: str) -> list[int]:
+    """REQ-959 reassert-on-restart: the event ids this processor still owns (claim_status='claimed',
+    processor_name = self) so a returning owner resumes its in-flight claim instead of waiting for a
+    reaper. Zero rows = a peer already took over (reclaimed) → nothing to resume."""
+    result = await conn.execute_core(
+        select(event_status.c.event_id).where(
+            event_status.c.dependent_table == dependent_table,
+            event_status.c.processor_name == processor_name,
+            event_status.c.claim_status == "claimed",
+        )
     )
     return sorted(r[0] for r in result.fetchall())
 
@@ -98,29 +123,54 @@ async def heartbeat(conn: Any, *, dependent_table: str, processor_name: str, now
     )
 
 
-async def complete(conn: Any, *, event_id: int, dependent_table: str, now: datetime) -> None:
-    """Mark one work item completed (idempotent apply already happened). The processor completes the
-    whole drained set, then re-posts its own change event for its dependents."""
-    await conn.execute_core(
+async def complete(
+    conn: Any, *, event_id: int, dependent_table: str, processor_name: str, now: datetime
+) -> bool:
+    """Mark one work item completed under the REQ-959 ownership CAS: the update matches only while
+    THIS processor still owns the claim (processor_name = self, still 'claimed'). Returns True when it
+    committed the completion, False when a peer had already taken the claim over (deadline/heartbeat
+    reclaim) — the caller must then abort its ripple so no double effect commits.
+
+    The processor completes the whole drained set; a False on ANY item means ownership was lost."""
+    result = await conn.execute_core(
         update(event_status)
         .where(
             event_status.c.event_id == event_id,
             event_status.c.dependent_table == dependent_table,
+            event_status.c.processor_name == processor_name,
+            event_status.c.claim_status == "claimed",
         )
         .values(claim_status="completed", completed_at=now)
+        .returning(event_status.c.event_id)
     )
+    return result.fetchone() is not None
 
 
-async def reclaim_stale(conn: Any, *, older_than: datetime) -> int:
-    """Revert claimed work whose lease lapsed (heartbeat < ``older_than``) back to unclaimed so any
-    processor can re-claim it. At-least-once + idempotent landing = effectively-once. Returns count."""
+async def reclaim(
+    conn: Any, *, now: datetime, heartbeat_cutoff: datetime, grace_seconds: float = 0.0
+) -> int:
+    """REQ-959 reclaim: revert claimed work to unclaimed when its owner is gone or stuck. Reclaimable =
+    (heartbeat lapsed: heartbeat_at < ``heartbeat_cutoff``) OR (deadline+grace passed: deadline is set
+    and deadline + grace < ``now``, catching a stuck-but-alive owner a heartbeat cannot). Any processor
+    can then re-claim; at-least-once + idempotent land + the ownership CAS = effectively-once. Count."""
+    from datetime import timedelta
+
+    # deadline + grace < now  ⟺  deadline < now - grace (arithmetic in Python, not SQL, so it is
+    # dialect-safe — column+interval does not translate uniformly across Postgres and SQLite).
+    deadline_cutoff = now - timedelta(seconds=grace_seconds)
     result = await conn.execute_core(
         update(event_status)
         .where(
             event_status.c.claim_status == "claimed",
-            event_status.c.heartbeat_at < older_than,
+            or_(
+                event_status.c.heartbeat_at < heartbeat_cutoff,
+                and_(
+                    event_status.c.deadline.is_not(None),
+                    event_status.c.deadline < deadline_cutoff,
+                ),
+            ),
         )
-        .values(claim_status="unclaimed", processor_name=None, heartbeat_at=None)
+        .values(claim_status="unclaimed", processor_name=None, heartbeat_at=None, deadline=None)
         .returning(event_status.c.event_id)
     )
     return len(result.fetchall())
