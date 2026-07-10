@@ -20,7 +20,6 @@ from __future__ import annotations
 
 
 import asyncio
-import json
 import logging
 import os
 import time
@@ -38,11 +37,16 @@ from provisa.api.data.endpoint_dev import router as dev_router
 from provisa.api.data.endpoint_grpc_proxy import router as grpc_proxy_router
 from provisa.api.data.sdl import router as sdl_router
 from provisa.api.app_loaders import (
+    _META_TABLE_ALIAS,
     _apply_server_and_engine_config,
+    _build_and_register_schemas,
     _build_source_pools_and_enums,
     _init_ingest_engines,
+    _load_graphql_remote_sources_from_db,
+    _load_masking_rules,
     _load_mv_and_views_config,
     _load_openapi_specs,
+    _load_tracked_functions_and_webhooks,
     _process_kafka_sources,
 )
 from provisa.api.app_schema_build import (
@@ -62,10 +66,8 @@ from provisa.api.app_startup import (
 )
 from provisa.compiler.introspect import ColumnMetadata, introspect_tables
 from provisa.compiler.naming import source_to_catalog
-from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.compiler.rls import RLSContext, build_rls_context
+from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext
-from provisa.compiler.context import build_context
 from sqlalchemy import select
 from provisa.core.config_loader import load_config, parse_config_dict
 from provisa.core.database import Connection, Database
@@ -75,8 +77,6 @@ from provisa.core.schema_org import (
     registered_tables as _registered_tables_t,
     roles as _roles_t,
     sources as _sources_t,
-    table_columns as _table_columns_t,
-    tracked_functions as _tracked_functions_t,
 )
 from provisa.core.secrets import resolve_secrets
 from provisa.executor.pool import SourcePool
@@ -85,7 +85,6 @@ from provisa.cache.store import CacheStore, NoopCacheStore, RedisCacheStore
 from provisa.api.admin.db_queries import (
     fetch_tables as _fetch_tables,
     fetch_relationships as _fetch_relationships,
-    parse_mask_value as _parse_mask_value,
 )
 from provisa.api.otel_setup import setup_otel as _setup_otel, shutdown_otel as _shutdown_otel
 from provisa.mv.registry import MVRegistry
@@ -268,13 +267,6 @@ def _setup_approval_hook(st: AppState) -> None:
 
 
 # Maps original table name → view name (or itself if no view needed).
-_META_TABLE_ALIAS: dict[str, str] = {
-    "registered_tables": "registered_tables_meta",
-    "table_columns": "table_columns_meta",
-    "roles": "roles_meta",
-    "tracked_webhooks": "tracked_webhooks_meta",
-    "tracked_functions": "tracked_functions_meta",
-}
 _META_TABLES = [
     "registered_tables",
     "table_columns",
@@ -499,336 +491,6 @@ async def _load_and_build(
         state.hot_manager = hot_mgr
 
     _mark("hot_tables")
-
-
-async def _load_graphql_remote_sources_from_db() -> None:
-    """Load persisted graphql_remote sources from DB into state.graphql_remote_sources."""
-    if state.tenant_db is None:
-        log.warning("[GQL REMOTE] tenant_db is None — skipping DB load")
-        return
-    try:
-        async with state.tenant_db.acquire() as _conn:
-            src_rows = [
-                dict(_r._mapping)
-                for _r in (
-                    await _conn.execute_core(
-                        select(_sources_t.c.id, _sources_t.c.path).where(
-                            _sources_t.c.type == "graphql_remote"
-                        )
-                    )
-                ).fetchall()
-            ]
-            for src in src_rows:
-                source_id = src["id"]
-                url = src["path"] or ""
-                if source_id in getattr(state, "graphql_remote_sources", {}):
-                    continue
-                tbl_rows = [
-                    dict(_r._mapping)
-                    for _r in (
-                        await _conn.execute_core(
-                            select(
-                                _registered_tables_t.c.id,
-                                _registered_tables_t.c.table_name,
-                                _registered_tables_t.c.domain_id,
-                                _registered_tables_t.c.description,
-                            ).where(
-                                _registered_tables_t.c.source_id == source_id,
-                                _registered_tables_t.c.schema_name == "graphql",
-                            )
-                        )
-                    ).fetchall()
-                ]
-                tables: list[dict] = []
-                for tr in tbl_rows:
-                    col_rows = [
-                        dict(_r._mapping)
-                        for _r in (
-                            await _conn.execute_core(
-                                select(
-                                    _table_columns_t.c.column_name,
-                                    _table_columns_t.c.data_type,
-                                    _table_columns_t.c.object_fields,
-                                    _table_columns_t.c.native_filter_type,
-                                ).where(_table_columns_t.c.table_id == tr["id"])
-                            )
-                        ).fetchall()
-                    ]
-                    columns = []
-                    required_args: list[dict] = []
-                    for cr in col_rows:
-                        if cr["native_filter_type"] == "query_param":
-                            required_args.append(
-                                {
-                                    "name": cr["column_name"],
-                                    "gql_type": "String",
-                                    "provisa_type": "text",
-                                }
-                            )
-                            continue
-                        col_dict: dict = {
-                            "name": cr["column_name"],
-                            "type": cr["data_type"] or "text",
-                        }
-                        raw_of = cr["object_fields"]
-                        if raw_of:
-                            try:
-                                col_dict["gql_object_fields"] = (
-                                    json.loads(raw_of) if isinstance(raw_of, str) else raw_of
-                                )
-                            except Exception:
-                                pass
-                        columns.append(col_dict)
-                    tname = tr["table_name"]
-                    _snake_field = tname.split("__", 1)[-1]
-                    _camel_parts = _snake_field.split("_")
-                    _field_name = _camel_parts[0] + "".join(
-                        p.capitalize() for p in _camel_parts[1:]
-                    )
-                    tables.append(
-                        {
-                            "name": tname,
-                            "sql_name": tname,
-                            "field_name": _field_name,
-                            "source_id": source_id,
-                            "columns": columns,
-                            "domain_id": tr["domain_id"] or "",
-                            "description": tr["description"],
-                            "required_args": required_args,
-                        }
-                    )
-                if not tables:
-                    continue
-                namespace = ""
-                if not hasattr(state, "graphql_remote_sources"):
-                    state.graphql_remote_sources = {}
-                state.graphql_remote_sources[source_id] = {
-                    "source_id": source_id,
-                    "url": url,
-                    "namespace": namespace,
-                    "domain_id": tables[0]["domain_id"],
-                    "auth": None,
-                    "cache_ttl": 300,
-                    "tables": tables,
-                    "functions": [],
-                    "relationships": [],
-                }
-                log.warning(
-                    "[GQL REMOTE] Loaded source %s from DB (%d tables)", source_id, len(tables)
-                )
-    except Exception:
-        log.warning("Failed to load graphql_remote sources from DB", exc_info=True)
-
-
-async def _load_masking_rules(  # REQ-040, REQ-263
-    conn: Any,
-    col_types_converted: dict[int, list[ColumnMetadata]],
-    roles: list[dict],
-) -> None:
-    """Load masking rules from table_columns and populate state.masking_rules."""
-    from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
-
-    masking_rows = [
-        dict(_r._mapping)
-        for _r in (
-            await conn.execute_core(
-                select(
-                    _table_columns_t.c.table_id,
-                    _table_columns_t.c.column_name,
-                    _table_columns_t.c.unmasked_to,
-                    _table_columns_t.c.mask_type,
-                    _table_columns_t.c.mask_pattern,
-                    _table_columns_t.c.mask_replace,
-                    _table_columns_t.c.mask_value,
-                    _table_columns_t.c.mask_precision,
-                ).where(_table_columns_t.c.mask_type.is_not(None))
-            )
-        ).fetchall()
-    ]
-    for mrow in masking_rows:
-        mask_rule = MaskingRule(
-            mask_type=MaskType(mrow["mask_type"]),
-            pattern=mrow["mask_pattern"],
-            replace=mrow["mask_replace"],
-            value=_parse_mask_value(mrow["mask_value"]),
-            precision=mrow["mask_precision"],
-        )
-        table_id = mrow["table_id"]
-        col_name = mrow["column_name"]
-        unmasked_to = list(mrow.get("unmasked_to") or [])
-        col_metas = col_types_converted.get(table_id, [])
-        data_type = "varchar"
-        is_nullable = True
-        for cm in col_metas:
-            if cm.column_name == col_name:
-                data_type = cm.data_type
-                is_nullable = cm.is_nullable
-                break
-        validate_masking_rule(mask_rule, col_name, data_type, is_nullable)
-        for role in roles:
-            if role["id"] in unmasked_to:
-                continue
-            key = (table_id, role["id"])
-            if key not in state.masking_rules:
-                state.masking_rules[key] = {}
-            state.masking_rules[key][col_name] = (mask_rule, data_type)
-
-
-async def _load_tracked_functions_and_webhooks(  # REQ-042
-    conn: Any, raw_config: dict | None
-) -> tuple[list[dict], list[dict]]:
-    """Load tracked functions and webhooks from DB; populate state.tracked_functions/webhooks."""
-    from provisa.api.admin.actions_router import _ensure_tables
-
-    assert state.tenant_db is not None, (
-        "tenant_db must be initialized before loading tracked functions"
-    )
-    await _ensure_tables(state.tenant_db)
-
-    from provisa.discovery.catalog_cache import ensure_table as _ensure_catalog_cache
-
-    await _ensure_catalog_cache(state.tenant_db)
-    fn_rows = [
-        dict(_r._mapping)
-        for _r in (
-            await conn.execute_core(
-                select(_tracked_functions_t).order_by(_tracked_functions_t.c.name)
-            )
-        ).fetchall()
-    ]
-    # REQ-209: only steward-approved webhooks are exposed and callable. A webhook is approved
-    # when its most recent "webhook" creation_request is executed (editing enqueues a fresh
-    # pending request, which resets approval). Tracked in creation_requests — no column on
-    # tracked_webhooks.
-    wh_rows = await conn.fetch(
-        """
-        SELECT w.* FROM tracked_webhooks w
-        WHERE (
-            SELECT c.status FROM creation_requests c
-            WHERE c.request_type = 'webhook' AND c.payload->>'name' = w.name
-            ORDER BY c.id DESC LIMIT 1
-        ) = 'executed'
-        ORDER BY w.name
-        """
-    )
-    tracked_functions = [
-        {
-            **dict(r),
-            "arguments": json.loads(r["arguments"])
-            if isinstance(r["arguments"], str)
-            else (r["arguments"] or []),
-            "visible_to": list(r["visible_to"] or []),
-        }
-        for r in fn_rows
-    ]
-    tracked_webhooks = [
-        {
-            **dict(r),
-            "arguments": json.loads(r["arguments"])
-            if isinstance(r["arguments"], str)
-            else (r["arguments"] or []),
-            "inline_return_type": json.loads(r["inline_return_type"])
-            if isinstance(r["inline_return_type"], str)
-            else (r["inline_return_type"] or []),
-            "visible_to": list(r["visible_to"] or []),
-        }
-        for r in wh_rows
-    ]
-
-    from provisa.compiler.naming import domain_to_sql_name as _d2sql
-
-    _dp = raw_config.get("naming", {}).get("domain_prefix", False) if raw_config else False
-    state.tracked_functions = {}
-    for f in tracked_functions:
-        state.tracked_functions[f["name"]] = f
-        if _dp and f.get("domain_id"):
-            prefixed = f"{_d2sql(f['domain_id'])}__{f['name']}"
-            state.tracked_functions[prefixed] = f
-    state.tracked_webhooks = {}
-    for w in tracked_webhooks:
-        state.tracked_webhooks[w["name"]] = w
-        if _dp and w.get("domain_id"):
-            prefixed = f"{_d2sql(w['domain_id'])}__{w['name']}"
-            state.tracked_webhooks[prefixed] = w
-
-    return tracked_functions, tracked_webhooks
-
-
-def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221, REQ-262, REQ-263
-    roles: list[dict],
-    tables: list[dict],
-    relationships: list[dict],
-    col_types_converted: dict[int, list[ColumnMetadata]],
-    naming_rules: list[dict],
-    domains: list[dict],
-    domain_prefix: bool,
-    kafka_physical: dict,
-    tracked_functions: list[dict],
-    tracked_webhooks: list[dict],
-    gql_object_cols: dict,
-    rls_rules: list[dict],
-) -> None:
-    """Build and register GraphQL schemas, contexts, and protos for each role."""
-    for role in roles:
-        state.roles[role["id"]] = role
-        _governed_gql_types = {
-            tbl.get("gql_type_name")
-            for reg in getattr(state, "graphql_remote_sources", {}).values()
-            for tbl in reg.get("tables", [])
-            if tbl.get("gql_type_name")
-        }
-        _tbl_id_map = {(t["source_id"], t["table_name"]): t["id"] for t in tables}
-        _gov_obj_cols: set[tuple[int, str]] = set()
-        for _reg in getattr(state, "graphql_remote_sources", {}).values():
-            _src_id = _reg.get("source_id", "")
-            for _tbl in _reg.get("tables", []):
-                _tbl_id = _tbl_id_map.get((_src_id, _tbl.get("sql_name") or _tbl.get("name", "")))
-                if _tbl_id is None:
-                    continue
-                for _col in _tbl.get("columns", []):
-                    if _col.get("gql_object_type") in _governed_gql_types or _col.get(
-                        "gql_object_fields"
-                    ):
-                        _gov_obj_cols.add((_tbl_id, _col["name"]))
-        si = SchemaInput(
-            tables=tables,
-            relationships=relationships,
-            column_types=col_types_converted,
-            naming_rules=naming_rules,
-            role=role,
-            domains=domains,
-            source_types=state.source_types,
-            source_catalogs=state.source_catalogs,
-            domain_prefix=domain_prefix,
-            physical_table_map={**_META_TABLE_ALIAS, **(kafka_physical or {})},
-            functions=tracked_functions,
-            webhooks=tracked_webhooks,
-            enum_types=state.pg_enum_types,
-            gql_object_columns=gql_object_cols,
-            governed_gql_types=_governed_gql_types,
-            gql_governed_object_cols=_gov_obj_cols,
-        )
-        try:
-            from provisa.compiler.schema_gen import build_table_path_map
-
-            state.schemas[role["id"]] = generate_schema(si)
-            state.table_path_maps[role["id"]] = build_table_path_map(si)
-            state.contexts[role["id"]] = build_context(si)
-            state.rls_contexts[role["id"]] = build_rls_context(
-                rls_rules,
-                role["id"],
-            )
-        except ValueError as _schema_err:
-            logging.getLogger(__name__).error(
-                "generate_schema failed for role %r: %s", role["id"], _schema_err
-            )
-
-        # No swallow: an unmapped column type is a real gap in the proto type map, not a reason to
-        # silently disable gRPC for the role. Let generate_proto raise so it surfaces at startup and
-        # gets fixed at the source (the type map) — never patched around here.
-        from provisa.grpc.proto_gen import generate_proto
-
-        state.proto_files[role["id"]] = generate_proto(si)
 
 
 async def _bg_hydrate_api_endpoints() -> None:

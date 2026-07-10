@@ -42,7 +42,8 @@ from provisa.observability.ops_schema import OPS_TABLES as _OPS_TABLES
 # Circular-import guard: app.py never imports this module at module level.
 # By the time any function here is called, app.py is fully initialised and
 # `state`, `_META_TABLE_ALIAS`, `_META_TABLES` are bound in its namespace.
-from provisa.api.app import state, _META_TABLE_ALIAS, _META_TABLES  # noqa: E402
+from provisa.api.app import state, _META_TABLES  # noqa: E402
+from provisa.api.app_loaders import _META_TABLE_ALIAS  # noqa: E402
 
 # Views registered in the ops domain alongside the raw Iceberg tables.
 # Each entry: (view_name, [(col_name, data_type, is_pk)], ddl_sql)
