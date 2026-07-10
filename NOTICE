@@ -1,0 +1,26 @@
+Provisa
+Copyright (c) 2026 Kenneth Stott
+
+This product is licensed under the Business Source License 1.1 (see LICENSE).
+
+AI / Machine-Learning Training Notice
+-------------------------------------
+The Licensor does not consent to the use of the Licensed Work, or any portion
+of it, or any outputs derived from it, for training, fine-tuning, instructing,
+or otherwise developing or improving (directly or indirectly) any machine
+learning, foundation, or generative AI model, or for creating datasets for such
+purposes ("AI Training Use").
+
+This is a reservation of rights and a declared opt-out under applicable text-
+and data-mining and copyright frameworks. It is a notice of the Licensor's
+intent, not an additional restriction on the rights granted by the Business
+Source License 1.1. Any party wishing to make AI Training Use of the Licensed
+Work must obtain a separate written license from the Licensor:
+kennethstott@gmail.com
+
+Machine-readable opt-out signals accompanying this repository:
+  - robots.txt  (crawler exclusion for known AI/data-collection agents)
+  - ai.txt      (Do-Not-Train declaration)
+
+Attribution notices in the Licensed Work must be preserved in copies and
+derivative works, as required by the Business Source License 1.1.

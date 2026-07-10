@@ -1,0 +1,16 @@
+# ai.txt — Do-Not-Train declaration for Provisa
+# https://site.spawning.ai/spawning-ai-txt
+#
+# The Licensor reserves all rights and does NOT consent to the use of this
+# repository, its contents, or any outputs derived from it, for training,
+# fine-tuning, or otherwise developing machine-learning, foundation, or
+# generative AI models, or for building datasets for such purposes.
+#
+# This applies to all user agents, including any not listed in robots.txt.
+# For licensing inquiries: kennethstott@gmail.com
+
+User-Agent: *
+Disallow: /
+
+# Explicit reservation under text-and-data-mining / TDM opt-out frameworks:
+# tdm-reservation: 1

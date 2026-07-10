@@ -352,4 +352,13 @@ Worker count can be changed at any time by editing `~/.provisa/config.yaml` (`fe
 
 ## License
 
-Business Source License 1.1
+Business Source License 1.1 (unmodified, per MariaDB's Licensor covenants). Each
+released version converts to the Change License (GPL v2.0 or later) on the 4th
+anniversary of its public release; current and recent code stays under BSL.
+Production use above the Additional Use Grant thresholds (fewer than 100
+employees/contractors and under $1M prior-year revenue) requires a commercial
+license. See [LICENSE](LICENSE).
+
+The Licensor does not consent to use of this work for AI/ML training. See
+[NOTICE](NOTICE), [ai.txt](ai.txt), and [robots.txt](robots.txt). For commercial
+or AI-training licenses: kennethstott@gmail.com
