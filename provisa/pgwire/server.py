@@ -108,6 +108,14 @@ _DUCKDB_TYPE_TO_BVTYPE: dict[str, BVType] = {
     "TIMESTAMP": BVType.TIMESTAMP,
     "DATE": BVType.DATE,
     "TIME": BVType.TIME,
+    # PostgreSQL result-type names (DIRECT sources now report real column types, REQ-883) —
+    # without these, an int/float column would fall through to TEXT and mistype the client.
+    "BOOL": BVType.BOOL,
+    "FLOAT4": BVType.FLOAT,
+    "FLOAT8": BVType.FLOAT,
+    "NUMERIC": BVType.DECIMAL,
+    "TIMESTAMPTZ": BVType.TIMESTAMP,
+    "TIMETZ": BVType.TIME,
 }
 _DUCKDB_INT_TYPES = {
     "INTEGER",
@@ -119,6 +127,10 @@ _DUCKDB_INT_TYPES = {
     "UINTEGER",
     "USMALLINT",
     "UTINYINT",
+    # PostgreSQL integer type names
+    "INT2",
+    "INT4",
+    "INT8",
 }
 
 

@@ -66,6 +66,7 @@ def _rows_to_copy_binary(rows: Sequence[Sequence[object]], tags: list[str]) -> b
 
 
 _DUCKDB_BINARY_TAG = {
+    # DuckDB / engine type names
     "SMALLINT": "int2",
     "TINYINT": "int2",
     "INTEGER": "int4",
@@ -77,6 +78,13 @@ _DUCKDB_BINARY_TAG = {
     "BOOLEAN": "bool",
     "BLOB": "bytea",
     "BYTEA": "bytea",
+    # PostgreSQL result-type names (as reported by a DIRECT source's driver, REQ-883)
+    "INT2": "int2",
+    "INT4": "int4",
+    "INT8": "int8",
+    "FLOAT4": "float4",
+    "FLOAT8": "float8",
+    "BOOL": "bool",
 }
 
 

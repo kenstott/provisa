@@ -68,6 +68,7 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
         pool = self._pool
         assert pool is not None
         async with pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
+            col_types: list[str] | None = None
             if self._use_pgbouncer:
                 # PgBouncer: use conn.fetch directly (no prepared statements)
                 if params:
@@ -77,11 +78,18 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
                 columns = list(rows[0].keys()) if rows else self._extract_columns(sql)
             else:
                 stmt = await conn.prepare(sql)
-                columns = [attr.name for attr in stmt.get_attributes()]
+                attrs = stmt.get_attributes()
+                columns = [attr.name for attr in attrs]
+                # REQ-883: carry the source's real PG result-column types so downstream
+                # binary encoders (DuckDB ATTACH / libpq COPY binary) tag each field with
+                # the OID the catalog advertised — a missing type would encode as text and
+                # break the client's binary reader.
+                col_types = [attr.type.name for attr in attrs]
                 rows = await stmt.fetch(*(params or []))
             return QueryResult(
                 rows=[tuple(r.values()) for r in rows],
                 column_names=columns,
+                column_types=col_types,
             )
 
     def _extract_columns(self, sql: str) -> list[str]:

@@ -142,7 +142,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265
 
     # table_map from compilation context — semantic refs only
     from provisa.compiler.naming import domain_to_sql_name
-    from provisa.compiler.sql_gen import semantic_table_name
+    from provisa.compiler.sql_rewrite import semantic_table_name
 
     for meta in ctx.tables.values():
         key_semantic = f"{domain_to_sql_name(meta.domain_id)}.{semantic_table_name(meta)}"
