@@ -42,9 +42,32 @@ from provisa.api.admin.schema_helpers import (
     _get_pool,
 )
 from provisa.api.admin._table_ops import (
-    _build_column_models,  # noqa: F401  (re-export: tests + steps import from schema)
-    _ensure_view_column_types,  # noqa: F401  (re-export: tests import from schema)
+    _build_column_models,
+    _ensure_view_column_types,
 )
+
+# Public re-export surface: these underscore-prefixed helpers were relocated here in the
+# god-file split and are imported by other modules/tests from schema_common. Listing them in
+# __all__ marks them as intentional exports so linters do not flag them as unused.
+__all__ = [
+    "CreationRequestType",
+    "_add_source_pool",
+    "_analyze_source_on_engine",
+    "_build_column_models",
+    "_configure_govdata_env",
+    "_ensure_view_column_types",
+    "_fire_catalog_indexing",
+    "_prime_govdata_cache",
+    "_queue_creation_request",
+    "_rebuild_relationship_input",
+    "_rebuild_table_input",
+    "_register_source_on_engine",
+    "_remove_view_mv",
+    "_resolve_admin_context",
+    "_sync_view_mv",
+    "_upsert_source_with_domains",
+    "_validate_govdata_api_key",
+]
 
 
 @strawberry.type
