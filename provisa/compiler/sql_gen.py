@@ -58,7 +58,7 @@ from provisa.compiler.sql_types import (
     TableMeta,
     _TableInfoProto,
 )
-from provisa.compiler.sql_rewrite import (  # semantic rewrites re-exported
+from provisa.compiler.sql_rewrite import (
     _join_column_expr,
     _join_column_expr_for,
     _q,

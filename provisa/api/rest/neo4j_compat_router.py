@@ -98,7 +98,7 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
     from provisa.cypher.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
     from provisa.cypher.assembler import assemble_rows, to_serializable
-    from provisa.compiler.sql_gen import make_semantic_sql
+    from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
     role_id = _resolve_role_id(request, state)

@@ -126,7 +126,7 @@ class TestViewSqlPhysicalRewrite:
     """
 
     def test_plain_rewrite_misses_unquoted_semantic_ref(self, schema_and_ctx):
-        from provisa.compiler.sql_gen import rewrite_semantic_to_catalog_physical
+        from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical
 
         _, ctx = schema_and_ctx
         sql = "SELECT id FROM sales.orders"
@@ -134,7 +134,7 @@ class TestViewSqlPhysicalRewrite:
         assert "sales.orders" in rewrite_semantic_to_catalog_physical(sql, ctx)
 
     def test_normalize_then_rewrite_resolves_unquoted_ref(self, schema_and_ctx):
-        from provisa.compiler.sql_gen import (
+        from provisa.compiler.sql_rewrite import (
             normalize_table_refs,
             rewrite_semantic_to_catalog_physical,
         )
@@ -146,7 +146,7 @@ class TestViewSqlPhysicalRewrite:
         assert '"sales_pg"."public"."orders"' in out
 
     def test_quoted_physical_ref_still_catalog_qualified(self, schema_and_ctx):
-        from provisa.compiler.sql_gen import (
+        from provisa.compiler.sql_rewrite import (
             normalize_table_refs,
             rewrite_semantic_to_catalog_physical,
         )

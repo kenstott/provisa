@@ -53,8 +53,8 @@ from provisa.compiler.mutation_gen import (
 )
 from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
 from provisa.compiler.rls import RLSContext
-from provisa.compiler.sql_gen import (
-    compile_query,
+from provisa.compiler.sql_gen import compile_query
+from provisa.compiler.sql_rewrite import (
     make_semantic_sql,
     rewrite_semantic_to_catalog_physical,
     rewrite_semantic_to_physical,

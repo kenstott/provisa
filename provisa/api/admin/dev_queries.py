@@ -310,7 +310,8 @@ def _compile_cypher_for_result(  # REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
 ) -> tuple[str | None, str | None]:
     """Return (compiled_cypher, cypher_error)."""
     from provisa.compiler.params import embed_params_comment
-    from provisa.compiler.sql_gen import compile_query as _compile_query, make_semantic_sql
+    from provisa.compiler.sql_gen import compile_query as _compile_query
+    from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.cypher.label_map import CypherLabelMap
     from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
 
@@ -384,7 +385,8 @@ async def compile_query(  # REQ-001, REQ-002, REQ-007, REQ-009, REQ-038, REQ-039
         coerce_variable_defaults,
         parse_query,
     )
-    from provisa.compiler.sql_gen import compile_query as _compile_query, make_semantic_sql
+    from provisa.compiler.sql_gen import compile_query as _compile_query
+    from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.security.rights import has_capability, Capability
     from graphql import GraphQLSyntaxError
 

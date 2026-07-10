@@ -1645,7 +1645,7 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
 
     # Compile inline view SQLs now that a context is available
     if state.view_sql_map and state.contexts:
-        from provisa.compiler.sql_gen import (
+        from provisa.compiler.sql_rewrite import (
             normalize_table_refs,
             rewrite_semantic_to_catalog_physical,
         )

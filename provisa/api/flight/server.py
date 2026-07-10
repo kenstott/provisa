@@ -463,7 +463,7 @@ class ProvisaFlightServer(
         except Exception as exc:
             raise flight.FlightServerError(f"Cypher SQL render failed: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        from provisa.compiler.sql_gen import make_semantic_sql
+        from provisa.compiler.sql_rewrite import make_semantic_sql
 
         semantic_sql = make_semantic_sql(sql_str, ctx)
 

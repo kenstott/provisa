@@ -78,7 +78,7 @@ async def _govern_and_route(
     from provisa.api.app import state
     from provisa.compiler.rls import RLSContext
     from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
-    from provisa.compiler.sql_gen import qualify_with_catalogs
+    from provisa.compiler.sql_rewrite import qualify_with_catalogs
     from provisa.compiler.stage2 import apply_governance, build_governance_context, extract_sources
     from provisa.compiler.sql_validator import validate_sql
     from provisa.transpiler.router import Route, decide_route
@@ -298,7 +298,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
     from provisa.api_source.engine_cache import rewrite_all_from_cache
     from provisa.cache.hot_tables import build_values_cte_sql
     from provisa.compiler.rls import RLSContext
-    from provisa.compiler.sql_gen import (
+    from provisa.compiler.sql_rewrite import (
         rewrite_semantic_to_catalog_physical,
         rewrite_semantic_to_physical,
     )

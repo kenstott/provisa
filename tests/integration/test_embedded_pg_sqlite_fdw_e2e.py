@@ -33,11 +33,8 @@ from provisa.compiler.introspect import ColumnMetadata  # noqa: E402
 from provisa.compiler.parser import parse_query  # noqa: E402
 from provisa.compiler.rls import RLSContext  # noqa: E402
 from provisa.compiler.schema_gen import SchemaInput, generate_schema  # noqa: E402
-from provisa.compiler.sql_gen import (  # noqa: E402
-    build_context,
-    compile_query,
-    rewrite_semantic_to_physical,
-)
+from provisa.compiler.sql_gen import build_context, compile_query  # noqa: E402
+from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical  # noqa: E402
 from provisa.compiler.stage2 import apply_governance, build_governance_context  # noqa: E402
 from provisa.federation.connector import SqliteFdwConnector  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
@@ -78,11 +75,15 @@ def _si(orders_schema: str) -> SchemaInput:
     return SchemaInput(
         tables=[
             {
-                "id": 1, "source_id": "ord", "domain_id": "sales",
-                "schema_name": orders_schema, "table_name": "orders",
+                "id": 1,
+                "source_id": "ord",
+                "domain_id": "sales",
+                "schema_name": orders_schema,
+                "table_name": "orders",
                 "governance": "pre-approved",
-                "columns": [{"column_name": c, "visible_to": ["admin"]}
-                            for c in ("id", "amount", "region")],
+                "columns": [
+                    {"column_name": c, "visible_to": ["admin"]} for c in ("id", "amount", "region")
+                ],
             }
         ],  # fmt: skip
         relationships=[],
@@ -98,7 +99,9 @@ def _compile(si: SchemaInput, gql: str, rls: RLSContext) -> str:
     ctx = build_context(si)
     compiled = compile_query(parse_query(generate_schema(si), gql, {}), ctx)[0]
     gov = build_governance_context("admin", rls, {}, ctx, si.tables, role=_ADMIN)
-    return transpile(rewrite_semantic_to_physical(apply_governance(compiled.sql, gov), ctx), "postgres")
+    return transpile(
+        rewrite_semantic_to_physical(apply_governance(compiled.sql, gov), ctx), "postgres"
+    )
 
 
 async def test_sqlite_fdw_connector_attaches_and_reads(embedded_pg_sqlite_fdw):

@@ -18,7 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from provisa.compiler.sql_gen import _q, _semantic_table_ref
+from provisa.compiler.sql_gen import _q
+from provisa.compiler.sql_rewrite import _semantic_table_ref
 
 
 def grpc_table_to_semantic_sql(ctx: Any, type_name: str, limit: int) -> str | None:

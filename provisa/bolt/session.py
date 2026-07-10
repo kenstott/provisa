@@ -714,7 +714,7 @@ async def _execute_cypher(
         cypher_to_sql,
     )
     from provisa.cypher.graph_rewriter import apply_graph_rewrites
-    from provisa.compiler.sql_gen import make_semantic_sql
+    from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
     ctx = app_state.contexts.get(role_id)

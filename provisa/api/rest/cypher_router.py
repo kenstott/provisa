@@ -581,7 +581,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         from provisa.cypher.graph_rewriter import apply_graph_rewrites
         from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
         from provisa.cypher.assembler import assemble_rows, to_serializable
-        from provisa.compiler.sql_gen import make_semantic_sql
+        from provisa.compiler.sql_rewrite import make_semantic_sql
         from provisa.compiler.stage2 import build_governance_context
         from provisa.compiler.rls import RLSContext
         from provisa.compiler.sql_validator import validate_sql as _validate_sql
@@ -831,7 +831,7 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
     from provisa.cypher.parser import parse_cypher
     from provisa.cypher.translator import cypher_to_sql
     from provisa.cypher.graph_rewriter import apply_graph_rewrites
-    from provisa.compiler.sql_gen import make_semantic_sql
+    from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.pgwire._pipeline import _govern_and_route_compiled
     from provisa.transpiler.router import Route as _Route
 
@@ -1476,7 +1476,7 @@ async def _execute_call_body(
     """Full pipeline execution for a single CALL subquery body."""
     from provisa.cypher.translator import cypher_to_sql
     from provisa.cypher.graph_rewriter import apply_graph_rewrites
-    from provisa.compiler.sql_gen import make_semantic_sql
+    from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
     from provisa.pgwire._pipeline import _govern_and_route_compiled
 

@@ -78,7 +78,7 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     from provisa.cypher.params import collect_param_names, bind_params
     from provisa.cypher.assembler import assemble_rows, to_serializable
     from provisa.compiler.rls import RLSContext
-    from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_catalog_physical
+    from provisa.compiler.sql_rewrite import make_semantic_sql, rewrite_semantic_to_catalog_physical
     from provisa.compiler.stage2 import apply_governance, build_governance_context
 
     ctx = _get_ctx(app_state, role)
@@ -113,7 +113,8 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
 async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
     from graphql import GraphQLSchema
     from provisa.compiler.parser import parse_query
-    from provisa.compiler.sql_gen import compile_query, rewrite_semantic_to_catalog_physical
+    from provisa.compiler.sql_gen import compile_query
+    from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical
     from provisa.compiler.stage2 import apply_governance, build_governance_context
     from provisa.compiler.rls import RLSContext
     from provisa.executor.serialize import serialize_aggregate, serialize_rows
@@ -168,7 +169,7 @@ async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
 
 async def _execute_sql(query: str, role: str, app_state: Any) -> dict:
     from provisa.compiler.rls import RLSContext
-    from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_catalog_physical
+    from provisa.compiler.sql_rewrite import make_semantic_sql, rewrite_semantic_to_catalog_physical
     from provisa.compiler.stage2 import apply_governance, build_governance_context
 
     ctx = _get_ctx(app_state, role)

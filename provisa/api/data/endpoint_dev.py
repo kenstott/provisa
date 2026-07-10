@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 from provisa.api.admin._dev_shared import detect_target
 from provisa.core import domain_policy
 from provisa.compiler.rls import RLSContext
-from provisa.compiler.sql_gen import qualify_with_catalogs, rewrite_semantic_to_physical
+from provisa.compiler.sql_rewrite import qualify_with_catalogs, rewrite_semantic_to_physical
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.transpiler.router import Route, decide_route
 from provisa.transpiler.transpile import transpile

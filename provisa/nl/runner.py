@@ -149,7 +149,7 @@ async def _generate_sql_from_nl(
 
     # Normalize domain-qualified refs (e.g. pet_store.pets) to physical schema.table
     # so _execute_sql's make_semantic_sql → rewrite_semantic_to_physical pipeline works.
-    from provisa.compiler.sql_gen import rewrite_semantic_to_physical
+    from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
 
     physical_sql = rewrite_semantic_to_physical(last_sql, ctx)
     return physical_sql, None
