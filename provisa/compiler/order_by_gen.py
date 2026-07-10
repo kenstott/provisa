@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from graphql import GraphQLInputField, GraphQLInputObjectType
 
-from provisa.compiler.schema_gen import OrderDirection
+from provisa.compiler.schema_directives import OrderDirection
 
 
 def build_order_by_input_type(
