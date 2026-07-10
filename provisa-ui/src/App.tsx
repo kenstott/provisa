@@ -30,6 +30,7 @@ const AdminPage = lazy(() => import("./pages/AdminPage").then((m) => ({ default:
 const CommandsPage = lazy(() => import("./pages/CommandsPage").then((m) => ({ default: m.CommandsPage })));
 const ViewsPage = lazy(() => import("./pages/ViewsPage").then((m) => ({ default: m.ViewsPage })));
 const RequestsPage = lazy(() => import("./pages/RequestsPage").then((m) => ({ default: m.RequestsPage })));
+const DocsPage = lazy(() => import("./pages/DocsPage").then((m) => ({ default: m.DocsPage })));
 const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
 const GraphPage = lazy(() => import("./pages/GraphPage").then((m) => ({ default: m.GraphPage })));
 const SqlPage = lazy(() => import("./pages/SqlPage").then((m) => ({ default: m.SqlPage })));
@@ -276,6 +277,8 @@ function App() {
                       </CapabilityGate>
                     }
                   />
+                  {/* Docs reader — ungated, available to every role (bundled + live fallback) */}
+                  <Route path="/docs" element={<DocsPage />} />
                   <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
                   {[
                     "/admin/overview",

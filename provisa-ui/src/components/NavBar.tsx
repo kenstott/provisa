@@ -226,6 +226,8 @@ export function NavBar() {
               </button>
             );
           })}
+          {/* Docs — ungated, available to everyone */}
+          <NavLink to="/docs" data-tour="nav-docs">Docs</NavLink>
         </div>
         <div className="navbar-role">
           <OrgSwitcher />

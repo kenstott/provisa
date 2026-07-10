@@ -208,6 +208,13 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="nav-admin"]',
     title: "Operate it",
     description:
-      "The Admin pages run the platform: choose and configure your federation engine, manage encryption keys, and wire up auth providers. Full observability lives here for the platform owner too — and it can be redirected to any OpenTelemetry collector for enterprise-class trace management. That's Provisa — enjoy!",
+      "The Admin pages run the platform: choose and configure your federation engine, manage encryption keys, and wire up auth providers. Full observability lives here for the platform owner too — and it can be redirected to any OpenTelemetry collector for enterprise-class trace management.",
+  },
+  {
+    route: "/sources",
+    element: '[data-tour="sources-add"]',
+    title: "That's the tour — now make it yours",
+    description:
+      "You're back where you started. From here, try it on your own: register one of your real sources, expose a few tables, draw a relationship or two, then query the model from the Explore tab in whichever language you prefer — SQL, GraphQL, Cypher, gRPC, JSON:API or REST. Point pgwire or Bolt tools at it and everything just works. Want to go deeper? The Docs tab has the full guides — Getting Started, Sources, Configuration and more. And the compass button up top replays this tour anytime. Enjoy exploring Provisa.",
   },
 ];

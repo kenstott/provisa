@@ -8,9 +8,12 @@
     "npm": ">=10.9.0"
   },
   "scripts": {
+    "copy-docs": "node scripts/copy-docs.mjs",
+    "predev": "node scripts/copy-docs.mjs",
     "dev": "vite",
     "generate-schema": "tsx scripts/generate-schema.ts",
     "screenshots": "npx tsx scripts/capture-screenshots.ts",
+    "prebuild": "node scripts/copy-docs.mjs",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
@@ -54,7 +57,9 @@
     "mermaid": "^11.15.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.16.0",
+    "remark-gfm": "^4.0.1",
     "rolldown": "^1.0.3",
     "sql-formatter": "^15.8.0",
     "vite-plugin-monaco-editor": "^1.1.0"

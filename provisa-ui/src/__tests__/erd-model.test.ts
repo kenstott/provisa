@@ -54,6 +54,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     watermarkColumn: null,
     changeSignal: null,
     probeQuery: null,
+    probeType: null,
     columns: [],
     columnPresets: [],
     apiEndpoint: null,

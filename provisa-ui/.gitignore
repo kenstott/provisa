@@ -26,3 +26,4 @@ dist-ssr
 /.nyc_output_flat/
 /coverage/
 /test-results/
+public/docs/
