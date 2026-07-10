@@ -168,3 +168,76 @@ async def test_variants_delegate_handle(tmp_path):
         )
         assert await src.handle([{"x": 1}], prior_hash=None) == ("append", {"n": 1}, None)
         assert await mv.handle([], prior_hash=None) == ("replace", {"g": 1}, "mvhash")
+
+
+class _CrashProc(_Proc):
+    """Processor whose fan-out raises on the first attempt, then succeeds — models a
+    crash between land and the control-plane commit (REQ-960)."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.handle_calls = 0
+
+    async def handle(self, pending, *, prior_hash):
+        self.handle_calls += 1
+        return await super().handle(pending, prior_hash=prior_hash)
+
+
+@pytest.mark.asyncio
+async def test_req960_crash_between_land_and_commit_loses_nothing(tmp_path):
+    """A crash after land but before the post+fan_out+complete commit must roll back
+    atomically (no downstream ripple, claim not completed), and a re-run must recover."""
+    from datetime import datetime, timezone
+
+    crashed = {"n": 0}
+
+    def deps(_node):
+        # Raise on the first fan-out (inside the transaction, after land) → crash.
+        if crashed["n"] == 0:
+            crashed["n"] = 1
+            raise RuntimeError("simulated crash during fan_out")
+        return ["down.x"]
+
+    async with _db(tmp_path) as db:
+        async with db.acquire() as conn:
+            up = await queue.post_event(conn, source_table="s.o", event_type="append")
+            await queue.fan_out(conn, up, ["mv.a"])
+
+        proc = _CrashProc(
+            "mv.a",
+            change_signal="ttl",
+            watermark_column=None,
+            dependents_of=deps,
+            db=db,
+            name="box-1",
+            result=("replace", {"rows": 3}, "h1"),
+        )
+
+        # 1) Crash run: fan_out raises → transaction rolls back.
+        async with db.acquire() as conn:
+            with pytest.raises(RuntimeError, match="simulated crash"):
+                await proc.process_pending(conn)
+
+        async with db.acquire() as conn:
+            # Land happened (handle ran), but NOTHING downstream committed.
+            assert proc.handle_calls == 1
+            assert await queue.get_node_state(conn, "mv.a") is None  # baseline not set
+            assert [
+                r for r in await queue.read_since(conn, cursor=0) if r["source_table"] == "mv.a"
+            ] == []  # no ripple
+            # The claim is still outstanding (not completed) → recoverable.
+            reclaimed = await queue.reclaim_stale(
+                conn, older_than=datetime.now(timezone.utc).replace(year=2099)
+            )
+            assert reclaimed  # the orphaned claim is reclaimable
+
+        # 2) Recovery run: re-claim + re-run → idempotent land, ripple now committed.
+        async with db.acquire() as conn:
+            my_event = await proc.process_pending(conn)
+            assert my_event is not None
+            assert proc.handle_calls == 2  # land re-ran (idempotent)
+            assert (await queue.get_node_state(conn, "mv.a"))["content_hash"] == "h1"
+            now = datetime.now(timezone.utc)
+            assert await queue.claim(
+                conn, dependent_table="down.x", processor_name="p", now=now
+            ) == [my_event]

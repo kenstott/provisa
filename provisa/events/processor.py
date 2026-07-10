@@ -130,19 +130,29 @@ class TableProcessor(ABC):
         pending = await queue.get_events(conn, claimed)
         prior = await queue.get_node_state(conn, self.node)
         prior_hash = prior["content_hash"] if prior else None
-        # (event_type, payload, content_hash|None) when changed, else None.
+        # LAND runs inside ``handle`` against the STORE database — outside the control-plane
+        # transaction below (different DB, no shared txn) and idempotent on the node key, so a
+        # re-run after a crash re-lands harmlessly. (event_type, payload, content_hash|None) | None.
         result = await self.handle(pending, prior_hash=prior_hash)
-        for eid in claimed:
-            await queue.complete(conn, event_id=eid, dependent_table=self.node, now=now)
-        if result is None:
-            return None  # gate: node output unchanged (content hash matched / nothing landed)
-        event_type, payload, new_hash = result
-        if new_hash is not None:
-            await queue.set_node_state(conn, self.node, content_hash=new_hash)
-        my_event = await queue.post_event(
-            conn, source_table=self.node, event_type=event_type, payload=payload
-        )
-        await queue.fan_out(conn, my_event, self._dependents_of(self.node))
+        # REQ-960: post + fan_out + complete run AFTER land in ONE control-plane transaction,
+        # post-BEFORE-complete. A crash between land and this commit re-claims and re-runs (the
+        # land is idempotent), so the downstream ripple is never lost and the claim never orphaned.
+        async with conn.transaction():
+            if result is None:
+                # Gate hit (content unchanged / nothing landed): no ripple, but the claimed events
+                # are processed — complete them so they do not re-fire.
+                for eid in claimed:
+                    await queue.complete(conn, event_id=eid, dependent_table=self.node, now=now)
+                return None
+            event_type, payload, new_hash = result
+            if new_hash is not None:
+                await queue.set_node_state(conn, self.node, content_hash=new_hash)
+            my_event = await queue.post_event(
+                conn, source_table=self.node, event_type=event_type, payload=payload
+            )
+            await queue.fan_out(conn, my_event, self._dependents_of(self.node))
+            for eid in claimed:
+                await queue.complete(conn, event_id=eid, dependent_table=self.node, now=now)
         return my_event
 
     @abstractmethod
