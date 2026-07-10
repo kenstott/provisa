@@ -58,7 +58,8 @@ class TestConfigLoading:
         assert cfg.scope == "all"
 
     def test_setup_populates_state(self):
-        from provisa.api.app import AppState, _setup_approval_hook
+        from provisa.api.app import AppState
+        from provisa.api.app_loaders import _setup_approval_hook
 
         meta = SimpleNamespace(
             domain_id="sales", schema_name="public", table_name="orders", table_id=7
@@ -91,7 +92,8 @@ class TestConfigLoading:
         assert st.table_approval_hooks == {7: True}
 
     def test_setup_noop_without_block(self):
-        from provisa.api.app import AppState, _setup_approval_hook
+        from provisa.api.app import AppState
+        from provisa.api.app_loaders import _setup_approval_hook
 
         st = AppState()
         st.config = SimpleNamespace(auth=SimpleNamespace(approval_hook=None), sources=[], tables=[])

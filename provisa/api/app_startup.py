@@ -228,7 +228,8 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
 
 async def _start_servers(_log: logging.Logger) -> None:
     """Start gRPC, Arrow Flight, pgwire, Live Query Engine, and APQ cache servers."""
-    from provisa.api.app import _reconcile_live_engine, state  # lazy: avoid app<->app_startup cycle
+    from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
+    from provisa.api.app_rebuild import _reconcile_live_engine
 
     if state.proto_files:
         try:

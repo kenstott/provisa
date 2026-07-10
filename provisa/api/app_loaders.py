@@ -44,7 +44,8 @@ from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 
 if TYPE_CHECKING:
-    pass
+    import asyncpg
+    from provisa.api.app import AppState
 
 log = logging.getLogger(__name__)
 
@@ -870,3 +871,70 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         from provisa.grpc.proto_gen import generate_proto
 
         state.proto_files[role["id"]] = generate_proto(si)
+
+
+def _setup_approval_hook(st: AppState) -> None:
+    """REQ-247: build ABAC approval hook + scope dicts from config (no-op when unconfigured)."""
+    from provisa.auth.approval_hook import create_hook, load_approval_hook_config
+
+    config = getattr(st, "config", None)
+    if config is None:
+        return
+    hook_cfg = load_approval_hook_config(getattr(config.auth, "approval_hook", None))
+    if hook_cfg is None:
+        return
+
+    st.approval_hook_config = hook_cfg
+    st.approval_hook = create_hook(hook_cfg)
+    st.source_approval_hooks = {
+        s.id: True for s in config.sources if getattr(s, "approval_hook", False)
+    }
+
+    # Resolve per-table flags to table_ids via the compilation contexts.
+    name_to_id: dict[tuple[str, str, str], int] = {}
+    for ctx in st.contexts.values():
+        for meta in ctx.tables.values():
+            name_to_id[(meta.domain_id, meta.schema_name, meta.table_name)] = meta.table_id
+    table_hooks: dict[int, bool] = {}
+    for t in config.tables:
+        if not getattr(t, "approval_hook", False):
+            continue
+        key = (t.domain_id, t.schema_name, t.table_name)
+        if key in name_to_id:
+            table_hooks[name_to_id[key]] = True
+    st.table_approval_hooks = table_hooks
+
+
+# Maps original table name → view name (or itself if no view needed).
+_META_TABLES = [
+    "registered_tables",
+    "table_columns",
+    "domains",
+    "relationships",
+    "rls_rules",
+    "roles",
+    "roles_domain_access",
+    "tracked_webhooks",
+    "tracked_functions",
+]
+
+
+async def _init_meta_rls(conn: asyncpg.Connection) -> None:  # REQ-041, REQ-402
+    """Enable Postgres RLS on all _META_TABLES. Called only when multitenancy=True."""
+    for tbl in _META_TABLES:
+        await conn.execute(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY")
+        await conn.execute(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY")
+        await conn.execute(
+            f"""
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_policies
+                    WHERE tablename = '{tbl}' AND policyname = 'tenant_isolation_{tbl}'
+                ) THEN
+                    CREATE POLICY tenant_isolation_{tbl}
+                        ON {tbl}
+                        USING (tenant_id IS NULL OR tenant_id = current_setting('app.tenant_id', true)::uuid);
+                END IF;
+            END $$
+            """
+        )

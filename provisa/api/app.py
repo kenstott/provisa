@@ -42,12 +42,19 @@ from provisa.api.app_loaders import (
     _build_and_register_schemas,
     _build_source_pools_and_enums,
     _init_ingest_engines,
+    _init_meta_rls,
     _load_graphql_remote_sources_from_db,
     _load_masking_rules,
     _load_mv_and_views_config,
     _load_openapi_specs,
     _load_tracked_functions_and_webhooks,
     _process_kafka_sources,
+    _setup_approval_hook,
+)
+from provisa.api.app_rebuild import (
+    _bg_hydrate_api_endpoints,
+    _finalize_rebuild_state,
+    _register_user_views_in_state,
 )
 from provisa.api.app_schema_build import (
     _assert_domain_table_unique,
@@ -70,7 +77,7 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext
 from sqlalchemy import select
 from provisa.core.config_loader import load_config, parse_config_dict
-from provisa.core.database import Connection, Database
+from provisa.core.database import Database
 from provisa.core.schema_org import (
     domains as _domains_t,
     naming_rules as _naming_rules_t,
@@ -232,80 +239,6 @@ class AppState:
 
 
 state = AppState()
-
-
-def _setup_approval_hook(st: AppState) -> None:
-    """REQ-247: build ABAC approval hook + scope dicts from config (no-op when unconfigured)."""
-    from provisa.auth.approval_hook import create_hook, load_approval_hook_config
-
-    config = getattr(st, "config", None)
-    if config is None:
-        return
-    hook_cfg = load_approval_hook_config(getattr(config.auth, "approval_hook", None))
-    if hook_cfg is None:
-        return
-
-    st.approval_hook_config = hook_cfg
-    st.approval_hook = create_hook(hook_cfg)
-    st.source_approval_hooks = {
-        s.id: True for s in config.sources if getattr(s, "approval_hook", False)
-    }
-
-    # Resolve per-table flags to table_ids via the compilation contexts.
-    name_to_id: dict[tuple[str, str, str], int] = {}
-    for ctx in st.contexts.values():
-        for meta in ctx.tables.values():
-            name_to_id[(meta.domain_id, meta.schema_name, meta.table_name)] = meta.table_id
-    table_hooks: dict[int, bool] = {}
-    for t in config.tables:
-        if not getattr(t, "approval_hook", False):
-            continue
-        key = (t.domain_id, t.schema_name, t.table_name)
-        if key in name_to_id:
-            table_hooks[name_to_id[key]] = True
-    st.table_approval_hooks = table_hooks
-
-
-# Maps original table name → view name (or itself if no view needed).
-_META_TABLES = [
-    "registered_tables",
-    "table_columns",
-    "domains",
-    "relationships",
-    "rls_rules",
-    "roles",
-    "roles_domain_access",
-    "tracked_webhooks",
-    "tracked_functions",
-]
-
-# Matches actual otlp2parquet output schema (https://github.com/smithclay/otlp2parquet).
-# Timestamps are milliseconds. span_attributes is a JSON string.
-# We add table_name/domain_id/role_id extracted from span_attributes during compaction.
-# Ops telemetry schema — single source of truth, shared with otlp2sql so the
-# receiver's tables and the ops-domain registration never drift.
-from provisa.api.startup_seed import _seed_meta_domain  # noqa: E402,F401  re-export for test back-compat
-
-
-async def _init_meta_rls(conn: asyncpg.Connection) -> None:  # REQ-041, REQ-402
-    """Enable Postgres RLS on all _META_TABLES. Called only when multitenancy=True."""
-    for tbl in _META_TABLES:
-        await conn.execute(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY")
-        await conn.execute(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY")
-        await conn.execute(
-            f"""
-            DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_policies
-                    WHERE tablename = '{tbl}' AND policyname = 'tenant_isolation_{tbl}'
-                ) THEN
-                    CREATE POLICY tenant_isolation_{tbl}
-                        ON {tbl}
-                        USING (tenant_id IS NULL OR tenant_id = current_setting('app.tenant_id', true)::uuid);
-                END IF;
-            END $$
-            """
-        )
 
 
 async def _load_and_build(
@@ -491,132 +424,6 @@ async def _load_and_build(
         state.hot_manager = hot_mgr
 
     _mark("hot_tables")
-
-
-async def _bg_hydrate_api_endpoints() -> None:
-    """Background-hydrate zero-param API endpoints (no path params → full collection known at startup)."""
-    _zero_param_eps = [
-        (ep, state.api_sources[ep.source_id])
-        for ep in state.api_endpoints.values()
-        if "{" not in ep.path and ep.source_id in state.api_sources
-    ]
-    if not _zero_param_eps:
-        return
-
-    _hydrate_log = logging.getLogger(__name__)
-    assert state.tenant_db is not None
-
-    async def _bg_hydrate(eps=_zero_param_eps, pool: Database = state.tenant_db, _log=_hydrate_log):
-        from provisa.openapi.pg_cache import fill_api_table
-
-        async with pool.acquire() as _conn:
-            for _ep, _src in eps:
-                try:
-                    await fill_api_table(
-                        _src.base_url,
-                        _ep.path,
-                        _ep.default_params,
-                        cast(asyncpg.Connection, _conn),
-                        "default",
-                        _ep.table_name,
-                        _ep.ttl,
-                        _ep.response_root,
-                        _ep.error_path,
-                        _ep.pk_column,
-                    )
-                except Exception as _e:
-                    _log.warning("BG hydration failed for %s: %s", _ep.table_name, _e)
-
-    asyncio.create_task(_bg_hydrate())
-
-
-async def _reconcile_live_engine(conn: "Connection") -> None:  # REQ-565, REQ-813
-    """Reconcile the LiveEngine poll jobs from persisted per-table live config."""
-    from provisa.live.reconcile import reconcile_live_engine
-
-    await reconcile_live_engine(conn, state.live_engine)
-
-
-async def _register_user_views_in_state(conn: "Connection", raw_config: dict | None) -> None:
-    """Register __provisa__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal."""
-    try:
-        _view_rows = [
-            dict(_r._mapping)
-            for _r in (
-                await conn.execute_core(
-                    select(
-                        _registered_tables_t.c.table_name,
-                        _registered_tables_t.c.view_sql,
-                        _registered_tables_t.c.materialize,
-                        _registered_tables_t.c.mv_refresh_interval,
-                        _registered_tables_t.c.change_signal,
-                    ).where(
-                        _registered_tables_t.c.source_id == "__provisa__",
-                        _registered_tables_t.c.view_sql.is_not(None),
-                    )
-                )
-            ).fetchall()
-        ]
-        # REQ-199: MVs without an explicit interval fall back to the configured default TTL.
-        _mv_default_ttl = int(
-            (raw_config or {}).get("materialized_views", {}).get("default_ttl", 300)
-        )
-        for _vr in _view_rows:
-            if _vr.get("materialize"):
-                from provisa.mv.models import MVDefinition, MVStatus
-                from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
-
-                _mv_id = f"view-{_vr['table_name']}"
-                # REQ-932: derive the refresh gate from change_signal. A __provisa__ view has no
-                # backing source, so resolve falls to the global default. Push signals return None
-                # (event-driven, no poll gate) → keep the ttl default until CDC-apply landing exists.
-                _sig = resolve(_vr.get("change_signal"), None)
-                _fresh = to_freshness_mode(_sig) or "ttl"  # REQ-932: push → ttl until Phase 3
-                if state.mv_registry.get(_mv_id) is None:
-                    state.mv_registry.register(
-                        MVDefinition(
-                            id=_mv_id,
-                            source_tables=[],
-                            target_catalog="postgresql",
-                            target_schema=f"org_{state.org_id}_mv_cache",
-                            target_table=f"mv_{_vr['table_name']}",
-                            refresh_interval=int(_vr.get("mv_refresh_interval") or _mv_default_ttl),
-                            enabled=True,
-                            sql=_vr["view_sql"].rstrip().rstrip(";"),
-                            expose_in_sdl=False,
-                            status=MVStatus.STALE,
-                            freshness_mode=_fresh,
-                        )
-                    )
-            else:
-                state.view_sql_map[_vr["table_name"]] = _vr["view_sql"].rstrip().rstrip(";")
-    except Exception as _e:
-        log.warning("Failed to load user views for inline expansion: %s", _e)
-
-
-async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
-    """Reconcile live engine (REQ-565) and compile view SQLs after a schema rebuild."""
-    # Re-drive the live poll engine from the now-current DB state so admin edits
-    # to per-table live config take effect without a restart (REQ-565).
-    if state.live_engine is not None and state.tenant_db is not None:
-        try:
-            async with state.tenant_db.acquire() as _lc:
-                await _reconcile_live_engine(_lc)
-        except Exception:
-            _rebuild_log.exception("live engine reconcile failed")
-
-    # Compile inline view SQLs now that a context is available
-    if state.view_sql_map and state.contexts:
-        from provisa.compiler.sql_rewrite import (
-            normalize_table_refs,
-            rewrite_semantic_to_catalog_physical,
-        )
-
-        ctx = next(iter(state.contexts.values()))
-        state.view_sql_map = {
-            name: rewrite_semantic_to_catalog_physical(normalize_table_refs(sql, ctx), ctx)
-            for name, sql in state.view_sql_map.items()
-        }
 
 
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:

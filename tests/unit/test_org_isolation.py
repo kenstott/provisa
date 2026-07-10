@@ -438,7 +438,7 @@ class TestProvisionOrg:
 class TestDemoSeedOrgScoping:
     def test_seed_meta_domain_uses_org_id_schema_name(self):  # REQ-702
         import inspect
-        from provisa.api.app import _seed_meta_domain
+        from provisa.api.startup_seed import _seed_meta_domain
 
         src = inspect.getsource(_seed_meta_domain)
         assert "org_id" in src
@@ -446,7 +446,7 @@ class TestDemoSeedOrgScoping:
 
     @pytest.mark.asyncio
     async def test_seed_meta_domain_registers_tables_in_org_schema(self):  # REQ-702
-        from provisa.api.app import _seed_meta_domain
+        from provisa.api.startup_seed import _seed_meta_domain
 
         mock_conn = AsyncMock()
         mock_conn.reflect_columns = AsyncMock(return_value=[])  # empty → skip column loops
