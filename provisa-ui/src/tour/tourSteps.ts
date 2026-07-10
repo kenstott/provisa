@@ -61,10 +61,10 @@ const RELS_ADD = '[data-tour="rels-add"]';
 export const TOUR_STEPS: TourStep[] = [
   {
     route: "/sources",
-    element: ".navbar-brand",
-    title: "Welcome to Provisa",
+    element: ".navbar-tour-btn",
+    title: "Welcome — let's take the tour",
     description:
-      "At its core, Provisa is a query-language compiler: one federated model, served as GraphQL, SQL, Cypher, gRPC, JSON:API and REST — and spoken over wire protocols like Postgres (pgwire) and Neo4j (Bolt), so existing tools connect unchanged. (Yes — a modern GraphQL compiler included.) It all runs here on an embedded DuckDB; swap in a distributed engine like Trino or ClickHouse and the same model scales out to the largest enterprises. Let's take a look.",
+      "This compass button starts the tour, and it's how you come back to it. Leave anytime — just click the app or press Esc — and pick up right here whenever you like. Quick preview of where we're headed: Provisa is a query-language compiler — one federated model served as GraphQL, SQL, Cypher, gRPC, JSON:API and REST, and spoken over wire protocols like Postgres (pgwire) and Neo4j (Bolt) so existing tools connect unchanged. It runs here on an embedded DuckDB; swap in Trino or ClickHouse and the same model scales to the largest enterprises. Ready? Let's go.",
   },
   {
     route: "/sources",
@@ -84,7 +84,7 @@ export const TOUR_STEPS: TourStep[] = [
     expandSelect: true,
     title: "30+ source types",
     description:
-      "One connector list spans every category: Subscriptions (gov data), RDBMS, Cloud DWs (Snowflake, BigQuery), Analytics/OLAP, Data Lakes, NoSQL, Graph, Files, REST/GraphQL/gRPC APIs, Streaming (Kafka), and enterprise SaaS like SharePoint & Splunk. Pick one, fill the connection, Save — we'll cancel for the demo.",
+      "One connector list spans every category: Subscriptions (gov data), RDBMS, Cloud DWs (Snowflake, BigQuery), Analytics/OLAP, Data Lakes, NoSQL, Graph, Files, REST/GraphQL/gRPC APIs, Streaming (Kafka), and enterprise SaaS like SharePoint & Splunk. Pick one, fill the connection, Save.",
     clickBefore: SOURCES_ADD,
     clickAfterNext: SOURCES_ADD,
   },
@@ -114,7 +114,7 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="rels-form"]',
     title: "Define a relationship",
     description:
-      "Map a source column to a target column and set cardinality. Provisa can also infer these for you with AI. Cancelling for the demo.",
+      "Map a source column to a target column and set cardinality. Provisa can also infer these for you with AI.",
     clickBefore: RELS_ADD,
     clickAfterNext: RELS_ADD,
   },
