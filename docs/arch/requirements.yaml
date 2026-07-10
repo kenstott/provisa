@@ -27236,7 +27236,7 @@
     sales) is a read-time filter over the accumulating MV. Matching "received for this window" REQUIRES
     a window/epoch tag stamped on each event at emit time. Late data policy is per-node: drop, or emit
     a correction partition (never rewrite a sealed one). A window pegs by time and aligns time-keyed inputs;
-    joins across inputs with no common time key still need frontier machinery.'
+    joins across inputs with no common time key still need frontier machinery. The accumulating-append + read-time-filter form serves PIT as a VIEW over retained RT history and therefore stays INSIDE the NRT ideal (REQ-966) — it is reconstructible, not a departure; the departure line is reconstructible-vs-frozen, and a PIT dataset that CANNOT be rebuilt from current state plus retained event history is a preserved, sealed snapshot (REQ-983), not this.'
   use_case: Snapshot/temporal MVs (daily sales, period reporting) and torn-read-free joins are served
     by one primitive — wait for the lineage-required inputs, then compute as-of the window boundary —
     collapsing the trigger, the as-of peg, the finality proxy, and partial-recompute cost into a single
@@ -27577,7 +27577,7 @@
     axis (emit=delta or persist=upsert without a PK, a diff exceeding a declared bound) is an EXPLICIT
     ERROR surfaced to the operator, never a silent fallback — that would hide churn/cost and break provability
     (REQ-964). A maintenance mode MAY supply defaults (periodic → append, live → replace) but the operator''s
-    declarations are authoritative.'
+    declarations are authoritative. Concretely, persist=replace (a limited, performance-sized hot/current table) + emit=append (a downstream history accumulator) keeps PIT DERIVABLE from RT and therefore INSIDE the NRT ideal (REQ-966) — no departure; the frozen, non-reconstructible snapshot is the separate departure (REQ-983).'
   use_case: 'An MV is a source to its dependents, and how it stores itself is separable from what it tells
     them: the operator declares a persistence outcome for its own storage economics and an event outcome
     for the downstream contract — enabling a forgetful view to feed a historical accumulator, or a full
@@ -27619,6 +27619,7 @@
   - REQ-957
   - REQ-958
   - REQ-964
+  - REQ-983
 - id: REQ-966
   status: proposed
   since: 2026-07
@@ -27686,7 +27687,7 @@
     MV over the warn/error emissions (REQ-957, REQ-941), append-keyed → a scorecard and quality history;
     HISTORY / SCD-2 = an MV over an append emission from a replace-persist upstream (REQ-965) → a time
     series, which also RETIRES proof-obligation #4 (REQ-964) — the SCD-2 dataset IS the point-in-time-correct
-    dimension, so temporal joins become a declared dataset instead of an unenforced author burden; FRESHNESS
+    dimension, so temporal joins become a declared dataset instead of an unenforced author burden (this reconstructible SCD-2 view is PIT inside the ideal; a frozen, non-reconstructible snapshot is the REQ-983 departure); FRESHNESS
     / VINTAGE = an MV over the freshness-contract state (REQ-961) → an SLA / as-of dashboard with queryable
     outage detection; LINEAGE / IMPACT = an MV over the SQL-derived DAG edges (REQ-939) → impact analysis;
     AUDIT / PROVENANCE = an MV over the durable event log (REQ-960 queue) → a replayable operational trail;
@@ -28179,3 +28180,33 @@
     Given a csv file source configured with probe_type=watermark
     When the config is parsed
     Then validation rejects it because file sources do not support the watermark probe type
+- id: REQ-983
+  status: proposed
+  target: 2026-Q4
+  group: 9. Live Data & Events
+  category: Derived / MV Processor
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A preserved snapshot is a point-in-time dataset that is MATERIALIZED-AND-SEALED because it is NOT reconstructible from current state plus retained event history — the one PIT form that is a genuine DEPARTURE from the NRT ideal (REQ-966), as opposed to the reconstructible PIT of REQ-958/REQ-965/REQ-967 (accumulating append + read-time filter) which stays inside the ideal. It is DECLARED, never inferred, and MUST be why-tagged with its REQ-966 root cause: RESOURCE — the deriving history was never retained or the source cannot be replayed (debt that retires as retention/replay capability improves); or BUSINESS MANDATE — the output must be frozen exactly as computed at a moment (a definition or upstream changed and the prior result must be preserved as-is; an external filing/attestation fixes the number). The snapshot is landed as an IMMUTABLE, addressable partition (a REQ-962 window-id or an explicit snapshot-id), sealed like a calendar window: never rewritten, corrected only by a new partition, replay-exact via determinism (REQ-964) where the inputs still exist, and otherwise preserved verbatim because re-derivation is impossible. Distinct from REQ-958's accumulating-append history (a reconstructible view over RT) and from a live replace-persist hot table (REQ-965): a preserved snapshot is chosen precisely when derive-from-RT is NOT available. Never a silent fallback — the operator declares it with its root cause, or the estate serves PIT as a view.
+  use_case: >-
+    Real-world estates cannot always retain full event history or replay every source, and some outputs must be frozen as-computed for audit/attestation — so the platform offers PIT datasets built and preserved at a moment as an explicit, why-tagged departure, keeping derivable PIT the default and making every frozen snapshot a visible entry in the distance-from-NRT ledger (REQ-966).
+  scenario: |
+    Given an MV whose upstream event history is not retained
+    When an operator needs its state as-of a past moment
+    Then a preserved snapshot must be declared with a why-tag (resource: history-not-retained) and landed as an immutable, addressable partition
+    And it is never rewritten, only superseded by a new partition
+    When the deriving history IS retained instead
+    Then PIT is served as a read-time view over the accumulating MV (REQ-958) and no preserved snapshot is declared
+  competitive_position:
+    status: ahead
+    rationale: >-
+      dbt/Airflow snapshots are imperative jobs with no distinction between derivable and frozen point-in-time data; Provisa makes the frozen case an explicit, why-tagged departure that self-documents as retireable-vs-permanent in the distance-from-NRT ledger.
+  related_reqs:
+  - REQ-966
+  - REQ-958
+  - REQ-965
+  - REQ-967
+  - REQ-962
+  - REQ-968
+  - REQ-964
