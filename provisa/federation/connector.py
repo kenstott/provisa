@@ -35,10 +35,14 @@ if TYPE_CHECKING:
 
 from provisa.federation.connector_base import (
     Capability,
+    CatalogEntry,
     Connector,
     Mechanism,
     ProbeResult,
 )
+
+# Re-exported for back-compat: callers import these base types from federation.connector.
+__all__ = ["Capability", "CatalogEntry", "Connector", "Mechanism", "ProbeResult"]
 
 
 # --- Trino: a broad federator (many source types, all ATTACH via catalogs) ---
