@@ -33,7 +33,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from provisa.core.models import SOURCE_TO_DIALECT
+from provisa.core.source_registry import SOURCE_TO_DIALECT
 from provisa.executor.drivers.registry import (
     has_driver,
     has_native_driver,

@@ -111,7 +111,6 @@ import pytest
 from pytest_bdd import given, scenarios, then, when
 
 from provisa.core.models import (
-    SOURCE_TO_CONNECTOR,
     Cardinality,
     Column,
     Relationship,
@@ -119,6 +118,7 @@ from provisa.core.models import (
     SourceType,
     Table,
 )
+from provisa.core.source_registry import SOURCE_TO_CONNECTOR
 
 
 # ---------------------------------------------------------------------------
@@ -1991,7 +1991,7 @@ def _req636_source(shared_data):
 @when("schema or table introspection is triggered")
 def _req636_introspect(shared_data):
     from provisa.api.admin.introspect import native_schemas
-    from provisa.core.models import SOURCE_TO_CONNECTOR as _S2C
+    from provisa.core.source_registry import SOURCE_TO_CONNECTOR as _S2C
     from provisa.executor.pool import SourcePool
 
     async def _run():

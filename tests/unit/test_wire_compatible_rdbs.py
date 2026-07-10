@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.core.models import SOURCE_TO_CONNECTOR, SOURCE_TO_DIALECT, Source, SourceType
+from provisa.core.models import Source, SourceType
+from provisa.core.source_registry import SOURCE_TO_CONNECTOR, SOURCE_TO_DIALECT
 from provisa.executor.drivers.registry import has_native_driver
 from provisa.federation.engine import build_trino_engine
 from provisa.federation.strategy import Strategy, federate

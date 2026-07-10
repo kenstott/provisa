@@ -46,7 +46,7 @@ from graphql import (
 
 from provisa.compiler.params import ParamCollector
 from provisa.cache.warm_tables import QueryCounter
-from provisa.core.models import TIME_TRAVEL_SOURCES
+from provisa.core.source_registry import TIME_TRAVEL_SOURCES
 
 from provisa.compiler.sql_types import (
     ColumnRef,

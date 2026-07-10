@@ -11,7 +11,8 @@ import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
 from provisa.core.catalog import _build_catalog_properties
-from provisa.core.models import SOURCE_TO_CONNECTOR, Column, Source, SourceType, Table
+from provisa.core.models import Column, Source, SourceType, Table
+from provisa.core.source_registry import SOURCE_TO_CONNECTOR
 
 scenarios("../features/REQ-726.feature")
 scenarios("../features/REQ-727.feature")

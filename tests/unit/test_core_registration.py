@@ -8,7 +8,6 @@
 import pytest
 
 from provisa.core.models import (
-    SOURCE_TO_CONNECTOR,
     Cardinality,
     Column,
     GovDataSource,
@@ -20,6 +19,7 @@ from provisa.core.models import (
     SourceType,
     Table,
 )
+from provisa.core.source_registry import SOURCE_TO_CONNECTOR
 
 
 # ---------------------------------------------------------------------------

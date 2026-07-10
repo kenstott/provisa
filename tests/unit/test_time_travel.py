@@ -24,7 +24,7 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.context import build_context
-from provisa.core.models import TIME_TRAVEL_SOURCES
+from provisa.core.source_registry import TIME_TRAVEL_SOURCES
 
 
 def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> ColumnMetadata:

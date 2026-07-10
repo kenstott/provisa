@@ -16,11 +16,11 @@ and that transpile() produces valid output for each.
 
 import pytest
 
-from provisa.core.models import (
+from provisa.core.models import SourceType
+from provisa.core.source_registry import (
     SOURCE_TO_CONNECTOR,
     SOURCE_TO_DIALECT,
     LAKE_ONLY_SOURCES,
-    SourceType,
 )
 from provisa.transpiler.router import VIRTUAL_SOURCES
 from provisa.transpiler.transpile import transpile

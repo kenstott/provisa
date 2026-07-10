@@ -420,7 +420,7 @@ class Query:  # REQ-021, REQ-042
         """List schemas available in a source."""
         from provisa.api.app import state
         from provisa.api.admin.introspect import is_provisa_internal, native_schemas
-        from provisa.core.models import SOURCE_TO_CONNECTOR
+        from provisa.core.source_registry import SOURCE_TO_CONNECTOR
 
         source_type = state.source_types.get(source_id, "")
         if source_type == "openapi":

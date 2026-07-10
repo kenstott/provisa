@@ -131,7 +131,7 @@ class TestFilesConnectorGlobPattern:
         assert props["glob"] == glob
 
     def test_source_type_mapped_to_file_connector(self):
-        from provisa.core.models import SOURCE_TO_CONNECTOR
+        from provisa.core.source_registry import SOURCE_TO_CONNECTOR
 
         assert SOURCE_TO_CONNECTOR["files"] == "file"
 

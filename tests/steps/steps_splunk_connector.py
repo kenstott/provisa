@@ -10,7 +10,8 @@ import os
 import pytest
 from pytest_bdd import given, parsers, scenario, then, when
 
-from provisa.core.models import Source, SourceType, SOURCE_TO_CONNECTOR
+from provisa.core.models import Source, SourceType
+from provisa.core.source_registry import SOURCE_TO_CONNECTOR
 
 
 # ---------------------------------------------------------------------------

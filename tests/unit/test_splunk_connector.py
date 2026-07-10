@@ -14,7 +14,8 @@ from __future__ import annotations
 
 
 from provisa.core.catalog import _build_catalog_properties
-from provisa.core.models import SOURCE_TO_CONNECTOR, Source, SourceType
+from provisa.core.models import Source, SourceType
+from provisa.core.source_registry import SOURCE_TO_CONNECTOR
 
 
 # --------------------------------------------------------------------------- #
