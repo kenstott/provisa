@@ -218,12 +218,15 @@ class TestReq591SetLocalTenantContext:
 
 
 # ============================================================================
-# REQ-594: TenantMiddleware skip paths (/health, /docs, /openapi.json, /billing/*)
+# REQ-594: TenantMiddleware skip paths (/health, /data/openapi/*, /billing/*)
 # ============================================================================
 
 
 class TestReq594TenantMiddlewareSkipPaths:
-    """REQ-594: TenantMiddleware skips /health, /docs, /openapi.json, /billing/* paths."""
+    """REQ-594: TenantMiddleware skips /health, /data/openapi/*, /billing/* paths.
+
+    Swagger/OpenAPI live under /data/openapi/ (not the default /docs) so the UI owns /docs.
+    """
 
     def test_health_endpoint_no_tenant_required(self, client):
         """GET /health should not require tenant context."""
@@ -231,13 +234,13 @@ class TestReq594TenantMiddlewareSkipPaths:
         assert resp.status_code == 200
 
     def test_docs_endpoint_no_tenant_required(self, client):
-        """GET /docs should not require tenant context."""
-        resp = client.get("/docs")
+        """GET /data/openapi/docs should not require tenant context."""
+        resp = client.get("/data/openapi/docs")
         assert resp.status_code in [200, 301, 404]  # May redirect or be unavailable
 
     def test_openapi_endpoint_no_tenant_required(self, client):
-        """GET /openapi.json should not require tenant context."""
-        resp = client.get("/openapi.json")
+        """GET /data/openapi/openapi.json should not require tenant context."""
+        resp = client.get("/data/openapi/openapi.json")
         assert resp.status_code in [200, 404]
 
     def test_billing_endpoints_no_tenant_required(self, client):

@@ -36,7 +36,7 @@ export function DocsPage() {
   // Load the manifest once; default to the first doc.
   useEffect(() => {
     let cancelled = false;
-    fetch("/docs/manifest.json")
+    fetch("/guides-md/manifest.json")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`manifest ${r.status}`))))
       .then((rows: DocEntry[]) => {
         if (cancelled) return;
@@ -69,7 +69,7 @@ export function DocsPage() {
 
     (async () => {
       try {
-        const local = await fetch(`/docs/${active.slug}.md`);
+        const local = await fetch(`/guides-md/${active.slug}.md`);
         if (local.ok) {
           const text = await local.text();
           if (!cancelled) {
@@ -137,6 +137,26 @@ export function DocsPage() {
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
+                img({ src, alt, ...rest }) {
+                  // Relative doc images (docs/images/*.png) are bundled flat under
+                  // /guides-md/images/. Fall back to the live repo if not bundled.
+                  if (typeof src === "string" && !/^https?:\/\//.test(src)) {
+                    const file = src.split("/").pop();
+                    return (
+                      <img
+                        src={`/guides-md/images/${file}`}
+                        alt={alt ?? ""}
+                        onError={(e) => {
+                          const img = e.currentTarget;
+                          const live = `${RAW_BASE}/docs/images/${file}`;
+                          if (img.src !== live) img.src = live;
+                        }}
+                        {...rest}
+                      />
+                    );
+                  }
+                  return <img src={src} alt={alt ?? ""} {...rest} />;
+                },
                 a({ href, children, ...rest }) {
                   const target = href && /\.md(#.*)?$/i.test(href) ? slugForPath(href) : null;
                   if (target) {

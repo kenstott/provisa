@@ -20,7 +20,14 @@ from starlette.responses import JSONResponse
 
 from provisa.core.tenant_context import TenantContext, TenantContextCache
 
-_SKIP_PATHS = {"/billing/signup", "/billing/webhook", "/health", "/docs", "/openapi.json"}
+_SKIP_PATHS = {
+    "/billing/signup",
+    "/billing/webhook",
+    "/health",
+    "/data/openapi/docs",
+    "/data/openapi/redoc",
+    "/data/openapi/openapi.json",
+}
 
 _cache = TenantContextCache()
 

@@ -467,12 +467,14 @@ def _make_request(path: str) -> MagicMock:
 @given("a request to /billing/signup, /billing/webhook, /health, /docs, or /openapi.json")
 def request_to_skip_path(shared_data: dict) -> None:
     # The canonical skip-path set must match the requirement exactly.
+    # Swagger/OpenAPI relocated under /data/openapi/ so the UI owns /docs.
     expected = {
         "/billing/signup",
         "/billing/webhook",
         "/health",
-        "/docs",
-        "/openapi.json",
+        "/data/openapi/docs",
+        "/data/openapi/redoc",
+        "/data/openapi/openapi.json",
     }
     assert _SKIP_PATHS == expected
 

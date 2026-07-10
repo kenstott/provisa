@@ -1951,7 +1951,15 @@ def create_app() -> FastAPI:
 
     from provisa.api.admin.schema import admin_schema
 
-    app = FastAPI(title="Provisa", lifespan=lifespan)
+    # Swagger/OpenAPI live under /data/openapi/ (not the default /docs) so the UI can
+    # own /docs for its in-app documentation reader.
+    app = FastAPI(
+        title="Provisa",
+        lifespan=lifespan,
+        docs_url="/data/openapi/docs",
+        redoc_url="/data/openapi/redoc",
+        openapi_url="/data/openapi/openapi.json",
+    )
     state.federation_engine.write_config(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml"))
     _setup_otel(app)
 

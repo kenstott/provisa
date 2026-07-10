@@ -37,8 +37,9 @@ _SKIP_PATHS = {
     "/health",
     "/live",
     "/ready",
-    "/docs",
-    "/openapi.json",
+    "/data/openapi/docs",
+    "/data/openapi/redoc",
+    "/data/openapi/openapi.json",
     "/auth/login",
     "/setup/status",
 }

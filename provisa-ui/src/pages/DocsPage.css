@@ -90,6 +90,13 @@
 .docs-content li {
   color: var(--text);
 }
+/* An extra blank line's worth of space between paragraphs. */
+.docs-content p {
+  margin: 0 0 1.4em;
+}
+.docs-content li {
+  margin-bottom: 0.4em;
+}
 .docs-content a {
   color: var(--primary);
   text-decoration: none;

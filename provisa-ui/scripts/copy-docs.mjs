@@ -10,14 +10,15 @@
 //
 // Runs as the `prebuild` npm hook. Output (public/docs/) is git-ignored and regenerated.
 
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync, cpSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const UI_ROOT = join(HERE, "..");
 const REPO_ROOT = join(UI_ROOT, "..");
-const OUT_DIR = join(UI_ROOT, "public", "docs");
+// Served under /guides-md/ (NOT /docs — that path is FastAPI's reserved Swagger UI).
+const OUT_DIR = join(UI_ROOT, "public", "guides-md");
 
 // Curated allowlist — user-facing docs only (no internal/marketing/release material).
 // `repoPath` is used for the live GitHub-raw fallback in the UI.
@@ -57,5 +58,12 @@ for (const doc of DOCS) {
   }
 }
 
+// Bundle the doc images (docs reference docs/images/*.png) so figures render offline.
+// The UI's img renderer maps relative image paths to /guides-md/images/<basename>.
+const IMAGES_SRC = join(REPO_ROOT, "docs", "images");
+if (existsSync(IMAGES_SRC)) {
+  cpSync(IMAGES_SRC, join(OUT_DIR, "images"), { recursive: true });
+}
+
 writeFileSync(join(OUT_DIR, "manifest.json"), JSON.stringify(manifest, null, 2));
-console.log(`[copy-docs] staged ${manifest.length} docs to public/docs/`);
+console.log(`[copy-docs] staged ${manifest.length} docs to public/guides-md/`);

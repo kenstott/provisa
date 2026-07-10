@@ -75,22 +75,29 @@ class TestTenantMiddlewareSkipPaths:
         assert "/health" in _SKIP_PATHS
 
     def test_skip_paths_set_contains_docs(self):
-        # REQ-594
+        # REQ-594 — Swagger relocated under /data/openapi/ so the UI can own /docs
         from provisa.api.middleware.tenant_middleware import _SKIP_PATHS
 
-        assert "/docs" in _SKIP_PATHS
+        assert "/data/openapi/docs" in _SKIP_PATHS
 
     def test_skip_paths_set_contains_openapi_json(self):
         # REQ-594
         from provisa.api.middleware.tenant_middleware import _SKIP_PATHS
 
-        assert "/openapi.json" in _SKIP_PATHS
+        assert "/data/openapi/openapi.json" in _SKIP_PATHS
 
     def test_skip_paths_set_has_exactly_the_required_paths(self):
         # REQ-594
         from provisa.api.middleware.tenant_middleware import _SKIP_PATHS
 
-        expected = {"/billing/signup", "/billing/webhook", "/health", "/docs", "/openapi.json"}
+        expected = {
+            "/billing/signup",
+            "/billing/webhook",
+            "/health",
+            "/data/openapi/docs",
+            "/data/openapi/redoc",
+            "/data/openapi/openapi.json",
+        }
         assert _SKIP_PATHS == expected
 
     @pytest.mark.asyncio
@@ -107,8 +114,8 @@ class TestTenantMiddlewareSkipPaths:
             "/billing/signup",
             "/billing/webhook",
             "/health",
-            "/docs",
-            "/openapi.json",
+            "/data/openapi/docs",
+            "/data/openapi/openapi.json",
         ]:
             request = MagicMock()
             request.url.path = skip_path

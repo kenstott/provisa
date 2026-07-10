@@ -32,9 +32,13 @@ STATIC_DIR = Path(__file__).parent.parent / "static"
 API_BASE_URL = os.environ.get("PROVISA_API_URL", "http://provisa:8000")
 
 # Paths that are always served from static files (never proxied).
+# /guides-md/ holds the bundled in-app documentation markdown (served same-origin so
+# the Docs reader works airgapped). The SPA route /docs is NOT here — it renders the
+# reader; the content lives under /guides-md/.
 _STATIC_PREFIXES = (
     "/assets/",
     "/monacoeditorwork/",
+    "/guides-md/",
     "/favicon",
     "/icon.svg",
     "/icon-192.png",
@@ -43,7 +47,9 @@ _STATIC_PREFIXES = (
     "/site.webmanifest",
 )
 
-app = FastAPI()
+# Disable this proxy app's own Swagger so /docs falls through to the SPA (the API's
+# Swagger lives at /data/openapi/docs, reachable through the proxy).
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 assets_dir = STATIC_DIR / "assets"
 if assets_dir.is_dir():
