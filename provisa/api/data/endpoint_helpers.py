@@ -15,8 +15,6 @@ per-source stats, redirect params, directive merging, and probe-limit
 injection. No dependency on the endpoint route handlers or source executors.
 """
 
-# complexity-gate: allow-ble=1 allow-magic=2 reason="relocated verbatim from endpoint.py; ble is _request_timeout's env-var fallback when app state is absent; magic 5 is the mermaid node-label truncation width in _build_mermaid"
-
 from __future__ import annotations
 
 import json
@@ -43,13 +41,16 @@ import re as _re
 
 
 def _request_timeout() -> float:
+    # App state is absent when this is called before startup wiring (ImportError) or
+    # when state exists without server_limits (AttributeError); both fall back to the
+    # env-var default. Any other failure is a real bug and must propagate.
     try:
         from provisa.api.app import state
 
         return state.server_limits.get(
             "request_timeout", float(_os.environ.get("PROVISA_REQUEST_TIMEOUT", "60"))
         )
-    except Exception:
+    except (ImportError, AttributeError):
         return float(_os.environ.get("PROVISA_REQUEST_TIMEOUT", "60"))
 
 
@@ -223,6 +224,11 @@ def _count_rows_per_source(field_rows: list, ctx) -> dict[str, int]:
     return counts
 
 
+# Hydration under this many milliseconds is treated as an in-process cache hit
+# (rendered "cache hit" rather than a timing) in the execution mermaid diagram.
+_HYDRATION_CACHE_HIT_MS = 5
+
+
 def _build_mermaid(
     sources: set,
     source_types: dict,
@@ -264,12 +270,12 @@ def _build_mermaid(
         nid = _node_id(src_id)
         if src_type == "openapi":
             h_ms = hydration_ms.get(src_id, 0.0)
-            cache_label = "cache hit" if h_ms < 5 else f"{round(h_ms)}ms"
+            cache_label = "cache hit" if h_ms < _HYDRATION_CACHE_HIT_MS else f"{round(h_ms)}ms"
             lines.append(f'    {nid}["{root_field}\\n({src_id})"]')
             lines.append(f'    pg_{nid}["{_cache_label}\\n{root_field}"]')
             lines.append(f'    {nid} -->|"{cache_label}"| pg_{nid}')
             if single:
-                elapsed_label = f"{round(h_ms)}ms" if h_ms >= 5 else ""
+                elapsed_label = f"{round(h_ms)}ms" if h_ms >= _HYDRATION_CACHE_HIT_MS else ""
                 lines.append(f'    result(["{root_field}\\n{result_rows} rows"])')
                 lines.append(
                     f'    pg_{nid} -->|"{elapsed_label}"| result'

@@ -15,7 +15,7 @@ nodes) and drives the redirect/CTAS/inline route paths plus response-cache
 stores. Depends on endpoint_helpers; never calls back into the route handlers.
 """
 
-# complexity-gate: allow-ble=1 reason="relocated verbatim from endpoint.py; blind-except guards a best-effort executor path (per-source stats/cache recording) that must not fail the query"
+# complexity-gate: allow-ble=1 reason="the gRPC-remote cache write (land_api_cache + schedule_drop) is best-effort and non-fatal BY DESIGN: any failure is logged and the query still returns correct results via the inline VALUES-CTE fallback. Landing touches the federation write-face which can fail many ways, none of which should fail the user's query. Mirrors the established convention at materialization.py:275 for the same call."
 
 from __future__ import annotations
 
