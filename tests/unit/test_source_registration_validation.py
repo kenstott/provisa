@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from provisa.api.admin.schema import _add_source_pool
+from provisa.api.admin.schema_common import _add_source_pool
 
 pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
