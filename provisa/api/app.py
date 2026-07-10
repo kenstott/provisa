@@ -10,8 +10,6 @@
 
 """FastAPI app factory with startup hooks for config load and schema generation."""
 
-# complexity-gate: allow-loc=2445 reason="REQ-932 change_signal→freshness derivation in the view→MV loader; file already flagged for extraction, split tracked separately"
-
 # Requirements: REQ-012, REQ-016, REQ-057, REQ-086, REQ-133, REQ-135, REQ-147, REQ-158, REQ-159,
 #               REQ-171, REQ-203, REQ-221, REQ-247, REQ-250, REQ-252, REQ-289, REQ-369, REQ-371,
 #               REQ-510
