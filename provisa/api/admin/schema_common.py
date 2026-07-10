@@ -269,6 +269,15 @@ def _sync_view_mv(
     from provisa.api.app import state
     from provisa.mv.models import MVDefinition, MVStatus
     from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
+    from provisa.mv.determinism import check_view_determinism  # REQ-964
+
+    # REQ-964 (proof obligation 1): an MV's SQL must be deterministic — recompute-to-current
+    # and replay demand it. Reject volatile SQL (now()/random/…) at registration; the engine's
+    # dialect parses the check (None → sqlglot default parse, still catches volatile funcs).
+    dialect = getattr(getattr(state, "engine", None), "dialect", None)
+    ok, reason = check_view_determinism(view_sql, dialect)
+    if not ok:
+        raise ValueError(f"non-deterministic MV {table_name!r}: {reason}")
 
     mv_id = f"view-{table_name}"
     existing = state.mv_registry.get(mv_id)
