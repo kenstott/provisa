@@ -89,6 +89,62 @@ function resolveCompoundOverlaps(cy: CyInstance): void {
   }
 }
 
+// Pass 2 of the two-pass layout: arrange whole-domain boxes to fill the
+// container's aspect ratio instead of letting ELK's single flow axis stack them.
+// Each domain is laid out internally by ELK (pass 1); here each domain box is
+// translated as a rigid group (all children moved by the same delta), so internal
+// table positions and edges are preserved. Uses shelf packing with a target row
+// width derived from total area and the container aspect ratio — so a wide modal
+// yields side-by-side domains, a tall one yields a stack.
+function packDomains(cy: CyInstance, aspectRatio: number): void {
+  type BB = { x1: number; y1: number; x2: number; y2: number; w: number; h: number };
+  const PAD = 60;
+  const domains: Array<{ node: ReturnType<typeof cy.nodes>[number]; bb: BB }> = [];
+  cy.nodes(".erd-domain").forEach((d) => {
+    if ((d.children() as unknown as { empty(): boolean }).empty()) return;
+    const bb = (d as unknown as { boundingBox(o: object): BB }).boundingBox({ includeLabels: true });
+    domains.push({ node: d, bb });
+  });
+  if (domains.length < 2) return;
+
+  // Target row width from total box area and desired aspect ratio, but never
+  // narrower than the widest single domain (which cannot be split).
+  const totalArea = domains.reduce((s, d) => s + d.bb.w * d.bb.h, 0);
+  const widest = Math.max(...domains.map((d) => d.bb.w));
+  const targetW = Math.max(Math.sqrt(totalArea * aspectRatio), widest);
+
+  // Shelf packing: tallest-first, greedily fill rows until the next box would
+  // exceed targetW, then wrap to a new row.
+  const ordered = [...domains].sort((a, b) => b.bb.h - a.bb.h);
+  let cursorX = 0, cursorY = 0, rowH = 0;
+  const placements = new Map<string, { x: number; y: number }>();
+  for (const d of ordered) {
+    if (cursorX > 0 && cursorX + d.bb.w > targetW) {
+      cursorX = 0;
+      cursorY += rowH + PAD;
+      rowH = 0;
+    }
+    placements.set((d.node as { id(): string }).id(), { x: cursorX, y: cursorY });
+    cursorX += d.bb.w + PAD;
+    rowH = Math.max(rowH, d.bb.h);
+  }
+
+  // Translate each domain's children so its bbox top-left lands on the placement.
+  cy.batch(() => {
+    for (const d of domains) {
+      const target = placements.get((d.node as { id(): string }).id());
+      if (!target) continue;
+      const dx = target.x - d.bb.x1;
+      const dy = target.y - d.bb.y1;
+      if (dx === 0 && dy === 0) continue;
+      d.node.children().forEach((child) => {
+        const p = (child as { position(): Pt }).position();
+        (child as { position(p: Pt): void }).position({ x: p.x + dx, y: p.y + dy });
+      });
+    }
+  });
+}
+
 // Phase 2: place isolated nodes (no cross-domain edges) in a compact grid
 // below each domain's post-layout bounding box. domainBboxes must be computed
 // BEFORE isolated nodes are shown (while only connected nodes are visible),
@@ -593,6 +649,13 @@ export function ErdModal({ tables, relationships, domains, activeDomain, onClose
           (cy.getElementById(id) as unknown as { style(k: string, v: string): void }).style("display", "none");
         });
       }
+
+      // Pack domain boxes to the container aspect ratio (side-by-side vs stacked)
+      // now that each domain's full extent — connected nodes + orphan grid — is
+      // known. resolveCompoundOverlaps below is a safety net; packing already
+      // separates boxes.
+      const crect = containerRef.current?.getBoundingClientRect();
+      if (crect && crect.height > 0) packDomains(cy, crect.width / crect.height);
 
       // Resolve compound overlaps AFTER orphans are shown so compound bboxes
       // include the full orphan grid area (hidden nodes are excluded from bbox).
