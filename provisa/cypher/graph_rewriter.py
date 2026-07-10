@@ -24,7 +24,7 @@ from typing import cast
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.translator import GraphVarKind
+from provisa.cypher.translator_types import GraphVarKind
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping
 
 

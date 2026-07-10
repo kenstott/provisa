@@ -15,7 +15,7 @@ import sqlglot.expressions as exp
 
 from provisa.cypher.graph_rewriter import apply_graph_rewrites
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping
-from provisa.cypher.translator import GraphVarKind
+from provisa.cypher.translator_types import GraphVarKind
 
 
 def _make_domain_label_map() -> CypherLabelMap:

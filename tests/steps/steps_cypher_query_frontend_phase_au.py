@@ -102,7 +102,8 @@ from provisa.cypher.label_map import (
     NodeMapping,
     RelationshipMapping,
 )
-from provisa.cypher.translator import cypher_to_sql, GraphVarKind
+from provisa.cypher.translator import cypher_to_sql
+from provisa.cypher.translator_types import GraphVarKind
 from provisa.cypher.graph_rewriter import apply_graph_rewrites
 from provisa.cypher.assembler import (
     Node,
@@ -2372,6 +2373,26 @@ def then_typed_response_shape(shared_data: dict) -> None:
 #
 # scenarios("../features/REQ-752.feature") is also already registered above.
 # Nothing new to append.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
+
+
+# All steps for REQ-752 are already implemented in the existing file.
+# No new definitions are required.
 
 
 # All steps for REQ-752 are already implemented in the existing file.

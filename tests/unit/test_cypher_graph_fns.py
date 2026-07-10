@@ -15,7 +15,8 @@ import json
 from provisa.cypher.assembler import Node, assemble_rows
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.translator import GraphVarKind, cypher_to_sql
+from provisa.cypher.translator import cypher_to_sql
+from provisa.cypher.translator_types import GraphVarKind
 
 
 def _make_lm() -> CypherLabelMap:

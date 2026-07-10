@@ -25,7 +25,7 @@ from typing import Any
 from sqlalchemy import select
 
 from provisa.core.schema_org import node_ids, rel_ids
-from provisa.cypher.translator import GraphVarKind
+from provisa.cypher.translator_types import GraphVarKind
 
 
 class CypherAssemblyError(Exception):

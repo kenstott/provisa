@@ -22,7 +22,7 @@ from provisa.cypher.assembler import (
     assemble_rows,
     to_serializable,
 )
-from provisa.cypher.translator import GraphVarKind
+from provisa.cypher.translator_types import GraphVarKind
 
 
 # ---------------------------------------------------------------------------

@@ -192,7 +192,7 @@ def test_graph_vars_populated_for_node_return():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) RETURN n")
     sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
-    from provisa.cypher.translator import GraphVarKind
+    from provisa.cypher.translator_types import GraphVarKind
 
     assert "n" in graph_vars
     assert graph_vars["n"] == GraphVarKind.NODE
@@ -794,7 +794,7 @@ def test_allshortestpaths_same_result_as_shortestpath():
 
 def test_shortestpath_no_path_raises():
     lm = _make_label_map()
-    from provisa.cypher.translator import CypherTranslateError
+    from provisa.cypher.translator_types import CypherTranslateError
 
     ast = parse_cypher("MATCH p = shortestPath((a:Company)-[*..5]->(b:Company)) RETURN a.name")
     with pytest.raises(CypherTranslateError, match="No schema path"):
@@ -854,7 +854,7 @@ def test_fully_unlabeled_match_produces_all_rels_union():
     ast = parse_cypher("MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 50")
     sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    from provisa.cypher.translator import GraphVarKind
+    from provisa.cypher.translator_types import GraphVarKind
 
     assert graph_vars.get("n") == GraphVarKind.PASSTHROUGH
     assert graph_vars.get("r") == GraphVarKind.PASSTHROUGH
@@ -955,7 +955,7 @@ def test_anonymous_nodes_relationship_return_r():
     ast = parse_cypher("MATCH ()-[r:WORKS_AT]->() RETURN r LIMIT 25")
     sql_ast, cols, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    from provisa.cypher.translator import GraphVarKind
+    from provisa.cypher.translator_types import GraphVarKind
 
     assert graph_vars.get("r") == GraphVarKind.EDGE
     assert "persons" in sql.lower()
@@ -1471,7 +1471,7 @@ def _make_cross_domain_label_map() -> CypherLabelMap:
 
 def test_traversal_only_node_as_start_raises():
     """Starting a MATCH on a traversal_only (cross-domain) node must raise CypherTranslateError."""
-    from provisa.cypher.translator import CypherTranslateError
+    from provisa.cypher.translator_types import CypherTranslateError
 
     lm = _make_cross_domain_label_map()
     ast = parse_cypher("MATCH (s:Logistics:Shipments) RETURN s.status")

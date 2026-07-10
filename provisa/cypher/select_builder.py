@@ -27,7 +27,7 @@ from provisa.cypher.parser import ReturnClause
 # Requirements: REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
 
 if TYPE_CHECKING:
-    from provisa.cypher.translator import GraphVarKind
+    from provisa.cypher.translator_types import GraphVarKind
 
 
 def _is_bare_variable(text: str) -> bool:
@@ -568,7 +568,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         )
 
     def _build_select(self, return_clause: ReturnClause) -> list[exp.Expr]:
-        from provisa.cypher.translator import GraphVarKind  # avoid circular at module level
+        from provisa.cypher.translator_types import GraphVarKind  # avoid circular at module level
 
         exprs: list[exp.Expr] = []
         passthrough_vars = getattr(self, "_passthrough_vars", set())

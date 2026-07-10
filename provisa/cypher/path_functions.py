@@ -149,7 +149,9 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
 
     def _translate_path_function(self, clause: MatchClause) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Entry point: route to flat-JOIN or recursive-CTE path."""
-        from provisa.cypher.translator import CypherTranslateError  # avoid circular at module level
+        from provisa.cypher.translator_types import (
+            CypherTranslateError,
+        )  # avoid circular at module level
 
         pf: PathFunction = clause.pattern  # type: ignore[assignment]
         src_node, tgt_node, rel = _extract_path_nodes(pf, CypherTranslateError)

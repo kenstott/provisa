@@ -230,7 +230,7 @@ def _build_sql_from_ast(
     try:
         sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, body.params)
     except Exception as exc:
-        from provisa.cypher.translator import CypherCrossSourceError, CypherTranslateError
+        from provisa.cypher.translator_types import CypherCrossSourceError, CypherTranslateError
 
         if isinstance(exc, (CypherCrossSourceError, CypherTranslateError)):
             return JSONResponse(status_code=400, content={"error": str(exc)})
