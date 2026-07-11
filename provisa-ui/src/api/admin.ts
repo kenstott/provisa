@@ -148,8 +148,12 @@ export async function deleteOrgRole(orgId: string, roleId: string): Promise<void
 
 export async function profileTable(
   tableId: number,
+  role: string,
 ): Promise<{ columns: string[]; rows: Record<string, unknown>[]; rowCount: number }> {
-  const resp = await fetch(`${API_BASE}/admin/tables/${tableId}/profile`, { method: "POST" });
+  const resp = await fetch(`${API_BASE}/admin/tables/${tableId}/profile`, {
+    method: "POST",
+    headers: { "X-Provisa-Role": role },
+  });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error(body.detail || resp.statusText);

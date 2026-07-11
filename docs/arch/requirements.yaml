@@ -28280,24 +28280,28 @@
   priority: MUST
   type: behavioral
   description: >-
-    Databricks SQL warehouse must be supported as a first-class Provisa federation engine with Arrow-native transport capabilities, enabling direct federation without routing through Trino and exposing Arrow columnar data streaming through the Provisa Arrow Flight server.
+    Databricks SQL warehouse must be supported as a first-class Provisa federation engine with Arrow-native transport capabilities for both READ and WRITE paths. Read-side: Arrow columnar data streaming through the Provisa Arrow Flight server via execute_arrow/execute_stream. Write-side: materialization-store landing, residency reconciliation, and CDC snapshot seed must use Arrow-native columnar bulk writes (via ADBC adbc_ingest() or Parquet -> cloud object stage -> COPY INTO / Delta register), never row-oriented INSERT. End-to-end columnar path avoids row materialization overhead in Python and enables Databricks' distributed ingest parallelization. Row INSERT acceptable only for tiny writes where per-file staging overhead dominates.
   use_case: >-
-    Organizations using Databricks SQL warehouses require direct federation capability to Provisa without intermediary routing through Trino. Arrow-native transport avoids row materialization overhead and matches Trino's architecture for efficient federated query execution over Databricks.
+    Organizations using Databricks SQL warehouses require direct federation capability to Provisa without intermediary routing through Trino. Arrow-native transport for both read and write paths avoids row materialization overhead and matches Trino's architecture for efficient federated query execution over Databricks. Materialized views and landed federation outputs must remain columnar end-to-end, enabling downstream queries to execute at warehouse speed.
   code:
     - provisa/federation/engine.py
     - provisa/federation/backend.py
+    - provisa/federation/store_writer.py
     - provisa/api/flight/server.py
     - provisa/transpiler/transpile.py
   target: "2026-Q4"
   e2e: true
   e2e_reason: >-
-    Arrow Flight transport behavior and Databricks SQL query execution are only verifiable through a full round-trip to the Arrow Flight endpoint with actual Databricks SQL warehouse queries.
+    Arrow Flight transport behavior, Databricks SQL query execution, and write-path columnar ingestion are only verifiable through full round-trip testing with actual Databricks SQL warehouse (read endpoint and object staging).
+  validation_notes: >-
+    Databricks live-tested successfully on Serverless SQL Warehouse with ARROW_STREAM via Cloud Fetch EXTERNAL_LINKS, parsed by pyarrow. Python databricks-sql-connector / urllib fail on TLS in dev environment due to TLS-intercepting proxy; CA cert is in macOS keychain (curl trusts it) but not in certifi. Workaround: point REQUESTS_CA_BUNDLE / SSL_CERT_FILE at bundle including proxy CA. This is an environment configuration detail, not a Databricks platform limitation.
   competitive_position:
     status: parity
     rationale: >-
-      Trino natively connects to Databricks as a source. Provisa with Databricks as a first-class federation engine (like Trino, ClickHouse, DuckDB) achieves parity with Trino's federation reach and enables customers to develop on DuckDB locally while scaling to Databricks warehouses in production.
+      Trino natively connects to Databricks as a source. Provisa with Databricks as a first-class federation engine (like Trino, ClickHouse, DuckDB) achieves parity with Trino's federation reach and enables customers to develop on DuckDB locally while scaling to Databricks warehouses in production. Columnar write path via ADBC/Parquet matches best practice (avoids Python row materialization).
   related_reqs:
     - REQ-986
+    - REQ-988
 - id: REQ-988
   status: proposed
   target: 2026-Q4

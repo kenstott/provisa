@@ -81,7 +81,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [sortCol, setSortCol] = useState<"source" | "domain" | "table" | "cols" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { checkedDomains, domainsEnabled } = useDomainFilter();
-  const { domainAccess } = useAuth();
+  const { domainAccess, role: activeRole } = useAuth();
 
   // Per-table profile state: tableId → profile result or "loading"
   const [tableProfiles, setTableProfiles] = useState<
@@ -237,9 +237,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   };
 
   const handleProfile = async (tableId: number) => {
+    if (!activeRole) {
+      setTableProfiles((prev) => ({ ...prev, [tableId]: "No active role" }));
+      return;
+    }
     setTableProfiles((prev) => ({ ...prev, [tableId]: "loading" }));
     try {
-      const result = await profileTable(tableId);
+      const result = await profileTable(tableId, activeRole.id);
       setTableProfiles((prev) => ({ ...prev, [tableId]: result }));
     } catch (e) {
       setTableProfiles((prev) => ({
