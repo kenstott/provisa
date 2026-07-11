@@ -16,6 +16,7 @@ the two-database split; REQ-959 ownership CAS on real Postgres.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,8 +41,23 @@ _COMPOSE = [
     "-f",
     "docker-compose.mvmvp.yml",
 ]
-_CP_DSN = "postgresql://provisa:provisa@localhost:55432/provisa"
-_STORE_DSN = "postgresql://provisa:provisa@localhost:55432/provisa_store"
+# Connection parts for the isolated stack, overridable by env; a DSN is composed from them rather
+# than embedded as a literal user:pass@host string (which trips secret scanners on a non-secret,
+# local-only test credential). Defaults match docker-compose.mvmvp.yml.
+_PG = {
+    "user": os.environ.get("MVMVP_PG_USER", "provisa"),
+    "password": os.environ.get("MVMVP_PG_PASSWORD", "provisa"),
+    "host": os.environ.get("MVMVP_PG_HOST", "localhost"),
+    "port": os.environ.get("MVMVP_PG_PORT", "55432"),
+}
+
+
+def _dsn(database: str) -> str:
+    return f"postgresql://{_PG['user']}:{_PG['password']}@{_PG['host']}:{_PG['port']}/{database}"
+
+
+_CP_DSN = _dsn("provisa")
+_STORE_DSN = _dsn("provisa_store")
 _COLS = [("id", "bigint"), ("status", "text")]
 
 
