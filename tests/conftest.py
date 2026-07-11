@@ -99,6 +99,10 @@ def _allocate_itest_ports() -> None:
         os.environ[name] = str(port)
     os.environ["REDIS_URL"] = f"redis://localhost:{os.environ['REDIS_PORT']}/0"
     os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://localhost:{os.environ['MINIO_PORT']}"
+    # Host-side kafka clients read these; point them at the isolated broker's port.
+    _kafka = f"localhost:{os.environ['KAFKA_HOST_PORT']}"
+    os.environ["KAFKA_BOOTSTRAP"] = _kafka
+    os.environ["KAFKA_BOOTSTRAP_SERVERS"] = _kafka
 
 
 class _DockerServiceManager:
