@@ -8,12 +8,13 @@
 // affected in an `affected_rows` field of the JSON response body.
 
 import { test, expect } from "./coverage";
+import type { APIRequestContext } from "playwright/test";
 
 const BASE = "http://localhost:8000/data/cypher";
 const HEADERS = { "Content-Type": "application/json", "x-provisa-role": "admin" };
 const ID = 99981; // sentinel id, cleaned up by the DELETE step
 
-async function cypher(request: any, query: string) {
+async function cypher(request: APIRequestContext, query: string) {
   return request.post(BASE, { data: { query }, headers: HEADERS });
 }
 

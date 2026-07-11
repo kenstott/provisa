@@ -63,6 +63,7 @@ export function DocsPage() {
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets loading/error/content before async doc fetch; loading depends on in-flight async result and cannot be derived during render
     setLoading(true);
     setError(null);
     setContent("");

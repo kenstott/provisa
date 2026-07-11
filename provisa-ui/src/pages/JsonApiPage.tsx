@@ -15,6 +15,30 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useDomains, useTables } from "../hooks/useAdminQueries";
 import "./JsonApiPage.css";
 
+interface JsonApiRelationshipRef {
+  type: string;
+  id: string;
+}
+
+interface JsonApiRelationship {
+  data?: JsonApiRelationshipRef | JsonApiRelationshipRef[] | null;
+}
+
+interface JsonApiResource {
+  type: string;
+  id?: string;
+  attributes?: Record<string, unknown>;
+  relationships?: Record<string, JsonApiRelationship>;
+}
+
+interface JsonApiDocument {
+  data?: JsonApiResource | JsonApiResource[];
+  included?: JsonApiResource[];
+  meta?: Record<string, unknown>;
+  links?: Record<string, string | null>;
+  errors?: Array<{ detail?: string }>;
+}
+
 function toGqlName(col: { columnName: string; alias?: string | null }): string {
   if (col.alias) return col.alias;
   return col.columnName.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
@@ -27,9 +51,9 @@ interface PaginationLinks {
   last: string | null;
 }
 
-function ResourceCard({ item, i, includedSet }: { item: any; i: number; includedSet?: Set<string> }) {
+function ResourceCard({ item, i, includedSet }: { item: JsonApiResource; i: number; includedSet?: Set<string> }) {
   const rels = item.relationships
-    ? Object.entries(item.relationships as Record<string, any>)
+    ? Object.entries(item.relationships)
     : [];
   return (
     <div id={`res-${item.type}-${item.id ?? i}`} className="jsonapi-resource-card">
@@ -40,10 +64,10 @@ function ResourceCard({ item, i, includedSet }: { item: any; i: number; included
           <span className="jsonapi-rel-links">
             {rels.map(([relName, relData]) => {
               const ref = relData?.data;
-              const refs: any[] = Array.isArray(ref) ? ref : ref ? [ref] : [];
+              const refs: JsonApiRelationshipRef[] = Array.isArray(ref) ? ref : ref ? [ref] : [];
               return refs
-                .filter((r: any) => !includedSet || includedSet.has(`${r.type}::${r.id}`))
-                .map((r: any) => (
+                .filter((r: JsonApiRelationshipRef) => !includedSet || includedSet.has(`${r.type}::${r.id}`))
+                .map((r: JsonApiRelationshipRef) => (
                   <a
                     key={`${relName}-${r.id}`}
                     className="jsonapi-rel-link"
@@ -83,26 +107,26 @@ function ResourceCard({ item, i, includedSet }: { item: any; i: number; included
   );
 }
 
-function SummaryView({ doc }: { doc: any }) {
-  const items: any[] = Array.isArray(doc.data)
+function SummaryView({ doc }: { doc: JsonApiDocument }) {
+  const items: JsonApiResource[] = Array.isArray(doc.data)
     ? doc.data
     : doc.data
       ? [doc.data]
       : [];
-  const included: any[] = Array.isArray(doc.included) ? doc.included : [];
-  const includedSet = new Set<string>(included.map((r: any) => `${r.type}::${r.id}`));
+  const included: JsonApiResource[] = Array.isArray(doc.included) ? doc.included : [];
+  const includedSet = new Set<string>(included.map((r) => `${r.type}::${r.id}`));
   if (items.length === 0) {
     return <div className="jsonapi-summary-empty">No results</div>;
   }
   return (
     <div className="jsonapi-summary">
-      {items.map((item: any, i: number) => (
+      {items.map((item, i) => (
         <ResourceCard key={`${item.type}-${item.id ?? i}`} item={item} i={i} includedSet={includedSet} />
       ))}
       {included.length > 0 && (
         <>
           <div className="jsonapi-included-divider">Included</div>
-          {included.map((item: any, i: number) => (
+          {included.map((item, i) => (
             <ResourceCard key={`inc-${item.type}-${item.id ?? i}`} item={item} i={i} />
           ))}
         </>
@@ -159,7 +183,7 @@ export function JsonApiPage() {
   const [sortField, setSortField] = useState<string>("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [pageSize, setPageSize] = useState<string>(savedSettings.pageSize ?? "20");
-  const [parsedDoc, setParsedDoc] = useState<any>(null);
+  const [parsedDoc, setParsedDoc] = useState<JsonApiDocument | null>(null);
   const [activeUrl, setActiveUrl] = useState<string>("");
   const [viewTab, setViewTab] = useState<"summary" | "raw">("summary");
   const [running, setRunning] = useState(false);
@@ -198,6 +222,10 @@ export function JsonApiPage() {
     [filteredTables, selectedDomainId, selectedTableName],
   );
 
+  // Derived: "" when selectedTable is no longer present in filteredTables, avoiding a
+  // setState-in-effect to reset it. tableObj encodes the "found in filtered list" check.
+  const effectiveSelectedTable = selectedTable && tableObj ? selectedTable : "";
+
   const columnNames = useMemo(
     () => tableObj?.columns.map(toGqlName) ?? [],
     [tableObj],
@@ -224,7 +252,7 @@ export function JsonApiPage() {
     if (!parsedDoc) return null;
     const total = parsedDoc.meta?.total as number | undefined;
     const count = Array.isArray(parsedDoc.data)
-      ? (parsedDoc.data as any[]).length
+      ? parsedDoc.data.length
       : parsedDoc.data ? 1 : 0;
     let rangeStart: number | undefined;
     let rangeEnd: number | undefined;
@@ -239,20 +267,9 @@ export function JsonApiPage() {
     return { total, count, rangeStart, rangeEnd };
   }, [parsedDoc, activeUrl]);
 
-  // Reset selected table if no longer in filtered list
-  useEffect(() => {
-    if (
-      selectedTable &&
-      !filteredTables.find(
-        (t) => t.domainId === selectedDomainId && t.tableName === selectedTableName,
-      )
-    ) {
-      setSelectedTable("");
-    }
-  }, [filteredTables, selectedTable, selectedDomainId, selectedTableName]);
-
   // When table changes, reset all dependent state
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- cascade reset of per-table interactive state (checked fields, filters, sort, results) when selected table changes; these are user-controlled inputs that cannot be derived from render
     setCheckedFields(new Set());
     setCheckedIncludes(new Set());
     setFilterField("");
@@ -273,6 +290,7 @@ export function JsonApiPage() {
     );
     if (!match) return;
     navInitDoneRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initializes table selection from navigation URL state after async tables list load; cannot synchronize before tables are available
     setSelectedTable(`${match.domainId}/${match.tableName}`);
     setPageSize(parsedNav.pageSize);
   }, [tables, parsedNav]);
@@ -285,6 +303,7 @@ export function JsonApiPage() {
     restoreDoneRef.current = true;
     const saved = savedSettings.selectedTable;
     if (saved && tables.find((t) => `${t.domainId}/${t.tableName}` === saved)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restores persisted table selection after async tables list load; cannot initialize synchronously before tables are available
       setSelectedTable(saved);
     }
   }, [tables, parsedNav, savedSettings]);
@@ -328,7 +347,7 @@ export function JsonApiPage() {
   );
 
   const url = useMemo(() => {
-    if (!selectedTable || !selectedDomainId || !selectedTableName) return "";
+    if (!effectiveSelectedTable || !selectedDomainId || !selectedTableName) return "";
     const params = new URLSearchParams();
     if (roleId) params.set("role", roleId);
     if (filterField && filterValue) {
@@ -346,7 +365,7 @@ export function JsonApiPage() {
     if (includeParam) params.set("include", includeParam);
     const qs = params.toString();
     return `/data/jsonapi/${selectedDomainId}/${selectedTableName}${qs ? "?" + qs : ""}`;
-  }, [selectedTable, selectedDomainId, selectedTableName, roleId, filterField, filterOp, filterValue, sortField, sortDir, pageSize, sparseFieldsParam, includeParam]);
+  }, [effectiveSelectedTable, selectedDomainId, selectedTableName, roleId, filterField, filterOp, filterValue, sortField, sortDir, pageSize, sparseFieldsParam, includeParam]);
 
   const specUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -387,6 +406,7 @@ export function JsonApiPage() {
     if (!navAutoRun || !parsedNav || !navInitDoneRef.current || navAutoRunDoneRef.current) return;
     if (!url) return;
     navAutoRunDoneRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async fetch for auto-run-on-navigation; setState occurs inside fetchUrl's promise chain, not synchronously in the effect body
     void fetchUrl(url);
   }, [navAutoRun, parsedNav, url, fetchUrl]);
 
@@ -428,7 +448,7 @@ export function JsonApiPage() {
           <label className="jsonapi-label">Table</label>
           <select
             className="jsonapi-select"
-            value={selectedTable}
+            value={effectiveSelectedTable}
             onChange={(e) => setSelectedTable(e.target.value)}
             disabled={loading}
           >
@@ -610,7 +630,7 @@ export function JsonApiPage() {
           <button
             className="jsonapi-run-btn"
             onClick={handleRun}
-            disabled={running || !selectedTable}
+            disabled={running || !effectiveSelectedTable}
           >
             {running ? "Running…" : "▶ Execute"}
           </button>

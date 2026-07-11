@@ -79,7 +79,6 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
         setCheckedDomains(restoreChecked(ds));
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
   function toggleDomain(id: string) {

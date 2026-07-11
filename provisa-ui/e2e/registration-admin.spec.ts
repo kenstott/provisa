@@ -46,7 +46,7 @@ test.describe('Source Registration & Admin Endpoints', () => {
     expect(json.data).toBeDefined();
     expect(json.data.__schema).toBeDefined();
 
-    const typeNames = json.data.__schema.types.map((t: any) => t.name);
+    const typeNames = json.data.__schema.types.map((t: { name: string }) => t.name);
     expect(Array.isArray(typeNames)).toBe(true);
   });
 
@@ -107,7 +107,7 @@ test.describe('Source Registration & Admin Endpoints', () => {
     expect(json.data).toBeDefined();
     expect(Array.isArray(json.data.sources)).toBe(true);
     // Filter graphql-remote sources client-side
-    const gqlSources = json.data.sources.filter((s: any) => s.type === 'graphql_remote');
+    const gqlSources = json.data.sources.filter((s: { type: string }) => s.type === 'graphql_remote');
     expect(Array.isArray(gqlSources)).toBe(true);
   });
 
@@ -131,7 +131,7 @@ test.describe('Source Registration & Admin Endpoints', () => {
     expect(json.data).toBeDefined();
     expect(Array.isArray(json.data.sources)).toBe(true);
     // Filter openapi sources client-side
-    const openapiSources = json.data.sources.filter((s: any) => s.type === 'openapi');
+    const openapiSources = json.data.sources.filter((s: { type: string }) => s.type === 'openapi');
     expect(Array.isArray(openapiSources)).toBe(true);
   });
 
@@ -155,7 +155,7 @@ test.describe('Source Registration & Admin Endpoints', () => {
     expect(json.data).toBeDefined();
     expect(Array.isArray(json.data.sources)).toBe(true);
     // Filter grpc-remote sources client-side
-    const grpcSources = json.data.sources.filter((s: any) => s.type === 'grpc_remote');
+    const grpcSources = json.data.sources.filter((s: { type: string }) => s.type === 'grpc_remote');
     expect(Array.isArray(grpcSources)).toBe(true);
   });
 
@@ -259,7 +259,7 @@ test.describe('Source Registration & Admin Endpoints', () => {
     const json = await response.json();
     expect(json.data).toBeDefined();
     expect(Array.isArray(json.data.sources)).toBe(true);
-    const sourcesWithDomains = json.data.sources.filter((s: any) => s.allowedDomains && s.allowedDomains.length > 0);
+    const sourcesWithDomains = json.data.sources.filter((s: { allowedDomains?: unknown[] }) => s.allowedDomains && s.allowedDomains.length > 0);
     if (sourcesWithDomains.length > 0) {
       expect(Array.isArray(sourcesWithDomains[0].allowedDomains)).toBe(true);
     }

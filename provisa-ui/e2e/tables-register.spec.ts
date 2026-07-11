@@ -36,9 +36,6 @@ test("sqlite schema dropdown shows 'main' not PG internal schemas", async ({ pag
   // returned internal PG schemas like "pet_store", "analytics".
   await page.waitForFunction(
     () => {
-      const sel = document.querySelector<HTMLSelectElement>(
-        "label select",
-      );
       // find the schema select — third <select> in the form
       const selects = Array.from(document.querySelectorAll<HTMLSelectElement>(".form-card select"));
       const schemaEl = selects[2];

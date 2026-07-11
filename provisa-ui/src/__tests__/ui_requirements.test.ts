@@ -5,7 +5,7 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
   clusterColor,
@@ -168,7 +168,6 @@ describe('REQ-243-245: CommandsPage source file contains form markers', () => {
   it('REQ-243: CommandsPage.tsx file is non-empty', () => {
     const file = resolve(SRC, 'pages/CommandsPage.tsx');
     expect(existsSync(file)).toBe(true);
-    const { readFileSync } = require('fs');
     const content: string = readFileSync(file, 'utf-8');
     expect(content.length).toBeGreaterThan(0);
   });

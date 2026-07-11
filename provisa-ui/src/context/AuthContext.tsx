@@ -149,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     init().finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount to bootstrap auth state
   }, []);
 
   const availableDomains = useMemo(() => {

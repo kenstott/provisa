@@ -223,7 +223,7 @@ test("REQ-642: POST /data/graph-analytics returns nodes with _analytics field", 
 
     if (body.nodes.length > 0) {
       // Each node should have _analytics dict
-      body.nodes.forEach((node: any) => {
+      body.nodes.forEach((node: Record<string, unknown>) => {
         expect(node).toHaveProperty("_analytics");
         expect(typeof node._analytics).toBe("object");
       });

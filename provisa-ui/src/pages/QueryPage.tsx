@@ -512,7 +512,7 @@ function AutoRunFromNav({ query }: { query: string }) {
     queryEditor.setValue(query);
     const t = setTimeout(() => run(), 100);
     return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when queryEditor becomes available (guarded by didRun); other deps must not re-trigger
   }, [queryEditor]);
   return null;
 }

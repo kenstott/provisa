@@ -15,6 +15,7 @@ export const test = base.extend({
     page.on("console", (msg) => {
       if (msg.type() === "error") errors.push(msg.text());
     });
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- `use` here is the Playwright fixture callback, not a React hook
     await use(page);
     expect(errors, `Uncaught browser errors: ${errors.join("; ")}`).toHaveLength(0);
   },

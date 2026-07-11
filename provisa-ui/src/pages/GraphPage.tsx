@@ -254,7 +254,7 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
         } catch { /* quota */ }
       })
       .catch(() => {});
-    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+    /* eslint-disable-next-line react-hooks/exhaustive-deps -- refetch counts only on the listed schema/role/domain inputs; other referenced setters are stable */
   }, [schemaNodeLabels, schemaRels, role?.id, checkedDomains]);
 
 
@@ -488,7 +488,7 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
             : `'${v.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
           return `${varName}._nf_${name} = ${lit}`;
         }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pure string builder with no reactive deps; memoized once
     [],
   );
 

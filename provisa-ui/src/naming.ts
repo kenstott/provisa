@@ -17,7 +17,7 @@
 
 /** Mirror of Python _pascal(): uppercase first letter of each word segment. */
 export function toPascal(s: string): string {
-  const parts = s.split(/[_\-]+/).filter(Boolean);
+  const parts = s.split(/[_-]+/).filter(Boolean);
   if (parts.length === 1) return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s;
   return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("");
 }

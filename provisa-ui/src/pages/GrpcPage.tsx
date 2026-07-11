@@ -126,6 +126,7 @@ export function GrpcPage() {
     if (prevOpTypeRef.current === opType && selectedMethod?.operation === opType) return;
     prevOpTypeRef.current = opType;
     const first = parsed.methods.find((m) => m.operation === opType);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-selects first method when opType/parsed changes; cannot be derived during render because selectedMethod also has user-driven updates via handleMethodChange
     if (first) selectMethod(first, parsed);
     else { setSelectedMethod(null); setMessageText(""); }
   }, [opType, parsed, selectMethod, selectedMethod]);
@@ -152,6 +153,7 @@ export function GrpcPage() {
       if (initial) {
         setOpType(initial.operation);
         selectMethod(initial, p);
+        // eslint-disable-next-line react-hooks/immutability -- one-shot guard written after async fetch resolves; read occurs in a separate effect that guards against re-auto-selection
         if (navM) navSelectDoneRef.current = true;
       }
       setParsed(p);
@@ -161,6 +163,7 @@ export function GrpcPage() {
   }, [navMethod, selectMethod]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async proto fetch; all setState calls occur inside the async callback, not synchronously in the effect body
     if (roleId) void fetchProto(roleId, domainsParam);
   }, [roleId, domainsParam, fetchProto]);
 
