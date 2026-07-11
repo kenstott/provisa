@@ -70,6 +70,7 @@ class IsolatedServer:
         *,
         engine: str = "trino",
         await_flight: bool = False,
+        await_grpc: bool = False,
         enable_bolt: bool = False,
         enable_pgwire: bool = False,
         config: str = "config/provisa.yaml",
@@ -79,6 +80,7 @@ class IsolatedServer:
         self.org_id = org_id
         self._engine = engine
         self._await_flight = await_flight
+        self._await_grpc = await_grpc
         self._enable_bolt = enable_bolt
         self._enable_pgwire = enable_pgwire
         self._config = config
@@ -88,7 +90,7 @@ class IsolatedServer:
         self.flight_port = free_port()
         self.bolt_port = free_port() if enable_bolt else 0
         self.pgwire_port = free_port() if enable_pgwire else 0
-        self._grpc_port = free_port()
+        self.grpc_port = free_port()
         self._proc: subprocess.Popen | None = None
         self._cfg_path: str | None = None
         self._tmpdir: tempfile.TemporaryDirectory | None = None
@@ -138,7 +140,7 @@ class IsolatedServer:
             "PROVISA_IDP": "",
             "PG_PASSWORD": os.environ.get("PG_PASSWORD", "provisa"),
             "FLIGHT_PORT": str(self.flight_port),
-            "GRPC_PORT": str(self._grpc_port),
+            "GRPC_PORT": str(self.grpc_port),
             "PROVISA_PGWIRE_PORT": str(self.pgwire_port),
             "PROVISA_BOLT_PORT": str(self.bolt_port),
             "OTEL_SDK_DISABLED": "true",
@@ -183,6 +185,8 @@ class IsolatedServer:
             self._await_port(self.bolt_port, deadline, "Bolt")
         if self._enable_pgwire:
             self._await_port(self.pgwire_port, deadline, "pgwire")
+        if self._await_grpc:
+            self._await_port(self.grpc_port, deadline, "gRPC")
 
     def _await_port(self, port: int, deadline: float, label: str) -> None:
         while time.monotonic() < deadline:

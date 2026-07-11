@@ -27,7 +27,9 @@ Adding a transport = one TransportAdapter. Today: REST /data/sql (SQL over HTTP)
 pgwire (SQL over the Postgres wire), Bolt (Cypher over the Bolt wire), and Arrow
 Flight (SQL over the app's OWN governed Flight server — a JSON ticket carrying the
 query + role, run through the governed pipeline; NOT the Zaychik/raw-Trino Flight
-SQL client, which is ungoverned). gRPC and GraphQL are the next adapters.
+SQL client, which is ungoverned), and gRPC (a per-config generated proto, so the
+client discovers the service + orders RPC by reflection and passes the role in
+x-provisa-role metadata). GraphQL over HTTP is the remaining adapter.
 """
 
 from __future__ import annotations
@@ -173,6 +175,54 @@ class FlightAdapter(TransportAdapter):
         return cols, rows
 
 
+class GrpcAdapter(TransportAdapter):
+    name = "grpc"
+
+    def __init__(self, server: IsolatedServer) -> None:
+        self._target = f"127.0.0.1:{server.grpc_port}"
+
+    def read(self, role, columns):
+        import grpc
+        from google.protobuf.descriptor_pool import DescriptorPool
+        from google.protobuf.message_factory import GetMessageClass
+        from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (
+            ProtoReflectionDescriptorDatabase,
+        )
+
+        wanted = _cols(columns)
+        channel = grpc.insecure_channel(self._target)
+        try:
+            # The proto is generated per-config, so discover the service + the orders
+            # server-streaming RPC dynamically via reflection rather than shipping stubs.
+            db = ProtoReflectionDescriptorDatabase(channel)
+            pool = DescriptorPool(db)
+            svc_name = next(s for s in db.get_services() if s.endswith("Service"))
+            svc = pool.FindServiceByName(svc_name)
+            method = next(
+                m for m in svc.methods if m.name.startswith("Query") and "rder" in m.name
+            )
+            req_cls = GetMessageClass(method.input_type)
+            resp_cls = GetMessageClass(method.output_type)
+            rpc = channel.unary_stream(
+                f"/{svc.full_name}/{method.name}",
+                request_serializer=req_cls.SerializeToString,
+                response_deserializer=resp_cls.FromString,
+            )
+            try:
+                responses = list(
+                    rpc(req_cls(), metadata=(("x-provisa-role", role),), timeout=60)
+                )
+            except grpc.RpcError as exc:
+                raise _Denied(f"grpc {role}: {exc.details()}") from exc
+            # A governed column the role cannot see is absent from the response message.
+            present = {f.name for f in resp_cls.DESCRIPTOR.fields}
+            cols = [c for c in wanted if c in present]
+            rows = [tuple(getattr(msg, c) for c in cols) for msg in responses]
+            return cols, rows
+        finally:
+            channel.close()
+
+
 class _Denied(Exception):
     """A transport refused the query (governance denial at the wire boundary)."""
 
@@ -212,6 +262,7 @@ def contract_server():
         enable_bolt=True,
         enable_pgwire=True,
         await_flight=True,
+        await_grpc=True,
         config="tests/fixtures/sample_config.yaml",
     )
     server.start()
@@ -225,8 +276,8 @@ def contract_server():
 
 
 @pytest.fixture(
-    params=[RestSqlAdapter, PgwireAdapter, BoltAdapter, FlightAdapter],
-    ids=["rest_sql", "pgwire", "bolt", "flight"],
+    params=[RestSqlAdapter, PgwireAdapter, BoltAdapter, FlightAdapter, GrpcAdapter],
+    ids=["rest_sql", "pgwire", "bolt", "flight", "grpc"],
 )
 def adapter(request, contract_server) -> TransportAdapter:
     return request.param(contract_server)
