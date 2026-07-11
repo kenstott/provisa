@@ -140,13 +140,15 @@ async def test_postgres_federates_via_postgres_fdw():
         await conn.execute(
             "INSERT INTO e2e_engine.orders VALUES (10,1,19.99),(11,2,49.99),(12,1,5.00),(13,3,7.50)"
         )
-        # ATTACH the remote source via postgres_fdw
+        # ATTACH the remote source via postgres_fdw. This is a SELF-referential FDW
+        # (same postgres) for testing federation. postgres_fdw dials from INSIDE the
+        # postgres container, so it must use the container-internal address
+        # (localhost:5432), not the host-published ephemeral ${PG_PORT} which is not
+        # bound inside the container.
         await conn.execute("DROP SERVER IF EXISTS e2e_remote_pg CASCADE")
-        h = os.environ.get("PG_HOST", "localhost")
-        p = os.environ.get("PG_PORT", "5432")
         await conn.execute(
             f"CREATE SERVER e2e_remote_pg FOREIGN DATA WRAPPER postgres_fdw "
-            f"OPTIONS (host '{h}', port '{p}', dbname '{os.environ.get('PG_DATABASE', 'provisa')}')"
+            f"OPTIONS (host 'localhost', port '5432', dbname '{os.environ.get('PG_DATABASE', 'provisa')}')"
         )
         u = os.environ.get("PG_USER", "provisa")
         pw = os.environ.get("PG_PASSWORD", "provisa")
