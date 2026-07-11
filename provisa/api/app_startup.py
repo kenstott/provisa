@@ -73,17 +73,18 @@ def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
 
 
 async def _start_background_tasks(_log: logging.Logger) -> None:
-    """Start MV refresh, warm-table, hot-table refresh, and SQLite staleness background tasks."""
-    # Start the refresh loop whenever an engine terminal exists — not gated on MVs already
-    # being registered. The loop polls and no-ops on an empty registry, so it idles cheaply
-    # and picks up MVs created at runtime on the next tick (no lazy per-creation start needed).
+    """Start MV storage reclamation, warm-table, hot-table refresh, and SQLite staleness tasks."""
+    # Start the MV reclamation loop whenever an engine terminal exists — not gated on MVs already
+    # being registered. It idles cheaply on an empty registry and reaps removed/orphaned MV tables.
+    # MV COMPUTE is the event loop's job now (REQ-966); this loop no longer refreshes MVs, so the two
+    # never double-compute the same target table (Phase 6: legacy periodic CTAS refresh retired).
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
 
     if state.engine_conn:
-        from provisa.mv.refresh import refresh_loop
+        from provisa.mv.refresh import reclamation_loop
 
         state._mv_refresh_task = asyncio.create_task(
-            refresh_loop(state.federation_engine, state.mv_registry),
+            reclamation_loop(state.federation_engine, state.mv_registry),
         )
 
     if state.engine_conn:

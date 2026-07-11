@@ -58,7 +58,8 @@ def _emit_column_lineage_span(
         derivations = []
     input_version = resolve_input_version(input_signals or [], refresh_epoch)
     with _tracer.start_as_current_span("mv.refresh.column_lineage") as span:
-        ctx = span.get_span_context() if hasattr(span, "get_span_context") else None
+        _get_ctx = getattr(span, "get_span_context", None)  # _NoopSpan lacks it
+        ctx = _get_ctx() if _get_ctx is not None else None
         trace_id = format(ctx.trace_id, "032x") if ctx is not None else ""
         span.set_attribute("mv.id", mv.id)
         span.set_attribute("mv.target_table", mv.target_table or "")
@@ -311,21 +312,24 @@ async def drop_expired_orphans(  # REQ-234
     return dropped
 
 
-async def refresh_loop(  # REQ-135, REQ-160, REQ-199, REQ-234
+async def reclamation_loop(  # REQ-234
     engine,
     registry: MVRegistry,
     check_interval: int = 30,
     config_mv_ids: set[str] | None = None,
 ) -> None:
-    """Background loop that checks for and refreshes due MVs.
-
-    Also runs storage reclamation and orphan detection each cycle.
+    """Background STORAGE-RECLAMATION loop (REQ-234): drop MV tables removed from config and
+    reap orphaned MV tables past their grace period. It NO LONGER refreshes MVs — the event loop
+    (provisa/events) is the sole MV compute path (REQ-966: event-driven recompute-to-current), and
+    each MV's periodic cadence is its event-loop poll job (poll_seconds = refresh_interval), so a
+    periodic refresh here would double-compute the same target table. Reclamation is separate GC and
+    is not expressible as an MV, so it stays a dedicated loop.
 
     Args:
-        engine: EngineRuntime terminal for executing refresh queries.
-        registry: MV registry to check for due MVs.
-        check_interval: Seconds between checks for due MVs.
-        config_mv_ids: Set of MV IDs from current config (for reclamation).
+        engine: EngineRuntime terminal for executing reclamation DDL.
+        registry: MV registry (source of enabled MVs + target schemas).
+        check_interval: Seconds between reclamation sweeps.
+        config_mv_ids: Set of MV IDs from current config (for removed-MV reclamation).
     """
     orphan_tracker: dict[str, float] = {}
 
@@ -355,10 +359,6 @@ async def refresh_loop(  # REQ-135, REQ-160, REQ-199, REQ-234
                     schema,
                     catalog,
                 )
-
-            due = registry.get_due_for_refresh()
-            for mv in due:
-                await refresh_mv(engine, mv, registry)
         except Exception:
-            log.exception("Error in MV refresh loop")
+            log.exception("Error in MV reclamation loop")
         await asyncio.sleep(check_interval)
