@@ -325,6 +325,30 @@ def test_governance_survives_cypher_transformation(contract_server, return_claus
     )
 
 
+# --------------------------------------------------------------------------- #
+# Contract 5 — row-level governance (RLS) is applied on every transport.
+# --------------------------------------------------------------------------- #
+def test_rls_row_filter_applied_on_every_transport(adapter, contract_server):
+    """The `analyst` role carries an RLS row filter on orders
+    (region = current_setting('provisa.user_region')); admin has none. So on EVERY
+    transport the analyst must NOT see the full admin row set — the read is either
+    denied or returns a strict subset. Equal counts would mean the row filter was
+    silently dropped for that transport (a cross-tenant row leak).
+    """
+    _, admin_rows = RestSqlAdapter(contract_server).read(_ADMIN, "id, region")
+    assert admin_rows, "positive control: admin sees rows to be filtered from analyst"
+
+    try:
+        _, analyst_rows = adapter.read(_RESTRICTED, "id, region")
+    except _Denied:
+        return  # RLS predicate rejected the read outright — filter is applied
+
+    assert len(analyst_rows) < len(admin_rows), (
+        f"{adapter.name}: analyst saw {len(analyst_rows)} rows vs admin's "
+        f"{len(admin_rows)} — RLS row filter was not applied on this transport"
+    )
+
+
 def _norm(rows: list[tuple]) -> list[tuple]:
     """Normalize rows for cross-transport comparison (stringify, sort)."""
     return sorted(tuple(str(v) for v in row) for row in rows)
