@@ -140,6 +140,9 @@ class IsolatedServer:
             "PROVISA_BOLT_PORT": str(self.bolt_port),
             "OTEL_SDK_DISABLED": "true",
         }
+        self._stderr_file = tempfile.NamedTemporaryFile(
+            prefix="isolated-server-", suffix=".stderr", delete=False
+        )
         self._proc = subprocess.Popen(
             [
                 str(_REPO_ROOT / ".venv" / "bin" / "uvicorn"),
@@ -151,12 +154,18 @@ class IsolatedServer:
             cwd=str(_REPO_ROOT),
             env=env,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            # Capture stderr to a file (not a PIPE — a healthy long-running server
+            # would fill the pipe buffer and deadlock) so an early exit surfaces WHY.
+            stderr=self._stderr_file,
         )
         deadline = time.monotonic() + timeout
         while True:
             if self._proc.poll() is not None:
-                raise RuntimeError(f"isolated server exited early (code {self._proc.returncode})")
+                self._stderr_file.flush()
+                _err = Path(self._stderr_file.name).read_text(errors="replace")
+                raise RuntimeError(
+                    f"isolated server exited early (code {self._proc.returncode}):\n{_err[-3000:]}"
+                )
             try:
                 with urllib.request.urlopen(f"{self.base_url}/health", timeout=3):
                     break
@@ -196,3 +205,8 @@ class IsolatedServer:
         if self._tmpdir is not None:
             self._tmpdir.cleanup()
             self._tmpdir = None
+        _sf = getattr(self, "_stderr_file", None)
+        if _sf is not None:
+            _sf.close()
+            Path(_sf.name).unlink(missing_ok=True)
+            self._stderr_file = None
