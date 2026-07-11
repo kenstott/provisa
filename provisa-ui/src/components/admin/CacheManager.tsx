@@ -114,6 +114,11 @@ function ResponseCacheTab() {
     ? ((stats.hitCount / (stats.hitCount + stats.missCount)) * 100).toFixed(1)
     : "—";
 
+  // Logical cached-result count. stats.totalKeys is a raw Redis DBSIZE (data + :meta
+  // per entry + one table-index set per referenced table), so it overcounts entries by
+  // a non-constant factor. The per-table index sums to the real entry total.
+  const totalEntries = cacheTableStats.reduce((n, s) => n + s.cachedEntries, 0);
+
   const isRedis = stats.storeType === "redis";
   // "memory" = embedded fakeredis: an enabled store, just without Redis INFO metrics.
   const isEnabled = stats.storeType !== "noop";
@@ -142,8 +147,8 @@ function ResponseCacheTab() {
       )}
       <div className="stats-grid" style={{ marginBottom: "1rem" }}>
         <div className="stat-card">
-          <div className="stat-count">{stats.totalKeys}</div>
-          <div className="stat-label">Cached Keys</div>
+          <div className="stat-count">{totalEntries}</div>
+          <div className="stat-label">Cached Entries</div>
         </div>
         <div className="stat-card">
           <div className="stat-count">{hitRate}%</div>
@@ -163,6 +168,10 @@ function ResponseCacheTab() {
         </div>
         {isRedis && (
           <>
+            <div className="stat-card">
+              <div className="stat-count">{stats.totalKeys}</div>
+              <div className="stat-label">Redis Keys (raw)</div>
+            </div>
             <div className="stat-card">
               <div className="stat-count">{memUsed}{memPct}</div>
               <div className="stat-label">Memory</div>
