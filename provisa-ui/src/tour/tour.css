@@ -5,6 +5,10 @@
  * HTML (innerHTML), so tour steps may use <ul>/<li>, <strong>, <kbd>, <code>, <img> and
  * unicode. These rules keep that content tidy and on-brand inside the popover. */
 
+.driver-popover {
+  max-width: 460px;
+}
+
 .driver-popover-description p {
   margin: 8px 0 4px;
 }

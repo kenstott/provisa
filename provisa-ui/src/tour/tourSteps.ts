@@ -65,22 +65,23 @@ export const TOUR_STEPS: TourStep[] = [
     title: "Welcome — let's take the tour",
     description:
       "🧭 This compass reopens the tour anytime. Leave whenever — click the app or press <kbd>Esc</kbd>." +
-      "<p><strong>Provisa</strong> is a governed query-language compiler for a federated data estate. One model, many surfaces:</p>" +
+      "<p><strong>Provisa</strong> is a governed query-language push-down compiler for federated data. One model, many surfaces:</p>" +
       "<div class='tour-tags'>" +
       "<span>GraphQL</span><span>SQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span>" +
       "<span>Postgres · pgwire</span><span>Neo4j · Bolt</span>" +
       "</div>" +
       "<p>💡 <strong>The core idea:</strong> you declare your environment once with a small set of primitives. <em>How</em> it runs is a choice — pick a <strong>federation strategy</strong> and the same model executes to fit:</p>" +
       "<ul>" +
-      "<li>🗄️ <strong>Oracle</strong> your jam? Non-Oracle data is moved into Oracle and queried there.</li>" +
-      "<li>⚡ <strong>Trino</strong> the bee's knees? It live-queries whatever Trino can reach, and stages the rest into a store it can.</li>" +
+      "<li><strong>Unopinionated?</strong> Use the embedded, Trino-compatible engine — horizontal scale-out built in.</li>" +
+      "<li><strong>Oracle-first?</strong> Non-Oracle data is moved into Oracle and queried there — and most any RDB can play that role.</li>" +
+      "<li><strong>Already run Trino?</strong> Provisa defers to your cluster, live-querying what it can reach and staging the rest.</li>" +
       "</ul>" +
       "<p>Declarative in, behavior out — you change the <em>strategy</em>, never the model.</p>" +
-      "<p>Same model, three ways to interact with it — no rewrite:</p>" +
+      "<p>The same model travels from local dev to production, validated at every step — no rewrite:</p>" +
       "<ul>" +
-      "<li>💻 <strong>Desktop</strong> — embedded DuckDB, no Docker. Build &amp; validate locally.</li>" +
-      "<li>🐳 <strong>Scale-out</strong> — use Docker, spin up Trino / ClickHouse + observability.</li>" +
-      "<li>🏢 <strong>Enterprise</strong> — point at your own infrastructure, promote through CI/CD to production.</li>" +
+      "<li><strong>Develop</strong> — embedded DuckDB, no Docker. Build &amp; validate locally.</li>" +
+      "<li><strong>Validate at scale</strong> — Docker, spin up an engine + observability. Prove behavior against production engines.</li>" +
+      "<li><strong>Promote</strong> — point at your own infrastructure, build through CI/CD, ship to production.</li>" +
       "</ul>" +
       "<p>Ready? Let's go. →</p>",
   },
