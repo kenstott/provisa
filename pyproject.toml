@@ -79,6 +79,7 @@ dev = [
     "pytest-asyncio",
     "pytest-bdd",
     "pytest-cov",
+    "hypothesis",
     "ruff",
     "black",
     "pyright",
