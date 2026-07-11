@@ -172,8 +172,12 @@ exclude_lines = [
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
+# Type-checking targets the product package only. Test modules are pytest
+# fixtures/hooks/step-defs whose symbols pytest injects by name at runtime, so
+# static "unused function/parameter/variable" analysis produces only false
+# positives there — exclude tests from analysis rather than sprinkle pragmas.
 include = ["provisa"]
-exclude = ["provisa/proto", "**/__pycache__", "**/node_modules", "**/.*", ".venv"]
+exclude = ["provisa/proto", "**/__pycache__", "**/node_modules", "**/.*", ".venv", "tests", "**/tests"]
 reportMissingImports = "warning"
 reportMissingModuleSource = "none"
 extraPaths = ["vendor/buenavista"]

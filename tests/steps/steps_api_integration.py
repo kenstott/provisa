@@ -39,8 +39,6 @@ import httpx
 import pytest
 from pytest_bdd import given, when, then, scenarios
 
-import tests.steps.generated_stubs  # noqa: F401
-
 scenarios("../features/REQ-257.feature")
 scenarios("../features/REQ-258.feature")
 scenarios("../features/REQ-398.feature")
