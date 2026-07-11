@@ -736,7 +736,7 @@ jobs:
   # ── Linux build job ──────────────────────────────────────────────────────────
 
   build-linux:
-    name: Build Linux AppImage (core + obs, ${{ needs.metadata.outputs.channel }})
+    name: Build Linux AppImage (core, ${{ needs.metadata.outputs.channel }})
     runs-on: ubuntu-latest
     needs: [metadata, pull-images-core, pull-images-obs, download-plugins]
     steps:
@@ -749,11 +749,8 @@ jobs:
           name: docker-images-core
           path: packaging/linux/images/
 
-      - name: Download obs image tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-images-obs
-          path: packaging/linux/images/
+      # Obs images are NOT bundled in the AppImage (2GB asset limit); they ship as the
+      # provisa-obs-images-<version>.tar.gz add-on.
 
       - name: Download Calcite plugins
         uses: actions/download-artifact@v4
@@ -1033,7 +1030,7 @@ jobs:
             | `${{ needs.metadata.outputs.dmg_name }}` | macOS Core (Apple Silicon, airgapped) |
             | `${{ needs.metadata.outputs.dmg_obs_name }}` | macOS Observability extension |
             | `${{ needs.metadata.outputs.dmg_demo_name }}` | macOS Demo extension (requires Obs) |
-            | `${{ needs.metadata.outputs.linux_name }}` | Linux x86_64 (core + obs, airgapped AppImage) |
+            | `${{ needs.metadata.outputs.linux_name }}` | Linux x86_64 (core, airgapped AppImage) |
             | `${{ needs.metadata.outputs.windows_name }}` | Windows x64 Core installer (downloads images on first launch) |
             | `${{ needs.metadata.outputs.ova_name }}` | Federation Engine runtime image |
             | `${{ needs.metadata.outputs.core_images_amd64_name }}` | Core Services bundle — Windows airgapped install |
@@ -1054,7 +1051,7 @@ jobs:
             ### Linux Install
             ```bash
             chmod +x ${{ needs.metadata.outputs.linux_name }}
-            ./${{ needs.metadata.outputs.linux_name }}   # one-time setup, includes observability
+            ./${{ needs.metadata.outputs.linux_name }}   # one-time setup (core; obs available as add-on)
             provisa start && provisa open
             ```
 
