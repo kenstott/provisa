@@ -99,7 +99,9 @@ def _allocate_itest_ports() -> None:
     for name, port in zip(_ITEST_PORT_ENV, _reserve_free_ports(len(_ITEST_PORT_ENV))):
         os.environ[name] = str(port)
     os.environ["REDIS_URL"] = f"redis://localhost:{os.environ['REDIS_PORT']}/0"
-    os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://localhost:{os.environ['MINIO_PORT']}"
+    _minio = f"localhost:{os.environ['MINIO_PORT']}"
+    os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://{_minio}"
+    os.environ["MINIO_ENDPOINT"] = _minio  # host-side minio clients (e.g. infra bdd)
     # Host-side kafka clients read these; point them at the isolated broker's port.
     _kafka = f"localhost:{os.environ['KAFKA_HOST_PORT']}"
     os.environ["KAFKA_BOOTSTRAP"] = _kafka
