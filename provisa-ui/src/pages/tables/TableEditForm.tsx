@@ -269,10 +269,36 @@ export function TableEditForm({
               >
                 (CTAS into mv_cache, refreshed periodically)
               </span>
+              <span
+                title="Precompute THIS view's SQL into a stored cache table (CTAS into mv_cache) on the Refresh Interval below. Distinct from 'Prefer Materialized' above, which pulls a raw source table into the store — this materializes a Provisa-defined view."
+                style={{
+                  cursor: "help",
+                  color: "var(--text-muted)",
+                  fontSize: "0.75rem",
+                  lineHeight: 1,
+                }}
+              >
+                ⓘ
+              </span>
             </label>
             {editingTable.materialize && (
               <label>
-                Refresh Interval (seconds)
+                <span
+                  style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
+                >
+                  Refresh Interval (seconds){" "}
+                  <span
+                    title="How often the materialized view is rebuilt (CTAS into mv_cache). Governs freshness of the stored table that QUERIES read. Distinct from Cache TTL (which caches query results) and from Poll interval (which paces the live change stream to subscribers)."
+                    style={{
+                      cursor: "help",
+                      color: "var(--text-muted)",
+                      fontSize: "0.75rem",
+                      lineHeight: 1,
+                    }}
+                  >
+                    ⓘ
+                  </span>
+                </span>
                 <input
                   type="number"
                   min={30}
@@ -296,6 +322,8 @@ export function TableEditForm({
                     type="number"
                     min={0}
                     step={0.5}
+                    placeholder="quiet"
+                    aria-label="NRT debounce quiet seconds"
                     data-testid="mv-debounce-quiet"
                     value={editingTable.mvDebounceQuiet}
                     onChange={(e) =>
@@ -309,6 +337,8 @@ export function TableEditForm({
                     type="number"
                     min={0}
                     step={0.5}
+                    placeholder="max delay"
+                    aria-label="NRT debounce max delay seconds"
                     data-testid="mv-debounce-max-delay"
                     value={editingTable.mvDebounceMaxDelay}
                     onChange={(e) =>

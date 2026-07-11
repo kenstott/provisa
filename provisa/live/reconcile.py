@@ -27,10 +27,11 @@ if TYPE_CHECKING:
 async def reconcile_live_engine(conn: "Connection", engine) -> None:  # REQ-565, REQ-932
     """Rebuild the engine's poll jobs from registered_tables.
 
-    A table drives a watermark poll job when its effective change_signal is a poll signal
-    (ttl/probe/ttl_probe) and it has a watermark_column (the append/subscribable gate). The
-    signal resolves table.change_signal → legacy live.strategy → default; the watermark resolves
-    the top-level Table.watermark_column → legacy live.watermark_column (REQ-932).
+    A table drives a poll job when its effective change_signal is a poll signal
+    (ttl/probe/ttl_probe). With a watermark_column it appends the watermark-filtered delta;
+    without one it full-replaces (re-scan + content-hash suppression). The signal resolves
+    table.change_signal → legacy live.strategy → default; the watermark resolves the top-level
+    Table.watermark_column → legacy live.watermark_column (REQ-932).
     """
     if engine is None:
         return
@@ -54,9 +55,10 @@ async def reconcile_live_engine(conn: "Connection", engine) -> None:  # REQ-565,
         sig = resolve_effective(row["change_signal"], None, live.get("strategy"))
         if not is_poll(sig):
             continue
+        # A poll signal WITH a watermark appends the watermark-filtered delta;
+        # WITHOUT one it full-replaces (re-scan + content-hash suppression). REQ-932.
         watermark = row["watermark_column"] or live.get("watermark_column")
-        if not watermark:
-            continue
+        mode = "append" if watermark else "replace"
         catalog = row["source_id"].replace("-", "_")
         sql = f'SELECT * FROM {catalog}."{row["schema_name"]}"."{row["table_name"]}"'
         kafka_outputs = [
@@ -72,9 +74,10 @@ async def reconcile_live_engine(conn: "Connection", engine) -> None:  # REQ-565,
             LiveSpec(
                 query_id=f"{row['source_id']}.{row['table_name']}",
                 sql=sql,
-                watermark_column=watermark,
+                watermark_column=watermark or "",
                 poll_interval=int(live.get("poll_interval", 10)),
                 kafka_outputs=kafka_outputs,
+                mode=mode,
             )
         )
     engine.reconcile(specs)

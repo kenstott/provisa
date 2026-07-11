@@ -8,9 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { RegisteredTable, Source, LiveDeliveryConfig, LiveKafkaConfig, LiveOutputConfig } from "../../types/admin";
+import type { RegisteredTable, Source, LiveDeliveryConfig, LiveOutputConfig } from "../../types/admin";
 import type { PlatformSettings } from "../../api/admin";
-import { liveCapability, availableStrategies } from "../../liveCapability";
 import { isWatermarkEligible } from "./helpers";
 
 interface LiveDeliveryFieldsetProps {
@@ -26,35 +25,19 @@ export function LiveDeliveryFieldset({
   setEditingTable,
   editingColumnTypes,
   sources,
-  settings,
 }: LiveDeliveryFieldsetProps) {
   const src = sources.find((s) => s.id === editingTable.sourceId);
   const stype = (src?.type ?? "").toLowerCase();
   const isEngineDerived = stype === "trino" || src?.id === "__provisa__";
-  // Native CDC needs a CDC-capable source (real table) or, for a
-  // materialized view, a CDC-capable materialization store (PostgreSQL
-  // LISTEN/NOTIFY, or a Debezium-integrated DB).
-  const matStoreScheme = (settings?.materialize?.store_url ?? "")
-    .split("://")[0]
-    .split("+")[0]
-    .toLowerCase();
-  const matStoreCdc =
-    !!editingTable.materialize &&
-    (matStoreScheme === "postgresql" || matStoreScheme === "postgres");
-  const nativeCdc =
-    matStoreCdc || (!isEngineDerived && liveCapability(stype).cdcAvail);
-  // debezium + kafka are always offerable — the operator owns the
-  // connector/feed's health. poll is always offerable (it needs a
-  // watermark column, set above); native only when CDC-capable. So live
-  // delivery is always available.
-  const strategies = Array.from(
-    new Set([
-      "poll",
-      ...(nativeCdc ? ["native"] : []),
-      "debezium",
-      "kafka",
-      ...(isEngineDerived ? [] : availableStrategies(stype)),
-    ]),
+  // Live Delivery is the OUTBOUND axis. The mechanism — repeat a push stream
+  // vs. append/replace poll — is DERIVED from the effective Change Signal
+  // (the inbound axis), never re-chosen here (REQ-932: change_signal subsumes
+  // the legacy live.strategy). Live Delivery only owns the outbound choices:
+  // on/off, watermark selection (append vs replace), poll interval, outputs.
+  const effectiveSignal =
+    editingTable.changeSignal || src?.changeSignal || "ttl";
+  const isPushSignal = ["native", "debezium", "kafka"].includes(
+    effectiveSignal,
   );
   const live = editingTable.live;
   const setLive = (patch: Partial<LiveDeliveryConfig>) =>
@@ -67,6 +50,18 @@ export function LiveDeliveryFieldset({
     const dt = editingColumnTypes[c.columnName];
     return !dt || isWatermarkEligible(dt);
   });
+  // Append vs replace is derived, not chosen (mirrors change_signal.select_landing_shape):
+  // a poll signal WITH a watermark appends past MAX(watermark); WITHOUT one it
+  // full-replaces and the output content-hash suppresses unchanged ripples.
+  const effWatermark = live?.watermarkColumn || "";
+  const pollMode: "append" | "replace" | null = isPushSignal
+    ? null
+    : effWatermark
+      ? "append"
+      : "replace";
+  const refreshInterval = editingTable.materialize
+    ? editingTable.mvRefreshInterval
+    : null;
   const kafkaOut =
     live?.outputs.find((o) => o.type === "kafka") ?? null;
   const setKafkaOut = (patch: Partial<LiveOutputConfig>) => {
@@ -80,21 +75,17 @@ export function LiveDeliveryFieldset({
     };
     setLive({ outputs: [...others, { ...base, ...patch }] });
   };
-  const setKafkaConfig = (patch: Partial<LiveKafkaConfig>) => {
-    if (!live) return;
-    const base: LiveKafkaConfig = live.kafka ?? {
-      topic: "",
-      format: "json",
-      keyColumn: null,
-    };
-    setLive({ kafka: { ...base, ...patch } });
-  };
   const defaultLive: LiveDeliveryConfig = {
     queryId: `${editingTable.sourceId}.${editingTable.tableName}`,
-    watermarkColumn:
-      editingTable.watermarkColumn || wmCols[0]?.columnName || "",
+    watermarkColumn: isPushSignal
+      ? ""
+      : editingTable.watermarkColumn || wmCols[0]?.columnName || "",
     pollInterval: 10,
-    strategy: (strategies[0] ?? "poll") as LiveDeliveryConfig["strategy"],
+    // Derived from the effective Change Signal; kept only for the REQ-932
+    // legacy read-through in reconcile (change_signal is authoritative).
+    strategy: (isPushSignal
+      ? effectiveSignal
+      : "poll") as LiveDeliveryConfig["strategy"],
     kafka: null,
     outputs: [],
   };
@@ -154,24 +145,30 @@ export function LiveDeliveryFieldset({
                 marginTop: "0.5rem",
               }}
             >
-              <label>
-                Strategy
-                <select
-                  value={live.strategy}
-                  onChange={(e) =>
-                    setLive({
-                      strategy: e.target
-                        .value as LiveDeliveryConfig["strategy"],
-                    })
-                  }
-                >
-                  {strategies.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div
+                data-testid="live-mechanism"
+                style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}
+              >
+                {isPushSignal ? (
+                  <>
+                    Repeats the <strong>{effectiveSignal}</strong> change
+                    stream to subscribers. Inbound detection is set by{" "}
+                    <em>Change Signal</em> above — no watermark or poll interval
+                    here.
+                  </>
+                ) : pollMode === "append" ? (
+                  <>
+                    Append poll on <strong>{effWatermark}</strong> — each
+                    interval fetches rows past MAX(watermark).
+                  </>
+                ) : (
+                  <>
+                    Full-replace poll — no watermark column, so each poll
+                    re-scans and the output content-hash suppresses unchanged
+                    results. Suits small or non-monotonic tables.
+                  </>
+                )}
+              </div>
               <label>
                 Query ID
                 <input
@@ -180,26 +177,36 @@ export function LiveDeliveryFieldset({
                   style={{ color: "var(--text-muted)", cursor: "default" }}
                 />
               </label>
-              {live.strategy === "poll" && (
+              {!isPushSignal && (
                 <>
+                  {wmCols.length > 0 && (
+                    <label>
+                      <span
+                        title="Pick the monotonic change column to append rows past MAX(watermark). Leave as 'None' to full-replace each poll — the output content-hash suppresses unchanged results."
+                      >
+                        Watermark column
+                      </span>
+                      <select
+                        value={live.watermarkColumn ?? ""}
+                        onChange={(e) =>
+                          setLive({ watermarkColumn: e.target.value })
+                        }
+                      >
+                        <option value="">None → full replace</option>
+                        {wmCols.map((c) => (
+                          <option key={c.columnName} value={c.columnName}>
+                            {c.columnName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <label>
-                    Watermark column
-                    <select
-                      value={live.watermarkColumn ?? ""}
-                      onChange={(e) =>
-                        setLive({ watermarkColumn: e.target.value })
-                      }
+                    <span
+                      title="How often the live stream re-checks the source and pushes changes to subscribers (SSE/Kafka sink). Independent of the MV Refresh Interval (which rebuilds the stored table for queries) and Cache TTL (which caches query results)."
                     >
-                      <option value="">Select…</option>
-                      {wmCols.map((c) => (
-                        <option key={c.columnName} value={c.columnName}>
-                          {c.columnName}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Poll interval (s)
+                      Poll interval (s)
+                    </span>
                     <input
                       type="number"
                       min={1}
@@ -210,44 +217,23 @@ export function LiveDeliveryFieldset({
                         })
                       }
                     />
+                    {refreshInterval != null &&
+                      live.pollInterval < refreshInterval && (
+                        <span
+                          style={{
+                            fontSize: "0.72rem",
+                            color: "var(--warn, #d99)",
+                          }}
+                        >
+                          Polling faster than the {refreshInterval}s refresh
+                          interval re-reads unchanged data — the materialized
+                          table only changes on refresh.
+                        </span>
+                      )}
                   </label>
                 </>
               )}
-              {live.strategy === "kafka" && (
-                <>
-                  <label>
-                    Kafka topic
-                    <input
-                      value={live.kafka?.topic ?? ""}
-                      onChange={(e) =>
-                        setKafkaConfig({ topic: e.target.value })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Kafka format
-                    <input
-                      value={live.kafka?.format ?? "json"}
-                      onChange={(e) =>
-                        setKafkaConfig({ format: e.target.value })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Key column
-                    <input
-                      value={live.kafka?.keyColumn ?? ""}
-                      onChange={(e) =>
-                        setKafkaConfig({
-                          keyColumn: e.target.value || null,
-                        })
-                      }
-                    />
-                  </label>
-                </>
-              )}
-              {(live.strategy === "native" ||
-                live.strategy === "debezium") && (
+              {isPushSignal && (
                 <p
                   style={{
                     margin: 0,
@@ -255,9 +241,11 @@ export function LiveDeliveryFieldset({
                     color: "var(--text-muted)",
                   }}
                 >
-                  {live.strategy === "debezium"
+                  {effectiveSignal === "debezium"
                     ? "Debezium transport is configured on the source. No extra per-table config."
-                    : "Native change stream requires no extra per-table config."}
+                    : effectiveSignal === "kafka"
+                      ? "Kafka feed is configured on the source. No extra per-table config."
+                      : "Native change stream requires no extra per-table config."}
                 </p>
               )}
               <div>
