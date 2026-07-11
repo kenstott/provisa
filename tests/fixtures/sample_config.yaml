@@ -2,7 +2,9 @@ sources:
   - id: sales-pg
     type: postgresql
     host: localhost
-    port: 5432
+    # Host-side direct-driver path reaches the isolated stack's postgres on its
+    # ephemeral published port; Trino federates via its own (internal) catalog.
+    port: ${env:PG_PORT:-5432}
     database: provisa
     username: provisa
     password: ${env:PG_PASSWORD}
