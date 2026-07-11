@@ -115,6 +115,34 @@ services:
       retries: 18
       start_period: 60s
 
+  # Debezium Connect (REQ-824 CDC). Lives here now (was in dev.yml) so it shares the
+  # isolated project's network with kafka + postgres and reaches them by service name.
+  debezium-connect:
+    restart: unless-stopped
+    image: quay.io/debezium/connect:2.7
+    ports:
+      - "${DEBEZIUM_PORT:-8083}:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: debezium-connect
+      CONFIG_STORAGE_TOPIC: debezium_connect_configs
+      OFFSET_STORAGE_TOPIC: debezium_connect_offsets
+      STATUS_STORAGE_TOPIC: debezium_connect_statuses
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/connectors || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
 volumes:
   kafka_test_data:
   mongo_test_data:
