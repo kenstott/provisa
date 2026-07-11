@@ -108,7 +108,15 @@ include = ["provisa*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "tests/steps"]
-addopts = ""
+# Default lane = integration + unit + bdd against the shared dev stack.
+# The e2e tier is a SEPARATE process lane (pytest -m e2e): it provisions its own
+# isolated Docker stack on ephemeral ports and, being in-process, must override
+# PG_PORT/TRINO_PORT/etc. in os.environ — which would redirect the dev-stack
+# integration tests to the wrong stack if co-run in one process. packaging and
+# cluster are likewise their own lanes (manual/live-minikube). scripts/test-all
+# runs every lane and combines coverage. These are documented process-isolation
+# lanes, not silent skips.
+addopts = "-m 'not packaging and not cluster' --ignore=tests/e2e"
 python_files = ["test_*.py", "*_test.py", "steps_*.py"]
 asyncio_mode = "auto"
 log_level = "DEBUG"
@@ -129,6 +137,8 @@ markers = [
     "requires_prometheus: requires Prometheus service (docker compose up prometheus)",
     "requires_pgbouncer: requires PgBouncer service (docker compose up pgbouncer)",
     "requires_provisa_server: requires running Provisa server at localhost:8000",
+    "packaging: installer/packaging flow; validated manually + by unit tests, deselected by default",
+    "cluster: helm/minikube deployment test; own run lane (pytest -m cluster) against a live minikube, deselected by default",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:pytest_asyncio",
@@ -147,6 +157,10 @@ filterwarnings = [
 [tool.coverage.run]
 source = ["provisa"]
 omit = ["provisa/proto/*", "provisa/migrations/*"]
+# scripts/test-all runs the default lane and the e2e lane as separate processes
+# and `coverage combine`s them; parallel=true tags each run's data file so they
+# don't clobber each other.
+parallel = true
 
 [tool.coverage.report]
 exclude_lines = [

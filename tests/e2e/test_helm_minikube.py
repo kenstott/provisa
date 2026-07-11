@@ -27,7 +27,11 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.e2e
+# `cluster`: this test deploys the Helm chart to a live minikube and stops other
+# containers to free VM RAM — destructive to the shared suite. Runs in its own
+# lane (pytest -m cluster) against the already-running minikube; deselected from
+# the default suite (see pyproject addopts). Not a skip — a separate invocation.
+pytestmark = [pytest.mark.e2e, pytest.mark.cluster]
 
 CHART_DIR = Path(__file__).parents[2] / "helm" / "provisa"
 RELEASE = "provisa-test"

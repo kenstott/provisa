@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Run the entire test suite across its process-isolation lanes and report a
+# single combined coverage number.
+#
+# Why lanes: the e2e tier provisions its OWN isolated Docker stack on ephemeral
+# ports and, running the app in-process, overrides PG_PORT/TRINO_PORT/etc. in the
+# environment. The integration tier targets the shared dev stack via those same
+# vars. Co-running them in one pytest process points integration at the wrong
+# stack, so each lane is its own process; `coverage combine` merges the results.
+#
+# Lanes:
+#   default   integration + unit + bdd  (shared dev stack; --ignore=tests/e2e)
+#   e2e       tests/e2e                  (own isolated stack, ephemeral ports)
+#   cluster   opt-in: TEST_ALL_CLUSTER=1 (helm/minikube against a live cluster)
+#   packaging opt-in: TEST_ALL_PACKAGING=1 (installer/packaging flow)
+#
+# Usage: scripts/test-all [extra pytest args...]
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+COV_ARGS=(--cov=provisa --cov-report= -p no:cacheprovider)
+rm -f .coverage .coverage.*
+
+echo "== lane: default (integration + unit + bdd) =="
+pytest tests tests/steps "${COV_ARGS[@]}" "$@"
+
+echo "== lane: e2e (isolated stack) =="
+# addopts carries --ignore=tests/e2e for the default lane; override it here so the
+# e2e lane collects exactly tests/e2e (its conftest owns the isolated stack).
+pytest tests/e2e -o addopts="" -m e2e "${COV_ARGS[@]}" "$@"
+
+if [[ "${TEST_ALL_CLUSTER:-}" == "1" ]]; then
+  echo "== lane: cluster (helm/minikube) =="
+  pytest tests/e2e/test_helm_minikube.py -o addopts="" -m cluster "${COV_ARGS[@]}" "$@"
+fi
+
+if [[ "${TEST_ALL_PACKAGING:-}" == "1" ]]; then
+  echo "== lane: packaging =="
+  pytest -o addopts="" -m packaging "${COV_ARGS[@]}" "$@"
+fi
+
+echo "== combined coverage =="
+coverage combine
+coverage report -m
+coverage xml

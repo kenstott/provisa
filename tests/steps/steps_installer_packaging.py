@@ -39,6 +39,10 @@ from pytest_bdd import given, when, then, scenarios
 from provisa.core.config_loader import parse_config_dict
 from provisa.core.models import ProvisaConfig
 
+# Packaging/installer flow — validated manually + by unit tests, deselected from
+# the default suite (pytest -m packaging to run). See pyproject addopts.
+pytestmark = pytest.mark.packaging
+
 scenarios("../features/REQ-562.feature")
 scenarios("../features/REQ-563.feature")
 

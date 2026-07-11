@@ -331,6 +331,14 @@ class TestRestEndpointsHTTP:
         app = FastAPI()
         rest_router = create_rest_router(app_state)
         app.include_router(rest_router)
+        # REST handlers read the caller's role from request.state.role, which the
+        # AuthMiddleware populates. In unsecured mode (provider=None) it honors
+        # x-provisa-role, defaulting to admin — the role this schema is keyed under
+        # (REQ-273). Without the middleware installed, request.state.role is unset
+        # and every governed REST route hard-fails 401 (REQ per commit 935589f0).
+        from provisa.auth.middleware import AuthMiddleware
+
+        app.add_middleware(AuthMiddleware)
 
         transport = httpx.ASGITransport(app=app)
         client = httpx.AsyncClient(transport=transport, base_url="http://test")
@@ -460,6 +468,11 @@ class TestRestEndpointsHTTP:
 
         app = FastAPI()
         app.include_router(create_rest_router(app_state))
+        # Unsecured AuthMiddleware sets request.state.role=admin so the request
+        # reaches table resolution (404) instead of hard-failing 401 at auth.
+        from provisa.auth.middleware import AuthMiddleware
+
+        app.add_middleware(AuthMiddleware)
 
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:

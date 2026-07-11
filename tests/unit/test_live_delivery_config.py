@@ -84,6 +84,7 @@ class TestReconcileLiveEngine:
     @pytest.mark.asyncio
     async def test_builds_trino_qualified_poll_specs(self):
         from provisa.api import app as app_mod
+        from provisa.api import app_rebuild
 
         # REQ-932: reconcile keys off change_signal (legacy live.strategy read through) + the
         # top-level watermark_column.
@@ -125,7 +126,7 @@ class TestReconcileLiveEngine:
         engine = MagicMock()
 
         with patch.object(app_mod, "state", SimpleNamespace(live_engine=engine)):
-            await app_mod._reconcile_live_engine(conn)
+            await app_rebuild._reconcile_live_engine(conn)
 
         engine.reconcile.assert_called_once()
         specs = engine.reconcile.call_args.args[0]
@@ -143,10 +144,11 @@ class TestReconcileLiveEngine:
     @pytest.mark.asyncio
     async def test_no_engine_is_noop(self):
         from provisa.api import app as app_mod
+        from provisa.api import app_rebuild
 
         conn = AsyncMock()
         with patch.object(app_mod, "state", SimpleNamespace(live_engine=None)):
-            await app_mod._reconcile_live_engine(conn)
+            await app_rebuild._reconcile_live_engine(conn)
         conn.fetch.assert_not_called()
 
 
@@ -211,7 +213,8 @@ class TestRepoUpsertSerializesLive:
 
 class TestAdminLiveMapping:
     def test_input_to_model_to_row_type_roundtrip(self):
-        from provisa.api.admin import schema as admin_schema
+        from provisa.api.admin._live_mappers import live_model_from_input
+        from provisa.api.admin._row_mappers import _live_type_from_row
         from provisa.api.admin.types import LiveDeliveryConfigInput, LiveOutputConfigInput
 
         inp = LiveDeliveryConfigInput(
@@ -225,10 +228,10 @@ class TestAdminLiveMapping:
                 )
             ],
         )
-        model = admin_schema._live_model_from_input(inp)
+        model = live_model_from_input(inp)
         assert model is not None
         # Persisted shape → GraphQL output type
-        out = admin_schema._live_type_from_row(model.model_dump())
+        out = _live_type_from_row(model.model_dump())
         assert out is not None
         assert out.query_id == "s1.orders"
         assert out.watermark_column == "updated_at"
@@ -239,7 +242,8 @@ class TestAdminLiveMapping:
         assert out.outputs[0].bootstrap_servers == "k:9092"
 
     def test_none_input_and_row_map_to_none(self):
-        from provisa.api.admin import schema as admin_schema
+        from provisa.api.admin._live_mappers import live_model_from_input
+        from provisa.api.admin._row_mappers import _live_type_from_row
 
-        assert admin_schema._live_model_from_input(None) is None
-        assert admin_schema._live_type_from_row(None) is None
+        assert live_model_from_input(None) is None
+        assert _live_type_from_row(None) is None
