@@ -60,6 +60,7 @@ from provisa.cypher.translator_helpers import (
     _safe_alias,
 )
 from provisa.cypher.translator_types import (
+    CypherCrossSourceError as CypherCrossSourceError,  # re-exported for bolt/flight/neo4j error paths
     CypherTranslateError,
     GraphVarKind,
 )
