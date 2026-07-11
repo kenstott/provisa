@@ -28210,3 +28210,23 @@
   - REQ-962
   - REQ-968
   - REQ-964
+- id: REQ-984
+  status: complete
+  since: "2026-07"
+  group: "6. Materialized Views & Caching"
+  category: Materialized View Lifecycle
+  priority: SHOULD
+  type: structural
+  description: >-
+    The legacy periodic CTAS materialized-view refresh loop is retired in favor of the event loop as the sole MV compute path. The refresh_loop function is replaced by reclamation_loop, which handles only storage reclamation (drop removed MVs + reap orphaned tables per REQ-234); periodic refresh cadence is now driven by each MV's event-loop poll job, reframing periodic refresh as the REQ-963 debounce deadline source.
+  use_case: >-
+    Consolidating MV compute into a single event-driven path eliminates double-computation and simplifies the refresh lifecycle while preserving operator-triggered refresh mutations.
+  code:
+    - provisa/mv/refresh.py
+    - provisa/api/app_startup.py
+    - provisa/events/boot.py
+  related_reqs:
+    - REQ-234
+    - REQ-135
+    - REQ-966
+    - REQ-963
