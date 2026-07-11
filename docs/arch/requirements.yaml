@@ -28230,3 +28230,100 @@
     - REQ-135
     - REQ-966
     - REQ-963
+- id: REQ-985
+  status: complete
+  since: "2026-07"
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Cache
+  priority: SHOULD
+  type: structural
+  description: >-
+    When `cache.enabled` is omitted from config, caching defaults to ENABLED. A CacheStore
+    always exists: `RedisCacheStore(None)` falls back to embedded fakeredis when no Redis URL is configured.
+    Operators must explicitly set `cache.enabled: false` to disable caching via `NoopCacheStore`.
+  use_case: >-
+    Operators have safe defaults where caching is active unless explicitly disabled, eliminating
+    silent no-cache states and ensuring consistent cache behavior across hot tables and response caches.
+  code:
+    - provisa/api/app.py
+    - provisa/cache/hot_tables.py
+  related_reqs:
+    - REQ-829
+    - REQ-544
+- id: REQ-986
+  status: proposed
+  group: "3. Federation Engines & Data Sources"
+  category: Arrow Flight Transport
+  priority: MUST
+  type: behavioral
+  description: >-
+    ClickHouse federation engine must expose Arrow-native transport through the Provisa Arrow Flight server to honor its declared ARROW and ARROW_STREAM capabilities, enabling columnar data streaming without row materialization.
+  use_case: >-
+    ClickHouse can deliver Arrow data natively over HTTP and native TCP protocols, but currently Provisa collapses these to row tuples. Exposing this capability via Arrow Flight matches Trino's architecture and enables efficient columnar streaming for high-throughput federated queries.
+  code:
+    - provisa/federation/engine.py
+    - provisa/federation/backend.py
+    - provisa/federation/clickhouse_runtime.py
+    - provisa/api/flight/server.py
+  target: "2026-Q4"
+  e2e: true
+  e2e_reason: >-
+    Arrow Flight transport behavior is only verifiable through a full round-trip to the Arrow Flight endpoint, confirming lazy record-batch streaming and columnar data format.
+  competitive_position:
+    status: parity
+    rationale: >-
+      Trino natively streams Arrow over Flight; ClickHouse as a standalone system does not expose Arrow Flight. Once implemented, Provisa matches Trino's federated Arrow capability, providing parity with the industry standard for columnar transport in federated query engines.
+- id: REQ-987
+  status: proposed
+  group: "3. Federation Engines & Data Sources"
+  category: Arrow Flight Transport
+  priority: MUST
+  type: behavioral
+  description: >-
+    Databricks SQL warehouse must be supported as a first-class Provisa federation engine with Arrow-native transport capabilities, enabling direct federation without routing through Trino and exposing Arrow columnar data streaming through the Provisa Arrow Flight server.
+  use_case: >-
+    Organizations using Databricks SQL warehouses require direct federation capability to Provisa without intermediary routing through Trino. Arrow-native transport avoids row materialization overhead and matches Trino's architecture for efficient federated query execution over Databricks.
+  code:
+    - provisa/federation/engine.py
+    - provisa/federation/backend.py
+    - provisa/api/flight/server.py
+    - provisa/transpiler/transpile.py
+  target: "2026-Q4"
+  e2e: true
+  e2e_reason: >-
+    Arrow Flight transport behavior and Databricks SQL query execution are only verifiable through a full round-trip to the Arrow Flight endpoint with actual Databricks SQL warehouse queries.
+  competitive_position:
+    status: parity
+    rationale: >-
+      Trino natively connects to Databricks as a source. Provisa with Databricks as a first-class federation engine (like Trino, ClickHouse, DuckDB) achieves parity with Trino's federation reach and enables customers to develop on DuckDB locally while scaling to Databricks warehouses in production.
+  related_reqs:
+    - REQ-986
+- id: REQ-988
+  status: proposed
+  target: 2026-Q4
+  group: "3. Federation Engines & Data Sources"
+  category: Arrow Flight Transport
+  priority: MUST
+  type: behavioral
+  description: >-
+    Snowflake federation engine must be promoted from a source-only connector (federated through Trino) to a first-class Provisa federation engine peer to Trino/DuckDB/ClickHouse/Postgres, with Arrow-native transport wired through the Provisa Arrow Flight server. Engine declares ROWS, ARROW, and ARROW_STREAM capabilities; backend implements execute_arrow() and execute_stream() to deliver Arrow columnar data and lazy record-batch streaming without row materialization. Physical SQL transpilation must target Snowflake dialect. Governance (RLS, masking, rate-limiting) applies unchanged above the backend.
+  use_case: >-
+    Snowflake is an MPP warehouse with native Arrow support; exposing its columnar capabilities via Provisa's Arrow Flight server enables direct, efficient federated queries without row materialization and eliminates the current Trino-as-middleman routing. Matches architectural parity with Trino (REQ-986 ClickHouse parallel) and serves enterprises whose primary warehouse is Snowflake.
+  code:
+    - provisa/federation/engine.py
+    - provisa/federation/backend.py
+    - provisa/api/flight/server.py
+    - provisa/executor/trino_flight.py
+    - provisa/transpiler/transpile.py
+    - provisa/source_registry.py
+    - provisa/source_connectors/snowflake_connector.py
+  e2e: true
+  e2e_reason: >-
+    Arrow Flight transport and Snowflake SQL dialect correctness are only verifiable through a full round-trip to the Arrow Flight endpoint with live Snowflake backend, confirming lazy record-batch streaming, columnar format, and physical SQL validity.
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Snowflake natively supports Arrow data export (fetch_arrow_all / fetch_arrow_batches); Provisa will be the first to expose this capability via Arrow Flight as a federated engine, matching industry best practice (Trino). Competitors typically access Snowflake as a read-only source through ODBC or REST, not as a columnar-streaming federation peer.
+  related_reqs:
+    - REQ-986
+    - REQ-987
