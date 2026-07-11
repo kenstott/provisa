@@ -243,7 +243,7 @@ jobs:
 
       - name: Download plugins from kenstott/calcite release
         run: |
-          CALCITE_RELEASE="https://github.com/kenstott/calcite/releases/download/engine-v0.25.0"
+          CALCITE_RELEASE="https://github.com/kenstott/calcite/releases/download/engine-v0.32.0"
           PLUGINS_DIR="trino/plugins"
           for plugin in trino-sharepoint trino-splunk trino-file; do
             curl -fsSL "$CALCITE_RELEASE/$plugin-plugin.zip" -o "$PLUGINS_DIR/$plugin-plugin.zip"
