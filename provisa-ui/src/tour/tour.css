@@ -5,6 +5,9 @@
  * HTML (innerHTML), so tour steps may use <ul>/<li>, <strong>, <kbd>, <code>, <img> and
  * unicode. These rules keep that content tidy and on-brand inside the popover. */
 
+.driver-popover-description p {
+  margin: 8px 0 4px;
+}
 .driver-popover-description ul {
   margin: 8px 0 2px;
   padding-left: 18px;
@@ -38,6 +41,62 @@
   margin: 10px 0 2px;
   border: 1px solid rgba(0, 0, 0, 0.1);
 }
+/* "Start" button — restarts the tour from step 0. Prepended into the footer's
+ * button row and pushed to the left so it reads as separate from Back/Next. */
+.driver-popover-start-btn {
+  margin-right: auto;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  color: #4f46e5;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  text-shadow: none;
+}
+.driver-popover-start-btn:hover {
+  background: rgba(99, 102, 241, 0.18);
+}
+
+/* "Docs" button — closing step only; jumps to the Docs tab. Sits beside Start. */
+.driver-popover-docs-btn {
+  cursor: pointer;
+  font-size: 13px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  color: #fff;
+  background: #4f46e5;
+  border: 1px solid #4f46e5;
+  text-shadow: none;
+}
+.driver-popover-docs-btn:hover {
+  background: #4338ca;
+}
+
+/* Inline mini network-graph illustration (two sources linked into one graph). */
+.driver-popover-description svg.tour-graph {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+  margin: 6px auto 8px;
+}
+.driver-popover-description svg.tour-graph line {
+  stroke: rgba(99, 102, 241, 0.45); /* indigo edges */
+  stroke-width: 1.5;
+}
+.driver-popover-description svg.tour-graph line.xsrc {
+  stroke: #10b981; /* emerald: cross-source link */
+  stroke-dasharray: 4 3;
+  stroke-width: 2;
+}
+.driver-popover-description svg.tour-graph circle {
+  fill: #4f46e5; /* indigo: source A */
+}
+.driver-popover-description svg.tour-graph circle.n2 {
+  fill: #10b981; /* emerald: source B */
+}
+
 /* Inline category chips (an alternative to bullets for compact lists). */
 .driver-popover-description .tour-tags {
   display: flex;
