@@ -36,12 +36,15 @@ os.environ.setdefault(
 
 _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 _CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
-_OBS_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.observability.yml")
-_DEV_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.dev.yml")
-# Test-only services live in their own compose project so they can be started
-# and torn down independently of the dev stack (see docker-compose.test.yml).
 _TEST_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.test.yml")
-_TEST_PROJECT = "provisa-test"
+
+# The integration tier provisions its OWN isolated stack — a dedicated compose
+# project on ephemeral host ports, its own network — so it NEVER touches the local
+# dev stack (the `provisa` project on default ports 5432/8080/9000/…). Core and
+# marker services share this one project's default network, so Trino reaches
+# kafka/mongo/etc. by service name without any external (dev) network.
+_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", "provisa-itest")
+_ITEST_COMPOSE_ARGS = ["-p", _ITEST_PROJECT, "-f", _CORE_COMPOSE, "-f", _TEST_COMPOSE]
 
 _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_kafka": ["kafka", "schema-registry"],
@@ -51,16 +54,51 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_neo4j": ["neo4j"],
     "requires_sparql": ["fuseki"],
 }
-# Shared services provided by the dev stack (never torn down by the test run).
-# zaychik is the Arrow Flight terminal (:8480) the in-process app connects to for Flight/CTAS
+# zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
 _CORE_SERVICES = ["postgres", "trino", "redis", "pgbouncer", "minio", "zaychik"]
-# Kafka/Schema-Registry/Debezium are core: Trino's kafka catalog and the app's
-# CDC path reach them by service name on the dev network, so they come up with
-# the dev stack (via --profile test), not the isolated test project. debezium is
-# the sole exception: it is a core service but reaches the (test-project) kafka
-# by its shared-network alias.
-_DEV_TEST_PROFILE_SERVICES = {"debezium-connect"}
+
+# Host-published services whose ephemeral port the in-process app / test clients
+# read from these env vars. compose interpolates the same ${VAR} at `up` time.
+_ITEST_PORT_ENV = [
+    "PG_PORT",
+    "TRINO_PORT",
+    "REDIS_PORT",
+    "MINIO_PORT",
+    "MINIO_CONSOLE_PORT",
+    "ZAYCHIK_PORT",
+    "MONGO_PORT",
+    "NEO4J_HTTP_PORT",
+    "NEO4J_BOLT_PORT",
+    "KAFKA_HOST_PORT",
+    "ELASTICSEARCH_PORT",
+    "FUSEKI_PORT",
+    "SCHEMA_REGISTRY_PORT",
+]
+
+
+def _reserve_free_ports(n: int) -> list[int]:
+    """Return n DISTINCT free TCP ports (sockets held open together so the kernel
+    hands out a different port for each)."""
+    socks: list[socket.socket] = []
+    try:
+        for _ in range(n):
+            s = socket.socket()
+            s.bind(("127.0.0.1", 0))
+            socks.append(s)
+        return [s.getsockname()[1] for s in socks]
+    finally:
+        for s in socks:
+            s.close()
+
+
+def _allocate_itest_ports() -> None:
+    """Assign every isolated-stack host port to a fresh ephemeral port and export the
+    URL-shaped env the in-process app reads, so the app never hits the dev stack."""
+    for name, port in zip(_ITEST_PORT_ENV, _reserve_free_ports(len(_ITEST_PORT_ENV))):
+        os.environ[name] = str(port)
+    os.environ["REDIS_URL"] = f"redis://localhost:{os.environ['REDIS_PORT']}/0"
+    os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://localhost:{os.environ['MINIO_PORT']}"
 
 
 class _DockerServiceManager:
@@ -71,127 +109,36 @@ class _DockerServiceManager:
         if not integration:
             return
 
-        # Partition the services the run needs into dev-stack (shared network)
-        # and isolated test-project services.
-        marker_services: set[str] = set()
+        # Which marker services this run needs (kafka/mongo/neo4j/…). schema-registry
+        # and debezium ride along with kafka in the SAME isolated project, so they
+        # reach it on the project network by service name — no external dev network.
+        needed: set[str] = set(_CORE_SERVICES)
         for item in session.items:
             for marker, services in _MARKER_SERVICES.items():
                 if item.get_closest_marker(marker):
-                    marker_services.update(services)
+                    needed.update(services)
 
-        dev_extras = sorted(marker_services & _DEV_TEST_PROFILE_SERVICES)
-        isolated_services = sorted(marker_services - _DEV_TEST_PROFILE_SERVICES)
-
-        # Phase 1 — dev-stack core services (creates the shared provisa_default
-        # network the isolated project attaches to). Idempotent.
+        # Provision an ISOLATED stack: dedicated project, ephemeral host ports, its
+        # own network — the dev stack (`provisa` project, default ports) is never
+        # touched. Ports are allocated + exported here (before any in-process app is
+        # built and before the provisa_server subprocess captures the env), and the
+        # compose files interpolate the same ${*_PORT} at `up`.
+        _allocate_itest_ports()
         subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                _CORE_COMPOSE,
-                "-f",
-                _OBS_COMPOSE,
-                "-f",
-                _DEV_COMPOSE,
-                "up",
-                "-d",
-                "--wait",
-                *_CORE_SERVICES,
-            ],
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *sorted(needed)],
             cwd=_REPO_ROOT,
             check=True,
         )
 
-        # Prometheus (REQ-251) — started with --no-deps so its otel-collector dep chain (which
-        # binds otlp2parquet on :4319 and clashes in dev environments) is not pulled in; the Trino
-        # prometheus connector only needs prometheus:9090 on the dev network. Gated on the marker.
-        if any(item.get_closest_marker("requires_prometheus") for item in session.items):
-            subprocess.run(
-                [
-                    "docker",
-                    "compose",
-                    "-f",
-                    _CORE_COMPOSE,
-                    "-f",
-                    _OBS_COMPOSE,
-                    "-f",
-                    _DEV_COMPOSE,
-                    "up",
-                    "prometheus",
-                    "-d",
-                    "--no-deps",
-                    "--wait",
-                ],
-                cwd=_REPO_ROOT,
-                check=True,
-            )
-
-        # Phase 2 — isolated test-only services (kafka, schema-registry, neo4j,
-        # elasticsearch, fuseki, mongodb) in the provisa-test project. Brought up
-        # before any dev extras so debezium can reach kafka on first start.
-        if isolated_services:
-            subprocess.run(
-                [
-                    "docker",
-                    "compose",
-                    "-p",
-                    _TEST_PROJECT,
-                    "-f",
-                    _TEST_COMPOSE,
-                    "up",
-                    "-d",
-                    "--wait",
-                    *isolated_services,
-                ],
-                cwd=_REPO_ROOT,
-                check=True,
-            )
-
-        # Phase 3 — dev-stack extras that depend on the isolated services
-        # (debezium-connect needs kafka, which is now up on the shared network).
-        if dev_extras:
-            subprocess.run(
-                [
-                    "docker",
-                    "compose",
-                    "-f",
-                    _CORE_COMPOSE,
-                    "-f",
-                    _OBS_COMPOSE,
-                    "-f",
-                    _DEV_COMPOSE,
-                    "--profile",
-                    "test",
-                    "up",
-                    "-d",
-                    "--wait",
-                    *dev_extras,
-                ],
-                cwd=_REPO_ROOT,
-                check=True,
-            )
-
     def pytest_sessionfinish(self, session, exitstatus):  # pyright: ignore
         # Tests own the services they provision — including reaping them. Tear the
-        # isolated test-project services (neo4j/kafka/mongo/elasticsearch/fuseki)
-        # down by default so a run never leaks containers that starve later runs of
-        # memory. The shared dev stack (postgres/trino/redis) is intentionally left
-        # intact. Set PYTEST_DOCKER_KEEP=1 to keep the test services up between runs
-        # (e.g. iterating locally) and skip the re-provision cost.
+        # whole isolated stack down by default so a run never leaks containers (which
+        # starve later runs of memory) and never leaves anything touching dev.
+        # PYTEST_DOCKER_KEEP=1 keeps it up for local iteration.
         if os.environ.get("PYTEST_DOCKER_KEEP"):
             return
         subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-p",
-                _TEST_PROJECT,
-                "-f",
-                _TEST_COMPOSE,
-                "down",
-                "--volumes",
-            ],
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "down", "--volumes"],
             cwd=_REPO_ROOT,
             check=False,
         )

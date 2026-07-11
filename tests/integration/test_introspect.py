@@ -10,6 +10,7 @@
 
 """Integration tests for Trino INFORMATION_SCHEMA introspection."""
 
+import os
 import time
 
 import pytest
@@ -30,7 +31,9 @@ def _wait_for_trino():
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
         try:
-            conn = trino.dbapi.connect(host="localhost", port=8080, user="test")
+            conn = trino.dbapi.connect(
+                host="localhost", port=int(os.environ.get("TRINO_PORT", "8080")), user="test"
+            )
             cur = conn.cursor()
             cur.execute("SELECT 1")
             cur.fetchall()
