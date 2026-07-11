@@ -372,9 +372,19 @@ stage_images() {
   fi
 
   if [ -z "$src" ]; then
-    err "Container images not found."
-    err "Please keep the Provisa DMG mounted and re-open Provisa.app to complete setup."
-    exit 1
+    # Slim base: core images aren't bundled in the DMG. Acquire the core-images add-on
+    # (local-first beside the installer for airgap, else download). This is the Trino/
+    # Docker tier's image source; the native tier never reaches here.
+    local version="${PROVISA_VERSION:-}"
+    if [ -z "$version" ] && command -v provisa &>/dev/null; then
+      version="$(provisa version 2>/dev/null | head -1 | awk '{print $NF}')" || version=""
+    fi
+    acquire_addon "Core images" "provisa-core-images-${version}.tar.gz" "$staged" "y"
+    if [ ! "$(ls -A "$staged" 2>/dev/null)" ]; then
+      err "Core images unavailable. Place provisa-core-images-*.tar.gz beside the installer and re-run."
+      exit 1
+    fi
+    return 0
   fi
 
   info "Staging images to ${staged}..."
@@ -764,11 +774,8 @@ install_addons() {
   if [ -z "$version" ] && command -v provisa &>/dev/null; then
     version="$(provisa version 2>/dev/null | head -1 | awk '{print $NF}')" || version=""
   fi
-  # Trino engine stack (postgres/trino/zaychik/redis/pgbouncer) — only when the
-  # Trino-on-Docker engine was chosen. Reuses the existing CI core-images artifact.
-  if [ "$DEPLOY_ENGINE" = "trino" ]; then
-    acquire_addon "Trino engine" "provisa-core-images-${version}.tar.gz" "${PROVISA_HOME}/images" "y"
-  fi
+  # Note: the core-images add-on (postgres/trino/zaychik/redis/pgbouncer + python base) is
+  # acquired by stage_images for ANY Docker tier (slim base ships no images in the DMG).
   # Observability integration demo (collector+prometheus+grafana) — only in docker mode.
   if [ "$OBS_MODE" = "docker" ]; then
     acquire_addon "Observability integration demo" "provisa-obs-images-${version}.tar.gz" "${PROVISA_HOME}/obs-images" "y"

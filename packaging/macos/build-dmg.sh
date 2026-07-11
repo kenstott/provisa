@@ -600,16 +600,11 @@ create_dmg() {
   mkdir -p "$tmp_dmg"
   cp -r "${APP_BUNDLE}" "${tmp_dmg}/Provisa.app"
 
-  # Container images and base VM image sit alongside the .app in the DMG.
-  # chflags hidden keeps them out of the Finder window.
-  # first-launch.sh copies them to ~/.provisa/ on first run.
-  # provisa-local.tar.gz is excluded — built at first-launch from bundled source.
-  mkdir -p "${tmp_dmg}/images"
-  for f in "${IMAGES_DIR}"/*.tar.gz; do
-    [[ "$(basename "$f")" == "provisa-local.tar.gz" ]] && continue
-    cp "$f" "${tmp_dmg}/images/"
-  done
-  chflags hidden "${tmp_dmg}/images"
+  # Slim base (REQ-979): the core container images are NOT bundled in the DMG — that
+  # kept the default (native) install under GitHub's 2 GB asset limit once the native
+  # runtime is bundled. The Docker/Trino tier fetches them via first-launch's
+  # acquire_addon from the published provisa-core-images-<version>.tar.gz (or a copy
+  # pre-staged beside the installer for airgapped installs).
 
   mkdir -p "${tmp_dmg}/nerdctl"
   cp "${NERDCTL_DIR}/${NERDCTL_ARCHIVE}" "${tmp_dmg}/nerdctl/"
