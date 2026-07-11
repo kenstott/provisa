@@ -24,6 +24,8 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from redis.exceptions import RedisError
+
 from provisa.otel_compat import get_tracer as _get_tracer
 
 log = logging.getLogger(__name__)
@@ -72,6 +74,13 @@ class CacheStore(ABC):  # REQ-544
     @abstractmethod
     async def close(self) -> None:
         """Close the store connection."""
+
+    async def table_entry_counts(self) -> dict[int, int]:
+        """Cached-entry count per table_id, aggregated across tenants.
+
+        Returns ``{}`` for stores with no per-table index (e.g. the noop store).
+        """
+        return {}
 
 
 class NoopCacheStore(CacheStore):
@@ -163,7 +172,9 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
                     cached_at=meta_dict["cached_at"],
                     ttl=meta_dict["ttl"],
                 )
-            except Exception:
+            except (RedisError, OSError, ValueError, KeyError):
+                # ValueError/KeyError cover corrupt cached meta (bad JSON / missing field);
+                # RedisError/OSError cover client, connection, and socket failures.
                 log.warning("Redis get failed, treating as cache miss", exc_info=True)
                 span.set_attribute("cache.hit", False)
                 return None
@@ -196,7 +207,7 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
                         pipe.sadd(tkey, key)
                         pipe.expire(tkey, ttl + 60)  # slightly longer than cache TTL
                 await pipe.execute()
-            except Exception:
+            except (RedisError, OSError):
                 log.warning("Redis set failed, query result not cached", exc_info=True)
 
     async def invalidate_by_pattern(
@@ -212,7 +223,7 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
             if keys:
                 return await self._redis.delete(*keys)
             return 0
-        except Exception:
+        except (RedisError, OSError):
             log.warning("Redis invalidate_by_pattern failed", exc_info=True)
             return 0
 
@@ -235,9 +246,36 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
             pipe.delete(tkey)
             await pipe.execute()
             return len(cache_keys)
-        except Exception:
+        except (RedisError, OSError):
             log.warning("Redis invalidate_by_table failed", exc_info=True)
             return 0
+
+    async def table_entry_counts(self) -> dict[int, int]:  # REQ-231
+        try:
+            await self._connect()
+            assert self._redis is not None
+            index_keys: list[bytes] = []
+            async for k in self._redis.scan_iter(match=self.TABLE_PREFIX + "*"):
+                index_keys.append(k)
+            if not index_keys:
+                return {}
+            pipe = self._redis.pipeline()
+            for k in index_keys:
+                pipe.scard(k)
+            cards = await pipe.execute()
+            counts: dict[int, int] = {}
+            for k, card in zip(index_keys, cards):
+                ks = k.decode() if isinstance(k, bytes) else k
+                # Key form: provisa:table:[<tenant>:]<table_id> — trailing segment is the id.
+                tail = ks.rsplit(":", 1)[-1]
+                if not tail.isdigit():
+                    continue
+                tid = int(tail)
+                counts[tid] = counts.get(tid, 0) + int(card)
+            return counts
+        except (RedisError, OSError):
+            log.warning("Redis table_entry_counts failed", exc_info=True)
+            return {}
 
     async def close(self) -> None:
         if self._redis:

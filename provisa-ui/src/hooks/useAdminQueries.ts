@@ -22,6 +22,9 @@ import type {
 import type {
   MVInfo,
   CacheStats,
+  CacheTableStat,
+  HotTableStat,
+  MaterializeStoreInfo,
   SystemHealth,
   ScheduledTask,
   CompileResult,
@@ -38,6 +41,9 @@ import {
   RLSRulesQuery as RLS_RULES_QUERY,
   MVList as MV_LIST_QUERY,
   CacheStats as CACHE_STATS_QUERY,
+  CacheTableStats as CACHE_TABLE_STATS_QUERY,
+  HotTables as HOT_TABLES_QUERY,
+  MaterializeStoreInfo as MATERIALIZE_STORE_INFO_QUERY,
   SystemHealth as SYSTEM_HEALTH_QUERY,
   ScheduledTasks as SCHEDULED_TASKS_QUERY,
   AvailableSchemas,
@@ -445,6 +451,29 @@ export function useCacheStats() {
     fetchPolicy: "cache-and-network",
   });
   return { cacheStats: data?.cacheStats ?? null, loading, error, refetch };
+}
+
+export function useCacheTableStats() {
+  const { data, loading, error, refetch } = useQuery<{ cacheTableStats: CacheTableStat[] }>(
+    CACHE_TABLE_STATS_QUERY,
+    { fetchPolicy: "cache-and-network" },
+  );
+  return { cacheTableStats: data?.cacheTableStats ?? [], loading, error, refetch };
+}
+
+export function useHotTables() {
+  const { data, loading, error, refetch } = useQuery<{ hotTables: HotTableStat[] }>(
+    HOT_TABLES_QUERY,
+    { fetchPolicy: "cache-and-network" },
+  );
+  return { hotTables: data?.hotTables ?? [], loading, error, refetch };
+}
+
+export function useMaterializeStoreInfo() {
+  const { data, loading, error, refetch } = useQuery<{
+    materializeStoreInfo: MaterializeStoreInfo;
+  }>(MATERIALIZE_STORE_INFO_QUERY, { fetchPolicy: "cache-and-network" });
+  return { materializeStoreInfo: data?.materializeStoreInfo ?? null, loading, error, refetch };
 }
 
 export function useSystemHealth() {

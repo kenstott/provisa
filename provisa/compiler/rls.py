@@ -96,7 +96,9 @@ def inject_rls(  # REQ-038, REQ-040, REQ-041, REQ-402, REQ-403
 
         # Build a qualified predicate AST per applicable table.
         predicates: list[exp.Expression] = []
-        root_table = ctx.tables.get(compiled.root_field)
+        # canonical_field is the pre-alias schema field; root_field may be a client alias
+        # absent from ctx.tables — using it alone would skip the RLS predicate on aliased roots.
+        root_table = ctx.tables.get(compiled.canonical_field or compiled.root_field)
         if root_table:
             filter_expr = _rule_for_table(root_table.table_id, root_table.domain_id)
             if filter_expr:

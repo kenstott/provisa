@@ -31,13 +31,11 @@ import {
 import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
 import { domainGqlAlias } from "../types/admin";
-import { MVManager } from "../components/admin/MVManager";
 import { CacheManager } from "../components/admin/CacheManager";
 import { SystemHealth } from "../components/admin/SystemHealth";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
 import { ObservabilityTab } from "../components/admin/ObservabilityTab";
 import { FederationEngineTab } from "../components/admin/FederationEngineTab";
-import { CacheStorageTab } from "../components/admin/CacheStorageTab";
 import { EncryptionTab } from "../components/admin/EncryptionTab";
 import { AuthTab } from "../components/admin/AuthTab";
 import { LocalUsersTab } from "../components/admin/LocalUsersTab";
@@ -48,14 +46,12 @@ const FORMAT_OPTIONS = ["parquet", "orc", "json", "ndjson", "csv", "arrow"];
 const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/overview": "Overview",
   "/admin/domains": "Domains",
-  "/admin/materialized-views": "Materialized Views",
   "/admin/cache": "Cache",
-  "/admin/scheduled-tasks": "Scheduled Tasks",
-  "/admin/federation-engine": "Federation Engine",
-  "/admin/cache-storage": "Cache & Storage",
+  "/admin/scheduled-tasks": "Scheduler",
+  "/admin/federation-engine": "Federation",
   "/admin/encryption": "Encryption",
   "/admin/auth": "Authentication",
-  "/admin/system-health": "System Health",
+  "/admin/system-health": "Health",
   "/admin/observability": "Observability",
   "/admin/local-users": "Local Users",
   "/admin/orgs": "Orgs",
@@ -648,14 +644,12 @@ export function AdminPage() {
             </div>
           </>
         )}
-        {activeTab === "Materialized Views" && <MVManager />}
         {activeTab === "Cache" && <CacheManager />}
-        {activeTab === "Scheduled Tasks" && <ScheduledTasks />}
-        {activeTab === "Federation Engine" && <FederationEngineTab />}
-        {activeTab === "Cache & Storage" && <CacheStorageTab />}
+        {activeTab === "Scheduler" && <ScheduledTasks />}
+        {activeTab === "Federation" && <FederationEngineTab />}
         {activeTab === "Encryption" && <EncryptionTab />}
         {activeTab === "Authentication" && <AuthTab />}
-        {activeTab === "System Health" && <SystemHealth />}
+        {activeTab === "Health" && <SystemHealth />}
         {activeTab === "Observability" && settings && (
           <ObservabilityTab settings={settings} setSettings={setSettings} />
         )}

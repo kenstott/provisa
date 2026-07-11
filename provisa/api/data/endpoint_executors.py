@@ -453,7 +453,7 @@ async def _execute_engine_standard(
     physical_sql = state.federation_engine.transpile_physical(exec_sql)
     _t_engine = _time.perf_counter()
     _engine_ck = getattr(state, "engine_conn_kwargs", None)
-    _root_meta = ctx.tables.get(root_field)
+    _root_meta = ctx.tables.get(compiled.canonical_field or root_field)
     _root_name = (
         (_root_meta.original_table_name or _root_meta.table_name) if _root_meta else ""
     ) or root_field
@@ -542,7 +542,11 @@ async def _store_response_cache(
 
     source_id = next(iter(compiled.sources), None)
     src_cache = state.source_cache.get(source_id, {}) if source_id else {}
-    table_ids = {meta.table_id for meta in ctx.tables.values() if meta.field_name == root_field}
+    # Resolve the root table by its ctx.tables key. canonical_field is the pre-alias schema
+    # field (variant keys like …GroupBy/…_aggregate are registered too); root_field may be a
+    # client alias not present in ctx.tables, so canonical_field takes precedence.
+    _root_meta = ctx.tables.get(compiled.canonical_field or root_field)
+    table_ids = {_root_meta.table_id} if _root_meta is not None else set()
     table_id = next(iter(table_ids), None)
     tbl_cache_ttl = state.table_cache.get(table_id) if table_id else None
     _, resolved_ttl = resolve_policy(
@@ -569,6 +573,7 @@ async def _store_api_source_cache(
     ck: str,
     response_data: dict,
     root_field: str,
+    canonical_field: str,
     ctx,
     source_id: str,
     response_cache_ttl: int | None,
@@ -579,7 +584,10 @@ async def _store_api_source_cache(
     from provisa.cache.policy import resolve_policy
 
     _src_cache = state.source_cache.get(source_id, {})
-    _table_ids = {meta.table_id for meta in ctx.tables.values() if meta.field_name == root_field}
+    # Resolve by ctx.tables key. canonical_field is the pre-alias schema field (variant keys
+    # like …GroupBy are registered too); root_field may be a client alias absent from ctx.tables.
+    _root_meta = ctx.tables.get(canonical_field or root_field)
+    _table_ids = {_root_meta.table_id} if _root_meta is not None else set()
     _table_id = next(iter(_table_ids), None)
     _tbl_cache_ttl = state.table_cache.get(_table_id) if _table_id else None
     _, _resolved_ttl = resolve_policy(
@@ -672,7 +680,7 @@ async def _exec_api_route(
     if _qs is not None:
         _source_types = getattr(state, "source_types", {})
         _hydration_ms_api = {decision.source_id: _phase1_ms}
-        _root_meta = ctx.tables.get(root_field)
+        _root_meta = ctx.tables.get(compiled.canonical_field or root_field)
         _join_fields: list[tuple[str, str, bool]] = []
         # Only relationships the query actually federates across sources (see _append_mermaid).
         if _root_meta:
@@ -705,6 +713,7 @@ async def _exec_api_route(
             ck,
             response_data,
             root_field,
+            compiled.canonical_field,
             ctx,
             decision.source_id,
             response_cache_ttl,

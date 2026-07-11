@@ -679,6 +679,32 @@ export interface CacheStats {
   hitCount: number;
   missCount: number;
   storeType: string;
+  usedMemoryBytes: number | null;
+  maxMemoryBytes: number | null;
+  evictedKeys: number | null;
+  expiredKeys: number | null;
+  connectedClients: number | null;
+  opsPerSec: number | null;
+}
+
+export interface CacheTableStat {
+  tableId: number;
+  cachedEntries: number;
+}
+
+export interface HotTableStat {
+  tableName: string;
+  catalog: string;
+  schemaName: string;
+  rowCount: number;
+  isApi: boolean;
+  loaded: boolean;
+}
+
+export interface MaterializeStoreInfo {
+  engineName: string;
+  storeRef: string;
+  mvCount: number;
 }
 
 export interface ProtocolHealth {

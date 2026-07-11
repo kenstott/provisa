@@ -24,10 +24,10 @@ shared server + dataset:
      non-admin role, on any transport.
 
 Adding a transport = one TransportAdapter. Today: REST /data/sql (SQL over HTTP),
-pgwire (SQL over the Postgres wire), Bolt (Cypher over the Bolt wire). Flight/gRPC
-and GraphQL are the next adapters; the Flight-SQL client currently targets Zaychik
-(raw Trino, ungoverned), so it is deliberately NOT wired here — a governed-Flight
-adapter must speak the app's own Flight server.
+pgwire (SQL over the Postgres wire), Bolt (Cypher over the Bolt wire), and Arrow
+Flight (SQL over the app's OWN governed Flight server — a JSON ticket carrying the
+query + role, run through the governed pipeline; NOT the Zaychik/raw-Trino Flight
+SQL client, which is ungoverned). gRPC and GraphQL are the next adapters.
 """
 
 from __future__ import annotations
@@ -142,6 +142,37 @@ class BoltAdapter(TransportAdapter):
             driver.close()
 
 
+class FlightAdapter(TransportAdapter):
+    name = "flight"
+
+    def __init__(self, server: IsolatedServer) -> None:
+        self._loc = f"grpc://127.0.0.1:{server.flight_port}"
+
+    def read(self, role, columns):
+        import json
+
+        import pyarrow.flight as flight
+
+        # The app's OWN Flight server (not Zaychik): the ticket carries the SQL and
+        # the role, and do_get runs it through the governed pipeline. Role lives in
+        # the ticket, so no separate handshake is needed.
+        client = flight.FlightClient(self._loc)
+        ticket = flight.Ticket(
+            json.dumps(
+                {"query": f"SELECT {columns} FROM orders ORDER BY id", "role": role}
+            ).encode()
+        )
+        try:
+            table = client.do_get(ticket).read_all()
+        except flight.FlightError as exc:
+            raise _Denied(f"flight {role}: {exc}") from exc
+        finally:
+            client.close()
+        cols = list(table.column_names)
+        rows = [tuple(r[c] for c in cols) for r in table.to_pylist()]
+        return cols, rows
+
+
 class _Denied(Exception):
     """A transport refused the query (governance denial at the wire boundary)."""
 
@@ -180,6 +211,7 @@ def contract_server():
         _ORG,
         enable_bolt=True,
         enable_pgwire=True,
+        await_flight=True,
         config="tests/fixtures/sample_config.yaml",
     )
     server.start()
@@ -193,8 +225,8 @@ def contract_server():
 
 
 @pytest.fixture(
-    params=[RestSqlAdapter, PgwireAdapter, BoltAdapter],
-    ids=["rest_sql", "pgwire", "bolt"],
+    params=[RestSqlAdapter, PgwireAdapter, BoltAdapter, FlightAdapter],
+    ids=["rest_sql", "pgwire", "bolt", "flight"],
 )
 def adapter(request, contract_server) -> TransportAdapter:
     return request.param(contract_server)
@@ -262,7 +294,9 @@ def test_admin_only_column_never_reaches_restricted_role(adapter):
 _LEAK_TRANSFORMS = ["amount AS a", "amount + 0 AS a", "(amount) AS amt2", "amount * 1 AS a"]
 
 
-@pytest.fixture(params=[RestSqlAdapter, PgwireAdapter], ids=["rest_sql", "pgwire"])
+@pytest.fixture(
+    params=[RestSqlAdapter, PgwireAdapter, FlightAdapter], ids=["rest_sql", "pgwire", "flight"]
+)
 def sql_adapter(request, contract_server) -> TransportAdapter:
     return request.param(contract_server)
 

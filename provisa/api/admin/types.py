@@ -372,6 +372,36 @@ class CacheStatsType:
     hit_count: int
     miss_count: int
     store_type: str
+    # Redis-only operational stats (None for the noop store, which exposes none of them).
+    used_memory_bytes: int | None = None
+    max_memory_bytes: int | None = None
+    evicted_keys: int | None = None
+    expired_keys: int | None = None
+    connected_clients: int | None = None
+    ops_per_sec: int | None = None
+
+
+@strawberry.type
+class CacheTableStatType:
+    table_id: int
+    cached_entries: int
+
+
+@strawberry.type
+class HotTableStatType:
+    table_name: str
+    catalog: str
+    schema_name: str
+    row_count: int
+    is_api: bool
+    loaded: bool
+
+
+@strawberry.type
+class MaterializeStoreInfoType:
+    engine_name: str
+    store_ref: str
+    mv_count: int
 
 
 @strawberry.type
