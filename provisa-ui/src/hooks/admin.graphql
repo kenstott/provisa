@@ -98,6 +98,8 @@ query TablesQuery {
     viewSql
     materialize
     mvRefreshInterval
+    mvDebounceQuiet
+    mvDebounceMaxDelay
     dataProduct
     enableAggregates
     enableGroupBy

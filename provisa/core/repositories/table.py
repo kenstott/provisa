@@ -71,6 +71,8 @@ async def upsert(
         "data_product": getattr(table, "data_product", False),
         "materialize": getattr(table, "materialize", False),
         "mv_refresh_interval": getattr(table, "mv_refresh_interval", 300),
+        "mv_debounce_quiet": getattr(table, "mv_debounce_quiet", 0.0),  # REQ-963
+        "mv_debounce_max_delay": getattr(table, "mv_debounce_max_delay", 5.0),  # REQ-963
         "enable_aggregates": getattr(table, "enable_aggregates", False),
         "enable_group_by": getattr(table, "enable_group_by", False),
         "live": table.live.model_dump() if table.live else None,
@@ -88,6 +90,8 @@ async def upsert(
         "data_product",
         "materialize",
         "mv_refresh_interval",
+        "mv_debounce_quiet",
+        "mv_debounce_max_delay",
         "enable_aggregates",
         "enable_group_by",
         "live",

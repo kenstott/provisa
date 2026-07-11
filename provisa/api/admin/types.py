@@ -111,6 +111,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
     materialize: bool = False
     mv_refresh_interval: int = 300
+    mv_debounce_quiet: float = 0.0  # REQ-963: seconds of quiet before firing; 0 = real-time
+    mv_debounce_max_delay: float = 5.0  # REQ-963: staleness cap under continuous churn
     data_product: bool = False
     enable_aggregates: bool = False
     enable_group_by: bool = False

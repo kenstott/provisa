@@ -123,6 +123,9 @@ registered_tables = Table(
     Column("data_product", Boolean, nullable=False, server_default=false()),
     Column("materialize", Boolean, nullable=False, server_default=false()),
     Column("mv_refresh_interval", Integer, nullable=False, server_default="300"),
+    # REQ-963 live-MV debounce (event-loop path). quiet=0 → real-time recompute.
+    Column("mv_debounce_quiet", Float, nullable=False, server_default="0"),
+    Column("mv_debounce_max_delay", Float, nullable=False, server_default="5"),
     Column("enable_aggregates", Boolean, nullable=False, server_default=false()),
     Column("enable_group_by", Boolean, nullable=False, server_default=false()),
     Column("live", JSON),
