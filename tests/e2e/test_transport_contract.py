@@ -248,6 +248,45 @@ def test_admin_only_column_never_reaches_restricted_role(adapter):
         )
 
 
+# --------------------------------------------------------------------------- #
+# Contract 3 — metamorphic: governance is on the COLUMN, not the column NAME.
+# --------------------------------------------------------------------------- #
+# Value-preserving SQL projections that all read `amount` but rename/wrap it, so a
+# governor that only pattern-matches the literal name "amount" would let the value
+# through under a different output name. Each must still be blocked.
+_LEAK_TRANSFORMS = ["amount AS a", "amount + 0 AS a", "(amount) AS amt2", "amount * 1 AS a"]
+
+
+@pytest.fixture(params=[RestSqlAdapter, PgwireAdapter], ids=["rest_sql", "pgwire"])
+def sql_adapter(request, contract_server) -> TransportAdapter:
+    return request.param(contract_server)
+
+
+@pytest.mark.parametrize("transform", _LEAK_TRANSFORMS, ids=lambda t: t.split(" AS ")[0])
+def test_governance_survives_sql_transformation(sql_adapter, contract_server, transform):
+    """A restricted role must not obtain the admin-only `amount` value even when the
+    query renames/wraps it (alias, arithmetic identity, parens). Governance that
+    keys on the literal column name rather than the resolved column would leak here
+    — a metamorphic property the plain name-based check cannot catch.
+    """
+    # The real values the restricted role must never see (value-preserving transforms
+    # surface the SAME numbers, so a leak is an exact set-membership hit).
+    _, admin_rows = RestSqlAdapter(contract_server).read(_ADMIN, "amount")
+    admin_amounts = {str(r[0]) for r in admin_rows if r[0] not in (None, 0, 0.0, "0", "")}
+    assert admin_amounts, "positive control: admin has no amounts to protect"
+
+    try:
+        _, rows = sql_adapter.read(_RESTRICTED, f"id, {transform}")
+    except _Denied:
+        return  # transform rejected outright — governance held
+
+    leaked = {str(r[-1]) for r in rows} & admin_amounts
+    assert not leaked, (
+        f"{sql_adapter.name}: transform `{transform}` leaked admin amounts "
+        f"to {_RESTRICTED}: {sorted(leaked)[:3]}"
+    )
+
+
 def _norm(rows: list[tuple]) -> list[tuple]:
     """Normalize rows for cross-transport comparison (stringify, sort)."""
     return sorted(tuple(str(v) for v in row) for row in rows)
