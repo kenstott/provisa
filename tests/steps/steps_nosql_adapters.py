@@ -14,43 +14,73 @@ from __future__ import annotations
 
 import asyncio
 import os
+import socket
 import subprocess
-from pathlib import Path
+import time
 
 import pytest
 from pytest_bdd import given, scenario, then, when
 
 pytestmark = [pytest.mark.integration]
 
-_REPO = Path(__file__).resolve().parents[2]
-# The MongoDB the REQ-738 adapter scenario drives, provisioned by THIS test — not
-# assumed to be already running. Project-scoped (provisa-test) + service-scoped so
-# it composes with the other test-project services.
-_MONGO_COMPOSE = ["docker", "compose", "-p", "provisa-test", "-f", "docker-compose.test.yml"]
+# A FULLY ISOLATED container name so the fixture never touches the dev stack, the
+# shared provisa-test project, or the provisa_default network.
+_MONGO_CONTAINER = "provisa-bdd-nosql-mongo"
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 @pytest.fixture(scope="module", autouse=True)
 def _mongodb_service():
-    """Provision MongoDB through docker for the REQ-738 scenario and reap it after.
+    """Provision an ISOLATED MongoDB for the REQ-738 scenario and reap it after.
 
-    Tests own the services they exercise: bring the container up and block until
-    healthy, then tear it down (unless PYTEST_DOCKER_KEEP=1) so nothing leaks.
+    Tests own their services and must not impact local dev: a dedicated container
+    on an ephemeral host port, its own default network, no compose project — spun
+    up here and removed after (PYTEST_DOCKER_KEEP=1 keeps it). The scenario seeds
+    its own documents, so no init volume is needed.
     """
-    # docker-compose.test.yml joins the shared `provisa_default` network (created by
-    # the dev stack). The REQ-738 adapter connects to Mongo from the host over the
-    # published 27017, so the network is incidental here — ensure it exists so the
-    # service comes up standalone without the whole dev stack.
+    subprocess.run(["docker", "rm", "-f", _MONGO_CONTAINER], capture_output=True, check=False)
+    port = _free_port()
     subprocess.run(
-        ["docker", "network", "create", "provisa_default"],
+        ["docker", "run", "-d", "--name", _MONGO_CONTAINER, "-p", f"{port}:27017", "mongo:7"],
+        check=True,
         capture_output=True,
-        check=False,
     )
-    subprocess.run([*_MONGO_COMPOSE, "up", "-d", "--wait", "mongodb"], cwd=_REPO, check=True)
     try:
-        yield {"host": "localhost", "port": 27017}
+        # Block until the client can ping (container up + mongod accepting).
+        deadline = time.monotonic() + 60
+        while True:
+            probe = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    _MONGO_CONTAINER,
+                    "mongosh",
+                    "--quiet",
+                    "--eval",
+                    "db.adminCommand('ping').ok",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if probe.returncode == 0 and "1" in probe.stdout:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError(f"isolated MongoDB did not become ready: {probe.stderr}")
+            time.sleep(1)
+        os.environ["MONGO_HOST"] = "localhost"
+        os.environ["MONGO_PORT"] = str(port)
+        yield {"host": "localhost", "port": port}
     finally:
+        os.environ.pop("MONGO_PORT", None)
         if not os.environ.get("PYTEST_DOCKER_KEEP"):
-            subprocess.run([*_MONGO_COMPOSE, "rm", "-sf", "mongodb"], cwd=_REPO, check=False)
+            subprocess.run(
+                ["docker", "rm", "-f", _MONGO_CONTAINER], capture_output=True, check=False
+            )
 
 
 # ---------------------------------------------------------------------------
