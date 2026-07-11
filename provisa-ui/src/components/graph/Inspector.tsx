@@ -42,6 +42,8 @@ interface InspectorProps {
   pkMap: Record<string, string[]>;
 }
 
+const HIDDEN_PROPS = new Set(["l1Cluster", "l2Cluster", "l3Cluster", "scl1", "scl2", "scl3", "deg_in", "deg_out", "deg_total"]);
+
 function CopyIcon() {
   return (
     <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
@@ -100,7 +102,6 @@ export function Inspector({
   const isN = selected !== null && selected.kind === "node";
   const label = selected ? (isN ? selected.data.label : (selected.data as GEdge).type) : "";
   const color = colorOverrides[label] ?? labelColor(label);
-  const props = selected?.data.properties ?? {};
 
   const nodeLabel = selected && isN ? (selected.data as GNode).label : "";
   const colonIdx = nodeLabel.indexOf(":");
@@ -110,29 +111,28 @@ export function Inspector({
   const stableId = selected && isN ? getStableNodeId(selected.data as GNode, pkMap) : null;
   const pkCols = selected && isN ? (pkMap[(selected.data as GNode).label] ?? []) : [];
   const idColName = pkCols[0] ?? null;
-  const pkEntry: Record<string, unknown> =
-    selected && isN && idColName && !(idColName in props) ? { [idColName]: (selected.data as GNode).id } : {};
 
-  const HIDDEN_PROPS = new Set(["l1Cluster", "l2Cluster", "l3Cluster", "scl1", "scl2", "scl3", "deg_in", "deg_out", "deg_total"]);
-  const idRow: [string, unknown][] = stableId ? [["<id>", stableId]] : [];
-
-  const propRows: [string, unknown][] = !selected
-    ? []
-    : isN
-      ? [
-          ...idRow,
-          ...Object.entries(props).filter(([k]) => !HIDDEN_PROPS.has(k)).sort(([a], [b]) => a.localeCompare(b)),
-          ...Object.entries(pkEntry),
-        ]
-      : (() => {
-          const e = selected.data as GEdge;
-          return [
-            ["<id>", e.identity],
-            ["start", e.start],
-            ["end", e.end],
-            ...Object.entries(props).sort(([a], [b]) => a.localeCompare(b)),
-          ] as [string, unknown][];
-        })();
+  const propRows: [string, unknown][] = useMemo(() => {
+    if (!selected) return [];
+    const props = selected.data.properties ?? {};
+    if (isN) {
+      const idRow: [string, unknown][] = stableId ? [["<id>", stableId]] : [];
+      const pkEntry: Record<string, unknown> =
+        idColName && !(idColName in props) ? { [idColName]: (selected.data as GNode).id } : {};
+      return [
+        ...idRow,
+        ...Object.entries(props).filter(([k]) => !HIDDEN_PROPS.has(k)).sort(([a], [b]) => a.localeCompare(b)),
+        ...Object.entries(pkEntry),
+      ];
+    }
+    const e = selected.data as GEdge;
+    return [
+      ["<id>", e.identity],
+      ["start", e.start],
+      ["end", e.end],
+      ...Object.entries(props).sort(([a], [b]) => a.localeCompare(b)),
+    ] as [string, unknown][];
+  }, [selected, isN, stableId, idColName]);
 
   const handleCopyAll = useCallback(() => {
     const obj = Object.fromEntries(propRows);

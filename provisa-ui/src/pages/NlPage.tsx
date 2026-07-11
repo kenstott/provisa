@@ -194,7 +194,7 @@ export function NlPage() {
       },
     );
     cancelRef.current = stop;
-  }, [question, submitting, role]);
+  }, [question, submitting, role, saveBranches]);
 
   const openInExplorer = useCallback((target: Target, _query: string) => {
     const route = EXPLORER_ROUTES[target];

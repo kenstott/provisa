@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { GraphFrame } from "../components/graph/GraphFrame";
@@ -382,6 +382,21 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
     });
   }, []);
 
+  // pkMap covers ALL schema nodes — pk lookup is independent of the domain visibility filter
+  const { pkMap, labelToTableLabel } = useMemo(() => {
+    const pk: Record<string, string[]> = {};
+    const l2t: Record<string, string> = {};
+    for (const node of schemaNodeLabels) {
+      const compoundLabel = node.domainLabel
+        ? `${node.domainLabel}:${node.tableLabel}`
+        : node.tableLabel;
+      pk[compoundLabel] =
+        node.pkColumns.length > 0 ? node.pkColumns : (node.idColumn ? [node.idColumn] : []);
+      l2t[compoundLabel] = node.tableLabel;
+    }
+    return { pkMap: pk, labelToTableLabel: l2t };
+  }, [schemaNodeLabels]);
+
   const rerunFrame = useCallback(
     async (id: string, query: string) => {
       if (!query) return;
@@ -590,7 +605,7 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
         rerunFrame(frameId, newQueryBase);
       }
     },
-    [rerunFrame, adminRels, schemaNodeLabels, buildNfWhereClauses],
+    [rerunFrame, adminRels, schemaNodeLabels, buildNfWhereClauses, labelToTableLabel],
   );
 
   const onDomainDrop = useCallback(
@@ -709,18 +724,6 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
       : schemaRels.filter(
           (r) => visibleLabelSet.has(r.source) && visibleLabelSet.has(r.target),
         );
-
-  // pkMap covers ALL schema nodes — pk lookup is independent of the domain visibility filter
-  const pkMap: Record<string, string[]> = {};
-  const labelToTableLabel: Record<string, string> = {};
-  for (const node of schemaNodeLabels) {
-    const compoundLabel = node.domainLabel
-      ? `${node.domainLabel}:${node.tableLabel}`
-      : node.tableLabel;
-    pkMap[compoundLabel] =
-      node.pkColumns.length > 0 ? node.pkColumns : (node.idColumn ? [node.idColumn] : []);
-    labelToTableLabel[compoundLabel] = node.tableLabel;
-  }
 
   const cypherSchema: CypherSchema = {
     labels: visibleNodeLabels
