@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     watermark_column TEXT,
     change_signal TEXT,  -- REQ-929: override source change signal; NULL = inherit
     probe_query TEXT,    -- REQ-929: source-native freshness probe for change_signal in {probe, ttl_probe}
+    probe_type TEXT,     -- REQ-982: input-probe method; NULL = resolve per source class
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -120,6 +121,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS change_signal TEXT;  -- REQ-929
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS probe_query TEXT;  -- REQ-929
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS probe_type TEXT;  -- REQ-982
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS column_presets JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS data_product BOOLEAN NOT NULL DEFAULT FALSE;
@@ -509,5 +511,15 @@ CREATE TABLE IF NOT EXISTS rel_ids (
     composite_id TEXT UNIQUE NOT NULL,   -- edge identity "Type:startPk-endPk"
     rel_type     TEXT NOT NULL,
     properties   JSONB NOT NULL DEFAULT '{}'
+);
+
+-- Per-node freshness state (REQ-981/982): content hash of the last land (output gate)
+-- and the last probe token (input probe baseline). One row per node; upserted on each
+-- successful land. Mirrors provisa.core.schema_org.node_freshness_state.
+CREATE TABLE IF NOT EXISTS node_freshness_state (
+    node         TEXT PRIMARY KEY,       -- the source-table / MV node key
+    content_hash TEXT,                   -- REQ-981: hash of the last landed replace-shaped content
+    probe_token  TEXT,                   -- REQ-982: last probe token (watermark/hash/count baseline)
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
