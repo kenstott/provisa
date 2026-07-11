@@ -1,0 +1,24 @@
+# GitGuardian configuration — allowlist for KNOWN LOCAL/TEST credentials only.
+#
+# These are throwaway localhost credentials used by the dev docker stacks and the
+# integration/BDD tests (e.g. docker-compose.core.yml POSTGRES_PASSWORD, the isolated
+# provisa-mvmvp stack, and tests that connect to disposable localhost databases). They
+# are NOT real secrets and never authenticate anything outside a developer's machine or
+# CI runner. Real credentials are injected at runtime via ${env:...} references and are
+# never committed.
+version: 2
+
+secret:
+  # Ignore these specific secret VALUES wherever GitGuardian detects them. A production
+  # credential is never one of these fixed strings, so this cannot mask a real leak.
+  ignored-matches:
+    - name: "Throwaway local/test Postgres password: provisa"
+      match: provisa
+    - name: "Throwaway local/test Postgres password: postgres"
+      match: postgres
+
+  # Paths that only ever carry local/dev/test connection details.
+  ignored-paths:
+    - "docker-compose*.yml"
+    - "tests/**"
+    - "start-ui-install.sh"
