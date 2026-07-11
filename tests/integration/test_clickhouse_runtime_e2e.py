@@ -47,3 +47,57 @@ async def test_clickhouse_runtime_federates_csv_source():
         assert len(rows.rows) == 3
     finally:
         rt.close()
+
+
+async def test_clickhouse_runtime_arrow_transport():
+    """REQ-986: the ENGINE ARROW terminal returns a native pyarrow Table, no row materialization."""
+    import pyarrow as pa
+
+    rt = ClickHouseFederationRuntime.embedded()
+    try:
+        table = rt.run_arrow("SELECT number AS n, toString(number) AS s FROM numbers(5) ORDER BY n")
+        assert isinstance(table, pa.Table)
+        assert table.num_rows == 5
+        assert table.column_names == ["n", "s"]
+        assert table.column("n").to_pylist() == [0, 1, 2, 3, 4]
+    finally:
+        rt.close()
+
+
+async def test_clickhouse_runtime_arrow_stream_transport():
+    """REQ-986: the ENGINE ARROW_STREAM terminal returns (schema, lazy RecordBatch iterator)."""
+    import pyarrow as pa
+
+    rt = ClickHouseFederationRuntime.embedded()
+    try:
+        schema, batches = rt.run_arrow_stream("SELECT number AS n FROM numbers(9) ORDER BY n")
+        assert isinstance(schema, pa.Schema)
+        assert schema.names == ["n"]
+        collected = list(batches)
+        assert all(isinstance(b, pa.RecordBatch) for b in collected)
+        assert sum(b.num_rows for b in collected) == 9
+    finally:
+        rt.close()
+
+
+async def test_clickhouse_backend_arrow_capabilities_wired():
+    """REQ-986: the engine declares ARROW/ARROW_STREAM and the backend honors both."""
+    import pyarrow as pa
+
+    from provisa.federation.clickhouse_backend import ClickHouseBackend
+    from provisa.federation.engine import build_clickhouse_engine
+    from provisa.federation.runtime import EngineCapability
+
+    engine = build_clickhouse_engine()
+    assert EngineCapability.ARROW in engine.capabilities
+    assert EngineCapability.ARROW_STREAM in engine.capabilities
+
+    backend = ClickHouseBackend(engine)
+    state = SimpleNamespace(config=None)
+    table = backend.execute_arrow(state, "SELECT number AS n FROM numbers(3)")
+    assert isinstance(table, pa.Table)
+    assert table.num_rows == 3
+
+    schema, batches = backend.execute_stream(state, "SELECT number AS n FROM numbers(4)")
+    assert schema.names == ["n"]
+    assert sum(b.num_rows for b in batches) == 4

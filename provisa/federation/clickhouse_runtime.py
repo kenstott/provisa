@@ -41,10 +41,15 @@ a live EngineRuntime dispatch calls; routing/HTTP wiring is separate — mirrors
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import urlparse
 
 from provisa.executor.result import QueryResult
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    import pyarrow as pa
 from provisa.federation.engine import build_clickhouse_engine
 from provisa.federation.runtime_support import columns_from_describe, run_async
 from provisa.transpiler.transpile import transpile
@@ -59,6 +64,14 @@ class _CHBackend(Protocol):
 
     def query(self, sql: str) -> tuple[list[tuple], list[str]]:
         """Run a query, returning ``(rows, column_names)``."""
+        ...
+
+    def query_arrow(self, sql: str) -> pa.Table:
+        """Run a query, returning a materialized Arrow table (REQ-986)."""
+        ...
+
+    def query_arrow_stream(self, sql: str) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
+        """Run a query, returning ``(schema, lazy RecordBatch iterator)`` (REQ-986)."""
         ...
 
     def close(self) -> None: ...
@@ -81,6 +94,36 @@ class _ServerBackend:
         res = self._client.query(sql)
         return [tuple(r) for r in res.result_rows], list(res.column_names)
 
+    def query_arrow(self, sql: str) -> pa.Table:
+        # clickhouse-connect requests FORMAT Arrow and returns a native pyarrow Table — no row
+        # materialization (REQ-986). use_strings maps ClickHouse String to Arrow utf8, not binary.
+        return self._client.query_arrow(sql, use_strings=True)
+
+    def query_arrow_stream(self, sql: str) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
+        # FORMAT ArrowStream: the server streams IPC blocks and clickhouse-connect wraps them in a
+        # StreamContext over a pyarrow RecordBatchStreamReader. The context must stay open for the
+        # lifetime of the iterator, so the generator owns enter/exit (REQ-986).
+        import pyarrow as pa
+
+        stream_ctx = self._client.query_arrow_stream(sql, use_strings=True)
+        reader: Any = stream_ctx.gen  # the pyarrow RecordBatchStreamReader the context wraps
+        schema = reader.schema  # available before consumption; GeneratorStream needs it up front
+        stream_ctx.__enter__()
+
+        def _batches() -> Iterator[pa.RecordBatch]:
+            try:
+                for chunk in stream_ctx:
+                    # clickhouse-connect yields one Arrow object per IPC block — normalize either a
+                    # Table or a RecordBatch to the record batches the Flight stream expects.
+                    if isinstance(chunk, pa.Table):
+                        yield from chunk.to_batches()
+                    else:
+                        yield chunk
+            finally:
+                stream_ctx.__exit__(None, None, None)
+
+        return schema, _batches()
+
     def close(self) -> None:
         self._client.close()
 
@@ -100,8 +143,25 @@ class _NativeBackend:
         self._client.execute(sql)
 
     def query(self, sql: str) -> tuple[list[tuple], list[str]]:
-        rows, cols = self._client.execute(sql, with_column_types=True)
+        # with_column_types=True → (rows, [(name, type), ...]); the driver stub types execute() as a
+        # union (row-count int for DDL), so narrow it explicitly.
+        rows, cols = cast(
+            "tuple[list[tuple], list[tuple[str, str]]]",
+            self._client.execute(sql, with_column_types=True),
+        )
         return [tuple(r) for r in rows], [c[0] for c in cols]
+
+    def query_arrow(self, sql: str) -> pa.Table:
+        raise NotImplementedError(
+            "the ClickHouse native TCP transport (clickhouse-driver) has no Arrow format; "
+            "use clickhouse:// (HTTP) or chdb:// for the Arrow Flight ENGINE path (REQ-986)"
+        )
+
+    def query_arrow_stream(self, sql: str) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
+        raise NotImplementedError(
+            "the ClickHouse native TCP transport (clickhouse-driver) has no Arrow format; "
+            "use clickhouse:// (HTTP) or chdb:// for the Arrow Flight ENGINE path (REQ-986)"
+        )
 
     def close(self) -> None:
         self._client.disconnect()
@@ -131,6 +191,36 @@ class _EmbeddedBackend:
         cols = table.column_names
         rows = [tuple(d[c] for c in cols) for d in table.to_pylist()]
         return rows, list(cols)
+
+    def query_arrow(self, sql: str) -> pa.Table:
+        import io
+
+        import pyarrow as pa
+
+        raw = self._session.query(sql, "ArrowStream").bytes()
+        if not raw:
+            return pa.table({})
+        return pa.ipc.open_stream(io.BytesIO(raw)).read_all()
+
+    def query_arrow_stream(self, sql: str) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
+        # chdb hands back the whole ArrowStream buffer at once, so this is pseudo-streaming: the
+        # result is already materialized in-process. We still expose it as a batch iterator so the
+        # Flight ARROW_STREAM transport is uniform across backends (REQ-986).
+        import io
+
+        import pyarrow as pa
+
+        raw = self._session.query(sql, "ArrowStream").bytes()
+        if not raw:
+            empty = pa.table({})
+            return empty.schema, iter(())
+        reader = pa.ipc.open_stream(io.BytesIO(raw))
+        schema = reader.schema
+
+        def _batches() -> Iterator[pa.RecordBatch]:
+            yield from reader
+
+        return schema, _batches()
 
     def close(self) -> None:
         self._session.close()
@@ -274,6 +364,16 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
         return await run_async(self.run_sync, sql, params)
+
+    def run_arrow(self, sql: str) -> pa.Table:
+        """Execute ClickHouse-dialect SQL and return a native Arrow table — the ENGINE ARROW terminal
+        the Flight server calls (REQ-986). Mirrors run_sync but keeps results columnar end-to-end."""
+        return self._backend.query_arrow(sql)
+
+    def run_arrow_stream(self, sql: str) -> tuple[pa.Schema, Iterator[pa.RecordBatch]]:
+        """Execute ClickHouse-dialect SQL and return ``(schema, lazy RecordBatch iterator)`` — the
+        ENGINE ARROW_STREAM terminal for the Flight server (REQ-986)."""
+        return self._backend.query_arrow_stream(sql)
 
     @property
     def connection(self):
