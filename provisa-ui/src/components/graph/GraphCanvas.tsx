@@ -14,10 +14,9 @@
    render-phase adjustments. Ref reads during render are intrinsic to driving the
    imperative graph engine and are intentional throughout this module */
 
-import { useRef, useEffect, useLayoutEffect, useState, useCallback, type ReactNode } from "react";
-import type { Relationship } from "../../types/admin";
-import { labelColor, darkenColor, clusterColor } from "./graph-model";
-import type { GNode, GEdge, GraphStats, RelLineOverride } from "./graph-model";
+import { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
+import { labelColor, darkenColor } from "./graph-model";
+import type { GNode, GEdge, GraphStats } from "./graph-model";
 import { buildClusterElements, buildClusterMetaEdges, cidToId, type ClusterLevel } from "./graph-clusters";
 import { buildGraphStylesheet } from "./graph-stylesheet";
 import { NodeContextMenu, type NodeCtxMenuState } from "./NodeContextMenu";
@@ -29,150 +28,13 @@ import type {
   CyInstance,
 } from "./cytoscape-types";
 import cytoscape from "cytoscape";
-import fcoseRaw from "cytoscape-fcose";
-import layoutUtilitiesRaw from "cytoscape-layout-utilities";
-import cytoscapeSvgRaw from "cytoscape-svg";
-import { ZoomInIcon, ZoomOutIcon, FitScreenIcon } from "./GraphIcons";
-// CJS bundles — .default may or may not be present depending on bundler
-type CyExt = Parameters<typeof cytoscape.use>[0];
-type CyExtModule = { default?: CyExt } | CyExt;
-const _interopExt = (m: CyExtModule): CyExt => (m as { default?: CyExt }).default ?? (m as CyExt);
-const fcose = _interopExt(fcoseRaw as CyExtModule);
-const layoutUtilities = _interopExt(layoutUtilitiesRaw as CyExtModule);
-const cytoscapeSvg = _interopExt(cytoscapeSvgRaw as CyExtModule);
-try {
-  cytoscape.use(fcose);
-} catch {
-  /* already registered */
-}
-try {
-  cytoscape.use(layoutUtilities);
-} catch {
-  /* already registered */
-}
-try {
-  cytoscape.use(cytoscapeSvg);
-} catch {
-  /* already registered */
-}
-
-function resolveNodeLabel(n: GNode): string {
-  if ("name" in n.properties) return String(n.properties["name"]);
-  const nameKey = Object.keys(n.properties).find((k) => k.toLowerCase().includes("name"));
-  if (nameKey) return String(n.properties[nameKey]);
-  if ("title" in n.properties) return String(n.properties["title"]);
-  return String(n.id);
-}
-
-interface CanvasProps {
-  nodes: Map<string, GNode>;
-  edges: Map<string, GEdge>;
-  overlayNodes: Map<string, GNode>;
-  overlayEdges: Map<string, GEdge>;
-  onSelect: (item: { kind: "node"; data: GNode; graphStats?: GraphStats } | { kind: "edge"; data: GEdge } | null) => void;
-  colorOverrides: Record<string, string>;
-  sizeOverrides: Record<string, number>;
-  labelProperty: Record<string, string>;
-  sizeByProperty: Record<string, string>;
-  sizeMultiplier: Record<string, number>;
-  relLineOverrides: Record<string, RelLineOverride>;
-  onExcludeNode: (nodeKeys: string[]) => void;
-  pkMap: Record<string, string[]>;
-  labelToTableLabel: Record<string, string>;
-  relationships: Relationship[];
-  labelSiblings?: Record<string, string[]>;
-  showingChildrenNatural: Set<string>;
-  onToggleChildren: (nodeKey: string) => void;
-  onToggleChildrenBatch: (nodeKeys: string[], circular?: boolean) => void;
-  showingChildrenCircular: Set<string>;
-  onToggleChildrenCircular: (nodeKey: string) => void;
-  showingParents: Set<string>;
-  onToggleParents: (nodeKey: string) => void;
-  onToggleParentsBatch: (nodeKeys: string[], circular?: boolean) => void;
-  showingParentsCircular: Set<string>;
-  onToggleParentsCircular: (nodeKey: string) => void;
-  onCyReady?: (cy: CyInstance | null) => void;
-  clusterLevel: ClusterLevel;
-  hullSvgRef?: React.Ref<SVGSVGElement>;
-  isExpanded?: boolean;
-}
-
-type LayoutMode = "force" | "hierarchy";
-
-const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
-  force: {
-    name: "fcose",
-    animate: false,
-    packComponents: true,
-    nodeRepulsion: () => 10000,
-    idealEdgeLength: () => 80,
-    gravity: 0.25,
-    numIter: 2500,
-    nodeSeparation: 80,
-    tilingPaddingVertical: 20,
-    tilingPaddingHorizontal: 20,
-  } as CyLayoutOptions,
-  hierarchy: {
-    name: "breadthfirst",
-    animate: false,
-    directed: true,
-    padding: 20,
-    spacingFactor: 1.4,
-  } as CyLayoutOptions,
-};
-
-function computeLabelSizeRanges(
-  cy: CyInstance,
-  sizeByProp: Record<string, string>,
-): Map<string, { min: number; max: number }> {
-  const ranges = new Map<string, { min: number; max: number }>();
-  cy.nodes().forEach((nd) => {
-    if (nd.data("_cluster") || nd.data("_port")) return;
-    const lbl = nd.data("label") as string;
-    const sby = sizeByProp[lbl];
-    if (!sby) return;
-    const gn = nd.data("_node") as GNode | undefined;
-    if (!gn) return;
-    const v = Number(gn.properties[sby]);
-    if (isNaN(v)) return;
-    const cur = ranges.get(sby);
-    if (!cur) {
-      ranges.set(sby, { min: v, max: v });
-    } else {
-      ranges.set(sby, { min: Math.min(cur.min, v), max: Math.max(cur.max, v) });
-    }
-  });
-  return ranges;
-}
-
-function applyNodeSize(
-  node: CyElement,
-  lbl: string,
-  gn: GNode | undefined,
-  sizeByProp: Record<string, string>,
-  sizeOverrides: Record<string, number>,
-  sizeMultiplier: Record<string, number>,
-  ranges: Map<string, { min: number; max: number }>,
-): void {
-  const base = sizeOverrides[lbl] ?? 44;
-  const sby = sizeByProp[lbl];
-  const multiplier = sizeMultiplier[lbl] ?? 3;
-  const inCluster = node.data("_inCluster") as boolean;
-  let sz: number;
-  if (sby && gn) {
-    const range = ranges.get(sby);
-    const v = Number(gn.properties[sby]);
-    if (range && !isNaN(v) && range.max > range.min) {
-      const t = (v - range.min) / (range.max - range.min);
-      sz = base * (1 + t * (multiplier - 1)) * (inCluster ? 0.5 : 1);
-    } else {
-      sz = inCluster ? base / 2 : base;
-    }
-  } else {
-    sz = inCluster ? base / 2 : base;
-  }
-  node.style({ width: sz, height: sz, "text-max-width": `${sz - 4}px` });
-}
+import "./canvas/cytoscape-extensions";
+import type { CanvasProps, NodeRingMenuState } from "./canvas/canvas-types";
+import { computeLabelSizeRanges, applyNodeSize, resolveNodeLabel } from "./canvas/canvas-helpers";
+import { HullSvgOverlay } from "./canvas/HullSvgOverlay";
+import { CanvasControls } from "./canvas/CanvasControls";
+import { NodeRingMenuOverlay } from "./canvas/NodeRingMenuOverlay";
+import { useGraphLayout } from "./canvas/use-graph-layout";
 
 export function GraphCanvas({
   nodes,
@@ -219,29 +81,12 @@ export function GraphCanvas({
   sizeMultiplierRef.current = sizeMultiplier;
   const relLineOverridesRef = useRef(relLineOverrides);
   relLineOverridesRef.current = relLineOverrides;
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>("force");
-  const layoutModeRef = useRef<LayoutMode>("force");
-  const [edgeDistance, setEdgeDistance] = useState(() => {
-    const saved = localStorage.getItem("provisa.graph.edgeDistance");
-    return saved ? Number(saved) : 80;
-  });
-  const edgeDistanceRef = useRef(edgeDistance);
-  const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const nudgeHeldRef = useRef(false);
-  const pendingNudgesRef = useRef(0);
-  const pendingNudgeFreeNodesRef = useRef<Set<string> | undefined>(undefined);
-  const circularChildParentsRef = useRef(showingChildrenCircular);
-  circularChildParentsRef.current = showingChildrenCircular;
-  const circularParentNodesRef = useRef(showingParentsCircular);
-  circularParentNodesRef.current = showingParentsCircular;
   // Track nodes that the user has manually dragged; these stay anchored during re-layout
   const anchoredRef = useRef<Set<string>>(new Set());
   // Prevents concurrent layout runs from clobbering each other's unlock step
   const layoutRunningRef = useRef(false);
   // Tracks the active cytoscape layout object so it can be stopped before starting a new one
   const activeLayoutRef = useRef<{ stop: () => void } | null>(null);
-  // Stable ref to nudgeLayout so event handlers can call it without stale closure
-  const nudgeLayoutRef = useRef<(freeNodes?: Set<string>, aggressive?: boolean) => void>(() => {});
   // Latest-value refs for nodes/edges used by computeHulls to build deferred meta-edges
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
@@ -284,6 +129,47 @@ export function GraphCanvas({
       return next;
     });
   }, []);
+
+  // Stable ref so computeHulls can be passed to useGraphLayout before the callback is defined
+  const computeHullsRef = useRef<() => void>(() => {});
+
+  const circularChildParentsRef = useRef(showingChildrenCircular);
+  circularChildParentsRef.current = showingChildrenCircular;
+  const circularParentNodesRef = useRef(showingParentsCircular);
+  circularParentNodesRef.current = showingParentsCircular;
+
+  const {
+    layoutMode,
+    edgeDistance,
+    setEdgeDistance,
+    edgeDistanceRef,
+    nudgeTimerRef,
+    nudgeHeldRef,
+    pendingNudgesRef,
+    pendingNudgeFreeNodesRef,
+    nudgeLayoutRef,
+    runLayout,
+    nudgeLayout,
+    toggleLayout,
+  } = useGraphLayout({
+    cyRef,
+    layoutRunningRef,
+    activeLayoutRef,
+    anchoredRef,
+    portEdgesAddedRef,
+    nodesRef,
+    edgesRef,
+    overlayEdgesRef,
+    collapsedClustersRef,
+    clusterLevelRef,
+    sizeByPropertyRef,
+    colorOverridesRef,
+    labelPropertyRef,
+    sizeMultiplierRef,
+    sizeOverridesRef,
+    computeHullsRef,
+  });
+
   const computeHulls = useCallback(() => {
     const cy = cyRef.current;
     if (!cy || clusterLevelRef.current === "none") {
@@ -386,6 +272,9 @@ export function GraphCanvas({
       portEdgesAddedRef.current = true;
     }
   }, []);
+  // Keep computeHullsRef in sync so the layout hook always calls the latest version
+  computeHullsRef.current = computeHulls;
+
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const drag = hullDragRef.current;
@@ -444,33 +333,8 @@ export function GraphCanvas({
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Node left-click ring menu
-  type NodeRingMenuState = { x: number; y: number; nodeKey: string; node: GNode; graphStats?: GraphStats; isLocked: boolean };
   const [nodeRingMenu, setNodeRingMenu] = useState<NodeRingMenuState | null>(null);
   const [hoveredSector, setHoveredSector] = useState<string | null>(null);
-  const ringMenuRef = useRef<HTMLDivElement>(null);
-
-  // Track node position as viewport changes (pan / zoom)
-  useEffect(() => {
-    if (!nodeRingMenu || !cyRef.current) return;
-    const cy = cyRef.current;
-    const update = () => {
-      if (!ringMenuRef.current) return;
-      const cyNode = cy.$id(nodeRingMenu.nodeKey);
-      if (!cyNode || (cyNode as unknown as { length: number }).length === 0) return;
-      const rp = (cyNode as unknown as { renderedPosition: () => { x: number; y: number } }).renderedPosition();
-      const nodeW = (cyNode as unknown as { renderedWidth(): number }).renderedWidth();
-      // R1=26 inner radius in 120-unit viewBox must clear the node radius + 4px gap
-      const minFromNode = Math.ceil((nodeW / 2 + 4) * (120 / 26));
-      const size = Math.max(80, Math.min(400, minFromNode));
-      ringMenuRef.current.style.left = `${rp.x}px`;
-      ringMenuRef.current.style.top = `${rp.y}px`;
-      const svg = ringMenuRef.current.querySelector<SVGSVGElement>("svg");
-      if (svg) { svg.setAttribute("width", String(size)); svg.setAttribute("height", String(size)); }
-    };
-    update();
-    cy.on("viewport", update);
-    return () => { cy.off("viewport", update); };
-  }, [nodeRingMenu]);
 
   // Clamp menu inside canvas-wrap after each render so it never gets clipped
   useLayoutEffect(() => {
@@ -492,274 +356,6 @@ export function GraphCanvas({
     menu.style.top = `${top}px`;
     menu.style.visibility = "visible";
   }, [nodeCtxMenu]);
-
-  const fitView = useCallback(() => cyRef.current?.fit(undefined, 40), []);
-
-  const runLayout = useCallback((mode?: LayoutMode) => {
-    const cy = cyRef.current;
-    if (!cy) return;
-    if (layoutRunningRef.current) return;
-    layoutRunningRef.current = true;
-    const m = mode ?? layoutModeRef.current;
-    const anchored = anchoredRef.current;
-    cy.nodes().forEach((n) => {
-      if (anchored.has(n.id())) n.lock();
-    });
-    // For force mode with no edges, use grid — it fills the canvas rectangle optimally.
-    // For force mode with edges, use fcose — clusters connected components.
-    // For hierarchy mode, always use breadthfirst.
-    let opts: CyLayoutOptions;
-    if (cy.nodes().length === 0) {
-      opts = { name: "null" } as CyLayoutOptions;
-    } else if (m === "hierarchy") {
-      opts = LAYOUT_OPTIONS.hierarchy;
-    } else if (cy.edges().length === 0) {
-      // No relationships — grid sorted by label so same-type nodes occupy the same rows.
-      const labelOrder: string[] = [];
-      const labelCount: Record<string, number> = {};
-      cy.nodes().forEach((n) => {
-        const lbl = n.data("label") as string;
-        if (!(lbl in labelCount)) { labelOrder.push(lbl); labelCount[lbl] = 0; }
-        labelCount[lbl]++;
-      });
-      const maxPerLabel = Math.max(...Object.values(labelCount), 1);
-      const totalNodes = cy.nodes().length;
-      const sqrtCols = Math.ceil(Math.sqrt(totalNodes));
-      const cols = Math.min(maxPerLabel, sqrtCols);
-      opts = {
-        name: "grid",
-        animate: false,
-        fit: true,
-        padding: 30,
-        avoidOverlap: true,
-        avoidOverlapPadding: 12,
-        cols,
-        sort: (a: { data: (k: string) => string }, b: { data: (k: string) => string }) => {
-          const ai = labelOrder.indexOf(a.data("label"));
-          const bi = labelOrder.indexOf(b.data("label"));
-          return ai - bi;
-        },
-      } as CyLayoutOptions;
-    } else {
-      const inCluster = clusterLevelRef.current !== "none";
-      opts = {
-        ...LAYOUT_OPTIONS.force,
-        idealEdgeLength: () => edgeDistanceRef.current,
-        // In cluster mode: higher nestingFactor shortens ideal edge length within compounds,
-        // pulling cluster members together; higher repulsion spreads clusters apart.
-        ...(inCluster ? { nestingFactor: 0.1, nodeRepulsion: () => 25000 } : {}),
-      } as CyLayoutOptions;
-    }
-    const layout = cy.layout(opts);
-    activeLayoutRef.current = layout;
-    const applyStyles = () => {
-      try {
-        const labelSizeRange = computeLabelSizeRanges(cy, sizeByPropertyRef.current);
-        cy.batch(() => {
-          cy.nodes().forEach((node) => {
-            if (node.data("_cluster")) return;
-            if (node.data("_collapsed")) return;
-            if (node.data("_port")) return;
-            const lbl = node.data("label") as string;
-            const n = node.data("_node") as GNode | undefined;
-            const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
-            node.style("background-color", base);
-            applyNodeSize(node, lbl, n, sizeByPropertyRef.current, sizeOverridesRef.current, sizeMultiplierRef.current, labelSizeRange);
-            if (n) {
-              const prop = labelPropertyRef.current[n.label];
-              node.style(
-                "label",
-                prop
-                  ? String(n.properties[prop] ?? n.id)
-                  : resolveNodeLabel(n),
-              );
-            }
-            if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
-            else node.removeClass("pinned");
-          });
-        });
-      } catch {
-        /* cy may have been destroyed */
-      }
-    };
-    const releaseRun = () => {
-      try {
-        cy.nodes().forEach((n) => {
-          if (anchored.has(n.id())) n.unlock();
-        });
-      } catch {
-        /* cy may have been destroyed */
-      }
-      layoutRunningRef.current = false;
-    };
-
-    const safetyTimer = setTimeout(() => {
-      applyStyles();
-      releaseRun();
-      try {
-        cy.fit(undefined, 40);
-      } catch {
-        /* cy may have been destroyed */
-      }
-    }, 1000);
-    layout.one("layoutstop", () => {
-      clearTimeout(safetyTimer);
-      applyStyles();
-      releaseRun();
-      try {
-        cy.fit(undefined, 40);
-      } catch {
-        /* cy may have been destroyed */
-      }
-    });
-    layout.run();
-  }, []);
-
-  const nudgeLayout = useCallback(
-    (freeNodes?: Set<string>, aggressive = false) => {
-      const cy = cyRef.current;
-      if (!cy) return;
-      if (layoutRunningRef.current) return;
-      if (cy.edges().length === 0 || layoutModeRef.current === "hierarchy") {
-        runLayout();
-        return;
-      }
-      layoutRunningRef.current = true;
-      try {
-        // Remove port nodes + port meta-edges before nudge so they don't consume layout space
-        // or show edges at stale positions during animation. Restore layout meta-edges so fcose
-        // has correct cross-cluster attraction forces during the nudge.
-        if (portEdgesAddedRef.current && clusterLevelRef.current !== "none") {
-          cy.nodes("[?_port]").remove(); // also removes attached port meta-edges
-          const level = clusterLevelRef.current as Exclude<ClusterLevel, "none">;
-          const layoutMeta = buildClusterMetaEdges(
-            nodesRef.current, edgesRef.current, level,
-            overlayEdgesRef.current, collapsedClustersRef.current, false,
-          );
-          if (layoutMeta.length > 0) cy.add(layoutMeta);
-          portEdgesAddedRef.current = false;
-        }
-        const anchored = anchoredRef.current;
-        // When anchored nodes exist (user-dragged group), lock them in place and use
-        // gravity=0 so FCose doesn't pull them toward (0,0). Edge forces alone will
-        // attract connected clusters toward the pinned group.
-        const gravityValue = anchored.size > 0 ? 0 : 0.25;
-        // When freeNodes is provided, lock everything except those nodes (and unlock anchored after)
-        const tempLocked = new Set<string>();
-        cy.nodes().forEach((n) => {
-          const id = n.id() as string;
-          if (freeNodes && !freeNodes.has(id)) {
-            if (!n.locked()) {
-              n.lock();
-              tempLocked.add(id);
-            }
-          } else if (anchored.has(id)) {
-            n.lock();
-          }
-        });
-        const opts = {
-          ...LAYOUT_OPTIONS.force,
-          idealEdgeLength: () => edgeDistanceRef.current,
-          randomize: false,
-          animate: true,
-          animationDuration: aggressive ? 2000 : 600,
-          animationEasing: "ease-out" as const,
-          numIter: aggressive ? 6000 : 900,
-          gravity: gravityValue,
-          fit: false,
-          // Prevent FCose component packing from repositioning the entire component
-          // containing anchored (locked) nodes, which would override their locked positions
-          // and displace the dragged group off-screen after centroid shift.
-          packComponents: false,
-        } as CyLayoutOptions;
-        const layout = cy.layout(opts);
-        activeLayoutRef.current = layout;
-        const applyStylesNudge = () => {
-          try {
-            const labelSizeRange = computeLabelSizeRanges(cy, sizeByPropertyRef.current);
-            cy.batch(() => {
-              cy.nodes().forEach((node) => {
-                if (node.data("_cluster")) return;
-                if (node.data("_port")) return;
-                const lbl = node.data("label") as string;
-                const n = node.data("_node") as GNode | undefined;
-                const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
-                node.style("background-color", base);
-                applyNodeSize(node, lbl, n, sizeByPropertyRef.current, sizeOverridesRef.current, sizeMultiplierRef.current, labelSizeRange);
-                if (n) {
-                  const prop = labelPropertyRef.current[n.label];
-                  node.style(
-                    "label",
-                    prop
-                      ? String(n.properties[prop] ?? n.id)
-                      : resolveNodeLabel(n),
-                  );
-                }
-                if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
-                else node.removeClass("pinned");
-              });
-            });
-          } catch {
-            /* cy may have been destroyed */
-          }
-        };
-        const animDuration = aggressive ? 2000 : 600;
-        const releaseNudge = () => {
-          try {
-            tempLocked.forEach((id) => {
-              const n = cy.$id(id);
-              if (n.length > 0) n.unlock();
-            });
-            cy.nodes().forEach((n) => {
-              if (anchored.has(n.id())) n.unlock();
-            });
-          } catch {
-            /* cy may have been destroyed */
-          }
-          layoutRunningRef.current = false;
-          if (nudgeHeldRef.current) {
-            nudgeLayoutRef.current(undefined, true);
-          } else if (pendingNudgesRef.current > 0) {
-            pendingNudgesRef.current -= 1;
-            nudgeLayoutRef.current(pendingNudgeFreeNodesRef.current);
-          } else {
-            // layoutstop may fire before animation finishes; final realign after animation settles
-            setTimeout(() => { if (!layoutRunningRef.current) computeHulls(); }, animDuration + 50);
-          }
-        };
-        const safetyTimerNudge = setTimeout(
-          () => {
-            applyStylesNudge();
-            releaseNudge();
-          },
-          aggressive ? 3000 : 1000,
-        );
-        layout.one("layoutstop", () => {
-          clearTimeout(safetyTimerNudge);
-          applyStylesNudge();
-          releaseNudge();
-        });
-        layout.run();
-      } catch {
-        layoutRunningRef.current = false;
-      }
-    },
-    [runLayout],
-  );
-
-  // Keep ref in sync so the cytoscape "free" event always calls the latest nudgeLayout
-  useEffect(() => {
-    nudgeLayoutRef.current = nudgeLayout;
-  }, [nudgeLayout]);
-
-  const toggleLayout = useCallback(() => {
-    setLayoutMode((prev) => {
-      const next: LayoutMode = prev === "force" ? "hierarchy" : "force";
-      layoutModeRef.current = next;
-      runLayout(next);
-      return next;
-    });
-  }, [runLayout]);
 
   // Full rebuild — fires only when the base graph (query result) or cluster level changes
   useEffect(() => {
@@ -895,7 +491,7 @@ export function GraphCanvas({
     anchoredRef.current = new Set();
     activeLayoutRef.current = null;
     layoutRunningRef.current = false;
-    if (els.length > 0) runLayout(layoutModeRef.current);
+    if (els.length > 0) runLayout();
     return () => {
       cyRef.current = null;
       activeLayoutRef.current = null;
@@ -1126,295 +722,39 @@ export function GraphCanvas({
       }}
     >
       <div ref={containerRef} className="gf-canvas" />
-      {hullCircles.length > 0 && (
-        <svg
-          ref={hullSvgRef}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            pointerEvents: "none",
-          }}
-        >
-          {hullCircles.map(({ cid, x, y, rx, ry }) => (
-            <g key={cid}>
-              <ellipse
-                cx={x}
-                cy={y}
-                rx={rx}
-                ry={ry}
-                fill={clusterColor(cid)}
-                fillOpacity={0.1}
-                stroke={clusterColor(cid)}
-                strokeWidth={8}
-                strokeOpacity={0}
-                style={{ pointerEvents: "stroke", cursor: "grab" }}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  const cy = cyRef.current;
-                  if (cy) {
-                    const clusterId = `__cluster_${clusterLevelRef.current}_${cidToId(cid)}`;
-                    cy.getElementById(clusterId).children().forEach((n) => n.unlock());
-                  }
-                  hullDragRef.current = {
-                    cid,
-                    lastX: e.clientX,
-                    lastY: e.clientY,
-                    startX: e.clientX,
-                    startY: e.clientY,
-                  };
-                }}
-              />
-              <ellipse
-                cx={x}
-                cy={y}
-                rx={rx}
-                ry={ry}
-                fill="none"
-                stroke={clusterColor(cid)}
-                strokeWidth={1.5}
-                strokeOpacity={0.75}
-                style={{ pointerEvents: "none" }}
-              />
-              <text
-                x={x}
-                y={y - ry - 6}
-                textAnchor="middle"
-                fill={clusterColor(cid)}
-                fontSize={11}
-                fontWeight="bold"
-                fontFamily="sans-serif"
-                style={{ pointerEvents: "all", cursor: "pointer", userSelect: "none" }}
-                onClick={() => toggleCollapse(cid)}
-              >
-                <title>Click to collapse group</title>
-                {cid} ⊟
-              </text>
-            </g>
-          ))}
-        </svg>
-      )}
-      <div className="gf-canvas-controls">
-        <button
-          className="gf-ctrl-btn"
-          onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 1.3)}
-          title="Zoom in"
-        >
-          <ZoomInIcon size={15} />
-        </button>
-        <button
-          className="gf-ctrl-btn"
-          onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 0.77)}
-          title="Zoom out"
-        >
-          <ZoomOutIcon size={15} />
-        </button>
-        <button className="gf-ctrl-btn" onClick={fitView} title="Fit to screen">
-          <FitScreenIcon size={15} />
-        </button>
-        <div className="gf-ctrl-divider" />
-        <button
-          className={`gf-ctrl-btn${layoutMode === "hierarchy" ? " active" : ""}`}
-          onClick={toggleLayout}
-          title={
-            layoutMode === "force" ? "Switch to hierarchical layout" : "Switch to force layout"
-          }
-        >
-          {layoutMode === "force" ? "⋮" : "⊟"}
-        </button>
-        <button
-          className="gf-ctrl-btn"
-          onMouseDown={() => {
-            nudgeHeldRef.current = true;
-            const cy = cyRef.current;
-            const sel = cy ? cy.nodes(":selected").not("[?_cluster]") : null;
-            const freeNodes = sel && sel.length > 0 ? new Set(sel.map((n) => n.id())) : undefined;
-            nudgeLayout(freeNodes, true);
-          }}
-          onMouseUp={() => {
-            nudgeHeldRef.current = false;
-          }}
-          onMouseLeave={() => {
-            nudgeHeldRef.current = false;
-          }}
-          title="Nudge layout — nudges selected nodes (or all if none selected); hold to keep iterating"
-        >
-          ⟳
-        </button>
-        <div className="gf-ctrl-divider" />
-        <label className="gf-ctrl-label" title="Edge length">
-          ↔
-        </label>
-        <input
-          type="range"
-          className="gf-ctrl-slider"
-          min={40}
-          max={400}
-          step={10}
-          value={edgeDistance}
-          onChange={(e) => {
-            const v = Number(e.target.value);
-            edgeDistanceRef.current = v;
-            setEdgeDistance(v);
-            localStorage.setItem("provisa.graph.edgeDistance", String(v));
-            if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
-            nudgeTimerRef.current = setTimeout(() => nudgeLayout(), 150);
-          }}
-          title={`Edge length: ${edgeDistance}px`}
+      <HullSvgOverlay
+        hullCircles={hullCircles}
+        hullSvgRef={hullSvgRef}
+        clusterLevelRef={clusterLevelRef}
+        cyRef={cyRef}
+        hullDragRef={hullDragRef}
+        toggleCollapse={toggleCollapse}
+      />
+      <CanvasControls
+        cyRef={cyRef}
+        layoutMode={layoutMode}
+        toggleLayout={toggleLayout}
+        nudgeHeldRef={nudgeHeldRef}
+        nudgeLayout={nudgeLayout}
+        nudgeLayoutRef={nudgeLayoutRef}
+        edgeDistance={edgeDistance}
+        setEdgeDistance={setEdgeDistance}
+        edgeDistanceRef={edgeDistanceRef}
+        nudgeTimerRef={nudgeTimerRef}
+      />
+      {nodeRingMenu && (
+        <NodeRingMenuOverlay
+          nodeRingMenu={nodeRingMenu}
+          setNodeRingMenu={setNodeRingMenu}
+          hoveredSector={hoveredSector}
+          setHoveredSector={setHoveredSector}
+          cyRef={cyRef}
+          anchoredRef={anchoredRef}
+          nudgeLayoutRef={nudgeLayoutRef}
+          showingChildrenNatural={showingChildrenNatural}
+          onToggleChildren={onToggleChildren}
         />
-      </div>
-      {nodeRingMenu && (() => {
-        const R1 = 26, R2 = 54;
-        // Full 120° sector, no gap — separator lines drawn on top
-        const arcSector = (centerDeg: number) => {
-          const a1 = ((centerDeg - 60) * Math.PI) / 180;
-          const a2 = ((centerDeg + 60) * Math.PI) / 180;
-          const ox1 = R2 * Math.cos(a1), oy1 = R2 * Math.sin(a1);
-          const ox2 = R2 * Math.cos(a2), oy2 = R2 * Math.sin(a2);
-          const ix1 = R1 * Math.cos(a2), iy1 = R1 * Math.sin(a2);
-          const ix2 = R1 * Math.cos(a1), iy2 = R1 * Math.sin(a1);
-          return `M ${ox1.toFixed(2)} ${oy1.toFixed(2)} A ${R2} ${R2} 0 0 1 ${ox2.toFixed(2)} ${oy2.toFixed(2)} L ${ix1.toFixed(2)} ${iy1.toFixed(2)} A ${R1} ${R1} 0 0 0 ${ix2.toFixed(2)} ${iy2.toFixed(2)} Z`;
-        };
-        // Boundary angles between the 3 sectors (at ±60° from each center)
-        const separatorLines = [90, 210, 330].map((deg) => {
-          const rad = (deg * Math.PI) / 180;
-          return { x1: R1 * Math.cos(rad), y1: R1 * Math.sin(rad), x2: R2 * Math.cos(rad), y2: R2 * Math.sin(rad) };
-        });
-        const midPos = (centerDeg: number) => {
-          const r = (R1 + R2) / 2;
-          const rad = (centerDeg * Math.PI) / 180;
-          return { x: r * Math.cos(rad), y: r * Math.sin(rad) };
-        };
-        const sectors: { angle: number; key: string; title: string; active: boolean; iconPath: ReactNode }[] = [
-          {
-            angle: 270, key: "lock", active: nodeRingMenu.isLocked,
-            title: nodeRingMenu.isLocked ? "Unlock position" : "Lock position",
-            iconPath: (
-              <>
-                {/* padlock body */}
-                <rect x="-3.8" y="0" width="7.6" height="5.5" rx="1.2" fill="currentColor"/>
-                {/* shackle - open: left arm seated, right arm raised */}
-                <path d="M-2.5 0 v-2.5 a2.5 2.5 0 0 1 5 0" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-                {/* keyhole */}
-                <circle cx="0" cy="2.8" r="1.1" fill="#111318"/>
-                <rect x="-0.55" y="3.4" width="1.1" height="1.5" rx="0.3" fill="#111318"/>
-              </>
-            ),
-          },
-          {
-            angle: 30, key: "children", active: showingChildrenNatural.has(nodeRingMenu.nodeKey),
-            title: showingChildrenNatural.has(nodeRingMenu.nodeKey) ? "Hide children" : "Show children",
-            iconPath: (
-              <>
-                {/* center hub */}
-                <circle cx="0" cy="0" r="1.5" fill="currentColor"/>
-                {/* satellites at varying angles and distances */}
-                <circle cx="0.66" cy="-3.74" r="1.2" fill="#111318" stroke="currentColor" strokeWidth="0.9"/>
-                <circle cx="4.33" cy="-2.5" r="1.2" fill="#111318" stroke="currentColor" strokeWidth="0.9"/>
-                <circle cx="3.72" cy="2.15" r="1.2" fill="#111318" stroke="currentColor" strokeWidth="0.9"/>
-                <circle cx="-4.17" cy="1.95" r="1.2" fill="#111318" stroke="currentColor" strokeWidth="0.9"/>
-                {/* spokes */}
-                <line x1="0.26" y1="-1.48" x2="0.45" y2="-2.56" stroke="currentColor" strokeWidth="0.9"/>
-                <line x1="1.3" y1="-0.75" x2="3.29" y2="-1.9" stroke="currentColor" strokeWidth="0.9"/>
-                <line x1="1.3" y1="0.75" x2="2.68" y2="1.55" stroke="currentColor" strokeWidth="0.9"/>
-                <line x1="-1.36" y1="0.63" x2="-3.08" y2="1.44" stroke="currentColor" strokeWidth="0.9"/>
-              </>
-            ),
-          },
-          {
-            angle: 150, key: "exclude", active: false,
-            title: "Remove node",
-            iconPath: (
-              <>
-                {/* eye */}
-                <path d="M-5 0 C-3.5-3 3.5-3 5 0 C3.5 3-3.5 3-5 0 Z" fill="none" stroke="currentColor" strokeWidth="0.9"/>
-                <circle cx="0" cy="-0.3" r="1.4" fill="none" stroke="currentColor" strokeWidth="0.9"/>
-                {/* circle+minus badge offset lower-right */}
-                <circle cx="3.2" cy="3.2" r="2" fill="#111318" stroke="currentColor" strokeWidth="0.9"/>
-                <line x1="2.5" y1="3.2" x2="3.9" y2="3.2" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round"/>
-              </>
-            ),
-          },
-        ];
-        return (
-          <>
-            <div
-              style={{ position: "absolute", inset: 0, zIndex: 899 }}
-              onClick={() => setNodeRingMenu(null)}
-            />
-          <div
-            ref={ringMenuRef}
-            className="gf-node-ring-menu"
-            style={{ left: nodeRingMenu.x, top: nodeRingMenu.y }}
-          >
-            <svg
-              viewBox="-60 -60 120 120"
-              width="120"
-              height="120"
-              style={{ overflow: "visible", display: "block", pointerEvents: "all" }}
-            >
-              {sectors.map(({ angle, key, title, active, iconPath }) => {
-                const mp = midPos(angle);
-                return (
-                  <g
-                    key={key}
-                    style={{ cursor: "pointer" }}
-                    onMouseEnter={() => setHoveredSector(key)}
-                    onMouseLeave={() => setHoveredSector(null)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (key === "lock") {
-                        const cy = cyRef.current;
-                        if (!cy) return;
-                        const cyNode = cy.$id(nodeRingMenu.nodeKey);
-                        if (nodeRingMenu.isLocked) {
-                          cyNode.unlock();
-                          anchoredRef.current.delete(nodeRingMenu.nodeKey);
-                          cyNode.removeClass("pinned");
-                          nudgeLayoutRef.current();
-                        } else {
-                          cyNode.lock();
-                          anchoredRef.current.add(nodeRingMenu.nodeKey);
-                          cyNode.addClass("pinned");
-                        }
-                      } else if (key === "children") {
-                        onToggleChildren(nodeRingMenu.nodeKey);
-                      } else {
-                        const cy = cyRef.current;
-                        if (cy) {
-                          anchoredRef.current.delete(nodeRingMenu.nodeKey);
-                          cy.remove(cy.$id(nodeRingMenu.nodeKey));
-                        }
-                      }
-                      setNodeRingMenu(null);
-                    }}
-                  >
-                    <title>{title}</title>
-                    <path
-                      d={arcSector(angle)}
-                      fill={active ? "rgba(99,102,241,0.45)" : hoveredSector === key ? "rgba(99,102,241,0.2)" : "rgba(17,19,24,0.92)"}
-                      stroke={hoveredSector === key ? "#6366f1" : "#3a3d52"}
-                      strokeWidth="1"
-                    />
-                    <path d={arcSector(angle)} fill="transparent" stroke="transparent" strokeWidth="10"/>
-                    <g
-                      transform={`translate(${mp.x.toFixed(2)},${mp.y.toFixed(2)})`}
-                      color={active || hoveredSector === key ? "#a5b4fc" : "#9ca3af"}
-                    >
-                      {iconPath}
-                    </g>
-                  </g>
-                );
-              })}
-              {separatorLines.map(({ x1, y1, x2, y2 }, i) => (
-                <line key={i} x1={x1.toFixed(2)} y1={y1.toFixed(2)} x2={x2.toFixed(2)} y2={y2.toFixed(2)} stroke="#3a3d52" strokeWidth="1.5" style={{ pointerEvents: "none" }} />
-              ))}
-            </svg>
-          </div>
-          </>
-        );
-      })()}
+      )}
       {nodeCtxMenu && (
         <NodeContextMenu
           menu={nodeCtxMenu}

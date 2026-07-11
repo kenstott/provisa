@@ -40,8 +40,8 @@ import { GraphCanvas } from "./GraphCanvas";
 import { GraphStatsPanel } from "./GraphStatsModal";
 import { Inspector } from "./Inspector";
 import { TableView, JsonCopyButton } from "./TableView";
-import { tableLabel as dbTableLabel } from "../../naming";
 import { useLocalStorage } from "./graph-persistence";
+import { useOverlayNavigation } from "./frame/use-overlay-navigation";
 import { GraphViewIcon, TableViewIcon, JsonViewIcon, StatsViewIcon, CodeViewIcon, ExpandModalIcon, CollapseModalIcon, CollapseQueryIcon, ExpandQueryIcon, PushPinIcon } from "./GraphIcons";
 
 // ── Frame component ───────────────────────────────────────────────────────────
@@ -162,215 +162,19 @@ export function GraphFrame({
   const graphAreaHeightRef = useRef(graphAreaHeight);
   graphAreaHeightRef.current = graphAreaHeight;
 
-  const _resolveNodeForKey = useCallback(
-    (nodeKey: string): GNode | undefined => {
-      let gNode: GNode | undefined = frame.nodes.get(nodeKey);
-      if (!gNode) {
-        for (const d of overlayData.values()) {
-          gNode = d.nodes.get(nodeKey);
-          if (gNode) break;
-        }
-      }
-      return gNode;
-    },
-    [frame.nodes, overlayData],
-  );
-
-  const _fetchNeighbors = useCallback(
-    async (
-      cypherQuery: string,
-    ): Promise<{ nodes: Map<string, GNode>; edges: Map<string, GEdge> } | null> => {
-      const res = await fetch("/data/cypher", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: cypherQuery, params: {} }),
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        let err: unknown;
-        try {
-          err = JSON.parse(text);
-        } catch {
-          err = text;
-        }
-        console.error("show neighbors query failed (HTTP", res.status, "):", err);
-        return null;
-      }
-      const data = await res.json();
-      const rows: Record<string, unknown>[] = data.rows ?? [];
-      return extractElements(rows);
-    },
-    [],
-  );
-
-  type MergedOverlay = { nodes: Map<string, GNode>; edges: Map<string, GEdge> };
-
-  const _fetchChildrenForNode = useCallback(
-    async (nodeKey: string): Promise<MergedOverlay | null> => {
-      const gNode = _resolveNodeForKey(nodeKey);
-      if (!gNode || gNode.id == null) return null;
-      const tableLabel = gNode.tableLabel;
-      const rels = (relationships ?? []).filter((r) => dbTableLabel(r.sourceTableName) === tableLabel);
-      if (rels.length === 0) return null;
-      const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
-      await Promise.all(
-        rels.map(async (r) => {
-          const relType = (r.alias ?? r.computedCypherAlias ?? "").toUpperCase();
-          const q = `MATCH (n:${gNode.label})-[r:${relType}]->(child) WHERE id(n) IN [${gNode.id}] RETURN n, r, child`;
-          const result = await _fetchNeighbors(q);
-          if (result) {
-            result.nodes.forEach((n, k) => merged.nodes.set(k, n));
-            result.edges.forEach((e, k) => merged.edges.set(k, e));
-          }
-        }),
-      );
-      return merged.nodes.size > 0 || merged.edges.size > 0 ? merged : null;
-    },
-    [relationships, _resolveNodeForKey, _fetchNeighbors],
-  );
-
-  const _fetchParentsForNode = useCallback(
-    async (nodeKey: string): Promise<MergedOverlay | null> => {
-      const gNode = _resolveNodeForKey(nodeKey);
-      if (!gNode || gNode.id == null) return null;
-      const tableLabel = gNode.tableLabel;
-      const rels = (relationships ?? []).filter((r) => dbTableLabel(r.targetTableName) === tableLabel);
-      if (rels.length === 0) return null;
-      const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
-      await Promise.all(
-        rels.map(async (r) => {
-          const relType = (r.alias ?? r.computedCypherAlias ?? "").toUpperCase();
-          const q = `MATCH (parent)-[r:${relType}]->(n:${gNode.label}) WHERE id(n) IN [${gNode.id}] RETURN n, r, parent`;
-          const result = await _fetchNeighbors(q);
-          if (result) {
-            result.nodes.forEach((n, k) => merged.nodes.set(k, n));
-            result.edges.forEach((e, k) => merged.edges.set(k, e));
-          }
-        }),
-      );
-      return merged.nodes.size > 0 || merged.edges.size > 0 ? merged : null;
-    },
-    [relationships, _resolveNodeForKey, _fetchNeighbors],
-  );
-
-  const handleToggleChildren = useCallback(
-    async (nodeKey: string) => {
-      const overlayKey = `${nodeKey}:children`;
-      if (overlayData.has(overlayKey)) {
-        setOverlayData((prev) => {
-          const next = new Map(prev);
-          next.delete(overlayKey);
-          return next;
-        });
-        return;
-      }
-      const merged = await _fetchChildrenForNode(nodeKey);
-      if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
-    },
-    [overlayData, _fetchChildrenForNode],
-  );
-
-  const handleToggleChildrenCircular = useCallback(
-    async (nodeKey: string) => {
-      const overlayKey = `${nodeKey}:children:circular`;
-      if (overlayData.has(overlayKey)) {
-        setOverlayData((prev) => {
-          const next = new Map(prev);
-          next.delete(overlayKey);
-          return next;
-        });
-        return;
-      }
-      const merged = await _fetchChildrenForNode(nodeKey);
-      if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
-    },
-    [overlayData, _fetchChildrenForNode],
-  );
-
-  const handleToggleChildrenBatch = useCallback(
-    async (nodeKeys: string[], circular = false) => {
-      const suffix = circular ? ":children:circular" : ":children";
-      const toRemove = nodeKeys.filter((id) => overlayData.has(`${id}${suffix}`));
-      const toAdd = nodeKeys.filter((id) => !overlayData.has(`${id}${suffix}`));
-      if (toAdd.length === 0) {
-        setOverlayData((prev) => {
-          const next = new Map(prev);
-          toRemove.forEach((id) => next.delete(`${id}${suffix}`));
-          return next;
-        });
-        return;
-      }
-      // All nodes fetched in parallel off-screen; single setOverlayData call renders them all at once.
-      const results = await Promise.all(toAdd.map((id) => _fetchChildrenForNode(id)));
-      setOverlayData((prev) => {
-        const next = new Map(prev);
-        toAdd.forEach((id, i) => {
-          if (results[i]) next.set(`${id}${suffix}`, results[i]!);
-        });
-        return next;
-      });
-    },
-    [overlayData, _fetchChildrenForNode],
-  );
-
-  const handleToggleParents = useCallback(
-    async (nodeKey: string) => {
-      const overlayKey = `${nodeKey}:parents`;
-      if (overlayData.has(overlayKey)) {
-        setOverlayData((prev) => {
-          const next = new Map(prev);
-          next.delete(overlayKey);
-          return next;
-        });
-        return;
-      }
-      const merged = await _fetchParentsForNode(nodeKey);
-      if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
-    },
-    [overlayData, _fetchParentsForNode],
-  );
-
-  const handleToggleParentsCircular = useCallback(
-    async (nodeKey: string) => {
-      const overlayKey = `${nodeKey}:parents:circular`;
-      if (overlayData.has(overlayKey)) {
-        setOverlayData((prev) => {
-          const next = new Map(prev);
-          next.delete(overlayKey);
-          return next;
-        });
-        return;
-      }
-      const merged = await _fetchParentsForNode(nodeKey);
-      if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
-    },
-    [overlayData, _fetchParentsForNode],
-  );
-
-  const handleToggleParentsBatch = useCallback(
-    async (nodeKeys: string[], circular = false) => {
-      const suffix = circular ? ":parents:circular" : ":parents";
-      const toRemove = nodeKeys.filter((id) => overlayData.has(`${id}${suffix}`));
-      const toAdd = nodeKeys.filter((id) => !overlayData.has(`${id}${suffix}`));
-      if (toAdd.length === 0) {
-        setOverlayData((prev) => {
-          const next = new Map(prev);
-          toRemove.forEach((id) => next.delete(`${id}${suffix}`));
-          return next;
-        });
-        return;
-      }
-      const results = await Promise.all(toAdd.map((id) => _fetchParentsForNode(id)));
-      setOverlayData((prev) => {
-        const next = new Map(prev);
-        toAdd.forEach((id, i) => {
-          if (results[i]) next.set(`${id}${suffix}`, results[i]!);
-        });
-        return next;
-      });
-    },
-    [overlayData, _fetchParentsForNode],
-  );
+  const {
+    handleToggleChildren,
+    handleToggleChildrenCircular,
+    handleToggleChildrenBatch,
+    handleToggleParents,
+    handleToggleParentsCircular,
+    handleToggleParentsBatch,
+  } = useOverlayNavigation({
+    overlayData,
+    setOverlayData,
+    frameNodes: frame.nodes,
+    relationships,
+  });
 
   const handleExcludeNode = useCallback(
     (nodeKeys: string[]) => {
