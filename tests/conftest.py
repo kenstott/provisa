@@ -173,22 +173,28 @@ class _DockerServiceManager:
             )
 
     def pytest_sessionfinish(self, session, exitstatus):  # pyright: ignore
-        # Only the isolated test project is torn down; the dev stack is left intact.
-        if os.environ.get("PYTEST_DOCKER_DOWN"):
-            subprocess.run(
-                [
-                    "docker",
-                    "compose",
-                    "-p",
-                    _TEST_PROJECT,
-                    "-f",
-                    _TEST_COMPOSE,
-                    "down",
-                    "--volumes",
-                ],
-                cwd=_REPO_ROOT,
-                check=False,
-            )
+        # Tests own the services they provision — including reaping them. Tear the
+        # isolated test-project services (neo4j/kafka/mongo/elasticsearch/fuseki)
+        # down by default so a run never leaks containers that starve later runs of
+        # memory. The shared dev stack (postgres/trino/redis) is intentionally left
+        # intact. Set PYTEST_DOCKER_KEEP=1 to keep the test services up between runs
+        # (e.g. iterating locally) and skip the re-provision cost.
+        if os.environ.get("PYTEST_DOCKER_KEEP"):
+            return
+        subprocess.run(
+            [
+                "docker",
+                "compose",
+                "-p",
+                _TEST_PROJECT,
+                "-f",
+                _TEST_COMPOSE,
+                "down",
+                "--volumes",
+            ],
+            cwd=_REPO_ROOT,
+            check=False,
+        )
 
 
 def pytest_configure(config):
