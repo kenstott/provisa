@@ -6,6 +6,8 @@
 
 """Cache OpenAPI endpoint responses into PostgreSQL for the engine federation."""
 
+# complexity-gate: allow-ble=2 allow-magic=1 reason="type-introspection fallback and the pk-row fetch are best-effort (empty type set / logged-and-skipped on any failure, never crashing cache materialization); the one magic literal is the HTTP 404 status the pk probe treats as 'no rows'"
+
 from __future__ import annotations
 
 import hashlib
@@ -14,7 +16,10 @@ import logging
 import time as _time
 from datetime import UTC, datetime
 
-import asyncpg
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 import httpx
 
 # Requirements: REQ-318, REQ-319
@@ -109,7 +114,7 @@ def _to_row_tuple(
 
 
 async def _insert_rows(
-    pg_conn: asyncpg.Connection,
+    pg_conn: "Connection",
     pg_schema: str,
     pg_table: str,
     col_names: list[str],
@@ -131,7 +136,7 @@ async def _insert_rows(
 
 
 async def _upsert_rows(
-    pg_conn: asyncpg.Connection,
+    pg_conn: "Connection",
     pg_schema: str,
     pg_table: str,
     col_names: list[str],
@@ -168,7 +173,7 @@ def _mark_fresh(pg_schema: str, pg_table: str, phash: str, ttl: int) -> None:
 
 
 async def _is_fresh(
-    pg_conn: asyncpg.Connection,
+    pg_conn: "Connection",
     pg_schema: str,
     pg_table: str,
     phash: str,
@@ -197,7 +202,7 @@ async def cache_openapi_table(  # REQ-318
     base_url: str,
     path: str,
     default_params: dict,
-    pg_conn: asyncpg.Connection,
+    pg_conn: "Connection",
     pg_schema: str,
     pg_table: str,
     response_schema: dict | None,
@@ -247,7 +252,7 @@ async def fill_api_table(  # REQ-318
     base_url: str,
     path: str,
     params: dict,
-    pg_conn: asyncpg.Connection,
+    pg_conn: "Connection",
     pg_schema: str,
     pg_table: str,
     ttl: int = 300,
@@ -316,7 +321,7 @@ async def fetch_pk_row(  # REQ-318
     path_template: str,
     path_param_name: str,
     pk: object,  # object-ok: asyncpg Record column value (untyped); used only as str(pk)
-    pg_conn: asyncpg.Connection,
+    pg_conn: "Connection",
     pg_schema: str,
     pg_table: str,
     ttl: int = 300,
