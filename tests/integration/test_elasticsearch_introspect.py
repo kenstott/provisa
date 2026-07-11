@@ -21,6 +21,8 @@ To run live tests:
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from provisa.elasticsearch.source import (
@@ -307,7 +309,7 @@ class TestLiveElasticsearchIntrospect:
     """
 
     ES_HOST = "localhost"
-    ES_PORT = 9200
+    ES_PORT = int(os.environ.get("ELASTICSEARCH_PORT", "9200"))
 
     async def test_index_mapping_discovery(self):
         """GET /<index>/_mapping returns a mapping that discover_schema can parse."""

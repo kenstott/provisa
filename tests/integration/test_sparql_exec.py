@@ -21,6 +21,8 @@ To run live tests:
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from provisa.api_source.models import ApiColumn, ApiColumnType, ApiSourceType
@@ -39,6 +41,7 @@ pytestmark = [pytest.mark.integration]
 # ---------------------------------------------------------------------------
 # extract_variables — pure Python
 # ---------------------------------------------------------------------------
+
 
 class TestExtractVariables:
     def test_single_variable(self):
@@ -90,6 +93,7 @@ class TestExtractVariables:
 # _probe_limit — pure Python
 # ---------------------------------------------------------------------------
 
+
 class TestProbeLimit:
     def test_appends_limit(self):
         q = "SELECT ?x WHERE { ?x a ex:Thing }"
@@ -123,6 +127,7 @@ class TestProbeLimit:
 # build_api_source — no live service required
 # ---------------------------------------------------------------------------
 
+
 class TestBuildApiSource:
     def test_base_url_extracted_from_endpoint(self):
         cfg = SparqlSourceConfig(
@@ -150,6 +155,7 @@ class TestBuildApiSource:
 # build_endpoint — no live service required
 # ---------------------------------------------------------------------------
 
+
 class TestBuildEndpoint:
     def _cfg(self, endpoint_url="http://localhost:3030/ds/sparql"):
         return SparqlSourceConfig(source_id="fuseki-1", endpoint_url=endpoint_url)
@@ -157,34 +163,53 @@ class TestBuildEndpoint:
     def test_builds_endpoint(self):
         cfg = self._cfg()
         ep = build_endpoint(
-            cfg, "people", "SELECT ?name WHERE { ?x foaf:name ?name }",
+            cfg,
+            "people",
+            "SELECT ?name WHERE { ?x foaf:name ?name }",
             [ApiColumn(name="name", type=ApiColumnType.string)],
         )
         from provisa.api_source.models import ApiEndpoint
+
         assert isinstance(ep, ApiEndpoint)
 
     def test_path_extracted_from_endpoint_url(self):
         cfg = self._cfg("http://localhost:3030/ds/sparql")
-        ep = build_endpoint(cfg, "t", "SELECT ?x WHERE { ?x a ex:T }",
-                            [ApiColumn(name="x", type=ApiColumnType.string)])
+        ep = build_endpoint(
+            cfg,
+            "t",
+            "SELECT ?x WHERE { ?x a ex:T }",
+            [ApiColumn(name="x", type=ApiColumnType.string)],
+        )
         assert ep.path == "/ds/sparql"
 
     def test_method_is_post(self):
         cfg = self._cfg()
-        ep = build_endpoint(cfg, "t", "SELECT ?x WHERE { ?x a ex:T }",
-                            [ApiColumn(name="x", type=ApiColumnType.string)])
+        ep = build_endpoint(
+            cfg,
+            "t",
+            "SELECT ?x WHERE { ?x a ex:T }",
+            [ApiColumn(name="x", type=ApiColumnType.string)],
+        )
         assert ep.method == "POST"
 
     def test_body_encoding_is_form(self):
         cfg = self._cfg()
-        ep = build_endpoint(cfg, "t", "SELECT ?x WHERE { ?x a ex:T }",
-                            [ApiColumn(name="x", type=ApiColumnType.string)])
+        ep = build_endpoint(
+            cfg,
+            "t",
+            "SELECT ?x WHERE { ?x a ex:T }",
+            [ApiColumn(name="x", type=ApiColumnType.string)],
+        )
         assert ep.body_encoding == "form"
 
     def test_response_normalizer_is_sparql_bindings(self):
         cfg = self._cfg()
-        ep = build_endpoint(cfg, "t", "SELECT ?x WHERE { ?x a ex:T }",
-                            [ApiColumn(name="x", type=ApiColumnType.string)])
+        ep = build_endpoint(
+            cfg,
+            "t",
+            "SELECT ?x WHERE { ?x a ex:T }",
+            [ApiColumn(name="x", type=ApiColumnType.string)],
+        )
         assert ep.response_normalizer == "sparql_bindings"
 
     def test_query_template_stored(self):
@@ -195,21 +220,30 @@ class TestBuildEndpoint:
 
     def test_ttl_default(self):
         cfg = self._cfg()
-        ep = build_endpoint(cfg, "t", "SELECT ?x WHERE { ?x a ex:T }",
-                            [ApiColumn(name="x", type=ApiColumnType.string)])
+        ep = build_endpoint(
+            cfg,
+            "t",
+            "SELECT ?x WHERE { ?x a ex:T }",
+            [ApiColumn(name="x", type=ApiColumnType.string)],
+        )
         assert ep.ttl == 300
 
     def test_root_path_when_no_path(self):
         """Endpoint URL with no path should yield '/'."""
         cfg = SparqlSourceConfig(source_id="s", endpoint_url="http://host:3030")
-        ep = build_endpoint(cfg, "t", "SELECT ?x WHERE { ?x a ex:T }",
-                            [ApiColumn(name="x", type=ApiColumnType.string)])
+        ep = build_endpoint(
+            cfg,
+            "t",
+            "SELECT ?x WHERE { ?x a ex:T }",
+            [ApiColumn(name="x", type=ApiColumnType.string)],
+        )
         assert ep.path in ("/", "")
 
 
 # ---------------------------------------------------------------------------
 # infer_columns — pure Python
 # ---------------------------------------------------------------------------
+
 
 class TestInferColumns:
     def test_empty_returns_empty(self):
@@ -236,6 +270,7 @@ class TestInferColumns:
 # Live-service tests (requires running Fuseki / Blazegraph)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.requires_sparql
 class TestLiveSparqlExecution:
     pytestmark = [pytest.mark.requires_sparql]
@@ -244,7 +279,9 @@ class TestLiveSparqlExecution:
         docker compose up fuseki
     """
 
-    ENDPOINT_URL = "http://localhost:3030/provisa"  # Fuseki in-memory dataset
+    ENDPOINT_URL = (
+        f"http://localhost:{os.environ.get('FUSEKI_PORT', '3030')}/provisa"  # isolated Fuseki
+    )
 
     @pytest.fixture
     def cfg(self):
