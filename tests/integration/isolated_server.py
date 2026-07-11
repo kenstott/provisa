@@ -71,6 +71,7 @@ class IsolatedServer:
         engine: str = "trino",
         await_flight: bool = False,
         enable_bolt: bool = False,
+        enable_pgwire: bool = False,
         config: str = "config/provisa.yaml",
         control_plane: str = "postgres",
         materialize_store_url: str | None = None,
@@ -79,12 +80,14 @@ class IsolatedServer:
         self._engine = engine
         self._await_flight = await_flight
         self._enable_bolt = enable_bolt
+        self._enable_pgwire = enable_pgwire
         self._config = config
         self._control_plane = control_plane
         self._materialize_store_url = materialize_store_url
         self.http_port = free_port()
         self.flight_port = free_port()
         self.bolt_port = free_port() if enable_bolt else 0
+        self.pgwire_port = free_port() if enable_pgwire else 0
         self._grpc_port = free_port()
         self._proc: subprocess.Popen | None = None
         self._cfg_path: str | None = None
@@ -136,7 +139,7 @@ class IsolatedServer:
             "PG_PASSWORD": os.environ.get("PG_PASSWORD", "provisa"),
             "FLIGHT_PORT": str(self.flight_port),
             "GRPC_PORT": str(self._grpc_port),
-            "PROVISA_PGWIRE_PORT": "0",
+            "PROVISA_PGWIRE_PORT": str(self.pgwire_port),
             "PROVISA_BOLT_PORT": str(self.bolt_port),
             "OTEL_SDK_DISABLED": "true",
         }
@@ -178,6 +181,8 @@ class IsolatedServer:
             self._await_port(self.flight_port, deadline, "Arrow Flight")
         if self._enable_bolt:
             self._await_port(self.bolt_port, deadline, "Bolt")
+        if self._enable_pgwire:
+            self._await_port(self.pgwire_port, deadline, "pgwire")
 
     def _await_port(self, port: int, deadline: float, label: str) -> None:
         while time.monotonic() < deadline:

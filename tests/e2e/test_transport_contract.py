@@ -1,0 +1,253 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: placeholder
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""Transport contract harness (REQ-264, REQ-128, REQ-802).
+
+Line coverage says nothing about the combinatorial matrix this platform actually
+is: N sources x M consumption transports x K query languages x governance. The
+highest-risk claim is that EVERY governed transport returns the SAME data and
+enforces the SAME governance — a bug where RLS/column-visibility holds over REST
+but leaks over Bolt is a data breach that per-file coverage cannot surface.
+
+This harness pins that claim as a CONTRACT run over every transport, against one
+shared server + dataset:
+
+  1. Equivalence — the same logical read returns the same rows on every transport.
+  2. Column visibility — the admin-only ``amount`` column NEVER reaches a
+     non-admin role, on any transport.
+
+Adding a transport = one TransportAdapter. Today: REST /data/sql (SQL over HTTP),
+pgwire (SQL over the Postgres wire), Bolt (Cypher over the Bolt wire). Flight/gRPC
+and GraphQL are the next adapters; the Flight-SQL client currently targets Zaychik
+(raw Trino, ungoverned), so it is deliberately NOT wired here — a governed-Flight
+adapter must speak the app's own Flight server.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from tests.integration.isolated_server import IsolatedServer, drop_org_schema
+
+pytestmark = [pytest.mark.e2e]
+
+_ORG = "transport_contract"
+# sample_config.yaml: orders(id, customer_id, amount, region, status, created_at)
+# with amount visible_to [admin] only, and role `analyst` restricted to the
+# sales-analytics domain.
+_ADMIN = "admin"
+_RESTRICTED = "analyst"
+
+
+# --------------------------------------------------------------------------- #
+# Transport adapters — each reads the SAME logical query and normalizes the
+# result to (columns, rows) so different wire shapes become comparable.
+# --------------------------------------------------------------------------- #
+class TransportAdapter:
+    name: str
+
+    def read(self, role: str, columns: str) -> tuple[list[str], list[tuple]]:
+        """Return (column_names, rows) for `SELECT <columns> FROM orders` as `role`.
+
+        `columns` is a comma-separated list understood by every adapter (the SQL
+        adapters pass it through; the Cypher adapter maps each to o.<col>)."""
+        raise NotImplementedError
+
+
+class RestSqlAdapter(TransportAdapter):
+    name = "rest_sql"
+
+    def __init__(self, server: IsolatedServer) -> None:
+        self._base = server.base_url
+
+    def read(self, role, columns):
+        import httpx
+
+        with httpx.Client(base_url=self._base, timeout=60.0) as c:
+            resp = c.post(
+                "/data/sql",
+                json={"sql": f"SELECT {columns} FROM orders ORDER BY id"},
+                headers={"x-provisa-role": role},
+            )
+        if resp.status_code != 200:
+            raise _Denied(f"rest_sql {role}: HTTP {resp.status_code} {resp.text[:200]}")
+        return _parse_rest(resp.json(), columns)
+
+
+class PgwireAdapter(TransportAdapter):
+    name = "pgwire"
+
+    def __init__(self, server: IsolatedServer) -> None:
+        self._port = server.pgwire_port
+
+    def read(self, role, columns):
+        import psycopg2
+
+        # Trust mode: the connection username maps directly to the Provisa role_id.
+        # Trust mode ignores the password but psycopg2 requires a non-empty one.
+        conn = psycopg2.connect(
+            host="127.0.0.1", port=self._port, user=role, password="provisa", dbname="provisa"
+        )
+        try:
+            cur = conn.cursor()
+            try:
+                cur.execute(f"SELECT {columns} FROM orders ORDER BY id")
+                rows = [tuple(r) for r in cur.fetchall()]
+                cols = [d[0] for d in cur.description]
+                return cols, rows
+            except psycopg2.Error as exc:
+                raise _Denied(f"pgwire {role}: {exc}") from exc
+            finally:
+                cur.close()
+        finally:
+            conn.close()
+
+
+class BoltAdapter(TransportAdapter):
+    name = "bolt"
+
+    def __init__(self, server: IsolatedServer) -> None:
+        self._uri = f"bolt://127.0.0.1:{server.bolt_port}"
+
+    def read(self, role, columns):
+        from neo4j import GraphDatabase
+        from neo4j.exceptions import Neo4jError
+
+        # Role travels as the Bolt auth principal (same trust model as pgwire).
+        ret = ", ".join(f"o.{c} AS {c}" for c in _cols(columns))
+        driver = GraphDatabase.driver(self._uri, auth=(role, ""))
+        try:
+            with driver.session() as sess:
+                try:
+                    result = sess.run(f"MATCH (o:orders) RETURN {ret} ORDER BY o.id")
+                    records = list(result)
+                except Neo4jError as exc:
+                    raise _Denied(f"bolt {role}: {exc}") from exc
+                cols = _cols(columns)
+                rows = [tuple(rec[c] for c in cols) for rec in records]
+                return cols, rows
+        finally:
+            driver.close()
+
+
+class _Denied(Exception):
+    """A transport refused the query (governance denial at the wire boundary)."""
+
+
+def _cols(columns: str) -> list[str]:
+    return [c.strip() for c in columns.split(",")]
+
+
+def _parse_rest(body, columns: str) -> tuple[list[str], list[tuple]]:
+    """Normalize the /data/sql response to (columns, rows).
+
+    The SQL endpoint returns {"data": {<table>: [rowdict, ...]}} (serialize_rows);
+    handle the {"columns", "rows"} and flat-list shapes too so the adapter is
+    resilient to endpoint variants."""
+    if isinstance(body, dict) and "rows" in body and "columns" in body:
+        cols = list(body["columns"])
+        return cols, [tuple(r) for r in body["rows"]]
+    d = body["data"] if isinstance(body, dict) and "data" in body else body
+    if isinstance(d, dict):
+        rowdicts = next(iter(d.values())) if d else []  # {table: [rowdicts]}
+    else:
+        rowdicts = d
+    if not rowdicts:
+        return _cols(columns), []
+    cols = list(rowdicts[0].keys())
+    return cols, [tuple(r[c] for c in cols) for r in rowdicts]
+
+
+# --------------------------------------------------------------------------- #
+# Fixtures
+# --------------------------------------------------------------------------- #
+@pytest.fixture(scope="module")
+def contract_server():
+    """One Provisa server exposing every governed transport, over sample_config."""
+    server = IsolatedServer(
+        _ORG,
+        enable_bolt=True,
+        enable_pgwire=True,
+        config="tests/fixtures/sample_config.yaml",
+    )
+    server.start()
+    try:
+        yield server
+    finally:
+        server.stop_process()
+        import asyncio
+
+        asyncio.run(drop_org_schema(_ORG))
+
+
+@pytest.fixture(
+    params=[RestSqlAdapter, PgwireAdapter, BoltAdapter],
+    ids=["rest_sql", "pgwire", "bolt"],
+)
+def adapter(request, contract_server) -> TransportAdapter:
+    return request.param(contract_server)
+
+
+# --------------------------------------------------------------------------- #
+# Contract 1 — cross-transport equivalence
+# --------------------------------------------------------------------------- #
+def test_transport_returns_same_rows_as_reference(adapter, contract_server):
+    """Every transport returns the SAME (id, region) rows for the admin read.
+
+    REST /data/sql is the reference; each transport must agree. A transport that
+    returns different rows for the same logical query is a correctness defect the
+    combinatorial matrix would otherwise hide.
+    """
+    _, ref_rows = RestSqlAdapter(contract_server).read(_ADMIN, "id, region")
+    assert ref_rows, "reference read returned no rows — dataset not seeded"
+
+    _, rows = adapter.read(_ADMIN, "id, region")
+    assert _norm(rows) == _norm(ref_rows), (
+        f"{adapter.name} rows diverge from the reference transport"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Contract 2 — column visibility enforced on every transport
+# --------------------------------------------------------------------------- #
+def test_admin_only_column_never_reaches_restricted_role(adapter):
+    """The admin-only `amount` column must not leak to `analyst` on ANY transport.
+
+    A pass = either the transport rejects the query outright (denial at the wire
+    boundary) OR it returns rows with no real `amount` value. The invariant is
+    that a restricted role never obtains a governed value — however the transport
+    chooses to enforce it.
+    """
+    # Positive control: admin CAN read amount — so the analyst check below is
+    # discriminating governance, not a column that is simply absent for everyone.
+    admin_cols, admin_rows = adapter.read(_ADMIN, "id, amount")
+    if "amount" in [c.lower() for c in admin_cols]:
+        aidx = [c.lower() for c in admin_cols].index("amount")
+        assert any(r[aidx] not in (None, 0, "0", "") for r in admin_rows), (
+            f"{adapter.name}: admin saw no real `amount` values — positive control failed"
+        )
+
+    try:
+        cols, rows = adapter.read(_RESTRICTED, "id, amount")
+    except _Denied:
+        return  # rejected outright — the strongest form of enforcement
+
+    # Not rejected: then `amount` must not carry a real value for the restricted role.
+    if "amount" in [c.lower() for c in cols]:
+        idx = [c.lower() for c in cols].index("amount")
+        leaked = [r[idx] for r in rows if r[idx] not in (None, 0, "0", "")]
+        assert not leaked, (
+            f"{adapter.name} leaked admin-only `amount` values to {_RESTRICTED}: {leaked[:3]}"
+        )
+
+
+def _norm(rows: list[tuple]) -> list[tuple]:
+    """Normalize rows for cross-transport comparison (stringify, sort)."""
+    return sorted(tuple(str(v) for v in row) for row in rows)
