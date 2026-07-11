@@ -48,6 +48,14 @@ def wait_until_ready(conn: trino.dbapi.Connection, timeout: float = _READY_TIMEO
             if e.error_name != _STARTING_UP or time.monotonic() >= deadline:
                 raise
             time.sleep(2)
+        except trino.exceptions.TrinoConnectionError:
+            # A coordinator restarting/under load drops the socket ("connection
+            # reset/refused") — the same "not ready yet" signal as SERVER_STARTING_UP,
+            # not a permanent failure. Keep waiting until the deadline; a genuinely
+            # unreachable engine still surfaces when the deadline passes.
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(2)
 
 
 _VALID_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
@@ -68,22 +76,13 @@ def _to_catalog_name(source_id: str) -> str:
     return _validate_identifier(source_id.replace("-", "_"))
 
 
-def _first_env(*names: str) -> str:
-    """First non-empty env var among names; raise if none set (no hardcoded default)."""
-    for name in names:
-        val = os.environ.get(name)
-        if val:
-            return val
-    raise KeyError(f"none of {names} set in environment")
-
-
-def _build_catalog_properties(
-    source: Source, resolved_password: str
-) -> dict[str, str]:  # REQ-250, REQ-251, REQ-842
-    """Trino connector catalog properties for a source — derived from the source type's Trino
-    Connector class (the single source of truth, REQ-842). A type with no Trino connector returns
-    ``{}`` (not reachable by Trino). ``resolved_password`` is unused: the connector resolves secrets
-    itself; the parameter is kept for call-site compatibility."""
+def _build_catalog_properties(source: Source, resolved_password: str) -> dict[str, str]:
+    # REQ-250, REQ-251, REQ-842. Trino connector catalog properties for a source,
+    # derived from the source type's Trino Connector class (single source of truth).
+    # A type with no Trino connector returns {} (not reachable by Trino). Exercised
+    # by the splunk/sharepoint/file-lake connector unit tests to assert the props a
+    # source produces; ``resolved_password`` is unused (the connector resolves
+    # secrets itself) but kept for call-site compatibility.
     del resolved_password
     from provisa.federation.connector import TRINO_CONNECTORS
 
@@ -114,7 +113,7 @@ def create_catalog(
         log.warning("No Trino connector for source type %r — skipping catalog creation", stype)
         return
     connector = _validate_identifier(trino_connector.trino_connector)
-    props = trino_connector.details(source)
+    props = _build_catalog_properties(source, resolved_password)
 
     if not props:
         # A reachable type with no Source-row props (e.g. kafka, registered via create_kafka_catalog).
@@ -139,8 +138,8 @@ def create_catalog(
 def create_kafka_catalog(conn: trino.dbapi.Connection, kafka_source: dict) -> None:  # REQ-147
     """Register a ``kafka_sources[]`` entry as a Trino dynamic catalog.
 
-    Kafka is the one source type whose connector props are not built by
-    ``_build_catalog_properties`` (no host/JDBC url), so it never went through the
+    Kafka is the one source type whose connector props are not built from a
+    Source row (no host/JDBC url), so it never went through ``create_catalog``'s
     dynamic ``CREATE CATALOG`` path — it only wrote a static ``.properties`` file,
     which a ``catalog.management=dynamic`` Trino that started before the app never
     loads. Register it dynamically here (idempotent) so kafka sources work
@@ -187,7 +186,9 @@ def analyze_source_tables(  # REQ-636
             cur.execute(sql)
             cur.fetchall()
             log.info("ANALYZE %s.%s.%s ok", catalog_name, schema, table)
-        except Exception as e:
+        except trino.exceptions.Error as e:
+            # Best-effort: the connector may not support ANALYZE, or the table may
+            # be transiently unavailable. Any Trino-side error is non-fatal here.
             log.debug("ANALYZE %s.%s.%s skipped: %s", catalog_name, schema, table, e)
 
 
