@@ -42,7 +42,11 @@ export function ConfirmDialog({ title, consequence, onConfirm, children }: Props
             <h3>{title}</h3>
             <p className="consequence">{consequence}</p>
             <div className="modal-actions">
-              <button onClick={() => setOpen(false)} disabled={loading}>
+              <button
+                aria-label="Cancel"
+                onClick={() => setOpen(false)}
+                disabled={loading}
+              >
                 ✕
               </button>
               <button

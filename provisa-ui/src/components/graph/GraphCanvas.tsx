@@ -357,6 +357,10 @@ export function GraphCanvas({
     menu.style.visibility = "visible";
   }, [nodeCtxMenu]);
 
+  // Declared before the full-rebuild effect below because its cleanup resets these refs.
+  const prevOverlayNodesRef = useRef<Map<string, GNode>>(new Map());
+  const prevOverlayEdgesRef = useRef<Map<string, GEdge>>(new Map());
+
   // Full rebuild — fires only when the base graph (query result) or cluster level changes
   useEffect(() => {
     if (!containerRef.current) return;
@@ -512,8 +516,6 @@ export function GraphCanvas({
   }, [nodes, edges, clusterLevel, collapsedClusters]);
 
   // Incremental overlay update — adds/removes overlay nodes+edges without full re-layout
-  const prevOverlayNodesRef = useRef<Map<string, GNode>>(new Map());
-  const prevOverlayEdgesRef = useRef<Map<string, GEdge>>(new Map());
   useEffect(() => {
     if (clusterLevel !== "none") return;
     const cy = cyRef.current;
@@ -703,7 +705,7 @@ export function GraphCanvas({
   }, [relLineOverrides]);
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- userZoomingEnabled is a runtime cytoscape method not present on the typed Core surface
     (cyRef.current as any)?.userZoomingEnabled(!!isExpanded);
   }, [isExpanded]);
 

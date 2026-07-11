@@ -130,7 +130,10 @@ export function GraphFrame({
   const [overlayData, setOverlayData] = useState<
     Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>
   >(new Map());
-  if (typeof window !== "undefined") (window as unknown as Record<string, unknown>).__overlayData = overlayData;
+  useEffect(() => {
+    if (typeof window !== "undefined")
+      (window as unknown as Record<string, unknown>).__overlayData = overlayData;
+  }, [overlayData]);
   const [autoImpute, setAutoImpute] = useState(autoImputeProp);
   const [dragOver, setDragOver] = useState(false);
   const handleRerun = useCallback(
@@ -815,6 +818,7 @@ export function GraphFrame({
             onToggleParentsCircular={handleToggleParentsCircular}
             onCyReady={(cy) => {
               canvasCyRef.current = cy;
+              // eslint-disable-next-line react-hooks/immutability -- intentional debug-only global handle set from a cytoscape ready callback, not during render
               if (typeof window !== "undefined") (window as unknown as Record<string, unknown>).__cy = cy;
             }}
             clusterLevel={clusterLevel}
