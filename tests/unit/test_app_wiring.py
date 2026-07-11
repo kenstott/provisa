@@ -127,6 +127,8 @@ def _state_with_mv(*, column_types):
         sql="SELECT day AS d, count(*) AS n FROM orders GROUP BY day",
         freshness_mode="ttl",
         refresh_interval=600,
+        debounce_quiet=0.0,
+        debounce_max_delay=None,
     )
     return SimpleNamespace(
         tenant_db=_fake_db([]),

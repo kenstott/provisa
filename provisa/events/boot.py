@@ -50,6 +50,8 @@ class NodeSpec:
     poll_seconds: int | None = None  # poll nodes: the timer cadence
     probe_factory: Callable[[], Probe] | None = None  # poll nodes: a fresh probe per fire
     probe_type: str = "none"  # REQ-982: input-probe method (drives the injected event shape)
+    debounce_quiet: float = 0.0  # REQ-963: live-MV debounce quiet window; 0 = real-time
+    debounce_max_delay: float | None = None  # REQ-963: staleness-SLA cap under churn
 
 
 def _probe_factory(
@@ -189,6 +191,8 @@ def specs_from_config(
                 watermark_column=None,
                 handle=handle,
                 poll_seconds=mv.refresh_interval,
+                debounce_quiet=mv.debounce_quiet,  # REQ-963
+                debounce_max_delay=mv.debounce_max_delay,  # REQ-963
             )
         )
 
@@ -209,6 +213,8 @@ def build_processors(
             "db": db,
             "name": f"{spec.kind}:{spec.node}",
             "probe_type": spec.probe_type,
+            "debounce_quiet": spec.debounce_quiet,  # REQ-963
+            "debounce_max_delay": spec.debounce_max_delay,  # REQ-963
         }
         if spec.kind == "source":
             processors.append(SourceTableProcessor(spec.node, land=spec.handle, **common))

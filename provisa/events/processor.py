@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from provisa.events import injector, queue
@@ -32,6 +32,13 @@ from provisa.events import injector, queue
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_utc(dt: datetime) -> datetime:
+    """Normalize a stored ``created_at`` to a UTC-aware datetime. events.created_at is DateTime(tz):
+    Postgres returns it aware, SQLite returns it naive — coerce the naive case to UTC (its authored
+    zone) so debounce comparisons against _now() are dialect-safe."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
 class OwnershipLost(Exception):
@@ -56,6 +63,8 @@ class TableProcessor(ABC):
         db: Any,
         name: str,
         probe_type: str | None = None,
+        debounce_quiet: float = 0.0,
+        debounce_max_delay: float | None = None,
     ) -> None:
         self.node = node
         self.change_signal = change_signal
@@ -66,6 +75,11 @@ class TableProcessor(ABC):
         self._dependents_of = dependents_of
         self._db = db
         self.name = name
+        # REQ-963 live-MV debounce. quiet<=0 → fire immediately (real-time, no debounce). Otherwise a
+        # burst of fan-ins waits for min(last_change+quiet, first_change+max_delay) and collapses into
+        # one recompute; max_delay is the mandatory staleness cap that guarantees a fire under churn.
+        self._debounce_quiet = debounce_quiet
+        self._debounce_max_delay = debounce_max_delay
 
     # -- lifecycle -------------------------------------------------------------
     async def stop(self) -> None:
@@ -130,6 +144,7 @@ class TableProcessor(ABC):
         now = _now()
         # REQ-959 reassert-on-restart: resume any claim this processor still owns from a prior
         # (crashed) run before taking new work, and refresh its lease so the reaper does not race us.
+        # Resumed work is already owned → it is processed regardless of the debounce gate below.
         resumed = await queue.resume_claims(
             conn, dependent_table=self.node, processor_name=self.name
         )
@@ -137,6 +152,15 @@ class TableProcessor(ABC):
             await queue.heartbeat(
                 conn, dependent_table=self.node, processor_name=self.name, now=now
             )
+        else:
+            # REQ-963 debounce gate: peek the unclaimed work WITHOUT claiming; if the quiet/max_delay
+            # deadline has not passed, defer (leave it unclaimed so more fan-ins coalesce). quiet<=0
+            # fires immediately. Deferring here is what collapses a burst into one recompute.
+            peeked = await queue.peek_pending(conn, dependent_table=self.node)
+            if not peeked:
+                return None
+            if not self._debounce_ready(peeked, now):
+                return None
         newly = await queue.claim(
             conn,
             dependent_table=self.node,
@@ -178,9 +202,35 @@ class TableProcessor(ABC):
             return None
         return my_event
 
+    def _debounce_deadline(self, peeked: list[dict]) -> datetime | None:
+        """REQ-963 trailing-edge debounce deadline = min(last_change + quiet, first_change + max_delay),
+        or None when debounce is off (quiet<=0 → fire immediately). ``first_change``/``last_change`` are
+        the earliest/latest ``created_at`` of the coalescing fan-ins. max_delay is the mandatory cap:
+        under continuous churn the quiet window never elapses, so the cap guarantees a fire and is the
+        staleness SLA. Absent max_delay falls back to first+quiet so a deadline always exists."""
+        if self._debounce_quiet <= 0:
+            return None
+        stamps = [_as_utc(p["created_at"]) for p in peeked if p.get("created_at") is not None]
+        if not stamps:
+            return None  # no timestamps to reason about → do not defer
+        first, last = min(stamps), max(stamps)
+        quiet_deadline = last + timedelta(seconds=self._debounce_quiet)
+        if self._debounce_max_delay is None:
+            return quiet_deadline
+        return min(quiet_deadline, first + timedelta(seconds=self._debounce_max_delay))
+
+    def _debounce_ready(self, peeked: list[dict], now: datetime) -> bool:
+        """True when the debounce deadline has passed (or debounce is off) → fire now; False → defer so
+        more fan-ins coalesce into the same recompute (REQ-963)."""
+        deadline = self._debounce_deadline(peeked)
+        return deadline is None or now >= deadline
+
     def _claim_deadline(self, now: datetime) -> datetime | None:
-        """The per-claim fire-by deadline (REQ-959). None by default (reclaim on heartbeat lapse only);
-        the live-MV debounce processor overrides this with min(last+quiet, first+max_delay) (REQ-963)."""
+        """The per-claim fire-by stamped on the claim for the REQ-959 reaper. For a debounced live MV
+        it is now + max_delay (a stuck recompute past it is reclaimable); None otherwise (heartbeat
+        lapse is the only reclaim trigger)."""
+        if self._debounce_quiet > 0 and self._debounce_max_delay is not None:
+            return now + timedelta(seconds=self._debounce_max_delay)
         return None
 
     async def _complete_all(self, conn: Any, claimed: list[int], now: datetime) -> None:

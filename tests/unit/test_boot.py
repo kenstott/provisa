@@ -43,7 +43,7 @@ def _spec(node, kind, **kw):
 
 class _Sched:
     def __init__(self):
-        self.jobs: list[str] = []
+        self.jobs: list[str | None] = []
 
     def add_job(self, fn, trigger=None, id=None, replace_existing=None):
         self.jobs.append(id)
@@ -85,7 +85,12 @@ def _tbl(sid, tname, cols, *, cache_ttl=300):
 
 def _mv(name):
     return SimpleNamespace(
-        target_schema="analytics", target_table=name, freshness_mode="ttl", refresh_interval=600
+        target_schema="analytics",
+        target_table=name,
+        freshness_mode="ttl",
+        refresh_interval=600,
+        debounce_quiet=0.0,
+        debounce_max_delay=None,
     )
 
 

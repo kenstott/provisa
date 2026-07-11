@@ -95,6 +95,22 @@ async def claim(
     return sorted(r[0] for r in result.fetchall())
 
 
+async def peek_pending(conn: Any, *, dependent_table: str) -> list[dict]:
+    """REQ-963 debounce peek: the UNCLAIMED work items for ``dependent_table`` with their event
+    ``created_at`` timestamps — WITHOUT claiming. The debounce gate reads these to decide whether the
+    quiet/max_delay deadline has passed before opening a claim, so a burst of fan-ins accumulates as
+    unclaimed and collapses into a single coalesced recompute. Returns [{event_id, created_at}]."""
+    result = await conn.execute_core(
+        select(event_status.c.event_id, events.c.created_at)
+        .join(events, events.c.id == event_status.c.event_id)
+        .where(
+            event_status.c.dependent_table == dependent_table,
+            event_status.c.claim_status == "unclaimed",
+        )
+    )
+    return [{"event_id": r[0], "created_at": r[1]} for r in result.fetchall()]
+
+
 async def resume_claims(conn: Any, *, dependent_table: str, processor_name: str) -> list[int]:
     """REQ-959 reassert-on-restart: the event ids this processor still owns (claim_status='claimed',
     processor_name = self) so a returning owner resumes its in-flight claim instead of waiting for a

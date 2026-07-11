@@ -92,6 +92,12 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # authoritative shared token store is REQ-879.
     freshness_mode: str = "ttl"
 
+    # REQ-963 live-MV debounce (event-loop path). quiet<=0 → recompute-to-current fires immediately
+    # (real-time). Otherwise a burst of upstream fan-ins collapses into one recompute at
+    # min(last_change+quiet, first_change+max_delay); max_delay is the mandatory staleness-SLA cap.
+    debounce_quiet: float = 0.0
+    debounce_max_delay: float | None = None
+
     # Runtime state
     status: MVStatus = MVStatus.STALE
     last_refresh_at: float | None = None

@@ -284,3 +284,77 @@ async def test_req959_ownership_cas_aborts_ripple_on_peer_takeover(tmp_path):
             assert await queue.resume_claims(
                 conn, dependent_table="mv.a", processor_name="peer"
             ) == [up]
+
+
+# --- REQ-963 debounce ------------------------------------------------------
+
+
+def _debounce_proc(db, *, quiet, max_delay, result, deps=None):
+    return _Proc(
+        "mv.live",
+        change_signal="ttl",
+        watermark_column=None,
+        dependents_of=lambda n: deps or ["down.x"],
+        db=db,
+        name="box-1",
+        result=result,
+        debounce_quiet=quiet,
+        debounce_max_delay=max_delay,
+    )
+
+
+def test_debounce_deadline_math():
+    """min(last_change + quiet, first_change + max_delay); quiet<=0 → None (fire immediately)."""
+    from datetime import datetime, timedelta, timezone
+
+    t0 = datetime(2026, 7, 8, tzinfo=timezone.utc)
+    p = _debounce_proc(None, quiet=10, max_delay=None, result=None)
+    # no debounce
+    p0 = _debounce_proc(None, quiet=0, max_delay=5, result=None)
+    assert p0._debounce_deadline([{"created_at": t0}]) is None
+    # trailing-edge: last + quiet
+    peeked = [{"created_at": t0}, {"created_at": t0 + timedelta(seconds=2)}]
+    assert p._debounce_deadline(peeked) == t0 + timedelta(seconds=12)
+    # max_delay cap wins under a long quiet tail
+    pc = _debounce_proc(None, quiet=10, max_delay=5, result=None)
+    peeked2 = [{"created_at": t0}, {"created_at": t0 + timedelta(seconds=8)}]
+    assert pc._debounce_deadline(peeked2) == t0 + timedelta(seconds=5)  # first + max_delay
+
+
+@pytest.mark.asyncio
+async def test_debounce_collapses_burst_into_one_recompute(tmp_path, monkeypatch):
+    """A burst of fan-ins is deferred until the debounce deadline, then fires ONCE coalescing all of
+    them into a single recompute (REQ-963)."""
+    from datetime import timedelta
+
+    import provisa.events.processor as processor_mod
+
+    async with _db(tmp_path) as db:
+        async with db.acquire() as conn:
+            # three rapid upstream changes fan into the live MV
+            ids = []
+            for _ in range(3):
+                e = await queue.post_event(conn, source_table="s.o", event_type="append")
+                await queue.fan_out(conn, e, ["mv.live"])
+                ids.append(e)
+
+        proc = _debounce_proc(db, quiet=100, max_delay=300, result=("replace", {"n": 3}, "h1"))
+
+        # 1) Before the quiet window elapses → defer (no claim, no recompute).
+        async with db.acquire() as conn:
+            assert await proc.process_pending(conn) is None
+            assert proc.seen is None  # handle never ran
+            # work is still unclaimed (peekable), not orphaned
+            assert len(await queue.peek_pending(conn, dependent_table="mv.live")) == 3
+
+        # 2) Advance the clock past the deadline → fire ONCE, coalescing all three events.
+        fire_at = processor_mod._now() + timedelta(seconds=400)
+        monkeypatch.setattr(processor_mod, "_now", lambda: fire_at)
+        async with db.acquire() as conn:
+            my_event = await proc.process_pending(conn)
+            assert my_event is not None
+            assert proc.seen is not None and len(proc.seen) == 3  # one recompute over all 3
+            posted = [
+                r for r in await queue.read_since(conn, cursor=0) if r["source_table"] == "mv.live"
+            ]
+            assert len(posted) == 1  # a single downstream ripple, not three

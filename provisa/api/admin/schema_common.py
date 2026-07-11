@@ -286,7 +286,13 @@ def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
 
 
 def _sync_view_mv(
-    table_name: str, view_sql: str, refresh_interval: int, change_signal: str | None = None
+    table_name: str,
+    view_sql: str,
+    refresh_interval: int,
+    change_signal: str | None = None,
+    *,
+    debounce_quiet: float = 0.0,
+    debounce_max_delay: float | None = None,
 ) -> None:
     """Register or update an MVDefinition for a materialized user-defined view."""
     from provisa.api.app import state
@@ -319,6 +325,8 @@ def _sync_view_mv(
         expose_in_sdl=False,
         status=existing.status if existing is not None else MVStatus.STALE,
         freshness_mode=freshness,
+        debounce_quiet=debounce_quiet,  # REQ-963
+        debounce_max_delay=debounce_max_delay,  # REQ-963
     )
     state.mv_registry.register(mv)
 
