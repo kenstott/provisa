@@ -29,7 +29,10 @@ Flight (SQL over the app's OWN governed Flight server — a JSON ticket carrying
 query + role, run through the governed pipeline; NOT the Zaychik/raw-Trino Flight
 SQL client, which is ungoverned), and gRPC (a per-config generated proto, so the
 client discovers the service + orders RPC by reflection and passes the role in
-x-provisa-role metadata). GraphQL over HTTP is the remaining adapter.
+x-provisa-role metadata), and GraphQL over HTTP (POST /data/graphql; a column the
+role cannot see is absent from its per-role schema, so selecting it is a validation
+error — governance enforced at the schema boundary). All five governed consumption
+surfaces are now covered.
 """
 
 from __future__ import annotations
@@ -81,6 +84,38 @@ class RestSqlAdapter(TransportAdapter):
         if resp.status_code != 200:
             raise _Denied(f"rest_sql {role}: HTTP {resp.status_code} {resp.text[:200]}")
         return _parse_rest(resp.json(), columns)
+
+
+class GraphqlAdapter(TransportAdapter):
+    name = "graphql"
+    # sample_config: domain_prefix on, sales-analytics domain -> orders is `sa__orders`.
+    _FIELD = "sa__orders"
+
+    def __init__(self, server: IsolatedServer) -> None:
+        self._base = server.base_url
+
+    def read(self, role, columns):
+        import httpx
+
+        selection = " ".join(_cols(columns))
+        with httpx.Client(base_url=self._base, timeout=60.0) as c:
+            resp = c.post(
+                "/data/graphql",
+                json={"query": f"{{ {self._FIELD} {{ {selection} }} }}"},
+                headers={"x-provisa-role": role},
+            )
+        if resp.status_code != 200:
+            raise _Denied(f"graphql {role}: HTTP {resp.status_code} {resp.text[:200]}")
+        body = resp.json()
+        # A field the role cannot see is not in its per-role schema -> validation error.
+        if body.get("errors"):
+            raise _Denied(f"graphql {role}: {body['errors']}")
+        data = (body.get("data") or {}).get(self._FIELD)
+        if data is None:
+            raise _Denied(f"graphql {role}: null data")
+        cols = _cols(columns)
+        rows = [tuple(r.get(c) for c in cols) for r in data]
+        return cols, rows
 
 
 class PgwireAdapter(TransportAdapter):
@@ -276,8 +311,8 @@ def contract_server():
 
 
 @pytest.fixture(
-    params=[RestSqlAdapter, PgwireAdapter, BoltAdapter, FlightAdapter, GrpcAdapter],
-    ids=["rest_sql", "pgwire", "bolt", "flight", "grpc"],
+    params=[RestSqlAdapter, PgwireAdapter, BoltAdapter, FlightAdapter, GrpcAdapter, GraphqlAdapter],
+    ids=["rest_sql", "pgwire", "bolt", "flight", "grpc", "graphql"],
 )
 def adapter(request, contract_server) -> TransportAdapter:
     return request.param(contract_server)
