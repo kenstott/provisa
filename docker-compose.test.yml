@@ -143,6 +143,21 @@ services:
       retries: 30
       start_period: 60s
 
+  # Prometheus for the prometheus-connector integration test (requires_prometheus).
+  # Internal-only: Trino's connector reaches it at prometheus:9090 on the project
+  # network. Reuses the dev scrape config — its trino:8080 target resolves inside
+  # this project, so the `up` metric populates and the test can query it.
+  prometheus:
+    restart: unless-stopped
+    image: prom/prometheus:v2.51.2
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/ready || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
 volumes:
   kafka_test_data:
   mongo_test_data:

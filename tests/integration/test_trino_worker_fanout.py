@@ -33,10 +33,13 @@ import trino.dbapi
 pytestmark = [pytest.mark.integration]
 
 _REPO_ROOT = Path(__file__).parents[2]
+# Operate on the SAME isolated stack the integration lane provisions (conftest's
+# provisa-itest project on core+test compose) — TRINO_PORT points at THAT
+# coordinator, so the worker must be scaled within THAT project to register.
+_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", "provisa-itest")
 _COMPOSE_FILES = [
     _REPO_ROOT / "docker-compose.core.yml",
-    _REPO_ROOT / "docker-compose.observability.yml",
-    _REPO_ROOT / "docker-compose.dev.yml",
+    _REPO_ROOT / "docker-compose.test.yml",
 ]
 
 _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
@@ -44,7 +47,7 @@ _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))
 
 
 def _compose(*args: str) -> subprocess.CompletedProcess:
-    cmd = ["docker", "compose"]
+    cmd = ["docker", "compose", "-p", _ITEST_PROJECT]
     for f in _COMPOSE_FILES:
         cmd += ["-f", str(f)]
     cmd += list(args)

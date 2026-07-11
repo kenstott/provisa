@@ -38,9 +38,17 @@ def shared_data() -> dict:
 
 
 def _audit_dsn() -> str:
+    # Target the isolated stack's postgres on its ephemeral published port (the same
+    # PG_* env conftest exports / isolated_server reads) — never a fixed :5432 that
+    # would hit the untouched dev stack.
+    host = os.environ.get("PG_HOST", "localhost")
+    port = os.environ.get("PG_PORT", "5432")
+    user = os.environ.get("PG_USER", "provisa")
+    password = os.environ.get("PG_PASSWORD", "provisa")
+    database = os.environ.get("PG_DATABASE", "provisa")
     return os.getenv(
         "PROVISA_DATABASE_URL",
-        "postgresql://provisa:provisa@localhost:5432/provisa",
+        f"postgresql://{user}:{password}@{host}:{port}/{database}",
     )
 
 

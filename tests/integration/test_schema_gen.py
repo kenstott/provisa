@@ -25,7 +25,7 @@ from graphql import (
 from provisa.compiler.introspect import introspect_table_columns
 from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.core.config_loader import load_config, parse_config
+from provisa.core.config_loader import load_config, parse_config_dict
 from provisa.core.db import init_schema
 from provisa.core.repositories import (
     domain as domain_repo,
@@ -56,7 +56,11 @@ async def _load_config(tenant_db, _init_schema):
                      registered_tables, naming_rules, roles, domains, sources
             CASCADE
         """)
-        config = parse_config(FIXTURE_CONFIG)
+        # Load exactly as the server does (parse_config_dict resolves ${env:...}
+        # so the sample config's ephemeral ${env:PG_PORT} survives int validation).
+        import yaml
+
+        config = parse_config_dict(yaml.safe_load(FIXTURE_CONFIG.read_text()))
         await load_config(config, conn)
 
 

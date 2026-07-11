@@ -53,6 +53,7 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_elasticsearch": ["elasticsearch"],
     "requires_neo4j": ["neo4j"],
     "requires_sparql": ["fuseki"],
+    "requires_prometheus": ["prometheus"],
 }
 # zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
@@ -98,6 +99,14 @@ def _allocate_itest_ports() -> None:
     URL-shaped env the in-process app reads, so the app never hits the dev stack."""
     for name, port in zip(_ITEST_PORT_ENV, _reserve_free_ports(len(_ITEST_PORT_ENV))):
         os.environ[name] = str(port)
+    # The isolated postgres is provisa/provisa/provisa by construction (see
+    # docker-compose.core.yml POSTGRES_*). Export the full credential env — not just
+    # the port — so in-process config loads that resolve ${env:PG_PASSWORD} (e.g.
+    # sample_config.yaml) succeed without a fixed fallback in the config itself.
+    os.environ.setdefault("PG_HOST", "localhost")
+    os.environ.setdefault("PG_USER", "provisa")
+    os.environ.setdefault("PG_PASSWORD", "provisa")
+    os.environ.setdefault("PG_DATABASE", "provisa")
     os.environ["REDIS_URL"] = f"redis://localhost:{os.environ['REDIS_PORT']}/0"
     _minio = f"localhost:{os.environ['MINIO_PORT']}"
     os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://{_minio}"
