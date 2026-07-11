@@ -37,6 +37,13 @@ import yaml
 # lane's own ephemeral endpoint — still wins.
 os.environ.setdefault("PROVISA_OTEL_S3_ENDPOINT", "http://localhost:9000")
 
+# The cross-engine PG governance-parity test (test_governance_parity_e2e) skips
+# unless PROVISA_PG_STACK=1. The dev-stack Postgres it needs is always up in the
+# test environment and the test self-provisions its own parity_e2e schema, so opt
+# in by default — a real Postgres leg, not a silent skip. setdefault lets an outer
+# value override.
+os.environ.setdefault("PROVISA_PG_STACK", "1")
+
 
 def pin_no_auth_config(tmp_dir: Path) -> Iterator[None]:
     src = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
