@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     change_signal TEXT,  -- REQ-929: override source change signal; NULL = inherit
     probe_query TEXT,    -- REQ-929: source-native freshness probe for change_signal in {probe, ttl_probe}
     probe_type TEXT,     -- REQ-982: input-probe method; NULL = resolve per source class
+    mv_debounce_quiet     DOUBLE PRECISION NOT NULL DEFAULT 0,  -- MV NRT debounce quiet window (s)
+    mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- MV NRT debounce max delay (s)
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -127,6 +129,8 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS data_product BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_refresh_interval INTEGER NOT NULL DEFAULT 300;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_quiet DOUBLE PRECISION NOT NULL DEFAULT 0;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_aggregates BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS enable_group_by BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS live JSONB;
