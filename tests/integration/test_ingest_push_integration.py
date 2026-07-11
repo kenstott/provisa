@@ -8,6 +8,17 @@ Covers:
 - REQ-336: Subscribe ingest table SSE endpoint with governance
 """
 
+import pytest
+
+# `isolated`: the session-scoped `test_client` app these tests share reads the
+# module-level singleton `provisa.api.app.state`. Other integration tests running
+# earlier in the same process mutate/null fields on that shared state (e.g.
+# state.tenant_db), corrupting this module's long-lived app so its startup
+# asserts. Deselected from the default lane and run in their own pytest process by
+# scripts/test-all (fork-based isolation is unsafe here — the process has live
+# gRPC threads that break os.fork()).
+pytestmark = pytest.mark.isolated
+
 
 # Use the test client from conftest
 

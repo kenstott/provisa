@@ -59,6 +59,7 @@ dependencies = [
     "defusedxml",
     "jpype1",
     "minio",
+    "pyiceberg",
 ]
 
 [project.optional-dependencies]
@@ -116,7 +117,7 @@ testpaths = ["tests", "tests/steps"]
 # cluster are likewise their own lanes (manual/live-minikube). scripts/test-all
 # runs every lane and combines coverage. These are documented process-isolation
 # lanes, not silent skips.
-addopts = "-m 'not packaging and not cluster' --ignore=tests/e2e"
+addopts = "-m 'not packaging and not cluster and not isolated' --ignore=tests/e2e"
 python_files = ["test_*.py", "*_test.py", "steps_*.py"]
 asyncio_mode = "auto"
 log_level = "DEBUG"
@@ -139,6 +140,7 @@ markers = [
     "requires_provisa_server: requires running Provisa server at localhost:8000",
     "packaging: installer/packaging flow; validated manually + by unit tests, deselected by default",
     "cluster: helm/minikube deployment test; own run lane (pytest -m cluster) against a live minikube, deselected by default",
+    "isolated: needs its own pytest process (shared module-singleton state or a non-restartable JVM); own lane in scripts/test-all, deselected by default",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:pytest_asyncio",
