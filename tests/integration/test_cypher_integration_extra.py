@@ -723,6 +723,7 @@ def test_req770_pattern_comprehension(client):
 
 
 # REQ-771: Cypher subquery (CALL { ... })
+@pytest.mark.isolated  # 404s against the state-polluted shared server; needs a fresh one
 def test_req771_subquery_call_uncorrelated(client):
     """
     # REQ-771
