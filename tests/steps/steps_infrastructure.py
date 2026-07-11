@@ -56,11 +56,6 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 # ---------------------------------------------------------------------------
 
 
-def _require_integration() -> None:
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
-
-
 def _minio_settings() -> dict:
     """Resolve MinIO connection settings from the environment.
 
@@ -112,7 +107,6 @@ def stack_first_start(shared_data):
     Removing the bucket up front guarantees that any later assertion proves the
     startup sequence (not a leftover from a previous run) created it.
     """
-    _require_integration()
     settings = _minio_settings()
     shared_data["minio_settings"] = settings
 
