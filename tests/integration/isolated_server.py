@@ -27,6 +27,25 @@ import yaml
 _REPO_ROOT = Path(__file__).parents[2]
 
 
+def _subprocess_coverage_env() -> dict:
+    """Env that makes a spawned server subprocess measure its OWN line coverage.
+
+    Only active when the parent test process is itself running under coverage —
+    then COVERAGE_PROCESS_START points the subprocess at the coverage config and
+    the site-packages ``.pth`` (installed by tests/conftest.py) fires
+    ``coverage.process_startup()`` at interpreter start. With ``parallel = true``
+    the subprocess writes its own ``.coverage.*`` that ``coverage combine`` merges,
+    so out-of-process code (Bolt/Flight/gRPC/pgwire/governed pipeline) is counted."""
+    try:
+        import coverage
+
+        if coverage.Coverage.current() is None:
+            return {}
+    except Exception:
+        return {}
+    return {"COVERAGE_PROCESS_START": str(_REPO_ROOT / "pyproject.toml")}
+
+
 def free_port() -> int:
     s = socket.socket()
     s.bind(("", 0))
@@ -133,6 +152,7 @@ class IsolatedServer:
         env = {
             **os.environ,
             **self._control_plane_env(),
+            **_subprocess_coverage_env(),
             "ORG_ID": self.org_id,
             "PROVISA_ENGINE": self._engine,
             "PROVISA_CONFIG": self._cfg_path,

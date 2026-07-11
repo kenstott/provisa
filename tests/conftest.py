@@ -38,6 +38,42 @@ _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 _CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
 _TEST_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.test.yml")
 
+
+def _install_subprocess_coverage_pth() -> None:
+    """Drop a .pth in site-packages that fires coverage.process_startup() at every
+    interpreter start. Combined with COVERAGE_PROCESS_START (set by the server-
+    spawning helpers only under a coverage run), it makes spawned server subprocesses
+    measure their own line coverage into a parallel .coverage.* that combine merges —
+    so out-of-process Bolt/Flight/gRPC/pgwire/governed-pipeline code is counted.
+    process_startup() is a no-op unless COVERAGE_PROCESS_START is set, so the .pth is
+    inert for ordinary (non-coverage) runs."""
+    try:
+        import sysconfig
+
+        site_dir = sysconfig.get_paths()["purelib"]
+        pth = os.path.join(site_dir, "provisa_subprocess_coverage.pth")
+        if not os.path.exists(pth):
+            with open(pth, "w", encoding="utf-8") as f:
+                f.write("import coverage; coverage.process_startup()\n")
+    except OSError:
+        pass  # read-only site-packages (e.g. CI wheel cache) — subprocess cov just off
+
+
+_install_subprocess_coverage_pth()
+
+
+def _server_coverage_env() -> dict:
+    """COVERAGE_PROCESS_START for a spawned server subprocess, but only when the
+    parent runs under coverage (else the subprocess would needlessly self-measure)."""
+    try:
+        import coverage
+
+        if coverage.Coverage.current() is None:
+            return {}
+    except Exception:
+        return {}
+    return {"COVERAGE_PROCESS_START": os.path.abspath(os.path.join(_REPO_ROOT, "pyproject.toml"))}
+
 # The integration tier provisions its OWN isolated stack — a dedicated compose
 # project on ephemeral host ports, its own network — so it NEVER touches the local
 # dev stack (the `provisa` project on default ports 5432/8080/9000/…). Core and
@@ -555,6 +591,7 @@ def provisa_server():
         **os.environ,
         "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa",
         "FLIGHT_PORT": str(_flight_port),
+        **_server_coverage_env(),
     }
     proc = subprocess.Popen(
         [venv_python, "main:app", "--host", "0.0.0.0", f"--port={_port}"],

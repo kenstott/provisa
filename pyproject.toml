@@ -164,6 +164,11 @@ omit = ["provisa/proto/*", "provisa/migrations/*"]
 # and `coverage combine`s them; parallel=true tags each run's data file so they
 # don't clobber each other.
 parallel = true
+# Server subprocesses (IsolatedServer / provisa_server) measure their own coverage
+# via COVERAGE_PROCESS_START + the .pth trigger; they are shut down with SIGTERM, so
+# a SIGTERM handler must flush their data or it is lost (out-of-process Bolt/Flight/
+# gRPC/pgwire/governed-pipeline coverage). sigterm=true installs that handler.
+sigterm = true
 
 [tool.coverage.report]
 exclude_lines = [
