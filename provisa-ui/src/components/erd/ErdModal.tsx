@@ -19,10 +19,10 @@ import type { ColumnDetail, ErdNodeDomain, ErdNodeTable } from "./erd-model";
 import { labelColor } from "../graph/graph-model";
 import { downloadBlob } from "../graph/graph-export";
 import type { CyInstance, CyEvent, CyLayoutOptions } from "../graph/cytoscape-types";
-import { nodesWithEdges, resolveCompoundOverlaps, packDomains, placeIsolatedGrid } from "./parts/erd-layout";
-import { buildErdStylesheet } from "./parts/erd-stylesheet";
-import { TBtn } from "./parts/TBtn";
-import type { TooltipState, ErdModalProps } from "./parts/erd-types";
+import { nodesWithEdges, resolveCompoundOverlaps, packDomains, placeIsolatedGrid } from "./sections/erd-layout";
+import { buildErdStylesheet } from "./sections/erd-stylesheet";
+import { TBtn } from "./sections/TBtn";
+import type { TooltipState, ErdModalProps } from "./sections/erd-types";
 
 // ── cytoscape plugin registration ────────────────────────────────────────────
 type CyExt = Parameters<typeof cytoscape.use>[0];
