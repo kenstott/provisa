@@ -108,6 +108,15 @@ def _allocate_itest_ports() -> None:
     os.environ["KAFKA_BOOTSTRAP_SERVERS"] = _kafka
 
 
+# Allocate + export the isolated-stack ports at IMPORT time — before any test module
+# is collected, so module-level constants like `REDIS_URL = os.environ.get(...)` and
+# the in-process apps capture the ephemeral ports rather than the dev defaults. The
+# stack itself is only provisioned when the run actually contains integration tests
+# (pytest_collection_finish); an external stack keeps whatever it published.
+if not os.environ.get("PYTEST_NO_DOCKER") and not os.environ.get("PROVISA_E2E_EXTERNAL_STACK"):
+    _allocate_itest_ports()
+
+
 class _DockerServiceManager:
     def pytest_collection_finish(self, session):
         if os.environ.get("PYTEST_NO_DOCKER"):
@@ -125,12 +134,8 @@ class _DockerServiceManager:
                 if item.get_closest_marker(marker):
                     needed.update(services)
 
-        # Provision an ISOLATED stack: dedicated project, ephemeral host ports, its
-        # own network — the dev stack (`provisa` project, default ports) is never
-        # touched. Ports are allocated + exported here (before any in-process app is
-        # built and before the provisa_server subprocess captures the env), and the
-        # compose files interpolate the same ${*_PORT} at `up`.
-        _allocate_itest_ports()
+        # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
+        # exported at import time, its own network — the dev stack is never touched.
         subprocess.run(
             ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *sorted(needed)],
             cwd=_REPO_ROOT,
