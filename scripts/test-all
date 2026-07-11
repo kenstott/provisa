@@ -27,7 +27,10 @@ pytest tests tests/steps "${COV_ARGS[@]}" "$@"
 echo "== lane: e2e (isolated stack) =="
 # addopts carries --ignore=tests/e2e for the default lane; override it here so the
 # e2e lane collects exactly tests/e2e (its conftest owns the isolated stack).
-pytest tests/e2e -o addopts="" -m e2e "${COV_ARGS[@]}" "$@"
+# Exclude cluster: test_helm_minikube is marked [e2e, cluster] and would otherwise
+# block for minutes on `minikube start`/kubectl subprocess timeouts against a
+# non-existent cluster. Cluster tests run only in their own lane (TEST_ALL_CLUSTER=1).
+pytest tests/e2e -o addopts="" -m "e2e and not cluster" "${COV_ARGS[@]}" "$@"
 
 echo "== lane: isolated (own process — shared-state / JVM tests) =="
 # These modules share the app's module-singleton state or a non-restartable JVM,
