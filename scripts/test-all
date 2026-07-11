@@ -21,8 +21,13 @@ cd "$(dirname "$0")/.."
 COV_ARGS=(--cov=provisa --cov-report= -p no:cacheprovider)
 rm -f .coverage .coverage.*
 
+# pytest-cov auto-combines each run's parallel data into its COVERAGE_FILE at session
+# end, so co-writing every lane to the default `.coverage` makes each lane clobber the
+# last (and the final `coverage combine` finds no `.coverage.*` to merge — "No data to
+# combine"). Give each lane its OWN data file (`.coverage.<lane>`); the final combine
+# then globs `.coverage.*` and merges the lanes into one report.
 echo "== lane: default (integration + unit + bdd) =="
-pytest tests tests/steps "${COV_ARGS[@]}" "$@"
+COVERAGE_FILE=.coverage.default pytest tests tests/steps "${COV_ARGS[@]}" "$@"
 
 echo "== lane: e2e (isolated stack) =="
 # addopts carries --ignore=tests/e2e for the default lane; override it here so the
@@ -30,26 +35,26 @@ echo "== lane: e2e (isolated stack) =="
 # Exclude cluster: test_helm_minikube is marked [e2e, cluster] and would otherwise
 # block for minutes on `minikube start`/kubectl subprocess timeouts against a
 # non-existent cluster. Cluster tests run only in their own lane (TEST_ALL_CLUSTER=1).
-pytest tests/e2e -o addopts="" -m "e2e and not cluster" "${COV_ARGS[@]}" "$@"
+COVERAGE_FILE=.coverage.e2e pytest tests/e2e -o addopts="" -m "e2e and not cluster" "${COV_ARGS[@]}" "$@"
 
 echo "== lane: isolated (own process — shared-state / JVM tests) =="
 # These modules share the app's module-singleton state or a non-restartable JVM,
 # so co-running them with the rest corrupts state; they pass in a clean process.
 # Keep --ignore=tests/e2e: importing the e2e conftest here would repoint the
 # host-app port env vars at the (down) e2e stack.
-pytest tests --ignore=tests/e2e -o addopts="" -m isolated "${COV_ARGS[@]}" "$@"
+COVERAGE_FILE=.coverage.isolated pytest tests --ignore=tests/e2e -o addopts="" -m isolated "${COV_ARGS[@]}" "$@"
 
 if [[ "${TEST_ALL_CLUSTER:-}" == "1" ]]; then
   echo "== lane: cluster (helm/minikube) =="
-  pytest tests/e2e/test_helm_minikube.py -o addopts="" -m cluster "${COV_ARGS[@]}" "$@"
+  COVERAGE_FILE=.coverage.cluster pytest tests/e2e/test_helm_minikube.py -o addopts="" -m cluster "${COV_ARGS[@]}" "$@"
 fi
 
 if [[ "${TEST_ALL_PACKAGING:-}" == "1" ]]; then
   echo "== lane: packaging =="
-  pytest -o addopts="" -m packaging "${COV_ARGS[@]}" "$@"
+  COVERAGE_FILE=.coverage.packaging pytest -o addopts="" -m packaging "${COV_ARGS[@]}" "$@"
 fi
 
 echo "== combined coverage =="
-coverage combine
+coverage combine  # merges every .coverage.<lane> into .coverage
 coverage report -m
 coverage xml
