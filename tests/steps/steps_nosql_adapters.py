@@ -14,11 +14,43 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
+from pathlib import Path
 
 import pytest
 from pytest_bdd import given, scenario, then, when
 
 pytestmark = [pytest.mark.integration]
+
+_REPO = Path(__file__).resolve().parents[2]
+# The MongoDB the REQ-738 adapter scenario drives, provisioned by THIS test — not
+# assumed to be already running. Project-scoped (provisa-test) + service-scoped so
+# it composes with the other test-project services.
+_MONGO_COMPOSE = ["docker", "compose", "-p", "provisa-test", "-f", "docker-compose.test.yml"]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _mongodb_service():
+    """Provision MongoDB through docker for the REQ-738 scenario and reap it after.
+
+    Tests own the services they exercise: bring the container up and block until
+    healthy, then tear it down (unless PYTEST_DOCKER_KEEP=1) so nothing leaks.
+    """
+    # docker-compose.test.yml joins the shared `provisa_default` network (created by
+    # the dev stack). The REQ-738 adapter connects to Mongo from the host over the
+    # published 27017, so the network is incidental here — ensure it exists so the
+    # service comes up standalone without the whole dev stack.
+    subprocess.run(
+        ["docker", "network", "create", "provisa_default"],
+        capture_output=True,
+        check=False,
+    )
+    subprocess.run([*_MONGO_COMPOSE, "up", "-d", "--wait", "mongodb"], cwd=_REPO, check=True)
+    try:
+        yield {"host": "localhost", "port": 27017}
+    finally:
+        if not os.environ.get("PYTEST_DOCKER_KEEP"):
+            subprocess.run([*_MONGO_COMPOSE, "rm", "-sf", "mongodb"], cwd=_REPO, check=False)
 
 
 # ---------------------------------------------------------------------------
@@ -51,10 +83,7 @@ def test_req_738_default():
 
 @given("a running MongoDB service with seeded test documents")
 def given_running_mongodb_with_seeded_docs(shared_data):
-    """Connect to a live MongoDB service and seed test documents."""
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
-
+    """Connect to the docker-provisioned MongoDB (_mongodb_service) and seed docs."""
     # A motor AsyncIOMotorClient binds to the event loop it is created in, so it
     # cannot be shared across the separate asyncio.run() loops of the
     # given/when/then steps. Each step creates and closes its own client; only
@@ -74,11 +103,7 @@ def given_running_mongodb_with_seeded_docs(shared_data):
             serverSelectionTimeoutMS=3000,
         )
         try:
-            try:
-                await client.admin.command("ping")
-            except Exception as exc:  # noqa: BLE001
-                pytest.skip(f"MongoDB not reachable: {exc}")
-
+            await client.admin.command("ping")
             col = client[db_name][col_name]
             await col.delete_many({})
             await col.insert_many(
@@ -99,9 +124,6 @@ def given_running_mongodb_with_seeded_docs(shared_data):
 @when("the adapter queries the collection with filter criteria")
 def when_adapter_queries_collection(shared_data):
     """Execute the filtered query via a fresh motor async client."""
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
-
     conn = shared_data["mongo_conn"]
     criteria = shared_data["filter_criteria"]
 
@@ -124,9 +146,6 @@ def when_adapter_queries_collection(shared_data):
 @then("documents matching the filter are returned")
 def then_documents_matching_filter_returned(shared_data):
     """Assert that only documents satisfying the filter criteria are present."""
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
-
     docs = shared_data.get("query_result", [])
 
     assert len(docs) == 2, f"Expected 2 documents matching qty > 5, got {len(docs)}: {docs}"
