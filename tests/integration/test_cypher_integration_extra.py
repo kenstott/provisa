@@ -736,6 +736,7 @@ def test_req771_subquery_call_uncorrelated(client):
     assert resp.status_code != 404
 
 
+@pytest.mark.isolated  # correlated CALL resets the state-polluted shared server; needs a fresh one
 def test_req771_subquery_call_with_import(client):
     """
     # REQ-771
