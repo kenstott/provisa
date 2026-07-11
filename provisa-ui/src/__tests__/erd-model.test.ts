@@ -61,6 +61,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     viewSql: null,
     materialize: false,
     mvRefreshInterval: 0,
+    mvDebounceQuiet: 0,
+    mvDebounceMaxDelay: 5,
     dataProduct: false,
     enableAggregates: false,
     enableGroupBy: false,

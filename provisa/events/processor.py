@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from provisa.events import injector, queue
@@ -32,6 +32,19 @@ from provisa.events import injector, queue
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_utc(dt: datetime) -> datetime:
+    """Normalize a stored ``created_at`` to a UTC-aware datetime. events.created_at is DateTime(tz):
+    Postgres returns it aware, SQLite returns it naive — coerce the naive case to UTC (its authored
+    zone) so debounce comparisons against _now() are dialect-safe."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+class OwnershipLost(Exception):
+    """REQ-959: raised inside the commit transaction when the ownership CAS fails — a peer reclaimed
+    this node's work (deadline/heartbeat) mid-flight. Aborts the commit so no ripple double-commits;
+    the loop treats it as a no-op (the peer now owns the work)."""
 
 
 class TableProcessor(ABC):
@@ -50,6 +63,8 @@ class TableProcessor(ABC):
         db: Any,
         name: str,
         probe_type: str | None = None,
+        debounce_quiet: float = 0.0,
+        debounce_max_delay: float | None = None,
     ) -> None:
         self.node = node
         self.change_signal = change_signal
@@ -60,6 +75,11 @@ class TableProcessor(ABC):
         self._dependents_of = dependents_of
         self._db = db
         self.name = name
+        # REQ-963 live-MV debounce. quiet<=0 → fire immediately (real-time, no debounce). Otherwise a
+        # burst of fan-ins waits for min(last_change+quiet, first_change+max_delay) and collapses into
+        # one recompute; max_delay is the mandatory staleness cap that guarantees a fire under churn.
+        self._debounce_quiet = debounce_quiet
+        self._debounce_max_delay = debounce_max_delay
 
     # -- lifecycle -------------------------------------------------------------
     async def stop(self) -> None:
@@ -122,28 +142,111 @@ class TableProcessor(ABC):
         from ``handle`` (unchanged → no land, no ripple). A returned hash is persisted as the new
         baseline before re-posting."""
         now = _now()
-        claimed = await queue.claim(
-            conn, dependent_table=self.node, processor_name=self.name, now=now
+        # REQ-959 reassert-on-restart: resume any claim this processor still owns from a prior
+        # (crashed) run before taking new work, and refresh its lease so the reaper does not race us.
+        # Resumed work is already owned → it is processed regardless of the debounce gate below.
+        resumed = await queue.resume_claims(
+            conn, dependent_table=self.node, processor_name=self.name
         )
+        if resumed:
+            await queue.heartbeat(
+                conn, dependent_table=self.node, processor_name=self.name, now=now
+            )
+        else:
+            # REQ-963 debounce gate: peek the unclaimed work WITHOUT claiming; if the quiet/max_delay
+            # deadline has not passed, defer (leave it unclaimed so more fan-ins coalesce). quiet<=0
+            # fires immediately. Deferring here is what collapses a burst into one recompute.
+            peeked = await queue.peek_pending(conn, dependent_table=self.node)
+            if not peeked:
+                return None
+            if not self._debounce_ready(peeked, now):
+                return None
+        newly = await queue.claim(
+            conn,
+            dependent_table=self.node,
+            processor_name=self.name,
+            now=now,
+            deadline=self._claim_deadline(now),
+        )
+        claimed = sorted(set(resumed) | set(newly))
         if not claimed:
             return None
         pending = await queue.get_events(conn, claimed)
         prior = await queue.get_node_state(conn, self.node)
         prior_hash = prior["content_hash"] if prior else None
-        # (event_type, payload, content_hash|None) when changed, else None.
+        # LAND runs inside ``handle`` against the STORE database — outside the control-plane
+        # transaction below (different DB, no shared txn) and idempotent on the node key, so a
+        # re-run after a crash re-lands harmlessly. (event_type, payload, content_hash|None) | None.
         result = await self.handle(pending, prior_hash=prior_hash)
-        for eid in claimed:
-            await queue.complete(conn, event_id=eid, dependent_table=self.node, now=now)
-        if result is None:
-            return None  # gate: node output unchanged (content hash matched / nothing landed)
-        event_type, payload, new_hash = result
-        if new_hash is not None:
-            await queue.set_node_state(conn, self.node, content_hash=new_hash)
-        my_event = await queue.post_event(
-            conn, source_table=self.node, event_type=event_type, payload=payload
-        )
-        await queue.fan_out(conn, my_event, self._dependents_of(self.node))
+        # REQ-960: post + fan_out + complete run AFTER land in ONE control-plane transaction,
+        # post-BEFORE-complete. A crash between land and this commit re-claims and re-runs (the
+        # land is idempotent), so the downstream ripple is never lost and the claim never orphaned.
+        # REQ-959: each complete is an ownership CAS (processor_name = self); a lost CAS raises
+        # OwnershipLost → the whole commit rolls back (a peer took over → no double effect).
+        try:
+            async with conn.transaction():
+                if result is None:
+                    # Gate hit (content unchanged / nothing landed): no ripple, but the claimed
+                    # events are processed — complete them so they do not re-fire.
+                    await self._complete_all(conn, claimed, now)
+                    return None
+                event_type, payload, new_hash = result
+                if new_hash is not None:
+                    await queue.set_node_state(conn, self.node, content_hash=new_hash)
+                my_event = await queue.post_event(
+                    conn, source_table=self.node, event_type=event_type, payload=payload
+                )
+                await queue.fan_out(conn, my_event, self._dependents_of(self.node))
+                await self._complete_all(conn, claimed, now)
+        except OwnershipLost:
+            return None
         return my_event
+
+    def _debounce_deadline(self, peeked: list[dict]) -> datetime | None:
+        """REQ-963 trailing-edge debounce deadline = min(last_change + quiet, first_change + max_delay),
+        or None when debounce is off (quiet<=0 → fire immediately). ``first_change``/``last_change`` are
+        the earliest/latest ``created_at`` of the coalescing fan-ins. max_delay is the mandatory cap:
+        under continuous churn the quiet window never elapses, so the cap guarantees a fire and is the
+        staleness SLA. Absent max_delay falls back to first+quiet so a deadline always exists."""
+        if self._debounce_quiet <= 0:
+            return None
+        stamps = [_as_utc(p["created_at"]) for p in peeked if p.get("created_at") is not None]
+        if not stamps:
+            return None  # no timestamps to reason about → do not defer
+        first, last = min(stamps), max(stamps)
+        quiet_deadline = last + timedelta(seconds=self._debounce_quiet)
+        if self._debounce_max_delay is None:
+            return quiet_deadline
+        return min(quiet_deadline, first + timedelta(seconds=self._debounce_max_delay))
+
+    def _debounce_ready(self, peeked: list[dict], now: datetime) -> bool:
+        """True when the debounce deadline has passed (or debounce is off) → fire now; False → defer so
+        more fan-ins coalesce into the same recompute (REQ-963)."""
+        deadline = self._debounce_deadline(peeked)
+        return deadline is None or now >= deadline
+
+    def _claim_deadline(self, now: datetime) -> datetime | None:
+        """The per-claim fire-by stamped on the claim for the REQ-959 reaper. For a debounced live MV
+        it is now + max_delay (a stuck recompute past it is reclaimable); None otherwise (heartbeat
+        lapse is the only reclaim trigger)."""
+        if self._debounce_quiet > 0 and self._debounce_max_delay is not None:
+            return now + timedelta(seconds=self._debounce_max_delay)
+        return None
+
+    async def _complete_all(self, conn: Any, claimed: list[int], now: datetime) -> None:
+        """Complete every claimed item under the REQ-959 ownership CAS. A failed CAS on ANY item means
+        a peer reclaimed this work → raise OwnershipLost to abort the commit (no partial completion,
+        no ripple)."""
+        for eid in claimed:
+            ok = await queue.complete(
+                conn,
+                event_id=eid,
+                dependent_table=self.node,
+                processor_name=self.name,
+                now=now,
+            )
+            if not ok:
+                raise OwnershipLost(self.node)
 
     @abstractmethod
     async def handle(
@@ -159,8 +262,10 @@ class TableProcessor(ABC):
 class SourceTableProcessor(TableProcessor):
     """Lands a data source's rows into the materialization store (the write face)."""
 
-    def __init__(self, *args: Any, land: Callable[..., Any], **kwargs: Any) -> None:
+    def __init__(self, *args: Any, land: Callable[..., Any] | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        # None is valid for a push-only (kafka/debezium) source that drains via consume_kafka and
+        # never reaches handle; a poll/land source supplies the write-face callable.
         self._land = land  # async (pending, *, prior_hash) -> (event_type, payload, hash) | None
 
     async def handle(
@@ -169,6 +274,7 @@ class SourceTableProcessor(TableProcessor):
         """Coalesce the claimed events, land the source's rows via the write face, and report the
         landing shape as this node's change event (append/delta/replace) with the content hash — or
         None if nothing landed or (replace) the content matched ``prior_hash`` (REQ-981 gate)."""
+        assert self._land is not None, "SourceTableProcessor.handle requires a land callable"
         return await self._land(pending, prior_hash=prior_hash)
 
 

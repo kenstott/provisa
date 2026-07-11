@@ -42,9 +42,32 @@ from provisa.api.admin.schema_helpers import (
     _get_pool,
 )
 from provisa.api.admin._table_ops import (
-    _build_column_models,  # noqa: F401  (re-export: tests + steps import from schema)
-    _ensure_view_column_types,  # noqa: F401  (re-export: tests import from schema)
+    _build_column_models,
+    _ensure_view_column_types,
 )
+
+# Public re-export surface: these underscore-prefixed helpers were relocated here in the
+# god-file split and are imported by other modules/tests from schema_common. Listing them in
+# __all__ marks them as intentional exports so linters do not flag them as unused.
+__all__ = [
+    "CreationRequestType",
+    "_add_source_pool",
+    "_analyze_source_on_engine",
+    "_build_column_models",
+    "_configure_govdata_env",
+    "_ensure_view_column_types",
+    "_fire_catalog_indexing",
+    "_prime_govdata_cache",
+    "_queue_creation_request",
+    "_rebuild_relationship_input",
+    "_rebuild_table_input",
+    "_register_source_on_engine",
+    "_remove_view_mv",
+    "_resolve_admin_context",
+    "_sync_view_mv",
+    "_upsert_source_with_domains",
+    "_validate_govdata_api_key",
+]
 
 
 @strawberry.type
@@ -263,12 +286,27 @@ def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
 
 
 def _sync_view_mv(
-    table_name: str, view_sql: str, refresh_interval: int, change_signal: str | None = None
+    table_name: str,
+    view_sql: str,
+    refresh_interval: int,
+    change_signal: str | None = None,
+    *,
+    debounce_quiet: float = 0.0,
+    debounce_max_delay: float | None = None,
 ) -> None:
     """Register or update an MVDefinition for a materialized user-defined view."""
     from provisa.api.app import state
     from provisa.mv.models import MVDefinition, MVStatus
     from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
+    from provisa.mv.determinism import check_view_determinism  # REQ-964
+
+    # REQ-964 (proof obligation 1): an MV's SQL must be deterministic — recompute-to-current
+    # and replay demand it. Reject volatile SQL (now()/random/…) at registration; the engine's
+    # dialect parses the check (None → sqlglot default parse, still catches volatile funcs).
+    dialect = getattr(getattr(state, "engine", None), "dialect", None)
+    ok, reason = check_view_determinism(view_sql, dialect)
+    if not ok:
+        raise ValueError(f"non-deterministic MV {table_name!r}: {reason}")
 
     mv_id = f"view-{table_name}"
     existing = state.mv_registry.get(mv_id)
@@ -287,6 +325,8 @@ def _sync_view_mv(
         expose_in_sdl=False,
         status=existing.status if existing is not None else MVStatus.STALE,
         freshness_mode=freshness,
+        debounce_quiet=debounce_quiet,  # REQ-963
+        debounce_max_delay=debounce_max_delay,  # REQ-963
     )
     state.mv_registry.register(mv)
 

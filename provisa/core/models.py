@@ -435,6 +435,13 @@ class Table(
     view_sql: str | None = None  # when set, table is a Provisa-managed view
     materialize: bool = False  # when True, view_sql is materialized as a physical CTAS in mv_cache
     mv_refresh_interval: int = 300  # seconds between MV refreshes (only used when materialize=True)
+    # REQ-963: live-MV debounce. deadline = min(last_change+quiet, first_change+max_delay). A burst
+    # of upstream changes collapses into one recompute-to-current. quiet=0 disables debounce (pure
+    # real-time); max_delay is the mandatory staleness-SLA cap. Consumed by the event loop (Phase 3).
+    mv_debounce_quiet: float = 0.0  # seconds of quiet before firing; 0 = real-time (no debounce)
+    mv_debounce_max_delay: float = (
+        5.0  # hard cap: never more than this stale under continuous churn
+    )
     data_product: bool = False  # publish as a Data Product (catalog export)
     enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field

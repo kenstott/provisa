@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from provisa.api.rest.cypher_router import ImputeRequest
+from provisa.api.rest.graph_tools_router import ImputeRequest
 
 
 # ---------------------------------------------------------------------------
@@ -156,14 +156,14 @@ class TestImputeRelationshipsEdgeGeneration:
 
         with (
             patch.object(_app_mod, "state", state),
-            patch("provisa.api.rest.cypher_router._build_label_map") as mock_lm,
+            patch("provisa.api.rest.graph_tools_router._build_label_map") as mock_lm,
         ):
             mock_lm.return_value = MagicMock(nodes={}, relationships={})
             from fastapi import Request as FastAPIRequest
 
             mock_request = MagicMock(spec=FastAPIRequest)
             mock_request.headers = {}
-            from provisa.api.rest.cypher_router import impute_relationships
+            from provisa.api.rest.graph_tools_router import impute_relationships
 
             resp = await impute_relationships(mock_request, req)
             data = resp.body
@@ -177,7 +177,7 @@ class TestImputeRelationshipsEdgeGeneration:
     async def test_generates_cypher_for_visible_pairs(self):
         """For two visible labels with a known relationship, one query is built per rel."""
         from fastapi import Request as FastAPIRequest
-        from provisa.api.rest.cypher_router import impute_relationships
+        from provisa.api.rest.graph_tools_router import impute_relationships
 
         pg_rows = [
             _make_pg_row(1, "Person", "Person|1"),
@@ -220,9 +220,9 @@ class TestImputeRelationshipsEdgeGeneration:
 
         with (
             patch.object(_app_mod, "state", state),
-            patch("provisa.api.rest.cypher_router._build_label_map", return_value=label_map),
+            patch("provisa.api.rest.graph_tools_router._build_label_map", return_value=label_map),
             patch(
-                "provisa.api.rest.cypher_router._execute_call_body",
+                "provisa.api.rest.graph_tools_router._execute_call_body",
                 side_effect=_fake_execute_call_body,
             ),
             patch("provisa.cypher.assembler.register_node_ids", new_callable=AsyncMock),
@@ -250,7 +250,7 @@ class TestImputeRelationshipsEdgeGeneration:
     async def test_no_queries_when_one_label_missing(self):
         """If only one of the two relationship endpoints is visible, no query is built."""
         from fastapi import Request as FastAPIRequest
-        from provisa.api.rest.cypher_router import impute_relationships
+        from provisa.api.rest.graph_tools_router import impute_relationships
 
         # Only Person nodes in pg, no Company
         pg_rows = [_make_pg_row(1, "Person", "Person|1")]
@@ -277,7 +277,7 @@ class TestImputeRelationshipsEdgeGeneration:
 
         with (
             patch.object(_app_mod, "state", state),
-            patch("provisa.api.rest.cypher_router._build_label_map", return_value=label_map),
+            patch("provisa.api.rest.graph_tools_router._build_label_map", return_value=label_map),
         ):
             mock_request = MagicMock(spec=FastAPIRequest)
             mock_request.headers = {}
@@ -294,7 +294,7 @@ class TestImputeRelationshipsEdgeGeneration:
     async def test_response_columns_include_node(self):
         """Response columns field equals ['node'] when edges are returned."""
         from fastapi import Request as FastAPIRequest
-        from provisa.api.rest.cypher_router import impute_relationships
+        from provisa.api.rest.graph_tools_router import impute_relationships
         import json
 
         pg_rows = [
@@ -332,9 +332,9 @@ class TestImputeRelationshipsEdgeGeneration:
 
         with (
             patch.object(_app_mod, "state", state),
-            patch("provisa.api.rest.cypher_router._build_label_map", return_value=label_map),
+            patch("provisa.api.rest.graph_tools_router._build_label_map", return_value=label_map),
             patch(
-                "provisa.api.rest.cypher_router._execute_call_body",
+                "provisa.api.rest.graph_tools_router._execute_call_body",
                 side_effect=_fake_execute_call_body,
             ),
             patch("provisa.cypher.assembler.register_node_ids", new_callable=AsyncMock),

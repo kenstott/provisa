@@ -99,7 +99,7 @@ async def ensure_table(
     The engine is never the writer — this opens the store's own connection."""
     tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
     async with store_connection(store_dsn) as conn:
-        if conn.capabilities.schemas:
+        if schema and conn.capabilities.schemas:
             from sqlalchemy.schema import CreateSchema
 
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
@@ -129,7 +129,7 @@ async def reconcile_table(
     want = [name for name, _ in columns]
     tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
     async with store_connection(store_dsn) as conn:
-        if conn.capabilities.schemas:
+        if schema and conn.capabilities.schemas:
             from sqlalchemy.schema import CreateSchema
 
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
@@ -198,7 +198,7 @@ async def land(
     shape = select_landing_shape(change_signal, watermark_column)
     tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
     async with store_connection(store_dsn) as conn:
-        if conn.capabilities.schemas:
+        if schema and conn.capabilities.schemas:
             from sqlalchemy.schema import CreateSchema
 
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))

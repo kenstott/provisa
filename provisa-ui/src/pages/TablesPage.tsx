@@ -601,6 +601,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         viewSql: editingTable.viewSql || undefined,
         materialize: editingTable.materialize,
         mvRefreshInterval: editingTable.mvRefreshInterval,
+        mvDebounceQuiet: editingTable.mvDebounceQuiet,
+        mvDebounceMaxDelay: editingTable.mvDebounceMaxDelay,
         dataProduct: editingTable.dataProduct,
         enableAggregates: editingTable.enableAggregates,
         enableGroupBy: editingTable.enableGroupBy,
@@ -1993,6 +1995,41 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                           })
                                         }
                                       />
+                                    </label>
+                                  )}
+                                  {editingTable.materialize && (
+                                    <label
+                                      title="REQ-963 NRT debounce: a burst of upstream changes collapses into one recompute. Quiet = seconds of calm before firing (0 = real-time). Max delay = the hard staleness cap under continuous churn."
+                                    >
+                                      NRT Debounce — quiet / max delay (seconds)
+                                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          step={0.5}
+                                          data-testid="mv-debounce-quiet"
+                                          value={editingTable.mvDebounceQuiet}
+                                          onChange={(e) =>
+                                            setEditingTable({
+                                              ...editingTable,
+                                              mvDebounceQuiet: parseFloat(e.target.value) || 0,
+                                            })
+                                          }
+                                        />
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          step={0.5}
+                                          data-testid="mv-debounce-max-delay"
+                                          value={editingTable.mvDebounceMaxDelay}
+                                          onChange={(e) =>
+                                            setEditingTable({
+                                              ...editingTable,
+                                              mvDebounceMaxDelay: parseFloat(e.target.value) || 0,
+                                            })
+                                          }
+                                        />
+                                      </div>
                                     </label>
                                   )}
                                 </>

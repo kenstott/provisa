@@ -398,9 +398,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 src_row, _conn, input.source_id, input.table_name, input.schema_name
             )
         if input.view_sql and input.materialize:
-            _sync_view_mv(
-                input.table_name, input.view_sql, input.mv_refresh_interval, input.change_signal
-            )
+            try:
+                _sync_view_mv(
+                    input.table_name,
+                    input.view_sql,
+                    input.mv_refresh_interval,
+                    input.change_signal,
+                    debounce_quiet=input.mv_debounce_quiet,  # REQ-963
+                    debounce_max_delay=input.mv_debounce_max_delay,  # REQ-963
+                )
+            except ValueError as _det_err:  # REQ-964: reject non-deterministic MV SQL
+                return MutationResult(success=False, message=str(_det_err))
         elif not input.materialize:
             _remove_view_mv(input.table_name)
         await _rebuild_schemas()

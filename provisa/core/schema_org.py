@@ -123,6 +123,9 @@ registered_tables = Table(
     Column("data_product", Boolean, nullable=False, server_default=false()),
     Column("materialize", Boolean, nullable=False, server_default=false()),
     Column("mv_refresh_interval", Integer, nullable=False, server_default="300"),
+    # REQ-963 live-MV debounce (event-loop path). quiet=0 → real-time recompute.
+    Column("mv_debounce_quiet", Float, nullable=False, server_default="0"),
+    Column("mv_debounce_max_delay", Float, nullable=False, server_default="5"),
     Column("enable_aggregates", Boolean, nullable=False, server_default=false()),
     Column("enable_group_by", Boolean, nullable=False, server_default=false()),
     Column("live", JSON),
@@ -614,8 +617,12 @@ event_status = Table(
     Column("dependent_table", Text, nullable=False),
     # unclaimed → claimed (heartbeat-leased) → completed; a stale heartbeat reverts to unclaimed.
     Column("claim_status", Text, nullable=False, server_default="unclaimed"),
-    Column("processor_name", Text),  # the lease owner while claimed
+    Column("processor_name", Text),  # the lease owner while claimed; the REQ-959 ownership-CAS key
     Column("heartbeat_at", DateTime(timezone=True)),  # lease; stale → reaper reclaims
+    # REQ-959: per-claim fire-by deadline. reclaimable = (heartbeat lapsed) OR (deadline+grace passed
+    # AND not completed) — the second catches a stuck-but-alive owner a heartbeat cannot. NULL = no
+    # deadline (reclaim on heartbeat lapse only).
+    Column("deadline", DateTime(timezone=True)),
     Column("completed_at", DateTime(timezone=True)),
     PrimaryKeyConstraint("event_id", "dependent_table"),
     CheckConstraint(

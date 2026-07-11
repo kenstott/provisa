@@ -1,0 +1,35 @@
+# Isolated test/validation stack for the mv-mvp worktree.
+# Distinct project name, container names, volume, and host port so it never
+# collides with the shared provisa-test/dev stacks or other worktrees.
+#
+# Usage:
+#   up:    docker compose -p provisa-mvmvp -f docker-compose.mvmvp.yml up -d --wait
+#   clean: docker compose -p provisa-mvmvp -f docker-compose.mvmvp.yml down --volumes
+#
+# Postgres is published on 127.0.0.1:55432 only (loopback, unique port). Two
+# databases seed the REQ-960 two-database split: `provisa` (control-plane:
+# events/event_status/config) and `provisa_store` (materialize store).
+name: provisa-mvmvp
+
+services:
+  postgres:
+    container_name: provisa-postgres-mvmvp
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: provisa
+      POSTGRES_PASSWORD: provisa
+      POSTGRES_DB: provisa
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - mvmvp_pg_data:/var/lib/postgresql/data
+      - ./db/mvmvp-init.sql:/docker-entrypoint-initdb.d/mvmvp-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U provisa -d provisa"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  mvmvp_pg_data:

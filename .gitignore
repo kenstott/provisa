@@ -107,3 +107,6 @@ sharepoint.pfx
 Volumes/
 coverage.xml
 *.bak
+
+# isolated mv-mvp test env (local only; DSNs are hardcoded in tests)
+.env.mvmvp

@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from provisa.api.rest.cypher_router import ImputeRequest
+from provisa.api.rest.graph_tools_router import ImputeRequest
 from provisa.cypher.assembler import Edge, _parse_edge
 
 

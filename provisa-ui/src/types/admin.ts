@@ -129,6 +129,8 @@ export interface RegisteredTable {
   viewSql: string | null;
   materialize: boolean;
   mvRefreshInterval: number;
+  mvDebounceQuiet: number; // REQ-963: seconds of quiet before firing; 0 = real-time
+  mvDebounceMaxDelay: number; // REQ-963: staleness cap under continuous churn
   dataProduct: boolean;
   enableAggregates: boolean;
   enableGroupBy: boolean;
