@@ -462,8 +462,8 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
         backend_factory=ClickHouseBackend,  # in-process terminal driving ClickHouseFederationRuntime
         default_materialize_store=_platform_db_materialize_default,
         capabilities=frozenset(
-            {EngineCapability.ROWS, EngineCapability.ARROW}
-        ),  # query_arrow (REQ-909)
+            {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
+        ),  # query_arrow + query_arrow_stream over HTTP / chdb ArrowStream (REQ-909, REQ-986)
     )
 
 
