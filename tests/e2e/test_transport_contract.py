@@ -117,22 +117,27 @@ class BoltAdapter(TransportAdapter):
         self._uri = f"bolt://127.0.0.1:{server.bolt_port}"
 
     def read(self, role, columns):
+        ret = ", ".join(f"o.{c} AS {c}" for c in _cols(columns))
+        return self.run_return(role, ret)
+
+    def run_return(self, role, return_clause: str) -> tuple[list[str], list[tuple]]:
+        """Run `MATCH (o:orders) RETURN <return_clause>` as `role`, normalized to
+        (columns, rows). Role travels as the Bolt auth principal (pgwire's trust
+        model). Used for both the canonical read and metamorphic probes."""
         from neo4j import GraphDatabase
         from neo4j.exceptions import Neo4jError
 
-        # Role travels as the Bolt auth principal (same trust model as pgwire).
-        ret = ", ".join(f"o.{c} AS {c}" for c in _cols(columns))
         driver = GraphDatabase.driver(self._uri, auth=(role, ""))
         try:
             with driver.session() as sess:
                 try:
-                    result = sess.run(f"MATCH (o:orders) RETURN {ret} ORDER BY o.id")
+                    result = sess.run(f"MATCH (o:orders) RETURN {return_clause}")
                     records = list(result)
+                    keys = list(result.keys())
                 except Neo4jError as exc:
                     raise _Denied(f"bolt {role}: {exc}") from exc
-                cols = _cols(columns)
-                rows = [tuple(rec[c] for c in cols) for rec in records]
-                return cols, rows
+                rows = [tuple(rec[k] for k in keys) for rec in records]
+                return keys, rows
         finally:
             driver.close()
 
@@ -284,6 +289,39 @@ def test_governance_survives_sql_transformation(sql_adapter, contract_server, tr
     assert not leaked, (
         f"{sql_adapter.name}: transform `{transform}` leaked admin amounts "
         f"to {_RESTRICTED}: {sorted(leaked)[:3]}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Contract 4 — metamorphic over Cypher/Bolt (the highest-risk transport).
+# --------------------------------------------------------------------------- #
+# Cypher return expressions that read `amount` under a different output name, the
+# Bolt analogue of the SQL transforms above.
+_CYPHER_LEAK_RETURNS = ["o.amount AS a", "o.amount + 0 AS a", "o.amount * 1 AS a"]
+
+
+@pytest.mark.parametrize("return_clause", _CYPHER_LEAK_RETURNS, ids=lambda r: r.split(" AS ")[0])
+def test_governance_survives_cypher_transformation(contract_server, return_clause):
+    """Bolt/Cypher analogue of the SQL metamorphic check: a restricted role must not
+    obtain the admin-only amount over Bolt even when Cypher renames/wraps it. Closes
+    the highest-risk transport (previously the thinnest governance coverage)."""
+    bolt = BoltAdapter(contract_server)
+    # Admin's real amounts over the SAME Bolt path (types match for the leak check).
+    try:
+        _, admin_rows = bolt.run_return(_ADMIN, "o.amount AS a")
+    except _Denied:  # pragma: no cover - admin must be able to read amount
+        pytest.fail("positive control: admin cannot read amount over Bolt")
+    admin_amounts = {str(r[0]) for r in admin_rows if r[0] not in (None, 0, 0.0)}
+    assert admin_amounts, "positive control: admin has no amounts to protect"
+
+    try:
+        _, rows = bolt.run_return(_RESTRICTED, f"{return_clause}")
+    except _Denied:
+        return  # rejected outright — governance held
+
+    leaked = {str(r[-1]) for r in rows} & admin_amounts
+    assert not leaked, (
+        f"bolt: Cypher `{return_clause}` leaked admin amounts to {_RESTRICTED}: {sorted(leaked)[:3]}"
     )
 
 
