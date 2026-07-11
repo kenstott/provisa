@@ -28331,3 +28331,45 @@
   related_reqs:
     - REQ-986
     - REQ-987
+- id: REQ-989
+  status: proposed
+  target: 2026-Q3
+  group: "3. Federation Engines & Data Sources"
+  category: Platform Defaults
+  priority: SHOULD
+  type: structural
+  description: >-
+    Zero-config default stack must be fully embedded and in-process with no external dependencies: default federation engine is duckdb (not trino), default materialize store is duckdb's native embedded store (not platform tenant DB via Postgres), and default control-plane store is sqlite (not embedded_pg). External engines and stores (Trino, Postgres, ClickHouse, Snowflake, Databricks) remain selectable via PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL / control_plane_store overrides.
+  use_case: >-
+    Organizations and developers need instant local startup with zero Docker, no Trino cluster, no Postgres dependency — everything embedded for true out-of-the-box instant start. The zero-config path must serve as an approachable entry point while preserving full enterprise engine/store pluggability via configuration.
+  code:
+    - provisa/federation/engine.py
+    - provisa/core/desktop_profile.py
+    - provisa/core/capabilities.yaml
+  e2e: true
+  e2e_reason: >-
+    Default engine and store behavior requires a full integration round-trip to confirm duckdb is selected, materialization occurs in-process, and control-plane persists to sqlite without external services.
+  related_reqs:
+    - REQ-986
+    - REQ-987
+    - REQ-988
+- id: REQ-990
+  status: proposed
+  group: "3. Federation Engines & Data Sources"
+  category: Materialization Writes
+  priority: MUST
+  type: behavioral
+  description: >-
+    Materialization-store writes MUST use the target store's columnar or bulk-COPY ingest path wherever available, instead of row-by-row INSERT. Row INSERT is permitted only for targets without bulk support or tiny writes where staging overhead dominates, and this choice must be explicit/capability-gated, never a silent fallback.
+  use_case: >-
+    Row-by-row INSERT serializes writes, defeats vectorization, and forces Python row tuples through the network. Bulk columnar paths (Arrow, COPY, adbc_ingest) maintain end-to-end columnar efficiency, reduce network overhead, and leverage target-store parallelization. This is especially critical for high-volume materialization, residency reconciliation, and CDC snapshot seeding.
+  code:
+    - provisa/federation/store_writer.py
+    - provisa/federation/store_connection.py
+    - provisa/federation/backend.py
+  target: "2026-Q4"
+  related_reqs:
+    - REQ-986
+    - REQ-987
+    - REQ-988
+    - REQ-989
