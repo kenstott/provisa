@@ -60,6 +60,7 @@ dependencies = [
     "jpype1",
     "minio",
     "pyiceberg",
+    "neo4j",
 ]
 
 [project.optional-dependencies]

@@ -8,4 +8,4 @@ Feature: REQ-953 — Replica Lifecycle
     Then register_runtime schedules a one-shot "events:boot" job that posts replace events for each source
     And supervisor.drain lands every source replica and fans to materialized views once, idempotently
     And register_runtime schedules refresh injectors for each source at its cache_ttl cadence
-    And push sources are refreshed by their listeners
+    And push sources are refreshed by their listeners - REQ-951
