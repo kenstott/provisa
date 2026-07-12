@@ -101,6 +101,11 @@ class NativeEngineBackend(EngineBackend):
                 username=_rs(getattr(src, "username", None)),
                 password=_rs(getattr(src, "password", None)),
                 path=_rs(getattr(src, "path", None)),
+                # Connection extras (e.g. object-store credentials for a warehouse external link) —
+                # secrets resolved so a connector's attach can read them (REQ-987).
+                federation_hints={
+                    k: _rs(v) for k, v in (getattr(src, "federation_hints", {}) or {}).items()
+                },
                 schema_name=tbl.schema_name,
                 table_name=tbl.table_name,
             )
@@ -240,6 +245,17 @@ class NativeEngineBackend(EngineBackend):
 
     def execute_sync(self, state: Any, sql: str, params: list | None = None) -> QueryResult:
         return self._runtime_for(state).run_sync(sql, params)
+
+    # -- engine-specific transports (Arrow) (REQ-986) --------------------------
+    # Routed here only for engines whose capabilities declare ARROW / ARROW_STREAM (the runtime
+    # gates on capability before dispatch). A native runtime that has not wired an Arrow face is a
+    # real wiring gap — its ``run_arrow`` is absent and this raises, never a silent row fallback.
+
+    def execute_arrow(self, state: Any, sql: str, params: list | None = None):
+        return self._runtime_for(state).run_arrow(sql, params)
+
+    def execute_stream(self, state: Any, sql: str, params: list | None = None):
+        return self._runtime_for(state).run_arrow_stream(sql, params)
 
     # -- cache terminal (materialization store) --------------------------------
 

@@ -54,6 +54,8 @@ class SourceType(str, Enum):
     snowflake = "snowflake"
     bigquery = "bigquery"
     databricks = "databricks"
+    fabric = "fabric"  # Microsoft Fabric Warehouse (T-SQL over TDS, Azure AD auth)
+    synapse = "synapse"  # Azure Synapse SQL (T-SQL over TDS, Azure AD auth)
     redshift = "redshift"
     # Analytics / OLAP
     clickhouse = "clickhouse"
@@ -892,7 +894,7 @@ class ProvisaConfig(BaseModel):
     multitenancy: bool = False
     # Federation engine selection + connection config (set via the admin UI; applied on restart).
     # The selected engine's own implementation reads these — generic code never branches on the value.
-    federation_engine: str = "trino"
+    federation_engine: str = "duckdb"  # REQ-989: zero-config default is the embedded DuckDB engine
     federation_engine_url: str | None = None  # DSN for sqlalchemy/clickhouse/pg engines
     federation_engine_host: str = "localhost"  # coordinator host (engine)
     federation_engine_port: int = 8080  # coordinator port (engine)

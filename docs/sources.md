@@ -7,12 +7,15 @@ Every query ultimately executes through the federation engine, which provides fe
 | Category | Has Direct Driver | Has Federated Connector | Examples |
 | --- | --- | --- | --- |
 | **Direct-capable** | Yes | Yes | PostgreSQL, MySQL, MariaDB, SingleStore, SQL Server, Oracle, DuckDB |
-| **Federation only** | No | Yes | MongoDB, Cassandra, Snowflake, BigQuery, Databricks, Redshift, ClickHouse, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-backed) |
+| **Federation only** | No | Yes | Redshift, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-backed) |
+| **Direct-read (replica)** | Yes | Yes | Snowflake, Databricks, ClickHouse — driver reads data and lands a replica; queries run against the replica in the active engine |
 | **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData |
 
 **Direct-capable** sources execute single-source queries via their native driver (sub-100ms), bypassing the federation engine (REQ-027, REQ-229). They retain full connector support and participate in federation when joined with other sources (REQ-028).
 
 **Federation only** sources are always queried through the federation layer. No direct driver exists (REQ-229).
+
+**Direct-read (replica)** sources have a DirectDriver that reads from the warehouse natively (Arrow-native where available), lands a replica into the active engine's materialization store, and then queries run against that replica. See [Warehouses as Named Sources](#warehouses-as-named-sources).
 
 **Materialize** sources have no federated connector. Provisa fetches their data (on startup or at query time) and caches it as Parquet in S3 or in PostgreSQL, making it reachable by the federation engine for cross-source queries (REQ-309).
 
@@ -36,22 +39,26 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 
 ### Cloud Data Warehouses
 
-| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
-| ------------ | -------------- | ----------------- | ----------------- | ----------- |
-| `snowflake` | — | snowflake | snowflake | Federated |
-| `bigquery` | — | bigquery | bigquery | Federated |
-| `databricks` | — | delta_lake | databricks | Federated |
-| `redshift` | — | redshift | redshift | Federated |
+[tool-verified: `executor/drivers/snowflake.py`, `executor/drivers/databricks.py`]
+
+| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations | Notes |
+| ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
+| `snowflake` | SnowflakeDriver | snowflake | snowflake | Federated | Reads via snowflake-connector-python; lands replica; `account`/`warehouse`/`role` in `federation_hints` (REQ-988) |
+| `bigquery` | — | bigquery | bigquery | Federated | No DirectDriver; reaches via federation engine or BigQuery engine ATTACH |
+| `databricks` | DatabricksDriver | delta_lake | databricks | Federated | Reads via databricks-sql-connector (Cloud Fetch, Arrow); lands replica; `http_path` required in `federation_hints` (REQ-987) |
+| `redshift` | — | redshift | redshift | Federated | — |
 
 ### Analytics / OLAP
 
-| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
-| ------------ | -------------- | ----------------- | ----------------- | ----------- |
-| `clickhouse` | — | clickhouse | clickhouse | Federated |
-| `druid` | — | druid | druid | No |
-| `exasol` | — | exasol | exasol | No |
-| `elasticsearch` | — | [inferred: no connector entry in models.py] | — | No |
-| `pinot` | — | [inferred: no connector entry in models.py] | — | No |
+[tool-verified: `executor/drivers/clickhouse.py`]
+
+| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations | Notes |
+| ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
+| `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | Federated | Reads via clickhouse-connect (HTTP); `secure: "true"` in `federation_hints` for TLS (REQ-986) |
+| `druid` | — | druid | druid | No | — |
+| `exasol` | — | exasol | exasol | No | — |
+| `elasticsearch` | — | [inferred: no connector entry in models.py] | — | No | — |
+| `pinot` | — | [inferred: no connector entry in models.py] | — | No | — |
 
 ### Data Lake / Open Table Formats
 
@@ -186,6 +193,63 @@ sources:
 
 ---
 
+## Warehouses as Named Sources
+
+Snowflake, Databricks, and ClickHouse can be registered as named sources independently of which federation engine is active. [tool-verified: `executor/drivers/snowflake.py` (REQ-988), `executor/drivers/databricks.py` (REQ-987), `executor/drivers/clickhouse.py` (REQ-986)]
+
+When registered, Provisa reads the warehouse via the source's DirectDriver and lands a replica into the active engine's materialization store. The query then runs against that replica. This differs from the traditional direct-capable path (asyncpg, aiomysql) where the engine is bypassed entirely — here the engine still executes the query, but against a local replica rather than over the wire to the warehouse on every request.
+
+Reads are Arrow-native where the warehouse supports it: Databricks uses Cloud Fetch, Snowflake uses `fetch_arrow_table`, and ClickHouse uses the native columnar HTTP interface.
+
+Extended connection parameters that the standard `host`/`port`/`username`/`password` fields cannot carry go in `federation_hints`:
+
+```yaml
+sources:
+  - id: my-databricks
+    type: databricks
+    host: my-workspace.azuredatabricks.net
+    password: ${env:DATABRICKS_TOKEN}
+    federation_hints:
+      http_path: /sql/1.0/warehouses/xxxx   # required — the SQL Warehouse connection detail
+
+  - id: my-snowflake
+    type: snowflake
+    host: org.snowflakecomputing.com
+    username: svc_provisa
+    password: ${env:SNOWFLAKE_PASSWORD}
+    federation_hints:
+      account: myorg-myaccount    # required — Snowflake account identifier
+      warehouse: COMPUTE_WH       # optional — virtual warehouse to use
+      role: PROVISA_ROLE          # optional — Snowflake role
+
+  - id: my-clickhouse
+    type: clickhouse
+    host: ch.example.com
+    port: 8123
+    database: analytics
+    username: default
+    password: ${env:CLICKHOUSE_PASSWORD}
+    federation_hints:
+      secure: "true"              # optional — enables TLS on the HTTP interface
+```
+
+Registration as a named source is independent of selecting the same warehouse as the federation engine. A Snowflake source on a DuckDB engine lands a replica into DuckDB, not into Snowflake.
+
+Cloud object/lake data (parquet, csv, iceberg, delta_lake files on S3 / GCS / R2) is a separate source type that attaches in place when the active engine has an ATTACH connector for that type. No replica is landed — the engine scans the object storage directly. Credentials for those sources also go in `federation_hints`:
+
+```yaml
+sources:
+  - id: r2-events
+    type: parquet
+    path: s3://my-bucket/events/2026/*.parquet
+    federation_hints:
+      access_key_id: ${env:R2_ACCESS_KEY}
+      secret_access_key: ${env:R2_SECRET}
+      account_id: ${env:R2_ACCOUNT_ID}     # Cloudflare R2 account (S3-compatible)
+```
+
+---
+
 ## Source Configuration Fields
 
 All sources share a common set of fields. [tool-verified: `provisa/core/models.py` `Source` class, lines 138–204]
@@ -199,7 +263,7 @@ All sources share a common set of fields. [tool-verified: `provisa/core/models.p
 | `database` | No | `""` | Database name |
 | `username` | No | `""` | Username |
 | `password` | No | `""` | Password; use `${env:VAR}` for secret resolution |
-| `path` | No | `null` | File path or URL for file-based sources (`csv`, `parquet`, `sqlite`) |
+| `path` | No | `null` | File path or cloud URI for file-based and object/lake sources |
 | `base_url` | No | `null` | Base URL for OpenAPI sources |
 | `pool_min` | No | `1` | Minimum connection pool size (REQ-052) |
 | `pool_max` | No | `5` | Maximum connection pool size (REQ-052) |
@@ -210,7 +274,7 @@ All sources share a common set of fields. [tool-verified: `provisa/core/models.p
 | `cache_catalog` | No | `null` | Federated catalog for API cache; defaults to source's own catalog |
 | `cache_schema` | No | `api_cache` | Schema within the cache catalog |
 | `naming_convention` | No | `null` | Override global naming convention for this source (REQ-194) |
-| `federation_hints` | No | `{}` | Session properties passed to the federation engine (REQ-278, REQ-281) |
+| `federation_hints` | No | `{}` | Session properties passed to the federation engine, and extended connection params for warehouse sources (REQ-278, REQ-281) |
 | `allowed_domains` | No | `[]` | Restrict source to specific domains; empty = unrestricted |
 | `description` | No | `""` | Human-readable description |
 
@@ -541,6 +605,20 @@ Both connectors use the API source cache pipeline — results are stored in Post
   database: ANALYTICS
   username: svc_provisa
   password: ${env:SNOWFLAKE_PASSWORD}
+  federation_hints:
+    account: myorg-myaccount
+    warehouse: COMPUTE_WH
+```
+
+### Databricks
+
+```yaml
+- id: lakehouse-db
+  type: databricks
+  host: my-workspace.azuredatabricks.net
+  password: ${env:DATABRICKS_TOKEN}
+  federation_hints:
+    http_path: /sql/1.0/warehouses/xxxx
 ```
 
 ### MongoDB

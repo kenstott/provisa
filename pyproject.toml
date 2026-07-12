@@ -44,6 +44,15 @@ dependencies = [
     # (REQ-979) runs the DuckDB engine, not chdb, so gate it off win32 — the WSL2
     # container tier provides full ClickHouse compute on Windows.
     "chdb; sys_platform != 'win32'",
+    "snowflake-connector-python[pandas]",  # REQ-988: Snowflake federation engine (Arrow-native)
+    "databricks-sql-connector",  # REQ-987: Databricks federation engine (Arrow-native Cloud Fetch)
+    "google-cloud-bigquery",  # BigQuery federation engine
+    "google-cloud-bigquery-storage",  # BigQuery Arrow-native reads (Storage Read API)
+    "google-cloud-storage",  # GCS staging for BigQuery external-table links
+    "protobuf>=6.33.5,<7",  # keep OTel/gRPC compatible while the google-cloud libs are present
+    "grpcio-status<1.82",  # aligns with the pinned protobuf<7
+    "pyodbc",  # Azure Synapse / Microsoft Fabric federation engine (T-SQL over TDS/ODBC)
+    "azure-identity",  # Azure AD token auth for Fabric/Synapse (uses `az login` / managed identity)
     "psycopg2-binary",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",

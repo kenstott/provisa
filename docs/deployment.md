@@ -167,7 +167,7 @@ For developer workstations and evaluation. Fully air-gapped — no internet requ
    ```bash
    provisa start    # start all services
    provisa status   # confirm all services are running
-   provisa open     # open the UI in your browser
+   provisa open     # open the UI in the browser
    ```
 
    (REQ-224)
@@ -584,6 +584,146 @@ kubectl rollout restart deployment/provisa --namespace provisa
 
 ---
 
+## Federation Engine Dependencies
+
+The warehouse federation engines require Python packages and system-level components beyond Provisa's default install. All Python packages listed here are declared in `pyproject.toml` and installed as part of the standard `pip install provisa` or `pip install -e .` [tool-verified: `pyproject.toml` lines 44–52].
+
+The Python packages ship with Provisa's default install — no optional extras required for any warehouse engine. The system-level items (ODBC driver, cloud CLIs, service-account keys) must be installed separately.
+
+### Python packages (already in core dependencies)
+
+[tool-verified: `pyproject.toml` lines 41–52]
+
+| Package | Engine | Purpose |
+| ------- | ------ | ------- |
+| `databricks-sql-connector` | Databricks | SQL warehouse connection; Arrow Cloud Fetch (REQ-987) |
+| `snowflake-connector-python[pandas]` | Snowflake | Connection + Arrow-native `fetch_arrow_table` (REQ-988) |
+| `google-cloud-bigquery` | BigQuery | Query execution |
+| `google-cloud-bigquery-storage` | BigQuery | Storage Read API for Arrow-native reads |
+| `google-cloud-storage` | BigQuery | GCS staging for external-table links |
+| `pyodbc` | Fabric, Synapse | ODBC connection to T-SQL endpoints |
+| `azure-identity` | Fabric, Synapse | Azure AD token via `DefaultAzureCredential` |
+| `clickhouse-connect` | ClickHouse | HTTP columnar reads |
+| `protobuf>=6.33.5,<7` | BigQuery, gRPC | Compatibility pin — `google-cloud-*` and OTel share a protobuf runtime; `<7` keeps them aligned |
+| `grpcio-status<1.82` | gRPC | Aligns with the `protobuf<7` pin |
+
+### System-level requirements
+
+These are not Python packages — they must be installed on the host or container that runs Provisa.
+
+**Microsoft Fabric and Azure Synapse (ODBC)**
+
+`pyodbc` connects through the Microsoft ODBC Driver for SQL Server (`msodbcsql18`). The driver must be installed on the host — not via pip. [tool-verified: `mssql_warehouse_runtime.py` line 84 `"ODBC Driver 18 for SQL Server"` default]
+
+macOS:
+
+```bash
+brew install microsoft/mssql-release/msodbcsql18
+```
+
+Linux (Ubuntu/Debian):
+
+```bash
+curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
+curl https://packages.microsoft.com/config/ubuntu/22.04/prod.list > /etc/apt/sources.list.d/mssql-release.list
+apt-get update && ACCEPT_EULA=Y apt-get install -y msodbcsql18
+```
+
+Provisa picks up the driver automatically. To override the driver name (for non-standard installs), set:
+
+```bash
+export PROVISA_MSSQL_ODBC_DRIVER="ODBC Driver 17 for SQL Server"
+```
+
+**Azure AD authentication (Fabric and Synapse)**
+
+Both engines authenticate via `azure.identity.DefaultAzureCredential` [tool-verified: `mssql_warehouse_runtime.py:79`, `fabric_shortcuts.py:46`]. `DefaultAzureCredential` checks credential sources in order: environment variables, workload identity, managed identity, VS Code, `az login`, and others.
+
+For local development, `az login` is the simplest path:
+
+```bash
+az login
+```
+
+For production, use managed identity (on Azure VMs or AKS) — no credential management needed. For service-principal auth, set:
+
+```bash
+export AZURE_TENANT_ID=<tenant>
+export AZURE_CLIENT_ID=<app-id>
+export AZURE_CLIENT_SECRET=<secret>
+```
+
+**BigQuery (service account)**
+
+`google-cloud-bigquery` uses Application Default Credentials. For local development, point to a service-account key file:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
+```
+
+For production on GCP (Cloud Run, GKE with Workload Identity, Compute Engine), the library picks up the attached service account automatically — no environment variable needed.
+
+The service account needs:
+
+- `roles/bigquery.dataViewer` — read data
+- `roles/bigquery.jobUser` — run queries
+- `roles/bigquery.dataEditor` — create external tables (for ATTACH)
+- `roles/storage.objectViewer` — read GCS objects for external tables
+
+**Databricks (CA certificate in dev proxy environments)**
+
+If Provisa runs behind a TLS-intercepting proxy (Charles, mitmproxy, corporate proxies), the Databricks SQL connector may reject the proxy's certificate. Pass a custom CA bundle:
+
+```bash
+export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
+```
+
+The Databricks connector inherits this from `requests` — no Databricks-specific env var is needed.
+
+### Per-engine checklist
+
+**Databricks** (REQ-987)
+
+- [ ] `databricks-sql-connector` installed (default)
+- [ ] Engine URL with `http_path`: `databricks://token:TOKEN@workspace.azuredatabricks.net?http_path=/sql/1.0/warehouses/xxx`
+- [ ] Personal access token or service principal token
+- [ ] `REQUESTS_CA_BUNDLE` set if behind TLS-intercepting proxy
+
+**Snowflake** (REQ-988)
+
+- [ ] `snowflake-connector-python[pandas]` installed (default)
+- [ ] Engine URL: `snowflake://user:pass@account.snowflakecomputing.com/database`
+- [ ] `account` in `PROVISA_ENGINE_URL` or `federation_hints`
+
+**BigQuery** (REQ-989)
+
+- [ ] `google-cloud-bigquery`, `google-cloud-bigquery-storage`, `google-cloud-storage` installed (default)
+- [ ] `GOOGLE_APPLICATION_CREDENTIALS` set (dev) or workload identity configured (prod)
+- [ ] `GOOGLE_CLOUD_PROJECT` set if the project cannot be inferred from the service account
+- [ ] Service account has BigQuery Data Viewer + Job User roles
+
+**Microsoft Fabric** (REQ-989)
+
+- [ ] `pyodbc` + `azure-identity` installed (default)
+- [ ] `msodbcsql18` system driver installed
+- [ ] `FABRIC_SQL_SERVER` and `FABRIC_DATABASE` set
+- [ ] Azure AD auth: `az login` (dev) or managed identity / service principal (prod)
+- [ ] `FABRIC_WORKSPACE_ID` set if using external object-storage links
+
+**Azure Synapse** (REQ-989)
+
+- [ ] Same Python + system requirements as Fabric
+- [ ] `SYNAPSE_SQL_SERVER` and `SYNAPSE_DATABASE` set
+- [ ] Same Azure AD auth setup as Fabric
+
+**ClickHouse** (REQ-986)
+
+- [ ] `clickhouse-connect` installed (default)
+- [ ] Engine URL: `clickhouse+http://user:pass@host:8123/database`
+- [ ] `secure: "true"` in `federation_hints` for TLS (port 8443)
+
+---
+
 ## Environment Variables
 
 | Variable | Default | Purpose |
@@ -599,8 +739,23 @@ kubectl rollout restart deployment/provisa --namespace provisa
 | `REDIS_PORT` | `6379` | Redis port |
 | `REDIS_PASSWORD` | | Redis password |
 | `REDIS_TLS` | `false` | Enable TLS for Redis |
-| `TRINO_HOST` | `localhost` | Federation engine host (REQ-028, REQ-054) |
-| `TRINO_PORT` | `8080` | Federation engine HTTP port (REQ-028, REQ-054) |
+| `TRINO_HOST` | `localhost` | Trino federation engine coordinator host (REQ-028, REQ-054) |
+| `TRINO_PORT` | `8080` | Trino federation engine coordinator HTTP port (REQ-028, REQ-054) |
+| `PROVISA_ENGINE` | `duckdb` | Active federation engine key (REQ-989); overrides persisted config |
+| `PROVISA_ENGINE_URL` | | Connection URL for URL-driven engines (Databricks, Snowflake, ClickHouse, BigQuery, Fabric, Synapse, SQLAlchemy) |
+| `PROVISA_MATERIALIZE_URL` | | Materialization store URL override; defaults to engine's own store |
+| `PROVISA_MSSQL_ODBC_DRIVER` | `ODBC Driver 18 for SQL Server` | ODBC driver name for Fabric / Synapse |
+| `GOOGLE_APPLICATION_CREDENTIALS` | | Path to GCP service-account key JSON (BigQuery) |
+| `GOOGLE_CLOUD_PROJECT` | | GCP project ID (BigQuery; inferred from service account when unset) |
+| `FABRIC_SQL_SERVER` | | Microsoft Fabric SQL analytics endpoint hostname |
+| `FABRIC_DATABASE` | | Fabric database name |
+| `FABRIC_WORKSPACE_ID` | | Fabric workspace GUID (required for external object-storage shortcuts) |
+| `SYNAPSE_SQL_SERVER` | | Azure Synapse dedicated SQL pool or serverless hostname |
+| `SYNAPSE_DATABASE` | | Synapse database name |
+| `AZURE_TENANT_ID` | | Azure AD tenant (service-principal auth for Fabric/Synapse) |
+| `AZURE_CLIENT_ID` | | Azure AD application client ID |
+| `AZURE_CLIENT_SECRET` | | Azure AD application client secret |
+| `REQUESTS_CA_BUNDLE` | | Custom CA bundle path (Databricks connector, dev TLS-proxy) |
 
 ---
 

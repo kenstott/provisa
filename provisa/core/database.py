@@ -139,6 +139,18 @@ class Capabilities:
                 returning=False,
                 schemas=True,
             )
+        if d == "duckdb":
+            # An embedded DuckDB file used as a materialization store (REQ-989): schema-capable,
+            # RETURNING-capable; no LISTEN/NOTIFY or advisory locks (single-process file store).
+            return cls(
+                d,
+                listen_notify=False,
+                advisory_lock=False,
+                arrays=True,
+                rules=False,
+                returning=True,
+                schemas=True,
+            )
         if d == "oracle":
             return cls(
                 d,
@@ -420,6 +432,33 @@ class Connection:
         result = await self._ac.execute(stmt)
         await self._commit_if_autocommit()
         return result
+
+    async def bulk_copy(self, table: Table, rows: list[dict[str, Any]]) -> int:
+        """Bulk-ingest ``rows`` into ``table`` via the store's fastest columnar / bulk path (REQ-990).
+
+        The path is chosen from the dialect capability — explicit, never a silent fallback:
+        - PostgreSQL: binary ``COPY`` (asyncpg ``copy_records_to_table``) — the columnar bulk-load
+          path, one round trip, no per-row statement.
+        - Every other relational backend: a single ``executemany`` Core INSERT (one prepared
+          statement, N parameter sets) — still a bulk path, never a per-row loop.
+
+        Rows are normalized to the table's column order; a key absent from a row lands as NULL.
+        Returns the number of rows ingested. A no-op for an empty batch."""
+        if not rows:
+            return 0
+        colnames = [c.name for c in table.columns]
+        if self.capabilities.dialect == "postgresql":
+            records = [tuple(r.get(cn) for cn in colnames) for r in rows]
+            raw = await self._driver_connection()
+            await raw.copy_records_to_table(
+                table.name, records=records, columns=colnames, schema_name=table.schema
+            )
+            await self._commit_if_autocommit()
+            return len(records)
+        param_list = [{cn: r.get(cn) for cn in colnames} for r in rows]
+        await self._ac.execute(table.insert(), param_list)
+        await self._commit_if_autocommit()
+        return len(param_list)
 
     async def upsert(
         self,

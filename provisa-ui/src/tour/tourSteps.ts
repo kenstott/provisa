@@ -110,7 +110,7 @@ export const TOUR_STEPS: TourStep[] = [
       "One connector list spans every category:" +
       "<ul>" +
       "<li><strong>Databases</strong> — PostgreSQL, MySQL, Oracle, SQL Server</li>" +
-      "<li><strong>Cloud warehouses</strong> — Snowflake, BigQuery, Databricks</li>" +
+      "<li><strong>Cloud warehouses</strong> — Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse</li>" +
       "<li><strong>Analytics / OLAP</strong> — ClickHouse, Druid</li>" +
       "<li><strong>Lakes &amp; files</strong> — Iceberg, Parquet, CSV, JSON</li>" +
       "<li><strong>NoSQL &amp; graph</strong> — MongoDB, Neo4j</li>" +
@@ -290,7 +290,8 @@ export const TOUR_STEPS: TourStep[] = [
     description:
       "The Admin pages run the platform:" +
       "<ul>" +
-      "<li>⚙️ Choose and configure your <strong>federation engine</strong></li>" +
+      "<li>⚙️ Choose and configure your <strong>federation engine</strong> — pluggable: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, or a cloud warehouse as a first-class engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse)</li>" +
+      "<li>🔗 Reach object/lake data (Parquet, Iceberg, Delta) in S3, R2, GCS, ADLS or OneLake as a <strong>zero-copy external link</strong> — read in place via the engine's native mechanism (external tables, OneLake shortcuts, ClickHouse table engines), credentials provisioned automatically, everything else landed as a governed replica</li>" +
       "<li>🔑 Manage <strong>encryption keys</strong> and wire up <strong>auth providers</strong></li>" +
       "<li>📊 Full <strong>observability</strong> — redirect to any OpenTelemetry collector for enterprise-class trace management</li>" +
       "</ul>",

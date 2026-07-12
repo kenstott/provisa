@@ -23,7 +23,10 @@ import types
 import pytest
 
 from provisa.federation.engine import (
+    build_clickhouse_engine,
+    build_databricks_engine,
     build_duckdb_engine,
+    build_snowflake_engine,
     build_sqlalchemy_engine,
     build_trino_engine,
 )
@@ -61,10 +64,29 @@ def test_trino_advertises_all_three_transports():
     )
 
 
-def test_duckdb_supports_arrow_but_not_stream():
+def test_duckdb_supports_arrow_and_stream():
+    # REQ-986: DuckDB (the zero-config default engine) surfaces Arrow AND lazy record-batch streaming
+    # through the Flight server (fetch_arrow_table + to_batches).
     rt = _rt(build_duckdb_engine)
     assert rt.supports(EngineCapability.ARROW) is True
-    assert rt.supports(EngineCapability.ARROW_STREAM) is False
+    assert rt.supports(EngineCapability.ARROW_STREAM) is True
+
+
+def test_clickhouse_advertises_all_three_transports():
+    # REQ-986: ClickHouse honors ARROW and ARROW_STREAM via the Provisa Arrow Flight server.
+    caps = _rt(build_clickhouse_engine).capabilities
+    assert caps == frozenset(
+        {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
+    )
+
+
+def test_snowflake_and_databricks_advertise_arrow_transports():
+    # REQ-987/988: first-class warehouse engines with Arrow-native read transport.
+    for build in (build_snowflake_engine, build_databricks_engine):
+        caps = _rt(build).capabilities
+        assert caps == frozenset(
+            {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
+        )
 
 
 def test_sqlalchemy_supports_rows_only():
@@ -83,7 +105,8 @@ def test_require_supported_capability_does_not_raise():
 
 
 def test_require_unsupported_capability_fails_closed():
-    rt = _rt(build_duckdb_engine)
+    # A generic SQLAlchemy engine advertises ROWS only, so ARROW_STREAM fails closed.
+    rt = _rt(_build_sqlalchemy)
     with pytest.raises(UnsupportedCapabilityError):
         rt.require(EngineCapability.ARROW_STREAM)
 

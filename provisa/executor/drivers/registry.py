@@ -52,6 +52,36 @@ def _make_oracle() -> DirectDriver:
     return OracleDriver()
 
 
+def _make_databricks() -> DirectDriver:  # REQ-987
+    from provisa.executor.drivers.databricks import DatabricksDriver
+
+    return DatabricksDriver()
+
+
+def _make_snowflake() -> DirectDriver:  # REQ-988
+    from provisa.executor.drivers.snowflake import SnowflakeDriver
+
+    return SnowflakeDriver()
+
+
+def _make_clickhouse() -> DirectDriver:  # REQ-986
+    from provisa.executor.drivers.clickhouse import ClickHouseDriver
+
+    return ClickHouseDriver()
+
+
+def _make_bigquery() -> DirectDriver:
+    from provisa.executor.drivers.bigquery import BigQueryDriver
+
+    return BigQueryDriver()
+
+
+def _make_mssql_warehouse() -> DirectDriver:  # Fabric / Synapse (T-SQL over TDS, Azure AD)
+    from provisa.executor.drivers.mssql_warehouse import MssqlWarehouseDriver
+
+    return MssqlWarehouseDriver()
+
+
 # source_type → factory function
 _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     "postgresql": _make_pg,
@@ -66,6 +96,14 @@ _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     "yugabytedb": _make_pg,
     "greenplum": _make_pg,
     "tidb": _make_mysql,
+    # Warehouses as first-class named sources — read-directly-then-land on ANY engine, reusing the
+    # same connection the federation engine uses (REQ-986/987/988). No Trino/delta_lake detour.
+    "databricks": _make_databricks,
+    "snowflake": _make_snowflake,
+    "clickhouse": _make_clickhouse,
+    "bigquery": _make_bigquery,
+    "fabric": _make_mssql_warehouse,  # T-SQL over TDS, Azure AD (per-source SP)
+    "synapse": _make_mssql_warehouse,
 }
 
 # FALLBACK: source types with no bespoke async driver, served by the generic SQLAlchemy driver

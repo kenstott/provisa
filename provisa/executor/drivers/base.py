@@ -22,6 +22,13 @@ from provisa.executor.result import QueryResult
 class DirectDriver(ABC):  # REQ-027, REQ-052
     """Abstract async driver for direct database execution."""
 
+    def configure(self, extra: dict[str, str]) -> None:  # REQ-986/987/988
+        """Accept source-specific connection extras from ``Source.federation_hints`` before
+        ``connect`` — e.g. Databricks ``http_path``, Snowflake ``account``/``warehouse``, ClickHouse
+        native-vs-http ``scheme``. The standard ``connect(host, port, database, user, password)`` args
+        can't carry these, so warehouse drivers override this to stash them. No-op by default, so the
+        RDBMS drivers are untouched."""
+
     @abstractmethod
     async def connect(
         self,

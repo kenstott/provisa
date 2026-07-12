@@ -90,7 +90,11 @@ def test_mongo_engine_clause_carries_table_placeholder_and_requires_columns():
 
 def test_csv_local_path_uses_file_engine():
     d = ClickHouseCsvConnector().details(_src("c", SourceType.csv, path="/data/x.csv"))
-    assert d == {"engine_clause": "File('CSVWithNames', '/data/x.csv')", "infer": True}
+    assert d == {
+        "engine_clause": "File('CSVWithNames', '/data/x.csv')",
+        "infer": True,
+        "validate": True,  # external attach is probed at attach time (REQ-987 parity)
+    }
 
 
 def test_parquet_s3_path_uses_s3_engine_public_bucket():

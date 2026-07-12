@@ -76,9 +76,11 @@ class TestSupportedDialects:
         assert "duckdb" in SUPPORTED_DIALECTS
         assert "snowflake" in SUPPORTED_DIALECTS
         assert "bigquery" in SUPPORTED_DIALECTS
+        assert "databricks" in SUPPORTED_DIALECTS  # REQ-987
+        assert "spark" in SUPPORTED_DIALECTS  # REQ-987
 
     def test_dialect_count(self):
-        assert len(SUPPORTED_DIALECTS) == 8  # + clickhouse (REQ-909)
+        assert len(SUPPORTED_DIALECTS) == 10  # + databricks, spark (REQ-987)
 
 
 # ---------------------------------------------------------------------------
@@ -367,9 +369,11 @@ class TestRouterVirtualSources:
         d = decide_route({"kafka1"}, _TYPES, _DIALECTS)
         assert d.route == Route.ENGINE
 
-    def test_snowflake_without_driver_routes_trino(self):
+    def test_snowflake_with_driver_routes_direct(self):
+        # REQ-988: snowflake is now a first-class named source with a direct driver, so a single-
+        # source query reads it directly (no Trino detour). Multi-source still routes ENGINE + land.
         d = decide_route({"sf1"}, _TYPES, _DIALECTS)
-        assert d.route == Route.ENGINE
+        assert d.route == Route.DIRECT
 
     def test_bigquery_without_driver_routes_trino(self):
         d = decide_route({"bq1"}, _TYPES, _DIALECTS)
