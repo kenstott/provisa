@@ -35,6 +35,9 @@ _SOURCE_DIALECT: dict[str, str] = {
     "databricks": "databricks",
     "snowflake": "snowflake",
     "clickhouse": "clickhouse",
+    "bigquery": "bigquery",
+    "fabric": "tsql",  # Fabric/Synapse read via T-SQL over TDS
+    "synapse": "tsql",
 }
 
 

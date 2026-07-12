@@ -79,6 +79,8 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     "clickhouse": "clickhouse",
     "redshift": "redshift",
     "databricks": "databricks",
+    "fabric": "tsql",  # Microsoft Fabric Warehouse — T-SQL over TDS (REQ-986)
+    "synapse": "tsql",  # Azure Synapse — T-SQL over TDS
     "hive": "hive",
     "druid": "druid",
     "exasol": "exasol",

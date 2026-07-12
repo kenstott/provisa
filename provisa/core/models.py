@@ -54,6 +54,8 @@ class SourceType(str, Enum):
     snowflake = "snowflake"
     bigquery = "bigquery"
     databricks = "databricks"
+    fabric = "fabric"  # Microsoft Fabric Warehouse (T-SQL over TDS, Azure AD auth)
+    synapse = "synapse"  # Azure Synapse SQL (T-SQL over TDS, Azure AD auth)
     redshift = "redshift"
     # Analytics / OLAP
     clickhouse = "clickhouse"
