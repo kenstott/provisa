@@ -630,7 +630,7 @@ jobs:
       - name: Set up Node (build provisa-ui)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Build installer (native tier, Inno Setup)
         shell: pwsh

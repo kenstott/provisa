@@ -40,7 +40,10 @@ dependencies = [
     "duckdb-engine",
     "clickhouse-connect",
     "clickhouse-driver",
-    "chdb",
+    # chdb (embedded ClickHouse) ships no Windows wheels. The native Windows tier
+    # (REQ-979) runs the DuckDB engine, not chdb, so gate it off win32 — the WSL2
+    # container tier provides full ClickHouse compute on Windows.
+    "chdb; sys_platform != 'win32'",
     "psycopg2-binary",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",

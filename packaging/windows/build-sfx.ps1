@@ -37,8 +37,12 @@ Copy-Item (Join-Path $ScriptDir 'provisa-mark.png')        $BuildDir
 Write-Host '[build-sfx] Building provisa-ui...' -ForegroundColor Cyan
 Push-Location (Join-Path $RepoRoot 'provisa-ui')
 try {
-  & npm ci
-  if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+  # `npm install` (not `npm ci`): the committed lockfile is generated on macOS and
+  # pins darwin-arm64 native bindings (e.g. @rolldown/binding-darwin-arm64) that
+  # `npm ci` tries to materialize on win32 and fails (EBADPLATFORM). `npm install`
+  # resolves the win32-appropriate optional bindings instead.
+  & npm install --no-audit --no-fund
+  if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
   & npm run build
   if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
 } finally { Pop-Location }
