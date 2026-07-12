@@ -16,7 +16,7 @@ $RepoRoot  = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 # provisions so both tiers run the same containerd/nerdctl.
 $NerdctlVersion = if ($env:NERDCTL_VERSION) { $env:NERDCTL_VERSION } else { '2.2.2' }
 $RootfsUrl = if ($env:ROOTFS_URL) { $env:ROOTFS_URL } else {
-  'https://cloud-images.ubuntu.com/wsl/jammy/current/ubuntu-jammy-wsl-amd64-wsl.rootfs.tar.gz'
+  'https://cloud-images.ubuntu.com/wsl/jammy/current/ubuntu-jammy-wsl-amd64-ubuntu22.04lts.rootfs.tar.gz'
 }
 
 Write-Host '[build-container] Preparing build directory...' -ForegroundColor Cyan
