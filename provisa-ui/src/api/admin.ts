@@ -148,8 +148,12 @@ export async function deleteOrgRole(orgId: string, roleId: string): Promise<void
 
 export async function profileTable(
   tableId: number,
+  role: string,
 ): Promise<{ columns: string[]; rows: Record<string, unknown>[]; rowCount: number }> {
-  const resp = await fetch(`${API_BASE}/admin/tables/${tableId}/profile`, { method: "POST" });
+  const resp = await fetch(`${API_BASE}/admin/tables/${tableId}/profile`, {
+    method: "POST",
+    headers: { "X-Provisa-Role": role },
+  });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error(body.detail || resp.statusText);
@@ -679,6 +683,32 @@ export interface CacheStats {
   hitCount: number;
   missCount: number;
   storeType: string;
+  usedMemoryBytes: number | null;
+  maxMemoryBytes: number | null;
+  evictedKeys: number | null;
+  expiredKeys: number | null;
+  connectedClients: number | null;
+  opsPerSec: number | null;
+}
+
+export interface CacheTableStat {
+  tableId: number;
+  cachedEntries: number;
+}
+
+export interface HotTableStat {
+  tableName: string;
+  catalog: string;
+  schemaName: string;
+  rowCount: number;
+  isApi: boolean;
+  loaded: boolean;
+}
+
+export interface MaterializeStoreInfo {
+  engineName: string;
+  storeRef: string;
+  mvCount: number;
 }
 
 export interface ProtocolHealth {

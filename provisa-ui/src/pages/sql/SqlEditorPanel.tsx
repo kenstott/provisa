@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 import React from "react";
-import { Play, Copy, Check, X } from "lucide-react";
+import { Play, Copy, Check, X, Sparkles } from "lucide-react";
+import { format as formatSql } from "sql-formatter";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
@@ -335,12 +336,14 @@ export function SqlEditorPanel({
           position: "relative",
         }}
         onMouseEnter={(e) => {
-          const btn = e.currentTarget.querySelector<HTMLElement>(".copy-sql-btn");
-          if (btn) btn.style.opacity = "1";
+          e.currentTarget
+            .querySelectorAll<HTMLElement>(".hover-sql-btn")
+            .forEach((btn) => (btn.style.opacity = "1"));
         }}
         onMouseLeave={(e) => {
-          const btn = e.currentTarget.querySelector<HTMLElement>(".copy-sql-btn");
-          if (btn) btn.style.opacity = "0";
+          e.currentTarget
+            .querySelectorAll<HTMLElement>(".hover-sql-btn")
+            .forEach((btn) => (btn.style.opacity = "0"));
         }}
       >
         {nlLoading && (
@@ -387,7 +390,39 @@ export function SqlEditorPanel({
           style={{ fontSize: "0.8rem" }}
         />
         <button
-          className="copy-sql-btn"
+          className="hover-sql-btn"
+          onClick={() => {
+            try {
+              setSqlText(formatSql(sqlText, { language: "postgresql" }));
+            } catch {
+              /* leave SQL unchanged if it can't be parsed */
+            }
+          }}
+          title="Prettify SQL"
+          disabled={!sqlText.trim()}
+          style={{
+            position: "absolute",
+            top: "0.4rem",
+            right: "4.2rem",
+            opacity: 0,
+            transition: "opacity 0.15s",
+            background: "rgba(30,30,40,0.85)",
+            border: "1px solid var(--border)",
+            borderRadius: "4px",
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            padding: "0.2rem 0.35rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.25rem",
+            fontSize: "0.72rem",
+          }}
+        >
+          <Sparkles size={11} />
+          Prettify
+        </button>
+        <button
+          className="hover-sql-btn"
           onClick={handleCopy}
           title="Copy SQL"
           style={{

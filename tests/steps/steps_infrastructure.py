@@ -38,11 +38,22 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from pytest_bdd import given, when, then, parsers, scenarios
+from pytest_bdd import given, when, then, parsers, scenario, scenarios
 
 pytestmark = [pytest.mark.integration]
 
-scenarios("../features/REQ-171.feature")
+
+# REQ-171 runs the full app lifespan in-process, which mutates the shared
+# provisa.api.state singleton (state.tenant_db etc.). Co-running it with the rest
+# of the default lane leaves that singleton polluted (assert tenant_db is not None
+# fails), so it needs its own clean process — the isolated lane. Bind it explicitly
+# (rather than via scenarios()) so the isolated marker can be attached.
+@pytest.mark.isolated
+@scenario("../features/REQ-171.feature", "REQ-171 default behaviour")
+def test_req171_isolated():
+    pass
+
+
 scenarios("../features/REQ-539.feature")
 scenarios("../features/REQ-619.feature")
 
@@ -54,11 +65,6 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
-
-
-def _require_integration() -> None:
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
 
 
 def _minio_settings() -> dict:
@@ -112,7 +118,6 @@ def stack_first_start(shared_data):
     Removing the bucket up front guarantees that any later assertion proves the
     startup sequence (not a leftover from a previous run) created it.
     """
-    _require_integration()
     settings = _minio_settings()
     shared_data["minio_settings"] = settings
 

@@ -40,7 +40,10 @@ dependencies = [
     "duckdb-engine",
     "clickhouse-connect",
     "clickhouse-driver",
-    "chdb",
+    # chdb (embedded ClickHouse) ships no Windows wheels. The native Windows tier
+    # (REQ-979) runs the DuckDB engine, not chdb, so gate it off win32 — the WSL2
+    # container tier provides full ClickHouse compute on Windows.
+    "chdb; sys_platform != 'win32'",
     "psycopg2-binary",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
@@ -59,6 +62,8 @@ dependencies = [
     "defusedxml",
     "jpype1",
     "minio",
+    "pyiceberg",
+    "neo4j",
 ]
 
 [project.optional-dependencies]
@@ -108,7 +113,15 @@ include = ["provisa*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "tests/steps"]
-addopts = ""
+# Default lane = integration + unit + bdd against the shared dev stack.
+# The e2e tier is a SEPARATE process lane (pytest -m e2e): it provisions its own
+# isolated Docker stack on ephemeral ports and, being in-process, must override
+# PG_PORT/TRINO_PORT/etc. in os.environ — which would redirect the dev-stack
+# integration tests to the wrong stack if co-run in one process. packaging and
+# cluster are likewise their own lanes (manual/live-minikube). scripts/test-all
+# runs every lane and combines coverage. These are documented process-isolation
+# lanes, not silent skips.
+addopts = "-m 'not packaging and not cluster and not isolated' --ignore=tests/e2e"
 python_files = ["test_*.py", "*_test.py", "steps_*.py"]
 asyncio_mode = "auto"
 log_level = "DEBUG"
@@ -129,6 +142,9 @@ markers = [
     "requires_prometheus: requires Prometheus service (docker compose up prometheus)",
     "requires_pgbouncer: requires PgBouncer service (docker compose up pgbouncer)",
     "requires_provisa_server: requires running Provisa server at localhost:8000",
+    "packaging: installer/packaging flow; validated manually + by unit tests, deselected by default",
+    "cluster: helm/minikube deployment test; own run lane (pytest -m cluster) against a live minikube, deselected by default",
+    "isolated: needs its own pytest process (shared module-singleton state or a non-restartable JVM); own lane in scripts/test-all, deselected by default",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:pytest_asyncio",
@@ -147,6 +163,15 @@ filterwarnings = [
 [tool.coverage.run]
 source = ["provisa"]
 omit = ["provisa/proto/*", "provisa/migrations/*"]
+# scripts/test-all runs the default lane and the e2e lane as separate processes
+# and `coverage combine`s them; parallel=true tags each run's data file so they
+# don't clobber each other.
+parallel = true
+# Server subprocesses (IsolatedServer / provisa_server) measure their own coverage
+# via COVERAGE_PROCESS_START + the .pth trigger; they are shut down with SIGTERM, so
+# a SIGTERM handler must flush their data or it is lost (out-of-process Bolt/Flight/
+# gRPC/pgwire/governed-pipeline coverage). sigterm=true installs that handler.
+sigterm = true
 
 [tool.coverage.report]
 exclude_lines = [
@@ -158,8 +183,12 @@ exclude_lines = [
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
+# Type-checking targets the product package only. Test modules are pytest
+# fixtures/hooks/step-defs whose symbols pytest injects by name at runtime, so
+# static "unused function/parameter/variable" analysis produces only false
+# positives there — exclude tests from analysis rather than sprinkle pragmas.
 include = ["provisa"]
-exclude = ["provisa/proto", "**/__pycache__", "**/node_modules", "**/.*", ".venv"]
+exclude = ["provisa/proto", "**/__pycache__", "**/node_modules", "**/.*", ".venv", "tests", "**/tests"]
 reportMissingImports = "warning"
 reportMissingModuleSource = "none"
 extraPaths = ["vendor/buenavista"]

@@ -54,7 +54,9 @@ def inject_masking(  # REQ-040, REQ-263, REQ-264
         New CompiledQuery with masked SELECT projection.
     """
     with _tracer.start_as_current_span("masking.inject") as span:
-        root_table = ctx.tables.get(compiled.root_field)
+        # canonical_field is the pre-alias schema field; root_field may be a client alias
+        # absent from ctx.tables — using it alone would skip masking on aliased roots.
+        root_table = ctx.tables.get(compiled.canonical_field or compiled.root_field)
         if not root_table:
             span.set_attribute("masking.columns_masked", 0)
             return compiled

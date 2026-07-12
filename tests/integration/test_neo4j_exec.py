@@ -21,6 +21,8 @@ To run live tests:
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from provisa.api_source.models import (
@@ -270,7 +272,7 @@ class TestLiveNeo4jExecution:
     """
 
     NEO4J_HOST = "localhost"
-    NEO4J_PORT = 7474
+    NEO4J_PORT = int(os.environ.get("NEO4J_HTTP_PORT", "7474"))
 
     @pytest.fixture
     def cfg(self):

@@ -22,9 +22,10 @@ jobs:
       dmg_name: ${{ steps.meta.outputs.dmg_name }}
       dmg_obs_name: ${{ steps.meta.outputs.dmg_obs_name }}
       dmg_demo_name: ${{ steps.meta.outputs.dmg_demo_name }}
+      dmg_runtime_name: ${{ steps.meta.outputs.dmg_runtime_name }}
       linux_name: ${{ steps.meta.outputs.linux_name }}
       windows_name: ${{ steps.meta.outputs.windows_name }}
-      ova_name: ${{ steps.meta.outputs.ova_name }}
+      windows_container_name: ${{ steps.meta.outputs.windows_container_name }}
       jdbc_name: ${{ steps.meta.outputs.jdbc_name }}
       py_version: ${{ steps.meta.outputs.py_version }}
       obs_images_name: ${{ steps.meta.outputs.obs_images_name }}
@@ -60,9 +61,10 @@ jobs:
           echo "dmg_name=Provisa-${TAG}-macOS.dmg"                        >> "$GITHUB_OUTPUT"
           echo "dmg_obs_name=Provisa-Obs-${TAG}-macOS.dmg"                >> "$GITHUB_OUTPUT"
           echo "dmg_demo_name=Provisa-Demo-${TAG}-macOS.dmg"              >> "$GITHUB_OUTPUT"
+          echo "dmg_runtime_name=Provisa-Runtime-${TAG}-macOS.dmg"        >> "$GITHUB_OUTPUT"
           echo "linux_name=Provisa-${TAG}-linux-x86_64.AppImage"          >> "$GITHUB_OUTPUT"
           echo "windows_name=Provisa-${TAG}-windows-x64.exe"              >> "$GITHUB_OUTPUT"
-          echo "ova_name=Provisa-${TAG}-runtime.ova"                       >> "$GITHUB_OUTPUT"
+          echo "windows_container_name=Provisa-Container-${TAG}-windows-x64.exe" >> "$GITHUB_OUTPUT"
           echo "jdbc_name=provisa-jdbc-${TAG}.jar"                         >> "$GITHUB_OUTPUT"
           echo "py_version=$PY_VERSION"                                    >> "$GITHUB_OUTPUT"
           echo "obs_images_name=provisa-obs-images-${TAG}.tar.gz"         >> "$GITHUB_OUTPUT"
@@ -70,167 +72,6 @@ jobs:
           echo "core_images_name=provisa-core-images-${TAG}.tar.gz"            >> "$GITHUB_OUTPUT"
           echo "core_images_amd64_name=provisa-core-images-amd64-${TAG}.zip" >> "$GITHUB_OUTPUT"
           echo "plugins_name=provisa-trino-plugins-${TAG}.tar.gz"            >> "$GITHUB_OUTPUT"
-
-  build-vm-image:
-    name: Build Provisa runtime VM (OVA)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install build tools
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y qemu-utils e2fsprogs dosfstools parted util-linux
-
-      - name: Download alpine-make-vm-image
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/alpinelinux/alpine-make-vm-image/v0.13.4/alpine-make-vm-image \
-            -o alpine-make-vm-image
-          chmod +x alpine-make-vm-image
-
-      - name: Build Alpine VM with dockerd
-        run: |
-          chmod +x packaging/windows/vm/configure-dockerd.sh
-          sudo ./alpine-make-vm-image \
-            --image-format qcow2 \
-            --image-size 20G \
-            --packages "docker docker-compose openrc" \
-            --script-chroot \
-            provisa-runtime.qcow2 \
-            -- packaging/windows/vm/configure-dockerd.sh
-
-      - name: Zero free space for better VMDK compression
-        run: |
-          sudo modprobe nbd max_part=8
-          sudo qemu-nbd --connect=/dev/nbd0 provisa-runtime.qcow2
-          sleep 2
-          sudo partprobe /dev/nbd0
-          sleep 1
-          ROOT_PART=$(sudo lsblk -ln -o NAME,FSTYPE /dev/nbd0 | awk '$2=="ext4"{print "/dev/"$1}' | head -1)
-          sudo mkdir -p /mnt/vm
-          sudo mount "$ROOT_PART" /mnt/vm
-          sudo dd if=/dev/zero of=/mnt/vm/zeros bs=1M 2>/dev/null || true
-          sudo rm -f /mnt/vm/zeros
-          sudo sync
-          sudo umount /mnt/vm
-          sudo qemu-nbd --disconnect /dev/nbd0
-
-      - name: Convert QCOW2 to VMDK (streamOptimized)
-        run: |
-          sudo qemu-img convert -f qcow2 -O vmdk \
-            -o subformat=streamOptimized \
-            provisa-runtime.qcow2 provisa-runtime.vmdk
-          VMDK_BYTES=$(stat -c %s provisa-runtime.vmdk)
-          echo "VMDK_BYTES=${VMDK_BYTES}" >> "$GITHUB_ENV"
-
-      - name: Create OVF descriptor
-        run: |
-          cat > provisa-runtime.ovf << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <Envelope xmlns="http://schemas.dmtf.org/ovf/envelope/1"
-                    xmlns:ovf="http://schemas.dmtf.org/ovf/envelope/1"
-                    xmlns:rasd="http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_ResourceAllocationSettingData"
-                    xmlns:vssd="http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_VirtualSystemSettingData"
-                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <References>
-              <File ovf:href="provisa-runtime.vmdk" ovf:id="file1" ovf:size="${VMDK_BYTES}"/>
-            </References>
-            <DiskSection>
-              <Info>List of the virtual disks</Info>
-              <Disk ovf:capacity="21474836480" ovf:diskId="disk1" ovf:fileRef="file1"
-                    ovf:format="http://www.vmware.com/interfaces/specifications/vmdk.html#streamOptimized"/>
-            </DiskSection>
-            <NetworkSection>
-              <Info>Logical networks</Info>
-              <Network ovf:name="NAT"><Description>NAT</Description></Network>
-            </NetworkSection>
-            <VirtualSystem ovf:id="Provisa">
-              <Info>Provisa container runtime</Info>
-              <Name>Provisa</Name>
-              <OperatingSystemSection ovf:id="36">
-                <Info>Alpine Linux x86_64</Info>
-              </OperatingSystemSection>
-              <VirtualHardwareSection>
-                <Info>Virtual hardware</Info>
-                <System>
-                  <vssd:ElementName>Virtual Hardware Family</vssd:ElementName>
-                  <vssd:InstanceID>0</vssd:InstanceID>
-                  <vssd:VirtualSystemType>virtualbox-2.2</vssd:VirtualSystemType>
-                </System>
-                <Item>
-                  <rasd:Caption>2 virtual CPUs</rasd:Caption>
-                  <rasd:InstanceID>1</rasd:InstanceID>
-                  <rasd:ResourceType>3</rasd:ResourceType>
-                  <rasd:VirtualQuantity>2</rasd:VirtualQuantity>
-                </Item>
-                <Item>
-                  <rasd:AllocationUnits>MegaBytes</rasd:AllocationUnits>
-                  <rasd:Caption>2048 MB RAM</rasd:Caption>
-                  <rasd:InstanceID>2</rasd:InstanceID>
-                  <rasd:ResourceType>4</rasd:ResourceType>
-                  <rasd:VirtualQuantity>2048</rasd:VirtualQuantity>
-                </Item>
-                <Item>
-                  <rasd:Caption>SATA Controller</rasd:Caption>
-                  <rasd:InstanceID>3</rasd:InstanceID>
-                  <rasd:ResourceSubType>AHCI</rasd:ResourceSubType>
-                  <rasd:ResourceType>20</rasd:ResourceType>
-                </Item>
-                <Item>
-                  <rasd:Caption>disk0</rasd:Caption>
-                  <rasd:HostResource>ovf:/disk/disk1</rasd:HostResource>
-                  <rasd:InstanceID>4</rasd:InstanceID>
-                  <rasd:Parent>3</rasd:Parent>
-                  <rasd:ResourceType>17</rasd:ResourceType>
-                </Item>
-                <Item>
-                  <rasd:Caption>NAT network adapter</rasd:Caption>
-                  <rasd:Connection>NAT</rasd:Connection>
-                  <rasd:InstanceID>5</rasd:InstanceID>
-                  <rasd:ResourceSubType>E1000</rasd:ResourceSubType>
-                  <rasd:ResourceType>10</rasd:ResourceType>
-                </Item>
-              </VirtualHardwareSection>
-            </VirtualSystem>
-          </Envelope>
-          EOF
-
-      - name: Package OVA
-        run: |
-          tar -cf provisa-runtime.ova provisa-runtime.ovf provisa-runtime.vmdk
-
-      - name: Upload OVA artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: provisa-runtime-ova
-          path: provisa-runtime.ova
-          retention-days: 1
-          compression-level: 0
-
-  rename-ova:
-    name: Rename OVA with version
-    runs-on: ubuntu-latest
-    needs: [metadata, build-vm-image]
-    steps:
-      - name: Download OVA artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: provisa-runtime-ova
-          path: ova-dist/
-
-      - name: Rename OVA
-        run: |
-          mv ova-dist/provisa-runtime.ova \
-             "ova-dist/${{ needs.metadata.outputs.ova_name }}"
-
-      - name: Upload versioned OVA
-        uses: actions/upload-artifact@v4
-        with:
-          name: ova-dist
-          path: "ova-dist/${{ needs.metadata.outputs.ova_name }}"
-          retention-days: 1
-          compression-level: 0
 
   # ── Calcite plugin download ──────────────────────────────────────────────────
 
@@ -589,16 +430,25 @@ jobs:
           chmod +x packaging/macos/build-dmg.sh
           packaging/macos/build-dmg.sh
 
-      - name: Rename DMG with version + channel
+      - name: Rename DMGs with version + channel
         run: |
           mv packaging/macos/dist/Provisa.dmg \
              "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
+          mv packaging/macos/dist/Provisa-Runtime.dmg \
+             "packaging/macos/dist/${{ needs.metadata.outputs.dmg_runtime_name }}"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-core-dist
           path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
+          retention-days: 1
+
+      - name: Upload runtime DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-runtime-dist
+          path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_runtime_name }}"
           retention-days: 1
 
   build-macos-obs:
@@ -777,37 +627,46 @@ jobs:
 
   # ── Windows build jobs ───────────────────────────────────────────────────────
 
-  build-windows-core:
-    name: Build Windows Core installer (${{ needs.metadata.outputs.channel }})
-    runs-on: windows-latest
-    needs: [metadata, build-vm-image, download-plugins]
+  build-ui-dist:
+    name: Build provisa-ui dist (Linux, for Windows native tier)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download Calcite plugins
-        uses: actions/download-artifact@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          name: trino-plugins
-          path: trino/plugins/
+          node-version: '22'
 
-      - name: Download Provisa runtime OVA
-        uses: actions/download-artifact@v4
-        with:
-          name: provisa-runtime-ova
-          path: packaging/windows/
-
-      - name: Download VirtualBox installer
-        shell: pwsh
+      - name: Build provisa-ui
         run: |
-          $VBoxVersion = '7.1.6'
-          $VBoxUrl = "https://download.virtualbox.org/virtualbox/${VBoxVersion}/VirtualBox-${VBoxVersion}-167084-Win.exe"
-          New-Item -ItemType Directory -Path packaging/windows/redist -Force | Out-Null
-          Write-Host "Downloading VirtualBox ${VBoxVersion}..."
-          Invoke-WebRequest -Uri $VBoxUrl -OutFile packaging/windows/redist/VirtualBox-setup.exe -UseBasicParsing
-          Write-Host "VirtualBox installer downloaded."
+          cd provisa-ui
+          npm ci
+          npm run build
 
-      - name: Build installer (7-Zip SFX)
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: provisa-ui-dist
+          path: provisa-ui/dist/
+          retention-days: 1
+
+  build-windows-core:
+    name: Build Windows Core installer (${{ needs.metadata.outputs.channel }})
+    runs-on: windows-latest
+    needs: [metadata, build-ui-dist]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download prebuilt provisa-ui dist
+        uses: actions/download-artifact@v4
+        with:
+          name: provisa-ui-dist
+          path: provisa-ui/dist/
+
+      - name: Build installer (native tier, Inno Setup)
         shell: pwsh
         env:
           VERSION: ${{ github.ref_name }}
@@ -827,6 +686,36 @@ jobs:
         with:
           name: windows-core-dist
           path: "packaging/windows/dist/${{ needs.metadata.outputs.windows_name }}"
+          retention-days: 1
+
+  build-windows-container:
+    name: Build Windows Container-tier installer (${{ needs.metadata.outputs.channel }})
+    runs-on: windows-latest
+    needs: [metadata]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build container-tier installer (WSL2, Inno Setup)
+        shell: pwsh
+        env:
+          VERSION: ${{ github.ref_name }}
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          WINDOWS_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CERT_PFX_PASSWORD }}
+          WINDOWS_CERT_TIMESTAMP_URL: ${{ secrets.WINDOWS_CERT_TIMESTAMP_URL }}
+        run: packaging/windows/build-container.ps1
+
+      - name: Rename installer
+        shell: pwsh
+        run: |
+          Move-Item packaging/windows/dist/Provisa-Container-Setup.exe `
+            "packaging/windows/dist/${{ needs.metadata.outputs.windows_container_name }}"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-container-dist
+          path: "packaging/windows/dist/${{ needs.metadata.outputs.windows_container_name }}"
           retention-days: 1
 
   # ── Package extension image tarballs (Option A) ─────────────────────────────
@@ -936,9 +825,9 @@ jobs:
       - build-macos-demo
       - build-linux
       - build-windows-core
+      - build-windows-container
       - build-jdbc
       - build-python-client
-      - rename-ova
       - package-obs-images
       - package-demo-images
       - package-core-images
@@ -1010,11 +899,12 @@ jobs:
           generate_release_notes: true
           files: |
             release-assets/${{ needs.metadata.outputs.dmg_name }}
+            release-assets/${{ needs.metadata.outputs.dmg_runtime_name }}
             release-assets/${{ needs.metadata.outputs.dmg_obs_name }}
             release-assets/${{ needs.metadata.outputs.dmg_demo_name }}
             release-assets/${{ needs.metadata.outputs.linux_name }}
             release-assets/${{ needs.metadata.outputs.windows_name }}
-            release-assets/${{ needs.metadata.outputs.ova_name }}
+            release-assets/${{ needs.metadata.outputs.windows_container_name }}
             release-assets/${{ needs.metadata.outputs.jdbc_name }}
             release-assets/${{ needs.metadata.outputs.obs_images_name }}
             release-assets/${{ needs.metadata.outputs.demo_images_name }}
@@ -1028,12 +918,13 @@ jobs:
             | Asset | Platform / Use |
             |-------|----------------|
             | `${{ needs.metadata.outputs.dmg_name }}` | macOS Core (Apple Silicon, airgapped) |
+            | `${{ needs.metadata.outputs.dmg_runtime_name }}` | macOS native Python runtime (mount alongside Core) |
             | `${{ needs.metadata.outputs.dmg_obs_name }}` | macOS Observability extension |
             | `${{ needs.metadata.outputs.dmg_demo_name }}` | macOS Demo extension (requires Obs) |
-            | `${{ needs.metadata.outputs.linux_name }}` | Linux x86_64 (core, airgapped AppImage) |
-            | `${{ needs.metadata.outputs.windows_name }}` | Windows x64 Core installer (downloads images on first launch) |
-            | `${{ needs.metadata.outputs.ova_name }}` | Federation Engine runtime image |
-            | `${{ needs.metadata.outputs.core_images_amd64_name }}` | Core Services bundle — Windows airgapped install |
+            | `${{ needs.metadata.outputs.linux_name }}` | Linux x86_64 (core, airgapped AppImage; obs ships separately) |
+            | `${{ needs.metadata.outputs.windows_name }}` | Windows x64 native installer (embedded Python, no Docker) |
+            | `${{ needs.metadata.outputs.windows_container_name }}` | Windows x64 container-tier upgrade (WSL2 + Trino); fetches images on demand |
+            | `${{ needs.metadata.outputs.core_images_amd64_name }}` | Core Services image tarballs — the container tier downloads this, or drop it beside the installer for airgap |
             | `${{ needs.metadata.outputs.jdbc_name }}` | JDBC driver — Tableau, PowerBI, DBeaver |
             | `provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl` | Python client |
             | `${{ needs.metadata.outputs.core_images_name }}` | Core Services (airgapped install) |
@@ -1042,11 +933,12 @@ jobs:
             | `${{ needs.metadata.outputs.plugins_name }}` | Coordination Engine connectors (SharePoint, Splunk, File) |
 
             ### macOS Install
-            1. Download `${{ needs.metadata.outputs.dmg_name }}` — drag **Provisa.app** to `/Applications`
-            2. Double-click — first-launch setup runs once (~2 min, no internet required)
-            3. `provisa start && provisa open`
-            4. **Optional**: Open `${{ needs.metadata.outputs.dmg_obs_name }}` and run `install-obs.sh` to add Observability Stack
-            5. **Optional**: Open `${{ needs.metadata.outputs.dmg_demo_name }}` and run `install-demo.sh` to add Demo Data Pack (requires Observability Stack)
+            1. Download `${{ needs.metadata.outputs.dmg_name }}` **and** `${{ needs.metadata.outputs.dmg_runtime_name }}` (keep both in the same folder, e.g. ~/Downloads)
+            2. Open the Core DMG, drag **Provisa.app** to `/Applications`. Double-click the Runtime DMG once to mount it (first-launch also auto-mounts it if found).
+            3. Double-click **Provisa.app** — first-launch setup runs once (~2 min, no internet required)
+            4. `provisa start && provisa open`
+            5. **Optional**: Open `${{ needs.metadata.outputs.dmg_obs_name }}` and run `install-obs.sh` to add Observability Stack
+            6. **Optional**: Open `${{ needs.metadata.outputs.dmg_demo_name }}` and run `install-demo.sh` to add Demo Data Pack (requires Observability Stack)
 
             ### Linux Install
             ```bash
@@ -1056,11 +948,15 @@ jobs:
             ```
 
             ### Windows Install
-            **Online**: Run `${{ needs.metadata.outputs.windows_name }}` → Start Menu → **Provisa First Launch** (downloads ~1.5 GB Core Services automatically)
-            **Airgapped**: Download installer + `${{ needs.metadata.outputs.core_images_amd64_name }}` to the same folder, then run installer
+            Run `${{ needs.metadata.outputs.windows_name }}` — the native tier (embedded Python) runs immediately, no Docker or VM.
             1. Run `${{ needs.metadata.outputs.windows_name }}`
-            2. Open **Provisa First Launch** from the Start Menu (Core Services download or are found locally)
+            2. Launch **Provisa** from the Start Menu — first-launch stages the bundled runtime and starts the app
             3. `provisa start`
+
+            **Optional container tier** (adds Trino + full compute via WSL2, no VirtualBox): download and run
+            `${{ needs.metadata.outputs.windows_container_name }}`. It provisions a WSL2 distro with
+            containerd, loads the bundled core images, and starts the compose stack. Reversible — switch
+            back to the native tier at any time.
 
             ### Python client
             ```bash

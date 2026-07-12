@@ -147,12 +147,15 @@ async def _generate_sql_from_nl(
     if last_error:
         return last_sql or None, last_error
 
-    # Normalize domain-qualified refs (e.g. pet_store.pets) to physical schema.table
-    # so _execute_sql's make_semantic_sql → rewrite_semantic_to_physical pipeline works.
-    from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
+    # Queries are always expressed in semantic SQL with {schema}.{table} using the
+    # logical domain schema (e.g. pet_store.users), never the physical schema (default).
+    # The model may emit bare or physical-schema refs; normalize to physical first to
+    # qualify every table, then lift to the semantic domain form for display/execution.
+    # _execute_sql re-runs make_semantic_sql, so semantic input round-trips correctly.
+    from provisa.compiler.sql_rewrite import make_semantic_sql, rewrite_semantic_to_physical
 
-    physical_sql = rewrite_semantic_to_physical(last_sql, ctx)
-    return physical_sql, None
+    semantic_sql = make_semantic_sql(rewrite_semantic_to_physical(last_sql, ctx), ctx)
+    return semantic_sql, None
 
 
 async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
@@ -178,6 +181,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
             query_emb = await _aio.get_event_loop().run_in_executor(
                 None, lambda: embed_fn([nl_query])[0]
             )
+        # complexity-gate: allow-ble=3 reason="[file ceiling 3] Best-effort query embedding via a pluggable embed_fn (local/remote model) with an unbounded failure taxonomy — a failure only drops entity hints (query_emb stays None) and is logged; NL processing must continue without it."
         except Exception as exc:
             log.debug("Query embedding failed: %s", exc)
     relevant_entities = format_entities(matcher.top_k(query_emb))
@@ -249,6 +253,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                 relevant_entities=entities,  # type: ignore[arg-type]
             )
             return target, valid_query, error
+        # complexity-gate: allow-ble=3 reason="[file ceiling 3] Per-branch NL compilation boundary: each target (graphql/cypher/…) runs an LLM + compiler pipeline with an unbounded failure surface; a failing branch must be captured as that branch's error string and returned so sibling branches still complete — never abort the whole NL run."
         except Exception as exc:
             log.warning("NL branch %s failed: %s", target, exc)
             return target, None, str(exc)
@@ -263,6 +268,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         if valid_query is not None and error is None and target in _QUERY_TARGETS:
             try:
                 result = await _execute(valid_query, target, role, app_state)  # type: ignore[arg-type]
+            # complexity-gate: allow-ble=3 reason="[file ceiling 3] Per-branch NL execution boundary: running a generated query against the pluggable engine has an unbounded failure surface; a failure is captured as this branch's error (valid_query kept so the UI shows the query alongside it) and must not abort the other branches' execution."
             except Exception as exc:
                 error = str(exc)
                 # Keep valid_query so the UI can show the generated query alongside the error

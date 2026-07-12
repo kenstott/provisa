@@ -38,7 +38,15 @@ async def adbc_server():
     """
     from tests.integration.isolated_server import IsolatedServer, drop_org_schema
 
-    server = IsolatedServer(_ISOLATED_ORG, engine="trino", await_flight=True)
+    # Sales-analytics config (sa__orders), NOT the default demo config/provisa.yaml —
+    # that ships no sa__ tables and a pet-store-pg source whose host `postgres` is
+    # unresolvable from this host-side server, whose driver then fails to register.
+    server = IsolatedServer(
+        _ISOLATED_ORG,
+        engine="trino",
+        await_flight=True,
+        config="tests/fixtures/sample_config.yaml",
+    )
     server.start()
     try:
         yield server

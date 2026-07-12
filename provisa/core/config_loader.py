@@ -11,6 +11,7 @@
 """Config loader: YAML → validate → resolve secrets → upsert PG → create the engine catalogs."""
 
 # Requirements: REQ-012, REQ-013, REQ-016, REQ-250, REQ-251, REQ-275, REQ-282, REQ-283, REQ-285
+# complexity-gate: allow-ble=6 reason="per-source config registration is best-effort: source-driver register, OpenAPI spec load, SQLite migration post-step, OpenAPI cache, api_endpoints register, and CBO analyze each log their own failure and continue, so one bad source never fails the whole config load"
 
 import logging
 import re
@@ -194,8 +195,18 @@ def load_control_plane(config_path: str | Path | None) -> ControlPlaneConfig:  #
 
 
 def parse_config_dict(data: dict) -> ProvisaConfig:  # REQ-250
-    """Parse and validate a config dict."""
-    return ProvisaConfig.model_validate(data)
+    """Parse and validate a config dict.
+
+    Resolve secret references (``${provider:ref}``) on the raw dict BEFORE pydantic
+    validation so they work for every field, not just the string fields re-resolved
+    at use time. Without this, a ``${env:PG_PORT}`` in an ``int`` field (a source
+    ``port``) reaches pydantic as the literal template and fails int-parsing.
+    Resolution is idempotent, so the later per-field ``resolve_secrets(...)`` calls
+    stay no-ops.
+    """
+    from provisa.core.secrets import resolve_secrets_in_dict
+
+    return ProvisaConfig.model_validate(resolve_secrets_in_dict(data))
 
 
 _SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel", "__provisa__"]

@@ -64,20 +64,43 @@ export const TOUR_STEPS: TourStep[] = [
     element: ".navbar-tour-btn",
     title: "Welcome — let's take the tour",
     description:
-      "This compass button starts the tour, and it's how you come back to it. Leave anytime — just click the app or press <kbd>Esc</kbd> — and pick up right here whenever you like. Quick preview of where we're headed: Provisa is a governed query-language compiler for a scalable, federated data estate — one governed model served as GraphQL, SQL, Cypher, gRPC, JSON:API and REST, and spoken over wire protocols like Postgres (pgwire) and Neo4j (Bolt) so existing tools connect unchanged. The desktop build is razor-thin — embedded DuckDB, no Docker, runs on almost anything — so you can build and validate your changes locally. Want to get closer to production reality and investigate scale-out? We ship all the Docker files, so you can spin up the full Trino or ClickHouse stack (with observability) right on your machine. Already run serious infrastructure? Develop locally but point straight at your enterprise engines and stores. Then promote the exact same model through CI/CD to scale to the largest enterprises — no rewrite. Ready? Let's go.",
+      "🧭 This compass reopens the tour anytime. Leave whenever — click the app or press <kbd>Esc</kbd>." +
+      "<p><strong>Provisa</strong> is a governed query-language push-down compiler for federated data. One model, many surfaces:</p>" +
+      "<div class='tour-tags'>" +
+      "<span>GraphQL</span><span>SQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span>" +
+      "<span>Postgres · pgwire</span><span>Neo4j · Bolt</span>" +
+      "</div>" +
+      "<p>💡 <strong>The core idea:</strong> you declare your environment once with a small set of primitives. <em>How</em> it runs is a choice — pick a <strong>federation strategy</strong> and the same model executes to fit:</p>" +
+      "<ul>" +
+      "<li><strong>Unopinionated?</strong> Use the embedded, Trino-compatible engine — horizontal scale-out built in.</li>" +
+      "<li><strong>Oracle-first?</strong> Non-Oracle data is moved into Oracle and queried there — and most any RDB can play that role.</li>" +
+      "<li><strong>Already run Trino?</strong> Provisa defers to your cluster, live-querying what it can reach and staging the rest.</li>" +
+      "</ul>" +
+      "<p>Declarative in, behavior out — you change the <em>strategy</em>, never the model.</p>" +
+      "<p>The same model travels from local dev to production, validated at every step — no rewrite:</p>" +
+      "<ul>" +
+      "<li><strong>Develop</strong> — embedded DuckDB, no Docker. Build &amp; validate locally.</li>" +
+      "<li><strong>Validate at scale</strong> — Docker, spin up an engine + observability. Prove behavior against production engines.</li>" +
+      "<li><strong>Promote</strong> — point at your own infrastructure, build through CI/CD, ship to production.</li>" +
+      "</ul>" +
+      "<p>Ready? Let's go. →</p>",
   },
   {
     route: "/sources",
     element: '[data-tour="nav-sources"]',
     title: "Start with Sources",
     description:
-      "Every database, warehouse, API, file, or SaaS you want to federate is registered here. Provisa unifies them into one queryable graph.",
+      "Everything you want to federate is registered here:" +
+      "<div class='tour-tags'>" +
+      "<span>🗄️ Databases</span><span>🏢 Warehouses</span><span>🔌 APIs</span><span>📄 Files</span><span>☁️ SaaS</span>" +
+      "</div>" +
+      "<p>Provisa unifies them all into one queryable <strong>graph</strong>.</p>",
   },
   {
     element: SOURCES_ADD,
     title: "Register a source",
     description:
-      "New connections start with this button — PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and 30+ more.",
+      "➕ New connections start with this button — PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and 30+ more.",
   },
   {
     element: '[data-tour="sources-type"]',
@@ -104,13 +127,20 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="nav-tables"]',
     title: "Everything becomes a table",
     description:
-      "Whatever the source — a Mongo collection, a Kafka topic, a REST endpoint, a graph — Provisa decomposes it into a 2D dataset it calls a table. One uniform shape to query across every source. Tables can be grouped into domains, each owned by a data steward who oversees the model's quality as it evolves.",
+      "Whatever the source — a Mongo collection, a Kafka topic, a REST endpoint, a graph — Provisa decomposes it into a 2D <strong>table</strong>: one uniform shape to query across every source." +
+      "<p>📁 Group tables into <strong>domains</strong>, each owned by a data steward who guards the model's quality as it evolves.</p>",
   },
   {
     element: '[data-tour="tables-form"]',
     title: "Pick columns & policy",
     description:
-      "Choose a source, schema, and table, then select columns — with per-column role-based masking, visibility, and aliases. Once everything is a table, governance becomes tractable: one uniform surface to apply policy on, column by column, across every source.",
+      "Choose a source, schema, and table, then pick columns — each with its own policy:" +
+      "<ul>" +
+      "<li>🎭 <strong>Masking</strong> — redact values per role</li>" +
+      "<li>👁️ <strong>Visibility</strong> — show or hide the column</li>" +
+      "<li>🏷️ <strong>Aliases</strong> — rename for the model</li>" +
+      "</ul>" +
+      "<p>Once everything is a table, governance becomes tractable — one uniform surface to apply policy, column by column, across every source.</p>",
     clickBefore: TABLES_ADD,
     clickAfterNext: TABLES_ADD,
   },
@@ -119,13 +149,26 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="rels-add"]',
     title: "Connect the graph",
     description:
-      "Relationships link tables across sources — even across different databases — turning flat tables into a traversable graph. They can also be enforced, so you can hand people the freedom to explore with sensible guardrails.",
+      "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'>" +
+      "<line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' />" +
+      "<line x1='58' y1='72' x2='142' y2='74' />" +
+      "<line class='xsrc' x1='118' y1='24' x2='210' y2='30' />" +
+      "<line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' />" +
+      "<circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' />" +
+      "<circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' />" +
+      "</svg>" +
+      "<p>Relationships link tables across sources — even across different databases — turning flat tables into a traversable <strong>graph</strong>.</p>" +
+      "<p>🛡️ They can also be <strong>enforced</strong>: hand people freedom to explore, with sensible guardrails.</p>",
   },
   {
     element: '[data-tour="rels-form"]',
     title: "Define a relationship",
     description:
-      "Map a source column to a target column and set cardinality. Provisa can also infer these for you with AI.",
+      "🔗 Map a source column to a target column and set <strong>cardinality</strong>:" +
+      "<div class='tour-tags'>" +
+      "<span>1 → 1</span><span>1 → ∞</span><span>∞ → ∞</span>" +
+      "</div>" +
+      "<p>✨ Or let Provisa <strong>infer</strong> relationships for you with AI.</p>",
     clickBefore: RELS_ADD,
     clickAfterNext: RELS_ADD,
   },
@@ -142,21 +185,32 @@ export const TOUR_STEPS: TourStep[] = [
     element: '.subnav a[href="/security/roles"]',
     title: "Access control (RBAC)",
     description:
-      "Registering a table sets per-column read and write access — that's role-based access control, wired straight into roles. The roles themselves are defined here on the Security page.",
+      "🔐 Registering a table sets per-column access, wired straight into roles:" +
+      "<div class='tour-tags'>" +
+      "<span>👁️ Read</span><span>✏️ Write</span>" +
+      "</div>" +
+      "<p>That's <strong>role-based access control</strong> — and the roles themselves are defined here on the Security page.</p>",
   },
   {
     route: "/security/rls",
     element: '.subnav a[href="/security/rls"]',
     title: "Row-level security",
     description:
-      "Once roles exist, go finer: restrict which rows each role can see with attribute-based predicates — data-driven, enforced per row across every source and protocol.",
+      "🔎 Once roles exist, go finer — restrict which <strong>rows</strong> each role sees with attribute-based predicates:" +
+      "<p><code>region = user.region AND status != 'archived'</code></p>" +
+      "<p>📐 Data-driven and enforced per row — across every source and protocol.</p>",
   },
   {
     route: "/views",
     element: '[data-tour="nav-model"]',
     title: "Build your delivery pipeline",
     description:
-      "Define views over any of these tables — ephemeral or materialized — and views over views. What makes this a real pipeline: liveness guarantees live on the tables and views themselves, so every view republishes as its inputs' freshness changes. Compose your whole delivery pipeline from views and commands — no separate ETL tool. Now let's query it.",
+      "Define <strong>views</strong> over any table — ephemeral or materialized — and views over views." +
+      "<ul>" +
+      "<li>⚡ <strong>Liveness</strong> lives on tables and views, so each view republishes as its inputs' freshness changes.</li>" +
+      "<li>🔧 Compose your whole delivery pipeline from views and commands — no separate ETL tool.</li>" +
+      "</ul>" +
+      "<p>Now let's query it. →</p>",
   },
   {
     route: "/nl",
@@ -164,7 +218,9 @@ export const TOUR_STEPS: TourStep[] = [
     element: ".nl-panels",
     title: "Ask in plain English",
     description:
-      "Natural-language queries need your own LLM key, so here's a canned example — \"show inquiry count by user.\" Provisa compiled that one question into all six ways to query the graph at once. Every panel below is the same request.",
+      "💬 <em>\"show inquiry count by user\"</em>" +
+      "<p>🪄 Provisa compiled that one question into <strong>all six</strong> ways to query the graph at once — every panel below is the same request.</p>" +
+      "<p>🔑 Live natural-language queries use your own LLM key; this one's a canned example.</p>",
   },
   {
     route: "/sql",
@@ -172,7 +228,7 @@ export const TOUR_STEPS: TourStep[] = [
     element: '.subnav a[href="/sql"]',
     title: "1 · SQL",
     description:
-      "The NL SQL branch, live in the SQL explorer. Standard SQL federated across every source — join Postgres to Mongo to a CSV in one statement. And the model's own metadata and every activity trace are themselves queryable tables here — join your audit log or lineage straight to live data.",
+      "SQL lives in the SQL explorer. Standard SQL federated across every source — join Postgres to Mongo to a CSV in one statement. And the model's own metadata and every activity trace are themselves queryable tables here — join your audit log or lineage straight to live data.",
   },
   {
     route: "/query",
@@ -180,7 +236,9 @@ export const TOUR_STEPS: TourStep[] = [
     element: '.subnav a[href="/query"]',
     title: "2 · GraphQL",
     description:
-      "The same question as a typed GraphQL query, with grouping and aggregates over your relationships — one endpoint, self-documenting schema.",
+      "◈ The same question as a typed GraphQL query:" +
+      "<p><code>{ inquiries { groupBy { user }, count } }</code></p>" +
+      "<p>Grouping and aggregates over your relationships — 🎯 one endpoint, 📖 self-documenting schema.</p>",
   },
   {
     route: "/graph",
@@ -188,7 +246,9 @@ export const TOUR_STEPS: TourStep[] = [
     element: '.subnav a[href="/graph"]',
     title: "3 · Cypher",
     description:
-      "Traverse the federated model as a graph with Cypher — `MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)` runs across sources.",
+      "🕸️ Traverse the federated model as a graph with Cypher:" +
+      "<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p>" +
+      "<p>↔️ That traversal runs <strong>across sources</strong> — no single graph database required.</p>",
   },
   {
     route: "/grpc",
@@ -196,7 +256,9 @@ export const TOUR_STEPS: TourStep[] = [
     element: '.subnav a[href="/grpc"]',
     title: "4 · gRPC",
     description:
-      "Every registered entity is also a gRPC service. Call `QueryInquiries` from any gRPC client — strongly typed, high-throughput.",
+      "⚙️ Every registered entity is also a gRPC service:" +
+      "<p><code>rpc QueryInquiries(...) returns (...)</code></p>" +
+      "<p>Call it from any gRPC client — 📐 strongly typed, 🚀 high-throughput.</p>",
   },
   {
     route: "/jsonapi",
@@ -204,7 +266,9 @@ export const TOUR_STEPS: TourStep[] = [
     element: '.subnav a[href="/jsonapi"]',
     title: "5 · JSON:API",
     description:
-      "A spec-compliant JSON:API surface — `/data/jsonapi/pet-store/inquiries?page[size]=20` — with paging and filtering out of the box.",
+      "🧩 A spec-compliant JSON:API surface:" +
+      "<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p>" +
+      "<p>📄 Paging and 🔍 filtering out of the box.</p>",
   },
   {
     route: "/openapi",
@@ -212,20 +276,40 @@ export const TOUR_STEPS: TourStep[] = [
     element: '.subnav a[href="/openapi"]',
     title: "6 · OpenAPI / REST",
     description:
-      "And a plain REST endpoint — `GET /data/rest/pet-store/inquiries` — described by OpenAPI. One model, six protocols.",
+      "🌐 And a plain REST endpoint, described by OpenAPI:" +
+      "<p><code>GET /data/rest/pet-store/inquiries</code></p>" +
+      "<p>✅ One model, <strong>six protocols</strong>.</p>" +
+      "<div class='tour-tags'>" +
+      "<span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span>" +
+      "</div>",
   },
   {
     route: "/admin/overview",
     element: '[data-tour="nav-admin"]',
     title: "Operate it",
     description:
-      "The Admin pages run the platform: choose and configure your federation engine, manage encryption keys, and wire up auth providers. Full observability lives here for the platform owner too — and it can be redirected to any OpenTelemetry collector for enterprise-class trace management.",
+      "The Admin pages run the platform:" +
+      "<ul>" +
+      "<li>⚙️ Choose and configure your <strong>federation engine</strong></li>" +
+      "<li>🔑 Manage <strong>encryption keys</strong> and wire up <strong>auth providers</strong></li>" +
+      "<li>📊 Full <strong>observability</strong> — redirect to any OpenTelemetry collector for enterprise-class trace management</li>" +
+      "</ul>",
   },
   {
     route: "/sources",
     element: '[data-tour="sources-add"]',
     title: "That's the tour — now make it yours",
     description:
-      "You're back where you started. From here, try it on your own: register one of your real sources, expose a few tables, draw a relationship or two, then query the model from the Explore tab in whichever language you prefer — SQL, GraphQL, Cypher, gRPC, JSON:API or REST. Point pgwire or Bolt tools at it and everything just works. Want to go deeper? The Docs tab has the full guides — Getting Started, Sources, Configuration and more. And the compass button up top replays this tour anytime. Enjoy exploring Provisa.",
+      "🎉 You're back where you started. Now make it yours:" +
+      "<ul>" +
+      "<li>1️⃣ Register one of your real <strong>sources</strong></li>" +
+      "<li>2️⃣ Expose a few <strong>tables</strong>, draw a <strong>relationship</strong> or two</li>" +
+      "<li>3️⃣ Query it from <strong>Explore</strong> in any language:</li>" +
+      "</ul>" +
+      "<div class='tour-tags'>" +
+      "<span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span>" +
+      "</div>" +
+      "<p>Point <kbd>pgwire</kbd> or <kbd>Bolt</kbd> tools at it — everything just works.</p>" +
+      "<p>📚 The <strong>Docs</strong> tab has the full guides. 🧭 The compass up top replays this tour anytime. Enjoy Provisa.</p>",
   },
 ];

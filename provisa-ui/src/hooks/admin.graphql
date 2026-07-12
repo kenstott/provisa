@@ -280,6 +280,38 @@ query CacheStats {
     hitCount
     missCount
     storeType
+    usedMemoryBytes
+    maxMemoryBytes
+    evictedKeys
+    expiredKeys
+    connectedClients
+    opsPerSec
+  }
+}
+
+query CacheTableStats {
+  cacheTableStats {
+    tableId
+    cachedEntries
+  }
+}
+
+query HotTables {
+  hotTables {
+    tableName
+    catalog
+    schemaName
+    rowCount
+    isApi
+    loaded
+  }
+}
+
+query MaterializeStoreInfo {
+  materializeStoreInfo {
+    engineName
+    storeRef
+    mvCount
   }
 }
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import sqlglot.errors
 from httpx import ASGITransport, AsyncClient
 
 from provisa.compiler.rls import RLSContext
@@ -63,6 +64,15 @@ async def sql_client():
     import provisa.api.app as app_mod
     from provisa.api.app import create_app
 
+    # Pin unsecured auth BEFORE create_app(): wire_auth reads state.auth_config at
+    # app-construction time. These governance tests post a `role` with no bearer
+    # token, so a leaked secured auth_config from a prior test would install a
+    # token-enforcing AuthMiddleware and every request would 401 before reaching
+    # the governance checks under test (isolation bug: passed alone, failed in
+    # suite). None = provider:none = unsecured (honors the body/x-provisa-role).
+    _prev_auth_config = getattr(app_mod.state, "auth_config", None)
+    app_mod.state.auth_config = None
+
     the_app = create_app()
 
     # Inject minimal state — no real PG/Trino needed
@@ -100,6 +110,7 @@ async def sql_client():
     # Clean up — restore source_pools so subsequent tests see a clean SourcePool
     from provisa.executor.pool import SourcePool
 
+    app_mod.state.auth_config = _prev_auth_config
     app_mod.state.schemas = {}
     app_mod.state.contexts = {}
     app_mod.state.rls_contexts = {}
@@ -121,8 +132,12 @@ class TestSQLParseError:
         """Completely invalid SQL that cannot be parsed returns HTTP 400."""
         payload = {"sql": "THIS IS NOT VALID SQL !!!! SELECT ??? FROM", "role": "admin"}
 
-        # Patch sqlglot.parse_one to raise on this input
-        with patch("sqlglot.parse_one", side_effect=Exception("parse error: unexpected token")):
+        # Patch sqlglot.parse_one to raise the SqlglotError real sqlglot raises on unparseable input
+        # (the endpoint narrows its 400 catch to SqlglotError, not a blanket Exception).
+        with patch(
+            "sqlglot.parse_one",
+            side_effect=sqlglot.errors.ParseError("parse error: unexpected token"),
+        ):
             resp = await sql_client.post("/data/sql", json=payload)
 
         assert resp.status_code == 400

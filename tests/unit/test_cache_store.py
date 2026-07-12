@@ -162,6 +162,49 @@ class TestRedisCacheStoreInvalidateByPattern:
         assert scanned_patterns == ["provisa:cache:acme:user:*"]
 
 
+class TestRedisCacheStoreTableEntryCounts:
+    def _make_store(self) -> RedisCacheStore:
+        return RedisCacheStore(redis_url="redis://localhost:6379/0")
+
+    @pytest.mark.asyncio
+    async def test_counts_aggregate_across_tenants_by_table_id(self):
+        store = self._make_store()
+
+        async def fake_scan_iter(match):
+            assert match == "provisa:table:*"
+            for k in (b"provisa:table:1", b"provisa:table:acme:1", b"provisa:table:2"):
+                yield k
+
+        mock_pipe = MagicMock()
+        mock_pipe.execute = AsyncMock(return_value=[3, 2, 5])
+        mock_redis = MagicMock()
+        mock_redis.scan_iter = fake_scan_iter
+        mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+        store._redis = mock_redis
+
+        counts = await store.table_entry_counts()
+        assert counts == {1: 5, 2: 5}
+
+    @pytest.mark.asyncio
+    async def test_empty_when_no_index_keys(self):
+        store = self._make_store()
+
+        async def fake_scan_iter(match):
+            assert match == "provisa:table:*"
+            for _ in range(0):  # pragma: no branch — empty async generator
+                yield
+
+        mock_redis = MagicMock()
+        mock_redis.scan_iter = fake_scan_iter
+        store._redis = mock_redis
+
+        assert await store.table_entry_counts() == {}
+
+    @pytest.mark.asyncio
+    async def test_noop_store_returns_empty(self):
+        assert await NoopCacheStore().table_entry_counts() == {}
+
+
 class TestRedisCacheStoreTlsEnforcement:
     def test_no_tls_env_allows_plain_redis(self):
         with patch.dict("os.environ", {}, clear=False):

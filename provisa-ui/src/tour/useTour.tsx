@@ -327,6 +327,34 @@ export function TourProvider({ children }: { children: ReactNode }) {
               clickIfPresent(step.clickAfterNext);
               endTour(false);
             },
+            // Inject a "Start" button that jumps back to the opening step, so a
+            // visitor can restart the tour from any popover. Omitted on step 0,
+            // where it would be a no-op.
+            onPopoverRender: (popover) => {
+              if (i !== 0) {
+                const startBtn = document.createElement("button");
+                startBtn.type = "button";
+                startBtn.className = "driver-popover-start-btn";
+                startBtn.textContent = "Start";
+                startBtn.addEventListener("click", () => {
+                  clickIfPresent(step.clickAfterNext);
+                  setActiveStep(0);
+                });
+                popover.footerButtons.prepend(startBtn);
+              }
+              // On the closing step, offer a shortcut straight to the Docs tab.
+              if (isLast) {
+                const docsBtn = document.createElement("button");
+                docsBtn.type = "button";
+                docsBtn.className = "driver-popover-docs-btn";
+                docsBtn.textContent = "Docs";
+                docsBtn.addEventListener("click", () => {
+                  endTour(true);
+                  navigate("/docs");
+                });
+                popover.footerButtons.prepend(docsBtn);
+              }
+            },
           },
         });
       } catch {

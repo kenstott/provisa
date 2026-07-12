@@ -374,7 +374,7 @@ class TestNeo4jExportEdgeOnly:
     """REQ-795: neo4j-export with nodes=[] generates only edge MERGE statements."""
 
     def _cypher_literal(self, v: Any) -> str:
-        from provisa.api.rest.cypher_router import _neo4j_cypher_literal
+        from provisa.api.rest.graph_tools_router import _neo4j_cypher_literal
 
         return _neo4j_cypher_literal(v)
 
@@ -495,7 +495,7 @@ class TestNeo4jCypherLiteral:
     """REQ-795: Cypher literal serialization used in export statements."""
 
     def _lit(self, v: Any) -> str:
-        from provisa.api.rest.cypher_router import _neo4j_cypher_literal
+        from provisa.api.rest.graph_tools_router import _neo4j_cypher_literal
 
         return _neo4j_cypher_literal(v)
 
@@ -573,7 +573,7 @@ class TestNeo4jExportGraphIntegrity:
     """REQ-797: Exported graph integrity — every edge references nodes by _provisa_id."""
 
     def _build_statements(self, nodes: list[dict], edges: list[dict]) -> list[str]:
-        from provisa.api.rest.cypher_router import _neo4j_cypher_literal
+        from provisa.api.rest.graph_tools_router import _neo4j_cypher_literal
 
         statements: list[str] = []
         for n in nodes:

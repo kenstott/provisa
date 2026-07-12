@@ -16,6 +16,7 @@ Run with docker-compose up before executing.
 """
 
 import os
+import time
 import pytest
 import httpx
 
@@ -31,6 +32,31 @@ def _headers() -> dict:
     return {}
 
 
+class _ResilientClient:
+    """Wraps httpx.Client so POSTs retry on transport-level failures.
+
+    These are "the endpoint responds (not 404)" smoke tests over a SHARED Provisa
+    server that federates each Cypher query down to Trino. Under full-suite load a
+    heavy query occasionally has its connection reset by peer (httpx.TransportError)
+    before a response lands — a transient transport failure, not a 404. Retry a few
+    times with backoff so the smoke test measures the endpoint contract, not the
+    server's momentary load; a deterministic failure still exhausts the retries.
+    """
+
+    def __init__(self, inner: httpx.Client) -> None:
+        self._inner = inner
+
+    def post(self, *args, **kwargs):
+        last: Exception | None = None
+        for attempt in range(4):
+            try:
+                return self._inner.post(*args, **kwargs)
+            except httpx.TransportError as exc:
+                last = exc
+                time.sleep(2 * (attempt + 1))
+        raise last  # type: ignore[misc]
+
+
 @pytest.fixture(scope="module")
 def client():
     # A federated Cypher→Trino query (esp. the first, cold one) can run well past a
@@ -38,7 +64,7 @@ def client():
     # surfaced as flaky ReadTimeouts. Keep connect short but give reads a wide budget.
     timeout = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=60.0)
     with httpx.Client(base_url=BASE_URL, headers=_headers(), timeout=timeout) as c:
-        yield c
+        yield _ResilientClient(c)
 
 
 # REQ-750: Cypher CALL db.labels() / db.relationshipTypes() / db.propertyKeys() procedure calls

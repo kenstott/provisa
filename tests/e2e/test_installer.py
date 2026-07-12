@@ -27,6 +27,10 @@ from pathlib import Path
 
 import pytest
 
+# Packaging/installer flow — validated manually + by unit tests, deselected from
+# the default suite (pytest -m packaging to run). See pyproject addopts.
+pytestmark = pytest.mark.packaging
+
 # Path to the CLI script under test
 _SCRIPT = Path(__file__).parents[2] / "scripts" / "provisa"
 

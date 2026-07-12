@@ -15,7 +15,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from sqlalchemy import select
 
 from provisa.api.app import state
@@ -35,7 +35,10 @@ _TABLESAMPLE_PCT = 10  # BERNOULLI(10) — 10% of blocks
 
 
 @router.post("/{table_id}/profile")
-async def profile_table(table_id: int) -> dict:  # REQ-452
+async def profile_table(
+    table_id: int,
+    x_provisa_role: str | None = Header(None),
+) -> dict:  # REQ-452
     if state.tenant_db is None:
         raise HTTPException(503, "Database unavailable")
     if state.federation_engine is None:
@@ -61,17 +64,24 @@ async def profile_table(table_id: int) -> dict:  # REQ-452
     table_name: str = m["table_name"]
     view_sql: str | None = m["view_sql"]
 
-    # For __provisa__ view tables, sample the view_sql directly
+    # __provisa__ view SQL is semantic (domain.field refs) and must be compiled,
+    # governed, and routed exactly like an interactive /data/sql query — handing it
+    # raw to the federation engine fails to resolve domain refs (REQ-452).
     if source_id == "__provisa__" and view_sql:
-        sql = f"SELECT * FROM ({view_sql.rstrip().rstrip(';')}) _pv LIMIT {_SAMPLE_LIMIT}"
-    else:
-        view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
-        catalog = view_catalog if source_id == "__provisa__" else source_to_catalog(source_id)
-        fqn = f'"{catalog}"."{schema_name}"."{table_name}"'
-        # Try TABLESAMPLE first; fall back to plain LIMIT if unsupported
-        sql = (
-            f"SELECT * FROM {fqn} TABLESAMPLE BERNOULLI ({_TABLESAMPLE_PCT}) LIMIT {_SAMPLE_LIMIT}"
-        )
+        from provisa.api.data.endpoint_dev import _compile_govern_execute
+
+        if not x_provisa_role:
+            raise HTTPException(400, "X-Provisa-Role header required to profile a view")
+        sampled = f"SELECT * FROM ({view_sql.rstrip().rstrip(';')}) _pv LIMIT {_SAMPLE_LIMIT}"
+        res, *_ = await _compile_govern_execute(sampled, x_provisa_role, state)
+        rows = [dict(zip(res.column_names, r)) for r in res.rows]
+        return {"columns": res.column_names, "rows": rows, "rowCount": len(rows)}
+
+    view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
+    catalog = view_catalog if source_id == "__provisa__" else source_to_catalog(source_id)
+    fqn = f'"{catalog}"."{schema_name}"."{table_name}"'
+    # Try TABLESAMPLE first; fall back to plain LIMIT if unsupported
+    sql = f"SELECT * FROM {fqn} TABLESAMPLE BERNOULLI ({_TABLESAMPLE_PCT}) LIMIT {_SAMPLE_LIMIT}"
 
     try:
         res = await engine.execute_engine(sql)

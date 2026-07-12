@@ -62,10 +62,16 @@ _COLS = [("id", "bigint"), ("status", "text")]
 
 
 @pytest.fixture(scope="session")
-def mvmvp_stack() -> dict[str, str]:
-    """Self-provision the isolated stack (idempotent; fast when already healthy)."""
+def mvmvp_stack():
+    """Self-provision the isolated stack (idempotent; fast when already healthy), and
+    tear it down at session end so it never leaks containers that starve later runs
+    of memory. Set PYTEST_DOCKER_KEEP=1 to keep it up between local iterations."""
     subprocess.run([*_COMPOSE, "up", "-d", "--wait"], cwd=_REPO, check=True, timeout=180)
-    return {"cp": _CP_DSN, "store": _STORE_DSN}
+    try:
+        yield {"cp": _CP_DSN, "store": _STORE_DSN}
+    finally:
+        if not os.environ.get("PYTEST_DOCKER_KEEP"):
+            subprocess.run([*_COMPOSE, "down", "-v"], cwd=_REPO, check=False, timeout=120)
 
 
 @pytest.fixture

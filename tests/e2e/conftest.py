@@ -75,6 +75,72 @@ _PROJECT = os.environ.get("PROVISA_E2E_PROJECT", "provisa-e2e")
 __all__ = ["docker_stack", "_disable_auth_for_e2e"]
 
 
+def _reserve_free_ports(n: int) -> list[int]:
+    """Return ``n`` DISTINCT OS-assigned free TCP ports.
+
+    All sockets are held open simultaneously while ports are collected, then
+    closed together. Allocating one-at-a-time (bind→getsockname→close, repeat)
+    lets the OS hand the same ephemeral port back on the next bind(0), so two
+    services would publish on the same port and the second `docker compose up`
+    fails with "port is already allocated". Holding the sockets open forces the
+    kernel to pick a different port for each.
+    """
+    socks: list[socket.socket] = []
+    try:
+        for _ in range(n):
+            s = socket.socket()
+            s.bind(("127.0.0.1", 0))
+            socks.append(s)
+        return [s.getsockname()[1] for s in socks]
+    finally:
+        for s in socks:
+            s.close()
+
+
+# Ports for the isolated e2e stack are allocated dynamically so it never collides
+# with the developer's running dev stack (default 5432/6379/8080/8480/9000/9092)
+# or a parallel worktree. The compose files read each ${*_PORT} at `up` time; the
+# in-process app and test clients read the same env vars, so both ends agree on
+# the ephemeral port. Container-to-container traffic uses fixed internal service
+# names (postgres:5432, kafka:29092, minio:9000) and is unaffected.
+_PORT_ENV = [
+    "PG_PORT",
+    "TRINO_PORT",
+    "REDIS_PORT",
+    "MINIO_PORT",
+    "MINIO_CONSOLE_PORT",
+    "ZAYCHIK_PORT",
+    "KAFKA_HOST_PORT",
+]
+
+
+def _allocate_stack_ports() -> None:
+    """(Re)assign every ${*_PORT} env var to a fresh, distinct free host port.
+
+    Reserving a free port and later binding it in docker is inherently TOCTOU:
+    between reservation and `docker compose up`, another process (or the dev-stack
+    bring-up that runs first in a full session) can claim it. So this is called
+    both at IMPORT time — to give the session `provisa_server` subprocess a
+    baseline before it captures os.environ at Popen — and again inside docker_stack
+    immediately before each `up` attempt, with the fixture retrying on a bind
+    failure. The last successful assignment is what the in-process app (built
+    per-test, after docker_stack) and provisa_server (started after docker_stack)
+    both read.
+    """
+    ports = _reserve_free_ports(len(_PORT_ENV))
+    for name, port in zip(_PORT_ENV, ports):
+        os.environ[name] = str(port)
+    # Host-side clients that address a service by URL rather than a bare port:
+    os.environ["REDIS_URL"] = f"redis://localhost:{os.environ['REDIS_PORT']}/0"
+    # In-process app writes/reads Parquet results + the otel Iceberg catalog via
+    # boto3 to the e2e MinIO (Trino reaches the same bucket by service name).
+    os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://localhost:{os.environ['MINIO_PORT']}"
+
+
+if not os.environ.get("PROVISA_E2E_EXTERNAL_STACK"):
+    _allocate_stack_ports()
+
+
 def _wait_for_port(host: str, port: int, timeout: float = 120.0) -> None:
     deadline = time.monotonic() + timeout
     while True:
@@ -112,11 +178,41 @@ def docker_stack():
     # --wait blocks until every service with a healthcheck (postgres, redis,
     # trino, zaychik) reports healthy, so tests never start against a Trino that
     # is up but not yet query-ready. -p isolates the stack in its own project.
-    subprocess.run(
-        ["docker", "compose", "-p", _PROJECT, *_COMPOSE_ARGS, "up", "-d", "--wait", *_SERVICES],
-        cwd=_REPO_ROOT,
-        check=True,
-    )
+    #
+    # Reserved-then-freed ephemeral ports are TOCTOU-racy: in a full session the
+    # dev-stack bring-up and other tests run between import-time allocation and
+    # this `up`, and can claim a port meanwhile ("port is already allocated").
+    # Retry with a freshly-allocated port set each time; the winning assignment is
+    # what per-test apps and the (later-started) provisa_server subprocess read.
+    # Attempt 0 uses the import-time port assignment (stable, so anything that read
+    # a *_PORT env var at import — provisa_server, module state — stays consistent).
+    # Only if `up` fails on a port that got claimed in the meantime do we re-allocate
+    # fresh ports and retry; the winning set is re-read by per-test apps and the
+    # later-started provisa_server subprocess.
+    _last_err = ""
+    for _attempt in range(5):
+        if _attempt > 0:
+            _allocate_stack_ports()
+        _proc = subprocess.run(
+            ["docker", "compose", "-p", _PROJECT, *_COMPOSE_ARGS, "up", "-d", "--wait", *_SERVICES],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if _proc.returncode == 0:
+            break
+        _last_err = _proc.stderr
+        if "already allocated" not in _proc.stderr and "port is already" not in _proc.stderr:
+            raise RuntimeError(f"e2e docker stack failed to start:\n{_proc.stderr}")
+        # Port was taken between allocation and bind — tear down partial stack and
+        # retry with fresh ports.
+        subprocess.run(
+            ["docker", "compose", "-p", _PROJECT, *_COMPOSE_ARGS, "down", "-v"],
+            cwd=_REPO_ROOT,
+            check=False,
+        )
+    else:
+        raise RuntimeError(f"e2e docker stack: port allocation kept racing:\n{_last_err}")
 
     pg_host = os.environ.get("PG_HOST", "localhost")
     pg_port = int(os.environ.get("PG_PORT", "5432"))
@@ -156,7 +252,8 @@ def _seed_kafka(docker_stack):  # pyright: ignore
     async def _produce() -> None:
         from aiokafka import AIOKafkaProducer
 
-        producer = AIOKafkaProducer(bootstrap_servers="localhost:9092")
+        kafka_host_port = os.environ.get("KAFKA_HOST_PORT", "9092")
+        producer = AIOKafkaProducer(bootstrap_servers=f"localhost:{kafka_host_port}")
         await producer.start()
         try:
             for i in range(3):

@@ -154,19 +154,53 @@ The launcher's `provisa start` path:
 
 ## Windows Packages
 
-Container runtime: VirtualBox OVA (not Lima). (REQ-633) Images are loaded into the OVA's
-Docker daemon by `first-launch.ps1` post-VM-boot. (REQ-228)
+### Core Installer — native tier (`Provisa-Setup-<version>.exe`) (REQ-979)
 
-### Core Installer (`Provisa-Setup-<version>.exe`)
+`packaging/windows/build-sfx.ps1` builds the Core installer with Inno Setup. It
+bundles a standalone Python runtime (python-build-standalone for
+x86_64-pc-windows-msvc) with the provisa wheel + uvicorn + duckdb/pg_duckdb +
+aiosqlite, and stages the built UI at `<site-packages>\static`. The base
+installer ships **no Docker, no VM, and no container images** — no VirtualBox,
+no OVA, no Trino.
 
-`packaging/windows/build-installer.ps1` + `installer.nsi` build the Core
-installer. Image set is the same as macOS core (obs/demo excluded).
+`first-launch-native.ps1` stages the runtime to `%USERPROFILE%\.provisa\runtime`
+and writes config; `provisa-native.ps1` runs the two uvicorn processes (API
+factory + ui_server). Mirrors macOS `bundle_native_runtime`.
 
-### Obs Installer (`Provisa-Obs-Setup-<version>.exe`)
+### Container Tier — on-demand upgrade (`Provisa-Container-Setup-<version>.exe`) (REQ-889, REQ-633)
+
+`packaging/windows/build-container.ps1` builds a separate installer (Inno Setup)
+that adds the compute stack (Trino + services) via **WSL2 + containerd** — the
+Windows equivalent of the macOS Lima tier. VirtualBox is never used. It bundles:
+
+- the compose tree (core/app/airgap/observability/demo, config, db, trino config
+  minus plugins),
+- the core image tarballs (`docker-images-core-amd64` from CI),
+- `nerdctl-full-<ver>-linux-amd64.tar.gz` (version-matched to the macOS Lima tier),
+- a WSL base rootfs (`rootfs.tar.gz`).
+
+`install-container.ps1` steps:
+
+1. Enable WSL2 (`wsl --install --no-distribution`, `--set-default-version 2`).
+2. `wsl --import provisa %USERPROFILE%\.provisa\wsl\provisa rootfs.tar.gz --version 2`.
+3. `wsl/provision-containerd.sh` installs nerdctl-full; `wsl/start-containerd.sh`
+   starts containerd (no systemd in WSL2 by default).
+4. `nerdctl load` each core image tarball.
+5. Copy the compose tree to `/opt/provisa/compose` inside the distro.
+6. Write config `runtime: container`, stop the native tier, start the stack.
+
+`provisa-container.ps1` routes compose through
+`wsl -d provisa -u root sh -c 'cd /opt/provisa/compose && nerdctl compose -f ... <cmd>'`,
+mirroring the `RUNTIME=lima` routing in `scripts/provisa`. WSL2 forwards
+`localhost` ports, so the UI/API are reachable at `http://localhost:3000`/`:8000`.
+The tier is additive and reversible: switch back to the native tier with
+`provisa-native.ps1`; `uninstall.ps1` unregisters the WSL distro.
+
+### Obs Installer (`Provisa-Obs-Setup-<version>.exe`) — container tier
 
 **`install-obs.ps1` steps**:
-1. Check VM `Provisa` exists and is running. (REQ-633)
-2. `docker load` each obs image tarball inside the VM via `VBoxManage guestcontrol`. (REQ-633)
+1. Check the container-tier runtime exists and is running. (REQ-633)
+2. `docker load` each obs image tarball into the runtime. (REQ-633)
 3. Write `%USERPROFILE%\.provisa\extensions\observability\docker-compose.observability.yml`. (REQ-633)
 4. Prompt user to restart Provisa.
 
@@ -180,11 +214,11 @@ Same pattern as obs — loads demo images, writes extension compose file. (REQ-6
 
 **Build script**: `packaging/windows/build-installer-demo.ps1`
 
-### `provisa.ps1` changes
+### Container-tier CLI extension detection
 
-Same extension detection as ProvisaLauncher: enumerate
-`$env:USERPROFILE\.provisa\extensions\*/docker-compose.*.yml` and append to
-compose file list. (REQ-633)
+The container-tier CLI uses the same extension detection as ProvisaLauncher:
+enumerate `$env:USERPROFILE\.provisa\extensions\*/docker-compose.*.yml` and
+append to the compose file list. (REQ-633)
 
 ---
 
@@ -359,9 +393,9 @@ and the parallel CI jobs are shipped. (REQ-630, REQ-631, REQ-632, REQ-633)
 - **`build-dmg-demo.sh`** pulls demo images and builds the demo DMG.
 - **ProvisaLauncher** does extension detection in `ServiceStatus.swift` / compose assembly.
 - **`first-launch.sh` (macOS)** copies obs/demo configs without starting their services.
-- **`build-installer.ps1`** builds the Core installer (obs/demo images excluded).
-- **`build-installer-obs.ps1`** builds the Windows obs installer.
-- **`build-installer-demo.ps1`** builds the Windows demo installer.
-- **`provisa.ps1`** does extension detection.
+- **`build-sfx.ps1`** builds the native Core installer (embedded Python, no images).
+- **`build-installer-obs.ps1`** builds the Windows obs installer (container tier).
+- **`build-installer-demo.ps1`** builds the Windows demo installer (container tier).
+- **`provisa-native.ps1`** runs the native tier; the container-tier CLI does extension detection.
 - **`build-appimage.sh`** bundles core + obs images with always-on obs compose, no demo.
 - **CI workflow** runs three parallel build jobs per platform.

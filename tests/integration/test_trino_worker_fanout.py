@@ -33,10 +33,13 @@ import trino.dbapi
 pytestmark = [pytest.mark.integration]
 
 _REPO_ROOT = Path(__file__).parents[2]
+# Operate on the SAME isolated stack the integration lane provisions (conftest's
+# provisa-itest project on core+test compose) — TRINO_PORT points at THAT
+# coordinator, so the worker must be scaled within THAT project to register.
+_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", "provisa-itest")
 _COMPOSE_FILES = [
     _REPO_ROOT / "docker-compose.core.yml",
-    _REPO_ROOT / "docker-compose.observability.yml",
-    _REPO_ROOT / "docker-compose.dev.yml",
+    _REPO_ROOT / "docker-compose.test.yml",
 ]
 
 _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
@@ -44,7 +47,7 @@ _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))
 
 
 def _compose(*args: str) -> subprocess.CompletedProcess:
-    cmd = ["docker", "compose"]
+    cmd = ["docker", "compose", "-p", _ITEST_PROJECT]
     for f in _COMPOSE_FILES:
         cmd += ["-f", str(f)]
     cmd += list(args)
@@ -119,30 +122,11 @@ def test_distributed_query_fans_out_to_worker():
     execution mode). We then confirm via system.runtime.tasks that a task for
     this exact query ran on a non-coordinator node.
     """
-    conn = _new_conn()
-    try:
-        cur = conn.cursor()
-        # Force a hash-PARTITIONED join (not BROADCAST) so the small join is guaranteed to fan
-        # out across every node rather than collapsing onto the coordinator — otherwise the
-        # cost-based scheduler may keep a tiny join single-node, making the assertion flaky.
-        cur.execute("SET SESSION join_distribution_type = 'PARTITIONED'")
-        cur.fetchall()
-        cur.execute(
-            """
-            SELECT c.region, count(*)
-            FROM sales_pg.public.orders o
-            JOIN sales_pg.public.customers c ON o.customer_id = c.id
-            GROUP BY c.region
-            """
-        )
-        cur.fetchall()
-        query_id = cur.query_id
-        assert query_id, "no query_id returned by cursor"
 
-        # Task records persist for the info-expiry window after completion.
-        # Poll briefly to avoid any settling race.
-        worker_tasks = 0
-        deadline = time.monotonic() + 30
+    def _worker_tasks_for(conn, query_id: str) -> int:
+        # Task records persist for the info-expiry window after completion; poll briefly
+        # to absorb the settling race between query completion and task-stat visibility.
+        deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             probe = conn.cursor()
             probe.execute(
@@ -154,13 +138,46 @@ def test_distributed_query_fans_out_to_worker():
                 """,
                 params=(query_id,),
             )
-            worker_tasks = probe.fetchone()[0]
+            n = probe.fetchone()[0]
+            if n >= 1:
+                return n
+            time.sleep(2)
+        return 0
+
+    conn = _new_conn()
+    try:
+        cur = conn.cursor()
+        # Force a hash-PARTITIONED join (not BROADCAST) so the small join fans out across
+        # every node rather than collapsing onto the coordinator.
+        cur.execute("SET SESSION join_distribution_type = 'PARTITIONED'")
+        cur.fetchall()
+
+        # A single run can still land entirely on the coordinator (tiny inputs) or run
+        # before a freshly-scaled worker is schedulable. Re-run the whole query until one
+        # run demonstrably places a task on the worker — the property under test is "work
+        # CAN fan out", which one fan-out run proves; retrying removes the scheduler/warm-up
+        # race without weakening the assertion.
+        worker_tasks = 0
+        overall_deadline = time.monotonic() + 120
+        while time.monotonic() < overall_deadline:
+            cur.execute(
+                """
+                SELECT c.region, count(*)
+                FROM sales_pg.public.orders o
+                JOIN sales_pg.public.customers c ON o.customer_id = c.id
+                GROUP BY c.region
+                """
+            )
+            cur.fetchall()
+            query_id = cur.query_id
+            assert query_id, "no query_id returned by cursor"
+            worker_tasks = _worker_tasks_for(conn, query_id)
             if worker_tasks >= 1:
                 break
-            time.sleep(2)
+            time.sleep(3)
 
         assert worker_tasks >= 1, (
-            f"query {query_id} ran no tasks on any worker node — "
+            "no query run placed a task on any worker node within the deadline — "
             "work did not fan out to the coordinator/worker topology"
         )
     finally:

@@ -48,6 +48,7 @@ def _dumps(obj):
 
 
 HOT_PREFIX = "provisa:hot:"
+_HTTP_NOT_FOUND = 404
 
 
 def _sql_literal(val) -> str:
@@ -301,7 +302,8 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
                 spec_resp = await client.get(spec_url)
                 spec_resp.raise_for_status()
                 spec = spec_resp.json()
-        except Exception as _e:
+        except (httpx.HTTPError, OSError, ValueError) as _e:
+            # httpx.HTTPError: request/status failures; OSError: socket; ValueError: bad JSON.
             log.warning("OpenAPI spec fetch failed for %s: %s", table_name, _e)
             return 0
 
@@ -368,6 +370,38 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
     def get_entry(self, table_name: str) -> HotTableEntry | None:  # REQ-544
         """Get the hot table entry with metadata."""
         return self._hot_tables.get(table_name)
+
+    def snapshot(self) -> list[dict]:
+        """Admin view of the hot tier: loaded tables and not-yet-loaded candidates.
+
+        Each entry: table_name, catalog, schema, row_count, is_api, loaded.
+        """
+        out: list[dict] = []
+        for name, e in self._hot_tables.items():
+            out.append(
+                {
+                    "table_name": name,
+                    "catalog": e.catalog,
+                    "schema": e.schema,
+                    "row_count": len(e.rows),
+                    "is_api": e.is_api,
+                    "loaded": True,
+                }
+            )
+        for name, c in self._candidates.items():
+            if name in self._hot_tables:
+                continue
+            out.append(
+                {
+                    "table_name": name,
+                    "catalog": c.catalog,
+                    "schema": c.schema,
+                    "row_count": 0,
+                    "is_api": False,
+                    "loaded": False,
+                }
+            )
+        return out
 
     def register_candidate(self, candidate: HotTableCandidate) -> None:  # REQ-236, REQ-237
         """Register a table as an auto-promotion candidate."""
@@ -545,11 +579,12 @@ async def _openapi_list_rows(
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(url, params=query_params, headers=auth_headers)
-            if resp.status_code == 404:
+            if resp.status_code == _HTTP_NOT_FOUND:
                 return None
             resp.raise_for_status()
             data = resp.json()
-    except Exception as _e:
+    except (httpx.HTTPError, OSError, ValueError) as _e:
+        # httpx.HTTPError: request/status failures; OSError: socket; ValueError: bad JSON body.
         log.warning("OpenAPI list rows failed for %s: %s", url, _e)
         return None
 
@@ -582,6 +617,7 @@ async def detect_hot_tables_by_count(  # REQ-236
             continue
         try:
             count = await count_table_rows(engine, table_name, schema, catalog)
+        # complexity-gate: allow-ble=1 reason="Best-effort hot-table auto-detection over a pluggable engine backend (Trino/DuckDB/…) whose COUNT(*) failure taxonomy is unbounded — any failure just leaves this one table non-hot and is logged; it must not abort sizing of the remaining candidates."
         except Exception:
             log.debug("COUNT(*) failed for hot-detect of %s; leaving non-hot", table_name)
             continue
@@ -605,7 +641,7 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         redis_url = resolve_secrets(redis_url)
     # REQ-829: with cache enabled but no Redis URL, run hot tables on embedded
     # fakeredis (redis_url=None) so desktop exercises the same hot-cache path.
-    if not cache_config.get("enabled"):
+    if not cache_config.get("enabled", True):  # default on; set enabled: false to opt out
         return None
     redis_url = redis_url or None
 

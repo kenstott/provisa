@@ -1,0 +1,92 @@
+# Smoke test for the Windows container tier (REQ-889 / REQ-633).
+#
+# The risky, un-mockable part is the WSL *guest* logic: containerd + nerdctl-full
+# started WITHOUT systemd, then loading and running an image. That shell logic is
+# identical whether it runs inside a WSL2 distro or a plain Linux container, so we
+# exercise it on ubuntu-latest for a faithful, reliable check (nested-virt WSL2 on
+# hosted Windows runners is flaky and slow). A separate windows-latest job
+# parse-checks the PowerShell orchestration so syntax regressions are caught.
+name: windows-container-smoke
+
+on:
+  pull_request:
+    paths:
+      - 'packaging/windows/**'
+      - '.github/workflows/windows-container-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/windows/**'
+  workflow_dispatch:
+
+jobs:
+  # ── Guest logic: containerd without systemd + nerdctl load/run ───────────────
+  wsl-guest:
+    name: WSL guest scripts (containerd without systemd)
+    runs-on: ubuntu-latest
+    env:
+      NERDCTL_VERSION: '2.2.2'   # must match build-container.ps1 default
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download nerdctl-full (linux-amd64)
+        run: |
+          set -euo pipefail
+          archive="nerdctl-full-${NERDCTL_VERSION}-linux-amd64.tar.gz"
+          url="https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/${archive}"
+          curl -fsSL --retry 5 -o "/tmp/${archive}" "$url"
+          echo "ARCHIVE=/tmp/${archive}" >> "$GITHUB_ENV"
+
+      - name: Provision containerd + nerdctl
+        run: |
+          set -euo pipefail
+          sudo sh packaging/windows/wsl/provision-containerd.sh "$ARCHIVE"
+          test -x /usr/local/bin/nerdctl
+          test -x /usr/local/bin/containerd
+
+      - name: Start containerd (no systemd) and verify socket
+        run: |
+          set -euo pipefail
+          sudo sh packaging/windows/wsl/start-containerd.sh
+          # Socket must be live and nerdctl must talk to it.
+          sudo test -S /run/containerd/containerd.sock
+          sudo /usr/local/bin/nerdctl info >/dev/null
+
+      - name: Idempotent second start is a no-op
+        run: sudo sh packaging/windows/wsl/start-containerd.sh
+
+      - name: nerdctl load + run a saved image (mirrors install-container.ps1)
+        run: |
+          set -euo pipefail
+          # Produce a tarball the same way pull-images-core-amd64 does.
+          docker pull --platform linux/amd64 busybox:latest
+          docker save busybox:latest | gzip -9 > /tmp/busybox-latest.tar.gz
+          sudo /usr/local/bin/nerdctl load -i /tmp/busybox-latest.tar.gz
+          out="$(sudo /usr/local/bin/nerdctl run --rm --net none busybox:latest echo provisa-ok)"
+          echo "container output: $out"
+          test "$out" = "provisa-ok"
+
+  # ── PowerShell orchestration: parse-check all Windows tier scripts ───────────
+  powershell-parse:
+    name: Parse-check Windows PowerShell scripts
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse all packaging/windows *.ps1
+        shell: pwsh
+        run: |
+          $errors = @()
+          Get-ChildItem packaging/windows -Filter *.ps1 -Recurse | ForEach-Object {
+            $tokens = $null; $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors) {
+              foreach ($e in $parseErrors) { $errors += "$($_.Name): $($e.Message)" }
+            } else {
+              Write-Host "OK $($_.Name)"
+            }
+          }
+          if ($errors) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }

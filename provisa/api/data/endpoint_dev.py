@@ -55,6 +55,114 @@ def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, request_r
     return auth_role or x_provisa_role or request_role
 
 
+async def _compile_govern_execute(sql: str, role_id: str, state, *, discovery_mode: bool = False):
+    """Compile → govern → route → execute semantic SQL (REQ-264, REQ-266, REQ-267).
+
+    Shared by the /data/sql endpoint and the table-profile endpoint (view sampling),
+    so a __provisa__ view's semantic SQL is rewritten and routed the same way it is
+    when run interactively — never handed raw to the federation engine.
+
+    Returns (result, sources, default_source, decision, governed_physical).
+    """
+    import sqlglot
+    import sqlglot.errors
+
+    from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
+    from provisa.compiler.stage2 import (
+        apply_governance,
+        build_governance_context,
+        extract_sources,
+    )
+
+    if role_id not in state.schemas:
+        raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
+
+    role = state.roles.get(role_id)
+    _check_sql_capabilities(role, discovery_mode)
+
+    ctx = state.contexts[role_id]
+    rls = state.rls_contexts.get(role_id, RLSContext.empty())
+
+    # --- Step 1: Parse semantic SQL via SQLGlot (REQ-266) ---
+    # Strip provisa-params comment before SQLGlot (it strips comments); carry params forward.
+    raw_sql, embedded_params = extract_params_comment(sql)
+    raw_sql, _sql_opts_out = extract_relationship_guard_comment(raw_sql)
+
+    # Clients write semantic SQL (domain.field_name refs). Physical translation
+    # happens after routing — governance runs on semantic refs.
+    try:
+        sqlglot.parse_one(raw_sql, read="postgres")
+    except sqlglot.errors.SqlglotError as exc:
+        raise HTTPException(status_code=400, detail=f"SQL parse error: {exc}")
+
+    # --- Step 1b: Normalize table refs — qualify unique unquoted names ---
+    normalized_sql, parsed_tree = _normalize_sql_tree(raw_sql, ctx)
+
+    # --- Step 2: Build GovernanceContext — table_map includes semantic refs ---
+    gov_ctx = build_governance_context(
+        role_id,
+        rls,
+        state.masking_rules,
+        ctx,
+        getattr(state, "tables", []),
+        role=role,
+    )
+
+    raw_tables = getattr(state, "tables", [])
+
+    # In discovery mode, augment table_map with all tables from all contexts
+    if discovery_mode:
+        _augment_discovery_table_map(gov_ctx, state)
+
+    # --- Step 3: Validate SQL against role-scoped GraphQL-equivalent rules ---
+    violations = _validate_sql_governance(
+        normalized_sql,
+        parsed_tree,
+        ctx,
+        gov_ctx,
+        role,
+        raw_tables,
+        discovery_mode,
+        _sql_opts_out,
+        role_id,
+    )
+
+    if violations:
+        msgs = [f"[{v.code}] {v.message}" for v in violations]
+        log.warning("[SQL] role=%s violations: %s", role_id, msgs)
+        raise HTTPException(
+            status_code=403,
+            detail={"violations": [{"code": v.code, "message": v.message} for v in violations]},
+        )
+
+    # --- Step 4: Governance on normalized SQL ---
+    governed_semantic = apply_governance(normalized_sql, gov_ctx)
+
+    # --- Step 5: Routing decision (on governed semantic SQL) ---
+    sources = extract_sources(governed_semantic, gov_ctx, ctx)
+    default_source = _resolve_default_source(state)
+    decision = decide_route(
+        sources=sources or {default_source},
+        source_types=state.source_types,
+        source_dialects=state.source_dialects,
+        has_json_extract="->>" in governed_semantic,
+        source_dsns=getattr(state, "source_dsns", None),
+    )
+
+    # --- Step 6: governed_semantic is already physical after Step 1b normalization ---
+    governed_physical = governed_semantic
+
+    # --- Step 7: Execute ---
+    try:
+        result = await _dispatch_sql_execution(
+            governed_physical, sources, default_source, decision, ctx, state, embedded_params
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return result, sources, default_source, decision, governed_physical
+
+
 @router.get("/proto/{role_id}")
 async def proto_endpoint(role_id: str, domains: str = ""):  # REQ-525
     """Return the .proto file content for a role as text/plain.
@@ -216,97 +324,10 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
       4. Apply Stage 2 governance: RLS, masking, visibility, ceiling.
       5. Route and execute the governed SQL.
     """
-    import sqlglot
-
     from provisa.api.app import state
     from provisa.api.data.endpoint_helpers import _parse_accept, _format_response
-    from provisa.compiler.stage2 import (
-        apply_governance,
-        build_governance_context,
-        extract_sources,
-    )
 
     role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
-
-    if role_id not in state.schemas:
-        raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
-
-    role = state.roles.get(role_id)
-    _check_sql_capabilities(role, request.discovery_mode)
-
-    ctx = state.contexts[role_id]
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())
-
-    # --- Step 1: Parse semantic SQL via SQLGlot (REQ-266) ---
-    # Strip provisa-params comment before SQLGlot (it strips comments); carry params forward.
-    from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
-
-    raw_sql, embedded_params = extract_params_comment(request.sql)
-    raw_sql, _sql_opts_out = extract_relationship_guard_comment(raw_sql)
-
-    # Clients write semantic SQL (domain.field_name refs). Physical translation
-    # happens after routing — governance runs on semantic refs.
-    try:
-        sqlglot.parse_one(raw_sql, read="postgres")
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"SQL parse error: {exc}")
-
-    # --- Step 1b: Normalize table refs — qualify unique unquoted names ---
-    normalized_sql, parsed_tree = _normalize_sql_tree(raw_sql, ctx)
-
-    # --- Step 2: Build GovernanceContext — table_map includes semantic refs ---
-    gov_ctx = build_governance_context(
-        role_id,
-        rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=state.roles.get(role_id),
-    )
-
-    raw_tables = getattr(state, "tables", [])
-
-    # In discovery mode, augment table_map with all tables from all contexts
-    if request.discovery_mode:
-        _augment_discovery_table_map(gov_ctx, state)
-
-    # --- Step 3: Validate SQL against role-scoped GraphQL-equivalent rules ---
-    violations = _validate_sql_governance(
-        normalized_sql,
-        parsed_tree,
-        ctx,
-        gov_ctx,
-        role,
-        raw_tables,
-        request.discovery_mode,
-        _sql_opts_out,
-        role_id,
-    )
-
-    if violations:
-        msgs = [f"[{v.code}] {v.message}" for v in violations]
-        log.warning("[SQL] role=%s violations: %s", role_id, msgs)
-        raise HTTPException(
-            status_code=403,
-            detail={"violations": [{"code": v.code, "message": v.message} for v in violations]},
-        )
-
-    # --- Step 4: Governance on normalized SQL ---
-    governed_semantic = apply_governance(normalized_sql, gov_ctx)
-
-    # --- Step 5: Routing decision (on governed semantic SQL) ---
-    sources = extract_sources(governed_semantic, gov_ctx, ctx)
-    _default_source = _resolve_default_source(state)
-    decision = decide_route(
-        sources=sources or {_default_source},
-        source_types=state.source_types,
-        source_dialects=state.source_dialects,
-        has_json_extract="->>" in governed_semantic,
-        source_dsns=getattr(state, "source_dsns", None),
-    )
-
-    # --- Step 6: governed_semantic is already physical after Step 1b normalization ---
-    governed_physical = governed_semantic
     output_format = _parse_accept(accept)
     stats_enabled = (x_provisa_stats or "").lower() == "true"
 
@@ -317,13 +338,9 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         _qs_mod.begin()
     _t0 = _time.perf_counter()
 
-    # --- Step 7: Execute ---
-    try:
-        result = await _dispatch_sql_execution(
-            governed_physical, sources, _default_source, decision, ctx, state, embedded_params
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    result, sources, _default_source, decision, governed_physical = await _compile_govern_execute(
+        request.sql, role_id, state, discovery_mode=request.discovery_mode
+    )
 
     rows_as_dicts = [dict(zip(result.column_names, row)) for row in result.rows]
     if stats_enabled:

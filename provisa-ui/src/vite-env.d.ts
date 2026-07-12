@@ -30,6 +30,9 @@ declare module '*.graphql' {
   export const CompileQuery: DocumentNode;
   export const MVList: DocumentNode;
   export const CacheStats: DocumentNode;
+  export const CacheTableStats: DocumentNode;
+  export const HotTables: DocumentNode;
+  export const MaterializeStoreInfo: DocumentNode;
   export const SystemHealth: DocumentNode;
   export const ScheduledTasks: DocumentNode;
   export const CreateDomain: DocumentNode;
@@ -86,6 +89,9 @@ declare module '*.gql' {
   export const CompileQuery: DocumentNode;
   export const MVList: DocumentNode;
   export const CacheStats: DocumentNode;
+  export const CacheTableStats: DocumentNode;
+  export const HotTables: DocumentNode;
+  export const MaterializeStoreInfo: DocumentNode;
   export const SystemHealth: DocumentNode;
   export const ScheduledTasks: DocumentNode;
   export const CreateDomain: DocumentNode;

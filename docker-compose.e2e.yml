@@ -13,8 +13,12 @@ services:
     hostname: kafka
     restart: unless-stopped
     image: confluentinc/cp-kafka:7.6.0
+    # HOST listener is published on the same ephemeral port on both sides so the
+    # advertised address (localhost:${KAFKA_HOST_PORT}) that the broker hands back
+    # to host producers matches the reachable host port. Internal traffic
+    # (Trino → kafka:29092) is unaffected.
     ports:
-      - "9092:9092"
+      - "${KAFKA_HOST_PORT:-9092}:${KAFKA_HOST_PORT:-9092}"
     networks:
       default:
         aliases:
@@ -22,8 +26,8 @@ services:
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,HOST://localhost:9092
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,HOST://localhost:${KAFKA_HOST_PORT:-9092}"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,HOST://0.0.0.0:${KAFKA_HOST_PORT:-9092}"
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
@@ -34,7 +38,7 @@ services:
     volumes:
       - kafka_e2e_data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:${KAFKA_HOST_PORT:-9092} || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 42

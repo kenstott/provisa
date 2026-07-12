@@ -283,11 +283,9 @@ function App() {
                   {[
                     "/admin/overview",
                     "/admin/domains",
-                    "/admin/materialized-views",
                     "/admin/cache",
                     "/admin/scheduled-tasks",
                     "/admin/federation-engine",
-                    "/admin/cache-storage",
                     "/admin/encryption",
                     "/admin/auth",
                     "/admin/system-health",

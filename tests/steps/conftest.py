@@ -12,32 +12,9 @@
 
 Applies the ``bdd`` marker to every pytest-bdd scenario collected from
 ``steps_*.py`` modules so that ``-m bdd`` selects them.
-
-Also re-exports all pytest-bdd step fixtures from generated_stubs so that
-every steps_*.py module can resolve stub steps without importing generated_stubs
-directly.  pytest-bdd v8 registers step decorators as fixtures in the *calling
-module's* local namespace; copying those fixture objects into this conftest's
-namespace makes them available to every test in the directory via normal
-pytest fixture discovery.
 """
 
 import pytest
-
-# Import stubs first so the @given/@when/@then decorators run and populate
-# generated_stubs.__dict__ with fixture objects.
-import tests.steps.generated_stubs as _stubs  # noqa: F401  # type: ignore[import]
-
-# Re-export every pytest fixture defined in generated_stubs into this
-# conftest's global namespace.  pytest scans conftest.__dict__ for FixtureDef
-# objects, so placing them here makes them available to all tests in the
-# tests/steps/ directory tree without requiring each steps_*.py to import
-# generated_stubs individually.
-import _pytest.fixtures as _pf
-
-_g = globals()
-for _name, _obj in vars(_stubs).items():
-    if isinstance(_obj, _pf.FixtureFunctionDefinition):
-        _g[_name] = _obj
 
 
 def pytest_collection_modifyitems(items: list) -> None:

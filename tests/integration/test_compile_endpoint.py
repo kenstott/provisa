@@ -23,12 +23,12 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 _COMPILE_MUTATION = """
 mutation CompileQuery($input: CompileQueryInput!) {
   compileQuery(input: $input) {
-    sql semanticSql trinoSql directSql route routeReason sources
+    sql semanticSql engineSql directSql route routeReason sources
     rootField canonicalField compiledCypher optimizations warnings
     columnAliases { fieldName column }
     enforcement {

@@ -15,7 +15,10 @@ import os
 import sqlite3
 import time
 
-import asyncpg
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 from provisa.file_source.source import _sqlite_type_to_sql
 
@@ -75,7 +78,7 @@ def sqlite_column_types(source_path: str, sqlite_table: str) -> dict[str, str]: 
 async def migrate_sqlite_table(  # REQ-012, REQ-017, REQ-250
     source_path: str,
     sqlite_table: str,
-    pg_conn: asyncpg.Connection,
+    pg_conn: "Connection",
     pg_schema: str,
     pg_table: str,
 ) -> int:
@@ -135,7 +138,7 @@ async def migrate_sqlite_table(  # REQ-012, REQ-017, REQ-250
         sq.close()
 
 
-async def record_mtime(table_id: int, source_path: str, pg_conn: asyncpg.Connection) -> None:
+async def record_mtime(table_id: int, source_path: str, pg_conn: "Connection") -> None:
     """Record the current file mtime for table_id in file_source_mtimes."""
     mtime = os.path.getmtime(source_path)
     await pg_conn.execute(
@@ -152,7 +155,7 @@ async def migrate_if_stale(  # REQ-012
     table_id: int,
     source_path: str,
     sqlite_table: str,
-    pg_conn: asyncpg.Connection,
+    pg_conn: "Connection",
     pg_schema: str,
     pg_table: str,
 ) -> bool:

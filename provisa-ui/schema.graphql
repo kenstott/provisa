@@ -14,6 +14,9 @@ type Query {
   availableColumnsMetadata(sourceId: String!, schemaName: String!, tableName: String!): [AvailableColumnType!]!
   mvList: [MVType!]!
   cacheStats: CacheStatsType!
+  cacheTableStats: [CacheTableStatType!]!
+  hotTables: [HotTableStatType!]!
+  materializeStoreInfo: MaterializeStoreInfoType!
   systemHealth: SystemHealthType!
   scheduledTasks: [ScheduledTaskType!]!
   generateTableDescription(tableId: String!): String!
@@ -157,6 +160,32 @@ type CacheStatsType {
   hitCount: Int!
   missCount: Int!
   storeType: String!
+  usedMemoryBytes: Int
+  maxMemoryBytes: Int
+  evictedKeys: Int
+  expiredKeys: Int
+  connectedClients: Int
+  opsPerSec: Int
+}
+
+type CacheTableStatType {
+  tableId: Int!
+  cachedEntries: Int!
+}
+
+type HotTableStatType {
+  tableName: String!
+  catalog: String!
+  schemaName: String!
+  rowCount: Int!
+  isApi: Boolean!
+  loaded: Boolean!
+}
+
+type MaterializeStoreInfoType {
+  engineName: String!
+  storeRef: String!
+  mvCount: Int!
 }
 
 type SystemHealthType {

@@ -27,6 +27,23 @@ from pathlib import Path
 
 import yaml
 
+# The in-process app runs on the HOST and reaches the dev-stack MinIO/S3 (otel
+# Iceberg catalog + Parquet results) over the published localhost port; the config
+# default `http://minio:9000` is a docker-internal name that does not resolve from
+# the host, so app startup fails with a boto3 NameResolutionError that cascades to
+# a tenant_db assertion. Trino, on the compose network, still reaches the bucket by
+# service name. Set here (imported at collection by the integration/e2e conftests,
+# before any app starts) with setdefault so an explicit outer value — or the e2e
+# lane's own ephemeral endpoint — still wins.
+os.environ.setdefault("PROVISA_OTEL_S3_ENDPOINT", "http://localhost:9000")
+
+# The cross-engine PG governance-parity test (test_governance_parity_e2e) skips
+# unless PROVISA_PG_STACK=1. The dev-stack Postgres it needs is always up in the
+# test environment and the test self-provisions its own parity_e2e schema, so opt
+# in by default — a real Postgres leg, not a silent skip. setdefault lets an outer
+# value override.
+os.environ.setdefault("PROVISA_PG_STACK", "1")
+
 
 def pin_no_auth_config(tmp_dir: Path) -> Iterator[None]:
     src = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")

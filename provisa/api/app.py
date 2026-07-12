@@ -349,7 +349,10 @@ async def _load_and_build(
     state.apq_ttl = int(
         os.environ.get("PROVISA_APQ_TTL") or raw_config.get("apq", {}).get("ttl") or 86400
     )
-    if cache_config.get("enabled"):
+    # Default enabled=True: a store always exists — RedisCacheStore(None) falls back to
+    # embedded fakeredis when no Redis URL is set, so there is never a "no cache" state.
+    # Set cache.enabled: false explicitly to opt into the NoopCacheStore.
+    if cache_config.get("enabled", True):
         # REQ-829: RedisCacheStore(None) transparently uses embedded fakeredis, so
         # desktop exercises the same result-cache code path as production.
         state.response_cache_store = RedisCacheStore(state.redis_url)
@@ -674,25 +677,21 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
             await state._mv_refresh_task
         except asyncio.CancelledError:
             pass
+    from provisa.api.startup_resilience import tolerate_shutdown_failure
+
     # Stop Live Query Engine (Phase AM)
     if state.live_engine is not None:
-        try:
+        with tolerate_shutdown_failure("live query engine stop"):
             await state.live_engine.stop()
-        except Exception:
-            pass
 
     # Close APQ cache (Phase AN)
-    try:
+    with tolerate_shutdown_failure("APQ cache close"):
         await state.apq_cache.close()
-    except Exception:
-        pass
 
     # Stop scheduler (Phase AX)
     if state._scheduler is not None:
-        try:
+        with tolerate_shutdown_failure("scheduler shutdown"):
             state._scheduler.shutdown(wait=False)
-        except Exception:
-            pass
 
     _shutdown_otel()
 
@@ -782,7 +781,10 @@ def create_app() -> FastAPI:
                         _span = _trace.get_current_span()
                         if _span.is_recording():
                             _span.set_attribute("tenant_id", tenant_id)
-                    except Exception:
+                    except (ImportError, AttributeError):
+                        # Best-effort span decoration: tolerate an absent OTel install or a
+                        # no-op shim span that lacks is_recording/set_attribute. Never break
+                        # request handling for a telemetry tag.
                         pass
                 return response
 
@@ -951,7 +953,7 @@ def create_app() -> FastAPI:
                 async with state.tenant_db.acquire() as conn:
                     await conn.fetchval("SELECT 1")
                 pg_status = "ok"
-            except Exception:
+            except (asyncpg.PostgresError, asyncpg.InterfaceError, OSError, asyncio.TimeoutError):
                 pg_status = "unavailable"
         return {
             "status": "ok",

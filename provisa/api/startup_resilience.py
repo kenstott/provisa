@@ -44,3 +44,19 @@ def tolerate_startup_failure(what: str, *, exc_info: bool = False):
             log.warning("[startup] %s failed — skipped", what, exc_info=True)
         else:
             log.warning("[startup] %s failed — skipped: %s", what, exc)
+
+
+@contextmanager
+def tolerate_shutdown_failure(what: str):
+    """Log-and-skip any failure tearing down one subsystem during shutdown.
+
+    The mirror of :func:`tolerate_startup_failure` for the teardown path: closing a
+    pool, stopping the live engine, or shutting the scheduler can fail on an
+    already-broken resource, but one failure must not abort the rest of shutdown.
+    ``what`` describes the subsystem so the skip is diagnosable.
+    """
+    try:
+        yield
+    # complexity-gate: allow-ble=2 reason="THE one sanctioned shutdown-resilience boundary: tearing down one subsystem (live engine / APQ cache / scheduler) failing on an already-broken resource must not abort the remaining shutdown steps — it is logged and skipped. Mirrors tolerate_startup_failure for the teardown path so scattered shutdown try/excepts funnel through here instead of swallowing broadly in place. File ceiling is 2: this boundary plus tolerate_startup_failure above."
+    except Exception as exc:
+        log.warning("[shutdown] %s failed — skipped: %s", what, exc)

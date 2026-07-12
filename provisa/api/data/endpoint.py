@@ -450,7 +450,11 @@ async def _prepare_compiled(
         from provisa.auth.approval_hook import ApprovalRequest, should_check
         from provisa.compiler.rls import _inject_where
 
-        table_ids = {m.table_id for m in ctx.tables.values() if m.field_name == compiled.root_field}
+        # Resolve the root table by its ctx.tables key. canonical_field is the pre-alias schema
+        # field; variant keys (…GroupBy/…_aggregate) are registered too. root_field/root_field
+        # alias would miss because meta.field_name is always the base field.
+        _root_meta = ctx.tables.get(compiled.canonical_field or compiled.root_field)
+        table_ids = {_root_meta.table_id} if _root_meta is not None else set()
         if should_check(
             list(table_ids),
             list(original_sources),
@@ -685,7 +689,7 @@ async def _execute_one_field(
             )
             return root_field, None, redirect_info, ck, None
         except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Redirect upload failed: {e}")
+            raise HTTPException(status_code=502, detail=f"Redirect upload failed: {e}") from e
 
     return await _exec_inline_result(
         compiled,

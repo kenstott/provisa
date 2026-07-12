@@ -409,7 +409,7 @@ def _append_mermaid(
 ):
     """Build and append a Mermaid diagram for the standard query path to qs."""
     _st = getattr(ctx, "source_types", None) or {}
-    _root_meta2 = ctx.tables.get(root_field)
+    _root_meta2 = ctx.tables.get(compiled.canonical_field or root_field)
     _root_src_id = _root_meta2.source_id if _root_meta2 else None
     _jf2: list[tuple[str, str, bool]] = []
     _hch = hydration_cache_hits or set()

@@ -13,18 +13,22 @@
 Requires MinIO running in Docker Compose (port 9000).
 """
 
+import os
+
 import pytest
 
 from provisa.executor.redirect import RedirectConfig, upload_and_presign
 from provisa.executor.result import QueryResult
 
-pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 MINIO_CONFIG = RedirectConfig(
     enabled=True,
     threshold=0,
     bucket="provisa-test-results",
-    endpoint_url="http://localhost:9000",
+    # Isolated MinIO on an ephemeral host port (MINIO_ENDPOINT, exported by the
+    # docker service manager); falls back to the compose default.
+    endpoint_url=f"http://{os.environ.get('MINIO_ENDPOINT', 'localhost:9000')}",
     access_key="minioadmin",
     secret_key="minioadmin",
     ttl=300,

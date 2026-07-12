@@ -40,7 +40,10 @@ from provisa.api.admin.types import (
     AvailableColumnType,
     AvailableTableType,
     CacheStatsType,
+    CacheTableStatType,
     DomainType,
+    HotTableStatType,
+    MaterializeStoreInfoType,
     MVType,
     RegisteredTableType,
     RelationshipType,
@@ -588,15 +591,73 @@ class Query:  # REQ-021, REQ-042
         store = state.response_cache_store
         if isinstance(store, RedisCacheStore):
             with discovery_fallback("redis cache stats"):
+                # Lazily connect: _redis is None until the first cache op, so a fresh
+                # zero-traffic instance would otherwise mislabel a live store as "noop".
+                await store._connect()
                 assert store._redis is not None
-                info = await store._redis.info("stats")
+                total_keys = await store._redis.dbsize()
+                # Embedded fakeredis (REQ-829) has no INFO command — report the keys it
+                # can and label it "memory" so the UI shows it as an enabled store, not "noop".
+                if type(store._redis).__module__.startswith("fakeredis"):
+                    return CacheStatsType(
+                        total_keys=total_keys, hit_count=0, miss_count=0, store_type="memory"
+                    )
+                # Default INFO covers the memory, clients, and stats sections in one round-trip.
+                info = await store._redis.info()
                 return CacheStatsType(
-                    total_keys=await store._redis.dbsize(),
+                    total_keys=total_keys,
                     hit_count=info.get("keyspace_hits", 0),
                     miss_count=info.get("keyspace_misses", 0),
                     store_type="redis",
+                    used_memory_bytes=info.get("used_memory"),
+                    # Redis reports maxmemory=0 when unbounded; surface that as "no cap" (None).
+                    max_memory_bytes=info.get("maxmemory") or None,
+                    evicted_keys=info.get("evicted_keys"),
+                    expired_keys=info.get("expired_keys"),
+                    connected_clients=info.get("connected_clients"),
+                    ops_per_sec=info.get("instantaneous_ops_per_sec"),
                 )
         return CacheStatsType(total_keys=0, hit_count=0, miss_count=0, store_type="noop")
+
+    @strawberry.field
+    async def cache_table_stats(self) -> list[CacheTableStatType]:
+        """Per-table cached-entry counts (empty when no cache store is configured)."""
+        from provisa.api.app import state
+
+        counts = await state.response_cache_store.table_entry_counts()
+        return [CacheTableStatType(table_id=tid, cached_entries=n) for tid, n in counts.items()]
+
+    @strawberry.field
+    async def hot_tables(self) -> list[HotTableStatType]:
+        """Hot-tier lookup tables mirrored into Redis/fakeredis for JOIN inlining."""
+        from provisa.api.app import state
+
+        mgr = getattr(state, "hot_manager", None)
+        if mgr is None:
+            return []
+        return [
+            HotTableStatType(
+                table_name=e["table_name"],
+                catalog=e["catalog"],
+                schema_name=e["schema"],
+                row_count=e["row_count"],
+                is_api=e["is_api"],
+                loaded=e["loaded"],
+            )
+            for e in mgr.snapshot()
+        ]
+
+    @strawberry.field
+    async def materialize_store_info(self) -> MaterializeStoreInfoType:
+        """Identity of the durable materialization store (landed sources + MV cache)."""
+        from provisa.api.app import state
+
+        engine = state.federation_engine
+        return MaterializeStoreInfoType(
+            engine_name=engine.name,
+            store_ref=engine.materialize_store(),
+            mv_count=len(state.mv_registry._mvs),
+        )
 
     # ── Admin: System Health ──
 

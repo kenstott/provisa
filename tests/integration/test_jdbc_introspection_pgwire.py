@@ -33,7 +33,12 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = [pytest.mark.integration]
+# `isolated`: pgjdbc runs in a jpype JVM, which is process-global and cannot be
+# restarted with a new classpath. Another jpype test (e.g. govdata) starting the
+# JVM first with a different classpath makes pgjdbc classes unresolvable here.
+# Deselected from the default lane and run in its own pytest process by
+# scripts/test-all so the JVM is always fresh for this module.
+pytestmark = [pytest.mark.integration, pytest.mark.isolated]
 
 jpype = pytest.importorskip("jpype", reason="jpype required to drive the real pgjdbc driver")
 
@@ -57,7 +62,7 @@ def _ensure_pgjdbc_jar() -> str:
     return str(_JAR_PATH)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def jvm():
     """Start the JVM once with pgjdbc on the classpath. jpype cannot restart a JVM,
     so this is session-scoped and never shut down within the run."""
@@ -78,7 +83,7 @@ def _connect(port: int):
     return DriverManager.getConnection(url, props)
 
 
-def test_jdbc_getTables_lists_governed_table(jvm, pgwire_pg_backend):
+def test_jdbc_getTables_lists_governed_table(pgwire_pg_backend):
     """DatabaseMetaData.getTables — the first call DataGrip/DBeaver make per schema."""
     be = pgwire_pg_backend
     conn = _connect(be["port"])
@@ -94,7 +99,7 @@ def test_jdbc_getTables_lists_governed_table(jvm, pgwire_pg_backend):
     assert be["table"] in found
 
 
-def test_jdbc_getColumns_reports_column_types(jvm, pgwire_pg_backend):
+def test_jdbc_getColumns_reports_column_types(pgwire_pg_backend):
     """DatabaseMetaData.getColumns — drives the ER-diagram / column-tree introspection."""
     be = pgwire_pg_backend
     conn = _connect(be["port"])
@@ -114,7 +119,7 @@ def test_jdbc_getColumns_reports_column_types(jvm, pgwire_pg_backend):
     assert all(cols[c] for c in ("id", "amount", "region"))
 
 
-def test_jdbc_query_returns_real_rows(jvm, pgwire_pg_backend):
+def test_jdbc_query_returns_real_rows(pgwire_pg_backend):
     """A real pgjdbc extended-protocol query reads the real rows through the DIRECT pipeline."""
     be = pgwire_pg_backend
     conn = _connect(be["port"])

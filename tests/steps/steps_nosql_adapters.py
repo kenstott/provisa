@@ -14,11 +14,73 @@ from __future__ import annotations
 
 import asyncio
 import os
+import socket
+import subprocess
+import time
 
 import pytest
 from pytest_bdd import given, scenario, then, when
 
 pytestmark = [pytest.mark.integration]
+
+# A FULLY ISOLATED container name so the fixture never touches the dev stack, the
+# shared provisa-test project, or the provisa_default network.
+_MONGO_CONTAINER = "provisa-bdd-nosql-mongo"
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _mongodb_service():
+    """Provision an ISOLATED MongoDB for the REQ-738 scenario and reap it after.
+
+    Tests own their services and must not impact local dev: a dedicated container
+    on an ephemeral host port, its own default network, no compose project — spun
+    up here and removed after (PYTEST_DOCKER_KEEP=1 keeps it). The scenario seeds
+    its own documents, so no init volume is needed.
+    """
+    subprocess.run(["docker", "rm", "-f", _MONGO_CONTAINER], capture_output=True, check=False)
+    port = _free_port()
+    subprocess.run(
+        ["docker", "run", "-d", "--name", _MONGO_CONTAINER, "-p", f"{port}:27017", "mongo:7"],
+        check=True,
+        capture_output=True,
+    )
+    try:
+        # Block until the client can ping (container up + mongod accepting).
+        deadline = time.monotonic() + 60
+        while True:
+            probe = subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    _MONGO_CONTAINER,
+                    "mongosh",
+                    "--quiet",
+                    "--eval",
+                    "db.adminCommand('ping').ok",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if probe.returncode == 0 and "1" in probe.stdout:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError(f"isolated MongoDB did not become ready: {probe.stderr}")
+            time.sleep(1)
+        os.environ["MONGO_HOST"] = "localhost"
+        os.environ["MONGO_PORT"] = str(port)
+        yield {"host": "localhost", "port": port}
+    finally:
+        os.environ.pop("MONGO_PORT", None)
+        if not os.environ.get("PYTEST_DOCKER_KEEP"):
+            subprocess.run(
+                ["docker", "rm", "-f", _MONGO_CONTAINER], capture_output=True, check=False
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -51,10 +113,7 @@ def test_req_738_default():
 
 @given("a running MongoDB service with seeded test documents")
 def given_running_mongodb_with_seeded_docs(shared_data):
-    """Connect to a live MongoDB service and seed test documents."""
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
-
+    """Connect to the docker-provisioned MongoDB (_mongodb_service) and seed docs."""
     # A motor AsyncIOMotorClient binds to the event loop it is created in, so it
     # cannot be shared across the separate asyncio.run() loops of the
     # given/when/then steps. Each step creates and closes its own client; only
@@ -74,11 +133,7 @@ def given_running_mongodb_with_seeded_docs(shared_data):
             serverSelectionTimeoutMS=3000,
         )
         try:
-            try:
-                await client.admin.command("ping")
-            except Exception as exc:  # noqa: BLE001
-                pytest.skip(f"MongoDB not reachable: {exc}")
-
+            await client.admin.command("ping")
             col = client[db_name][col_name]
             await col.delete_many({})
             await col.insert_many(
@@ -99,9 +154,6 @@ def given_running_mongodb_with_seeded_docs(shared_data):
 @when("the adapter queries the collection with filter criteria")
 def when_adapter_queries_collection(shared_data):
     """Execute the filtered query via a fresh motor async client."""
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
-
     conn = shared_data["mongo_conn"]
     criteria = shared_data["filter_criteria"]
 
@@ -124,9 +176,6 @@ def when_adapter_queries_collection(shared_data):
 @then("documents matching the filter are returned")
 def then_documents_matching_filter_returned(shared_data):
     """Assert that only documents satisfying the filter criteria are present."""
-    if not os.getenv("PROVISA_INTEGRATION"):
-        pytest.skip("integration only")
-
     docs = shared_data.get("query_result", [])
 
     assert len(docs) == 2, f"Expected 2 documents matching qty > 5, got {len(docs)}: {docs}"

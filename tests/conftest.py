@@ -36,12 +36,51 @@ os.environ.setdefault(
 
 _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 _CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
-_OBS_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.observability.yml")
-_DEV_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.dev.yml")
-# Test-only services live in their own compose project so they can be started
-# and torn down independently of the dev stack (see docker-compose.test.yml).
 _TEST_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.test.yml")
-_TEST_PROJECT = "provisa-test"
+
+
+def _install_subprocess_coverage_pth() -> None:
+    """Drop a .pth in site-packages that fires coverage.process_startup() at every
+    interpreter start. Combined with COVERAGE_PROCESS_START (set by the server-
+    spawning helpers only under a coverage run), it makes spawned server subprocesses
+    measure their own line coverage into a parallel .coverage.* that combine merges —
+    so out-of-process Bolt/Flight/gRPC/pgwire/governed-pipeline code is counted.
+    process_startup() is a no-op unless COVERAGE_PROCESS_START is set, so the .pth is
+    inert for ordinary (non-coverage) runs."""
+    try:
+        import sysconfig
+
+        site_dir = sysconfig.get_paths()["purelib"]
+        pth = os.path.join(site_dir, "provisa_subprocess_coverage.pth")
+        if not os.path.exists(pth):
+            with open(pth, "w", encoding="utf-8") as f:
+                f.write("import coverage; coverage.process_startup()\n")
+    except OSError:
+        pass  # read-only site-packages (e.g. CI wheel cache) — subprocess cov just off
+
+
+_install_subprocess_coverage_pth()
+
+
+def _server_coverage_env() -> dict:
+    """COVERAGE_PROCESS_START for a spawned server subprocess, but only when the
+    parent runs under coverage (else the subprocess would needlessly self-measure)."""
+    try:
+        import coverage
+
+        if coverage.Coverage.current() is None:
+            return {}
+    except Exception:
+        return {}
+    return {"COVERAGE_PROCESS_START": os.path.abspath(os.path.join(_REPO_ROOT, "pyproject.toml"))}
+
+# The integration tier provisions its OWN isolated stack — a dedicated compose
+# project on ephemeral host ports, its own network — so it NEVER touches the local
+# dev stack (the `provisa` project on default ports 5432/8080/9000/…). Core and
+# marker services share this one project's default network, so Trino reaches
+# kafka/mongo/etc. by service name without any external (dev) network.
+_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", "provisa-itest")
+_ITEST_COMPOSE_ARGS = ["-p", _ITEST_PROJECT, "-f", _CORE_COMPOSE, "-f", _TEST_COMPOSE]
 
 _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_kafka": ["kafka", "schema-registry"],
@@ -50,17 +89,77 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_elasticsearch": ["elasticsearch"],
     "requires_neo4j": ["neo4j"],
     "requires_sparql": ["fuseki"],
+    "requires_prometheus": ["prometheus"],
 }
-# Shared services provided by the dev stack (never torn down by the test run).
-# zaychik is the Arrow Flight terminal (:8480) the in-process app connects to for Flight/CTAS
+# zaychik is the Arrow Flight terminal the in-process app connects to for Flight/CTAS
 # redirects; without it Flight-dependent integration tests fail with connection-refused.
 _CORE_SERVICES = ["postgres", "trino", "redis", "pgbouncer", "minio", "zaychik"]
-# Kafka/Schema-Registry/Debezium are core: Trino's kafka catalog and the app's
-# CDC path reach them by service name on the dev network, so they come up with
-# the dev stack (via --profile test), not the isolated test project. debezium is
-# the sole exception: it is a core service but reaches the (test-project) kafka
-# by its shared-network alias.
-_DEV_TEST_PROFILE_SERVICES = {"debezium-connect"}
+
+# Host-published services whose ephemeral port the in-process app / test clients
+# read from these env vars. compose interpolates the same ${VAR} at `up` time.
+_ITEST_PORT_ENV = [
+    "PG_PORT",
+    "TRINO_PORT",
+    "REDIS_PORT",
+    "MINIO_PORT",
+    "MINIO_CONSOLE_PORT",
+    "ZAYCHIK_PORT",
+    "MONGO_PORT",
+    "NEO4J_HTTP_PORT",
+    "NEO4J_BOLT_PORT",
+    "KAFKA_HOST_PORT",
+    "ELASTICSEARCH_PORT",
+    "FUSEKI_PORT",
+    "SCHEMA_REGISTRY_PORT",
+    "DEBEZIUM_PORT",
+]
+
+
+def _reserve_free_ports(n: int) -> list[int]:
+    """Return n DISTINCT free TCP ports (sockets held open together so the kernel
+    hands out a different port for each)."""
+    socks: list[socket.socket] = []
+    try:
+        for _ in range(n):
+            s = socket.socket()
+            s.bind(("127.0.0.1", 0))
+            socks.append(s)
+        return [s.getsockname()[1] for s in socks]
+    finally:
+        for s in socks:
+            s.close()
+
+
+def _allocate_itest_ports() -> None:
+    """Assign every isolated-stack host port to a fresh ephemeral port and export the
+    URL-shaped env the in-process app reads, so the app never hits the dev stack."""
+    for name, port in zip(_ITEST_PORT_ENV, _reserve_free_ports(len(_ITEST_PORT_ENV))):
+        os.environ[name] = str(port)
+    # The isolated postgres is provisa/provisa/provisa by construction (see
+    # docker-compose.core.yml POSTGRES_*). Export the full credential env — not just
+    # the port — so in-process config loads that resolve ${env:PG_PASSWORD} (e.g.
+    # sample_config.yaml) succeed without a fixed fallback in the config itself.
+    os.environ.setdefault("PG_HOST", "localhost")
+    os.environ.setdefault("PG_USER", "provisa")
+    os.environ.setdefault("PG_PASSWORD", "provisa")
+    os.environ.setdefault("PG_DATABASE", "provisa")
+    os.environ["REDIS_URL"] = f"redis://localhost:{os.environ['REDIS_PORT']}/0"
+    _minio = f"localhost:{os.environ['MINIO_PORT']}"
+    os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://{_minio}"
+    os.environ["MINIO_ENDPOINT"] = _minio  # host-side minio clients (e.g. infra bdd)
+    # Host-side kafka clients read these; point them at the isolated broker's port.
+    _kafka = f"localhost:{os.environ['KAFKA_HOST_PORT']}"
+    os.environ["KAFKA_BOOTSTRAP"] = _kafka
+    os.environ["KAFKA_BOOTSTRAP_SERVERS"] = _kafka
+
+
+# Allocate + export the isolated-stack ports at IMPORT time — before any test module
+# is collected, so module-level constants like `REDIS_URL = os.environ.get(...)` and
+# the in-process apps capture the ephemeral ports rather than the dev defaults. The
+# stack itself is only provisioned when the run actually contains integration tests
+# (pytest_collection_finish); an external stack keeps whatever it published.
+if not os.environ.get("PYTEST_NO_DOCKER") and not os.environ.get("PROVISA_E2E_EXTERNAL_STACK"):
+    _allocate_itest_ports()
 
 
 class _DockerServiceManager:
@@ -71,124 +170,35 @@ class _DockerServiceManager:
         if not integration:
             return
 
-        # Partition the services the run needs into dev-stack (shared network)
-        # and isolated test-project services.
-        marker_services: set[str] = set()
+        # Which marker services this run needs (kafka/mongo/neo4j/…). schema-registry
+        # and debezium ride along with kafka in the SAME isolated project, so they
+        # reach it on the project network by service name — no external dev network.
+        needed: set[str] = set(_CORE_SERVICES)
         for item in session.items:
             for marker, services in _MARKER_SERVICES.items():
                 if item.get_closest_marker(marker):
-                    marker_services.update(services)
+                    needed.update(services)
 
-        dev_extras = sorted(marker_services & _DEV_TEST_PROFILE_SERVICES)
-        isolated_services = sorted(marker_services - _DEV_TEST_PROFILE_SERVICES)
-
-        # Phase 1 — dev-stack core services (creates the shared provisa_default
-        # network the isolated project attaches to). Idempotent.
+        # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
+        # exported at import time, its own network — the dev stack is never touched.
         subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                _CORE_COMPOSE,
-                "-f",
-                _OBS_COMPOSE,
-                "-f",
-                _DEV_COMPOSE,
-                "up",
-                "-d",
-                "--wait",
-                *_CORE_SERVICES,
-            ],
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *sorted(needed)],
             cwd=_REPO_ROOT,
             check=True,
         )
 
-        # Prometheus (REQ-251) — started with --no-deps so its otel-collector dep chain (which
-        # binds otlp2parquet on :4319 and clashes in dev environments) is not pulled in; the Trino
-        # prometheus connector only needs prometheus:9090 on the dev network. Gated on the marker.
-        if any(item.get_closest_marker("requires_prometheus") for item in session.items):
-            subprocess.run(
-                [
-                    "docker",
-                    "compose",
-                    "-f",
-                    _CORE_COMPOSE,
-                    "-f",
-                    _OBS_COMPOSE,
-                    "-f",
-                    _DEV_COMPOSE,
-                    "up",
-                    "prometheus",
-                    "-d",
-                    "--no-deps",
-                    "--wait",
-                ],
-                cwd=_REPO_ROOT,
-                check=True,
-            )
-
-        # Phase 2 — isolated test-only services (kafka, schema-registry, neo4j,
-        # elasticsearch, fuseki, mongodb) in the provisa-test project. Brought up
-        # before any dev extras so debezium can reach kafka on first start.
-        if isolated_services:
-            subprocess.run(
-                [
-                    "docker",
-                    "compose",
-                    "-p",
-                    _TEST_PROJECT,
-                    "-f",
-                    _TEST_COMPOSE,
-                    "up",
-                    "-d",
-                    "--wait",
-                    *isolated_services,
-                ],
-                cwd=_REPO_ROOT,
-                check=True,
-            )
-
-        # Phase 3 — dev-stack extras that depend on the isolated services
-        # (debezium-connect needs kafka, which is now up on the shared network).
-        if dev_extras:
-            subprocess.run(
-                [
-                    "docker",
-                    "compose",
-                    "-f",
-                    _CORE_COMPOSE,
-                    "-f",
-                    _OBS_COMPOSE,
-                    "-f",
-                    _DEV_COMPOSE,
-                    "--profile",
-                    "test",
-                    "up",
-                    "-d",
-                    "--wait",
-                    *dev_extras,
-                ],
-                cwd=_REPO_ROOT,
-                check=True,
-            )
-
     def pytest_sessionfinish(self, session, exitstatus):  # pyright: ignore
-        # Only the isolated test project is torn down; the dev stack is left intact.
-        if os.environ.get("PYTEST_DOCKER_DOWN"):
-            subprocess.run(
-                [
-                    "docker",
-                    "compose",
-                    "-p",
-                    _TEST_PROJECT,
-                    "-f",
-                    _TEST_COMPOSE,
-                    "down",
-                    "--volumes",
-                ],
-                cwd=_REPO_ROOT,
-                check=False,
-            )
+        # Tests own the services they provision — including reaping them. Tear the
+        # whole isolated stack down by default so a run never leaks containers (which
+        # starve later runs of memory) and never leaves anything touching dev.
+        # PYTEST_DOCKER_KEEP=1 keeps it up for local iteration.
+        if os.environ.get("PYTEST_DOCKER_KEEP"):
+            return
+        subprocess.run(
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "down", "--volumes"],
+            cwd=_REPO_ROOT,
+            check=False,
+        )
 
 
 def pytest_configure(config):
@@ -581,6 +591,7 @@ def provisa_server():
         **os.environ,
         "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa",
         "FLIGHT_PORT": str(_flight_port),
+        **_server_coverage_env(),
     }
     proc = subprocess.Popen(
         [venv_python, "main:app", "--host", "0.0.0.0", f"--port={_port}"],

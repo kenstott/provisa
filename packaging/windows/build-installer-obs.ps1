@@ -1,5 +1,5 @@
 # Build Provisa Observability Windows installer. Run from repo root.
-# Requires: Core installer already installed (VirtualBox VM exists).
+# Requires: the container tier already installed (WSL2 distro + nerdctl exist).
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -26,7 +26,7 @@ Get-ChildItem -Path (Join-Path $ScriptDir 'obs-images') -Filter '*.tar.gz' -Erro
 
 # ── Extension installer script ─────────────────────────────────────────────────
 $InstallObsScript = @'
-# Provisa Observability Extension Installer (Windows / VirtualBox)
+# Provisa Observability Extension Installer (Windows / WSL2)
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

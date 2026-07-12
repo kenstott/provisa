@@ -285,7 +285,7 @@ def assert_poll_injectors_scheduled(shared_data: dict) -> None:
         assert isinstance(trigger, IntervalTrigger), f"{job_id} must use an IntervalTrigger"
 
 
-@then("push sources are refreshed by their listeners - REQ-951")
+@then("push sources are refreshed by their listeners")
 def assert_push_sources_refreshed_by_listeners(shared_data: dict) -> None:
     """Push (delta) sources get NO poll job — they are driven by their listener (REQ-951)."""
     sched: _CapturingScheduler = shared_data["scheduler"]

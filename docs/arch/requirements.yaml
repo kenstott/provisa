@@ -16985,7 +16985,7 @@
   - packaging/macos/build-dmg.sh
   - packaging/macos/build-dmg-obs.sh
   - packaging/macos/build-dmg-demo.sh
-  - packaging/windows/build-installer.ps1
+  - packaging/windows/build-sfx.ps1
   - packaging/windows/build-installer-obs.ps1
   - packaging/windows/build-installer-demo.ps1
   - packaging/linux/build-appimage.sh
@@ -17082,12 +17082,13 @@
   category: Installer & Packaging
   priority: SHOULD
   type: infrastructure
-  description: 'macOS and Windows use an extension model: Core is the only installer that creates the
-    VM runtime (Lima on macOS; VirtualBox OVA on Windows). Obs and Demo are extension packages that load
-    images into the existing VM and write a compose file into `~/.provisa/extensions/<name>/`. The Core
-    launcher enumerates `extensions/*/docker-compose.*.yml` at startup and appends each found file to
-    the compose file list, composing the service set dynamically. `PROVISA_REDIRECT_ENABLED`, MinIO, and
-    OTel env vars are set only when the obs extension is present.'
+  description: 'macOS and Windows use an extension model: the container/compute tier is the only tier
+    that creates the container runtime (Lima + containerd on macOS; WSL2 + containerd on Windows — never
+    VirtualBox). Obs and Demo are extension packages that load images into the existing runtime and write
+    a compose file into `~/.provisa/extensions/<name>/`. The launcher enumerates
+    `extensions/*/docker-compose.*.yml` at startup and appends each found file to the compose file list,
+    composing the service set dynamically. `PROVISA_REDIRECT_ENABLED`, MinIO, and OTel env vars are set
+    only when the obs extension is present. The native base tier (REQ-979) has no runtime VM at all.'
   use_case: Extension model lets users install observability and demo services incrementally without reinstalling
     Core, and lets the launcher automatically discover installed extensions without hard-coded feature
     flags.
@@ -17095,8 +17096,18 @@
   - packaging/macos/build-dmg-obs.sh
   - packaging/macos/build-dmg-demo.sh
   - packaging/macos/ProvisaLauncher/Sources/ProvisaLauncher/Services/ScriptRunner.swift
+  - packaging/windows/build-container.ps1
+  - packaging/windows/install-container.ps1
+  - packaging/windows/provisa-container.ps1
+  - packaging/windows/wsl/provision-containerd.sh
+  - packaging/windows/wsl/start-containerd.sh
   - packaging/windows/build-installer-obs.ps1
-  - packaging/windows/provisa.ps1
+  notes: 'Windows container tier (build-container.ps1) is a separate on-demand download that provisions a
+    WSL2 distro named `provisa` with containerd + nerdctl-full (version-matched to the macOS Lima tier),
+    loads the bundled core image tarballs, copies the compose tree to /opt/provisa/compose inside the
+    distro, and runs `nerdctl compose` there (provisa-container.ps1). No VirtualBox. install-container.ps1
+    stops the native tier before starting the stack; the tier is reversible by switching back to
+    provisa-native.ps1. uninstall.ps1 unregisters the WSL distro.'
   tests:
   - tests/e2e/test_installer.py
   - tests/unit/test_infra_requirements.py
@@ -23871,10 +23882,14 @@
     is the gating work in REQ-860 (its interesting PROBE mode depends on the REQ-855 probe transport).
   use_case: 'Consistency: the same freshness semantics and strategies apply to every data path, and there
     is one place to change freshness policy instead of per-consumer copies.'
-  scenario: Given a materialized view and an API/pg cache entry, each with its own last-refresh state
-    When their freshness is evaluated Then both expose that state as a FreshnessSubject and the TTL decision
-    is produced by the one shared FreshnessPredicate, yielding the same fresh/stale result as the prior
-    per-consumer checks.
+  scenario: 'Given a materialized view and an API/pg cache entry, each with its own last-refresh state
+
+    When their freshness is evaluated
+
+    Then both expose that state as a FreshnessSubject and the TTL decision is produced by the one
+    shared FreshnessPredicate, yielding the same fresh/stale result as the prior per-consumer checks.
+
+    '
   code:
   - provisa/freshness/adapters.py
   - provisa/mv/models.py
@@ -28050,6 +28065,17 @@
   target: 2026-Q3
   code:
   - provisa/build/
+  - packaging/macos/build-dmg.sh
+  - packaging/windows/build-sfx.ps1
+  - packaging/windows/first-launch-native.ps1
+  - packaging/windows/provisa-native.ps1
+  notes: 'Windows native builder (build-sfx.ps1) downloads python-build-standalone for
+    x86_64-pc-windows-msvc, pip-installs provisa + uvicorn into it, and stages the built UI at
+    <site-packages>/static — parity with macOS bundle_native_runtime. first-launch-native.ps1 stages
+    the runtime to %USERPROFILE%\.provisa\runtime and provisa-native.ps1 runs the two uvicorn processes
+    (API factory + ui_server). The Windows base installer ships NO VirtualBox, OVA, or Trino; the
+    container/compute tier (WSL2 + containerd, Trino image) is a separate on-demand download per
+    REQ-889 (additive, reversible tier toggle).'
 - id: REQ-980
   status: complete
   since: "2026-07"
@@ -28230,3 +28256,214 @@
     - REQ-135
     - REQ-966
     - REQ-963
+- id: REQ-985
+  status: complete
+  since: "2026-07"
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Cache
+  priority: SHOULD
+  type: structural
+  description: >-
+    When `cache.enabled` is omitted from config, caching defaults to ENABLED. A CacheStore
+    always exists: `RedisCacheStore(None)` falls back to embedded fakeredis when no Redis URL is configured.
+    Operators must explicitly set `cache.enabled: false` to disable caching via `NoopCacheStore`.
+  use_case: >-
+    Operators have safe defaults where caching is active unless explicitly disabled, eliminating
+    silent no-cache states and ensuring consistent cache behavior across hot tables and response caches.
+  code:
+    - provisa/api/app.py
+    - provisa/cache/hot_tables.py
+  related_reqs:
+    - REQ-829
+    - REQ-544
+- id: REQ-986
+  status: proposed
+  group: "3. Federation Engines & Data Sources"
+  category: Arrow Flight Transport
+  priority: MUST
+  type: behavioral
+  description: >-
+    ClickHouse federation engine must expose Arrow-native transport through the Provisa Arrow Flight server to honor its declared ARROW and ARROW_STREAM capabilities, enabling columnar data streaming without row materialization.
+  use_case: >-
+    ClickHouse can deliver Arrow data natively over HTTP and native TCP protocols, but currently Provisa collapses these to row tuples. Exposing this capability via Arrow Flight matches Trino's architecture and enables efficient columnar streaming for high-throughput federated queries.
+  code:
+    - provisa/federation/engine.py
+    - provisa/federation/backend.py
+    - provisa/federation/clickhouse_runtime.py
+    - provisa/api/flight/server.py
+  target: "2026-Q4"
+  e2e: true
+  e2e_reason: >-
+    Arrow Flight transport behavior is only verifiable through a full round-trip to the Arrow Flight endpoint, confirming lazy record-batch streaming and columnar data format.
+  competitive_position:
+    status: parity
+    rationale: >-
+      Trino natively streams Arrow over Flight; ClickHouse as a standalone system does not expose Arrow Flight. Once implemented, Provisa matches Trino's federated Arrow capability, providing parity with the industry standard for columnar transport in federated query engines.
+- id: REQ-987
+  status: proposed
+  group: "3. Federation Engines & Data Sources"
+  category: Arrow Flight Transport
+  priority: MUST
+  type: behavioral
+  description: >-
+    Databricks SQL warehouse must be supported as a first-class Provisa federation engine with Arrow-native transport capabilities for both READ and WRITE paths. Read-side: Arrow columnar data streaming through the Provisa Arrow Flight server via execute_arrow/execute_stream. Write-side: materialization-store landing, residency reconciliation, and CDC snapshot seed must use Arrow-native columnar bulk writes (via ADBC adbc_ingest() or Parquet -> cloud object stage -> COPY INTO / Delta register), never row-oriented INSERT. End-to-end columnar path avoids row materialization overhead in Python and enables Databricks' distributed ingest parallelization. Row INSERT acceptable only for tiny writes where per-file staging overhead dominates.
+  use_case: >-
+    Organizations using Databricks SQL warehouses require direct federation capability to Provisa without intermediary routing through Trino. Arrow-native transport for both read and write paths avoids row materialization overhead and matches Trino's architecture for efficient federated query execution over Databricks. Materialized views and landed federation outputs must remain columnar end-to-end, enabling downstream queries to execute at warehouse speed.
+  code:
+    - provisa/federation/engine.py
+    - provisa/federation/backend.py
+    - provisa/federation/store_writer.py
+    - provisa/api/flight/server.py
+    - provisa/transpiler/transpile.py
+  target: "2026-Q4"
+  e2e: true
+  e2e_reason: >-
+    Arrow Flight transport behavior, Databricks SQL query execution, and write-path columnar ingestion are only verifiable through full round-trip testing with actual Databricks SQL warehouse (read endpoint and object staging).
+  validation_notes: >-
+    Databricks live-tested successfully on Serverless SQL Warehouse with ARROW_STREAM via Cloud Fetch EXTERNAL_LINKS, parsed by pyarrow. Python databricks-sql-connector / urllib fail on TLS in dev environment due to TLS-intercepting proxy; CA cert is in macOS keychain (curl trusts it) but not in certifi. Workaround: point REQUESTS_CA_BUNDLE / SSL_CERT_FILE at bundle including proxy CA. This is an environment configuration detail, not a Databricks platform limitation.
+  competitive_position:
+    status: parity
+    rationale: >-
+      Trino natively connects to Databricks as a source. Provisa with Databricks as a first-class federation engine (like Trino, ClickHouse, DuckDB) achieves parity with Trino's federation reach and enables customers to develop on DuckDB locally while scaling to Databricks warehouses in production. Columnar write path via ADBC/Parquet matches best practice (avoids Python row materialization).
+  related_reqs:
+    - REQ-986
+    - REQ-988
+- id: REQ-988
+  status: proposed
+  target: 2026-Q4
+  group: "3. Federation Engines & Data Sources"
+  category: Arrow Flight Transport
+  priority: MUST
+  type: behavioral
+  description: >-
+    Snowflake federation engine must be promoted from a source-only connector (federated through Trino) to a first-class Provisa federation engine peer to Trino/DuckDB/ClickHouse/Postgres, with Arrow-native transport wired through the Provisa Arrow Flight server. Engine declares ROWS, ARROW, and ARROW_STREAM capabilities; backend implements execute_arrow() and execute_stream() to deliver Arrow columnar data and lazy record-batch streaming without row materialization. Physical SQL transpilation must target Snowflake dialect. Governance (RLS, masking, rate-limiting) applies unchanged above the backend.
+  use_case: >-
+    Snowflake is an MPP warehouse with native Arrow support; exposing its columnar capabilities via Provisa's Arrow Flight server enables direct, efficient federated queries without row materialization and eliminates the current Trino-as-middleman routing. Matches architectural parity with Trino (REQ-986 ClickHouse parallel) and serves enterprises whose primary warehouse is Snowflake.
+  code:
+    - provisa/federation/engine.py
+    - provisa/federation/backend.py
+    - provisa/api/flight/server.py
+    - provisa/executor/trino_flight.py
+    - provisa/transpiler/transpile.py
+    - provisa/source_registry.py
+    - provisa/source_connectors/snowflake_connector.py
+  e2e: true
+  e2e_reason: >-
+    Arrow Flight transport and Snowflake SQL dialect correctness are only verifiable through a full round-trip to the Arrow Flight endpoint with live Snowflake backend, confirming lazy record-batch streaming, columnar format, and physical SQL validity.
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Snowflake natively supports Arrow data export (fetch_arrow_all / fetch_arrow_batches); Provisa will be the first to expose this capability via Arrow Flight as a federated engine, matching industry best practice (Trino). Competitors typically access Snowflake as a read-only source through ODBC or REST, not as a columnar-streaming federation peer.
+  related_reqs:
+    - REQ-986
+    - REQ-987
+- id: REQ-989
+  status: proposed
+  target: 2026-Q3
+  group: "3. Federation Engines & Data Sources"
+  category: Platform Defaults
+  priority: SHOULD
+  type: structural
+  description: >-
+    Zero-config default stack must be fully embedded and in-process with no external dependencies: default federation engine is duckdb (not trino), default materialize store is duckdb's native embedded store (not platform tenant DB via Postgres), and default control-plane store is sqlite (not embedded_pg). External engines and stores (Trino, Postgres, ClickHouse, Snowflake, Databricks) remain selectable via PROVISA_ENGINE / PROVISA_ENGINE_URL / PROVISA_MATERIALIZE_URL / control_plane_store overrides.
+  use_case: >-
+    Organizations and developers need instant local startup with zero Docker, no Trino cluster, no Postgres dependency — everything embedded for true out-of-the-box instant start. The zero-config path must serve as an approachable entry point while preserving full enterprise engine/store pluggability via configuration.
+  code:
+    - provisa/federation/engine.py
+    - provisa/core/desktop_profile.py
+    - provisa/core/capabilities.yaml
+  e2e: true
+  e2e_reason: >-
+    Default engine and store behavior requires a full integration round-trip to confirm duckdb is selected, materialization occurs in-process, and control-plane persists to sqlite without external services.
+  related_reqs:
+    - REQ-986
+    - REQ-987
+    - REQ-988
+- id: REQ-990
+  status: proposed
+  group: "3. Federation Engines & Data Sources"
+  category: Materialization Writes
+  priority: MUST
+  type: behavioral
+  description: >-
+    Materialization-store writes MUST use the target store's columnar or bulk-COPY ingest path wherever available, instead of row-by-row INSERT. Row INSERT is permitted only for targets without bulk support or tiny writes where staging overhead dominates, and this choice must be explicit/capability-gated, never a silent fallback.
+  use_case: >-
+    Row-by-row INSERT serializes writes, defeats vectorization, and forces Python row tuples through the network. Bulk columnar paths (Arrow, COPY, adbc_ingest) maintain end-to-end columnar efficiency, reduce network overhead, and leverage target-store parallelization. This is especially critical for high-volume materialization, residency reconciliation, and CDC snapshot seeding.
+  code:
+    - provisa/federation/store_writer.py
+    - provisa/federation/store_connection.py
+    - provisa/federation/backend.py
+  target: "2026-Q4"
+  related_reqs:
+    - REQ-986
+    - REQ-987
+    - REQ-988
+    - REQ-989
+- id: REQ-991
+  status: complete
+  since: 2026-07
+  group: "9. Live Data & Events"
+  category: Live Delivery Strategy
+  priority: MUST
+  type: constraint
+  description: >-
+    Live Delivery mechanism (push repeat, append poll, or full-replace poll) is DERIVED SOLELY from the effective change_signal plus watermark column presence. The Live Delivery UI exposes no independent Strategy selector; the delivery mechanism mirrors change_signal.select_landing_shape: push signal → repeat the change stream; poll signal WITH watermark → append; poll signal WITHOUT watermark → full-replace.
+  use_case: >-
+    Eliminates redundant strategy selection across detection method and delivery mode. Centralizes authoritative control in Change Signal, reducing cognitive load and preventing inconsistent strategy/detection pairs. The watermark presence is the determining factor for append vs. replace, not a separate configuration.
+  code:
+    - provisa/live/engine.py
+    - provisa/live/reconcile.py
+    - provisa-ui/src/pages/tables/LiveDeliveryFieldset.tsx
+  tests:
+    - tests/unit/test_live_engine.py
+    - tests/unit/test_live_engine_full.py
+    - tests/unit/test_live_delivery_config.py
+  related_reqs:
+    - REQ-932
+- id: REQ-992
+  status: complete
+  since: 2026-07
+  group: "9. Live Data & Events"
+  category: Live Delivery Strategy
+  priority: MUST
+  type: behavioral
+  description: >-
+    Poll signals without a watermark column execute a full-replace poll mode: LiveEngine._poll_replace re-scans the full result set at each interval and emits a replace-mode LiveSpec only when an order-independent content hash (stored per output in live_query_state) changes. Unchanged scan results do not emit a snapshot, suppressing ripples in small or non-monotonic tables.
+  use_case: >-
+    Non-monotonic or small tables scanned via poll (no watermark) need refresh semantics without the churn of repeated identical snapshots. Content-hash-based delivery suppresses ripples while ensuring consistency after real data changes.
+  code:
+    - provisa/live/engine.py
+    - provisa/live/reconcile.py
+  scenario: |
+    Given a poll-signal table with no watermark column and 100 rows
+    When the full table is re-scanned and the content hash matches the previous scan
+    Then no snapshot is delivered to downstream subscribers
+    
+    When the content hash differs (row added, deleted, or modified)
+    Then a replace snapshot is delivered
+  tests:
+    - tests/unit/test_content_hash.py
+    - tests/unit/test_live_engine.py
+    - tests/unit/test_live_engine_full.py
+  related_reqs:
+    - REQ-932
+    - REQ-991
+- id: REQ-993
+  status: complete
+  since: 2026-07
+  group: "9. Live Data & Events"
+  category: Live Delivery Strategy
+  priority: MUST
+  type: constraint
+  description: >-
+    The content hash used for full-replace ripple suppression is order-independent (e.g., XOR or sorted multiset hash), stored per-output in live_query_state, and is recomputed on each full-table re-scan. A change in hash always triggers a replace snapshot delivery; an unchanged hash always suppresses delivery.
+  use_case: >-
+    Order-independent hashing ensures that logical content changes (row addition/deletion) trigger snapshots even if rows appear in different order, while avoiding spurious ripples when only row order differs. Persistent storage in live_query_state allows next interval's scan to detect real changes.
+  code:
+    - provisa/live/engine.py
+  tests:
+    - tests/unit/test_content_hash.py
+  related_reqs:
+    - REQ-932
+    - REQ-991
+    - REQ-992
