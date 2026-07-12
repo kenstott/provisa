@@ -379,8 +379,8 @@ class TestREQ227OSPhasedDelivery:
         assert (REPO_ROOT / "packaging" / "linux" / "build-appimage.sh").exists()
 
     def test_windows_installer_builder_present(self):
-        # REQ-227
-        assert (REPO_ROOT / "packaging" / "windows" / "build-installer.ps1").exists()
+        # REQ-227 — native tier (REQ-979): Inno Setup builder bundling embedded Python.
+        assert (REPO_ROOT / "packaging" / "windows" / "build-sfx.ps1").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -862,8 +862,8 @@ class TestREQ630ThreeArtifactPackages:
         assert (REPO_ROOT / "packaging" / "macos" / "build-dmg-demo.sh").exists()
 
     def test_windows_core_builder_exists(self):
-        # REQ-630
-        assert (REPO_ROOT / "packaging" / "windows" / "build-installer.ps1").exists()
+        # REQ-630 — native tier (REQ-979): Inno Setup builder bundling embedded Python.
+        assert (REPO_ROOT / "packaging" / "windows" / "build-sfx.ps1").exists()
 
     def test_windows_obs_builder_exists(self):
         # REQ-630
@@ -968,6 +968,57 @@ class TestREQ633ExtensionModel:
         # REQ-633
         content = (REPO_ROOT / "packaging" / "windows" / "build-installer-obs.ps1").read_text()
         assert "observability" in content.lower()
+
+    def test_windows_container_tier_uses_wsl2_not_virtualbox(self):
+        # REQ-633 / REQ-889 — Windows container tier is WSL2 + containerd, never VirtualBox.
+        win = REPO_ROOT / "packaging" / "windows"
+        for name in ("build-container.ps1", "install-container.ps1", "provisa-container.ps1"):
+            assert (win / name).exists(), f"missing container-tier script: {name}"
+        install = (win / "install-container.ps1").read_text()
+        assert "wsl" in install.lower() and "nerdctl" in install.lower(), (
+            "container tier must provision WSL2 + nerdctl"
+        )
+        combined = "\n".join(
+            (win / n).read_text()
+            for n in ("build-container.ps1", "install-container.ps1", "provisa-container.ps1")
+        ).lower()
+        # Guard against real VirtualBox/OVA usage (not the word in "no VirtualBox" prose).
+        for token in ("vboxmanage", "virtualbox-setup", ".ova", "unregistervm"):
+            assert token not in combined, f"container tier must not use VirtualBox/OVA ({token})"
+
+    def test_windows_container_matches_lima_nerdctl_version(self):
+        # REQ-633 — nerdctl-full version pinned to match the macOS Lima tier.
+        mac = (REPO_ROOT / "packaging" / "macos" / "build-dmg.sh").read_text()
+        win = (REPO_ROOT / "packaging" / "windows" / "build-container.ps1").read_text()
+        import re
+
+        m = re.search(r'NERDCTL_VERSION="([\d.]+)"', mac)
+        assert m, "macOS build-dmg.sh must pin NERDCTL_VERSION"
+        assert m.group(1) in win, (
+            f"Windows container tier must default to nerdctl {m.group(1)} to match the Lima tier"
+        )
+
+    def test_windows_container_smoke_workflow_exercises_guest_scripts(self):
+        # REQ-633 — the container tier's containerd-without-systemd path is smoke-tested.
+        wf = REPO_ROOT / ".github" / "workflows" / "windows-container-smoke.yml"
+        assert wf.exists(), "windows-container-smoke workflow must exist"
+        content = wf.read_text()
+        assert "provision-containerd.sh" in content and "start-containerd.sh" in content, (
+            "smoke workflow must run the WSL guest provisioning scripts"
+        )
+        assert "nerdctl load" in content and "nerdctl run" in content, (
+            "smoke workflow must load and run an image"
+        )
+
+    def test_windows_base_installer_has_no_virtualbox_or_trino(self):
+        # REQ-979 — the native base installer ships no VirtualBox, OVA, or Trino.
+        base = (REPO_ROOT / "packaging" / "windows" / "build-sfx.ps1").read_text().lower()
+        # Guard against real VirtualBox/OVA/Trino bundling (not the word in prose).
+        for token in ("vboxmanage", "virtualbox-setup", ".ova", "provisa-runtime.ova", "trinosrc"):
+            assert token not in base, f"native base installer must not bundle {token}"
+        assert "python-build-standalone" in base, (
+            "native base installer must bundle the standalone Python runtime"
+        )
 
 
 # ---------------------------------------------------------------------------

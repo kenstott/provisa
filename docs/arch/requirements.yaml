@@ -16985,7 +16985,7 @@
   - packaging/macos/build-dmg.sh
   - packaging/macos/build-dmg-obs.sh
   - packaging/macos/build-dmg-demo.sh
-  - packaging/windows/build-installer.ps1
+  - packaging/windows/build-sfx.ps1
   - packaging/windows/build-installer-obs.ps1
   - packaging/windows/build-installer-demo.ps1
   - packaging/linux/build-appimage.sh
@@ -17082,12 +17082,13 @@
   category: Installer & Packaging
   priority: SHOULD
   type: infrastructure
-  description: 'macOS and Windows use an extension model: Core is the only installer that creates the
-    VM runtime (Lima on macOS; VirtualBox OVA on Windows). Obs and Demo are extension packages that load
-    images into the existing VM and write a compose file into `~/.provisa/extensions/<name>/`. The Core
-    launcher enumerates `extensions/*/docker-compose.*.yml` at startup and appends each found file to
-    the compose file list, composing the service set dynamically. `PROVISA_REDIRECT_ENABLED`, MinIO, and
-    OTel env vars are set only when the obs extension is present.'
+  description: 'macOS and Windows use an extension model: the container/compute tier is the only tier
+    that creates the container runtime (Lima + containerd on macOS; WSL2 + containerd on Windows — never
+    VirtualBox). Obs and Demo are extension packages that load images into the existing runtime and write
+    a compose file into `~/.provisa/extensions/<name>/`. The launcher enumerates
+    `extensions/*/docker-compose.*.yml` at startup and appends each found file to the compose file list,
+    composing the service set dynamically. `PROVISA_REDIRECT_ENABLED`, MinIO, and OTel env vars are set
+    only when the obs extension is present. The native base tier (REQ-979) has no runtime VM at all.'
   use_case: Extension model lets users install observability and demo services incrementally without reinstalling
     Core, and lets the launcher automatically discover installed extensions without hard-coded feature
     flags.
@@ -17095,8 +17096,18 @@
   - packaging/macos/build-dmg-obs.sh
   - packaging/macos/build-dmg-demo.sh
   - packaging/macos/ProvisaLauncher/Sources/ProvisaLauncher/Services/ScriptRunner.swift
+  - packaging/windows/build-container.ps1
+  - packaging/windows/install-container.ps1
+  - packaging/windows/provisa-container.ps1
+  - packaging/windows/wsl/provision-containerd.sh
+  - packaging/windows/wsl/start-containerd.sh
   - packaging/windows/build-installer-obs.ps1
-  - packaging/windows/provisa.ps1
+  notes: 'Windows container tier (build-container.ps1) is a separate on-demand download that provisions a
+    WSL2 distro named `provisa` with containerd + nerdctl-full (version-matched to the macOS Lima tier),
+    loads the bundled core image tarballs, copies the compose tree to /opt/provisa/compose inside the
+    distro, and runs `nerdctl compose` there (provisa-container.ps1). No VirtualBox. install-container.ps1
+    stops the native tier before starting the stack; the tier is reversible by switching back to
+    provisa-native.ps1. uninstall.ps1 unregisters the WSL distro.'
   tests:
   - tests/e2e/test_installer.py
   - tests/unit/test_infra_requirements.py
@@ -28050,6 +28061,17 @@
   target: 2026-Q3
   code:
   - provisa/build/
+  - packaging/macos/build-dmg.sh
+  - packaging/windows/build-sfx.ps1
+  - packaging/windows/first-launch-native.ps1
+  - packaging/windows/provisa-native.ps1
+  notes: 'Windows native builder (build-sfx.ps1) downloads python-build-standalone for
+    x86_64-pc-windows-msvc, pip-installs provisa + uvicorn into it, and stages the built UI at
+    <site-packages>/static — parity with macOS bundle_native_runtime. first-launch-native.ps1 stages
+    the runtime to %USERPROFILE%\.provisa\runtime and provisa-native.ps1 runs the two uvicorn processes
+    (API factory + ui_server). The Windows base installer ships NO VirtualBox, OVA, or Trino; the
+    container/compute tier (WSL2 + containerd, Trino image) is a separate on-demand download per
+    REQ-889 (additive, reversible tier toggle).'
 - id: REQ-980
   status: complete
   since: "2026-07"
@@ -28373,3 +28395,71 @@
     - REQ-987
     - REQ-988
     - REQ-989
+- id: REQ-991
+  status: complete
+  since: 2026-07
+  group: "9. Live Data & Events"
+  category: Live Delivery Strategy
+  priority: MUST
+  type: constraint
+  description: >-
+    Live Delivery mechanism (push repeat, append poll, or full-replace poll) is DERIVED SOLELY from the effective change_signal plus watermark column presence. The Live Delivery UI exposes no independent Strategy selector; the delivery mechanism mirrors change_signal.select_landing_shape: push signal → repeat the change stream; poll signal WITH watermark → append; poll signal WITHOUT watermark → full-replace.
+  use_case: >-
+    Eliminates redundant strategy selection across detection method and delivery mode. Centralizes authoritative control in Change Signal, reducing cognitive load and preventing inconsistent strategy/detection pairs. The watermark presence is the determining factor for append vs. replace, not a separate configuration.
+  code:
+    - provisa/live/engine.py
+    - provisa/live/reconcile.py
+    - provisa-ui/src/pages/tables/LiveDeliveryFieldset.tsx
+  tests:
+    - tests/unit/test_live_engine.py
+    - tests/unit/test_live_engine_full.py
+    - tests/unit/test_live_delivery_config.py
+  related_reqs:
+    - REQ-932
+- id: REQ-992
+  status: complete
+  since: 2026-07
+  group: "9. Live Data & Events"
+  category: Live Delivery Strategy
+  priority: MUST
+  type: behavioral
+  description: >-
+    Poll signals without a watermark column execute a full-replace poll mode: LiveEngine._poll_replace re-scans the full result set at each interval and emits a replace-mode LiveSpec only when an order-independent content hash (stored per output in live_query_state) changes. Unchanged scan results do not emit a snapshot, suppressing ripples in small or non-monotonic tables.
+  use_case: >-
+    Non-monotonic or small tables scanned via poll (no watermark) need refresh semantics without the churn of repeated identical snapshots. Content-hash-based delivery suppresses ripples while ensuring consistency after real data changes.
+  code:
+    - provisa/live/engine.py
+    - provisa/live/reconcile.py
+  scenario: |
+    Given a poll-signal table with no watermark column and 100 rows
+    When the full table is re-scanned and the content hash matches the previous scan
+    Then no snapshot is delivered to downstream subscribers
+    
+    When the content hash differs (row added, deleted, or modified)
+    Then a replace snapshot is delivered
+  tests:
+    - tests/unit/test_content_hash.py
+    - tests/unit/test_live_engine.py
+    - tests/unit/test_live_engine_full.py
+  related_reqs:
+    - REQ-932
+    - REQ-991
+- id: REQ-993
+  status: complete
+  since: 2026-07
+  group: "9. Live Data & Events"
+  category: Live Delivery Strategy
+  priority: MUST
+  type: constraint
+  description: >-
+    The content hash used for full-replace ripple suppression is order-independent (e.g., XOR or sorted multiset hash), stored per-output in live_query_state, and is recomputed on each full-table re-scan. A change in hash always triggers a replace snapshot delivery; an unchanged hash always suppresses delivery.
+  use_case: >-
+    Order-independent hashing ensures that logical content changes (row addition/deletion) trigger snapshots even if rows appear in different order, while avoiding spurious ripples when only row order differs. Persistent storage in live_query_state allows next interval's scan to detect real changes.
+  code:
+    - provisa/live/engine.py
+  tests:
+    - tests/unit/test_content_hash.py
+  related_reqs:
+    - REQ-932
+    - REQ-991
+    - REQ-992

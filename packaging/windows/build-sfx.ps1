@@ -1,6 +1,9 @@
-# Build Provisa Windows installer using Inno Setup.
-# Inno Setup uses sequential file I/O (not mmap) so handles multi-GB output.
-# Replaces NSIS which fails with 32-bit mmap limits on large payloads.
+# Build the Provisa Windows base installer (native tier, REQ-979) using Inno Setup.
+# The native tier runs Provisa on a self-contained standalone Python interpreter
+# (python-build-standalone + provisa wheel + duckdb/pg_duckdb + aiosqlite) with NO
+# Docker, VM, or container images. Mirrors macOS build-dmg.sh bundle_native_runtime.
+# The compute/container tier (WSL2 + Trino) is a separate on-demand download, not
+# bundled here — the base installer ships no container images (REQ-889, REQ-979).
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -8,94 +11,79 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot  = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 
+# Pins are overridable so the builder can bump CPython without editing this file.
+# Match macOS build-dmg.sh (PBS_RELEASE / PBS_PYTHON) so both tiers ship the same
+# interpreter version.
+$PbsRelease = if ($env:PBS_RELEASE) { $env:PBS_RELEASE } else { '20250612' }
+$PbsPython  = if ($env:PBS_PYTHON)  { $env:PBS_PYTHON }  else { '3.12.11' }
+
 Write-Host '[build-sfx] Preparing build directory...' -ForegroundColor Cyan
 
-# ── Assemble build tree (mirrors build-installer.ps1) ─────────────────────────
+# ── Assemble build tree ───────────────────────────────────────────────────────
 $BuildDir = Join-Path $ScriptDir 'build'
+if (Test-Path $BuildDir) { Remove-Item $BuildDir -Recurse -Force }
+New-Item -ItemType Directory -Path $BuildDir -Force | Out-Null
 
+# Launch + lifecycle scripts for the native tier (no VirtualBox, no compose).
+Copy-Item (Join-Path $ScriptDir 'first-launch-native.ps1') $BuildDir
+Copy-Item (Join-Path $ScriptDir 'provisa-native.ps1')      $BuildDir
+Copy-Item (Join-Path $ScriptDir 'launch-gui.vbs')          $BuildDir
+Copy-Item (Join-Path $ScriptDir 'provisa.cmd')             $BuildDir
+Copy-Item (Join-Path $ScriptDir 'uninstall.ps1')           $BuildDir
+Copy-Item (Join-Path $ScriptDir 'provisa.ico')             $BuildDir
+Copy-Item (Join-Path $ScriptDir 'provisa-mark.png')        $BuildDir
 
-$BuildCompose = Join-Path $BuildDir 'compose'
-New-Item -ItemType Directory -Path $BuildCompose -Force | Out-Null
-Copy-Item (Join-Path $RepoRoot 'docker-compose.core.yml')   $BuildCompose
-Copy-Item (Join-Path $RepoRoot 'docker-compose.app.yml')    $BuildCompose
-Copy-Item (Join-Path $RepoRoot 'docker-compose.airgap.yml') $BuildCompose
-Copy-Item (Join-Path $RepoRoot 'config')  (Join-Path $BuildCompose 'config')  -Recurse -Force
-Copy-Item (Join-Path $RepoRoot 'db')      (Join-Path $BuildCompose 'db')      -Recurse -Force
+# ── Build the React UI (served from <site-packages>/static by ui_server) ──────
+Write-Host '[build-sfx] Building provisa-ui...' -ForegroundColor Cyan
+Push-Location (Join-Path $RepoRoot 'provisa-ui')
+try {
+  & npm ci
+  if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+  & npm run build
+  if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
+} finally { Pop-Location }
+$UiDist = Join-Path $RepoRoot 'provisa-ui\dist'
+if (-not (Test-Path $UiDist)) { throw "provisa-ui\dist not found after build" }
 
-# Demo overlay: rewrite the demo servers' build: to prebuilt images so no build
-# context is needed on the user's machine (images ship via provisa-demo-images).
-$DemoComposeSrc = Join-Path $RepoRoot 'docker-compose.demo.yml'
-$DemoComposeDst = Join-Path $BuildCompose 'docker-compose.demo.yml'
-((Get-Content $DemoComposeSrc -Raw) `
-  -replace 'build:\s*\./demo/graphql_server',  'image: provisa/graphql-demo:local' `
-  -replace 'build:\s*\./demo/petstore_server', 'image: provisa/petstore-demo:local') |
-  Set-Content -Path $DemoComposeDst -Encoding UTF8
+# ── Bundle the standalone native Python runtime (REQ-979) ─────────────────────
+# Download python-build-standalone (relocatable CPython for Windows x86_64),
+# pip-install provisa + uvicorn INTO it, and drop the built UI where ui_server
+# resolves it (<site-packages>\static). first-launch-native.ps1 stages this to
+# %USERPROFILE%\.provisa\runtime and provisa-native.ps1 runs uvicorn against it.
+$RuntimeDst = Join-Path $BuildDir 'runtime'
+$Tarball    = "cpython-$PbsPython+$PbsRelease-x86_64-pc-windows-msvc-install_only.tar.gz"
+$PbsUrl     = "https://github.com/astral-sh/python-build-standalone/releases/download/$PbsRelease/$Tarball"
+$Tmp        = Join-Path $ScriptDir 'tmp-pbs'
+if (Test-Path $Tmp) { Remove-Item $Tmp -Recurse -Force }
+New-Item -ItemType Directory -Path $Tmp -Force | Out-Null
 
-# Copy trino WITHOUT plugins/ — plugins (925 MB) download at first launch.
-$TrinoSrc = Join-Path $RepoRoot 'trino'
-$TrinoDst = Join-Path $BuildCompose 'trino'
-New-Item -ItemType Directory -Path $TrinoDst -Force | Out-Null
-Get-ChildItem -Path $TrinoSrc -Exclude 'plugins' | Copy-Item -Destination $TrinoDst -Recurse -Force
+Write-Host "[build-sfx] Downloading python-build-standalone $PbsPython (Windows x86_64)..." -ForegroundColor Cyan
+$TarballPath = Join-Path $Tmp $Tarball
+Invoke-WebRequest -Uri $PbsUrl -OutFile $TarballPath -UseBasicParsing
+# bsdtar (bundled with Windows 10+) extracts .tar.gz natively.
+& tar -xzf $TarballPath -C $Tmp
+if ($LASTEXITCODE -ne 0) { throw "tar extraction failed for $Tarball" }
 
-# Trino health on the desktop stack:
-#  1. Drop dev-only catalogs whose services (mongodb/kafka) no compose defines -
-#     they eager-connect at startup and can wedge the coordinator.
-foreach ($stale in 'mongodb', 'support_kafka', 'reviews_mongo') {
-  Remove-Item (Join-Path $TrinoDst "catalog\$stale.properties") -Force -ErrorAction SilentlyContinue
-}
-#  2. OTel telemetry is stripped at INSTALL time when observability is OFF
-#     (the otel-collector only exists in the obs stack; without it Trino's
-#     export throws and fails even SELECT 1). See first-launch-gui.ps1.
+$PbsPy = Join-Path $Tmp 'python\python.exe'   # PBS extracts to $Tmp\python\
+if (-not (Test-Path $PbsPy)) { throw "python-build-standalone extraction failed (no python\python.exe)" }
+Move-Item (Join-Path $Tmp 'python') $RuntimeDst
+$RuntimePy = Join-Path $RuntimeDst 'python.exe'
 
-# Observability overlay (otel-collector, prometheus, grafana, tempo, minio).
-Copy-Item (Join-Path $RepoRoot 'docker-compose.observability.yml') $BuildCompose
+Write-Host '[build-sfx] Installing provisa + deps into the native runtime...' -ForegroundColor Cyan
+& $RuntimePy -m pip install --upgrade pip --quiet
+if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
+& $RuntimePy -m pip install --quiet $RepoRoot uvicorn
+if ($LASTEXITCODE -ne 0) { throw "pip install provisa failed" }
 
-# Support dirs the trino service bind-mounts (parity with the macOS bundle).
-Copy-Item (Join-Path $RepoRoot 'observability') (Join-Path $BuildCompose 'observability') -Recurse -Force
-if (Test-Path (Join-Path $RepoRoot 'sharepoint.pfx')) {
-  Copy-Item (Join-Path $RepoRoot 'sharepoint.pfx') $BuildCompose
-}
-$DemoFilesSrc = Join-Path $RepoRoot 'demo\files'
-if (Test-Path $DemoFilesSrc) {
-  $DemoDst = Join-Path $BuildCompose 'demo\files'
-  New-Item -ItemType Directory -Path $DemoDst -Force | Out-Null
-  Copy-Item -Path (Join-Path $DemoFilesSrc '*') -Destination $DemoDst -Recurse -Force
-}
+# Place the built UI where ui_server resolves it: <site-packages>\static.
+$Site = & $RuntimePy -c "import sysconfig; print(sysconfig.get_paths()['purelib'])"
+if ($LASTEXITCODE -ne 0 -or -not $Site) { throw "could not resolve site-packages purelib" }
+$StaticDst = Join-Path $Site 'static'
+New-Item -ItemType Directory -Path $StaticDst -Force | Out-Null
+Copy-Item -Path (Join-Path $UiDist '*') -Destination $StaticDst -Recurse -Force
 
-$BuildSrc = Join-Path $BuildDir 'provisa-source'
-New-Item -ItemType Directory -Path $BuildSrc -Force | Out-Null
-Copy-Item (Join-Path $RepoRoot 'Dockerfile')    $BuildSrc
-Copy-Item (Join-Path $RepoRoot 'main.py')        $BuildSrc
-Copy-Item (Join-Path $RepoRoot 'pyproject.toml') $BuildSrc
-Copy-Item (Join-Path $RepoRoot 'provisa')   (Join-Path $BuildSrc 'provisa')   -Recurse -Force
-
-Copy-Item (Join-Path $ScriptDir 'first-launch.ps1')     $BuildDir
-Copy-Item (Join-Path $ScriptDir 'first-launch-gui.ps1') $BuildDir
-Copy-Item (Join-Path $ScriptDir 'launch-gui.vbs')       $BuildDir
-Copy-Item (Join-Path $ScriptDir 'provisa.ps1')       $BuildDir
-Copy-Item (Join-Path $ScriptDir 'provisa.cmd')       $BuildDir
-Copy-Item (Join-Path $ScriptDir 'start-gui.ps1')     $BuildDir
-Copy-Item (Join-Path $ScriptDir 'start-gui.vbs')     $BuildDir
-Copy-Item (Join-Path $ScriptDir 'install.ps1')       $BuildDir
-Copy-Item (Join-Path $ScriptDir 'uninstall.ps1')     $BuildDir
-Copy-Item (Join-Path $ScriptDir 'enable-hyperv.ps1')   $BuildDir
-Copy-Item (Join-Path $ScriptDir 'diagnose-hyperv.ps1') $BuildDir
-Copy-Item (Join-Path $ScriptDir 'provisa.ico')       $BuildDir
-Copy-Item (Join-Path $ScriptDir 'provisa-mark.png')  $BuildDir
-
-$BuildRedist = Join-Path $BuildDir 'redist'
-New-Item -ItemType Directory -Path $BuildRedist -Force | Out-Null
-$VBoxSrc = Join-Path $ScriptDir 'redist\VirtualBox-setup.exe'
-if (-not (Test-Path $VBoxSrc)) {
-  throw "VirtualBox-setup.exe not found at $VBoxSrc -- CI should download it before building."
-}
-Copy-Item $VBoxSrc $BuildRedist
-
-$OvaSrc = Join-Path $ScriptDir 'provisa-runtime.ova'
-if (-not (Test-Path $OvaSrc)) {
-  throw "provisa-runtime.ova not found at $OvaSrc -- CI should download it before building."
-}
-Copy-Item $OvaSrc $BuildDir
+Remove-Item $Tmp -Recurse -Force
+Write-Host '[build-sfx] Native runtime bundled.' -ForegroundColor Green
 
 # ── Install Inno Setup via chocolatey ─────────────────────────────────────────
 Write-Host '[build-sfx] Installing Inno Setup...' -ForegroundColor Cyan
@@ -121,7 +109,7 @@ Write-Host "[build-sfx] Found ISCC.exe: $Iscc" -ForegroundColor Cyan
 $DistDir = Join-Path $ScriptDir 'dist'
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 
-$Version      = if ($env:VERSION) { $env:VERSION } else { 'dev' }
+$Version       = if ($env:VERSION) { $env:VERSION } else { 'dev' }
 $InstallerPath = Join-Path $DistDir 'Provisa-Setup.exe'
 
 [System.IO.File]::WriteAllText((Join-Path $BuildDir 'VERSION'), $Version, [System.Text.Encoding]::ASCII)
@@ -130,7 +118,6 @@ $InstallerPath = Join-Path $DistDir 'Provisa-Setup.exe'
 $IssPath = Join-Path $env:TEMP 'provisa-installer.iss'
 
 # Inno Setup uses ; for comments, not //
-# {src} = source directory of the .iss file (we pass /D switches for paths)
 $IssContent = @"
 [Setup]
 AppName=Provisa
@@ -151,10 +138,10 @@ UninstallDisplayIcon={app}\provisa.ico
 Source: "$BuildDir\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Provisa First Launch"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -WindowStyle Normal -File ""{app}\first-launch-gui.ps1"""; IconFilename: "{app}\provisa.ico"
+Name: "{group}\Provisa"; Filename: "wscript.exe"; Parameters: "/nologo ""{app}\launch-gui.vbs"""; IconFilename: "{app}\provisa.ico"
 
 [Run]
-Filename: "wscript.exe"; Parameters: "/nologo ""{app}\launch-gui.vbs"""; Description: "Launch Provisa first-run setup (download and configure)"; Flags: postinstall nowait
+Filename: "wscript.exe"; Parameters: "/nologo ""{app}\launch-gui.vbs"""; Description: "Launch Provisa"; Flags: postinstall nowait
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa"; ValueType: string; ValueName: "DisplayName"; ValueData: "Provisa $Version"
