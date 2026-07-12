@@ -31,13 +31,14 @@ def test_trino_attaches_postgresql_live():
     assert "postgresql" in reachable_source_types("trino")
 
 
-def test_snowflake_live_only_on_attach_engines():
-    # Snowflake is reached only via an engine's live-attach connector — not a Provisa-direct
-    # driver/adapter nor a materialize-only API — so an engine without that connector cannot reach it.
+def test_snowflake_reachable_everywhere_and_live_on_attach_engines():
+    # REQ-988: Snowflake now has a Provisa-direct driver (read-then-land), so it is a configurable
+    # REPLICA on EVERY engine — including engines with no live-attach connector for it. It stays LIVE
+    # (in-place attach) on engines that do attach it (Trino JDBC, DuckDB snowflake extension).
     live_engines = {e["key"] for e in engine_registry() if "snowflake" in e["live_source_types"]}
     assert "trino" in live_engines
-    assert "snowflake" not in reachable_source_types("clickhouse")
-    assert "snowflake" not in reachable_source_types("pg")
+    for key in ("trino", "duckdb", "pg", "clickhouse", "sqlalchemy"):
+        assert "snowflake" in reachable_source_types(key), key
 
 
 def test_direct_driver_type_reachable_on_every_engine():

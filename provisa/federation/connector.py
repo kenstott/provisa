@@ -452,16 +452,26 @@ class ClickHouseMongoConnector(Connector):
         }
 
 
+def _clickhouse_s3_creds(source: Source) -> tuple[str | None, str | None]:
+    """S3/S3-compatible (R2) access key + secret from federation_hints — accepts the ClickHouse
+    ``aws_key``/``aws_secret`` or the generic ``access_key_id``/``secret_access_key`` spelling."""
+    h = source.federation_hints
+    return (
+        h.get("aws_key") or h.get("access_key_id"),
+        h.get("aws_secret") or h.get("secret_access_key"),
+    )
+
+
 def _clickhouse_file_engine(source: Source, fmt: str) -> str:
-    """The ClickHouse table-engine clause for a file source, chosen by the path scheme:
-    ``s3://`` → S3, ``http(s)://`` → URL, otherwise a local File. S3 credentials, when the bucket
-    is private, ride on federation_hints (aws_key/aws_secret); absent means a public bucket."""
+    """The ClickHouse table-engine clause for a file source, chosen by the path scheme: ``s3://`` (or
+    an https S3-compatible endpoint carrying credentials — e.g. Cloudflare R2) → S3, a plain
+    ``http(s)://`` → URL, otherwise a local File. Credentials, when the bucket is private, ride on
+    federation_hints; absent means a public bucket."""
     path = source.path
     if path is None:
         raise ValueError(f"file source {source.id!r} has no path")
-    if path.startswith("s3://"):
-        key = source.federation_hints.get("aws_key")
-        secret = source.federation_hints.get("aws_secret")
+    key, secret = _clickhouse_s3_creds(source)
+    if path.startswith("s3://") or (path.startswith("https://") and key):
         creds = f", '{key}', '{secret}'" if key else ""
         return f"S3('{path}'{creds}, '{fmt}')"
     if path.startswith(("http://", "https://")):
@@ -470,19 +480,35 @@ def _clickhouse_file_engine(source: Source, fmt: str) -> str:
     return f"File('{fmt}', '{path}')"
 
 
+def _clickhouse_lake_engine(source: Source, engine: str) -> str:
+    """A ClickHouse lakehouse table-engine clause (``IcebergS3`` / ``DeltaLake``) over an object-store
+    URL + optional S3-compatible credentials. Reads the table's metadata + data in place — zero copy."""
+    path = source.path
+    if path is None:
+        raise ValueError(f"lake source {source.id!r} has no path (object-store URL)")
+    key, secret = _clickhouse_s3_creds(source)
+    creds = f", '{key}', '{secret}'" if key else ""
+    return f"{engine}('{path}'{creds})"
+
+
 class _ClickHouseFileConnector(Connector):
     """Mount a file source into ClickHouse via an S3/URL/File table engine (chosen by path scheme).
 
     ClickHouse infers the column schema for these engines, so the runtime issues a bare
-    ``CREATE TABLE ... ENGINE = <clause>`` with no column list. The data is read in place.
-    """
+    ``CREATE TABLE ... ENGINE = <clause>`` with no column list. The data is read in place. ``validate``
+    tells the runtime to probe the attached table (read one row) so bad credentials / an unreachable
+    object fail loud at attach time, not at first query."""
 
     engine = "clickhouse"
     mechanism = Mechanism.ATTACH_RW
     _format = ""  # ClickHouse input-format name
 
     def details(self, source: Source) -> dict:
-        return {"engine_clause": _clickhouse_file_engine(source, self._format), "infer": True}
+        return {
+            "engine_clause": _clickhouse_file_engine(source, self._format),
+            "infer": True,
+            "validate": True,
+        }
 
 
 class ClickHouseCsvConnector(_ClickHouseFileConnector):
@@ -501,6 +527,38 @@ class ClickHouseParquetConnector(_ClickHouseFileConnector):
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True)  # column + row-group pruning
+
+
+class _ClickHouseLakeConnector(Connector):
+    """Mount a lakehouse table (Iceberg / Delta Lake) on object storage into ClickHouse via its native
+    lakehouse table engine (``IcebergS3`` / ``DeltaLake``). Read in place (zero copy); ``validate``
+    probes the attach so a bad credential / unreachable table fails loud at attach time."""
+
+    engine = "clickhouse"
+    mechanism = Mechanism.ATTACH_RW
+    _engine_name = ""  # ClickHouse lakehouse table engine
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)  # lakehouse manifest/stat pruning
+
+    def details(self, source: Source) -> dict:
+        return {
+            "engine_clause": _clickhouse_lake_engine(source, self._engine_name),
+            "infer": True,
+            "validate": True,
+        }
+
+
+class ClickHouseIcebergConnector(_ClickHouseLakeConnector):
+    source_type = "iceberg"
+    key = "clickhouse_iceberg"
+    _engine_name = "IcebergS3"
+
+
+class ClickHouseDeltaLakeConnector(_ClickHouseLakeConnector):
+    source_type = "delta_lake"
+    key = "clickhouse_delta"
+    _engine_name = "DeltaLake"
 
 
 # --- Warehouse-native (Snowflake): self-only, land-into-self is a no-op ---

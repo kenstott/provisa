@@ -108,17 +108,19 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     # The materialization store, attached under this backend-neutral alias. A store MUST exist (the
     # engine's invariant); its backend/dialect is taken from the store URL scheme, never assumed.
     _MAT_STORE = "mat_store"
-    # DuckDB ATTACH type per store URL scheme. postgres/sqlite are attachable via their extensions;
-    # a relational store also needs an ASYNC SQLAlchemy driver for the write face (store_writer),
-    # which duckdb lacks — so DuckDB is intentionally NOT offered as a materialization store here
-    # (use sqlite for a file-based store, postgres for a server store). sqlite attaches a FILE PATH,
-    # postgres attaches the full connection URL.
+    # DuckDB ATTACH type per store URL scheme. postgres/sqlite attach via their extensions; duckdb
+    # is core (a DuckDB file attaches directly, no extension). sqlite/duckdb attach a FILE PATH,
+    # postgres attaches the full connection URL. A duckdb store has its own sync write face
+    # (federation.store_connection) since it lacks an async SQLAlchemy driver — this is the
+    # fully-embedded zero-config store (REQ-989).
     _ATTACH_TYPE_BY_SCHEME = {
         "postgresql": "postgres",
         "postgres": "postgres",
         "sqlite": "sqlite",
+        "duckdb": "duckdb",
     }
-    _FILE_ATTACH_TYPES = frozenset({"sqlite"})  # ATTACH a file path, not a URL
+    _FILE_ATTACH_TYPES = frozenset({"sqlite", "duckdb"})  # ATTACH a file path, not a URL
+    _NO_EXTENSION_TYPES = frozenset({"duckdb"})  # core store type: no INSTALL/LOAD needed
 
     def _store_schema(self) -> str:
         """The schema the landed replicas live in WITHIN the store. Schema-capable stores (postgres)
@@ -138,6 +140,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             else (self._engine.materialize_store())
         )
 
+    def _store_is_duckdb(self) -> bool:
+        """True when the materialization store is an embedded DuckDB file (REQ-989). A DuckDB store is
+        single-writer, so it is landed through THIS engine's own connection (which already holds it
+        attached), not the separate server-relational write face."""
+        from urllib.parse import urlparse
+
+        return urlparse(self._store_dsn()).scheme.split("+", 1)[0] == "duckdb"
+
     def ensure_materialize_attached(self) -> str:
         """ATTACH the materialization store under ``mat_store`` (idempotent); return the alias. The
         DuckDB ATTACH type is derived from the store URL scheme; the driver parses the URL and owns
@@ -151,8 +161,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             store_type = self._ATTACH_TYPE_BY_SCHEME.get(scheme)
             if store_type is None:
                 raise RuntimeError(f"materialize store scheme {scheme!r} is not attachable")
-            self._con.execute(f"INSTALL {store_type}")
-            self._con.execute(f"LOAD {store_type}")
+            if store_type not in self._NO_EXTENSION_TYPES:
+                self._con.execute(f"INSTALL {store_type}")
+                self._con.execute(f"LOAD {store_type}")
             # A file-backed store (sqlite) attaches the path; postgres attaches the full URL.
             target = parsed.path if store_type in self._FILE_ATTACH_TYPES else dsn
             self._con.execute(f"ATTACH '{target}' AS {self._MAT_STORE} (TYPE {store_type})")
@@ -184,17 +195,32 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         signal's one-shot materialize is a full snapshot seed."""
         store = self.ensure_materialize_attached()  # errors if the store is not configured
         mat_table = _mat_table_name(source)  # unique per (source, physical table) — no collision
-        # Land through the ONE write face (store_writer.land) — the engine never writes the store.
-        await store_writer.land(
-            self._store_dsn(),
-            schema=self._store_schema(),
-            table=mat_table,
-            columns=columns,
-            rows=rows,
-            change_signal=change_signal,
-            watermark_column=watermark_column,
-            pk_columns=pk_columns,
-        )
+        if self._store_is_duckdb():
+            # DuckDB store is single-writer: land through THIS engine's own connection (REQ-989).
+            from provisa.federation.store_connection import land_duckdb_native
+
+            land_duckdb_native(
+                self._con,
+                catalog=store,
+                schema=self._store_schema(),
+                table=mat_table,
+                columns=columns,
+                rows=rows,
+                change_signal=change_signal,
+                watermark_column=watermark_column,
+            )
+        else:
+            # Land through the ONE server-store write face — the engine never writes that store.
+            await store_writer.land(
+                self._store_dsn(),
+                schema=self._store_schema(),
+                table=mat_table,
+                columns=columns,
+                rows=rows,
+                change_signal=change_signal,
+                watermark_column=watermark_column,
+                pk_columns=pk_columns,
+            )
         self._expose_landed(source, store, mat_table)  # the engine only READS the landed replica
 
     async def attach_landed_source(
@@ -206,13 +232,24 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         DDL from the DML makes the catalog complete at startup. The engine never writes the store."""
         store = self.ensure_materialize_attached()
         mat_table = _mat_table_name(source)
-        await store_writer.reconcile_table(
-            self._store_dsn(),
-            schema=self._store_schema(),
-            table=mat_table,
-            columns=columns,
-            pk_columns=pk_columns,
-        )
+        if self._store_is_duckdb():
+            from provisa.federation.store_connection import reconcile_duckdb_native
+
+            reconcile_duckdb_native(
+                self._con,
+                catalog=store,
+                schema=self._store_schema(),
+                table=mat_table,
+                columns=columns,
+            )
+        else:
+            await store_writer.reconcile_table(
+                self._store_dsn(),
+                schema=self._store_schema(),
+                table=mat_table,
+                columns=columns,
+                pk_columns=pk_columns,
+            )
         self._expose_landed(source, store, mat_table)
 
     def _expose_landed(self, source: Any, store: str, mat_table: str) -> None:
@@ -258,6 +295,24 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         """Synchronous variant of run() for callers already on a worker thread (Arrow Flight, etc.)."""
         res = self._con.execute(duck_sql, params) if params else self._con.execute(duck_sql)
         return result_from_dbapi(res)
+
+    # -- Arrow transport (REQ-986) ---------------------------------------------
+
+    def run_arrow(self, duck_sql: str, params: list | None = None):
+        """Execute dialect-DuckDB SQL and return a ``pyarrow.Table`` — DuckDB produces Arrow natively
+        (``fetch_arrow_table``), so no Python rows are materialized for the Flight transport."""
+        res = self._con.execute(duck_sql, params) if params else self._con.execute(duck_sql)
+        return res.to_arrow_table()
+
+    def run_arrow_stream(self, duck_sql: str, params: list | None = None):
+        """Execute dialect-DuckDB SQL and return ``(schema, batch_generator)`` for lazy record-batch
+        streaming through the Flight server's GeneratorStream (REQ-986)."""
+        table = self.run_arrow(duck_sql, params)
+
+        def _batches():
+            yield from table.to_batches()
+
+        return table.schema, _batches()
 
     def close(self) -> None:
         self._con.close()

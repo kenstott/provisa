@@ -61,6 +61,12 @@ class _CHBackend(Protocol):
         """Run a query, returning ``(rows, column_names)``."""
         ...
 
+    def query_arrow(self, sql: str) -> Any:
+        """Run a query, returning a ``pyarrow.Table`` — the columnar transport (REQ-986). Each
+        backend uses its native Arrow face (clickhouse-connect ``query_arrow``, chdb ArrowStream,
+        clickhouse-driver columnar blocks) so no Python row materialization happens."""
+        ...
+
     def close(self) -> None: ...
 
 
@@ -80,6 +86,10 @@ class _ServerBackend:
     def query(self, sql: str) -> tuple[list[tuple], list[str]]:
         res = self._client.query(sql)
         return [tuple(r) for r in res.result_rows], list(res.column_names)
+
+    def query_arrow(self, sql: str) -> Any:
+        # clickhouse-connect delivers ClickHouse's native Arrow output directly as a pyarrow.Table.
+        return self._client.query_arrow(sql)
 
     def close(self) -> None:
         self._client.close()
@@ -102,6 +112,17 @@ class _NativeBackend:
     def query(self, sql: str) -> tuple[list[tuple], list[str]]:
         rows, cols = self._client.execute(sql, with_column_types=True)
         return [tuple(r) for r in rows], [c[0] for c in cols]
+
+    def query_arrow(self, sql: str) -> Any:
+        # clickhouse-driver has no native Arrow output; ``columnar=True`` yields column-oriented
+        # blocks (one list per column), which map straight to Arrow arrays — no per-row tuples.
+        import pyarrow as pa
+
+        columns, col_types = self._client.execute(sql, with_column_types=True, columnar=True)
+        names = [c[0] for c in col_types]
+        if not columns:
+            return pa.table({name: [] for name in names})
+        return pa.table({name: list(col) for name, col in zip(names, columns)})
 
     def close(self) -> None:
         self._client.disconnect()
@@ -131,6 +152,17 @@ class _EmbeddedBackend:
         cols = table.column_names
         rows = [tuple(d[c] for c in cols) for d in table.to_pylist()]
         return rows, list(cols)
+
+    def query_arrow(self, sql: str) -> Any:
+        import io
+
+        import pyarrow as pa
+
+        # chdb's ArrowStream format IS a pyarrow IPC stream — open it as the columnar result.
+        raw = self._session.query(sql, "ArrowStream").bytes()
+        if not raw:
+            return pa.table({})
+        return pa.ipc.open_stream(io.BytesIO(raw)).read_all()
 
     def close(self) -> None:
         self._session.close()
@@ -244,6 +276,10 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
             )
         else:  # file engine — ClickHouse infers the columns
             self._backend.command(f"CREATE TABLE IF NOT EXISTS {staged} ENGINE = {clause}")
+        # Validate the external attach — read one row so bad credentials / an unreachable object /
+        # bad lakehouse metadata fail LOUD here (REQ-987 parity), not silently at first query.
+        if details.get("validate"):
+            self._backend.query(f"SELECT * FROM {staged} LIMIT 1")
         self._backend.command(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {staged}")
 
     # -- metadata --------------------------------------------------------------
@@ -274,6 +310,26 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
         return await run_async(self.run_sync, sql, params)
+
+    # -- Arrow transport (REQ-986) ---------------------------------------------
+
+    def run_arrow(self, sql: str, params: list | None = None) -> Any:
+        """Execute dialect-ClickHouse SQL and return a ``pyarrow.Table`` — the columnar transport
+        surfaced through the Arrow Flight server. ClickHouse produces Arrow natively; no rows are
+        materialized in Python (REQ-986)."""
+        del params  # ClickHouse SQL arrives fully substituted from the governed pipeline
+        return self._backend.query_arrow(sql)
+
+    def run_arrow_stream(self, sql: str, params: list | None = None) -> tuple[Any, Any]:
+        """Execute dialect-ClickHouse SQL and return ``(schema, batch_generator)`` for lazy
+        record-batch streaming through the Flight server's GeneratorStream (REQ-986). The Arrow
+        table is sliced into record batches; the schema is delivered before the first batch."""
+        table = self.run_arrow(sql, params)
+
+        def _batches():
+            yield from table.to_batches()
+
+        return table.schema, _batches()
 
     @property
     def connection(self):

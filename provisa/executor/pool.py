@@ -30,6 +30,11 @@ _SOURCE_DIALECT: dict[str, str] = {
     "duckdb": "duckdb",
     "sqlserver": "tsql",
     "oracle": "oracle",
+    # Warehouse sources read directly then landed (REQ-986/987/988) — their SQLGlot dialect for the
+    # direct read SQL. Databricks reads via the Databricks/Spark SQL dialect.
+    "databricks": "databricks",
+    "snowflake": "snowflake",
+    "clickhouse": "clickhouse",
 }
 
 
@@ -53,15 +58,21 @@ class SourcePool:  # REQ-052, REQ-053
         max_size: int = 5,
         use_pgbouncer: bool = False,
         pgbouncer_port: int = 6432,
+        extra: dict[str, str] | None = None,
     ) -> None:
         """Create a driver connection for a source.
 
         For PostgreSQL with use_pgbouncer=True, connects through PgBouncer
-        on pgbouncer_port instead of direct PG port.
+        on pgbouncer_port instead of direct PG port. ``extra`` carries source-specific connection
+        hints (``Source.federation_hints``) the warehouse drivers need beyond host/port/user/pass —
+        Databricks ``http_path``, Snowflake ``account``/``warehouse``, ClickHouse ``scheme`` (REQ-986/987/988).
         """
         if source_id in self._drivers:
             return
         driver = create_driver(source_type, use_pgbouncer=use_pgbouncer)
+        driver.configure(
+            extra or {}
+        )  # warehouse drivers read federation_hints; RDBMS drivers no-op
         connect_port = pgbouncer_port if use_pgbouncer else port
         await driver.connect(host, connect_port, database, user, password, min_size, max_size)
         self._drivers[source_id] = driver

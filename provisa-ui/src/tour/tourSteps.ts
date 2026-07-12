@@ -87,7 +87,7 @@ export const TOUR_STEPS: TourStep[] = [
       "One connector list spans every category:" +
       "<ul>" +
       "<li><strong>Databases</strong> — PostgreSQL, MySQL, Oracle, SQL Server</li>" +
-      "<li><strong>Cloud warehouses</strong> — Snowflake, BigQuery, Databricks</li>" +
+      "<li><strong>Cloud warehouses</strong> — Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse</li>" +
       "<li><strong>Analytics / OLAP</strong> — ClickHouse, Druid</li>" +
       "<li><strong>Lakes &amp; files</strong> — Iceberg, Parquet, CSV, JSON</li>" +
       "<li><strong>NoSQL &amp; graph</strong> — MongoDB, Neo4j</li>" +
@@ -219,7 +219,7 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="nav-admin"]',
     title: "Operate it",
     description:
-      "The Admin pages run the platform: choose and configure your federation engine, manage encryption keys, and wire up auth providers. Full observability lives here for the platform owner too — and it can be redirected to any OpenTelemetry collector for enterprise-class trace management.",
+      "The Admin pages run the platform: choose and configure your federation engine, manage encryption keys, and wire up auth providers. The engine is pluggable — DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, or a cloud warehouse as a first-class engine: Snowflake, BigQuery, Databricks, Microsoft Fabric, or Azure Synapse. Each reaches object/lake data (Parquet, Iceberg, Delta) sitting in S3, R2, GCS, ADLS or OneLake as a <em>zero-copy external link</em> — read in place via the engine's native mechanism (external tables, Fabric OneLake shortcuts, ClickHouse table engines) with credentials provisioned automatically — while everything else lands as a governed replica. Full observability lives here for the platform owner too — and it can be redirected to any OpenTelemetry collector for enterprise-class trace management.",
   },
   {
     route: "/sources",

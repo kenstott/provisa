@@ -54,8 +54,12 @@ class TestDriverRegistry:
     def test_cassandra_no_driver(self):
         assert not has_driver("cassandra")
 
-    def test_snowflake_no_driver(self):
-        assert not has_driver("snowflake")
+    def test_warehouse_sources_have_drivers(self):
+        # REQ-986/987/988: warehouses are first-class named sources — read directly then landed,
+        # reusing the same connection their federation engine uses (no Trino/delta_lake detour).
+        assert has_driver("snowflake")
+        assert has_driver("databricks")
+        assert has_driver("clickhouse")
 
     def test_bigquery_no_driver(self):
         assert not has_driver("bigquery")

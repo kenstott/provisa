@@ -47,10 +47,17 @@ class _FakeConn:
         self._dialect_name = dialect
         self.stmts: list[Any] = []
         self.upserts: list[tuple[Any, dict, list[str]]] = []
+        self.bulk_copies: list[tuple[str, list[dict]]] = []  # (qualified table, rows) per bulk_copy
 
     async def execute_core(self, stmt):
         self.stmts.append(stmt)
         return _Result()
+
+    async def bulk_copy(self, table, rows):
+        # REQ-990: landing inserts go through the bulk-COPY face, not per-row execute_core.
+        qualified = f"{table.schema}.{table.name}" if table.schema else table.name
+        self.bulk_copies.append((qualified, list(rows)))
+        return len(rows)
 
     async def upsert(self, table, values, *, index_elements, update_columns=None, set_extra=None):
         self.upserts.append((table, dict(values), list(index_elements)))
@@ -92,7 +99,8 @@ async def test_replace_deletes_and_reinserts():
     )  # replace = DELETE+INSERT, never drops the reconcile-managed table
     assert "CREATE TABLE" in joined and "IF NOT EXISTS" in joined  # create-if-absent only
     assert "DELETE FROM" in joined  # full refresh of contents
-    assert "INSERT INTO" in joined
+    assert "INSERT INTO" not in joined  # REQ-990: rows land via bulk_copy, not per-row INSERT
+    assert conn.bulk_copies == [("mat.pets", [{"id": 1, "status": "new"}])]
 
 
 @pytest.mark.asyncio
@@ -103,7 +111,8 @@ async def test_append_does_not_drop():
     joined = " | ".join(conn.sql())
     assert "DROP TABLE" not in joined  # append never truncates
     assert "CREATE TABLE" in joined and "IF NOT EXISTS" in joined
-    assert "INSERT INTO" in joined
+    assert "INSERT INTO" not in joined  # REQ-990: bulk_copy, not per-row INSERT
+    assert conn.bulk_copies == [("mat.pets", [{"id": 2, "status": "sold"}])]
 
 
 @pytest.mark.asyncio
@@ -112,6 +121,7 @@ async def test_append_empty_rows_creates_only():
     table = build_table("mat", "pets", COLUMNS)
     await land_append(conn, table, [])
     assert not any("INSERT INTO" in s for s in conn.sql())
+    assert conn.bulk_copies == [("mat.pets", [])]  # bulk_copy called, but with no rows
 
 
 @pytest.mark.asyncio

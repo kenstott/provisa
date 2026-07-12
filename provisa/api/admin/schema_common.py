@@ -199,6 +199,10 @@ async def _add_source_pool(state, input: SourceInput) -> None:
         return
     # REQ-012: a failed direct connection must surface (no silent swallow), so the
     # caller can reject registration instead of persisting a dead source.
+    # Warehouse connection extras (Databricks http_path, Snowflake account/warehouse, …) the standard
+    # args can't carry (REQ-986/987/988). Sourced from federation_hints where present; the admin input
+    # may not expose them (config is the path that does), so read defensively.
+    hints = getattr(input, "federation_hints", None) or {}
     await state.source_pools.add(
         source_id=input.id,
         source_type=input.type,
@@ -207,6 +211,7 @@ async def _add_source_pool(state, input: SourceInput) -> None:
         database=input.database,
         user=input.username,
         password=resolve_secrets(input.password),
+        extra={k: resolve_secrets(v) for k, v in hints.items()},
     )
 
 

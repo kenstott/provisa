@@ -33,6 +33,8 @@ SUPPORTED_DIALECTS: set[str] = {
     "snowflake",
     "bigquery",
     "clickhouse",
+    "databricks",  # REQ-987: Databricks as a first-class federation engine (SQLGlot databricks dialect)
+    "spark",  # Databricks/Spark SQL variant
 }
 
 

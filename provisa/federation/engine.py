@@ -365,9 +365,30 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
         driver_class=DriverClass.PARTIAL,
         mpp=False,  # single-node embedded engine (REQ-894)
         backend_factory=DuckDBBackend,  # in-process execution terminal (the engine's own model)
-        capabilities=frozenset({EngineCapability.ROWS, EngineCapability.ARROW}),
-        default_materialize_store=_platform_db_materialize_default,  # DECLARED default: platform DB
+        capabilities=frozenset(
+            {
+                EngineCapability.ROWS,
+                EngineCapability.ARROW,  # fetch_arrow_table
+                EngineCapability.ARROW_STREAM,  # lazy record-batch streaming via Flight (REQ-986)
+            }
+        ),
+        # DECLARED default: an embedded DuckDB file — the fully-embedded zero-config store (REQ-989),
+        # not the platform tenant DB. An explicit materialize_store_url still overrides it.
+        default_materialize_store=_embedded_duckdb_materialize_default,
     )
+
+
+def _embedded_duckdb_materialize_default() -> str | None:  # REQ-989
+    """The DECLARED default materialization store for the zero-config embedded stack: an embedded
+    DuckDB file under the data dir (``$PROVISA_DATA_DIR`` else ``~/.provisa``). Fully in-process, no
+    external database — the DuckDB engine attaches it and lands into it through its own connection
+    (DuckDB is single-writer). Explicit ``materialize_store_url`` still overrides it."""
+    import os
+    from pathlib import Path
+
+    data_dir = Path(os.environ.get("PROVISA_DATA_DIR") or (Path.home() / ".provisa"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return f"duckdb:///{data_dir / 'materialize.duckdb'}"
 
 
 def _platform_db_materialize_default() -> str | None:
@@ -440,6 +461,8 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
     """
     from provisa.federation.connector import (
         ClickHouseCsvConnector,
+        ClickHouseDeltaLakeConnector,
+        ClickHouseIcebergConnector,
         ClickHouseMongoConnector,
         ClickHouseMysqlConnector,
         ClickHouseParquetConnector,
@@ -447,28 +470,52 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
     )
     from provisa.federation.clickhouse_backend import ClickHouseBackend
 
+    # ATTACH connectors reach external sources in place via ClickHouse's native integration/table
+    # engines (zero-copy); every other readable source lands. Reach is derived, not a fixed list.
     return FederationEngine(
         "clickhouse",
-        [
-            ClickHousePostgresConnector(),  # postgresql — CREATE DATABASE ENGINE=PostgreSQL
-            ClickHouseMysqlConnector(),  # mysql — CREATE DATABASE ENGINE=MySQL
-            ClickHouseMongoConnector(),  # mongodb — MongoDB table engine (columns from registry)
-            ClickHouseCsvConnector(),  # csv — S3/URL/File engine by path scheme
-            ClickHouseParquetConnector(),  # parquet — S3/URL/File engine by path scheme
-        ],
+        _warehouse_connectors(
+            "clickhouse",
+            attach=[
+                ClickHousePostgresConnector(),  # postgresql — CREATE DATABASE ENGINE=PostgreSQL
+                ClickHouseMysqlConnector(),  # mysql — CREATE DATABASE ENGINE=MySQL
+                ClickHouseMongoConnector(),  # mongodb — MongoDB table engine (columns from registry)
+                ClickHouseCsvConnector(),  # csv — S3/URL/File engine by path scheme
+                ClickHouseParquetConnector(),  # parquet — S3/URL/File engine by path scheme
+                ClickHouseIcebergConnector(),  # iceberg — IcebergS3 lakehouse engine (zero-copy)
+                ClickHouseDeltaLakeConnector(),  # delta_lake — DeltaLake lakehouse engine (zero-copy)
+            ],
+        ),
         native_store="clickhouse",  # its own tables are native; attached sources reference in place
         driver_class=DriverClass.PARTIAL,
         mpp=True,  # ClickHouse distributes across shards/replicas
         backend_factory=ClickHouseBackend,  # in-process terminal driving ClickHouseFederationRuntime
         default_materialize_store=_platform_db_materialize_default,
         capabilities=frozenset(
-            {EngineCapability.ROWS, EngineCapability.ARROW}
-        ),  # query_arrow (REQ-909)
+            {
+                EngineCapability.ROWS,
+                EngineCapability.ARROW,  # query_arrow (REQ-909)
+                EngineCapability.ARROW_STREAM,  # lazy record-batch streaming via Flight (REQ-986)
+            }
+        ),
     )
 
 
-# Demo source types LANDed into the sqlalchemy self-only engine (no attach/FDW).
-_LAND_TYPES = ("postgresql", "csv", "sqlite", "parquet", "openapi", "graphql_remote")
+def _warehouse_connectors(name: str, *, attach: Sequence[Connector] = ()) -> list[Connector]:
+    """A warehouse engine's FULL connector set (REQ-897): the explicit ATTACH connectors it links in
+    place, PLUS a land connector for EVERY OTHER readable source type. The land reach is DERIVED from
+    what Provisa can actually read — its direct drivers/adapters, the materialize-only feeds, and the
+    pgwire-replica types — never a curated demo subset: any readable source the engine cannot attach
+    is materialized into the warehouse, and each connector's declared mechanism drives strategy
+    (ATTACH_*→SCAN/VIRTUAL zero-copy, DIRECT/FETCH→LAND). The engine's own native store type is
+    excluded (a source already in the warehouse is native, not landed)."""
+    from provisa.federation.connector import WarehouseNativeConnector
+    from provisa.federation.strategy import _CONNECTOR_PGWIRE_REPLICA, _MATERIALIZE_ONLY
+
+    attach_types = {c.source_type for c in attach}
+    readable = _provisa_direct_types() | set(_MATERIALIZE_ONLY) | set(_CONNECTOR_PGWIRE_REPLICA)
+    land = sorted(readable - attach_types - {name})
+    return list(attach) + [WarehouseNativeConnector(name, t) for t in land]
 
 
 def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero connectors
@@ -479,7 +526,6 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
     SQL, so ANY SQLAlchemy-reachable database (Postgres, MySQL, Oracle, SQL Server,
     ClickHouse, ...) is a usable engine with no per-source connector. The URL comes
     from the arg or ``$PROVISA_ENGINE_URL``; its scheme names the native store."""
-    from provisa.federation.connector import WarehouseNativeConnector
     from provisa.federation.sqlalchemy_backend import SqlAlchemyBackend
 
     dsn = url or configured_engine_url()
@@ -488,7 +534,7 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
     backend = dsn.split("://", 1)[0].split("+", 1)[0]  # postgresql+psycopg2 -> postgresql
     return FederationEngine(
         name,
-        [WarehouseNativeConnector(name, t) for t in _LAND_TYPES],
+        _warehouse_connectors(name),  # lands every readable source into the store (no attach)
         native_store=backend,
         driver_class=DriverClass.SELF_ONLY,  # reaches only its own store; everything lands in
         mpp=False,
@@ -497,9 +543,127 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
     )
 
 
-# The five federation engines. embedded PostgreSQL is NOT a separate engine — it is the
-# ``pg`` engine on a bundled instance (its FDW/pg_duckdb connectors are probed by discover).
-# Snowflake is a SOURCE reached by an engine's connector, not an engine.
+def build_snowflake_engine() -> FederationEngine:  # REQ-988 self-only MPP warehouse
+    """Snowflake as a first-class engine (not a source reached via Trino). A self-only warehouse:
+    every source LANDs into Snowflake; governed SQL runs against it in the Snowflake dialect, with
+    Arrow-native read transport (fetch_arrow_all / fetch_arrow_batches) surfaced through Arrow Flight."""
+    from provisa.federation.runtime import EngineCapability
+    from provisa.federation.snowflake_backend import SnowflakeBackend
+    from provisa.federation.snowflake_connectors import snowflake_object_link_connectors
+
+    return FederationEngine(
+        "snowflake",
+        # ATTACH connectors link object/lake sources on cloud storage in place (zero-copy SCAN via an
+        # external stage + external table); every other readable source lands. Reach is derived.
+        _warehouse_connectors("snowflake", attach=snowflake_object_link_connectors()),
+        native_store="snowflake",
+        driver_class=DriverClass.PARTIAL,  # attaches cloud object/lake sources live + lands the rest
+        mpp=True,  # Snowflake distributes across virtual-warehouse compute
+        backend_factory=SnowflakeBackend,
+        capabilities=frozenset(
+            {
+                EngineCapability.ROWS,
+                EngineCapability.ARROW,  # fetch_arrow_all
+                EngineCapability.ARROW_STREAM,  # fetch_arrow_batches (lazy) via Flight (REQ-988)
+            }
+        ),
+        default_materialize_store=_platform_db_materialize_default,
+    )
+
+
+def build_databricks_engine() -> FederationEngine:  # REQ-987 self-only MPP warehouse
+    """Databricks SQL warehouse as a first-class engine (not a source reached via Trino). A self-only
+    warehouse: every source LANDs into Databricks; governed SQL runs against it in the Databricks
+    dialect, with Arrow-native read transport (Cloud Fetch) surfaced through Arrow Flight."""
+    from provisa.federation.databricks_backend import DatabricksBackend
+    from provisa.federation.databricks_connectors import databricks_object_link_connectors
+    from provisa.federation.runtime import EngineCapability
+
+    return FederationEngine(
+        "databricks",
+        # ATTACH connectors link object/lake sources on cloud storage in place (zero-copy SCAN via UC
+        # external tables); every other readable source lands. Reach is derived, not a demo tuple.
+        _warehouse_connectors("databricks", attach=databricks_object_link_connectors()),
+        native_store="databricks",
+        driver_class=DriverClass.PARTIAL,  # attaches cloud object/lake sources live + lands the rest
+        mpp=True,  # Databricks distributes across its SQL-warehouse cluster
+        backend_factory=DatabricksBackend,
+        capabilities=frozenset(
+            {
+                EngineCapability.ROWS,
+                EngineCapability.ARROW,  # fetchall_arrow (Cloud Fetch)
+                EngineCapability.ARROW_STREAM,  # lazy record-batch streaming via Flight (REQ-987)
+            }
+        ),
+        default_materialize_store=_platform_db_materialize_default,
+    )
+
+
+def build_bigquery_engine() -> FederationEngine:  # REQ — BigQuery federation engine
+    """BigQuery as a first-class engine. A partial-federator warehouse: object/lake sources on GCS
+    (and cross-cloud via BigLake) ATTACH as zero-copy external tables (SCAN); every other readable
+    source LANDs into a per-source dataset. Governed SQL runs in the BigQuery dialect with Arrow-native
+    reads (Storage Read API) surfaced through Arrow Flight."""
+    from provisa.federation.bigquery_backend import BigQueryBackend
+    from provisa.federation.bigquery_connectors import bigquery_object_link_connectors
+    from provisa.federation.runtime import EngineCapability
+
+    return FederationEngine(
+        "bigquery",
+        _warehouse_connectors("bigquery", attach=bigquery_object_link_connectors()),
+        native_store="bigquery",
+        driver_class=DriverClass.PARTIAL,  # attaches cloud object/lake sources live + lands the rest
+        mpp=True,  # Dremel distributes across BigQuery slots
+        backend_factory=BigQueryBackend,
+        capabilities=frozenset(
+            {
+                EngineCapability.ROWS,
+                EngineCapability.ARROW,  # to_arrow (Storage Read API)
+                EngineCapability.ARROW_STREAM,  # to_arrow_iterable — lazy record batches via Flight
+            }
+        ),
+        default_materialize_store=_platform_db_materialize_default,
+    )
+
+
+def _build_mssql_warehouse_engine(name: str) -> FederationEngine:  # Fabric / Synapse
+    """Microsoft Fabric Warehouse / Azure Synapse — a T-SQL MPP partial-federator warehouse. Object/
+    lake sources on OneLake/ADLS ATTACH as zero-copy views over ``OPENROWSET`` (SCAN); every other
+    readable source LANDs into a per-source schema. Governed SQL runs in the T-SQL dialect; reads are
+    Arrow (built from the ODBC cursor). Azure AD auth (azure-identity)."""
+    from provisa.federation.mssql_warehouse_backend import FabricBackend, SynapseBackend
+    from provisa.federation.mssql_warehouse_connectors import openrowset_link_connectors
+    from provisa.federation.runtime import EngineCapability
+
+    return FederationEngine(
+        name,
+        _warehouse_connectors(name, attach=openrowset_link_connectors(name)),
+        native_store=name,
+        driver_class=DriverClass.PARTIAL,  # attaches OneLake/ADLS object/lake sources live + lands the rest
+        mpp=True,  # Fabric/Synapse distribute across their compute
+        backend_factory=(FabricBackend if name == "fabric" else SynapseBackend),
+        capabilities=frozenset(
+            {
+                EngineCapability.ROWS,
+                EngineCapability.ARROW,  # built from the ODBC cursor
+                EngineCapability.ARROW_STREAM,
+            }
+        ),
+        default_materialize_store=_platform_db_materialize_default,
+    )
+
+
+def build_fabric_engine() -> FederationEngine:
+    return _build_mssql_warehouse_engine("fabric")
+
+
+def build_synapse_engine() -> FederationEngine:
+    return _build_mssql_warehouse_engine("synapse")
+
+
+# The federation engines. embedded PostgreSQL is NOT a separate engine — it is the ``pg`` engine on a
+# bundled instance (its FDW/pg_duckdb connectors are probed by discover). Snowflake and Databricks are
+# now first-class self-only warehouse engines (REQ-987/988), not merely sources reached via Trino.
 _ENGINE_BUILDERS = {
     "trino": build_trino_engine,  # embedded MPP federator (Provisa-managed Trino cluster)
     "trino-byo": build_trino_engine,  # external Trino coordinator (same runtime; connection only)
@@ -507,6 +671,11 @@ _ENGINE_BUILDERS = {
     "duckdb": build_duckdb_engine,  # native in-process partial federator
     "clickhouse": build_clickhouse_engine,  # embedded chdb OLAP federator (REQ-909)
     "clickhouse-server": build_clickhouse_engine,  # external ClickHouse server/cloud (same runtime, URL-driven)
+    "snowflake": build_snowflake_engine,  # self-only MPP warehouse, Arrow-native (REQ-988)
+    "databricks": build_databricks_engine,  # partial-federator warehouse, Arrow-native (REQ-987)
+    "bigquery": build_bigquery_engine,  # partial-federator warehouse, Arrow-native (GCS external links)
+    "fabric": build_fabric_engine,  # Microsoft Fabric Warehouse — T-SQL, OneLake OPENROWSET links
+    "synapse": build_synapse_engine,  # Azure Synapse serverless SQL — T-SQL, ADLS OPENROWSET links
     "sqlalchemy": build_sqlalchemy_engine,  # any SQLAlchemy URL, zero connectors (self-only)
 }
 
@@ -657,6 +826,76 @@ ENGINE_REGISTRY: list[dict] = [
         ],
     },
     {
+        "key": "snowflake",
+        "label": "Snowflake",
+        "description": "Snowflake as a first-class self-only MPP warehouse with Arrow-native transport. Every source lands into Snowflake; queries run in the Snowflake dialect.",
+        "config_fields": [
+            {
+                "config_key": "federation_engine_url",
+                "label": "Snowflake URL",
+                "type": "string",
+                "required": True,
+                "placeholder": "snowflake://user:pass@account/db/schema?warehouse=WH",
+            },
+        ],
+    },
+    {
+        "key": "databricks",
+        "label": "Databricks",
+        "description": "Databricks SQL warehouse as a first-class self-only MPP engine with Arrow-native (Cloud Fetch) transport. Every source lands into Databricks; queries run in the Databricks dialect.",
+        "config_fields": [
+            {
+                "config_key": "federation_engine_url",
+                "label": "Databricks URL",
+                "type": "string",
+                "required": True,
+                "placeholder": "databricks://token:TOKEN@host?http_path=/sql/1.0/warehouses/xxxx",
+            },
+        ],
+    },
+    {
+        "key": "bigquery",
+        "label": "BigQuery",
+        "description": "Google BigQuery as a first-class partial-federator engine with Arrow-native transport (Storage Read API). Object/lake sources on GCS attach as zero-copy external tables; every other source lands into a per-source dataset; queries run in the BigQuery dialect. Auth via a service-account key (GOOGLE_APPLICATION_CREDENTIALS).",
+        "config_fields": [
+            {
+                "config_key": "federation_engine_url",
+                "label": "BigQuery URL",
+                "type": "string",
+                "required": False,
+                "placeholder": "bigquery://<project>?location=US (blank = $GOOGLE_CLOUD_PROJECT)",
+            },
+        ],
+    },
+    {
+        "key": "fabric",
+        "label": "Microsoft Fabric",
+        "description": "Microsoft Fabric Warehouse as a first-class partial-federator engine (T-SQL over TDS/ODBC, Azure AD auth). Object/lake sources on OneLake attach as zero-copy OPENROWSET views; every other source lands into a per-source schema. Set FABRIC_SQL_SERVER / FABRIC_DATABASE.",
+        "config_fields": [
+            {
+                "config_key": "federation_engine_url",
+                "label": "Fabric SQL connection string",
+                "type": "string",
+                "required": False,
+                "placeholder": "fabric://<workspace>.datawarehouse.fabric.microsoft.com/<warehouse> (blank = FABRIC_SQL_SERVER)",
+            },
+        ],
+    },
+    {
+        "key": "synapse",
+        "label": "Azure Synapse",
+        "description": "Azure Synapse serverless SQL as a first-class partial-federator engine (T-SQL over TDS/ODBC, Azure AD auth). Object/lake sources on ADLS attach as zero-copy OPENROWSET / external-table views; every other source lands. Set SYNAPSE_SQL_SERVER / SYNAPSE_DATABASE.",
+        "config_fields": [
+            {
+                "config_key": "federation_engine_url",
+                "label": "Synapse SQL endpoint",
+                "type": "string",
+                "required": False,
+                "placeholder": "synapse://<workspace>-ondemand.sql.azuresynapse.net/<database> (blank = SYNAPSE_SQL_SERVER)",
+            },
+        ],
+    },
+    {
         "key": "sqlalchemy",
         "label": "SQLAlchemy (any RDB)",
         "description": "Any SQLAlchemy-reachable database as a self-only warehouse. Every source lands into the target store.",
@@ -782,12 +1021,13 @@ def configured_engine_endpoint() -> tuple[str, int]:
 
 def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/904/916
     """Select the federation engine by name — the one place the runtime picks an engine. Precedence:
-    explicit arg > ``$PROVISA_ENGINE`` env > persisted ``federation_engine`` config > ``trino``. The
-    engines are trino / pg / duckdb / clickhouse / sqlalchemy."""
+    explicit arg > ``$PROVISA_ENGINE`` env > persisted ``federation_engine`` config > ``duckdb``. The
+    zero-config default is the fully-embedded in-process DuckDB engine (REQ-989); external engines
+    (trino / pg / clickhouse / sqlalchemy / …) are selected via any of the above."""
     import os
 
     selected = name or os.environ.get("PROVISA_ENGINE") or _engine_config().get("federation_engine")
-    key = (selected or "trino").lower().replace("_", "-")
+    key = (selected or "duckdb").lower().replace("_", "-")
     if key not in _ENGINE_BUILDERS:
         raise ValueError(f"unknown federation engine {key!r}; valid: {sorted(_ENGINE_BUILDERS)}")
     return _ENGINE_BUILDERS[key]()

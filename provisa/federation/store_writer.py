@@ -72,7 +72,9 @@ async def store_connection(dsn: str) -> AsyncGenerator[Any]:
     """A SQLAlchemy ``Connection`` (the ``StoreConn`` write face) to the relational store ``dsn``.
 
     Built per landing (landing is on-demand, not hot) and disposed after. This is the ONE place a
-    store connection for writing is opened; the federation engine never opens one for writes."""
+    server-relational store connection for writing is opened; the federation engine never opens one
+    for writes. An embedded DuckDB store is written differently — through the engine's own connection,
+    since DuckDB is single-writer per file (see ``store_connection.land_duckdb_native``, REQ-989)."""
     from provisa.core.database import Database, create_engine_from_url
 
     engine = create_engine_from_url(async_store_url(dsn), pool_size=1)

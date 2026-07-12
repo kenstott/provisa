@@ -47,6 +47,8 @@ class StoreConn(Protocol):
 
     async def execute_core(self, stmt: Any) -> Any: ...
 
+    async def bulk_copy(self, table: Table, rows: list[dict]) -> int: ...
+
     async def upsert(self, table: Table, values: dict, *, index_elements: list[str]) -> None: ...
 
 
@@ -92,30 +94,37 @@ def _coerce_json_row(row: dict, json_cols: frozenset[str]) -> dict:
     return out
 
 
+async def _bulk_insert(conn: StoreConn, table: Table, rows: list[dict]) -> None:
+    """Insert ``rows`` through the store's columnar / bulk-COPY ingest path (REQ-990) — never a
+    per-row loop. JSON columns are parsed to objects first (the store re-serializes on bind); the
+    coerced rows are handed to ``conn.bulk_copy``, which picks PostgreSQL COPY or a single
+    executemany INSERT from the dialect capability. Row-by-row INSERT is intentionally NOT a path
+    here: every relational store supports one of the two bulk faces."""
+    json_cols = _json_columns(table)
+    await conn.bulk_copy(table, [_coerce_json_row(row, json_cols) for row in rows])
+
+
 async def land_replace(conn: StoreConn, table: Table, rows: list[dict]) -> str:
-    """REPLACE land: **DELETE + INSERT** — a full refresh of the table's CONTENTS (REQ-932).
+    """REPLACE land: **DELETE + bulk INSERT** — a full refresh of the table's CONTENTS (REQ-932).
 
     Never DROPs the table: its existence/schema/grants are the reconcile controller's concern (a
     pre-created, restart-surviving, reconcile-managed table). Creates it only if absent (first land
-    before reconcile ran), then deletes all rows and re-inserts — so ``replace`` replaces contents,
-    not the table."""
+    before reconcile ran), then deletes all rows and re-inserts via the bulk-COPY path (REQ-990) —
+    so ``replace`` replaces contents, not the table."""
     await conn.execute_core(CreateTable(table, if_not_exists=True))
     await conn.execute_core(table.delete())
-    json_cols = _json_columns(table)
-    for row in rows:
-        await conn.execute_core(table.insert().values(**_coerce_json_row(row, json_cols)))
+    await _bulk_insert(conn, table, rows)
     return _qualified(table)
 
 
 async def land_append(conn: StoreConn, table: Table, rows: list[dict]) -> str:
-    """APPEND land: insert ``rows`` into an existing table without dropping it (REQ-932).
+    """APPEND land: bulk-insert ``rows`` into an existing table without dropping it (REQ-932).
 
     ``rows`` are the already-watermark-filtered delta (``WHERE watermark > cursor`` upstream), so
-    this only creates-if-absent and inserts — no truncation. The caller advances the cursor."""
+    this only creates-if-absent and bulk-inserts (REQ-990) — no truncation. The caller advances the
+    cursor."""
     await conn.execute_core(CreateTable(table, if_not_exists=True))
-    json_cols = _json_columns(table)
-    for row in rows:
-        await conn.execute_core(table.insert().values(**_coerce_json_row(row, json_cols)))
+    await _bulk_insert(conn, table, rows)
     return _qualified(table)
 
 

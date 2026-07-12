@@ -106,6 +106,21 @@ def load_profile(
     if materialize_url:
         env["PROVISA_MATERIALIZE_URL"] = materialize_url
         notes.append(f"external materialization store: {materialize_url.split('://', 1)[0]}://…")
+    else:
+        # Materialization store (REQ-989): the preset's embedded store maps to PROVISA_MATERIALIZE_URL
+        # so the zero-config stack lands into an in-process store (DuckDB file, or SQLite file) — never
+        # the platform tenant DB. An explicit ``materialize_url`` (external warehouse) still wins above.
+        mat_store = spec.get("materialization_store")
+        if mat_store in ("duckdb_file", "sqlite"):
+            scheme = "duckdb" if mat_store == "duckdb_file" else "sqlite+aiosqlite"
+            if ephemeral:
+                env["PROVISA_MATERIALIZE_URL"] = f"{scheme}:///:memory:"
+                notes.append(f"materialization store: in-memory {mat_store} (ephemeral)")
+            else:
+                mdd = Path(data_dir) if data_dir else _default_data_dir(preset)
+                fname = "materialize.duckdb" if mat_store == "duckdb_file" else "materialize.db"
+                env["PROVISA_MATERIALIZE_URL"] = f"{scheme}:///{mdd / fname}"
+                notes.append(f"materialization store: {mat_store} under {mdd} (embedded)")
     if trino_endpoint:
         host, port = trino_endpoint
         env["TRINO_HOST"] = host

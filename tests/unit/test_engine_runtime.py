@@ -58,10 +58,11 @@ def test_trino_advertises_all_transports():
     assert rt.supports(EngineCapability.ARROW_STREAM) is True
 
 
-def test_duckdb_omits_flight_stream():
+def test_duckdb_advertises_flight_stream():
+    # REQ-986: DuckDB surfaces ARROW and lazy ARROW_STREAM through the Flight server.
     rt = EngineRuntime(build_duckdb_engine(), _state())
     assert rt.supports(EngineCapability.ARROW) is True
-    assert rt.supports(EngineCapability.ARROW_STREAM) is False
+    assert rt.supports(EngineCapability.ARROW_STREAM) is True
 
 
 def test_require_fails_closed_for_unsupported_transport():

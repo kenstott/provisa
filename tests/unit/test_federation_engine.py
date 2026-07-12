@@ -100,12 +100,15 @@ def test_build_engine_selects_the_four_engines(monkeypatch):
 
     monkeypatch.delenv("PROVISA_ENGINE", raising=False)
     monkeypatch.delenv("PROVISA_ENGINE_URL", raising=False)
-    assert build_engine().name == "trino"  # default
-    assert build_engine("duckdb").name == "duckdb"
+    assert build_engine().name == "duckdb"  # REQ-989: zero-config default is embedded DuckDB
+    assert build_engine("trino").name == "trino"
     assert build_engine("pg").name == "postgres"
-    monkeypatch.setenv("PROVISA_ENGINE", "duckdb")
-    assert build_engine().name == "duckdb"  # env-selected
-    for gone in ("embedded-pg", "snowflake", "bogus"):
+    monkeypatch.setenv("PROVISA_ENGINE", "trino")
+    assert build_engine().name == "trino"  # env-selected
+    # REQ-987/988: snowflake and databricks are now first-class engines, not unknown.
+    assert build_engine("snowflake").name == "snowflake"
+    assert build_engine("databricks").name == "databricks"
+    for gone in ("embedded-pg", "bogus"):
         with pytest.raises(ValueError, match="unknown federation engine"):
             build_engine(gone)
 
@@ -299,6 +302,11 @@ def test_engine_registry_lists_all_selectable_engines():
         "pg",
         "clickhouse",
         "clickhouse-server",
+        "snowflake",  # REQ-988: first-class warehouse engine
+        "databricks",  # REQ-987: first-class warehouse engine
+        "bigquery",  # first-class warehouse engine (GCS external links + Arrow)
+        "fabric",  # Microsoft Fabric Warehouse (T-SQL, OneLake shortcut external links)
+        "synapse",  # Azure Synapse serverless SQL (T-SQL, ADLS external links)
         "sqlalchemy",
     }
     # every entry carries UI metadata + a config schema; every field declares a type

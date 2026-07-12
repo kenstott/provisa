@@ -181,6 +181,21 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
     state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")
     state.source_catalogs["provisa-otel"] = "otel"
 
+    # A fixed-catalog warehouse (BigQuery project.dataset.table; Fabric/Synapse database.schema.table)
+    # pins EVERY source's catalog to the one warehouse catalog — the runtime lands/attaches, and the
+    # governed query reads, at exactly <catalog>.<schema>.<table>.
+    import os
+
+    _fixed_catalog = None
+    _engine = getattr(state, "federation_engine", None)
+    _engine_name = getattr(getattr(_engine, "engine", None), "name", "")
+    if _engine_name == "bigquery":
+        _fixed_catalog = os.environ.get("GOOGLE_CLOUD_PROJECT")
+    elif _engine_name == "fabric":
+        _fixed_catalog = os.environ.get("FABRIC_DATABASE")
+    elif _engine_name == "synapse":
+        _fixed_catalog = os.environ.get("SYNAPSE_DATABASE")
+
     for src in config.sources:
         state.source_types[src.id] = src.type.value
         _pg_cat = (
@@ -188,7 +203,7 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
             if src.type.value == "postgresql"
             else (src.database or source_to_catalog(src.id))
         )
-        state.source_catalogs[src.id] = _pg_cat
+        state.source_catalogs[src.id] = _fixed_catalog or _pg_cat
         state.source_dialects[src.id] = src.dialect or ""
         state.source_cache[src.id] = {
             "cache_enabled": src.cache_enabled,
@@ -223,6 +238,9 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
                     max_size=src.pool_max,
                     use_pgbouncer=src.use_pgbouncer,
                     pgbouncer_port=src.pgbouncer_port,
+                    # Warehouse connection extras (Databricks http_path, Snowflake account/warehouse,
+                    # ClickHouse scheme) the standard args can't carry (REQ-986/987/988).
+                    extra={k: resolve_secrets(v) for k, v in src.federation_hints.items()},
                 )
 
     _known_engine_catalogs = set(state.source_catalogs.values()) | {
