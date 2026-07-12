@@ -20,7 +20,7 @@ import pytest
 from provisa.executor.redirect import RedirectConfig, upload_and_presign
 from provisa.executor.result import QueryResult
 
-pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 MINIO_CONFIG = RedirectConfig(
     enabled=True,
