@@ -162,14 +162,19 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
             return location
         from provisa.federation.fabric_shortcuts import ensure_external_shortcut
 
-        workspace_id = os.environ.get("FABRIC_WORKSPACE_ID")
+        hints = getattr(source, "federation_hints", {}) or {}
+        # Per-source override wins over the top-level env default, so two Fabric accounts/workspaces
+        # can coexist — one source pins its own workspace via federation_hints.workspace_id.
+        workspace_id = hints.get("workspace_id") or os.environ.get("FABRIC_WORKSPACE_ID")
         if not workspace_id:
-            raise ValueError("Fabric S3-compatible external link requires $FABRIC_WORKSPACE_ID")
+            raise ValueError(
+                "Fabric S3-compatible external link requires a workspace id "
+                "(source federation_hints.workspace_id or $FABRIC_WORKSPACE_ID)"
+            )
         # s3://<bucket>/<dir>/<file>
         rest = location[len("s3://") :]
         bucket, _, key = rest.partition("/")
         subpath, _, filename = key.rpartition("/")
-        hints = getattr(source, "federation_hints", {}) or {}
         raw_name = f"{source.id}_{source.table_name}"
         shortcut_name = "".join(c if c.isalnum() else "_" for c in raw_name).strip("_")
         return ensure_external_shortcut(

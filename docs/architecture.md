@@ -161,6 +161,65 @@ The Provisa Flight server (port 8815) connects to Zaychik as an ADBC client, ena
 
 CTAS redirect uses an Iceberg connector (`results` catalog) backed by a JDBC catalog on the existing PostgreSQL instance. (REQ-169) Iceberg writes Parquet/ORC files directly to MinIO/S3 via the native S3 filesystem (`fs.native-s3.enabled=true`).
 
+## Federation Engines
+
+Provisa selects a federation engine at startup via the `PROVISA_ENGINE` environment variable, the persisted admin-UI config, or the default. When nothing is set, DuckDB is the default — fully in-process, no external service (REQ-989). See [Configuration](configuration.md#federation-engine) for selection details.
+
+Every engine is a `FederationEngine` instance defined in `provisa/federation/engine.py`. The instance owns a connector collection that determines which source types the engine can read live (ATTACH) versus which must land into the engine's materialization store first. [tool-verified: `engine.py` `_ENGINE_BUILDERS`, `ENGINE_REGISTRY`]
+
+### Driver classes (REQ-840) [tool-verified: `engine.py` `DriverClass`]
+
+| Class | Meaning | Examples |
+|-------|---------|---------|
+| `BROAD` | Reaches many external source types via native connectors | Trino |
+| `PARTIAL` | Reaches a subset (relational, files, cloud object/lake) plus lands everything else | DuckDB, PostgreSQL, ClickHouse, Databricks, Snowflake, BigQuery, Fabric, Synapse |
+| `SELF_ONLY` | Reaches only its own store; every other source lands in | SQLAlchemy |
+
+### Available engines [tool-verified: `engine.py` `_ENGINE_BUILDERS`]
+
+| Engine key | Dialect | MPP | External-link mechanism | Auth |
+|-----------|---------|-----|------------------------|------|
+| `trino` / `trino-byo` | Trino SQL | Yes | Trino catalogs (broad connector set) | JDBC credentials |
+| `pg` | PostgreSQL | No | FDW / pg_duckdb | PostgreSQL credentials |
+| `duckdb` | DuckDB | No | Extension-native ATTACH | None (in-process) |
+| `clickhouse` / `clickhouse-server` | ClickHouse | Yes (shards) | S3 / IcebergS3 / DeltaLake table engines (REQ-986) | ClickHouse credentials |
+| `snowflake` | Snowflake | Yes | External stage + external table (REQ-988) | `PROVISA_ENGINE_URL` |
+| `databricks` | Databricks SQL | Yes | Unity Catalog external tables via REST (REQ-987) | Bearer token (`http_path` in `federation_hints`) |
+| `bigquery` | BigQuery | Yes (Dremel) | BigQuery external / BigLake tables | `GOOGLE_APPLICATION_CREDENTIALS` service-account key |
+| `fabric` | T-SQL | Yes | OneLake shortcuts → OPENROWSET | Azure AD (`az login` / managed identity) |
+| `synapse` | T-SQL | Yes | ADLS OPENROWSET / external tables | Azure AD |
+| `sqlalchemy` | Any SQLAlchemy dialect | No | None (land-only) | Per-dialect credentials |
+
+### Zero-config default: DuckDB (REQ-989) [tool-verified: `engine.py` `build_duckdb_engine`, `_embedded_duckdb_materialize_default`]
+
+When `PROVISA_ENGINE` is unset, Provisa uses the fully embedded in-process DuckDB engine. DuckDB's materialization store is an embedded DuckDB file at `$PROVISA_DATA_DIR/materialize.duckdb` (defaulting to `~/.provisa/materialize.duckdb`). No external database or service is required.
+
+Because DuckDB enforces a single writer per file, `store_connection.py` writes into the embedded store through the engine's own connection — never a second independent connection. This is the one case where the engine and the materialization store share a file handle by design. [tool-verified: `store_connection.py` module docstring]
+
+### Arrow-native read transport (REQ-986, REQ-987, REQ-988) [tool-verified: `engine.py` `build_*_engine` `capabilities=`]
+
+ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric, and Synapse all advertise `EngineCapability.ARROW` and `EngineCapability.ARROW_STREAM`. Queries against these engines return Arrow RecordBatches directly — the row-serialization path is bypassed entirely. The Flight server streams those batches to clients without materializing the full result in Provisa's process memory. For Trino, Arrow streaming relies on the Zaychik proxy; for the warehouse engines, the engine's own Arrow-native API (Cloud Fetch for Databricks, Storage Read API for BigQuery, `fetch_arrow_table` for DuckDB and Snowflake) feeds the Flight stream.
+
+### External data links (ATTACH) [tool-verified: `engine.py` `_warehouse_connectors`]
+
+Every warehouse engine can scan cloud object/lake data in place without landing a copy. Parquet, CSV, Iceberg, and Delta Lake files on S3, GCS, or OneLake attach directly to the engine as if they were native tables. The strategy — ATTACH (scan in place) or LAND (copy into the store) — is determined by the connector's declared `Mechanism`; no engine-specific branching exists in the planner. A `Mechanism.ATTACH_R` connector triggers zero-copy scan; a `Mechanism.DIRECT` or absent connector triggers a land. [tool-verified: `connector_base.py` `Mechanism`, `engine.py` `_warehouse_connectors`]
+
+Attach auto-provisions all prerequisites at attach time:
+
+| Engine | Object/lake formats | Mechanism | Auto-provisioning [tool-verified] |
+|--------|-------------------|----------|----------------------------------|
+| Databricks | parquet, csv, iceberg, delta_lake | UC external table (`ATTACH_R`) | REST installs Unity Catalog storage credential + external location, then `CREATE TABLE … USING <format> LOCATION …` — live-verified over Cloudflare R2 |
+| BigQuery | parquet, csv, json, iceberg, delta_lake | BigQuery external / BigLake table (`ATTACH_R`) | `CREATE OR REPLACE EXTERNAL TABLE … OPTIONS(format=…, uris=[…])` — live-verified |
+| ClickHouse | csv, parquet, iceberg, delta_lake | S3 / IcebergS3 / DeltaLake table engine (`ATTACH_R`) | Validation probe executed at attach time — live-verified over Cloudflare R2 |
+| Fabric | parquet, csv, iceberg, delta_lake | OneLake shortcut → OPENROWSET (`ATTACH_R`) | REST creates an `AmazonS3Compatible` connection + lakehouse + shortcut; returns the OneLake `BULK` path — live-verified reading R2 through Fabric |
+| Snowflake | parquet, csv, json, iceberg, delta_lake | External stage + external table (`ATTACH_R`) | `CREATE STAGE … URL=… CREDENTIALS=…`, then `CREATE OR REPLACE EXTERNAL TABLE … LOCATION=@stage FILE_FORMAT=(TYPE=…)` — implemented; not live-tested (no account available) |
+
+Credentials for cloud storage travel in the source's `federation_hints` (see [Sources](sources.md#warehouses-as-named-sources)). Any source type that cannot ATTACH lands into the engine's materialization store first.
+
+### Columnar materialization writes (REQ-990) [tool-verified: `core/database.py:436`, `store_connection.py:99`]
+
+`Connection.bulk_copy` in `provisa/core/database.py` chooses the fastest bulk-ingest path per store dialect: binary `COPY` (asyncpg `copy_records_to_table`) for PostgreSQL stores, and a single `executemany` prepared statement for all other relational stores. The DuckDB embedded store lands through `land_duckdb_native` in `store_connection.py` — one `executemany` call for the whole batch, never a per-row loop.
+
 ## Large Result Redirect
 
 Results exceeding a row threshold are redirected to S3-compatible storage (MinIO) instead of being returned inline. (REQ-029)
@@ -322,9 +381,27 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `compiler/federation.py` | Apollo Federation v2 subgraph support |
 | `transpiler/` | SQLGlot transpilation, routing logic |
 | `executor/` | Federated/direct execution, serialization, output formats |
+| `executor/drivers/` | Direct source drivers (PostgreSQL, MySQL, DuckDB, Snowflake, Databricks, ClickHouse, …) |
 | `executor/trino_flight.py` | ADBC Flight SQL client for the federation engine |
 | `executor/ctas_write.py` | CTAS-based redirect (federation engine writes to S3) |
 | `executor/redirect.py` | S3 redirect logic, Provisa-side upload |
+| `federation/engine.py` | `FederationEngine`, `DriverClass`, `_ENGINE_BUILDERS`, `ENGINE_REGISTRY`, `build_engine` |
+| `federation/connector.py` | Connector abstractions — Trino, ClickHouse; `Mechanism`, `WarehouseNativeConnector` |
+| `federation/connector_duckdb.py` | DuckDB and PostgreSQL FDW connector definitions |
+| `federation/snowflake_connectors.py` | Snowflake external stage + external table ATTACH connectors (REQ-988) |
+| `federation/databricks_connectors.py` | Databricks UC external table ATTACH connectors (REQ-987) |
+| `federation/bigquery_connectors.py` | BigQuery external / BigLake ATTACH connectors |
+| `federation/databricks_uc.py` | Unity Catalog credential + external location auto-provisioning |
+| `federation/databricks_backend.py` | Databricks SQL warehouse execution backend |
+| `federation/snowflake_backend.py` | Snowflake execution backend |
+| `federation/bigquery_backend.py` | BigQuery execution backend (Storage Read API Arrow transport) |
+| `federation/mssql_warehouse_backend.py` | Fabric Warehouse + Synapse execution backends (T-SQL over ODBC) |
+| `federation/mssql_warehouse_connectors.py` | OPENROWSET ATTACH connectors for Fabric / Synapse |
+| `federation/fabric_shortcuts.py` | OneLake shortcut auto-provisioning (connection → lakehouse → shortcut) |
+| `federation/clickhouse_backend.py` | ClickHouse execution backend |
+| `federation/duckdb_backend.py` | DuckDB in-process execution backend |
+| `federation/pg_backend.py` | PostgreSQL execution backend |
+| `federation/store_connection.py` | DuckDB-native materialization store write face (REQ-989, REQ-990) |
 | `registry/` | Persisted query registry, governance |
 | `security/` | Visibility, rights, column masking |
 | `cache/` | Redis-backed query result caching (hot tier) |
@@ -537,7 +614,7 @@ Provisa is a thin compilation and routing layer — it adds single-digit millise
 | Path | Memory bound? | Suitable for |
 |------|--------------|-------------|
 | JSON inline (HTTP) | Yes | Small-medium results |
-| **Arrow Flight streaming (gRPC :8815)** | **No** | **Unbounded — streaming via Zaychik** |
+| **Arrow Flight streaming (gRPC :8815)** | **No** | **Unbounded — streaming via Zaychik or warehouse Arrow API** |
 | Protobuf gRPC inline (:50051) | Yes | Medium results, service-to-service |
 | Redirect: Provisa upload (JSON, CSV, NDJSON, Arrow IPC) | Yes | Medium results, file download |
 | **Redirect: CTAS (Parquet, ORC)** | **No** | **Unbounded — federation engine writes to S3** |
@@ -559,8 +636,8 @@ For large analytical workloads, use either:
 | Provisa API | (host process) | 8001 | HTTP/REST endpoint |
 | Provisa Flight | (host process) | 8815 | Arrow Flight gRPC server |
 | Provisa gRPC | (host process) | 50051 | Protobuf gRPC server |
-| Federation Engine | `trinodb/trino` | 8080 | Query federation engine |
-| Zaychik | `provisa-zaychik` (built from source) | 8480 | Arrow Flight SQL proxy for federation engine |
+| Federation Engine | `trinodb/trino` (default) or external warehouse | 8080 / varies | Query federation engine — Trino for the embedded stack; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB for warehouse targets |
+| Zaychik | `provisa-zaychik` (built from source) | 8480 | Arrow Flight SQL proxy for Trino; not required for warehouse engines |
 | PostgreSQL | `postgres:16` | 5432 | Config metadata + Iceberg catalog |
 | MongoDB | `mongo:7` | 27017 | Demo NoSQL data source |
 | MinIO | `minio/minio` | 9000/9001 | S3-compatible object storage |

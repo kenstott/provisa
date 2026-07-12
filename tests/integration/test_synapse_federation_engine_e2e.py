@@ -5,10 +5,11 @@
 
 """E2E: Azure Synapse serverless SQL as a federation engine.
 
-Synapse serverless has no storage of its own — it is a stateless T-SQL query surface over external
-data on ADLS. So (unlike Fabric, a real warehouse) it does NOT land; its capability is the zero-copy
-external link: the ATTACH connector exposes a view over ``OPENROWSET`` of an ADLS Parquet, read via
-the Arrow path. Synapse OPENROWSET reads Azure storage only (ADLS/Blob), not S3/R2.
+Synapse CAN land (a dedicated pool has managed tables; even serverless writes replicas to ADLS via
+CETAS), but its most-used capability is the zero-copy external link: this test exercises that — the
+ATTACH connector exposes a view over ``OPENROWSET`` of an ADLS Parquet, read via the Arrow path.
+Synapse OPENROWSET reads Azure storage only (ADLS/Blob), not S3/R2. (Serverless objects must live in a
+user database, not ``master`` — SYNAPSE_DATABASE points at one.)
 
 Skipped without SYNAPSE_SQL_SERVER / SYNAPSE_DATABASE / SYNAPSE_ADLS_URL (an ADLS parquet the workspace
 identity can read). pyodbc + the Microsoft ODBC driver + Azure AD (``az login``) required."""

@@ -700,6 +700,102 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. (REQ-549) URLs starting with `http://` or `https://` use OTLP/HTTP, with `/v1/traces`, `/v1/metrics`, and `/v1/logs` appended automatically. (REQ-549) Any other scheme uses OTLP/gRPC with `insecure=True`. (REQ-549) [tool-verified: `provisa/api/otel_setup.py` lines 60–70]
 
+## Federation Engine
+
+Provisa selects a federation engine at startup. Precedence: explicit `PROVISA_ENGINE` env var → persisted admin-UI `federation_engine` config field → `duckdb` (the zero-config default, REQ-989). Changes take effect on service restart. [tool-verified: `engine.py` `build_engine`]
+
+### Federation engines [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`]
+
+| Engine key | Label | Dialect | MPP | External-link mechanism | Auth |
+|-----------|-------|---------|-----|------------------------|------|
+| `trino` | Provisa Federation Engine | Trino SQL | Yes | Trino catalogs (broad connector set) | JDBC credentials |
+| `trino-byo` | Trino (bring-your-own) | Trino SQL | Yes | Same as `trino`; unmanaged coordinator | JDBC credentials |
+| `pg` | PostgreSQL | PostgreSQL | No | FDW / pg_duckdb | PostgreSQL credentials |
+| `duckdb` | DuckDB | DuckDB | No | Extension-native ATTACH | None (in-process) |
+| `clickhouse` | ClickHouse (embedded) | ClickHouse | Yes | S3 / IcebergS3 / DeltaLake table engines | chdb (in-process, no auth) |
+| `clickhouse-server` | ClickHouse (Server / Cloud) | ClickHouse | Yes | S3 / IcebergS3 / DeltaLake table engines | ClickHouse credentials |
+| `snowflake` | Snowflake | Snowflake | Yes | External stage + external table | `PROVISA_ENGINE_URL` |
+| `databricks` | Databricks | Databricks SQL | Yes | Unity Catalog external tables via REST | `PROVISA_ENGINE_URL` (bearer token + `http_path`) |
+| `bigquery` | BigQuery | BigQuery | Yes | BigQuery external / BigLake tables | `GOOGLE_APPLICATION_CREDENTIALS` |
+| `fabric` | Microsoft Fabric | T-SQL | Yes | OneLake shortcuts → OPENROWSET | Azure AD (`az login` or managed identity) |
+| `synapse` | Azure Synapse | T-SQL | Yes | ADLS OPENROWSET / external tables | Azure AD |
+| `sqlalchemy` | SQLAlchemy (any RDB) | Per-dialect | No | None (land-only) | Per-dialect credentials |
+
+### Engine selection
+
+```bash
+# Environment variable (highest precedence after explicit arg)
+PROVISA_ENGINE=databricks
+
+# Or set via admin UI — persisted to config; takes effect on restart
+```
+
+For URL-driven engines (Snowflake, Databricks, ClickHouse Server, BigQuery, SQLAlchemy), set the connection URL:
+
+```bash
+# Snowflake
+PROVISA_ENGINE_URL="snowflake://user:pass@account/db/schema?warehouse=WH"
+
+# Databricks
+PROVISA_ENGINE_URL="databricks://token:TOKEN@my-workspace.azuredatabricks.net?http_path=/sql/1.0/warehouses/xxxx"
+
+# BigQuery (project from URL or $GOOGLE_CLOUD_PROJECT; auth via service-account key)
+PROVISA_ENGINE_URL="bigquery://my-project?location=US"
+
+# ClickHouse Server
+PROVISA_ENGINE_URL="clickhouse://user:pass@host:9000/db"
+
+# Fabric (blank → reads FABRIC_SQL_SERVER / FABRIC_DATABASE)
+# Synapse (blank → reads SYNAPSE_SQL_SERVER / SYNAPSE_DATABASE)
+```
+
+### Materialization store
+
+When a source cannot attach live (no ATTACH connector), it lands into the engine's materialization store. The store to use is resolved in this order: explicit `PROVISA_MATERIALIZE_URL` → engine's declared default → hard error (no silent fallback). [tool-verified: `engine.py` `materialize_store`]
+
+DuckDB declares its embedded file (`~/.provisa/materialize.duckdb`) as the default, so the DuckDB engine requires no store configuration. All other engines default to the platform `TENANT_DATABASE_URL` (PostgreSQL). Override with `PROVISA_MATERIALIZE_URL` for any engine.
+
+### Per-engine credentials and hints
+
+Extended connection parameters that standard host/port/user/password fields cannot carry go in `federation_hints` on the source:
+
+```yaml
+sources:
+  - id: my-databricks
+    type: databricks
+    host: my-workspace.azuredatabricks.net
+    password: ${env:DATABRICKS_TOKEN}
+    federation_hints:
+      http_path: /sql/1.0/warehouses/xxxx   # required for Databricks sources
+
+  - id: my-snowflake
+    type: snowflake
+    host: org.snowflakecomputing.com
+    username: svc_provisa
+    password: ${env:SNOWFLAKE_PASSWORD}
+    federation_hints:
+      account: myorg-myaccount
+      warehouse: COMPUTE_WH
+
+  - id: my-clickhouse
+    type: clickhouse
+    host: ch.example.com
+    port: 8123
+    password: ${env:CLICKHOUSE_PASSWORD}
+    federation_hints:
+      secure: "true"           # enable TLS on the HTTP interface
+
+  - id: r2-parquet
+    type: parquet
+    path: s3://my-bucket/data/events.parquet
+    federation_hints:
+      access_key_id: ${env:R2_ACCESS_KEY}
+      secret_access_key: ${env:R2_SECRET}
+      account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
+```
+
+For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your service-account key file. For Fabric and Synapse, authenticate with `az login` (developer) or a managed identity (production) — the engine reads credentials via `azure-identity`'s `DefaultAzureCredential`.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -710,8 +806,18 @@ Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. (REQ-549) U
 | `PG_DATABASE` | `provisa` | PostgreSQL database |
 | `PG_USER` | `provisa` | PostgreSQL user |
 | `PG_PASSWORD` | `provisa` | PostgreSQL password |
-| `TRINO_HOST` | `localhost` | Federation engine host |
-| `TRINO_PORT` | `8080` | Federation engine HTTP port |
+| `PROVISA_ENGINE` | `duckdb` | Federation engine key (REQ-989, REQ-916) |
+| `PROVISA_ENGINE_URL` | — | Connection URL for URL-driven engines (Snowflake, Databricks, ClickHouse Server, BigQuery, SQLAlchemy) |
+| `PROVISA_MATERIALIZE_URL` | — | Override materialization store DSN (defaults to engine's declared default) |
+| `PROVISA_DATA_DIR` | `~/.provisa` | Data directory for the embedded DuckDB store (REQ-989) |
+| `TRINO_HOST` | `localhost` | Trino coordinator host |
+| `TRINO_PORT` | `8080` | Trino coordinator HTTP port |
+| `GOOGLE_APPLICATION_CREDENTIALS` | — | Path to GCP service-account key JSON (BigQuery engine/source) |
+| `GOOGLE_CLOUD_PROJECT` | — | Default GCP project (BigQuery; overridden by URL) |
+| `FABRIC_SQL_SERVER` | — | Fabric Warehouse SQL endpoint (alternative to `PROVISA_ENGINE_URL`) |
+| `FABRIC_DATABASE` | — | Fabric Warehouse database name |
+| `SYNAPSE_SQL_SERVER` | — | Synapse serverless SQL endpoint |
+| `SYNAPSE_DATABASE` | — | Synapse database name |
 | `REDIS_URL` | — | Redis connection URL |
 | `PROVISA_SAMPLE_SIZE` | `100` | Default sampling limit |
 | `ZAYCHIK_PORT` | `8480` | Zaychik Flight SQL proxy port |
