@@ -619,18 +619,44 @@ jobs:
 
   # ── Windows build jobs ───────────────────────────────────────────────────────
 
-  build-windows-core:
-    name: Build Windows Core installer (${{ needs.metadata.outputs.channel }})
-    runs-on: windows-latest
-    needs: [metadata]
+  build-ui-dist:
+    name: Build provisa-ui dist (Linux, for Windows native tier)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node (build provisa-ui)
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Build provisa-ui
+        run: |
+          cd provisa-ui
+          npm ci
+          npm run build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: provisa-ui-dist
+          path: provisa-ui/dist/
+          retention-days: 1
+
+  build-windows-core:
+    name: Build Windows Core installer (${{ needs.metadata.outputs.channel }})
+    runs-on: windows-latest
+    needs: [metadata, build-ui-dist]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download prebuilt provisa-ui dist
+        uses: actions/download-artifact@v4
+        with:
+          name: provisa-ui-dist
+          path: provisa-ui/dist/
 
       - name: Build installer (native tier, Inno Setup)
         shell: pwsh

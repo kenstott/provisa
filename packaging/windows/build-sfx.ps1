@@ -33,21 +33,16 @@ Copy-Item (Join-Path $ScriptDir 'uninstall.ps1')           $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.ico')             $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa-mark.png')        $BuildDir
 
-# ── Build the React UI (served from <site-packages>/static by ui_server) ──────
-Write-Host '[build-sfx] Building provisa-ui...' -ForegroundColor Cyan
-Push-Location (Join-Path $RepoRoot 'provisa-ui')
-try {
-  # `npm install` (not `npm ci`): the committed lockfile is generated on macOS and
-  # pins darwin-arm64 native bindings (e.g. @rolldown/binding-darwin-arm64) that
-  # `npm ci` tries to materialize on win32 and fails (EBADPLATFORM). `npm install`
-  # resolves the win32-appropriate optional bindings instead.
-  & npm install --no-audit --no-fund
-  if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
-  & npm run build
-  if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
-} finally { Pop-Location }
+# ── React UI (served from <site-packages>/static by ui_server) ────────────────
+# The UI is built on Linux and delivered to this job as a prebuilt dist — the
+# provisa-ui toolchain (rolldown) pins non-optional darwin native bindings that
+# npm refuses to install on win32 (EBADPLATFORM), so it cannot be built here.
+# CI stages provisa-ui/dist before running; a local build can populate it too.
 $UiDist = Join-Path $RepoRoot 'provisa-ui\dist'
-if (-not (Test-Path $UiDist)) { throw "provisa-ui\dist not found after build" }
+if (-not (Test-Path $UiDist)) {
+  throw "provisa-ui\dist not found. CI must build the UI on Linux and stage it into provisa-ui\dist before running build-sfx.ps1."
+}
+Write-Host '[build-sfx] Using prebuilt provisa-ui\dist.' -ForegroundColor Cyan
 
 # ── Bundle the standalone native Python runtime (REQ-979) ─────────────────────
 # Download python-build-standalone (relocatable CPython for Windows x86_64),
