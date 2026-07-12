@@ -57,6 +57,7 @@ export const SOURCE_TYPES = [
   { value: "elasticsearch", label: "Elasticsearch", category: "Analytics", defaultPort: 9200 },
   { value: "pinot", label: "Apache Pinot", category: "Analytics", defaultPort: 8099 },
   { value: "druid", label: "Apache Druid", category: "Analytics", defaultPort: 8082 },
+  { value: "trino", label: "Trino / Presto", category: "Analytics", defaultPort: 8080 },
   // Data Lake
   { value: "delta_lake", label: "Delta Lake", category: "Data Lake", defaultPort: 0 },
   { value: "iceberg", label: "Apache Iceberg", category: "Data Lake", defaultPort: 0 },

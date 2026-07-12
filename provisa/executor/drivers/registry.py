@@ -82,6 +82,12 @@ def _make_mssql_warehouse() -> DirectDriver:  # Fabric / Synapse (T-SQL over TDS
     return MssqlWarehouseDriver()
 
 
+def _make_trino() -> DirectDriver:  # remote Trino/Presto coordinator as a SOURCE (read-then-land)
+    from provisa.executor.drivers.sqlalchemy_driver import SQLAlchemyDriver
+
+    return SQLAlchemyDriver("trino")  # trino.sqlalchemy dialect; database part is the catalog
+
+
 # source_type → factory function
 _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     "postgresql": _make_pg,
@@ -104,6 +110,9 @@ _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     "bigquery": _make_bigquery,
     "fabric": _make_mssql_warehouse,  # T-SQL over TDS, Azure AD (per-source SP)
     "synapse": _make_mssql_warehouse,
+    # Trino/Presto as a SOURCE (not just an engine): a remote coordinator Provisa reads via the
+    # SQLAlchemy trino dialect, then lands — reachable as a REPLICA on ANY engine, like GraphQL/REST.
+    "trino": _make_trino,
 }
 
 # FALLBACK: source types with no bespoke async driver, served by the generic SQLAlchemy driver

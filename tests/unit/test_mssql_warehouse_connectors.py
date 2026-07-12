@@ -25,14 +25,28 @@ def _src(stype, path="s3://b/dir/orders.parquet", hints=None):
     )
 
 
-@pytest.mark.parametrize("engine", ["fabric", "synapse"])
-def test_openrowset_link_connectors_are_attach_r(engine):
+@pytest.mark.parametrize(
+    "engine,expected",
+    [
+        # Fabric additionally attaches Iceberg via OneLake Delta virtualization (FORMAT='DELTA');
+        # Synapse serverless has no OneLake virtualization, so Iceberg lands there.
+        ("fabric", {"parquet", "csv", "delta_lake", "iceberg"}),
+        ("synapse", {"parquet", "csv", "delta_lake"}),
+    ],
+)
+def test_openrowset_link_connectors_are_attach_r(engine, expected):
     conns = {c.source_type: c for c in openrowset_link_connectors(engine)}
-    assert set(conns) == {"parquet", "csv", "delta_lake"}
+    assert set(conns) == expected
     assert all(c.mechanism is Mechanism.ATTACH_R for c in conns.values())
     assert all(c.engine == engine for c in conns.values())
     d = conns["parquet"].details(_src("parquet"))
     assert d == {"format": "PARQUET", "location": "s3://b/dir/orders.parquet"}
+
+
+def test_fabric_iceberg_reads_as_delta_synapse_lands():
+    fabric = {c.source_type: c for c in openrowset_link_connectors("fabric")}
+    assert fabric["iceberg"].details(_src("iceberg"))["format"] == "DELTA"
+    assert "iceberg" not in {c.source_type for c in openrowset_link_connectors("synapse")}
 
 
 @pytest.mark.parametrize("build", [build_fabric_engine, build_synapse_engine])
