@@ -13,6 +13,10 @@ NERDCTL_DIR="${SCRIPT_DIR}/nerdctl"
 BIN_DIR="${APP_BUNDLE}/Contents/MacOS/bin"
 DMG_NAME="Provisa.dmg"
 DMG_PATH="${OUT_DIR}/${DMG_NAME}"
+# The native Python runtime ships in its own DMG so the core DMG stays under
+# GitHub's 2 GB release-asset limit. first-launch.sh finds it via /Volumes/*/runtime.
+RUNTIME_DMG_NAME="Provisa-Runtime.dmg"
+RUNTIME_DMG_PATH="${OUT_DIR}/${RUNTIME_DMG_NAME}"
 
 # Lima version
 LIMA_VERSION="2.1.1"
@@ -619,11 +623,9 @@ create_dmg() {
   cp "${VM_IMAGES_DIR}"/*.img "${tmp_dmg}/vm-image/"
   chflags hidden "${tmp_dmg}/vm-image"
 
-  # Native Python runtime (hidden) — first-launch stages it for the no-Docker tier.
-  if [ -d "${RUNTIME_PAYLOAD_DIR}/runtime" ]; then
-    cp -R "${RUNTIME_PAYLOAD_DIR}/runtime" "${tmp_dmg}/runtime"
-    chflags hidden "${tmp_dmg}/runtime"
-  fi
+  # The native Python runtime is NOT bundled here — it ships in a separate DMG
+  # (create_runtime_dmg) to keep this core DMG under GitHub's 2 GB asset limit.
+  # first-launch.sh stages it from the mounted runtime DMG (/Volumes/*/runtime).
 
   # Remove any existing DMG so create-dmg doesn't complain
   rm -f "${DMG_PATH}"
@@ -643,6 +645,27 @@ create_dmg() {
 
   rm -rf "$tmp_dmg"
   ok "DMG created: ${DMG_PATH}"
+}
+
+# ── Native runtime DMG (separate asset, <2 GB) ────────────────────────────────
+# Ships the standalone Python runtime for the no-Docker tier as its own DMG so the
+# core DMG stays under GitHub's 2 GB release-asset limit. first-launch.sh's
+# stage_native_runtime() already searches /Volumes/*/runtime, so mounting this DMG
+# (airgap: the user downloads both) is enough for it to be found.
+create_runtime_dmg() {
+  if [ ! -d "${RUNTIME_PAYLOAD_DIR}/runtime" ]; then
+    err "Native runtime payload missing — bundle_native_runtime must run first."
+    exit 1
+  fi
+  info "Creating native runtime DMG..."
+  local tmp_dmg="${OUT_DIR}/tmp-runtime"
+  rm -rf "$tmp_dmg"; mkdir -p "$tmp_dmg"
+  cp -R "${RUNTIME_PAYLOAD_DIR}/runtime" "${tmp_dmg}/runtime"
+  rm -f "${RUNTIME_DMG_PATH}"
+  hdiutil create -volname "Provisa Runtime" -srcfolder "${tmp_dmg}" \
+    -ov -format UDZO "${RUNTIME_DMG_PATH}"
+  rm -rf "$tmp_dmg"
+  ok "Runtime DMG created: ${RUNTIME_DMG_PATH}"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -669,9 +692,11 @@ main() {
   sign_app
   notarize_app   # notarize the small .app before images are added
   create_dmg     # DMG bundles Provisa.app (notarized) + images/ alongside
+  create_runtime_dmg  # native Python runtime in its own DMG (2 GB asset limit)
 
   printf "\n${GREEN}${BOLD}Build complete.${NC}\n"
   printf "DMG: %s\n" "${DMG_PATH}"
+  printf "Runtime DMG: %s\n" "${RUNTIME_DMG_PATH}"
 }
 
 main "$@"

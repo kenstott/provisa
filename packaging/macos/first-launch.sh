@@ -800,8 +800,27 @@ stage_native_runtime() {
       if [ -x "${cand}/bin/python3" ]; then src="$cand"; break; fi
     done
   fi
+  # The runtime ships as a separate DMG (2 GB asset limit). If it is not already
+  # mounted, look for Provisa-Runtime*.dmg beside the app / core DMG / ~/Downloads
+  # and auto-mount it, then re-search the mounted volumes.
   if [ -z "$src" ]; then
-    err "Native runtime not found beside the installer. This installer was not built with the native tier."
+    local rt_dmg=""
+    for dir in "$bundle_parent" "$(dirname "$bundle_parent")" "${HOME}/Downloads"; do
+      for cand in "${dir}"/Provisa-Runtime*.dmg; do
+        [ -f "$cand" ] && { rt_dmg="$cand"; break; }
+      done
+      [ -n "$rt_dmg" ] && break
+    done
+    if [ -n "$rt_dmg" ]; then
+      info "Mounting native runtime DMG: ${rt_dmg}"
+      hdiutil attach -nobrowse -quiet "$rt_dmg" || true
+      for cand in /Volumes/*/runtime /Volumes/*/.runtime; do
+        if [ -x "${cand}/bin/python3" ]; then src="$cand"; break; fi
+      done
+    fi
+  fi
+  if [ -z "$src" ]; then
+    err "Native runtime not found. Download and mount Provisa-Runtime-<version>-macOS.dmg (ships beside the core DMG), then re-run."
     exit 1
   fi
 
