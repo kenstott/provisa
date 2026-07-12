@@ -18,6 +18,8 @@ $NerdctlTar  = Get-ChildItem -Path $ScriptDir -Filter 'nerdctl-full-*.tar.gz' | 
 $ImagesDir   = Join-Path $ScriptDir 'images'
 $ComposeSrc  = Join-Path $ScriptDir 'compose'
 $WslSrc      = Join-Path $ScriptDir 'wsl'
+$VersionFile = Join-Path $ScriptDir 'VERSION'
+$Version     = if (Test-Path $VersionFile) { (Get-Content $VersionFile -Raw).Trim() } else { 'dev' }
 
 function Write-Info { param($Msg) Write-Host "[provisa-container] $Msg" -ForegroundColor Cyan }
 function Write-Err  { param($Msg) Write-Host "[provisa-container] $Msg" -ForegroundColor Red }
@@ -72,10 +74,32 @@ function Provision-Containerd {
   Write-Ok 'containerd + nerdctl ready.'
 }
 
-# ── 4. Load core images ───────────────────────────────────────────────────────
+# ── 4. Obtain + load core images ──────────────────────────────────────────────
+# Images are NOT bundled in the installer (they exceed GitHub's 2 GB asset limit).
+# Prefer a local images/ dir (airgap: user extracted the core-images zip beside the
+# installer); otherwise download provisa-core-images-amd64-<VERSION>.zip from the
+# matching GitHub release and extract it.
+function Resolve-ImagesDir {
+  if (Test-Path (Join-Path $ImagesDir '*.tar.gz')) { return $ImagesDir }
+  $localZip = Get-ChildItem -Path $ScriptDir -Filter 'provisa-core-images-amd64-*.zip' -ErrorAction SilentlyContinue | Select-Object -First 1
+  $dl = Join-Path $ProvisaHome 'container-images'
+  New-Item -ItemType Directory -Path $dl -Force | Out-Null
+  if (-not $localZip) {
+    $zipName = "provisa-core-images-amd64-$Version.zip"
+    $url = "https://github.com/kenstott/provisa/releases/download/$Version/$zipName"
+    $localZip = Join-Path $dl $zipName
+    Write-Info "Downloading core images: $url"
+    Invoke-WebRequest -Uri $url -OutFile $localZip -UseBasicParsing
+  }
+  Write-Info 'Extracting core images...'
+  Expand-Archive -Path $localZip -DestinationPath $dl -Force
+  return $dl
+}
+
 function Load-Images {
-  $tars = Get-ChildItem -Path $ImagesDir -Filter '*.tar.gz' -ErrorAction SilentlyContinue
-  if (-not $tars) { Write-Err "No image tarballs found in $ImagesDir."; exit 1 }
+  $dir = Resolve-ImagesDir
+  $tars = Get-ChildItem -Path $dir -Filter '*.tar.gz' -ErrorAction SilentlyContinue
+  if (-not $tars) { Write-Err "No image tarballs found in $dir."; exit 1 }
   foreach ($t in $tars) {
     Write-Info "Loading image: $($t.Name)"
     & wsl.exe -d $Distro -u root nerdctl load -i (To-WslPath $t.FullName)

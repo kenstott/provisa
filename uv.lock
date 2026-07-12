@@ -478,9 +478,9 @@ name = "chdb"
 version = "4.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "chdb-core" },
-    { name = "pandas" },
-    { name = "pyarrow" },
+    { name = "chdb-core", marker = "sys_platform != 'win32'" },
+    { name = "pandas", marker = "sys_platform != 'win32'" },
+    { name = "pyarrow", marker = "sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f4/a2/f484976f9e5dcd8eb5968bec3c92506dc8f3c5503913d5811efc74cc4661/chdb-4.2.0-py3-none-any.whl", hash = "sha256:70aeea83cba1ff30861912710d44abd3d6032deff938c52f0e3ee03e24d4fbb3", size = 1586290, upload-time = "2026-07-02T05:18:27.176Z" },
@@ -491,8 +491,8 @@ name = "chdb-core"
 version = "26.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pandas" },
-    { name = "pyarrow" },
+    { name = "pandas", marker = "sys_platform != 'win32'" },
+    { name = "pyarrow", marker = "sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/64/584953f24530357270bf16747cc9e0b5136d002011eb3713cded079a65e1/chdb_core-26.5.0-cp39-abi3-macosx_10_15_x86_64.whl", hash = "sha256:a4b896feb536b75b0cae0612410e3cc93e8161d41eab9bd55720303aef1aa047", size = 110710168, upload-time = "2026-06-08T03:33:44.677Z" },
@@ -2087,7 +2087,7 @@ dependencies = [
     { name = "bcrypt" },
     { name = "boto3" },
     { name = "buenavista" },
-    { name = "chdb" },
+    { name = "chdb", marker = "sys_platform != 'win32'" },
     { name = "clickhouse-connect" },
     { name = "clickhouse-driver" },
     { name = "cryptography" },
@@ -2203,7 +2203,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'" },
     { name = "boto3" },
     { name = "buenavista", editable = "vendor/buenavista" },
-    { name = "chdb" },
+    { name = "chdb", marker = "sys_platform != 'win32'" },
     { name = "clickhouse-connect" },
     { name = "clickhouse-driver" },
     { name = "cryptography" },

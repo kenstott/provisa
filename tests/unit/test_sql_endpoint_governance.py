@@ -15,6 +15,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import sqlglot.errors
 from httpx import ASGITransport, AsyncClient
 
 from provisa.compiler.rls import RLSContext
@@ -131,8 +132,12 @@ class TestSQLParseError:
         """Completely invalid SQL that cannot be parsed returns HTTP 400."""
         payload = {"sql": "THIS IS NOT VALID SQL !!!! SELECT ??? FROM", "role": "admin"}
 
-        # Patch sqlglot.parse_one to raise on this input
-        with patch("sqlglot.parse_one", side_effect=Exception("parse error: unexpected token")):
+        # Patch sqlglot.parse_one to raise the SqlglotError real sqlglot raises on unparseable input
+        # (the endpoint narrows its 400 catch to SqlglotError, not a blanket Exception).
+        with patch(
+            "sqlglot.parse_one",
+            side_effect=sqlglot.errors.ParseError("parse error: unexpected token"),
+        ):
             resp = await sql_client.post("/data/sql", json=payload)
 
         assert resp.status_code == 400

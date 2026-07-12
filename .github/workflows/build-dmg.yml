@@ -683,16 +683,10 @@ jobs:
   build-windows-container:
     name: Build Windows Container-tier installer (${{ needs.metadata.outputs.channel }})
     runs-on: windows-latest
-    needs: [metadata, pull-images-core-amd64]
+    needs: [metadata]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Download core amd64 image tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-images-core-amd64
-          path: packaging/windows/images/
 
       - name: Build container-tier installer (WSL2, Inno Setup)
         shell: pwsh
@@ -919,8 +913,8 @@ jobs:
             | `${{ needs.metadata.outputs.dmg_demo_name }}` | macOS Demo extension (requires Obs) |
             | `${{ needs.metadata.outputs.linux_name }}` | Linux x86_64 (core + obs, airgapped AppImage) |
             | `${{ needs.metadata.outputs.windows_name }}` | Windows x64 native installer (embedded Python, no Docker) |
-            | `${{ needs.metadata.outputs.windows_container_name }}` | Windows x64 container-tier upgrade (WSL2 + Trino, on-demand) |
-            | `${{ needs.metadata.outputs.core_images_amd64_name }}` | Core Services image tarballs (airgapped container-tier install) |
+            | `${{ needs.metadata.outputs.windows_container_name }}` | Windows x64 container-tier upgrade (WSL2 + Trino); fetches images on demand |
+            | `${{ needs.metadata.outputs.core_images_amd64_name }}` | Core Services image tarballs — the container tier downloads this, or drop it beside the installer for airgap |
             | `${{ needs.metadata.outputs.jdbc_name }}` | JDBC driver — Tableau, PowerBI, DBeaver |
             | `provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl` | Python client |
             | `${{ needs.metadata.outputs.core_images_name }}` | Core Services (airgapped install) |

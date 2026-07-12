@@ -67,13 +67,14 @@ Copy-Item (Join-Path $ScriptDir 'install-container.ps1')  $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa-container.ps1')  $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.ico')            $BuildDir
 
-# ── Core image tarballs (CI stages these into packaging/windows/images) ───────
-$ImagesSrc = Join-Path $ScriptDir 'images'
-$tars = Get-ChildItem -Path $ImagesSrc -Filter '*.tar.gz' -ErrorAction SilentlyContinue
-if (-not $tars) { throw "No core image tarballs in $ImagesSrc -- CI must stage docker-images-core-amd64 before building." }
-$BuildImages = Join-Path $BuildDir 'images'
-New-Item -ItemType Directory -Path $BuildImages -Force | Out-Null
-Copy-Item -Path (Join-Path $ImagesSrc '*.tar.gz') -Destination $BuildImages
+# ── Core images: fetched on demand, NOT bundled ──────────────────────────────
+# The ~1.9 GB core image tarballs would push this installer past GitHub's 2 GB
+# release-asset limit. Per the "separate optional download" design, install-container.ps1
+# fetches provisa-core-images-amd64-<VERSION>.zip from the release at install time
+# (or uses a local images/ dir dropped beside the installer for airgap). We only
+# stamp the version so the installer knows which release to pull from.
+$Version = if ($env:VERSION) { $env:VERSION } else { 'dev' }
+[System.IO.File]::WriteAllText((Join-Path $BuildDir 'VERSION'), $Version, [System.Text.Encoding]::ASCII)
 
 # ── nerdctl-full archive (linux-amd64) ────────────────────────────────────────
 $NerdctlArchive = "nerdctl-full-$NerdctlVersion-linux-amd64.tar.gz"
@@ -102,7 +103,6 @@ if (-not $Iscc) { throw "ISCC.exe not found after installing Inno Setup" }
 
 $DistDir = Join-Path $ScriptDir 'dist'
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
-$Version = if ($env:VERSION) { $env:VERSION } else { 'dev' }
 $InstallerPath = Join-Path $DistDir 'Provisa-Container-Setup.exe'
 
 $IssPath = Join-Path $env:TEMP 'provisa-container.iss'
