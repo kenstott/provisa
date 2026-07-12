@@ -97,3 +97,46 @@ def test_compile_is_valid_governed_and_faithful(case) -> None:
     for literal in (limit, offset):
         if literal is not None:
             assert literal in compiled.params
+
+
+# --------------------------------------------------------------------------- #
+# Nested relationship compilation (sql_selection): orders -> customer.
+# Reuses the governed schema builder (orders + customers + many-to-one relationship)
+# already exercised by test_sql_gen — the relationship-aware context nested queries
+# need.
+# --------------------------------------------------------------------------- #
+from tests.unit.test_sql_gen import _build_schema_and_ctx  # noqa: E402
+
+_ORDER_COLS = ["id", "customer_id", "amount", "region", "status"]
+_CUST_COLS = ["id", "name", "email"]
+
+
+@st.composite
+def _nested_query(draw):
+    order_fields = draw(st.lists(st.sampled_from(_ORDER_COLS), min_size=1, max_size=4, unique=True))
+    cust_fields = draw(st.lists(st.sampled_from(_CUST_COLS), min_size=1, max_size=3, unique=True))
+    query = f"{{ orders {{ {' '.join(order_fields)} customer {{ {' '.join(cust_fields)} }} }} }}"
+    return query, order_fields, cust_fields
+
+
+@settings(max_examples=200, deadline=None)
+@given(case=_nested_query())
+def test_nested_relationship_compiles_faithfully(case) -> None:
+    """A nested `customer { ... }` compiles to SQL that references only orders and
+    customers, projects every requested root field plus a `customer` relationship
+    column, and carries every requested customer field into the nested subquery."""
+    query, order_fields, cust_fields = case
+    _, ctx = _build_schema_and_ctx()
+    compiled = compile_graphql(gql_parse(query), ctx)[0]
+    assert compiled.root_field == "orders"
+
+    tree = sqlglot.parse_one(compiled.sql, read="postgres")
+    assert {t.name for t in tree.find_all(exp.Table)} <= {"orders", "customers"}
+
+    top_level = {c.field_name for c in compiled.columns if c.nested_in is None}
+    assert set(order_fields) <= top_level, "a requested root field was dropped"
+    assert "customer" in top_level, "the nested relationship column is missing"
+
+    # Every requested customer field is carried into the (subquery) SQL.
+    for f in cust_fields:
+        assert f'"{f}"' in compiled.sql, f"customer.{f} did not reach the nested SQL"
