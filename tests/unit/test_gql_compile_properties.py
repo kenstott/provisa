@@ -105,7 +105,7 @@ def test_compile_is_valid_governed_and_faithful(case) -> None:
 # already exercised by test_sql_gen — the relationship-aware context nested queries
 # need.
 # --------------------------------------------------------------------------- #
-from tests.unit.test_sql_gen import _build_schema_and_ctx  # noqa: E402
+from tests.unit.test_sql_gen import _build_schema_and_ctx, _col  # noqa: E402
 
 _ORDER_COLS = ["id", "customer_id", "amount", "region", "status"]
 _CUST_COLS = ["id", "name", "email"]
@@ -140,3 +140,85 @@ def test_nested_relationship_compiles_faithfully(case) -> None:
     # Every requested customer field is carried into the (subquery) SQL.
     for f in cust_fields:
         assert f'"{f}"' in compiled.sql, f"customer.{f} did not reach the nested SQL"
+
+
+# --------------------------------------------------------------------------- #
+# One-to-many nesting (sql_selection array_agg): customers -> orders.
+# --------------------------------------------------------------------------- #
+def _o2m_ctx() -> CompilationContext:
+    tables = [
+        {
+            "id": 1,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "customers",
+            "governance": "pre-approved",
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "name", "visible_to": ["admin"]},
+            ],
+        },
+        {
+            "id": 2,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "orders",
+            "governance": "pre-approved",
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "customer_id", "visible_to": ["admin"]},
+                {"column_name": "amount", "visible_to": ["admin"]},
+            ],
+        },
+    ]
+    rels = [
+        {
+            "id": "cust-orders",
+            "source_table_id": 1,
+            "target_table_id": 2,
+            "source_column": "id",
+            "target_column": "customer_id",
+            "cardinality": "one-to-many",
+        }
+    ]
+    cts = {
+        1: [_col("id", "integer"), _col("name")],
+        2: [_col("id", "integer"), _col("customer_id", "integer"), _col("amount", "integer")],
+    }
+    _, ctx = _build_schema_and_ctx(tables=tables, relationships=rels, column_types=cts)
+    return ctx
+
+
+_O2M_CTX = _o2m_ctx()
+_CUST2 = ["id", "name"]
+_ORDER2 = ["id", "customer_id", "amount"]
+
+
+@st.composite
+def _o2m_query(draw):
+    cust = draw(st.lists(st.sampled_from(_CUST2), min_size=1, max_size=2, unique=True))
+    orders = draw(st.lists(st.sampled_from(_ORDER2), min_size=1, max_size=3, unique=True))
+    return f"{{ customers {{ {' '.join(cust)} orders {{ {' '.join(orders)} }} }} }}", cust, orders
+
+
+@settings(max_examples=200, deadline=None)
+@given(case=_o2m_query())
+def test_one_to_many_nesting_aggregates_children(case) -> None:
+    """A one-to-many `orders { ... }` under customers compiles to an aggregating
+    subquery (json_agg): only customers/orders tables, the parent fields projected
+    plus an `orders` one-to-many column, every child field carried into the subquery."""
+    query, cust_fields, order_fields = case
+    compiled = compile_graphql(gql_parse(query), _O2M_CTX)[0]
+    assert compiled.root_field == "customers"
+    assert "json_agg" in compiled.sql, "one-to-many did not aggregate into an array"
+
+    tree = sqlglot.parse_one(compiled.sql, read="postgres")
+    assert {t.name for t in tree.find_all(exp.Table)} <= {"customers", "orders"}
+
+    cols = {c.field_name: c for c in compiled.columns if c.nested_in is None}
+    assert set(cust_fields) <= set(cols)
+    assert cols.get("orders") is not None and cols["orders"].cardinality == "one-to-many"
+    for f in order_fields:
+        assert f'"{f}"' in compiled.sql, f"orders.{f} did not reach the aggregated subquery"
